@@ -184,6 +184,14 @@ class TestCropAndResize(BaseTester):
         boxes = torch.tensor([[[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]]], device=device, dtype=dtype)
 
         out_default = kornia.geometry.transform.crop_and_resize(inp, boxes, (3, 3))
+        # Snippet used to generate expected (independent F.grid_sample call, not through
+        # crop_and_resize's own box-to-grid machinery):
+        # import torch.nn.functional as F
+        # inp = torch.arange(1.0, 17.0).view(1, 1, 4, 4)
+        # xs = ys = torch.tensor([-1.0, 0.0, 1.0])
+        # gx, gy = 2 * xs / (4 - 1) - 1, 2 * ys / (4 - 1) - 1
+        # grid = torch.stack(torch.meshgrid(gy, gx, indexing="ij")[::-1], dim=-1).unsqueeze(0)
+        # expected = F.grid_sample(inp, grid, mode="bilinear", padding_mode="zeros", align_corners=True)
         expected_zeros = torch.tensor(
             [[[[0.0, 0.0, 0.0], [0.0, 1.0, 2.0], [0.0, 5.0, 6.0]]]], device=device, dtype=dtype
         )
@@ -426,15 +434,15 @@ class TestCropByIndices(BaseTester):
         )
         out_pad_match = kornia.geometry.transform.crop_by_indices(inp, box_2x2, size=size, shape_compensation="pad")
         expected_slice = inp[..., 0:2, 0:2]
-        assert torch.equal(out_resize_match, expected_slice)
-        assert torch.equal(out_pad_match, expected_slice)
+        self.assert_close(out_resize_match, expected_slice, atol=0.0, rtol=0.0)
+        self.assert_close(out_pad_match, expected_slice, atol=0.0, rtol=0.0)
 
         # slice (3x3) differs from `size` (2x2): resized under both settings.
         out_resize_diff = kornia.geometry.transform.crop_by_indices(
             inp, box_3x3, size=size, shape_compensation="resize"
         )
         out_pad_diff = kornia.geometry.transform.crop_by_indices(inp, box_3x3, size=size, shape_compensation="pad")
-        assert torch.equal(out_resize_diff, out_pad_diff)
+        self.assert_close(out_resize_diff, out_pad_diff, atol=0.0, rtol=0.0)
         assert out_resize_diff.shape[-2:] == size
 
         # --- non-uniform batch (box 0 != box 1): shape_compensation genuinely takes effect ---

@@ -156,10 +156,14 @@ class TestHflip(BaseTester):
     def test_convention_rank1_supported(self, device, dtype):
         # hflip has no rank floor: even a bare rank-1 tensor (no H/W structure at all) works,
         # unlike vflip/rot180 which need a second-to-last axis (see
-        # TestVflip/TestRot180.test_convention_rank1_raises).
+        # TestVflip/TestRot180.test_convention_rank1_raises). A rank-0 tensor also works and
+        # is returned unchanged (there is no dimension to flip).
         x = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)
         expected = torch.tensor([3.0, 2.0, 1.0, 0.0], device=device, dtype=dtype)
         self.assert_close(kornia.geometry.transform.hflip(x), expected)
+
+        x0 = torch.tensor(1.0, device=device, dtype=dtype)
+        self.assert_close(kornia.geometry.transform.hflip(x0), x0)
 
 
 class TestRot180(BaseTester):

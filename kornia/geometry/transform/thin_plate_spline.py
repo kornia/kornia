@@ -66,11 +66,9 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
         - returns kernel weights :math:`(B, N, 2)` and affine weights :math:`(B, 3, 2)`,
           consumed by :func:`warp_points_tps`/:func:`warp_image_tps`; the identity
           mapping (``points_src == points_dst``) yields kernel weights and an affine
-          that are mathematically zero/identity up to linear-solver (LU) round-off —
-          not bit-exact in general. Residual size is dtype- and backend-dependent (e.g.
-          CPU float64 shows a ~1e-16 residual and MPS float32 a ~1e-8 to ~1e-6 residual,
-          for inputs where CPU float32 happens to land exactly on zero), and float16
-          currently produces NaN weights
+          that are mathematically zero/identity, realized only up to linear-solver
+          (LU) round-off — not bit-exact in general, and the residual size is
+          dtype- and backend-dependent; float16 currently produces NaN weights
         - to build the transform consumed by :func:`warp_image_tps`, call this with the
           arguments **reversed** — ``get_tps_transform(points_dst, points_src)`` —
           since image warping samples from output space back into input space;
@@ -243,8 +241,9 @@ def warp_image_tps(
           which always builds its grid using the ``align_corners=True`` convention
         - the default ``align_corners=False`` therefore mismatches that internally-built
           grid: even a mathematically-identity TPS transform is **not** reproduced
-          exactly at the default; pass ``align_corners=True`` explicitly to get an exact
-          identity round-trip
+          exactly at the default; passing ``align_corners=True`` explicitly removes this
+          grid mismatch, leaving an identity round-trip up to ordinary floating-point
+          precision (dtype/backend dependent) — not bit-exact in general
         - padding_mode: ``'zeros'`` by default
 
     Args:

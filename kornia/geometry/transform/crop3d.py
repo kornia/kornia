@@ -391,7 +391,8 @@ def crop_by_transform_mat3d(
 
     Args:
         tensor: the 3D volume tensor with shape (B, C, D, H, W).
-        transform: a perspective transformation matrix with shape (B, 4, 4).
+        transform: the source->destination pixel transform, either affine with
+          shape (B, 3, 4) or homogeneous with shape (B, 4, 4).
         out_size: size of the output image (depth, height, width).
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.

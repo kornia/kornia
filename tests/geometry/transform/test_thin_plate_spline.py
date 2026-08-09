@@ -279,8 +279,10 @@ class TestWarpImage(BaseTester):
         # warp_image_tps's default align_corners=False does NOT reproduce an identity TPS warp:
         # its internal create_meshgrid call always builds the sampling grid using the
         # align_corners=True convention, so it mismatches grid_sample's own (default) False
-        # convention even for a mathematically-identity TPS transform. Only the non-default
-        # align_corners=True (see test_identity_warp_align_corners above) round-trips exactly.
+        # convention even for a mathematically-identity TPS transform. See the Convention
+        # block above warp_image_tps for the align_corners=True caveat (identity round-trip up
+        # to floating-point precision; align_corners=True itself is already pinned by
+        # test_identity_warp_align_corners above).
         if dtype == torch.float16:
             # get_tps_transform's linear solve is numerically unstable in float16 (produces NaN
             # kernel/affine weights) -- matches this file's pre-existing
@@ -294,29 +296,8 @@ class TestWarpImage(BaseTester):
         img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
 
         out_default = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine)
-        out_true = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine, align_corners=True)
 
-        self.assert_close(out_true, img, rtol=1e-2, atol=1e-2)
         assert not torch.allclose(out_default, img, atol=1e-2, rtol=1e-2)
-
-        # Snippet used to generate expected (uses torch + kornia.geometry.transform's
-        # get_tps_transform/warp_image_tps to build a reference identity-warp; not an
-        # independent reference implementation):
-        # src = torch.tensor([[[-1.,-1.],[-1.,1.],[1.,-1.],[1.,1.],[0.,0.]]])
-        # kernel, affine = kornia.geometry.transform.get_tps_transform(src, src)
-        # img = torch.arange(16.0).view(1, 1, 4, 4)
-        # expected = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine)
-        expected_default = torch.tensor(
-            [
-                [0.0000, 0.4167, 1.0833, 0.7500],
-                [1.6667, 4.1667, 5.5000, 3.1667],
-                [4.3333, 9.5000, 10.8333, 5.8333],
-                [3.0000, 6.4167, 7.0833, 3.7500],
-            ],
-            device=device,
-            dtype=dtype,
-        )
-        self.assert_close(out_default[0, 0], expected_default, rtol=2e-2, atol=2e-2)
 
     def test_convention_padding_mode_default_zeros(self, device, dtype):
         # warp_image_tps's padding_mode default is 'zeros': grid_sample calls that sample

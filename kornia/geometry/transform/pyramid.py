@@ -160,7 +160,11 @@ class ScalePyramid(nn.Module):
           ``L = n_levels + extra_levels`` stacked levels; ``sigmas[octave]`` and
           ``pixel_dists[octave]`` are :math:`(B, L)` — ``sigmas`` is
           octave-relative, resetting to the same ``init_sigma``-seeded sequence
-          at the start of every octave (identical values across octaves), and
+          at the start of every octave, identical from octave 1 onward; octave
+          0's first entry is instead the assumed input blur (``0.5``, or
+          ``1.0`` when ``double_image=True``) whenever ``init_sigma`` is below
+          that value — e.g. ``init_sigma=0.25`` gives octave 0
+          ``[0.5, 0.5, 1.0, 2.0]`` vs octave 1+ ``[0.25, 0.5, 1.0, 2.0]``; and
           ``pixel_dists`` is the pixel spacing of each level relative to the
           input; the blur sigma in original-image pixels is
           ``sigmas[octave] * pixel_dists[octave]``, not ``sigmas[octave]`` alone
@@ -508,11 +512,9 @@ def build_pyramid(
 
     Args:
         input : the torch.Tensor to be used to construct the pyramid.
-        max_level: number of pyramid levels to return, including the unchanged
-          original image as level 0. Intended to be a positive integer; the
-          current bounds check does not reject non-positive values — passing
-          ``0`` or a negative integer is not rejected and returns the same
-          single-element ``[input]`` list as ``max_level=1``.
+        max_level: the number of pyramid levels to return, including the
+          unchanged original image as level 0. Values less than 1 currently
+          behave like ``max_level=1`` (a single-element list).
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
@@ -572,30 +574,37 @@ def build_laplacian_pyramid(
           element (index ``max_level - 1``) is the unsubtracted final Gaussian
           level — level 0 is **not** the unchanged original image whenever
           ``max_level > 1``
-        - for inputs whose height or width is not a power of two, the input is
-          reflect-padded up to the next power of two before the Gaussian
-          pyramid is built, so every returned level — including level 0 — is
-          shaped from the padded size, not the original input size (e.g. a
-          :math:`(1, 1, 6, 6)` input produces a level 0 of shape
-          :math:`(1, 1, 8, 8)`)
+        - when **neither** the height **nor** the width is a power of two, the
+          input is reflect-padded up to the next power of two (per dimension)
+          before the Gaussian pyramid is built, so every returned level —
+          including level 0 — is shaped from the padded size, not the
+          original input size (e.g. a :math:`(1, 1, 6, 6)` input produces a
+          level 0 of shape :math:`(1, 1, 8, 8)`); if **either** dimension is
+          already a power of two, no padding is applied even if the other
+          is not (e.g. :math:`(1, 1, 6, 8)` and :math:`(1, 1, 8, 6)` are
+          both returned unpadded at level 0), and for such odd/non-power-of-two
+          sizes with ``max_level > 1`` the level-to-level subtraction can
+          raise ``RuntimeError`` from a shape mismatch (e.g. a
+          :math:`(1, 1, 5, 8)` or :math:`(1, 1, 8, 5)` input with
+          ``max_level=2``)
         - border_type: ``'reflect'`` by default
         - align_corners: ``False`` by default
 
     Args:
         input : the torch.Tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.
-        max_level: intended to be a positive integer giving the number of
-          levels to return. The current bounds check does not reject
-          non-positive values: ``max_level`` values ``<= 1`` (including ``0``
-          and negative integers) all return the same single-element list
-          containing just the base Gaussian level; see Convention above for
-          what the levels contain when ``max_level > 1``.
+        max_level: the number of pyramid levels to return, including the
+          unchanged original image as level 0. Values less than 1 currently
+          behave like ``max_level=1`` (a single-element list); see Convention
+          above for what the levels contain when ``max_level > 1``.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
 
     Return:
-        Output: :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
+        Output: :math:`[(B, C, H', W'), (B, C, H'/2, W'/2), ...]`, where
+        :math:`(H', W')` equals the input :math:`(H, W)` unless padding was
+        applied (see Convention above), in which case it is the padded size.
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
