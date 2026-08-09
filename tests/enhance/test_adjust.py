@@ -1223,11 +1223,17 @@ class TestPosterize(BaseTester):
     def test_exception(self, device, dtype):
         img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
 
+        # invalid input type
         with pytest.raises(TypeError):
-            assert TestPosterize.f([1.0], 0.0)
+            TestPosterize.f([1.0], 0)
 
+        # bits must be int or tensor
         with pytest.raises(TypeError):
-            assert TestPosterize.f(img, 1.0)
+            TestPosterize.f(img, 1.0)
+
+        # batch size mismatch between bits tensor and input
+        with pytest.raises(AssertionError):
+            TestPosterize.f(img, torch.tensor([1, 2, 3], device=device))
 
     # TODO(jian): add better cases
     @pytest.mark.skipif(kornia.core.utils.xla_is_available(), reason="issues with xla device")
