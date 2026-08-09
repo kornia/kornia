@@ -24,7 +24,6 @@ from torch import nn
 from kornia.constants import Resample
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.bbox import infer_bbox_shape
-from kornia.geometry.conversions import convert_affinematrix_to_homography
 
 from .affwarp import resize
 from .imgwarp import get_perspective_transform, warp_affine, warp_perspective
@@ -285,7 +284,7 @@ def crop_by_transform_mat(
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
         transform: a perspective transformation matrix with shape (B, 3, 3), or an
-          affine matrix with shape (B, 2, 3) that will be padded to (B, 3, 3).
+          affine matrix with shape (B, 2, 3) that takes the cheaper warp_affine path.
         out_size: size of the output image (height, width).
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -297,13 +296,23 @@ def crop_by_transform_mat(
         the output torch.Tensor with patches.
 
     """
-    if transform.shape[-2:] == (2, 3):
-        transform = convert_affinematrix_to_homography(transform)
-
     # simulate broadcasting
     dst_trans_src = torch.as_tensor(
         transform.expand(input_tensor.shape[0], -1, -1), device=input_tensor.device, dtype=input_tensor.dtype
     )
+
+    # dispatch on the transform shape, which is static and therefore safe for torch.export:
+    # (B, 2, 3) is affine by construction and keeps the cheaper warp_affine path (no perspective
+    # divide, shared-grid broadcast), while (B, 3, 3) takes the full perspective warp.
+    if transform.shape[-2:] == (2, 3):
+        return warp_affine(
+            input_tensor,
+            dst_trans_src,
+            out_size,
+            mode=mode,
+            padding_mode=padding_mode,
+            align_corners=align_corners,
+        )
 
     h_out, w_out = out_size
     if not align_corners and (h_out == 1 or w_out == 1):
