@@ -139,8 +139,8 @@ When adding a new feature detector or descriptor to `kornia/feature/`:
 ## PR Requirements
 
 All PRs must:
-- Be linked to a previously discussed GitHub issue or Discord discussion (`Fixes #123`)
-- Include pasted local test log output as proof of execution (`pixi run test ...`)
+- Declare a lane (CONTRIBUTING.md "Which lane is your contribution?"): green lane (test-first bug fix, verified docs fix, `help wanted` issue, benchmark results — no prior issue needed) or discuss-first (features/behavior changes — linked issue with maintainer scope confirmation, `Fixes #123`)
+- Include pasted local test log output as proof of execution (`pixi run test ...`); bug fixes include a test that fails on `main`
 - Reference an algorithm source (PyTorch, OpenCV, scikit-image, paper, etc.) for any new implementation
 
 **Comments**: No redundant or ghost comments (e.g., "this returns the input tensor", or comments explaining deleted code). Violation triggers mandatory manual rewrite request.

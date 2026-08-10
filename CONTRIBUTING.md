@@ -4,18 +4,18 @@ Welcome! This guide will help you contribute to Kornia.
 
 ## Policies and Guidelines
 
-- **AI Policy & Authorship**: See [AI_POLICY.md](AI_POLICY.md) for the complete policy. Summary:
-    - Kornia accepts AI-assisted code but strictly rejects AI-generated contributions where the submitter acts as a proxy.
-    - **Proof of Verification**: PRs must include local test logs proving execution.
-    - **Hallucination & Redundancy Ban**: Use existing `kornia` utilities and never reinvent the wheel, except for when the utility is not available.
-    - **The "Explain It" Standard**: You must be able to explain any code you submit.
-    - Violations result in immediate closure or rejection.
+- **Two lanes**: small self-verifying fixes need no permission — just send the PR. Features and behavior changes need discussion first. See [Which lane is your contribution?](#which-lane-is-your-contribution).
 
-- **15-Day Rule**: PRs with no activity for 15+ days will be automatically closed.
+- **AI Policy & Authorship**: See [AI_POLICY.md](AI_POLICY.md) for the complete policy. Short version: we don't care how much AI you used (our maintainers use it heavily too) — we care that you **verified** everything and can **explain** everything. That means:
+    - **Show us it runs**: PRs include pasted local test logs; bug fixes arrive with a test that fails on `main`.
+    - **Don't reinvent kornia**: use existing `kornia` utilities instead of writing new ones.
+    - **Own it**: you can explain any line during review; disclose AI use honestly in the PR template.
+
+- **15-Day Rule**: PRs waiting on their **author** for 15+ days may be closed to keep the queue readable — reopen anytime when you're back. Time spent waiting on *us* doesn't count against you: if you're blocked on a review, say so and a maintainer will add the `awaiting-review` label, which pauses the timer.
 
 - **Transparency**: All discussions must be public.
 
-We're all volunteers. These policies help us focus on high-impact work.
+We're all volunteers. These policies exist so review time goes to real contributions.
 
 ## Ways to Contribute
 
@@ -300,7 +300,7 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
 
 ## Before You Start
 
-1. **Discuss First**: Always discuss your proposed changes in Discord or via a GitHub issue before starting implementation. This ensures your work aligns with project goals and avoids duplicate effort.
+1. **Know Your Lane**: Self-verifying fixes (failing test + fix, verified docs corrections, `help wanted` issues) can go straight to a PR. For features and behavior changes, discuss in Discord or a GitHub issue first — see [Which lane is your contribution?](#which-lane-is-your-contribution).
 
 2. **Start Small**: If you're new to the project, start with small bug fixes or documentation improvements to familiarize yourself with the codebase and contribution process.
 
@@ -364,9 +364,10 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
 - Review AI output thoroughly: check for unnecessary complexity, verify it follows project conventions, ensure it uses existing utilities, and test it
 - Be transparent in PR descriptions about what was AI-assisted and what you manually reviewed (see [Pull Request](#pull-request) for AI Usage Disclosure requirements)
 - **AI Usage Disclosure in PR Template**: When completing the PR template's "AI Usage Disclosure" section:
-  - Mark as **🟢 No AI used** only if you wrote all code manually without any AI assistance
-  - Mark as **🟡 AI-assisted** if you used AI tools (Copilot, Cursor, etc.) for boilerplate/refactoring but manually reviewed and tested every line
-  - Mark as **🔴 AI-generated** if an AI agent generated the code, PR description, or commit messages, or if you cannot explain the logic without referring to the AI's output. **Important**: PRs marked as AI-generated are subject to stricter scrutiny and may be immediately closed if the logic cannot be explained
+  - Mark as **🟢 Human-written** if you wrote all code manually without AI assistance
+  - Mark as **🟡 AI-assisted** if AI tools (Copilot, Cursor, etc.) helped with boilerplate/refactoring/drafts and you manually reviewed and tested every line
+  - Mark as **🔴 AI-generated** if an agent produced most of the code or the PR
+  - **None of these is a bad answer** — well-verified 🔴 PRs are welcome (our maintainers ship them too). What gets PRs closed is mislabeling, or verification that turns out to be imaginary. See [AI_POLICY.md](AI_POLICY.md).
 
 ## Communication
 
@@ -376,35 +377,68 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
 
 # Pull Request
 
-## Issue Approval and Assignment Workflow
+## Which lane is your contribution?
 
-**Before submitting a PR, you must:**
+First, the honest context: AI has made pull requests cheap to produce and expensive to
+review, and we are a small volunteer team. We used to require maintainer approval and
+assignment before *any* work. That slowed down exactly the people we want most — someone
+who spotted a real bug and has an hour to fix it properly — while barely slowing down
+low-effort submissions at all. So we changed the deal: **we gate on evidence, not
+permission.** Pick your lane:
 
-1. **Open an issue first**: All PRs must be linked to an existing issue. If no issue exists for your work, create one using the appropriate template (bug report or feature request).
+### 🟢 Green lane — just send the PR (no issue, no assignment, no waiting)
 
-2. **Wait for maintainer approval**: A maintainer must review and approve the issue before you start working on it. New issues are automatically labeled with `triage` and will receive a welcome message explaining this process.
+For contributions that prove themselves:
 
-3. **Wait for assignment**: You must be assigned to the issue by a maintainer before submitting a PR. This ensures:
-   - The issue aligns with project goals
-   - No duplicate work is being done
-   - Proper coordination of contributions
+- **Bug fixes, test-first**: your PR contains a test that **fails on `main`** and passes
+  with your fix, plus pasted test logs. That failing test *is* your permission slip —
+  it shows the bug is real and the fix works, and it takes us minutes to verify.
+- **Documentation fixes** where the PR description shows the snippet you ran to verify
+  the corrected claim.
+- **[`help wanted` issues](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22)**:
+  these are pre-approved, with acceptance criteria written in the issue. No assignment,
+  no "can I work on this?" — the **first PR that meets the criteria wins**. (Please do
+  check for an already-open PR on the same issue before starting.)
+- **Benchmark results** from your hardware, via the `--contribute` flow in `benchmarks/`.
 
-4. **Do not start work until assigned**: PRs submitted without prior issue approval and assignment may be closed or receive warnings during automated validation.
+### 🟠 Discuss-first lane — open an issue before writing code
 
-This workflow helps maintain quality, avoid conflicts, and ensure contributions align with the project's direction. The automated PR validation workflow will check these requirements and post warnings if they're not met.
+For contributions that change what kornia *means* or where it is going:
 
-**Requirements:**
-- **Issue approval and assignment**: The linked issue must be approved by a maintainer and you must be assigned to it (see workflow above)
-- Link PR to an issue (use "Closes #123" or "Fixes #123")
-- Pass all local tests before submission
-- Provide proof of local test execution in the PR description (this is especially important for first-time contributors)
+- New features and new public APIs
+- **Any change to behavior, defaults, or conventions — even ones that look obviously
+  wrong.** In a geometry library, changing a default silently breaks everyone who
+  adapted to it. We have a specific protocol for fixing shipped conventions; propose
+  the change in an issue and we will route it.
+- New models or integrations (mostly frozen — see the project direction in the README)
+- Large refactors
+
+Why discuss first? Because for this kind of work, the design conversation *is* the
+work — and skipping it means we sometimes have to reject finished code, which is
+painful for everyone. A maintainer confirming scope on the issue is your green light;
+formal assignment is optional.
+
+### Application seasons (GSoC and similar)
+
+Around application deadlines we receive a large wave of first-time PRs. During
+announced application windows, first-time contributions are accepted from the green
+lane only. One well-verified green-lane PR helps your application far more than five
+hasty ones — we read review threads, not PR counts.
+
+## PR requirements
+
+- Pass all local tests before submission, and paste the test log in the PR description
+  (this is how we know it ran — especially important for first-time contributors)
+- Green lane: state which green-lane category applies; for bug fixes, include the
+  failing-test-on-`main` evidence
+- Discuss-first lane: link the issue (use "Closes #123" or "Fixes #123") where a
+  maintainer confirmed the scope
 - Fill the [pull request template](.github/pull_request_template.md)
-- **AI Policy Compliance**: Must comply with [AI_POLICY.md](AI_POLICY.md). This includes:
-  - Using existing `kornia` utilities instead of reinventing
-  - Being able to explain all submitted code
-  - Completing the AI Usage Disclosure in the PR template accurately (see [AI-Assisted Development](#ai-assisted-development) for guidance on when to mark as AI-generated)
-- 15-Day Rule: Inactive PRs (>15 days) will be closed
-- Transparency: Keep discussions public
+- **AI Policy**: comply with [AI_POLICY.md](AI_POLICY.md) — use existing `kornia`
+  utilities, be able to explain all submitted code, and complete the AI disclosure
+  honestly (an honest 🔴 is fine; a dishonest 🟡 is not)
+- 15-Day Rule: PRs waiting on the author for 15+ days may be closed (reopen anytime)
+- Transparency: keep discussions public
 
 **Code review:**
 - By default, GitHub Copilot will check the PR against the AI Policy and the coding standards.

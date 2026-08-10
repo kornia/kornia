@@ -50,42 +50,52 @@ jobs:
               core.warning(`Could not determine permission for @${prAuthor}: ${error.message}`);
             }
 
+            // Two-lane model (CONTRIBUTING.md#which-lane-is-your-contribution):
+            // green lane needs no issue; discuss-first needs a linked, scope-confirmed issue.
+            const greenLane = /-\s*\[x\]\s*🟢\s*\*\*Green lane/i.test(prBody);
+            const discussLane = /-\s*\[x\]\s*🟠\s*\*\*Discuss-first lane/i.test(prBody);
+
+            // Referenced issues should exist and be open regardless of lane.
+            const checkIssueExists = async (issueNumber) => {
+              try {
+                const issue = await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber
+                });
+                if (issue.data.state === 'closed') {
+                  warnings.push(`⚠️ **Issue #${issueNumber} is closed**: The linked issue #${issueNumber} is already closed. Please ensure you're linking to the correct issue.`);
+                }
+                return issue;
+              } catch (error) {
+                if (error.status === 404) {
+                  warnings.push(`❌ **Issue #${issueNumber} not found**: The linked issue #${issueNumber} does not exist. Please check the issue number.`);
+                } else {
+                  warnings.push(`⚠️ **Error checking issue #${issueNumber}**: ${error.message}`);
+                }
+                return null;
+              }
+            };
+
             if (isMaintainer) {
               // no warnings: fall through so any stale warning comment gets deleted
-            } else if (issueNumbers.length === 0) {
-              warnings.push('❌ **No linked issue found**: This PR does not reference any issue. Please link to an issue using "Fixes #123" or "Closes #123" in the PR description.');
-            } else {
-              // Check each linked issue
+            } else if (greenLane && !discussLane) {
+              // Green lane: no issue link or assignment required. Only sanity-check
+              // any issues the author chose to reference.
               for (const issueNumber of issueNumbers) {
-                try {
-                  const issue = await github.rest.issues.get({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: issueNumber
-                  });
-
-                  if (issue.data.state === 'closed') {
-                    warnings.push(`⚠️ **Issue #${issueNumber} is closed**: The linked issue #${issueNumber} is already closed. Please ensure you're linking to the correct issue.`);
-                  }
-
-                  // Check if PR author is assigned to the issue
-                  const assignees = issue.data.assignees.map(a => a.login);
-                  if (assignees.length === 0) {
-                    warnings.push(`⚠️ **Issue #${issueNumber} has no assignee**: This issue has not been assigned to anyone. Please wait for a maintainer to assign it to you before submitting a PR.`);
-                  } else if (!assignees.includes(prAuthor)) {
-                    warnings.push(`⚠️ **Assignment mismatch**: You (@${prAuthor}) are not assigned to issue #${issueNumber}. The issue is assigned to: ${assignees.map(a => `@${a}`).join(', ')}. Please wait for a maintainer to assign the issue to you.`);
-                  }
-
-                  // Check if issue has triage label (indicating it might not be approved yet)
-                  const labels = issue.data.labels.map(l => l.name);
-                  if (labels.includes('triage')) {
-                    warnings.push(`ℹ️ **Issue #${issueNumber} is still in triage**: This issue may not have been reviewed and approved by a maintainer yet. Please ensure the issue has been approved before submitting a PR.`);
-                  }
-                } catch (error) {
-                  if (error.status === 404) {
-                    warnings.push(`❌ **Issue #${issueNumber} not found**: The linked issue #${issueNumber} does not exist. Please check the issue number.`);
-                  } else {
-                    warnings.push(`⚠️ **Error checking issue #${issueNumber}**: ${error.message}`);
+                await checkIssueExists(issueNumber);
+              }
+            } else {
+              if (!greenLane && !discussLane) {
+                warnings.push('ℹ️ **Pick a lane**: Please check one of the lane boxes in the PR description — 🟢 green lane (test-first bug fix, verified docs fix, `help wanted` issue, benchmark results: no issue needed) or 🟠 discuss-first (features and behavior changes: linked, scope-confirmed issue required). See the [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#which-lane-is-your-contribution).');
+              }
+              if (issueNumbers.length === 0) {
+                warnings.push('❌ **No linked issue found**: Features and behavior changes need a linked issue where a maintainer confirmed the scope (use "Fixes #123" or "Closes #123"). If this PR is actually a test-first bug fix, verified docs fix, `help wanted` item, or benchmark contribution, check the 🟢 green-lane box instead — no issue needed.');
+              } else {
+                for (const issueNumber of issueNumbers) {
+                  const issue = await checkIssueExists(issueNumber);
+                  if (issue && issue.data.labels.map(l => l.name).includes('triage')) {
+                    warnings.push(`ℹ️ **Issue #${issueNumber} is still in triage**: A maintainer has not yet confirmed the scope of this issue. For features and behavior changes, please get a scope confirmation on the issue before investing significant work — it protects you from building something we cannot merge.`);
                   }
                 }
               }

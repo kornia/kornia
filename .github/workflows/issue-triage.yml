@@ -46,10 +46,13 @@ jobs:
               labels: ['triage']
             });
 
-            const welcomeMessage = '## ⚠️ Before Submitting a PR\n\n' +
-              'Please wait for a maintainer to approve and assign this issue to you or someone else before submitting a PR. ' +
-              'PRs submitted without prior approval and assignment may be closed. ' +
-              'See our [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md) for details.';
+            const welcomeMessage = '## 👋 Thanks for opening an issue!\n\n' +
+              'A maintainer will take a look. If you want to contribute a fix, here is how it works:\n\n' +
+              '- **Bug you can reproduce?** You do not need to wait for anyone: send a PR with a test ' +
+              'that fails on `main` plus your fix — that failing test is your permission slip (🟢 green lane).\n' +
+              '- **Feature or behavior change?** Please wait for a maintainer to confirm the scope on this ' +
+              'issue before writing code (🟠 discuss-first lane) — it protects you from building something we cannot merge.\n\n' +
+              'See [Which lane is your contribution?](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#which-lane-is-your-contribution) for details.';
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
