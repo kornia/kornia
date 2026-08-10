@@ -764,6 +764,7 @@ def rescale(
     size = (int(height * factor_vert), int(width * factor_horz))
     return resize(input, size, interpolation=interpolation, align_corners=align_corners, antialias=antialias)
 
+
 def letterbox(
     input: torch.Tensor,
     new_shape: Tuple[int, int],
@@ -814,11 +815,7 @@ def letterbox(
 
     # 3. Resize the image (delegating to Kornia's internal resize function)
     resized_image = resize(
-        input, 
-        size=(unpad_h, unpad_w), 
-        interpolation=interpolation, 
-        align_corners=align_corners, 
-        antialias=antialias
+        input, size=(unpad_h, unpad_w), interpolation=interpolation, align_corners=align_corners, antialias=antialias
     )
 
     # 4. Calculate padding for center alignment
@@ -1324,6 +1321,7 @@ class Shear(nn.Module):
             configured padding mode.
         """
         return shear(input, self.shear, self.mode, self.padding_mode, self.align_corners)
+
 
 class Letterbox(nn.Module):
     r"""Resizes and pads the input torch.Tensor to the given shape while maintaining aspect ratio.
