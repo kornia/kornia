@@ -23,7 +23,7 @@ use with existing keypoint detectors. It uses a revised U-Net-like encoder-decod
 enhanced with Convolutional Block Attention Modules and residual paths to
 produce a dense descriptor volume from an input image.
 SANDesc usually outperforms existing descriptors modules on high-resolution
-images, while still fitting in a 24GB.
+images, while still fitting in 24GB of VRAM.
 
 
 Example usage with ALIKED:
@@ -50,6 +50,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import load_state_dict_from_url
 
 from .modules import UNetDownBlock, UNetUpBlock
@@ -234,6 +235,7 @@ class SANDesc(nn.Module):
 
     def forward(self, img: Tensor) -> Tensor:
         """Compute the dense descriptor volume [B, des_dim, H, W] for input image."""
+        KORNIA_CHECK_SHAPE(img, ["B", "C", "H", "W"])
         h, w = img.shape[-2:]
         if h % 16 != 0 or w % 16 != 0:
             raise ValueError(f"Image height and width must be multiples of 16, got {h}x{w}.")
@@ -283,6 +285,7 @@ class SANDesc(nn.Module):
             ``normalize`` is True), or a tuple ``(descriptors, volume)`` when
             ``return_desc_volume`` is True.
         """
+        KORNIA_CHECK_SHAPE(keypoints, ["B", "N", "2"])
         volume = self.forward(images)
         # grid_sample does not support half/bfloat16 (amp) volumes; upcast those to
         # float32 and match the grid dtype to the volume to avoid a dtype mismatch.

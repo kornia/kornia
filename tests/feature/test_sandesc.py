@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import ShapeError
 from kornia.feature.aliked import ALIKED
 from kornia.feature.dedode import DeDoDe
 from kornia.feature.sandesc import SANDesc
@@ -73,6 +74,15 @@ class TestSANDesc(BaseTester):
         # forward requires spatial dims that are multiples of 16
         with pytest.raises(ValueError):
             model(_ramp_image(1, 3, 30, 32, device=device, dtype=dtype))
+        # forward requires a (B, C, H, W) image
+        with pytest.raises(ShapeError):
+            model(_ramp_image(1, 3, 32, 32, device=device, dtype=dtype)[0])
+        # describe requires (B, N, 2) keypoints
+        with pytest.raises(ShapeError):
+            model.describe(
+                _ramp_image(1, 3, 32, 32, device=device, dtype=dtype),
+                _ramp_keypoints(1, 4, device=device, dtype=dtype)[..., 0],
+            )
         # unknown normalization / activation are rejected at construction
         with pytest.raises(ValueError):
             SANDesc(norm="not_a_norm")
