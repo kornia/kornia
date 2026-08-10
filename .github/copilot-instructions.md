@@ -12,10 +12,10 @@ Follow the coding standards and best practices defined in [CONTRIBUTING.md](../C
 
 ### Core Principles:
 - The policy gates on **verification and accountability**, not on how much AI was used
-- Every functional change must carry pasted proof of local execution (test logs)
-- The submitter must be able to explain every line; unexplainable code fails review
-- AI-generated PRs are acceptable when honestly disclosed, verified, and explainable; mislabeled disclosure or imaginary verification is grounds for closure
-- Hallucinated or redundant comments are the fastest tell of an unreviewed PR — flag them
+- Every functional change carries pasted test logs as execution evidence — evidence is ranked per AI_POLICY.md Rule 1 (oracle/invariant-backed test > failing-test repro > CI > local logs); logs alone are provenance, not proof
+- The submitter owns the code and must be able to address targeted questions about it (algorithms, shapes, edge cases, design); the failure condition is an unresolved correctness or ownership concern, never eloquence or language fluency
+- AI-generated PRs are acceptable when honestly disclosed and verified; only **demonstrable deception** (verification that never ran, fabricated logs) is grounds for closure — never an arguable 🟡/🔴 classification
+- Hallucinated or redundant comments are a code-quality defect — flag them as such
 
 ## Instructions for AI Reviewers (Copilot / CodeRabbit)
 
@@ -26,7 +26,7 @@ For the complete and authoritative AI reviewer instructions, see [AI_POLICY.md](
 When generating or reviewing suggestions, prefer:
 - Enforcing the coding standards in [CONTRIBUTING.md](../CONTRIBUTING.md#coding-standards)
 - Enforcing the AI usage rules and review heuristics defined in [AI_POLICY.md](../AI_POLICY.md)
-- Highlighting missing tests, missing proof of local execution, and misuse of `kornia` vs. raw PyTorch utilities
+- Highlighting missing tests, missing execution evidence (test logs, oracle-backed expected values), and misuse of `kornia` vs. raw PyTorch utilities
 ## Key Guidelines
 
 - **Code style**: Follow PEP8, use 120 character line length, Ruff linting, and f-strings
@@ -53,10 +53,10 @@ When reviewing code changes, verify:
 - Code complies with [AI_POLICY.md](../AI_POLICY.md)
 - Tests are included for new functionality
 - Code passes `pixi run lint` and `pixi run typecheck`
-- PR includes proof of local test execution (test logs)
+- PR includes pasted test logs as execution evidence
 - Code uses `kornia` utilities instead of reinventing existing functionality
 - Comments are written in English, are non-redundant, and reflect genuine understanding of the code
-- The AI Usage Disclosure section is completed; if code quality signals (hallucinated comments, reinvented utilities) contradict the disclosure, note the mismatch
+- The AI Usage Disclosure section is completed. **Never infer AI use from code or writing style** — poor code is not evidence of AI use, and disclosure classification is not litigated (see AI_POLICY.md Rule 4). Flag quality problems (hallucinated comments, reinvented utilities) as quality problems in their own right, not as disclosure evidence
 
 ## Lane-Aware PR Review
 

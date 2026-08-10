@@ -290,9 +290,9 @@ If you are using kornia in your research-related documents, it is recommended th
 
 We appreciate all contributions, and we are honest about the world we operate in: AI makes code cheap to write, and volunteer review time is our scarcest resource. So our process gates on **evidence, not permission**:
 
-- **Small, self-verifying fixes go straight to a PR** — a bug fix with a test that fails on `main`, a docs fix with a verification snippet, or any [`help wanted`](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) issue (pre-approved, no assignment needed — first good PR wins).
+- **Small, evidence-bearing fixes go straight to a PR** — a bug fix with a test that fails on `main`, a docs fix with a verification snippet, or any [`help wanted`](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) issue (pre-approved, no assignment needed — the best-supported PR wins).
 - **Features and behavior changes need a conversation first** — open an issue and get the scope confirmed before writing code. In a geometry library, changed defaults break users silently, so these get extra care.
-- **AI use is fine — including fully agent-written PRs.** Our own maintainers work this way. What we require is that *you* verified everything (pasted test logs), can explain every line during review, and disclose AI use honestly. Unverified or unexplainable code is closed regardless of how it was made.
+- **AI use is fine — including fully agent-written PRs.** Our own maintainers work this way. What we require is that *you* verified everything (pasted test logs, evidence-backed tests), can answer questions about the code during review, and disclose AI use honestly. What closes PRs is unverified work or unresolved correctness concerns — regardless of how the code was made.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the details and [AI_POLICY.md](AI_POLICY.md) for the full policy. Participation is subject to the [Code of Conduct](./CODE_OF_CONDUCT.md).
 

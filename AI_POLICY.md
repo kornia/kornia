@@ -22,7 +22,7 @@ So this policy does not gate on how much AI you used. It gates on two things:
 1. **Verification** — did you actually run it, and can you show us?
 2. **Accountability** — do you understand it, and will you answer for it?
 
-Unverified code is a problem. Unexplainable code is a problem. AI is neither.
+Unverified code is a problem. Code nobody stands behind is a problem. AI is neither.
 
 ## The rules
 
@@ -88,17 +88,19 @@ with no objective line; pick the closest label and add a sentence of detail if
 unsure. We will never close a PR over an arguable classification, and we have no
 interest in authorship-taxonomy debates — authorship was never the quality gate.
 What we sanction is **demonstrable deception**: verification that never ran,
-fabricated logs, denying AI use against plain evidence. A 🔴 PR with thorough
-verification is welcome here — some of our own most heavily reviewed PRs are exactly
-that. An honest 🔴 beats a dishonest 🟡 every time.
+fabricated logs, denying AI use against direct evidence — and AI use is never
+*inferred* from writing or code style; poor code is a quality problem, not a
+disclosure problem. A 🔴 PR with thorough verification is welcome here — some of our
+own most heavily reviewed PRs are exactly that. An honest 🔴 beats a dishonest 🟡
+every time.
 
 ## What we do on our side
 
 Policies that only demand things are no fun, so here is our half of the deal:
 
-- **We gate on evidence, not permission.** Self-verifying contributions (test-first bug
-  fixes, verified docs fixes, `help wanted` issues with acceptance criteria, benchmark
-  results) need no assignment and no waiting — see
+- **We gate on evidence, not permission.** Evidence-bearing contributions (test-first
+  bug fixes, verified docs fixes, `help wanted` issues with acceptance criteria,
+  benchmark results) need no assignment and no waiting — see
   [CONTRIBUTING.md](CONTRIBUTING.md#which-lane-is-your-contribution).
 - **We verify before we reject.** Review findings — including those from our AI
   reviewers — are checked by execution, not vibes. Automated closures only ever happen

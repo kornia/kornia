@@ -4,7 +4,7 @@ Welcome! This guide will help you contribute to Kornia.
 
 ## Policies and Guidelines
 
-- **Two lanes**: small self-verifying fixes need no permission — just send the PR. Features and behavior changes need discussion first. See [Which lane is your contribution?](#which-lane-is-your-contribution).
+- **Two lanes**: small evidence-bearing fixes need no permission — just send the PR. Features and behavior changes need discussion first. See [Which lane is your contribution?](#which-lane-is-your-contribution).
 
 - **AI Policy & Authorship**: See [AI_POLICY.md](AI_POLICY.md) for the complete policy. Short version: we don't care how much AI you used (our maintainers use it heavily too) — we care that you **verified** everything and can **explain** everything. That means:
     - **Show us it runs**: PRs include pasted local test logs; bug fixes arrive with a test that fails on `main`.
@@ -300,7 +300,7 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
 
 ## Before You Start
 
-1. **Know Your Lane**: Self-verifying fixes (failing test + fix, verified docs corrections, `help wanted` issues) can go straight to a PR. For features and behavior changes, discuss first — Discord is a fine place for the conversation, but capture the outcome in a GitHub issue with maintainer scope confirmation, since that issue is what your PR links to. See [Which lane is your contribution?](#which-lane-is-your-contribution).
+1. **Know Your Lane**: Fixes that carry their own evidence (failing test + fix, verified docs corrections, `help wanted` issues) can go straight to a PR. For features and behavior changes, discuss first — Discord is a fine place for the conversation, but capture the outcome in a GitHub issue with maintainer scope confirmation, since that issue is what your PR links to. See [Which lane is your contribution?](#which-lane-is-your-contribution).
 
 2. **Start Small**: If you're new to the project, start with small bug fixes or documentation improvements to familiarize yourself with the codebase and contribution process.
 
@@ -367,7 +367,7 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
   - Mark as **🟢 Human-written** if you wrote all code manually without AI assistance
   - Mark as **🟡 AI-assisted** if AI tools (Copilot, Cursor, etc.) helped with boilerplate/refactoring/drafts and you manually reviewed and tested every line
   - Mark as **🔴 AI-generated** if an agent produced most of the code or the PR
-  - **None of these is a bad answer** — well-verified 🔴 PRs are welcome (our maintainers ship them too). What gets PRs closed is mislabeling, or verification that turns out to be imaginary. See [AI_POLICY.md](AI_POLICY.md).
+  - **None of these is a bad answer, and the 🟡/🔴 line is fuzzy — pick the closest** — well-verified 🔴 PRs are welcome (our maintainers ship them too). Only demonstrable deception (verification that never ran, fabricated logs) closes PRs; arguable classifications are never litigated. See [AI_POLICY.md](AI_POLICY.md).
 
 ## Communication
 
