@@ -88,6 +88,11 @@ class TestSANDesc(BaseTester):
             SANDesc(norm="not_a_norm")
         with pytest.raises(ValueError):
             SANDesc(activation="bad")
+        # the block wiring is fixed, so channel lists of other lengths are rejected
+        with pytest.raises(ValueError):
+            SANDesc(down_output_channels=[16, 32, 64, 64])
+        with pytest.raises(ValueError):
+            SANDesc(up_output_channels=[64, 64, 64])
         # unknown detector in from_pretrained (raised before any download)
         with pytest.raises(ValueError):
             SANDesc.from_pretrained(detector="not_a_detector")
