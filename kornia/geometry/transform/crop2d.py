@@ -319,14 +319,13 @@ def crop_by_transform_mat(
         - padding_mode: ``'zeros'`` by default
 
     .. warning::
-        The :math:`(B, 3, 3)` full-matrix behavior above has degenerate-``out_size``
-        exceptions: with ``align_corners=True`` and an ``out_size`` dimension equal to
-        ``1``, the destination-side grid is singular and the output is all-``NaN``; with
-        ``align_corners=False`` and an ``out_size`` dimension equal to ``1``, this
-        function silently falls back to the :math:`(B, 2, 3)` :func:`warp_affine` path
-        (dropping the projective row entirely), so two :math:`(B, 3, 3)` matrices that
-        differ only in their third row produce byte-identical output. Tracked in
-        `#3929 <https://github.com/kornia/kornia/issues/3929>`_.
+        With ``align_corners=True`` and an ``out_size`` dimension equal to ``1``, the
+        destination-side normalization divides by ``size - 1`` and the output is
+        all-``NaN``. Use ``align_corners=False`` for single-pixel outputs: the half-pixel
+        mapping is well defined there, and the projective row is honored along the
+        non-degenerate axis. Only the coefficient multiplying the degenerate axis has no
+        effect, because that axis has a single sample sitting at normalized coordinate
+        ``0``. Tracked in `#3929 <https://github.com/kornia/kornia/issues/3929>`_.
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).

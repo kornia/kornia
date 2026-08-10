@@ -138,8 +138,10 @@ with ``torch.nn.functional.interpolate``/``grid_sample``, pass
      - ``True``
    * - ``resize``
      - ``None`` (PyTorch's per-mode default)
-   * - ``homography_warp``
+   * - ``homography_warp``, ``elastic_transform2d``
      - ``False``
+   * - ``remap``
+     - ``None`` (resolved to ``False`` internally)
 
 The flag selects only how Kornia normalizes coordinates for ``grid_sample``
 (``True``: pixel *centers* 0 and ``size-1`` sit at ``±1``; ``False``: the outer
@@ -164,6 +166,13 @@ that should be an identity is one under both settings, and ``warp_affine`` and
 
 Where the two settings genuinely differ is out-of-bounds sampling, since ``±1``
 covers a slightly different extent of the source image.
+
+.. warning::
+
+   :func:`kornia.geometry.transform.remap` is the one exception left: it normalizes its
+   pixel maps with the ``align_corners=True`` convention regardless of the flag it passes
+   to ``grid_sample``, so with its default (``None``, i.e. ``False``) even an identity
+   pixel map resamples the image. Pass ``align_corners=True`` until this is fixed.
 
 Bounding boxes
 --------------

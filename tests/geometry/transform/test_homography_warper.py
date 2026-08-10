@@ -280,6 +280,24 @@ class TestHomographyWarper(BaseTester):
 
             self.assert_close(patch_dst_to_src, patch_dst_to_src_functional, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_precompute_warp_grid_matches_direct(self, device, dtype, align_corners):
+        # the cached grid must be built under the convention forward() hands to grid_sample,
+        # otherwise the precomputed path silently disagrees with the direct one (#3904)
+        height, width = 8, 6
+        patch_src = torch.rand(1, 1, height, width, device=device, dtype=dtype)
+        dst_homo_src = eye_like(3, patch_src)
+
+        warper = kornia.geometry.transform.HomographyWarper(height, width, align_corners=align_corners)
+        direct = warper(patch_src, dst_homo_src)
+
+        warper.precompute_warp_grid(dst_homo_src)
+        precomputed = warper(patch_src)
+
+        self.assert_close(precomputed, direct, atol=1e-4, rtol=1e-4)
+        # an identity homography must reproduce the input under both conventions
+        self.assert_close(direct, patch_src, atol=1e-4, rtol=1e-4)
+
     @pytest.mark.parametrize("batch_shape", [(1, 1, 7, 5), (2, 3, 8, 5), (1, 1, 7, 16)])
     def test_gradcheck(self, batch_shape, device):
         dtype = torch.float64
