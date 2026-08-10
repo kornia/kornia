@@ -28,31 +28,28 @@ from torch import Tensor, nn
 # --------------------------------------------------------
 
 
-def get_norm(norm: str, ch_in: int) -> nn.Module:
+def get_norm(norm: str | None, ch_in: int) -> nn.Module:
     """Returns a normalization layer given a string."""
-    if norm not in ("batch", "instance", "group", None):
-        raise ValueError(f"Norm type {norm} not recognized")
-
-    norms = {
-        "batch": nn.BatchNorm2d(ch_in),
-        "instance": nn.InstanceNorm2d(ch_in, affine=True),
-        "group": nn.GroupNorm(num_groups=ch_in // 16, num_channels=ch_in),
-        None: nn.Identity(),
-    }
-
-    return norms[norm]
+    if norm == "batch":
+        return nn.BatchNorm2d(ch_in)
+    if norm == "instance":
+        return nn.InstanceNorm2d(ch_in, affine=True)
+    if norm == "group":
+        return nn.GroupNorm(num_groups=max(ch_in // 16, 1), num_channels=ch_in)
+    if norm is None:
+        return nn.Identity()
+    raise ValueError(f"Norm type {norm} not recognized")
 
 
-def get_activation(activation: str) -> nn.Module:
+def get_activation(activation: str | None) -> nn.Module:
     """Return an activation layer given a string."""
-    if activation not in ("relu", "gelu", None):
-        raise ValueError(f"Activation type {activation} not recognized")
-    activations = {
-        "relu": nn.ReLU(inplace=False),
-        "gelu": nn.GELU(),
-        None: nn.Identity(),
-    }
-    return activations[activation]
+    if activation == "relu":
+        return nn.ReLU(inplace=False)
+    if activation == "gelu":
+        return nn.GELU()
+    if activation is None:
+        return nn.Identity()
+    raise ValueError(f"Activation type {activation} not recognized")
 
 
 # --------------------------------------------------------
@@ -69,8 +66,8 @@ class UNetBlock(nn.Module):
         ch_in: int,
         ch_out: int,
         kernel_size: int = 5,
-        norm: str = "batch",
-        activation: str = "relu",
+        norm: str | None = "batch",
+        activation: str | None = "relu",
     ) -> None:
         """Build a norm -> activation -> conv pre-activation block."""
         super().__init__()
@@ -95,7 +92,7 @@ class UNetDownBlock(nn.Module):
         ch_out: int,
         kernel_size: int = 5,
         activation: str | None = "relu",
-        norm: str = "batch",
+        norm: str | None = "batch",
         third_block: bool = False,
         skip_connection: bool = False,
         spatial_attention: bool = False,
@@ -148,7 +145,7 @@ class UNetUpBlock(nn.Module):
         ch_out: int,
         kernel_size: int = 5,
         activation: str | None = None,
-        norm: str = "batch",
+        norm: str | None = "batch",
         third_block: bool = False,
         skip_connection: bool = False,
         spatial_attention: bool = False,
@@ -166,7 +163,7 @@ class UNetUpBlock(nn.Module):
         # Spatial attention
         self.cbam = CBAM(gate_channels=ch_out) if spatial_attention else nn.Identity()
 
-    def forward(self, x: Tensor, x_from_past: Tensor | None = None) -> Tensor:
+    def forward(self, x: Tensor, x_from_past: Tensor) -> Tensor:
         """Upsample x, concatenate the skip tensor and apply the block(s)."""
         x_ = self.upsample_2x(x)  # c -> c
         x = torch.cat([x_, x_from_past], dim=1)
