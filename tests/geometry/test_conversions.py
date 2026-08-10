@@ -643,6 +643,99 @@ class TestRadDegConversions(BaseTester):
         expected_rad = torch.tensor([[0.99962422, 0.02741213], [-0.02741213, 0.99962422]], device=device, dtype=dtype)
         self.assert_close(out_rad, expected_rad, atol=1e-2, rtol=1e-2)
 
+    @pytest.mark.xfail(reason="kornia.constants.pi is float32, so f64 loses ~7 digits — kornia#3937", strict=True)
+    def test_convention_deg2rad_of_180_is_exactly_pi_in_float64(self, device, dtype):
+        # Intended behavior, second half of the #3937 pair: deg2rad is exact to the precision of
+        # its input dtype, like torch.deg2rad. It is not: deg2rad multiplies by
+        # kornia.constants.pi / 180, and that constant is a *float32* tensor merely cast to the
+        # input dtype, so a float64 input carries a systematic ~2.8e-8 relative error.
+        # Marked xfail(strict=True) so fixing #3937 makes this XPASS and forces the mark out.
+        # Snippet used to generate expected (stdlib + torch):
+        #   (180.0 * math.pi) / 180.0 == math.pi  -> True, so an unbiased impl is exact
+        #   kornia deg2rad(tensor(180., f64)).item() -> 3.1415927410125732
+        #   that value - math.pi -> 8.742278012618954e-08
+        if dtype != torch.float64:
+            pytest.skip("float64-only claim: at float32 the float32 pi *is* the correctly rounded constant")
+
+        out = kornia.geometry.conversions.deg2rad(torch.tensor(180.0, device=device, dtype=dtype))
+        expected = torch.tensor(torch.pi, device=device, dtype=dtype)
+        self.assert_close(out, expected, atol=1e-12, rtol=1e-12)
+
+    @pytest.mark.xfail(reason="angle_to_rotation_matrix inherits the float32-pi defect — kornia#3937", strict=True)
+    def test_convention_angle_to_rotation_matrix_90_is_the_exact_quarter_turn_in_float64(self, device, dtype):
+        # Intended behavior, downstream half of the #3937 pair: angle_to_rotation_matrix(90) is
+        # the exact quarter turn [[0, 1], [-1, 0]] to the precision of its input dtype. It is not:
+        # the degrees-to-radians step is deg2rad, so the float32 pi leaks into the angle and the
+        # cosine comes out as -4.371139e-08 instead of ~6.1e-17.
+        # Marked xfail(strict=True) so fixing #3937 makes this XPASS and forces the mark out.
+        # Snippet used to generate expected (stdlib + torch):
+        #   torch.cos(torch.tensor(math.pi / 2, dtype=torch.float64)) -> 6.123233995736766e-17
+        #   kornia angle_to_rotation_matrix(tensor(90., f64)).flatten().tolist() ->
+        #     [-4.371139000186241e-08, 0.999999999999999, -0.999999999999999, -4.371139000186241e-08]
+        # atol/rtol 1e-12 sits between the two: it rejects the current 4.4e-8 cosine and accepts
+        # the 6.1e-17 an unbiased constant would give.
+        if dtype != torch.float64:
+            pytest.skip("float64-only claim: at float32 the float32 pi *is* the correctly rounded constant")
+
+        out = kornia.geometry.conversions.angle_to_rotation_matrix(torch.tensor(90.0, device=device, dtype=dtype))
+        expected = torch.tensor([[0.0, 1.0], [-1.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(out, expected, atol=1e-12, rtol=1e-12)
+
+    def test_wart_rad2deg_of_integer_input_divides_by_three(self, device):
+        # Wart pin for #3937: asserts the CURRENT broken output that the docstring warning
+        # documents. If this test fails, #3937 was (partly) fixed -- update or remove the warnings
+        # in rad2deg, deg2rad and angle_to_rotation_matrix and flip/remove the three
+        # test_convention_* xfails above. This is NOT a contract that int inputs must keep
+        # returning these values.
+        # It is a regular test rather than a strict xfail on purpose: what an integer input
+        # *should* do (promote to float like torch.rad2deg, or raise) is a maintainer decision,
+        # and a strict xfail asserting the promoted-float answer would stay silently XFAIL forever
+        # if the fix chose to raise. A wart pin flips loudly under either polarity.
+        # Snippet used to generate expected (torch only):
+        #   kornia rad2deg(torch.tensor([1, 2, 3])) -> tensor([ 60., 120., 180.]), dtype float32
+        #   torch.rad2deg(torch.tensor([1, 2, 3]))  -> tensor([ 57.2958, 114.5916, 171.8873])
+        # kornia.constants.pi is cast to the *integer* input dtype and truncates to 3.
+        out = kornia.geometry.conversions.rad2deg(torch.tensor([1, 2, 3], device=device))
+
+        assert out.dtype == torch.float32
+        expected = torch.tensor([60.0, 120.0, 180.0], device=device, dtype=torch.float32)
+        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+
+    def test_wart_deg2rad_of_integer_input_multiplies_by_three(self, device):
+        # Wart pin for #3937: asserts the CURRENT broken output that the docstring warning
+        # documents. If this test fails, #3937 was (partly) fixed -- update or remove the warnings
+        # in rad2deg, deg2rad and angle_to_rotation_matrix and flip/remove the three
+        # test_convention_* xfails above. This is NOT a contract that int inputs must keep
+        # returning these values; see the polarity note on the rad2deg wart pin above.
+        # Snippet used to generate expected (torch only):
+        #   kornia deg2rad(torch.tensor([180, 90])) -> tensor([3.0000, 1.5000]), dtype float32
+        #   torch.deg2rad(torch.tensor([180, 90]))  -> tensor([3.1416, 1.5708])
+        out = kornia.geometry.conversions.deg2rad(torch.tensor([180, 90], device=device))
+
+        assert out.dtype == torch.float32
+        expected = torch.tensor([3.0, 1.5], device=device, dtype=torch.float32)
+        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+
+    def test_wart_angle_to_rotation_matrix_of_integer_angle(self, device):
+        # Wart pin for #3937: asserts the CURRENT broken output that the docstring warning
+        # documents. If this test fails, #3937 was (partly) fixed -- update or remove the warnings
+        # in rad2deg, deg2rad and angle_to_rotation_matrix and flip/remove the three
+        # test_convention_* xfails above. This is NOT a contract that int inputs must keep
+        # returning these values; see the polarity note on the rad2deg wart pin above.
+        # This is the downstream case: an integer angle reaches deg2rad, which turns 90 degrees
+        # into 90 * 3 / 180 = 1.5 radians, so the matrix is nowhere near the quarter turn.
+        # Snippet used to generate expected (torch only):
+        #   kornia angle_to_rotation_matrix(torch.tensor([90])).flatten().tolist() ->
+        #     [0.07073719799518585, 0.9974949955940247, -0.9974949955940247, 0.07073719799518585]
+        #   math.cos(1.5), math.sin(1.5) -> (0.0707372016677029, 0.9974949866040544)
+        out = kornia.geometry.conversions.angle_to_rotation_matrix(torch.tensor([90], device=device))
+
+        assert out.dtype == torch.float32
+        expected = torch.tensor(
+            [[[0.07073720, 0.99749500], [-0.99749500, 0.07073720]]], device=device, dtype=torch.float32
+        )
+        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+
 
 class TestPolCartConversions(BaseTester):
     def test_smoke(self, device, dtype):
@@ -971,11 +1064,13 @@ class TestConvertPointsFromHomogeneous(BaseTester):
     @pytest.mark.xfail(reason="convert_points_from_homogeneous divides by w + eps — kornia#3938", strict=True)
     def test_convention_divides_by_exactly_w(self, device, dtype):
         # Intended behavior: for |w| > eps the point is divided by exactly w. It currently is
-        # divided by w + eps with no regard for sign, which is 33 % low at w = +2e-8 and 100 %
-        # high at w = -2e-8, and leaves a permanent ~eps/w relative bias everywhere (#3938).
+        # divided by w + eps with no regard for sign, so the signed relative error is exactly
+        # -eps / (w + eps): -1/3 at w = +2e-8 (33 % low) and +1 at w = -2e-8 (100 % high) (#3938).
         # Marked xfail(strict=True) so fixing #3938 makes this XPASS and forces the mark out.
         # Snippet used to generate expected (by hand):
         #   2 / 2e-8, 4 / 2e-8 -> [1e8, 2e8]  (kornia returns [6.6666667e7, 1.3333333e8])
+        #   measured signed relative error in float64: -0.3333333333333334, and
+        #   -eps / (w + eps) = -1e-8 / 3e-8 = -0.3333333333333333
         if dtype == torch.float16:
             pytest.skip("float16 underflows w=2e-8 to 0, which is the |w| <= eps passthrough branch, not the eps bias")
 
@@ -1119,6 +1214,67 @@ class TestNormalizePixelCoordinates(BaseTester):
             out_swapped, torch.tensor([[1.0, 0.0, 3.0]], device=device, dtype=dtype), atol=1e-2, rtol=1e-2
         )
 
+    def test_wart_degenerate_size_is_accepted_and_explodes(self, device, dtype):
+        # Wart pin for #3940: asserts the CURRENT broken output that the docstring warnings
+        # document. If this test fails, #3940 was (partly) fixed -- update or remove the four
+        # warnings in normalize_pixel_coordinates, denormalize_pixel_coordinates,
+        # normalize_pixel_coordinates3d and denormalize_pixel_coordinates3d. This is NOT a
+        # contract that degenerate sizes must keep returning these values.
+        # It is a regular test rather than a strict xfail on purpose: the intended behavior
+        # (raise ValueError, or clamp the *output*, or keep the current pass-through) is a
+        # maintainer decision, and a strict xfail asserting one of those answers would stay
+        # silently XFAIL forever if a different one were chosen. A wart pin flips loudly under
+        # every polarity, because any validation fix stops returning 199999999.0.
+        # Snippet used to generate expected (torch only):
+        #   npc = kornia.geometry.conversions.normalize_pixel_coordinates
+        #   npc(torch.tensor([[1., 1.]], dtype=torch.float64), 1, 1) -> [[199999999.0, 199999999.0]]
+        #   npc(torch.tensor([[1., 1.]], dtype=torch.float64), 4, -3) -> [[199999999.0, -0.3333333333333334]]
+        # The mechanism is `(hw - 1).clamp(eps)`: size 1 gives 0 and a negative size gives a
+        # negative denominator, both clamped up to eps = 1e-8, so the factor becomes 2e8.
+        # At float16 2e8 overflows to inf and the same literal overflows identically, so the
+        # comparison stays meaningful at every dtype.
+        if device.type == "mps":
+            pytest.skip(
+                "torch 2.9.1 caches clamp's scalar min per shape/dtype on MPS -- first value wins: "
+                "z = torch.zeros(2, device='mps'); z.clamp(1e-8) then z.clamp(1e-7) both return "
+                "9.99999993922529e-09, while the same pair on cpu returns 1e-08 then 1.0000000116860974e-07. "
+                "The clamped eps this pin measures is therefore set by whichever earlier test clamped "
+                "first, which is a torch defect, not a kornia one"
+            )
+
+        pts = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
+
+        degenerate = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 1, 1)
+        expected = torch.tensor([[199999999.0, 199999999.0]], device=device, dtype=dtype)
+        self.assert_close(degenerate, expected, atol=1e-2, rtol=1e-2)
+
+        negative_width = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 4, -3)
+        expected_negative = torch.tensor([[199999999.0, -0.33333333]], device=device, dtype=dtype)
+        self.assert_close(negative_width, expected_negative, atol=1e-2, rtol=1e-2)
+
+    def test_wart_degenerate_size_3d_is_accepted_and_explodes(self, device, dtype):
+        # Wart pin for #3940, 3-D sibling: asserts the CURRENT broken output that the docstring
+        # warnings document. If this test fails, #3940 was (partly) fixed -- update or remove the
+        # four warnings in normalize_pixel_coordinates, denormalize_pixel_coordinates,
+        # normalize_pixel_coordinates3d and denormalize_pixel_coordinates3d. This is NOT a
+        # contract that degenerate sizes must keep returning these values; see the polarity note
+        # on the 2-D wart pin above.
+        # Snippet used to generate expected (torch only):
+        #   npc3 = kornia.geometry.conversions.normalize_pixel_coordinates3d
+        #   npc3(torch.tensor([[1., 1., 1.]], dtype=torch.float64), 1, 5, 9)
+        #     -> [[199999999.0, -0.75, -0.5]]
+        # Only the depth axis is degenerate here: x and y still use width 9 and height 5, so
+        # 2 * 1 / 8 - 1 = -0.75 and 2 * 1 / 4 - 1 = -0.5 stay finite next to the exploded depth.
+        if device.type == "mps":
+            pytest.skip("same torch 2.9.1 MPS clamp-min caching as the 2-D wart pin above")
+
+        pts = torch.tensor([[1.0, 1.0, 1.0]], device=device, dtype=dtype)
+
+        out = kornia.geometry.conversions.normalize_pixel_coordinates3d(pts, 1, 5, 9)
+
+        expected = torch.tensor([[199999999.0, -0.75, -0.5]], device=device, dtype=dtype)
+        self.assert_close(out, expected, atol=1e-2, rtol=1e-2)
+
 
 class TestDenormalizePixelCoordinates(BaseTester):
     def test_tensor_bhw2(self, device, dtype):
@@ -1208,6 +1364,41 @@ class TestDenormalizePixelCoordinates(BaseTester):
         norm = kornia.geometry.conversions.normalize_pixel_coordinates3d(pts, 3, 5, 9)
         out = kornia.geometry.conversions.denormalize_pixel_coordinates3d(norm, 3, 5, 9)
         self.assert_close(out, pts, atol=1e-2, rtol=1e-2)
+
+    def test_wart_degenerate_size_collapses_instead_of_exploding(self, device, dtype):
+        # Wart pin for #3940, denormalizing half: asserts the CURRENT broken output that the
+        # docstring warnings document. If this test fails, #3940 was (partly) fixed -- update or
+        # remove the four warnings in normalize_pixel_coordinates,
+        # denormalize_pixel_coordinates, normalize_pixel_coordinates3d and
+        # denormalize_pixel_coordinates3d. This is NOT a contract that degenerate sizes must keep
+        # returning these values.
+        # It is a regular test rather than a strict xfail on purpose: the intended behavior
+        # (raise ValueError, or clamp, or keep the current pass-through) is a maintainer
+        # decision, and a strict xfail asserting one of those answers would stay silently XFAIL
+        # forever if a different one were chosen. A wart pin flips loudly under every polarity.
+        # Snippet used to generate expected (torch only):
+        #   dpc = kornia.geometry.conversions.denormalize_pixel_coordinates
+        #   dpc(torch.tensor([[0., 0.]], dtype=torch.float64), 4, 1) -> [[5e-09, 1.5]]
+        #   dpc3 = kornia.geometry.conversions.denormalize_pixel_coordinates3d
+        #   dpc3(torch.tensor([[0., 0., 0.]], dtype=torch.float64), 1, 5, 9) -> [[5e-09, 4.0, 2.0]]
+        # Here the clamped denominator multiplies instead of divides, so the degenerate axis
+        # collapses to eps / 2 = 5e-09 rather than exploding to 2e8. The tolerance is tight
+        # (rtol 1e-6, atol 0) on purpose: at atol 1e-2 the collapsed component would compare
+        # equal to any small number, including the 0.0 a "clamp the output" fix might return.
+        # It still holds at every dtype -- at float16 5e-09 underflows to 0.0 on both the
+        # measured and the literal side, and at bfloat16 both round to 5.005858838558197e-09.
+        if device.type == "mps":
+            pytest.skip("same torch 2.9.1 MPS clamp-min caching as the normalize wart pins")
+
+        out = kornia.geometry.conversions.denormalize_pixel_coordinates(
+            torch.tensor([[0.0, 0.0]], device=device, dtype=dtype), 4, 1
+        )
+        self.assert_close(out, torch.tensor([[5e-09, 1.5]], device=device, dtype=dtype), atol=0.0, rtol=1e-6)
+
+        out3d = kornia.geometry.conversions.denormalize_pixel_coordinates3d(
+            torch.tensor([[0.0, 0.0, 0.0]], device=device, dtype=dtype), 1, 5, 9
+        )
+        self.assert_close(out3d, torch.tensor([[5e-09, 4.0, 2.0]], device=device, dtype=dtype), atol=0.0, rtol=1e-6)
 
 
 class TestProjectPoints(BaseTester):
