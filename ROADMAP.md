@@ -93,7 +93,7 @@ wrappers (LoFTR, LightGlue, DISK, DeDoDe, SAM, XFeat, ALIKED, Kimi-VL, …) rema
 available and maintained under a *usable-or-deleted* rule. The freeze partially
 reopens if a maintainer with model-work capacity joins the project.
 
-## Short term — next release (v0.8.4)
+## Short term — next release
 
 - **Stabilize CI and the augmentation core.** Recent fixes repaired regressions from the
   ONNX-exportability refactor and healed the scheduled test matrix. Ship these in a

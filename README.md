@@ -27,7 +27,7 @@ English | [简体中文](README_zh-CN.md)
 
 **Kornia** is a differentiable computer vision library that provides a rich set of differentiable image processing and geometric vision algorithms. Built on top of [PyTorch](https://pytorch.org), Kornia integrates seamlessly into existing AI workflows, allowing you to leverage powerful [batch transformations](), [auto-differentiation]() and [GPU acceleration](). Whether you're working on image transformations, augmentations, or AI-driven image processing, Kornia equips you with the tools you need to bring your ideas to life.
 
-> **📢 Announcement**: Kornia is shifting towards end-to-end vision models. We are focusing on integrating state-of-the-art Vision Language Models (VLM) and Vision Language Agents (VLA) to provide comprehensive end-to-end vision solutions.
+> **📢 Direction**: Kornia is becoming the **reference implementation and executable specification** for differentiable computer vision and geometry in the PyTorch ecosystem — explicit conventions, conformance tests, and honest benchmarks over API growth. Read the [Roadmap](ROADMAP.md).
 
 ## Key Components
 1. **Differentiable Image Processing**<br>
@@ -252,21 +252,20 @@ tf_kornia = kornia.to_tensorflow()
 
 ## Call For Contributors
 
-Are you passionate about computer vision, AI, and open-source development? Join us in shaping the future of Kornia! We are actively seeking contributors to help expand and enhance our library, making it even more powerful, accessible, and versatile. Whether you're an experienced developer or just starting, there's a place for you in our community.
+Are you passionate about computer vision, AI, and open-source development? Join us in shaping the future of Kornia! We are actively seeking contributors to help strengthen the library — making it more correct, faster, and better specified. Whether you're an experienced developer or just starting, there's a place for you in our community.
 
-### Accessible AI Models
+### Strengthen the Core (Priority)
 
-We are excited to announce our latest advancement: a new initiative designed to seamlessly integrate lightweight AI models into Kornia.
-We aim to run any models as smooth as big models such as StableDiffusion, to support them well in many perspectives.
+Kornia's differentiated value is its geometry core: warping and sampling, homographies, cameras, epipolar geometry, rotations and Lie groups, and geometry-consistent augmentation. The highest-impact contributions make that core more trustworthy — see the [Roadmap](ROADMAP.md) for the full picture. Great entry points:
 
-**Priority Focus: VLM/VLA Models**
+- **Benchmark results from your hardware**: run the benchmark suite with `--contribute` and send the JSON — CUDA numbers from diverse GPUs are especially wanted.
+- **Convention pinning tests and conformance vectors** for core geometry ops.
+- **Corrective error messages**: upgrade bare shape asserts into errors that state what was wrong, what was expected, and which convention applies.
+- **Classical vision in the core domain**: camera intrinsic calibration, fiducial markers (ArUco/ChArUco), classical tracking, dense stereo, Hough transforms.
 
-Our primary focus is on integrating **Vision Language Models (VLM)** and **Vision Language Agents (VLA)** to enable end-to-end vision solutions. We're actively seeking contributors to help us:
+### AI Models
 
-- **VLM/VLA Integration (Priority)**: Implement and integrate state-of-the-art Vision Language Models and Vision Language Agents. This includes models like Qwen2.5-VL, SAM-3, and other cutting-edge VLM/VLA architectures. If you are a researcher working on VLM/VLA models, Kornia is an excellent place for you to promote your model!
-- Expand the Model Selection: Import decent models into our library. If you are a researcher, Kornia is an excellent place for you to promote your model!
-- Model Optimization: Work on optimizing models to reduce their computational footprint while maintaining accuracy and performance. You may start from offering ONNX support!
-- Model Documentation: Create detailed guides and examples to help users get the most out of these models in their projects.
+The model zoo is currently **frozen for expansion** while maintainer bandwidth concentrates on the core. Shipped models (LoFTR, LightGlue, DISK, DeDoDe, SAM, and friends) stay available and maintained; new integrations — including VLM/VLA models — land only with a contributor committed to their long-term maintenance (say so explicitly on the issue). See the [Roadmap](ROADMAP.md#guiding-themes) for the reasoning and the reopen conditions.
 
 ### Documentation And Tutorial Optimization
 
