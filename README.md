@@ -265,7 +265,7 @@ Kornia's differentiated value is its geometry core: warping and sampling, homogr
 
 ### AI Models
 
-The model zoo is currently **frozen for expansion** while maintainer bandwidth concentrates on the core. Shipped models (LoFTR, LightGlue, DISK, DeDoDe, SAM, and friends) stay available and maintained; new integrations — including VLM/VLA models — land only with a contributor committed to their long-term maintenance (say so explicitly on the issue). See the [Roadmap](ROADMAP.md#guiding-themes) for the reasoning and the reopen conditions.
+The model zoo is currently **frozen for expansion** while maintainer bandwidth concentrates on the core. Shipped models (LoFTR, LightGlue, DISK, DeDoDe, SAM, and friends) stay available and maintained, and model work approved before the freeze (Efficient LoFTR, SANDesc) will be completed under its existing scope. New integrations — including VLM/VLA models — require a named maintainer sponsor who accepts ongoing ownership of the integration; a contributor implementation alone cannot reopen the surface. See the [Roadmap](ROADMAP.md#guiding-themes) for the reasoning and the reopen condition.
 
 ### Documentation And Tutorial Optimization
 

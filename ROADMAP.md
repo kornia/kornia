@@ -41,13 +41,22 @@ Four engineering north stars shape the roadmap below.
       page is live. Behavior bugs found by the audit get dedicated issues.
    2. **Repair & deprecate** — one coordinated window fixes accumulated semantic and
       default-value bugs, so downstream users face a single loud migration instead of
-      a drizzle of breaking changes. Clearly-broken-output bugs (NaN, crashes) land
-      early as ordinary bugfixes.
+      a drizzle of breaking changes. The window runs *under* the
+      [stability policy](https://kornia.readthedocs.io/en/latest/get-started/stability.html),
+      not around it: every semantic or default change gets the policy's deprecation
+      treatment (at least one minor release of warnings, landing at a 0.x minor
+      boundary) — "coordinated" means the changes are batched into one migration,
+      not that the deprecation rules are waived. Only clearly-broken-output bugs
+      (NaN, crashes) use the policy's correctness escape hatch and land early as
+      ordinary bugfixes.
    3. **Freeze** — after the window, a **Tier A ("Kornia Core")** set is declared:
       symbols with the strongest guarantees (autograd, gradcheck, compile, dtype/
       device correctness, explicit conventions, semantic stability). Tier A starts
-      brutally small and a guarantee is only claimed where CI enforces it. See the
-      [stability policy](https://kornia.readthedocs.io/en/latest/get-started/stability.html).
+      brutally small and a guarantee is only claimed where CI enforces it.
+      **These tiers are proposed, not yet in force**: until the tier policy is
+      published after the window, the current
+      [stability policy](https://kornia.readthedocs.io/en/latest/get-started/stability.html)
+      (stable core / best-effort / experimental) remains the authoritative contract.
 
    Alongside this grows a **conformance corpus**: framework-neutral golden vectors
    (inputs, expected outputs, tolerances, convention metadata) that external
@@ -90,8 +99,13 @@ A fifth theme, **breadth**, is community-driven and runs through the discuss-fir
 lane. One boundary is stated openly: **model-zoo expansion is frozen.** No new model
 or VLM/VLA integrations while maintainer bandwidth concentrates on the core; shipped
 wrappers (LoFTR, LightGlue, DISK, DeDoDe, SAM, XFeat, ALIKED, Kimi-VL, …) remain
-available and maintained under a *usable-or-deleted* rule. The freeze partially
-reopens if a maintainer with model-work capacity joins the project.
+available and maintained under a *usable-or-deleted* rule. The single exception
+rule, applied everywhere in this document: **a new integration requires a named
+maintainer sponsor who accepts ongoing ownership — a contributor's implementation
+alone, however good, does not reopen the surface.** The freeze lifts when a
+maintainer with model-work capacity joins the project. Contributions already in
+flight before the freeze (an open issue plus a PR under review) are grandfathered
+and finish under the rules they started under.
 
 ## Short term — next release
 
@@ -100,7 +114,7 @@ reopens if a maintainer with model-work capacity joins the project.
   release so users get the fixes.
 - **Convention-block batches.** Continue the per-op audit:
   `geometry.conversions` → bounding boxes
-  ([#1142](https://github.com/kornia/kornia/issues/1142)) → camera → augmentation
+  ([#3934](https://github.com/kornia/kornia/issues/3934)) → camera → augmentation
   classes. Each batch delivers Convention blocks, pinning tests, and dedicated
   issues for any behavior bug found.
 - **Broken-output bugfixes** from the audit, landing ahead of the repair window:
@@ -116,12 +130,14 @@ reopens if a maintainer with model-work capacity joins the project.
   ([#2445](https://github.com/kornia/kornia/issues/2445)).
 - **Docs modernization** — evaluate the migration to MkDocs
   ([#3454](https://github.com/kornia/kornia/issues/3454)).
-- **Model-zoo maintenance (Tier C).** Shipped integrations must be usable or
-  deleted: add the missing test coverage for what already landed
-  ([#3554](https://github.com/kornia/kornia/issues/3554),
-  [#3555](https://github.com/kornia/kornia/issues/3555),
-  [#3556](https://github.com/kornia/kornia/issues/3556),
-  [#3481](https://github.com/kornia/kornia/issues/3481)) — no new integrations.
+- **Model-zoo maintenance (best-effort tier; future Tier C).** Shipped integrations
+  must be usable or deleted — kept loading, tested, and honest (recent example:
+  repointing Kimi-VL to working weights). The 2025-era coverage-gap issues are
+  resolved; newly found maintenance work gets a current tracking issue with
+  acceptance criteria — no new integrations.
+- **`help wanted` label audit.** Older issue templates auto-applied the label;
+  re-triage the open `help wanted` issues so the label only marks genuinely
+  pre-approved work with acceptance criteria, as the green lane requires.
 
 ## Medium term — ~6 months
 
@@ -130,9 +146,12 @@ reopens if a maintainer with model-work capacity joins the project.
   audit (e.g. `warp_image_tps` `align_corners` default
   [#3928](https://github.com/kornia/kornia/issues/3928), `pyrdown` output rounding,
   inconsistent 3D-crop defaults, bbox width arithmetic
-  [#1142](https://github.com/kornia/kornia/issues/1142)) — each with an old-vs-new
-  conformance vector pair and one migration note. Afterwards, publish the support-tier
-  policy and declare Tier A v1: small, explicit, CI-enforced.
+  [#3934](https://github.com/kornia/kornia/issues/3934)) — each change with an
+  old-vs-new conformance vector pair, the stability policy's deprecation treatment
+  (at least one minor release of warnings before landing at a 0.x minor boundary),
+  and one collective migration note. Afterwards, publish the support-tier policy and
+  declare Tier A v1: small, explicit, CI-enforced. Until that publication the
+  current stability policy remains the authoritative contract.
 - **The conformance corpus.** Define the framework-neutral format (per-dtype/device
   tolerances, convention metadata), migrate the existing convention-pinning tests
   into it, add semantic invariant tests
@@ -197,9 +216,12 @@ reopens if a maintainer with model-work capacity joins the project.
   against Kornia's conformance data, and humans and coding agents consistently
   produce *correct* geometry code from Kornia's documentation. Success is fewer
   convention bugs in the wild, not more modules in the package.
-- **A fully compilable, fully exportable library.** Every public operator runs under
-  `torch.compile` without graph breaks and exports to ONNX with verified numerical
-  equivalence — including the stochastic augmentation and dynamic-shape feature paths.
+- **A fully compilable, fully exportable core.** Every applicable Tier A tensor
+  operator runs under `torch.compile` without unnecessary graph breaks and exports
+  to ONNX where ONNX can represent its semantics, with verified numerical
+  equivalence — including the stochastic augmentation and dynamic-shape feature
+  paths that break today. Best-effort and experimental surfaces are covered as
+  evidence allows, never by blanket claim.
 - **The fastest differentiable, GPU-batched augmentation stack**, with a published,
   reproducible benchmark that states precisely the regime in which we lead.
 
@@ -207,7 +229,10 @@ reopens if a maintainer with model-work capacity joins the project.
 
 We especially welcome help in these areas. Issues labelled
 [`help wanted`](https://github.com/kornia/kornia/labels/help%20wanted) are
-pre-approved green-lane work — first good PR wins. For anything feature-shaped,
+green-lane entry points: pre-approved, with acceptance criteria in the issue (a
+label audit to make this uniformly true is listed under short-term work). No
+assignment needed — and if duplicate PRs land, maintainers merge the
+best-supported implementation, not the earliest. For anything feature-shaped,
 open or comment on an issue first (discuss-first lane, see
 [CONTRIBUTING.md](CONTRIBUTING.md)).
 
@@ -224,26 +249,39 @@ the geometry/camera surface the project is built around.
 - Dense stereo matching, Hough transforms and Hough voting, contour/shape analysis,
   template matching.
 
-**Reference-core contributions (green lane, great first PRs):**
+**Reference-core contributions:**
 
-- **Benchmark results from your hardware** — run the suite with `--contribute` and
-  send the JSON; CUDA numbers from diverse GPUs are especially wanted.
-- **Convention pinning tests and conformance vectors** for core geometry ops.
-- **Corrective error messages** — upgrading bare shape asserts into errors that state
-  what was wrong, what was expected, which convention applies, and the likely fix.
+- **Benchmark results from your hardware** (unconditionally green lane) — run the
+  suite with `--contribute` and send the JSON; CUDA numbers from diverse GPUs are
+  especially wanted.
+- **Good candidates for curated `help wanted` issues** — convention pinning tests
+  and conformance vectors for core geometry ops; corrective error messages
+  (upgrading bare shape asserts into errors that state what was wrong, what was
+  expected, which convention applies, and the likely fix). These become green-lane
+  once a maintainer has written acceptance criteria into a `help wanted` issue —
+  pinning behavior and changing raised errors are contract-adjacent edits, so they
+  need that curation step first.
 
-**Augmentation parity** (vs. common augmentation libraries): dropout-family transforms
+**Augmentation parity** — low-priority, community-driven, discuss-first: Kornia does
+not compete on generic augmentation breadth (the differentiated value is
+differentiability, GPU batching, and transform tracking), but well-motivated parity
+transforms are accepted through the discuss-first lane: dropout-family transforms
 (CoarseDropout, GridDropout), grid/optical distortion, weather effects (fog, sun-flare),
 noise variants (ISO noise), and additional compression transforms.
 
-**Learned models (maintainer-required):** the model-zoo freeze means these land only
-with a contributor committed to long-term maintenance of the integration — comment on
-the issue and say so explicitly. Closest to core are the feature-matching
-extensions — Efficient LoFTR
-([#3282](https://github.com/kornia/kornia/issues/3282)), SANDesc
-([#3752](https://github.com/kornia/kornia/issues/3752)). Larger gaps (learned
-optical flow such as RAFT / SEA-RAFT, pose estimation, object-detection breadth
-beyond RT-DETR and YuNet) are acknowledged but are not maintainer priorities.
+**Learned models — frozen (see the guiding themes):**
+
+- **Grandfathered model work.** Efficient LoFTR
+  ([#3282](https://github.com/kornia/kornia/issues/3282), PR
+  [#3621](https://github.com/kornia/kornia/pull/3621) under review) and SANDesc
+  ([#3752](https://github.com/kornia/kornia/issues/3752), pre-freeze maintainer
+  approval on the issue) were approved and started before the model-zoo freeze and
+  may continue under their existing scopes. They are exceptions honoring prior
+  commitments, not invitations for new model integrations.
+- **Acknowledged gaps — not currently soliciting contributions.** Learned optical
+  flow (RAFT / SEA-RAFT), pose estimation, and object-detection breadth beyond
+  RT-DETR and YuNet are real gaps, listed for honesty. New model work remains
+  frozen until a maintainer accepts ongoing ownership of the integration.
 
 **Code health & infrastructure:**
 
