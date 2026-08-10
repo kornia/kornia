@@ -360,12 +360,12 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
 
 ## AI-Assisted Development
 
-- Understand every line of code you submit; you must be able to explain it during review (see [AI Policy](#policies-and-guidelines))
+- Own the code you submit: understand it and be ready to address reviewer questions about it (see [AI Policy](#policies-and-guidelines))
 - Review AI output thoroughly: check for unnecessary complexity, verify it follows project conventions, ensure it uses existing utilities, and test it
 - Be transparent in PR descriptions about what was AI-assisted and what you manually reviewed (see [Pull Request](#pull-request) for AI Usage Disclosure requirements)
 - **AI Usage Disclosure in PR Template**: When completing the PR template's "AI Usage Disclosure" section:
   - Mark as **🟢 Human-written** if you wrote all code manually without AI assistance
-  - Mark as **🟡 AI-assisted** if AI tools (Copilot, Cursor, etc.) helped with boilerplate/refactoring/drafts and you manually reviewed and tested every line
+  - Mark as **🟡 AI-assisted** if AI tools (Copilot, Cursor, etc.) helped with boilerplate/refactoring/drafts and you reviewed the resulting change and ran the relevant tests
   - Mark as **🔴 AI-generated** if an agent produced most of the code or the PR
   - **None of these is a bad answer, and the 🟡/🔴 line is fuzzy — pick the closest** — well-verified 🔴 PRs are welcome (our maintainers ship them too). Only demonstrable deception (verification that never ran, fabricated logs) closes PRs; arguable classifications are never litigated. See [AI_POLICY.md](AI_POLICY.md).
 

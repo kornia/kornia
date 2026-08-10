@@ -21,7 +21,7 @@ Follow the coding standards and best practices defined in [CONTRIBUTING.md](../C
 
 AI-based reviewers (e.g. GitHub Copilot, CodeRabbit) must follow the repository's AI usage policy and review rules.
 
-For the complete and authoritative AI reviewer instructions, see [AI_POLICY.md](../AI_POLICY.md), section 3.
+For the governing contribution policy, see [AI_POLICY.md](../AI_POLICY.md). This file contains the canonical operational instructions for AI reviewers.
 
 When generating or reviewing suggestions, prefer:
 - Enforcing the coding standards in [CONTRIBUTING.md](../CONTRIBUTING.md#coding-standards)

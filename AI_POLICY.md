@@ -78,8 +78,8 @@ unreviewed PR, and they trigger a request for a full manual rewrite.
 Fill in the AI disclosure in the PR template honestly:
 
 - 🟢 **Human-written** — no AI involved.
-- 🟡 **AI-assisted** — AI helped (autocomplete, refactoring, drafts); you reviewed and
-  tested every line.
+- 🟡 **AI-assisted** — AI helped (autocomplete, refactoring, drafts); you reviewed the
+  resulting change and ran the relevant tests.
 - 🔴 **AI-generated** — an agent produced most of the code or the PR.
 
 **None of these is a bad answer — and the 🟡/🔴 boundary is fuzzy, which is fine.**
