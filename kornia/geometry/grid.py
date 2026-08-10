@@ -27,12 +27,18 @@ def create_meshgrid(
     normalized_coordinates: bool = True,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
-    """Generate a coordinate grid for an image.
+    r"""Generate a coordinate grid for an image.
 
     When the flag ``normalized_coordinates`` is set to True, the grid is
     normalized to be in the range :math:`[-1,1]` to be consistent with the pytorch
     function :py:func:`torch.nn.functional.grid_sample`.
+
+    ``grid_sample`` has two such conventions, selected by its own ``align_corners``
+    flag, and ``align_corners`` here picks the matching one. Feeding a grid built
+    under one convention to a ``grid_sample`` call using the other applies a
+    spurious sub-pixel scale and shift, so the two flags must agree.
 
     Args:
         height: the image height (rows).
@@ -42,6 +48,11 @@ def create_meshgrid(
           PyTorch function :py:func:`torch.nn.functional.grid_sample`.
         device: the device on which the grid will be generated.
         dtype: the data type of the generated grid.
+        align_corners: which normalization convention to use when
+          ``normalized_coordinates`` is ``True``. ``True`` maps pixel centers
+          :math:`[0, size-1]` to :math:`[-1, 1]`; ``False`` uses the half-pixel
+          mapping :math:`x_{norm} = (2x + 1) / W - 1`, where :math:`\pm 1` are the
+          outer pixel *edges*. Ignored when ``normalized_coordinates`` is ``False``.
 
     Return:
         grid tensor with shape :math:`(1, H, W, 2)`.
@@ -53,6 +64,13 @@ def create_meshgrid(
         <BLANKLINE>
                  [[-1.,  1.],
                   [ 1.,  1.]]]])
+
+        >>> create_meshgrid(2, 2, align_corners=False)
+        tensor([[[[-0.5000, -0.5000],
+                  [ 0.5000, -0.5000]],
+        <BLANKLINE>
+                 [[-0.5000,  0.5000],
+                  [ 0.5000,  0.5000]]]])
 
         >>> create_meshgrid(2, 2, normalized_coordinates=False)
         tensor([[[[0., 0.],
@@ -73,8 +91,12 @@ def create_meshgrid(
     #     base_grid = K.geometry.normalize_pixel_coordinates(base_grid, height, width)
     # return torch.unsqueeze(base_grid.transpose(0, 1), dim=0)
     if normalized_coordinates:
-        xs = (xs / (width - 1) - 0.5) * 2
-        ys = (ys / (height - 1) - 0.5) * 2
+        if align_corners:
+            xs = (xs / (width - 1) - 0.5) * 2
+            ys = (ys / (height - 1) - 0.5) * 2
+        else:
+            xs = (2.0 * xs + 1.0) / width - 1.0
+            ys = (2.0 * ys + 1.0) / height - 1.0
     # generate grid by stacking coordinates
     base_grid: torch.Tensor = torch.stack(torch.meshgrid([xs, ys], indexing="ij"), dim=-1)  # WxHx2
     return base_grid.permute(1, 0, 2).unsqueeze(0)  # 1xHxWx2

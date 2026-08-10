@@ -117,6 +117,11 @@ Transformation matrices and homographies
     b = homography_warp(img, M_norm_inv, (16, 8), align_corners=True)
     assert torch.allclose(a, b, atol=1e-5)
 
+  ``normalize_homography`` takes its own ``align_corners`` (default ``True``),
+  and it must match the one you pass to the warp — the normalized ``[-1, 1]``
+  coordinates mean different things under the two conventions. Above, both are
+  ``True``; note that ``homography_warp`` alone would default to ``False``.
+
 ``align_corners`` defaults
 --------------------------
 
@@ -135,6 +140,30 @@ with ``torch.nn.functional.interpolate``/``grid_sample``, pass
      - ``None`` (PyTorch's per-mode default)
    * - ``homography_warp``
      - ``False``
+
+The flag selects only how Kornia normalizes coordinates for ``grid_sample``
+(``True``: pixel *centers* 0 and ``size-1`` sit at ``±1``; ``False``: the outer
+pixel *edges* do). Transforms you pass in are pixel-space either way, so a warp
+that should be an identity is one under both settings, and ``warp_affine`` and
+``warp_perspective`` agree with each other:
+
+.. code-block:: python
+
+    import torch
+    from kornia.geometry.transform import get_perspective_transform, warp_affine, warp_perspective
+
+    img = torch.arange(16.0).view(1, 1, 4, 4)
+    pts = torch.tensor([[[0.0, 0.0], [3.0, 0.0], [3.0, 3.0], [0.0, 3.0]]])
+    M = get_perspective_transform(pts, pts)  # identity
+
+    for align_corners in (True, False):
+        a = warp_affine(img, M[:, :2, :], (4, 4), align_corners=align_corners)
+        p = warp_perspective(img, M, (4, 4), align_corners=align_corners)
+        assert torch.allclose(a, img, atol=1e-4)
+        assert torch.allclose(p, img, atol=1e-4)
+
+Where the two settings genuinely differ is out-of-bounds sampling, since ``±1``
+covers a slightly different extent of the source image.
 
 Bounding boxes
 --------------

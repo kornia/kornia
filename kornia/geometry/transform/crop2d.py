@@ -361,35 +361,6 @@ def crop_by_transform_mat(
             align_corners=align_corners,
         )
 
-    h_out, w_out = out_size
-    if not align_corners and (h_out == 1 or w_out == 1):
-        # the destination-side reparametrization below is singular for 1-pixel outputs,
-        # so keep the historical affine sampling for this degenerate size
-        return warp_affine(
-            input_tensor,
-            dst_trans_src[:, :2, :],
-            out_size,
-            mode=mode,
-            padding_mode=padding_mode,
-            align_corners=align_corners,
-        )
-
-    if not align_corners:
-        # warp_perspective always builds its grid with align_corners=True spacing, while this
-        # function historically followed warp_affine/F.affine_grid; this destination-side
-        # reparametrization maps one convention onto the other. It depends only on out_size,
-        # keeping the graph free of data-dependent control flow for torch.export.
-        correction = torch.tensor(
-            [
-                [w_out / (w_out - 1.0), 0.0, -0.5],
-                [0.0, h_out / (h_out - 1.0), -0.5],
-                [0.0, 0.0, 1.0],
-            ],
-            device=dst_trans_src.device,
-            dtype=dst_trans_src.dtype,
-        )
-        dst_trans_src = correction.unsqueeze(0) @ dst_trans_src
-
     patches: torch.Tensor = warp_perspective(
         input_tensor,
         dst_trans_src,

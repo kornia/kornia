@@ -1052,7 +1052,10 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
 
 
 def normalize_homography(
-    dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int], dsize_dst: tuple[int, int]
+    dst_pix_trans_src_pix: torch.Tensor,
+    dsize_src: tuple[int, int],
+    dsize_dst: tuple[int, int],
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Normalize a given homography in pixels to [-1, 1].
 
@@ -1061,6 +1064,11 @@ def normalize_homography(
           normalized. :math:`(B, 3, 3)`
         dsize_src: size of the source image (height, width).
         dsize_dst: size of the destination image (height, width).
+        align_corners: which :py:func:`torch.nn.functional.grid_sample` convention the
+          normalized :math:`[-1, 1]` coordinates follow, forwarded to
+          :func:`normal_transform_pixel`. Must match the ``align_corners`` of the
+          ``grid_sample`` call that ultimately consumes the result, otherwise the warp
+          picks up a spurious sub-pixel scale and shift.
 
     Returns:
         the normalized homography of shape :math:`(B, 3, 3)`.
@@ -1077,12 +1085,16 @@ def normalize_homography(
     dst_h, dst_w = dsize_dst
 
     # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w, align_corners=align_corners).to(
+        dst_pix_trans_src_pix
+    )
 
     # Closed-form 3x3 inverse of the (well-conditioned) pixel-normalization matrix: cusolver-free,
     # so homography normalization runs on the Jetson wheel where ``torch.linalg.inv`` dlopen-fails.
     src_pix_trans_src_norm = _inverse_3x3_closed_form(src_norm_trans_src_pix)
-    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w, align_corners=align_corners).to(
+        dst_pix_trans_src_pix
+    )
 
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
@@ -1095,30 +1107,46 @@ def normal_transform_pixel(
     eps: float = 1e-14,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
     Args:
         height: image height.
         width: image width.
-        eps: epsilon to prevent divide-by-zero errors
+        eps: epsilon to prevent divide-by-zero errors. Only used by the
+          ``align_corners=True`` mapping, which is singular for a size of 1.
         device: device to place the result on.
         dtype: dtype of the result.
+        align_corners: which :py:func:`torch.nn.functional.grid_sample` convention to
+          normalize to. ``True`` maps pixel centers :math:`[0, size-1]` to
+          :math:`[-1, 1]`; ``False`` uses the half-pixel mapping
+          :math:`x_{norm} = (2x + 1) / W - 1`, where :math:`\pm 1` are the outer pixel
+          *edges*.
 
     Returns:
         normalized transform with shape :math:`(1, 3, 3)`.
 
     """
-    # prevent divide by zero bugs
-    width_denom: float = eps if width == 1 else width - 1.0
-    height_denom: float = eps if height == 1 else height - 1.0
+    if align_corners:
+        # prevent divide by zero bugs
+        width_denom: float = eps if width == 1 else width - 1.0
+        height_denom: float = eps if height == 1 else height - 1.0
 
-    sx: float = 2.0 / width_denom
-    sy: float = 2.0 / height_denom
+        sx: float = 2.0 / width_denom
+        sy: float = 2.0 / height_denom
+        tx: float = -1.0
+        ty: float = -1.0
+    else:
+        # Half-pixel mapping; well defined for a size of 1 (which lands on the pixel center, 0).
+        sx = 2.0 / width
+        sy = 2.0 / height
+        tx = 1.0 / width - 1.0
+        ty = 1.0 / height - 1.0
 
     # Construct the matrix in one shot (no in-place mutation).
     tr_mat = torch.tensor(
-        [[sx, 0.0, -1.0], [0.0, sy, -1.0], [0.0, 0.0, 1.0]],
+        [[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]],
         device=device,
         dtype=dtype,
     )  # 3x3
@@ -1167,7 +1195,10 @@ def normal_transform_pixel3d(
 
 
 def denormalize_homography(
-    dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int], dsize_dst: tuple[int, int]
+    dst_pix_trans_src_pix: torch.Tensor,
+    dsize_src: tuple[int, int],
+    dsize_dst: tuple[int, int],
+    align_corners: bool = True,
 ) -> torch.Tensor:
     r"""De-normalize a given homography in pixels from [-1, 1] to actual height and width.
 
@@ -1176,6 +1207,9 @@ def denormalize_homography(
           denormalized. :math:`(B, 3, 3)`
         dsize_src: size of the source image (height, width).
         dsize_dst: size of the destination image (height, width).
+        align_corners: which :py:func:`torch.nn.functional.grid_sample` convention the
+          incoming normalized coordinates follow. Must match the value used to produce
+          them, so that this function inverts :func:`normalize_homography`.
 
     Returns:
         the denormalized homography of shape :math:`(B, 3, 3)`.
@@ -1192,9 +1226,13 @@ def denormalize_homography(
     dst_h, dst_w = dsize_dst
 
     # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w, align_corners=align_corners).to(
+        dst_pix_trans_src_pix
+    )
 
-    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w, align_corners=align_corners).to(
+        dst_pix_trans_src_pix
+    )
     dst_denorm_trans_dst_pix = _torch_inverse_cast(dst_norm_trans_dst_pix)
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_denorm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)

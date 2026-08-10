@@ -263,6 +263,24 @@ class TestWarpAffine(BaseTester):
         img_a = kornia.geometry.warp_affine(img_b, aff_ab, (h, w))
         self.assert_close(img_a, expected)
 
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_translation_align_corners(self, align_corners, device, dtype):
+        # A whole-pixel translation must shift by exactly that many pixels under either
+        # align_corners convention: M is a pixel-space transform, so align_corners selects only
+        # how the sampling grid is normalized for grid_sample, never the geometry (#3904).
+        offset = 1.0
+        h, w = 3, 4
+        aff_ab = torch.eye(2, 3, device=device, dtype=dtype)[None]
+        aff_ab[..., -1] += offset
+
+        img_b = torch.arange(float(h * w), device=device, dtype=dtype).view(1, 1, h, w)
+
+        expected = torch.zeros_like(img_b)
+        expected[..., 1:, 1:] = img_b[..., :2, :3]
+
+        img_a = kornia.geometry.warp_affine(img_b, aff_ab, (h, w), align_corners=align_corners)
+        self.assert_close(img_a, expected, atol=1e-4, rtol=1e-4)
+
     def test_rotation_inverse(self, device, dtype):
         h, w = 4, 4
         img_b = torch.rand(1, 1, h, w, device=device, dtype=dtype)
@@ -438,6 +456,39 @@ class TestWarpPerspective(BaseTester):
         Hn = kornia.geometry.conversions.normalize_homography(H, (4, 6), (3, 5))
         hw = kornia.geometry.transform.homography_warp(x, _torch_inverse_cast(Hn), (3, 5), align_corners=True)
         self.assert_close(hw, expected, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_convention_identity_agrees_with_warp_affine(self, align_corners, device, dtype):
+        # An identity homography reproduces the input under either align_corners convention, and
+        # agrees with warp_affine fed the same identity. warp_perspective used to normalize with
+        # the align_corners=True mapping unconditionally while calling grid_sample with the
+        # requested flag, so at align_corners=False this drifted by half a pixel (#3904).
+        img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        pts = torch.tensor([[[0.0, 0.0], [3.0, 0.0], [3.0, 3.0], [0.0, 3.0]]], device=device, dtype=dtype)
+        H = kornia.geometry.transform.get_perspective_transform(pts, pts)
+
+        out_perspective = kornia.geometry.transform.warp_perspective(img, H, (4, 4), align_corners=align_corners)
+        out_affine = kornia.geometry.transform.warp_affine(img, H[:, :2, :], (4, 4), align_corners=align_corners)
+
+        self.assert_close(out_perspective, img, atol=1e-4, rtol=1e-4)
+        self.assert_close(out_perspective, out_affine, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_translation_align_corners(self, align_corners, device, dtype):
+        # Companion to TestWarpAffine::test_translation_align_corners: a whole-pixel translation
+        # must shift by exactly that many pixels under either convention.
+        offset = 1.0
+        h, w = 3, 4
+
+        img_b = torch.arange(float(h * w), device=device, dtype=dtype).view(1, 1, h, w)
+        homo_ab = kornia.core.ops.eye_like(3, img_b)
+        homo_ab[..., :2, -1] += offset
+
+        expected = torch.zeros_like(img_b)
+        expected[..., 1:, 1:] = img_b[..., :2, :3]
+
+        img_a = kornia.geometry.warp_perspective(img_b, homo_ab, (h, w), align_corners=align_corners)
+        self.assert_close(img_a, expected, atol=1e-4, rtol=1e-4)
 
     def test_rotation_inverse(self, device, dtype):
         h, w = 4, 4
