@@ -14,12 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+from functools import partial
+from unittest.mock import patch
 
 import pytest
 import torch
 
 from kornia.core._compat import torch_version
-from kornia.filters import GuidedBlur, guided_blur
+from kornia.filters import GuidedBlur, box_blur, guided_blur
 
 from testing.base import BaseTester
 
@@ -59,6 +61,80 @@ class TestGuidedBlur(BaseTester):
         assert isinstance(actual_D, torch.Tensor)
         assert actual_D.shape == (batch_size, input_dim, H, W)
 
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
+    @pytest.mark.parametrize("subsample", [1, 2])
+    def test_separable_matches_nonseparable(
+        self,
+        guide_dim,
+        kernel_size,
+        subsample,
+        device,
+        dtype,
+    ):
+        height, width = 12, 16
+        guide = torch.linspace(
+            0.1,
+            1.0,
+            steps=guide_dim * height * width,
+            device=device,
+            dtype=dtype,
+        ).reshape(1, guide_dim, height, width)
+        inp = torch.linspace(
+            1.0,
+            0.1,
+            steps=2 * height * width,
+            device=device,
+            dtype=dtype,
+        ).reshape(1, 2, height, width)
+
+        expected = guided_blur(
+            guide,
+            inp,
+            kernel_size,
+            eps=0.1,
+            subsample=subsample,
+            separable=False,
+        )
+        actual = guided_blur(
+            guide,
+            inp,
+            kernel_size,
+            eps=0.1,
+            subsample=subsample,
+            separable=True,
+        )
+
+        self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    def test_module_forwards_separable_to_all_box_blurs(
+        self,
+        guide_dim,
+        device,
+        dtype,
+    ):
+        guide = torch.ones(1, guide_dim, 8, 8, device=device, dtype=dtype)
+        inp = torch.ones(1, 2, 8, 8, device=device, dtype=dtype)
+        received_separable_values = []
+
+        def tracked_box_blur(
+            input_tensor: torch.Tensor,
+            kernel_size: tuple[int, int] | int,
+            border_type: str = "reflect",
+            separable: bool = False,
+        ) -> torch.Tensor:
+            received_separable_values.append(separable)
+            return box_blur(input_tensor, kernel_size, border_type, separable)
+
+        with patch(
+            "kornia.filters.guided.box_blur",
+            side_effect=tracked_box_blur,
+        ):
+            GuidedBlur(3, 0.1, separable=True)(guide, inp)
+
+        assert received_separable_values == [True] * 6
+
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     def test_cardinality(self, shape, kernel_size, device, dtype):
@@ -86,25 +162,36 @@ class TestGuidedBlur(BaseTester):
         actual = guided_blur(guide, inp, 3, 0.1)
         assert actual.is_contiguous()
 
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("separable", [False, True])
+    def test_gradcheck(self, separable, device):
         guide = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
         img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
-        self.gradcheck(guided_blur, (guide, img, 3, 0.1), nondet_tol=1e-4)
+        operation = partial(guided_blur, separable=separable)
+        self.gradcheck(operation, (guide, img, 3, 0.1), nondet_tol=1e-4)
 
         eps = torch.rand(1, device=device, dtype=torch.float64)
-        self.gradcheck(guided_blur, (guide, img, 3, eps), nondet_tol=1e-4)
+        self.gradcheck(operation, (guide, img, 3, eps), nondet_tol=1e-4)
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 16), (2, 3, 12, 8)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     @pytest.mark.parametrize("eps", [0.1, 0.01])
     @pytest.mark.parametrize("subsample", [1, 2])
-    def test_module(self, shape, kernel_size, eps, subsample, device, dtype):
+    @pytest.mark.parametrize("separable", [False, True])
+    def test_module(self, shape, kernel_size, eps, subsample, device, dtype, separable):
         guide = torch.rand(shape, device=device, dtype=dtype)
         img = torch.rand(shape, device=device, dtype=dtype)
 
         op = guided_blur
-        op_module = GuidedBlur(kernel_size, eps, subsample=subsample)
-        self.assert_close(op_module(guide, img), op(guide, img, kernel_size, eps, subsample=subsample))
+        op_module = GuidedBlur(
+            kernel_size,
+            eps,
+            subsample=subsample,
+            separable=separable,
+        )
+        self.assert_close(
+            op_module(guide, img),
+            op(guide, img, kernel_size, eps, subsample=subsample, separable=separable),
+        )
 
     @pytest.mark.skipif(
         torch_version() in {"1.9.1", "2.1.0", "2.1.1", "2.1.2"},
@@ -115,15 +202,21 @@ class TestGuidedBlur(BaseTester):
     )
     @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
     @pytest.mark.parametrize("subsample", [1, 2])
-    def test_dynamo(self, kernel_size, subsample, device, dtype, torch_optimizer):
+    @pytest.mark.parametrize("separable", [False, True])
+    def test_dynamo(self, kernel_size, subsample, separable, device, dtype, torch_optimizer):
         guide = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
         data = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
-        op = GuidedBlur(kernel_size, 0.1, subsample=subsample)
+        op = GuidedBlur(kernel_size, 0.1, subsample=subsample, separable=separable)
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(guide, data), op_optimized(guide, data))
 
-        op = GuidedBlur(kernel_size, torch.tensor(0.1, device=device, dtype=dtype), subsample=subsample)
+        op = GuidedBlur(
+            kernel_size,
+            torch.tensor(0.1, device=device, dtype=dtype),
+            subsample=subsample,
+            separable=separable,
+        )
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(guide, data), op_optimized(guide, data))
