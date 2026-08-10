@@ -198,10 +198,16 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
           ``sqrt(x ** 2 + y ** 2)`` — see the warning below
 
     .. warning::
-        Because ``eps`` is added *inside* the square root, ``rho`` is biased
-        everywhere: ``cart2pol(torch.tensor(0.), torch.tensor(0.))`` returns
-        ``rho = 1e-04`` rather than ``0``, and ``cart2pol(3., 4.)`` in
-        ``float64`` returns ``5.000000001``. Tracked in
+        ``eps`` is added *inside* the square root, so the expression evaluated
+        is ``sqrt(x ** 2 + y ** 2 + eps)`` and ``rho`` is biased high. Whether
+        that bias survives the rounding of the working dtype depends on where
+        it is measured. Away from the origin it is usually invisible:
+        ``cart2pol(3., 4.)`` returns ``5.000000001`` in ``float64`` but rounds
+        back to exactly ``5.`` in ``float32`` and ``float16``. At the origin it
+        is the whole answer: ``cart2pol(torch.tensor(0.), torch.tensor(0.))``
+        returns ``rho = 9.9999997e-05`` in ``float32`` and ``1e-04`` in
+        ``float64`` rather than ``0`` (in ``float16``, ``eps`` underflows the
+        sum and ``rho`` is ``0.``). Tracked in
         `#3939 <https://github.com/kornia/kornia/issues/3939>`_.
 
     Args:
@@ -246,11 +252,17 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
 
     .. warning::
         The division is by ``w + eps`` rather than by ``w``, and ``eps`` is
-        added without regard to the sign of ``w``: at ``w = 2e-8`` the exact
-        result ``[1e8, 2e8]`` comes out as ``[6.67e7, 1.33e8]`` (33 % low) while
-        at ``w = -2e-8`` it comes out as ``[-2e8, -4e8]`` (100 % high), and even
-        at ``w = 2`` the result carries a relative bias of ``eps / w``. Tracked
-        in `#3938 <https://github.com/kornia/kornia/issues/3938>`_.
+        added without regard to the sign of ``w``, so the **signed** relative
+        error of the result is exactly ``-eps / (w + eps)``. At ``w = 2e-8``
+        that is ``-1/3``: the exact result ``[1e8, 2e8]`` comes out as
+        ``[6.67e7, 1.33e8]`` (33 % low). At ``w = -2e-8`` it is ``+1``:
+        ``[-1e8, -2e8]`` comes out as ``[-2e8, -4e8]`` (100 % high). Only for
+        ``abs(w)`` much larger than ``eps`` does it reduce to the familiar
+        ``-eps / w``, and there it is usually below the rounding of the working
+        dtype — at ``w = 2`` the measured error is ``-5.0e-09`` in ``float64``,
+        while in ``float32`` ``2 + eps`` rounds back to ``2`` and the result is
+        exact. Tracked in
+        `#3938 <https://github.com/kornia/kornia/issues/3938>`_.
 
     Args:
         points: the points to be transformed of shape :math:`(*, N, D)`.
