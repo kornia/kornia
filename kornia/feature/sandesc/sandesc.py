@@ -232,8 +232,9 @@ class SANDesc(nn.Module):
                 "Use pad_if_not_divisible=True to zero-pad the input."
             )
 
-        # AMP is scoped to "cuda": float16 autocast is unsupported on CPU and a no-op on MPS.
-        with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
+        # AMP is intentionally scoped to CUDA only: float16 autocast is unsupported on CPU and a no-op on MPS.
+        device_type = "cuda" if img.device.type == "cuda" else "cpu"
+        with torch.autocast(device_type, enabled=self.amp and device_type == "cuda", dtype=self.amp_dtype):
             x0 = self.conv_highest(img)  # B,c_in,H,W
 
             x1 = self.down0(x0)  # B,C1,H/2,W/2
