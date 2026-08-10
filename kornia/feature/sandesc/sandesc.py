@@ -15,34 +15,7 @@
 # limitations under the License.
 #
 
-"""SANDesc dense descriptor network.
-
-SANDesc ("A Streamlined Attention-Based Network for Descriptor Extraction",
-3DV 2026, https://arxiv.org/pdf/2601.13126) learns dense local descriptors for
-use with existing keypoint detectors. It uses a revised U-Net-like encoder-decoder
-enhanced with Convolutional Block Attention Modules and residual paths to
-produce a dense descriptor volume from an input image.
-SANDesc usually outperforms existing descriptors modules on high-resolution
-images, while still fitting in 24GB of VRAM.
-
-
-Example usage with ALIKED:
-
-# Initialize ALIKED and extract points
-aliked = ALIKED.from_pretrained(model_name="aliked-n16", max_num_keypoints=max_kpts, device=device)
-with torch.inference_mode():
-    feat_A = aliked(img_A[None])[0]
-    feat_B = aliked(img_B[None])[0]
-
-# Initialize SANDesc with the pretrained weights for ALIKED and describe the keypoints.
-sandesc = SANDesc.from_pretrained(detector="aliked", amp=True).to(device).eval()
-with torch.inference_mode():
-    kpts_A_norm = normalize_pixel_coordinates(feat_A.keypoints, img_A.shape[-2], img_A.shape[-1])
-    kpts_B_norm = normalize_pixel_coordinates(feat_B.keypoints, img_B.shape[-2], img_B.shape[-1])
-    desc_A = sandesc.describe(img_A[None], kpts_A_norm[None])  # (1, N, des_dim)
-    desc_B = sandesc.describe(img_B[None], kpts_B_norm[None])
-
-"""
+"""SANDesc dense descriptor network."""
 
 from __future__ import annotations
 
@@ -53,16 +26,18 @@ from torch import Tensor, nn
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import load_state_dict_from_url
 
-from .modules import UNetDownBlock, UNetUpBlock
+from ._modules import UNetDownBlock, UNetUpBlock
 
 # One checkpoint per supported keypoint detector. The descriptor weights
 # are trained to pair with that detector.
 urls: dict[str, list[str]] = {
     "aliked": [
+        "https://huggingface.co/mattia-durso/SANDesc/resolve/main/pretrained/aliked/sandesc_aliked.pth",
         "https://raw.githubusercontent.com/mattiadurso/SANDesc/main/pretrained/aliked/sandesc_aliked.pth",
         "https://cloud.tugraz.at/index.php/s/Ww3t7b3ipnAoejS/download",
     ],
     "dedode": [
+        "https://huggingface.co/mattia-durso/SANDesc/resolve/main/pretrained/dedode/sandesc_dedode.pth",
         "https://raw.githubusercontent.com/mattiadurso/SANDesc/main/pretrained/dedode/sandesc_dedode.pth",
         "https://cloud.tugraz.at/index.php/s/47Mcao9qydBppMB/download",
     ],
@@ -70,7 +45,35 @@ urls: dict[str, list[str]] = {
 
 
 class SANDesc(nn.Module):
-    """UNet-style encoder-decoder producing a dense descriptor volume.
+    r"""Module that computes dense local descriptors using the SANDesc method.
+
+    See :cite:`durso2026sandesc` for details.
+
+    SANDesc learns dense local descriptors for use with existing keypoint detectors. It uses a revised
+    U-Net-like encoder-decoder enhanced with Convolutional Block Attention Modules and residual paths
+    to produce a dense descriptor volume from an input image. The checkpoints returned by
+    :meth:`from_pretrained` are trained per detector, so the descriptor must be paired with the
+    detector it was trained for.
+
+    .. image:: _static/img/SANDesc.png
+
+    Args:
+        ch_in: Number of input channels.
+        kernel_size: Kernel size of the convolutional layers.
+        activation: Activation function: ``'relu'`` or ``'gelu'``.
+        norm: Normalization layer type: ``'batch'``, ``'instance'`` or ``'group'``.
+        skip_connection: If True, add skip connections and a second unet block to the network.
+        spatial_attention: If True, add spatial attention to the network. Requires
+            ``skip_connection=True``.
+        third_block: If True, add a third unet block to the network. Requires
+            ``skip_connection=True``.
+        down_output_channels: Output channels of each down block, 5 elements.
+        up_output_channels: Output channels of each up block, 4 elements. The last element is the
+            descriptor dimension. Add +1 to the last element to match the DISK unet,
+            e.g. ``[64, 64, 64, 128 + 1]``.
+        amp: If True, run :meth:`forward` under CUDA automatic mixed precision.
+        amp_dtype: Autocast dtype used when ``amp`` is enabled (e.g. ``torch.float16``
+            or ``torch.bfloat16``). AMP is scoped to CUDA; it is a no-op on CPU/MPS.
 
     Example:
         >>> sandesc = SANDesc().eval()
@@ -96,26 +99,6 @@ class SANDesc(nn.Module):
         amp: bool = False,
         amp_dtype: torch.dtype = torch.bfloat16,
     ) -> None:
-        """Build the descriptor network.
-
-        The last element of ``up_output_channels`` is the descriptor dimension.
-
-        Args:
-            ch_in: Number of input channels.
-            kernel_size: Kernel size of the convolutional layers.
-            activation: Activation function: 'relu' or 'gelu'.
-            norm: Normalization layer type.
-            skip_connection: If True, add skip connections and a second unet
-                block to the network.
-            spatial_attention: If True, add spatial attention to the network.
-            third_block: If True, add a third unet block to the network.
-            down_output_channels: Output channels of each down block, 5 elements.
-            up_output_channels: Output channels of each up block, 4 elements. Add +1
-                to the last element to match the DISK unet, e.g. [64, 64, 64, 128 + 1].
-            amp: If True, run :meth:`forward` under CUDA automatic mixed precision.
-            amp_dtype: Autocast dtype used when ``amp`` is enabled (e.g. ``torch.float16``
-                or ``torch.bfloat16``). AMP is scoped to CUDA; it is a no-op on CPU/MPS.
-        """
         super().__init__()
         self.amp = amp
         self.amp_dtype = amp_dtype
@@ -150,37 +133,31 @@ class SANDesc(nn.Module):
         self.down3 = UNetDownBlock(down_output_channels[3], down_output_channels[4], **common)
 
         self.up0 = UNetUpBlock(
-            down_output_channels[-1] + down_output_channels[-2],
+            down_output_channels[-1],
+            down_output_channels[-2],
             up_output_channels[0],
             **common,
         )
         self.up1 = UNetUpBlock(
-            down_output_channels[-3] + up_output_channels[0],
+            up_output_channels[0],
+            down_output_channels[-3],
             up_output_channels[1],
             **common,
         )
         self.up2 = UNetUpBlock(
-            down_output_channels[-4] + up_output_channels[1],
+            up_output_channels[1],
+            down_output_channels[-4],
             up_output_channels[2],
             **common,
         )
         self.up3 = UNetUpBlock(
-            down_output_channels[-5] + up_output_channels[2],
+            up_output_channels[2],
+            down_output_channels[-5],
             up_output_channels[3],
             kernel_size=kernel_size,
             activation=None,
             norm=None,
         )
-
-    def load_weights(self, weights: str) -> None:
-        """Load weights into the model from a local state_dict file.
-
-        Args:
-            weights (str): Path to the weights file (a flat state_dict).
-
-        """
-        state_dict = torch.load(weights, weights_only=True)
-        self.load_state_dict(state_dict)
 
     @classmethod
     def from_pretrained(
@@ -212,11 +189,6 @@ class SANDesc(nn.Module):
             if detector not in urls:
                 raise ValueError(f"Unknown detector: {detector}. Available: {list(urls)}")
             url = urls[detector]
-            # The fallback host names every file generically ("download"), so force a
-            # distinct cache filename per detector that is stable across both sources.
-            file_name = f"sandesc_{detector}.pth"
-        else:
-            file_name = None
 
         model = cls(
             skip_connection=True,
@@ -228,19 +200,37 @@ class SANDesc(nn.Module):
         state_dict = load_state_dict_from_url(
             url,
             map_location=torch.device("cpu"),
-            file_name=file_name,
             weights_only=True,
         )
         model.load_state_dict(state_dict)
         model.eval()
         return model
 
-    def forward(self, img: Tensor) -> Tensor:
-        """Compute the dense descriptor volume [B, des_dim, H, W] for input image."""
+    def forward(self, img: Tensor, pad_if_not_divisible: bool = False) -> Tensor:
+        """Compute the dense descriptor volume of the input images.
+
+        Args:
+            img: Input images of shape :math:`(B, C, H, W)`, with values in the
+                :math:`[0, 1]` range. No further normalization is applied.
+            pad_if_not_divisible: if True, the non-16 divisible input is zero-padded to the
+                closest 16-multiply and the output is cropped back to the input resolution.
+
+        Returns:
+            The dense descriptor volume of shape :math:`(B, D, H, W)`, where :math:`D` is the
+            descriptor dimension.
+
+        """
         KORNIA_CHECK_SHAPE(img, ["B", "C", "H", "W"])
         h, w = img.shape[-2:]
-        if h % 16 != 0 or w % 16 != 0:
-            raise ValueError(f"Image height and width must be multiples of 16, got {h}x{w}.")
+        if pad_if_not_divisible:
+            pd_h = 16 - h % 16 if h % 16 > 0 else 0
+            pd_w = 16 - w % 16 if w % 16 > 0 else 0
+            img = F.pad(img, (0, pd_w, 0, pd_h), value=0.0)
+        elif h % 16 != 0 or w % 16 != 0:
+            raise ValueError(
+                f"Image height and width must be multiples of 16, got {h}x{w}. "
+                "Use pad_if_not_divisible=True to zero-pad the input."
+            )
 
         # AMP is scoped to "cuda": float16 autocast is unsupported on CPU and a no-op on MPS.
         with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
@@ -256,49 +246,48 @@ class SANDesc(nn.Module):
             x7 = self.up2(x6, x1)  # B,C7,H/2,W/2
             x8 = self.up3(x7, x0)  # B,des_dim,H,W
 
-        return x8
+        return x8[..., :h, :w]
 
     def describe(
         self,
         images: Tensor,
-        keypoints: Tensor,
-        return_desc_volume: bool = False,
+        keypoints: Tensor | None = None,
         mode: str = "nearest",
         normalize: bool = True,
-    ) -> Tensor | tuple[Tensor, Tensor]:
-        """Sample descriptors at the given keypoints.
+        pad_if_not_divisible: bool = False,
+    ) -> Tensor:
+        """Describe keypoints in the input images. If keypoints are not provided, returns the dense descriptors.
 
         The images are passed through :meth:`forward` to obtain a dense descriptor
         volume, which is then sampled at the keypoints with ``grid_sample``.
 
         Args:
-            images: Input images of shape :math:`(B, C, H, W)`.
-            keypoints: Keypoints of shape :math:`(B, N, 2)`, normalized to the
-                :math:`[-1, 1]` range (the convention used by the kornia ALIKED
-                and DeDoDe detectors).
-            return_desc_volume: If True, also return the dense descriptor volume of
-                shape :math:`(B, des_dim, H, W)`.
+            images: Input images of shape :math:`(B, C, H, W)`, with values in the
+                :math:`[0, 1]` range. No further normalization is applied.
+            keypoints: An optional tensor of shape :math:`(B, N, 2)` containing the detected
+                keypoints, normalized to the :math:`[-1, 1]` range (the convention used by the
+                kornia ALIKED and DeDoDe detectors).
             mode: ``grid_sample`` interpolation mode, ``"nearest"`` (default) or
                 ``"bilinear"``.
-            normalize: If True (default), L2-normalize the sampled descriptors.
+            normalize: If True (default), L2-normalize the descriptors.
+            pad_if_not_divisible: if True, the non-16 divisible input is zero-padded to the
+                closest 16-multiply.
 
         Returns:
-            The descriptors of shape :math:`(B, N, des_dim)` (L2-normalized when
-            ``normalize`` is True), or a tuple ``(descriptors, volume)`` when
-            ``return_desc_volume`` is True.
+            The descriptors of shape :math:`(B, N, D)`, or the dense descriptor volume of
+            shape :math:`(B, D, H, W)` when ``keypoints`` is None. :math:`D` is the descriptor
+            dimension.
+
         """
+        volume = self.forward(images, pad_if_not_divisible=pad_if_not_divisible)
+        if keypoints is None:
+            return F.normalize(volume, p=2, dim=1) if normalize else volume
+
         KORNIA_CHECK_SHAPE(keypoints, ["B", "N", "2"])
-        volume = self.forward(images)
-        # grid_sample does not support half/bfloat16 (amp) volumes; upcast those to
+        # grid_sample does not support half/bfloat16 (autocast) volumes; upcast those to
         # float32 and match the grid dtype to the volume to avoid a dtype mismatch.
         sample_volume = volume.float() if volume.dtype in (torch.float16, torch.bfloat16) else volume
         grid = keypoints[:, None].to(sample_volume.dtype)
         sampled = F.grid_sample(sample_volume, grid, mode=mode, align_corners=False)
         descriptors = sampled[:, :, 0].mT  # B,N,des_dim
-        if normalize:
-            descriptors = F.normalize(descriptors, p=2, dim=-1)
-            if return_desc_volume:
-                volume = F.normalize(volume, p=2, dim=1)
-        if return_desc_volume:
-            return descriptors, volume
-        return descriptors
+        return F.normalize(descriptors, p=2, dim=-1) if normalize else descriptors

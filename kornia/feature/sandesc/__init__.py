@@ -15,6 +15,12 @@
 # limitations under the License.
 #
 
+"""Kornia Feature SANDesc — attention-based dense local descriptor.
+
+This subpackage provides the SANDesc dense descriptor, to be paired with an
+existing keypoint detector.
+"""
+
 from .sandesc import SANDesc
 
 __all__ = ["SANDesc"]
