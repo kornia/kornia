@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
@@ -38,6 +40,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+        use_correct_grid: whether the TPS output grid should honor ``align_corners``.
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_image_tps`.
 
@@ -63,11 +66,13 @@ class RandomThinPlateSpline(AugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        use_correct_grid: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = {
             "align_corners": align_corners,
             "padding_mode": SamplePadding.get(padding_mode),
+            "use_correct_grid": use_correct_grid,
         }
         self.dist = torch.distributions.Uniform(-scale, scale)
 
@@ -105,4 +110,12 @@ class RandomThinPlateSpline(AugmentationBase2D):
         dst = params["dst"].to(input)
         # NOTE: warp_image_tps need to use inverse parameters
         kernel, affine = get_tps_transform(dst, src)
-        return warp_image_tps(input, src, kernel, affine, flags["align_corners"], flags["padding_mode"].name.lower())
+        return warp_image_tps(
+            input,
+            src,
+            kernel,
+            affine,
+            flags["align_corners"],
+            flags["padding_mode"].name.lower(),
+            flags["use_correct_grid"],
+        )
