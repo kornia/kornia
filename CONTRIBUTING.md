@@ -300,7 +300,7 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
 
 ## Before You Start
 
-1. **Know Your Lane**: Self-verifying fixes (failing test + fix, verified docs corrections, `help wanted` issues) can go straight to a PR. For features and behavior changes, discuss in Discord or a GitHub issue first — see [Which lane is your contribution?](#which-lane-is-your-contribution).
+1. **Know Your Lane**: Self-verifying fixes (failing test + fix, verified docs corrections, `help wanted` issues) can go straight to a PR. For features and behavior changes, discuss first — Discord is a fine place for the conversation, but capture the outcome in a GitHub issue with maintainer scope confirmation, since that issue is what your PR links to. See [Which lane is your contribution?](#which-lane-is-your-contribution).
 
 2. **Start Small**: If you're new to the project, start with small bug fixes or documentation improvements to familiarize yourself with the codebase and contribution process.
 

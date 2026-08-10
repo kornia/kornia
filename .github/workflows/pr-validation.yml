@@ -26,8 +26,9 @@ jobs:
             const prAuthor = pr.user.login;
 
             // Extract issue numbers from PR description
-            // Matches patterns like: Fixes #123, Closes #456, Relates to #789, etc.
-            const issuePattern = /(?:fixes?|closes?|resolves?|relates?\s+to|see|refs?)\s+#(\d+)/gi;
+            // Matches patterns like: Fixes #123, Closes #456, Relates to #789, and the
+            // template's own label form "**Fixes/Relates to:** #123".
+            const issuePattern = /(?:fixes?|closes?|resolves?|relates?\s+to|see|refs?)[\s:*]*#(\d+)/gi;
             const matches = [...prBody.matchAll(issuePattern)];
             const issueNumbers = [...new Set(matches.map(m => parseInt(m[1])))];
 
@@ -79,6 +80,12 @@ jobs:
 
             if (isMaintainer) {
               // no warnings: fall through so any stale warning comment gets deleted
+            } else if (greenLane && discussLane) {
+              // Checkboxes are not mutually exclusive on GitHub; don't guess a lane.
+              warnings.push('ℹ️ **Both lanes are checked**: please keep exactly one — 🟢 green lane (test-first bug fix, verified docs fix, `help wanted` issue, benchmark results) or 🟠 discuss-first (features and behavior changes). See the [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#which-lane-is-your-contribution).');
+              for (const issueNumber of issueNumbers) {
+                await checkIssueExists(issueNumber);
+              }
             } else if (greenLane && !discussLane) {
               // Green lane: no issue link or assignment required. Only sanity-check
               // any issues the author chose to reference.
