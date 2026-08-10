@@ -50,18 +50,36 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+from kornia.core.download import load_state_dict_from_url
+
 from .modules import UNetDownBlock, UNetUpBlock
 
 # One checkpoint per supported keypoint detector. The descriptor weights
 # are trained to pair with that detector.
-urls: dict[str, str] = {
-    "aliked": "https://cloud.tugraz.at/index.php/s/Ww3t7b3ipnAoejS/download",
-    "dedode": "https://cloud.tugraz.at/index.php/s/47Mcao9qydBppMB/download",
+urls: dict[str, list[str]] = {
+    "aliked": [
+        "https://raw.githubusercontent.com/mattiadurso/SANDesc/main/pretrained/aliked/sandesc_aliked.pth",
+        "https://cloud.tugraz.at/index.php/s/Ww3t7b3ipnAoejS/download",
+    ],
+    "dedode": [
+        "https://raw.githubusercontent.com/mattiadurso/SANDesc/main/pretrained/dedode/sandesc_dedode.pth",
+        "https://cloud.tugraz.at/index.php/s/47Mcao9qydBppMB/download",
+    ],
 }
 
 
 class SANDesc(nn.Module):
-    """UNet-style encoder-decoder producing a dense descriptor volume."""
+    """UNet-style encoder-decoder producing a dense descriptor volume.
+
+    Example:
+        >>> sandesc = SANDesc().eval()
+        >>> images = torch.rand(1, 3, 64, 64)
+        >>> keypoints = torch.rand(1, 10, 2) * 2 - 1
+        >>> descriptors = sandesc.describe(images, keypoints)
+        >>> descriptors.shape
+        torch.Size([1, 10, 128])
+
+    """
 
     def __init__(
         self,
@@ -165,22 +183,22 @@ class SANDesc(nn.Module):
     def from_pretrained(
         cls,
         detector: str = "aliked",
-        url: str | None = None,
+        url: str | list[str] | None = None,
         amp: bool = False,
         amp_dtype: torch.dtype = torch.bfloat16,
     ) -> SANDesc:
         """Load SANDesc descriptor weights trained for a given keypoint detector.
 
-        Weights are fetched with :func:`torch.hub.load_state_dict_from_url`, which
-        caches the file locally (under the torch hub cache) and only downloads it
-        when it is missing. The weights are mapped to CPU; call ``.to(device)`` on
-        the returned model to move it.
+        Weights are fetched with :func:`kornia.core.download.load_state_dict_from_url`,
+        which tries each source in turn and caches the file locally (under the torch
+        hub cache), only downloading it when it is missing. The weights are mapped to
+        CPU; call ``.to(device)`` on the returned model to move it.
 
         Args:
             detector: Keypoint detector the descriptor was trained for. One of
-                ``"aliked"`` or ``"dedode"``. Selects the default checkpoint.
-            url: Direct URL to a checkpoint. If ``None``, the predefined URL for
-                ``detector`` is used.
+                ``"aliked"`` or ``"dedode"``. Selects the default checkpoints.
+            url: Direct URL to a checkpoint, or a list of URLs tried in order. If
+                ``None``, the predefined URLs for ``detector`` are used.
             amp: If True, run :meth:`forward` under CUDA automatic mixed precision.
             amp_dtype: Autocast dtype used when ``amp`` is enabled.
 
@@ -191,8 +209,8 @@ class SANDesc(nn.Module):
             if detector not in urls:
                 raise ValueError(f"Unknown detector: {detector}. Available: {list(urls)}")
             url = urls[detector]
-            # The download host names every file generically ("download"), so force a
-            # distinct cache filename per detector to avoid torch.hub cache collisions.
+            # The fallback host names every file generically ("download"), so force a
+            # distinct cache filename per detector that is stable across both sources.
             file_name = f"sandesc_{detector}.pth"
         else:
             file_name = None
@@ -204,7 +222,7 @@ class SANDesc(nn.Module):
             amp=amp,
             amp_dtype=amp_dtype,
         )
-        state_dict = torch.hub.load_state_dict_from_url(
+        state_dict = load_state_dict_from_url(
             url,
             map_location=torch.device("cpu"),
             file_name=file_name,

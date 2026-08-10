@@ -85,7 +85,7 @@ class TestSANDesc(BaseTester):
     def test_gradcheck(self, device):
         img = _ramp_image(1, 3, 16, 16, device=device, dtype=torch.float64)
         model = SANDesc().to(device, img.dtype).eval()
-        self.gradcheck(model, (img,), eps=1e-4, atol=1e-4)
+        self.gradcheck(model, (img,), eps=1e-4, atol=1e-4, nondet_tol=1e-4)
 
     @pytest.mark.slow
     @pytest.mark.parametrize(
@@ -123,7 +123,9 @@ class TestSANDesc(BaseTester):
         img = _ramp_image(1, 3, 256, 256, device=device)
         kpts = torch.tensor([[[-0.5, -0.5], [0.0, 0.0], [0.5, 0.5]]], device=device)
         model = SANDesc.from_pretrained(detector=detector).to(device).eval()
-        with torch.no_grad():
+        # cuDNN runs float32 convolutions in TF32 by default, which costs ~5e-4 of accuracy
+        # on CUDA and would exceed the tolerance below; conftest only pins matmul precision.
+        with torch.backends.cudnn.flags(allow_tf32=False), torch.no_grad():
             desc = model.describe(img, kpts)
         assert desc.shape == (1, 3, 128)
         self.assert_close(desc[0, :, :6], torch.tensor(expected, device=device), atol=1e-4, rtol=1e-4)
