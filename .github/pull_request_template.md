@@ -1,47 +1,22 @@
-## 📝 Description
+## Which lane? *(check one — see [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#which-lane-is-your-contribution))*
+- [ ] 🟢 **Green lane** — test-first bug fix / verified docs fix / [`help wanted`](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) issue / benchmark results. No prior issue needed.
+- [ ] 🟠 **Discuss-first** — feature or behavior change; a maintainer confirmed the scope on the linked issue.
 
-**⚠️ Issue Link Required**: This PR must be linked to an approved and assigned issue. See [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#pull-request) for details.
+**Fixes/Relates to:** # *(issue number, if any)*
 
-**Fixes/Relates to:** # (issue number)
+## What does this PR do?
 
-**Important**:
-- Ensure you are assigned to the linked issue before submitting this PR
-- This PR should strictly implement what the linked issue describes
-- Do not include changes beyond the scope of the linked issue
+<!-- A few sentences. For bug fixes: which test fails on main without this fix? -->
 
----
+## Test log
 
-## 🛠️ Changes Made
-- [ ] Item 1
-- [ ] Item 2
+<!-- Paste your local test run (required for functional changes): -->
 
----
+```
+$ pixi run test tests/...
+```
 
-## 🧪 How Was This Tested?
-- [ ] **Unit Tests:** (List new/updated tests)
-- [ ] **Manual Verification:** (Describe the steps you took)
-- [ ] **Performance/Edge Cases:** (How does this handle nulls, large data, etc.?)
-
----
-
-## 🕵️ AI Usage Disclosure
-*Check one of the following:*
-- [ ] 🟢 **No AI used.**
-- [ ] 🟡 **AI-assisted:** I used AI for boilerplate/refactoring but have manually reviewed and tested every line.
-- [ ] 🔴 **AI-generated:** (Note: These PRs may be subject to stricter scrutiny or immediate closure if the logic is not explained).
-
----
-
-## 🚦 Checklist
-- [ ] I am assigned to the linked issue (required before PR submission)
-- [ ] The linked issue has been approved by a maintainer
-- [ ] I have performed a **self-review** of my code (no "ghost" variables or hallucinations).
-- [ ] My code follows the existing style guidelines of this project.
-- [ ] I have commented my code, particularly in hard-to-understand areas.
-- [ ] I have added tests that prove my fix is effective or that my feature works.
-- [ ] (Optional) I have attached screenshots/recordings for UI changes.
-
----
-
-## 💭 Additional Context
-Add any other context or screenshots about the pull request here.
+## AI Usage Disclosure *(pick the closest — the 🟡/🔴 line is fuzzy and only deception is sanctioned; none of these is a bad answer, see [AI_POLICY.md](https://github.com/kornia/kornia/blob/main/AI_POLICY.md))*
+- [ ] 🟢 **Human-written**
+- [ ] 🟡 **AI-assisted** — AI helped; I reviewed the resulting change and ran the relevant tests
+- [ ] 🔴 **AI-generated** — an agent wrote most of it; I verified the result and can address reviewer questions

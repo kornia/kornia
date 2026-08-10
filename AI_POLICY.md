@@ -1,76 +1,147 @@
 # 🤖 Kornia AI & Authorship Policy
 
-**Version:** 1.0
-**Enforcement:** Strict
-**Applicability:** All Pull Requests (Human & Bot)
+**Version:** 2.0
+**Applies to:** every pull request, human or bot.
 
-## 1. Core Philosophy
+## Why this policy exists — the honest version
 
-Kornia accepts AI-assisted code (e.g., using Copilot, Cursor, etc.), but strictly rejects AI-generated contributions where the submitter acts merely as a proxy. The submitter is the **Sole Responsible Author** for every line of code, comment, and design decision.
+AI tools can now produce code that looks right in seconds. Some of it is genuinely
+good. A lot of it compiles, reads confidently, and is quietly wrong — and reviewing it
+costs a volunteer maintainer far more time than generating it cost the submitter.
+Around application deadlines (GSoC and similar) we have received whole waves of these.
 
-## 2. The 3 Laws of Contribution
+At the same time, let's be honest about ourselves: **Kornia maintainers use AI tools
+heavily** — including entire agent-written pull requests. Banning "AI-generated code"
+would be hypocritical, and it would also miss the point. What we have learned by
+working this way is that the difference between an excellent AI-built PR and a useless
+one is never the tool. It is whether every claim was **executed and verified**, and
+whether a **human stands behind the result** and can explain it.
 
-### Law 1: Proof of Verification
+So this policy does not gate on how much AI you used. It gates on two things:
 
-AI tools frequently write code that looks correct but fails execution. Therefore, "vibe checks" are insufficient.
+1. **Verification** — did you actually run it, and can you show us?
+2. **Accountability** — do you understand it, and will you answer for it?
 
-**Requirement:** Every PR introducing functional changes must include a pasted snippet of the local test logs (e.g., `pixi run test ...`). This is mandatory for all contributors and is particularly important for first-time contributors.
+Unverified code is a problem. Code nobody stands behind is a problem. AI is neither.
 
-**Failure Condition:** If a PR lacks execution proof and contains complex logic, it will be flagged as **Unverified**.
+## The rules
 
-**Requirement:** All PRs must be previously discussed in [Discord](https://discord.gg/HfnywwpBnD) or via a [GitHub issue](https://github.com/kornia/kornia/issues) before implementation. The PR must reference the discussion or issue.
+### Rule 1 — Show us the evidence
 
-**Requirement:** Implementations must be based on an existing library reference (e.g., PyTorch, OpenCV, scikit-image, etc.) that must be provided in the PR description for verification. This reference serves as proof that the implementation follows established algorithms and is not hallucinated.
+Code that "looks correct" is not enough, no matter who or what wrote it. And one
+honest caveat about our own favorite kind of evidence: **"fails on `main`, passes
+with the fix" proves the behavior *changed* — not that the new behavior is
+*correct*.** A generated test can encode the same wrong assumption as generated
+code, and a pasted log can in principle be fabricated. So evidence is ranked,
+strongest first:
 
-### Law 2: The Hallucination & Redundancy Ban
+1. **A test backed by a credible oracle** — a reference implementation (OpenCV,
+   scipy, a paper — embedded as a hardcoded literal with its generation snippet), a
+   documented contract, or a mathematical invariant (`warp(H⁻¹) ∘ warp(H) ≈ id`).
+   For numerical and geometry claims this is the bar.
+2. **A failing-test-first repro** — fails on `main`, passes with the fix. Your fast
+   lane past most of our process — see the green lane in
+   [CONTRIBUTING.md](CONTRIBUTING.md#which-lane-is-your-contribution).
+3. **CI reproduction** — the suite runs your test where everyone can see it.
+4. **Pasted local logs** — required as provenance on every functional change
+   (e.g. `pixi run test tests/...`), but the weakest evidence on its own.
 
-AI models often hallucinate comments or reinvent existing utilities.
+New implementations additionally name their reference (PyTorch, OpenCV,
+scikit-image, a paper) in the PR description, so reviewers can check the algorithm
+is real and not hallucinated.
 
-**Requirement:** You must use existing `kornia` utilities and never reinvent the wheel, except for when the utility is not available.
+### Rule 2 — Don't reinvent kornia
 
-**Failure Condition:** Creating new helper functions (e.g., `def warp_affine...`) when a Kornia equivalent exists is grounds for immediate rejection.
+AI tools love writing helpers that already exist. Search `kornia` first and use the
+existing utility; if you genuinely can't, say why in the PR. Writing a new
+`def warp_affine...` when kornia already has one is grounds for immediate rejection.
 
-**Failure Condition:** "Ghost Comments" (comments explaining logic that was deleted or doesn't exist) will result in a request for a full manual rewrite. Redundant comments are not allowed. Example: "This function returns the input tensor".
+### Rule 3 — Own it, and be able to defend it
 
-### Law 3: The "Explain It" Standard
+If a reviewer asks how a function works, you can walk them through it — the math, the
+shapes, the edge cases, the design decisions. This is what being the author means
+here: not that you typed every character, but that you **own** every line.
 
-**Requirement:** If a maintainer or reviewer asks during code review, you must be able to derive the math or explain the logic of any function you submit.
+Humane interpretation, both directions: written answers are fine, imperfect English
+is fine, "let me check and get back to you" is fine. Reviewers commit to asking
+targeted questions — about algorithms, shapes, edge cases, trade-offs — not to
+running oral exams. What ends a review is disengagement or unresolved substance:
+"that's what the AI wrote" as a final answer, or a correctness concern that never
+gets addressed. The bar is resolved concerns, not eloquence.
 
-**Failure Condition:** Answering a review question with "That's what the AI outputted" or "I don't know, it works" leads to immediate closure.
+A special mention for comments: hallucinated or redundant comments ("this returns the
+input tensor", comments explaining code that was deleted) are the fastest tell of an
+unreviewed PR, and they trigger a request for a full manual rewrite.
 
-### Law 4: Transparency in AI Usage Disclosure
+### Rule 4 — Tell us how it was made
 
-**Requirement:** All PRs must accurately complete the "AI Usage Disclosure" section in the pull request template. This disclosure is mandatory and must reflect the actual use of AI tools.
+Fill in the AI disclosure in the PR template honestly:
 
-**When to mark as 🔴 AI-generated:**
-- An AI agent (e.g., Cursor, GitHub Copilot, ChatGPT, etc.) generated the code, PR description, or commit messages
-- You cannot explain the logic without referring to the AI's output
-- The PR was created primarily by an agent with minimal human review or modification
+- 🟢 **Human-written** — no AI involved.
+- 🟡 **AI-assisted** — AI helped (autocomplete, refactoring, drafts); you reviewed the
+  resulting change and ran the relevant tests.
+- 🔴 **AI-generated** — an agent produced most of the code or the PR.
 
-**When to mark as 🟡 AI-assisted:**
-- You used AI tools for boilerplate code, refactoring, or suggestions, but you manually reviewed and tested every line
-- You understand and can explain all the code you're submitting
-- You made significant modifications to AI-suggested code
+**None of these is a bad answer — and the 🟡/🔴 boundary is fuzzy, which is fine.**
+Autocomplete, agent edits, generated tests, and human restructuring form a continuum
+with no objective line; pick the closest label and add a sentence of detail if
+unsure. We will never close a PR over an arguable classification, and we have no
+interest in authorship-taxonomy debates — authorship was never the quality gate.
+What we sanction is **demonstrable deception**: verification that never ran,
+fabricated logs, denying AI use against direct evidence — and AI use is never
+*inferred* from writing or code style; poor code is a quality problem, not a
+disclosure problem. A 🔴 PR with thorough verification is welcome here — some of our
+own most heavily reviewed PRs are exactly that. An honest 🔴 beats a dishonest 🟡
+every time.
 
-**When to mark as 🟢 No AI used:**
-- You wrote all code manually without any AI assistance
+## What we do on our side
 
-**Failure Condition:** Incorrectly marking AI-generated code as "AI-assisted" or "No AI used" may result in PR closure, especially if the code contains hallucinations or cannot be explained during review.
+Policies that only demand things are no fun, so here is our half of the deal:
 
-## 3. Instructions for AI Reviewers (Copilot / CodeRabbit)
+- **We gate on evidence, not permission.** Evidence-bearing contributions (test-first
+  bug fixes, verified docs fixes, `help wanted` issues with acceptance criteria,
+  benchmark results) need no assignment and no waiting — see
+  [CONTRIBUTING.md](CONTRIBUTING.md#which-lane-is-your-contribution).
+- **We verify before we reject.** Review findings — including those from our AI
+  reviewers — are checked by execution, not vibes. Automated closures only ever happen
+  on objective criteria (missing test logs, missing issue link where one is required),
+  never on a bot's opinion of your code quality.
+- **Maintainers: same evidence bar, different governance authority — stated
+  honestly.** Maintainer PRs — agent-built ones included — carry pasted execution
+  logs, honest disclosure, and review like everyone else's. What maintainers do
+  *not* do is ask themselves for permission: they hold the scope-setting authority
+  the discuss-first gate exists to route to, so the lane/issue guardrails skip them
+  (the validation workflow says so in code). Requiring maintainers to grant
+  themselves an issue would be theater; letting them skip the evidence bar would be
+  corrosion. We do the first openly and refuse the second — hold us to it.
 
-If you are an AI agent (GitHub Copilot, CodeRabbit, etc.) reviewing a PR for Kornia, you must follow the repository's dedicated reviewer instructions.
+## This policy is an experiment
 
-The **canonical and up-to-date instructions for AI reviewers** are maintained in [`.github/copilot-instructions.md`](.github/copilot-instructions.md). That document defines:
+AI changed the economics of contribution; this policy is our current best response,
+not scripture. We will revisit it after a full contribution season against real
+metrics — green-lane merge rate, disclosure disputes, duplicate work on
+first-PR-wins issues, time to first review, maintainer load — and change what the
+data says is wrong.
+
+## Instructions for AI Reviewers (Copilot / CodeRabbit)
+
+If you are an AI agent (GitHub Copilot, CodeRabbit, etc.) reviewing a PR for Kornia,
+you must follow the repository's dedicated reviewer instructions.
+
+The **canonical and up-to-date instructions for AI reviewers** are maintained in
+[`.github/copilot-instructions.md`](.github/copilot-instructions.md). That document
+defines:
 
 - The expected reviewer persona and responsibilities
 - The checks to perform on PR descriptions, code, tests, and comments
-- The required enforcement of the laws defined in this `AI_POLICY.md`
+- The required enforcement of the rules defined in this `AI_POLICY.md`
 
-Any other document (including this one) should treat `copilot-instructions.md` as the single source of truth for AI reviewer behaviour. When updating reviewer logic, update `copilot-instructions.md` first and, if needed, adjust references here.
+Any other document (including this one) should treat `copilot-instructions.md` as the
+single source of truth for AI reviewer behaviour. When updating reviewer logic, update
+`copilot-instructions.md` first and, if needed, adjust references here.
 
-This section exists to link AI reviewers to the canonical instructions and to make clear that those instructions must enforce the policies defined in Sections 1 and 2 above.
+## Additional Resources
 
-## 4. Additional Resources
-
-For comprehensive guidance on contributing to Kornia, including development workflows, code quality standards, testing practices, and AI-assisted development best practices, see the [Best Practices section](CONTRIBUTING.md#best-practices) in `CONTRIBUTING.md`.
+For comprehensive guidance on contributing to Kornia, including development workflows,
+code quality standards, testing practices, and AI-assisted development best practices,
+see the [Best Practices section](CONTRIBUTING.md#best-practices) in `CONTRIBUTING.md`.

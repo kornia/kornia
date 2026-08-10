@@ -272,11 +272,6 @@ Our primary focus is on integrating **Vision Language Models (VLM)** and **Visio
 
 Kornia's foundation lies in its extensive collection of classic computer vision operators, providing robust tools for image processing, feature extraction, and geometric transformations. We continuously seek for contributors to help us improve our documentation and present nice tutorials to our users.
 
-## Contributing
-
-We welcome contributions to Kornia! Whether you are fixing bugs, improving documentation, or adding new computer vision features, please check out our [Contribution Guidelines](CONTRIBUTING.md) to get started with setting up your development environment, running tests, and submitting pull requests.
-
-
 ## Cite
 
 If you are using kornia in your research-related documents, it is recommended that you cite the paper. See more in [CITATION](./CITATION.md).
@@ -293,19 +288,13 @@ If you are using kornia in your research-related documents, it is recommended th
 
 ## Contributing
 
-We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider reading the [CONTRIBUTING](./CONTRIBUTING.md) notes. The participation in this open source project is subject to [Code of Conduct](./CODE_OF_CONDUCT.md).
+We appreciate all contributions, and we are honest about the world we operate in: AI makes code cheap to write, and volunteer review time is our scarcest resource. So our process gates on **evidence, not permission**:
 
-### AI Policy
+- **Small, evidence-bearing fixes go straight to a PR** — a bug fix with a test that fails on `main`, a docs fix with a verification snippet, or any [`help wanted`](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) issue (pre-approved, no assignment needed — the best-supported PR wins).
+- **Features and behavior changes need a conversation first** — open an issue and get the scope confirmed before writing code. In a geometry library, changed defaults break users silently, so these get extra care.
+- **AI use is fine — including fully agent-written PRs.** Our own maintainers work this way. What we require is that *you* verified everything (pasted test logs, evidence-backed tests), can answer questions about the code during review, and disclose AI use honestly. What closes PRs is unverified work or unresolved correctness concerns — regardless of how the code was made.
 
-Kornia accepts AI-assisted code but strictly rejects AI-generated contributions where the submitter acts as a proxy. All contributors must be the **Sole Responsible Author** for every line of code. Please review our [AI Policy](AI_POLICY.md) before submitting pull requests. Key requirements include:
-
-- **Proof of Verification**: PRs must include local test logs proving execution
-- **Pre-Discussion**: All PRs must be discussed in Discord or via a GitHub issue before implementation
-- **Library References**: Implementations must be based on existing library references (PyTorch, OpenCV, etc.)
-- **Use Existing Utilities**: Use existing `kornia` utilities instead of reinventing the wheel
-- **Explain It**: You must be able to explain any code you submit
-
-Automated AI reviewers (e.g., GitHub Copilot) will check PRs against these policies. See [AI_POLICY.md](AI_POLICY.md) for complete details.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the details and [AI_POLICY.md](AI_POLICY.md) for the full policy. Participation is subject to the [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 ## Community
 - **Discord:** Join our workspace to keep in touch with our core contributors, get latest updates on the industry and  be part of our community. [JOIN HERE](https://discord.gg/HfnywwpBnD)
