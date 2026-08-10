@@ -28,6 +28,26 @@ rather than grown.
 **Experimental** — ``kornia.contrib`` and anything underscore-prefixed or
 absent from the rendered documentation. No stability promise.
 
+Planned evolution: support tiers
+--------------------------------
+
+The `roadmap <https://github.com/kornia/kornia/blob/main/ROADMAP.md>`_ describes
+a future, finer-grained tier structure ("Tier A / B / C") in which a deliberately
+small Tier A core carries per-symbol, CI-enforced guarantees. **That structure is
+not in force yet.** It will be published only after the coordinated
+repair-and-deprecation window described in the roadmap has resolved the
+convention bugs surfaced by the ongoing per-operator audit — targeted within the
+roadmap's ~6-month medium-term horizon (dates are intentions, not commitments).
+Until the tier policy is published, this page is the authoritative stability
+contract and the tiers above (stable core / best-effort / experimental) are what
+you may rely on.
+
+The repair window itself runs under the promises on this page, not around them:
+every semantic or default change it ships gets the promise-2 deprecation
+treatment — at least one minor release of warnings, landing at a 0.x minor
+boundary, with old-vs-new reference vectors — and only clearly-broken-output
+bugs (NaN, crashes) use the correctness escape hatch below.
+
 What counts as public API
 -------------------------
 
