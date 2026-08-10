@@ -95,7 +95,6 @@ class SANDesc(nn.Module):
         up_output_channels: list[int] | None = None,
         amp: bool = False,
         amp_dtype: torch.dtype = torch.bfloat16,
-        **kwargs: object,
     ) -> None:
         """Build the descriptor network.
 
@@ -116,7 +115,6 @@ class SANDesc(nn.Module):
             amp: If True, run :meth:`forward` under CUDA automatic mixed precision.
             amp_dtype: Autocast dtype used when ``amp`` is enabled (e.g. ``torch.float16``
                 or ``torch.bfloat16``). AMP is scoped to CUDA; it is a no-op on CPU/MPS.
-            **kwargs: Ignored extra keyword arguments.
         """
         super().__init__()
         self.amp = amp

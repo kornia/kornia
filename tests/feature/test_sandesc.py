@@ -22,14 +22,9 @@ from kornia.core.exceptions import ShapeError
 from kornia.feature.aliked import ALIKED
 from kornia.feature.dedode import DeDoDe
 from kornia.feature.sandesc import SANDesc
+from kornia.geometry import normalize_pixel_coordinates
 
 from testing.base import BaseTester
-
-
-def _normalize_keypoints(keypoints: torch.Tensor, height: int, width: int) -> torch.Tensor:
-    """Map pixel ``[x, y]`` keypoints to the ``[-1, 1]`` grid_sample convention."""
-    wh = torch.tensor([width - 1, height - 1], device=keypoints.device, dtype=keypoints.dtype)
-    return keypoints / wh * 2 - 1
 
 
 def _ramp_image(batch, channels, height, width, device=None, dtype=torch.float32):
@@ -55,6 +50,39 @@ class TestSANDesc(BaseTester):
         volume = model(img)
         assert volume.shape[0] == 1
         assert volume.shape[-2:] == img.shape[-2:]
+
+    @pytest.mark.parametrize("skip_connection", [False, True])
+    @pytest.mark.parametrize("spatial_attention", [False, True])
+    @pytest.mark.parametrize("third_block", [False, True])
+    def test_smoke_options(self, device, dtype, skip_connection, spatial_attention, third_block):
+        """The attention/skip variants are what ``from_pretrained`` builds."""
+        model = (
+            SANDesc(
+                skip_connection=skip_connection,
+                spatial_attention=spatial_attention,
+                third_block=third_block,
+            )
+            .to(device, dtype)
+            .eval()
+        )
+        volume = model(_ramp_image(1, 3, 32, 32, device=device, dtype=dtype))
+        assert volume.shape[-2:] == (32, 32)
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    @pytest.mark.parametrize("num_keypoints", [1, 10])
+    def test_cardinality(self, device, dtype, batch_size, num_keypoints):
+        model = SANDesc().to(device, dtype).eval()
+        images = _ramp_image(batch_size, 3, 32, 48, device=device, dtype=dtype)
+        keypoints = _ramp_keypoints(batch_size, num_keypoints, device=device, dtype=dtype)
+        descriptors, volume = model.describe(images, keypoints, return_desc_volume=True)
+        assert descriptors.shape == (batch_size, num_keypoints, 128)
+        assert volume.shape == (batch_size, 128, 32, 48)
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        model = SANDesc().to(device, dtype).eval()
+        img = _ramp_image(1, 3, 32, 32, device=device, dtype=dtype)
+        op_optimized = torch_optimizer(model)
+        self.assert_close(model(img), op_optimized(img))
 
     def test_describe(self, device, dtype):
         model = SANDesc().to(device, dtype).eval()
@@ -155,7 +183,7 @@ class TestSANDesc(BaseTester):
         des_dim = sandesc(_ramp_image(1, 3, 64, 64, device=device)).shape[1]
         with torch.no_grad():
             features = aliked(img)[0]
-            keypoints = _normalize_keypoints(features.keypoints, img.shape[-2], img.shape[-1])
+            keypoints = normalize_pixel_coordinates(features.keypoints, img.shape[-2], img.shape[-1])
             descriptors = sandesc.describe(img, keypoints[None])[0]
 
         assert features.n > 0
