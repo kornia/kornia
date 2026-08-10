@@ -227,10 +227,11 @@ and finish under the rules they started under.
 
 ## Areas seeking contributors
 
-We especially welcome help in these areas. Issues labelled
-[`help wanted`](https://github.com/kornia/kornia/labels/help%20wanted) are
-green-lane entry points: pre-approved, with acceptance criteria in the issue (a
-label audit to make this uniformly true is listed under short-term work). No
+We especially welcome help in these areas. Curated
+[`help wanted`](https://github.com/kornia/kornia/labels/help%20wanted) issues with
+explicit acceptance criteria are green-lane entry points. While the legacy-label
+audit (short-term work above) is pending, check that the issue actually contains
+those criteria or an explicit maintainer confirmation before starting. No
 assignment needed — and if duplicate PRs land, maintainers merge the
 best-supported implementation, not the earliest. For anything feature-shaped,
 open or comment on an issue first (discuss-first lane, see
