@@ -110,9 +110,9 @@ class SANDesc(nn.Module):
                 block to the network.
             spatial_attention: If True, add spatial attention to the network.
             third_block: If True, add a third unet block to the network.
-            down_output_channels: Output channels of each down block.
-            up_output_channels: Output channels of each up block. Add +1 to the
-                last element to match the DISK unet, e.g. [64, 64, 64, 128 + 1].
+            down_output_channels: Output channels of each down block, 5 elements.
+            up_output_channels: Output channels of each up block, 4 elements. Add +1
+                to the last element to match the DISK unet, e.g. [64, 64, 64, 128 + 1].
             amp: If True, run :meth:`forward` under CUDA automatic mixed precision.
             amp_dtype: Autocast dtype used when ``amp`` is enabled (e.g. ``torch.float16``
                 or ``torch.bfloat16``). AMP is scoped to CUDA; it is a no-op on CPU/MPS.
@@ -125,6 +125,10 @@ class SANDesc(nn.Module):
             down_output_channels = [16, 32, 64, 64, 64]
         if up_output_channels is None:
             up_output_channels = [64, 64, 64, 128]
+        if len(down_output_channels) != 5:
+            raise ValueError(f"down_output_channels must have 5 elements, got {len(down_output_channels)}.")
+        if len(up_output_channels) != 4:
+            raise ValueError(f"up_output_channels must have 4 elements, got {len(up_output_channels)}.")
         self.conv_highest = nn.Conv2d(
             ch_in,
             down_output_channels[0],
