@@ -67,6 +67,16 @@ class TestSANDesc(BaseTester):
         )
         volume = model(_ramp_image(1, 3, 32, 32, device=device, dtype=dtype))
         assert volume.shape[-2:] == (32, 32)
+        # attention and the extra blocks hang off the skip path, so they must not add
+        # parameters that the forward pass never reaches
+        extra = [n for n, _ in model.named_parameters() if "cbam" in n or "block2" in n or "block3" in n]
+        assert extra == [] or skip_connection
+
+    def test_non_uniform_channels(self, device, dtype):
+        """``align`` sits on the residual path, so its input is the coarser block's width."""
+        model = SANDesc(skip_connection=True, up_output_channels=[64, 128, 64, 32]).to(device, dtype).eval()
+        volume = model(_ramp_image(1, 3, 32, 32, device=device, dtype=dtype))
+        assert volume.shape == (1, 32, 32, 32)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     @pytest.mark.parametrize("num_keypoints", [1, 10])
@@ -74,7 +84,8 @@ class TestSANDesc(BaseTester):
         model = SANDesc().to(device, dtype).eval()
         images = _ramp_image(batch_size, 3, 32, 48, device=device, dtype=dtype)
         keypoints = _ramp_keypoints(batch_size, num_keypoints, device=device, dtype=dtype)
-        descriptors, volume = model.describe(images, keypoints, return_desc_volume=True)
+        descriptors = model.describe(images, keypoints)
+        volume = model.describe(images)
         assert descriptors.shape == (batch_size, num_keypoints, 128)
         assert volume.shape == (batch_size, 128, 32, 48)
 
@@ -94,12 +105,23 @@ class TestSANDesc(BaseTester):
         norms = descriptors.norm(dim=-1)
         self.assert_close(norms, torch.ones_like(norms))
 
-        descriptors, volume = model.describe(images, keypoints, return_desc_volume=True)
+        volume = model.describe(images)
         assert volume.shape == (2, des_dim, 64, 64)
+        norms = volume.norm(dim=1)
+        self.assert_close(norms, torch.ones_like(norms))
+
+    def test_pad_if_not_divisible(self, device, dtype):
+        model = SANDesc().to(device, dtype).eval()
+        images = _ramp_image(1, 3, 30, 33, device=device, dtype=dtype)
+        keypoints = _ramp_keypoints(1, 10, device=device, dtype=dtype)
+        volume = model(images, pad_if_not_divisible=True)
+        assert volume.shape[-2:] == (30, 33)
+        descriptors = model.describe(images, keypoints, pad_if_not_divisible=True)
+        assert descriptors.shape == (1, 10, volume.shape[1])
 
     def test_exception(self, device, dtype):
         model = SANDesc().to(device, dtype).eval()
-        # forward requires spatial dims that are multiples of 16
+        # forward requires spatial dims that are multiples of 16 unless padding is requested
         with pytest.raises(ValueError):
             model(_ramp_image(1, 3, 30, 32, device=device, dtype=dtype))
         # forward requires a (B, C, H, W) image
