@@ -35,7 +35,9 @@ def get_norm(norm: str | None, ch_in: int) -> nn.Module:
     if norm == "instance":
         return nn.InstanceNorm2d(ch_in, affine=True)
     if norm == "group":
-        return nn.GroupNorm(num_groups=max(ch_in // 16, 1), num_channels=ch_in)
+        if ch_in % 16 != 0:
+            raise ValueError(f"GroupNorm requires ch_in to be divisible by 16, got {ch_in}.")
+        return nn.GroupNorm(num_groups=ch_in // 16, num_channels=ch_in)
     if norm is None:
         return nn.Identity()
     raise ValueError(f"Norm type {norm} not recognized")
@@ -106,8 +108,8 @@ class UNetDownBlock(nn.Module):
             activation: Activation function.
             norm: Normalization layer.
             third_block: If True, add a third UNet block.
-            skip_connection: If True, add a skip connection. If False, the same
-                unet as in DISK and S-TReK.
+            skip_connection: If True, add a residual path around the block(s) and a
+                second UNet block. If False, the same unet as in DISK and S-TReK.
             spatial_attention: If True, add a spatial attention module. Works
                 only if skip_connection is True.
         """
@@ -160,7 +162,9 @@ class UNetUpBlock(nn.Module):
             activation: Activation function.
             norm: Normalization layer.
             third_block: If True, add a third UNet block.
-            skip_connection: If True, add a skip connection.
+            skip_connection: If True, add a residual path from the upsampled tensor and a
+                second UNet block. The encoder tensor ``x_from_past`` is concatenated
+                regardless of this flag.
             spatial_attention: If True, add a spatial attention module. Works
                 only if skip_connection is True.
         """
@@ -249,11 +253,12 @@ class ChannelGate(nn.Module):
         if unknown:
             raise ValueError(f"Pool types {unknown} not recognized. Available: ['avg', 'max']")
         self.gate_channels = gate_channels
+        hidden_channels = max(gate_channels // reduction_ratio, 1)
         self.mlp = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(gate_channels, gate_channels // reduction_ratio),
+            nn.Linear(gate_channels, hidden_channels),
             nn.GELU(),
-            nn.Linear(gate_channels // reduction_ratio, gate_channels),
+            nn.Linear(hidden_channels, gate_channels),
         )
         self.pool_types = pool_types
 
