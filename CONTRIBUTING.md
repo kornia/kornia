@@ -11,7 +11,7 @@ Welcome! This guide will help you contribute to Kornia.
     - **Don't reinvent kornia**: use existing `kornia` utilities instead of writing new ones.
     - **Own it**: you can explain any line during review; disclose AI use honestly in the PR template.
 
-- **15-Day Rule**: PRs waiting on their **author** for 15+ days may be closed to keep the queue readable — reopen anytime when you're back. Time spent waiting on *us* doesn't count against you: if you're blocked on a review, say so and a maintainer will add the `awaiting-review` label, which pauses the timer.
+- **15-Day Rule**: PRs waiting on their **author** for 15+ days may be closed to keep the queue readable — reopen anytime when you're back. Time spent waiting on *us* shouldn't count against you — but honestly, the stale bot can't tell who's waiting on whom, so this runs on a manual mechanism: if you're blocked on a review, say so and a maintainer will add the `awaiting-review` label, which pauses the timer.
 
 - **Transparency**: All discussions must be public.
 
@@ -388,17 +388,22 @@ permission.** Pick your lane:
 
 ### 🟢 Green lane — just send the PR (no issue, no assignment, no waiting)
 
-For contributions that prove themselves:
+For contributions that carry their own evidence:
 
 - **Bug fixes, test-first**: your PR contains a test that **fails on `main`** and passes
   with your fix, plus pasted test logs. That failing test *is* your permission slip —
-  it shows the bug is real and the fix works, and it takes us minutes to verify.
+  it shows the bug is real, and it takes us minutes to verify. One honest caveat: it
+  proves the behavior *changed*, not that the new behavior is *correct* — for
+  numerical/geometry fixes, back the expected values with a reference or invariant
+  (see the evidence ranking in [AI_POLICY.md](AI_POLICY.md)).
 - **Documentation fixes** where the PR description shows the snippet you ran to verify
   the corrected claim.
 - **[`help wanted` issues](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22)**:
   these are pre-approved, with acceptance criteria written in the issue. No assignment,
-  no "can I work on this?" — the **first PR that meets the criteria wins**. (Please do
-  check for an already-open PR on the same issue before starting.)
+  no "can I work on this?" — the **first PR that meets the criteria wins**. Please do
+  check for an already-open PR on the same issue before starting; and to be fair about
+  what "wins" means: starting first creates no entitlement — if duplicates land,
+  maintainers merge the best-supported implementation, not the earliest timestamp.
 - **Benchmark results** from your hardware, via the `--contribute` flow in `benchmarks/`.
 
 ### 🟠 Discuss-first lane — open an issue before writing code
@@ -417,6 +422,11 @@ Why discuss first? Because for this kind of work, the design conversation *is* t
 work — and skipping it means we sometimes have to reject finished code, which is
 painful for everyone. A maintainer confirming scope on the issue is your green light;
 formal assignment is optional.
+
+One honest asymmetry, stated openly: **maintainers skip the lane guardrails** — they
+hold the scope-setting authority these gates exist to route to, so making them ask
+themselves for permission would be theater. Their PRs still meet the same evidence,
+disclosure, and review bar (see [AI_POLICY.md](AI_POLICY.md)).
 
 ### Application seasons (GSoC and similar)
 

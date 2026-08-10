@@ -16,7 +16,7 @@
 $ pixi run test tests/...
 ```
 
-## AI disclosure *(honest answer required — none of these is a bad answer, see [AI_POLICY.md](https://github.com/kornia/kornia/blob/main/AI_POLICY.md))*
+## AI disclosure *(pick the closest — the 🟡/🔴 line is fuzzy and only deception is sanctioned; none of these is a bad answer, see [AI_POLICY.md](https://github.com/kornia/kornia/blob/main/AI_POLICY.md))*
 - [ ] 🟢 **Human-written**
 - [ ] 🟡 **AI-assisted** — AI helped; I reviewed and tested every line
 - [ ] 🔴 **AI-generated** — an agent wrote most of it; I verified it and can explain every line

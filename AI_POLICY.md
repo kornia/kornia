@@ -26,18 +26,29 @@ Unverified code is a problem. Unexplainable code is a problem. AI is neither.
 
 ## The rules
 
-### Rule 1 — Show us it runs
+### Rule 1 — Show us the evidence
 
-Code that "looks correct" is not enough, no matter who or what wrote it.
+Code that "looks correct" is not enough, no matter who or what wrote it. And one
+honest caveat about our own favorite kind of evidence: **"fails on `main`, passes
+with the fix" proves the behavior *changed* — not that the new behavior is
+*correct*.** A generated test can encode the same wrong assumption as generated
+code, and a pasted log can in principle be fabricated. So evidence is ranked,
+strongest first:
 
-- Every PR with functional changes includes a pasted snippet of your local test run
-  (e.g. `pixi run test tests/...`).
-- Bug fixes should arrive **test-first**: a test that fails on `main` and passes with
-  your fix is the single most convincing thing a PR can contain. It is also your fast
-  lane past most of our process — see the green lane in
-  [CONTRIBUTING.md](CONTRIBUTING.md#which-lane-is-your-contribution).
-- New implementations name their reference (PyTorch, OpenCV, scikit-image, a paper) in
-  the PR description, so reviewers can check the algorithm is real and not hallucinated.
+1. **A test backed by a credible oracle** — a reference implementation (OpenCV,
+   scipy, a paper — embedded as a hardcoded literal with its generation snippet), a
+   documented contract, or a mathematical invariant (`warp(H⁻¹) ∘ warp(H) ≈ id`).
+   For numerical and geometry claims this is the bar.
+2. **A failing-test-first repro** — fails on `main`, passes with the fix. Your fast
+   lane past most of our process — see the green lane in
+   [CONTRIBUTING.md](CONTRIBUTING.md#which-lane-is-your-contribution).
+3. **CI reproduction** — the suite runs your test where everyone can see it.
+4. **Pasted local logs** — required as provenance on every functional change
+   (e.g. `pixi run test tests/...`), but the weakest evidence on its own.
+
+New implementations additionally name their reference (PyTorch, OpenCV,
+scikit-image, a paper) in the PR description, so reviewers can check the algorithm
+is real and not hallucinated.
 
 ### Rule 2 — Don't reinvent kornia
 
@@ -45,12 +56,18 @@ AI tools love writing helpers that already exist. Search `kornia` first and use 
 existing utility; if you genuinely can't, say why in the PR. Writing a new
 `def warp_affine...` when kornia already has one is grounds for immediate rejection.
 
-### Rule 3 — Be able to explain it
+### Rule 3 — Own it, and be able to defend it
 
 If a reviewer asks how a function works, you can walk them through it — the math, the
-shapes, the edge cases. Answering "that's what the AI wrote" ends the review. This is
-what being the author means here: not that you typed every character, but that you
-**own** every line and every design decision.
+shapes, the edge cases, the design decisions. This is what being the author means
+here: not that you typed every character, but that you **own** every line.
+
+Humane interpretation, both directions: written answers are fine, imperfect English
+is fine, "let me check and get back to you" is fine. Reviewers commit to asking
+targeted questions — about algorithms, shapes, edge cases, trade-offs — not to
+running oral exams. What ends a review is disengagement or unresolved substance:
+"that's what the AI wrote" as a final answer, or a correctness concern that never
+gets addressed. The bar is resolved concerns, not eloquence.
 
 A special mention for comments: hallucinated or redundant comments ("this returns the
 input tensor", comments explaining code that was deleted) are the fastest tell of an
@@ -65,10 +82,15 @@ Fill in the AI disclosure in the PR template honestly:
   tested every line.
 - 🔴 **AI-generated** — an agent produced most of the code or the PR.
 
-**None of these is a bad answer.** A 🔴 PR with thorough verification and a human who
-can explain every line is welcome here — some of our own most heavily reviewed PRs are
-exactly that. What closes PRs is **mislabeling**, or "verification" that turns out to
-be imaginary. An honest 🔴 beats a dishonest 🟡 every time.
+**None of these is a bad answer — and the 🟡/🔴 boundary is fuzzy, which is fine.**
+Autocomplete, agent edits, generated tests, and human restructuring form a continuum
+with no objective line; pick the closest label and add a sentence of detail if
+unsure. We will never close a PR over an arguable classification, and we have no
+interest in authorship-taxonomy debates — authorship was never the quality gate.
+What we sanction is **demonstrable deception**: verification that never ran,
+fabricated logs, denying AI use against plain evidence. A 🔴 PR with thorough
+verification is welcome here — some of our own most heavily reviewed PRs are exactly
+that. An honest 🔴 beats a dishonest 🟡 every time.
 
 ## What we do on our side
 
@@ -82,9 +104,22 @@ Policies that only demand things are no fun, so here is our half of the deal:
   reviewers — are checked by execution, not vibes. Automated closures only ever happen
   on objective criteria (missing test logs, missing issue link where one is required),
   never on a bot's opinion of your code quality.
-- **We hold ourselves to the same standard.** Maintainer PRs — agent-built ones
-  included — carry pasted execution logs and go through review like everyone else's.
-  You are welcome to hold us to this.
+- **Maintainers: same evidence bar, different governance authority — stated
+  honestly.** Maintainer PRs — agent-built ones included — carry pasted execution
+  logs, honest disclosure, and review like everyone else's. What maintainers do
+  *not* do is ask themselves for permission: they hold the scope-setting authority
+  the discuss-first gate exists to route to, so the lane/issue guardrails skip them
+  (the validation workflow says so in code). Requiring maintainers to grant
+  themselves an issue would be theater; letting them skip the evidence bar would be
+  corrosion. We do the first openly and refuse the second — hold us to it.
+
+## This policy is an experiment
+
+AI changed the economics of contribution; this policy is our current best response,
+not scripture. We will revisit it after a full contribution season against real
+metrics — green-lane merge rate, disclosure disputes, duplicate work on
+first-PR-wins issues, time to first review, maintainer load — and change what the
+data says is wrong.
 
 ## Instructions for AI Reviewers (Copilot / CodeRabbit)
 
