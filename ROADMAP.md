@@ -72,7 +72,10 @@ Four engineering north stars shape the roadmap below.
    classes fail structurally in data-dependent parameter generation
    ([#3913](https://github.com/kornia/kornia/issues/3913)). Compile support is
    claimed **per evidenced surface**: today that means the functional core, not the
-   augmentation classes, and docs state the scope explicitly.
+   augmentation classes as a class-level guarantee — many individual augmentations
+   already run fullgraph in the PR-time dynamo job (see the compile/export spine
+   below), but the data-dependent parameter generators keep the class-level claim
+   off the table — and docs state the scope explicitly.
 
 3. **Export-first (ONNX).** ONNX export fails on the *same* patterns that break
    `torch.compile`: data-dependent control flow, `.item()` calls, and dynamic shapes.

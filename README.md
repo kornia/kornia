@@ -258,10 +258,12 @@ Are you passionate about computer vision, AI, and open-source development? Join 
 
 Kornia's differentiated value is its geometry core: warping and sampling, homographies, cameras, epipolar geometry, rotations and Lie groups, and geometry-consistent augmentation. The highest-impact contributions make that core more trustworthy — see the [Roadmap](ROADMAP.md) for the full picture. Great entry points:
 
-- **Benchmark results from your hardware**: run the benchmark suite with `--contribute` and send the JSON — CUDA numbers from diverse GPUs are especially wanted.
-- **Convention pinning tests and conformance vectors** for core geometry ops.
-- **Corrective error messages**: upgrade bare shape asserts into errors that state what was wrong, what was expected, and which convention applies.
-- **Classical vision in the core domain**: camera intrinsic calibration, fiducial markers (ArUco/ChArUco), classical tracking, dense stereo, Hough transforms.
+- **Benchmark results from your hardware** *(green lane — just send the PR)*: run the benchmark suite with `--contribute` and send the JSON — CUDA numbers from diverse GPUs are especially wanted.
+- **Convention pinning tests and conformance vectors** for core geometry ops *(green lane once curated into a `help wanted` issue with acceptance criteria)*.
+- **Corrective error messages** *(same curation rule)*: upgrade bare shape asserts into errors that state what was wrong, what was expected, and which convention applies.
+- **Classical vision in the core domain** *(discuss-first — open an issue)*: camera intrinsic calibration, fiducial markers (ArUco/ChArUco), classical tracking, dense stereo, Hough transforms.
+
+See the [Roadmap's contributor areas](ROADMAP.md#areas-seeking-contributors) for how each of these routes through the contribution lanes.
 
 ### AI Models
 
