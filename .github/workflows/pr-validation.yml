@@ -53,7 +53,7 @@ jobs:
             // Two-lane model (CONTRIBUTING.md#which-lane-is-your-contribution):
             // green lane needs no issue; discuss-first needs a linked, scope-confirmed issue.
             const greenLane = /-\s*\[x\]\s*🟢\s*\*\*Green lane/i.test(prBody);
-            const discussLane = /-\s*\[x\]\s*🟠\s*\*\*Discuss-first lane/i.test(prBody);
+            const discussLane = /-\s*\[x\]\s*🟠\s*\*\*Discuss-first/i.test(prBody);
 
             // Referenced issues should exist and be open regardless of lane.
             const checkIssueExists = async (issueNumber) => {
