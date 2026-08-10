@@ -400,7 +400,10 @@ For contributions that carry their own evidence:
   the corrected claim.
 - **[`help wanted` issues](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22)**:
   these are pre-approved, with acceptance criteria written in the issue. No assignment,
-  no "can I work on this?" — the **first PR that meets the criteria wins**. Please do
+  no "can I work on this?" — the **first PR that meets the criteria wins**. (Interim
+  honesty note: some older issues inherited this label from our previous templates —
+  while we finish auditing them, check that the issue actually states acceptance
+  criteria or has explicit maintainer confirmation before starting.) Please do
   check for an already-open PR on the same issue before starting; and to be fair about
   what "wins" means: starting first creates no entitlement — if duplicates land,
   maintainers merge the best-supported implementation, not the earliest timestamp.
