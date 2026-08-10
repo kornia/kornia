@@ -22,18 +22,28 @@ from kornia.core.exceptions import ShapeError
 from kornia.feature.aliked import ALIKED
 from kornia.feature.dedode import DeDoDe
 from kornia.feature.sandesc import SANDesc
+from kornia.feature.sandesc.sandesc import detector_align_corners
 from kornia.geometry import normalize_pixel_coordinates
 
 from testing.base import BaseTester
 
 
-def _ramp_image(batch, channels, height, width, device=None, dtype=torch.float32):
+def _ramp_image(
+    batch: int,
+    channels: int,
+    height: int,
+    width: int,
+    device: torch.device | None = None,
+    dtype: torch.dtype = torch.float32,
+) -> torch.Tensor:
     """Deterministic ``[0, 1]`` image: a horizontal ramp broadcast over channels (no RNG)."""
     ramp = torch.arange(width, device=device, dtype=dtype) / max(width - 1, 1)
     return ramp.expand(height, width)[None, None].expand(batch, channels, height, width).contiguous()
 
 
-def _ramp_keypoints(batch, n, device=None, dtype=torch.float32):
+def _ramp_keypoints(
+    batch: int, n: int, device: torch.device | None = None, dtype: torch.dtype = torch.float32
+) -> torch.Tensor:
     """Deterministic interior keypoints in ``(-1, 1)``: a diagonal sweep, no RNG.
 
     Endpoints stay off the image border so ``grid_sample`` does not return the
@@ -110,6 +120,31 @@ class TestSANDesc(BaseTester):
         norms = volume.norm(dim=1)
         self.assert_close(norms, torch.ones_like(norms))
 
+    def test_detector_align_corners_convention(self):
+        """ALIKED normalizes with wh=[w-1, h-1] (align_corners=True); DeDoDe uses half-pixel
+        centers (align_corners=False). from_pretrained must select the matching convention.
+        """
+        assert detector_align_corners["aliked"] is True
+        assert detector_align_corners["dedode"] is False
+
+    def test_align_corners(self, device, dtype):
+        model = SANDesc().to(device, dtype).eval()
+        images = _ramp_image(1, 3, 32, 32, device=device, dtype=dtype)
+        keypoints = _ramp_keypoints(1, 5, device=device, dtype=dtype)
+
+        # default (unset) keypoint_align_corners matches the pre-existing align_corners=False behavior
+        assert model.keypoint_align_corners is False
+        default = model.describe(images, keypoints)
+        self.assert_close(default, model.describe(images, keypoints, align_corners=False))
+
+        # a per-call override takes precedence over the instance attribute
+        overridden = model.describe(images, keypoints, align_corners=True)
+        assert not torch.allclose(default, overridden)
+
+        # setting the instance attribute changes the default used when no override is passed
+        model.keypoint_align_corners = True
+        self.assert_close(model.describe(images, keypoints), overridden)
+
     def test_pad_if_not_divisible(self, device, dtype):
         model = SANDesc().to(device, dtype).eval()
         images = _ramp_image(1, 3, 30, 33, device=device, dtype=dtype)
@@ -161,7 +196,7 @@ class TestSANDesc(BaseTester):
                 [
                     [-0.157611, 0.027860, -0.117423, 0.083916, -0.105181, -0.028156],
                     [0.100992, -0.076817, 0.221748, -0.015796, 0.059756, 0.232232],
-                    [-0.128114, -0.042794, 0.219844, 0.101577, -0.005671, 0.068021],
+                    [-0.125828, -0.041003, 0.220314, 0.101813, -0.008282, 0.069005],
                 ],
             ),
             (

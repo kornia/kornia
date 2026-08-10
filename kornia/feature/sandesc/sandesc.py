@@ -43,6 +43,14 @@ urls: dict[str, list[str]] = {
     ],
 }
 
+# `grid_sample` convention each detector's normalized keypoints follow. ALIKED normalizes with
+# ``wh = [w-1, h-1]`` (align_corners=True: [-1, 1] maps to pixel centers 0 and w-1/h-1). DeDoDe
+# normalizes with half-pixel centers (align_corners=False: [-1, 1] maps to the outer pixel edges).
+detector_align_corners: dict[str, bool] = {
+    "aliked": True,
+    "dedode": False,
+}
+
 
 class SANDesc(nn.Module):
     r"""Module that computes dense local descriptors using the SANDesc method.
@@ -62,7 +70,8 @@ class SANDesc(nn.Module):
         kernel_size: Kernel size of the convolutional layers.
         activation: Activation function: ``'relu'`` or ``'gelu'``.
         norm: Normalization layer type: ``'batch'``, ``'instance'`` or ``'group'``.
-        skip_connection: If True, add skip connections and a second unet block to the network.
+        skip_connection: If True, add a residual path and a second unet block inside each down
+            and up block. The encoder-to-decoder concatenations are always applied.
         spatial_attention: If True, add spatial attention to the network. Requires
             ``skip_connection=True``.
         third_block: If True, add a third unet block to the network. Requires
@@ -74,6 +83,10 @@ class SANDesc(nn.Module):
         amp: If True, run :meth:`forward` under CUDA automatic mixed precision.
         amp_dtype: Autocast dtype used when ``amp`` is enabled (e.g. ``torch.float16``
             or ``torch.bfloat16``). AMP is scoped to CUDA; it is a no-op on CPU/MPS.
+        keypoint_align_corners: ``align_corners`` convention used by :meth:`describe` to sample
+            the descriptor volume at normalized keypoints. Must match the convention the keypoints
+            were normalized with: ``True`` for ALIKED, ``False`` for DeDoDe. Set automatically by
+            :meth:`from_pretrained`; can be overridden per call via ``describe(..., align_corners=...)``.
 
     Example:
         >>> sandesc = SANDesc().eval()
@@ -98,10 +111,12 @@ class SANDesc(nn.Module):
         up_output_channels: list[int] | None = None,
         amp: bool = False,
         amp_dtype: torch.dtype = torch.bfloat16,
+        keypoint_align_corners: bool = False,
     ) -> None:
         super().__init__()
         self.amp = amp
         self.amp_dtype = amp_dtype
+        self.keypoint_align_corners = keypoint_align_corners
         if down_output_channels is None:
             down_output_channels = [16, 32, 64, 64, 64]
         if up_output_channels is None:
@@ -174,9 +189,17 @@ class SANDesc(nn.Module):
         hub cache), only downloading it when it is missing. The weights are mapped to
         CPU; call ``.to(device)`` on the returned model to move it.
 
+        .. note::
+            The pretrained checkpoints are released under a non-commercial license, which is
+            more restrictive than Kornia's Apache-2.0 code license. Check the license terms at
+            the checkpoint source before using the pretrained weights outside of research.
+
         Args:
             detector: Keypoint detector the descriptor was trained for. One of
-                ``"aliked"`` or ``"dedode"``. Selects the default checkpoints.
+                ``"aliked"`` or ``"dedode"``. Selects the default checkpoints and the
+                ``align_corners`` convention (see :attr:`keypoint_align_corners`) used by
+                :meth:`describe`, since that convention depends on the detector, not the
+                checkpoint source.
             url: Direct URL to a checkpoint, or a list of URLs tried in order. If
                 ``None``, the predefined URLs for ``detector`` are used.
             amp: If True, run :meth:`forward` under CUDA automatic mixed precision.
@@ -185,9 +208,9 @@ class SANDesc(nn.Module):
         Returns:
             The SANDesc model with the pretrained weights loaded, in eval mode.
         """
+        if detector not in detector_align_corners:
+            raise ValueError(f"Unknown detector: {detector}. Available: {list(detector_align_corners)}")
         if url is None:
-            if detector not in urls:
-                raise ValueError(f"Unknown detector: {detector}. Available: {list(urls)}")
             url = urls[detector]
 
         model = cls(
@@ -196,6 +219,7 @@ class SANDesc(nn.Module):
             third_block=True,
             amp=amp,
             amp_dtype=amp_dtype,
+            keypoint_align_corners=detector_align_corners[detector],
         )
         state_dict = load_state_dict_from_url(
             url,
@@ -256,6 +280,7 @@ class SANDesc(nn.Module):
         mode: str = "nearest",
         normalize: bool = True,
         pad_if_not_divisible: bool = False,
+        align_corners: bool | None = None,
     ) -> Tensor:
         """Describe keypoints in the input images. If keypoints are not provided, returns the dense descriptors.
 
@@ -266,13 +291,16 @@ class SANDesc(nn.Module):
             images: Input images of shape :math:`(B, C, H, W)`, with values in the
                 :math:`[0, 1]` range. No further normalization is applied.
             keypoints: An optional tensor of shape :math:`(B, N, 2)` containing the detected
-                keypoints, normalized to the :math:`[-1, 1]` range (the convention used by the
-                kornia ALIKED and DeDoDe detectors).
+                keypoints, normalized to the :math:`[-1, 1]` range. The normalization convention
+                must match ``align_corners``: kornia ALIKED keypoints use ``align_corners=True``,
+                kornia DeDoDe keypoints use ``align_corners=False``.
             mode: ``grid_sample`` interpolation mode, ``"nearest"`` (default) or
                 ``"bilinear"``.
             normalize: If True (default), L2-normalize the descriptors.
             pad_if_not_divisible: if True, the non-16 divisible input is zero-padded to the
                 closest 16-multiply.
+            align_corners: ``grid_sample`` convention to sample ``keypoints`` with. If ``None``
+                (default), uses :attr:`keypoint_align_corners`.
 
         Returns:
             The descriptors of shape :math:`(B, N, D)`, or the dense descriptor volume of
@@ -285,10 +313,12 @@ class SANDesc(nn.Module):
             return F.normalize(volume, p=2, dim=1) if normalize else volume
 
         KORNIA_CHECK_SHAPE(keypoints, ["B", "N", "2"])
+        if align_corners is None:
+            align_corners = self.keypoint_align_corners
         # grid_sample does not support half/bfloat16 (autocast) volumes; upcast those to
         # float32 and match the grid dtype to the volume to avoid a dtype mismatch.
         sample_volume = volume.float() if volume.dtype in (torch.float16, torch.bfloat16) else volume
-        grid = keypoints[:, None].to(sample_volume.dtype)
-        sampled = F.grid_sample(sample_volume, grid, mode=mode, align_corners=False)
+        grid = keypoints[:, None].to(device=sample_volume.device, dtype=sample_volume.dtype)
+        sampled = F.grid_sample(sample_volume, grid, mode=mode, align_corners=align_corners)
         descriptors = sampled[:, :, 0].mT  # B,N,des_dim
         return F.normalize(descriptors, p=2, dim=-1) if normalize else descriptors
