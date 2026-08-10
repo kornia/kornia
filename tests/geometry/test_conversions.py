@@ -1229,8 +1229,13 @@ class TestNormalizePixelCoordinates(BaseTester):
         #   npc = kornia.geometry.conversions.normalize_pixel_coordinates
         #   npc(torch.tensor([[1., 1.]], dtype=torch.float64), 1, 1) -> [[199999999.0, 199999999.0]]
         #   npc(torch.tensor([[1., 1.]], dtype=torch.float64), 4, -3) -> [[199999999.0, -0.3333333333333334]]
-        # The mechanism is `(hw - 1).clamp(eps)`: size 1 gives 0 and a negative size gives a
-        # negative denominator, both clamped up to eps = 1e-8, so the factor becomes 2e8.
+        #   npc(torch.tensor([[1., 1.]], dtype=torch.float64), 4, 0) -> [[199999999.0, -0.3333333333333334]]
+        #   npc(torch.tensor([[1., 1.]], dtype=torch.float64), 0, 4) -> [[-0.3333333333333334, 199999999.0]]
+        # The mechanism is `(hw - 1).clamp(eps)`: size 1 gives 0, size 0 gives -1 and a negative
+        # size gives a more negative denominator, all clamped up to eps = 1e-8, so the factor
+        # becomes 2e8. All three of the sizes the #3940 warnings name (1, 0, negative) are pinned
+        # literally, so a fix that special-cases only one of them still flips this test. The
+        # height=0 leg is pinned too, so a fix that validates only `width` also flips it.
         # At float16 2e8 overflows to inf and the same literal overflows identically, so the
         # comparison stays meaningful at every dtype.
         if device.type == "mps":
@@ -1252,6 +1257,13 @@ class TestNormalizePixelCoordinates(BaseTester):
         expected_negative = torch.tensor([[199999999.0, -0.33333333]], device=device, dtype=dtype)
         self.assert_close(negative_width, expected_negative, atol=1e-2, rtol=1e-2)
 
+        zero_width = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 4, 0)
+        self.assert_close(zero_width, expected_negative, atol=1e-2, rtol=1e-2)
+
+        zero_height = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 0, 4)
+        expected_zero_height = torch.tensor([[-0.33333333, 199999999.0]], device=device, dtype=dtype)
+        self.assert_close(zero_height, expected_zero_height, atol=1e-2, rtol=1e-2)
+
     def test_wart_degenerate_size_3d_is_accepted_and_explodes(self, device, dtype):
         # Wart pin for #3940, 3-D sibling: asserts the CURRENT broken output that the docstring
         # warnings document. If this test fails, #3940 was (partly) fixed -- update or remove the
@@ -1263,6 +1275,8 @@ class TestNormalizePixelCoordinates(BaseTester):
         #   npc3 = kornia.geometry.conversions.normalize_pixel_coordinates3d
         #   npc3(torch.tensor([[1., 1., 1.]], dtype=torch.float64), 1, 5, 9)
         #     -> [[199999999.0, -0.75, -0.5]]
+        #   npc3(torch.tensor([[1., 1., 1.]], dtype=torch.float64), 0, 5, 9)
+        #     -> [[199999999.0, -0.75, -0.5]]   (depth 0 is pinned literally as well as depth 1)
         # Only the depth axis is degenerate here: x and y still use width 9 and height 5, so
         # 2 * 1 / 8 - 1 = -0.75 and 2 * 1 / 4 - 1 = -0.5 stay finite next to the exploded depth.
         if device.type == "mps":
@@ -1271,8 +1285,10 @@ class TestNormalizePixelCoordinates(BaseTester):
         pts = torch.tensor([[1.0, 1.0, 1.0]], device=device, dtype=dtype)
 
         out = kornia.geometry.conversions.normalize_pixel_coordinates3d(pts, 1, 5, 9)
+        zero_depth = kornia.geometry.conversions.normalize_pixel_coordinates3d(pts, 0, 5, 9)
 
         expected = torch.tensor([[199999999.0, -0.75, -0.5]], device=device, dtype=dtype)
+        self.assert_close(zero_depth, expected, atol=1e-2, rtol=1e-2)
         self.assert_close(out, expected, atol=1e-2, rtol=1e-2)
 
 
@@ -1379,8 +1395,12 @@ class TestDenormalizePixelCoordinates(BaseTester):
         # Snippet used to generate expected (torch only):
         #   dpc = kornia.geometry.conversions.denormalize_pixel_coordinates
         #   dpc(torch.tensor([[0., 0.]], dtype=torch.float64), 4, 1) -> [[5e-09, 1.5]]
+        #   dpc(torch.tensor([[0., 0.]], dtype=torch.float64), 4, 0) -> [[5e-09, 1.5]]
         #   dpc3 = kornia.geometry.conversions.denormalize_pixel_coordinates3d
         #   dpc3(torch.tensor([[0., 0., 0.]], dtype=torch.float64), 1, 5, 9) -> [[5e-09, 4.0, 2.0]]
+        #   dpc3(torch.tensor([[0., 0., 0.]], dtype=torch.float64), 0, 5, 9) -> [[5e-09, 4.0, 2.0]]
+        # Both size 1 and a literal size 0 are pinned, so a fix that special-cases only one of the
+        # sizes the #3940 warnings name still flips this test.
         # Here the clamped denominator multiplies instead of divides, so the degenerate axis
         # collapses to eps / 2 = 5e-09 rather than exploding to 2e8. The tolerance is tight
         # (rtol 1e-6, atol 0) on purpose: at atol 1e-2 the collapsed component would compare
@@ -1395,10 +1415,22 @@ class TestDenormalizePixelCoordinates(BaseTester):
         )
         self.assert_close(out, torch.tensor([[5e-09, 1.5]], device=device, dtype=dtype), atol=0.0, rtol=1e-6)
 
+        out_zero = kornia.geometry.conversions.denormalize_pixel_coordinates(
+            torch.tensor([[0.0, 0.0]], device=device, dtype=dtype), 4, 0
+        )
+        self.assert_close(out_zero, torch.tensor([[5e-09, 1.5]], device=device, dtype=dtype), atol=0.0, rtol=1e-6)
+
         out3d = kornia.geometry.conversions.denormalize_pixel_coordinates3d(
             torch.tensor([[0.0, 0.0, 0.0]], device=device, dtype=dtype), 1, 5, 9
         )
         self.assert_close(out3d, torch.tensor([[5e-09, 4.0, 2.0]], device=device, dtype=dtype), atol=0.0, rtol=1e-6)
+
+        out3d_zero = kornia.geometry.conversions.denormalize_pixel_coordinates3d(
+            torch.tensor([[0.0, 0.0, 0.0]], device=device, dtype=dtype), 0, 5, 9
+        )
+        self.assert_close(
+            out3d_zero, torch.tensor([[5e-09, 4.0, 2.0]], device=device, dtype=dtype), atol=0.0, rtol=1e-6
+        )
 
 
 class TestProjectPoints(BaseTester):
