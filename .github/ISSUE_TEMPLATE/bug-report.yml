@@ -38,6 +38,11 @@ body:
     id: environment
     attributes:
       label: Environment
+      description: |
+        Easiest: paste the output of this one-liner (add `python -m torch.utils.collect_env` for full GPU detail):
+        ```
+        python -c "import kornia, torch, sys, platform; print(f'kornia {kornia.__version__} | torch {torch.__version__} | python {sys.version.split()[0]} | {platform.platform()} | cuda {torch.version.cuda} (avail={torch.cuda.is_available()}) | mps={torch.backends.mps.is_available()}')"
+        ```
       value: |
         - Kornia version:
         - PyTorch version:
