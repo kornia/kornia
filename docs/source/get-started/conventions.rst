@@ -37,7 +37,10 @@ Coordinates and sizes
   points. ``warp_perspective(img, M, dsize=(2, 8))`` produces a 2-row,
   8-column image.
 - Normalized coordinates, where used, are ``[-1, 1]`` in both axes,
-  identical to :func:`torch.nn.functional.grid_sample`.
+  identical to :func:`torch.nn.functional.grid_sample` **called with**
+  ``align_corners=True`` — not to its default, ``align_corners=False``,
+  which places the same values up to half a pixel off — exactly half a
+  pixel at the image borders, and identically at the image center.
   :func:`kornia.geometry.create_meshgrid` returns a normalized grid by
   default (``normalized_coordinates=True``).
 
