@@ -37,17 +37,25 @@ Coordinates and sizes
   points. ``warp_perspective(img, M, dsize=(2, 8))`` produces a 2-row,
   8-column image.
 - Normalized coordinates, where used, are ``[-1, 1]`` in both axes,
-  identical to :func:`torch.nn.functional.grid_sample`.
+  identical to :func:`torch.nn.functional.grid_sample` **called with**
+  ``align_corners=True`` — not to its default, ``align_corners=False``,
+  which places the same values up to half a pixel off — exactly half a
+  pixel at the image borders, and identically at the image center.
   :func:`kornia.geometry.create_meshgrid` returns a normalized grid by
   default (``normalized_coordinates=True``).
+- 3D grids and 3D pixel coordinates are ``(d, x, y)`` — depth first, not
+  ``(x, y, z)``; :func:`kornia.geometry.grid.create_meshgrid3d` produces this
+  order and the ``*_pixel_coordinates3d`` conversions consume it.
 
 Angles and rotations
 --------------------
 
 - Angles are **degrees** in the 2D image APIs (``rotate``,
-  ``get_rotation_matrix2d``, ``RandomRotation``), and **radians** in the
-  3D/conversion APIs (``axis_angle_to_rotation_matrix``, ``So3``;
-  ``rad2deg``/``deg2rad`` exist to convert).
+  ``get_rotation_matrix2d``, ``RandomRotation``,
+  ``angle_to_rotation_matrix``), and **radians** in the 3D
+  rotation-representation APIs (``axis_angle_to_rotation_matrix``, ``So3``)
+  and in the polar conversions ``cart2pol``/``pol2cart``
+  (``rad2deg``/``deg2rad`` exist to convert).
 - 2D image rotations: positive angle rotates **counter-clockwise as
   displayed** (top-left origin, matching OpenCV):
 

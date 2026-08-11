@@ -22,6 +22,7 @@ Coordinates
 .. autofunction:: convert_points_from_homogeneous
 .. autofunction:: convert_points_to_homogeneous
 .. autofunction:: convert_affinematrix_to_homography
+.. autofunction:: convert_affinematrix_to_homography3d
 .. autofunction:: denormalize_pixel_coordinates
 .. autofunction:: normalize_pixel_coordinates
 .. autofunction:: denormalize_pixel_coordinates3d

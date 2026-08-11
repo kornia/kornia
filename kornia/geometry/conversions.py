@@ -79,6 +79,24 @@ __all__ = [
 def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
     r"""Convert angles from radians to degrees.
 
+    Convention:
+        - the input is in **radians** and the output in **degrees**; the
+          conversion is elementwise and preserves shape, device and float dtype
+
+    .. warning::
+        Two distinct defects, tracked in
+        `#3937 <https://github.com/kornia/kornia/issues/3937>`_. A ``float64``
+        input is left with only about seven correct significant digits
+        (``rad2deg(torch.tensor(math.pi, dtype=torch.float64)) - 180`` is
+        ``-5.0e-06``, not ``0``) because ``kornia.constants.pi`` is a
+        **float32** tensor — a defect in the constant itself, which several
+        other kornia modules also consume (the issue tracks the current
+        inventory). Separately, ``rad2deg``/``deg2rad``
+        themselves cast that constant to the input dtype, so an integer input
+        truncates ``pi`` to ``3``: ``rad2deg(torch.tensor([1, 2, 3]))`` returns
+        ``[60., 120., 180.]`` instead of ``[57.2958, 114.5916, 171.8873]``, and
+        a ``float64`` constant alone would not fix it.
+
     Args:
         tensor: torch.Tensor of arbitrary shape.
 
@@ -100,6 +118,18 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
 def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
     r"""Convert angles from degrees to radians.
 
+    Convention:
+        - the input is in **degrees** and the output in **radians**; it
+          performs the opposite conversion to
+          :func:`~kornia.geometry.conversions.rad2deg`
+
+    .. warning::
+        Inherits both defects of :func:`~kornia.geometry.conversions.rad2deg`
+        — the float32 ``kornia.constants.pi`` and the cast to the input dtype
+        (``deg2rad(torch.tensor([180, 90]))`` returns ``[3.0000, 1.5000]``).
+        See its warning and
+        `#3937 <https://github.com/kornia/kornia/issues/3937>`_.
+
     Args:
         tensor: torch.Tensor of arbitrary shape.
 
@@ -120,6 +150,14 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
 
 def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert polar coordinates to cartesian coordinates.
+
+    Convention:
+        - the arguments are ``(rho, phi)`` and the return is the tuple
+          ``(x, y)``, with ``x = rho * cos(phi)`` and ``y = rho * sin(phi)``:
+          ``rho = 5``, ``phi = atan2(4, 3)`` gives ``(3., 4.)``
+        - ``phi`` is in **radians** (``rho = 2``, ``phi = pi / 6`` gives
+          ``(1.7321, 1.)``) and follows the angle convention documented on
+          :func:`~kornia.geometry.conversions.cart2pol`
 
     Args:
         rho: torch.Tensor of arbitrary shape.
@@ -144,12 +182,49 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> tuple[torch.Tensor, torch.
 
 
 def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[torch.Tensor, torch.Tensor]:
-    """Convert cartesian coordinates to polar coordinates.
+    r"""Convert cartesian coordinates to polar coordinates.
+
+    Convention:
+        - the arguments are ``(x, y)`` and the return is the tuple
+          ``(rho, phi)``: ``(3., 4.)`` gives ``(5., 0.9273)``
+        - ``phi`` is ``atan2(y, x)`` in **radians**, so it lies in
+          :math:`[-\pi, \pi]`, is ``0`` on the ``+x`` axis and grows toward
+          ``+y`` (``x = 0``, ``y = 1`` gives ``phi = 1.5708``). Both endpoints
+          are attained on the ``-x`` axis, where the sign of ``y``'s zero
+          decides between ``-pi`` and ``+pi``
+        - kornia's image ``y`` axis points down, so a growing ``phi`` turns
+          **clockwise as displayed**. The relation to the other 2-D
+          angle op is the opposite sense: applying
+          ``angle_to_rotation_matrix(theta)`` to a nonzero point *decreases*
+          that point's ``phi`` by ``theta`` degrees **modulo** :math:`2\pi` —
+          the result is re-wrapped into :math:`[-\pi, \pi]`, so a point at
+          ``phi = -170`` degrees rotated by ``theta = 30`` returns
+          ``phi = +160``, not ``-200``. At the origin ``phi`` carries no
+          direction and the relation does not apply
+        - ``rho`` is ``sqrt(x ** 2 + y ** 2 + eps)``, not
+          ``sqrt(x ** 2 + y ** 2)`` — see the warning below
+
+    .. warning::
+        ``eps`` is added *inside* the square root, so the expression evaluated
+        is ``sqrt(x ** 2 + y ** 2 + eps)`` and ``rho`` is biased high. Whether
+        that bias survives the rounding of the working dtype depends on where
+        it is measured. Away from the origin it is usually invisible:
+        ``cart2pol(3., 4.)`` returns ``5.000000001`` in ``float64`` but rounds
+        back to exactly ``5.`` in ``float32`` and ``float16``. At the origin it
+        is the whole answer: ``cart2pol(torch.tensor(0.), torch.tensor(0.))``
+        returns ``rho = 9.9999997e-05`` in ``float32`` and ``1e-04`` in
+        ``float64`` rather than ``0`` (in ``float16``, ``eps`` underflows the
+        sum and ``rho`` is ``0.``). Tracked in
+        `#3939 <https://github.com/kornia/kornia/issues/3939>`_.
 
     Args:
         x: torch.Tensor of arbitrary shape.
         y: torch.Tensor of same arbitrary shape.
-        eps: To avoid division by zero.
+        eps: added inside the square root when computing ``rho``. A positive
+            ``eps`` that is representable in the working dtype keeps the
+            gradient of ``rho`` finite at the origin, where it is ``nan`` with
+            ``eps=0``. The default ``1e-8`` underflows in ``float16`` (see the
+            warning above), so there the origin gradient is still ``nan``.
 
     Returns:
         - rho: torch.Tensor with same shape as input.
@@ -172,12 +247,41 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
 def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Convert points from homogeneous to Euclidean space.
 
+    Convention:
+        - the **last** component of the last dimension is the homogeneous
+          coordinate ``w`` and is dropped from the output
+        - requires rank :math:`\geq 2`: a bare :math:`(D,)` point raises
+          ``ValueError``
+        - when ``abs(w) > eps`` the remaining components are divided by ``w``
+          with its sign kept (``[[2., 4., -2.]]`` gives ``[[-1., -2.]]``), up to
+          the bias described in the warning below
+        - when ``abs(w) <= eps`` (default ``eps = 1e-8``; the test is a strict
+          ``>``) the numerator is instead returned **unchanged**, following
+          OpenCV: ``[[2., 4., 0.]]`` gives ``[[2., 4.]]``
+
+    .. warning::
+        The division is by ``w + eps`` rather than by ``w``, and ``eps`` is
+        added without regard to the sign of ``w``, so the **signed** relative
+        error of the result is exactly ``-eps / (w + eps)``. At ``w = 2e-8``
+        that is ``-1/3``: the exact result ``[1e8, 2e8]`` comes out as
+        ``[6.67e7, 1.33e8]`` (33 % low). At ``w = -2e-8`` it is ``+1``:
+        ``[-1e8, -2e8]`` comes out as ``[-2e8, -4e8]`` (100 % high). Only for
+        ``abs(w)`` much larger than ``eps`` does it reduce to the familiar
+        ``-eps / w``, and there it is usually below the rounding of the working
+        dtype — at ``w = 2`` the measured error is ``-5.0e-09`` in ``float64``,
+        while in ``float32`` ``2 + eps`` rounds back to ``2`` and the result is
+        exact. The numbers above assume ``eps`` is representable: in
+        ``float16`` both the default ``eps`` and ``w = 2e-8`` underflow to
+        ``0``, so ``[[2., 4., 2e-8]]`` takes the ``abs(w) <= eps`` pass-through
+        branch and returns ``[[2., 4.]]``. Tracked in
+        `#3938 <https://github.com/kornia/kornia/issues/3938>`_.
+
     Args:
-        points: the points to be transformed of shape :math:`(B, N, D)`.
+        points: the points to be transformed of shape :math:`(*, N, D)`.
         eps: to avoid division by zero.
 
     Returns:
-        the points in Euclidean space :math:`(B, N, D-1)`.
+        the points in Euclidean space :math:`(*, N, D-1)`.
 
     Examples:
         >>> input = torch.tensor([[0., 0., 1.]])
@@ -205,6 +309,15 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
 
 def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
     r"""Convert points from Euclidean to homogeneous space.
+
+    Convention:
+        - appends the constant ``1`` as the **last** component of the last
+          dimension, which is where
+          :func:`~kornia.geometry.conversions.convert_points_from_homogeneous`
+          expects it
+        - requires rank :math:`\geq 2`: a bare :math:`(D,)` point raises
+          ``ValueError``
+        - the input dtype is preserved, integer dtypes included
 
     Args:
         points: the points to be transformed with shape :math:`(*, N, D)`.
@@ -235,6 +348,12 @@ def _convert_affinematrix_to_homography_impl(A: torch.Tensor) -> torch.Tensor:
 def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
     r"""Convert batch of affine matrices.
 
+    Convention:
+        - appends the row ``[0, 0, 1]`` at the bottom and copies the
+          :math:`2 \times 3` block verbatim; the input tensor is not modified
+        - the rank is enforced to be exactly 3, so batching is **mandatory**: an
+          unbatched :math:`(2, 3)` matrix raises ``ValueError``
+
     Args:
         A: the affine matrix with shape :math:`(B,2,3)`.
 
@@ -261,6 +380,12 @@ def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
 
 def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
     r"""Convert batch of 3d affine matrices.
+
+    Convention:
+        - same as
+          :func:`~kornia.geometry.conversions.convert_affinematrix_to_homography`,
+          except that ``A`` is :math:`(B, 3, 4)` and the appended bottom row is
+          ``[0, 0, 0, 1]``
 
     Args:
         A: the affine matrix with shape :math:`(B,3,4)`.
@@ -894,14 +1019,39 @@ def quaternion_from_euler(
 def normalize_pixel_coordinates(
     pixel_coordinates: torch.Tensor, height: int, width: int, eps: float = 1e-8
 ) -> torch.Tensor:
-    r"""Normalize pixel coordinates between -1 and 1.
+    r"""Map pixel coordinates so that the first and last pixel of each axis become -1 and 1.
 
-    Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
+    Convention:
+        - ``pixel_coordinates`` is :math:`(*, 2)` in ``(x, y)`` order: ``x``
+          indexes columns and is scaled by ``width``, ``y`` indexes rows and is
+          scaled by ``height``. The positional argument order is the other way
+          round — ``(pixel_coordinates, height, width)``
+        - the mapping is **corner-aligned**,
+          ``x_norm = 2 * x / (width - 1) - 1``: for ``width = 4`` the columns
+          ``0``, ``1``, ``3`` map to ``-1``, ``-1/3``, ``+1``. This is the
+          ``align_corners=True`` convention;
+          :func:`torch.nn.functional.grid_sample` at its default
+          ``align_corners=False`` would instead place the first and last of
+          those values at pixels ``-0.5`` and ``3.5`` — half a pixel outside
+          the image on each side — so ``align_corners=True`` must be passed
+          explicitly when feeding this output to it. Note that kornia's own
+          :func:`~kornia.geometry.transform.remap` resolves
+          ``align_corners=None`` to ``False``
+        - the output is **not** clamped: coordinates outside the image
+          extrapolate linearly past ``[-1, 1]``, as the example below shows
+
+    .. warning::
+        ``height`` and ``width`` are not validated. For a degenerate size (``1``,
+        ``0`` or negative) the denominator ``size - 1`` is clamped up to ``eps``,
+        so
+        ``normalize_pixel_coordinates(torch.tensor([[1., 1.]], dtype=torch.float64), 1, 1)``
+        silently returns ``[[199999999.0, 199999999.0]]`` instead of raising.
+        Tracked in `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
 
     Args:
         pixel_coordinates: the grid with pixel coordinates. Shape can be :math:`(*, 2)`.
-        width: the maximum width in the x-axis.
         height: the maximum height in the y-axis.
+        width: the maximum width in the x-axis.
         eps: safe division by zero.
 
     Return:
@@ -938,10 +1088,29 @@ def denormalize_pixel_coordinates(
 
     The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).
 
+    Convention:
+        - the inverse of
+          :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`,
+          ``x = (width - 1) * (x_norm + 1) / 2``, with the same ``(x, y)``
+          component order and the same ``(pixel_coordinates, height, width)``
+          positional order
+
+    .. warning::
+        For a degenerate ``height``/``width`` (``1``, ``0`` or negative) the
+        clamped denominator collapses that component instead of exploding it:
+        ``denormalize_pixel_coordinates(torch.tensor([[0., 0.]], dtype=torch.float64), 4, 1)``
+        returns ``[[5e-09, 1.5]]``. This clamp is the exact reciprocal of the one
+        in :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`, so a
+        normalize-then-denormalize round trip returns the input as long as the
+        normalized value is finite — in ``float16`` ``eps`` underflows, the
+        normalized component is ``inf`` and the round trip returns ``nan``; it
+        is a single call on its own that is wrong. Tracked in
+        `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
+
     Args:
         pixel_coordinates: the normalized grid coordinates. Shape can be :math:`(*, 2)`.
-        width: the maximum width in the x-axis.
         height: the maximum height in the y-axis.
+        width: the maximum width in the x-axis.
         eps: safe division by zero.
 
     Return:
@@ -970,9 +1139,26 @@ def denormalize_pixel_coordinates(
 def normalize_pixel_coordinates3d(
     pixel_coordinates: torch.Tensor, depth: int, height: int, width: int, eps: float = 1e-8
 ) -> torch.Tensor:
-    r"""Normalize pixel coordinates between -1 and 1.
+    r"""Map 3d pixel coordinates so that the first and last sample of each axis become -1 and 1.
 
-    Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
+    Convention:
+        - ``pixel_coordinates`` is :math:`(*, 3)` in ``(d, x, y)`` order —
+          **depth first, then x, then y**, *not* ``(x, y, z)``. This is the
+          order :func:`~kornia.geometry.grid.create_meshgrid3d` produces. The
+          three components are scaled by ``depth - 1``, ``width - 1`` and
+          ``height - 1`` respectively, so with ``depth=3, height=5, width=9``
+          the coordinate ``[2., 8., 4.]`` maps to ``[1., 1., 1.]``
+        - the positional argument order is
+          ``(pixel_coordinates, depth, height, width)``
+        - corner-aligned and unclamped in each axis exactly as in
+          :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`
+
+    .. warning::
+        ``depth``, ``height`` and ``width`` are not validated; a degenerate size
+        (``1``, ``0`` or negative) clamps that axis' denominator up to ``eps``
+        and blows the corresponding component up by a factor of ``2e8``
+        (``inf`` in ``float16``, where ``eps`` underflows). Tracked
+        in `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
 
     Args:
         pixel_coordinates: the grid with pixel coordinates. Shape can be :math:`(*, 3)`.
@@ -1002,13 +1188,28 @@ def normalize_pixel_coordinates3d(
 def denormalize_pixel_coordinates3d(
     pixel_coordinates: torch.Tensor, depth: int, height: int, width: int, eps: float = 1e-8
 ) -> torch.Tensor:
-    r"""Denormalize pixel coordinates.
+    r"""Denormalize 3d pixel coordinates.
 
-    The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).
+    Convention:
+        - the inverse of
+          :func:`~kornia.geometry.conversions.normalize_pixel_coordinates3d`,
+          with the same ``(d, x, y)`` component order and the same
+          ``(pixel_coordinates, depth, height, width)`` positional order: with
+          ``depth=3, height=5, width=9`` the input ``[0., 0., 0.]`` maps back to
+          ``[1., 4., 2.]``
+
+    .. warning::
+        For a degenerate ``depth``/``height``/``width`` (``1``, ``0`` or
+        negative) the clamped denominator scales that component by ``5e-09``
+        (``0`` in ``float16``, where ``eps`` underflows) instead of by
+        ``(size - 1) / 2`` — the same reciprocal-clamp behavior as
+        :func:`~kornia.geometry.conversions.denormalize_pixel_coordinates`,
+        whose warning walks through the round trip. Tracked in
+        `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
 
     Args:
         pixel_coordinates: the normalized grid coordinates. Shape can be :math:`(*, 3)`.
-        depth: the maximum depth in the x-axis.
+        depth: the maximum depth in the z-axis.
         height: the maximum height in the y-axis.
         width: the maximum width in the x-axis.
         eps: safe division by zero.
@@ -1033,6 +1234,25 @@ def denormalize_pixel_coordinates3d(
 
 def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
     r"""Create a rotation matrix out of angles in degrees.
+
+    Convention:
+        - ``angle`` is in **degrees**, shape :math:`(*)` in and
+          :math:`(*, 2, 2)` out
+        - the matrix is ``[[cos, sin], [-sin, cos]]`` with ``det = +1``; for
+          ``angle = 30`` it is ``[[0.8660, 0.5000], [-0.5000, 0.8660]]``
+        - applied on the left to a column vector ``(x, y)``, ``angle = 30`` maps
+          ``(1., 0.)`` to ``(0.8660, -0.5000)`` — counter-clockwise **as
+          displayed** under kornia's y-down image axes. In the raw coordinate
+          plane this is the opposite sense to
+          :func:`~kornia.geometry.conversions.cart2pol`, whose Convention block
+          spells out the modulo-:math:`2\pi` relation between the two ops
+
+    .. warning::
+        The degrees-to-radians step is
+        :func:`~kornia.geometry.conversions.deg2rad`, so it inherits both
+        defects of :func:`~kornia.geometry.conversions.rad2deg` — the float32
+        ``kornia.constants.pi`` and the cast to the input dtype. See its
+        warning and `#3937 <https://github.com/kornia/kornia/issues/3937>`_.
 
     Args:
         angle: tensor of angles in degrees, any shape :math:`(*)`.
@@ -1241,13 +1461,24 @@ def normalize_homography3d(
 def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
     """Normalize points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
 
+    Convention:
+        - ``point_2d`` is :math:`(*, 2)` in pixel ``(u, v)`` order and
+          ``camera_matrix`` is a row-major pinhole :math:`(*, 3, 3)` with
+          ``fx = K[0, 0]``, ``fy = K[1, 1]``, ``cx = K[0, 2]``, ``cy = K[1, 2]``
+        - the output is the calibrated camera coordinate
+          ``x = (u - cx) / fx``, ``y = (v - cy) / fy``: with
+          ``K = [[100., 0., 320.], [0., 200., 240.], [0., 0., 1.]]`` the pixel
+          ``(420., 440.)`` maps to ``(1., 1.)``
+        - the skew entry ``K[0, 1]`` is **ignored**; only the two diagonal
+          entries and the ``[:2, 2]`` column are read
+
     Args:
         point_2d: tensor containing the 2d points in the image pixel coordinates. The shape of the tensor can be
                   :math:`(*, 2)`.
         camera_matrix: tensor containing the intrinsics camera matrix. The tensor shape must be :math:`(*, 3, 3)`.
 
     Returns:
-        tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
+        tensor of normalized camera coordinates :math:`(x, y)` with shape :math:`(*, 2)`.
 
     Example:
         >>> _ = torch.manual_seed(0)
@@ -1273,15 +1504,22 @@ def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torc
 
 
 def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
-    """Normalize points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
+    """Denormalize points with intrinsics. Useful for converting normalized camera points back to pixels.
+
+    Convention:
+        - the inverse of
+          :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`,
+          which documents the ``K`` layout: ``u = x * fx + cx`` and
+          ``v = y * fy + cy``, and the skew entry ``K[0, 1]`` is ignored here
+          too
 
     Args:
-        point_2d_norm: tensor containing the 2d points in the image pixel coordinates. The shape of the tensor can be
-                       :math:`(*, 2)`.
+        point_2d_norm: tensor containing the 2d points in normalized camera coordinates. The shape of the tensor can
+                       be :math:`(*, 2)`.
         camera_matrix: tensor containing the intrinsics camera matrix. The tensor shape must be :math:`(*, 3, 3)`.
 
     Returns:
-        tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
+        tensor of :math:`(u, v)` pixel coordinates with shape :math:`(*, 2)`.
 
     Example:
         >>> _ = torch.manual_seed(0)
@@ -1578,11 +1816,19 @@ def vector_to_skew_symmetric_matrix(vec: torch.Tensor) -> torch.Tensor:
         v3 & 0 & -v1 \\
         -v2 & v1 & 0\end{bmatrix}
 
+    Convention:
+        - the matrix acts on the left as the first cross-product factor:
+          ``vector_to_skew_symmetric_matrix(v) @ x`` equals ``cross(v, x)``, not
+          its negation — for ``v = (1., 2., 3.)`` and ``x = (4., 5., 6.)`` both
+          are ``(-3., 6., -3.)``
+        - accepts :math:`(3,)` or :math:`(B, 3)` only; any higher rank raises
+          ``ValueError``
+
     Args:
-        vec: tensor of shape :math:`(B, 3)`.
+        vec: tensor of shape :math:`(3,)` or :math:`(B, 3)`.
 
     Returns:
-        tensor of shape :math:`(B, 3, 3)`.
+        tensor of shape :math:`(3, 3)` or :math:`(B, 3, 3)` respectively.
 
     Example:
         >>> vec = torch.tensor([1.0, 2.0, 3.0])
