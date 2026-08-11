@@ -17,6 +17,7 @@
 
 import inspect
 import sys
+import warnings
 from functools import partial
 
 import numpy as np
@@ -131,6 +132,126 @@ class TestAngleAxisToQuaternion(BaseTester):
         # evaluate function gradient
         self.gradcheck(partial(kornia.geometry.conversions.axis_angle_to_quaternion), (axis_angle,))
 
+    def test_convention_theta_beyond_pi_returns_the_w_negative_half(self, device, dtype):
+        # Convention pin: axis_angle_to_quaternion applies w = cos(theta/2) and
+        # (x, y, z) = sin(theta/2) * axis verbatim, with NO canonicalisation to w >= 0, so any
+        # theta > pi comes back in the w < 0 half of the double cover. A full turn about +x gives
+        # (-1, 0, 0, 0) -- the same rotation as the identity quaternion (1, 0, 0, 0) that a
+        # canonicalising implementation would return, but not the same four numbers. The second
+        # case is off-axis (theta = 4 rad about (1, 2, 3)/sqrt(14)) so that a sign flip on any
+        # single component is caught as well.
+        # Snippet used to generate expected (stdlib only):
+        #   import math
+        #   math.cos(math.pi), math.sin(math.pi) -> (-1.0, 1.2246467991473532e-16)
+        #   n = math.sqrt(14.0); axis = (1 / n, 2 / n, 3 / n); theta = 4.0
+        #   [theta * a for a in axis]
+        #     -> [1.0690449676496976, 2.138089935299395, 3.2071349029490928]
+        #   [math.cos(theta / 2)] + [math.sin(theta / 2) * a for a in axis]
+        #     -> [-0.4161468365471424, 0.24301995956120354, 0.48603991912240707, 0.7290598786836107]
+        full_turn = kornia.geometry.conversions.axis_angle_to_quaternion(
+            torch.tensor([6.283185307179586, 0.0, 0.0], device=device, dtype=dtype)
+        )
+        self.assert_close(full_turn, torch.tensor([-1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype))
+
+        off_axis = kornia.geometry.conversions.axis_angle_to_quaternion(
+            torch.tensor([1.0690449676496976, 2.138089935299395, 3.2071349029490928], device=device, dtype=dtype)
+        )
+        self.assert_close(
+            off_axis,
+            torch.tensor(
+                [-0.4161468365471424, 0.24301995956120354, 0.48603991912240707, 0.7290598786836107],
+                device=device,
+                dtype=dtype,
+            ),
+        )
+
+    def test_convention_axis_angle_quaternion_roundtrip_is_exact_in_float64(self, device):
+        # Convention pin: axis_angle_to_quaternion and quaternion_to_axis_angle are exact inverses
+        # in float64 over the whole [0, pi] range, including the two singular points theta = 0 and
+        # theta = pi. This is what separates the quaternion leg from the matrix leg: the same
+        # round-trip through axis_angle_to_rotation_matrix is only accurate to ~1e-6 even in
+        # float64 (see TestRotationMatrixToAngleAxis.test_convention_axis_angle_roundtrip_
+        # tolerance_is_1e_6_in_float64), so "the round-trip is exact" is a statement about this
+        # pair only. float64 is hardcoded and the dtype fixture dropped because exactness is a
+        # float64-only claim; MPS is skipped visibly because it has no float64 at all.
+        # Snippet used to generate the inputs (stdlib only):
+        #   import math
+        #   n = math.sqrt(14.0); axis = (1 / n, 2 / n, 3 / n)
+        #   [[theta * a for a in axis] for theta in (0.0, 1e-3, 0.7, math.pi)]
+        # Measured max |roundtrip - input| at those four thetas (torch 2.9.1, cpu float64):
+        #   0.0, 2.168404344971009e-19, 0.0, 0.0 -- so atol 1e-15 is ~3 orders above the worst
+        #   observed error and ~9 orders below the 1e-6 the matrix leg would give.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64, and this exactness pin is float64-only by construction")
+
+        axis_angle = torch.tensor(
+            [
+                [0.0, 0.0, 0.0],
+                [0.0002672612419124244, 0.0005345224838248488, 0.0008017837257372733],
+                [0.18708286933869706, 0.3741657386773941, 0.5612486080160912],
+                [0.839625954181357, 1.679251908362714, 2.518877862544071],
+            ],
+            device=device,
+            dtype=torch.float64,
+        )
+
+        roundtrip = kornia.geometry.conversions.quaternion_to_axis_angle(
+            kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
+        )
+
+        self.assert_close(roundtrip, axis_angle, atol=1e-15, rtol=0.0)
+
+    # Convention pin for the four deprecated aliases (they have no test class and no docstring of
+    # their own; this class is named after one of them). Each still works and is a thin wrapper:
+    # it emits a DeprecationWarning naming both the old and the new symbol, and returns output
+    # that is bit-identical to the replacement's. The replacement, not the alias, is where the
+    # Convention block lives.
+    # The call is wrapped in warnings.catch_warnings() because invoking a kornia deprecated symbol
+    # rewrites the process-global DeprecationWarning filters; pytest.warns alone does not restore
+    # them, so without the wrapper this pin would leak filter state into every later test.
+    # Snippet used to generate expected (torch only):
+    #   import warnings, kornia.geometry.conversions as C
+    #   with warnings.catch_warnings(record=True) as w:
+    #       warnings.simplefilter("always")
+    #       out = C.angle_axis_to_quaternion(torch.tensor([0.1, 0.2, 0.3]))
+    #   w[0].category, str(w[0].message) -> DeprecationWarning, 'Since kornia 0.7.0 the
+    #     `angle_axis_to_quaternion` is deprecated in favor of `axis_angle_to_quaternion`.'
+    #   torch.equal(out, C.axis_angle_to_quaternion(torch.tensor([0.1, 0.2, 0.3]))) -> True
+    @pytest.mark.parametrize(
+        ("deprecated_name", "replacement_name", "arg"),
+        [
+            ("angle_axis_to_rotation_matrix", "axis_angle_to_rotation_matrix", [[0.1, 0.2, 0.3]]),
+            (
+                "rotation_matrix_to_angle_axis",
+                "rotation_matrix_to_axis_angle",
+                [
+                    [0.5357142857142858, -0.6229365034008422, 0.5700529070291328],
+                    [0.765793646257985, 0.6428571428571429, -0.01716931065742361],
+                    [-0.3557671927434186, 0.4457407392288521, 0.8214285714285714],
+                ],
+            ),
+            ("quaternion_to_angle_axis", "quaternion_to_axis_angle", [1.0, 2.0, 3.0, 4.0]),
+            ("angle_axis_to_quaternion", "axis_angle_to_quaternion", [0.1, 0.2, 0.3]),
+        ],
+    )
+    def test_convention_deprecated_alias_warns_and_matches_replacement(
+        self, device, dtype, deprecated_name, replacement_name, arg
+    ):
+        deprecated = getattr(kornia.geometry.conversions, deprecated_name)
+        replacement = getattr(kornia.geometry.conversions, replacement_name)
+        tensor = torch.tensor(arg, device=device, dtype=dtype)
+
+        expected = replacement(tensor)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("always")
+            with pytest.warns(
+                DeprecationWarning, match=f"`{deprecated_name}` is deprecated in favor of `{replacement_name}`"
+            ):
+                actual = deprecated(tensor)
+
+        assert torch.equal(actual, expected)
+
 
 class TestQuaternionToAngleAxis(BaseTester):
     def test_smoke(self, device, dtype):
@@ -195,6 +316,49 @@ class TestQuaternionToAngleAxis(BaseTester):
         quaternion = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype) + eps
         # evaluate function gradient
         self.gradcheck(partial(kornia.geometry.conversions.quaternion_to_axis_angle), (quaternion,))
+
+    def test_convention_double_cover_q_and_minus_q_give_the_same_axis_angle(self, device, dtype):
+        # Convention pin: q and -q are the same rotation (the unit quaternions double-cover SO(3)),
+        # and quaternion_to_axis_angle collapses the two onto one bit-identical vector -- it picks
+        # the representative with |theta| <= pi rather than propagating the input's sign. torch.equal
+        # rather than assert_close because the agreement is exact, not approximate: measured max
+        # difference is 0.0 over 500 random float64 quaternions (seeded torch.Generator(6)),
+        # bit-identical in 500/500 of them, and at float32/float16/bfloat16 for the pinned input.
+        # Pinned on a non-unit, non-axis-aligned quaternion so no symmetry can carry the assertion.
+        # Snippet used to generate expected (stdlib only, q = (1, 2, 3, 4) normalised):
+        #   import math
+        #   u = [v / math.sqrt(30.0) for v in (1.0, 2.0, 3.0, 4.0)]
+        #   nv = math.sqrt(u[1] ** 2 + u[2] ** 2 + u[3] ** 2)
+        #   theta = 2 * math.atan2(nv, u[0])
+        #   [theta * u[i + 1] / nv for i in range(3)]
+        #     -> [1.03038058532817, 1.5455708779922552, 2.06076117065634]
+        quaternion = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype)
+
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+
+        self.assert_close(
+            axis_angle,
+            torch.tensor([1.03038058532817, 1.5455708779922552, 2.06076117065634], device=device, dtype=dtype),
+        )
+        assert torch.equal(kornia.geometry.conversions.quaternion_to_axis_angle(-quaternion), axis_angle)
+
+    def test_convention_quaternion_to_axis_angle_is_scale_invariant(self, device, dtype):
+        # Convention pin (quaternion_to_axis_angle has no test class under its own name; this class
+        # is the one that exercises it): the function does not require -- and does not check -- a
+        # unit quaternion. It is homogeneous in its input, so scaling the whole quaternion leaves
+        # the axis-angle vector bit-identical. The scale factors are powers of two so that the
+        # scaling itself is exact in binary floating point at every dtype; the invariance is a
+        # property of atan2 plus the 2*theta/||v|| factor, not of the particular numbers (verified
+        # bit-identical in 500/500 random float64 quaternions, seeded torch.Generator(7), for both
+        # factors -- a non-power-of-two factor such as 3 is invariant to rounding only, 82/500).
+        # Contrast quaternion_exp_to_log, which does NOT normalise and is silently wrong on a
+        # non-unit input.
+        quaternion = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype)
+
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+
+        assert torch.equal(kornia.geometry.conversions.quaternion_to_axis_angle(2.0 * quaternion), axis_angle)
+        assert torch.equal(kornia.geometry.conversions.quaternion_to_axis_angle(0.5 * quaternion), axis_angle)
 
 
 class TestRotationMatrixToQuaternion(BaseTester):
@@ -295,6 +459,78 @@ class TestRotationMatrixToQuaternion(BaseTester):
 
         self.assert_close(actual, expected)
 
+    def test_convention_w_is_not_canonicalised_to_non_negative(self, device, dtype):
+        # Convention pin: rotation_matrix_to_quaternion picks ONE of the two quaternions that
+        # represent the input rotation, and the rule is NOT "return w >= 0". The branch is selected
+        # by the sign of the trace:
+        #   trace > 0  -> the returned w is >= 0 (0/325 negative over random rotations);
+        #   trace <= 0 -> the *dominant* of x, y, z is forced >= 0 and w may come back NEGATIVE
+        #                 (96/181 such cases in the audit sweep).
+        # So a caller that assumes a non-negative real part is wrong for every rotation past ~120
+        # degrees. Both branches are pinned here, each with a rotation whose "natural" quaternion
+        # has the opposite sign of w, which is exactly what a canonicalising implementation would
+        # not reproduce.
+        # Expected values are the true unit quaternions (computed with stdlib below), not the
+        # function's own output: the returned components carry an extra ~1e-9 from the default
+        # eps added inside the sqrt, which bare assert_close absorbs and no pin here asserts.
+        # Snippet used to generate the matrices and the expected quaternions (stdlib only):
+        #   import math
+        #   n = math.sqrt(14.0)
+        #   R = I + sin(theta) * K + (1 - cos(theta)) * K @ K   # Rodrigues, K = skew(axis)
+        #   axis, theta = (1 / n, 2 / n, -3 / n), math.radians(170.0)   # trace -0.9696155060244165
+        #     R -> [[-0.8430357706541933,  0.4227722475733091, -0.3324970918358584],
+        #           [ 0.14431568185875046, -0.4177198235801487, -0.8970413217671823],
+        #           [-0.5181348023122309, -0.8042224665289962,  0.29114008820992554]]
+        #     the two representatives are +-[0.08715574274765814, 0.2662442321985726,
+        #       0.5324884643971451, -0.7987326965957178]; |z| dominates, so the one with z >= 0
+        #       is returned and its w is negative
+        #   axis, theta = (1 / n, 2 / n, 3 / n), math.radians(60.0)     # trace 2.0
+        #     R -> [[ 0.5357142857142858, -0.6229365034008422,  0.5700529070291328],
+        #           [ 0.765793646257985,   0.6428571428571429, -0.01716931065742361],
+        #           [-0.3557671927434186,  0.4457407392288521,  0.8214285714285714]]
+        #     representatives +-[0.8660254037844387, 0.13363062095621217, 0.26726124191242434,
+        #       0.40089186286863654]; the w >= 0 one is returned
+        rot_trace_negative = torch.tensor(
+            [
+                [-0.8430357706541933, 0.4227722475733091, -0.3324970918358584],
+                [0.14431568185875046, -0.4177198235801487, -0.8970413217671823],
+                [-0.5181348023122309, -0.8042224665289962, 0.29114008820992554],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        quaternion_trace_negative = kornia.geometry.conversions.rotation_matrix_to_quaternion(rot_trace_negative)
+        self.assert_close(
+            quaternion_trace_negative,
+            torch.tensor(
+                [-0.08715574274765814, -0.2662442321985726, -0.5324884643971451, 0.7987326965957178],
+                device=device,
+                dtype=dtype,
+            ),
+        )
+        assert quaternion_trace_negative[0] < 0.0
+        assert quaternion_trace_negative[3] > 0.0
+
+        rot_trace_positive = torch.tensor(
+            [
+                [0.5357142857142858, -0.6229365034008422, 0.5700529070291328],
+                [0.765793646257985, 0.6428571428571429, -0.01716931065742361],
+                [-0.3557671927434186, 0.4457407392288521, 0.8214285714285714],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        quaternion_trace_positive = kornia.geometry.conversions.rotation_matrix_to_quaternion(rot_trace_positive)
+        self.assert_close(
+            quaternion_trace_positive,
+            torch.tensor(
+                [0.8660254037844387, 0.13363062095621217, 0.26726124191242434, 0.40089186286863654],
+                device=device,
+                dtype=dtype,
+            ),
+        )
+        assert quaternion_trace_positive[0] > 0.0
+
 
 class TestQuaternionToRotationMatrix(BaseTester):
     @pytest.mark.parametrize("batch_dims", ((), (1,), (3,), (8,), (1, 1), (5, 6)))
@@ -341,6 +577,113 @@ class TestQuaternionToRotationMatrix(BaseTester):
         expected = op(quaternion)
 
         self.assert_close(actual, expected)
+
+    def test_convention_quaternion_component_order_is_w_x_y_z(self, device, dtype):
+        # Convention pin -- THE trap of this module: quaternions are (w, x, y, z), real part FIRST.
+        # (1, 0, 0, 0) is the identity. The (x, y, z, w) misreading of the same four numbers,
+        # (0, 0, 0, 1), does not raise and does not return anything obviously wrong -- it returns
+        # diag(-1, -1, 1), a perfectly valid 180-degree rotation about z. That is why the
+        # counter-literal is pinned alongside the identity: an order swap is silent, and only the
+        # second assertion catches it.
+        # Snippet used to generate expected (stdlib only, R = I + 2*w*K + 2*K@K with K = skew(v)):
+        #   q = (1, 0, 0, 0) -> v = 0, K = 0 -> R = I
+        #   q = (0, 0, 0, 1) -> w = 0, v = (0, 0, 1)
+        #     K @ K = diag(-1, -1, 0) -> R = I + 2 * diag(-1, -1, 0) = diag(-1, -1, 1)
+        real_part_first = kornia.geometry.conversions.quaternion_to_rotation_matrix(
+            torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        )
+        # .to(dtype) because quaternion_to_rotation_matrix returns float32 for float16/bfloat16
+        # inputs; the cast keeps this pin about the component order and nothing else.
+        self.assert_close(real_part_first.to(dtype), torch.eye(3, device=device, dtype=dtype))
+
+        read_as_xyzw = kornia.geometry.conversions.quaternion_to_rotation_matrix(
+            torch.tensor([0.0, 0.0, 0.0, 1.0], device=device, dtype=dtype)
+        )
+        self.assert_close(
+            read_as_xyzw.to(dtype),
+            torch.diag(torch.tensor([-1.0, -1.0, 1.0], device=device, dtype=dtype)),
+        )
+
+    def test_convention_double_cover_q_and_minus_q_give_identical_matrices(self, device, dtype):
+        # Convention pin: the unit quaternions double-cover SO(3), and every term of the rotation
+        # matrix is a product of two quaternion components, so negating the whole quaternion leaves
+        # the matrix BIT-identical -- not merely close. torch.equal, not assert_close: the measured
+        # max difference is exactly 0.0, and the identity held in 500/500 random float64 draws
+        # (seeded torch.Generator(6)) as well as at float32/float16/bfloat16 for the pinned input.
+        # The input is non-unit and non-axis-aligned so the pin cannot pass by symmetry.
+        quaternion = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype)
+
+        rot = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
+
+        assert torch.equal(kornia.geometry.conversions.quaternion_to_rotation_matrix(-quaternion), rot)
+
+    def test_convention_non_unit_quaternion_is_normalized_internally(self, device, dtype):
+        # Convention pin: quaternion_to_rotation_matrix calls normalize_quaternion on its input
+        # first, so a non-unit quaternion is accepted silently and yields the same rotation as its
+        # normalised form -- the docstring never says so. Pinned two ways: the returned matrix
+        # equals the one built from the unit quaternion (stdlib literal below), and rescaling the
+        # input leaves the output bit-identical. The scale factors are powers of two so that the
+        # scaling is exact in binary floating point at every dtype (0.001 is not: at bfloat16
+        # 0.001 * q rounds differently and the matrices then differ by 1.6e-2).
+        # Snippet used to generate expected (stdlib only, q = (1, 2, 3, 4) normalised):
+        #   import math
+        #   u = [v / math.sqrt(30.0) for v in (1.0, 2.0, 3.0, 4.0)]
+        #   nv = math.sqrt(u[1] ** 2 + u[2] ** 2 + u[3] ** 2); theta = 2 * math.atan2(nv, u[0])
+        #   Rodrigues([u[i + 1] / nv for i in range(3)], theta) ->
+        #     [[-0.666666666666667,   0.13333333333333341, 0.7333333333333334],
+        #      [ 0.6666666666666667, -0.3333333333333337,  0.6666666666666669],
+        #      [ 0.3333333333333335,  0.9333333333333335,  0.1333333333333333]]
+        quaternion = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype)
+
+        rot = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
+
+        expected = torch.tensor(
+            [
+                [-0.666666666666667, 0.13333333333333341, 0.7333333333333334],
+                [0.6666666666666667, -0.3333333333333337, 0.6666666666666669],
+                [0.3333333333333335, 0.9333333333333335, 0.1333333333333333],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # .to(dtype) because the function returns float32 for float16/bfloat16 inputs.
+        self.assert_close(rot.to(dtype), expected)
+
+        assert torch.equal(kornia.geometry.conversions.quaternion_to_rotation_matrix(2.0 * quaternion), rot)
+        assert torch.equal(kornia.geometry.conversions.quaternion_to_rotation_matrix(0.0009765625 * quaternion), rot)
+
+    def test_convention_normalize_quaternion_is_l2_over_the_last_axis(self, device, dtype):
+        # Convention pin (normalize_quaternion has no test class of its own; this is its nearest
+        # sibling -- quaternion_to_rotation_matrix calls it on every input): it is a plain L2
+        # normalisation of the last axis and nothing more. It does NOT reorder, and it does NOT
+        # canonicalise the sign, so the whole vector keeps its sign. That makes it the one symbol
+        # in this file whose "(x, y, z, w) or (w, x, y, z)" docstring phrasing is actually true:
+        # the same four numbers in the other order come back scaled by the same factor, which the
+        # third assertion pins.
+        # Snippet used to generate expected (stdlib only):
+        #   import math
+        #   [v / math.sqrt(30.0) for v in (1.0, 2.0, 3.0, 4.0)]
+        #     -> [0.18257418583505536, 0.3651483716701107, 0.5477225575051661, 0.7302967433402214]
+        expected = torch.tensor(
+            [0.18257418583505536, 0.3651483716701107, 0.5477225575051661, 0.7302967433402214],
+            device=device,
+            dtype=dtype,
+        )
+
+        out = kornia.geometry.conversions.normalize_quaternion(
+            torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype)
+        )
+        self.assert_close(out, expected)
+
+        out_negated = kornia.geometry.conversions.normalize_quaternion(
+            torch.tensor([-1.0, -2.0, -3.0, -4.0], device=device, dtype=dtype)
+        )
+        self.assert_close(out_negated, -expected)
+
+        out_reversed = kornia.geometry.conversions.normalize_quaternion(
+            torch.tensor([4.0, 3.0, 2.0, 1.0], device=device, dtype=dtype)
+        )
+        self.assert_close(out_reversed, expected.flip(0))
 
 
 class TestQuaternionLogToExp(BaseTester):
@@ -406,6 +749,86 @@ class TestQuaternionLogToExp(BaseTester):
 
         self.assert_close(actual, expected)
 
+    def test_convention_exp_of_v_equals_axis_angle_to_quaternion_of_twice_v(self, device, dtype):
+        # Convention pin: the log quaternion is (theta / 2) * axis, NOT the axis-angle vector, so
+        # the exponential map is exactly axis_angle_to_quaternion applied to 2 * v. A caller that
+        # feeds an axis-angle vector straight into quaternion_log_to_exp gets a rotation of half
+        # the intended angle, silently. The size contract of the pair is pinned alongside:
+        # (*, 3) -> (*, 4) here, (*, 4) -> (*, 3) in quaternion_exp_to_log.
+        # Snippet used to generate expected (stdlib only, v = (0.15, 0.2, 0.25), theta = 2 * |v|):
+        #   import math
+        #   th = math.sqrt(0.15 ** 2 + 0.2 ** 2 + 0.25 ** 2) * 2   # 0.7071067811865476
+        #   ax = [x / (th / 2) for x in (0.15, 0.2, 0.25)]
+        #   [math.cos(th / 2)] + [math.sin(th / 2) * a for a in ax]
+        #     -> [0.9381483350397287, 0.14689447322208307, 0.19585929762944412, 0.24482412203680515]
+        # assert_close and not torch.equal: the two routes agree bit-for-bit at float64, float32
+        # and float16 for this input, but that is an accident of the input -- over 500 random
+        # float64 vectors (seeded torch.Generator(4)) only 142/500 are bit-identical (worst
+        # difference 4.440892098500626e-16), and at bfloat16 the pinned input already differs by
+        # 9.765625e-04 because ||2v|| / 2 and ||v|| round apart.
+        log_quaternion = torch.tensor([0.15, 0.2, 0.25], device=device, dtype=dtype)
+
+        out = kornia.geometry.conversions.quaternion_log_to_exp(log_quaternion)
+
+        self.assert_close(
+            out,
+            torch.tensor(
+                [0.9381483350397287, 0.14689447322208307, 0.19585929762944412, 0.24482412203680515],
+                device=device,
+                dtype=dtype,
+            ),
+        )
+        self.assert_close(out, kornia.geometry.conversions.axis_angle_to_quaternion(2.0 * log_quaternion))
+
+        assert kornia.geometry.conversions.quaternion_log_to_exp(
+            torch.zeros(2, 5, 3, device=device, dtype=dtype)
+        ).shape == (2, 5, 4)
+
+    def test_convention_exp_real_part_is_cosine_of_the_norm(self, device, dtype):
+        # Convention pin: the exponential map returns w = cos(||v||) and (x, y, z) = sin(||v||) * v
+        # / ||v||, so it is NOT restricted to the w >= 0 half of the double cover: any ||v|| > pi/2
+        # (i.e. any rotation past 180 degrees, since theta = 2 * ||v||) lands in the w < 0 half.
+        # Pinned at ||v|| = 2 rad, where w is clearly negative; the output is still a unit
+        # quaternion, which the norm assertion states.
+        # Snippet used to generate expected (stdlib only):
+        #   import math
+        #   math.cos(2.0), math.sin(2.0) -> (-0.4161468365471424, 0.9092974268256817)
+        out = kornia.geometry.conversions.quaternion_log_to_exp(
+            torch.tensor([0.0, 0.0, 2.0], device=device, dtype=dtype)
+        )
+
+        self.assert_close(
+            out,
+            torch.tensor([-0.4161468365471424, 0.0, 0.0, 0.9092974268256817], device=device, dtype=dtype),
+        )
+        self.assert_close(out.norm(), torch.tensor(1.0, device=device, dtype=dtype))
+
+    def test_convention_exp_of_log_is_the_identity_except_at_minus_one(self, device, dtype):
+        # Convention pin (domain fact of the map, not a defect): quaternion_log_to_exp composed
+        # with quaternion_exp_to_log is the identity, with exactly one exception -- the pure-real
+        # quaternion (-1, 0, 0, 0), whose log is genuinely the origin in this parametrisation, so
+        # the round-trip returns the OTHER half of the double cover, (1, 0, 0, 0). The sign of a
+        # non-zero vector part is preserved, which is what the third case pins: (-1, 0, 0, -1)/
+        # sqrt(2) comes back as itself and is not flipped to its positive-w twin.
+        # Snippet used to generate expected (stdlib only):
+        #   exp(log(q)) = q for every unit q except q = (-1, 0, 0, 0)
+        #   1 / math.sqrt(2.0) -> 0.7071067811865476
+        # float16 is skipped: quaternion_exp_to_log((-1, 0, 0, 0)) returns NaN there, so the
+        # exception case cannot be evaluated at all (float64/float32/bfloat16 all return the
+        # origin as documented above).
+        if dtype == torch.float16:
+            pytest.skip("quaternion_exp_to_log((-1, 0, 0, 0)) is NaN at float16, so exp(log(.)) is undefined")
+
+        identity = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        exp_to_log = kornia.geometry.conversions.quaternion_exp_to_log
+        log_to_exp = kornia.geometry.conversions.quaternion_log_to_exp
+
+        self.assert_close(log_to_exp(exp_to_log(identity)), identity)
+        self.assert_close(log_to_exp(exp_to_log(-identity)), identity)
+
+        half_turn = torch.tensor([-0.7071067811865476, 0.0, 0.0, -0.7071067811865476], device=device, dtype=dtype)
+        self.assert_close(log_to_exp(exp_to_log(half_turn)), half_turn)
+
 
 class TestQuaternionExpToLog(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
@@ -467,6 +890,94 @@ class TestQuaternionExpToLog(BaseTester):
 
         self.assert_close(actual, expected)
 
+    def test_convention_log_is_half_the_axis_angle_on_the_w_positive_half(self, device, dtype):
+        # Convention pin: the log quaternion is (theta / 2) * axis, i.e. exactly half the
+        # axis-angle vector -- so quaternion_exp_to_log(q) == quaternion_to_axis_angle(q) / 2, but
+        # ONLY on the w >= 0 half. The two functions treat the double cover differently:
+        # quaternion_to_axis_angle collapses q and -q onto the same |theta| <= pi vector, while
+        # quaternion_exp_to_log takes acos(w) at face value and returns (pi - theta/2) along the
+        # negated axis for w < 0. The second half of this pin states that divergence explicitly,
+        # because "log is half the axis-angle" is false without the restriction: over 500 random
+        # float64 unit quaternions (seeded torch.Generator(3)) the two agree to 4.44e-16 on the
+        # 243 with w >= 0 and disagree by up to 3.1367975802888637 on the 257 with w < 0.
+        # The size contract (*, 4) -> (*, 3) is pinned alongside.
+        # Snippet used to generate expected (stdlib only, axis_angle = (0.3, 0.4, 0.5)):
+        #   import math
+        #   v = [0.15, 0.2, 0.25]                       # = axis_angle / 2, the expected log
+        #   nv = math.sqrt(sum(x * x for x in v))       # 0.3535533905932738
+        #   q = [math.cos(nv)] + [math.sin(nv) * x / nv for x in v]
+        #     -> [0.9381483350397287, 0.14689447322208307, 0.19585929762944412, 0.24482412203680515]
+        #   for -q the log is (nv - pi) * axis:
+        #   [-(math.pi - nv) * (x / nv) for x in v]
+        #     -> [-1.1828648814475096, -1.5771531752633463, -1.9714414690791828]
+        quaternion = torch.tensor(
+            [0.9381483350397287, 0.14689447322208307, 0.19585929762944412, 0.24482412203680515],
+            device=device,
+            dtype=dtype,
+        )
+
+        out = kornia.geometry.conversions.quaternion_exp_to_log(quaternion)
+
+        self.assert_close(out, torch.tensor([0.15, 0.2, 0.25], device=device, dtype=dtype))
+        self.assert_close(out, kornia.geometry.conversions.quaternion_to_axis_angle(quaternion) / 2.0)
+
+        out_negated = kornia.geometry.conversions.quaternion_exp_to_log(-quaternion)
+        self.assert_close(
+            out_negated,
+            torch.tensor([-1.1828648814475096, -1.5771531752633463, -1.9714414690791828], device=device, dtype=dtype),
+        )
+
+        assert kornia.geometry.conversions.quaternion_exp_to_log(
+            torch.zeros(2, 5, 4, device=device, dtype=dtype)
+        ).shape == (2, 5, 3)
+
+    def test_convention_log_of_exp_is_exact_below_pi_and_wraps_above(self, device, dtype):
+        # Convention pin (domain fact of the map, not a defect): quaternion_exp_to_log composed
+        # with quaternion_log_to_exp reproduces its input only for 0 < ||v|| < pi. Above pi the
+        # rotation has passed a full turn (theta = 2 * ||v||) and the result wraps into
+        # ||v|| - 2*pi, i.e. it comes back with the OPPOSITE sign, which the second case pins:
+        # a caller doing exp/log arithmetic on large vectors must reduce the norm itself.
+        # Snippet used to generate expected (stdlib only):
+        #   import math
+        #   the round-trip is the identity for ||v|| < pi -> [0.0, 0.0, 1.0]
+        #   math.pi + 0.5 - 2 * math.pi -> -2.641592653589793
+        exp_to_log = kornia.geometry.conversions.quaternion_exp_to_log
+        log_to_exp = kornia.geometry.conversions.quaternion_log_to_exp
+
+        below_pi = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        self.assert_close(exp_to_log(log_to_exp(below_pi)), below_pi)
+
+        above_pi = torch.tensor([0.0, 0.0, 3.641592653589793], device=device, dtype=dtype)
+        self.assert_close(
+            exp_to_log(log_to_exp(above_pi)),
+            torch.tensor([0.0, 0.0, -2.641592653589793], device=device, dtype=dtype),
+        )
+
+    def test_convention_log_of_exp_collapses_to_zero_at_pi_in_float64(self, device):
+        # Convention pin (domain fact of the map): at exactly ||v|| = pi the exponential map lands
+        # on (-1, 0, 0, 0), whose log genuinely IS the origin in this parametrisation, so the
+        # round-trip collapses to ~0 instead of returning pi -- the one interior point where the
+        # log/exp pair is not invertible. float64 is hardcoded and the dtype fixture dropped
+        # because the collapse needs cos(||v||) to round to exactly -1 and the vector part to fall
+        # below the eps clamp, which only happens at float64: at float32 the same input returns
+        # -3.1415927410125732 (no collapse), at float16/bfloat16 3.140625. MPS is skipped visibly
+        # because it has no float64 at all.
+        # Snippet used to generate expected (stdlib only):
+        #   math.cos(math.pi), math.sin(math.pi) -> (-1.0, 1.2246467991473532e-16)
+        # Measured round-trip value at float64 (torch 2.9.1, cpu): 3.847341387443579e-08, i.e. an
+        # error of 3.14 against the input, so atol 1e-7 pins the collapse without pinning the
+        # residue itself.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64, and this collapse is float64-only by construction")
+
+        at_pi = torch.tensor([0.0, 0.0, 3.141592653589793], device=device, dtype=torch.float64)
+
+        out = kornia.geometry.conversions.quaternion_exp_to_log(
+            kornia.geometry.conversions.quaternion_log_to_exp(at_pi)
+        )
+
+        self.assert_close(out, torch.zeros(3, device=device, dtype=torch.float64), atol=1e-7, rtol=0.0)
+
 
 class TestAngleAxisToRotationMatrix(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
@@ -511,6 +1022,84 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         rvec = torch.stack((rvec_2, rvec_1), dim=0)
 
         self.assert_close(kornia.geometry.conversions.axis_angle_to_rotation_matrix(rvec), rmat, atol=atol, rtol=rtol)
+
+    def test_convention_positive_angle_about_z_maps_x_to_y(self, device, dtype):
+        # Convention pin (covers quaternion_to_rotation_matrix too -- both routes to a rotation
+        # matrix in this module must agree): rotations follow the right-hand rule, so a positive
+        # angle about +z takes x_hat to y_hat and the matrix is
+        # [[cos, -sin, 0], [sin, cos, 0], [0, 0, 1]], NOT its transpose. Pinned at theta = 0.6 rad
+        # rather than a quarter turn so that a transposed or sign-flipped implementation cannot
+        # slip through on symmetry, and the mapped basis vector is asserted as well as the matrix
+        # so the claim is stated the way a reader will use it.
+        # Snippet used to generate expected (stdlib only):
+        #   import math
+        #   math.cos(0.6), math.sin(0.6) -> (0.8253356149096783, 0.5646424733950354)
+        #   the same rotation as a quaternion, (cos(0.3), 0, 0, sin(0.3))
+        #     -> (0.955336489125606, 0.0, 0.0, 0.29552020666133955)
+        expected = torch.tensor(
+            [
+                [0.8253356149096783, -0.5646424733950354, 0.0],
+                [0.5646424733950354, 0.8253356149096783, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        expected_x_maps_to = torch.tensor([0.8253356149096783, 0.5646424733950354, 0.0], device=device, dtype=dtype)
+        x_hat = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+
+        rot_from_axis_angle = kornia.geometry.conversions.axis_angle_to_rotation_matrix(
+            torch.tensor([[0.0, 0.0, 0.6]], device=device, dtype=dtype)
+        )[0]
+        self.assert_close(rot_from_axis_angle, expected)
+        self.assert_close(rot_from_axis_angle @ x_hat, expected_x_maps_to)
+
+        rot_from_quaternion = kornia.geometry.conversions.quaternion_to_rotation_matrix(
+            torch.tensor([0.955336489125606, 0.0, 0.0, 0.29552020666133955], device=device, dtype=dtype)
+        )
+        # .to(dtype) because quaternion_to_rotation_matrix returns float32 for float16/bfloat16
+        # inputs; the cast keeps this pin about the rotation sense and nothing else.
+        self.assert_close(rot_from_quaternion.to(dtype), expected)
+        self.assert_close(rot_from_quaternion.to(dtype) @ x_hat, expected_x_maps_to)
+
+    def test_convention_axis_angle_is_in_radians(self, device, dtype):
+        # Convention pin: the axis-angle vector's magnitude is an angle in RADIANS. This is the
+        # trap that separates this family from angle_to_rotation_matrix in the same module, which
+        # reads DEGREES (see TestRadDegConversions.test_convention_angle_to_rotation_matrix_takes_
+        # degrees) -- the two live a few hundred lines apart and neither says so in its signature.
+        # pi/2 gives the quarter turn; feeding 90 in the belief that it is degrees gives cos/sin of
+        # 90 radians instead, a rotation of roughly 152 degrees that is nowhere near a quarter turn.
+        # Snippet used to generate expected (stdlib only):
+        #   import math
+        #   math.cos(math.pi / 2), math.sin(math.pi / 2) -> (6.123233995736766e-17, 1.0)
+        #   math.cos(90.0), math.sin(90.0) -> (-0.4480736161291702, 0.8939966636005579)
+        quarter_turn = kornia.geometry.conversions.axis_angle_to_rotation_matrix(
+            torch.tensor([[0.0, 0.0, torch.pi / 2]], device=device, dtype=dtype)
+        )[0]
+        self.assert_close(
+            quarter_turn,
+            torch.tensor(
+                [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
+                device=device,
+                dtype=dtype,
+            ),
+        )
+
+        read_as_degrees = kornia.geometry.conversions.axis_angle_to_rotation_matrix(
+            torch.tensor([[0.0, 0.0, 90.0]], device=device, dtype=dtype)
+        )[0]
+        self.assert_close(
+            read_as_degrees,
+            torch.tensor(
+                [
+                    [-0.4480736161291702, -0.8939966636005579, 0.0],
+                    [0.8939966636005579, -0.4480736161291702, 0.0],
+                    [0.0, 0.0, 1.0],
+                ],
+                device=device,
+                dtype=dtype,
+            ),
+        )
 
 
 class TestRotationMatrixToAngleAxis(BaseTester):
@@ -561,6 +1150,77 @@ class TestRotationMatrixToAngleAxis(BaseTester):
         rvec = torch.stack((rvec_2, rvec_1), dim=0)
 
         self.assert_close(kornia.geometry.conversions.rotation_matrix_to_axis_angle(rmat), rvec, atol=atol, rtol=rtol)
+
+    def test_convention_accepts_any_leading_batch_dimensions(self, device, dtype):
+        # Convention pin (rotation_matrix_to_axis_angle has no test class under its own name; this
+        # class is the one that exercises it): the shape contract is the full (*, 3, 3) -> (*, 3),
+        # not the (N, 3, 3) -> (N, 3) its docstring states. An unbatched (3, 3) works -- that is
+        # what its own doctest passes -- and so does any number of leading batch dimensions.
+        # Expected is the true axis-angle vector computed with stdlib, not the function's output.
+        # Snippet used to generate the matrix and expected (stdlib only):
+        #   import math
+        #   n = math.sqrt(14.0); axis = (1 / n, 2 / n, -3 / n); theta = math.radians(170.0)
+        #   R = I + sin(theta) * K + (1 - cos(theta)) * K @ K    # Rodrigues, K = skew(axis)
+        #   [theta * a for a in axis]
+        #     -> [0.7929800678379483, 1.5859601356758966, -2.378940203513845]
+        rot = torch.tensor(
+            [
+                [-0.8430357706541933, 0.4227722475733091, -0.3324970918358584],
+                [0.14431568185875046, -0.4177198235801487, -0.8970413217671823],
+                [-0.5181348023122309, -0.8042224665289962, 0.29114008820992554],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        expected = torch.tensor(
+            [0.7929800678379483, 1.5859601356758966, -2.378940203513845], device=device, dtype=dtype
+        )
+
+        unbatched = kornia.geometry.conversions.rotation_matrix_to_axis_angle(rot)
+        assert unbatched.shape == (3,)
+        self.assert_close(unbatched, expected)
+
+        multi_batched = kornia.geometry.conversions.rotation_matrix_to_axis_angle(rot.expand(2, 5, 3, 3))
+        assert multi_batched.shape == (2, 5, 3)
+        self.assert_close(multi_batched[1, 4], expected)
+
+    def test_convention_axis_angle_roundtrip_tolerance_is_1e_6_in_float64(self, device):
+        # Convention pin: rotation_matrix_to_axis_angle composed with
+        # axis_angle_to_rotation_matrix recovers the vector only to ~1e-6, and that floor does not
+        # move with the dtype -- it is still ~1e-6 in float64, six orders worse than the machine
+        # epsilon a reader would expect from a "round-trip" and eleven orders worse than the
+        # quaternion leg (see TestAngleAxisToQuaternion.test_convention_axis_angle_quaternion_
+        # roundtrip_is_exact_in_float64, which is exact at the same angles). Anyone comparing
+        # rotations through this pair must budget 1e-6. float64 is hardcoded and the dtype fixture
+        # dropped because the claim is precisely that float64 does NOT help; MPS is skipped visibly
+        # because it has no float64 at all. The tolerance is the observed one and must not be
+        # tightened.
+        # Snippet used to generate the inputs (stdlib only):
+        #   import math
+        #   n = math.sqrt(14.0); axis = (1 / n, 2 / n, 3 / n)
+        #   [[theta * a for a in axis] for theta in (1e-3, 0.7, 2.0, math.pi)]
+        # Measured max |roundtrip - input| at those four thetas (torch 2.9.1, cpu float64):
+        #   8.009844122083441e-07, 6.410323137862051e-07, 5.134006499929455e-07,
+        #   5.387205765927661e-07 -- so atol 1e-6 clears the worst of them by 20%.
+        if device.type == "mps":
+            pytest.skip("MPS has no float64, and this pin is float64-only by construction")
+
+        axis_angle = torch.tensor(
+            [
+                [0.0002672612419124244, 0.0005345224838248488, 0.0008017837257372733],
+                [0.18708286933869706, 0.3741657386773941, 0.5612486080160912],
+                [0.5345224838248488, 1.0690449676496976, 1.6035674514745464],
+                [0.839625954181357, 1.679251908362714, 2.518877862544071],
+            ],
+            device=device,
+            dtype=torch.float64,
+        )
+
+        roundtrip = kornia.geometry.conversions.rotation_matrix_to_axis_angle(
+            kornia.geometry.conversions.axis_angle_to_rotation_matrix(axis_angle)
+        )
+
+        self.assert_close(roundtrip, axis_angle, atol=1e-6, rtol=0.0)
 
 
 class TestRadDegConversions(BaseTester):
@@ -1933,6 +2593,67 @@ class TestEulerFromQuaternion(BaseTester):
         self.assert_close(q.y.abs(), qy.abs())
         self.assert_close(q.z.abs(), qz.abs())
 
+    def test_convention_roll_is_x_pitch_is_y_yaw_is_z(self, device, dtype):
+        # Convention pin: the three returned angles are (roll, pitch, yaw) in that order, and they
+        # are rotations about x, y and z respectively -- a rotation about a single axis puts its
+        # angle in exactly one slot and leaves the other two at zero, which no permutation of the
+        # naming could reproduce. The return is a TUPLE of three separate tensors, not a stacked
+        # (*, 3) tensor, so it cannot be indexed or sliced like one; that is pinned first.
+        # The angle is 0.6 rad rather than a quarter turn so the pin stays far from the pitch =
+        # +-pi/2 gimbal lock where this function does not recover the input at all.
+        # Snippet used to generate the inputs (stdlib only):
+        #   import math
+        #   for each axis: q = (cos(0.3), sin(0.3) * axis) with 0.3 = theta / 2
+        #     cos(0.3), sin(0.3) -> (0.955336489125606, 0.29552020666133955)
+        w = torch.tensor(0.955336489125606, device=device, dtype=dtype)
+        s = torch.tensor(0.29552020666133955, device=device, dtype=dtype)
+        zero = torch.tensor(0.0, device=device, dtype=dtype)
+        expected_angle = torch.tensor(0.6, device=device, dtype=dtype)
+
+        about_x = euler_from_quaternion(w, s, zero, zero)
+        assert isinstance(about_x, tuple)
+        assert len(about_x) == 3
+        self.assert_close(about_x[0], expected_angle)
+        self.assert_close(about_x[1], zero)
+        self.assert_close(about_x[2], zero)
+
+        about_y = euler_from_quaternion(w, zero, s, zero)
+        self.assert_close(about_y[0], zero)
+        self.assert_close(about_y[1], expected_angle)
+        self.assert_close(about_y[2], zero)
+
+        about_z = euler_from_quaternion(w, zero, zero, s)
+        self.assert_close(about_z[0], zero)
+        self.assert_close(about_z[1], zero)
+        self.assert_close(about_z[2], expected_angle)
+
+    def test_convention_euler_and_quaternion_are_mutual_inverses(self, device, dtype):
+        # Convention pin: away from gimbal lock, euler_from_quaternion and quaternion_from_euler
+        # invert each other exactly -- the same three angles come back, with their signs, and so
+        # do the same four quaternion coefficients. Pinned at |pitch| = 0.7 < pi/4-ish and three
+        # distinct non-symmetric angles so neither a permutation nor a sign flip survives. (At
+        # pitch = +-pi/2 the pair is NOT a mutual inverse; that failure is out of scope here.)
+        # Snippet used to generate expected (stdlib only):
+        #   the round-trip is the identity on (roll, pitch, yaw) = (0.3, 0.7, 1.1)
+        #   quaternion_from_euler(0.3, 0.7, 1.1) at float64 ->
+        #     [0.8186292656554958, -0.057539988180335386, 0.3624200943552256, 0.44179967222724353]
+        #   which is qz (x) qy (x) qx with qa = (cos(a/2), sin(a/2) * axis) -- see
+        #   TestQuaternionFromEuler.test_convention_composition_is_rz_ry_rx
+        roll = torch.tensor(0.3, device=device, dtype=dtype)
+        pitch = torch.tensor(0.7, device=device, dtype=dtype)
+        yaw = torch.tensor(1.1, device=device, dtype=dtype)
+
+        quaternion = quaternion_from_euler(roll, pitch, yaw)
+        roll_back, pitch_back, yaw_back = euler_from_quaternion(*quaternion)
+
+        self.assert_close(roll_back, roll)
+        self.assert_close(pitch_back, pitch)
+        self.assert_close(yaw_back, yaw)
+
+        quaternion_back = quaternion_from_euler(roll_back, pitch_back, yaw_back)
+        for component, component_back in zip(quaternion, quaternion_back):
+            self.assert_close(component_back, component)
+
 
 class TestQuaternionFromEuler(BaseTester):
     def test_smoke(self, device, dtype):
@@ -2023,6 +2744,72 @@ class TestQuaternionFromEuler(BaseTester):
 
         # out = [tf3.euler.quat2euler((qw[i], qx[i], qy[i], qz[i])) for i in range(num_samples)]
         # out = torch.tensor(out, device=device, dtype=dtype)
+
+    def test_convention_composition_is_rz_ry_rx(self, device, dtype):
+        # Convention pin: "XYZ convention" in the docstring does not say whether the three
+        # rotations are applied about the fixed axes or about the axes carried along by the body,
+        # and the four candidate products differ enormously. The actual composition is
+        #   R = Rz(yaw) @ Ry(pitch) @ Rx(roll)
+        # i.e. extrinsic X -> Y -> Z about the FIXED axes (equivalently intrinsic Z-Y'-X''), with
+        # roll about x, pitch about y and yaw about z. Three distinct non-symmetric angles are
+        # required: a symmetric or single-axis input cannot separate the four candidates. Measured
+        # max |R - candidate| at (0.3, 0.7, 1.1) in float64:
+        #   Rz@Ry@Rx 0.0 (1.11e-16 when the product is built from math.cos/math.sin literals),
+        #   Rx@Ry@Rz 0.6404683155788216, Ry@Rz@Rx 0.5484888138736672, Rx@Rz@Ry 0.2503184512807922.
+        # The three rejected products are asserted to stay above 0.2 so the discrimination itself
+        # is executable rather than a claim in a comment; at bfloat16, the coarsest dtype run, the
+        # accepted product is still within 3.90625e-03 and the nearest rejected one at 0.25.
+        # The return is a TUPLE of four separate tensors, not a stacked (*, 4) tensor; pinned first.
+        # Snippet used to generate the elementary matrices (stdlib only):
+        #   import math
+        #   math.cos(0.3), math.sin(0.3) -> (0.955336489125606, 0.29552020666133955)
+        #   math.cos(0.7), math.sin(0.7) -> (0.7648421872844885, 0.644217687237691)
+        #   math.cos(1.1), math.sin(1.1) -> (0.4535961214255773, 0.8912073600614354)
+        rot_x = torch.tensor(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, 0.955336489125606, -0.29552020666133955],
+                [0.0, 0.29552020666133955, 0.955336489125606],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        rot_y = torch.tensor(
+            [
+                [0.7648421872844885, 0.0, 0.644217687237691],
+                [0.0, 1.0, 0.0],
+                [-0.644217687237691, 0.0, 0.7648421872844885],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        rot_z = torch.tensor(
+            [
+                [0.4535961214255773, -0.8912073600614354, 0.0],
+                [0.8912073600614354, 0.4535961214255773, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        quaternion = quaternion_from_euler(
+            torch.tensor(0.3, device=device, dtype=dtype),
+            torch.tensor(0.7, device=device, dtype=dtype),
+            torch.tensor(1.1, device=device, dtype=dtype),
+        )
+        assert isinstance(quaternion, tuple)
+        assert len(quaternion) == 4
+
+        # .to(dtype) because quaternion_to_rotation_matrix returns float32 for float16/bfloat16
+        # inputs; the cast keeps this pin about the composition order and nothing else.
+        rot = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(quaternion)).to(dtype)
+
+        self.assert_close(rot, rot_z @ rot_y @ rot_x)
+
+        assert (rot - rot_x @ rot_y @ rot_z).abs().max() > 0.2
+        assert (rot - rot_y @ rot_z @ rot_x).abs().max() > 0.2
+        assert (rot - rot_x @ rot_z @ rot_y).abs().max() > 0.2
 
 
 @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
