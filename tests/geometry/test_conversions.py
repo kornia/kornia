@@ -215,8 +215,10 @@ class TestAngleAxisToQuaternion(BaseTester):
         #   n = math.sqrt(14.0); axis = (1 / n, 2 / n, 3 / n)
         #   [[theta * a for a in axis] for theta in (0.0, 1e-3, 0.7, math.pi)]
         # Measured max |roundtrip - input| at those four thetas (torch 2.9.1, cpu float64):
-        #   0.0, 2.168404344971009e-19, 0.0, 0.0 -- so atol 1e-15 is ~3 orders above the worst
-        #   observed error and ~9 orders below the 1e-6 the matrix leg would give.
+        #   0.0, 2.168404344971009e-19, 0.0, 0.0 -- so atol 1e-12 is ~7 orders above the worst
+        #   observed error and ~6 orders below the 1e-6 the matrix leg would give. 1e-12 rather
+        #   than something tighter because this composes two atan2/sqrt chains and no CUDA job
+        #   exists to tell us what they cost there.
         if device.type == "mps":
             pytest.skip("MPS has no float64, and this exactness pin is float64-only by construction")
 
@@ -235,7 +237,7 @@ class TestAngleAxisToQuaternion(BaseTester):
             kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         )
 
-        self.assert_close(roundtrip, axis_angle, atol=1e-15, rtol=0.0)
+        self.assert_close(roundtrip, axis_angle, atol=1e-12, rtol=0.0)
 
     # Convention pin for the four deprecated aliases (they have no test class and no docstring of
     # their own; this class is named after one of them). Each still works and is a thin wrapper:
@@ -694,9 +696,8 @@ class TestRotationMatrixToQuaternion(BaseTester):
         # Intended behavior: the quaternion returned for an exact rotation matrix is a unit
         # quaternion to the precision of the input dtype. It never is in float64: the default
         # eps = 1e-8 is added *inside* the sqrt that builds the components, so every returned
-        # quaternion is inflated -- over 20000 random float64 rotations the *smallest* |‖q‖ - 1| is
-        # 6.816769371198461e-14 and none is exactly unit. Measured on the identity in float64
-        # (torch 2.9.1, cpu):
+        # quaternion is inflated -- over 20000 random float64 rotations not one comes back exactly
+        # unit. Measured on the identity in float64 (torch 2.9.1, cpu):
         #   rotation_matrix_to_quaternion(eye(3))          -> [1.0000000012499999, 0.0, 0.0, 0.0]
         #   ||q|| - 1                                      ->  1.2499998813808588e-09
         #   rotation_matrix_to_quaternion(eye(3), eps=0.0) -> [1.0, 0.0, 0.0, 0.0]  (exactly unit)
@@ -1291,26 +1292,29 @@ class TestQuaternionLogToExp(BaseTester):
 
     def test_wart_float16_eps_underflow_makes_log_to_exp_nan_3966(self, device):
         # Wart pin for kornia#3966 on quaternion_log_to_exp, companion to the strict xfail above:
-        # assert the CURRENT float16 behavior. Four cells, each discriminating a different fix
+        # assert the CURRENT float16 behavior. Three cells, each discriminating a different fix
         # shape:
-        #   (0) the eps default is still 1e-8 -- cells 1 and 2 leave eps at its default on purpose
-        #       (the underflow of the *default* is the claim), so a retuned default would otherwise
-        #       be an invisible half-fix;
+        #   (0) the eps default is still 1e-8 -- cell 1 leaves eps at its default on purpose (the
+        #       underflow of the *default* is the claim), so a retuned default would otherwise be
+        #       an invisible half-fix;
         #   (1) the origin returns w = 1 with an all-NaN vector part;
-        #   (2) [1e-9, 0, 0], which is not zero but whose float16 norm is, returns the same -- a fix
-        #       keyed on an exact-zero input would flip (1) and leave (2);
-        #   (3) the origin with an explicitly representable eps=1e-3 returns [1, 0, 0, 0] -- the
+        #   (2) the origin with an explicitly representable eps=1e-3 returns [1, 0, 0, 0] -- the
         #       control that says the arithmetic is fine and only the default underflows, telling an
         #       eps-shaped fix apart from a branch-shaped one;
-        #   (4) a v with a representable norm is unaffected and returns
+        #   (3) a v with a representable norm is unaffected and returns
         #       [1.0, 0.0010128021240234375, 0, 0] -- the working case the existing suite exercises,
         #       pinned so a fix cannot regress it.
+        # The affected class is exactly the zero vector, so there is no second broken input to pin:
+        # torch.norm does not underflow at float16, and every nonzero float16 value below 1e-2 in a
+        # single component (1023 of them, the whole subnormal range included) plus 512 tiny
+        # multi-component combinations all give a non-zero norm and a finite result. A near-zero
+        # literal is no use either -- torch.tensor([1e-9, 0, 0], dtype=float16) IS torch.zeros(3)
+        # bitwise, so it would restate cell (1) rather than discriminate anything.
         # If any cell fails, #3966 was (partly) fixed on this function -- flip/remove the strict
         # xfail above. NOT a contract that float16 must keep returning NaN.
         # Snippet used to generate expected (torch only, executed on cpu):
         #   l2e = kornia.geometry.conversions.quaternion_log_to_exp
-        #   l2e(torch.zeros(3, dtype=torch.float16))              -> [1., nan, nan, nan]
-        #   l2e(torch.tensor([1e-9, 0., 0.], dtype=torch.float16)) -> [1., nan, nan, nan]
+        #   l2e(torch.zeros(3, dtype=torch.float16))               -> [1., nan, nan, nan]
         #   l2e(torch.zeros(3, dtype=torch.float16), eps=1e-3)     -> [1., 0., 0., 0.]
         #   l2e(torch.tensor([1e-3, 0., 0.], dtype=torch.float16))
         #     -> [1.0, 0.0010128021240234375, 0.0, 0.0]
@@ -1324,14 +1328,10 @@ class TestQuaternionLogToExp(BaseTester):
         )
 
         origin = torch.zeros(3, device=device, dtype=torch.float16)
-        underflowing = torch.tensor([1e-9, 0.0, 0.0], device=device, dtype=torch.float16)
 
         out = log_to_exp(origin)
         assert out[0].item() == 1.0, "kornia#3966: the float16 origin no longer has a real part of 1"
         assert torch.isnan(out[1:]).all(), "kornia#3966: the float16 origin no longer gives a NaN vector part"
-        assert torch.isnan(log_to_exp(underflowing)[1:]).all(), (
-            "kornia#3966: a float16 vector whose norm underflows no longer gives a NaN vector part"
-        )
         assert_close(
             log_to_exp(origin, eps=1e-3),
             torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=torch.float16),
