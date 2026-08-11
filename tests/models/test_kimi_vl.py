@@ -34,6 +34,8 @@ def config():
     vision_config = MoonViTConfig(
         image_size=32,
         patch_size=4,
+        init_pos_emb_height=8,
+        init_pos_emb_width=8,
         hidden_size=32,
         num_hidden_layers=2,
         num_attention_heads=4,
@@ -73,8 +75,8 @@ class TestKimiVLBuilder(BaseTester):
 
     def test_pretrained_config_matches_checkpoint_grid(self):
         config = kimi_vl_builder._kimi_vl_a3b_instruct_config()
-        # The published checkpoint stores the original 64x64 pos-embed grid.
-        assert config.vision_config.image_size // config.vision_config.patch_size == 64
+        assert config.vision_config.init_pos_emb_height == 64
+        assert config.vision_config.init_pos_emb_width == 64
 
 
 class TestKimiVLModel(BaseTester):
@@ -167,8 +169,8 @@ class TestKimiVLComponents(BaseTester):
 
         # Create dummy cos/sin for RoPE
         head_dim = hidden_size // config.vision_config.num_attention_heads
-        cos = torch.randn(seq_len, head_dim, device=device, dtype=dtype)
-        sin = torch.randn(seq_len, head_dim, device=device, dtype=dtype)
+        cos = torch.randn(seq_len, head_dim // 2, device=device, dtype=dtype)
+        sin = torch.randn(seq_len, head_dim // 2, device=device, dtype=dtype)
 
         output = encoder(x, cos, sin)
         assert output.shape == (batch_size, seq_len, hidden_size)
@@ -183,8 +185,8 @@ class TestKimiVLComponents(BaseTester):
 
         # Create dummy cos/sin for RoPE
         head_dim = hidden_size // config.vision_config.num_attention_heads
-        cos = torch.randn(seq_len, head_dim, device=device, dtype=dtype)
-        sin = torch.randn(seq_len, head_dim, device=device, dtype=dtype)
+        cos = torch.randn(seq_len, head_dim // 2, device=device, dtype=dtype)
+        sin = torch.randn(seq_len, head_dim // 2, device=device, dtype=dtype)
 
         output = attention(x, cos, sin)
         assert output.shape == (batch_size, seq_len, hidden_size)
@@ -197,8 +199,8 @@ class TestKimiVLComponents(BaseTester):
         cos, sin = rope(h, w, device)
 
         seq_len = h * w
-        assert cos.shape == (seq_len, dim)
-        assert sin.shape == (seq_len, dim)
+        assert cos.shape == (seq_len, dim // 2)
+        assert sin.shape == (seq_len, dim // 2)
 
     def test_projector(self, device, dtype, config):
         model = KimiVLProjector(config.projector_config).to(device, dtype)
