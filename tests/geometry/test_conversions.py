@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import inspect
 import sys
 from functools import partial
 
@@ -655,7 +656,7 @@ class TestRadDegConversions(BaseTester):
         #                         [-0.49999999999999994, 0.8660254037844387]]
         out = kornia.geometry.conversions.angle_to_rotation_matrix(torch.tensor(30.0, device=device, dtype=dtype))
         expected = torch.tensor([[0.8660254, 0.5], [-0.5, 0.8660254]], device=device, dtype=dtype)
-        self.assert_close(out, expected, atol=1e-2, rtol=1e-2)
+        self.assert_close(out, expected)
 
         # A radian-reading implementation would turn pi/2 into the quarter turn [[0, 1], [-1, 0]];
         # this one reads pi/2 as 1.5708 *degrees* and returns a near-identity matrix instead.
@@ -666,7 +667,7 @@ class TestRadDegConversions(BaseTester):
             torch.tensor(torch.pi / 2, device=device, dtype=dtype)
         )
         expected_rad = torch.tensor([[0.99962422, 0.02741213], [-0.02741213, 0.99962422]], device=device, dtype=dtype)
-        self.assert_close(out_rad, expected_rad, atol=1e-2, rtol=1e-2)
+        self.assert_close(out_rad, expected_rad)
 
     @pytest.mark.parametrize(
         ("op_name", "arg", "expected"),
@@ -760,8 +761,8 @@ class TestPolCartConversions(BaseTester):
 
         x, y = kornia.geometry.conversions.pol2cart(rho, phi)
 
-        self.assert_close(x, torch.tensor(3.0, device=device, dtype=dtype), atol=1e-2, rtol=1e-2)
-        self.assert_close(y, torch.tensor(4.0, device=device, dtype=dtype), atol=1e-2, rtol=1e-2)
+        self.assert_close(x, torch.tensor(3.0, device=device, dtype=dtype))
+        self.assert_close(y, torch.tensor(4.0, device=device, dtype=dtype))
 
     def test_convention_cart2pol_takes_x_y_and_phi_is_atan2_y_x(self, device, dtype):
         # Convention pin: cart2pol's argument order is (x, y) and its return order is
@@ -774,17 +775,19 @@ class TestPolCartConversions(BaseTester):
         rho, phi = kornia.geometry.conversions.cart2pol(
             torch.tensor(3.0, device=device, dtype=dtype), torch.tensor(4.0, device=device, dtype=dtype)
         )
-        self.assert_close(rho, torch.tensor(5.0, device=device, dtype=dtype), atol=1e-2, rtol=1e-2)
-        self.assert_close(phi, torch.tensor(0.9272952180016122, device=device, dtype=dtype), atol=1e-2, rtol=1e-2)
+        self.assert_close(rho, torch.tensor(5.0, device=device, dtype=dtype))
+        self.assert_close(phi, torch.tensor(0.9272952180016122, device=device, dtype=dtype))
 
         phi_y_axis = kornia.geometry.conversions.cart2pol(
             torch.tensor(0.0, device=device, dtype=dtype), torch.tensor(1.0, device=device, dtype=dtype)
         )[1]
-        self.assert_close(
-            phi_y_axis, torch.tensor(1.5707963267948966, device=device, dtype=dtype), atol=1e-2, rtol=1e-2
-        )
+        self.assert_close(phi_y_axis, torch.tensor(1.5707963267948966, device=device, dtype=dtype))
 
-    @pytest.mark.xfail(reason="cart2pol returns sqrt(x**2 + y**2 + eps), biasing rho — kornia#3939", strict=True)
+    @pytest.mark.xfail(
+        raises=AssertionError,
+        reason="cart2pol returns sqrt(x**2 + y**2 + eps), biasing rho — kornia#3939",
+        strict=True,
+    )
     def test_convention_cart2pol_rho_is_the_exact_radius(self, device, dtype):
         # Intended behavior: rho is the Euclidean radius, so rho(0, 0) == 0. It currently is
         # not: eps is added *inside* the sqrt, so rho = sqrt(x**2 + y**2 + eps) and the origin
@@ -852,7 +855,7 @@ class TestPolCartConversions(BaseTester):
         phi1 = kornia.geometry.conversions.cart2pol(v_rot[0], v_rot[1])[1]
 
         expected_delta = torch.tensor(-0.5235987755982988, device=device, dtype=dtype)
-        self.assert_close(phi1 - phi0, expected_delta, atol=1e-2, rtol=1e-2)
+        self.assert_close(phi1 - phi0, expected_delta)
 
         # Second case: crossing the -x branch cut, where the returned phi is re-wrapped into
         # [-pi, pi] and only the difference modulo 2*pi is -theta (the worked -170 + 30 example
@@ -868,11 +871,18 @@ class TestPolCartConversions(BaseTester):
         w_rot = rot @ w
         phi1_cut = kornia.geometry.conversions.cart2pol(w_rot[0], w_rot[1])[1]
 
-        self.assert_close(phi1_cut, torch.tensor(2.7925268, device=device, dtype=dtype), atol=1e-2, rtol=1e-2)
+        self.assert_close(phi1_cut, torch.tensor(2.7925268, device=device, dtype=dtype))
 
         raw_delta = phi1_cut - phi0_cut
         wrapped_delta = torch.atan2(torch.sin(raw_delta), torch.cos(raw_delta))
-        self.assert_close(wrapped_delta, expected_delta, atol=1e-2, rtol=1e-2)
+        # The re-wrap atan2(sin, cos) adds two more transcendental roundings on top of the two
+        # atan2 outputs it differences, overshooting the central per-dtype tolerances in the half
+        # dtypes: measured |wrapped_delta - expected| is 1.95e-3 in float16 (central allowance
+        # atol 1e-3 + rtol 1e-3 * 0.52 = 1.52e-3) and 1.16e-2 in bfloat16 (allowance 1.19e-2, a
+        # 3 % margin that torch rounding drift could erase). atol 2.4e-2 is ~2x the bfloat16
+        # error; a sign-flipped or unwrapped delta would still be off by >= 1.0.
+        wrap_tol = {"atol": 2.4e-2, "rtol": 0.0} if dtype in (torch.float16, torch.bfloat16) else {}
+        self.assert_close(wrapped_delta, expected_delta, **wrap_tol)
 
 
 class TestConvertPointsToHomogeneous(BaseTester):
@@ -1051,7 +1061,11 @@ class TestConvertPointsFromHomogeneous(BaseTester):
 
         self.assert_close(actual, expected)
 
-    @pytest.mark.xfail(reason="convert_points_from_homogeneous divides by w + eps — kornia#3938", strict=True)
+    @pytest.mark.xfail(
+        raises=AssertionError,
+        reason="convert_points_from_homogeneous divides by w + eps — kornia#3938",
+        strict=True,
+    )
     def test_convention_divides_by_exactly_w(self, device, dtype):
         # Intended behavior: for |w| > eps the point is divided by exactly w. It currently is
         # divided by w + eps with no regard for sign, so the signed relative error is exactly
@@ -1069,7 +1083,7 @@ class TestConvertPointsFromHomogeneous(BaseTester):
         out = kornia.geometry.conversions.convert_points_from_homogeneous(points)
 
         expected = torch.tensor([[1e8, 2e8]], device=device, dtype=dtype)
-        self.assert_close(out, expected, atol=1e-2, rtol=1e-2)
+        self.assert_close(out, expected)
 
     def test_wart_division_is_by_w_plus_eps_for_both_signs_3938(self, device, dtype):
         # Wart pin for kornia#3938, companion to the strict xfail above: assert the CURRENT
@@ -1103,22 +1117,30 @@ class TestConvertPointsFromHomogeneous(BaseTester):
         self.assert_close(out_neg, expected_neg, atol=0.0, rtol=1e-2)
 
 
+def _skip_if_mps_clamp_caching(device):
+    # Runtime probe instead of a torch-version pin, so the skip retires itself on any torch
+    # build where the two clamps below return different values.
+    if device.type == "mps" and torch.equal(
+        torch.zeros(2, device=device).clamp(1e-8), torch.zeros(2, device=device).clamp(1e-7)
+    ):
+        pytest.skip(
+            "this torch build caches clamp's scalar min per shape/dtype on MPS -- first value wins "
+            "(seen on torch 2.9.1): z = torch.zeros(2, device='mps'); z.clamp(1e-8) then z.clamp(1e-7) "
+            "both return 9.99999993922529e-09, while the same pair on cpu returns 1e-08 then "
+            "1.0000000116860974e-07. The clamped eps this pin measures is therefore set by whichever "
+            "earlier test clamped first, which is a torch defect, not a kornia one"
+        )
+
+
 def _assert_degenerate_size_cell(
     func_2d, func_3d, fill, ndim, arg_name, degenerate_size, expected, tols, device, dtype
 ):
     # Shared driver for the two kornia#3940 wart matrices below -- the normalize and
     # denormalize halves differ only in function pair, fill value, tolerances and expected
-    # table -- so the eventual #3940 cleanup edits one body and one MPS-skip site. eps=1e-8 is
+    # table -- so the eventual #3940 cleanup edits one body and one MPS-skip helper. eps=1e-8 is
     # passed explicitly so the pinned literals do not silently track a later change to the default eps
     # while the clamp bug itself is still present.
-    if device.type == "mps":
-        pytest.skip(
-            "torch 2.9.1 caches clamp's scalar min per shape/dtype on MPS -- first value wins: "
-            "z = torch.zeros(2, device='mps'); z.clamp(1e-8) then z.clamp(1e-7) both return "
-            "9.99999993922529e-09, while the same pair on cpu returns 1e-08 then 1.0000000116860974e-07. "
-            "The clamped eps this pin measures is therefore set by whichever earlier test clamped "
-            "first, which is a torch defect, not a kornia one"
-        )
+    _skip_if_mps_clamp_caching(device)
 
     if ndim == "2d":
         sizes = {"height": 5, "width": 7}
@@ -1131,8 +1153,12 @@ def _assert_degenerate_size_cell(
 
     out = func(pts, *sizes.values(), eps=1e-8)
 
-    atol, rtol = tols
-    assert_close(out, torch.tensor([expected], device=device, dtype=dtype), atol=atol, rtol=rtol)
+    expected_t = torch.tensor([expected], device=device, dtype=dtype)
+    if tols is None:
+        assert_close(out, expected_t)
+    else:
+        atol, rtol = tols
+        assert_close(out, expected_t, atol=atol, rtol=rtol)
 
 
 class TestNormalizePixelCoordinates(BaseTester):
@@ -1196,7 +1222,7 @@ class TestNormalizePixelCoordinates(BaseTester):
         out = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 4, 4)
 
         expected = torch.tensor([[-1.0, -1.0], [-0.33333333, -0.33333333], [1.0, 1.0]], device=device, dtype=dtype)
-        self.assert_close(out, expected, atol=1e-2, rtol=1e-2)
+        self.assert_close(out, expected)
 
     def test_convention_positional_order_is_height_then_width(self, device, dtype):
         # Convention pin: the positional signature is (pixel_coordinates, height, width), which is
@@ -1209,7 +1235,7 @@ class TestNormalizePixelCoordinates(BaseTester):
         out = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 2, 4)
 
         expected = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
-        self.assert_close(out, expected, atol=1e-2, rtol=1e-2)
+        self.assert_close(out, expected)
 
     def test_convention_output_is_not_clamped(self, device, dtype):
         # Convention pin: nothing is clamped to [-1, 1] -- out-of-image coordinates extrapolate
@@ -1221,7 +1247,7 @@ class TestNormalizePixelCoordinates(BaseTester):
         out = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 4, 4)
 
         expected = torch.tensor([[5.6666667, -1.0]], device=device, dtype=dtype)
-        self.assert_close(out, expected, atol=1e-2, rtol=1e-2)
+        self.assert_close(out, expected)
 
     def test_convention_grid_sample_needs_align_corners_true(self, device, dtype):
         # Convention pin: feeding normalized coordinates to torch.nn.functional.grid_sample
@@ -1238,9 +1264,7 @@ class TestNormalizePixelCoordinates(BaseTester):
 
         sampled_aligned = torch.nn.functional.grid_sample(img, grid, align_corners=True).flatten()
 
-        self.assert_close(
-            sampled_aligned, torch.tensor([0.0, 5.0, 15.0], device=device, dtype=dtype), atol=1e-2, rtol=1e-2
-        )
+        self.assert_close(sampled_aligned, torch.tensor([0.0, 5.0, 15.0], device=device, dtype=dtype))
 
     def test_convention_3d_component_order_is_depth_x_y(self, device, dtype):
         # Convention pin (normalize_pixel_coordinates3d has no test class of its own): the
@@ -1253,13 +1277,11 @@ class TestNormalizePixelCoordinates(BaseTester):
         #                                      -> (1.0, 0.0, 3.0)
         far_corner = torch.tensor([[2.0, 8.0, 4.0]], device=device, dtype=dtype)
         out = kornia.geometry.conversions.normalize_pixel_coordinates3d(far_corner, 3, 5, 9)
-        self.assert_close(out, torch.tensor([[1.0, 1.0, 1.0]], device=device, dtype=dtype), atol=1e-2, rtol=1e-2)
+        self.assert_close(out, torch.tensor([[1.0, 1.0, 1.0]], device=device, dtype=dtype))
 
         swapped = torch.tensor([[2.0, 4.0, 8.0]], device=device, dtype=dtype)
         out_swapped = kornia.geometry.conversions.normalize_pixel_coordinates3d(swapped, 3, 5, 9)
-        self.assert_close(
-            out_swapped, torch.tensor([[1.0, 0.0, 3.0]], device=device, dtype=dtype), atol=1e-2, rtol=1e-2
-        )
+        self.assert_close(out_swapped, torch.tensor([[1.0, 0.0, 3.0]], device=device, dtype=dtype))
 
     # Wart-pin matrix for kornia#3940, normalizing half: one cell per (size argument x
     # degenerate class) of normalize_pixel_coordinates and normalize_pixel_coordinates3d,
@@ -1314,7 +1336,7 @@ class TestNormalizePixelCoordinates(BaseTester):
             arg_name,
             degenerate_size,
             expected,
-            (1e-2, 1e-2),
+            None,
             device,
             dtype,
         )
@@ -1327,15 +1349,76 @@ class TestNormalizePixelCoordinates(BaseTester):
         #   npc = kornia.geometry.conversions.normalize_pixel_coordinates
         #   npc(torch.tensor([[1., 1.]], dtype=torch.float64), 1, 1, eps=1e-8)
         #     -> [[199999999.0, 199999999.0]]
-        if device.type == "mps":
-            pytest.skip("same torch 2.9.1 MPS clamp-min caching as _assert_degenerate_size_cell above")
+        _skip_if_mps_clamp_caching(device)
 
         pts = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
 
         out = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 1, 1, eps=1e-8)
 
         expected = torch.tensor([[199999999.0, 199999999.0]], device=device, dtype=dtype)
-        self.assert_close(out, expected, atol=1e-2, rtol=1e-2)
+        self.assert_close(out, expected)
+
+
+def test_wart_default_eps_1e_8_backs_the_quoted_warning_numbers():
+    # The wart pins in this file pass eps=1e-8 explicitly so their literals do not track the
+    # default, which leaves the default itself pinned by nothing while six docstring warnings
+    # quote numbers that hold only for eps=1e-8: cart2pol (rho = 1e-04 at the origin),
+    # convert_points_from_homogeneous (the -1/3 and +1 relative errors at w = +/-2e-8),
+    # normalize_pixel_coordinates and normalize_pixel_coordinates3d (the 199999999.0 / 2e8
+    # blow-up factor) and denormalize_pixel_coordinates / denormalize_pixel_coordinates3d (the
+    # 5e-09 collapse factor). If this fails, the default moved -- rework those warnings'
+    # numbers together with this list.
+    for op_name in (
+        "cart2pol",
+        "convert_points_from_homogeneous",
+        "normalize_pixel_coordinates",
+        "denormalize_pixel_coordinates",
+        "normalize_pixel_coordinates3d",
+        "denormalize_pixel_coordinates3d",
+    ):
+        op = getattr(kornia.geometry.conversions, op_name)
+        assert inspect.signature(op).parameters["eps"].default == 1e-8, op_name
+
+
+def test_wart_float16_underflowed_default_eps_flips_branches(device):
+    # Wart pins for the float16 sentences of the #3939 and #3938 warnings. float16 is
+    # hardcoded (no dtype fixture) so the pins run in every test configuration: the float16
+    # legs of the wart pins above are skipped because the default eps=1e-8 underflows to 0
+    # there, which is exactly the behavior pinned here. eps is left at its default on purpose
+    # -- the underflow of the *default* is the claim. atol=rtol=0.0 because both claims are
+    # exactness claims: with the float16 default tolerance (1e-3) the eps-biased
+    # rho = 1e-4 of the other branch would still compare equal to 0.
+    # Snippet used to generate expected (torch only, executed on cpu float16):
+    #   cart2pol(torch.tensor(0., dtype=torch.float16), torch.tensor(0., dtype=torch.float16))[0]
+    #     -> 0.0  (not sqrt(eps) = 1e-4: eps underflows the sum inside the sqrt)
+    #   convert_points_from_homogeneous(torch.tensor([[2., 4., 2e-8]], dtype=torch.float16))
+    #     -> [[2., 4.]]  (w underflows to 0 and takes the abs(w) <= eps passthrough branch)
+    zero = torch.tensor(0.0, device=device, dtype=torch.float16)
+    rho = kornia.geometry.conversions.cart2pol(zero, zero)[0]
+    assert_close(rho, zero, atol=0.0, rtol=0.0)
+
+    out = kornia.geometry.conversions.convert_points_from_homogeneous(
+        torch.tensor([[2.0, 4.0, 2e-8]], device=device, dtype=torch.float16)
+    )
+    assert_close(out, torch.tensor([[2.0, 4.0]], device=device, dtype=torch.float16), atol=0.0, rtol=0.0)
+
+
+def test_wart_float16_degenerate_roundtrip_is_inf_then_nan(device):
+    # Wart pin for the float16 sentence of the #3940 warnings, float16-hardcoded like the test
+    # above: with the default eps underflowed to 0, the clamp keeps the degenerate denominator
+    # at 0, the normalized component is inf (not the 2e8 the other dtypes pin) and the
+    # denormalize round trip of that is nan, not the input.
+    # Snippet used to generate expected (torch only, executed on cpu float16):
+    #   normalize_pixel_coordinates(torch.ones(1, 2, dtype=torch.float16), 1, 1) -> [[inf, inf]]
+    #   denormalize_pixel_coordinates(<that>, 1, 1) -> [[nan, nan]]
+    _skip_if_mps_clamp_caching(device)
+
+    ones = torch.ones(1, 2, device=device, dtype=torch.float16)
+    norm = kornia.geometry.conversions.normalize_pixel_coordinates(ones, 1, 1)
+    assert (norm == torch.inf).all()
+
+    denorm = kornia.geometry.conversions.denormalize_pixel_coordinates(norm, 1, 1)
+    assert torch.isnan(denorm).all()
 
 
 class TestDenormalizePixelCoordinates(BaseTester):
@@ -1398,7 +1481,7 @@ class TestDenormalizePixelCoordinates(BaseTester):
         out = kornia.geometry.conversions.denormalize_pixel_coordinates(pts_norm, 2, 4)
 
         expected = torch.tensor([[3.0, 0.0]], device=device, dtype=dtype)
-        self.assert_close(out, expected, atol=1e-2, rtol=1e-2)
+        self.assert_close(out, expected)
 
     def test_convention_roundtrip_denormalize_of_normalize(self, device, dtype):
         # Convention pin: denormalize(normalize(p)) == p on a non-degenerate, non-square,
@@ -1409,7 +1492,7 @@ class TestDenormalizePixelCoordinates(BaseTester):
         norm = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 5, 7)
         out = kornia.geometry.conversions.denormalize_pixel_coordinates(norm, 5, 7)
 
-        self.assert_close(out, pts, atol=1e-2, rtol=1e-2)
+        self.assert_close(out, pts)
 
     def test_convention_3d_component_order_and_roundtrip(self, device, dtype):
         # Convention pin (denormalize_pixel_coordinates3d has no test class of its own): same
@@ -1420,12 +1503,12 @@ class TestDenormalizePixelCoordinates(BaseTester):
         centre = kornia.geometry.conversions.denormalize_pixel_coordinates3d(
             torch.tensor([[0.0, 0.0, 0.0]], device=device, dtype=dtype), 3, 5, 9
         )
-        self.assert_close(centre, torch.tensor([[1.0, 4.0, 2.0]], device=device, dtype=dtype), atol=1e-2, rtol=1e-2)
+        self.assert_close(centre, torch.tensor([[1.0, 4.0, 2.0]], device=device, dtype=dtype))
 
         pts = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
         norm = kornia.geometry.conversions.normalize_pixel_coordinates3d(pts, 3, 5, 9)
         out = kornia.geometry.conversions.denormalize_pixel_coordinates3d(norm, 3, 5, 9)
-        self.assert_close(out, pts, atol=1e-2, rtol=1e-2)
+        self.assert_close(out, pts)
 
     # Wart-pin matrix for kornia#3940, denormalizing half: one cell per (size argument x
     # degenerate class) of denormalize_pixel_coordinates and denormalize_pixel_coordinates3d,
@@ -1590,7 +1673,7 @@ class TestDenormalizePointsWithIntrinsics(BaseTester):
         out = kornia.geometry.conversions.denormalize_points_with_intrinsics(points_norm, camera_matrix)
 
         expected = torch.tensor([[420.0, 440.0]], device=device, dtype=dtype)
-        self.assert_close(out, expected, atol=1e-2, rtol=1e-2)
+        self.assert_close(out, expected)
 
 
 class TestNormalizePointsWithIntrinsics(BaseTester):
@@ -1666,7 +1749,7 @@ class TestNormalizePointsWithIntrinsics(BaseTester):
         out = kornia.geometry.conversions.normalize_points_with_intrinsics(points_2d, camera_matrix)
 
         expected = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
-        self.assert_close(out, expected, atol=1e-2, rtol=1e-2)
+        self.assert_close(out, expected)
 
     def test_convention_skew_term_is_ignored(self, device, dtype):
         # Convention pin: only the diagonal fx, fy and the [:2, 2] column of K are read -- the
@@ -1682,7 +1765,7 @@ class TestNormalizePointsWithIntrinsics(BaseTester):
         out = kornia.geometry.conversions.normalize_points_with_intrinsics(points_2d, camera_matrix)
 
         expected = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
-        self.assert_close(out, expected, atol=1e-2, rtol=1e-2)
+        self.assert_close(out, expected)
 
 
 class TestRt2Extrinsics(BaseTester):
