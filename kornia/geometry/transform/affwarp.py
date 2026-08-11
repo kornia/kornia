@@ -768,11 +768,11 @@ def rescale(
 def letterbox(
     input: torch.Tensor,
     new_shape: Tuple[int, int],
-    fill_value: float = 114.0,
+    fill_value: float = 0.0,
     interpolation: str = "bilinear",
     align_corners: Optional[bool] = None,
     antialias: bool = False,
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, dict]:
     r"""Resizes and pads an image tensor to a target shape while maintaining aspect ratio.
 
     Convention:
@@ -782,26 +782,32 @@ def letterbox(
     Args:
         input: The image tensor to be resized and padded with shape of :math:`(..., H, W)`.
         new_shape: Target spatial dimensions as ``(height, width)``.
-        fill_value: Value used for padding. Default is 114.0 (common for object detection).
+        fill_value: Value used for padding. Default is 0.0 (Kornia expects tensors in [0, 1] range).
         interpolation: algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
             ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
 
     Returns:
-        The padded and resized tensor with the shape of ``new_shape``.
+        A tuple containing the padded and resized tensor with the shape of ``new_shape``, 
+        and a dictionary with the scale ``ratio`` and ``padding`` metadata.
 
     Example:
         >>> img = torch.ones(1, 3, 100, 200)
-        >>> out = letterbox(img, (200, 200))
+        >>> out, meta = letterbox(img, (200, 200))
         >>> print(out.shape)
         torch.Size([1, 3, 200, 200])
+        >>> print(meta["ratio"])
+        1.0
     """
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(input)}")
 
     if len(input.shape) < 2:
         raise ValueError(f"Input tensor must have at least two dimensions. Got {len(input.shape)}")
+
+    if new_shape[0] <= 0 or new_shape[1] <= 0:
+        raise ValueError(f"new_shape dimensions must be strictly positive. Got {new_shape}")
 
     h, w = input.shape[-2:]
     new_h, new_w = new_shape
@@ -813,7 +819,11 @@ def letterbox(
     unpad_w = max(1, round(w * ratio))
 
     resized_image = resize(
-        input, size=(unpad_h, unpad_w), interpolation=interpolation, align_corners=align_corners, antialias=antialias
+        input, 
+        size=(unpad_h, unpad_w), 
+        interpolation=interpolation, 
+        align_corners=align_corners, 
+        antialias=antialias
     )
 
     pad_h = new_h - unpad_h
@@ -830,7 +840,12 @@ def letterbox(
         value=fill_value,
     )
 
-    return padded_image
+    metadata = {
+        "ratio": ratio,
+        "padding": (pad_left, pad_right, pad_top, pad_bottom)
+    }
+
+    return padded_image, metadata
 
 
 class Resize(nn.Module):
@@ -1328,18 +1343,18 @@ class Letterbox(nn.Module):
 
     Args:
         new_shape: Desired output size as ``(height, width)``.
-        fill_value: Value used for padding. Default is 114.0.
+        fill_value: Value used for padding. Default is 0.0.
         interpolation: algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
             'bicubic' | 'trilinear' | 'area'.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
 
     Returns:
-        The padded and resized tensor.
+        A tuple containing the padded and resized tensor, and a dictionary with scale/pad metadata.
 
     Example:
         >>> img = torch.ones(1, 3, 100, 200)
-        >>> out = Letterbox((200, 200))(img)
+        >>> out, meta = Letterbox((200, 200))(img)
         >>> print(out.shape)
         torch.Size([1, 3, 200, 200])
     """
@@ -1347,7 +1362,7 @@ class Letterbox(nn.Module):
     def __init__(
         self,
         new_shape: Tuple[int, int],
-        fill_value: float = 114.0,
+        fill_value: float = 0.0,
         interpolation: str = "bilinear",
         align_corners: Optional[bool] = None,
         antialias: bool = False,
@@ -1359,15 +1374,14 @@ class Letterbox(nn.Module):
         self.align_corners: Optional[bool] = align_corners
         self.antialias: bool = antialias
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> Tuple[torch.Tensor, dict]:
         """Resize and pad spatial dimensions.
 
         Args:
             input: Tensor with shape :math:`(*, C, H, W)`.
 
         Returns:
-            Tensor with the same leading and channel dimensions as ``input``.
-            The output height and width are determined by ``self.new_shape``.
+            Tuple containing the transformed tensor and a metadata dictionary.
         """
         return letterbox(
             input,
