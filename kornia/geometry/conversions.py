@@ -90,7 +90,10 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
         ``[60., 120., 180.]`` instead of ``[57.2958, 114.5916, 171.8873]``) and
         a ``float64`` input loses about seven digits
         (``rad2deg(torch.tensor(math.pi, dtype=torch.float64)) - 180`` is
-        ``-5.0e-06``, not ``0``). Tracked in
+        ``-5.0e-06``, not ``0``). The defect lives in ``kornia.constants.pi``
+        itself, which other kornia modules (augmentation color jitter, feature
+        orientation/MKD, ``enhance.jpeg``) also consume — so a fix limited to
+        ``rad2deg``/``deg2rad`` would not end it. Tracked in
         `#3937 <https://github.com/kornia/kornia/issues/3937>`_.
 
     Args:
@@ -119,12 +122,8 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
           inverse of :func:`~kornia.geometry.conversions.rad2deg`
 
     .. warning::
-        Same float32-``pi`` defect as
-        :func:`~kornia.geometry.conversions.rad2deg`:
-        ``deg2rad(torch.tensor([180, 90]))`` returns ``[3.0000, 1.5000]``
-        instead of ``[3.1416, 1.5708]``, and
-        ``deg2rad(torch.tensor(180., dtype=torch.float64))`` returns
-        ``3.1415927410125732`` instead of ``math.pi``. Tracked in
+        Inherits the float32 ``kornia.constants.pi`` defect — see the warning on
+        :func:`~kornia.geometry.conversions.rad2deg` and
         `#3937 <https://github.com/kornia/kornia/issues/3937>`_.
 
     Args:
@@ -1028,7 +1027,9 @@ def normalize_pixel_coordinates(
           ``align_corners=False`` would instead place the first and last of
           those values at pixels ``-0.5`` and ``3.5`` — half a pixel outside
           the image on each side — so ``align_corners=True`` must be passed
-          explicitly when feeding this output to it
+          explicitly when feeding this output to it. Note that kornia's own
+          :func:`~kornia.geometry.transform.remap` resolves
+          ``align_corners=None`` to ``False``
         - the output is **not** clamped: coordinates outside the image
           extrapolate linearly past ``[-1, 1]``, as the example below shows
 
@@ -1242,11 +1243,9 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
 
     .. warning::
         The degrees-to-radians step is
-        :func:`~kornia.geometry.conversions.deg2rad`, so an integer ``angle``
-        inherits its float32-``pi`` defect:
-        ``angle_to_rotation_matrix(torch.tensor([90]))`` returns
-        ``[[0.0707, 0.9975], [-0.9975, 0.0707]]`` instead of the quarter-turn
-        matrix. Tracked in
+        :func:`~kornia.geometry.conversions.deg2rad`, so it inherits the float32
+        ``kornia.constants.pi`` defect — see the warning on
+        :func:`~kornia.geometry.conversions.rad2deg` and
         `#3937 <https://github.com/kornia/kornia/issues/3937>`_.
 
     Args:

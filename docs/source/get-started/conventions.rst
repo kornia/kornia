@@ -48,9 +48,11 @@ Angles and rotations
 --------------------
 
 - Angles are **degrees** in the 2D image APIs (``rotate``,
-  ``get_rotation_matrix2d``, ``RandomRotation``), and **radians** in the
-  3D/conversion APIs (``axis_angle_to_rotation_matrix``, ``So3``;
-  ``rad2deg``/``deg2rad`` exist to convert).
+  ``get_rotation_matrix2d``, ``RandomRotation``,
+  ``angle_to_rotation_matrix``), and **radians** in the 3D
+  rotation-representation APIs (``axis_angle_to_rotation_matrix``, ``So3``;
+  ``rad2deg``/``deg2rad`` exist to convert). Each op's Convention block
+  states its unit.
 - 2D image rotations: positive angle rotates **counter-clockwise as
   displayed** (top-left origin, matching OpenCV):
 
