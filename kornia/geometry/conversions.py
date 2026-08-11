@@ -192,8 +192,12 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
         - kornia's image ``y`` axis points down, so a growing ``phi`` turns
           **clockwise as displayed**. The relation to the other 2-D
           angle op is the opposite sense: applying
-          ``angle_to_rotation_matrix(theta)`` to a point *decreases* that
-          point's ``phi`` by exactly ``theta`` degrees
+          ``angle_to_rotation_matrix(theta)`` to a nonzero point *decreases*
+          that point's ``phi`` by ``theta`` degrees **modulo** :math:`2\pi` —
+          the result is re-wrapped into :math:`[-\pi, \pi]`, so a point at
+          ``phi = -170`` degrees rotated by ``theta = 30`` returns
+          ``phi = +160``, not ``-200``. At the origin ``phi`` carries no
+          direction and the relation does not apply
         - ``rho`` is ``sqrt(x ** 2 + y ** 2 + eps)``, not
           ``sqrt(x ** 2 + y ** 2)`` — see the warning below
 
@@ -213,9 +217,11 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[tor
     Args:
         x: torch.Tensor of arbitrary shape.
         y: torch.Tensor of same arbitrary shape.
-        eps: added inside the square root when computing ``rho``; its effect is
-            to keep the gradient of ``rho`` finite at the origin, which is
-            ``nan`` when ``eps=0``.
+        eps: added inside the square root when computing ``rho``. A positive
+            ``eps`` that is representable in the working dtype keeps the
+            gradient of ``rho`` finite at the origin, where it is ``nan`` with
+            ``eps=0``. The default ``1e-8`` underflows in ``float16`` (see the
+            warning above), so there the origin gradient is still ``nan``.
 
     Returns:
         - rho: torch.Tensor with same shape as input.
@@ -1227,9 +1233,12 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
           ``(1., 0.)`` to ``(0.8660, -0.5000)`` — counter-clockwise **as
           displayed** under kornia's y-down image axes. In the raw coordinate
           plane that is the opposite sense to
-          :func:`~kornia.geometry.conversions.cart2pol`: rotating a point by
-          ``theta`` degrees this way *decreases* its ``cart2pol`` angle ``phi``
-          by exactly ``theta`` degrees
+          :func:`~kornia.geometry.conversions.cart2pol`: rotating a nonzero
+          point by ``theta`` degrees this way *decreases* its ``cart2pol``
+          angle ``phi`` by ``theta`` degrees **modulo** :math:`2\pi`, since
+          ``phi`` is re-wrapped into :math:`[-\pi, \pi]` whenever the rotation
+          crosses the ``-x`` branch cut (``phi = -170`` degrees rotated by
+          ``theta = 30`` returns ``phi = +160``, not ``-200``)
 
     .. warning::
         The degrees-to-radians step is
