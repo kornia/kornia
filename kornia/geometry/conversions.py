@@ -84,17 +84,18 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
           conversion is elementwise and preserves shape, device and float dtype
 
     .. warning::
-        The conversion factor is ``kornia.constants.pi``, a **float32**
-        tensor that is cast to the input dtype, so an integer input is divided
-        by ``3`` (``rad2deg(torch.tensor([1, 2, 3]))`` returns
-        ``[60., 120., 180.]`` instead of ``[57.2958, 114.5916, 171.8873]``) and
-        a ``float64`` input loses about seven digits
+        Two distinct defects, tracked in
+        `#3937 <https://github.com/kornia/kornia/issues/3937>`_. A ``float64``
+        input loses about seven digits
         (``rad2deg(torch.tensor(math.pi, dtype=torch.float64)) - 180`` is
-        ``-5.0e-06``, not ``0``). The defect lives in ``kornia.constants.pi``
-        itself, which other kornia modules (augmentation color jitter, feature
-        orientation/MKD, ``enhance.jpeg``) also consume — so a fix limited to
-        ``rad2deg``/``deg2rad`` would not end it. Tracked in
-        `#3937 <https://github.com/kornia/kornia/issues/3937>`_.
+        ``-5.0e-06``, not ``0``) because ``kornia.constants.pi`` is a
+        **float32** tensor — a defect in the constant itself, which other
+        kornia modules (augmentation color jitter, feature orientation/MKD,
+        ``enhance.jpeg``) also consume. Separately, ``rad2deg``/``deg2rad``
+        themselves cast that constant to the input dtype, so an integer input
+        truncates ``pi`` to ``3``: ``rad2deg(torch.tensor([1, 2, 3]))`` returns
+        ``[60., 120., 180.]`` instead of ``[57.2958, 114.5916, 171.8873]``, and
+        a ``float64`` constant alone would not fix it.
 
     Args:
         tensor: torch.Tensor of arbitrary shape.
@@ -122,8 +123,10 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
           inverse of :func:`~kornia.geometry.conversions.rad2deg`
 
     .. warning::
-        Inherits the float32 ``kornia.constants.pi`` defect — see the warning on
-        :func:`~kornia.geometry.conversions.rad2deg` and
+        Inherits both defects of :func:`~kornia.geometry.conversions.rad2deg`
+        — the float32 ``kornia.constants.pi`` and the cast to the input dtype
+        (``deg2rad(torch.tensor([180, 90]))`` returns ``[3.0000, 1.5000]``).
+        See its warning and
         `#3937 <https://github.com/kornia/kornia/issues/3937>`_.
 
     Args:
@@ -266,7 +269,10 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
         ``-eps / w``, and there it is usually below the rounding of the working
         dtype — at ``w = 2`` the measured error is ``-5.0e-09`` in ``float64``,
         while in ``float32`` ``2 + eps`` rounds back to ``2`` and the result is
-        exact. Tracked in
+        exact. The numbers above assume ``eps`` is representable: in
+        ``float16`` both the default ``eps`` and ``w = 2e-8`` underflow to
+        ``0``, so ``[[2., 4., 2e-8]]`` takes the ``abs(w) <= eps`` pass-through
+        branch and returns ``[[2., 4.]]``. Tracked in
         `#3938 <https://github.com/kornia/kornia/issues/3938>`_.
 
     Args:
@@ -1094,8 +1100,10 @@ def denormalize_pixel_coordinates(
         ``denormalize_pixel_coordinates(torch.tensor([[0., 0.]], dtype=torch.float64), 4, 1)``
         returns ``[[5e-09, 1.5]]``. This clamp is the exact reciprocal of the one
         in :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`, so a
-        normalize-then-denormalize round trip still returns the input; it is a
-        single call on its own that is wrong. Tracked in
+        normalize-then-denormalize round trip returns the input as long as the
+        normalized value is finite — in ``float16`` ``eps`` underflows, the
+        normalized component is ``inf`` and the round trip returns ``nan``; it
+        is a single call on its own that is wrong. Tracked in
         `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
 
     Args:
@@ -1146,7 +1154,8 @@ def normalize_pixel_coordinates3d(
     .. warning::
         ``depth``, ``height`` and ``width`` are not validated; a degenerate size
         (``1``, ``0`` or negative) clamps that axis' denominator up to ``eps``
-        and blows the corresponding component up by a factor of ``2e8``. Tracked
+        and blows the corresponding component up by a factor of ``2e8``
+        (``inf`` in ``float16``, where ``eps`` underflows). Tracked
         in `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
 
     Args:
@@ -1190,11 +1199,13 @@ def denormalize_pixel_coordinates3d(
     .. warning::
         For a degenerate ``depth``/``height``/``width`` (``1``, ``0`` or
         negative) the clamped denominator scales that component by ``5e-09``
-        instead of by ``(size - 1) / 2``. That clamp is the exact reciprocal of
-        the one in
+        (``0`` in ``float16``, where ``eps`` underflows) instead of by
+        ``(size - 1) / 2``. That clamp is the exact reciprocal of the one in
         :func:`~kornia.geometry.conversions.normalize_pixel_coordinates3d`, so a
-        normalize-then-denormalize round trip still returns the input; it is a
-        single call on its own that is wrong. Tracked in
+        normalize-then-denormalize round trip returns the input as long as the
+        normalized value is finite — in ``float16`` the normalized component is
+        ``inf`` and the round trip returns ``nan``; it is a single call on its
+        own that is wrong. Tracked in
         `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
 
     Args:
@@ -1243,10 +1254,10 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
 
     .. warning::
         The degrees-to-radians step is
-        :func:`~kornia.geometry.conversions.deg2rad`, so it inherits the float32
-        ``kornia.constants.pi`` defect — see the warning on
-        :func:`~kornia.geometry.conversions.rad2deg` and
-        `#3937 <https://github.com/kornia/kornia/issues/3937>`_.
+        :func:`~kornia.geometry.conversions.deg2rad`, so it inherits both
+        defects of :func:`~kornia.geometry.conversions.rad2deg` — the float32
+        ``kornia.constants.pi`` and the cast to the input dtype. See its
+        warning and `#3937 <https://github.com/kornia/kornia/issues/3937>`_.
 
     Args:
         angle: tensor of angles in degrees, any shape :math:`(*)`.
