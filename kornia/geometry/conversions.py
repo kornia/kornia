@@ -86,7 +86,7 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
     .. warning::
         Two distinct defects, tracked in
         `#3937 <https://github.com/kornia/kornia/issues/3937>`_. A ``float64``
-        input loses about seven digits
+        input is left with only about seven correct significant digits
         (``rad2deg(torch.tensor(math.pi, dtype=torch.float64)) - 180`` is
         ``-5.0e-06``, not ``0``) because ``kornia.constants.pi`` is a
         **float32** tensor — a defect in the constant itself, which other
@@ -1244,13 +1244,9 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
         - applied on the left to a column vector ``(x, y)``, ``angle = 30`` maps
           ``(1., 0.)`` to ``(0.8660, -0.5000)`` — counter-clockwise **as
           displayed** under kornia's y-down image axes. In the raw coordinate
-          plane that is the opposite sense to
-          :func:`~kornia.geometry.conversions.cart2pol`: rotating a nonzero
-          point by ``theta`` degrees this way *decreases* its ``cart2pol``
-          angle ``phi`` by ``theta`` degrees **modulo** :math:`2\pi`, since
-          ``phi`` is re-wrapped into :math:`[-\pi, \pi]` whenever the rotation
-          crosses the ``-x`` branch cut (``phi = -170`` degrees rotated by
-          ``theta = 30`` returns ``phi = +160``, not ``-200``)
+          plane this is the opposite sense to
+          :func:`~kornia.geometry.conversions.cart2pol`, whose Convention block
+          spells out the modulo-:math:`2\pi` relation between the two ops
 
     .. warning::
         The degrees-to-radians step is
