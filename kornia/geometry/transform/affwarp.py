@@ -789,7 +789,7 @@ def letterbox(
         antialias: if True, then image will be filtered with Gaussian before downscaling.
 
     Returns:
-        A tuple containing the padded and resized tensor with the shape of ``new_shape``, 
+        A tuple containing the padded and resized tensor with the shape of ``new_shape``,
         and a dictionary with the scale ``ratio`` and ``padding`` metadata.
 
     Example:
@@ -819,11 +819,7 @@ def letterbox(
     unpad_w = max(1, round(w * ratio))
 
     resized_image = resize(
-        input, 
-        size=(unpad_h, unpad_w), 
-        interpolation=interpolation, 
-        align_corners=align_corners, 
-        antialias=antialias
+        input, size=(unpad_h, unpad_w), interpolation=interpolation, align_corners=align_corners, antialias=antialias
     )
 
     pad_h = new_h - unpad_h
@@ -840,10 +836,7 @@ def letterbox(
         value=fill_value,
     )
 
-    metadata = {
-        "ratio": ratio,
-        "padding": (pad_left, pad_right, pad_top, pad_bottom)
-    }
+    metadata = {"ratio": ratio, "padding": (pad_left, pad_right, pad_top, pad_bottom)}
 
     return padded_image, metadata
 
