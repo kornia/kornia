@@ -871,8 +871,15 @@ class TestLetterbox(BaseTester):
         # Unpadded will be 200x400.
         # Padding needed on height: 400 - 200 = 200 (100 top, 100 bottom)
         img = torch.rand(1, 3, 100, 200, device=device, dtype=dtype)
+<<<<<<< HEAD
         out, meta = kornia.geometry.transform.letterbox(img, (400, 400))
 
+=======
+        
+        # FIX: Replaced 'out' with '_' since we only test the metadata here
+        _, meta = kornia.geometry.transform.letterbox(img, (400, 400))
+        
+>>>>>>> 34900ffe (test: use underscore for unused unpacked variables to satisfy ruff linter)
         assert meta["ratio"] == 2.0
         # padding format: (left, right, top, bottom)
         assert meta["padding"] == (0, 0, 100, 100)
@@ -887,5 +894,13 @@ class TestLetterbox(BaseTester):
     def test_module(self, device, dtype):
         img = torch.rand(1, 3, 100, 200, device=device, dtype=dtype)
         transform = kornia.geometry.transform.Letterbox((200, 200))
+<<<<<<< HEAD
         out, meta = transform(img)
         assert out.shape == (1, 3, 200, 200)
+=======
+        
+        # FIX: Replaced 'meta' with '_' since we only test the output shape here
+        out, _ = transform(img)
+        
+        assert out.shape == (1, 3, 200, 200)
+>>>>>>> 34900ffe (test: use underscore for unused unpacked variables to satisfy ruff linter)
