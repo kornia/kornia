@@ -53,8 +53,8 @@ def _guided_blur_grayscale_guidance(
 ) -> torch.Tensor:
     guidance_sub, input_sub, kernel_size = _preprocess_fast_guided_blur(guidance, input, kernel_size, subsample)
 
-    mean_I = box_blur(guidance_sub, kernel_size, border_type, separable)
-    corr_I = box_blur(guidance_sub.square(), kernel_size, border_type, separable)
+    mean_I = box_blur(guidance_sub, kernel_size, border_type, separable=separable)
+    corr_I = box_blur(guidance_sub.square(), kernel_size, border_type, separable=separable)
     var_I = corr_I - mean_I.square()
 
     if input is guidance:
@@ -62,8 +62,8 @@ def _guided_blur_grayscale_guidance(
         cov_Ip = var_I
 
     else:
-        mean_p = box_blur(input_sub, kernel_size, border_type, separable)
-        corr_Ip = box_blur(guidance_sub * input_sub, kernel_size, border_type, separable)
+        mean_p = box_blur(input_sub, kernel_size, border_type, separable=separable)
+        corr_Ip = box_blur(guidance_sub * input_sub, kernel_size, border_type, separable=separable)
         cov_Ip = corr_Ip - mean_I * mean_p
 
     if isinstance(eps, torch.Tensor):
@@ -72,8 +72,8 @@ def _guided_blur_grayscale_guidance(
     a = cov_Ip / (var_I + eps)
     b = mean_p - a * mean_I
 
-    mean_a = box_blur(a, kernel_size, border_type, separable)
-    mean_b = box_blur(b, kernel_size, border_type, separable)
+    mean_a = box_blur(a, kernel_size, border_type, separable=separable)
+    mean_b = box_blur(b, kernel_size, border_type, separable=separable)
 
     if subsample > 1:
         mean_a = interpolate(mean_a, scale_factor=subsample, mode="bilinear")
@@ -94,9 +94,9 @@ def _guided_blur_multichannel_guidance(
     guidance_sub, input_sub, kernel_size = _preprocess_fast_guided_blur(guidance, input, kernel_size, subsample)
     B, C, H, W = guidance_sub.shape
 
-    mean_I = box_blur(guidance_sub, kernel_size, border_type, separable).permute(0, 2, 3, 1)
+    mean_I = box_blur(guidance_sub, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
     II = (guidance_sub.unsqueeze(1) * guidance_sub.unsqueeze(2)).flatten(1, 2)
-    corr_I = box_blur(II, kernel_size, border_type, separable).permute(0, 2, 3, 1)
+    corr_I = box_blur(II, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
     var_I = corr_I.reshape(B, H, W, C, C) - mean_I.unsqueeze(-2) * mean_I.unsqueeze(-1)
 
     if guidance is input:
@@ -104,9 +104,9 @@ def _guided_blur_multichannel_guidance(
         cov_Ip = var_I
 
     else:
-        mean_p = box_blur(input_sub, kernel_size, border_type, separable).permute(0, 2, 3, 1)
+        mean_p = box_blur(input_sub, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
         Ip = (input_sub.unsqueeze(1) * guidance_sub.unsqueeze(2)).flatten(1, 2)
-        corr_Ip = box_blur(Ip, kernel_size, border_type, separable).permute(0, 2, 3, 1)
+        corr_Ip = box_blur(Ip, kernel_size, border_type, separable=separable).permute(0, 2, 3, 1)
         cov_Ip = corr_Ip.reshape(B, H, W, C, -1) - mean_p.unsqueeze(-2) * mean_I.unsqueeze(-1)
 
     if isinstance(eps, torch.Tensor):
@@ -116,8 +116,8 @@ def _guided_blur_multichannel_guidance(
     a = torch.linalg.solve(var_I + _eps, cov_Ip)  # B, H, W, C_guidance, C_input
     b = mean_p - (mean_I.unsqueeze(-2) @ a).squeeze(-2)  # B, H, W, C_input
 
-    mean_a = box_blur(a.flatten(-2).permute(0, 3, 1, 2), kernel_size, border_type, separable)
-    mean_b = box_blur(b.permute(0, 3, 1, 2), kernel_size, border_type, separable)
+    mean_a = box_blur(a.flatten(-2).permute(0, 3, 1, 2), kernel_size, border_type, separable=separable)
+    mean_b = box_blur(b.permute(0, 3, 1, 2), kernel_size, border_type, separable=separable)
 
     if subsample > 1:
         mean_a = interpolate(mean_a, scale_factor=subsample, mode="bilinear")
@@ -177,9 +177,25 @@ def guided_blur(
         )
 
     if guidance.shape[1] == 1:
-        return _guided_blur_grayscale_guidance(guidance, input, kernel_size, eps, border_type, subsample, separable)
+        return _guided_blur_grayscale_guidance(
+            guidance,
+            input,
+            kernel_size,
+            eps,
+            border_type,
+            subsample,
+            separable=separable,
+        )
     else:
-        return _guided_blur_multichannel_guidance(guidance, input, kernel_size, eps, border_type, subsample, separable)
+        return _guided_blur_multichannel_guidance(
+            guidance,
+            input,
+            kernel_size,
+            eps,
+            border_type,
+            subsample,
+            separable=separable,
+        )
 
 
 class GuidedBlur(nn.Module):

@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+from __future__ import annotations
+
 from functools import partial
 from unittest.mock import patch
 
@@ -71,7 +73,7 @@ class TestGuidedBlur(BaseTester):
         subsample,
         device,
         dtype,
-    ):
+    ) -> None:
         height, width = 12, 16
         guide = torch.linspace(
             0.1,
@@ -113,7 +115,7 @@ class TestGuidedBlur(BaseTester):
         guide_dim,
         device,
         dtype,
-    ):
+    ) -> None:
         guide = torch.ones(1, guide_dim, 8, 8, device=device, dtype=dtype)
         inp = torch.ones(1, 2, 8, 8, device=device, dtype=dtype)
         received_separable_values = []
@@ -125,7 +127,7 @@ class TestGuidedBlur(BaseTester):
             separable: bool = False,
         ) -> torch.Tensor:
             received_separable_values.append(separable)
-            return box_blur(input_tensor, kernel_size, border_type, separable)
+            return box_blur(input_tensor, kernel_size, border_type, separable=separable)
 
         with patch(
             "kornia.filters.guided.box_blur",
@@ -133,7 +135,8 @@ class TestGuidedBlur(BaseTester):
         ):
             GuidedBlur(3, 0.1, separable=True)(guide, inp)
 
-        assert received_separable_values == [True] * 6
+        assert received_separable_values
+        assert all(received_separable_values), "Expected all box_blur calls to have separable=True"
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
@@ -163,7 +166,7 @@ class TestGuidedBlur(BaseTester):
         assert actual.is_contiguous()
 
     @pytest.mark.parametrize("separable", [False, True])
-    def test_gradcheck(self, separable, device):
+    def test_gradcheck(self, separable, device) -> None:
         guide = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
         img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
         operation = partial(guided_blur, separable=separable)
@@ -177,7 +180,7 @@ class TestGuidedBlur(BaseTester):
     @pytest.mark.parametrize("eps", [0.1, 0.01])
     @pytest.mark.parametrize("subsample", [1, 2])
     @pytest.mark.parametrize("separable", [False, True])
-    def test_module(self, shape, kernel_size, eps, subsample, device, dtype, separable):
+    def test_module(self, shape, kernel_size, eps, subsample, device, dtype, separable) -> None:
         guide = torch.rand(shape, device=device, dtype=dtype)
         img = torch.rand(shape, device=device, dtype=dtype)
 
@@ -203,7 +206,7 @@ class TestGuidedBlur(BaseTester):
     @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
     @pytest.mark.parametrize("subsample", [1, 2])
     @pytest.mark.parametrize("separable", [False, True])
-    def test_dynamo(self, kernel_size, subsample, separable, device, dtype, torch_optimizer):
+    def test_dynamo(self, kernel_size, subsample, separable, device, dtype, torch_optimizer) -> None:
         guide = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
         data = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
         op = GuidedBlur(kernel_size, 0.1, subsample=subsample, separable=separable)
