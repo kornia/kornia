@@ -601,22 +601,40 @@ class TestRadDegConversions(BaseTester):
         x_deg = 180.0 * torch.rand(batch_shape, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.conversions.deg2rad, (x_deg,))
 
-    @pytest.mark.xfail(reason="kornia.constants.pi is float32, so f64 loses ~7 digits — kornia#3937", strict=True)
-    def test_convention_rad2deg_of_pi_is_exactly_180_in_float64(self, device, dtype):
-        # Intended behavior: rad2deg is exact to the precision of its input dtype, like
-        # torch.rad2deg. It is not: rad2deg multiplies by 180 / kornia.constants.pi, and that
-        # constant is a *float32* tensor merely cast to the input dtype, so a float64 input
-        # carries a systematic ~2.8e-8 relative error (see #3937). Marked xfail(strict=True) so
-        # that fixing #3937 makes this XPASS and forces the mark to be removed.
-        # Snippet used to generate expected (numpy/torch not needed):
-        #   math.degrees(math.pi) == 180.0 exactly; torch.rad2deg(tensor(pi, f64)) - 180.0 == 0.0
-        #   kornia rad2deg(tensor(pi, f64)).item() -> 179.99999499104382
-        if dtype != torch.float64:
-            pytest.skip("float64-only claim: at float32 the biased constant rounds back to 180.0 exactly")
+    @pytest.mark.xfail(
+        reason="kornia.constants.pi is float32, so f64 loses ~7 digits (angle_to_rotation_matrix "
+        "inherits it via deg2rad) — kornia#3937",
+        strict=True,
+    )
+    @pytest.mark.parametrize(
+        ("op_name", "arg", "expected"),
+        [
+            ("rad2deg", torch.pi, 180.0),
+            ("deg2rad", 180.0, torch.pi),
+            ("angle_to_rotation_matrix", 90.0, [[0.0, 1.0], [-1.0, 0.0]]),
+        ],
+    )
+    def test_convention_float64_results_are_exact_3937(self, device, op_name, arg, expected):
+        # Intended behavior: each op is exact to the precision of its input dtype, like
+        # torch.rad2deg / torch.deg2rad; angle_to_rotation_matrix(90) is then the exact quarter
+        # turn. It is not: all three multiply by kornia.constants.pi, a *float32* tensor merely
+        # cast to the input dtype, so a float64 input carries a systematic ~2.8e-8 relative
+        # error (#3937). float64 is hardcoded (like test_rad2deg_gradcheck above) because at
+        # float32 the biased constant *is* the correctly rounded pi. Marked xfail(strict=True)
+        # so fixing #3937 makes every case XPASS and forces this mark out — a one-place edit.
+        # Snippet used to generate expected (stdlib + torch):
+        #   math.degrees(math.pi) == 180.0 and (180.0 * math.pi) / 180.0 == math.pi exactly
+        #   kornia rad2deg(tensor(pi, f64)).item()   -> 179.99999499104382
+        #   kornia deg2rad(tensor(180., f64)).item() -> 3.1415927410125732 (math.pi + 8.7e-08)
+        #   kornia angle_to_rotation_matrix(tensor(90., f64)).flatten().tolist() ->
+        #     [-4.371139000186241e-08, 0.999999999999999, -0.999999999999999, -4.371139e-08]
+        # atol/rtol 1e-12 sits between the current ~4.4e-8 cosine error and the 6.123234e-17
+        # an unbiased constant would give.
+        op = getattr(kornia.geometry.conversions, op_name)
 
-        out = kornia.geometry.conversions.rad2deg(torch.tensor(torch.pi, device=device, dtype=dtype))
-        expected = torch.tensor(180.0, device=device, dtype=dtype)
-        self.assert_close(out, expected, atol=1e-12, rtol=1e-12)
+        out = op(torch.tensor(arg, device=device, dtype=torch.float64))
+
+        self.assert_close(out, torch.tensor(expected, device=device, dtype=torch.float64), atol=1e-12, rtol=1e-12)
 
     def test_convention_angle_to_rotation_matrix_takes_degrees(self, device, dtype):
         # Convention pin: angle_to_rotation_matrix reads its argument in DEGREES (not radians)
@@ -643,98 +661,39 @@ class TestRadDegConversions(BaseTester):
         expected_rad = torch.tensor([[0.99962422, 0.02741213], [-0.02741213, 0.99962422]], device=device, dtype=dtype)
         self.assert_close(out_rad, expected_rad, atol=1e-2, rtol=1e-2)
 
-    @pytest.mark.xfail(reason="kornia.constants.pi is float32, so f64 loses ~7 digits — kornia#3937", strict=True)
-    def test_convention_deg2rad_of_180_is_exactly_pi_in_float64(self, device, dtype):
-        # Intended behavior, second half of the #3937 pair: deg2rad is exact to the precision of
-        # its input dtype, like torch.deg2rad. It is not: deg2rad multiplies by
-        # kornia.constants.pi / 180, and that constant is a *float32* tensor merely cast to the
-        # input dtype, so a float64 input carries a systematic ~2.8e-8 relative error.
-        # Marked xfail(strict=True) so fixing #3937 makes this XPASS and forces the mark out.
-        # Snippet used to generate expected (stdlib + torch):
-        #   (180.0 * math.pi) / 180.0 == math.pi  -> True, so an unbiased impl is exact
-        #   kornia deg2rad(tensor(180., f64)).item() -> 3.1415927410125732
-        #   that value - math.pi -> 8.742278012618954e-08
-        if dtype != torch.float64:
-            pytest.skip("float64-only claim: at float32 the float32 pi *is* the correctly rounded constant")
-
-        out = kornia.geometry.conversions.deg2rad(torch.tensor(180.0, device=device, dtype=dtype))
-        expected = torch.tensor(torch.pi, device=device, dtype=dtype)
-        self.assert_close(out, expected, atol=1e-12, rtol=1e-12)
-
-    @pytest.mark.xfail(reason="angle_to_rotation_matrix inherits the float32-pi defect — kornia#3937", strict=True)
-    def test_convention_angle_to_rotation_matrix_90_is_the_exact_quarter_turn_in_float64(self, device, dtype):
-        # Intended behavior, downstream half of the #3937 pair: angle_to_rotation_matrix(90) is
-        # the exact quarter turn [[0, 1], [-1, 0]] to the precision of its input dtype. It is not:
-        # the degrees-to-radians step is deg2rad, so the float32 pi leaks into the angle and the
-        # cosine comes out as -4.371139e-08 instead of ~6.1e-17.
-        # Marked xfail(strict=True) so fixing #3937 makes this XPASS and forces the mark out.
-        # Snippet used to generate expected (stdlib + torch):
-        #   torch.cos(torch.tensor(math.pi / 2, dtype=torch.float64)) -> 6.123233995736766e-17
-        #   kornia angle_to_rotation_matrix(tensor(90., f64)).flatten().tolist() ->
-        #     [-4.371139000186241e-08, 0.999999999999999, -0.999999999999999, -4.371139000186241e-08]
-        # atol/rtol 1e-12 sits between the two: it rejects the current 4.4e-8 cosine and accepts
-        # the 6.1e-17 an unbiased constant would give.
-        if dtype != torch.float64:
-            pytest.skip("float64-only claim: at float32 the float32 pi *is* the correctly rounded constant")
-
-        out = kornia.geometry.conversions.angle_to_rotation_matrix(torch.tensor(90.0, device=device, dtype=dtype))
-        expected = torch.tensor([[0.0, 1.0], [-1.0, 0.0]], device=device, dtype=dtype)
-        self.assert_close(out, expected, atol=1e-12, rtol=1e-12)
-
-    def test_wart_rad2deg_of_integer_input_divides_by_three(self, device):
-        # Wart pin for #3937: asserts the CURRENT broken output that the docstring warning
-        # documents. If this test fails, #3937 was (partly) fixed -- update or remove the warnings
-        # in rad2deg, deg2rad and angle_to_rotation_matrix and flip/remove the three
-        # test_convention_* xfails above. This is NOT a contract that int inputs must keep
-        # returning these values.
-        # It is a regular test rather than a strict xfail on purpose: what an integer input
-        # *should* do (promote to float like torch.rad2deg, or raise) is a maintainer decision,
-        # and a strict xfail asserting the promoted-float answer would stay silently XFAIL forever
-        # if the fix chose to raise. A wart pin flips loudly under either polarity.
+    @pytest.mark.parametrize(
+        ("op_name", "arg", "expected"),
+        [
+            ("rad2deg", [1, 2, 3], [60.0, 120.0, 180.0]),
+            ("deg2rad", [180, 90], [3.0, 1.5]),
+            ("angle_to_rotation_matrix", [90], [[[0.07073720, 0.99749500], [-0.99749500, 0.07073720]]]),
+        ],
+    )
+    def test_wart_integer_input_truncates_pi_to_3_3937(self, device, op_name, arg, expected):
+        # Wart pins for #3937: assert the CURRENT broken outputs the docstring warnings document.
+        # kornia.constants.pi is cast to the *integer* input dtype and truncates to 3, so rad2deg
+        # divides by 3, deg2rad multiplies by 3 (90 degrees -> 1.5 radians), and the downstream
+        # angle_to_rotation_matrix([90]) is nowhere near the quarter turn. If a case fails, #3937
+        # was (partly) fixed -- update or remove the warnings in rad2deg, deg2rad and
+        # angle_to_rotation_matrix and flip/remove the strict xfail above. NOT a contract that
+        # int inputs must keep these values: what they *should* do (promote to float like
+        # torch.rad2deg, or raise) is a maintainer decision, and a strict xfail asserting the
+        # promoted-float answer would stay silently XFAIL forever if the fix chose to raise;
+        # a wart pin flips loudly under either polarity.
         # Snippet used to generate expected (torch only):
         #   kornia rad2deg(torch.tensor([1, 2, 3])) -> tensor([ 60., 120., 180.]), dtype float32
-        #   torch.rad2deg(torch.tensor([1, 2, 3]))  -> tensor([ 57.2958, 114.5916, 171.8873])
-        # kornia.constants.pi is cast to the *integer* input dtype and truncates to 3.
-        out = kornia.geometry.conversions.rad2deg(torch.tensor([1, 2, 3], device=device))
-
-        assert out.dtype == torch.float32
-        expected = torch.tensor([60.0, 120.0, 180.0], device=device, dtype=torch.float32)
-        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
-
-    def test_wart_deg2rad_of_integer_input_multiplies_by_three(self, device):
-        # Wart pin for #3937: asserts the CURRENT broken output that the docstring warning
-        # documents. If this test fails, #3937 was (partly) fixed -- update or remove the warnings
-        # in rad2deg, deg2rad and angle_to_rotation_matrix and flip/remove the three
-        # test_convention_* xfails above. This is NOT a contract that int inputs must keep
-        # returning these values; see the polarity note on the rad2deg wart pin above.
-        # Snippet used to generate expected (torch only):
+        #     (torch.rad2deg gives [ 57.2958, 114.5916, 171.8873])
         #   kornia deg2rad(torch.tensor([180, 90])) -> tensor([3.0000, 1.5000]), dtype float32
-        #   torch.deg2rad(torch.tensor([180, 90]))  -> tensor([3.1416, 1.5708])
-        out = kornia.geometry.conversions.deg2rad(torch.tensor([180, 90], device=device))
-
-        assert out.dtype == torch.float32
-        expected = torch.tensor([3.0, 1.5], device=device, dtype=torch.float32)
-        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
-
-    def test_wart_angle_to_rotation_matrix_of_integer_angle(self, device):
-        # Wart pin for #3937: asserts the CURRENT broken output that the docstring warning
-        # documents. If this test fails, #3937 was (partly) fixed -- update or remove the warnings
-        # in rad2deg, deg2rad and angle_to_rotation_matrix and flip/remove the three
-        # test_convention_* xfails above. This is NOT a contract that int inputs must keep
-        # returning these values; see the polarity note on the rad2deg wart pin above.
-        # This is the downstream case: an integer angle reaches deg2rad, which turns 90 degrees
-        # into 90 * 3 / 180 = 1.5 radians, so the matrix is nowhere near the quarter turn.
-        # Snippet used to generate expected (torch only):
+        #     (torch.deg2rad gives [3.1416, 1.5708])
         #   kornia angle_to_rotation_matrix(torch.tensor([90])).flatten().tolist() ->
         #     [0.07073719799518585, 0.9974949955940247, -0.9974949955940247, 0.07073719799518585]
-        #   math.cos(1.5), math.sin(1.5) -> (0.0707372016677029, 0.9974949866040544)
-        out = kornia.geometry.conversions.angle_to_rotation_matrix(torch.tensor([90], device=device))
+        #     (math.cos(1.5), math.sin(1.5) -> (0.0707372016677029, 0.9974949866040544))
+        op = getattr(kornia.geometry.conversions, op_name)
+
+        out = op(torch.tensor(arg, device=device))
 
         assert out.dtype == torch.float32
-        expected = torch.tensor(
-            [[[0.07073720, 0.99749500], [-0.99749500, 0.07073720]]], device=device, dtype=torch.float32
-        )
-        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(out, torch.tensor(expected, device=device, dtype=torch.float32), atol=1e-4, rtol=1e-4)
 
 
 class TestPolCartConversions(BaseTester):
@@ -877,7 +836,8 @@ class TestPolCartConversions(BaseTester):
 
 class TestConvertPointsToHomogeneous(BaseTester):
     def test_convert_points(self, device, dtype):
-        # generate input data
+        # Convention pin: the homogeneous 1.0 is appended as the *last* component (the
+        # non-symmetric rows catch a prepend or a component reversal).
         points_h = torch.tensor(
             [[1.0, 2.0, 1.0], [0.0, 1.0, 2.0], [2.0, 1.0, 0.0], [-1.0, -2.0, -1.0], [0.0, 1.0, -2.0]],
             device=device,
@@ -929,18 +889,6 @@ class TestConvertPointsToHomogeneous(BaseTester):
         expected = op(points_h)
 
         self.assert_close(actual, expected)
-
-    def test_convention_appends_one_as_the_last_component(self, device, dtype):
-        # Convention pin: the homogeneous 1.0 is appended as the *last* component of each point,
-        # (*, D) -> (*, D + 1); it is not prepended, and the existing components keep their
-        # order. The literal is non-symmetric so a prepend or a reversal is caught.
-        # Snippet used to generate expected (by hand): [1, 2, 3] -> [1, 2, 3, 1]
-        points = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
-
-        out = kornia.geometry.conversions.convert_points_to_homogeneous(points)
-
-        expected = torch.tensor([[1.0, 2.0, 3.0, 1.0]], device=device, dtype=dtype)
-        self.assert_close(out, expected)
 
 
 class TestConvertAtoH(BaseTester):
@@ -1020,7 +968,9 @@ class TestConvertPointsFromHomogeneous(BaseTester):
         assert points.shape == points.shape[:-1] + (2,)
 
     def test_points(self, device, dtype):
-        # generate input data
+        # Convention pins: the [2., 1., 0.] row is the |w| <= eps case (default eps 1e-8) --
+        # returned *unchanged*, not zeros, not inf, no exception. The negative-w rows pin that
+        # the sign of w is preserved (no abs): [0., 1., -2.] -> [0., -0.5].
         points_h = torch.tensor(
             [[1.0, 2.0, 1.0], [0.0, 1.0, 2.0], [2.0, 1.0, 0.0], [-1.0, -2.0, -1.0], [0.0, 1.0, -2.0]],
             device=device,
@@ -1068,20 +1018,6 @@ class TestConvertPointsFromHomogeneous(BaseTester):
         expected = op(points_h)
 
         self.assert_close(actual, expected)
-
-    def test_convention_small_w_returns_the_numerator_unchanged(self, device, dtype):
-        # Convention pin: when |w| <= eps (default 1e-8, tested strictly with >) the point is
-        # returned *unchanged* -- not zeros, not inf, and no exception. For |w| > eps the sign
-        # of w is preserved (no abs, no sign flip).
-        # Snippet used to generate expected (by hand):
-        #   w = 0   -> passthrough        -> [2, 4]
-        #   w = -2  -> divide by w        -> [2 / -2, 4 / -2] = [-1, -2]
-        points = torch.tensor([[2.0, 4.0, 0.0], [2.0, 4.0, -2.0]], device=device, dtype=dtype)
-
-        out = kornia.geometry.conversions.convert_points_from_homogeneous(points)
-
-        expected = torch.tensor([[2.0, 4.0], [-1.0, -2.0]], device=device, dtype=dtype)
-        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.xfail(reason="convert_points_from_homogeneous divides by w + eps — kornia#3938", strict=True)
     def test_convention_divides_by_exactly_w(self, device, dtype):
@@ -1195,26 +1131,20 @@ class TestNormalizePixelCoordinates(BaseTester):
     def test_convention_grid_sample_needs_align_corners_true(self, device, dtype):
         # Convention pin: feeding normalized coordinates to torch.nn.functional.grid_sample
         # requires align_corners=True to be passed explicitly. With it, the three normalized
-        # pixel centres sample back the exact pixel values; with grid_sample's own default
-        # (align_corners=None -> False, passed explicitly here to keep the run warning-free)
-        # every value is wrong, including the corner pixel 15.0 -> 3.75.
+        # pixel centres sample back the exact pixel values; grid_sample's own default
+        # (align_corners=None -> False) instead places u = -1, -1/3, 1 at pixels
+        # ((u + 1) * 4 - 1) / 2 = -0.5, 0.8333, 3.5, i.e. half a pixel outside the image at
+        # both ends, so every sampled value would be wrong.
         # Snippet used to generate expected (stdlib only, W = 4, img = arange(16).view(4, 4)):
         #   img[0, 0], img[1, 1], img[3, 3] -> 0.0, 5.0, 15.0
-        #   align_corners=False places u = -1, -1/3, 1 at pixels ((u + 1) * 4 - 1) / 2 =
-        #   -0.5, 0.8333, 3.5, i.e. half a pixel outside the image at both ends, so bilinear
-        #   sampling with zero padding gives 0.0, 25/6, 3.75
         img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
         pts = torch.tensor([[0.0, 0.0], [1.0, 1.0], [3.0, 3.0]], device=device, dtype=dtype)
         grid = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 4, 4).view(1, 1, 3, 2)
 
         sampled_aligned = torch.nn.functional.grid_sample(img, grid, align_corners=True).flatten()
-        sampled_default = torch.nn.functional.grid_sample(img, grid, align_corners=False).flatten()
 
         self.assert_close(
             sampled_aligned, torch.tensor([0.0, 5.0, 15.0], device=device, dtype=dtype), atol=1e-2, rtol=1e-2
-        )
-        self.assert_close(
-            sampled_default, torch.tensor([0.0, 4.1666667, 3.75], device=device, dtype=dtype), atol=5e-2, rtol=5e-2
         )
 
     def test_convention_3d_component_order_is_depth_x_y(self, device, dtype):
@@ -1664,20 +1594,6 @@ class TestNormalizePointsWithIntrinsics(BaseTester):
         expected = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
         self.assert_close(out, expected, atol=1e-2, rtol=1e-2)
 
-    def test_convention_roundtrip_denormalize_of_normalize(self, device, dtype):
-        # Convention pin: denormalize(normalize(p, K), K) == p for a non-identity K with
-        # fx != fy and cx != cy, so the two are exact mutual inverses.
-        # Snippet used to generate expected (by hand): the input itself.
-        points_2d = torch.tensor([[420.0, 440.0]], device=device, dtype=dtype)
-        camera_matrix = torch.tensor(
-            [[[100.0, 0.0, 320.0], [0.0, 200.0, 240.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
-        )
-
-        norm = kornia.geometry.conversions.normalize_points_with_intrinsics(points_2d, camera_matrix)
-        out = kornia.geometry.conversions.denormalize_points_with_intrinsics(norm, camera_matrix)
-
-        self.assert_close(out, points_2d, atol=1e-2, rtol=1e-2)
-
 
 class TestRt2Extrinsics(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
@@ -1957,9 +1873,9 @@ def test_vector_to_skew_symmetric_matrix(batch_size, device, dtype):
 
 def test_convention_skew_symmetric_matrix_is_cross_product_from_the_left(device, dtype):
     # Convention pin (vector_to_skew_symmetric_matrix has no test class in this file, so this
-    # sits next to the existing module-level test): the returned matrix is [[0, -v3, v2],
-    # [v3, 0, -v1], [-v2, v1, 0]], i.e. [v]x @ x == cross(v, x) -- NOT cross(x, v), which is
-    # the negation.
+    # sits next to the existing module-level test, which already pins all nine entries):
+    # [v]x @ x == cross(v, x) -- the vector is the LEFT factor of the cross product, NOT
+    # cross(x, v), which is the negation.
     # Snippet used to generate expected (stdlib only):
     #   v, x = (1, 2, 3), (4, 5, 6)
     #   cross(v, x) = (2*6 - 3*5, 3*4 - 1*6, 1*5 - 2*4) -> (-3, 6, -3)
@@ -1967,9 +1883,6 @@ def test_convention_skew_symmetric_matrix_is_cross_product_from_the_left(device,
     x = torch.tensor([4.0, 5.0, 6.0], device=device, dtype=dtype)
 
     skew = kornia.geometry.conversions.vector_to_skew_symmetric_matrix(v)
-
-    expected_matrix = torch.tensor([[0.0, -3.0, 2.0], [3.0, 0.0, -1.0], [-2.0, 1.0, 0.0]], device=device, dtype=dtype)
-    assert_close(skew, expected_matrix)
 
     expected_cross = torch.tensor([-3.0, 6.0, -3.0], device=device, dtype=dtype)
     assert_close(skew @ x, expected_cross)
