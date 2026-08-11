@@ -796,8 +796,9 @@ class TestQuaternionToRotationMatrix(BaseTester):
         real_part_first = kornia.geometry.conversions.quaternion_to_rotation_matrix(
             torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         )
-        # .to(dtype) because quaternion_to_rotation_matrix returns float32 for float16/bfloat16
-        # inputs; the cast keeps this pin about the component order and nothing else.
+        # .to(dtype) because quaternion_to_rotation_matrix returns float32 for unbatched (4,)
+        # float16/bfloat16 input like this one (kornia#3954; batched input keeps its dtype); the
+        # cast keeps this pin about the component order and nothing else.
         self.assert_close(real_part_first.to(dtype), torch.eye(3, device=device, dtype=dtype))
 
         read_as_xyzw = kornia.geometry.conversions.quaternion_to_rotation_matrix(
@@ -850,7 +851,8 @@ class TestQuaternionToRotationMatrix(BaseTester):
             device=device,
             dtype=dtype,
         )
-        # .to(dtype) because the function returns float32 for float16/bfloat16 inputs.
+        # .to(dtype) because the function returns float32 for unbatched (4,) float16/bfloat16
+        # input like this one (kornia#3954; batched input keeps its dtype).
         self.assert_close(rot.to(dtype), expected)
 
         assert torch.equal(kornia.geometry.conversions.quaternion_to_rotation_matrix(2.0 * quaternion), rot)
@@ -1064,7 +1066,7 @@ class TestQuaternionToRotationMatrix(BaseTester):
         # because a fix could plausibly special-case float16 (the common half dtype) and leave
         # bfloat16 upcast, which would leave one case of the strict xfail silently XFAIL. If either
         # fails, #3954 was (partly) fixed -- flip/remove the strict xfail above. NOT a contract that
-        # half-precision input must keep being upcast.
+        # unbatched half-precision input must keep being upcast.
         # Snippet used to generate expected (torch only, executed on cpu):
         #   q = torch.tensor([1., 0., 0., 0.], dtype=torch.float16)
         #   quaternion_to_rotation_matrix(q).dtype       -> torch.float32   (bfloat16 input: also float32)
@@ -1611,8 +1613,9 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         rot_from_quaternion = kornia.geometry.conversions.quaternion_to_rotation_matrix(
             torch.tensor([0.955336489125606, 0.0, 0.0, 0.29552020666133955], device=device, dtype=dtype)
         )
-        # .to(dtype) because quaternion_to_rotation_matrix returns float32 for float16/bfloat16
-        # inputs; the cast keeps this pin about the rotation sense and nothing else.
+        # .to(dtype) because quaternion_to_rotation_matrix returns float32 for unbatched (4,)
+        # float16/bfloat16 input like this one (kornia#3954; batched input keeps its dtype); the
+        # cast keeps this pin about the rotation sense and nothing else.
         self.assert_close(rot_from_quaternion.to(dtype), expected)
         self.assert_close(rot_from_quaternion.to(dtype) @ x_hat, expected_x_maps_to)
 
@@ -3682,8 +3685,9 @@ class TestQuaternionFromEuler(BaseTester):
         assert isinstance(quaternion, tuple)
         assert len(quaternion) == 4
 
-        # .to(dtype) because quaternion_to_rotation_matrix returns float32 for float16/bfloat16
-        # inputs; the cast keeps this pin about the composition order and nothing else.
+        # .to(dtype) because quaternion_to_rotation_matrix returns float32 for unbatched (4,)
+        # float16/bfloat16 input like this one (kornia#3954; batched input keeps its dtype); the
+        # cast keeps this pin about the composition order and nothing else.
         rot = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(quaternion)).to(dtype)
 
         self.assert_close(rot, rot_z @ rot_y @ rot_x)
