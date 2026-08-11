@@ -877,10 +877,12 @@ class TestPolCartConversions(BaseTester):
         wrapped_delta = torch.atan2(torch.sin(raw_delta), torch.cos(raw_delta))
         # The re-wrap atan2(sin, cos) adds two more transcendental roundings on top of the two
         # atan2 outputs it differences, overshooting the central per-dtype tolerances in the half
-        # dtypes: measured |wrapped_delta - expected| is 1.95e-3 in float16 (central allowance
-        # atol 1e-3 + rtol 1e-3 * 0.52 = 1.52e-3) and 1.16e-2 in bfloat16 (allowance 1.19e-2, a
-        # 3 % margin that torch rounding drift could erase). atol 2.4e-2 is ~2x the bfloat16
-        # error; a sign-flipped or unwrapped delta would still be off by >= 1.0.
+        # dtypes. Measured against the dtype-cast expected tensor the assert compares with
+        # (-0.5234375 in both halves): |err| is 1.953125e-3 in float16 (wrapped -0.525390625;
+        # central allowance atol 1e-3 + rtol 1e-3 * 0.52 = 1.52e-3) and 1.171875e-2 in bfloat16
+        # (wrapped -0.53515625; allowance 1.19e-2 -- a 1.4 % margin that torch rounding drift
+        # could erase). atol 2.4e-2 is ~2x the bfloat16 error; a sign-flipped or unwrapped delta
+        # would still be off by >= 1.0.
         wrap_tol = {"atol": 2.4e-2, "rtol": 0.0} if dtype in (torch.float16, torch.bfloat16) else {}
         self.assert_close(wrapped_delta, expected_delta, **wrap_tol)
 

@@ -55,8 +55,7 @@ Angles and rotations
   ``angle_to_rotation_matrix``), and **radians** in the 3D
   rotation-representation APIs (``axis_angle_to_rotation_matrix``, ``So3``)
   and in the polar conversions ``cart2pol``/``pol2cart``
-  (``rad2deg``/``deg2rad`` exist to convert). Ops that have a Convention
-  block state their unit there.
+  (``rad2deg``/``deg2rad`` exist to convert).
 - 2D image rotations: positive angle rotates **counter-clockwise as
   displayed** (top-left origin, matching OpenCV):
 
