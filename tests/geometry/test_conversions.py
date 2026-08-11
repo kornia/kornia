@@ -837,8 +837,9 @@ class TestPolCartConversions(BaseTester):
     def test_convention_positive_rotation_decreases_cart2pol_phi(self, device, dtype):
         # Cross-symbol convention pin: angle_to_rotation_matrix and cart2pol use *opposite*
         # angle senses in the same (x, y) plane. Applying angle_to_rotation_matrix(+theta) to a
-        # point decreases that point's cart2pol phi by exactly theta, so neither symbol may be
-        # documented with a bare "positive angle = counter-clockwise".
+        # nonzero point decreases that point's cart2pol phi by theta modulo 2*pi, so neither
+        # symbol may be documented with a bare "positive angle = counter-clockwise".
+        # First case: no branch-cut crossing, so the raw difference is -theta itself.
         # Snippet used to generate expected (stdlib only):
         #   import math
         #   -math.radians(30.0) -> -0.5235987755982988
@@ -851,6 +852,27 @@ class TestPolCartConversions(BaseTester):
 
         expected_delta = torch.tensor(-0.5235987755982988, device=device, dtype=dtype)
         self.assert_close(phi1 - phi0, expected_delta, atol=1e-2, rtol=1e-2)
+
+        # Second case: crossing the -x branch cut. A point at phi = -170 deg rotated by
+        # theta = +30 deg comes back with phi re-wrapped into [-pi, pi]: the returned phi is
+        # +160 deg, not -200 deg, so the raw difference is +330 deg and only the difference
+        # modulo 2*pi is -theta.
+        # Snippet used to generate expected (stdlib only):
+        #   import math
+        #   5 * math.cos(math.radians(-170.0)), 5 * math.sin(math.radians(-170.0))
+        #     -> (-4.92403876506104, -0.8682408883346514)
+        #   math.radians(160.0) -> 2.792526803190927
+        w = torch.tensor([-4.9240388, -0.8682409], device=device, dtype=dtype)
+        phi0_cut = kornia.geometry.conversions.cart2pol(w[0], w[1])[1]
+
+        w_rot = rot @ w
+        phi1_cut = kornia.geometry.conversions.cart2pol(w_rot[0], w_rot[1])[1]
+
+        self.assert_close(phi1_cut, torch.tensor(2.7925268, device=device, dtype=dtype), atol=1e-2, rtol=1e-2)
+
+        raw_delta = phi1_cut - phi0_cut
+        wrapped_delta = torch.atan2(torch.sin(raw_delta), torch.cos(raw_delta))
+        self.assert_close(wrapped_delta, expected_delta, atol=1e-2, rtol=1e-2)
 
 
 class TestConvertPointsToHomogeneous(BaseTester):
@@ -1214,30 +1236,48 @@ class TestNormalizePixelCoordinates(BaseTester):
             out_swapped, torch.tensor([[1.0, 0.0, 3.0]], device=device, dtype=dtype), atol=1e-2, rtol=1e-2
         )
 
-    def test_wart_degenerate_size_is_accepted_and_explodes(self, device, dtype):
-        # Wart pin for #3940: asserts the CURRENT broken output that the docstring warnings
-        # document. If this test fails, #3940 was (partly) fixed -- update or remove the four
-        # warnings in normalize_pixel_coordinates, denormalize_pixel_coordinates,
-        # normalize_pixel_coordinates3d and denormalize_pixel_coordinates3d. This is NOT a
-        # contract that degenerate sizes must keep returning these values.
-        # It is a regular test rather than a strict xfail on purpose: the intended behavior
-        # (raise ValueError, or clamp the *output*, or keep the current pass-through) is a
-        # maintainer decision, and a strict xfail asserting one of those answers would stay
-        # silently XFAIL forever if a different one were chosen. A wart pin flips loudly under
-        # every polarity, because any validation fix stops returning 199999999.0.
-        # Snippet used to generate expected (torch only):
-        #   npc = kornia.geometry.conversions.normalize_pixel_coordinates
-        #   npc(torch.tensor([[1., 1.]], dtype=torch.float64), 1, 1) -> [[199999999.0, 199999999.0]]
-        #   npc(torch.tensor([[1., 1.]], dtype=torch.float64), 4, -3) -> [[199999999.0, -0.3333333333333334]]
-        #   npc(torch.tensor([[1., 1.]], dtype=torch.float64), 4, 0) -> [[199999999.0, -0.3333333333333334]]
-        #   npc(torch.tensor([[1., 1.]], dtype=torch.float64), 0, 4) -> [[-0.3333333333333334, 199999999.0]]
-        # The mechanism is `(hw - 1).clamp(eps)`: size 1 gives 0, size 0 gives -1 and a negative
-        # size gives a more negative denominator, all clamped up to eps = 1e-8, so the factor
-        # becomes 2e8. All three of the sizes the #3940 warnings name (1, 0, negative) are pinned
-        # literally, so a fix that special-cases only one of them still flips this test. The
-        # height=0 leg is pinned too, so a fix that validates only `width` also flips it.
-        # At float16 2e8 overflows to inf and the same literal overflows identically, so the
-        # comparison stays meaningful at every dtype.
+    # Wart-pin matrix for kornia#3940, normalizing half: one cell per (size argument x
+    # degenerate class) of normalize_pixel_coordinates and normalize_pixel_coordinates3d,
+    # asserting the CURRENT broken output that the docstring warnings document. If any cell
+    # fails, #3940 was (partly) fixed -- update or remove the degenerate-size warnings in
+    # normalize_pixel_coordinates, denormalize_pixel_coordinates, normalize_pixel_coordinates3d
+    # and denormalize_pixel_coordinates3d. The cells are NOT a contract that degenerate sizes
+    # must keep returning these values.
+    # They are regular tests rather than strict xfails on purpose: the intended behavior
+    # (raise ValueError, or clamp the *output*, or keep the current pass-through) is a
+    # maintainer decision, and a strict xfail asserting one of those answers would stay
+    # silently XFAIL forever if a different one were chosen. A wart pin flips loudly under
+    # every polarity, and covering the full matrix means any partial fix -- one function, one
+    # argument, or one degenerate class -- flips at least one cell.
+    # Exactly one size argument is degenerate per cell (the others stay at 5/7 in 2-D and
+    # 5/7/9 in 3-D), so the finite components pin which argument was degenerated. All three
+    # classes give the same output because the mechanism is `(size - 1).clamp(eps)`: size 1
+    # gives 0, size 0 gives -1 and size -3 gives -4, all clamped up to eps = 1e-8, so the
+    # factor becomes 2e8.
+    # Snippet used to generate expected (torch only; same output for bad in (1, 0, -3)):
+    #   npc = kornia.geometry.conversions.normalize_pixel_coordinates
+    #   npc3 = kornia.geometry.conversions.normalize_pixel_coordinates3d
+    #   npc(torch.tensor([[1., 1.]], dtype=torch.float64), bad, 7) -> [[-0.6666666666666667, 199999999.0]]
+    #   npc(torch.tensor([[1., 1.]], dtype=torch.float64), 5, bad) -> [[199999999.0, -0.5]]
+    #   npc3(torch.tensor([[1., 1., 1.]], dtype=torch.float64), bad, 7, 9)
+    #     -> [[199999999.0, -0.75, -0.6666666666666667]]
+    #   npc3(torch.tensor([[1., 1., 1.]], dtype=torch.float64), 5, bad, 9) -> [[-0.5, -0.75, 199999999.0]]
+    #   npc3(torch.tensor([[1., 1., 1.]], dtype=torch.float64), 5, 7, bad) -> [[-0.5, 199999999.0, -0.6666666666666667]]
+    # At float16 2e8 overflows to inf and the literal overflows identically; at bfloat16 both
+    # sides round to 200278016.0, so the comparison stays meaningful at every dtype.
+    @pytest.mark.parametrize("degenerate_size", [1, 0, -3], ids=["one", "zero", "negative"])
+    @pytest.mark.parametrize(
+        ("ndim", "arg_name", "expected"),
+        [
+            ("2d", "height", [-0.6666667, 199999999.0]),
+            ("2d", "width", [199999999.0, -0.5]),
+            ("3d", "depth", [199999999.0, -0.75, -0.6666667]),
+            ("3d", "height", [-0.5, -0.75, 199999999.0]),
+            ("3d", "width", [-0.5, 199999999.0, -0.6666667]),
+        ],
+        ids=["2d-height", "2d-width", "3d-depth", "3d-height", "3d-width"],
+    )
+    def test_wart_degenerate_size_matrix(self, ndim, arg_name, degenerate_size, expected, device, dtype):
         if device.type == "mps":
             pytest.skip(
                 "torch 2.9.1 caches clamp's scalar min per shape/dtype on MPS -- first value wins: "
@@ -1247,48 +1287,34 @@ class TestNormalizePixelCoordinates(BaseTester):
                 "first, which is a torch defect, not a kornia one"
             )
 
+        if ndim == "2d":
+            sizes = {"height": 5, "width": 7}
+            func = kornia.geometry.conversions.normalize_pixel_coordinates
+        else:
+            sizes = {"depth": 5, "height": 7, "width": 9}
+            func = kornia.geometry.conversions.normalize_pixel_coordinates3d
+        sizes[arg_name] = degenerate_size
+        pts = torch.ones(1, len(sizes), device=device, dtype=dtype)
+
+        out = func(pts, *sizes.values())
+
+        self.assert_close(out, torch.tensor([expected], device=device, dtype=dtype), atol=1e-2, rtol=1e-2)
+
+    def test_wart_all_size_arguments_degenerate_together(self, device, dtype):
+        # Wart pin for kornia#3940, companion to the matrix above: both sizes degenerate at
+        # once also passes silently, exploding every component. Flips together with the matrix
+        # when #3940 is fixed -- see the cleanup note above the matrix.
+        # Snippet used to generate expected (torch only):
+        #   npc = kornia.geometry.conversions.normalize_pixel_coordinates
+        #   npc(torch.tensor([[1., 1.]], dtype=torch.float64), 1, 1) -> [[199999999.0, 199999999.0]]
+        if device.type == "mps":
+            pytest.skip("same torch 2.9.1 MPS clamp-min caching as the wart matrix above")
+
         pts = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
 
-        degenerate = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 1, 1)
+        out = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 1, 1)
+
         expected = torch.tensor([[199999999.0, 199999999.0]], device=device, dtype=dtype)
-        self.assert_close(degenerate, expected, atol=1e-2, rtol=1e-2)
-
-        negative_width = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 4, -3)
-        expected_negative = torch.tensor([[199999999.0, -0.33333333]], device=device, dtype=dtype)
-        self.assert_close(negative_width, expected_negative, atol=1e-2, rtol=1e-2)
-
-        zero_width = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 4, 0)
-        self.assert_close(zero_width, expected_negative, atol=1e-2, rtol=1e-2)
-
-        zero_height = kornia.geometry.conversions.normalize_pixel_coordinates(pts, 0, 4)
-        expected_zero_height = torch.tensor([[-0.33333333, 199999999.0]], device=device, dtype=dtype)
-        self.assert_close(zero_height, expected_zero_height, atol=1e-2, rtol=1e-2)
-
-    def test_wart_degenerate_size_3d_is_accepted_and_explodes(self, device, dtype):
-        # Wart pin for #3940, 3-D sibling: asserts the CURRENT broken output that the docstring
-        # warnings document. If this test fails, #3940 was (partly) fixed -- update or remove the
-        # four warnings in normalize_pixel_coordinates, denormalize_pixel_coordinates,
-        # normalize_pixel_coordinates3d and denormalize_pixel_coordinates3d. This is NOT a
-        # contract that degenerate sizes must keep returning these values; see the polarity note
-        # on the 2-D wart pin above.
-        # Snippet used to generate expected (torch only):
-        #   npc3 = kornia.geometry.conversions.normalize_pixel_coordinates3d
-        #   npc3(torch.tensor([[1., 1., 1.]], dtype=torch.float64), 1, 5, 9)
-        #     -> [[199999999.0, -0.75, -0.5]]
-        #   npc3(torch.tensor([[1., 1., 1.]], dtype=torch.float64), 0, 5, 9)
-        #     -> [[199999999.0, -0.75, -0.5]]   (depth 0 is pinned literally as well as depth 1)
-        # Only the depth axis is degenerate here: x and y still use width 9 and height 5, so
-        # 2 * 1 / 8 - 1 = -0.75 and 2 * 1 / 4 - 1 = -0.5 stay finite next to the exploded depth.
-        if device.type == "mps":
-            pytest.skip("same torch 2.9.1 MPS clamp-min caching as the 2-D wart pin above")
-
-        pts = torch.tensor([[1.0, 1.0, 1.0]], device=device, dtype=dtype)
-
-        out = kornia.geometry.conversions.normalize_pixel_coordinates3d(pts, 1, 5, 9)
-        zero_depth = kornia.geometry.conversions.normalize_pixel_coordinates3d(pts, 0, 5, 9)
-
-        expected = torch.tensor([[199999999.0, -0.75, -0.5]], device=device, dtype=dtype)
-        self.assert_close(zero_depth, expected, atol=1e-2, rtol=1e-2)
         self.assert_close(out, expected, atol=1e-2, rtol=1e-2)
 
 
@@ -1381,56 +1407,58 @@ class TestDenormalizePixelCoordinates(BaseTester):
         out = kornia.geometry.conversions.denormalize_pixel_coordinates3d(norm, 3, 5, 9)
         self.assert_close(out, pts, atol=1e-2, rtol=1e-2)
 
-    def test_wart_degenerate_size_collapses_instead_of_exploding(self, device, dtype):
-        # Wart pin for #3940, denormalizing half: asserts the CURRENT broken output that the
-        # docstring warnings document. If this test fails, #3940 was (partly) fixed -- update or
-        # remove the four warnings in normalize_pixel_coordinates,
-        # denormalize_pixel_coordinates, normalize_pixel_coordinates3d and
-        # denormalize_pixel_coordinates3d. This is NOT a contract that degenerate sizes must keep
-        # returning these values.
-        # It is a regular test rather than a strict xfail on purpose: the intended behavior
-        # (raise ValueError, or clamp, or keep the current pass-through) is a maintainer
-        # decision, and a strict xfail asserting one of those answers would stay silently XFAIL
-        # forever if a different one were chosen. A wart pin flips loudly under every polarity.
-        # Snippet used to generate expected (torch only):
-        #   dpc = kornia.geometry.conversions.denormalize_pixel_coordinates
-        #   dpc(torch.tensor([[0., 0.]], dtype=torch.float64), 4, 1) -> [[5e-09, 1.5]]
-        #   dpc(torch.tensor([[0., 0.]], dtype=torch.float64), 4, 0) -> [[5e-09, 1.5]]
-        #   dpc3 = kornia.geometry.conversions.denormalize_pixel_coordinates3d
-        #   dpc3(torch.tensor([[0., 0., 0.]], dtype=torch.float64), 1, 5, 9) -> [[5e-09, 4.0, 2.0]]
-        #   dpc3(torch.tensor([[0., 0., 0.]], dtype=torch.float64), 0, 5, 9) -> [[5e-09, 4.0, 2.0]]
-        # Both size 1 and a literal size 0 are pinned, so a fix that special-cases only one of the
-        # sizes the #3940 warnings name still flips this test.
-        # Here the clamped denominator multiplies instead of divides, so the degenerate axis
-        # collapses to eps / 2 = 5e-09 rather than exploding to 2e8. The tolerance is tight
-        # (rtol 1e-6, atol 0) on purpose: at atol 1e-2 the collapsed component would compare
-        # equal to any small number, including the 0.0 a "clamp the output" fix might return.
-        # It still holds at every dtype -- at float16 5e-09 underflows to 0.0 on both the
-        # measured and the literal side, and at bfloat16 both round to 5.005858838558197e-09.
+    # Wart-pin matrix for kornia#3940, denormalizing half: one cell per (size argument x
+    # degenerate class) of denormalize_pixel_coordinates and denormalize_pixel_coordinates3d,
+    # asserting the CURRENT broken output that the docstring warnings document. If any cell
+    # fails, #3940 was (partly) fixed -- update or remove the degenerate-size warnings in
+    # normalize_pixel_coordinates, denormalize_pixel_coordinates, normalize_pixel_coordinates3d
+    # and denormalize_pixel_coordinates3d. The cells are NOT a contract that degenerate sizes
+    # must keep returning these values; see the polarity note on the normalize wart matrix,
+    # which also explains why exactly one argument is degenerate per cell and why all three
+    # classes (1, 0, -3) give the same output.
+    # Here the clamped denominator multiplies instead of divides, so the degenerate axis
+    # collapses to eps / 2 = 5e-09 rather than exploding to 2e8. The tolerance is tight
+    # (rtol 1e-6, atol 0) on purpose: at atol 1e-2 the collapsed component would compare
+    # equal to any small number, including the 0.0 a "clamp the output" fix might return.
+    # It still holds at every dtype -- at float16 5e-09 underflows to 0.0 on both the
+    # measured and the literal side, at bfloat16 both round to 5.005858838558197e-09, and the
+    # finite components 2.0/3.0/4.0 are exact in every dtype.
+    # Snippet used to generate expected (torch only; same output for bad in (1, 0, -3)):
+    #   dpc = kornia.geometry.conversions.denormalize_pixel_coordinates
+    #   dpc3 = kornia.geometry.conversions.denormalize_pixel_coordinates3d
+    #   dpc(torch.tensor([[0., 0.]], dtype=torch.float64), bad, 7) -> [[3.0, 5e-09]]
+    #   dpc(torch.tensor([[0., 0.]], dtype=torch.float64), 5, bad) -> [[5e-09, 2.0]]
+    #   dpc3(torch.tensor([[0., 0., 0.]], dtype=torch.float64), bad, 7, 9) -> [[5e-09, 4.0, 3.0]]
+    #   dpc3(torch.tensor([[0., 0., 0.]], dtype=torch.float64), 5, bad, 9) -> [[2.0, 4.0, 5e-09]]
+    #   dpc3(torch.tensor([[0., 0., 0.]], dtype=torch.float64), 5, 7, bad) -> [[2.0, 5e-09, 3.0]]
+    @pytest.mark.parametrize("degenerate_size", [1, 0, -3], ids=["one", "zero", "negative"])
+    @pytest.mark.parametrize(
+        ("ndim", "arg_name", "expected"),
+        [
+            ("2d", "height", [3.0, 5e-09]),
+            ("2d", "width", [5e-09, 2.0]),
+            ("3d", "depth", [5e-09, 4.0, 3.0]),
+            ("3d", "height", [2.0, 4.0, 5e-09]),
+            ("3d", "width", [2.0, 5e-09, 3.0]),
+        ],
+        ids=["2d-height", "2d-width", "3d-depth", "3d-height", "3d-width"],
+    )
+    def test_wart_degenerate_size_matrix(self, ndim, arg_name, degenerate_size, expected, device, dtype):
         if device.type == "mps":
-            pytest.skip("same torch 2.9.1 MPS clamp-min caching as the normalize wart pins")
+            pytest.skip("same torch 2.9.1 MPS clamp-min caching as the normalize wart matrix")
 
-        out = kornia.geometry.conversions.denormalize_pixel_coordinates(
-            torch.tensor([[0.0, 0.0]], device=device, dtype=dtype), 4, 1
-        )
-        self.assert_close(out, torch.tensor([[5e-09, 1.5]], device=device, dtype=dtype), atol=0.0, rtol=1e-6)
+        if ndim == "2d":
+            sizes = {"height": 5, "width": 7}
+            func = kornia.geometry.conversions.denormalize_pixel_coordinates
+        else:
+            sizes = {"depth": 5, "height": 7, "width": 9}
+            func = kornia.geometry.conversions.denormalize_pixel_coordinates3d
+        sizes[arg_name] = degenerate_size
+        pts = torch.zeros(1, len(sizes), device=device, dtype=dtype)
 
-        out_zero = kornia.geometry.conversions.denormalize_pixel_coordinates(
-            torch.tensor([[0.0, 0.0]], device=device, dtype=dtype), 4, 0
-        )
-        self.assert_close(out_zero, torch.tensor([[5e-09, 1.5]], device=device, dtype=dtype), atol=0.0, rtol=1e-6)
+        out = func(pts, *sizes.values())
 
-        out3d = kornia.geometry.conversions.denormalize_pixel_coordinates3d(
-            torch.tensor([[0.0, 0.0, 0.0]], device=device, dtype=dtype), 1, 5, 9
-        )
-        self.assert_close(out3d, torch.tensor([[5e-09, 4.0, 2.0]], device=device, dtype=dtype), atol=0.0, rtol=1e-6)
-
-        out3d_zero = kornia.geometry.conversions.denormalize_pixel_coordinates3d(
-            torch.tensor([[0.0, 0.0, 0.0]], device=device, dtype=dtype), 0, 5, 9
-        )
-        self.assert_close(
-            out3d_zero, torch.tensor([[5e-09, 4.0, 2.0]], device=device, dtype=dtype), atol=0.0, rtol=1e-6
-        )
+        self.assert_close(out, torch.tensor([expected], device=device, dtype=dtype), atol=0.0, rtol=1e-6)
 
 
 class TestProjectPoints(BaseTester):
