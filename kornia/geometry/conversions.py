@@ -439,7 +439,8 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
         ``0.9999974535249636`` and ``max|R R^T - I|`` is
         ``2.5464750363912714e-06``; the determinant is the same for every axis,
         the orthogonality residual is not (a generic axis gives
-        ``2.091747640764474e-06``). The error does not shrink with dtype, and
+        ``2.091747640764474e-06``). ``float32`` is no better
+        (``2.5033950805664062e-06`` on the same input), and
         the second example below hides it — the printed ``1.0000e+00`` at
         ``R[0, 0]`` is really ``0.9999987483024597``. Below an internal
         threshold on ``theta ** 2`` the first-order matrix
@@ -454,11 +455,10 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
         Only rank-2 input is accepted, despite the guard's ``(*, 3)`` message:
         ``(3,)`` raises ``IndexError: Dimension out of range``, ``(2, 5, 3)``
         raises ``ValueError: too many values to unpack (expected 3)`` and
-        ``(1, 1, 3)`` raises ``ValueError: not enough values to unpack``. The
-        ``(3,)`` and ``(2, 5, 3)`` vectors that
+        ``(1, 1, 3)`` raises ``ValueError: not enough values to unpack``.
+        Composing with
         :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`
-        returns for ``(3, 3)`` and ``(2, 5, 3, 3)`` input therefore cannot be
-        fed back in. Tracked in
+        therefore fails for every rotation-matrix rank but 3. Tracked in
         `#3955 <https://github.com/kornia/kornia/issues/3955>`_.
 
     .. warning::
@@ -804,14 +804,15 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
           warnings give the measured errors
         - applied on the left to a column vector, ``+theta`` about ``+z`` maps
           ``x_hat`` to ``y_hat`` (right-hand rule)
+        - for one and the same half-precision tensor,
+          :func:`~kornia.geometry.conversions.normalize_quaternion`,
+          :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` and
+          :func:`~kornia.geometry.conversions.quaternion_exp_to_log` return the
+          input dtype while this function does not — see the warning below
 
     .. warning::
-        ``float16`` and ``bfloat16`` input returns a ``float32`` matrix;
-        :func:`~kornia.geometry.conversions.normalize_quaternion`,
-        :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` and
-        :func:`~kornia.geometry.conversions.quaternion_exp_to_log` on the same
-        tensor return the input dtype. Tracked in
-        `#3954 <https://github.com/kornia/kornia/issues/3954>`_.
+        ``float16`` and ``bfloat16`` input returns a ``float32`` matrix.
+        Tracked in `#3954 <https://github.com/kornia/kornia/issues/3954>`_.
 
     .. warning::
         The zero quaternion returns the identity matrix rather than raising:
@@ -976,9 +977,10 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
           lands in the ``w < 0`` half of the double cover — at ``||v|| = 2`` the
           real part is ``-0.4161468365471424``
         - ``v`` is therefore **half** the axis-angle vector: the result agrees
-          with ``axis_angle_to_quaternion(2 * v)`` to float64 rounding (worst
-          ``4.44e-16`` over 500 random vectors, 142 of them bit-identical; at
-          ``bfloat16`` the two differ by up to ``9.77e-04``)
+          with ``axis_angle_to_quaternion(2 * v)`` to the rounding of the
+          working dtype. Over 20 000 random vectors the worst difference is
+          ``7.8e-16`` in ``float64``, ``4.2e-07`` in ``float32`` and
+          ``2.9e-02`` in ``bfloat16``
         - for a **unit** ``q``, ``quaternion_log_to_exp(quaternion_exp_to_log(q))``
           returns ``q`` up to rounding, except that the pure-real
           ``[-1., 0., 0., 0.]`` comes back as ``[1., 0., 0., 0.]`` — the other
@@ -1026,8 +1028,8 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
           ``(w, x, y, z)`` order and the output is a 3-vector of shape
           :math:`(*, 3)`, the argument
           :func:`~kornia.geometry.conversions.quaternion_log_to_exp` takes
-        - on the ``w >= 0`` half of the double cover the result is
-          ``quaternion_to_axis_angle(q) / 2``. On the ``w < 0`` half the two
+        - for a **unit** ``q`` on the ``w >= 0`` half of the double cover the
+          result is ``quaternion_to_axis_angle(q) / 2``. On the ``w < 0`` half the two
           part company: this function applies ``acos(w)`` as given, while
           :func:`~kornia.geometry.conversions.quaternion_to_axis_angle`
           collapses the double cover. For the ``q`` whose log is ``v``,
@@ -1206,20 +1208,28 @@ def euler_from_quaternion(
           **radians**, with ``roll`` about ``x``, ``pitch`` about ``y`` and
           ``yaw`` about ``z``; the composition they stand for is documented on
           :func:`~kornia.geometry.conversions.quaternion_from_euler`
-        - away from ``|pitch| = pi/2`` it inverts
-          :func:`~kornia.geometry.conversions.quaternion_from_euler`: the
-          ``float64`` round trip of ``(0.3, 0.7, 1.1)`` returns to ``2.2e-16``
+        - away from ``|pitch| = pi/2`` it returns the triple of the input
+          rotation folded into ``roll, yaw`` in ``(-pi, pi]`` and ``pitch`` in
+          ``[-pi/2, pi/2]``, which inside those ranges is the input itself: the
+          ``float64`` round trip of ``(0.3, 0.7, 1.1)`` through
+          :func:`~kornia.geometry.conversions.quaternion_from_euler` returns to
+          ``2.2e-16``, while ``(0.2, 2.5, 0.3)`` comes back as
+          ``(-2.9416, 0.6416, -2.8416)`` — a different triple for the same
+          rotation, to ``1.1e-16``
 
     .. warning::
-        At ``pitch = ±pi/2`` the returned triple does not represent the input
-        rotation, and no gimbal-lock branch exists to say so: the round trip of
+        At ``pitch = ±pi/2`` the returned triple usually does not represent the
+        input rotation, and no gimbal-lock branch exists to say so: the round trip of
         ``(0.1, pi/2, 0.2)`` through
         :func:`~kornia.geometry.conversions.quaternion_from_euler` returns
         ``(pi/2, pi/2, pi/2)``, whose matrix differs from the input's by
         ``0.09983341664682817``, and the ``-pi/2`` case returns
         ``(0., -pi/2, pi/2)``. All of 200 random ``(roll, yaw)`` at
         ``pitch = +pi/2`` fail this way, while none of 200 drawn with
-        ``|pitch| < pi/4`` do. Tracked in
+        ``|pitch| < pi/4`` do. The rotation does survive on the diagonal
+        ``roll = yaw`` at ``+pi/2`` (and ``roll = -yaw`` at ``-pi/2``), to
+        ``2.6e-08`` over 200 random draws, though ``roll`` and ``yaw`` are still
+        not returned individually. Tracked in
         `#3950 <https://github.com/kornia/kornia/issues/3950>`_.
 
     .. warning::
