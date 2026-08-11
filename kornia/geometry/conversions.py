@@ -437,8 +437,10 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
         the angle when the axis is normalised, which shrinks the axis. In
         ``float64`` at ``theta = pi/2`` about ``+z``, ``det(R)`` is
         ``0.9999974535249636`` and ``max|R R^T - I|`` is
-        ``2.5464750363912714e-06``; the determinant is the same for every axis,
-        the orthogonality residual is not (a generic axis gives
+        ``2.5464750363912714e-06``; the determinant is axis-independent to the
+        last digit or two — over 400 000 random unit axes at that angle every
+        determinant is within ``2e-15`` of the value above — while the
+        orthogonality residual is not (a generic axis gives
         ``2.091747640764474e-06``). ``float32`` is no better
         (``2.5033950805664062e-06`` on the same input), and
         the second example below hides it — the printed ``1.0000e+00`` at
@@ -747,10 +749,16 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
 
     .. warning::
         When ``||q|| < eps`` the output is **not** a unit quaternion and no
-        error is raised: with the default ``eps = 1e-12``,
+        error is raised: in ``float64`` with the default ``eps = 1e-12``,
         ``[1e-13, 0., 0., 0.]`` returns ``[0.1, 0., 0., 0.]`` and ``zeros(4)``
-        returns ``zeros(4)``. With ``eps=0.0`` the zero quaternion returns
-        ``[nan, nan, nan, nan]`` instead. Tracked in
+        returns ``zeros(4)``, and with ``eps=0.0`` the zero quaternion returns
+        ``[nan, nan, nan, nan]`` instead. ``float32`` and ``bfloat16`` behave
+        the same up to their rounding (``0.10000000149011612`` and
+        ``0.099609375`` for the first input). In ``float16`` both ``1e-13`` and
+        the default ``eps`` round to ``0``, so the clamp is a no-op and each of
+        those two inputs already returns ``[nan, nan, nan, nan]`` at the
+        default — the same underflow class as
+        `#3966 <https://github.com/kornia/kornia/issues/3966>`_. Tracked in
         `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
 
     Args:
@@ -794,11 +802,20 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
           rotation matrix and no error
         - ``q`` and ``-q`` are the same rotation (double cover) and return
           bit-identical matrices
-        - the input is normalised internally, so rescaling it changes nothing:
-          ``quaternion_to_rotation_matrix(2 * q)`` is exactly
-          ``quaternion_to_rotation_matrix(q)``.
-          :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` is
-          scale-safe as well; the two functions that are **not** are
+        - the input is normalised internally:
+          ``quaternion_to_rotation_matrix(2 * q)`` is bitwise
+          ``quaternion_to_rotation_matrix(q)`` (400 000 random unit
+          quaternions, at every dtype), and rescaling by a random factor
+          between ``1e-6`` and ``1e6`` moves the matrix by less than ``2e-15``
+          in ``float64`` and ``1e-06`` in ``float32`` over the same sample.
+          Once ``||q||`` drops below
+          :func:`~kornia.geometry.conversions.normalize_quaternion`'s
+          ``eps = 1e-12`` the clamp takes over and rescaling does change the
+          matrix: in ``float64``, ``q * 1e-13`` and ``q`` give matrices as much
+          as ``1.98`` apart over 400 000 random unit quaternions
+        - :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` is
+          scale-safe over its own range, given in its Convention block; the two
+          functions that are **not** are
           :func:`~kornia.geometry.conversions.quaternion_exp_to_log` and
           :func:`~kornia.geometry.conversions.euler_from_quaternion`, whose
           warnings give the measured errors
@@ -826,8 +843,13 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
 
     .. warning::
         The zero quaternion returns the identity matrix rather than raising:
-        ``quaternion_to_rotation_matrix(torch.zeros(4))`` is ``eye(3)``.
-        Tracked in `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
+        ``quaternion_to_rotation_matrix(torch.zeros(4))`` is ``eye(3)`` in
+        ``float64``, ``float32`` and ``bfloat16``. In ``float16`` the internal
+        ``eps = 1e-12`` normalisation floor rounds to ``0``, the guard it
+        provides disappears and the matrix is all-``nan`` instead — the same
+        underflow class as
+        `#3966 <https://github.com/kornia/kornia/issues/3966>`_. Tracked in
+        `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
@@ -908,10 +930,25 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
           :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`),
           and the output is the rotation axis scaled by the angle in
           **radians**
-        - the double cover is collapsed: ``q`` and ``-q`` return the identical
-          vector, the representative with ``|theta| <= pi``
-        - the input need not be unit — ``quaternion_to_axis_angle(2 * q)`` is
-          exactly ``quaternion_to_axis_angle(q)``
+        - for ``w != 0`` the double cover is collapsed: ``q`` and ``-q`` return
+          the same vector, the representative with ``|theta| <= pi``, and in
+          ``float64`` the two are bit-identical (400 000 random finite
+          quaternions; in ``float32`` they differ by less than ``1e-06`` over
+          the same sample)
+        - at exactly ``w = 0`` — a half turn, and ``0.`` is exactly
+          representable — the collapse does not happen and the two return exact
+          negations: ``[0., 1., 0., 0.]`` gives ``[pi, 0., 0.]`` while
+          ``[-0., -1., 0., 0.]`` gives ``[-pi, 0., 0.]``, the same rotation
+          written the other way round
+        - the input need not be unit: ``quaternion_to_axis_angle(2 * q)`` is
+          bitwise ``quaternion_to_axis_angle(q)`` (400 000 random unit
+          quaternions, at every dtype), and rescaling by a random factor
+          between ``1e-6`` and ``1e6`` moves the result by less than ``2e-15``
+          in ``float64`` and ``1e-06`` in ``float32`` over the same sample.
+          At extreme scales the squares of the vector part underflow and the
+          result does change: in ``float32``,
+          ``quaternion_to_axis_angle(q * 1e-25)`` returns exactly
+          ``2 * (q * 1e-25)[..., 1:]``
         - ``quaternion_to_angle_axis`` is the deprecated alias of this function
           since 0.7.0; see the alias warning on
           :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
@@ -983,18 +1020,32 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
           in ``(w, x, y, z)`` order (see
           :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`)
         - the map is ``w = cos(||v||)`` with vector part
-          ``sin(||v||) * v / ||v||``, so the output is unit and ``||v|| > pi/2``
-          lands in the ``w < 0`` half of the double cover — at ``||v|| = 2`` the
-          real part is ``-0.4161468365471424``
+          ``sin(||v||) * v / ||v||``, so the output is a unit quaternion up to
+          the working dtype's rounding: over 400 000 random ``v`` with
+          ``0 < ||v|| < pi`` the worst ``| ||out|| - 1 |`` stays below
+          ``4e-16`` in ``float64``, ``2e-07`` in ``float32``, ``2e-03`` in
+          ``float16`` and ``1e-02`` in ``bfloat16``. A ``v`` whose ``float16``
+          norm is ``0`` is the exception — see the warning below
+        - ``||v|| > pi/2`` lands in the ``w < 0`` half of the double cover — at
+          ``||v|| = 2`` the real part is ``-0.4161468365471424``
         - ``v`` is therefore **half** the axis-angle vector: the result agrees
           with ``axis_angle_to_quaternion(2 * v)`` to the rounding of the
-          working dtype. Over 20 000 random vectors the worst difference is
-          ``7.8e-16`` in ``float64``, ``4.2e-07`` in ``float32`` and
-          ``2.9e-02`` in ``bfloat16``
+          working dtype. Over 400 000 random vectors the difference stays below
+          ``1e-15`` in ``float64``, ``1e-06`` in ``float32``, ``4e-03`` in
+          ``float16`` and ``4e-02`` in ``bfloat16``
         - for a **unit** ``q``, ``quaternion_log_to_exp(quaternion_exp_to_log(q))``
           returns ``q`` up to rounding, except that the pure-real
           ``[-1., 0., 0., 0.]`` comes back as ``[1., 0., 0., 0.]`` — the other
           half of the same rotation
+
+    .. warning::
+        In ``float16`` the default ``eps = 1e-8`` rounds to ``0``, so the clamp
+        that guards the division is a no-op and any ``v`` whose ``float16``
+        norm is ``0`` returns ``[1., nan, nan, nan]`` — ``zeros(3)`` and
+        ``[1e-9, 0., 0.]`` both do. ``float64``, ``float32`` and ``bfloat16``
+        return ``[1., 0., 0., 0.]`` for ``zeros(3)``, and so does ``float16``
+        with a representable ``eps`` (e.g. ``eps=1e-3``). Tracked in
+        `#3966 <https://github.com/kornia/kornia/issues/3966>`_.
 
     Args:
         quaternion: the log quaternion, a tensor of shape :math:`(*, 3)`.

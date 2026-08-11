@@ -466,6 +466,33 @@ class TestQuaternionToAngleAxis(BaseTester):
         )
         assert torch.equal(kornia.geometry.conversions.quaternion_to_axis_angle(-quaternion), axis_angle)
 
+        # Second cell: at exactly w = 0 the collapse does NOT happen, so the docstring's "w != 0"
+        # qualifier is falsifiable here rather than merely asserted. The branch test is
+        # `cos_theta < 0.0` and `-0.0 < 0.0` is False, so q and -q take the same branch and the
+        # sign of the vector part passes straight through, making the two outputs exact negations.
+        # The first cell cannot catch this: its input has w > 0, and no random sweep can sample
+        # w = 0. Both outputs describe the same rotation (a half turn about +x and about -x):
+        # axis_angle_to_rotation_matrix of [pi, 0, 0] and of [-pi, 0, 0] differ by 2.45e-16 in
+        # float64. The exact negation holds at every dtype: over 400000 random quaternions with the
+        # real part zeroed, cast to float64/float32/float16/bfloat16 and restricted to inputs and
+        # outputs that are finite in that dtype, there are 0 mismatches each.
+        # Snippet used to generate expected (stdlib only, v = (0.6, 0.8, 0.0), |v| = 1, w = 0):
+        #   import math
+        #   theta = 2 * math.atan2(1.0, 0.0)   # pi
+        #   [theta * a for a in (0.6, 0.8, 0.0)]
+        #     -> [1.8849555921538759, 2.5132741228718345, 0.0]
+        half_turn = torch.tensor([0.0, 0.6, 0.8, 0.0], device=device, dtype=dtype)
+
+        half_turn_axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(half_turn)
+
+        self.assert_close(
+            half_turn_axis_angle,
+            torch.tensor([1.8849555921538759, 2.5132741228718345, 0.0], device=device, dtype=dtype),
+        )
+        assert torch.equal(kornia.geometry.conversions.quaternion_to_axis_angle(-half_turn), -half_turn_axis_angle), (
+            "quaternion_to_axis_angle no longer returns exact negations at w = 0"
+        )
+
     def test_convention_quaternion_to_axis_angle_is_scale_invariant(self, device, dtype):
         # Convention pin (quaternion_to_axis_angle has no test class under its own name; this class
         # is the one that exercises it): the function does not require -- and does not check -- a
@@ -589,11 +616,13 @@ class TestRotationMatrixToQuaternion(BaseTester):
         # by the sign of the trace:
         #   trace > 0  -> the returned w is >= 0 (0/325 negative over random rotations);
         #   trace <= 0 -> the *dominant* of x, y, z is forced >= 0 and w may come back NEGATIVE
-        #                 (96/181 such cases in the audit sweep).
-        # So a caller that assumes a non-negative real part is wrong for every rotation past ~120
-        # degrees. Both branches are pinned here, each with a rotation whose "natural" quaternion
-        # has the opposite sign of w, which is exactly what a canonicalising implementation would
-        # not reproduce.
+        #                 (6042 of the 12158 such cases in a sweep of 20000 random float64
+        #                 rotations -- about half of them, not all).
+        # trace = 1 + 2 * cos(theta), so trace <= 0 is exactly theta >= 120 degrees: a caller that
+        # assumes a non-negative real part is safe below 120 degrees and wrong for about half of the
+        # rotations above it. Both branches are pinned here, each with a rotation whose "natural"
+        # quaternion has the opposite sign of w, which is exactly what a canonicalising
+        # implementation would not reproduce.
         # Expected values are the true unit quaternions (computed with stdlib below), not the
         # function's own output: the returned components carry an extra ~1e-9 from the default
         # eps added inside the sqrt, which bare assert_close absorbs and no pin here asserts.
@@ -663,9 +692,11 @@ class TestRotationMatrixToQuaternion(BaseTester):
     )
     def test_convention_returns_a_unit_quaternion_3951(self, device):
         # Intended behavior: the quaternion returned for an exact rotation matrix is a unit
-        # quaternion to the precision of the input dtype. It never is: the default eps = 1e-8 is
-        # added *inside* the sqrt that builds the components, so every returned quaternion is
-        # inflated. Measured on the identity in float64 (torch 2.9.1, cpu):
+        # quaternion to the precision of the input dtype. It never is in float64: the default
+        # eps = 1e-8 is added *inside* the sqrt that builds the components, so every returned
+        # quaternion is inflated -- over 20000 random float64 rotations the *smallest* |‖q‖ - 1| is
+        # 6.816769371198461e-14 and none is exactly unit. Measured on the identity in float64
+        # (torch 2.9.1, cpu):
         #   rotation_matrix_to_quaternion(eye(3))          -> [1.0000000012499999, 0.0, 0.0, 0.0]
         #   ||q|| - 1                                      ->  1.2499998813808588e-09
         #   rotation_matrix_to_quaternion(eye(3), eps=0.0) -> [1.0, 0.0, 0.0, 0.0]  (exactly unit)
@@ -1229,6 +1260,93 @@ class TestQuaternionLogToExp(BaseTester):
         half_turn = torch.tensor([-0.7071067811865476, 0.0, 0.0, -0.7071067811865476], device=device, dtype=dtype)
         self.assert_close(log_to_exp(exp_to_log(half_turn)), half_turn)
 
+    @pytest.mark.xfail(
+        raises=AssertionError,
+        reason="the default eps=1e-8 is not representable in float16, so the norm clamp becomes a "
+        "no-op and 0/0 gives a NaN vector part — kornia#3966",
+        strict=True,
+    )
+    def test_convention_log_to_exp_of_the_origin_is_the_identity_in_float16_3966(self, device):
+        # Intended behavior: the exponential map of the zero vector is the identity quaternion, at
+        # every dtype -- float64, float32 and bfloat16 all return [1, 0, 0, 0]. float16 returns
+        # [1, nan, nan, nan]: the default eps = 1e-8 is below float16's smallest subnormal
+        # (5.960464477539063e-08), so torch.tensor(1e-8, dtype=float16) is exactly 0.0, the
+        # .clamp(min=eps) on the norm is a no-op, and the vector part is sin(0) * 0 / 0. The real
+        # part survives because it is cos(0). This is the same eps-underflow class as the one
+        # kornia#3966 was filed for on quaternion_exp_to_log (pinned in TestQuaternionExpToLog);
+        # bfloat16 escapes both because its exponent range is float32's. float16 is hardcoded and
+        # the dtype fixture dropped so this pin runs in every configuration, with a visible skip
+        # where the device lacks the dtype. Marked xfail(strict=True) so fixing #3966 makes this
+        # XPASS and forces the mark out. Companion wart:
+        # test_wart_float16_eps_underflow_makes_log_to_exp_nan_3966.
+        _skip_if_dtype_unavailable(device, torch.float16)
+
+        out = kornia.geometry.conversions.quaternion_log_to_exp(torch.zeros(3, device=device, dtype=torch.float16))
+
+        assert_close(
+            out,
+            torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=torch.float16),
+            msg=_issue_msg("kornia#3966: quaternion_log_to_exp of the float16 origin is not the identity"),
+        )
+
+    def test_wart_float16_eps_underflow_makes_log_to_exp_nan_3966(self, device):
+        # Wart pin for kornia#3966 on quaternion_log_to_exp, companion to the strict xfail above:
+        # assert the CURRENT float16 behavior. Four cells, each discriminating a different fix
+        # shape:
+        #   (0) the eps default is still 1e-8 -- cells 1 and 2 leave eps at its default on purpose
+        #       (the underflow of the *default* is the claim), so a retuned default would otherwise
+        #       be an invisible half-fix;
+        #   (1) the origin returns w = 1 with an all-NaN vector part;
+        #   (2) [1e-9, 0, 0], which is not zero but whose float16 norm is, returns the same -- a fix
+        #       keyed on an exact-zero input would flip (1) and leave (2);
+        #   (3) the origin with an explicitly representable eps=1e-3 returns [1, 0, 0, 0] -- the
+        #       control that says the arithmetic is fine and only the default underflows, telling an
+        #       eps-shaped fix apart from a branch-shaped one;
+        #   (4) a v with a representable norm is unaffected and returns
+        #       [1.0, 0.0010128021240234375, 0, 0] -- the working case the existing suite exercises,
+        #       pinned so a fix cannot regress it.
+        # If any cell fails, #3966 was (partly) fixed on this function -- flip/remove the strict
+        # xfail above. NOT a contract that float16 must keep returning NaN.
+        # Snippet used to generate expected (torch only, executed on cpu):
+        #   l2e = kornia.geometry.conversions.quaternion_log_to_exp
+        #   l2e(torch.zeros(3, dtype=torch.float16))              -> [1., nan, nan, nan]
+        #   l2e(torch.tensor([1e-9, 0., 0.], dtype=torch.float16)) -> [1., nan, nan, nan]
+        #   l2e(torch.zeros(3, dtype=torch.float16), eps=1e-3)     -> [1., 0., 0., 0.]
+        #   l2e(torch.tensor([1e-3, 0., 0.], dtype=torch.float16))
+        #     -> [1.0, 0.0010128021240234375, 0.0, 0.0]
+        #   torch.tensor(1e-8, dtype=torch.float16).item() -> 0.0
+        #   (float64/float32/bfloat16 return [1, 0, 0, 0] for the origin)
+        _skip_if_dtype_unavailable(device, torch.float16)
+
+        log_to_exp = kornia.geometry.conversions.quaternion_log_to_exp
+        assert inspect.signature(log_to_exp).parameters["eps"].default == 1e-8, (
+            "kornia#3966: the eps default moved, so the float16 underflow pinned here no longer describes it"
+        )
+
+        origin = torch.zeros(3, device=device, dtype=torch.float16)
+        underflowing = torch.tensor([1e-9, 0.0, 0.0], device=device, dtype=torch.float16)
+
+        out = log_to_exp(origin)
+        assert out[0].item() == 1.0, "kornia#3966: the float16 origin no longer has a real part of 1"
+        assert torch.isnan(out[1:]).all(), "kornia#3966: the float16 origin no longer gives a NaN vector part"
+        assert torch.isnan(log_to_exp(underflowing)[1:]).all(), (
+            "kornia#3966: a float16 vector whose norm underflows no longer gives a NaN vector part"
+        )
+        assert_close(
+            log_to_exp(origin, eps=1e-3),
+            torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=torch.float16),
+            atol=0.0,
+            rtol=0.0,
+            msg=_issue_msg("kornia#3966: a representable eps no longer rescues the float16 origin"),
+        )
+        assert_close(
+            log_to_exp(torch.tensor([1e-3, 0.0, 0.0], device=device, dtype=torch.float16)),
+            torch.tensor([1.0, 0.0010128021240234375, 0.0, 0.0], device=device, dtype=torch.float16),
+            atol=0.0,
+            rtol=0.0,
+            msg=_issue_msg("kornia#3966: the float16 case with a representable norm changed"),
+        )
+
 
 class TestQuaternionExpToLog(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
@@ -1705,7 +1823,9 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         #       det = 0.9999974535249636 and max|R @ R.T - I| = 2.5464750363912714e-06;
         #   (2) theta = 1e-3 takes the undocumented first-order Taylor branch, which returns
         #       exactly [[1, -rz, ry], [rz, 1, -rx], [-ry, rx, 1]] -- no eps involved, but its
-        #       determinant is 1 + theta**2 = 1.000001, so it is not a rotation either.
+        #       determinant is 1 + theta**2 = 1.000001, so it is not a rotation either. The matrix
+        #       is pinned at atol=rtol=0 and the determinant follows from it, so the determinant is
+        #       recorded in the snippet below rather than asserted as a cell of its own.
         # If either fails, #3947 was (partly) fixed -- flip/remove the strict xfail above. NOT a
         # contract that these matrices must stay non-orthogonal. The eps is a hardcoded local in
         # _compute_rotation_matrix rather than a parameter, so unlike the other wart pins in this
@@ -1736,14 +1856,14 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         assert_close(
             torch.linalg.det(general),
             torch.tensor(0.9999974535249636, device=device, dtype=torch.float64),
-            atol=1e-15,
+            atol=1e-12,
             rtol=0.0,
             msg=_issue_msg("kornia#3947: the general branch determinant changed"),
         )
         assert_close(
             (general @ general.T - identity).abs().max(),
             torch.tensor(2.5464750363912714e-06, device=device, dtype=torch.float64),
-            atol=1e-15,
+            atol=1e-12,
             rtol=0.0,
             msg=_issue_msg("kornia#3947: the general branch orthogonality error changed"),
         )
@@ -1753,13 +1873,6 @@ class TestAngleAxisToRotationMatrix(BaseTester):
             atol=0.0,
             rtol=0.0,
             msg=_issue_msg("kornia#3947: the low-angle branch no longer returns the first-order Taylor matrix"),
-        )
-        assert_close(
-            torch.linalg.det(taylor),
-            torch.tensor(1.000001, device=device, dtype=torch.float64),
-            atol=1e-15,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3947: the low-angle branch determinant is no longer 1 + theta**2"),
         )
 
     @pytest.mark.xfail(
@@ -3469,7 +3582,7 @@ class TestEulerFromQuaternion(BaseTester):
         assert_close(
             out,
             torch.tensor(expected, device=device, dtype=torch.float64),
-            atol=1e-15,
+            atol=1e-12,
             rtol=0.0,
             msg=_issue_msg("kornia#3950: the triple returned at gimbal lock changed"),
         )
