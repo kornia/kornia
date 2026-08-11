@@ -723,7 +723,7 @@ class TestRotationMatrixToQuaternion(BaseTester):
         # Wart pin for kornia#3951, companion to the strict xfail above: assert the CURRENT
         # inflated components. Three cells, each discriminating a different fix shape:
         #   (0) the eps default itself is still 1e-8 -- the other two cells pass eps explicitly
-        #       (house rule) so they cannot see a retuned default, which would otherwise be an
+        #       (house rule) so they cannot see a re-tuned default, which would otherwise be an
         #       invisible way to half-fix this;
         #   (1) eps=1e-8 passed explicitly still inflates the identity to 1.0000000012499999 --
         #       flips when eps moves out of the sqrt, or when the output is normalised at the end,
@@ -1295,7 +1295,7 @@ class TestQuaternionLogToExp(BaseTester):
         # assert the CURRENT float16 behavior. Three cells, each discriminating a different fix
         # shape:
         #   (0) the eps default is still 1e-8 -- cell 1 leaves eps at its default on purpose (the
-        #       underflow of the *default* is the claim), so a retuned default would otherwise be
+        #       underflow of the *default* is the claim), so a re-tuned default would otherwise be
         #       an invisible half-fix;
         #   (1) the origin returns w = 1 with an all-NaN vector part;
         #   (2) the origin with an explicitly representable eps=1e-3 returns [1, 0, 0, 0] -- the
@@ -1830,7 +1830,7 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         # contract that these matrices must stay non-orthogonal. The eps is a hardcoded local in
         # _compute_rotation_matrix rather than a parameter, so unlike the other wart pins in this
         # file there is no eps to pass explicitly; cell (1) would flip if it were exposed and
-        # retuned, which is the point.
+        # re-tuned, which is the point.
         # float64 is hardcoded and the dtype fixture dropped because both literals are float64
         # facts: at float32 the same theta = 1e-3 input has theta**2 = 1.0000001111620804e-06 and
         # falls into the *other* branch, so cell (2) would be pinning a different code path.
