@@ -26,9 +26,11 @@ class MoonViTConfig:
     """Configuration for MoonViT vision encoder.
 
     Args:
-        image_size: Default input image size used for positional embedding initialization.
-        The model supports variable resolution inputs through interpolation.
+        image_size: Default input image size. The model supports variable
+            resolution inputs through positional interpolation.
         patch_size: Size of image patches.
+        init_pos_emb_height: Initial positional embedding grid height.
+        init_pos_emb_width: Initial positional embedding grid width.
         num_channels: Number of input channels.
         hidden_size: Hidden dimension size.
         num_hidden_layers: Number of transformer layers.
@@ -43,16 +45,18 @@ class MoonViTConfig:
 
     image_size: int = 384
     patch_size: int = 14
+    init_pos_emb_height: int = 64
+    init_pos_emb_width: int = 64
     num_channels: int = 3
     hidden_size: int = 1152
     num_hidden_layers: int = 27
     num_attention_heads: int = 16
     intermediate_size: int = 4304
-    hidden_act: str = "gelu"
-    layer_norm_eps: float = 1e-6
+    hidden_act: str = "gelu_tanh"
+    layer_norm_eps: float = 1e-5
     dropout_p: float = 0.0
     attention_dropout_p: float = 0.0
-    rope_theta: float = 800000.0
+    rope_theta: float = 10000.0
 
 
 @dataclass
@@ -94,21 +98,20 @@ class KimiVLConfig:
 def _kimi_vl_a3b_instruct_config() -> KimiVLConfig:
     """Return the configuration for the supported pretrained Kimi-VL-A3B-Instruct model."""
     vision_config = MoonViTConfig(
-        # 896 / 14 = 64 patches per side, matching the original checkpoint's
-        # native 64x64 positional-embedding grid (interpolated at runtime for
-        # other input resolutions).
-        image_size=896,
+        image_size=384,
         patch_size=14,
+        init_pos_emb_height=64,
+        init_pos_emb_width=64,
         num_channels=3,
         hidden_size=1152,
         num_hidden_layers=27,
         num_attention_heads=16,
         intermediate_size=4304,
-        hidden_act="gelu",
-        layer_norm_eps=1e-6,
+        hidden_act="gelu_tanh",
+        layer_norm_eps=1e-5,
         dropout_p=0.0,
         attention_dropout_p=0.0,
-        rope_theta=800000.0,
+        rope_theta=10000.0,
     )
     projector_config = KimiVLProjectorConfig(
         input_dim=1152,
