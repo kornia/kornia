@@ -999,9 +999,9 @@ class TestQuaternionToRotationMatrix(BaseTester):
         # quaternion_to_rotation_matrix its own guard while normalize_quaternion stays as it is.
         # If it fails, one of those happened -- flip/remove the #3952 strict xfail above and check
         # which. NOT a contract that the zero quaternion must map to the identity.
-        # .to(dtype) because quaternion_to_rotation_matrix returns float32 for float16/bfloat16
-        # inputs (kornia#3954, pinned below); the cast keeps this pin about the identity and
-        # nothing else.
+        # .to(dtype) because quaternion_to_rotation_matrix returns float32 for unbatched (4,)
+        # float16/bfloat16 input like this one (kornia#3954, pinned below; batched input keeps its
+        # dtype); the cast keeps this pin about the identity and nothing else.
         # Snippet used to generate expected (torch only, executed on cpu at float64/float32/bfloat16):
         #   quaternion_to_rotation_matrix(torch.zeros(4, dtype=torch.float64))
         #     -> [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]]
@@ -1023,8 +1023,8 @@ class TestQuaternionToRotationMatrix(BaseTester):
 
     @pytest.mark.xfail(
         raises=AssertionError,
-        reason="quaternion_to_rotation_matrix builds its output around a float32 torch.tensor(1.0), "
-        "which upcasts half-precision input — kornia#3954",
+        reason="quaternion_to_rotation_matrix builds its output around a 0-dim float32 torch.tensor(1.0), "
+        "which upcasts unbatched (4,) half-precision input; batched input keeps its dtype — kornia#3954",
         strict=True,
     )
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
