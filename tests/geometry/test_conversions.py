@@ -1032,10 +1032,15 @@ class TestQuaternionToRotationMatrix(BaseTester):
         # Intended behavior: quaternion_to_rotation_matrix returns the dtype it was given, like
         # every other 3b symbol -- normalize_quaternion, quaternion_to_axis_angle and
         # quaternion_exp_to_log all preserve float16 and bfloat16 on the very same input. It does
-        # not: the literal `one = torch.tensor(1.0)` inside the function is float32, and
-        # torch.stack promotes the whole matrix to float32, so a half-precision pipeline silently
-        # doubles its memory here and then fails at the next matmul with "expected scalar type
-        # Float but found Half". The dtypes are hardcoded and the dtype fixture dropped so both
+        # not, for the UNBATCHED (4,) input this pin uses: the literal `one = torch.tensor(1.0)`
+        # inside the function is 0-dim float32, and promotion ranks a dimensioned tensor above a
+        # 0-dim one, so the 0-dim components of a (4,) input tie with the literal and torch.stack
+        # promotes the whole matrix to float32. Batched input is unaffected -- (1,4), (2,4) and
+        # (3,3,4) all come back in the input dtype -- so the sharp form of the defect is that the
+        # same call returns a different dtype for q and for q[None]. Unbatched, a half-precision
+        # pipeline silently doubles its memory here and then fails at the next matmul with
+        # "expected scalar type Float but found Half" (batched, that matmul succeeds).
+        # The dtypes are hardcoded and the dtype fixture dropped so both
         # legs run in the default float32 configuration; the skip is visible so a backend without
         # the dtype cannot satisfy the raises=AssertionError mark with a RuntimeError instead.
         # Marked xfail(strict=True) so fixing #3954 makes both cases XPASS and forces the mark out.
@@ -1051,7 +1056,9 @@ class TestQuaternionToRotationMatrix(BaseTester):
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_wart_half_precision_input_is_upcast_to_float32_3954(self, device, half_dtype):
         # Wart pin for kornia#3954, companion to the strict xfail above: assert that the output
-        # dtype is CURRENTLY float32 for both half-precision inputs, and that normalize_quaternion
+        # dtype is CURRENTLY float32 for both half-precision inputs AT THE UNBATCHED (4,) SHAPE
+        # USED HERE -- batched input already preserves the dtype today, so this pin is deliberately
+        # unbatched and is not a claim about (1,4) or larger -- and that normalize_quaternion
         # -- the very first thing quaternion_to_rotation_matrix calls -- preserves the dtype on the
         # same tensor, which localises the defect to the float32 literal further down. Two cells
         # because a fix could plausibly special-case float16 (the common half dtype) and leave
@@ -1060,9 +1067,10 @@ class TestQuaternionToRotationMatrix(BaseTester):
         # half-precision input must keep being upcast.
         # Snippet used to generate expected (torch only, executed on cpu):
         #   q = torch.tensor([1., 0., 0., 0.], dtype=torch.float16)
-        #   quaternion_to_rotation_matrix(q).dtype -> torch.float32   (bfloat16 input: also float32)
-        #   normalize_quaternion(q).dtype          -> torch.float16   (bfloat16 input: bfloat16)
-        #   quaternion_to_axis_angle(q).dtype      -> torch.float16
+        #   quaternion_to_rotation_matrix(q).dtype       -> torch.float32   (bfloat16 input: also float32)
+        #   quaternion_to_rotation_matrix(q[None]).dtype -> torch.float16   (bfloat16 input: bfloat16)
+        #   normalize_quaternion(q).dtype                -> torch.float16   (bfloat16 input: bfloat16)
+        #   quaternion_to_axis_angle(q).dtype            -> torch.float16
         _skip_if_dtype_unavailable(device, half_dtype)
 
         quaternion = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=half_dtype)
