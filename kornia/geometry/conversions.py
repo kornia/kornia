@@ -416,6 +416,61 @@ def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
 def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
     r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix.
 
+    Convention:
+        - the input is the rotation axis scaled by the angle, in **radians**:
+          ``[0., 0., pi/2]`` is a quarter turn about ``+z``, while
+          ``[0., 0., 90.]`` is 90 *radians* about ``+z`` and returns a matrix
+          whose leading entry is ``cos(90) = -0.4481``. The 2-D op
+          :func:`~kornia.geometry.conversions.angle_to_rotation_matrix` reads
+          **degrees** instead
+        - applied on the left to a column vector, ``+theta`` about ``+z`` maps
+          ``x_hat`` to ``y_hat`` (right-hand rule): ``[0., 0., 0.6]`` sends
+          ``(1., 0., 0.)`` to ``(0.8253, 0.5646, 0.)``. The quaternion route
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
+          turns the same way
+        - ``angle_axis_to_rotation_matrix`` is the deprecated alias of this
+          function since 0.7.0; it emits a ``DeprecationWarning`` and returns
+          the same tensor — see the alias warning below
+
+    .. warning::
+        The returned matrix is **not orthogonal**: ``eps = 1e-6`` is added to
+        the angle when the axis is normalised, which shrinks the axis. In
+        ``float64`` at ``theta = pi/2`` about ``+z``, ``det(R)`` is
+        ``0.9999974535249636`` and ``max|R R^T - I|`` is
+        ``2.5464750363912714e-06``; the determinant is the same for every axis,
+        the orthogonality residual is not (a generic axis gives
+        ``2.091747640764474e-06``). The error does not shrink with dtype, and
+        the second example below hides it — the printed ``1.0000e+00`` at
+        ``R[0, 0]`` is really ``0.9999987483024597``. Below an internal
+        threshold on ``theta ** 2`` the first-order matrix
+        ``[[1, -rz, ry], [rz, 1, -rx], [-ry, rx, 1]]`` is returned instead, with
+        ``det = 1 + theta ** 2``: in ``float64`` the input ``[0., 0., 1e-3]``
+        takes that branch (``det = 1.000001``) while ``1e-3 * (1, 2, 3)/sqrt(14)``
+        does not (``det = 0.9999999970044947``), so which branch an input takes
+        depends on its axis and dtype. Tracked in
+        `#3947 <https://github.com/kornia/kornia/issues/3947>`_.
+
+    .. warning::
+        Only rank-2 input is accepted, despite the guard's ``(*, 3)`` message:
+        ``(3,)`` raises ``IndexError: Dimension out of range``, ``(2, 5, 3)``
+        raises ``ValueError: too many values to unpack (expected 3)`` and
+        ``(1, 1, 3)`` raises ``ValueError: not enough values to unpack``. The
+        ``(3,)`` and ``(2, 5, 3)`` vectors that
+        :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`
+        returns for ``(3, 3)`` and ``(2, 5, 3, 3)`` input therefore cannot be
+        fed back in. Tracked in
+        `#3955 <https://github.com/kornia/kornia/issues/3955>`_.
+
+    .. warning::
+        Calling any of this module's four deprecated aliases
+        (``angle_axis_to_rotation_matrix``, ``rotation_matrix_to_angle_axis``,
+        ``quaternion_to_angle_axis``, ``angle_axis_to_quaternion``) rewrites the
+        process-global ``DeprecationWarning`` filters, so
+        ``-W error::DeprecationWarning`` does not turn the warning into an error
+        and every later ``DeprecationWarning`` raised in the process is affected
+        too. Tracked in
+        `#3956 <https://github.com/kornia/kornia/issues/3956>`_.
+
     Args:
         axis_angle: tensor of 3d vector of axis-angle rotations in radians with shape :math:`(N, 3)`.
 
@@ -519,11 +574,35 @@ def angle_axis_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:  # 
 def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor) -> torch.Tensor:
     r"""Convert 3x3 rotation matrix to Rodrigues vector in radians.
 
+    Convention:
+        - any number of leading batch dimensions is accepted: :math:`(3, 3)`
+          gives :math:`(3,)` and :math:`(2, 5, 3, 3)` gives :math:`(2, 5, 3)`
+        - the output is the rotation axis scaled by the angle in **radians**,
+          the parametrization
+          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
+          consumes — but that function accepts only rank-2 input, so the
+          :math:`(3,)` and :math:`(2, 5, 3)` results above cannot be fed
+          straight back (see its shape warning)
+        - the round trip through
+          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix` is
+          accurate only to about ``1e-6`` even in ``float64`` — measured
+          ``8.0e-07`` at ``theta = 1e-3`` and ``5.4e-07`` at ``theta = pi``
+          about ``(1, 2, 3)/sqrt(14)`` — because of that function's
+          `#3947 <https://github.com/kornia/kornia/issues/3947>`_
+        - the input is **not** checked for being a rotation matrix:
+          ``zeros(3, 3)`` returns ``[0., 0., 3.1416]``, ``2 * eye(3)`` returns
+          ``[0., 0., 0.]``, and the reflection ``diag(-1, 1, 1)``
+          (``det = -1``) also returns ``[0., 0., 0.]``, i.e. is silently
+          reported as no rotation at all
+        - ``rotation_matrix_to_angle_axis`` is the deprecated alias of this
+          function since 0.7.0; see the alias warning on
+          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
+
     Args:
-        rotation_matrix: rotation matrix of shape :math:`(N, 3, 3)`.
+        rotation_matrix: rotation matrix of shape :math:`(*, 3, 3)`.
 
     Returns:
-        Rodrigues vector transformation of shape :math:`(N, 3)`.
+        Rodrigues vector transformation of shape :math:`(*, 3)`.
 
     Example:
         >>> input = torch.tensor([[1., 0., 0.],
@@ -558,9 +637,33 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
 
     The quaternion vector has components in (w, x, y, z) format.
 
+    Convention:
+        - the returned components are ``(w, x, y, z)``, real part first — the
+          layout, and its silent misreading, are spelled out on
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
+        - the sign is **not** canonicalised to ``w >= 0``. For
+          ``trace(R) > 0`` the returned ``w`` is non-negative, but for
+          ``trace(R) <= 0`` it is the dominant of ``x, y, z`` that is forced
+          non-negative and ``w`` may be negative: 170 degrees about
+          ``(1, 2, -3)/sqrt(14)`` (``trace = -0.9696``) returns
+          ``[-0.0872, -0.2662, -0.5325, 0.7987]``
+        - the input is **not** checked for being a rotation matrix; see the
+          degenerate inputs listed on
+          :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`
+
+    .. warning::
+        ``eps`` is added *inside* the square root that produces the dominant
+        component, so with the default the result is not a unit quaternion. In
+        ``float64``, ``rotation_matrix_to_quaternion(torch.eye(3))`` returns
+        ``[1.0000000012499999, 0., 0., 0.]`` (``||q|| - 1`` is ``1.25e-09``),
+        while ``eps=0.0`` returns exactly ``[1., 0., 0., 0.]``. The inflation is
+        below one ulp of 1.0 in ``float32``, ``float16`` and ``bfloat16``, where
+        the identity already comes back exactly unit. Tracked in
+        `#3951 <https://github.com/kornia/kornia/issues/3951>`_.
+
     Args:
         rotation_matrix: the rotation matrix to convert with shape :math:`(*, 3, 3)`.
-        eps: small value to avoid zero division.
+        eps: added inside the square root of the dominant component; see the warning above.
 
     Return:
         the rotation in quaternion with shape :math:`(*, 4)`.
@@ -633,10 +736,27 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
 
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
 
+    Convention:
+        - it is an L2 normalisation of the **last** axis and nothing else, which
+          is why the ``(x, y, z, w)`` or ``(w, x, y, z)`` phrasing above is
+          accurate here: ``[4., 3., 2., 1.]`` normalises to the reversal of what
+          ``[1., 2., 3., 4.]`` gives
+        - the sign is preserved — ``normalize_quaternion(-q)`` is exactly
+          ``-normalize_quaternion(q)``, there is no ``w >= 0``
+          canonicalisation
+
+    .. warning::
+        When ``||q|| < eps`` the output is **not** a unit quaternion and no
+        error is raised: with the default ``eps = 1e-12``,
+        ``[1e-13, 0., 0., 0.]`` returns ``[0.1, 0., 0., 0.]`` and ``zeros(4)``
+        returns ``zeros(4)``. With ``eps=0.0`` the zero quaternion returns
+        ``[nan, nan, nan, nan]`` instead. Tracked in
+        `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
+
     Args:
         quaternion: a tensor containing a quaternion to be normalized.
           The tensor can be of shape :math:`(*, 4)`.
-        eps: small value to avoid division by zero.
+        eps: floor on the norm used as the divisor; see the warning above.
 
     Return:
         the normalized quaternion of shape :math:`(*, 4)`.
@@ -664,6 +784,39 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
     r"""Convert a quaternion to a rotation matrix.
 
     The quaternion should be in (w, x, y, z) format.
+
+    Convention:
+        - the quaternion is ``(w, x, y, z)``, **real part first**, shape
+          :math:`(*, 4)` in and :math:`(*, 3, 3)` out. ``[1., 0., 0., 0.]``
+          gives the identity and ``[0., 0., 0., 1.]`` gives
+          ``[[-1., 0., 0.], [0., -1., 0.], [0., 0., 1.]]``, a half turn about
+          ``+z`` — so a caller passing ``(x, y, z, w)`` gets a valid-looking
+          rotation matrix and no error
+        - ``q`` and ``-q`` are the same rotation (double cover) and return
+          bit-identical matrices
+        - the input is normalised internally, so rescaling it changes nothing:
+          ``quaternion_to_rotation_matrix(2 * q)`` is exactly
+          ``quaternion_to_rotation_matrix(q)``.
+          :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` is
+          scale-safe as well; the two functions that are **not** are
+          :func:`~kornia.geometry.conversions.quaternion_exp_to_log` and
+          :func:`~kornia.geometry.conversions.euler_from_quaternion`, whose
+          warnings give the measured errors
+        - applied on the left to a column vector, ``+theta`` about ``+z`` maps
+          ``x_hat`` to ``y_hat`` (right-hand rule)
+
+    .. warning::
+        ``float16`` and ``bfloat16`` input returns a ``float32`` matrix;
+        :func:`~kornia.geometry.conversions.normalize_quaternion`,
+        :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` and
+        :func:`~kornia.geometry.conversions.quaternion_exp_to_log` on the same
+        tensor return the input dtype. Tracked in
+        `#3954 <https://github.com/kornia/kornia/issues/3954>`_.
+
+    .. warning::
+        The zero quaternion returns the identity matrix rather than raising:
+        ``quaternion_to_rotation_matrix(torch.zeros(4))`` is ``eye(3)``.
+        Tracked in `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
@@ -739,6 +892,26 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
+    Convention:
+        - the input is ``(w, x, y, z)``, real part first (see
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`),
+          and the output is the rotation axis scaled by the angle in
+          **radians**
+        - the double cover is collapsed: ``q`` and ``-q`` return the identical
+          vector, the representative with ``|theta| <= pi``
+        - the input need not be unit — ``quaternion_to_axis_angle(2 * q)`` is
+          exactly ``quaternion_to_axis_angle(q)``
+        - ``quaternion_to_angle_axis`` is the deprecated alias of this function
+          since 0.7.0; see the alias warning on
+          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
+
+    .. warning::
+        The gradient at the identity quaternion is ``nan``:
+        ``quaternion_to_axis_angle(torch.tensor([1., 0., 0., 0.])).sum().backward()``
+        leaves ``[nan, nan, nan, nan]`` in ``.grad``, from an unclamped
+        ``sqrt(0)``. Away from the identity the gradient is finite. Tracked in
+        `#3949 <https://github.com/kornia/kornia/issues/3949>`_.
+
     Args:
         quaternion: tensor with quaternions.
 
@@ -793,11 +966,26 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:  # noqa:
 def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torch.Tensor:
     r"""Apply exponential map to log quaternion.
 
-    The quaternion should be in (w, x, y, z) format.
+    Convention:
+        - the **input** is a 3-vector of shape :math:`(*, 3)`, not a
+          quaternion; the **output** is the quaternion of shape :math:`(*, 4)`
+          in ``(w, x, y, z)`` order (see
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`)
+        - the map is ``w = cos(||v||)`` with vector part
+          ``sin(||v||) * v / ||v||``, so the output is unit and ``||v|| > pi/2``
+          lands in the ``w < 0`` half of the double cover — at ``||v|| = 2`` the
+          real part is ``-0.4161468365471424``
+        - ``v`` is therefore **half** the axis-angle vector: the result agrees
+          with ``axis_angle_to_quaternion(2 * v)`` to float64 rounding (worst
+          ``4.44e-16`` over 500 random vectors, 142 of them bit-identical; at
+          ``bfloat16`` the two differ by up to ``9.77e-04``)
+        - for a **unit** ``q``, ``quaternion_log_to_exp(quaternion_exp_to_log(q))``
+          returns ``q`` up to rounding, except that the pure-real
+          ``[-1., 0., 0., 0.]`` comes back as ``[1., 0., 0., 0.]`` — the other
+          half of the same rotation
 
     Args:
-        quaternion: a tensor containing a quaternion to be converted.
-          The tensor can be of shape :math:`(*, 3)`.
+        quaternion: the log quaternion, a tensor of shape :math:`(*, 3)`.
         eps: a small number for clamping.
 
     Return:
@@ -832,6 +1020,42 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     r"""Apply the log map to a quaternion.
 
     The quaternion should be in (w, x, y, z) format.
+
+    Convention:
+        - the input is the quaternion of shape :math:`(*, 4)` in
+          ``(w, x, y, z)`` order and the output is a 3-vector of shape
+          :math:`(*, 3)`, the argument
+          :func:`~kornia.geometry.conversions.quaternion_log_to_exp` takes
+        - on the ``w >= 0`` half of the double cover the result is
+          ``quaternion_to_axis_angle(q) / 2``. On the ``w < 0`` half the two
+          part company: this function applies ``acos(w)`` as given, while
+          :func:`~kornia.geometry.conversions.quaternion_to_axis_angle`
+          collapses the double cover. For the ``q`` whose log is ``v``,
+          ``quaternion_exp_to_log(-q)`` is ``-(pi - ||v||) * v / ||v||``
+        - ``quaternion_exp_to_log(quaternion_log_to_exp(v))`` returns ``v`` for
+          ``0 < ||v|| < pi`` and the wrapped ``||v|| - 2 * pi`` above ``pi``
+          (``pi + 0.5`` comes back as ``-2.6415926535897936``). At exactly
+          ``||v|| = pi``, and only in ``float64``, it collapses to ``3.85e-08``
+          — there ``cos(pi)`` rounds to ``-1`` and the vector part falls under
+          the ``eps`` clamp. Both are properties of the map, not defects
+
+    .. warning::
+        The input is **not** normalised, so a non-unit quaternion is silently
+        given a wrong log: ``[0.5, 0.5, 0., 0.]`` returns
+        ``[1.0471975511965976, 0., 0.]``, 33 % larger than the
+        ``[0.7853981633974484, 0., 0.]`` of the same rotation normalised, and
+        ``[2., 0., 0., 0.]`` returns the origin because ``w`` is clamped to
+        ``1``. Tracked in
+        `#3953 <https://github.com/kornia/kornia/issues/3953>`_.
+
+    .. warning::
+        In ``float16`` the default ``eps = 1e-8`` underflows to ``0``, so the
+        clamp that guards the division is a no-op and **any** quaternion with a
+        zero vector part returns ``[nan, nan, nan]`` — including the identity
+        ``[1., 0., 0., 0.]``, whose log is the origin at every other dtype.
+        Passing a representable ``eps`` (e.g. ``eps=1e-3``) returns
+        ``[0., 0., 0.]`` there. Tracked in
+        `#3966 <https://github.com/kornia/kornia/issues/3966>`_.
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
@@ -878,6 +1102,37 @@ def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
     The quaternion vector has components in (w, x, y, z) format.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
+
+    Convention:
+        - the input is the rotation axis scaled by the angle in **radians**,
+          shape :math:`(*, 3)`; the output is ``(w, x, y, z)`` with
+          ``w = cos(theta / 2)``, shape :math:`(*, 4)` (see
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
+          for the layout)
+        - nothing is canonicalised, so ``theta > pi`` returns the ``w < 0`` half
+          of the double cover: ``[2 * pi, 0., 0.]`` gives ``[-1., 0., 0., 0.]``
+        - the round trip with
+          :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` is exact
+          in ``float64``: the measured error is ``0`` to ``2.2e-16`` at
+          ``theta = 0``, ``1e-3``, ``0.7``, ``2`` and ``pi`` about
+          ``(1, 2, 3)/sqrt(14)``
+        - ``angle_axis_to_quaternion`` is the deprecated alias of this function
+          since 0.7.0; see the alias warning on
+          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
+
+    .. warning::
+        The gradient at the zero rotation is ``nan``:
+        ``axis_angle_to_quaternion(torch.zeros(3)).sum().backward()`` leaves
+        ``[nan, nan, nan]`` in ``.grad``, from an unclamped ``sqrt(0)``.
+        Tracked in `#3949 <https://github.com/kornia/kornia/issues/3949>`_.
+
+    .. warning::
+        An integer tensor returns an all-zero integer tensor instead of a
+        quaternion: ``axis_angle_to_quaternion(torch.tensor([1, 0, 0]))`` is
+        ``tensor([0, 0, 0, 0])`` of dtype ``int64``, against the ``float32``
+        answer ``[0.8776, 0.4794, 0., 0.]``, because the output buffer is
+        allocated with the input dtype. Tracked in
+        `#3948 <https://github.com/kornia/kornia/issues/3948>`_.
 
     Args:
         axis_angle: tensor with axis angle in radians.
@@ -941,7 +1196,40 @@ def euler_from_quaternion(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Convert a quaternion coefficients to Euler angles.
 
-    Returned angles are in radians in XYZ convention.
+    Convention:
+        - the four quaternion coefficients are passed as **separate** tensors in
+          ``(w, x, y, z)`` order, not as one :math:`(*, 4)` tensor, and their
+          shapes must be exactly equal: broadcastable shapes such as ``(2,)``
+          and ``(1,)`` raise ``BaseError: Validation condition failed``, and
+          Python floats raise ``AttributeError``
+        - the return is a tuple of three tensors ``(roll, pitch, yaw)`` in
+          **radians**, with ``roll`` about ``x``, ``pitch`` about ``y`` and
+          ``yaw`` about ``z``; the composition they stand for is documented on
+          :func:`~kornia.geometry.conversions.quaternion_from_euler`
+        - away from ``|pitch| = pi/2`` it inverts
+          :func:`~kornia.geometry.conversions.quaternion_from_euler`: the
+          ``float64`` round trip of ``(0.3, 0.7, 1.1)`` returns to ``2.2e-16``
+
+    .. warning::
+        At ``pitch = ±pi/2`` the returned triple does not represent the input
+        rotation, and no gimbal-lock branch exists to say so: the round trip of
+        ``(0.1, pi/2, 0.2)`` through
+        :func:`~kornia.geometry.conversions.quaternion_from_euler` returns
+        ``(pi/2, pi/2, pi/2)``, whose matrix differs from the input's by
+        ``0.09983341664682817``, and the ``-pi/2`` case returns
+        ``(0., -pi/2, pi/2)``. All of 200 random ``(roll, yaw)`` at
+        ``pitch = +pi/2`` fail this way, while none of 200 drawn with
+        ``|pitch| < pi/4`` do. Tracked in
+        `#3950 <https://github.com/kornia/kornia/issues/3950>`_.
+
+    .. warning::
+        The input is **not** normalised, so a non-unit quaternion silently gives
+        a wrong triple: for the ``q`` of ``(0.3, 0.7, 1.1)``, passing ``2 * q``
+        returns ``[1.6560585860248003, 1.5707963267948966,
+        2.1048169977173687]``. The middle value is exactly ``pi/2`` — the
+        over-scaled input saturates the ``asin`` and is reported as
+        gimbal-locked. Tracked in
+        `#3953 <https://github.com/kornia/kornia/issues/3953>`_.
 
     Args:
         w: quaternion :math:`q_w` coefficient.
@@ -979,7 +1267,20 @@ def quaternion_from_euler(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Convert Euler angles to quaternion coefficients.
 
-    Euler angles are assumed to be in radians in XYZ convention.
+    Convention:
+        - ``roll``, ``pitch`` and ``yaw`` are in **radians** and turn about
+          ``x``, ``y`` and ``z`` respectively; the rotation they compose to is
+          ``R = Rz(yaw) @ Ry(pitch) @ Rx(roll)`` — extrinsic X-Y-Z about the
+          fixed axes, equivalently intrinsic Z-Y'-X''. The order matters: at
+          ``(0.3, 0.7, 1.1)`` the returned quaternion's matrix differs from
+          ``Rx @ Ry @ Rz`` by ``0.64``, from ``Ry @ Rz @ Rx`` by ``0.55`` and
+          from ``Rx @ Rz @ Ry`` by ``0.25``
+        - the three arguments must have exactly equal shapes; broadcastable
+          shapes such as ``(2,)`` and ``(1,)`` raise
+          ``BaseError: Validation condition failed``
+        - the return is a tuple of **four separate tensors** ``(w, x, y, z)``,
+          not a :math:`(*, 4)` tensor: ``(0.3, 0.7, 1.1)`` gives
+          ``[0.8186, -0.0575, 0.3624, 0.4418]``
 
     Args:
         roll: the roll euler angle.
