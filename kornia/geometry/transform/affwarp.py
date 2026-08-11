@@ -806,19 +806,16 @@ def letterbox(
     h, w = input.shape[-2:]
     new_h, new_w = new_shape
 
-    # 1. Calculate the scale ratio
     ratio = min(new_h / h, new_w / w)
 
-    # 2. Compute new unpadded dimensions
-    unpad_h = int(round(h * ratio))
-    unpad_w = int(round(w * ratio))
+    # Use max(1, ...) to prevent 0-pixel dimensions on extreme aspect ratios
+    unpad_h = max(1, round(h * ratio))
+    unpad_w = max(1, round(w * ratio))
 
-    # 3. Resize the image (delegating to Kornia's internal resize function)
     resized_image = resize(
         input, size=(unpad_h, unpad_w), interpolation=interpolation, align_corners=align_corners, antialias=antialias
     )
 
-    # 4. Calculate padding for center alignment
     pad_h = new_h - unpad_h
     pad_w = new_w - unpad_w
 
@@ -827,7 +824,6 @@ def letterbox(
     pad_left = pad_w // 2
     pad_right = pad_w - pad_left
 
-    # 5. F.pad expects padding from last dimension backwards: (left, right, top, bottom)
     padded_image = torch.nn.functional.pad(
         resized_image,
         (pad_left, pad_right, pad_top, pad_bottom),
