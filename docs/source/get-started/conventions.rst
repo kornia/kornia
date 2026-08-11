@@ -43,6 +43,9 @@ Coordinates and sizes
   pixel at the image borders, and identically at the image center.
   :func:`kornia.geometry.create_meshgrid` returns a normalized grid by
   default (``normalized_coordinates=True``).
+- 3D grids and 3D pixel coordinates are ``(d, x, y)`` — depth first, not
+  ``(x, y, z)``; :func:`kornia.geometry.grid.create_meshgrid3d` produces this
+  order and the ``*_pixel_coordinates3d`` conversions consume it.
 
 Angles and rotations
 --------------------
@@ -52,8 +55,8 @@ Angles and rotations
   ``angle_to_rotation_matrix``), and **radians** in the 3D
   rotation-representation APIs (``axis_angle_to_rotation_matrix``, ``So3``)
   and in the polar conversions ``cart2pol``/``pol2cart``
-  (``rad2deg``/``deg2rad`` exist to convert). Each op's Convention block
-  states its unit.
+  (``rad2deg``/``deg2rad`` exist to convert). Ops that have a Convention
+  block state their unit there.
 - 2D image rotations: positive angle rotates **counter-clockwise as
   displayed** (top-left origin, matching OpenCV):
 

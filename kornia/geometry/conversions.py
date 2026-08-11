@@ -89,9 +89,9 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
         input is left with only about seven correct significant digits
         (``rad2deg(torch.tensor(math.pi, dtype=torch.float64)) - 180`` is
         ``-5.0e-06``, not ``0``) because ``kornia.constants.pi`` is a
-        **float32** tensor — a defect in the constant itself, which other
-        kornia modules (augmentation color jitter, feature orientation/MKD,
-        ``enhance.jpeg``) also consume. Separately, ``rad2deg``/``deg2rad``
+        **float32** tensor — a defect in the constant itself, which several
+        other kornia modules also consume (the issue tracks the current
+        inventory). Separately, ``rad2deg``/``deg2rad``
         themselves cast that constant to the input dtype, so an integer input
         truncates ``pi`` to ``3``: ``rad2deg(torch.tensor([1, 2, 3]))`` returns
         ``[60., 120., 180.]`` instead of ``[57.2958, 114.5916, 171.8873]``, and
@@ -119,8 +119,9 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
     r"""Convert angles from degrees to radians.
 
     Convention:
-        - the input is in **degrees** and the output in **radians**; it is the
-          inverse of :func:`~kornia.geometry.conversions.rad2deg`
+        - the input is in **degrees** and the output in **radians**; it
+          performs the opposite conversion to
+          :func:`~kornia.geometry.conversions.rad2deg`
 
     .. warning::
         Inherits both defects of :func:`~kornia.geometry.conversions.rad2deg`
@@ -1142,8 +1143,9 @@ def normalize_pixel_coordinates3d(
 
     Convention:
         - ``pixel_coordinates`` is :math:`(*, 3)` in ``(d, x, y)`` order —
-          **depth first, then x, then y**, *not* ``(x, y, z)``. The three
-          components are scaled by ``depth - 1``, ``width - 1`` and
+          **depth first, then x, then y**, *not* ``(x, y, z)``. This is the
+          order :func:`~kornia.geometry.grid.create_meshgrid3d` produces. The
+          three components are scaled by ``depth - 1``, ``width - 1`` and
           ``height - 1`` respectively, so with ``depth=3, height=5, width=9``
           the coordinate ``[2., 8., 4.]`` maps to ``[1., 1., 1.]``
         - the positional argument order is
@@ -1200,12 +1202,9 @@ def denormalize_pixel_coordinates3d(
         For a degenerate ``depth``/``height``/``width`` (``1``, ``0`` or
         negative) the clamped denominator scales that component by ``5e-09``
         (``0`` in ``float16``, where ``eps`` underflows) instead of by
-        ``(size - 1) / 2``. That clamp is the exact reciprocal of the one in
-        :func:`~kornia.geometry.conversions.normalize_pixel_coordinates3d`, so a
-        normalize-then-denormalize round trip returns the input as long as the
-        normalized value is finite — in ``float16`` the normalized component is
-        ``inf`` and the round trip returns ``nan``; it is a single call on its
-        own that is wrong. Tracked in
+        ``(size - 1) / 2`` — the same reciprocal-clamp behavior as
+        :func:`~kornia.geometry.conversions.denormalize_pixel_coordinates`,
+        whose warning walks through the round trip. Tracked in
         `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
 
     Args:
