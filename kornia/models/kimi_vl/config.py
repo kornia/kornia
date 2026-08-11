@@ -43,7 +43,7 @@ class MoonViTConfig:
         rope_theta: Theta value for Rotary Positional Embeddings.
     """
 
-    image_size: int = 384
+    image_size: int = 392
     patch_size: int = 14
     init_pos_emb_height: int = 64
     init_pos_emb_width: int = 64
@@ -98,7 +98,7 @@ class KimiVLConfig:
 def _kimi_vl_a3b_instruct_config() -> KimiVLConfig:
     """Return the configuration for the supported pretrained Kimi-VL-A3B-Instruct model."""
     vision_config = MoonViTConfig(
-        image_size=384,
+        image_size=392,
         patch_size=14,
         init_pos_emb_height=64,
         init_pos_emb_width=64,
