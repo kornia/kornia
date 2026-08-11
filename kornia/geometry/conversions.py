@@ -293,6 +293,7 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
 
     Args:
         axis_angle: tensor of 3d vector of axis-angle rotations in radians with shape :math:`(*, 3)`.
+
     Returns:
         tensor of rotation matrices of shape :math:`(*, 3, 3)`.
 
