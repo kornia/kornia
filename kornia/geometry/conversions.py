@@ -858,6 +858,8 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     quaternion_vector = quaternion[..., 1:4]
 
     # compute quaternion norm
+    if quaternion.is_floating_point():
+        eps = max(eps, torch.finfo(quaternion.dtype).tiny)
     norm_q: torch.Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=eps)
 
     # apply log map
