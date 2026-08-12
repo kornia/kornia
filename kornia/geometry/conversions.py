@@ -76,6 +76,17 @@ __all__ = [
 ]
 
 
+def _dtype_safe_eps(eps: float, dtype: torch.dtype) -> float:
+    """Clamp ``eps`` so it does not underflow to zero in the given floating dtype.
+
+    A Python ``float`` default like ``1e-8`` silently rounds to ``0.0`` when cast to
+    float16, which disables the division guard it is meant to provide. Using
+    ``max(eps, torch.finfo(dtype).tiny)`` keeps the guard active in low precision
+    without changing behavior for dtypes where the default is already representable.
+    """
+    return max(eps, torch.finfo(dtype).tiny)
+
+
 def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
     r"""Convert angles from radians to degrees.
 
@@ -652,7 +663,7 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
 
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
-    return F.normalize(quaternion, p=2.0, dim=-1, eps=eps)
+    return F.normalize(quaternion, p=2.0, dim=-1, eps=_dtype_safe_eps(eps, quaternion.dtype))
 
 
 # based on:
@@ -816,7 +827,9 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
         raise ValueError(f"Input must be a tensor of shape (*, 3). Got {quaternion.shape}")
 
     # compute quaternion norm
-    norm_q: torch.Tensor = torch.norm(quaternion, p=2, dim=-1, keepdim=True).clamp(min=eps)
+    norm_q: torch.Tensor = torch.norm(quaternion, p=2, dim=-1, keepdim=True).clamp(
+        min=_dtype_safe_eps(eps, quaternion.dtype)
+    )
 
     # compute scalar and vector
     quaternion_vector: torch.Tensor = quaternion * torch.sin(norm_q) / norm_q
@@ -858,7 +871,9 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     quaternion_vector = quaternion[..., 1:4]
 
     # compute quaternion norm
-    norm_q: torch.Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=eps)
+    norm_q: torch.Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True).clamp(
+        min=_dtype_safe_eps(eps, quaternion_vector.dtype)
+    )
 
     # apply log map
     quaternion_log: torch.Tensor = (
