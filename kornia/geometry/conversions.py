@@ -417,20 +417,22 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
     r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix.
 
     Convention:
-        - the input is the rotation axis scaled by the angle, in **radians**:
-          ``[0., 0., pi/2]`` is a quarter turn about ``+z``, while
-          ``[0., 0., 90.]`` is 90 *radians* about ``+z`` and returns a matrix
-          whose leading entry is ``cos(90) = -0.4481``. The 2-D op
+        - the input is the rotation axis scaled by the angle, in **radians**,
+          and must be batched — a bare ``(3,)`` vector raises (see the shape
+          warning below): ``[[0., 0., pi/2]]`` is a quarter turn about ``+z``,
+          while ``[[0., 0., 90.]]`` is 90 *radians* about ``+z`` and returns a
+          matrix whose leading entry is ``cos(90) = -0.4481``. The 2-D op
           :func:`~kornia.geometry.conversions.angle_to_rotation_matrix` reads
           **degrees** instead
         - applied on the left to a column vector, ``+theta`` about ``+z`` maps
-          ``x_hat`` to ``y_hat`` (right-hand rule): ``[0., 0., 0.6]`` sends
+          ``x_hat`` to ``y_hat`` (right-hand rule): ``[[0., 0., 0.6]]`` sends
           ``(1., 0., 0.)`` to ``(0.8253, 0.5646, 0.)``. The quaternion route
           :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
           turns the same way
         - ``angle_axis_to_rotation_matrix`` is the deprecated alias of this
-          function since 0.7.0; it emits a ``DeprecationWarning`` and returns
-          the same tensor — see the alias warning below
+          function since 0.7.0; it emits a ``DeprecationWarning`` and forwards
+          to this function, returning an equal result — see the alias warning
+          below
 
     .. warning::
         The returned matrix is **not orthogonal**: ``eps = 1e-6`` is added to
@@ -804,9 +806,14 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
         - the input is normalised internally:
           ``quaternion_to_rotation_matrix(2 * q)`` is bitwise
           ``quaternion_to_rotation_matrix(q)`` (400 000 random unit
-          quaternions, at every dtype), and rescaling by random factors between
+          quaternions, at every dtype). Rescaling by random factors between
           ``1e-6`` and ``1e6`` moves the matrix only by the working dtype's
-          rounding over the same sample. Once ``||q||`` drops below
+          rounding in ``float64`` and ``float32`` (by ``1.3e-15`` and
+          ``6.0e-07`` over 2000 random unit quaternions), but the
+          reduced-precision dtypes do **not** hold to that: ``bfloat16`` moves
+          by ``3.1e-02`` and ``float16`` by ``1.5e-01``, and the ``1e6`` end is
+          ``nan`` at ``float16`` because ``0.5 * 1e6`` overflows the dtype.
+          Once ``||q||`` drops below
           :func:`~kornia.geometry.conversions.normalize_quaternion`'s
           ``eps = 1e-12`` the clamp takes over and rescaling changes the matrix
           outright: in ``float64``, ``q * 1e-13`` and ``q`` can give matrices
@@ -940,9 +947,15 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
           written the other way round
         - the input need not be unit: ``quaternion_to_axis_angle(2 * q)`` is
           bitwise ``quaternion_to_axis_angle(q)`` (400 000 random unit
-          quaternions, at every dtype), and rescaling by random factors between
+          quaternions, at every dtype). Rescaling by random factors between
           ``1e-6`` and ``1e6`` moves the result only by the working dtype's
-          rounding over the same sample. At extreme scales the squares of the vector part underflow and the
+          rounding in ``float64`` and ``float32`` (by ``8.9e-16`` and
+          ``4.8e-07`` over 2000 random unit quaternions), but the
+          reduced-precision dtypes do **not** hold to that: ``bfloat16`` moves
+          by ``3.1e-02`` and ``float16`` by over ``3`` radians, and the ``1e6``
+          end is ``nan`` at ``float16`` because ``0.5 * 1e6`` overflows the
+          dtype.
+          At extreme scales the squares of the vector part underflow and the
           result does change: in ``float32``,
           ``quaternion_to_axis_angle(q * 1e-25)`` returns exactly
           ``2 * (q * 1e-25)[..., 1:]``
@@ -1017,9 +1030,10 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
           in ``(w, x, y, z)`` order (see
           :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`)
         - the map is ``w = cos(||v||)`` with vector part
-          ``sin(||v||) * v / ||v||``, so the output is a unit quaternion up to
-          the working dtype's rounding, with the ``float16`` zero vector as the
-          one exception — see the warning below
+          ``sin(||v||) * v / ||v||``, so whenever ``||v||`` is computed finitely
+          the output is a unit quaternion up to the working dtype's rounding.
+          Two inputs escape that: the ``float16`` zero vector, and any ``v``
+          large enough that ``||v||`` overflows — see the two warnings below
         - ``pi/2 < ||v|| < 3 * pi/2`` lands in the ``w < 0`` half of the double
           cover — at ``||v|| = 2`` the real part is ``-0.4161468365471424``.
           ``w`` is ``cos(||v||)``, so the sign turns over again beyond that
@@ -1044,6 +1058,20 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
         does ``float16`` with a representable ``eps`` (e.g. ``eps=1e-3``).
         Tracked in
         `#3966 <https://github.com/kornia/kornia/issues/3966>`_.
+
+    .. warning::
+        ``||v||`` is computed with ``torch.norm(p=2)``, which forms the sum of
+        squares and so overflows to ``inf`` once ``||v||`` passes roughly
+        ``sqrt(finfo.max)`` — far below the largest finite input. Beyond that
+        point **all four** components come back ``nan``, even though the
+        exponential map of a large finite vector is a perfectly good unit
+        quaternion. In ``float32`` the output is ``nan`` from about
+        ``1.8446744e19`` upward (against a ``finfo.max`` of ``3.4e38``), and in
+        ``float64`` from about ``1.3407808e154`` (against ``1.8e308``);
+        ``bfloat16`` turns over at about ``1.8446744e19``. ``float16`` is the
+        exception and never overflows, its norm being accumulated in wider
+        precision. Tracked in
+        `#3975 <https://github.com/kornia/kornia/issues/3975>`_.
 
     Args:
         quaternion: the log quaternion, a tensor of shape :math:`(*, 3)`.
@@ -1278,17 +1306,18 @@ def euler_from_quaternion(
 
     .. warning::
         At ``pitch = ±pi/2`` the returned triple usually does not represent the
-        input rotation, and no gimbal-lock branch exists to say so: the round trip of
-        ``(0.1, pi/2, 0.2)`` through
-        :func:`~kornia.geometry.conversions.quaternion_from_euler` returns
-        ``(pi/2, pi/2, pi/2)``, whose matrix differs from the input's by
-        ``0.09983341664682817``, and the ``-pi/2`` case returns
-        ``(0., -pi/2, pi/2)``. All of 200 random ``(roll, yaw)`` at
-        ``pitch = +pi/2`` fail this way, while none of 200 drawn with
-        ``|pitch| < pi/4`` do. The rotation does survive on the diagonal
-        ``roll = yaw`` at ``+pi/2`` (and ``roll = -yaw`` at ``-pi/2``), to
-        ``2.6e-08`` over 200 random draws, though ``roll`` and ``yaw`` are still
-        not returned individually. Tracked in
+        input rotation, and no gimbal-lock branch exists to say so. ``roll`` and
+        ``yaw`` come from ``atan2`` of two quantities that cancel to nothing
+        there, so the triple that comes back is decided by rounding: it varies
+        between dtypes, between PyTorch versions, and under a one-ulp change of
+        the input pitch, and no specific triple is quoted here for that reason.
+        What is stable is that ``pitch`` saturates to exactly ``±pi/2`` and that
+        the reconstructed rotation is far from the input. Random ``(roll, yaw)``
+        at ``pitch = +pi/2`` fail this way, while ``|pitch| < pi/4`` round trips
+        to rounding. The rotation does survive on the diagonal
+        ``roll = yaw`` at ``+pi/2`` (and ``roll = -yaw`` at ``-pi/2``), where
+        random draws round trip to within a few parts in ``1e8``, though
+        ``roll`` and ``yaw`` are still not returned individually. Tracked in
         `#3950 <https://github.com/kornia/kornia/issues/3950>`_.
 
     .. warning::
