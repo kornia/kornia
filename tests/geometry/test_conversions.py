@@ -187,7 +187,23 @@ class TestAngleAxisToQuaternion(BaseTester):
         full_turn = kornia.geometry.conversions.axis_angle_to_quaternion(
             torch.tensor([6.283185307179586, 0.0, 0.0], device=device, dtype=dtype)
         )
-        self.assert_close(full_turn, torch.tensor([-1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype))
+        # Asserted structurally rather than through assert_close against [-1, 0, 0, 0]: the vector
+        # part is sin(theta/2) at theta = 2*pi, whose error is ~1 ulp of the dtype, and at float16
+        # that is 9.675e-04 against the shared float16 atol of 1e-3 -- 96.75% of the budget, so one
+        # extra ulp (a backend doing native half-precision sin rather than upcasting, e.g. CUDA)
+        # turns this green cell red. Default CI runs float32/float64 only, so it is unexercised
+        # today. What the pin is actually about is the *convention* -- w = cos(theta/2) with no
+        # canonicalisation to w >= 0 -- and that part is exact at every dtype, so w is compared
+        # exactly and the vector part is bounded by a few ulp instead.
+        assert full_turn[0].item() == -1.0, (
+            f"axis_angle_to_quaternion no longer returns the w < 0 half at theta = 2*pi "
+            f"(got w = {full_turn[0].item()!r}); a canonicalising implementation would give +1"
+        )
+        vector_tol = 4 * torch.finfo(dtype).eps
+        assert full_turn[1:].abs().max().item() <= vector_tol, (
+            f"axis_angle_to_quaternion vector part at theta = 2*pi is no longer zero to a few ulp "
+            f"(got {full_turn[1:].tolist()}, tolerance {vector_tol})"
+        )
 
         off_axis = kornia.geometry.conversions.axis_angle_to_quaternion(
             torch.tensor([1.0690449676496976, 2.138089935299395, 3.2071349029490928], device=device, dtype=dtype)
@@ -1347,6 +1363,58 @@ class TestQuaternionLogToExp(BaseTester):
             msg=_issue_msg("kornia#3966: the float16 case with a representable norm changed"),
         )
 
+    @pytest.mark.parametrize(
+        ("overflow_dtype", "last_finite", "first_nan"),
+        [
+            ("float32", 1.8446742974197924e19, 1.8446744073709552e19),
+            ("float64", 1.3407807929942596e154, 1.3407807929942597e154),
+        ],
+        ids=["float32", "float64"],
+    )
+    def test_wart_large_finite_input_overflows_log_to_exp_to_nan_3975(
+        self, device, overflow_dtype, last_finite, first_nan
+    ):
+        # Wart pin for kornia#3975: assert that quaternion_log_to_exp CURRENTLY returns all-NaN for
+        # a finite input vector, because torch.norm(p=2) forms the sum of squares and overflows to
+        # inf once ||v|| passes ~sqrt(finfo.max) -- far below the largest finite input. The exp map
+        # of a large finite vector is mathematically a perfectly good unit quaternion, so this is a
+        # defect, not a convention. Distinct from kornia#3966: that is the float16 eps *underflow*
+        # family, this is an *overflow* in the norm, independent of eps, and it does not affect
+        # float16 at all (65504**2 fits the wider accumulator, so float16 never overflows here).
+        # Both sides of the boundary are pinned so the cell also flips if the threshold merely
+        # moves rather than the NaN disappearing: the last finite input must stay a unit quaternion
+        # and the first NaN input must stay all-NaN. float32 and float64 are hardcoded (the
+        # boundary is a per-dtype fact) with a visible skip where the device lacks the dtype.
+        # If either cell fails, #3975 was (partly) fixed -- drop the pin. NOT a contract that NaN
+        # is the right answer; a fix making the whole finite range return unit quaternions is the
+        # intended outcome and would flip this.
+        # Snippet used to generate expected (torch only, executed on cpu):
+        #   def out_at(n, dt):
+        #       return quaternion_log_to_exp(torch.tensor([[n, 0.0, 0.0]], dtype=dt), eps=1e-12)
+        #   # walk down from sqrt(finfo.max) in the dtype's own representable space until finite,
+        #   # then torch.nextafter one step up for the first NaN
+        #   -> float32: last finite 1.8446742974197924e19, first NaN 1.8446744073709552e19
+        #   -> float64: last finite 1.3407807929942596e154, first NaN 1.3407807929942597e154
+        dtype = getattr(torch, overflow_dtype)
+        _skip_if_dtype_unavailable(device, dtype)
+
+        log_to_exp = kornia.geometry.conversions.quaternion_log_to_exp
+
+        finite = log_to_exp(torch.tensor([[last_finite, 0.0, 0.0]], device=device, dtype=dtype))
+        assert torch.isfinite(finite).all(), (
+            f"kornia#3975: {overflow_dtype} input {last_finite} no longer returns a finite quaternion"
+        )
+        # .cpu() before .double(): MPS has no float64, so accumulating the norm on-device raises.
+        assert abs(finite.cpu().double().norm().item() - 1.0) < 1e-6, (
+            f"kornia#3975: {overflow_dtype} input {last_finite} no longer returns a unit quaternion"
+        )
+
+        overflowed = log_to_exp(torch.tensor([[first_nan, 0.0, 0.0]], device=device, dtype=dtype))
+        assert torch.isnan(overflowed).all(), (
+            f"kornia#3975: {overflow_dtype} input {first_nan} no longer overflows to all-NaN "
+            f"(got {overflowed.tolist()})"
+        )
+
 
 class TestQuaternionExpToLog(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
@@ -1917,9 +1985,9 @@ class TestAngleAxisToRotationMatrix(BaseTester):
     @pytest.mark.parametrize(
         ("shape", "error", "message"),
         [
-            ((3,), IndexError, r"Dimension out of range \(expected to be in range of \[-1, 0\], but got 1\)"),
-            ((2, 5, 3), ValueError, r"too many values to unpack \(expected 3\)"),
-            ((1, 1, 3), ValueError, r"not enough values to unpack \(expected 3, got 1\)"),
+            ((3,), IndexError, r"Dimension out of range"),
+            ((2, 5, 3), ValueError, r"too many values to unpack"),
+            ((1, 1, 3), ValueError, r"not enough values to unpack"),
         ],
         ids=["unbatched", "extra_batch_dim", "singleton_extra_batch_dim"],
     )
@@ -1928,6 +1996,10 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         # modes, matching on the message and not merely on the type, because the message is the
         # evidence that these are raw Python unpacking errors leaking out of the implementation
         # rather than kornia's own shape guard (whose message says "(*, 3)" and never fires here).
+        # Matched on the distinguishing phrase only, not the full parenthesised detail: that detail
+        # is PyTorch's and CPython's wording, so a reword upstream would flip these cells and be
+        # misread as "#3955 was partly fixed". The phrase alone still separates the three failure
+        # modes from each other and from kornia's own guard, which is all the evidence needs.
         # Three cells: the unbatched case fails in a different place from the two over-batched ones
         # (an indexing error inside the theta reduction, not the unbind), so a fix that only
         # flattens the leading dimensions flips the last two and leaves the first. The (1, 1, 3)
@@ -3513,10 +3585,10 @@ class TestEulerFromQuaternion(BaseTester):
         # correct implementation still returns a triple whose rotation matrix is the input's, which
         # is what this pin asserts. There is no gimbal-lock branch at all: roll and yaw come from
         # atan2 of two quantities that both cancel there, and the result is simply wrong. For
-        # (roll, pitch, yaw) = (0.1, pi/2, 0.2) in float64 the reconstructed rotation is
-        # 0.09983341664682817 away from the input; over 200 random (roll, yaw) at pitch = +pi/2,
-        # 200/200 fail with a worst error of 1.9835124198097347, against 0/200 (worst
-        # 1.1102230246251565e-15) for |pitch| < pi/4. float64 is hardcoded and the dtype fixture
+        # (roll, pitch, yaw) = (0.1, pi/2, 0.2) in float64 the reconstructed rotation is far from
+        # the input -- by a margin that varies with rounding, so no figure is quoted here -- and
+        # random (roll, yaw) at pitch = +pi/2 fail the same way, while |pitch| < pi/4 round trips
+        # to rounding. float64 is hardcoded and the dtype fixture
         # dropped because the returned triple is wildly dtype-dependent here (see the companion
         # wart), and the skip is visible so a raw TypeError on MPS, which has no float64, cannot
         # satisfy the raises=AssertionError mark instead of the assertion. Marked xfail(strict=True)
@@ -3537,54 +3609,67 @@ class TestEulerFromQuaternion(BaseTester):
             "kornia#3950: the euler triple returned at pitch = pi/2 does not represent the input rotation"
         )
 
-    @pytest.mark.parametrize(
-        ("pitch", "expected"),
-        [
-            (1.5707963267948966, [1.5707963267948966, 1.5707963267948966, 1.5707963267948966]),
-            (-1.5707963267948966, [0.0, -1.5707963267948966, 1.5707963267948966]),
-        ],
-        ids=["pitch_plus_pi_over_2", "pitch_minus_pi_over_2"],
-    )
-    def test_wart_gimbal_lock_returns_a_wrong_triple_3950(self, device, pitch, expected):
-        # Wart pin for kornia#3950, companion to the strict xfail above: assert the CURRENT triple
-        # returned at gimbal lock. Two cells, one per sign of the pitch, because the two are not
-        # mirror images of each other today -- +pi/2 collapses all three components onto pi/2 while
-        # -pi/2 returns (0, -pi/2, pi/2) -- so a fix that adds a gimbal-lock branch for one sign
-        # only, or that gets the sign of the roll/yaw split wrong, still flips a cell here.
-        # If either fails, #3950 was (partly) fixed -- flip/remove the strict xfail above. NOT a
-        # contract that these triples are the right answer; they are exactly the wrong answer, and
-        # any triple whose rotation matrix matches the input would be an acceptable replacement.
-        # float64 is hardcoded and the dtype fixture dropped because the returned triple is a
-        # float64 fact: at float32 the same +pi/2 input gives (0.0, 1.570451021194458, 0.0), at
-        # float16 (0.185302734375, 1.5703125, 0.302978515625) and at bfloat16 (0.0, 1.5703125, 0.0)
-        # -- the atan2 arguments are cancelling quantities, so which way they cancel is set by the
-        # rounding.
-        # Snippet used to generate expected (torch only, executed on cpu float64):
-        #   t = lambda x: torch.tensor(x, dtype=torch.float64)
-        #   q = quaternion_from_euler(t(0.1), t(math.pi / 2), t(0.2))
-        #   [x.item() for x in euler_from_quaternion(*q)]
-        #     -> [1.5707963267948966, 1.5707963267948966, 1.5707963267948966]   (all exactly pi/2)
-        #   q = quaternion_from_euler(t(0.1), t(-math.pi / 2), t(0.2))
-        #   [x.item() for x in euler_from_quaternion(*q)]
-        #     -> [0.0, -1.5707963267948966, 1.5707963267948966]
-        #   the reconstructed rotations are 0.09983341664682817 and 0.9553364891256059 away from
-        #   their inputs respectively
+    @pytest.mark.parametrize("sign", [1.0, -1.0], ids=["pitch_plus_pi_over_2", "pitch_minus_pi_over_2"])
+    def test_wart_gimbal_lock_returns_a_wrong_triple_3950(self, device, sign):
+        # Wart pin for kornia#3950, companion to the strict xfail above. It pins the two facts about
+        # gimbal lock that are STABLE, and deliberately pins no exact triple.
+        #
+        # An earlier revision asserted the returned triples themselves ((pi/2, pi/2, pi/2) at +pi/2
+        # and (0, -pi/2, pi/2) at -pi/2, atol=1e-12). Those values are not reproducible: roll and
+        # yaw come from atan2 of two quantities that cancel to ~1e-17 there, so which way they
+        # cancel is decided by rounding. Perturbing the input pitch by a single ulp on this very
+        # build changes the +pi/2 triple to (0.15500, pi/2, 0.35877) at -2 ulp and to
+        # (-3.12597, pi/2, -3.07917) at +1 ulp; a review on torch 2.12.0 saw different triples again
+        # on the unperturbed input. Kornia declares torch>=2.0.0, so pinning any one of them makes
+        # the suite red on builds the pin was never measured against, for a value that is not the
+        # defect being tracked.
+        #
+        # What survives every perturbation probed (both signs, +-200 ulp on the input pitch, and all
+        # four dtypes):
+        #   1. pitch_back is EXACTLY the input +-pi/2 -- the asin saturates. This is structural, not
+        #      a rounding artefact, and it is corroborated across versions: both triples reported on
+        #      torch 2.12.0 also carry exactly +-pi/2 in the middle. Note this fact SURVIVES a fix to
+        #      #3950 (a correct gimbal-lock branch still reports pitch = +-pi/2); it is pinned as the
+        #      structural claim the strict xfail above does not make, not as a defect indicator.
+        #   2. the round-tripped rotation is far from the input -- this is the defect, and the half
+        #      of this pin that flips when #3950 is fixed.
+        # The 1e-9 floor in 2 is a chosen threshold with margin, NOT a measured bound: over the
+        # +-200 ulp probe the smallest error seen was ~2e-06 (and ~2e-03 within +-4 ulp), while a
+        # correct gimbal-lock branch round trips to ~1e-16. Widening the probe drives the sample
+        # minimum steadily toward 0, which is precisely why no sampled extremum is quoted as a bound.
+        #
+        # Two cells, one per sign, because a fix could plausibly add a gimbal-lock branch for one
+        # sign only or get the roll/yaw split sign wrong; the strict xfail above only covers +pi/2,
+        # so the -pi/2 cell here is the only coverage of that sign. If either cell fails, #3950 was
+        # (partly) fixed -- flip/remove the strict xfail above. NOT a contract that the current
+        # output is correct: any triple whose rotation matrix matches the input is an acceptable
+        # replacement, and such a triple would fail assertion 2 as intended.
+        # float64 is hardcoded and the dtype fixture dropped because the round-trip margin is a
+        # float64 fact; the skip is visible so a raw TypeError on MPS, which has no float64, cannot
+        # pass for the assertion.
         _skip_if_dtype_unavailable(device, torch.float64)
 
+        pitch_in = sign * torch.pi / 2
         quaternion = quaternion_from_euler(
             torch.tensor(0.1, device=device, dtype=torch.float64),
-            torch.tensor(pitch, device=device, dtype=torch.float64),
+            torch.tensor(pitch_in, device=device, dtype=torch.float64),
             torch.tensor(0.2, device=device, dtype=torch.float64),
         )
 
-        out = torch.stack(euler_from_quaternion(*quaternion))
+        roll_back, pitch_back, yaw_back = euler_from_quaternion(*quaternion)
 
-        assert_close(
-            out,
-            torch.tensor(expected, device=device, dtype=torch.float64),
-            atol=1e-12,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3950: the triple returned at gimbal lock changed"),
+        assert pitch_back.item() == pitch_in, (
+            f"kornia#3950: pitch no longer saturates to exactly {pitch_in} at gimbal lock (got {pitch_back.item()!r})"
+        )
+
+        roundtrip = quaternion_from_euler(roll_back, pitch_back, yaw_back)
+        rot_in = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(quaternion))
+        rot_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(roundtrip))
+        error = (rot_in - rot_back).abs().max().item()
+
+        assert error > 1e-9, (
+            f"kornia#3950: the triple returned at pitch = {pitch_in} now reproduces the input "
+            f"rotation to {error} -- the gimbal-lock defect looks fixed"
         )
 
     @pytest.mark.xfail(
@@ -3920,17 +4005,27 @@ def test_convention_deprecated_alias_warning_can_be_escalated_to_an_error_3956(a
     # error) sees the call fail and can find its deprecated usages. It does not:
     # _emit_deprecation_warning installs simplefilter("always", DeprecationWarning) immediately
     # before warnings.warn, which overrides the caller's "error" entry, so the warning is printed
-    # and execution continues. Written through the shared _runs_without_raising helper because the
-    # intended behavior is a *raise*: letting the DeprecationWarning escape would not match the
-    # mark's raises=AssertionError and would be reported as an error rather than an XFAIL. Marked
-    # xfail(strict=True) so fixing #3956 makes all four cases XPASS and forces the mark out.
+    # and execution continues. The escalated DeprecationWarning is caught by type rather than
+    # through the shared _runs_without_raising helper: that helper treats *any* exception as the
+    # awaited raise, so an unrelated TypeError from the alias would set escalated=True, pass the
+    # body, and -- under xfail(strict=True) -- be reported as XPASS(strict) on a test named
+    # ..._can_be_escalated_to_an_error_3956, which reads as "#3956 is fixed, drop the mark".
+    # Catching DeprecationWarning specifically lets any other exception propagate and be reported
+    # as an error instead. (The #3955 call sites keep the broad helper on purpose: there an
+    # unrelated exception makes the assertion *fail*, which is already the correct report.)
+    # Marked xfail(strict=True) so fixing #3956 makes all four cases XPASS and forces the mark out.
     # Companion wart: test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956.
     alias = getattr(kornia.geometry.conversions, alias_name)
     tensor = torch.tensor(arg)
 
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
-        escalated = not _runs_without_raising(alias, tensor)
+        try:
+            alias(tensor)
+        except DeprecationWarning:
+            escalated = True
+        else:
+            escalated = False
 
     assert escalated, f"kornia#3956: {alias_name} did not raise under simplefilter('error', DeprecationWarning)"
 
