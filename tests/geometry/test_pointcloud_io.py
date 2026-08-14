@@ -130,3 +130,18 @@ class TestSaveLoadPointCloud(BaseTester):
 
         if os.path.exists(filename):
             os.remove(filename)
+
+    def test_load_pointcloud_binary_stops_at_declared_vertex_count(self, tmp_path):
+        xyz_save = torch.tensor([[1.0, 2.0, 3.0]])
+        filename = tmp_path / "pointcloud_binary_with_trailing_data.ply"
+        kornia.geometry.save_pointcloud_ply_binary(str(filename), xyz_save)
+
+        # A PLY file may contain elements after its vertices (for example, faces).
+        # Use 24 trailing bytes to expose loaders that infer the vertex count from
+        # the entire remaining payload instead of the header's element declaration.
+        with filename.open("ab") as file:
+            file.write(bytes(24))
+
+        xyz_load = kornia.geometry.load_pointcloud_ply_binary(str(filename))
+
+        self.assert_close(xyz_load, xyz_save)

@@ -180,12 +180,19 @@ def load_pointcloud_ply_binary(filename: str, header_size: int = 8) -> torch.Ten
     if not (isinstance(header_size, int) and header_size > 0):
         raise TypeError(f"Input header_size must be a positive integer. Got {header_size}.")
 
-    # Read all file bytes
+    vertex_count = None
     with open(filename, "rb") as f:
-        # Skip header lines
         for _ in range(header_size):
-            f.readline()
+            header_line = f.readline().decode("ascii", errors="ignore").split()
+            if len(header_line) == 3 and header_line[:2] == ["element", "vertex"]:
+                vertex_count = int(header_line[2])
         raw_data = f.read()
+
+    if vertex_count is not None:
+        vertex_data_size = vertex_count * 24
+        if len(raw_data) < vertex_data_size:
+            raise ValueError(f"Expected {vertex_data_size} bytes for {vertex_count} points, got {len(raw_data)} bytes.")
+        raw_data = raw_data[:vertex_data_size]
 
     # One point equals 24 bytes (3 * 8 bytes for double float)
     if len(raw_data) % 24 != 0:
