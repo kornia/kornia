@@ -1061,16 +1061,21 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
 
     .. warning::
         ``||v||`` is computed with ``torch.norm(p=2)``, which forms the sum of
-        squares and so overflows to ``inf`` once ``||v||`` passes roughly
-        ``sqrt(finfo.max)`` — far below the largest finite input. Beyond that
-        point **all four** components come back ``nan``, even though the
-        exponential map of a large finite vector is a perfectly good unit
-        quaternion. In ``float32`` the output is ``nan`` from about
-        ``1.8446744e19`` upward (against a ``finfo.max`` of ``3.4e38``), and in
-        ``float64`` from about ``1.3407808e154`` (against ``1.8e308``);
-        ``bfloat16`` turns over at about ``1.8446744e19``. ``float16`` is the
-        exception and never overflows, its norm being accumulated in wider
-        precision. Tracked in
+        squares and so overflows to ``inf`` far below the largest finite input.
+        Beyond that point **all four** components come back ``nan``, even
+        though the exponential map of a large finite vector is a perfectly good
+        unit quaternion. Where the turnover sits depends on the accumulator:
+        ``float32`` and ``bfloat16`` accumulate in their own dtype and so
+        overflow once ``||v||`` passes ``sqrt(finfo.max)`` — from about
+        ``1.8446744e19`` in ``float32`` (against a ``finfo.max`` of ``3.4e38``)
+        and about ``1.841e19`` in ``bfloat16`` — as does ``float64``, from
+        about ``1.3407808e154`` (against ``1.8e308``). ``float16`` accumulates
+        in wider precision, so its squares never overflow and it turns over
+        only once the true ``||v||`` exceeds what ``float16`` itself can hold,
+        near ``65520``. That still happens, but it takes **two or more**
+        non-zero components, since a single one cannot exceed ``65504``:
+        ``[37824., 37824., 37824.]`` is finite while
+        ``[37856., 37856., 37856.]`` is all ``nan``. Tracked in
         `#3975 <https://github.com/kornia/kornia/issues/3975>`_.
 
     Args:

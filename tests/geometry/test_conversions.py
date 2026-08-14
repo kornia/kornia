@@ -1366,50 +1366,66 @@ class TestQuaternionLogToExp(BaseTester):
     @pytest.mark.parametrize(
         ("overflow_dtype", "last_finite", "first_nan"),
         [
-            ("float32", 1.8446742974197924e19, 1.8446744073709552e19),
-            ("float64", 1.3407807929942596e154, 1.3407807929942597e154),
+            ("float32", [1.8446742974197924e19, 0.0, 0.0], [1.8446744073709552e19, 0.0, 0.0]),
+            ("float64", [1.3407807929942596e154, 0.0, 0.0], [1.3407807929942597e154, 0.0, 0.0]),
+            ("float16", [37824.0] * 3, [37856.0] * 3),
         ],
-        ids=["float32", "float64"],
+        ids=["float32", "float64", "float16_three_components"],
     )
     def test_wart_large_finite_input_overflows_log_to_exp_to_nan_3975(
         self, device, overflow_dtype, last_finite, first_nan
     ):
         # Wart pin for kornia#3975: assert that quaternion_log_to_exp CURRENTLY returns all-NaN for
         # a finite input vector, because torch.norm(p=2) forms the sum of squares and overflows to
-        # inf once ||v|| passes ~sqrt(finfo.max) -- far below the largest finite input. The exp map
-        # of a large finite vector is mathematically a perfectly good unit quaternion, so this is a
-        # defect, not a convention. Distinct from kornia#3966: that is the float16 eps *underflow*
-        # family, this is an *overflow* in the norm, independent of eps, and it does not affect
-        # float16 at all (65504**2 fits the wider accumulator, so float16 never overflows here).
-        # Both sides of the boundary are pinned so the cell also flips if the threshold merely
-        # moves rather than the NaN disappearing: the last finite input must stay a unit quaternion
-        # and the first NaN input must stay all-NaN. float32 and float64 are hardcoded (the
-        # boundary is a per-dtype fact) with a visible skip where the device lacks the dtype.
-        # If either cell fails, #3975 was (partly) fixed -- drop the pin. NOT a contract that NaN
-        # is the right answer; a fix making the whole finite range return unit quaternions is the
+        # inf well below the largest finite input. The exp map of a large finite vector is
+        # mathematically a perfectly good unit quaternion, so this is a defect, not a convention.
+        # Distinct from kornia#3966: that is the float16 eps *underflow* family, this is an
+        # *overflow* in the norm and is independent of eps.
+        # The threshold has two regimes, which is why the cells carry whole vectors and not one
+        # magnitude -- the number of non-zero components is part of the fact being pinned:
+        #   - float32 and bfloat16 accumulate the squares in their own dtype, so they turn over at
+        #     ||v|| > sqrt(finfo.max): 1.8446744e19 and ~1.841e19. One component is enough.
+        #   - float16 accumulates in wider precision, so the squares never overflow; the result
+        #     overflows only once the true ||v|| itself exceeds what float16 can hold, i.e. once
+        #     the wider-precision norm rounds to inf at ~65520 (the midpoint between float16's max
+        #     of 65504 and the next value up). A single component can never do that -- it would
+        #     have to exceed 65504 to begin with -- so it takes TWO OR MORE non-zero components.
+        #     Hence the three-component float16 cell: [37824]*3 has a true norm of 65513.1 and
+        #     stays finite, [37856]*3 has 65568.5 and comes back all-NaN.
+        # Both sides of the boundary are pinned so a cell also flips if the threshold merely moves
+        # rather than the NaN disappearing: the last finite input must stay a unit quaternion and
+        # the first NaN input must stay all-NaN. The dtypes are hardcoded (the boundary is a
+        # per-dtype fact) with a visible skip where the device lacks the dtype.
+        # If any cell fails, #3975 was (partly) fixed -- drop the pin. NOT a contract that NaN is
+        # the right answer; a fix making the whole finite range return unit quaternions is the
         # intended outcome and would flip this.
         # Snippet used to generate expected (torch only, executed on cpu):
-        #   def out_at(n, dt):
-        #       return quaternion_log_to_exp(torch.tensor([[n, 0.0, 0.0]], dtype=dt), eps=1e-12)
-        #   # walk down from sqrt(finfo.max) in the dtype's own representable space until finite,
-        #   # then torch.nextafter one step up for the first NaN
+        #   def out_at(vec, dt):
+        #       return quaternion_log_to_exp(torch.tensor([vec], dtype=dt), eps=1e-12)
+        #   # f32/f64: walk down from sqrt(finfo.max) in the dtype's own representable space until
+        #   # finite, then torch.nextafter one step up for the first NaN
         #   -> float32: last finite 1.8446742974197924e19, first NaN 1.8446744073709552e19
         #   -> float64: last finite 1.3407807929942596e154, first NaN 1.3407807929942597e154
+        #   # f16: bisect the equal-three-component family; 37824 and 37856 are adjacent float16
+        #   # values (spacing is 32 at that magnitude), so the pair straddles the boundary exactly
+        #   -> float16: last finite [37824]*3, first NaN [37856]*3
         dtype = getattr(torch, overflow_dtype)
         _skip_if_dtype_unavailable(device, dtype)
 
         log_to_exp = kornia.geometry.conversions.quaternion_log_to_exp
 
-        finite = log_to_exp(torch.tensor([[last_finite, 0.0, 0.0]], device=device, dtype=dtype))
+        finite = log_to_exp(torch.tensor([last_finite], device=device, dtype=dtype))
         assert torch.isfinite(finite).all(), (
             f"kornia#3975: {overflow_dtype} input {last_finite} no longer returns a finite quaternion"
         )
         # .cpu() before .double(): MPS has no float64, so accumulating the norm on-device raises.
-        assert abs(finite.cpu().double().norm().item() - 1.0) < 1e-6, (
+        # The float16 cell is only unit to its own rounding, hence the dtype-aware tolerance.
+        unit_tol = 8 * torch.finfo(dtype).eps
+        assert abs(finite.cpu().double().norm().item() - 1.0) < unit_tol, (
             f"kornia#3975: {overflow_dtype} input {last_finite} no longer returns a unit quaternion"
         )
 
-        overflowed = log_to_exp(torch.tensor([[first_nan, 0.0, 0.0]], device=device, dtype=dtype))
+        overflowed = log_to_exp(torch.tensor([first_nan], device=device, dtype=dtype))
         assert torch.isnan(overflowed).all(), (
             f"kornia#3975: {overflow_dtype} input {first_nan} no longer overflows to all-NaN "
             f"(got {overflowed.tolist()})"
