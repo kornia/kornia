@@ -811,8 +811,11 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
           rounding in ``float64`` and ``float32`` (by ``1.3e-15`` and
           ``6.0e-07`` over 2000 random unit quaternions), but the
           reduced-precision dtypes do **not** hold to that: ``bfloat16`` moves
-          by ``3.1e-02`` and ``float16`` by ``1.5e-01``, and the ``1e6`` end is
-          ``nan`` at ``float16`` because ``0.5 * 1e6`` overflows the dtype.
+          by ``3.1e-02``, and ``float16`` loses the property altogether — near
+          the top of that range the rescaled matrix bears no relation to the
+          input at all (entries live in ``[-1, 1]``, and the deviation
+          approaches the maximum possible ``2``), while the ``1e6`` end is
+          ``nan`` outright because ``0.5 * 1e6`` overflows the dtype.
           Once ``||q||`` drops below
           :func:`~kornia.geometry.conversions.normalize_quaternion`'s
           ``eps = 1e-12`` the clamp takes over and rescaling changes the matrix

@@ -1368,9 +1368,10 @@ class TestQuaternionLogToExp(BaseTester):
         [
             ("float32", [1.8446742974197924e19, 0.0, 0.0], [1.8446744073709552e19, 0.0, 0.0]),
             ("float64", [1.3407807929942596e154, 0.0, 0.0], [1.3407807929942597e154, 0.0, 0.0]),
+            ("bfloat16", [1.8374686479671624e19, 0.0, 0.0], [1.8446744073709552e19, 0.0, 0.0]),
             ("float16", [37824.0] * 3, [37856.0] * 3),
         ],
-        ids=["float32", "float64", "float16_three_components"],
+        ids=["float32", "float64", "bfloat16", "float16_three_components"],
     )
     def test_wart_large_finite_input_overflows_log_to_exp_to_nan_3975(
         self, device, overflow_dtype, last_finite, first_nan
@@ -1404,8 +1405,9 @@ class TestQuaternionLogToExp(BaseTester):
         #       return quaternion_log_to_exp(torch.tensor([vec], dtype=dt), eps=1e-12)
         #   # f32/f64: walk down from sqrt(finfo.max) in the dtype's own representable space until
         #   # finite, then torch.nextafter one step up for the first NaN
-        #   -> float32: last finite 1.8446742974197924e19, first NaN 1.8446744073709552e19
-        #   -> float64: last finite 1.3407807929942596e154, first NaN 1.3407807929942597e154
+        #   -> float32:  last finite 1.8446742974197924e19,  first NaN 1.8446744073709552e19
+        #   -> float64:  last finite 1.3407807929942596e154, first NaN 1.3407807929942597e154
+        #   -> bfloat16: last finite 1.8374686479671624e19,  first NaN 1.8446744073709552e19
         #   # f16: bisect the equal-three-component family; 37824 and 37856 are adjacent float16
         #   # values (spacing is 32 at that magnitude), so the pair straddles the boundary exactly
         #   -> float16: last finite [37824]*3, first NaN [37856]*3
@@ -3640,19 +3642,32 @@ class TestEulerFromQuaternion(BaseTester):
         # the suite red on builds the pin was never measured against, for a value that is not the
         # defect being tracked.
         #
-        # What survives every perturbation probed (both signs, +-200 ulp on the input pitch, and all
-        # four dtypes):
-        #   1. pitch_back is EXACTLY the input +-pi/2 -- the asin saturates. This is structural, not
-        #      a rounding artefact, and it is corroborated across versions: both triples reported on
-        #      torch 2.12.0 also carry exactly +-pi/2 in the middle. Note this fact SURVIVES a fix to
-        #      #3950 (a correct gimbal-lock branch still reports pitch = +-pi/2); it is pinned as the
-        #      structural claim the strict xfail above does not make, not as a defect indicator.
+        # What this pin asserts instead:
+        #   1. pitch_back is +-pi/2 to a tolerance -- the asin saturates. Note this fact SURVIVES a
+        #      fix to #3950 (a correct gimbal-lock branch still reports pitch = +-pi/2); it is
+        #      pinned as the structural claim the strict xfail above does not make, not as a defect
+        #      indicator.
         #   2. the round-tripped rotation is far from the input -- this is the defect, and the half
         #      of this pin that flips when #3950 is fixed.
-        # The 1e-9 floor in 2 is a chosen threshold with margin, NOT a measured bound: over the
-        # +-200 ulp probe the smallest error seen was ~2e-06 (and ~2e-03 within +-4 ulp), while a
-        # correct gimbal-lock branch round trips to ~1e-16. Widening the probe drives the sample
-        # minimum steadily toward 0, which is precisely why no sampled extremum is quoted as a bound.
+        #
+        # Assertion 1 is a TOLERANCE and not exact equality, which matters. At gimbal lock the asin
+        # argument is 1 - O(eps), and asin(1 - d) ~= pi/2 - sqrt(2d), so one ulp of slack in the
+        # argument amplifies to a sqrt-scale error in the output: sqrt(2 * eps_f64) = 2.107e-08.
+        # Whether the argument rounds to exactly 1.0 or to one ulp below is decided by the last bit
+        # of the sin/cos computation upstream, so it moves between torch builds, backends and
+        # vectorisation paths. torch 2.12.0 reports -1.5707963057214724 for the -pi/2 cell, which is
+        # pi/2 - 2.1073424116835326e-08 -- agreeing with sqrt(2 * eps) to eight significant figures.
+        # An earlier revision asserted exact equality here and was red on 2.12 for that reason.
+        # Note that perturbing the input, at any width, CANNOT detect this: the +-1 ulp sweep over
+        # all four quaternion components returns exactly one distinct pitch_back value, and the
+        # +-200 ulp input sweep likewise. Those probes move the argument's *value*, not whether it
+        # saturates, which is settled upstream. The tolerance is sized from the mechanism, not from
+        # a sample: 1e-6 covers an argument landing ~1000 ulps below 1.0 (sqrt(2 * 1000 * eps) =
+        # 6.7e-07) while staying orders below any real defect, which would move pitch by O(1).
+        #
+        # The 1e-9 floor in 2 is likewise a chosen threshold with margin, NOT a measured bound:
+        # a correct gimbal-lock branch round trips to ~1e-16, and widening the probe drives the
+        # sample minimum steadily toward 0, which is why no sampled extremum is quoted as a bound.
         #
         # Two cells, one per sign, because a fix could plausibly add a gimbal-lock branch for one
         # sign only or get the roll/yaw split sign wrong; the strict xfail above only covers +pi/2,
@@ -3674,8 +3689,8 @@ class TestEulerFromQuaternion(BaseTester):
 
         roll_back, pitch_back, yaw_back = euler_from_quaternion(*quaternion)
 
-        assert pitch_back.item() == pitch_in, (
-            f"kornia#3950: pitch no longer saturates to exactly {pitch_in} at gimbal lock (got {pitch_back.item()!r})"
+        assert abs(pitch_back.item() - pitch_in) < 1e-6, (
+            f"kornia#3950: pitch no longer saturates to {pitch_in} at gimbal lock (got {pitch_back.item()!r})"
         )
 
         roundtrip = quaternion_from_euler(roll_back, pitch_back, yaw_back)
