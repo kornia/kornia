@@ -3658,12 +3658,21 @@ class TestEulerFromQuaternion(BaseTester):
         # vectorisation paths. torch 2.12.0 reports -1.5707963057214724 for the -pi/2 cell, which is
         # pi/2 - 2.1073424116835326e-08 -- agreeing with sqrt(2 * eps) to eight significant figures.
         # An earlier revision asserted exact equality here and was red on 2.12 for that reason.
-        # Note that perturbing the input, at any width, CANNOT detect this: the +-1 ulp sweep over
-        # all four quaternion components returns exactly one distinct pitch_back value, and the
-        # +-200 ulp input sweep likewise. Those probes move the argument's *value*, not whether it
-        # saturates, which is settled upstream. The tolerance is sized from the mechanism, not from
-        # a sample: 1e-6 covers an argument landing ~1000 ulps below 1.0 (sqrt(2 * 1000 * eps) =
-        # 6.7e-07) while staying orders below any real defect, which would move pitch by O(1).
+        # Reproducing it locally needs the right probe: perturbing the input pitch, or any component
+        # by a single ulp, does NOT move pitch_back at all (a +-1 ulp sweep over all four quaternion
+        # components returns one distinct value, as does a +-200 ulp input-pitch sweep). Perturbing
+        # w -- the component the saturation actually depends on -- by two or more ulps walks up the
+        # same sqrt-scale family and reproduces the 2.12.0 figure bit-for-bit: w - 2 ulp gives
+        # -1.5707963057214724 on the -pi/2 cell, and w - 3 ulp gives +1.5707963057214724 on the
+        # +pi/2 cell. The rule for the next pin here is therefore to perturb the intermediate the
+        # branch depends on, and to go wider than one ulp -- not to assume the input is the probe.
+        # Tolerance sizing stays mechanism-based rather than sampled: dev = sqrt(2 * k * eps) for an
+        # argument k ulps below 1.0, so 1e-6 is only reached at k ~ 2250, far beyond the one-to-few
+        # ulps a cross-build rounding difference can move it, and far below any real defect, which
+        # would move pitch by O(1). Note the deviation is NOT bounded by the values above: pushing w
+        # to -20000 ulp reaches 2.5e-06 and does cross the tolerance. That is not a realistic
+        # rounding difference, but it is why the sizing argument is the mechanism and the measured
+        # figures here (2.1e-08 at w - 2 ulp, 5.4e-08 at w - 10 ulp) are sample points, not bounds.
         #
         # The 1e-9 floor in 2 is likewise a chosen threshold with margin, NOT a measured bound:
         # a correct gimbal-lock branch round trips to ~1e-16, and widening the probe drives the
