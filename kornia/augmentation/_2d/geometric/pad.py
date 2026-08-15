@@ -98,8 +98,11 @@ class PadTo(GeometricAugmentationBase2D):
         height_pad: int = flags["size"][0] - height
         width_pad: int = flags["size"][1] - width
         if not flags["crop_if_exceeds"]:
-            height_pad = max(height_pad, 0)
-            width_pad = max(width_pad, 0)
+            # torch.sym_max keeps this clamp traceable under torch.compile/torch.export:
+            # height_pad/width_pad are derived from input.shape and may be SymInt, and the
+            # builtin max() would force a guard/specialization on their sign.
+            height_pad = torch.sym_max(height_pad, 0)
+            width_pad = torch.sym_max(width_pad, 0)
         return torch.nn.functional.pad(
             input, [0, width_pad, 0, height_pad], mode=flags["pad_mode"], value=flags["pad_value"]
         )
