@@ -278,6 +278,39 @@ class TestRotationMatrixToQuaternion(BaseTester):
         mats_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternions)
         self.assert_close(mats_back, batch, atol=atol, rtol=rtol)
 
+    def test_identity_default_eps(self, device, dtype):
+        # The default eps used to be added under the square root, so the identity came out as
+        # (1.0000000012, 0, 0, 0) in float64. eps must only clamp the radicand, never shift it.
+        matrix = torch.eye(3, device=device, dtype=dtype)
+        expected = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
+        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix)
+        tol = torch.finfo(dtype).eps
+        self.assert_close(quaternion, expected, atol=tol, rtol=tol)
+
+    def test_unit_norm_default_eps(self, device, dtype):
+        # Oracle: the quaternion of a rotation matrix has unit norm. The matrices are built with
+        # quaternion_to_rotation_matrix from unit quaternions so the inputs are exact rotations.
+        # The local generator keeps the global RNG untouched for the other tests in this file.
+        generator = torch.Generator().manual_seed(0)
+        quaternion_in = torch.randn(64, 4, generator=generator, dtype=torch.float64)
+        quaternion_in = (quaternion_in / quaternion_in.norm(dim=-1, keepdim=True)).to(device=device, dtype=dtype)
+        matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion_in)
+        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix)
+        norm = quaternion.norm(dim=-1)
+        tol = 100.0 * torch.finfo(dtype).eps
+        self.assert_close(norm, torch.ones_like(norm), atol=tol, rtol=tol)
+
+    def test_gradient_no_nan_near_identity(self, device):
+        # torch.where runs every branch, so a slightly non-orthogonal input drove a discarded
+        # branch's radicand negative and leaked NaN out of its backward. The clamp stops that.
+        dtype = torch.float64
+        matrix = torch.eye(3, device=device, dtype=dtype)
+        matrix[0, 0] -= 1e-6
+        matrix.requires_grad_(True)
+        kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix).sum().backward()
+        assert matrix.grad is not None
+        assert not matrix.grad.isnan().any()
+
     def test_gradcheck(self, device):
         dtype = torch.float64
         eps = torch.finfo(dtype).eps
