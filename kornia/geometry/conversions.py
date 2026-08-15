@@ -560,7 +560,8 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
 
     Args:
         rotation_matrix: the rotation matrix to convert with shape :math:`(*, 3, 3)`.
-        eps: small value to avoid zero division.
+        eps: lower bound the square root radicands are clamped to, so a slightly non-orthogonal
+            input cannot produce NaN. Divisions are guarded separately by ``safe_zero_division``.
 
     Return:
         the rotation in quaternion with shape :math:`(*, 4)`.
@@ -590,7 +591,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
     trace: torch.Tensor = m00 + m11 + m22
 
     def trace_positive_cond() -> torch.Tensor:
-        sq = torch.sqrt(trace + 1.0 + eps) * 2.0  # sq = 4 * qw.
+        sq = torch.sqrt((trace + 1.0).clamp(min=eps)) * 2.0  # sq = 4 * qw.
         qw = 0.25 * sq
         qx = safe_zero_division(m21 - m12, sq)
         qy = safe_zero_division(m02 - m20, sq)
@@ -598,7 +599,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_1() -> torch.Tensor:
-        sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.0  # sq = 4 * qx.
+        sq = torch.sqrt((1.0 + m00 - m11 - m22).clamp(min=eps)) * 2.0  # sq = 4 * qx.
         qw = safe_zero_division(m21 - m12, sq)
         qx = 0.25 * sq
         qy = safe_zero_division(m01 + m10, sq)
@@ -606,7 +607,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_2() -> torch.Tensor:
-        sq = torch.sqrt(1.0 + m11 - m00 - m22 + eps) * 2.0  # sq = 4 * qy.
+        sq = torch.sqrt((1.0 + m11 - m00 - m22).clamp(min=eps)) * 2.0  # sq = 4 * qy.
         qw = safe_zero_division(m02 - m20, sq)
         qx = safe_zero_division(m01 + m10, sq)
         qy = 0.25 * sq
@@ -614,7 +615,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         return torch.cat((qw, qx, qy, qz), dim=-1)
 
     def cond_3() -> torch.Tensor:
-        sq = torch.sqrt(1.0 + m22 - m00 - m11 + eps) * 2.0  # sq = 4 * qz.
+        sq = torch.sqrt((1.0 + m22 - m00 - m11).clamp(min=eps)) * 2.0  # sq = 4 * qz.
         qw = safe_zero_division(m10 - m01, sq)
         qx = safe_zero_division(m02 + m20, sq)
         qy = safe_zero_division(m12 + m21, sq)
