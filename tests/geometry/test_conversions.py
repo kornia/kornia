@@ -1238,6 +1238,43 @@ class TestRotationMatrixToQuaternion(BaseTester):
         mats_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternions)
         self.assert_close(mats_back, batch, atol=atol, rtol=rtol)
 
+    def test_identity_default_eps(self, device, dtype):
+        # The default eps used to be added under the square root, so the identity came out as
+        # (1.0000000012499999, 0, 0, 0) in float64. eps must only clamp the radicand, never shift it.
+        matrix = torch.eye(3, device=device, dtype=dtype)
+        expected = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
+        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix)
+        tol = torch.finfo(dtype).eps
+        self.assert_close(quaternion, expected, atol=tol, rtol=tol)
+
+    def test_unit_norm_default_eps(self, device, dtype):
+        # Oracle: the quaternion of a rotation matrix has unit norm. The matrices are built with
+        # quaternion_to_rotation_matrix from unit quaternions so the inputs are exact rotations.
+        # The local generator keeps the global RNG untouched for the other tests in this file.
+        generator = torch.Generator().manual_seed(0)
+        quaternion_in = torch.randn(64, 4, generator=generator, dtype=torch.float64)
+        quaternion_in = (quaternion_in / quaternion_in.norm(dim=-1, keepdim=True)).to(device=device, dtype=dtype)
+        matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion_in)
+        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix)
+        norm = quaternion.norm(dim=-1)
+        tol = 100.0 * torch.finfo(dtype).eps
+        self.assert_close(norm, torch.ones_like(norm), atol=tol, rtol=tol)
+
+    def test_gradient_no_nan_near_identity(self, device):
+        # torch.where runs every branch, so a slightly non-orthogonal input drove a discarded
+        # branch's radicand negative and leaked NaN out of its backward. The clamp stops that.
+        # float64 is hardcoded (the NaN is invisible at lower precision) and the dtype fixture
+        # dropped, so this runs in every configuration -- including --device=mps, which has no
+        # float64 at all and would report a TypeError indistinguishable from a real failure.
+        _skip_if_dtype_unavailable(device, torch.float64)
+        dtype = torch.float64
+        matrix = torch.eye(3, device=device, dtype=dtype)
+        matrix[0, 0] -= 1e-6
+        matrix.requires_grad_(True)
+        kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix).sum().backward()
+        assert matrix.grad is not None
+        assert not matrix.grad.isnan().any()
+
     def test_gradcheck(self, device):
         dtype = torch.float64
         eps = torch.finfo(dtype).eps
@@ -1329,29 +1366,19 @@ class TestRotationMatrixToQuaternion(BaseTester):
         )
         assert quaternion_trace_positive[0] > 0.0
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="rotation_matrix_to_quaternion adds eps inside the sqrt, so the result is never a "
-        "unit quaternion — kornia#3951",
-        strict=True,
-    )
     def test_convention_returns_a_unit_quaternion_3951(self, device):
-        # Intended behavior: the quaternion returned for an exact rotation matrix is a unit
-        # quaternion to the precision of the input dtype. It never is in float64: the default
-        # eps = 1e-8 is added *inside* the sqrt that builds the components, so every returned
-        # quaternion is inflated -- over 20000 random float64 rotations not one comes back exactly
-        # unit. Measured on the identity in float64 (torch 2.9.1, cpu):
-        #   rotation_matrix_to_quaternion(eye(3))          -> [1.0000000012499999, 0.0, 0.0, 0.0]
-        #   ||q|| - 1                                      ->  1.2499998813808588e-09
-        #   rotation_matrix_to_quaternion(eye(3), eps=0.0) -> [1.0, 0.0, 0.0, 0.0]  (exactly unit)
-        # and the worst |‖q‖ - 1| over 200 random exact rotations is 2.212899197218121e-09, so
-        # atol 1e-12 sits three orders below the deviation and eight above the float64 noise floor.
-        # float64 is hardcoded and the dtype fixture dropped because a 1.25e-09 inflation is
-        # invisible at every other dtype -- float32, float16 and bfloat16 all return exactly
-        # [1, 0, 0, 0] for the identity -- so a dtype-fixture version would XPASS three quarters of
-        # the time and blow up the strict mark for the wrong reason. MPS is skipped visibly since
-        # it has no float64 at all. Marked xfail(strict=True) so fixing #3951 makes this XPASS and
-        # forces the mark out. Companion wart: test_wart_eps_inside_the_sqrt_inflates_the_quaternion_3951.
+        # Contract: the quaternion returned for an exact rotation matrix is a unit quaternion to
+        # the precision of the input dtype. Before #3951 was fixed this never held in float64 --
+        # the default eps = 1e-8 was added *inside* the sqrt that builds the components, inflating
+        # every result. The radicand is now clamped to eps instead, so eps cannot reach the value:
+        #   rotation_matrix_to_quaternion(eye(3))  -> [1.0, 0.0, 0.0, 0.0]  (exactly unit)
+        # and the worst |‖q‖ - 1| over 20000 random float64 rotations is 6.661338e-16, three ulp.
+        # atol 1e-12 sits four orders above that noise floor and three below the 1.25e-09 inflation
+        # this used to exhibit, so it still discriminates a regression to the old formula.
+        # float64 is hardcoded and the dtype fixture dropped because the inflation was invisible at
+        # every other dtype -- float32, float16 and bfloat16 already returned exactly [1, 0, 0, 0]
+        # for the identity, and remain bitwise unchanged by the fix. MPS is skipped visibly since
+        # it has no float64 at all.
         _skip_if_dtype_unavailable(device, torch.float64)
 
         quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(
@@ -1360,58 +1387,6 @@ class TestRotationMatrixToQuaternion(BaseTester):
 
         assert abs(quaternion.norm().item() - 1.0) < 1e-12, (
             "kornia#3951: rotation_matrix_to_quaternion did not return a unit quaternion"
-        )
-
-    def test_wart_eps_inside_the_sqrt_inflates_the_quaternion_3951(self, device):
-        # Wart pin for kornia#3951, companion to the strict xfail above: assert the CURRENT
-        # inflated components. Three cells, each discriminating a different fix shape:
-        #   (0) the eps default itself is still 1e-8 -- the other two cells pass eps explicitly
-        #       (house rule) so they cannot see a re-tuned default, which would otherwise be an
-        #       invisible way to half-fix this;
-        #   (1) eps=1e-8 passed explicitly still inflates the identity to 1.0000000012499999 --
-        #       flips when eps moves out of the sqrt, or when the output is normalised at the end,
-        #       but NOT when only the default is changed;
-        #   (2) eps=0.0 returns exactly [1, 0, 0, 0] -- the control that proves eps is the cause;
-        #       flips if the formula is restructured so that eps=0 no longer gives the exact
-        #       answer (e.g. a clamp- or branch-shaped rewrite).
-        # If any cell fails, #3951 was (partly) fixed -- flip/remove the strict xfail above. NOT a
-        # contract that rotation_matrix_to_quaternion must keep returning a non-unit quaternion.
-        # float64 is hardcoded for the same reason as the xfail: at float32 and below the identity
-        # already comes back as exactly [1, 0, 0, 0] and there is nothing to pin.
-        # Snippet used to generate expected (torch only, executed on cpu float64):
-        #   rotation_matrix_to_quaternion(torch.eye(3, dtype=torch.float64), eps=1e-8)
-        #     -> [1.0000000012499999, 0.0, 0.0, 0.0]
-        #   rotation_matrix_to_quaternion(torch.eye(3, dtype=torch.float64), eps=0.0)
-        #     -> [1.0, 0.0, 0.0, 0.0]
-        # atol 1e-11 on the inflated cell sits two orders below the 1.25e-9 inflation being
-        # discriminated (a fix still flips it red) and four above the 2.2e-16 ulp of 1.0, so a
-        # one-ulp reassociation of the trace+1+eps sum (refactor, fusion, fma) cannot. The eps=0.0
-        # cell stays exact: 3+1+0 is 4 in every association.
-        _skip_if_dtype_unavailable(device, torch.float64)
-
-        rotation_matrix_to_quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion
-        assert inspect.signature(rotation_matrix_to_quaternion).parameters["eps"].default == 1e-8, (
-            "kornia#3951: the eps default moved, so the literals pinned here no longer describe the default call"
-        )
-
-        identity = torch.eye(3, device=device, dtype=torch.float64)
-
-        inflated = rotation_matrix_to_quaternion(identity, eps=1e-8)
-        exact = rotation_matrix_to_quaternion(identity, eps=0.0)
-
-        assert_close(
-            inflated,
-            torch.tensor([1.0000000012499999, 0.0, 0.0, 0.0], device=device, dtype=torch.float64),
-            atol=1e-11,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3951: eps=1e-8 no longer inflates the identity quaternion"),
-        )
-        assert_close(
-            exact,
-            torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=torch.float64),
-            atol=0.0,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3951: eps=0.0 no longer returns the exact unit quaternion"),
         )
 
 
@@ -5847,43 +5822,6 @@ class TestCARKitToColmap(BaseTester):
             ARKitQTVecs_to_ColmapQTVecs(quaternion, translation[..., 0])
         with pytest.raises(ValueError, match=r"shape \(\*, 4\)"):
             ARKitQTVecs_to_ColmapQTVecs(quaternion[:, :3], translation)
-
-    def test_wart_float64_output_quaternion_is_not_unit_3951(self, device):
-        # Wart pin for the downstream reach of kornia#3951: this function ends its pipeline with
-        # rotation_matrix_to_quaternion, whose eps is added INSIDE the sqrt, so a float64 ARKit call
-        # returns a quaternion that is not unit -- a Colmap consumer that validates QW QX QY QZ sees
-        # it. The root cause is pinned in TestRotationMatrixToQuaternion
-        # (test_convention_returns_a_unit_quaternion_3951 and its companion wart); this cell pins
-        # only that the defect reaches the public ARKit entry point, so it flips together with them.
-        # The [0, 1, 0, 0] shape of the output is CORRECT, not a component shift: for an identity
-        # input the composed map is (I @ diag(1, -1, -1)).T = diag(1, -1, -1), a 180-degree turn
-        # about x. The defect is the magnitude alone.
-        # If this fails, #3951 was fixed -- remove this pin together with the two in
-        # TestRotationMatrixToQuaternion. NOT a contract that the output must stay non-unit.
-        # float64 is hardcoded and the dtype fixture dropped because a 1.25e-09 inflation is
-        # invisible at float32 and below (the same reason the root-cause pins hardcode it), and the
-        # skip is visible so MPS, which has no float64, reports a skip rather than a TypeError.
-        # atol 1e-11 sits two orders below the inflation and five above the float64 ulp of 1.0.
-        # Snippet used to generate expected (torch only, executed on cpu float64):
-        #   ARKitQTVecs_to_ColmapQTVecs(tensor([[1., 0., 0., 0.]], float64), ones(1, 3, 1, float64))
-        #     -> q = [0.0, 1.0000000012499999, 0.0, 0.0],  ||q|| - 1 = 1.2499998813808588e-09
-        _skip_if_dtype_unavailable(device, torch.float64)
-
-        qvec = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float64)
-        tvec = torch.ones(1, 3, 1, device=device, dtype=torch.float64)
-
-        q_colmap, _ = ARKitQTVecs_to_ColmapQTVecs(qvec, tvec)
-
-        assert_close(
-            q_colmap,
-            torch.tensor([[0.0, 1.0000000012499999, 0.0, 0.0]], device=device, dtype=torch.float64),
-            atol=1e-11,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3951: the float64 ARKit output quaternion is no longer inflated"),
-        )
-        # No separate ||q|| != 1 assert: the literal above pins ||q|| - 1 = 1.25e-09 at atol=1e-11,
-        # which already implies non-unit by two orders -- a second, weaker assert could never fail
-        # while the pin holds.
 
 
 class TestEulerFromQuaternion(BaseTester):
