@@ -124,6 +124,24 @@ class TestAngleAxisToQuaternion(BaseTester):
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         self.assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
+    @pytest.mark.parametrize("input_dtype", (torch.int16, torch.int32, torch.int64, torch.uint8))
+    def test_integer_input(self, input_dtype, device):
+        # an integer input used to be written back into an integer output buffer, which truncated
+        # every component to zero. see https://github.com/kornia/kornia/issues/3948
+        axis_angle = torch.tensor((1, 0, 0), device=device, dtype=input_dtype)
+        quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
+        assert quaternion.is_floating_point()
+        expected = torch.tensor((np.cos(0.5), np.sin(0.5), 0.0, 0.0), device=device, dtype=quaternion.dtype)
+        self.assert_close(quaternion, expected, atol=1.0e-4, rtol=1.0e-4)
+
+    @pytest.mark.parametrize("input_dtype", (torch.float16, torch.bfloat16, torch.float32, torch.float64))
+    def test_float_input_keeps_dtype(self, input_dtype, device):
+        axis_angle = torch.tensor((1.0, 0.0, 0.0), device=device, dtype=input_dtype)
+        quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
+        assert quaternion.dtype == input_dtype
+        expected = torch.tensor((np.cos(0.5), np.sin(0.5), 0.0, 0.0), device=device, dtype=input_dtype)
+        self.assert_close(quaternion, expected, atol=1.0e-2, rtol=1.0e-2)
+
     def test_gradcheck(self, device):
         dtype = torch.float64
         eps = torch.finfo(dtype).eps

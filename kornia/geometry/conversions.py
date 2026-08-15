@@ -918,9 +918,10 @@ def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
     k: torch.Tensor = torch.where(mask, k_pos, k_neg)
     w: torch.Tensor = torch.where(mask, torch.cos(half_theta), ones)
 
-    quaternion: torch.Tensor = torch.zeros(
-        size=(*axis_angle.shape[:-1], 4), dtype=axis_angle.dtype, device=axis_angle.device
-    )
+    # the output dtype comes from the computed values, not from the input: an integer input is
+    # promoted to floating point by the sqrt above, and writing that back into an integer buffer
+    # would truncate every component to zero.
+    quaternion: torch.Tensor = torch.zeros(size=(*axis_angle.shape[:-1], 4), dtype=w.dtype, device=axis_angle.device)
     quaternion[..., 1:2] = a0 * k
     quaternion[..., 2:3] = a1 * k
     quaternion[..., 3:4] = a2 * k
