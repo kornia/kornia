@@ -832,23 +832,11 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
           warnings give the measured errors
         - applied on the left to a column vector, ``+theta`` about ``+z`` maps
           ``x_hat`` to ``y_hat`` (right-hand rule)
-        - the output dtype follows the input at every shape but one — see the
-          dtype warning below.
+        - the output dtype follows the input at every shape.
           :func:`~kornia.geometry.conversions.normalize_quaternion`,
           :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` and
           :func:`~kornia.geometry.conversions.quaternion_exp_to_log` return the
           input dtype at every shape
-
-    .. warning::
-        An **unbatched** ``float16`` or ``bfloat16`` quaternion of shape
-        ``(4,)`` returns a ``float32`` matrix; the same quaternion batched —
-        ``(1, 4)``, ``(2, 4)``, ``(3, 3, 4)`` — returns the input dtype. The
-        three diagonal entries are computed against a 0-dim ``float32``
-        literal, and type promotion ranks a dimensioned tensor above a 0-dim
-        one: batched components therefore keep their dtype, while the 0-dim
-        components of an unbatched input tie with the literal and ``float32``
-        wins the category. Tracked in
-        `#3954 <https://github.com/kornia/kornia/issues/3954>`_.
 
     .. warning::
         The zero quaternion returns the identity matrix rather than raising:
@@ -903,7 +891,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
     tyy: torch.Tensor = ty * y
     tyz: torch.Tensor = tz * y
     tzz: torch.Tensor = tz * z
-    one: torch.Tensor = torch.tensor(1.0)
+    one: float = 1.0
 
     matrix_flat: torch.Tensor = torch.stack(
         (
