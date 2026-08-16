@@ -1304,7 +1304,11 @@ def euler_from_quaternion(
           ``yaw`` about ``z``; the composition they stand for is documented on
           :func:`~kornia.geometry.conversions.quaternion_from_euler`
         - away from ``|pitch| = pi/2`` it returns the triple of the input
-          rotation folded into ``roll, yaw`` in ``(-pi, pi]`` and ``pitch`` in
+          rotation folded into ``roll, yaw`` in ``[-pi, pi]`` — the interval is
+          closed at both ends: they come from ``atan2``, which reaches ``±pi``
+          with the endpoint's sign decided by signed zeros, so ``w = -0.0,
+          x = 1.0, y = 0.0, z = -0.0`` returns roll exactly ``-pi`` while the
+          ``+0.0`` twin returns ``+pi`` — and ``pitch`` in
           ``[-pi/2, pi/2]``, which inside those ranges is the input itself: the
           ``float64`` round trip of ``(0.3, 0.7, 1.1)`` through
           :func:`~kornia.geometry.conversions.quaternion_from_euler` returns to
@@ -1319,8 +1323,14 @@ def euler_from_quaternion(
         there, so the triple that comes back is decided by rounding: it varies
         between dtypes, between PyTorch versions, and under a one-ulp change of
         the input pitch, and no specific triple is quoted here for that reason.
-        What is stable is that ``pitch`` saturates to exactly ``±pi/2`` and that
-        the reconstructed rotation is far from the input. Random ``(roll, yaw)``
+        What is stable is that ``pitch`` lands within about ``sqrt(eps)`` of
+        ``±pi/2`` — the ``asin`` argument rounds to within an ulp of ``1``, and
+        ``asin(1 - d)`` is ``pi/2 - sqrt(2d)`` — and that the reconstructed
+        rotation is far from the input. Whether ``±pi/2`` is reached exactly
+        depends on dtype and build: at ``float64`` it is exact here, while the
+        ``float32`` round trip of ``(0.1, pi/2, 0.2)`` returns pitch
+        ``1.570451``, ``3.45e-4`` *below* ``float32``'s ``pi/2`` — an exact
+        ``pitch == pi/2`` check never fires there. Random ``(roll, yaw)``
         at ``pitch = +pi/2`` fail this way, while ``|pitch| < pi/4`` round trips
         to rounding. The rotation does survive on the diagonal
         ``roll = yaw`` at ``+pi/2`` (and ``roll = -yaw`` at ``-pi/2``), where
