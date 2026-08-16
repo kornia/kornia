@@ -2243,7 +2243,8 @@ class TestRadDegConversions(BaseTester):
         #     [-4.371139000186241e-08, 0.999999999999999, -0.999999999999999, -4.371139e-08]
         # atol/rtol 1e-12 sits between the current ~4.4e-8 cosine error and the 6.123234e-17
         # an unbiased constant would give.
-        _skip_if_dtype_unavailable(device, torch.float64)
+        if device.type == "mps":
+            pytest.skip("MPS has no float64, and this pin is float64-only by construction")
 
         op = getattr(kornia.geometry.conversions, op_name)
 
@@ -3600,6 +3601,37 @@ class TestEulerFromQuaternion(BaseTester):
         quaternion_back = quaternion_from_euler(roll_back, pitch_back, yaw_back)
         for component, component_back in zip(quaternion, quaternion_back):
             self.assert_close(component_back, component)
+
+    @pytest.mark.parametrize(
+        ("zero_sign", "expected_roll"),
+        [(-0.0, -torch.pi), (0.0, torch.pi)],
+        ids=["negative_zero_gives_minus_pi", "positive_zero_gives_plus_pi"],
+    )
+    def test_convention_roll_range_is_closed_with_signed_zero_endpoint(self, device, zero_sign, expected_roll):
+        # Convention pin for the CLOSED [-pi, pi] range documented on euler_from_quaternion: roll
+        # comes from atan2, which returns the +-pi endpoint EXACTLY, its sign taken from the
+        # signed zero of the first argument. The input is the half-turn about x, where that
+        # argument is 2 * (w*x + y*z) = +-0.0 tracking the sign of w, and the second argument is
+        # 1 - 2 * (x**2 + y**2) = -1 exactly, so IEEE 754 atan2(+-0.0, -1.0) mandates the result:
+        # a bitwise fact, not a rounding accident. A range check written from the half-open
+        # (-pi, pi] form (roll > -pi) fails on the negative-zero input. float64 is hardcoded and
+        # the dtype fixture dropped because the docstring quotes the float64 endpoints; the
+        # signed-zero sign rule itself is dtype-independent.
+        # Snippet used to generate expected (torch only, executed on cpu float64):
+        #   euler_from_quaternion(w=-0.0, x=1.0, y=0.0, z=-0.0)[0] -> -3.141592653589793 == -pi
+        #   euler_from_quaternion(w=0.0,  x=1.0, y=0.0, z=0.0)[0]  ->  3.141592653589793 == +pi
+        _skip_if_dtype_unavailable(device, torch.float64)
+
+        w = torch.tensor([zero_sign], device=device, dtype=torch.float64)
+        x = torch.tensor([1.0], device=device, dtype=torch.float64)
+        y = torch.tensor([0.0], device=device, dtype=torch.float64)
+        z = torch.tensor([zero_sign], device=device, dtype=torch.float64)
+
+        roll, _, _ = euler_from_quaternion(w, x, y, z)
+
+        assert roll.item() == expected_roll, (
+            f"roll for the w = {zero_sign} half-turn is {roll.item()}, not the exact {expected_roll} endpoint"
+        )
 
     @pytest.mark.xfail(
         raises=AssertionError,
