@@ -135,8 +135,10 @@ _DEPRECATED_ALIAS_INPUTS = [(deprecated, arg) for deprecated, _, arg in _DEPRECA
 
 def _rejected_by_a_kornia_shape_guard(err: BaseException) -> bool:
     # Shared classifier for the kornia#3960 pair below: did this exception come from one of
-    # kornia's OWN shape guards? True for a ShapeError (only KORNIA_CHECK_SHAPE raises it, so the
-    # type IS the marker, and it is the idiom the rest of this family uses) or for the hand-rolled
+    # kornia's OWN shape guards? True for a ShapeError -- across the three functions these pins
+    # call, KORNIA_CHECK_SHAPE is the only thing that raises it, so within this family the type is
+    # the marker (kornia raises ShapeError elsewhere too, e.g. KORNIA_CHECK_SAME_SHAPE and directly
+    # in kornia/color/yuv.py, so this is a scoped claim, not a global one) -- or for the hand-rolled
     # ValueError the three homography functions raise today, recognised by the argument name it
     # prints. Everything else -- today's RuntimeError out of torch.matmul included -- is False.
     # ShapeError is NOT a ValueError subclass (mro: ShapeError -> BaseError -> Exception), so both
@@ -2127,12 +2129,14 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         # is PyTorch's and CPython's wording, so a reword upstream would flip these cells and be
         # misread as "#3955 was partly fixed". The phrase alone still separates the three failure
         # modes from each other and from kornia's own guard, which is all the evidence needs.
-        # Three cells: the unbatched case fails in a different place from the two over-batched ones
-        # (an indexing error inside the theta reduction, not the unbind), so a fix that only
-        # flattens the leading dimensions flips the last two and leaves the first. The (1, 1, 3)
-        # and (2, 5, 3) cells do flip together under every fix shape I could construct, but they
-        # are kept apart because they report *different* messages today, and pinning only one of
-        # them would let the other change unnoticed.
+        # Three cells: all three raise at the SAME line -- wxyz.unbind(dim=1) in
+        # _compute_rotation_matrix (conversions.py:507) -- but with different error kinds, because
+        # the rank differs: the unbatched (3,) case has no dim=1 to unbind and gets an IndexError,
+        # while the two over-batched cases unbind successfully and fail on the 3-way assignment
+        # with a ValueError. So a fix that only flattens the leading dimensions flips the last two
+        # and leaves the first. The (1, 1, 3) and (2, 5, 3) cells do flip together under every fix
+        # shape I could construct, but they are kept apart because they report *different* messages
+        # today, and pinning only one of them would let the other change unnoticed.
         # If any cell fails, #3955 was (partly) fixed -- flip/remove the strict xfail above. NOT a
         # contract that these ranks must keep raising.
         # float32 is hardcoded and the dtype fixture dropped for the same reason as the xfail above:
@@ -4371,10 +4375,13 @@ class TestRt2Extrinsics(BaseTester):
 
     def test_convention_matrix4x4_to_Rt_splits_back_and_ignores_the_bottom_row(self, device, dtype):
         # Convention pin: matrix4x4_to_Rt returns (R (B, 3, 3), t (B, 3, 1)) sliced out of the same
-        # positions Rt_to_matrix4x4 wrote them to, so the round trip is bitwise in both directions.
-        # It reads only the top three rows: a projective (non-affine) bottom row is silently
-        # dropped, and packing the pieces back re-imposes the canonical [0, 0, 0, 1]. That makes
-        # the pair lossy for anything but a rigid transform, which is the claim this pin fixes.
+        # positions Rt_to_matrix4x4 wrote them to. Rt -> 4x4 -> Rt is therefore bitwise for any
+        # (R, t); the OTHER direction is bitwise only for a CANONICAL extrinsics matrix, one whose
+        # bottom row is already [0, 0, 0, 1]. It reads only the top three rows: a projective
+        # (non-affine) bottom row is silently dropped, and packing the pieces back re-imposes the
+        # canonical [0, 0, 0, 1], so a matrix carrying [9, 9, 9, 9] does not survive the trip
+        # (executed below). That makes the pair lossy for anything but a rigid transform, which is
+        # the claim this pin fixes.
         # Snippet used to generate expected (torch only, executed on cpu):
         #   matrix4x4_to_Rt(M) -> (R, t) equal to the inputs of Rt_to_matrix4x4, bitwise
         #   matrix4x4_to_Rt(M with bottom row [9, 9, 9, 9]) -> the same (R, t)
