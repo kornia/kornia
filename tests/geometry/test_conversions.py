@@ -26,6 +26,7 @@ import torch
 
 import kornia
 from kornia.core._compat import torch_version
+from kornia.core.exceptions import ShapeError
 from kornia.core.ops import eye_like
 from kornia.geometry.conversions import (
     ARKitQTVecs_to_ColmapQTVecs,
@@ -3201,6 +3202,10 @@ class TestNormalTransformPixel(BaseTester):
     # The convention pins live here, next to the pixel-coordinate family whose [-1, 1] convention
     # they share (an executed agreement, not a shared-code argument: see
     # test_convention_agrees_with_normalize_pixel_coordinates below).
+    # NOTE: kornia#3904 (reserved) may extend this surface. EVERY literal in this class -- not only
+    # the pins that repeat this line -- is built from the unconditional corner-aligned 2/(size - 1)
+    # constants, so all of them would flip if #3904 made the normalization respect align_corners.
+    # They record current default behavior; none of them is a ratified contract for that choice.
 
     def test_convention_returns_one_unbatched_matrix_in_the_ambient_default_dtype(self, device):
         # Convention pin: both helpers return exactly one matrix behind a leading axis of 1 --
@@ -3490,6 +3495,13 @@ class TestNormalizeHomography(BaseTester):
     # a fix for #3958 must not flip an ordering or direction pin.
     # No pin asserts anything about kornia#3962 (no denormalize_homography3d, no
     # ColmapQTVecs_to_ARKitQTVecs) -- a missing symbol is a scope question, not a defect.
+    # NOTE: kornia#3904 (reserved) may extend this surface. EVERY literal in this class -- the
+    # composition, direction, round-trip, batching and 3-D pins as much as the #3957 and #3958 bug
+    # pins, and whether or not the pin repeats this line -- is built from the corner-aligned
+    # 2/(size - 1) constants these three functions inherit from normal_transform_pixel, so a #3904
+    # fix that made the normalization respect align_corners would flip all of them. They record
+    # current default behavior; none of them ratifies that choice as contract. (The #3958 pins would
+    # also flip on a #3958 fix, which is their point; the #3904 exposure is separate and additional.)
 
     def test_convention_maps_normalized_src_to_normalized_dst(self, device, dtype):
         # Convention pin: the returned matrix has the SAME src -> dst direction as its input,
@@ -3823,6 +3835,17 @@ class TestNormalizeHomography(BaseTester):
         # it escape: under raises=AssertionError an escaping RuntimeError would be reported as an
         # error rather than an XFAIL. float32 is hardcoded and the dtype fixture dropped because a
         # shape guard runs before any arithmetic and cannot depend on the dtype.
+        # What the classification DECIDES: that the input was rejected by one of kornia's own shape
+        # guards -- either the hand-rolled ValueError these three functions raise today (recognised
+        # by the argument name it prints) or a ShapeError, which only KORNIA_CHECK_SHAPE raises and
+        # which is the idiom the rest of this family uses (Rt_to_matrix4x4, matrix4x4_to_Rt, the
+        # camtoworld pair), so it is the likeliest shape a fix takes. ShapeError is NOT a ValueError
+        # subclass -- its mro is ShapeError -> BaseError -> Exception -- so catching ValueError alone
+        # would leave this pin silently XFAIL under exactly that fix, which is the failure mode a
+        # strict xfail exists to prevent. What it does NOT decide: which of the two guard styles a
+        # fix picks, nor the message wording (only the argument name is matched, and only on the
+        # ValueError branch). Anything else -- today's matmul RuntimeError included -- stays
+        # unguarded, which is what keeps the pin XFAIL until #3960 is actually fixed.
         # Marked xfail(strict=True) so fixing #3960 makes all three cases XPASS and forces the mark
         # out. Companion wart: test_wart_wrong_sized_matrices_die_inside_matmul_3960.
         op = getattr(kornia.geometry.conversions, op_name)
@@ -3831,6 +3854,8 @@ class TestNormalizeHomography(BaseTester):
 
         try:
             op(wrong, *sizes)
+        except ShapeError:
+            guarded = True
         except ValueError as err:
             guarded = "dst_pix_trans_src_pix" in str(err)
         except Exception:
@@ -4358,8 +4383,6 @@ class TestRt2Extrinsics(BaseTester):
         # pinned in test_convention_batch_sizes_must_match below.
         # float32 is hardcoded and the dtype fixture dropped because a shape guard runs before any
         # arithmetic and cannot depend on the dtype.
-        from kornia.core.exceptions import ShapeError
-
         op = getattr(kornia.geometry.conversions, op_name)
         args = [torch.zeros(shape, device=device, dtype=torch.float32) for shape in shapes]
 
@@ -4509,8 +4532,6 @@ class TestCamtoworldGraphicsToVision(BaseTester):
         # than the message text, so a reworded guard does not flip these cells.
         # float32 is hardcoded and the dtype fixture dropped because a shape guard runs before any
         # arithmetic and cannot depend on the dtype.
-        from kornia.core.exceptions import ShapeError
-
         op = getattr(kornia.geometry.conversions, op_name)
         args = [torch.zeros(shape, device=device, dtype=torch.float32) for shape in shapes]
 
@@ -4699,8 +4720,6 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         # ShapeError (kornia's own) is asserted rather than the message text, so a reworded guard
         # does not flip these cells. float32 is hardcoded and the dtype fixture dropped because a
         # shape guard runs before any arithmetic and cannot depend on the dtype.
-        from kornia.core.exceptions import ShapeError
-
         op = getattr(kornia.geometry.conversions, op_name)
         args = [torch.zeros(shape, device=device, dtype=torch.float32) for shape in shapes]
 
@@ -4947,8 +4966,6 @@ class TestCARKitToColmap(BaseTester):
         #   ARKitQTVecs_to_ColmapQTVecs(torch.zeros(1, 4), torch.ones(1, 3))   -> ShapeError
         #   ARKitQTVecs_to_ColmapQTVecs(torch.zeros(1, 3), torch.ones(1, 3, 1))
         #     -> ValueError: Input must be a tensor of shape (*, 4). Got torch.Size([1, 3])
-        from kornia.core.exceptions import ShapeError
-
         quaternion = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float32)
         translation = torch.ones(1, 3, 1, device=device, dtype=torch.float32)
 
