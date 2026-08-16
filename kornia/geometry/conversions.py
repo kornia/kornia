@@ -1738,7 +1738,11 @@ def normalize_homography(
         eight significant digits instead of sixteen. Same mechanism in
         :func:`~kornia.geometry.conversions.denormalize_homography`
         (``2.483526828633842e-08`` on the same input) and in
-        :func:`~kornia.geometry.conversions.normalize_homography3d`. Tracked in
+        :func:`~kornia.geometry.conversions.normalize_homography3d`. These
+        deviations run through ``matmul`` and an inverse, so their trailing
+        digits are backend-dependent (torch 2.9.1, cpu); the magnitude — half
+        the mantissa gone — is the point, and it is what the companion pin
+        compares against rather than the digits. Tracked in
         `#3958 <https://github.com/kornia/kornia/issues/3958>`_.
 
     .. warning::
@@ -1754,8 +1758,11 @@ def normalize_homography(
         the same ``(4, 1)`` as the **destination** blows it up to the reciprocal
         ``400000001507328.0``, and a size of ``0`` silently mirrors that axis
         (source ``(4, 0)``, destination ``(4, 5)``, first row
-        ``[-0.25, 0.0, -1.25]``). This is the executed root of 1-pixel warp
-        outputs coming back all-``nan``. Tracked in
+        ``[-0.25, 0.0, -1.25]``). Those three figures pass through ``matmul``
+        and an inverse, so their trailing digits are backend-dependent
+        (torch 2.9.1, cpu); the orders of magnitude are the point. This is the
+        executed root of 1-pixel warp outputs coming back all-``nan``. Tracked
+        in
         `#3957 <https://github.com/kornia/kornia/issues/3957>`_ and, for the
         symptom, `#3929 <https://github.com/kornia/kornia/issues/3929>`_.
 
@@ -2020,15 +2027,17 @@ def denormalize_homography(
           cpu) — that is rounding across four matrix products and an inverse,
           not an exact identity. Pick sizes of the form ``2**k + 1`` and the
           constants become exact and both round trips return the input bit for
-          bit; that is what
-          ``test_convention_normalize_and_denormalize_round_trip`` pins, on its
-          own literal at ``(3, 5)`` and ``(5, 9)``
+          bit — the convention pins in kornia's test suite assert that
+          bit-for-bit form on their own literal at dyadic sizes
         - the two functions do **not** invert their normalization matrix the
           same way, so their errors are not mirror images either: on the
           identity homography with equal sizes ``(4, 7)``,
           :func:`~kornia.geometry.conversions.normalize_homography` deviates
-          from the identity by ``5.960464477539063e-08`` while this function is
-          exact (``0.0``). Do not read one function's residual off the other's
+          from the identity by ``5.960464477539063e-08`` while this function
+          returns it exactly (torch 2.9.1, cpu — both figures come out of a
+          matmul chain and an inverse, so which one lands on ``0.0`` is a
+          property of the current linalg path, not a contract). Do not read one
+          function's residual off the other's
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
@@ -2105,7 +2114,9 @@ def normalize_homography3d(
         ``z`` scale is ``4.99999991225835e-15`` and ``det`` is
         ``1.0714285980035544e-15``, while the same source against
         ``(2, 8, 9)`` gives ``9.9999998245167e-15`` and
-        ``2.1428571960071087e-15``. ``torch.linalg.inv`` still succeeds on such
+        ``2.1428571960071087e-15`` (torch 2.9.1, cpu — these run through an
+        inverse, a ``matmul`` and ``linalg.det``, so read the exponents, not
+        the trailing digits). ``torch.linalg.inv`` still succeeds on such
         a matrix, so it is unusable in practice rather than formally singular,
         and it annihilates every ``z`` coordinate. Returned without any
         warning. The ``float32`` constants of
@@ -2253,13 +2264,26 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
           :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt`
           silently broadcasts the same pair
         - :func:`~kornia.geometry.conversions.matrix4x4_to_Rt` is the inverse,
-          and the round trip is bitwise in both directions
+          and ``Rt -> 4x4 -> Rt`` is bitwise for any ``(R, t)``. The other
+          direction is bitwise only for a **canonical** extrinsics matrix, one
+          whose bottom row is already ``[0, 0, 0, 1]``: any other bottom row is
+          discarded on the way out and rebuilt as ``[0, 0, 0, 1]``, so a matrix
+          carrying ``[9, 9, 9, 9]`` — or a projective ``[0.1, 0.2, 0.3, 1]`` —
+          does not survive the trip. That truncation is
+          :func:`~kornia.geometry.conversions.matrix4x4_to_Rt`'s, and its block
+          documents it
 
     .. warning::
         An ``int64`` ``(R, t)`` pair raises ``RuntimeError: result type Float
         can't be cast to the desired output type Long`` from the appended
-        homogeneous row, so every ``_Rt`` variant built on this function rejects
-        integer input while the ``_4x4`` variants accept it — see
+        homogeneous row. The two ``camtoworld_*_to_*_Rt`` frame functions are
+        built on it and so reject integer input, while their ``_4x4``
+        counterparts accept it and return an ``int64`` matrix. The dichotomy is
+        not ``_Rt`` versus ``_4x4`` in general:
+        :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt` and
+        :func:`~kornia.geometry.conversions.worldtocam_to_camtoworld_Rt` do not
+        go through this function — they only transpose, negate and multiply —
+        and accept ``int64`` happily, returning an ``int64`` result. See
         :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4`.
         Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
@@ -2349,8 +2373,14 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
           down ``+z``. On the identity camera-to-world pose, camera ``+y``
           maps to world ``+y`` before the conversion and to world ``-y`` after
           it, and likewise for ``+z``
-        - ``det`` of the 3x3 block is ``+1``: **handedness is preserved**, since
-          two axes are negated and not one
+        - the flip **preserves the determinant** of the 3x3 block, and with it
+          the handedness: ``diag(1, -1, -1)`` negates two axes and not one, so
+          its own determinant is ``+1`` and the product's is whatever came in.
+          A proper rotation therefore stays proper (``det = +1`` in, ``+1``
+          out) — but this is preservation, not a guarantee: an input block with
+          ``det = 2`` comes back with ``det = 2``, and an improper one with
+          ``det = -1`` stays improper. Nothing here checks that the input is a
+          rotation
         - the flip is an **involution**, and all four graphics/vision frame
           functions compute the identical map:
           :func:`~kornia.geometry.conversions.camtoworld_vision_to_graphics_4x4`
@@ -2455,8 +2485,8 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: torch.Tensor) -> torch.
           function and return bitwise equal matrices on the same input. The name
           records which direction the caller means
         - everything else — the right multiplication, the untouched translation
-          column, the two frame definitions, ``det = +1``, the strict
-          :math:`(B, 4, 4)` shape and the integer-dtype warning — is as
+          column, the two frame definitions, the preserved determinant, the
+          strict :math:`(B, 4, 4)` shape and the integer-dtype warning — is as
           documented there
 
     Args:

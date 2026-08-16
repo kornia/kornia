@@ -133,6 +133,81 @@ _DEPRECATED_ALIAS_IDS = [deprecated for deprecated, _, _ in _DEPRECATED_ALIASES]
 _DEPRECATED_ALIAS_INPUTS = [(deprecated, arg) for deprecated, _, arg in _DEPRECATED_ALIASES]
 
 
+def _rejected_by_a_kornia_shape_guard(err: BaseException) -> bool:
+    # Shared classifier for the kornia#3960 pair below: did this exception come from one of
+    # kornia's OWN shape guards? True for a ShapeError (only KORNIA_CHECK_SHAPE raises it, so the
+    # type IS the marker, and it is the idiom the rest of this family uses) or for the hand-rolled
+    # ValueError the three homography functions raise today, recognised by the argument name it
+    # prints. Everything else -- today's RuntimeError out of torch.matmul included -- is False.
+    # ShapeError is NOT a ValueError subclass (mro: ShapeError -> BaseError -> Exception), so both
+    # branches are needed; catching ValueError alone would leave the strict xfail silently XFAIL
+    # under the likeliest fix, which is the failure mode a strict xfail exists to prevent.
+    # The strict xfail asserts this predicate and the companion wart asserts its complement, so the
+    # two are keyed to one definition and cannot drift apart. It deliberately depends on no upstream
+    # message text: what a non-kornia failure says is torch's business and may be reworded.
+    # DECIDES: whether kornia's own guard rejected the input. Does NOT decide which guard style a
+    # fix picks, nor any message wording beyond the argument name on the ValueError branch.
+    if isinstance(err, ShapeError):
+        return True
+    if isinstance(err, ValueError):
+        return "dst_pix_trans_src_pix" in str(err)
+    return False
+
+
+# The wrong-sized-matrix cells for the kornia#3960 pair: (op name, wrong square size). One table
+# feeds BOTH the strict xfail and its companion wart -- their comments say the cells must flip
+# together, and sharing the table is what enforces it rather than asking a future editor to
+# remember. A fourth op (a denormalize_homography3d per kornia#3962, say) becomes a one-line edit
+# that cannot land in one list and not the other. The sizes helper lives here for the same reason.
+# These are call INPUTS, not pinned expected values: each pin computes its own verdict from them.
+_WRONG_SIZE_CASES = [
+    ("normalize_homography", 4),
+    ("denormalize_homography", 4),
+    ("normalize_homography3d", 3),
+]
+_WRONG_SIZE_IDS = ["normalize", "denormalize", "normalize3d"]
+
+
+def _homography_sizes(op_name: str):
+    # (dsize_src, dsize_dst) for the kornia#3960 cells: 3-D ops take (depth, height, width).
+    return ((2, 4, 5), (3, 8, 9)) if op_name.endswith("3d") else ((4, 5), (8, 9))
+
+
+# The asymmetric camera pose shared by the camera-frame pins: a proper rotation (det = +1) that is
+# the 120-degree turn about (1, 1, 1), so it is NOT equal to its own transpose and NOT symmetric --
+# an identity or symmetric pose is invariant under the very flips and transposes these pins exist to
+# catch. Every entry is 0 or 1 and the translation is small integers, so every product below is
+# exact at float16, bfloat16, float32 and float64 alike, which is what lets those pins compare at
+# atol=rtol=0 under the dtype fixture. Materialised per test with the fixture's device/dtype; kept
+# as plain nested lists so no tensor is shared between tests. Used by TestRt2Extrinsics,
+# TestCamtoworldGraphicsToVision and TestCamtoworldRtToPoseRt -- one definition instead of nine
+# copies that would have to be edited in lockstep, and it is what makes those classes'
+# "same asymmetric pose as TestRt2Extrinsics" cross-references true by construction.
+# The kornia#3961 wart deliberately uses a DIFFERENT, non-orthogonal rotation and stays out of this.
+_ASYMMETRIC_R = [[[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]]
+_ASYMMETRIC_T = [[[1.0], [2.0], [3.0]]]
+
+
+def _assert_strictly_batched(op_name, shapes, device) -> None:
+    # Shared body for the three test_convention_shapes_are_strictly_batched pins (TestRt2Extrinsics,
+    # TestCamtoworldGraphicsToVision, TestCamtoworldRtToPoseRt), whose executable bodies were
+    # line-for-line identical -- only their parametrize tables differ. One definition means a change
+    # to the assertion policy is one edit, not three synchronized ones; each class keeps its own
+    # parametrized test, so collect IDs and per-class failure reporting are unchanged.
+    # ShapeError (kornia's own) is asserted rather than the message text: KORNIA_CHECK_SHAPE is the
+    # only thing that raises it, so the type is the evidence that kornia's guard fired and not some
+    # downstream arithmetic, and the wording stays free to change.
+    # float32 is hardcoded and the dtype fixture dropped: a shape guard runs before any arithmetic,
+    # so which shapes are rejected cannot depend on the dtype and the fixture only multiplied cells.
+    # TestCARKitToColmap's variant is deliberately NOT routed through here: it is unparametrized and
+    # classifies a ValueError branch as well, so it is a different assertion, not a copy of this one.
+    op = getattr(kornia.geometry.conversions, op_name)
+    args = [torch.zeros(shape, device=device, dtype=torch.float32) for shape in shapes]
+
+    with pytest.raises(ShapeError):
+        op(*args)
+
+
 class TestAngleAxisToQuaternion(BaseTester):
     # based on:
     # https://github.com/ceres-solver/ceres-solver/blob/master/internal/ceres/rotation_test.cc#L271
@@ -2009,8 +2084,11 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         # match, so the failure would be reported as an error rather than an XFAIL. Marked
         # xfail(strict=True) so fixing #3955 makes this XPASS and forces the mark out. Companion
         # wart: test_wart_only_rank_2_input_is_accepted_3955.
-        # float32 is hardcoded and the dtype fixture dropped: the rank errors are raised by unbind
-        # and by an index reduction before any arithmetic runs, so which ranks are accepted cannot
+        # float32 is hardcoded and the dtype fixture dropped: all three rank errors come out of the
+        # same shape-driven `wxyz.unbind(dim=1)` inside _compute_rotation_matrix, which no dtype can
+        # change. NOT "before any arithmetic runs" -- theta2 = (aa * aa).sum(-1), the sqrt and the
+        # axis division all execute first and succeed at every float dtype; it is that the
+        # arithmetic ahead of the unbind is dtype-safe, so which ranks are accepted still cannot
         # depend on the dtype and the fixture only multiplied the cell count.
         axis_angle_to_rotation_matrix = kornia.geometry.conversions.axis_angle_to_rotation_matrix
         rotation_matrix_to_axis_angle = kornia.geometry.conversions.rotation_matrix_to_axis_angle
@@ -2058,7 +2136,8 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         # If any cell fails, #3955 was (partly) fixed -- flip/remove the strict xfail above. NOT a
         # contract that these ranks must keep raising.
         # float32 is hardcoded and the dtype fixture dropped for the same reason as the xfail above:
-        # every one of these errors is raised before any arithmetic, so the dtype cannot change it.
+        # every one of these errors comes from the same shape-driven unbind, and the arithmetic that
+        # precedes it succeeds at every float dtype, so the dtype cannot change which ranks raise.
         # Snippet used to generate expected (torch only, executed on cpu float64):
         #   axis_angle_to_rotation_matrix(torch.zeros(3, dtype=torch.float64))
         #     -> IndexError: Dimension out of range (expected to be in range of [-1, 0], but got 1)
@@ -3254,8 +3333,7 @@ class TestNormalTransformPixel(BaseTester):
         # is no align_corners parameter, so the half-pixel convention cannot be selected:
         # grid_sample's default (align_corners=False) mapping (2*x + 1)/width - 1 would send the
         # same three columns to -0.8, 0.8, 0.0 instead of -1.0, 1.0, 0.0.
-        # NOTE: kornia#3904 (reserved) may extend this surface; this pin records current default
-        # behavior.
+        # NOTE: covered by this class's kornia#3904 note above; recorded, not a ratified contract.
         # Sizes 3 and 5 are chosen because 2/(3 - 1) = 1.0 and 2/(5 - 1) = 0.5 are exact in every
         # dtype, so the comparison runs at atol=rtol=0 and no nearby convention can satisfy it.
         # Snippet used to generate expected (stdlib only, height = 3, width = 5):
@@ -3287,8 +3365,7 @@ class TestNormalTransformPixel(BaseTester):
         # these sizes; it does not decide anything about non-corner-aligned callers such as
         # grid_sample(align_corners=False), which is pinned separately in
         # TestNormalizePixelCoordinates.
-        # NOTE: kornia#3904 (reserved) may extend this surface; this pin records current default
-        # behavior.
+        # NOTE: covered by this class's kornia#3904 note above; recorded, not a ratified contract.
         # Snippet used to generate expected (stdlib only, height = 3, width = 5):
         #   x -> 2 * x / 4 - 1 for x in (0, 4, 2, 1, 6) -> -1.0, 1.0, 0.0, -0.5, 2.0
         #   y -> 2 * y / 2 - 1 for y in (0, 2, 1, 0.5, 0) -> -1.0, 1.0, 0.0, -0.5, -1.0
@@ -3313,8 +3390,7 @@ class TestNormalTransformPixel(BaseTester):
         # homogeneous (x, y, z, 1) with x scaled by WIDTH, y by HEIGHT and z by DEPTH, i.e. the
         # reverse of its own argument order -- and is corner-aligned like the 2-D form, so
         # (0, 0, 0) maps to (-1, -1, -1) and (width - 1, height - 1, depth - 1) to (1, 1, 1).
-        # NOTE: kornia#3904 (reserved) may extend this surface; this pin records current default
-        # behavior.
+        # NOTE: covered by this class's kornia#3904 note above; recorded, not a ratified contract.
         # (depth, height, width) = (3, 5, 9) keeps 2/8, 2/4 and 2/2 exact in every dtype, so the
         # comparison runs at atol=rtol=0.
         # Snippet used to generate expected (stdlib only):
@@ -3511,8 +3587,7 @@ class TestNormalizeHomography(BaseTester):
         # Executed at pixel level rather than only on the matrix entries: the src pixel (1, 1) is
         # normalized, pushed through the result, and compared against the normalization of the dst
         # pixel (3, 1) that the input homography sends it to.
-        # NOTE: kornia#3904 (reserved) may extend this surface; this pin records current default
-        # behavior.
+        # NOTE: covered by this class's kornia#3904 note above; recorded, not a ratified contract.
         # Snippet used to generate expected (stdlib only, height = 3, width = 5 on both sides):
         #   2 / (5 - 1) = 0.5, so the +2 px translation becomes 2 * 0.5 = 1.0
         #   src (1, 1) -> (2*1/4 - 1, 2*1/2 - 1) = (-0.5, 0.0)
@@ -3813,15 +3888,7 @@ class TestNormalizeHomography(BaseTester):
         "instead of the shape check — kornia#3960",
         strict=True,
     )
-    @pytest.mark.parametrize(
-        ("op_name", "wrong_size"),
-        [
-            ("normalize_homography", 4),
-            ("denormalize_homography", 4),
-            ("normalize_homography3d", 3),
-        ],
-        ids=["normalize", "denormalize", "normalize3d"],
-    )
+    @pytest.mark.parametrize(("op_name", "wrong_size"), _WRONG_SIZE_CASES, ids=_WRONG_SIZE_IDS)
     def test_convention_wrong_sized_matrices_are_rejected_by_the_shape_guard_3960(self, op_name, wrong_size, device):
         # Intended behavior: a matrix of the wrong size is rejected by the function's own shape
         # guard, with a message naming the argument -- which is what the guard already does for a
@@ -3835,66 +3902,58 @@ class TestNormalizeHomography(BaseTester):
         # it escape: under raises=AssertionError an escaping RuntimeError would be reported as an
         # error rather than an XFAIL. float32 is hardcoded and the dtype fixture dropped because a
         # shape guard runs before any arithmetic and cannot depend on the dtype.
-        # What the classification DECIDES: that the input was rejected by one of kornia's own shape
-        # guards -- either the hand-rolled ValueError these three functions raise today (recognised
-        # by the argument name it prints) or a ShapeError, which only KORNIA_CHECK_SHAPE raises and
-        # which is the idiom the rest of this family uses (Rt_to_matrix4x4, matrix4x4_to_Rt, the
-        # camtoworld pair), so it is the likeliest shape a fix takes. ShapeError is NOT a ValueError
-        # subclass -- its mro is ShapeError -> BaseError -> Exception -- so catching ValueError alone
-        # would leave this pin silently XFAIL under exactly that fix, which is the failure mode a
-        # strict xfail exists to prevent. What it does NOT decide: which of the two guard styles a
-        # fix picks, nor the message wording (only the argument name is matched, and only on the
-        # ValueError branch). Anything else -- today's matmul RuntimeError included -- stays
-        # unguarded, which is what keeps the pin XFAIL until #3960 is actually fixed.
+        # The classification lives in the module-level _rejected_by_a_kornia_shape_guard, which
+        # documents what it does and does not decide; the companion wart asserts its complement, so
+        # the two cannot drift apart. Anything that is not a kornia guard -- today's matmul
+        # RuntimeError included -- counts as unguarded, which keeps this pin XFAIL until #3960 is
+        # actually fixed. The cells come from the shared _WRONG_SIZE_CASES table for the same
+        # reason: the pair must cover identical cells.
         # Marked xfail(strict=True) so fixing #3960 makes all three cases XPASS and forces the mark
         # out. Companion wart: test_wart_wrong_sized_matrices_die_inside_matmul_3960.
         op = getattr(kornia.geometry.conversions, op_name)
-        sizes = ((2, 4, 5), (3, 8, 9)) if op_name.endswith("3d") else ((4, 5), (8, 9))
         wrong = torch.eye(wrong_size, device=device, dtype=torch.float32)[None]
 
         try:
-            op(wrong, *sizes)
-        except ShapeError:
-            guarded = True
-        except ValueError as err:
-            guarded = "dst_pix_trans_src_pix" in str(err)
-        except Exception:
-            guarded = False
+            op(wrong, *_homography_sizes(op_name))
+        except Exception as err:
+            guarded = _rejected_by_a_kornia_shape_guard(err)
         else:
             guarded = False
 
         assert guarded, f"kornia#3960: {op_name} did not reject a ({wrong_size}, {wrong_size}) matrix in its guard"
 
-    @pytest.mark.parametrize(
-        ("op_name", "wrong_size"),
-        [
-            ("normalize_homography", 4),
-            ("denormalize_homography", 4),
-            ("normalize_homography3d", 3),
-        ],
-        ids=["normalize", "denormalize", "normalize3d"],
-    )
+    @pytest.mark.parametrize(("op_name", "wrong_size"), _WRONG_SIZE_CASES, ids=_WRONG_SIZE_IDS)
     def test_wart_wrong_sized_matrices_die_inside_matmul_3960(self, op_name, wrong_size, device):
         # Wart pin for kornia#3960, companion to the strict xfail above: assert that the wrong-sized
-        # matrix CURRENTLY escapes the guard and fails inside torch.matmul, matched on the phrase
-        # "batch2" because that is the evidence the error comes from PyTorch's batched matmul and
-        # not from kornia's guard (whose message says Bx3x3 and names the argument). Only the
-        # distinguishing phrase is matched, not the full wording: the rest is PyTorch's text and a
-        # reword upstream would flip these cells and be misread as "#3960 was partly fixed".
+        # matrix CURRENTLY escapes kornia's guard. It is the exact complement of the xfail's
+        # classifier -- the call raises, but by NEITHER kornia guard -- so the two are keyed to the
+        # same predicate and cannot drift apart, and neither depends on upstream message text.
+        # Earlier revisions matched the substring "batch2" from torch's batched-matmul error. That
+        # was fragile in the way this pin is meant to detect: a torch release rewording the message,
+        # or a backend whose matmul error omits the word, would flip all three cells with no kornia
+        # change and be misread as "#3960 was partly fixed". The classification below moves the
+        # discrimination onto kornia's own two guard shapes, which are the thing #3960 is about.
+        # What it DECIDES: the input reached something other than a kornia shape guard. What it does
+        # NOT decide: which exception type that something raises, or its wording -- today it is a
+        # RuntimeError from torch.matmul (message quoted below as a sample, asserted nowhere).
         # If any cell fails, #3960 was (partly) fixed -- flip/remove the strict xfail above. NOT a
-        # contract that these shapes must keep dying inside matmul.
-        # Snippet used to generate expected (torch only, executed on cpu float32):
+        # contract that these shapes must keep dying outside the guard.
+        # Snippet used to generate expected (torch only, executed on cpu float32, torch 2.9.1):
         #   normalize_homography(torch.eye(4)[None], (4, 5), (8, 9))
         #     -> RuntimeError: Expected size for first two dimensions of batch2 tensor to be:
         #        [1, 4] but got: [1, 3].
         #   normalize_homography3d(torch.eye(3)[None], (2, 4, 5), (3, 8, 9))
         #     -> RuntimeError: ... to be: [1, 3] but got: [1, 4].
         op = getattr(kornia.geometry.conversions, op_name)
-        sizes = ((2, 4, 5), (3, 8, 9)) if op_name.endswith("3d") else ((4, 5), (8, 9))
         wrong = torch.eye(wrong_size, device=device, dtype=torch.float32)[None]
 
-        with pytest.raises(RuntimeError, match="batch2"):
-            op(wrong, *sizes)
+        with pytest.raises(Exception) as excinfo:
+            op(wrong, *_homography_sizes(op_name))
+
+        assert not _rejected_by_a_kornia_shape_guard(excinfo.value), (
+            f"kornia#3960: {op_name} now rejects a ({wrong_size}, {wrong_size}) matrix in its own "
+            "shape guard -- the companion strict xfail should be XPASSing"
+        )
 
     def test_wart_normalize_homography3d_shape_error_says_bx3x3_3960(self, device):
         # Wart pin for the message half of kornia#3960: normalize_homography3d is a 4x4 function
@@ -3986,7 +4045,19 @@ class TestNormalizeHomography(BaseTester):
         # If any cell fails, #3957 was (partly) fixed -- flip/remove the wart pins above. NOT a
         # contract that a 1-pixel output must keep returning NaN.
         # float32 is hardcoded and the dtype fixture dropped: this pin is about a size, not a dtype.
-        # Snippet used to generate expected (torch only, executed on cpu float32):
+        # TWO LAYERS, on purpose. The load-bearing claim -- the 1-pixel output is BROKEN while the
+        # 2-pixel control is not -- is asserted device-portably: the 1-row output does not reproduce
+        # the row the same identity warp produces at 2 rows. The stronger "and the breakage is
+        # specifically all-NaN" form is asserted only on the devices it was generated and verified
+        # on (cpu and mps), because the NaN depends on backend NaN handling inside grid_sample: the
+        # sampling grid entering it is entirely NaN, and with padding_mode='zeros' a kernel that
+        # turns floor(NaN) into a failed within-bounds check would emit 0.0 instead of NaN. That
+        # would still be a broken output -- and the portable assertion would still catch it -- but
+        # it is not a fact this branch has executed, and no CUDA fact is claimed anywhere in this
+        # work. Asserting all-NaN unconditionally would let an untested backend fail here and be
+        # misread as "#3957 was partly fixed", which is the one misreading this pin must not invite.
+        # Snippet used to generate expected (torch only, executed on cpu float32, torch 2.9.1; the
+        # same three lines re-executed on mps give the same verdicts):
         #   img = torch.arange(25.).view(1, 1, 5, 5)
         #   warp_perspective(img, torch.eye(3)[None], (1, 4), align_corners=True)      -> all nan
         #   crop_by_transform_mat(img, torch.eye(3)[None], (1, 4), align_corners=True) -> all nan
@@ -3999,11 +4070,24 @@ class TestNormalizeHomography(BaseTester):
         cropped = kornia.geometry.transform.crop_by_transform_mat(image, identity, (1, 4), align_corners=True)
         control = kornia.geometry.transform.warp_perspective(image, identity, (2, 4), align_corners=True)
 
-        assert torch.isnan(warped).all(), "kornia#3957: a 1-pixel-high warp_perspective output is no longer all-NaN"
-        assert torch.isnan(cropped).all(), "kornia#3957: a 1-pixel-high crop_by_transform_mat output is no longer NaN"
         assert torch.isfinite(control).all(), (
-            "kornia#3957: the 2-pixel-high control is no longer finite, so the NaN cells above stopped being evidence"
+            "kornia#3957: the 2-pixel-high control is no longer finite, so the cells above stopped being evidence"
         )
+        assert not torch.equal(warped[0, 0, 0], control[0, 0, 0]), (
+            "kornia#3957: a 1-pixel-high warp_perspective output now reproduces the 2-row control's first row, "
+            "i.e. the degenerate size no longer corrupts the sampling grid"
+        )
+        assert not torch.equal(cropped[0, 0, 0], control[0, 0, 0]), (
+            "kornia#3957: a 1-pixel-high crop_by_transform_mat output now reproduces the 2-row control's first row"
+        )
+
+        if device.type in ("cpu", "mps"):
+            assert torch.isnan(warped).all(), (
+                "kornia#3957: a 1-pixel-high warp_perspective output is no longer all-NaN on this device"
+            )
+            assert torch.isnan(cropped).all(), (
+                "kornia#3957: a 1-pixel-high crop_by_transform_mat output is no longer all-NaN on this device"
+            )
 
 
 class TestProjectPoints(BaseTester):
@@ -4247,8 +4331,8 @@ class TestRt2Extrinsics(BaseTester):
         # Snippet used to generate expected (torch only, executed on cpu):
         #   Rt_to_matrix4x4([[0,0,1],[1,0,0],[0,1,0]], [1,2,3])
         #     -> [[0, 0, 1, 1], [1, 0, 0, 2], [0, 1, 0, 3], [0, 0, 0, 1]]
-        rotation = torch.tensor([[[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype)
-        translation = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device, dtype=dtype)
 
         extrinsics = Rt_to_matrix4x4(rotation, translation)
 
@@ -4270,8 +4354,8 @@ class TestRt2Extrinsics(BaseTester):
         # Snippet used to generate expected (torch only, executed on cpu):
         #   M @ (0, 0, 0, 1) -> [1, 2, 3, 1]           == t
         #   M @ (1, 0, 0, 1) -> [1, 3, 3, 1]           == R[:, 0] + t = (0, 1, 0) + (1, 2, 3)
-        rotation = torch.tensor([[[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype)
-        translation = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device, dtype=dtype)
 
         extrinsics = Rt_to_matrix4x4(rotation, translation)[0]
 
@@ -4295,8 +4379,8 @@ class TestRt2Extrinsics(BaseTester):
         #   matrix4x4_to_Rt(M) -> (R, t) equal to the inputs of Rt_to_matrix4x4, bitwise
         #   matrix4x4_to_Rt(M with bottom row [9, 9, 9, 9]) -> the same (R, t)
         #   Rt_to_matrix4x4(that R, t)[0, 3] -> [0, 0, 0, 1]
-        rotation = torch.tensor([[[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype)
-        translation = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device, dtype=dtype)
         extrinsics = Rt_to_matrix4x4(rotation, translation)
 
         recovered_R, recovered_t = matrix4x4_to_Rt(extrinsics)
@@ -4333,8 +4417,8 @@ class TestRt2Extrinsics(BaseTester):
         # Snippet used to generate expected (torch only, executed on cpu):
         #   R, t = matrix4x4_to_Rt(M); R.mul_(0.) -> M[:, :3, :3] becomes all zeros
         #   t.mul_(0.)                            -> M[:, :3, 3] becomes all zeros
-        rotation = torch.tensor([[[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype)
-        translation = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device, dtype=dtype)
         extrinsics = Rt_to_matrix4x4(rotation, translation)
 
         aliased_R, aliased_t = matrix4x4_to_Rt(extrinsics)
@@ -4378,16 +4462,10 @@ class TestRt2Extrinsics(BaseTester):
         # transposed (B, 1, 3) translation, no extra leading batch dimensions. This is the strict
         # end of the family: camtoworld_to_worldtocam_Rt broadcasts a (1, 3, 1) translation across
         # a (2, 3, 3) rotation where Rt_to_matrix4x4 raises, which the Convention blocks record.
-        # ShapeError (kornia's own) is asserted rather than the message text, so a reworded guard
-        # does not flip these cells; the batch-mismatch case is a torch.cat RuntimeError and is
-        # pinned in test_convention_batch_sizes_must_match below.
-        # float32 is hardcoded and the dtype fixture dropped because a shape guard runs before any
-        # arithmetic and cannot depend on the dtype.
-        op = getattr(kornia.geometry.conversions, op_name)
-        args = [torch.zeros(shape, device=device, dtype=torch.float32) for shape in shapes]
-
-        with pytest.raises(ShapeError):
-            op(*args)
+        # The batch-mismatch case is a torch.cat RuntimeError, pinned in
+        # test_convention_batch_sizes_must_match below. Assertion policy and the float32 hardcoding
+        # are documented once on the shared _assert_strictly_batched helper.
+        _assert_strictly_batched(op_name, shapes, device)
 
     def test_convention_batch_sizes_must_match(self, device):
         # Convention pin: Rt_to_matrix4x4 does NOT broadcast -- a batch of 2 rotations with a single
@@ -4466,8 +4544,8 @@ class TestCamtoworldGraphicsToVision(BaseTester):
         #     -> [[0, 0, -1, 1], [1, 0, 0, 2], [0, -1, 0, 3], [0, 0, 0, 1]]
         #   diag(1, -1, -1, 1) @ M
         #     -> [[0, 0, 1, 1], [-1, 0, 0, -2], [0, -1, 0, -3], [0, 0, 0, 1]]
-        rotation = torch.tensor([[[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype)
-        translation = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device, dtype=dtype)
         extrinsics = Rt_to_matrix4x4(rotation, translation)
 
         flipped = camtoworld_graphics_to_vision_4x4(extrinsics)
@@ -4528,15 +4606,9 @@ class TestCamtoworldGraphicsToVision(BaseTester):
     def test_convention_shapes_are_strictly_batched(self, op_name, shapes, device):
         # Convention pin: the four conversions accept exactly (B, 4, 4) and (B, 3, 3) + (B, 3, 1) --
         # no unbatched form and no extra leading batch dimensions, the same strictness as
-        # Rt_to_matrix4x4, which the Rt variants call. ShapeError (kornia's own) is asserted rather
-        # than the message text, so a reworded guard does not flip these cells.
-        # float32 is hardcoded and the dtype fixture dropped because a shape guard runs before any
-        # arithmetic and cannot depend on the dtype.
-        op = getattr(kornia.geometry.conversions, op_name)
-        args = [torch.zeros(shape, device=device, dtype=torch.float32) for shape in shapes]
-
-        with pytest.raises(ShapeError):
-            op(*args)
+        # Rt_to_matrix4x4, which the Rt variants call. Assertion policy and the float32 hardcoding
+        # are documented once on the shared _assert_strictly_batched helper.
+        _assert_strictly_batched(op_name, shapes, device)
 
     def test_convention_graphics_is_y_up_and_vision_is_y_down(self, device, dtype):
         # Convention pin: the two frames the docstrings name, read off the columns of the converted
@@ -4573,8 +4645,8 @@ class TestCamtoworldGraphicsToVision(BaseTester):
         # Snippet used to generate expected (torch only, executed on cpu):
         #   camtoworld_vision_to_graphics_4x4(M) == camtoworld_graphics_to_vision_4x4(M)  (bitwise)
         #   camtoworld_graphics_to_vision_4x4(camtoworld_graphics_to_vision_4x4(M)) == M  (bitwise)
-        rotation = torch.tensor([[[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype)
-        translation = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device, dtype=dtype)
         extrinsics = Rt_to_matrix4x4(rotation, translation)
 
         to_vision = camtoworld_graphics_to_vision_4x4(extrinsics)
@@ -4635,8 +4707,8 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         #   R.T          = [[0, 1, 0], [0, 0, 1], [1, 0, 0]]
         #   R.T @ t      = (2, 3, 1)
         #   -R.T @ t     = (-2, -3, -1)
-        rotation = torch.tensor([[[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype)
-        translation = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device, dtype=dtype)
 
         inverted_R, inverted_t = camtoworld_to_worldtocam_Rt(rotation, translation)
 
@@ -4660,8 +4732,8 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         # trips are executed separately rather than one being inferred from another.
         # This holds because R is a rotation; the same round trip fails for a non-orthogonal R,
         # which test_wart_non_orthogonal_rotation_is_transposed_not_inverted_3961 pins.
-        rotation = torch.tensor([[[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype)
-        translation = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device, dtype=dtype)
 
         forward_R, forward_t = camtoworld_to_worldtocam_Rt(rotation, translation)
         backward_R, backward_t = worldtocam_to_camtoworld_Rt(rotation, translation)
@@ -4687,8 +4759,8 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         #   M  @ (0, 0, 0, 1) -> [1, 2, 3, 1]      (the camera centre)
         #   Mi @ (1, 2, 3, 1) -> [0, 0, 0, 1]
         #   Mi @ M            -> the identity
-        rotation = torch.tensor([[[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]], device=device, dtype=dtype)
-        translation = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
+        rotation = torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype)
+        translation = torch.tensor(_ASYMMETRIC_T, device=device, dtype=dtype)
 
         camtoworld = Rt_to_matrix4x4(rotation, translation)[0]
         worldtocam = Rt_to_matrix4x4(*camtoworld_to_worldtocam_Rt(rotation, translation))[0]
@@ -4717,14 +4789,9 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         # matching batch size: a (1, 3, 1) translation broadcasts across a (2, 3, 3) rotation here,
         # where Rt_to_matrix4x4 raises (pinned in TestRt2Extrinsics). That asymmetry is recorded in
         # the Convention blocks and is deliberately not pinned as a contract.
-        # ShapeError (kornia's own) is asserted rather than the message text, so a reworded guard
-        # does not flip these cells. float32 is hardcoded and the dtype fixture dropped because a
-        # shape guard runs before any arithmetic and cannot depend on the dtype.
-        op = getattr(kornia.geometry.conversions, op_name)
-        args = [torch.zeros(shape, device=device, dtype=torch.float32) for shape in shapes]
-
-        with pytest.raises(ShapeError):
-            op(*args)
+        # Assertion policy and the float32 hardcoding are documented once on the shared
+        # _assert_strictly_batched helper.
+        _assert_strictly_batched(op_name, shapes, device)
 
     def test_wart_non_orthogonal_rotation_is_transposed_not_inverted_3961(self, device, dtype):
         # Wart pin for kornia#3961: R is ASSUMED orthogonal and the assumption is never checked, so
