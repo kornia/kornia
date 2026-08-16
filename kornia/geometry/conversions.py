@@ -2012,12 +2012,17 @@ def denormalize_homography(
           ``dsize_dst`` on the left, ``(x, y, 1)`` column vectors, per-sample
           batching, the corner-aligned frames — is as documented there, and so
           are that function's warnings
-        - both round trips hold: on a general projective ``(1, 3, 3)`` literal
-          with sizes ``(4, 5)`` and ``(8, 9)``, ``denormalize(normalize(H))``
-          and ``normalize(denormalize(H))`` each return ``H`` to
-          ``2.384185791015625e-07`` in ``float32`` (torch 2.9.1, cpu) — that is
-          rounding across four matrix products and an inverse, not an exact
-          identity
+        - both round trips hold: on the projective literal
+          ``[[1.2, 0.3, 5.0], [-0.1, 0.9, 2.0], [0.001, 0.002, 1.0]]`` with
+          ``dsize_src = (4, 5)`` and ``dsize_dst = (8, 9)``,
+          ``denormalize(normalize(H))`` and ``normalize(denormalize(H))`` each
+          return ``H`` to ``2.384185791015625e-07`` in ``float32`` (torch 2.9.1,
+          cpu) — that is rounding across four matrix products and an inverse,
+          not an exact identity. Pick sizes of the form ``2**k + 1`` and the
+          constants become exact and both round trips return the input bit for
+          bit; that is what
+          ``test_convention_normalize_and_denormalize_round_trip`` pins, on its
+          own literal at ``(3, 5)`` and ``(5, 9)``
         - the two functions do **not** invert their normalization matrix the
           same way, so their errors are not mirror images either: on the
           identity homography with equal sizes ``(4, 7)``,
@@ -2666,20 +2671,35 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           ``xyzw``, which this function would read as ``wxyz`` and silently
           accept. (Apple's layout is cited from its API documentation, not
           executed here; the ``wxyz`` reading on kornia's side is executed)
-        - the input quaternion need not be unit: it is normalised internally,
-          so rescaling it **while ``||q||`` stays above**
+        - the input quaternion need not be unit, **within a bounded range of
+          ``||q||``**: rescaling it moves the resulting pose only by the working
+          dtype's rounding as long as ``||q||`` stays **above**
           :func:`~kornia.geometry.conversions.normalize_quaternion`'s
-          ``eps = 1e-12`` moves the resulting pose only by the working dtype's
-          rounding. Over 64 random unit quaternions rescaled by factors from
-          ``1e-3`` to ``1e5``, the output rotation moved by at most
-          ``5.96e-07`` and the translation by at most ``9.54e-07`` in
-          ``float32`` (torch 2.9.1, cpu) — sample points, not a bound. Below
-          that floor the clamp takes over and the pose changes outright, as
+          ``eps = 1e-12`` and **below** the point at which the norm's
+          sum-of-squares accumulator overflows. Over 64 random unit quaternions
+          rescaled by factors from ``1e-3`` to ``1e5``, the output rotation
+          moved by at most ``5.96e-07`` and the translation by at most
+          ``9.54e-07`` in ``float32`` (torch 2.9.1, cpu) — sample points, not a
+          bound. ``q`` and ``-q`` give bitwise the same output at every scale
+          tried, since they are the same rotation
+        - **past either end the pose changes outright, silently.** Below the
+          floor the normalisation clamp takes over, as
           :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
           documents: in ``float64``, scaling ``[0.5, 0.5, 0.5, 0.5]`` by
           ``1e-13`` moves the output rotation by order ``1``
-          (``0.9999746262218625``) and the translation by ``1.98``. ``q`` and ``-q`` give bitwise the same
-          output, since they are the same rotation
+          (``0.9999746262218625``) and the translation by ``1.98``. Above the
+          ceiling the norm overflows to ``inf`` and the quaternion normalises to
+          zero, which this function then reads as the identity: in ``float32``
+          the perfectly finite ``[0., 1., 0., 1.] * 1.4e19`` returns
+          ``q = [0., 1., 0., 0.]``, ``t = (-1., 1., 1.)`` — the zero-quaternion
+          answer — instead of the ``[0.7071, 0., 0.7071, 0.]``,
+          ``(-1., -1., 1.)`` of the same rotation at unit scale. The ceiling is
+          where ``||q||`` reaches ``sqrt(finfo.max)`` — bisected to
+          ``1.8446744e19`` in ``float32`` and ``1.3407808e154`` in ``float64``
+          — except in ``float16``, which accumulates in wider precision and
+          instead turns over once ``||q||`` nears its own ``65504``. That is the
+          same accumulator split
+          :func:`~kornia.geometry.conversions.quaternion_log_to_exp` describes
         - ``det`` of the output rotation is ``+1``: **handedness is preserved**,
           because ``diag(1, -1, -1)`` negates two axes and not one
         - the **sign of the output quaternion is not canonical**. It is whichever
