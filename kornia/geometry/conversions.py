@@ -1749,10 +1749,11 @@ def normalize_homography(
         is validated, so
         :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
         degenerate sizes propagate straight into the homography. On the
-        identity: a **source** ``dsize`` of ``(4, 1)`` collapses the ``x`` scale
-        to ``2.500000167887412e-15``, a **destination** ``dsize`` of ``(1, 4)``
-        blows the ``y`` scale up to ``400000001507328.0``, and a size of ``0``
-        silently mirrors that axis (source ``(4, 0)`` gives the first row
+        identity, holding the other size at ``(4, 5)``: a **source** ``dsize``
+        of ``(4, 1)`` collapses the ``x`` scale to ``2.500000167887412e-15``,
+        the same ``(4, 1)`` as the **destination** blows it up to the reciprocal
+        ``400000001507328.0``, and a size of ``0`` silently mirrors that axis
+        (source ``(4, 0)``, destination ``(4, 5)``, first row
         ``[-0.25, 0.0, -1.25]``). This is the executed root of 1-pixel warp
         outputs coming back all-``nan``. Tracked in
         `#3957 <https://github.com/kornia/kornia/issues/3957>`_ and, for the
@@ -2010,7 +2011,7 @@ def denormalize_homography(
           ``(height, width)`` ``dsize`` tuples, ``dsize_src`` on the right and
           ``dsize_dst`` on the left, ``(x, y, 1)`` column vectors, per-sample
           batching, the corner-aligned frames — is as documented there, and so
-          are that function's four warnings
+          are that function's warnings
         - both round trips hold: on a general projective ``(1, 3, 3)`` literal
           with sizes ``(4, 5)`` and ``(8, 9)``, ``denormalize(normalize(H))``
           and ``normalize(denormalize(H))`` each return ``H`` to
@@ -2090,14 +2091,19 @@ def normalize_homography3d(
         about the ``2 / (size - 1)`` scaling or the corner-aligned convention,
         which are `#3904 <https://github.com/kornia/kornia/issues/3904>`_'s
         territory and reserved for its assigned contributor. A source
-        ``depth`` of ``1`` collapses the ``z`` scale to
-        ``4.99999991225835e-15`` — the reciprocal of
+        ``depth`` of ``1`` collapses the ``z`` scale through
         :func:`~kornia.geometry.conversions.normal_transform_pixel3d`'s ``2e14``
-        blow-up, and **not** an exact zero, so it merely prints as ``0.`` at the
-        default precision. The resulting matrix has ``det = 1.07e-15``;
-        ``torch.linalg.inv`` still succeeds on it, so it is unusable in practice
-        rather than formally singular, and it annihilates every ``z``
-        coordinate. Returned without any warning. The ``float32`` constants of
+        blow-up, leaving a value that is **not** an exact zero and merely prints
+        as ``0.`` at the default precision. Both it and the determinant scale
+        with the destination depth, so neither means anything without both
+        sizes: from ``dsize_src = (1, 4, 5)`` to ``dsize_dst = (3, 8, 9)`` the
+        ``z`` scale is ``4.99999991225835e-15`` and ``det`` is
+        ``1.0714285980035544e-15``, while the same source against
+        ``(2, 8, 9)`` gives ``9.9999998245167e-15`` and
+        ``2.1428571960071087e-15``. ``torch.linalg.inv`` still succeeds on such
+        a matrix, so it is unusable in practice rather than formally singular,
+        and it annihilates every ``z`` coordinate. Returned without any
+        warning. The ``float32`` constants of
         `#3958 <https://github.com/kornia/kornia/issues/3958>`_ apply here too.
         Tracked in `#3957 <https://github.com/kornia/kornia/issues/3957>`_.
 
@@ -2522,10 +2528,15 @@ def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
 
     Convention:
         - the returned pair is exactly ``(R^T, -R^T @ t)`` — the **rigid**
-          inverse, computed by transposition and never by a matrix inverse. On
-          a proper rotation this equals the true inverse: packing both pairs
-          with :func:`~kornia.geometry.conversions.Rt_to_matrix4x4` and
-          multiplying gives the identity
+          inverse, computed by transposition and never by a matrix inverse. For
+          a proper rotation that is the true inverse as a map, and in floating
+          point it recovers the identity to the working dtype's rounding rather
+          than bitwise: packing both pairs with
+          :func:`~kornia.geometry.conversions.Rt_to_matrix4x4` and multiplying
+          gives ``max|M_inv @ M - I|`` of ``5.96e-07`` in ``float32`` and
+          ``1.33e-15`` in ``float64`` over 64 random rotations with random
+          translations (torch 2.9.1, cpu — sample points, not bounds), with
+          ``torch.equal`` against the identity ``False``
         - what ``t`` means on each side: the input is a camera-to-world pose, so
           its ``t`` is the **camera centre in world coordinates** (the 4x4 sends
           the origin to ``t``); the returned ``-R^T t`` is the **world-to-camera
@@ -2533,9 +2544,12 @@ def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
           camera centre to the origin)
         - :func:`~kornia.geometry.conversions.worldtocam_to_camtoworld_Rt` is
           the **same function**, not a separate formula: it returns bitwise
-          identical outputs on the same input, and applying either one twice
-          returns the input. The two names record which direction the caller
-          means
+          identical outputs on the same input. Applying either one twice
+          returns ``R`` **bitwise** — transposing twice moves no bits — but the
+          translation only to rounding, since it costs two matrix products:
+          over the same 64 poses ``t`` comes back to ``1.31e-06`` in
+          ``float32`` and ``2.66e-15`` in ``float64``. The two names record
+          which direction the caller means
         - the shapes are :math:`(B, 3, 3)` and :math:`(B, 3, 1)`, but ``t`` is
           **broadcast** across the ``R`` batch: ``R`` of batch 2 with ``t`` of
           batch 1 returns ``(2, 3, 3)`` and ``(2, 3, 1)``, where
@@ -2548,10 +2562,12 @@ def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
         it is wrong silently. With
         ``R = [[1, 0.5, 0], [0, 1, 0], [0, 0, 2]]`` (``det = 2``) and
         ``t = (1, 2, 3)``, the composed 4x4 gives
-        ``max|M_inv @ M - I| = 3.0``, and even the round trip through this
-        function and back leaves ``t`` off by ``9.0`` while ``R`` returns
-        exactly — the round trip in the bullet above holds only because ``R``
-        was a rotation there. Tracked in
+        ``max|M_inv @ M - I| = 3.0`` — over six orders of magnitude above the
+        ``float32`` figure quoted in the bullet above — and even the round trip
+        through this function and back leaves ``t`` off by ``9.0``, while ``R``
+        still returns bitwise because that leg is only a double transpose. The
+        near-identity of the bullet above holds only because ``R`` was a
+        rotation there. Tracked in
         `#3961 <https://github.com/kornia/kornia/issues/3961>`_.
 
     Args:
@@ -2587,9 +2603,11 @@ def worldtocam_to_camtoworld_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
     Convention:
         - bitwise the **same function** as
           :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt`,
-          which carries the canonical block: ``(R^T, -R^T @ t)`` is its own
-          inverse for a proper rotation, so one name serves both directions and
-          the choice is documentation for the reader
+          which carries the canonical block: for a proper rotation
+          ``(R^T, -R^T @ t)`` is its own inverse as a map — to the working
+          dtype's rounding in floating point, measured there — so one name
+          serves both directions and the choice is documentation for the
+          reader
         - read the other way round here: the input ``t`` is the world-to-camera
           translation and the returned ``-R^T t`` is the camera centre in world
           coordinates
@@ -2649,13 +2667,19 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           accept. (Apple's layout is cited from its API documentation, not
           executed here; the ``wxyz`` reading on kornia's side is executed)
         - the input quaternion need not be unit: it is normalised internally,
-          so rescaling it moves the resulting pose only by the working dtype's
+          so rescaling it **while ``||q||`` stays above**
+          :func:`~kornia.geometry.conversions.normalize_quaternion`'s
+          ``eps = 1e-12`` moves the resulting pose only by the working dtype's
           rounding. Over 64 random unit quaternions rescaled by factors from
           ``1e-3`` to ``1e5``, the output rotation moved by at most
           ``5.96e-07`` and the translation by at most ``9.54e-07`` in
-          ``float32`` (torch 2.9.1, cpu) — sample points, not a bound. ``q``
-          and ``-q`` give bitwise the same output, since they are the same
-          rotation
+          ``float32`` (torch 2.9.1, cpu) — sample points, not a bound. Below
+          that floor the clamp takes over and the pose changes outright, as
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
+          documents: in ``float64``, scaling ``[0.5, 0.5, 0.5, 0.5]`` by
+          ``1e-13`` moves the output rotation by order ``1``
+          (``0.9999746262218625``) and the translation by ``1.98``. ``q`` and ``-q`` give bitwise the same
+          output, since they are the same rotation
         - ``det`` of the output rotation is ``+1``: **handedness is preserved**,
           because ``diag(1, -1, -1)`` negates two axes and not one
         - the **sign of the output quaternion is not canonical**. It is whichever
