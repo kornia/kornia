@@ -2026,9 +2026,14 @@ def denormalize_homography(
           return ``H`` to ``2.384185791015625e-07`` in ``float32`` (torch 2.9.1,
           cpu) — that is rounding across four matrix products and an inverse,
           not an exact identity. Pick sizes of the form ``2**k + 1`` and the
-          constants become exact and both round trips return the input bit for
-          bit — the convention pins in kornia's test suite assert that
-          bit-for-bit form on their own literal at dyadic sizes
+          constants become exact, but bit-for-bit round trips in both
+          directions additionally require ``H``'s own entries to be dyadic
+          rationals, which the entries of the literal above are not: at
+          sizes ``(3, 5)`` and ``(5, 9)`` its ``normalize(denormalize(H))`` is
+          bitwise while its ``denormalize(normalize(H))`` still deviates by
+          ``4.76837158203125e-07``. The convention pins in kornia's test suite
+          assert the bit-for-bit form on their own dyadic-entried literal at
+          dyadic sizes
         - the two functions do **not** invert their normalization matrix the
           same way, so their errors are not mirror images either: on the
           identity homography with equal sizes ``(4, 7)``,
@@ -2717,7 +2722,10 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
           documents: in ``float64``, scaling ``[0.5, 0.5, 0.5, 0.5]`` by
           ``1e-13`` moves the output rotation by order ``1``
-          (``0.9999746262218625``) and the translation by ``1.98``. Above the
+          (``0.9999746262218625``) and, with ``t = (1, 2, 3)``, the translation
+          by ``1.98`` — the worked example's ``t = (1, 1, 1)`` lies on this
+          quaternion's rotation axis and its translation happens to move by
+          exactly ``0``. Above the
           ceiling the norm overflows to ``inf`` and the quaternion normalises to
           zero, which this function then reads as the identity: in ``float32``
           the perfectly finite ``[0., 1., 0., 1.] * 1.4e19`` returns
@@ -2730,14 +2738,22 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           instead turns over once ``||q||`` nears its own ``65504``. That is the
           same accumulator split
           :func:`~kornia.geometry.conversions.quaternion_log_to_exp` describes
-        - the output rotation is **proper by construction** — it is built from an
-          internally normalised quaternion and then right-multiplied by
+        - for ``||q||`` above the normalisation floor of the previous bullet,
+          the output rotation is **proper by construction** — it is built from
+          an internally normalised quaternion and then right-multiplied by
           ``diag(1, -1, -1)``, which negates two axes and not one — so
           **handedness is preserved** and ``det`` is ``+1`` up to the working
           dtype's rounding: over 512 random quaternions the largest
           ``|det - 1|`` was ``8.3e-07`` in ``float32`` and ``1.8e-15`` in
           ``float64`` (torch 2.9.1, cpu). It is the construction that guarantees
-          properness; the digits are just arithmetic
+          properness; the digits are just arithmetic. Below the floor the
+          construction's premise fails — the clamp leaves the internal
+          quaternion non-unit — and the guarantee with it: the same
+          ``[0.5, 0.5, 0.5, 0.5] * 1e-13`` in ``float64`` builds an internal
+          matrix with ``det = 0.9703`` and orthogonality error ``0.0198``
+          (rounded; ``0.9702999999999999`` and ``0.01980000000000004`` as
+          computed), and the returned quaternion comes out with norm
+          ``0.9962524249343686``, not ``1``
         - the **sign of the output quaternion is not canonical**. It is whichever
           representative
           :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`'s
