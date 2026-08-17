@@ -807,7 +807,9 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
         - the input is normalised internally:
           ``quaternion_to_rotation_matrix(2 * q)`` is bitwise
           ``quaternion_to_rotation_matrix(q)`` (400 000 random unit
-          quaternions, at every dtype). Rescaling by random factors between
+          quaternions, at every dtype; every figure in this protocol was
+          measured on torch 2.9.1, cpu, and passages citing the protocol
+          inherit that tag). Rescaling by random factors between
           ``1e-6`` and ``1e6`` moves the matrix only by the working dtype's
           rounding in ``float64`` and ``float32`` (by ``1.3e-15`` and
           ``6.0e-07`` over 2000 random unit quaternions), but the
@@ -952,7 +954,8 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
           :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix` —
           bitwise equality under doubling over 400 000 random unit quaternions
           at every dtype, then rescaling by random factors between ``1e-6`` and
-          ``1e6`` over 2000 of them — and the figures it gives here are:
+          ``1e6`` over 2000 such quaternions — and the figures it gives here
+          are:
           ``float64`` and ``float32`` move only by their own rounding
           (``8.9e-16`` and ``4.8e-07``), while the reduced-precision dtypes do
           **not** hold to that — ``bfloat16`` moves by ``3.1e-02``, ``float16``
@@ -1842,10 +1845,13 @@ def normal_transform_pixel(
           ``[0.5, 0.0, -1.0]`` and ``[0.0, 0.6667, -1.0]``, and sends the pixels
           ``(0, 0)``, ``(4, 3)`` and ``(2, 1.5)`` to ``(-1, -1)``, ``(1, 1)``
           and ``(0, 0)``
-        - this is the same convention as
+        - for sizes ``>= 2`` this is the same convention as
           :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`:
           pushing one grid through both agrees to a maximum absolute difference
-          of ``0.0``. It is **not**
+          of ``0.0``. At the degenerate sizes the two diverge — they clamp
+          through different ``eps`` mechanisms, ``2e14``-scale here against
+          ``2e8``-scale there at ``size == 1``, and with opposite signs at
+          ``size == 0`` (executed; see the warning below). It is **not**
           :func:`torch.nn.functional.grid_sample`'s default half-pixel
           ``(2 * x + 1) / width - 1``, which would put column ``0`` of a 5-wide
           image at ``-0.8`` rather than ``-1.0``
@@ -2026,8 +2032,12 @@ def denormalize_homography(
           return ``H`` to ``2.384185791015625e-07`` in ``float32`` (torch 2.9.1,
           cpu) — that is rounding across four matrix products and an inverse,
           not an exact identity. Pick sizes of the form ``2**k + 1`` and the
-          constants become exact; a bit-for-bit round trip is then
-          **guaranteed when** every intermediate product and sum of the chain
+          constants become exact **when the resulting ``2 / 2**k`` scale is
+          representable in the working dtype** — it is at the small sizes the
+          convention pins use, but ``float16`` underflows it to ``0.0`` from
+          ``2**29 + 1`` on, where the true scale ``2**-28`` sits below the
+          dtype's smallest subnormal ``2**-24``; a bit-for-bit round trip is
+          then **guaranteed when** every intermediate product and sum of the chain
           is also exactly representable in the working dtype — a sufficient
           condition, not a necessary one, since rounding can cancel across
           the chain — and it is a property of the whole computation, not of
@@ -2733,18 +2743,22 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           sum-of-squares accumulator overflows. Over 64 random unit quaternions
           rescaled by factors from ``1e-3`` to ``1e5``, the output rotation
           moved by at most ``5.96e-07`` and the translation by at most
-          ``9.54e-07`` in ``float32`` (torch 2.9.1, cpu) — sample points, not a
-          bound. ``q`` and ``-q`` give bitwise the same output at every scale
-          tried, since they are the same rotation
+          ``9.54e-07`` in ``float32`` — sample points, not a bound. ``q`` and
+          ``-q`` give bitwise the same output at every scale tried, since they
+          are the same rotation
         - **past either end the pose changes outright, silently.** Below the
           floor the normalisation clamp takes over, as
           :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
-          documents: in ``float64``, scaling ``[0.5, 0.5, 0.5, 0.5]`` by
-          ``1e-13`` moves the output rotation by order ``1``
-          (``0.9999746262218625``) and, with ``t = (1, 2, 3)``, the translation
-          by ``1.98`` — the worked example's ``t = (1, 1, 1)`` lies on this
-          quaternion's rotation axis and its translation happens to move by
-          exactly ``0``. Above the
+          documents. One worked sub-floor input carries all the figures: in
+          ``float64``, scaling ``[0.5, 0.5, 0.5, 0.5]`` by ``1e-13`` moves the
+          output rotation by order ``1`` (``0.9999746262218625``) and, with
+          ``t = (1, 2, 3)``, the translation by ``1.98`` (the worked example's
+          ``t = (1, 1, 1)`` lies on this quaternion's rotation axis and its
+          translation happens to move by exactly ``0``); the same input builds
+          an internal matrix with ``det = 0.9703`` and orthogonality error
+          ``0.0198`` (rounded; ``0.9702999999999999`` and
+          ``0.01980000000000004`` as computed) and returns a quaternion of
+          norm ``0.9962524249343686``, not ``1``. Above the
           ceiling the norm overflows to ``inf`` and the quaternion normalises to
           zero, which this function then reads as the identity: in ``float32``
           the perfectly finite ``[0., 1., 0., 1.] * 1.4e19`` returns
@@ -2763,15 +2777,12 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           **handedness is preserved** and ``det`` is ``+1`` up to the working
           dtype's rounding: over 512 random quaternions the largest
           ``|det - 1|`` was ``8.3e-07`` in ``float32`` and ``1.8e-15`` in
-          ``float64`` (torch 2.9.1, cpu). It is the construction that guarantees
+          ``float64``. It is the construction that guarantees
           properness; the digits are just arithmetic. Below the floor the
           construction's premise fails — the clamp leaves the internal
-          quaternion non-unit — and the guarantee with it: the same
-          ``[0.5, 0.5, 0.5, 0.5] * 1e-13`` in ``float64`` builds an internal
-          matrix with ``det = 0.9703`` and orthogonality error ``0.0198``
-          (rounded; ``0.9702999999999999`` and ``0.01980000000000004`` as
-          computed), and the returned quaternion comes out with norm
-          ``0.9962524249343686``, not ``1``
+          quaternion non-unit — and the guarantee with it; the previous
+          bullet's sub-floor input carries the measured ``det``, orthogonality
+          and norm figures
         - the **sign of the output quaternion is not canonical**. It is whichever
           representative
           :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`'s

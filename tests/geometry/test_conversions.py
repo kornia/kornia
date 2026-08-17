@@ -28,7 +28,7 @@ import torch
 
 import kornia
 from kornia.core._compat import torch_version
-from kornia.core.exceptions import ShapeError
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.ops import eye_like
 from kornia.geometry.conversions import (
     ARKitQTVecs_to_ColmapQTVecs,
@@ -137,10 +137,10 @@ _DEPRECATED_ALIAS_INPUTS = [(deprecated, arg) for deprecated, _, arg in _DEPRECA
 
 def _rejected_by_a_kornia_shape_guard(err: BaseException) -> bool:
     # Shared classifier for the kornia#3960 pair below: did this exception come from one of
-    # kornia's OWN shape guards? True for a ShapeError -- across the three functions these pins
-    # call, KORNIA_CHECK_SHAPE is the only thing that raises it, so within this family the type is
-    # the marker (kornia raises ShapeError elsewhere too, e.g. KORNIA_CHECK_SAME_SHAPE and directly
-    # in kornia/color/yuv.py, so this is a scoped claim, not a global one) -- or for a ValueError
+    # kornia's OWN shape guards? True for any BaseError -- the root of kornia's exception
+    # vocabulary in kornia/core/exceptions (KORNIA_CHECK_SHAPE's ShapeError, plain KORNIA_CHECK's
+    # bare BaseError and TypeCheckError are all subclasses, mro-verified), so a fix using ANY of
+    # kornia's check styles classifies as guarded -- or for a ValueError
     # whose raising frame sits inside the kornia package, which covers the hand-rolled ValueError
     # the three homography functions raise today under ANY future rewording: keying on the message
     # (an earlier revision matched the argument name it prints) would let a fix that rewords the
@@ -150,18 +150,19 @@ def _rejected_by_a_kornia_shape_guard(err: BaseException) -> bool:
     # bottoms out in torch's own modules, while a kornia guard raises on a kornia frame. (A C-level
     # torch error would bottom out on the kornia frame that CALLED it, but those are RuntimeError,
     # not ValueError, so the type check screens them first.)
-    # ShapeError is NOT a ValueError subclass (mro: ShapeError -> BaseError -> Exception), so both
-    # branches are needed; catching ValueError alone would miss a KORNIA_CHECK_SHAPE fix.
+    # BaseError is NOT a ValueError subclass (mro: BaseError -> Exception), so both branches are
+    # needed; catching ValueError alone would miss every KORNIA_CHECK-family fix.
     # The strict xfail asserts this predicate and the companion wart asserts its complement, so the
     # two are keyed to one definition and cannot drift apart. It deliberately depends on no message
     # text at all: what any failure says may be reworded on either side.
     # DECIDES: whether kornia's own guard rejected the input. Does NOT decide which guard style a
     # fix picks, nor any message wording. OUT OF SCOPE by declaration: a fix that guarded shapes
     # with a literal `raise RuntimeError(...)` from a kornia frame would classify as unguarded and
-    # land silently -- accepted, because kornia's guard vocabulary (kornia/core/check.py) raises
-    # BaseError subclasses, ValueError or TypeCheckError, never bare RuntimeError; adopting one
-    # would be a new house style, at which point this classifier gains a branch.
-    if isinstance(err, ShapeError):
+    # land silently -- accepted, because nothing in kornia/core/check.py raises bare RuntimeError;
+    # adopting that style would be new, at which point this classifier gains a branch. (It cannot
+    # simply classify every kornia-frame exception: torch's C-level matmul RuntimeError also
+    # bottoms out on the kornia call-site frame.)
+    if isinstance(err, BaseError):
         return True
     if isinstance(err, ValueError):
         tb = err.__traceback__
@@ -2220,7 +2221,7 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         # misread as "#3955 was partly fixed". The phrase alone still separates the three failure
         # modes from each other and from kornia's own guard, which is all the evidence needs.
         # Three cells: all three raise at the SAME line -- wxyz.unbind(dim=1) in
-        # _compute_rotation_matrix (conversions.py:507) -- but with different error kinds, because
+        # _compute_rotation_matrix -- but with different error kinds, because
         # the rank differs: the unbatched (3,) case has no dim=1 to unbind and gets an IndexError,
         # while the two over-batched cases unbind successfully and fail on the 3-way assignment
         # with a ValueError. So a fix that only flattens the leading dimensions flips the last two
@@ -3654,8 +3655,12 @@ class TestNormalTransformPixel(BaseTester):
             "kornia#3959: an integer dtype no longer truncates the 3-D normalization scales to 0"
         )
 
-        pixels = torch.tensor([[0, 0, 1], [4, 3, 1], [2, 1, 1]], device=device, dtype=torch.int64).transpose(0, 1)
-        mapped = (matrix[0] @ pixels).transpose(0, 1)
+        # The consequence product runs on cpu: the claim is about the matrix's VALUES, not about
+        # where a product can execute, and CUDA implements no integer matmul -- an on-device
+        # product would raise there before the assertion and be misread as a partial #3959 fix
+        # (the same backend limitation the int64 dichotomy pin probes for).
+        pixels = torch.tensor([[0, 0, 1], [4, 3, 1], [2, 1, 1]], dtype=torch.int64).transpose(0, 1)
+        mapped = (matrix[0].cpu() @ pixels).transpose(0, 1)
 
         assert mapped.tolist() == [[-1, -1, 1], [-1, -1, 1], [-1, -1, 1]], (
             "kornia#3959: the integer matrix no longer maps every pixel to the constant (-1, -1)"
@@ -3926,10 +3931,12 @@ class TestNormalizeHomography(BaseTester):
         #       reading the ambient default, which is the other half of the same mechanism.
         # If any cell fails, #3958 was (partly) fixed -- flip/remove the strict xfail above. NOT a
         # contract that float64 callers must keep receiving float32-rounded constants.
-        # atol 1e-13 sits three orders below the ~8.9e-09 deviation being discriminated (so a fix
-        # still flips these cells red) and three above the ~1.1e-16 ulp of the entries, so a
-        # reassociation of the two products cannot flip them. float64 is hardcoded for the same
-        # reason as the xfail above.
+        # atol 1e-10 pins the MAGNITUDE of the deviation, which is what the docstring warning
+        # promises ("the magnitude -- half the mantissa gone -- is the point ... rather than the
+        # digits"): it sits an order below the ~8.9e-09 deviation being discriminated (so a fix
+        # still flips these cells red) and six above the ~1.1e-16 ulp of the entries, so no
+        # backend's reassociation of the matmul-and-inverse chain can flip them. float64 is
+        # hardcoded for the same reason as the xfail above.
         # Snippet used to generate expected (torch only, executed on cpu float64):
         #   normalize_homography(eye(3, float64), (4, 4), (6, 6))[0, 0]     -> 0.5999999910593036
         #   denormalize_homography(eye(3, float64), (4, 4), (6, 6))[0, 0]   -> 1.6666666915019348
@@ -3952,28 +3959,28 @@ class TestNormalizeHomography(BaseTester):
         assert_close(
             normalized,
             torch.tensor(0.5999999910593036, device=device, dtype=torch.float64),
-            atol=1e-13,
+            atol=1e-10,
             rtol=0.0,
             msg=_issue_msg("kornia#3958: normalize_homography no longer rounds its constants to float32"),
         )
         assert_close(
             denormalized,
             torch.tensor(1.6666666915019348, device=device, dtype=torch.float64),
-            atol=1e-13,
+            atol=1e-10,
             rtol=0.0,
             msg=_issue_msg("kornia#3958: denormalize_homography no longer rounds its constants to float32"),
         )
         assert_close(
             normalized3d,
             torch.tensor(0.5999999910593036, device=device, dtype=torch.float64),
-            atol=1e-13,
+            atol=1e-10,
             rtol=0.0,
             msg=_issue_msg("kornia#3958: normalize_homography3d no longer rounds its constants to float32"),
         )
         assert_close(
             with_float64_default,
             torch.tensor(0.6000000000000001, device=device, dtype=torch.float64),
-            atol=1e-13,
+            atol=1e-10,
             rtol=0.0,
             msg=_issue_msg("kornia#3958: the ambient default dtype no longer decides the constants' precision"),
         )
@@ -4025,8 +4032,8 @@ class TestNormalizeHomography(BaseTester):
         # purpose. pytest.raises(RuntimeError) requires the exception TYPE that torch's own
         # arithmetic raises -- the name says the input dies inside matmul, and catching a broader
         # Exception would let an unrelated TypeError or IndexError regression pass under that name;
-        # kornia's guards raise ShapeError or ValueError, neither a RuntimeError subclass, so a
-        # guard fix escapes the raises() and flips this cell loudly. The assertion then holds the
+        # kornia's guards raise BaseError subclasses or ValueError, none a RuntimeError subclass,
+        # so a guard fix escapes the raises() and flips this cell loudly. The assertion then holds the
         # complement of the xfail's classifier, so the pair stays keyed to the one module-level
         # predicate and cannot drift apart if that predicate ever learns new guard shapes.
         # Neither layer depends on message text: the discrimination sits on exception types and on
@@ -5089,11 +5096,10 @@ class TestCARKitToColmap(BaseTester):
             torch.tensor([[[0.0, 1.0, 0.0], [0.0, 0.0, -1.0], [-1.0, 0.0, 0.0]]], device=device, dtype=dtype),
         )
         self.assert_close(t_colmap, torch.tensor([[[-2.0], [3.0], [1.0]]], device=device, dtype=dtype))
+        # The [-0.5, ...] literal itself carries the sign claim -- w within tolerance of -0.5 is
+        # necessarily negative, so a separate sign assert could never fail on its own. The point
+        # stands: the sign is an artefact either way; compare rotations, never raw components.
         self.assert_close(q_colmap, torch.tensor([[-0.5, -0.5, -0.5, 0.5]], device=device, dtype=dtype))
-        assert q_colmap[0, 0].item() < 0.0, (
-            "the trace-zero branch no longer returns the negative-w representative; the sign is an "
-            "artefact either way, so compare rotations rather than components"
-        )
 
     def test_convention_input_quaternion_is_normalized_and_double_covered(self, device, dtype):
         # Convention pin: the input quaternion does not have to be unit -- the pipeline normalizes
@@ -5219,9 +5225,9 @@ class TestCARKitToColmap(BaseTester):
             rtol=0.0,
             msg=_issue_msg("kornia#3951: the float64 ARKit output quaternion is no longer inflated"),
         )
-        assert abs(q_colmap.norm().item() - 1.0) > 1e-12, (
-            "kornia#3951: the float64 ARKit output quaternion is a unit quaternion again"
-        )
+        # No separate ||q|| != 1 assert: the literal above pins ||q|| - 1 = 1.25e-09 at atol=1e-11,
+        # which already implies non-unit by two orders -- a second, weaker assert could never fail
+        # while the pin holds.
 
 
 class TestEulerFromQuaternion(BaseTester):
