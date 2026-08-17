@@ -2026,13 +2026,15 @@ def denormalize_homography(
           return ``H`` to ``2.384185791015625e-07`` in ``float32`` (torch 2.9.1,
           cpu) — that is rounding across four matrix products and an inverse,
           not an exact identity. Pick sizes of the form ``2**k + 1`` and the
-          constants become exact, but a bit-for-bit round trip additionally
-          requires every intermediate product and sum of the chain to be
-          exactly representable in the working dtype — a property of the
-          whole computation, not of ``H``'s entries (every finite float is
-          already a dyadic rational, and dyadic entries guarantee nothing: a
-          matrix of exact integers as large as ``2**25`` misses its round
-          trip by ``2.0``). At sizes ``(3, 5)`` and ``(5, 9)`` the literal
+          constants become exact; a bit-for-bit round trip is then
+          **guaranteed when** every intermediate product and sum of the chain
+          is also exactly representable in the working dtype — a sufficient
+          condition, not a necessary one, since rounding can cancel across
+          the chain — and it is a property of the whole computation, not of
+          ``H``'s entries (every finite float is already a dyadic rational,
+          and dyadic entries guarantee nothing: a matrix of exact integers as
+          large as ``2**25`` misses its round trip by ``2.0``). At sizes
+          ``(3, 5)`` and ``(5, 9)`` the literal
           above returns from ``normalize(denormalize(H))`` bitwise while
           ``denormalize(normalize(H))`` still deviates by
           ``4.76837158203125e-07`` — yet the same literal with its projective
@@ -2294,7 +2296,11 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt` and
         :func:`~kornia.geometry.conversions.worldtocam_to_camtoworld_Rt` do not
         go through this function — they only transpose, negate and multiply —
-        and accept ``int64`` happily, returning an ``int64`` result. See
+        and accept ``int64`` happily, returning an ``int64`` result. The
+        accepting side is a **cpu/mps** statement (torch 2.9.1, executed):
+        their integer path runs through batched matmul, which PyTorch does not
+        implement on CUDA, so no accept-and-return-``int64`` behavior is
+        claimed there. See
         :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4`.
         Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
@@ -2404,7 +2410,9 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
 
     .. warning::
         The ``_4x4`` and ``_Rt`` variants disagree on integer input: this
-        function accepts an ``int64`` matrix and returns an ``int64`` matrix,
+        function accepts an ``int64`` matrix and returns an ``int64`` matrix
+        — on **cpu/mps** (torch 2.9.1, executed; its integer path runs
+        through batched matmul, which PyTorch does not implement on CUDA) —
         while
         :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt`
         raises ``RuntimeError: result type Float can't be cast to the desired
@@ -2693,10 +2701,10 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
     Both poses in quaternion representation.
 
     Convention:
-        (every measured figure in this block — including the bisected overflow
-        ceilings and the 16-digit "as computed" literals — is a sample of one
-        build, torch 2.9.1 on cpu, not a bound; trailing digits and turnover
-        points may move with the backend's accumulation order)
+        (every measured figure in this block — the 16-digit "as computed"
+        literals included — is a sample of one build, torch 2.9.1 on cpu, not
+        a bound; trailing digits and turnover points may move with the
+        backend's accumulation order)
 
         - **input**: ``qvec`` :math:`(B, 4)` is read as ``(w, x, y, z)``, real
           part first — ``[1., 0., 0., 0.]`` is the identity — and ``tvec`` is
@@ -2742,13 +2750,12 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           the perfectly finite ``[0., 1., 0., 1.] * 1.4e19`` returns
           ``q = [0., 1., 0., 0.]``, ``t = (-1., 1., 1.)`` — the zero-quaternion
           answer — instead of the ``[0.7071, 0., 0.7071, 0.]``,
-          ``(-1., -1., 1.)`` of the same rotation at unit scale. The ceiling is
-          where ``||q||`` reaches ``sqrt(finfo.max)`` — bisected to
-          ``1.8446744e19`` in ``float32`` and ``1.3407808e154`` in ``float64``
-          — except in ``float16``, which accumulates in wider precision and
-          instead turns over once ``||q||`` nears its own ``65504``. That is the
-          same accumulator split
-          :func:`~kornia.geometry.conversions.quaternion_log_to_exp` describes
+          ``(-1., -1., 1.)`` of the same rotation at unit scale. The ceiling
+          sits where ``||q||`` overflows the norm's sum-of-squares
+          accumulator: the same ``sqrt(finfo.max)`` turnover, per-dtype
+          figures and ``float16`` wider-accumulation exception that
+          :func:`~kornia.geometry.conversions.quaternion_log_to_exp`'s block
+          quantifies — the figures live there, once
         - for ``||q||`` above the normalisation floor of the previous bullet,
           the output rotation is **proper by construction** — it is built from
           an internally normalised quaternion and then right-multiplied by
