@@ -1764,7 +1764,9 @@ def normalize_homography(
         ``[-0.25, 0.0, -1.25]``). Those three figures pass through ``matmul``
         and an inverse, so their trailing digits are backend-dependent
         (torch 2.9.1, cpu); the orders of magnitude are the point. This is the
-        executed root of 1-pixel warp outputs coming back all-``nan``. Tracked
+        executed root of 1-pixel warp outputs coming back all-``nan`` on cpu
+        and mps — the devices executed; no CUDA behavior is claimed, matching
+        the companion pin's scope. Tracked
         in
         `#3957 <https://github.com/kornia/kornia/issues/3957>`_ and, for the
         symptom, `#3929 <https://github.com/kornia/kornia/issues/3929>`_.
@@ -1880,7 +1882,8 @@ def normal_transform_pixel(
         leaves the ``size == 0`` scale at ``-2.0``. The blow-up reaches users:
         an identity :func:`~kornia.geometry.transform.warp_perspective` onto a
         1-pixel-high output is all-``nan`` at ``align_corners=True``, where the
-        2-pixel-high control is finite. Tracked in
+        2-pixel-high control is finite (executed on cpu and mps; no CUDA
+        behavior is claimed). Tracked in
         `#3957 <https://github.com/kornia/kornia/issues/3957>`_ and, for the
         symptom, `#3929 <https://github.com/kornia/kornia/issues/3929>`_.
 
@@ -2030,13 +2033,18 @@ def denormalize_homography(
           ``dsize_src = (4, 5)`` and ``dsize_dst = (8, 9)``,
           ``denormalize(normalize(H))`` and ``normalize(denormalize(H))`` each
           return ``H`` to ``2.384185791015625e-07`` in ``float32`` (torch 2.9.1,
-          cpu) — that is rounding across four matrix products and an inverse,
+          cpu — the tag covers every measured figure in this bullet, the
+          ``2.0`` and ``4.76837158203125e-07`` below included: they are
+          accumulation residuals whose ulp counts can shift with a backend's
+          summation order) — that is rounding across four matrix products and an inverse,
           not an exact identity. Pick sizes of the form ``2**k + 1`` and the
           constants become exact **when the resulting ``2 / 2**k`` scale is
           representable in the working dtype** — it is at the small sizes the
           convention pins use, but ``float16`` underflows it to ``0.0`` from
-          ``2**29 + 1`` on, where the true scale ``2**-28`` sits below the
-          dtype's smallest subnormal ``2**-24``; a bit-for-bit round trip is
+          ``2**26 + 1`` on: the true scale ``2**-25`` is exactly **half** the
+          dtype's smallest subnormal ``2**-24`` and rounds to zero under
+          ties-to-even (at ``2**25 + 1`` the scale is exactly that smallest
+          subnormal; executed through ``2**29 + 1``); a bit-for-bit round trip is
           then **guaranteed when** every intermediate product and sum of the chain
           is also exactly representable in the working dtype — a sufficient
           condition, not a necessary one, since rounding can cancel across
@@ -2308,9 +2316,9 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         go through this function — they only transpose, negate and multiply —
         and accept ``int64`` happily, returning an ``int64`` result. The
         accepting side is a **cpu/mps** statement (torch 2.9.1, executed):
-        their integer path runs through batched matmul, which PyTorch does not
-        implement on CUDA, so no accept-and-return-``int64`` behavior is
-        claimed there. See
+        their integer path runs through batched matmul, which PyTorch's
+        documented op coverage omits on CUDA (not executed here), so no
+        accept-and-return-``int64`` behavior is claimed there. See
         :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4`.
         Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
@@ -2422,7 +2430,8 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
         The ``_4x4`` and ``_Rt`` variants disagree on integer input: this
         function accepts an ``int64`` matrix and returns an ``int64`` matrix
         — on **cpu/mps** (torch 2.9.1, executed; its integer path runs
-        through batched matmul, which PyTorch does not implement on CUDA) —
+        through batched matmul, which PyTorch's documented op coverage omits
+        on CUDA, not executed here) —
         while
         :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt`
         raises ``RuntimeError: result type Float can't be cast to the desired

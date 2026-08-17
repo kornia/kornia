@@ -16,9 +16,9 @@
 #
 
 import inspect
-import os
 import sys
 import warnings
+from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import partial
 
@@ -140,38 +140,27 @@ def _rejected_by_a_kornia_shape_guard(err: BaseException) -> bool:
     # kornia's OWN shape guards? True for any BaseError -- the root of kornia's exception
     # vocabulary in kornia/core/exceptions (KORNIA_CHECK_SHAPE's ShapeError, plain KORNIA_CHECK's
     # bare BaseError and TypeCheckError are all subclasses, mro-verified), so a fix using ANY of
-    # kornia's check styles classifies as guarded -- or for a ValueError
-    # whose raising frame sits inside the kornia package, which covers the hand-rolled ValueError
-    # the three homography functions raise today under ANY future rewording: keying on the message
-    # (an earlier revision matched the argument name it prints) would let a fix that rewords the
-    # ValueError land as "unguarded", leaving the strict xfail silently XFAIL -- the failure mode a
-    # strict xfail exists to prevent. Everything else -- today's RuntimeError out of torch.matmul
-    # included -- is False. The traceback walk finds the DEEPEST frame: a torch-raised ValueError
-    # bottoms out in torch's own modules, while a kornia guard raises on a kornia frame. (A C-level
-    # torch error would bottom out on the kornia frame that CALLED it, but those are RuntimeError,
-    # not ValueError, so the type check screens them first.)
-    # BaseError is NOT a ValueError subclass (mro: BaseError -> Exception), so both branches are
-    # needed; catching ValueError alone would miss every KORNIA_CHECK-family fix.
+    # kornia's check styles classifies as guarded -- or for a ValueError, which covers the
+    # hand-rolled ValueError the three homography functions raise today under any future rewording
+    # (keying on the message would let a reworded fix land as "unguarded", leaving the strict
+    # xfail silently XFAIL -- the failure mode a strict xfail exists to prevent).
+    # A plain type check suffices on the ValueError side: every torch shape failure in these call
+    # chains (matmul, linalg.inv, linalg.solve, broadcast_shapes) raises RuntimeError, screened by
+    # type. A provenance check -- walking the traceback to the raising frame -- would point the
+    # residual risk the wrong way: misclassifying a genuine kornia ValueError (an exotic install's
+    # co_filename mismatch, say) leaves the strict xfail silently XFAIL after a real fix, while a
+    # plain-isinstance misfire surfaces as a loud strict-XPASS.
+    # BaseError is NOT a ValueError subclass (mro: BaseError -> Exception), so both types are
+    # needed; ValueError alone would miss every KORNIA_CHECK-family fix.
     # The strict xfail asserts this predicate and the companion wart asserts its complement, so the
     # two are keyed to one definition and cannot drift apart. It deliberately depends on no message
     # text at all: what any failure says may be reworded on either side.
     # DECIDES: whether kornia's own guard rejected the input. Does NOT decide which guard style a
     # fix picks, nor any message wording. OUT OF SCOPE by declaration: a fix that guarded shapes
-    # with a literal `raise RuntimeError(...)` from a kornia frame would classify as unguarded and
-    # land silently -- accepted, because nothing in kornia/core/check.py raises bare RuntimeError;
-    # adopting that style would be new, at which point this classifier gains a branch. (It cannot
-    # simply classify every kornia-frame exception: torch's C-level matmul RuntimeError also
-    # bottoms out on the kornia call-site frame.)
-    if isinstance(err, BaseError):
-        return True
-    if isinstance(err, ValueError):
-        tb = err.__traceback__
-        raising_file = ""
-        while tb is not None:
-            raising_file = tb.tb_frame.f_code.co_filename
-            tb = tb.tb_next
-        return raising_file.startswith(os.path.dirname(os.path.abspath(kornia.__file__)) + os.sep)
-    return False
+    # with a literal `raise RuntimeError(...)` would classify as unguarded and land silently --
+    # accepted, because nothing in kornia/core/check.py raises bare RuntimeError; adopting that
+    # style would be new, at which point this classifier gains a branch.
+    return isinstance(err, (BaseError, ValueError))
 
 
 # The wrong-sized-matrix cells for the kornia#3960 pair: (op name, wrong square size). One table
@@ -188,7 +177,7 @@ _WRONG_SIZE_CASES = [
 _WRONG_SIZE_IDS = ["normalize", "denormalize", "normalize3d"]
 
 
-def _homography_sizes(op_name: str):
+def _homography_sizes(op_name: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
     # (dsize_src, dsize_dst) for the kornia#3960 cells: 3-D ops take (depth, height, width).
     return ((2, 4, 5), (3, 8, 9)) if op_name.endswith("3d") else ((4, 5), (8, 9))
 
@@ -231,7 +220,7 @@ _ARKIT_WORKED_QVEC = [[0.0, 1.0, 0.0, 1.0]]
 
 
 @contextmanager
-def _ambient_default_dtype(dtype: torch.dtype):
+def _ambient_default_dtype(dtype: torch.dtype) -> Iterator[None]:
     # Swap the PROCESS-WIDE torch default dtype for the duration of a with-block, restoring it even
     # if the body raises. The finally-restore is the safety-critical part -- a leaked float64
     # default would silently change every later test's tolerances across the whole suite -- so it
@@ -260,7 +249,7 @@ def _assert_proper_rotation(rotation: torch.Tensor) -> None:
     )
 
 
-def _assert_strictly_batched(op_name, shapes, device) -> None:
+def _assert_strictly_batched(op_name: str, shapes: tuple[tuple[int, ...], ...], device: torch.device) -> None:
     # Shared body for the three test_convention_shapes_are_strictly_batched pins (TestRt2Extrinsics,
     # TestCamtoworldGraphicsToVision, TestCamtoworldRtToPoseRt), whose executable bodies were
     # line-for-line identical -- only their parametrize tables differ. One definition means a change
@@ -3427,6 +3416,9 @@ class TestNormalTransformPixel(BaseTester):
         # NOTE: covered by this class's kornia#3904 note above; recorded, not a ratified contract.
         # Sizes 3 and 5 are chosen because 2/(3 - 1) = 1.0 and 2/(5 - 1) = 0.5 are exact in every
         # dtype, so the comparison runs at atol=rtol=0 and no nearby convention can satisfy it.
+        # Only the matrix is asserted: the pixel maps in the snippet are pure arithmetic on the
+        # bitwise-pinned matrix and this test's own constants, so a product assertion would add no
+        # failure surface against kornia.
         # Snippet used to generate expected (stdlib only, height = 3, width = 5):
         #   2 / (5 - 1), 2 / (3 - 1)               -> 0.5, 1.0
         #   [2 * x / (5 - 1) - 1 for x in (0, 4, 2)] -> [-1.0, 1.0, 0.0]
@@ -3435,18 +3427,6 @@ class TestNormalTransformPixel(BaseTester):
 
         expected = torch.tensor([[[0.5, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         self.assert_close(matrix, expected, atol=0.0, rtol=0.0)
-
-        pixels = torch.tensor(
-            [[0.0, 0.0, 1.0], [4.0, 2.0, 1.0], [2.0, 1.0, 1.0]], device=device, dtype=dtype
-        ).transpose(0, 1)
-        mapped = (matrix[0] @ pixels).transpose(0, 1)
-
-        self.assert_close(
-            mapped,
-            torch.tensor([[-1.0, -1.0, 1.0], [1.0, 1.0, 1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype),
-            atol=0.0,
-            rtol=0.0,
-        )
 
     def test_convention_agrees_with_normalize_pixel_coordinates(self, device, dtype):
         # Convention pin: the matrix is the homogeneous form of normalize_pixel_coordinates -- the
@@ -3483,9 +3463,11 @@ class TestNormalTransformPixel(BaseTester):
         # (0, 0, 0) maps to (-1, -1, -1) and (width - 1, height - 1, depth - 1) to (1, 1, 1).
         # NOTE: covered by this class's kornia#3904 note above; recorded, not a ratified contract.
         # (depth, height, width) = (3, 5, 9) keeps 2/8, 2/4 and 2/2 exact in every dtype, so the
-        # comparison runs at atol=rtol=0.
+        # comparison runs at atol=rtol=0. Only the matrix is asserted: the corner maps in the
+        # snippet are pure arithmetic on the bitwise-pinned matrix and this test's own constants.
         # Snippet used to generate expected (stdlib only):
         #   2 / (9 - 1), 2 / (5 - 1), 2 / (3 - 1) -> 0.25, 0.5, 1.0
+        #   matrix @ (0, 0, 0, 1) -> (-1, -1, -1, 1);  matrix @ (8, 4, 2, 1) -> (1, 1, 1, 1)
         matrix = kornia.geometry.conversions.normal_transform_pixel3d(3, 5, 9, device=device, dtype=dtype)
 
         expected = torch.tensor(
@@ -3494,16 +3476,6 @@ class TestNormalTransformPixel(BaseTester):
             dtype=dtype,
         )
         self.assert_close(matrix, expected, atol=0.0, rtol=0.0)
-
-        corners = torch.tensor([[0.0, 0.0, 0.0, 1.0], [8.0, 4.0, 2.0, 1.0]], device=device, dtype=dtype).transpose(0, 1)
-        mapped = (matrix[0] @ corners).transpose(0, 1)
-
-        self.assert_close(
-            mapped,
-            torch.tensor([[-1.0, -1.0, -1.0, 1.0], [1.0, 1.0, 1.0, 1.0]], device=device, dtype=dtype),
-            atol=0.0,
-            rtol=0.0,
-        )
 
     def test_convention_3d_component_order_permutes_normalize_pixel_coordinates3d(self, device, dtype):
         # Convention pin: normal_transform_pixel3d and normalize_pixel_coordinates3d order their
@@ -3630,8 +3602,9 @@ class TestNormalTransformPixel(BaseTester):
         # Wart pin for kornia#3959: the matrix is built by torch.tensor([...], dtype=dtype) from
         # Python floats, so an integer dtype truncates every scale below 1 to 0 and the function
         # returns a rank-deficient matrix -- no error, no warning. The 2-D result maps EVERY pixel
-        # to the constant (-1, -1), which the second assertion pins so the cell is about the damage
-        # and not only about the entries. The 3-D cell keeps depth = 2 so that its z scale, 2/1 = 2,
+        # to the constant (-1, -1) -- recorded in the snippet as pure arithmetic on the
+        # bitwise-pinned integer matrix, so it is not asserted separately (and no integer matmul
+        # runs, which CUDA would not implement). The 3-D cell keeps depth = 2 so that its z scale, 2/1 = 2,
         # survives the truncation: a partial fix that only promotes float scales would still have
         # to flip the two zeroed axes.
         # There is deliberately NO companion strict xfail, for the same reason as
@@ -3645,6 +3618,7 @@ class TestNormalTransformPixel(BaseTester):
         #     -> [[0, 0, -1], [0, 0, -1], [0, 0, 1]]
         #   normal_transform_pixel3d(2, 4, 5, dtype=torch.int64)
         #     -> diag [0, 0, 2]   (2/(5-1) and 2/(4-1) truncate, 2/(2-1) does not)
+        #   matrix @ (x, y, 1) -> (-1, -1, 1) for every pixel -- e.g. (0, 0), (4, 3), (2, 1)
         matrix = kornia.geometry.conversions.normal_transform_pixel(4, 5, device=device, dtype=torch.int64)
         matrix3d = kornia.geometry.conversions.normal_transform_pixel3d(2, 4, 5, device=device, dtype=torch.int64)
 
@@ -3653,17 +3627,6 @@ class TestNormalTransformPixel(BaseTester):
         )
         assert [matrix3d[0, i, i].item() for i in range(3)] == [0, 0, 2], (
             "kornia#3959: an integer dtype no longer truncates the 3-D normalization scales to 0"
-        )
-
-        # The consequence product runs on cpu: the claim is about the matrix's VALUES, not about
-        # where a product can execute, and CUDA implements no integer matmul -- an on-device
-        # product would raise there before the assertion and be misread as a partial #3959 fix
-        # (the same backend limitation the int64 dichotomy pin probes for).
-        pixels = torch.tensor([[0, 0, 1], [4, 3, 1], [2, 1, 1]], dtype=torch.int64).transpose(0, 1)
-        mapped = (matrix[0].cpu() @ pixels).transpose(0, 1)
-
-        assert mapped.tolist() == [[-1, -1, 1], [-1, -1, 1], [-1, -1, 1]], (
-            "kornia#3959: the integer matrix no longer maps every pixel to the constant (-1, -1)"
         )
 
 
@@ -3679,7 +3642,11 @@ class TestNormalizeHomography(BaseTester):
     # an ordering or direction pin. The exactness invariant is theirs alone -- the bug pins below
     # deliberately step outside it (the round-trip pin's non-dyadic (4, 5)/(8, 9) legs at
     # atol=32*eps, the #3960 cells, the #3957 propagation warts), so a new atol=0 pin belongs here
-    # only at these sizes AND with a literal whose intermediates are exact.
+    # only at these sizes AND with a literal whose intermediates are exact. The invariant also
+    # leans on the SHAPE of the normalization matrices: they are upper-triangular with
+    # power-of-two pivots, so torch.linalg.inv computes their inverse rounding-free -- a future
+    # non-triangular normalization (a #3904 align_corners variant, say) voids the atol=0 claim
+    # wherever an inverse is on the path and needs a tolerance instead.
     # No pin asserts anything about kornia#3962 (no denormalize_homography3d, no
     # ColmapQTVecs_to_ARKitQTVecs) -- a missing symbol is a scope question, not a defect.
     # NOTE: kornia#3904 (reserved) may extend this surface. EVERY literal in this class -- the
@@ -3695,9 +3662,9 @@ class TestNormalizeHomography(BaseTester):
         # re-expressed in the two [-1, 1] frames -- it maps normalized src coordinates to
         # normalized dst coordinates, and it is size-aware: a +2 px shift in a 5-wide image becomes
         # a +1.0 shift in normalized units (2 px * 2/(5 - 1)).
-        # Executed at pixel level rather than only on the matrix entries: the src pixel (1, 1) is
-        # normalized, pushed through the result, and compared against the normalization of the dst
-        # pixel (3, 1) that the input homography sends it to.
+        # Only the matrix is asserted: the pixel-level reading in the snippet -- src (1, 1)
+        # normalized, pushed through the result, landing on the normalization of the dst pixel
+        # (3, 1) -- is pure arithmetic on the bitwise-pinned matrix and this test's constants.
         # NOTE: covered by this class's kornia#3904 note above; recorded, not a ratified contract.
         # Snippet used to generate expected (stdlib only, height = 3, width = 5 on both sides):
         #   2 / (5 - 1) = 0.5, so the +2 px translation becomes 2 * 0.5 = 1.0
@@ -3711,10 +3678,6 @@ class TestNormalizeHomography(BaseTester):
 
         expected = torch.tensor([[[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         self.assert_close(normalized, expected, atol=0.0, rtol=0.0)
-
-        src_normalized = torch.tensor([-0.5, 0.0, 1.0], device=device, dtype=dtype)
-        dst_normalized = torch.tensor([0.5, 0.0, 1.0], device=device, dtype=dtype)
-        self.assert_close(normalized[0] @ src_normalized, dst_normalized, atol=0.0, rtol=0.0)
 
     def test_convention_dsize_src_is_the_right_factor_and_dsize_dst_the_left(self, device, dtype):
         # Convention pin: normalize_homography(H, dsize_src, dsize_dst) composes
@@ -3776,7 +3739,8 @@ class TestNormalizeHomography(BaseTester):
         # Two legs. With dyadic sizes ((3, 5) and (5, 9)) every normalization constant is exact,
         # and THIS literal is chosen so that every intermediate product and sum is exactly
         # representable too (exact constants alone do not make the round trip bitwise -- that is a
-        # property of the whole computation, not of the sizes or of the entries), so the round trip
+        # property of the whole computation, not of the sizes or of the entries; the
+        # triangular-inverse mechanism in the class header is part of it), so the round trip
         # returns the input bit for bit and that leg runs at atol=rtol=0. With
         # non-dyadic sizes ((4, 5) and (8, 9)) the constants are rounded and the round trip is only
         # approximate; its tolerance is sized from the mechanism rather than from a measurement --
@@ -4559,7 +4523,8 @@ class TestRt2Extrinsics(BaseTester):
         # fixed or torch promotion changed -- update the three warnings together with this pin.
         # NOT a contract that the raising side must keep raising.
         # The accepting legs run only where the backend implements integer batched matmul (probed
-        # visibly below): PyTorch has none on CUDA, so there the accepting side is a torch
+        # visibly below): per PyTorch's documented op coverage CUDA has none (not executed here --
+        # the probe, not this comment, is what decides), so there the accepting side is a torch
         # limitation, not a kornia guard, and the warnings scope their accept-and-return-int64
         # sentences to cpu/mps for the same reason. The raising legs run everywhere -- they raise
         # RuntimeError on every backend, whichever operation dies first.
