@@ -2026,14 +2026,20 @@ def denormalize_homography(
           return ``H`` to ``2.384185791015625e-07`` in ``float32`` (torch 2.9.1,
           cpu) — that is rounding across four matrix products and an inverse,
           not an exact identity. Pick sizes of the form ``2**k + 1`` and the
-          constants become exact, but bit-for-bit round trips in both
-          directions additionally require ``H``'s own entries to be dyadic
-          rationals, which the entries of the literal above are not: at
-          sizes ``(3, 5)`` and ``(5, 9)`` its ``normalize(denormalize(H))`` is
-          bitwise while its ``denormalize(normalize(H))`` still deviates by
-          ``4.76837158203125e-07``. The convention pins in kornia's test suite
-          assert the bit-for-bit form on their own dyadic-entried literal at
-          dyadic sizes
+          constants become exact, but a bit-for-bit round trip additionally
+          requires every intermediate product and sum of the chain to be
+          exactly representable in the working dtype — a property of the
+          whole computation, not of ``H``'s entries (every finite float is
+          already a dyadic rational, and dyadic entries guarantee nothing: a
+          matrix of exact integers as large as ``2**25`` misses its round
+          trip by ``2.0``). At sizes ``(3, 5)`` and ``(5, 9)`` the literal
+          above returns from ``normalize(denormalize(H))`` bitwise while
+          ``denormalize(normalize(H))`` still deviates by
+          ``4.76837158203125e-07`` — yet the same literal with its projective
+          row replaced by ``[0, 0, 1]`` round-trips bitwise in both
+          directions. The convention pins in kornia's test suite assert the
+          bit-for-bit form at those sizes on a literal chosen so that every
+          intermediate is exact
         - the two functions do **not** invert their normalization matrix the
           same way, so their errors are not mirror images either: on the
           identity homography with equal sizes ``(4, 7)``,
@@ -2687,6 +2693,11 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
     Both poses in quaternion representation.
 
     Convention:
+        (every measured figure in this block — including the bisected overflow
+        ceilings and the 16-digit "as computed" literals — is a sample of one
+        build, torch 2.9.1 on cpu, not a bound; trailing digits and turnover
+        points may move with the backend's accumulation order)
+
         - **input**: ``qvec`` :math:`(B, 4)` is read as ``(w, x, y, z)``, real
           part first — ``[1., 0., 0., 0.]`` is the identity — and ``tvec`` is
           :math:`(B, 3, 1)`. The pair is interpreted as a **camera-to-world**
@@ -2793,7 +2804,10 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
         ``t = (1, 1, 1)`` returns the plausible-looking
         ``q = [0., 1., 0., 0.]``, ``t = (-1, 1, 1)`` — the same answer as the
         identity input — rather than raising. Validate the quaternion before
-        calling if the input may be degenerate.
+        calling if the input may be degenerate. This is the downstream reach of
+        the sub-``eps`` clamp in
+        :func:`~kornia.geometry.conversions.normalize_quaternion`. Tracked in
+        `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
 
     Args:
         qvec: ARKit rotation quaternion :math:`(B, 4)`, [w, x, y, z] format.

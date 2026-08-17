@@ -19,6 +19,7 @@ import inspect
 import os
 import sys
 import warnings
+from contextlib import contextmanager
 from functools import partial
 
 import numpy as np
@@ -209,6 +210,21 @@ def _asymmetric_pose(device: torch.device, dtype: torch.dtype) -> tuple[torch.Te
         torch.tensor(_ASYMMETRIC_R, device=device, dtype=dtype),
         torch.tensor(_ASYMMETRIC_T, device=device, dtype=dtype),
     )
+
+
+@contextmanager
+def _ambient_default_dtype(dtype: torch.dtype):
+    # Swap the PROCESS-WIDE torch default dtype for the duration of a with-block, restoring it even
+    # if the body raises. The finally-restore is the safety-critical part -- a leaked float64
+    # default would silently change every later test's tolerances across the whole suite -- so it
+    # lives in one place instead of being hand-rolled at each ambient-default pin (the two #3958
+    # pins today; any future one should use this too).
+    previous = torch.get_default_dtype()
+    torch.set_default_dtype(dtype)
+    try:
+        yield
+    finally:
+        torch.set_default_dtype(previous)
 
 
 def _assert_strictly_batched(op_name, shapes, device) -> None:
@@ -2047,6 +2063,12 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         # float64 is hardcoded and the dtype fixture dropped because both literals are float64
         # facts: at float32 the same theta = 1e-3 input has theta**2 = 1.0000001111620804e-06 and
         # falls into the *other* branch, so cell (2) would be pinning a different code path.
+        # A third, float32 cell backs the docstring's "float32 is no better" figure
+        # (2.5033950805664062e-06 on the same general-branch input), which was otherwise asserted
+        # nowhere: an eps scaled to the input dtype's machine epsilon could fix float32 while
+        # leaving float64, flipping no test but falsifying the docstring. Its atol is
+        # 4 * eps_float32 -- the backend jitter of a 3-term float32 dot product on entries of
+        # order 1 -- an order below the 2.5e-06 signal, so a fix still flips the cell.
         # Snippet used to generate expected (torch only, executed on cpu float64):
         #   v = torch.tensor([[0., 0., math.pi / 2]], dtype=torch.float64)
         #   R = axis_angle_to_rotation_matrix(v)[0]
@@ -2086,6 +2108,17 @@ class TestAngleAxisToRotationMatrix(BaseTester):
             atol=0.0,
             rtol=0.0,
             msg=_issue_msg("kornia#3947: the low-angle branch no longer returns the first-order Taylor matrix"),
+        )
+
+        general_f32 = axis_angle_to_rotation_matrix(
+            torch.tensor([[0.0, 0.0, torch.pi / 2]], device=device, dtype=torch.float32)
+        )[0]
+        assert_close(
+            (general_f32 @ general_f32.T - torch.eye(3, device=device, dtype=torch.float32)).abs().max(),
+            torch.tensor(2.5033950805664062e-06, device=device, dtype=torch.float32),
+            atol=4 * torch.finfo(torch.float32).eps,
+            rtol=0.0,
+            msg=_issue_msg("kornia#3947: the float32 general-branch orthogonality error changed"),
         )
 
     @pytest.mark.xfail(
@@ -3340,12 +3373,8 @@ class TestNormalTransformPixel(BaseTester):
         assert normal_transform_pixel3d(3, 5, 9, device=device).dtype == torch.get_default_dtype()
         assert normal_transform_pixel(4, 5, device=device, dtype=torch.float16).dtype == torch.float16
 
-        previous_default = torch.get_default_dtype()
-        torch.set_default_dtype(torch.float64)
-        try:
+        with _ambient_default_dtype(torch.float64):
             ambient_dtype = normal_transform_pixel(4, 5).dtype
-        finally:
-            torch.set_default_dtype(previous_default)
 
         assert ambient_dtype == torch.float64, (
             "normal_transform_pixel no longer follows the ambient default dtype, so the kornia#3958 "
@@ -3482,10 +3511,12 @@ class TestNormalTransformPixel(BaseTester):
     # 3-D, whose scales are exact in every dtype), so the finite components pin which argument was
     # degenerated. The three classes give three different answers because only size == 1 is routed
     # to eps: size == 1 divides by eps = 1e-14 and gives 2e14, size == 0 divides by -1 and gives a
-    # sign-flipped -2.0 (a mirroring transform), size == -3 divides by -4 and gives -0.5. The 2e14
-    # literal round trips through every dtype the same way the computed value does -- it overflows
-    # to inf at float16 on both sides and rounds to 200111116255232.0 at bfloat16 on both sides --
-    # so the comparison stays meaningful at every dtype.
+    # sign-flipped -2.0 (a mirroring transform), size == -3 divides by -4 and gives -0.5.
+    # float32 is hardcoded and the dtype fixture dropped: the scales are computed as pure Python
+    # floats (2.0 / width_denom and friends) before any tensor exists, and dtype only casts the
+    # already-computed floats -- any kornia-side change to a scale flips the float32 cell, while a
+    # float16 leg would only assert inf == inf and a bfloat16 leg only that torch casts the same
+    # float the same way on both sides of the comparison.
     # Snippet used to generate expected (torch only, executed on cpu float32/float64):
     #   normal_transform_pixel(3, 1)[0, 0, 0]        -> 200000000753664.0  (2 / 1e-14)
     #   normal_transform_pixel(3, 0)[0, 0, 0]        -> -2.0
@@ -3506,7 +3537,7 @@ class TestNormalTransformPixel(BaseTester):
         ids=["2d-height", "2d-width", "3d-depth", "3d-height", "3d-width"],
     )
     def test_wart_degenerate_size_scale_matrix_3957(
-        self, ndim, arg_name, diagonal, degenerate_size, degenerate_scale, device, dtype
+        self, ndim, arg_name, diagonal, degenerate_size, degenerate_scale, device
     ):
         expected = list(diagonal)
         expected[diagonal.index(None)] = degenerate_scale
@@ -3515,23 +3546,25 @@ class TestNormalTransformPixel(BaseTester):
             sizes = {"height": 3, "width": 5}
             sizes[arg_name] = degenerate_size
             matrix = kornia.geometry.conversions.normal_transform_pixel(
-                sizes["height"], sizes["width"], device=device, dtype=dtype
+                sizes["height"], sizes["width"], device=device, dtype=torch.float32
             )
         else:
             sizes = {"depth": 3, "height": 5, "width": 9}
             sizes[arg_name] = degenerate_size
             matrix = kornia.geometry.conversions.normal_transform_pixel3d(
-                sizes["depth"], sizes["height"], sizes["width"], device=device, dtype=dtype
+                sizes["depth"], sizes["height"], sizes["width"], device=device, dtype=torch.float32
             )
 
         scales = torch.stack([matrix[0, i, i] for i in range(len(expected))])
 
-        self.assert_close(scales, torch.tensor(expected, device=device, dtype=dtype))
+        self.assert_close(scales, torch.tensor(expected, device=device, dtype=torch.float32))
 
     def test_wart_eps_guards_only_the_size_one_branch_3957(self, device):
         # Wart pin for kornia#3957, companion to the matrix above: eps is consulted ONLY in the
-        # size == 1 branch, so the argument its docstring calls "epsilon to prevent divide-by-zero
-        # errors" does not reach the case that is literally a zero-sized image. float32 is
+        # size == 1 branch -- the docstring now says exactly that ("denominator substituted for
+        # size - 1 when a size equals 1; it is not consulted on any other path"), and this pin is
+        # what keeps that sentence honest -- so the eps argument does not reach the case that is
+        # literally a zero-sized image. float32 is
         # hardcoded and the dtype fixture dropped: which branch consults eps is a Python-level
         # size comparison decided before any tensor arithmetic, and the pinned answers 2.0 and
         # -2.0 are exact in every dtype, so no other-dtype leg can fail where float32 passes and
@@ -3599,10 +3632,14 @@ class TestNormalizeHomography(BaseTester):
     # their own in this file -- their existing coverage lives in
     # tests/geometry/transform/test_homography_warper.py. The convention pins live here, next to
     # normal_transform_pixel, whose corner-aligned convention all three inherit.
-    # Every literal below uses sizes of the form 2**k + 1 (3, 5, 9, 17) so that every 2/(size - 1)
-    # is exact in every dtype and the pins compare at atol=rtol=0. That also keeps them independent
-    # of kornia#3958 (the float32 constants leak, pinned separately below with non-dyadic sizes):
-    # a fix for #3958 must not flip an ordering or direction pin.
+    # The CONVENTION pins below (composition, direction, round-trip, batching, 3-D) use sizes of
+    # the form 2**k + 1 (3, 5, 9, 17) so that every 2/(size - 1) is exact in every dtype and those
+    # pins compare at atol=rtol=0. That also keeps them independent of kornia#3958 (the float32
+    # constants leak, pinned separately below with non-dyadic sizes): a fix for #3958 must not flip
+    # an ordering or direction pin. The exactness invariant is theirs alone -- the bug pins below
+    # deliberately step outside it (the round-trip pin's non-dyadic (4, 5)/(8, 9) legs at
+    # atol=32*eps, the #3960 cells, the #3957 propagation warts), so a new atol=0 pin belongs here
+    # only at these sizes AND with a literal whose intermediates are exact.
     # No pin asserts anything about kornia#3962 (no denormalize_homography3d, no
     # ColmapQTVecs_to_ARKitQTVecs) -- a missing symbol is a scope question, not a defect.
     # NOTE: kornia#3904 (reserved) may extend this surface. EVERY literal in this class -- the
@@ -3696,8 +3733,11 @@ class TestNormalizeHomography(BaseTester):
         # Convention pin: the two functions are mutual inverses, in BOTH compositions -- each is
         # executed on its own here rather than one being inferred from the other -- on a general
         # projective homography whose bottom row is non-zero.
-        # Two legs. With dyadic sizes ((3, 5) and (5, 9)) every normalization constant is exact and
-        # the round trip returns the input bit for bit, so that leg runs at atol=rtol=0. With
+        # Two legs. With dyadic sizes ((3, 5) and (5, 9)) every normalization constant is exact,
+        # and THIS literal is chosen so that every intermediate product and sum is exactly
+        # representable too (exact constants alone do not make the round trip bitwise -- that is a
+        # property of the whole computation, not of the sizes or of the entries), so the round trip
+        # returns the input bit for bit and that leg runs at atol=rtol=0. With
         # non-dyadic sizes ((4, 5) and (8, 9)) the constants are rounded and the round trip is only
         # approximate; its tolerance is sized from the mechanism rather than from a measurement --
         # each entry passes through four matrix products and one 3x3 inverse, so the error is a
@@ -3880,12 +3920,8 @@ class TestNormalizeHomography(BaseTester):
         denormalized = kornia.geometry.conversions.denormalize_homography(identity, (4, 4), (6, 6))[0, 0, 0]
         normalized3d = kornia.geometry.conversions.normalize_homography3d(identity3d, (4, 4, 4), (6, 6, 6))[0, 0, 0]
 
-        previous_default = torch.get_default_dtype()
-        torch.set_default_dtype(torch.float64)
-        try:
+        with _ambient_default_dtype(torch.float64):
             with_float64_default = normalize_homography(identity, (4, 4), (6, 6))[0, 0, 0]
-        finally:
-            torch.set_default_dtype(previous_default)
 
         assert_close(
             normalized,
@@ -4474,6 +4510,43 @@ class TestRt2Extrinsics(BaseTester):
 
         self.assert_close(extrinsics[0, :3, 3], torch.zeros(3, device=device, dtype=torch.float32), atol=0.0, rtol=0.0)
 
+    def test_wart_int64_Rt_raises_while_4x4_and_pose_forms_accept_3959(self, device):
+        # Wart pin for the int64 dichotomy that three docstrings in this family document
+        # (Rt_to_matrix4x4, camtoworld_graphics_to_vision_4x4, camtoworld_to_worldtocam_Rt):
+        # Rt_to_matrix4x4 and the two frame functions built on it raise RuntimeError on an int64
+        # (R, t) -- the appended float homogeneous row cannot be cast to Long -- while the _4x4
+        # forms and the transpose-negate-multiply pose pair accept int64 and return int64. Part of
+        # the kornia#3959 integer-dtype family; without this pin, a torch promotion change in
+        # cat/pad or a dtype guard added to one side would invalidate all three warnings with
+        # nothing flipping red. RuntimeError is asserted by type only (the message is torch's and
+        # may be reworded; a sample is quoted in the snippet). If any leg fails, #3959 was (partly)
+        # fixed or torch promotion changed -- update the three warnings together with this pin.
+        # NOT a contract that the raising side must keep raising.
+        # Snippet used to generate expected (torch only, executed on cpu):
+        #   Rt_to_matrix4x4(eye(3, int64)[None], ones(1, 3, 1, int64))
+        #     -> RuntimeError: result type Float can't be cast to the desired output type Long
+        #   camtoworld_graphics_to_vision_4x4(eye(4, int64)[None]).dtype   -> torch.int64
+        #   camtoworld_to_worldtocam_Rt(eye(3, int64)[None], ones(1, 3, 1, int64))
+        #     -> (int64, int64)
+        rotation = torch.eye(3, device=device, dtype=torch.int64)[None]
+        translation = torch.ones(1, 3, 1, device=device, dtype=torch.int64)
+        extrinsics = torch.eye(4, device=device, dtype=torch.int64)[None]
+
+        for op in (Rt_to_matrix4x4, camtoworld_graphics_to_vision_Rt, camtoworld_vision_to_graphics_Rt):
+            with pytest.raises(RuntimeError):
+                op(rotation, translation)
+
+        for op in (camtoworld_graphics_to_vision_4x4, camtoworld_vision_to_graphics_4x4):
+            assert op(extrinsics).dtype == torch.int64, (
+                "kornia#3959: the _4x4 side of the int64 dichotomy no longer accepts integer input"
+            )
+
+        for op in (camtoworld_to_worldtocam_Rt, worldtocam_to_camtoworld_Rt):
+            pose_R, pose_t = op(rotation, translation)
+            assert pose_R.dtype == torch.int64 and pose_t.dtype == torch.int64, (
+                "kornia#3959: the pose pair no longer accepts integer input"
+            )
+
     @pytest.mark.parametrize(
         ("op_name", "shapes"),
         [
@@ -4998,7 +5071,8 @@ class TestCARKitToColmap(BaseTester):
         # because they are independent: scaling exercises the normalizer, negating exercises the
         # double cover. What this pin does NOT decide is the zero quaternion, which is absorbed by
         # the normalizer's eps guard and silently produces a plausible pose (documented, not pinned:
-        # the intended answer there is a maintainer decision).
+        # the intended answer there is a maintainer decision, tracked in kornia#3952 -- this is the
+        # downstream reach of that issue's sub-eps clamp).
         # Snippet used to generate expected (torch only, executed on cpu float32):
         #   ARKitQTVecs_to_ColmapQTVecs(q * 1000, t) == ARKitQTVecs_to_ColmapQTVecs(q, t)  (0.0 diff)
         #   ARKitQTVecs_to_ColmapQTVecs(-q, t)       == ARKitQTVecs_to_ColmapQTVecs(q, t)  (0.0 diff)
@@ -5059,8 +5133,11 @@ class TestCARKitToColmap(BaseTester):
     def test_convention_shapes_are_strictly_batched(self, device):
         # Convention pin: the inputs are strictly qvec (B, 4) and tvec (B, 3, 1) -- an unbatched
         # (4,) quaternion is rejected, and so is a flat (B, 3) translation. The two rejections come
-        # from different guards, which the pin keeps visible: the shape errors are kornia's
-        # KORNIA_CHECK_SHAPE inside Rt_to_matrix4x4 downstream, while a (B, 3) quaternion is caught
+        # from different guards, which the pin keeps visible: both ShapeErrors are raised by
+        # camtoworld_graphics_to_vision_Rt's OWN KORNIA_CHECK_SHAPE guards (traceback-verified:
+        # ARKitQTVecs_to_ColmapQTVecs -> camtoworld_graphics_to_vision_Rt -> KORNIA_CHECK_SHAPE;
+        # Rt_to_matrix4x4 is never reached -- its guards do not back these rejections and cannot be
+        # deduplicated on the strength of this pin), while a (B, 3) quaternion is caught even
         # earlier by quaternion_to_rotation_matrix's own "(*, 4)" ValueError.
         # float32 is hardcoded and the dtype fixture dropped because these guards run before any
         # arithmetic and cannot depend on the dtype.
