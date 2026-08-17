@@ -1699,6 +1699,11 @@ def normalize_homography(
     r"""Normalize a given homography in pixels to [-1, 1].
 
     Convention:
+        (every measured figure in this docstring — Convention block and
+        warnings alike — is a sample of one build, torch 2.9.1 on cpu unless a
+        sentence names another device; trailing digits may move with the
+        backend's summation order)
+
         - the input maps **source pixels to destination pixels** and the output
           maps **normalized source to normalized destination** — the same
           direction, re-expressed in the two images' :math:`[-1, 1]` frames. A
@@ -1743,7 +1748,7 @@ def normalize_homography(
         (``2.483526828633842e-08`` on the same input) and in
         :func:`~kornia.geometry.conversions.normalize_homography3d`. These
         deviations run through ``matmul`` and an inverse, so their trailing
-        digits are backend-dependent (torch 2.9.1, cpu); the magnitude — half
+        digits are backend-dependent; the magnitude — half
         the mantissa gone — is the point, and it is what the companion pin
         compares against rather than the digits. Tracked in
         `#3958 <https://github.com/kornia/kornia/issues/3958>`_.
@@ -1762,8 +1767,8 @@ def normalize_homography(
         ``400000001507328.0``, and a size of ``0`` silently mirrors that axis
         (source ``(4, 0)``, destination ``(4, 5)``, first row
         ``[-0.25, 0.0, -1.25]``). Those three figures pass through ``matmul``
-        and an inverse, so their trailing digits are backend-dependent
-        (torch 2.9.1, cpu); the orders of magnitude are the point. This is the
+        and an inverse, so their trailing digits are backend-dependent; the
+        orders of magnitude are the point. This is the
         executed root of 1-pixel warp outputs coming back all-``nan`` on cpu
         and mps — the devices executed; no CUDA behavior is claimed, matching
         the companion pin's scope. Tracked
@@ -1789,7 +1794,7 @@ def normalize_homography(
         :func:`~kornia.geometry.transform.warp_perspective` all inherit it. An
         identity ``warp_perspective`` called with ``align_corners=False``
         therefore does not reproduce its input — on a 4x4 ``arange`` image the
-        maximum deviation is ``11.25`` (torch 2.9.1, cpu), against
+        maximum deviation is ``11.25``, against
         ``1.4e-05`` at ``align_corners=True``. Recorded in
         `#3904 <https://github.com/kornia/kornia/issues/3904>`_.
 
@@ -2316,8 +2321,10 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         go through this function — they only transpose, negate and multiply —
         and accept ``int64`` happily, returning an ``int64`` result. The
         accepting side is a **cpu/mps** statement (torch 2.9.1, executed):
-        their integer path runs through batched matmul, which PyTorch's
-        documented op coverage omits on CUDA (not executed here), so no
+        their integer path runs through batched matmul, which PyTorch 2.9.1
+        implements for no integer dtype on CUDA — a version-specific statement
+        read from that release's CUDA matmul dispatch source
+        (``aten/src/ATen/native/cuda/Blas.cpp``), not executed here — so no
         accept-and-return-``int64`` behavior is claimed there. See
         :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4`.
         Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
@@ -2430,8 +2437,9 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
         The ``_4x4`` and ``_Rt`` variants disagree on integer input: this
         function accepts an ``int64`` matrix and returns an ``int64`` matrix
         — on **cpu/mps** (torch 2.9.1, executed; its integer path runs
-        through batched matmul, which PyTorch's documented op coverage omits
-        on CUDA, not executed here) —
+        through batched matmul, which PyTorch 2.9.1 implements for no integer
+        dtype on CUDA — source-derived from that release's
+        ``aten/src/ATen/native/cuda/Blas.cpp``, not executed here) —
         while
         :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt`
         raises ``RuntimeError: result type Float can't be cast to the desired

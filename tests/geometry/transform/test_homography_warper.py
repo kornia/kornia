@@ -126,6 +126,9 @@ class TestHomographyWarper(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_consistency(self, batch_size, device, dtype):
+        # The same normalize/denormalize mutual-inverse invariant is pinned bitwise at dyadic
+        # sizes by TestNormalizeHomography::test_convention_normalize_and_denormalize_round_trip
+        # in tests/geometry/test_conversions.py -- a behavior change flips both files.
         # create input data
         height, width = 2, 5
         dst_homo_src = torch.eye(3, device=device, dtype=dtype)
