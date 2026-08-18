@@ -1754,10 +1754,10 @@ def normalize_homography(
         `#3958 <https://github.com/kornia/kornia/issues/3958>`_.
 
     .. warning::
-        This paragraph is about the degenerate-denominator branch only, not
-        about the ``2 / (size - 1)`` scaling or the corner-aligned convention,
-        which are `#3904 <https://github.com/kornia/kornia/issues/3904>`_'s
-        territory and reserved for its assigned contributor. Neither ``dsize``
+        This paragraph is about the degenerate-denominator branch only; its
+        scope — and what stays out of it — is delimited in
+        :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
+        degenerate-size warning. Neither ``dsize``
         is validated, so
         :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
         degenerate sizes propagate straight into the homography. On the
@@ -1966,10 +1966,10 @@ def normal_transform_pixel3d(
           grid built for one silently permutes axes when fed to the other
 
     .. warning::
-        This paragraph is about the degenerate-denominator branch only, not
-        about the ``2 / (size - 1)`` scaling or the corner-aligned convention,
-        which are `#3904 <https://github.com/kornia/kornia/issues/3904>`_'s
-        territory and reserved for its assigned contributor. The degenerate-size
+        This paragraph is about the degenerate-denominator branch only; its
+        scope — and what stays out of it — is delimited in
+        :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
+        degenerate-size warning. The degenerate-size
         and integer-``dtype`` behaviours of
         :func:`~kornia.geometry.conversions.normal_transform_pixel` apply here
         per axis: ``depth=1`` gives a ``z``
@@ -2039,7 +2039,7 @@ def denormalize_homography(
           ``denormalize(normalize(H))`` and ``normalize(denormalize(H))`` each
           return ``H`` to ``2.384185791015625e-07`` in ``float32`` (torch 2.9.1,
           cpu — the tag covers every measured figure in this bullet, the
-          ``2.0`` and ``4.76837158203125e-07`` below included: they are
+          ``3.0`` and ``4.76837158203125e-07`` below included: they are
           accumulation residuals whose ulp counts can shift with a backend's
           summation order) — that is rounding across four matrix products and an inverse,
           not an exact identity. Pick sizes of the form ``2**k + 1`` and the
@@ -2055,8 +2055,10 @@ def denormalize_homography(
           condition, not a necessary one, since rounding can cancel across
           the chain — and it is a property of the whole computation, not of
           ``H``'s entries (every finite float is already a dyadic rational,
-          and dyadic entries guarantee nothing: a matrix of exact integers as
-          large as ``2**25`` misses its round trip by ``2.0``). At sizes
+          and dyadic entries guarantee nothing: the exact-integer matrix
+          ``[[2**25, 1, 3], [5, 2**25, 7], [11, 13, 1]]`` comes back from
+          ``denormalize(normalize(H))`` off by ``3.0`` in ``float32``, even
+          at the dyadic sizes ``(3, 5)``/``(5, 9)``). At sizes
           ``(3, 5)`` and ``(5, 9)`` the literal
           above returns from ``normalize(denormalize(H))`` bitwise while
           ``denormalize(normalize(H))`` still deviates by
@@ -2137,10 +2139,10 @@ def normalize_homography3d(
         `#3960 <https://github.com/kornia/kornia/issues/3960>`_.
 
     .. warning::
-        This paragraph is about the degenerate-denominator branch only, not
-        about the ``2 / (size - 1)`` scaling or the corner-aligned convention,
-        which are `#3904 <https://github.com/kornia/kornia/issues/3904>`_'s
-        territory and reserved for its assigned contributor. A source
+        This paragraph is about the degenerate-denominator branch only; its
+        scope — and what stays out of it — is delimited in
+        :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
+        degenerate-size warning. A source
         ``depth`` of ``1`` collapses the ``z`` scale through
         :func:`~kornia.geometry.conversions.normal_transform_pixel3d`'s ``2e14``
         blow-up, leaving a value that is **not** an exact zero and merely prints
@@ -2320,13 +2322,11 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         :func:`~kornia.geometry.conversions.worldtocam_to_camtoworld_Rt` do not
         go through this function — they only transpose, negate and multiply —
         and accept ``int64`` happily, returning an ``int64`` result. The
-        accepting side is a **cpu/mps** statement (torch 2.9.1, executed):
-        their integer path runs through batched matmul, which PyTorch 2.9.1
-        implements for no integer dtype on CUDA — a version-specific statement
-        read from that release's CUDA matmul dispatch source
-        (``aten/src/ATen/native/cuda/Blas.cpp``), not executed here — so no
-        accept-and-return-``int64`` behavior is claimed there. See
-        :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4`.
+        accepting side is a **cpu/mps** statement (torch 2.9.1, executed) — no
+        accept-and-return-``int64`` behavior is claimed on CUDA, for the
+        source-derived reason carried by
+        :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4`'s
+        warning.
         Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
     Args:

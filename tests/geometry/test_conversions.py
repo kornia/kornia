@@ -131,36 +131,17 @@ _DEPRECATED_ALIASES = [
     ("quaternion_to_angle_axis", "quaternion_to_axis_angle", [1.0, 2.0, 3.0, 4.0]),
     ("angle_axis_to_quaternion", "axis_angle_to_quaternion", [0.1, 0.2, 0.3]),
 ]
-_DEPRECATED_ALIAS_IDS = [deprecated for deprecated, _, _ in _DEPRECATED_ALIASES]
-_DEPRECATED_ALIAS_INPUTS = [(deprecated, arg) for deprecated, _, arg in _DEPRECATED_ALIASES]
 
 
-def _rejected_by_a_kornia_shape_guard(err: BaseException) -> bool:
-    # Shared classifier for the kornia#3960 pair below: did this exception come from one of
-    # kornia's OWN shape guards? True for any BaseError -- the root of kornia's exception
-    # vocabulary in kornia/core/exceptions (KORNIA_CHECK_SHAPE's ShapeError, plain KORNIA_CHECK's
-    # bare BaseError and TypeCheckError are all subclasses, mro-verified), so a fix using ANY of
-    # kornia's check styles classifies as guarded -- or for a ValueError, which covers the
-    # hand-rolled ValueError the three homography functions raise today under any future rewording
-    # (keying on the message would let a reworded fix land as "unguarded", leaving the strict
-    # xfail silently XFAIL -- the failure mode a strict xfail exists to prevent).
-    # A plain type check suffices on the ValueError side: every torch shape failure in these call
-    # chains (matmul, linalg.inv, linalg.solve, broadcast_shapes) raises RuntimeError, screened by
-    # type. A provenance check -- walking the traceback to the raising frame -- would point the
-    # residual risk the wrong way: misclassifying a genuine kornia ValueError (an exotic install's
-    # co_filename mismatch, say) leaves the strict xfail silently XFAIL after a real fix, while a
-    # plain-isinstance misfire surfaces as a loud strict-XPASS.
-    # BaseError is NOT a ValueError subclass (mro: BaseError -> Exception), so both types are
-    # needed; ValueError alone would miss every KORNIA_CHECK-family fix.
-    # The strict xfail asserts this predicate and the companion wart asserts its complement, so the
-    # two are keyed to one definition and cannot drift apart. It deliberately depends on no message
-    # text at all: what any failure says may be reworded on either side.
-    # DECIDES: whether kornia's own guard rejected the input. Does NOT decide which guard style a
-    # fix picks, nor any message wording. OUT OF SCOPE by declaration: a fix that guarded shapes
-    # with a literal `raise RuntimeError(...)` would classify as unguarded and land silently --
-    # accepted, because nothing in kornia/core/check.py raises bare RuntimeError; adopting that
-    # style would be new, at which point this classifier gains a branch.
-    return isinstance(err, (BaseError, ValueError))
+# Exception types that mean "kornia's OWN guard rejected the input", for the kornia#3960 pair
+# below: kornia's guards raise BaseError subclasses (KORNIA_CHECK_SHAPE's ShapeError, plain
+# KORNIA_CHECK's bare BaseError, TypeCheckError -- BaseError is not a ValueError subclass, so both
+# entries are needed) or the hand-rolled ValueError the three homography functions raise today,
+# while every torch shape failure in these call chains (matmul, linalg.inv) raises RuntimeError.
+# Deliberately type-only -- no message text, which may be reworded on either side. The strict
+# xfail asserts membership and the companion wart asserts the complement, so the two are keyed to
+# one definition and cannot drift apart.
+_KORNIA_GUARD_EXCEPTIONS = (BaseError, ValueError)
 
 
 # The wrong-sized-matrix cells for the kornia#3960 pair: (op name, wrong square size). One table
@@ -212,11 +193,13 @@ def _asymmetric_pose(device: torch.device, dtype: torch.dtype) -> tuple[torch.Te
 # _DIRECTION_H feeds TestNormalizeHomography's composition/direction/per-sample pins (affine, zero
 # projective row, asymmetric); _ROUND_TRIP_H feeds its round-trip and per-sample pins (projective,
 # chosen so that at dyadic sizes every intermediate of the round trip is exactly representable);
-# _ARKIT_WORKED_QVEC is the ARKit worked-example quaternion that three TestCARKitToColmap pins
-# anchor to one another.
+# _ARKIT_WORKED_QVEC and _ARKIT_WORKED_TVEC are the ARKit worked-example (q, t) pair that three
+# TestCARKitToColmap pins anchor to one another -- both halves are shared so that a change to the
+# worked example cannot leave one pin silently testing a different pose.
 _DIRECTION_H = [[[2.0, 0.5, 2.0], [-0.25, 1.0, 1.0], [0.0, 0.0, 1.0]]]
 _ROUND_TRIP_H = [[[1.25, 0.25, 4.0], [-0.5, 0.75, 2.0], [0.0625, 0.125, 1.0]]]
 _ARKIT_WORKED_QVEC = [[0.0, 1.0, 0.0, 1.0]]
+_ARKIT_WORKED_TVEC = [[[1.0], [1.0], [1.0]]]
 
 
 @contextmanager
@@ -445,20 +428,21 @@ class TestAngleAxisToQuaternion(BaseTester):
     #     `angle_axis_to_quaternion` is deprecated in favor of `axis_angle_to_quaternion`.'
     #   torch.equal(out, C.axis_angle_to_quaternion(torch.tensor([0.1, 0.2, 0.3]))) -> True
     # The cases come from the module-level _DEPRECATED_ALIASES table, shared with the two #3956 pins
-    # at the end of this file. float32 is hardcoded and the dtype fixture dropped: each alias is a
-    # one-line forward to its replacement, so "same output as the replacement" cannot depend on the
-    # dtype, and the fixture only multiplied the cell count. The comparison is
+    # at the end of this file. The dtype fixture stays: alias == replacement is a contract about
+    # whatever the two implementations are, not about today's one-line forward -- a future rewrite
+    # that kept a frozen copy behind the alias could diverge at a single dtype, and only a leg at
+    # that dtype would see it. The comparison is
     # torch.testing.assert_close at rtol=atol=0 (exact, and it checks shape/dtype/device itself)
     # rather than torch.equal, whose NaN != NaN would turn "both returned the same NaN" into a
     # spurious failure; equal_nan=True keeps that case a pass, and a mismatch reports a real
     # per-element diff.
     @pytest.mark.parametrize(("deprecated_name", "replacement_name", "arg"), _DEPRECATED_ALIASES)
     def test_convention_deprecated_alias_warns_and_matches_replacement(
-        self, device, deprecated_name, replacement_name, arg
+        self, device, dtype, deprecated_name, replacement_name, arg
     ):
         deprecated = getattr(kornia.geometry.conversions, deprecated_name)
         replacement = getattr(kornia.geometry.conversions, replacement_name)
-        tensor = torch.tensor(arg, device=device, dtype=torch.float32)
+        tensor = torch.tensor(arg, device=device, dtype=dtype)
 
         expected = replacement(tensor)
 
@@ -3474,8 +3458,12 @@ class TestNormalTransformPixel(BaseTester):
         # (0, 0, 0) maps to (-1, -1, -1) and (width - 1, height - 1, depth - 1) to (1, 1, 1).
         # NOTE: covered by this class's kornia#3904 note above; recorded, not a ratified contract.
         # (depth, height, width) = (3, 5, 9) keeps 2/8, 2/4 and 2/2 exact, so the comparison runs
-        # at atol=rtol=0. float32 is hardcoded and the dtype fixture dropped for the same
-        # pure-Python-floats reason as the 2-D pin above. Only the matrix is asserted: the corner maps in the
+        # at atol=rtol=0. float32 is hardcoded and the dtype fixture dropped -- NOT for the 2-D
+        # pin's pure-Python-floats reason: normal_transform_pixel3d computes its scales as tensor
+        # arithmetic in the requested dtype (tr_mat[i, i] * 2.0 / denominator). These dyadic
+        # scales are exact in every dtype, and the 3-D helper's dtype-dependent arithmetic stays
+        # exercised by the dtype-parameterized component-order pin below. Only the matrix is
+        # asserted: the corner maps in the
         # snippet are pure arithmetic on the bitwise-pinned matrix and this test's own constants.
         # Snippet used to generate expected (stdlib only):
         #   2 / (9 - 1), 2 / (5 - 1), 2 / (3 - 1) -> 0.25, 0.5, 1.0
@@ -3515,7 +3503,8 @@ class TestNormalTransformPixel(BaseTester):
     # normal_transform_pixel and normal_transform_pixel3d, asserting the CURRENT scale factor that
     # a degenerate size produces. If any cell fails, #3957 was (partly) fixed -- update or remove
     # the degenerate-size warnings on normal_transform_pixel, normal_transform_pixel3d,
-    # normalize_homography, denormalize_homography and normalize_homography3d, and also the
+    # normalize_homography and normalize_homography3d (denormalize_homography inherits these
+    # warnings by reference), and also the
     # expected_2d_1 / expected_3d_1 rows of TestHomographyNormalTransform in
     # tests/geometry/transform/test_homography_warper.py, which hardcode the same
     # size == 1 -> 2e14 literal and would otherwise fail two directories away with nothing
@@ -3532,11 +3521,13 @@ class TestNormalTransformPixel(BaseTester):
     # degenerated. The three classes give three different answers because only size == 1 is routed
     # to eps: size == 1 divides by eps = 1e-14 and gives 2e14, size == 0 divides by -1 and gives a
     # sign-flipped -2.0 (a mirroring transform), size == -3 divides by -4 and gives -0.5.
-    # float32 is hardcoded and the dtype fixture dropped: the scales are computed as pure Python
-    # floats (2.0 / width_denom and friends) before any tensor exists, and dtype only casts the
-    # already-computed floats -- any kornia-side change to a scale flips the float32 cell, while a
-    # float16 leg would only assert inf == inf and a bfloat16 leg only that torch casts the same
-    # float the same way on both sides of the comparison.
+    # float32 is hardcoded and the dtype fixture dropped: any kornia-side change to a scale flips
+    # the float32 cell. The 2-D scales are pure Python floats (2.0 / width_denom and friends)
+    # computed before any tensor exists, so other legs would only test torch's cast; the 3-D
+    # helper computes its scales as tensor arithmetic in the requested dtype
+    # (tr_mat[i, i] * 2.0 / denominator), so its other legs would re-run that division under a
+    # different rounding -- a claim about torch's arithmetic, not about which scale kornia
+    # chooses, which the float32 cell already pins.
     # Snippet used to generate expected (torch only, executed on cpu float32/float64):
     #   normal_transform_pixel(3, 1)[0, 0, 0]        -> 200000000753664.0  (2 / 1e-14)
     #   normal_transform_pixel(3, 0)[0, 0, 0]        -> -2.0
@@ -3589,9 +3580,10 @@ class TestNormalTransformPixel(BaseTester):
         # size comparison decided before any tensor arithmetic, and the pinned answers 2.0 and
         # -2.0 are exact in every dtype, so no other-dtype leg can fail where float32 passes and
         # the fixture only multiplied cells. Three cells:
-        #   (0) the eps default is still 1e-14 -- the other cells pass eps explicitly (house rule)
-        #       so they cannot see a re-tuned default, which would otherwise be an invisible way to
-        #       half-fix the matrix above;
+        #   (0) the eps default is still 1e-14 -- a re-tuned default already flips the size == 1
+        #       cells of the matrix above loudly (they call with the default and pin 2/1e-14), so
+        #       this cell adds attribution, not detection: it fails naming the default itself
+        #       instead of leaving a reader to reverse-engineer a 2e14 mismatch;
         #   (1) eps=1.0 changes the size == 1 answer to 2.0, proving that branch reads eps;
         #   (2) the same eps=1.0 leaves the size == 0 answer at -2.0, proving that branch does not.
         # If any cell fails, #3957 was (partly) fixed -- flip/remove the matrix above. NOT a
@@ -3759,11 +3751,10 @@ class TestNormalizeHomography(BaseTester):
         # representable too (exact constants alone do not make the round trip bitwise -- that is a
         # property of the whole computation, not of the sizes or of the entries; the
         # triangular-inverse mechanism in the class header is part of it), so the round trip
-        # returns the input bit for bit and that leg runs at atol=rtol=0. Cross-file: the same
-        # mutual-inverse invariant is exercised at looser tolerance by
+        # returns the input bit for bit and that leg runs at atol=rtol=0. Cross-file:
         # TestHomographyWarper::test_consistency in
-        # tests/geometry/transform/test_homography_warper.py (back-pointer there) -- a behavior
-        # change in either function flips both files. With
+        # tests/geometry/transform/test_homography_warper.py (back-pointer there) exercises the
+        # same high-level mutual-inverse invariant, on its own literal, sizes and tolerances. With
         # non-dyadic sizes ((4, 5) and (8, 9)) the constants are rounded and the round trip is only
         # approximate; its tolerance is sized from the mechanism rather than from a measurement --
         # each entry passes through four matrix products and one 3x3 inverse, so the error is a
@@ -3971,6 +3962,42 @@ class TestNormalizeHomography(BaseTester):
             msg=_issue_msg("kornia#3958: the ambient default dtype no longer decides the constants' precision"),
         )
 
+    def test_wart_integer_input_raises_on_cpu_and_nans_on_mps_3959(self, device):
+        # Wart pin for kornia#3959's homography reach, companion to normalize_homography's
+        # integer-input warning: the normalization matrices are cast to the input's int64 by
+        # .to(input), truncating their scales to zero (the truncation itself is pinned in
+        # test_wart_integer_dtype_truncates_the_scale_to_zero_3959 above), and the downstream
+        # failure is device-dependent. On cpu, normalize_homography dies in its closed-form
+        # inverse path with a RuntimeError and denormalize_homography's torch.linalg.inv path
+        # raises torch.linalg.LinAlgError (a RuntimeError subclass) about the zero diagonal of
+        # the truncated matrix. On mps, the same normalize_homography call raises nothing and
+        # returns an all-nan float32 matrix. Exception TYPES only, no message text -- torch may
+        # reword either message (the snippet quotes them as samples); no _KORNIA_GUARD_EXCEPTIONS
+        # type is a RuntimeError subclass, so a kornia-side dtype guard flips the cpu cells
+        # loudly. Other devices skip visibly: the warning claims cpu and mps behavior only,
+        # matching what was executed. If any cell fails, #3959 was (partly) fixed -- update or
+        # remove the warning. NOT a contract that integer input must keep failing this way.
+        # Snippet used to generate expected (torch only, executed on cpu and mps, torch 2.9.1):
+        #   normalize_homography(torch.eye(3, dtype=torch.int64)[None], (4, 5), (8, 9))
+        #     cpu -> RuntimeError: expected scalar type Long but found Float
+        #     mps -> all-nan float32 matrix, no error
+        #   denormalize_homography(torch.eye(3, dtype=torch.int64)[None], (4, 5), (8, 9))
+        #     cpu -> torch.linalg.LinAlgError: linalg.inv: (Batch element 0): The diagonal
+        #            element 2 is zero, the inversion could not be completed
+        identity = torch.eye(3, device=device, dtype=torch.int64)[None]
+
+        if device.type == "cpu":
+            with pytest.raises(RuntimeError):
+                kornia.geometry.conversions.normalize_homography(identity, (4, 5), (8, 9))
+            with pytest.raises(torch.linalg.LinAlgError):
+                kornia.geometry.conversions.denormalize_homography(identity, (4, 5), (8, 9))
+        elif device.type == "mps":
+            out = kornia.geometry.conversions.normalize_homography(identity, (4, 5), (8, 9))
+            assert out.dtype == torch.float32, "kornia#3959: the mps int64 result is no longer float32"
+            assert out.isnan().all(), "kornia#3959: the mps int64 result is no longer all-nan"
+        else:
+            pytest.skip("kornia#3959's integer-input warning claims cpu and mps behavior only")
+
     @pytest.mark.xfail(
         raises=AssertionError,
         reason="the or-guard accepts any (B, N, N) tensor, so a wrong-sized matrix reaches matmul "
@@ -3991,12 +4018,10 @@ class TestNormalizeHomography(BaseTester):
         # it escape: under raises=AssertionError an escaping RuntimeError would be reported as an
         # error rather than an XFAIL. float32 is hardcoded and the dtype fixture dropped because a
         # shape guard runs before any arithmetic and cannot depend on the dtype.
-        # The classification lives in the module-level _rejected_by_a_kornia_shape_guard, which
-        # documents what it does and does not decide; the companion wart asserts its complement, so
-        # the two cannot drift apart. Anything that is not a kornia guard -- today's matmul
-        # RuntimeError included -- counts as unguarded, which keeps this pin XFAIL until #3960 is
-        # actually fixed. The cells come from the shared _WRONG_SIZE_CASES table for the same
-        # reason: the pair must cover identical cells.
+        # Classified by the module-level _KORNIA_GUARD_EXCEPTIONS types; anything else -- today's
+        # matmul RuntimeError included -- counts as unguarded, which keeps this pin XFAIL until
+        # #3960 is actually fixed. The cells come from the shared _WRONG_SIZE_CASES table for the
+        # same reason: the pair must cover identical cells.
         # Marked xfail(strict=True) so fixing #3960 makes all three cases XPASS and forces the mark
         # out. Companion wart: test_wart_wrong_sized_matrices_die_inside_matmul_3960.
         op = getattr(kornia.geometry.conversions, op_name)
@@ -4005,7 +4030,7 @@ class TestNormalizeHomography(BaseTester):
         try:
             op(wrong, *_homography_sizes(op_name))
         except Exception as err:
-            guarded = _rejected_by_a_kornia_shape_guard(err)
+            guarded = isinstance(err, _KORNIA_GUARD_EXCEPTIONS)
         else:
             guarded = False
 
@@ -4018,14 +4043,11 @@ class TestNormalizeHomography(BaseTester):
         # purpose. pytest.raises(RuntimeError) requires the exception TYPE that torch's own
         # arithmetic raises -- the name says the input dies inside matmul, and catching a broader
         # Exception would let an unrelated TypeError or IndexError regression pass under that name;
-        # kornia's guards raise BaseError subclasses or ValueError, none a RuntimeError subclass,
-        # so a guard fix escapes the raises() and flips this cell loudly. The assertion then holds the
-        # complement of the xfail's classifier, so the pair stays keyed to the one module-level
-        # predicate and cannot drift apart if that predicate ever learns new guard shapes.
-        # Neither layer depends on message text: the discrimination sits on exception types and on
-        # kornia's own guard shapes, not on wording that torch (or kornia) may reword -- a torch
-        # release rephrasing the matmul error, or a backend wording it differently, changes nothing
-        # here (the message below is quoted as a sample, asserted nowhere).
+        # no _KORNIA_GUARD_EXCEPTIONS type is a RuntimeError subclass, so a guard fix escapes the
+        # raises() and flips this cell loudly. The assertion then holds the complement of the
+        # xfail's classification, keeping the pair keyed to the one module-level tuple. Neither
+        # layer depends on message text (the message below is quoted as a sample, asserted
+        # nowhere).
         # If any cell fails, #3960 was (partly) fixed -- flip/remove the strict xfail above. NOT a
         # contract that these shapes must keep dying outside the guard.
         # Snippet used to generate expected (torch only, executed on cpu float32, torch 2.9.1):
@@ -4040,7 +4062,7 @@ class TestNormalizeHomography(BaseTester):
         with pytest.raises(RuntimeError) as excinfo:
             op(wrong, *_homography_sizes(op_name))
 
-        assert not _rejected_by_a_kornia_shape_guard(excinfo.value), (
+        assert not isinstance(excinfo.value, _KORNIA_GUARD_EXCEPTIONS), (
             f"kornia#3960: {op_name} now rejects a ({wrong_size}, {wrong_size}) matrix in its own "
             "shape guard -- the companion strict xfail should be XPASSing"
         )
@@ -5068,7 +5090,7 @@ class TestCARKitToColmap(BaseTester):
         #   q_colmap  = [0.7071067811865476, 0.0, 0.7071067811865475, 0.0]
         #   det(R_colmap) = 1.0
         qvec = torch.tensor(_ARKIT_WORKED_QVEC, device=device, dtype=dtype)
-        tvec = torch.ones(1, 3, 1, device=device, dtype=dtype)
+        tvec = torch.tensor(_ARKIT_WORKED_TVEC, device=device, dtype=dtype)
 
         q_colmap, t_colmap = ARKitQTVecs_to_ColmapQTVecs(qvec, tvec)
         rotation = kornia.geometry.conversions.quaternion_to_rotation_matrix(q_colmap)
@@ -5123,7 +5145,7 @@ class TestCARKitToColmap(BaseTester):
         #   ARKitQTVecs_to_ColmapQTVecs(q * 1000, t) == ARKitQTVecs_to_ColmapQTVecs(q, t)  (0.0 diff)
         #   ARKitQTVecs_to_ColmapQTVecs(-q, t)       == ARKitQTVecs_to_ColmapQTVecs(q, t)  (0.0 diff)
         qvec = torch.tensor(_ARKIT_WORKED_QVEC, device=device, dtype=dtype)
-        tvec = torch.ones(1, 3, 1, device=device, dtype=dtype)
+        tvec = torch.tensor(_ARKIT_WORKED_TVEC, device=device, dtype=dtype)
 
         q_reference, t_reference = ARKitQTVecs_to_ColmapQTVecs(qvec, tvec)
         q_scaled, t_scaled = ARKitQTVecs_to_ColmapQTVecs(qvec * 1000.0, tvec)
@@ -5145,7 +5167,7 @@ class TestCARKitToColmap(BaseTester):
         # so that the pin names the frames it is asserting; the literals themselves are pinned by
         # test_convention_worked_literal_matches_the_hand_computation.
         qvec = torch.tensor(_ARKIT_WORKED_QVEC, device=device, dtype=dtype)
-        tvec = torch.ones(1, 3, 1, device=device, dtype=dtype)
+        tvec = torch.tensor(_ARKIT_WORKED_TVEC, device=device, dtype=dtype)
 
         q_colmap, t_colmap = ARKitQTVecs_to_ColmapQTVecs(qvec, tvec)
 
@@ -5161,14 +5183,15 @@ class TestCARKitToColmap(BaseTester):
         )
         self.assert_close(t_colmap, worldtocam_vision_t, atol=0.0, rtol=0.0)
 
-    def test_convention_output_shapes_and_per_sample_batching(self, device):
+    def test_convention_output_shapes_and_per_sample_batching(self, device, dtype):
         # Convention pin: the outputs are q (B, 4) and t (B, 3, 1) -- the translation keeps its
         # trailing singleton axis, guaranteed by an explicit reshape -- and the conversion is
-        # per-sample: element 1 of a batched call equals the single-element call, bitwise.
-        # float32 is hardcoded and the dtype fixture dropped: output shapes and per-sample
-        # slicing independence are shape claims that no dtype can change.
-        batch_q = torch.tensor([[0.0, 1.0, 0.0, 1.0], [0.5, 0.5, 0.5, 0.5]], device=device, dtype=torch.float32)
-        batch_t = torch.tensor([[[1.0], [1.0], [1.0]], [[1.0], [2.0], [3.0]]], device=device, dtype=torch.float32)
+        # per-sample: element 1 of a batched call equals the single-element call, bitwise. The
+        # two shape asserts are dtype-invariant, but the bitwise per-sample comparison runs the
+        # whole quaternion pipeline on a batched and an unbatched path, so the dtype fixture
+        # stays: each dtype's arithmetic could break the equality on its own.
+        batch_q = torch.tensor([[0.0, 1.0, 0.0, 1.0], [0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype)
+        batch_t = torch.tensor([[[1.0], [1.0], [1.0]], [[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
 
         q_colmap, t_colmap = ARKitQTVecs_to_ColmapQTVecs(batch_q, batch_t)
         single_q, single_t = ARKitQTVecs_to_ColmapQTVecs(batch_q[1:], batch_t[1:])
@@ -5816,9 +5839,9 @@ class TestAxisAngleToRotationMatrix:
 # so that the filter mutation they provoke cannot leak into the rest of the suite: this bug is
 # contagious across tests, and an unisolated pin would silently disarm every other test's warning
 # discipline.
-# Both pins iterate the module-level _DEPRECATED_ALIASES table defined at the top of this file
-# (through _DEPRECATED_ALIAS_INPUTS, which drops the replacement column they do not need), so the
-# list of aliases is maintained in exactly one place.
+# Both pins parametrize directly over the module-level _DEPRECATED_ALIASES table defined at the
+# top of this file (ignoring the replacement column they do not need), so the list of aliases is
+# maintained in exactly one place.
 
 
 @pytest.mark.xfail(
@@ -5827,8 +5850,10 @@ class TestAxisAngleToRotationMatrix:
     "-W error::DeprecationWarning cannot escalate it — kornia#3956",
     strict=True,
 )
-@pytest.mark.parametrize(("alias_name", "arg"), _DEPRECATED_ALIAS_INPUTS, ids=_DEPRECATED_ALIAS_IDS)
-def test_convention_deprecated_alias_warning_can_be_escalated_to_an_error_3956(alias_name, arg):
+@pytest.mark.parametrize(
+    ("alias_name", "replacement_name", "arg"), _DEPRECATED_ALIASES, ids=[row[0] for row in _DEPRECATED_ALIASES]
+)
+def test_convention_deprecated_alias_warning_can_be_escalated_to_an_error_3956(alias_name, replacement_name, arg):
     # Intended behavior: a DeprecationWarning emitted by kornia obeys the caller's warning filters,
     # so a project that runs under -W error::DeprecationWarning (or pytest's filterwarnings =
     # error) sees the call fail and can find its deprecated usages. It does not:
@@ -5859,8 +5884,10 @@ def test_convention_deprecated_alias_warning_can_be_escalated_to_an_error_3956(a
     assert escalated, f"kornia#3956: {alias_name} did not raise under simplefilter('error', DeprecationWarning)"
 
 
-@pytest.mark.parametrize(("alias_name", "arg"), _DEPRECATED_ALIAS_INPUTS, ids=_DEPRECATED_ALIAS_IDS)
-def test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956(alias_name, arg):
+@pytest.mark.parametrize(
+    ("alias_name", "replacement_name", "arg"), _DEPRECATED_ALIASES, ids=[row[0] for row in _DEPRECATED_ALIASES]
+)
+def test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956(alias_name, replacement_name, arg):
     # Wart pin for kornia#3956, companion to the strict xfail above: assert that a single alias
     # call CURRENTLY leaves two entries of its own at the head of the process-global filter list,
     # starting from an empty one. Four cells, one per alias, because all four are separate
