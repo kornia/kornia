@@ -15,9 +15,9 @@
 # limitations under the License.
 #
 
+import dis
 import inspect
 import sys
-import traceback
 import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -29,6 +29,7 @@ import torch
 
 import kornia
 from kornia.core._compat import torch_version
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.ops import eye_like
 from kornia.geometry.conversions import (
@@ -150,26 +151,88 @@ def _raised_by_a_kornia_guard(err: BaseException) -> bool:
     # -- the question every wart pin below has to answer, and the reason a type test alone is not
     # enough: a guard written as a literal `raise RuntimeError(...)` is indistinguishable BY TYPE
     # from the torch matmul/linalg failures these warts pin, so such a fix would land with the
-    # strict xfail still XFAIL and the companion warts still green. Earlier revisions declared
-    # that hole instead of closing it; this closes it without depending on message text, which is
-    # torch's to reword.
-    # The discriminator is the INNERMOST traceback frame -- where the exception was actually
-    # raised. kornia's own guards are one of: a _KORNIA_GUARD_EXCEPTIONS type, a literal `raise`
-    # statement, a KORNIA_CHECK* call, or a frame inside kornia/core/check.py. Downstream torch
-    # failures surface at the arithmetic statement itself (`... @ ...`, `torch.linalg.inv(...)`,
-    # `H[..., -1, -1] += 1.0`), which matches none of those. Both directions are exercised: the
-    # #3960 strict xfail asserts this is True (XPASSing the day a guard lands, in any style) and
-    # the warts assert it is False.
-    # If the source line is unavailable (an installed tree without sources), `line` is empty and
-    # the classifier degrades to the type test -- the behavior earlier revisions had throughout.
-    frame = traceback.extract_tb(err.__traceback__)[-1]
-    line = frame.line or ""
-    return (
-        isinstance(err, _KORNIA_GUARD_EXCEPTIONS)
-        or "raise " in line
-        or "KORNIA_CHECK" in line
-        or frame.filename.replace("\\", "/").endswith("kornia/core/check.py")
+    # strict xfail still XFAIL and the companion warts still green.
+    # The discriminator is the BYTECODE INSTRUCTION the innermost traceback frame died on, read
+    # through tb_lasti. A Python `raise` statement compiles to RAISE_VARARGS (RERAISE when an
+    # exception is re-raised) whatever its source formatting -- `raise X`, `raise(X)`, a raise
+    # split across lines, or a KORNIA_CHECK* helper raising inside kornia/core/check.py -- while
+    # an exception surfacing out of a C call lands on the call site itself: BINARY_OP for
+    # `... @ ...` and `H[..., -1, -1] += 1.0`, CALL for `torch.linalg.inv(...)`. An earlier
+    # revision searched the source line for "raise " instead, which missed `raise(RuntimeError(
+    # ...))` -- matching source text made the classification formatting-sensitive, not semantic.
+    # Both directions are exercised: test_guard_classifier_reads_the_raising_instruction below
+    # covers the classifier itself, the #3960 strict xfail asserts this is True (XPASSing the day
+    # a guard lands, in any style), and the four warts assert it is False.
+    innermost = err.__traceback__
+    while innermost is not None and innermost.tb_next is not None:
+        innermost = innermost.tb_next
+    if innermost is None:
+        return isinstance(err, _KORNIA_GUARD_EXCEPTIONS)
+    raising_opname = next(
+        (
+            instruction.opname
+            for instruction in dis.get_instructions(innermost.tb_frame.f_code)
+            if instruction.offset == innermost.tb_lasti
+        ),
+        None,
     )
+    return isinstance(err, _KORNIA_GUARD_EXCEPTIONS) or raising_opname in ("RAISE_VARARGS", "RERAISE")
+
+
+def test_guard_classifier_reads_the_raising_instruction():
+    # Direct pin for _raised_by_a_kornia_guard above. Every #3959/#3960 pin's "a guard fix cannot
+    # land unnoticed" guarantee rests on that one function, and nothing else in this file would
+    # notice it regressing -- the pins would simply go quiet, which is the failure mode the
+    # guarantee exists to prevent. `raise (X)` is in the positive set because a substring-matching
+    # revision of the classifier scored it as NOT a guard: same semantics, different formatting.
+    # The negative set is the two shapes of downstream failure the warts actually pin, a mixed
+    # matmul and a singular inverse. Device-independent by construction: default-device tensors,
+    # no fixture, and only the raising instruction is read.
+    def spaced_raise():
+        raise RuntimeError("guard")
+
+    def parenthesised_raise():
+        raise (RuntimeError("guard"))
+
+    def raise_a_bound_name():
+        error = RuntimeError("guard")
+        raise error
+
+    def kornia_shape_check():
+        KORNIA_CHECK_SHAPE(torch.eye(4)[None], ["B", "3", "3"])
+
+    def kornia_value_check():
+        KORNIA_CHECK(False, "guard")
+
+    def hand_rolled_value_error():
+        raise ValueError("Input dst_pix_trans_src_pix must be a Bx3x3 tensor")
+
+    def mixed_matmul_failure():
+        return torch.eye(3, dtype=torch.int64)[None] @ torch.eye(3, dtype=torch.float32)[None]
+
+    def singular_inverse_failure():
+        return torch.linalg.inv(torch.zeros(1, 3, 3))
+
+    for guard in (
+        spaced_raise,
+        parenthesised_raise,
+        raise_a_bound_name,
+        kornia_shape_check,
+        kornia_value_check,
+        hand_rolled_value_error,
+    ):
+        with pytest.raises(Exception) as excinfo:
+            guard()
+        assert _raised_by_a_kornia_guard(excinfo.value), (
+            f"{guard.__name__} rejects the input on kornia's side and must classify as a guard"
+        )
+
+    for downstream in (mixed_matmul_failure, singular_inverse_failure):
+        with pytest.raises(RuntimeError) as excinfo:
+            downstream()
+        assert not _raised_by_a_kornia_guard(excinfo.value), (
+            f"{downstream.__name__} dies inside torch and must not classify as a kornia guard"
+        )
 
 
 # The wrong-sized-matrix cells for the kornia#3960 pair: (op name, wrong square size). One table
@@ -3478,15 +3541,19 @@ class TestNormalTransformPixel(BaseTester):
         # Snippet used to generate expected (leg 1, stdlib only, height = 3, width = 5):
         #   x -> 2 * x / 4 - 1 for x in (0, 4, 2, 1, 6) -> -1.0, 1.0, 0.0, -0.5, 2.0
         #   y -> 2 * y / 2 - 1 for y in (0, 2, 1, 0.5, 0) -> -1.0, 1.0, 0.0, -0.5, -1.0
-        # Leg 2's two regimes are asserted differently because only one of them is backend-
-        # independent: the reduced-precision figures are identical on cpu and mps, so they are
-        # pinned exactly, while float32's exact agreement is a cpu property (mps peaks at one ulp)
-        # and is pinned as a bound instead. A backend that widened the float32 gap past that bound
-        # would flip this cell, which is the point -- the docstring's "agrees" regime is the claim.
+        # Leg 2 is keyed by (backend, dtype) and asserts the EXACT measured gap, including the
+        # exact 0.0 the docstring claims for cpu float32/float64 -- a bound there would let a
+        # regression from exact agreement to a small-but-nonzero gap stay green while the
+        # docstring sentence became false. The gap is a matmul-accumulation measurement and
+        # accumulation is backend-specific, so a backend with no measurement inherits no literal:
+        # it skips visibly. That is why this is a device-name table and not a capability probe --
+        # the discriminator here is a measured number, and the only probe for it would be the
+        # comparison itself.
         # Snippet used to generate expected (leg 2, torch only, torch 2.9.1;
         # max|helper - matrix| over the full (2, 28) pixel grid):
         #   cpu: float64 -> 0.0    float32 -> 0.0    float16 -> 0.0009765625  bfloat16 -> 0.00390625
-        #   mps: float32 -> 5.960464477539063e-08    float16 -> 0.0009765625  bfloat16 -> 0.00390625
+        #   mps: float32 -> 5.960464477539063e-08 (2**-24)   float16 -> 0.0009765625
+        #        bfloat16 -> 0.00390625           (float64 is unavailable on mps)
         #   cpu float16, pixel (27, 0): helper x = 1.0, matrix x = 1.0009765625
         pixels = torch.tensor(
             [[[0.0, 0.0], [4.0, 2.0], [2.0, 1.0], [1.0, 0.5], [6.0, 0.0]]], device=device, dtype=dtype
@@ -3519,17 +3586,27 @@ class TestNormalTransformPixel(BaseTester):
         # .float() because the difference of two bfloat16 values is not representable in bfloat16.
         largest_gap = (grid_via_helper.float() - grid_via_matrix.float()).abs().max().item()
 
-        if dtype in (torch.float16, torch.bfloat16):
-            diverges_by = 0.0009765625 if dtype == torch.float16 else 0.00390625
-            assert largest_gap == diverges_by, (
-                f"the two routes now differ by {largest_gap!r} at (2, 28) in {dtype}, not {diverges_by!r} -- "
-                "normal_transform_pixel's agreement bullet scopes this divergence and must be re-measured"
+        measured_gaps = {
+            ("cpu", torch.float64): 0.0,
+            ("cpu", torch.float32): 0.0,
+            ("cpu", torch.float16): 0.0009765625,
+            ("cpu", torch.bfloat16): 0.00390625,
+            ("mps", torch.float32): 2.0**-24,
+            ("mps", torch.float16): 0.0009765625,
+            ("mps", torch.bfloat16): 0.00390625,
+        }
+        if (device.type, dtype) not in measured_gaps:
+            pytest.skip(
+                f"the (2, 28) agreement gap was not measured on {device.type} at {dtype}; no literal to inherit"
             )
-        else:
-            assert largest_gap <= 1e-6, (
-                f"the two routes now differ by {largest_gap!r} at (2, 28) in {dtype} -- "
-                "normal_transform_pixel's agreement bullet claims float32/float64 agree here"
-            )
+
+        expected_gap = measured_gaps[(device.type, dtype)]
+
+        assert largest_gap == expected_gap, (
+            f"the two routes now differ by {largest_gap!r} at (2, 28) on {device.type} in {dtype}, "
+            f"not {expected_gap!r} -- normal_transform_pixel's agreement bullet states this figure "
+            "and must be re-measured"
+        )
 
     def test_convention_3d_matrix_acts_on_x_y_z_one(self, device):
         # Convention pin: normal_transform_pixel3d(depth, height, width) returns a 4x4 whose

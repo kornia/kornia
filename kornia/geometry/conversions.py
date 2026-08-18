@@ -1783,10 +1783,13 @@ def normalize_homography(
         ``torch.linalg.LinAlgError`` about a zero diagonal in
         :func:`~kornia.geometry.conversions.denormalize_homography`, while on
         ``mps`` the same ``normalize_homography`` call returns an all-``nan``
-        ``float32`` matrix instead of raising. Of the two exceptions, only the
-        ``normalize_homography`` message names the dtypes; the
-        ``denormalize_homography`` message is dtype-free, while ``mps`` raises
-        no error at all. What splits the two behaviors is
+        ``float32`` matrix instead of raising — ``denormalize_homography`` does
+        raise there, with a bare internal assert out of
+        ``BatchLinearAlgebra.cpp``. Only the cpu ``normalize_homography``
+        message names dtypes at all — ``Long`` and ``Float``, without saying
+        which argument — while cpu's ``denormalize_homography`` message is
+        dtype-free and the ``mps`` assert carries no dtype, shape or argument
+        name. What splits the ``normalize_homography`` behaviors is
         whether the backend rejects a **batched** ``int64``-by-``float32``
         matmul: the normalization matrices are truncated to ``int64``, the
         closed-form inverse silently promotes them back to an all-``nan``
