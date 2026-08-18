@@ -113,7 +113,7 @@ def _agreement_gap_at_2_28(device, dtype) -> float:
     # max|normalize_pixel_coordinates(grid) - matrix @ grid| over the full pixel grid of a
     # (2, 28) image -- the size pair behind normal_transform_pixel's agreement bullet, chosen
     # because 2/(28 - 1) is not exactly representable in reduced precision. Shared by the two pins
-    # that read it (the portable bound and the exact kernel measurement) so they cannot measure
+    # that read it (the dtype-scaled bound and the exact kernel measurement) so they cannot measure
     # subtly different things.
     # The grid is built from an int64 arange cast down afterwards, not a typed arange: `arange_mps`
     # has no bfloat16 kernel on torch 2.5.1 (executed; torch 2.9.1 has one) and would raise
@@ -145,13 +145,22 @@ def _skip_if_closed_form_inverse_unavailable(device, dtype) -> None:
     # 2.9.1 runs it, and torch.zeros in that dtype succeeds on both, so the allocation probe alone
     # lets the pin fail with a message about torch's kernel coverage rather than about kornia's
     # convention. Probed rather than version-gated: two builds are two data points, not a history.
-    # The probe calls the torch PRIMITIVE, not kornia's function: a kornia-side regression cannot
-    # make torch.linalg.cross raise, so nothing real can hide behind this skip.
-    probe = torch.ones(1, 3, device=device, dtype=dtype)
+    # What is attempted is the PUBLIC operation, on a throwaway input, and only a failure
+    # positively identified as the missing torch kernel -- the primitive the route needs raises
+    # too, on the same device and dtype -- becomes a skip; every other failure is re-raised, so a
+    # kornia-side regression still fails the pin here rather than being skipped over. Probing the
+    # primitive alone would not do that, and would also outlive the limitation: the day kornia's
+    # inverse stops needing `cross`, these pins must run again on backends that lack it instead of
+    # skipping forever.
     try:
-        torch.linalg.cross(probe, probe, dim=-1)
+        kornia.geometry.conversions.normalize_homography(torch.eye(3, device=device, dtype=dtype)[None], (2, 2), (2, 2))
     except (RuntimeError, NotImplementedError) as err:
-        pytest.skip(f"torch.linalg.cross has no {dtype} kernel on device {device}: {err}")
+        probe = torch.ones(1, 3, device=device, dtype=dtype)
+        try:
+            torch.linalg.cross(probe, probe, dim=-1)
+        except (RuntimeError, NotImplementedError):
+            pytest.skip(f"torch.linalg.cross has no {dtype} kernel on device {device}: {err}")
+        raise
 
 
 def _undo_3954_upcast(matrix: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
@@ -3582,10 +3591,11 @@ class TestNormalTransformPixel(BaseTester):
         # The helper multiplies and
         # subtracts elementwise in the working dtype, while applying the matrix is a matmul, whose
         # dot product is accumulated at higher precision and rounded once at the end.
-        # What leg 2 asserts here is the PORTABLE half of the docstring's claim, so it holds on any
-        # backend and any build: the disagreement is at most one rounding step of the working dtype
-        # at the magnitudes involved, i.e. 2 * finfo(dtype).eps -- derived from the mechanism, not
-        # measured, and computed from the dtype rather than hardcoded. The exact per-configuration
+        # What leg 2 asserts here is the dtype-scaled half of the docstring's claim -- the one that
+        # runs everywhere rather than only where a kernel was measured: the disagreement stays
+        # within 2 * finfo(dtype).eps. That is a TOLERATED bound, not one derived from a portable
+        # accuracy model (see the note at the assertion for what it does and does not promise),
+        # computed from the dtype rather than hardcoded. The exact per-configuration
         # gaps are a kernel measurement and live in
         # test_wart_agreement_gap_at_2_28_is_a_kernel_measurement below, which is where the
         # docstring's figures are pinned and where an unmeasured configuration skips visibly.
@@ -3613,19 +3623,31 @@ class TestNormalTransformPixel(BaseTester):
         self.assert_close(via_matrix, expected, atol=0.0, rtol=0.0)
 
         largest_gap = _agreement_gap_at_2_28(device, dtype)
-        one_rounding_step = 2 * torch.finfo(dtype).eps
+        # A tolerated bound, not a derived guarantee, and deliberately not called one rounding
+        # step: eps IS the spacing at 1.0, so 2 * eps accepts two spacings there and four just
+        # below it, and torch promises no common accumulation precision for matmul across every
+        # backend and configuration -- a reduced-precision matmul mode (TF32 on cuda, say) rounds
+        # the matrix route far more coarsely than the working dtype and can exceed this
+        # legitimately. What the constant is: roughly 2x headroom over the worst gap measured in
+        # any configuration below, all of which are at most one eps (float16 is exactly eps on
+        # both backends; every other nonzero cell is eps/2), scaled by the dtype so no dtype
+        # inherits a bound sized for another. A failure is therefore not by itself a kornia regression: it
+        # says re-derive the bound against the configuration that produced it, which is the same
+        # instruction the docstring bullet carries.
+        tolerated_gap = 2 * torch.finfo(dtype).eps
 
-        assert largest_gap <= one_rounding_step, (
+        assert largest_gap <= tolerated_gap, (
             f"the two routes now differ by {largest_gap!r} at (2, 28) in {dtype}, more than the "
-            f"{one_rounding_step!r} a single rounding step allows -- they no longer differ only in "
-            "where the rounding falls"
+            f"tolerated {tolerated_gap!r} (2 * eps) -- either they no longer differ only in where "
+            "the rounding falls, or this configuration accumulates matmuls at a precision none of "
+            "the measured ones used and needs a bound derived for it"
         )
 
     def test_wart_agreement_gap_at_2_28_is_a_kernel_measurement(self, device, dtype):
         # Wart pin for the exact figures normal_transform_pixel's agreement bullet quotes: at
         # (2, 28), where 2/(28 - 1) is not representable in reduced precision, how far apart the
         # two routes land is a property of the backend's and the build's matmul kernel, not of the
-        # convention. Pinned exactly rather than as a bound -- the portable bound is asserted by
+        # convention. Pinned exactly rather than as a bound -- the dtype-scaled bound is asserted by
         # test_convention_agrees_with_normalize_pixel_coordinates above -- because a bound would
         # let cpu float32/float64 regress from exact agreement to a small nonzero gap while the
         # docstring's "0.0" claim quietly became false.
@@ -3637,7 +3659,7 @@ class TestNormalTransformPixel(BaseTester):
         #     executed (no divergence at all on 2.5.1, one bfloat16 step on 2.9.1) while every
         #     other cell reproduced on both
         # An unmeasured configuration skips visibly: the skip is a reminder to measure, not a
-        # silent pass, and the portable half of the claim is still asserted by the pin above.
+        # silent pass, and the dtype-scaled bound is still asserted by the pin above.
         # NOT a contract that these kernels must keep producing these numbers -- if a cell fails,
         # re-measure and update the bullet, which is the only place the figures are documented.
         # Snippet used to generate expected (torch + kornia, executed on macOS arm64 against both

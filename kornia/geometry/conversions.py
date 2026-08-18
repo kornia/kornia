@@ -1902,10 +1902,14 @@ def normal_transform_pixel(
           inheriting a kernel literal. The ``range(2, 60)`` sweep counts above
           are **not** pinned — 3364 size pairs per dtype is too slow for a unit
           test — and are reproducible from the snippet in that pin; what runs
-          everywhere instead is the portable half of the claim, that the two
-          routes differ by at most one rounding step of the working dtype
-          (``2 * finfo(dtype).eps``), asserted by
-          ``test_convention_agrees_with_normalize_pixel_coordinates``.
+          everywhere instead is a dtype-scaled bound, that the two routes stay
+          within ``2 * finfo(dtype).eps`` of each other, asserted by
+          ``test_convention_agrees_with_normalize_pixel_coordinates``. That
+          bound is *tolerated*, not derived: ``eps`` is already the spacing at
+          ``1.0``, so it allows two spacings there, and it holds with roughly
+          ``2x`` headroom over every cell measured above — a backend or
+          configuration that accumulates matmuls at reduced precision (``TF32``
+          on ``cuda``, say) can exceed it without anything here having changed.
           At the degenerate sizes the two diverge — they clamp
           through different ``eps`` mechanisms, ``2e14``-scale here against
           ``2e8``-scale there at ``size == 1``, and with opposite signs at
