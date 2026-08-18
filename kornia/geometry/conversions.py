@@ -1783,9 +1783,10 @@ def normalize_homography(
         ``torch.linalg.LinAlgError`` about a zero diagonal in
         :func:`~kornia.geometry.conversions.denormalize_homography`, while on
         ``mps`` the same ``normalize_homography`` call returns an all-``nan``
-        ``float32`` matrix instead of raising. Only the cpu
-        ``normalize_homography`` message names the dtype; the other two
-        failures give no dtype clue at all. What splits the two behaviors is
+        ``float32`` matrix instead of raising. Of the two exceptions, only the
+        ``normalize_homography`` message names the dtypes; the
+        ``denormalize_homography`` message is dtype-free, while ``mps`` raises
+        no error at all. What splits the two behaviors is
         whether the backend rejects a **batched** ``int64``-by-``float32``
         matmul: the normalization matrices are truncated to ``int64``, the
         closed-form inverse silently promotes them back to an all-``nan``
@@ -1864,8 +1865,28 @@ def normal_transform_pixel(
           and ``(0, 0)``
         - for sizes ``>= 2`` this is the same convention as
           :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`:
-          pushing one grid through both agrees to a maximum absolute difference
-          of ``0.0``. At the degenerate sizes the two diverge — they clamp
+          **in** ``float32`` **and** ``float64`` pushing one grid through both
+          agrees to a maximum absolute difference of ``0.0`` on cpu, executed
+          over every ``(height, width)`` pair in ``range(2, 60)`` on the full
+          pixel grid. That exactness is backend-dependent — the same
+          ``float32`` comparison at ``(2, 28)`` peaks at ``5.96e-08`` on
+          ``mps``, which is ``2**-24``, the ``float32`` spacing just below
+          ``1.0``. The reduced-precision divergence
+          below is not backend-dependent: ``float16`` and ``bfloat16`` give
+          identical figures on both. In ``float16``/``bfloat16`` the two agree
+          only where the arithmetic is exact. The scales are not what differs — both routes hold the same
+          rounded ``2 / (size - 1)`` — it is where the rounding falls: the
+          helper multiplies and subtracts elementwise in the working dtype,
+          while applying this matrix is a matmul, whose dot product is
+          accumulated at higher precision and rounded once at the end (the
+          executed figures match a ``float32`` accumulation exactly). Over the same
+          sweep, 3328 of 3364 size pairs differ in ``float16`` (worst
+          ``9.77e-04``) and 3315 of 3364 in ``bfloat16`` (worst ``7.81e-03``);
+          at ``(2, 28)`` in ``float16`` the x coordinate of pixel ``(27, 0)``
+          comes back as ``1.0`` from the helper and ``1.0009765625`` through
+          the matrix (torch 2.9.1, cpu). Both regimes are pinned, in
+          ``TestNormalTransformPixel::test_convention_agrees_with_normalize_pixel_coordinates``.
+          At the degenerate sizes the two diverge — they clamp
           through different ``eps`` mechanisms, ``2e14``-scale here against
           ``2e8``-scale there at ``size == 1``, and with opposite signs at
           ``size == 0`` (executed; see the warning below). It is **not**

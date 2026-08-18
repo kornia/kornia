@@ -17,6 +17,7 @@
 
 import inspect
 import sys
+import traceback
 import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -133,22 +134,42 @@ _DEPRECATED_ALIASES = [
 ]
 
 
-# Exception types that mean "kornia's OWN guard rejected the input", for the kornia#3960 pair
-# below: kornia's guards raise BaseError subclasses (KORNIA_CHECK_SHAPE's ShapeError, plain
+# Exception types that mean "kornia's OWN guard rejected the input", for the kornia#3959 and
+# kornia#3960 pins below: kornia's guards raise BaseError subclasses (KORNIA_CHECK_SHAPE's ShapeError, plain
 # KORNIA_CHECK's bare BaseError, TypeCheckError -- BaseError is not a ValueError subclass, so both
 # entries are needed) or the hand-rolled ValueError the three homography functions raise today,
 # while every torch shape failure in these call chains (matmul, linalg.inv) raises RuntimeError.
-# Deliberately type-only -- no message text, which may be reworded on either side. The strict
-# xfail asserts membership and the companion wart asserts the complement, so the two are keyed to
-# one definition and cannot drift apart.
-# One accepted hole, declared here because every consumer of this tuple inherits it: a fix that
-# guarded shapes or dtypes with a literal `raise RuntimeError(...)` would classify as unguarded
-# and land silently -- the strict xfail would stay XFAIL and the companion pytest.raises
-# (RuntimeError) would stay green. Accepted, because nothing in kornia/core/check.py raises bare
-# RuntimeError; adopting that style would be new, at which point this tuple gains a branch and
-# the pins that cite it are rechecked. So "flips loudly" everywhere below means "for any of
-# kornia's own check styles", not for every conceivable fix.
+# Deliberately type-only -- no message text, which may be reworded on either side. This tuple is
+# one input to _raised_by_a_kornia_guard below, which every #3959/#3960 pin classifies through, so
+# the strict xfail and its companion warts cannot drift apart.
 _KORNIA_GUARD_EXCEPTIONS = (BaseError, ValueError)
+
+
+def _raised_by_a_kornia_guard(err: BaseException) -> bool:
+    # "Did kornia reject this input itself, or did it reach downstream arithmetic and die there?"
+    # -- the question every wart pin below has to answer, and the reason a type test alone is not
+    # enough: a guard written as a literal `raise RuntimeError(...)` is indistinguishable BY TYPE
+    # from the torch matmul/linalg failures these warts pin, so such a fix would land with the
+    # strict xfail still XFAIL and the companion warts still green. Earlier revisions declared
+    # that hole instead of closing it; this closes it without depending on message text, which is
+    # torch's to reword.
+    # The discriminator is the INNERMOST traceback frame -- where the exception was actually
+    # raised. kornia's own guards are one of: a _KORNIA_GUARD_EXCEPTIONS type, a literal `raise`
+    # statement, a KORNIA_CHECK* call, or a frame inside kornia/core/check.py. Downstream torch
+    # failures surface at the arithmetic statement itself (`... @ ...`, `torch.linalg.inv(...)`,
+    # `H[..., -1, -1] += 1.0`), which matches none of those. Both directions are exercised: the
+    # #3960 strict xfail asserts this is True (XPASSing the day a guard lands, in any style) and
+    # the warts assert it is False.
+    # If the source line is unavailable (an installed tree without sources), `line` is empty and
+    # the classifier degrades to the type test -- the behavior earlier revisions had throughout.
+    frame = traceback.extract_tb(err.__traceback__)[-1]
+    line = frame.line or ""
+    return (
+        isinstance(err, _KORNIA_GUARD_EXCEPTIONS)
+        or "raise " in line
+        or "KORNIA_CHECK" in line
+        or frame.filename.replace("\\", "/").endswith("kornia/core/check.py")
+    )
 
 
 # The wrong-sized-matrix cells for the kornia#3960 pair: (op name, wrong square size). One table
@@ -162,7 +183,10 @@ _WRONG_SIZE_CASES = [
     ("denormalize_homography", 4),
     ("normalize_homography3d", 3),
 ]
-_WRONG_SIZE_IDS = ["normalize", "denormalize", "normalize3d"]
+# Derived, not a second hand-maintained list: a length mismatch would fail at collection, but a
+# reorder of the table above would silently relabel the cells (a `[denormalize]` id reporting a
+# normalize_homography failure). Yields ["normalize", "denormalize", "normalize3d"] today.
+_WRONG_SIZE_IDS = [op_name.replace("_homography", "") for op_name, _ in _WRONG_SIZE_CASES]
 
 
 def _homography_sizes(op_name: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
@@ -3432,16 +3456,38 @@ class TestNormalTransformPixel(BaseTester):
 
     def test_convention_agrees_with_normalize_pixel_coordinates(self, device, dtype):
         # Convention pin: the matrix is the homogeneous form of normalize_pixel_coordinates -- the
-        # same map, not merely a similar one. Both routes are compared against the same hardcoded
-        # literal at atol=rtol=0, on four points that include a half-pixel and an out-of-image one
-        # (neither route clamps). What this pin decides is that the two agree on these points for
-        # these sizes; it does not decide anything about non-corner-aligned callers such as
+        # same map, not merely a similar one -- and the agreement is EXACT only where the
+        # arithmetic is. Two legs, and the dtype fixture is load-bearing across both.
+        # Leg 1, sizes (3, 5): both scales (1.0 and 0.5) are exactly representable, so every route
+        # and every dtype hits the same hardcoded literal at atol=rtol=0, on five points including
+        # a half-pixel and an out-of-image one (neither route clamps).
+        # Leg 2, sizes (2, 28): 2/(28 - 1) is not exactly representable in reduced precision, which
+        # is what makes the float16/bfloat16 legs of this pin fail independently of float32 -- the
+        # condition under which the rest of this file de-parametrizes dtype is absent here. Note
+        # the two routes hold the SAME rounded scale; what differs is where the rounding falls, so
+        # the divergence is not a property of the scale literal. The helper multiplies and
+        # subtracts elementwise in the working dtype, while applying the matrix is a matmul, whose
+        # dot product is accumulated at higher precision and rounded once at the end (the figures
+        # below match a float32 accumulation exactly). Without this
+        # leg the docstring bullet's scope ("float32 and float64 agree to 0.0; reduced precision
+        # diverges") would be unfalsifiable, since leg 1's sizes cannot diverge in any dtype.
+        # What this pin does NOT decide: anything about non-corner-aligned callers such as
         # grid_sample(align_corners=False), which is pinned separately in
         # TestNormalizePixelCoordinates.
         # NOTE: covered by this class's kornia#3904 note above; recorded, not a ratified contract.
-        # Snippet used to generate expected (stdlib only, height = 3, width = 5):
+        # Snippet used to generate expected (leg 1, stdlib only, height = 3, width = 5):
         #   x -> 2 * x / 4 - 1 for x in (0, 4, 2, 1, 6) -> -1.0, 1.0, 0.0, -0.5, 2.0
         #   y -> 2 * y / 2 - 1 for y in (0, 2, 1, 0.5, 0) -> -1.0, 1.0, 0.0, -0.5, -1.0
+        # Leg 2's two regimes are asserted differently because only one of them is backend-
+        # independent: the reduced-precision figures are identical on cpu and mps, so they are
+        # pinned exactly, while float32's exact agreement is a cpu property (mps peaks at one ulp)
+        # and is pinned as a bound instead. A backend that widened the float32 gap past that bound
+        # would flip this cell, which is the point -- the docstring's "agrees" regime is the claim.
+        # Snippet used to generate expected (leg 2, torch only, torch 2.9.1;
+        # max|helper - matrix| over the full (2, 28) pixel grid):
+        #   cpu: float64 -> 0.0    float32 -> 0.0    float16 -> 0.0009765625  bfloat16 -> 0.00390625
+        #   mps: float32 -> 5.960464477539063e-08    float16 -> 0.0009765625  bfloat16 -> 0.00390625
+        #   cpu float16, pixel (27, 0): helper x = 1.0, matrix x = 1.0009765625
         pixels = torch.tensor(
             [[[0.0, 0.0], [4.0, 2.0], [2.0, 1.0], [1.0, 0.5], [6.0, 0.0]]], device=device, dtype=dtype
         )
@@ -3456,6 +3502,34 @@ class TestNormalTransformPixel(BaseTester):
 
         self.assert_close(via_helper, expected, atol=0.0, rtol=0.0)
         self.assert_close(via_matrix, expected, atol=0.0, rtol=0.0)
+
+        rows, columns = 2, 28
+        y_grid, x_grid = torch.meshgrid(
+            torch.arange(rows, device=device, dtype=dtype),
+            torch.arange(columns, device=device, dtype=dtype),
+            indexing="ij",
+        )
+        grid = torch.stack([x_grid.reshape(-1), y_grid.reshape(-1)], dim=-1)[None]
+
+        grid_via_helper = kornia.geometry.conversions.normalize_pixel_coordinates(grid, rows, columns)[0]
+        grid_matrix = kornia.geometry.conversions.normal_transform_pixel(rows, columns, device=device, dtype=dtype)
+        grid_homogeneous = torch.cat([grid[0], torch.ones_like(grid[0][:, :1])], dim=-1)
+        grid_via_matrix = (grid_matrix[0] @ grid_homogeneous.transpose(0, 1)).transpose(0, 1)[:, :2]
+
+        # .float() because the difference of two bfloat16 values is not representable in bfloat16.
+        largest_gap = (grid_via_helper.float() - grid_via_matrix.float()).abs().max().item()
+
+        if dtype in (torch.float16, torch.bfloat16):
+            diverges_by = 0.0009765625 if dtype == torch.float16 else 0.00390625
+            assert largest_gap == diverges_by, (
+                f"the two routes now differ by {largest_gap!r} at (2, 28) in {dtype}, not {diverges_by!r} -- "
+                "normal_transform_pixel's agreement bullet scopes this divergence and must be re-measured"
+            )
+        else:
+            assert largest_gap <= 1e-6, (
+                f"the two routes now differ by {largest_gap!r} at (2, 28) in {dtype} -- "
+                "normal_transform_pixel's agreement bullet claims float32/float64 agree here"
+            )
 
     def test_convention_3d_matrix_acts_on_x_y_z_one(self, device):
         # Convention pin: normal_transform_pixel3d(depth, height, width) returns a 4x4 whose
@@ -3988,12 +4062,14 @@ class TestNormalizeHomography(BaseTester):
         # result) and reports the singular inverse as a plain RuntimeError. The matmul probe must
         # be BATCHED -- the unbatched 2-D mixed form raises on both backends, so it would
         # discriminate nothing.
-        # Exception TYPES only, no message text -- torch may reword either message (the snippet
-        # quotes them as samples). What a kornia-side dtype guard does to these cells: any of
-        # kornia's own check styles escapes the raises() and flips them loudly, because neither
-        # _KORNIA_GUARD_EXCEPTIONS entry is a RuntimeError subclass; a guard raising a bare
-        # RuntimeError would keep them green -- the accepted, out-of-scope hole declared at that
-        # tuple's definition.
+        # No message text is asserted -- torch may reword either message (the snippet quotes them
+        # as samples). The exception TYPE plus the module-level _raised_by_a_kornia_guard is what
+        # carries the claim instead: both raising legs assert that the failure came from downstream
+        # arithmetic and NOT from a kornia guard, so a dtype guard added by a #3959 fix flips these
+        # cells loudly in any style -- including a literal `raise RuntimeError(...)`, which the
+        # type test alone could not tell apart from today's matmul failure. That second assert is
+        # also what machine-checks the mechanism sentence above: it fails if the raise moves off
+        # the chain matmul / linalg.inv statements into a guard.
         # If any cell fails, #3959 was (partly) fixed -- update or remove the warning. NOT a
         # contract that integer input must keep failing this way.
         # Snippet used to generate expected (torch only, executed on cpu and mps, torch 2.9.1):
@@ -4021,8 +4097,12 @@ class TestNormalizeHomography(BaseTester):
             mixed_matmul_rejected = False
 
         if mixed_matmul_rejected:
-            with pytest.raises(RuntimeError):
+            with pytest.raises(RuntimeError) as normalize_err:
                 kornia.geometry.conversions.normalize_homography(identity, (4, 5), (8, 9))
+            assert not _raised_by_a_kornia_guard(normalize_err.value), (
+                "kornia#3959: normalize_homography now rejects integer input in a guard of its own "
+                "-- update or remove the warning"
+            )
         else:
             out = kornia.geometry.conversions.normalize_homography(identity, (4, 5), (8, 9))
             assert out.dtype == torch.float32, "kornia#3959: the accepting int64 result is no longer float32"
@@ -4038,8 +4118,13 @@ class TestNormalizeHomography(BaseTester):
         if singular_inverse_error is None:
             pytest.skip("backend does not raise on a singular linalg.inv; #3959's denormalize leg has no failure here")
 
-        with pytest.raises(singular_inverse_error):
+        with pytest.raises(singular_inverse_error) as denormalize_err:
             kornia.geometry.conversions.denormalize_homography(identity, (4, 5), (8, 9))
+
+        assert not _raised_by_a_kornia_guard(denormalize_err.value), (
+            "kornia#3959: denormalize_homography now rejects integer input in a guard of its own "
+            "-- update or remove the warning"
+        )
 
     @pytest.mark.xfail(
         raises=AssertionError,
@@ -4061,10 +4146,12 @@ class TestNormalizeHomography(BaseTester):
         # it escape: under raises=AssertionError an escaping RuntimeError would be reported as an
         # error rather than an XFAIL. float32 is hardcoded and the dtype fixture dropped because a
         # shape guard runs before any arithmetic and cannot depend on the dtype.
-        # Classified by the module-level _KORNIA_GUARD_EXCEPTIONS types; anything else -- today's
-        # matmul RuntimeError included -- counts as unguarded, which keeps this pin XFAIL until
-        # #3960 is actually fixed. The cells come from the shared _WRONG_SIZE_CASES table for the
-        # same reason: the pair must cover identical cells.
+        # Classified by the module-level _raised_by_a_kornia_guard, so a guard in ANY style --
+        # including a literal `raise RuntimeError(...)`, which no type test could tell apart from
+        # today's matmul failure -- counts as guarded and XPASSes this pin. Today's matmul
+        # RuntimeError, raised at the arithmetic statement itself, counts as unguarded, which
+        # keeps the pin XFAIL until #3960 is actually fixed. The cells come from the shared
+        # _WRONG_SIZE_CASES table for the same reason: the pair must cover identical cells.
         # Marked xfail(strict=True) so fixing #3960 makes all three cases XPASS and forces the mark
         # out. Companion wart: test_wart_wrong_sized_matrices_die_inside_matmul_3960.
         op = getattr(kornia.geometry.conversions, op_name)
@@ -4073,7 +4160,7 @@ class TestNormalizeHomography(BaseTester):
         try:
             op(wrong, *_homography_sizes(op_name))
         except Exception as err:
-            guarded = isinstance(err, _KORNIA_GUARD_EXCEPTIONS)
+            guarded = _raised_by_a_kornia_guard(err)
         else:
             guarded = False
 
@@ -4086,13 +4173,12 @@ class TestNormalizeHomography(BaseTester):
         # purpose. pytest.raises(RuntimeError) requires the exception TYPE that torch's own
         # arithmetic raises -- the name says the input dies inside matmul, and catching a broader
         # Exception would let an unrelated TypeError or IndexError regression pass under that name;
-        # no _KORNIA_GUARD_EXCEPTIONS type is a RuntimeError subclass, so a guard fix written in
-        # any of kornia's own check styles escapes the raises() and flips this cell loudly (a fix
-        # raising a bare RuntimeError does not -- the accepted hole declared at that tuple). The
-        # assertion then holds the complement of the xfail's classification, keeping the pair
-        # keyed to the one module-level tuple. Neither
-        # layer depends on message text (the message below is quoted as a sample, asserted
-        # nowhere).
+        # a guard fix in any of kornia's own check styles is not a RuntimeError at all and escapes
+        # the raises() outright. The assertion then holds the complement of the xfail's
+        # classification through the same module-level _raised_by_a_kornia_guard, which is what
+        # closes the remaining case: a guard raising a bare RuntimeError passes the raises() but
+        # fails this assert, so it cannot land unnoticed either. Neither layer depends on message
+        # text (the message below is quoted as a sample, asserted nowhere).
         # If any cell fails, #3960 was (partly) fixed -- flip/remove the strict xfail above. NOT a
         # contract that these shapes must keep dying outside the guard.
         # Snippet used to generate expected (torch only, executed on cpu float32, torch 2.9.1):
@@ -4107,7 +4193,7 @@ class TestNormalizeHomography(BaseTester):
         with pytest.raises(RuntimeError) as excinfo:
             op(wrong, *_homography_sizes(op_name))
 
-        assert not isinstance(excinfo.value, _KORNIA_GUARD_EXCEPTIONS), (
+        assert not _raised_by_a_kornia_guard(excinfo.value), (
             f"kornia#3960: {op_name} now rejects a ({wrong_size}, {wrong_size}) matrix in its own "
             "shape guard -- the companion strict xfail should be XPASSing"
         )
@@ -4635,10 +4721,10 @@ class TestRt2Extrinsics(BaseTester):
         # kornia#3959 integer-dtype family; without this pin, a torch promotion change in cat/pad
         # or a dtype guard added to one side would invalidate the docstring warnings with nothing
         # flipping red. RuntimeError is asserted by type only (the message is torch's and may be
-        # reworded; a sample is quoted in the snippet); as at the _KORNIA_GUARD_EXCEPTIONS
-        # definition, a kornia-side dtype guard written in any of kornia's own check styles
-        # escapes that raises() and flips the raising legs loudly, while a guard raising a bare
-        # RuntimeError would keep them green -- the accepted hole declared there.
+        # reworded; a sample is quoted in the snippet), and each raising leg additionally asserts
+        # through the module-level _raised_by_a_kornia_guard that the failure came from downstream
+        # arithmetic rather than from a guard -- so a #3959 dtype guard flips these legs loudly in
+        # any style, a bare `raise RuntimeError(...)` included.
         # Maintenance map, if any leg fails (#3959 was partly fixed, or torch promotion changed).
         # Five docstrings carry int64 text, two of them the carriers and three pointers into them:
         #   carriers: Rt_to_matrix4x4, camtoworld_graphics_to_vision_4x4
@@ -4667,8 +4753,12 @@ class TestRt2Extrinsics(BaseTester):
         extrinsics = torch.eye(4, device=device, dtype=torch.int64)[None]
 
         for op in (Rt_to_matrix4x4, camtoworld_graphics_to_vision_Rt, camtoworld_vision_to_graphics_Rt):
-            with pytest.raises(RuntimeError):
+            with pytest.raises(RuntimeError) as excinfo:
                 op(rotation, translation)
+            assert not _raised_by_a_kornia_guard(excinfo.value), (
+                f"kornia#3959: {op.__name__} now rejects int64 (R, t) in a guard of its own -- "
+                "update the docstring warnings named in the map above"
+            )
 
         try:
             torch.eye(2, device=device, dtype=torch.int64)[None] @ torch.eye(2, device=device, dtype=torch.int64)[None]
