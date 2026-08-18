@@ -25,6 +25,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import _torch_svd_cast
 from kornia.geometry.epipolar import find_essential, find_fundamental, sampson_epipolar_distance
 from kornia.geometry.homography import (
     find_homography_dlt,
@@ -308,7 +309,40 @@ class RANSAC(nn.Module):
         model = self.polisher_solver(
             kp1_inl, kp2_inl, torch.ones(1, num_inl, dtype=kp1_inl.dtype, device=kp1_inl.device)
         )
+        # The polisher fits a fundamental matrix via the 8-point DLT, which does not enforce the
+        # essential-matrix constraint (two equal non-zero singular values and a zero singular value).
+        # Project it back onto the essential manifold so that downstream decompose_essential_matrix /
+        # motion_from_essential do not silently fail.
+        # See https://github.com/kornia/kornia/issues/3874
+        if self.model_type == "essential" and model is not None and len(model) > 0:
+            model = self._project_to_essential(model)
         return model
+
+    @staticmethod
+    def _project_to_essential(model: torch.Tensor) -> torch.Tensor:
+        """Project a matrix onto the essential-matrix manifold.
+
+        An essential matrix must be of the form ``U diag(s, s, 0) V^T``. The 8-point DLT used by the
+        polisher returns a general fundamental matrix that violates this constraint, so we enforce it
+        by averaging the two largest singular values and zeroing the smallest one (the classic 8-point
+        essential-matrix normalization).
+
+        Args:
+            model: estimated matrix with shape :math:`(B, 3, 3)`.
+
+        Returns:
+            Matrix satisfying the essential-matrix constraint, shape :math:`(B, 3, 3)`.
+
+        """
+        if model is None or len(model) == 0:
+            return model
+        U, S, V = _torch_svd_cast(model)
+        S = S.clone()
+        mean_sv = 0.5 * (S[..., 0] + S[..., 1])
+        S[..., 0] = mean_sv
+        S[..., 1] = mean_sv
+        S[..., 2] = torch.zeros_like(S[..., 2])
+        return U @ torch.diag_embed(S) @ V.mH
 
     def validate_inputs(self, kp1: torch.Tensor, kp2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> None:
         """Validate input tensors for shape and size requirements.
