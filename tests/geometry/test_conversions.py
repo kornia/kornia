@@ -17,6 +17,7 @@
 
 import dis
 import inspect
+import platform
 import sys
 import warnings
 from collections.abc import Iterator
@@ -106,6 +107,51 @@ def _skip_if_dtype_unavailable(device, dtype) -> None:
         torch.zeros(1, device=device, dtype=dtype)
     except (TypeError, RuntimeError) as err:
         pytest.skip(f"{dtype} is unavailable on device {device}: {err}")
+
+
+def _agreement_gap_at_2_28(device, dtype) -> float:
+    # max|normalize_pixel_coordinates(grid) - matrix @ grid| over the full pixel grid of a
+    # (2, 28) image -- the size pair behind normal_transform_pixel's agreement bullet, chosen
+    # because 2/(28 - 1) is not exactly representable in reduced precision. Shared by the two pins
+    # that read it (the portable bound and the exact kernel measurement) so they cannot measure
+    # subtly different things.
+    # The grid is built from an int64 arange cast down afterwards, not a typed arange: `arange_mps`
+    # has no bfloat16 kernel on torch 2.5.1 (executed; torch 2.9.1 has one) and would raise
+    # instead of measuring.
+    rows, columns = 2, 28
+    y_grid, x_grid = torch.meshgrid(
+        torch.arange(rows, device=device).to(dtype),
+        torch.arange(columns, device=device).to(dtype),
+        indexing="ij",
+    )
+    grid = torch.stack([x_grid.reshape(-1), y_grid.reshape(-1)], dim=-1)[None]
+
+    via_helper = kornia.geometry.conversions.normalize_pixel_coordinates(grid, rows, columns)[0]
+    matrix = kornia.geometry.conversions.normal_transform_pixel(rows, columns, device=device, dtype=dtype)
+    homogeneous = torch.cat([grid[0], torch.ones_like(grid[0][:, :1])], dim=-1)
+    via_matrix = (matrix[0] @ homogeneous.transpose(0, 1)).transpose(0, 1)[:, :2]
+
+    # .float() because the difference of two bfloat16 values is not representable in bfloat16.
+    return (via_helper.float() - via_matrix.float()).abs().max().item()
+
+
+def _skip_if_closed_form_inverse_unavailable(device, dtype) -> None:
+    # Visible skip for the pins that route through normalize_homography, one layer deeper than
+    # _skip_if_dtype_unavailable: a backend can REPRESENT a dtype and still have no kernel for an
+    # operation the route needs. kornia's cusolver-free 3x3 inverse
+    # (_inverse_3x3_closed_form in kornia/core/utils.py) is three torch.linalg.cross calls, and
+    # MPS has no bfloat16 `cross` kernel in every build -- executed: torch 2.5.1 raises
+    # `RuntimeError: Failed to create function state object for: cross_bfloat` there while torch
+    # 2.9.1 runs it, and torch.zeros in that dtype succeeds on both, so the allocation probe alone
+    # lets the pin fail with a message about torch's kernel coverage rather than about kornia's
+    # convention. Probed rather than version-gated: two builds are two data points, not a history.
+    # The probe calls the torch PRIMITIVE, not kornia's function: a kornia-side regression cannot
+    # make torch.linalg.cross raise, so nothing real can hide behind this skip.
+    probe = torch.ones(1, 3, device=device, dtype=dtype)
+    try:
+        torch.linalg.cross(probe, probe, dim=-1)
+    except (RuntimeError, NotImplementedError) as err:
+        pytest.skip(f"torch.linalg.cross has no {dtype} kernel on device {device}: {err}")
 
 
 def _undo_3954_upcast(matrix: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
@@ -3528,16 +3574,21 @@ class TestNormalTransformPixel(BaseTester):
         # Leg 1, sizes (3, 5): both scales (1.0 and 0.5) are exactly representable, so every route
         # and every dtype hits the same hardcoded literal at atol=rtol=0, on five points including
         # a half-pixel and an out-of-image one (neither route clamps).
-        # Leg 2, sizes (2, 28): 2/(28 - 1) is not exactly representable in reduced precision, which
-        # is what makes the float16/bfloat16 legs of this pin fail independently of float32 -- the
-        # condition under which the rest of this file de-parametrizes dtype is absent here. Note
-        # the two routes hold the SAME rounded scale; what differs is where the rounding falls, so
-        # the divergence is not a property of the scale literal. The helper multiplies and
+        # Leg 2, sizes (2, 28): 2/(28 - 1) is not exactly representable in reduced precision, so
+        # the two routes do diverge there and the dtype fixture is load-bearing -- each dtype gets
+        # a different bound and a different measured gap, unlike the sizes in leg 1, where nothing
+        # can diverge in any dtype. Note the two routes hold the SAME rounded scale; what differs
+        # is where the rounding falls, so the divergence is not a property of the scale literal.
+        # The helper multiplies and
         # subtracts elementwise in the working dtype, while applying the matrix is a matmul, whose
-        # dot product is accumulated at higher precision and rounded once at the end (the figures
-        # below match a float32 accumulation exactly). Without this
-        # leg the docstring bullet's scope ("float32 and float64 agree to 0.0; reduced precision
-        # diverges") would be unfalsifiable, since leg 1's sizes cannot diverge in any dtype.
+        # dot product is accumulated at higher precision and rounded once at the end.
+        # What leg 2 asserts here is the PORTABLE half of the docstring's claim, so it holds on any
+        # backend and any build: the disagreement is at most one rounding step of the working dtype
+        # at the magnitudes involved, i.e. 2 * finfo(dtype).eps -- derived from the mechanism, not
+        # measured, and computed from the dtype rather than hardcoded. The exact per-configuration
+        # gaps are a kernel measurement and live in
+        # test_wart_agreement_gap_at_2_28_is_a_kernel_measurement below, which is where the
+        # docstring's figures are pinned and where an unmeasured configuration skips visibly.
         # What this pin does NOT decide: anything about non-corner-aligned callers such as
         # grid_sample(align_corners=False), which is pinned separately in
         # TestNormalizePixelCoordinates.
@@ -3545,29 +3596,6 @@ class TestNormalTransformPixel(BaseTester):
         # Snippet used to generate expected (leg 1, stdlib only, height = 3, width = 5):
         #   x -> 2 * x / 4 - 1 for x in (0, 4, 2, 1, 6) -> -1.0, 1.0, 0.0, -0.5, 2.0
         #   y -> 2 * y / 2 - 1 for y in (0, 2, 1, 0.5, 0) -> -1.0, 1.0, 0.0, -0.5, -1.0
-        # Leg 2 asserts the EXACT measured gap, including the exact 0.0 the docstring claims for
-        # cpu float32/float64 -- a bound there would let a regression from exact agreement to a
-        # small-but-nonzero gap stay green while the docstring sentence became false. The gap is a
-        # measurement of the backend's matmul accumulation, so it is keyed by backend, and cpu
-        # bfloat16 is keyed by torch build on top of that: that one kernel changed between the two
-        # builds executed here, from no divergence at all on 2.5.1 to one bfloat16 step on 2.9.1.
-        # Everything else in the table reproduced on both builds. An unmeasured (backend, dtype),
-        # or an unmeasured build for the cpu bfloat16 cell, inherits no literal and skips visibly:
-        # the skip is a reminder to measure, not a silent pass. That is also why this is a table
-        # and not a capability probe -- the discriminator is a measured number, and the only probe
-        # for it would be the comparison itself.
-        # The grid is built with an int64 arange cast down afterwards, not a typed arange, because
-        # `arange_mps` has no bfloat16 kernel before torch 2.9 and would error out of the pin
-        # rather than measure it.
-        # Snippet used to generate expected (leg 2, torch only, executed on this machine against
-        # both torch 2.9.1 and torch 2.5.1; max|helper - matrix| over the full (2, 28) pixel grid):
-        #   cpu 2.9.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.00390625
-        #   cpu 2.5.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.0
-        #   mps, both: float32 -> 5.960464477539063e-08 (2**-24)   float16 -> 0.0009765625
-        #              bfloat16 -> 0.00390625            (float64 is unavailable on mps)
-        #   cpu float16, pixel (27, 0): helper x = 1.0, matrix x = 1.0009765625
-        # The full range(2, 60) sweep behind the docstring's counts moves the same way: bfloat16 is
-        # 3315/3364 size pairs on 2.9.1 and 0/3364 on 2.5.1, float16 is 3328/3364 on both.
         _skip_if_dtype_unavailable(device, dtype)
         pixels = torch.tensor(
             [[[0.0, 0.0], [4.0, 2.0], [2.0, 1.0], [1.0, 0.5], [6.0, 0.0]]], device=device, dtype=dtype
@@ -3584,49 +3612,78 @@ class TestNormalTransformPixel(BaseTester):
         self.assert_close(via_helper, expected, atol=0.0, rtol=0.0)
         self.assert_close(via_matrix, expected, atol=0.0, rtol=0.0)
 
-        rows, columns = 2, 28
-        y_grid, x_grid = torch.meshgrid(
-            torch.arange(rows, device=device).to(dtype),
-            torch.arange(columns, device=device).to(dtype),
-            indexing="ij",
+        largest_gap = _agreement_gap_at_2_28(device, dtype)
+        one_rounding_step = 2 * torch.finfo(dtype).eps
+
+        assert largest_gap <= one_rounding_step, (
+            f"the two routes now differ by {largest_gap!r} at (2, 28) in {dtype}, more than the "
+            f"{one_rounding_step!r} a single rounding step allows -- they no longer differ only in "
+            "where the rounding falls"
         )
-        grid = torch.stack([x_grid.reshape(-1), y_grid.reshape(-1)], dim=-1)[None]
 
-        grid_via_helper = kornia.geometry.conversions.normalize_pixel_coordinates(grid, rows, columns)[0]
-        grid_matrix = kornia.geometry.conversions.normal_transform_pixel(rows, columns, device=device, dtype=dtype)
-        grid_homogeneous = torch.cat([grid[0], torch.ones_like(grid[0][:, :1])], dim=-1)
-        grid_via_matrix = (grid_matrix[0] @ grid_homogeneous.transpose(0, 1)).transpose(0, 1)[:, :2]
-
-        # .float() because the difference of two bfloat16 values is not representable in bfloat16.
-        largest_gap = (grid_via_helper.float() - grid_via_matrix.float()).abs().max().item()
-
+    def test_wart_agreement_gap_at_2_28_is_a_kernel_measurement(self, device, dtype):
+        # Wart pin for the exact figures normal_transform_pixel's agreement bullet quotes: at
+        # (2, 28), where 2/(28 - 1) is not representable in reduced precision, how far apart the
+        # two routes land is a property of the backend's and the build's matmul kernel, not of the
+        # convention. Pinned exactly rather than as a bound -- the portable bound is asserted by
+        # test_convention_agrees_with_normalize_pixel_coordinates above -- because a bound would
+        # let cpu float32/float64 regress from exact agreement to a small nonzero gap while the
+        # docstring's "0.0" claim quietly became false.
+        # Keyed by (backend, machine, dtype), and cpu bfloat16 by torch build on top of that:
+        #   - backend, because the mps matmul rounds once where cpu does not (float32: 2**-24 vs 0)
+        #   - machine, because every figure below was taken on macOS arm64 and nothing here has
+        #     run on x86-64/MKL; an unmeasured platform must not inherit a kernel literal
+        #   - build, because that one cpu bfloat16 kernel changed between the two torch versions
+        #     executed (no divergence at all on 2.5.1, one bfloat16 step on 2.9.1) while every
+        #     other cell reproduced on both
+        # An unmeasured configuration skips visibly: the skip is a reminder to measure, not a
+        # silent pass, and the portable half of the claim is still asserted by the pin above.
+        # NOT a contract that these kernels must keep producing these numbers -- if a cell fails,
+        # re-measure and update the bullet, which is the only place the figures are documented.
+        # Snippet used to generate expected (torch + kornia, executed on macOS arm64 against both
+        # torch 2.9.1 and torch 2.5.1; max|helper - matrix| over the full (2, 28) pixel grid):
+        #   cpu 2.9.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.00390625
+        #   cpu 2.5.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.0
+        #   mps, both: float32 -> 5.960464477539063e-08 (2**-24)   float16 -> 0.0009765625
+        #              bfloat16 -> 0.00390625            (float64 is unavailable on mps)
+        # The docstring also quotes range(2, 60) sweep counts. Those are NOT pinned here -- 3364
+        # size pairs per dtype is too slow for a unit test -- and the bullet says so; the same
+        # snippet with the (2, 28) call in a double loop over range(2, 60) reproduces them:
+        #   cpu 2.9.1: float16 3328/3364 (worst 9.77e-04)   bfloat16 3315/3364 (worst 7.81e-03)
+        #   cpu 2.5.1: float16 3328/3364 (worst 9.77e-04)   bfloat16    0/3364 (worst 0.0)
+        _skip_if_dtype_unavailable(device, dtype)
         measured_gaps = {
-            ("cpu", torch.float64): 0.0,
-            ("cpu", torch.float32): 0.0,
-            ("cpu", torch.float16): 0.0009765625,
-            ("mps", torch.float32): 2.0**-24,
-            ("mps", torch.float16): 0.0009765625,
-            ("mps", torch.bfloat16): 0.00390625,
+            ("cpu", "arm64", torch.float64): 0.0,
+            ("cpu", "arm64", torch.float32): 0.0,
+            ("cpu", "arm64", torch.float16): 0.0009765625,
+            ("mps", "arm64", torch.float32): 2.0**-24,
+            ("mps", "arm64", torch.float16): 0.0009765625,
+            ("mps", "arm64", torch.bfloat16): 0.00390625,
         }
-        measured_cpu_bfloat16_gaps = {"2.9.1": 0.00390625, "2.5.1": 0.0}
+        measured_cpu_bfloat16_gaps = {("arm64", "2.9.1"): 0.00390625, ("arm64", "2.5.1"): 0.0}
+        machine = platform.machine()
 
-        if (device.type, dtype) == ("cpu", torch.bfloat16):
-            if torch_version() not in measured_cpu_bfloat16_gaps:
+        if device.type == "cpu" and dtype == torch.bfloat16:
+            if (machine, torch_version()) not in measured_cpu_bfloat16_gaps:
                 pytest.skip(
-                    f"the cpu bfloat16 (2, 28) gap is build-dependent and torch {torch_version()} was not measured"
+                    f"the cpu bfloat16 (2, 28) gap is a kernel measurement and "
+                    f"{machine} / torch {torch_version()} was not measured"
                 )
-            expected_gap = measured_cpu_bfloat16_gaps[torch_version()]
-        elif (device.type, dtype) in measured_gaps:
-            expected_gap = measured_gaps[(device.type, dtype)]
+            expected_gap = measured_cpu_bfloat16_gaps[(machine, torch_version())]
+        elif (device.type, machine, dtype) in measured_gaps:
+            expected_gap = measured_gaps[(device.type, machine, dtype)]
         else:
             pytest.skip(
-                f"the (2, 28) agreement gap was not measured on {device.type} at {dtype}; no literal to inherit"
+                f"the (2, 28) agreement gap was not measured on {device.type} / {machine} at {dtype}; "
+                "no kernel literal to inherit"
             )
 
+        largest_gap = _agreement_gap_at_2_28(device, dtype)
+
         assert largest_gap == expected_gap, (
-            f"the two routes now differ by {largest_gap!r} at (2, 28) on {device.type} in {dtype}, "
-            f"not {expected_gap!r} -- normal_transform_pixel's agreement bullet states this figure "
-            "and must be re-measured"
+            f"the two routes now differ by {largest_gap!r} at (2, 28) on {device.type} / {machine} "
+            f"in {dtype} under torch {torch_version()}, not {expected_gap!r} -- "
+            "normal_transform_pixel's agreement bullet quotes this figure and must be re-measured"
         )
 
     def test_convention_3d_matrix_acts_on_x_y_z_one(self, device):
@@ -3861,6 +3918,7 @@ class TestNormalizeHomography(BaseTester):
         #   src (1, 1) -> (2*1/4 - 1, 2*1/2 - 1) = (-0.5, 0.0)
         #   dst (3, 1) -> (2*3/4 - 1, 2*1/2 - 1) = ( 0.5, 0.0)
         _skip_if_dtype_unavailable(device, dtype)
+        _skip_if_closed_form_inverse_unavailable(device, dtype)
         translate_two_px = torch.tensor(
             [[[1.0, 0.0, 2.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )
@@ -3884,6 +3942,7 @@ class TestNormalizeHomography(BaseTester):
         #   normalize_homography(H, (5, 9), (3, 5))
         #     -> [[4.0, 0.5, 4.5], [-1.0, 2.0, 1.0], [0.0, 0.0, 1.0]]
         _skip_if_dtype_unavailable(device, dtype)
+        _skip_if_closed_form_inverse_unavailable(device, dtype)
         homography = torch.tensor(_DIRECTION_H, device=device, dtype=dtype)
 
         normalized = kornia.geometry.conversions.normalize_homography(homography, (3, 5), (5, 9))
@@ -3949,6 +4008,7 @@ class TestNormalizeHomography(BaseTester):
         #   denormalize_homography(normalize_homography(H, (3, 5), (5, 9)), (3, 5), (5, 9)) == H  (bitwise)
         #   normalize_homography(denormalize_homography(H, (3, 5), (5, 9)), (3, 5), (5, 9)) == H  (bitwise)
         _skip_if_dtype_unavailable(device, dtype)
+        _skip_if_closed_form_inverse_unavailable(device, dtype)
         normalize_homography = kornia.geometry.conversions.normalize_homography
         denormalize_homography = kornia.geometry.conversions.denormalize_homography
         homography = torch.tensor(_ROUND_TRIP_H, device=device, dtype=dtype)
@@ -3970,6 +4030,7 @@ class TestNormalizeHomography(BaseTester):
         # on a batch of two different homographies, comparing element 1 of the batched call against
         # the single-element call.
         _skip_if_dtype_unavailable(device, dtype)
+        _skip_if_closed_form_inverse_unavailable(device, dtype)
         normalize_homography = kornia.geometry.conversions.normalize_homography
         denormalize_homography = kornia.geometry.conversions.denormalize_homography
         batch = torch.tensor([_DIRECTION_H[0], _ROUND_TRIP_H[0]], device=device, dtype=dtype)

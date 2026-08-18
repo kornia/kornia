@@ -1871,7 +1871,8 @@ def normal_transform_pixel(
           **in** ``float32`` **and** ``float64`` pushing one grid through both
           agrees to a maximum absolute difference of ``0.0`` on cpu, executed
           over every ``(height, width)`` pair in ``range(2, 60)`` on the full
-          pixel grid, on torch 2.9.1 and 2.5.1 alike. That exactness is
+          pixel grid, on torch 2.9.1 and 2.5.1 alike (every figure in this
+          bullet was measured on macOS arm64; no x86-64 build was executed). That exactness is
           backend-dependent — the same ``float32`` comparison at ``(2, 28)``
           peaks at ``5.96e-08`` on ``mps``, which is ``2**-24``, the
           ``float32`` spacing just below ``1.0``. In ``float16``/``bfloat16``
@@ -1893,10 +1894,18 @@ def normal_transform_pixel(
           ``bfloat16``, on both builds. At ``(2, 28)`` in ``float16`` the x
           coordinate of pixel ``(27, 0)`` comes back as ``1.0`` from the helper
           and ``1.0009765625`` through the matrix — that one, unlike the
-          ``bfloat16`` figures, is the same on both backends and both builds. Every figure here is pinned,
-          keyed by backend and — for the cpu ``bfloat16`` cell — by torch
-          build, in
-          ``TestNormalTransformPixel::test_convention_agrees_with_normalize_pixel_coordinates``.
+          ``bfloat16`` figures, is the same on both backends and both builds.
+          The ``(2, 28)`` figures are pinned in
+          ``TestNormalTransformPixel::test_wart_agreement_gap_at_2_28_is_a_kernel_measurement``,
+          keyed by backend, machine and — for the cpu ``bfloat16`` cell —
+          torch build, so an unmeasured configuration skips rather than
+          inheriting a kernel literal. The ``range(2, 60)`` sweep counts above
+          are **not** pinned — 3364 size pairs per dtype is too slow for a unit
+          test — and are reproducible from the snippet in that pin; what runs
+          everywhere instead is the portable half of the claim, that the two
+          routes differ by at most one rounding step of the working dtype
+          (``2 * finfo(dtype).eps``), asserted by
+          ``test_convention_agrees_with_normalize_pixel_coordinates``.
           At the degenerate sizes the two diverge — they clamp
           through different ``eps`` mechanisms, ``2e14``-scale here against
           ``2e8``-scale there at ``size == 1``, and with opposite signs at
