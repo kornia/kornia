@@ -173,10 +173,16 @@ Durable findings from earlier CUDA runs (2026-08-07, see benchmarks/README.md):
   snapshots; reproduce with `python benchmarks/<suite>/flagship.py --contribute benchmarks/results`).
 - augmentation on apple-m1/cpu (2026-08-08): fastest overall opencv RandomHorizontalFlip@1 at 180552 items/s; slowest kornia op ColorJiggle@32 at 157 items/s.
 - augmentation on apple-m1/mps (2026-08-08): fastest overall opencv RandomHorizontalFlip@8 at 182381 items/s; slowest kornia op ColorJiggle@1 at 91 items/s.
+- augmentation on apple-m4/cpu (2026-08-18): fastest overall opencv RandomHorizontalFlip@8 at 248255 items/s; slowest kornia op ColorJiggle@32 at 414 items/s.
+- augmentation on apple-m4/mps (2026-08-18): fastest overall opencv RandomHorizontalFlip@8 at 247523 items/s; slowest kornia op ColorJiggle@1 at 271 items/s.
 - filters on apple-m1/cpu (2026-08-08): fastest overall opencv box_blur@1 at 22422 items/s; slowest kornia op median_blur@32 at 11 items/s.
 - filters on apple-m1/mps (2026-08-08): fastest overall opencv box_blur@1 at 20137 items/s; slowest kornia op median_blur@32 at 1 items/s.
+- filters on apple-m4/cpu (2026-08-18): fastest overall opencv box_blur@1 at 31751 items/s; slowest kornia op median_blur@32 at 16 items/s.
+- filters on apple-m4/mps (2026-08-18): fastest overall opencv box_blur@1 at 31758 items/s; slowest kornia op median_blur@1 at 3 items/s.
 - geometry on apple-m1/cpu (2026-08-08): fastest overall opencv get_perspective_transform@32 at 501126 items/s; slowest kornia op warp_perspective@32 at 841 items/s.
 - geometry on apple-m1/mps (2026-08-08): fastest overall opencv get_perspective_transform@8 at 490803 items/s; slowest kornia op rotate@1 at 218 items/s.
+- geometry on apple-m4/cpu (2026-08-18): fastest overall opencv get_perspective_transform@8 at 723108 items/s; slowest kornia op warp_perspective@1 at 1397 items/s.
+- geometry on apple-m4/mps (2026-08-18): fastest overall opencv get_perspective_transform@8 at 728136 items/s; slowest kornia op rotate@1 at 615 items/s.
 <!-- BENCH:END -->
 
 ## Links
