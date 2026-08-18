@@ -804,6 +804,15 @@ class TestQuaternionToRotationMatrix(BaseTester):
         matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
         assert matrix.shape == (*batch_dims, 3, 3)
 
+    @pytest.mark.parametrize("low_precision_dtype", (torch.float16, torch.bfloat16))
+    def test_unbatched_preserves_low_precision_dtype(self, device, low_precision_dtype):
+        quaternion = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=low_precision_dtype)
+
+        matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
+
+        assert matrix.dtype == low_precision_dtype
+        self.assert_close(matrix, torch.eye(3, device=device, dtype=low_precision_dtype))
+
     def test_unit_quaternion(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor(((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)), device=device, dtype=dtype)

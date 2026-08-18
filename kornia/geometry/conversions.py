@@ -902,7 +902,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
     tyy: torch.Tensor = ty * y
     tyz: torch.Tensor = tz * y
     tzz: torch.Tensor = tz * z
-    one: torch.Tensor = torch.tensor(1.0)
+    one: float = 1.0
 
     matrix_flat: torch.Tensor = torch.stack(
         (
