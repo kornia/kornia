@@ -141,6 +141,13 @@ _DEPRECATED_ALIASES = [
 # Deliberately type-only -- no message text, which may be reworded on either side. The strict
 # xfail asserts membership and the companion wart asserts the complement, so the two are keyed to
 # one definition and cannot drift apart.
+# One accepted hole, declared here because every consumer of this tuple inherits it: a fix that
+# guarded shapes or dtypes with a literal `raise RuntimeError(...)` would classify as unguarded
+# and land silently -- the strict xfail would stay XFAIL and the companion pytest.raises
+# (RuntimeError) would stay green. Accepted, because nothing in kornia/core/check.py raises bare
+# RuntimeError; adopting that style would be new, at which point this tuple gains a branch and
+# the pins that cite it are rechecked. So "flips loudly" everywhere below means "for any of
+# kornia's own check styles", not for every conceivable fix.
 _KORNIA_GUARD_EXCEPTIONS = (BaseError, ValueError)
 
 
@@ -3962,41 +3969,77 @@ class TestNormalizeHomography(BaseTester):
             msg=_issue_msg("kornia#3958: the ambient default dtype no longer decides the constants' precision"),
         )
 
-    def test_wart_integer_input_raises_on_cpu_and_nans_on_mps_3959(self, device):
+    def test_wart_integer_input_raises_or_nans_by_backend_3959(self, device):
         # Wart pin for kornia#3959's homography reach, companion to normalize_homography's
         # integer-input warning: the normalization matrices are cast to the input's int64 by
         # .to(input), truncating their scales to zero (the truncation itself is pinned in
         # test_wart_integer_dtype_truncates_the_scale_to_zero_3959 above), and the downstream
-        # failure is device-dependent. On cpu, normalize_homography dies in its closed-form
-        # inverse path with a RuntimeError and denormalize_homography's torch.linalg.inv path
-        # raises torch.linalg.LinAlgError (a RuntimeError subclass) about the zero diagonal of
-        # the truncated matrix. On mps, the same normalize_homography call raises nothing and
-        # returns an all-nan float32 matrix. Exception TYPES only, no message text -- torch may
-        # reword either message (the snippet quotes them as samples); no _KORNIA_GUARD_EXCEPTIONS
-        # type is a RuntimeError subclass, so a kornia-side dtype guard flips the cpu cells
-        # loudly. Other devices skip visibly: the warning claims cpu and mps behavior only,
-        # matching what was executed. If any cell fails, #3959 was (partly) fixed -- update or
-        # remove the warning. NOT a contract that integer input must keep failing this way.
+        # failure differs by backend. normalize_homography dies in the FINAL CHAIN MATMUL with a
+        # RuntimeError -- the closed-form inverse does not raise, it silently promotes the
+        # truncated int64 matrix to an all-nan float32 one, and the int64-vs-float32 matmul then
+        # rejects the mix. denormalize_homography inverts the other matrix and by the other route
+        # -- _torch_inverse_cast, i.e. torch.linalg.inv -- which dies on the zero diagonal of the
+        # truncated matrix before any matmul runs.
+        # Both legs are gated by capability PROBES rather than a device-name list, matching
+        # test_wart_one_pixel_output_makes_warp_perspective_all_nan_3957 below: each probe IS the
+        # mechanism its leg claims, so a future backend that behaves like cpu is covered instead
+        # of skipped. Executed: cpu rejects the mixed batched matmul and reports a singular
+        # inverse as torch.linalg.LinAlgError; mps accepts the matmul (hence the all-nan float32
+        # result) and reports the singular inverse as a plain RuntimeError. The matmul probe must
+        # be BATCHED -- the unbatched 2-D mixed form raises on both backends, so it would
+        # discriminate nothing.
+        # Exception TYPES only, no message text -- torch may reword either message (the snippet
+        # quotes them as samples). What a kornia-side dtype guard does to these cells: any of
+        # kornia's own check styles escapes the raises() and flips them loudly, because neither
+        # _KORNIA_GUARD_EXCEPTIONS entry is a RuntimeError subclass; a guard raising a bare
+        # RuntimeError would keep them green -- the accepted, out-of-scope hole declared at that
+        # tuple's definition.
+        # If any cell fails, #3959 was (partly) fixed -- update or remove the warning. NOT a
+        # contract that integer input must keep failing this way.
         # Snippet used to generate expected (torch only, executed on cpu and mps, torch 2.9.1):
         #   normalize_homography(torch.eye(3, dtype=torch.int64)[None], (4, 5), (8, 9))
         #     cpu -> RuntimeError: expected scalar type Long but found Float
+        #            raised at conversions.py's
+        #            dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
         #     mps -> all-nan float32 matrix, no error
+        #   _inverse_3x3_closed_form(normal_transform_pixel(4, 5).to(torch.int64))
+        #     cpu -> no exception; returns an all-nan float32 matrix
         #   denormalize_homography(torch.eye(3, dtype=torch.int64)[None], (4, 5), (8, 9))
         #     cpu -> torch.linalg.LinAlgError: linalg.inv: (Batch element 0): The diagonal
         #            element 2 is zero, the inversion could not be completed
+        #     mps -> RuntimeError (linalg.inv on a singular matrix is an internal assert there)
         identity = torch.eye(3, device=device, dtype=torch.int64)[None]
 
-        if device.type == "cpu":
+        try:
+            _ = (
+                torch.eye(3, device=device, dtype=torch.int64)[None]
+                @ torch.eye(3, device=device, dtype=torch.float32)[None]
+            )
+        except RuntimeError:
+            mixed_matmul_rejected = True
+        else:
+            mixed_matmul_rejected = False
+
+        if mixed_matmul_rejected:
             with pytest.raises(RuntimeError):
                 kornia.geometry.conversions.normalize_homography(identity, (4, 5), (8, 9))
-            with pytest.raises(torch.linalg.LinAlgError):
-                kornia.geometry.conversions.denormalize_homography(identity, (4, 5), (8, 9))
-        elif device.type == "mps":
-            out = kornia.geometry.conversions.normalize_homography(identity, (4, 5), (8, 9))
-            assert out.dtype == torch.float32, "kornia#3959: the mps int64 result is no longer float32"
-            assert out.isnan().all(), "kornia#3959: the mps int64 result is no longer all-nan"
         else:
-            pytest.skip("kornia#3959's integer-input warning claims cpu and mps behavior only")
+            out = kornia.geometry.conversions.normalize_homography(identity, (4, 5), (8, 9))
+            assert out.dtype == torch.float32, "kornia#3959: the accepting int64 result is no longer float32"
+            assert out.isnan().all(), "kornia#3959: the accepting int64 result is no longer all-nan"
+
+        try:
+            torch.linalg.inv(torch.zeros(1, 3, 3, device=device, dtype=torch.float32))
+        except RuntimeError as err:
+            singular_inverse_error = type(err)
+        else:
+            singular_inverse_error = None
+
+        if singular_inverse_error is None:
+            pytest.skip("backend does not raise on a singular linalg.inv; #3959's denormalize leg has no failure here")
+
+        with pytest.raises(singular_inverse_error):
+            kornia.geometry.conversions.denormalize_homography(identity, (4, 5), (8, 9))
 
     @pytest.mark.xfail(
         raises=AssertionError,
@@ -4043,9 +4086,11 @@ class TestNormalizeHomography(BaseTester):
         # purpose. pytest.raises(RuntimeError) requires the exception TYPE that torch's own
         # arithmetic raises -- the name says the input dies inside matmul, and catching a broader
         # Exception would let an unrelated TypeError or IndexError regression pass under that name;
-        # no _KORNIA_GUARD_EXCEPTIONS type is a RuntimeError subclass, so a guard fix escapes the
-        # raises() and flips this cell loudly. The assertion then holds the complement of the
-        # xfail's classification, keeping the pair keyed to the one module-level tuple. Neither
+        # no _KORNIA_GUARD_EXCEPTIONS type is a RuntimeError subclass, so a guard fix written in
+        # any of kornia's own check styles escapes the raises() and flips this cell loudly (a fix
+        # raising a bare RuntimeError does not -- the accepted hole declared at that tuple). The
+        # assertion then holds the complement of the xfail's classification, keeping the pair
+        # keyed to the one module-level tuple. Neither
         # layer depends on message text (the message below is quoted as a sample, asserted
         # nowhere).
         # If any cell fails, #3960 was (partly) fixed -- flip/remove the strict xfail above. NOT a
@@ -4517,6 +4562,14 @@ class TestRt2Extrinsics(BaseTester):
         # trip is pure slicing and concatenation of exactly representable values -- no arithmetic
         # touches any element -- so no other-dtype leg can fail where float32 passes and the
         # fixture only multiplied cells.
+        # Not asserted, per this file's rule that a comparison which could only flip together with
+        # one already made is left out: the two recovered shapes (assert_close checks shape itself,
+        # and the two calls below run against the (1, 3, 3)/(1, 3, 1) tensors _asymmetric_pose
+        # returns) and the canonical re-pack
+        # Rt_to_matrix4x4(recovered_R, recovered_t) == extrinsics (pure cat/pad over tensors the
+        # two lines above already pin bitwise to what extrinsics was built from). The PROJECTIVE
+        # re-pack at the end IS asserted -- the rebuilt [0, 0, 0, 1] bottom row is what nothing
+        # else here constrains.
         # Snippet used to generate expected (torch only, executed on cpu):
         #   matrix4x4_to_Rt(M) -> (R, t) equal to the inputs of Rt_to_matrix4x4, bitwise
         #   matrix4x4_to_Rt(M with bottom row [9, 9, 9, 9]) -> the same (R, t)
@@ -4526,11 +4579,8 @@ class TestRt2Extrinsics(BaseTester):
 
         recovered_R, recovered_t = matrix4x4_to_Rt(extrinsics)
 
-        assert recovered_R.shape == (1, 3, 3)
-        assert recovered_t.shape == (1, 3, 1)
         self.assert_close(recovered_R, rotation, atol=0.0, rtol=0.0)
         self.assert_close(recovered_t, translation, atol=0.0, rtol=0.0)
-        self.assert_close(Rt_to_matrix4x4(recovered_R, recovered_t), extrinsics, atol=0.0, rtol=0.0)
 
         projective = extrinsics.clone()
         projective[0, 3] = torch.tensor([9.0, 9.0, 9.0, 9.0], device=device, dtype=torch.float32)
@@ -4578,23 +4628,34 @@ class TestRt2Extrinsics(BaseTester):
         self.assert_close(extrinsics[0, :3, 3], torch.zeros(3, device=device, dtype=torch.float32), atol=0.0, rtol=0.0)
 
     def test_wart_int64_Rt_raises_while_4x4_and_pose_forms_accept_3959(self, device):
-        # Wart pin for the int64 dichotomy that three docstrings in this family document
-        # (Rt_to_matrix4x4, camtoworld_graphics_to_vision_4x4, camtoworld_to_worldtocam_Rt):
-        # Rt_to_matrix4x4 and the two frame functions built on it raise RuntimeError on an int64
-        # (R, t) -- the appended float homogeneous row cannot be cast to Long -- while the _4x4
-        # forms and the transpose-negate-multiply pose pair accept int64 and return int64. Part of
-        # the kornia#3959 integer-dtype family; without this pin, a torch promotion change in
-        # cat/pad or a dtype guard added to one side would invalidate all three warnings with
-        # nothing flipping red. RuntimeError is asserted by type only (the message is torch's and
-        # may be reworded; a sample is quoted in the snippet). If any leg fails, #3959 was (partly)
-        # fixed or torch promotion changed -- update the three warnings together with this pin.
+        # Wart pin for the int64 dichotomy this family documents: Rt_to_matrix4x4 and the two
+        # frame functions built on it raise RuntimeError on an int64 (R, t) -- the appended float
+        # homogeneous row cannot be cast to Long -- while the _4x4 forms and the
+        # transpose-negate-multiply pose pair accept int64 and return int64. Part of the
+        # kornia#3959 integer-dtype family; without this pin, a torch promotion change in cat/pad
+        # or a dtype guard added to one side would invalidate the docstring warnings with nothing
+        # flipping red. RuntimeError is asserted by type only (the message is torch's and may be
+        # reworded; a sample is quoted in the snippet); as at the _KORNIA_GUARD_EXCEPTIONS
+        # definition, a kornia-side dtype guard written in any of kornia's own check styles
+        # escapes that raises() and flips the raising legs loudly, while a guard raising a bare
+        # RuntimeError would keep them green -- the accepted hole declared there.
+        # Maintenance map, if any leg fails (#3959 was partly fixed, or torch promotion changed).
+        # Five docstrings carry int64 text, two of them the carriers and three pointers into them:
+        #   carriers: Rt_to_matrix4x4, camtoworld_graphics_to_vision_4x4
+        #   pointers: camtoworld_graphics_to_vision_Rt, camtoworld_vision_to_graphics_4x4,
+        #             camtoworld_vision_to_graphics_Rt
+        # Edit the two carriers, then re-check that the three pointers still describe what they
+        # point at. camtoworld_to_worldtocam_Rt is deliberately NOT on this list: its int64
+        # acceptance is exercised below but its docstring carries no integer text (only the #3961
+        # non-orthogonal-R warning), so there is nothing there to update.
         # NOT a contract that the raising side must keep raising.
         # The accepting legs run only where the backend implements integer batched matmul (probed
-        # visibly below): per PyTorch's documented op coverage CUDA has none (not executed here --
-        # the probe, not this comment, is what decides), so there the accepting side is a torch
-        # limitation, not a kornia guard, and the warnings scope their accept-and-return-int64
-        # sentences to cpu/mps for the same reason. The raising legs run everywhere -- they raise
-        # RuntimeError on every backend, whichever operation dies first.
+        # visibly below): PyTorch 2.9.1 implements it for no integer dtype on CUDA -- source-
+        # derived from that release's aten/src/ATen/native/cuda/Blas.cpp, not executed here, and
+        # the probe rather than this comment is what decides -- so there the accepting side is a
+        # torch limitation, not a kornia guard, and the warnings scope their accept-and-return-
+        # int64 sentences to cpu/mps for the same reason. The raising legs run everywhere -- they
+        # raise RuntimeError on every backend, whichever operation dies first.
         # Snippet used to generate expected (torch only, executed on cpu):
         #   Rt_to_matrix4x4(eye(3, int64)[None], ones(1, 3, 1, int64))
         #     -> RuntimeError: result type Float can't be cast to the desired output type Long
@@ -4726,9 +4787,11 @@ class TestCamtoworldGraphicsToVision(BaseTester):
         # multiplication, i.e. a change of the CAMERA-side basis. Two consequences are pinned
         # because both are what a caller gets wrong: columns 1 and 2 of the rotation flip sign while
         # column 0 is untouched, and the translation column is left ALONE. The left-multiplied
-        # alternative, diag(1, -1, -1, 1) @ extrinsics, is pinned to its own literal as the contrast:
-        # it negates the translation instead, which is exactly what happens when a *worldtocam*
-        # matrix is passed to these functions -- a silent error, since the shapes match.
+        # alternative, diag(1, -1, -1, 1) @ extrinsics, negates the translation instead -- exactly
+        # what happens when a *worldtocam* matrix is passed to these functions, a silent error
+        # since the shapes match. That contrast is recorded in the snippet below rather than
+        # asserted: it is test-side arithmetic on an already-pinned matrix with no kornia call on
+        # its path, so per this file's rule it could only flip on a torch matmul regression.
         # The determinant of the rotation block stays +1: two axes flip, not one, so handedness is
         # preserved and this is a rotation rather than a reflection.
         # Snippet used to generate expected (torch only, executed on cpu):
@@ -4748,20 +4811,6 @@ class TestCamtoworldGraphicsToVision(BaseTester):
             dtype=dtype,
         )
         self.assert_close(flipped, expected, atol=0.0, rtol=0.0)
-
-        flip = torch.diag(torch.tensor([1.0, -1.0, -1.0, 1.0], device=device, dtype=dtype))
-        left_multiplied = flip @ extrinsics[0]
-
-        self.assert_close(
-            left_multiplied,
-            torch.tensor(
-                [[0.0, 0.0, 1.0, 1.0], [-1.0, 0.0, 0.0, -2.0], [0.0, -1.0, 0.0, -3.0], [0.0, 0.0, 0.0, 1.0]],
-                device=device,
-                dtype=dtype,
-            ),
-            atol=0.0,
-            rtol=0.0,
-        )
 
         flipped_R, flipped_t = camtoworld_graphics_to_vision_Rt(rotation, translation)
 
@@ -4889,7 +4938,7 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         # is asserting: for this R, R.T @ t permutes (1, 2, 3) to (2, 3, 1) and the result is its
         # negation. One assert per output: the hand literal IS R.T of _ASYMMETRIC_R, so a second
         # comparison against rotation.transpose(1, 2) could only ever flip together with it and is
-        # not made.
+        # not made. Same for t's shape -- the assert_close against a (1, 3, 1) literal checks it.
         # Snippet used to generate expected (stdlib only):
         #   R.T          = [[0, 1, 0], [0, 0, 1], [1, 0, 0]]
         #   R.T @ t      = (2, 3, 1)
@@ -4898,7 +4947,6 @@ class TestCamtoworldRtToPoseRt(BaseTester):
 
         inverted_R, inverted_t = camtoworld_to_worldtocam_Rt(rotation, translation)
 
-        assert inverted_t.shape == (1, 3, 1)
         self.assert_close(
             inverted_R,
             torch.tensor([[[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]]], device=device, dtype=dtype),

@@ -1780,10 +1780,20 @@ def normalize_homography(
         Integer inputs are handled inconsistently and the inconsistency is
         device-dependent: on cpu (torch 2.9.1) an ``int64`` call raises
         ``RuntimeError: expected scalar type Long but found Float`` here and a
-        ``_LinAlgError`` about a zero diagonal in
+        ``torch.linalg.LinAlgError`` about a zero diagonal in
         :func:`~kornia.geometry.conversions.denormalize_homography`, while on
         ``mps`` the same ``normalize_homography`` call returns an all-``nan``
-        ``float32`` matrix instead of raising. Neither failure names the dtype.
+        ``float32`` matrix instead of raising. Only the cpu
+        ``normalize_homography`` message names the dtype; the other two
+        failures give no dtype clue at all. What splits the two behaviors is
+        whether the backend rejects a **batched** ``int64``-by-``float32``
+        matmul: the normalization matrices are truncated to ``int64``, the
+        closed-form inverse silently promotes them back to an all-``nan``
+        ``float32``, and the final chain matmul then sees a mixed pair — cpu
+        rejects it, ``mps`` multiplies it. The companion pin probes that
+        mechanism instead of listing device names, so the behavior recorded
+        here for cpu and ``mps`` is the behavior of any backend that makes the
+        same choice.
         Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
     .. warning::
@@ -2043,8 +2053,8 @@ def denormalize_homography(
           accumulation residuals whose ulp counts can shift with a backend's
           summation order) — that is rounding across four matrix products and an inverse,
           not an exact identity. Pick sizes of the form ``2**k + 1`` and the
-          constants become exact **when the resulting ``2 / 2**k`` scale is
-          representable in the working dtype** — it is at the small sizes the
+          constants become exact **when the resulting** ``2 / 2**k`` **scale
+          is representable in the working dtype** — it is at the small sizes the
           convention pins use, but ``float16`` underflows it to ``0.0`` from
           ``2**26 + 1`` on: the true scale ``2**-25`` is exactly **half** the
           dtype's smallest subnormal ``2**-24`` and rounds to zero under
@@ -2059,12 +2069,16 @@ def denormalize_homography(
           ``[[2**25, 1, 3], [5, 2**25, 7], [11, 13, 1]]`` comes back from
           ``denormalize(normalize(H))`` off by ``3.0`` in ``float32``, even
           at the dyadic sizes ``(3, 5)``/``(5, 9)``). At sizes
-          ``(3, 5)`` and ``(5, 9)`` the literal
-          above returns from ``normalize(denormalize(H))`` bitwise while
+          ``(3, 5)`` and ``(5, 9)`` the projective literal named at the top of
+          this bullet — ``[[1.2, 0.3, 5.0], ...]``, not the integer matrix just
+          above — returns from ``normalize(denormalize(H))`` bitwise while
           ``denormalize(normalize(H))`` still deviates by
-          ``4.76837158203125e-07`` — yet the same literal with its projective
-          row replaced by ``[0, 0, 1]`` round-trips bitwise in both
-          directions. The convention pins in kornia's test suite assert the
+          ``4.76837158203125e-07`` — yet that same projective literal with its
+          bottom row replaced by ``[0, 0, 1]`` round-trips bitwise in both
+          directions (the integer matrix matches only the first half: it too
+          comes back bitwise from ``normalize(denormalize(H))``, but its
+          ``denormalize(normalize(H))`` misses by ``3.0`` with either bottom
+          row). The convention pins in kornia's test suite assert the
           bit-for-bit form at those sizes on a literal chosen so that every
           intermediate is exact
         - the two functions do **not** invert their normalization matrix the
@@ -2746,14 +2760,19 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`,
           then
           :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt`,
-          then :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt`
+          then :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt`,
+          then
+          :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion` on
+          the resulting matrix — that last step is what turns the ``(R, t)`` of
+          the third function into the documented ``(q, t)``, and it is the
+          source of the sign/branch behavior the bullets below describe
         - a caller reading ARKit directly must **reorder the quaternion first**:
           Apple's ``simd_quatf`` exposes ``.vector`` as ``(ix, iy, iz, r)``, i.e.
           ``xyzw``, which this function would read as ``wxyz`` and silently
           accept. (Apple's layout is cited from its API documentation, not
           executed here; the ``wxyz`` reading on kornia's side is executed)
-        - the input quaternion need not be unit, **within a bounded range of
-          ``||q||``**: rescaling it moves the resulting pose only by the working
+        - the input quaternion need not be unit, **within a bounded range
+          of** ``||q||``: rescaling it moves the resulting pose only by the working
           dtype's rounding as long as ``||q||`` stays **above**
           :func:`~kornia.geometry.conversions.normalize_quaternion`'s
           ``eps = 1e-12`` and **below** the point at which the norm's
