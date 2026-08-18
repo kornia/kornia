@@ -92,12 +92,16 @@ def _issue_msg(text: str):
 
 
 def _skip_if_dtype_unavailable(device, dtype) -> None:
-    # Visible skip (never a silent guard) for the dtype-hardcoded pins below. Those pins drop the
-    # dtype fixture on purpose so they run in every test configuration, which means they would
-    # otherwise also run on a device that cannot represent the dtype at all -- MPS has no float64
-    # -- and the resulting TypeError would satisfy a raises=AssertionError xfail mark instead of
-    # the assertion the pin documents. Probed at runtime rather than hardcoded per backend so the
-    # skip retires itself once a backend gains the dtype.
+    # Visible skip (never a silent guard) for the pins below, in both directions. The
+    # dtype-hardcoded pins drop the dtype fixture on purpose so they run in every test
+    # configuration, which means they would otherwise also run on a device that cannot represent
+    # the dtype at all -- MPS has no float64 -- and the resulting TypeError would satisfy a
+    # raises=AssertionError xfail mark instead of the assertion the pin documents. The
+    # fixture-parametrized pins call it for the same reason read the other way round: a
+    # --device=mps --dtype=all run would otherwise report them as failures indistinguishable from
+    # a real one, when the only fact being reported is that MPS has no float64. Probed at runtime
+    # rather than hardcoded per backend so the skip retires itself once a backend gains the
+    # dtype.
     try:
         torch.zeros(1, device=device, dtype=dtype)
     except (TypeError, RuntimeError) as err:
@@ -3541,20 +3545,30 @@ class TestNormalTransformPixel(BaseTester):
         # Snippet used to generate expected (leg 1, stdlib only, height = 3, width = 5):
         #   x -> 2 * x / 4 - 1 for x in (0, 4, 2, 1, 6) -> -1.0, 1.0, 0.0, -0.5, 2.0
         #   y -> 2 * y / 2 - 1 for y in (0, 2, 1, 0.5, 0) -> -1.0, 1.0, 0.0, -0.5, -1.0
-        # Leg 2 is keyed by (backend, dtype) and asserts the EXACT measured gap, including the
-        # exact 0.0 the docstring claims for cpu float32/float64 -- a bound there would let a
-        # regression from exact agreement to a small-but-nonzero gap stay green while the
-        # docstring sentence became false. The gap is a matmul-accumulation measurement and
-        # accumulation is backend-specific, so a backend with no measurement inherits no literal:
-        # it skips visibly. That is why this is a device-name table and not a capability probe --
-        # the discriminator here is a measured number, and the only probe for it would be the
-        # comparison itself.
-        # Snippet used to generate expected (leg 2, torch only, torch 2.9.1;
-        # max|helper - matrix| over the full (2, 28) pixel grid):
-        #   cpu: float64 -> 0.0    float32 -> 0.0    float16 -> 0.0009765625  bfloat16 -> 0.00390625
-        #   mps: float32 -> 5.960464477539063e-08 (2**-24)   float16 -> 0.0009765625
-        #        bfloat16 -> 0.00390625           (float64 is unavailable on mps)
+        # Leg 2 asserts the EXACT measured gap, including the exact 0.0 the docstring claims for
+        # cpu float32/float64 -- a bound there would let a regression from exact agreement to a
+        # small-but-nonzero gap stay green while the docstring sentence became false. The gap is a
+        # measurement of the backend's matmul accumulation, so it is keyed by backend, and cpu
+        # bfloat16 is keyed by torch build on top of that: that one kernel changed between the two
+        # builds executed here, from no divergence at all on 2.5.1 to one bfloat16 step on 2.9.1.
+        # Everything else in the table reproduced on both builds. An unmeasured (backend, dtype),
+        # or an unmeasured build for the cpu bfloat16 cell, inherits no literal and skips visibly:
+        # the skip is a reminder to measure, not a silent pass. That is also why this is a table
+        # and not a capability probe -- the discriminator is a measured number, and the only probe
+        # for it would be the comparison itself.
+        # The grid is built with an int64 arange cast down afterwards, not a typed arange, because
+        # `arange_mps` has no bfloat16 kernel before torch 2.9 and would error out of the pin
+        # rather than measure it.
+        # Snippet used to generate expected (leg 2, torch only, executed on this machine against
+        # both torch 2.9.1 and torch 2.5.1; max|helper - matrix| over the full (2, 28) pixel grid):
+        #   cpu 2.9.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.00390625
+        #   cpu 2.5.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.0
+        #   mps, both: float32 -> 5.960464477539063e-08 (2**-24)   float16 -> 0.0009765625
+        #              bfloat16 -> 0.00390625            (float64 is unavailable on mps)
         #   cpu float16, pixel (27, 0): helper x = 1.0, matrix x = 1.0009765625
+        # The full range(2, 60) sweep behind the docstring's counts moves the same way: bfloat16 is
+        # 3315/3364 size pairs on 2.9.1 and 0/3364 on 2.5.1, float16 is 3328/3364 on both.
+        _skip_if_dtype_unavailable(device, dtype)
         pixels = torch.tensor(
             [[[0.0, 0.0], [4.0, 2.0], [2.0, 1.0], [1.0, 0.5], [6.0, 0.0]]], device=device, dtype=dtype
         )
@@ -3572,8 +3586,8 @@ class TestNormalTransformPixel(BaseTester):
 
         rows, columns = 2, 28
         y_grid, x_grid = torch.meshgrid(
-            torch.arange(rows, device=device, dtype=dtype),
-            torch.arange(columns, device=device, dtype=dtype),
+            torch.arange(rows, device=device).to(dtype),
+            torch.arange(columns, device=device).to(dtype),
             indexing="ij",
         )
         grid = torch.stack([x_grid.reshape(-1), y_grid.reshape(-1)], dim=-1)[None]
@@ -3590,17 +3604,24 @@ class TestNormalTransformPixel(BaseTester):
             ("cpu", torch.float64): 0.0,
             ("cpu", torch.float32): 0.0,
             ("cpu", torch.float16): 0.0009765625,
-            ("cpu", torch.bfloat16): 0.00390625,
             ("mps", torch.float32): 2.0**-24,
             ("mps", torch.float16): 0.0009765625,
             ("mps", torch.bfloat16): 0.00390625,
         }
-        if (device.type, dtype) not in measured_gaps:
+        measured_cpu_bfloat16_gaps = {"2.9.1": 0.00390625, "2.5.1": 0.0}
+
+        if (device.type, dtype) == ("cpu", torch.bfloat16):
+            if torch_version() not in measured_cpu_bfloat16_gaps:
+                pytest.skip(
+                    f"the cpu bfloat16 (2, 28) gap is build-dependent and torch {torch_version()} was not measured"
+                )
+            expected_gap = measured_cpu_bfloat16_gaps[torch_version()]
+        elif (device.type, dtype) in measured_gaps:
+            expected_gap = measured_gaps[(device.type, dtype)]
+        else:
             pytest.skip(
                 f"the (2, 28) agreement gap was not measured on {device.type} at {dtype}; no literal to inherit"
             )
-
-        expected_gap = measured_gaps[(device.type, dtype)]
 
         assert largest_gap == expected_gap, (
             f"the two routes now differ by {largest_gap!r} at (2, 28) on {device.type} in {dtype}, "
@@ -3646,6 +3667,7 @@ class TestNormalTransformPixel(BaseTester):
         # Snippet used to generate expected (stdlib only, depth = 9, height = 5, width = 3):
         #   helper (d, x, y) = (7, 2, 1) -> 2*7/8 - 1, 2*2/2 - 1, 2*1/4 - 1 -> [0.75, 1.0, -0.5]
         #   matrix (x, y, z) = (2, 1, 7) -> 2*2/2 - 1, 2*1/4 - 1, 2*7/8 - 1 -> [1.0, -0.5, 0.75]
+        _skip_if_dtype_unavailable(device, dtype)
         voxel_for_helper = torch.tensor([[[7.0, 2.0, 1.0]]], device=device, dtype=dtype)
         voxel_for_matrix = torch.tensor([[2.0], [1.0], [7.0], [1.0]], device=device, dtype=dtype)
 
@@ -3838,6 +3860,7 @@ class TestNormalizeHomography(BaseTester):
         #   2 / (5 - 1) = 0.5, so the +2 px translation becomes 2 * 0.5 = 1.0
         #   src (1, 1) -> (2*1/4 - 1, 2*1/2 - 1) = (-0.5, 0.0)
         #   dst (3, 1) -> (2*3/4 - 1, 2*1/2 - 1) = ( 0.5, 0.0)
+        _skip_if_dtype_unavailable(device, dtype)
         translate_two_px = torch.tensor(
             [[[1.0, 0.0, 2.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )
@@ -3860,6 +3883,7 @@ class TestNormalizeHomography(BaseTester):
         #     -> [[1.0, 0.125, 0.625], [-0.25, 0.5, -0.25], [0.0, 0.0, 1.0]]
         #   normalize_homography(H, (5, 9), (3, 5))
         #     -> [[4.0, 0.5, 4.5], [-1.0, 2.0, 1.0], [0.0, 0.0, 1.0]]
+        _skip_if_dtype_unavailable(device, dtype)
         homography = torch.tensor(_DIRECTION_H, device=device, dtype=dtype)
 
         normalized = kornia.geometry.conversions.normalize_homography(homography, (3, 5), (5, 9))
@@ -3889,6 +3913,7 @@ class TestNormalizeHomography(BaseTester):
         #   H = [[2, 0.5, 2], [-0.25, 1, 1], [0, 0, 1]]
         #   denormalize_homography(H, (3, 5), (5, 9))
         #     -> [[4.0, 2.0, 2.0], [-0.25, 2.0, 2.5], [0.0, 0.0, 1.0]]
+        _skip_if_dtype_unavailable(device, dtype)
         homography = torch.tensor(_DIRECTION_H, device=device, dtype=dtype)
 
         denormalized = kornia.geometry.conversions.denormalize_homography(homography, (3, 5), (5, 9))
@@ -3923,6 +3948,7 @@ class TestNormalizeHomography(BaseTester):
         #   H = [[1.25, 0.25, 4], [-0.5, 0.75, 2], [0.0625, 0.125, 1]]
         #   denormalize_homography(normalize_homography(H, (3, 5), (5, 9)), (3, 5), (5, 9)) == H  (bitwise)
         #   normalize_homography(denormalize_homography(H, (3, 5), (5, 9)), (3, 5), (5, 9)) == H  (bitwise)
+        _skip_if_dtype_unavailable(device, dtype)
         normalize_homography = kornia.geometry.conversions.normalize_homography
         denormalize_homography = kornia.geometry.conversions.denormalize_homography
         homography = torch.tensor(_ROUND_TRIP_H, device=device, dtype=dtype)
@@ -3943,6 +3969,7 @@ class TestNormalizeHomography(BaseTester):
         # depend on the others, bit for bit -- and the leading batch dimension is preserved. Pinned
         # on a batch of two different homographies, comparing element 1 of the batched call against
         # the single-element call.
+        _skip_if_dtype_unavailable(device, dtype)
         normalize_homography = kornia.geometry.conversions.normalize_homography
         denormalize_homography = kornia.geometry.conversions.denormalize_homography
         batch = torch.tensor([_DIRECTION_H[0], _ROUND_TRIP_H[0]], device=device, dtype=dtype)
@@ -3969,6 +3996,7 @@ class TestNormalizeHomography(BaseTester):
         #   normalize_homography3d(H, (5, 9, 17), (3, 5, 9))
         #     -> [[4.0, 0.5, 0.125, 4.125], [-1.0, 2.0, 0.5, 1.0],
         #         [1.0, -2.0, 4.0, 5.0], [0.0, 0.0, 0.0, 1.0]]
+        _skip_if_dtype_unavailable(device, dtype)
         homography = torch.tensor(
             [
                 [
@@ -4967,6 +4995,7 @@ class TestCamtoworldGraphicsToVision(BaseTester):
         #     -> [[0, 0, -1, 1], [1, 0, 0, 2], [0, -1, 0, 3], [0, 0, 0, 1]]
         #   diag(1, -1, -1, 1) @ M
         #     -> [[0, 0, 1, 1], [-1, 0, 0, -2], [0, -1, 0, -3], [0, 0, 0, 1]]
+        _skip_if_dtype_unavailable(device, dtype)
         rotation, translation = _asymmetric_pose(device, dtype)
         extrinsics = Rt_to_matrix4x4(rotation, translation)
 
@@ -5024,6 +5053,7 @@ class TestCamtoworldGraphicsToVision(BaseTester):
         # stronger: the translation column and the bottom row are covered too.
         # Snippet used to generate expected (torch only, executed on cpu):
         #   camtoworld_graphics_to_vision_4x4(torch.eye(4)[None]) -> diag(1, -1, -1, 1)
+        _skip_if_dtype_unavailable(device, dtype)
         identity = torch.eye(4, device=device, dtype=dtype)[None]
 
         vision_axes = camtoworld_graphics_to_vision_4x4(identity)[0]
@@ -5047,6 +5077,7 @@ class TestCamtoworldGraphicsToVision(BaseTester):
         # Snippet used to generate expected (torch only, executed on cpu):
         #   camtoworld_vision_to_graphics_4x4(M) == camtoworld_graphics_to_vision_4x4(M)  (bitwise)
         #   camtoworld_graphics_to_vision_4x4(camtoworld_graphics_to_vision_4x4(M)) == M  (bitwise)
+        _skip_if_dtype_unavailable(device, dtype)
         rotation, translation = _asymmetric_pose(device, dtype)
         extrinsics = Rt_to_matrix4x4(rotation, translation)
 
@@ -5110,6 +5141,7 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         #   R.T          = [[0, 1, 0], [0, 0, 1], [1, 0, 0]]
         #   R.T @ t      = (2, 3, 1)
         #   -R.T @ t     = (-2, -3, -1)
+        _skip_if_dtype_unavailable(device, dtype)
         rotation, translation = _asymmetric_pose(device, dtype)
 
         inverted_R, inverted_t = camtoworld_to_worldtocam_Rt(rotation, translation)
@@ -5132,6 +5164,7 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         # trips are executed separately rather than one being inferred from another.
         # This holds because R is a rotation; the same round trip fails for a non-orthogonal R,
         # which test_wart_non_orthogonal_rotation_is_transposed_not_inverted_3961 pins.
+        _skip_if_dtype_unavailable(device, dtype)
         rotation, translation = _asymmetric_pose(device, dtype)
 
         forward_R, forward_t = camtoworld_to_worldtocam_Rt(rotation, translation)
@@ -5158,6 +5191,7 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         #   M  @ (0, 0, 0, 1) -> [1, 2, 3, 1]      (the camera centre)
         #   Mi @ (1, 2, 3, 1) -> [0, 0, 0, 1]
         #   Mi @ M            -> the identity
+        _skip_if_dtype_unavailable(device, dtype)
         rotation, translation = _asymmetric_pose(device, dtype)
 
         camtoworld = Rt_to_matrix4x4(rotation, translation)[0]
@@ -5214,6 +5248,7 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         #     -> R' = [[1, 0, 0], [0.5, 1, 0], [0, 0, 2]] (= R.T), t' = (-1, -2.5, -6)
         #   max|Rt_to_matrix4x4(R', t') @ Rt_to_matrix4x4(R, t) - I| -> 3.0
         #   worldtocam_to_camtoworld_Rt(R', t')[1] -> (2.25, 2.5, 12.0), i.e. 9.0 from (1, 2, 3)
+        _skip_if_dtype_unavailable(device, dtype)
         rotation = torch.tensor([[[1.0, 0.5, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 2.0]]], device=device, dtype=dtype)
         translation = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
 
@@ -5272,6 +5307,7 @@ class TestCARKitToColmap(BaseTester):
         #   ARKitQTVecs_to_ColmapQTVecs([1, 0, 0, 0], [1, 2, 3]) -> [0, 1, 0, 0], [-1, 2, 3]
         #   ARKitQTVecs_to_ColmapQTVecs([0, 0, 0, 1], [1, 2, 3]) -> [0, 0, 1, 0], [1, -2, 3]
         #   quaternion_to_rotation_matrix([0, 1, 0, 0])          -> diag(1, -1, -1)
+        _skip_if_dtype_unavailable(device, dtype)
         identity_wxyz = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
         identity_xyzw_impostor = torch.tensor([[0.0, 0.0, 0.0, 1.0]], device=device, dtype=dtype)
         translation = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
@@ -5304,6 +5340,7 @@ class TestCARKitToColmap(BaseTester):
         #   t_colmap  = -R_colmap @ (1, 1, 1) = (-1, -1, 1)
         #   q_colmap  = [0.7071067811865476, 0.0, 0.7071067811865475, 0.0]
         #   det(R_colmap) = 1.0
+        _skip_if_dtype_unavailable(device, dtype)
         qvec = torch.tensor(_ARKIT_WORKED_QVEC, device=device, dtype=dtype)
         tvec = torch.tensor(_ARKIT_WORKED_TVEC, device=device, dtype=dtype)
 
@@ -5332,6 +5369,7 @@ class TestCARKitToColmap(BaseTester):
         #   R_colmap = [[0, 1, 0], [0, 0, -1], [-1, 0, 0]]   (trace 0)
         #   t_colmap = -R_colmap @ (1, 2, 3) = (-2, 3, 1)
         #   kornia returns q = [-0.5, -0.5, -0.5, 0.5], i.e. the negative-w representative
+        _skip_if_dtype_unavailable(device, dtype)
         qvec = torch.tensor([[0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype)
         tvec = torch.tensor([[[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
 
@@ -5359,6 +5397,7 @@ class TestCARKitToColmap(BaseTester):
         # Snippet used to generate expected (torch only, executed on cpu float32):
         #   ARKitQTVecs_to_ColmapQTVecs(q * 1000, t) == ARKitQTVecs_to_ColmapQTVecs(q, t)  (0.0 diff)
         #   ARKitQTVecs_to_ColmapQTVecs(-q, t)       == ARKitQTVecs_to_ColmapQTVecs(q, t)  (0.0 diff)
+        _skip_if_dtype_unavailable(device, dtype)
         qvec = torch.tensor(_ARKIT_WORKED_QVEC, device=device, dtype=dtype)
         tvec = torch.tensor(_ARKIT_WORKED_TVEC, device=device, dtype=dtype)
 
@@ -5381,6 +5420,7 @@ class TestCARKitToColmap(BaseTester):
         # The two-step reference is written out here rather than compared against a single literal
         # so that the pin names the frames it is asserting; the literals themselves are pinned by
         # test_convention_worked_literal_matches_the_hand_computation.
+        _skip_if_dtype_unavailable(device, dtype)
         qvec = torch.tensor(_ARKIT_WORKED_QVEC, device=device, dtype=dtype)
         tvec = torch.tensor(_ARKIT_WORKED_TVEC, device=device, dtype=dtype)
 
@@ -5405,6 +5445,7 @@ class TestCARKitToColmap(BaseTester):
         # two shape asserts are dtype-invariant, but the bitwise per-sample comparison runs the
         # whole quaternion pipeline on a batched and an unbatched path, so the dtype fixture
         # stays: each dtype's arithmetic could break the equality on its own.
+        _skip_if_dtype_unavailable(device, dtype)
         batch_q = torch.tensor([[0.0, 1.0, 0.0, 1.0], [0.5, 0.5, 0.5, 0.5]], device=device, dtype=dtype)
         batch_t = torch.tensor([[[1.0], [1.0], [1.0]], [[1.0], [2.0], [3.0]]], device=device, dtype=dtype)
 
