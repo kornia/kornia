@@ -1746,6 +1746,28 @@ def normal_transform_pixel(
         normalized transform with shape :math:`(1, 3, 3)`.
 
     """
+    # A normalization matrix scales by 2/(size - 1), which is fractional for every
+    # dimension larger than 3 pixels. An integer dtype truncates those scales to 0
+    # and yields a rank-deficient matrix that maps the whole image to a single
+    # point, so there is no correct integer answer to return.
+    # Written as a membership test rather than ``dtype.is_floating_point`` because
+    # TorchScript cannot access dtype attributes, and this runs inside the scripted
+    # ``warp_affine`` path. Mirrors ``_is_floating_point_dtype`` in geometry/boxes.py.
+    KORNIA_CHECK(
+        dtype is None
+        or dtype
+        in (
+            torch.float16,
+            torch.float32,
+            torch.float64,
+            torch.bfloat16,
+            torch.complex32,
+            torch.complex64,
+            torch.complex128,
+        ),
+        "dtype must be a floating point or complex type",
+    )
+
     # prevent divide by zero bugs
     width_denom: float = eps if width == 1 else width - 1.0
     height_denom: float = eps if height == 1 else height - 1.0
@@ -1785,6 +1807,28 @@ def normal_transform_pixel3d(
         normalized transform with shape :math:`(1, 4, 4)`.
 
     """
+    # A normalization matrix scales by 2/(size - 1), which is fractional for every
+    # dimension larger than 3 pixels. An integer dtype truncates those scales to 0
+    # and yields a rank-deficient matrix that maps the whole image to a single
+    # point, so there is no correct integer answer to return.
+    # Written as a membership test rather than ``dtype.is_floating_point`` because
+    # TorchScript cannot access dtype attributes, and this runs inside the scripted
+    # ``warp_affine`` path. Mirrors ``_is_floating_point_dtype`` in geometry/boxes.py.
+    KORNIA_CHECK(
+        dtype is None
+        or dtype
+        in (
+            torch.float16,
+            torch.float32,
+            torch.float64,
+            torch.bfloat16,
+            torch.complex32,
+            torch.complex64,
+            torch.complex128,
+        ),
+        "dtype must be a floating point or complex type",
+    )
+
     tr_mat = torch.tensor(
         [[1.0, 0.0, 0.0, -1.0], [0.0, 1.0, 0.0, -1.0], [0.0, 0.0, 1.0, -1.0], [0.0, 0.0, 0.0, 1.0]],
         device=device,

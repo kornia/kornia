@@ -85,3 +85,52 @@ def test_create_meshgrid3d(device, dtype):
     # check grid corner values
     assert tuple(grid[0, 0, 0, 0].cpu().numpy()) == (0.0, 0.0, 0.0)
     assert tuple(grid[0, depth - 1, height - 1, width - 1].cpu().numpy()) == (depth - 1, width - 1, height - 1)
+
+
+class TestNormalTransformPixelDtype:
+    """`normal_transform_pixel` must refuse a dtype that cannot hold its scales.
+
+    The matrix scales by ``2 / (size - 1)``. That is fractional for any dimension
+    wider than three pixels, so an integer dtype truncates it to zero and the
+    result collapses the whole image onto a single point.
+    """
+
+    @pytest.mark.parametrize("dtype", [torch.int64, torch.int32, torch.uint8, torch.bool])
+    def test_raises_on_non_fractional_dtype(self, dtype):
+        with pytest.raises(Exception, match="floating point or complex"):
+            kornia.geometry.conversions.normal_transform_pixel(4, 5, dtype=dtype)
+        with pytest.raises(Exception, match="floating point or complex"):
+            kornia.geometry.conversions.normal_transform_pixel3d(2, 4, 5, dtype=dtype)
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.float64])
+    def test_representable_dtypes_still_map_corners_to_the_unit_square(self, dtype):
+        # The oracle is the documented contract: the transform takes pixel
+        # coordinates to [-1, 1]. Corner (0, 0) must land on (-1, -1) and corner
+        # (W-1, H-1) on (1, 1). This is what an integer dtype cannot satisfy, and
+        # it holds independently of how the matrix is built.
+        height, width = 4, 5
+        mat = kornia.geometry.conversions.normal_transform_pixel(height, width, dtype=dtype)
+        corners = torch.tensor([[[0.0, 0.0], [width - 1.0, height - 1.0]]], dtype=dtype)
+
+        mapped = kornia.geometry.linalg.transform_points(mat, corners)
+
+        expected = torch.tensor([[[-1.0, -1.0], [1.0, 1.0]]], dtype=dtype)
+        assert_close(mapped, expected, atol=1e-3, rtol=1e-3)
+
+    def test_float_output_is_unchanged(self):
+        # Guards against the check altering the value path it is meant to leave
+        # alone. Literals are the pre-change output of `normal_transform_pixel`.
+        mat = kornia.geometry.conversions.normal_transform_pixel(4, 5, dtype=torch.float64)
+        expected = torch.tensor([[[0.5, 0.0, -1.0], [0.0, 2.0 / 3.0, -1.0], [0.0, 0.0, 1.0]]], dtype=torch.float64)
+        assert_close(mat, expected)
+
+    def test_complex_dtype_is_still_accepted(self):
+        # Complex can represent the scales exactly, and rejecting it would turn a
+        # currently-working call into an error. Only the truncating dtypes raise.
+        mat = kornia.geometry.conversions.normal_transform_pixel(4, 5, dtype=torch.complex64)
+        assert mat.is_complex()
+        assert torch.det(mat.to(torch.complex128)).abs().item() > 0.0
+
+    def test_default_dtype_unaffected(self):
+        mat = kornia.geometry.conversions.normal_transform_pixel(4, 5)
+        assert mat.dtype == torch.get_default_dtype()
