@@ -395,9 +395,9 @@ class TestRANSACEssential(BaseTester):
         E = ransac.polish_model(kp1, kp2, inliers)  # (1, 3, 3)
         sv = torch.linalg.svdvals(E[0])
         # two non-zero singular values must be equal (essential-matrix constraint)
-        self.assert_close(sv[0] / sv[1], torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-2)
+        assert (sv[0] / sv[1] - 1.0).abs() < 1e-2
         # third singular value must be ~0
-        self.assert_close(sv[2], torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4)
+        assert sv[2].abs() < 1e-4
 
     def test_project_to_essential(self, device, dtype):
         """_project_to_essential must enforce the essential-matrix constraint."""
@@ -405,5 +405,5 @@ class TestRANSACEssential(BaseTester):
         M = torch.rand(4, 3, 3, device=device, dtype=dtype)
         E = RANSAC._project_to_essential(M)
         sv = torch.linalg.svdvals(E)
-        self.assert_close(sv[..., 0] / sv[..., 1], torch.ones(4, device=device, dtype=dtype), rtol=1e-2)
-        self.assert_close(sv[..., 2], torch.zeros(4, device=device, dtype=dtype), atol=1e-4)
+        assert torch.all((sv[..., 0] / sv[..., 1] - 1.0).abs() < 1e-2)
+        assert torch.all(sv[..., 2].abs() < 1e-4)
