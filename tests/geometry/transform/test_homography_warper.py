@@ -417,6 +417,69 @@ class TestHomographyNormalTransform(BaseTester):
         self.assert_close(output, expected.to(device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
 
+class TestHomographyNormalizePrecision(BaseTester):
+    """The normalization matrices must be built in the caller's dtype, not in float32 and then cast.
+
+    The oracle is the documented contract of each op, evaluated natively in float64 with the same
+    public helper: ``normalize_homography`` chains ``normal_transform_pixel(dst)`` with the inverse
+    of ``normal_transform_pixel(src)``. Sizes are picked so that ``2 / (size - 1)`` is not exactly
+    representable in binary (2/3, 2/5, 2/7), which is what exposes the float32 rounding.
+    """
+
+    @staticmethod
+    def _skip_if_no_float64(device):
+        if device.type == "mps":
+            pytest.skip("float64 is not supported on MPS")
+
+    def test_normalize_homography_float64(self, device):
+        self._skip_if_no_float64(device)
+        f64 = torch.float64
+        dst_pix_trans_src_pix = torch.eye(3, device=device, dtype=f64)[None]
+
+        out = kornia.geometry.conversions.normalize_homography(dst_pix_trans_src_pix, (4, 4), (6, 6))
+
+        src_norm = kornia.geometry.conversions.normal_transform_pixel(4, 4, device=device, dtype=f64)
+        dst_norm = kornia.geometry.conversions.normal_transform_pixel(6, 6, device=device, dtype=f64)
+        expected = dst_norm @ _torch_inverse_cast(src_norm)
+        self.assert_close(out, expected, rtol=0.0, atol=1e-15)
+
+    def test_denormalize_homography_float64(self, device):
+        self._skip_if_no_float64(device)
+        f64 = torch.float64
+        dst_pix_trans_src_pix = torch.eye(3, device=device, dtype=f64)[None]
+
+        out = kornia.geometry.conversions.denormalize_homography(dst_pix_trans_src_pix, (4, 4), (6, 6))
+
+        src_norm = kornia.geometry.conversions.normal_transform_pixel(4, 4, device=device, dtype=f64)
+        dst_norm = kornia.geometry.conversions.normal_transform_pixel(6, 6, device=device, dtype=f64)
+        expected = _torch_inverse_cast(dst_norm) @ src_norm
+        self.assert_close(out, expected, rtol=0.0, atol=1e-15)
+
+    def test_normalize_homography3d_float64(self, device):
+        self._skip_if_no_float64(device)
+        f64 = torch.float64
+        dst_pix_trans_src_pix = torch.eye(4, device=device, dtype=f64)[None]
+
+        out = kornia.geometry.conversions.normalize_homography3d(dst_pix_trans_src_pix, (2, 4, 5), (3, 8, 9))
+
+        src_norm = kornia.geometry.conversions.normal_transform_pixel3d(2, 4, 5, device=device, dtype=f64)
+        dst_norm = kornia.geometry.conversions.normal_transform_pixel3d(3, 8, 9, device=device, dtype=f64)
+        expected = dst_norm @ _torch_inverse_cast(src_norm)
+        self.assert_close(out, expected, rtol=0.0, atol=1e-15)
+
+    def test_dtype_device_preserved(self, device, dtype):
+        homo_2d = torch.eye(3, device=device, dtype=dtype)[None]
+        homo_3d = torch.eye(4, device=device, dtype=dtype)[None]
+
+        for out in (
+            kornia.geometry.conversions.normalize_homography(homo_2d, (4, 4), (6, 6)),
+            kornia.geometry.conversions.denormalize_homography(homo_2d, (4, 4), (6, 6)),
+            kornia.geometry.conversions.normalize_homography3d(homo_3d, (2, 4, 5), (3, 8, 9)),
+        ):
+            assert out.dtype == dtype
+            assert out.device.type == device.type
+
+
 class TestHomographyWarper3D(BaseTester):
     num_tests = 10
     threshold = 0.1
