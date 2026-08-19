@@ -2671,22 +2671,15 @@ class TestConvertPointsFromHomogeneous(BaseTester):
 
         self.assert_close(actual, expected)
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="convert_points_from_homogeneous divides by w + eps — kornia#3938",
-        strict=True,
-    )
     def test_convention_divides_by_exactly_w(self, device, dtype):
-        # Intended behavior: for |w| > eps the point is divided by exactly w. It currently is
-        # divided by w + eps with no regard for sign, so the signed relative error is exactly
-        # -eps / (w + eps): -1/3 at w = +2e-8 (33 % low) and +1 at w = -2e-8 (100 % high) (#3938).
-        # Marked xfail(strict=True) so fixing #3938 makes this XPASS and forces the mark out.
+        # For |w| > eps the point is divided by exactly w, matching OpenCV's
+        # convertPointsFromHomogeneous (scale = fabs(w) > FLT_EPSILON ? 1./w : 1.), see
+        # https://github.com/opencv/opencv/pull/14411/files. This used to divide by w + eps,
+        # which made the result 33 % low here (#3938).
         # Snippet used to generate expected (by hand):
-        #   2 / 2e-8, 4 / 2e-8 -> [1e8, 2e8]  (kornia returns [6.6666667e7, 1.3333333e8])
-        #   measured signed relative error in float64: -0.3333333333333334, and
-        #   -eps / (w + eps) = -1e-8 / 3e-8 = -0.3333333333333333
+        #   2 / 2e-8, 4 / 2e-8 -> [1e8, 2e8]
         if dtype == torch.float16:
-            pytest.skip("float16 underflows w=2e-8 to 0, which is the |w| <= eps passthrough branch, not the eps bias")
+            pytest.skip("float16 underflows w=2e-8 to 0, which takes the |w| <= eps passthrough branch instead")
 
         points = torch.tensor([[2.0, 4.0, 2e-8]], device=device, dtype=dtype)
 
@@ -2695,36 +2688,40 @@ class TestConvertPointsFromHomogeneous(BaseTester):
         expected = torch.tensor([[1e8, 2e8]], device=device, dtype=dtype)
         self.assert_close(out, expected)
 
-    def test_wart_division_is_by_w_plus_eps_for_both_signs_3938(self, device, dtype):
-        # Wart pin for kornia#3938, companion to the strict xfail above: assert the CURRENT
-        # biased outputs for both signs of w. The xfail pins the intended behavior but cannot
-        # flip under every fix polarity -- a sign-aware eps (w + sign(w) * eps) leaves the
-        # positive-w case failing the intended [1e8, 2e8] and the mark silently XFAIL; here the
-        # NEGATIVE-w cell (divided by -2e-8 + 1e-8 = -1e-8, doubling the point) flips under that
-        # fix too, and both cells flip under an exact division or a grad-only eps. If either
-        # assert fails, #3938 was (partly) fixed -- update or remove the warning in
-        # convert_points_from_homogeneous and flip/remove the strict xfail above. eps=1e-8 is
-        # passed explicitly so the pinned literals do not silently track a later change to the default.
-        # Snippet used to generate expected (torch only, executed at each pinned dtype):
-        #   cpfh = kornia.geometry.conversions.convert_points_from_homogeneous
-        #   cpfh(torch.tensor([[2., 4., 2e-8]], dtype=torch.float64), eps=1e-8)
-        #     -> [[66666666.66666666, 133333333.33333331]]   (f32: [[66666668.0, 133333336.0]])
-        #   cpfh(torch.tensor([[2., 4., -2e-8]], dtype=torch.float64), eps=1e-8)
-        #     -> [[-200000000.0, -400000000.0]]               (f32: identical)
-        # At bfloat16 the outputs land within 0.15 % of the literals (66584576, -200278016),
-        # inside rtol 1e-2, so the pin holds there too.
+    def test_division_is_exact_for_both_signs_of_w(self, device, dtype):
+        # Companion to the test above: the same small |w| in both signs. The division used to
+        # be by w + eps, which is not sign-aware, so it grew a small positive denominator and
+        # shrank a small negative one -- 33 % low at w = +2e-8 and 100 % high at w = -2e-8,
+        # errors in opposite directions for inputs that differ only in the sign of w (#3938).
+        # w is a power of two just above the default eps (2 ** -26 = 1.4901161e-8 > 1e-8), so
+        # the quotients are powers of two too and are exact in every dtype that can hold them.
+        # That is what lets this assert with zero tolerance. eps is passed explicitly so the
+        # literals do not silently track a later change to the default.
+        # Snippet used to generate expected (by hand, all values exact in binary):
+        #   2 / 2 ** -26 -> 2 ** 27 = 134217728.0,  4 / 2 ** -26 -> 2 ** 28 = 268435456.0
         if dtype == torch.float16:
-            pytest.skip("float16 underflows w=2e-8 to 0, which is the |w| <= eps passthrough branch, not the eps bias")
+            pytest.skip("float16 underflows w=2**-26 to 0 (the |w| <= eps passthrough branch) and overflows 2**27")
 
         cpfh = kornia.geometry.conversions.convert_points_from_homogeneous
+        w = 2.0**-26
 
-        out_pos = cpfh(torch.tensor([[2.0, 4.0, 2e-8]], device=device, dtype=dtype), eps=1e-8)
-        out_neg = cpfh(torch.tensor([[2.0, 4.0, -2e-8]], device=device, dtype=dtype), eps=1e-8)
+        out_pos = cpfh(torch.tensor([[2.0, 4.0, w]], device=device, dtype=dtype), eps=1e-8)
+        out_neg = cpfh(torch.tensor([[2.0, 4.0, -w]], device=device, dtype=dtype), eps=1e-8)
 
-        expected_pos = torch.tensor([[6.6666668e7, 1.33333336e8]], device=device, dtype=dtype)
-        expected_neg = torch.tensor([[-2e8, -4e8]], device=device, dtype=dtype)
-        self.assert_close(out_pos, expected_pos, atol=0.0, rtol=1e-2)
-        self.assert_close(out_neg, expected_neg, atol=0.0, rtol=1e-2)
+        expected_pos = torch.tensor([[2.0**27, 2.0**28]], device=device, dtype=dtype)
+        self.assert_close(out_pos, expected_pos, atol=0.0, rtol=0.0)
+        self.assert_close(out_neg, -expected_pos, atol=0.0, rtol=0.0)
+
+    def test_roundtrip_from_to_homogeneous_is_identity(self, device, dtype):
+        # Oracle-free invariant: convert_points_to_homogeneous appends w = 1, so dividing by
+        # exactly w must return the input untouched in any dtype. Dividing by w + eps instead
+        # made this an identity only to ~1e-8 relative, worse than float32 even in float64 (#3938).
+        points = torch.tensor([[1.5, -2.5], [0.0, 3.25], [-4.75, 0.125]], device=device, dtype=dtype)
+
+        cpth = kornia.geometry.conversions.convert_points_to_homogeneous
+        cpfh = kornia.geometry.conversions.convert_points_from_homogeneous
+
+        self.assert_close(cpfh(cpth(points)), points, atol=0.0, rtol=0.0)
 
 
 def _skip_if_mps_clamp_caching(device):
@@ -2991,10 +2988,11 @@ def test_wart_default_eps_1e_8_backs_the_quoted_warning_numbers():
 
 
 def test_wart_float16_underflowed_default_eps_flips_branches(device):
-    # Wart pins for the float16 sentences of the #3939 and #3938 warnings. float16 is
-    # hardcoded (no dtype fixture) so the pins run in every test configuration: the float16
-    # legs of the wart pins above are skipped because the default eps=1e-8 underflows to 0
-    # there, which is exactly the behavior pinned here. eps is left at its default on purpose
+    # Wart pin for the float16 sentence of the #3939 warning and for the float16 sentence of
+    # the convert_points_from_homogeneous Convention block. float16 is hardcoded (no dtype
+    # fixture) so the pins run in every test configuration: the float16 legs of the tests
+    # above are skipped because the default eps=1e-8 underflows to 0 there, which is exactly
+    # the behavior pinned here. eps is left at its default on purpose
     # -- the underflow of the *default* is the claim. atol=rtol=0.0 because both claims are
     # exactness claims: with the float16 default tolerance (1e-3) the eps-biased
     # rho = 1e-4 of the other branch would still compare equal to 0.

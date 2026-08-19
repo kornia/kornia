@@ -252,33 +252,21 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
           coordinate ``w`` and is dropped from the output
         - requires rank :math:`\geq 2`: a bare :math:`(D,)` point raises
           ``ValueError``
-        - when ``abs(w) > eps`` the remaining components are divided by ``w``
-          with its sign kept (``[[2., 4., -2.]]`` gives ``[[-1., -2.]]``), up to
-          the bias described in the warning below
+        - when ``abs(w) > eps`` the remaining components are divided by exactly
+          ``w``, with its sign kept (``[[2., 4., -2.]]`` gives ``[[-1., -2.]]``)
         - when ``abs(w) <= eps`` (default ``eps = 1e-8``; the test is a strict
           ``>``) the numerator is instead returned **unchanged**, following
           OpenCV: ``[[2., 4., 0.]]`` gives ``[[2., 4.]]``
-
-    .. warning::
-        The division is by ``w + eps`` rather than by ``w``, and ``eps`` is
-        added without regard to the sign of ``w``, so the **signed** relative
-        error of the result is exactly ``-eps / (w + eps)``. At ``w = 2e-8``
-        that is ``-1/3``: the exact result ``[1e8, 2e8]`` comes out as
-        ``[6.67e7, 1.33e8]`` (33 % low). At ``w = -2e-8`` it is ``+1``:
-        ``[-1e8, -2e8]`` comes out as ``[-2e8, -4e8]`` (100 % high). Only for
-        ``abs(w)`` much larger than ``eps`` does it reduce to the familiar
-        ``-eps / w``, and there it is usually below the rounding of the working
-        dtype — at ``w = 2`` the measured error is ``-5.0e-09`` in ``float64``,
-        while in ``float32`` ``2 + eps`` rounds back to ``2`` and the result is
-        exact. The numbers above assume ``eps`` is representable: in
-        ``float16`` both the default ``eps`` and ``w = 2e-8`` underflow to
-        ``0``, so ``[[2., 4., 2e-8]]`` takes the ``abs(w) <= eps`` pass-through
-        branch and returns ``[[2., 4.]]``. Tracked in
-        `#3938 <https://github.com/kornia/kornia/issues/3938>`_.
+        - ``eps`` only picks the branch, it never enters the division, so the
+          result carries no bias from it. Note that ``eps`` is compared against
+          ``w`` in the working dtype: in ``float16`` the default ``eps`` and
+          ``w = 2e-8`` both underflow to ``0``, so ``[[2., 4., 2e-8]]`` takes
+          the pass-through branch there and returns ``[[2., 4.]]``
 
     Args:
         points: the points to be transformed of shape :math:`(*, N, D)`.
-        eps: to avoid division by zero.
+        eps: threshold on ``abs(w)`` below which the point is returned
+            unchanged instead of divided, to avoid division by zero.
 
     Returns:
         the points in Euclidean space :math:`(*, N, D-1)`.
@@ -302,7 +290,8 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
     # follow the convention of opencv:
     # https://github.com/opencv/opencv/pull/14411/files
     mask: torch.Tensor = torch.abs(z_vec) > eps
-    scale = torch.where(mask, 1.0 / (z_vec + eps), torch.ones_like(z_vec))
+    safe_z_vec = torch.where(mask, z_vec, torch.ones_like(z_vec))
+    scale = torch.where(mask, 1.0 / safe_z_vec, torch.ones_like(z_vec))
 
     return scale * points[..., :-1]
 
