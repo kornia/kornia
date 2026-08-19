@@ -368,3 +368,42 @@ class TestRANSACSeed:
     def test_none_seed_stored(self, device, dtype):
         ransac = RANSAC("homography")
         assert ransac.seed is None
+
+
+class TestRANSACEssential(BaseTester):
+    def test_smoke(self, device, dtype):
+        torch.random.manual_seed(0)
+        points1 = torch.rand(8, 2, device=device, dtype=dtype)
+        points2 = torch.rand(8, 2, device=device, dtype=dtype)
+        ransac = RANSAC("essential").to(device=device, dtype=dtype)
+        E, _ = ransac(points1, points2)
+        assert E.shape == (3, 3)
+
+    def test_polish_enforces_essential_constraint(self, device, dtype):
+        """Regression test for https://github.com/kornia/kornia/issues/3874.
+
+        The polishing (local-optimization) step must return an essential matrix, i.e. its two
+        non-zero singular values must be (approximately) equal and the third must be
+        (approximately) zero. The buggy version fit a fundamental matrix and returned it as-is,
+        violating the constraint and silently breaking decompose_essential_matrix.
+        """
+        torch.random.manual_seed(0)
+        ransac = RANSAC("essential").to(device=device, dtype=dtype)
+        kp1 = torch.rand(20, 2, device=device, dtype=dtype)
+        kp2 = torch.rand(20, 2, device=device, dtype=dtype)
+        inliers = torch.ones(20, dtype=torch.bool, device=device)
+        E = ransac.polish_model(kp1, kp2, inliers)  # (1, 3, 3)
+        sv = torch.linalg.svdvals(E[0])
+        # two non-zero singular values must be equal (essential-matrix constraint)
+        assert (sv[0] / sv[1] - 1.0).abs() < 1e-2
+        # third singular value must be ~0
+        assert sv[2].abs() < 1e-4
+
+    def test_project_to_essential(self, device, dtype):
+        """_project_to_essential must enforce the essential-matrix constraint."""
+        torch.random.manual_seed(0)
+        M = torch.rand(4, 3, 3, device=device, dtype=dtype)
+        E = RANSAC._project_to_essential(M)
+        sv = torch.linalg.svdvals(E)
+        assert torch.all((sv[..., 0] / sv[..., 1] - 1.0).abs() < 1e-2)
+        assert torch.all(sv[..., 2].abs() < 1e-4)
