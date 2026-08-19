@@ -180,36 +180,17 @@ class TestHomographyWarper(BaseTester):
 
     def test_convention_align_corners_default_false(self, device, dtype):
         # HomographyWarper's bare default align_corners=False (every HomographyWarper construction in
-        # this file passes align_corners=True explicitly; this exercises the bare default), warping an
-        # identity homography over a padding_mode="zeros" grid so that align_corners visibly changes output.
+        # this file passes align_corners=True explicitly; this exercises the bare default). An identity
+        # homography must reproduce the input under either convention: the internal sampling grid is
+        # built to match align_corners, so the two agree rather than differing by half a pixel (#3904).
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("hardcoded-literal pin only reliable at float32/float64 precision")
-        # Snippet used to generate expected:
-        # height, width = 4, 5
-        # patch_src = torch.arange(float(height * width)).view(1, 1, height, width)
-        # dst_homo_src = torch.eye(3)[None]
-        # warper = kornia.geometry.transform.HomographyWarper(height, width)  # no align_corners passed
-        # expected = warper(patch_src, dst_homo_src)
         height, width = 4, 5
         patch_src = torch.arange(float(height * width), device=device, dtype=dtype).view(1, 1, height, width)
         dst_homo_src = eye_like(3, patch_src)
         warper = kornia.geometry.transform.HomographyWarper(height, width)
         patch_dst = warper(patch_src, dst_homo_src)
-        expected = torch.tensor(
-            [
-                [
-                    [
-                        [0.0000, 0.3750, 1.0000, 1.6250, 1.0000],
-                        [2.0833, 4.9167, 6.1667, 7.4167, 4.0833],
-                        [5.4167, 11.5833, 12.8333, 14.0833, 7.4167],
-                        [3.7500, 7.8750, 8.5000, 9.1250, 4.7500],
-                    ]
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )
-        self.assert_close(patch_dst, expected, atol=1e-3, rtol=1e-3)
+        self.assert_close(patch_dst, patch_src, atol=1e-3, rtol=1e-3)
         # the literal above cannot distinguish False from None (grid_sample treats them alike), so
         # the documented defaults are additionally pinned on the signatures of both APIs
         import inspect
@@ -298,6 +279,24 @@ class TestHomographyWarper(BaseTester):
             )
 
             self.assert_close(patch_dst_to_src, patch_dst_to_src_functional, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_precompute_warp_grid_matches_direct(self, device, dtype, align_corners):
+        # the cached grid must be built under the convention forward() hands to grid_sample,
+        # otherwise the precomputed path silently disagrees with the direct one (#3904)
+        height, width = 8, 6
+        patch_src = torch.rand(1, 1, height, width, device=device, dtype=dtype)
+        dst_homo_src = eye_like(3, patch_src)
+
+        warper = kornia.geometry.transform.HomographyWarper(height, width, align_corners=align_corners)
+        direct = warper(patch_src, dst_homo_src)
+
+        warper.precompute_warp_grid(dst_homo_src)
+        precomputed = warper(patch_src)
+
+        self.assert_close(precomputed, direct, atol=1e-4, rtol=1e-4)
+        # an identity homography must reproduce the input under both conventions
+        self.assert_close(direct, patch_src, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_shape", [(1, 1, 7, 5), (2, 3, 8, 5), (1, 1, 7, 16)])
     def test_gradcheck(self, batch_shape, device):
@@ -393,6 +392,29 @@ class TestHomographyNormalTransform(BaseTester):
         transform = kornia.geometry.conversions.normal_transform_pixel(height, width, device=device, dtype=dtype)
         output = kornia.geometry.linalg.transform_points(transform, input)
         self.assert_close(output, expected.to(device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+
+    def test_transform_apply_align_corners_false(self, device, dtype):
+        # align_corners=False normalizes to grid_sample's half-pixel convention, where +/-1 are the
+        # outer pixel EDGES: pixel centers 0 and W-1 land at -1 + 1/W and 1 - 1/W (#3904).
+        height, width = 2, 5
+        input = torch.tensor([[0.0, 0.0], [width - 1, height - 1]], device=device, dtype=dtype)
+        expected = torch.tensor([[-0.8, -0.5], [0.8, 0.5]], device=device, dtype=dtype)
+        transform = kornia.geometry.conversions.normal_transform_pixel(
+            height, width, device=device, dtype=dtype, align_corners=False
+        )
+        output = kornia.geometry.linalg.transform_points(transform, input)
+        self.assert_close(output, expected, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("height", [1, 2, 5])
+    @pytest.mark.parametrize("width", [1, 2, 5])
+    def test_normalize_denormalize_round_trip_align_corners_false(self, height, width, device, dtype):
+        # denormalize_homography must invert normalize_homography for either convention. The
+        # align_corners=False mapping is also non-singular at a size of 1, unlike align_corners=True.
+        homo = torch.tensor([[[1.0, 0.2, 0.5], [-0.1, 1.0, -0.3], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        norm = kornia.geometry.conversions.normalize_homography(homo, (height, width), (height, width), False)
+        assert torch.isinf(norm).sum().item() == 0
+        restored = kornia.geometry.conversions.denormalize_homography(norm, (height, width), (height, width), False)
+        self.assert_close(restored, homo, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("height,width,depth,expected", [(2, 6, 4, expected_3d_0), (1, 6, 4, expected_3d_1)])
     def test_transform3d(self, height, width, depth, expected, device, dtype):

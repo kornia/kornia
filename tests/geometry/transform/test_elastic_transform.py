@@ -103,13 +103,26 @@ class TestElasticTransform(BaseTester):
         noise = torch.ones(1, 2, 3, 3, device=device, dtype=dtype)
 
         expected = torch.tensor(
-            [[[[0.0005, 0.3795, 0.1905], [0.1034, 0.4235, 0.0702], [0.0259, 0.2007, 0.2193]]]],
+            [[[[0.0062, 0.7506, 0.7487], [0.2058, 0.4235, 0.1397], [0.1036, 0.3996, 0.8693]]]],
             device=device,
             dtype=dtype,
         )
 
         actual = elastic_transform2d(image, noise)
         self.assert_close(actual, expected, atol=1e-3, rtol=1e-3)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_convention_zero_noise_is_identity(self, device, dtype, align_corners):
+        # the sampling grid must be built under the convention grid_sample is called with,
+        # otherwise an undisplaced grid resamples by half a pixel. Before #3904 the grid was
+        # always corner-aligned, so the default align_corners=False path was not an identity.
+        # Note that nonzero noise is NOT expected to agree across the two settings: the
+        # displacement is added in normalized coordinates, where a fixed delta means a different
+        # number of pixels under each convention.
+        image = torch.rand(1, 1, 8, 8, device=device, dtype=dtype)
+        noise = torch.zeros(1, 2, 8, 8, device=device, dtype=dtype)
+        actual = elastic_transform2d(image, noise, align_corners=align_corners)
+        self.assert_close(actual, image, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("requires_grad", [True, False])
     def test_gradcheck(self, device, dtype, requires_grad):

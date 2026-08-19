@@ -319,14 +319,13 @@ def crop_by_transform_mat(
         - padding_mode: ``'zeros'`` by default
 
     .. warning::
-        The :math:`(B, 3, 3)` full-matrix behavior above has degenerate-``out_size``
-        exceptions: with ``align_corners=True`` and an ``out_size`` dimension equal to
-        ``1``, the destination-side grid is singular and the output is all-``NaN``; with
-        ``align_corners=False`` and an ``out_size`` dimension equal to ``1``, this
-        function silently falls back to the :math:`(B, 2, 3)` :func:`warp_affine` path
-        (dropping the projective row entirely), so two :math:`(B, 3, 3)` matrices that
-        differ only in their third row produce byte-identical output. Tracked in
-        `#3929 <https://github.com/kornia/kornia/issues/3929>`_.
+        With ``align_corners=True`` and an ``out_size`` dimension equal to ``1``, the
+        destination-side normalization divides by ``size - 1`` and the output is
+        all-``NaN``. Use ``align_corners=False`` for single-pixel outputs: the half-pixel
+        mapping is well defined there, and the projective row is honored along the
+        non-degenerate axis. Only the coefficient multiplying the degenerate axis has no
+        effect, because that axis has a single sample sitting at normalized coordinate
+        ``0``. Tracked in `#3929 <https://github.com/kornia/kornia/issues/3929>`_.
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
@@ -360,35 +359,6 @@ def crop_by_transform_mat(
             padding_mode=padding_mode,
             align_corners=align_corners,
         )
-
-    h_out, w_out = out_size
-    if not align_corners and (h_out == 1 or w_out == 1):
-        # the destination-side reparametrization below is singular for 1-pixel outputs,
-        # so keep the historical affine sampling for this degenerate size
-        return warp_affine(
-            input_tensor,
-            dst_trans_src[:, :2, :],
-            out_size,
-            mode=mode,
-            padding_mode=padding_mode,
-            align_corners=align_corners,
-        )
-
-    if not align_corners:
-        # warp_perspective always builds its grid with align_corners=True spacing, while this
-        # function historically followed warp_affine/F.affine_grid; this destination-side
-        # reparametrization maps one convention onto the other. It depends only on out_size,
-        # keeping the graph free of data-dependent control flow for torch.export.
-        correction = torch.tensor(
-            [
-                [w_out / (w_out - 1.0), 0.0, -0.5],
-                [0.0, h_out / (h_out - 1.0), -0.5],
-                [0.0, 0.0, 1.0],
-            ],
-            device=dst_trans_src.device,
-            dtype=dst_trans_src.dtype,
-        )
-        dst_trans_src = correction.unsqueeze(0) @ dst_trans_src
 
     patches: torch.Tensor = warp_perspective(
         input_tensor,

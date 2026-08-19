@@ -538,8 +538,11 @@ class TestShear(BaseTester):
             device=device,
             dtype=dtype,
         )
+        # x-shear by 0.5 about the origin: dst[x, y] samples src[x - 0.5 * y, y], so row y=1
+        # samples x=-0.5 (half outside, zero padding -> 0.5), row y=2 samples x=-1 (fully
+        # outside -> 0), row y=3 samples x=-1.5 and x=-0.5 -> 0, 0.5.
         expected = torch.tensor(
-            [[[0.75, 1.0, 1.0, 1.0], [0.25, 1.0, 1.0, 1.0], [0.0, 0.75, 1.0, 1.0], [0.0, 0.25, 1.0, 1.0]]],
+            [[[1.0, 1.0, 1.0, 1.0], [0.5, 1.0, 1.0, 1.0], [0.0, 1.0, 1.0, 1.0], [0.0, 0.5, 1.0, 1.0]]],
             device=device,
             dtype=dtype,
         )
@@ -556,8 +559,9 @@ class TestShear(BaseTester):
             device=device,
             dtype=dtype,
         )
+        # y-shear by 0.5 about the origin: the transpose of the test_shear_x case above.
         expected = torch.tensor(
-            [[[0.75, 0.25, 0.0, 0.0], [1.0, 1.0, 0.75, 0.25], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
+            [[[1.0, 0.5, 0.0, 0.0], [1.0, 1.0, 1.0, 0.5], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
             device=device,
             dtype=dtype,
         )
@@ -575,10 +579,11 @@ class TestShear(BaseTester):
             dtype=dtype,
         ).repeat(2, 1, 1, 1)
 
+        # the test_shear_x and test_shear_y expectations, stacked
         expected = torch.tensor(
             [
-                [[[0.75, 1.0, 1.0, 1.0], [0.25, 1.0, 1.0, 1.0], [0.0, 0.75, 1.0, 1.0], [0.0, 0.25, 1.0, 1.0]]],
-                [[[0.75, 0.25, 0.0, 0.0], [1.0, 1.0, 0.75, 0.25], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
+                [[[1.0, 1.0, 1.0, 1.0], [0.5, 1.0, 1.0, 1.0], [0.0, 1.0, 1.0, 1.0], [0.0, 0.5, 1.0, 1.0]]],
+                [[[1.0, 0.5, 0.0, 0.0], [1.0, 1.0, 1.0, 0.5], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
             ],
             device=device,
             dtype=dtype,
@@ -598,7 +603,7 @@ class TestShear(BaseTester):
         ).repeat(2, 1, 1, 1)
 
         expected = torch.tensor(
-            [[[[0.75, 1.0, 1.0, 1.0], [0.25, 1.0, 1.0, 1.0], [0.0, 0.75, 1.0, 1.0], [0.0, 0.25, 1.0, 1.0]]]],
+            [[[[1.0, 1.0, 1.0, 1.0], [0.5, 1.0, 1.0, 1.0], [0.0, 1.0, 1.0, 1.0], [0.0, 0.5, 1.0, 1.0]]]],
             device=device,
             dtype=dtype,
         ).repeat(2, 1, 1, 1)

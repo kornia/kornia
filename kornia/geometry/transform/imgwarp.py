@@ -144,7 +144,9 @@ def warp_perspective(
     h_out, w_out = dsize
 
     # we F.normalize the 3x3 transformation matrix and convert to 3x4
-    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M, (H, W), (h_out, w_out))  # Bx3x3
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
+        M, (H, W), (h_out, w_out), align_corners=align_corners
+    )  # Bx3x3
 
     # Closed-form 3x3 inverse (pure arithmetic) instead of ``torch.linalg.inv``: numerically
     # equivalent for these well-conditioned transforms, and it runs where the LAPACK/cusolver
@@ -154,7 +156,9 @@ def warp_perspective(
 
     # Substitutes F.affine_grid (which only handles the affine 2x3 case) by applying the full 3x3
     # projective transform to every grid point directly.
-    grid = create_meshgrid(h_out, w_out, normalized_coordinates=True, device=src.device).to(src.dtype)
+    grid = create_meshgrid(
+        h_out, w_out, normalized_coordinates=True, device=src.device, align_corners=align_corners
+    ).to(src.dtype)
     if torch.jit.is_tracing():
         # Under tracing/ONNX use the reference transform_points path (its op set exports cleanly).
         grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid.expand(B, h_out, w_out, 2))
@@ -247,7 +251,7 @@ def warp_affine(
     B_M = M.shape[0]
 
     M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
-    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M_3x3, (H, W), dsize)
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M_3x3, (H, W), dsize, align_corners=align_corners)
 
     # Closed-form 3x3 inverse (see warp_perspective) — cusolver-free, so affine warps run on the
     # Jetson wheel where ``torch.linalg.inv`` dlopen-fails.
@@ -1539,7 +1543,12 @@ def homography_warp(
     if normalized_homography:
         height, width = dsize
         grid = create_meshgrid(
-            height, width, normalized_coordinates=normalized_coordinates, device=patch_src.device, dtype=patch_src.dtype
+            height,
+            width,
+            normalized_coordinates=normalized_coordinates,
+            device=patch_src.device,
+            dtype=patch_src.dtype,
+            align_corners=align_corners,
         )
         warped_grid = warp_grid(grid, src_homo_dst)
 

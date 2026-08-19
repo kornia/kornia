@@ -48,7 +48,9 @@ def elastic_transform2d(
           grid (positive x-noise shifts image content left)
         - displacements are smoothed with a Gaussian (``kernel_size``,
           ``sigma``) and scaled by ``alpha``
-        - align_corners: ``False`` by default
+        - align_corners: ``False`` by default; it selects the normalization of the sampling
+          grid as well as the ``grid_sample`` call, so zero ``noise`` is an identity under
+          either setting
         - padding_mode: ``'zeros'`` by default
 
     Args:
@@ -124,7 +126,7 @@ def elastic_transform2d(
 
     # Warp image based on displacement matrix
     _, _, h, w = image.shape
-    grid = create_meshgrid(h, w, device=image.device).to(image.dtype)
+    grid = create_meshgrid(h, w, device=image.device, align_corners=align_corners).to(image.dtype)
     warped = F.grid_sample(
         image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode, padding_mode=padding_mode
     )

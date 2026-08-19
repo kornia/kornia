@@ -71,6 +71,30 @@ def test_normalize_pixel_grid(device, dtype):
     assert_close(grid_norm, grid_pix_to_norm)
 
 
+def test_create_meshgrid_align_corners(device, dtype):
+    # align_corners selects which grid_sample normalization the grid is built for: True puts pixel
+    # centers 0 and W-1 at -1 and +1, False puts the outer pixel EDGES there (#3904).
+    height, width = 2, 4
+
+    grid_true = kornia.geometry.create_meshgrid(height, width, True, device=device, dtype=dtype, align_corners=True)
+    grid_false = kornia.geometry.create_meshgrid(height, width, True, device=device, dtype=dtype, align_corners=False)
+
+    # align_corners=True is the default, so the bare call must match it
+    assert_close(kornia.geometry.create_meshgrid(height, width, True, device=device, dtype=dtype), grid_true)
+
+    assert_close(grid_true[0, :, 0, 0], torch.tensor([-1.0, -1.0], device=device, dtype=dtype))
+    assert_close(grid_true[0, :, -1, 0], torch.tensor([1.0, 1.0], device=device, dtype=dtype))
+    # False: x centers land at (2x + 1)/W - 1, i.e. -0.75 and 0.75 for W = 4
+    assert_close(grid_false[0, :, 0, 0], torch.tensor([-0.75, -0.75], device=device, dtype=dtype))
+    assert_close(grid_false[0, :, -1, 0], torch.tensor([0.75, 0.75], device=device, dtype=dtype))
+
+    # align_corners is only about the normalization, so it is a no-op for pixel coordinates
+    assert_close(
+        kornia.geometry.create_meshgrid(height, width, False, device=device, dtype=dtype, align_corners=True),
+        kornia.geometry.create_meshgrid(height, width, False, device=device, dtype=dtype, align_corners=False),
+    )
+
+
 def test_create_meshgrid3d(device, dtype):
     depth, height, width = 5, 4, 6
     normalized_coordinates = False

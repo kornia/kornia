@@ -182,9 +182,11 @@ class TestWarpImage(BaseTester):
         tensor[:, :, 2:6, 2:6] = 1.0
 
         expected = torch.ones_like(tensor)
-        # nn.grid_sample interpolates the at the edges it seems, so the boundaries have values < 1
-        expected[:, :, [0, -1], :] *= 0.5
-        expected[:, :, :, [0, -1]] *= 0.5
+        # nn.grid_sample interpolates the at the edges it seems, so the boundaries have values < 1.
+        # Under the default align_corners=False, the outermost output pixel maps back to input
+        # pixel 1.75 -- three quarters of the way from the zero at pixel 1 to the one at pixel 2.
+        expected[:, :, [0, -1], :] *= 0.75
+        expected[:, :, :, [0, -1]] *= 0.75
 
         kernel, affine = kornia.geometry.transform.get_tps_transform(dst, src)
         warp = kornia.geometry.transform.warp_image_tps(tensor, src, kernel, affine)
@@ -310,7 +312,9 @@ class TestWarpImage(BaseTester):
         src = torch.tensor(
             [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]], device=device, dtype=dtype
         )
-        kernel, affine = kornia.geometry.transform.get_tps_transform(src, src)
+        # zoom out, so the warp samples beyond the input extent and padding_mode is observable --
+        # an identity warp now stays strictly in bounds and the two modes would agree
+        kernel, affine = kornia.geometry.transform.get_tps_transform(src * 0.5, src)
         img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
 
         out_default = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine)
@@ -354,16 +358,11 @@ class TestWarpImage(BaseTester):
         )
         self.assert_close(warped, expected, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.xfail(reason="warp_image_tps default align_corners=False breaks identity — kornia#3928", strict=True)
     def test_convention_default_align_corners_reproduces_identity(self, device, dtype):
-        # Intended/correct behavior: an identity TPS transform warped with warp_image_tps's
-        # *default* align_corners should reproduce the input image, exactly like the
-        # align_corners=True case already pinned by test_identity_warp_align_corners above.
-        # It currently does not (internal create_meshgrid always builds the sampling grid
-        # using the align_corners=True convention, mismatching grid_sample's default False
-        # convention -- see the warning in warp_image_tps's Convention block, #3928). This
-        # test is marked xfail(strict=True) so that once #3928 is fixed it XPASSes and fails
-        # loudly, forcing the xfail mark to be removed instead of silently staying green.
+        # An identity TPS transform warped with warp_image_tps's *default* align_corners
+        # reproduces the input image, exactly like the align_corners=True case pinned by
+        # test_identity_warp_align_corners above: the internal create_meshgrid now builds the
+        # sampling grid under the same convention grid_sample is called with (#3928).
         if dtype == torch.float16:
             pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
 
