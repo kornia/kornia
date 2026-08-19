@@ -116,6 +116,30 @@ class TestDeprecatedWrappers:
         dep_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
         assert len(dep_warnings) == 2
 
+    def test_warning_can_be_escalated_to_an_error(self):
+        """`-W error::DeprecationWarning` must turn the warning into an error.
+
+        See https://github.com/kornia/kornia/issues/3956: the emitter used to prepend its
+        own "always" filter, which shadowed the caller's "error" filter and exempted kornia
+        from a documented CPython mechanism.
+        """
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            with pytest.raises(DeprecationWarning):
+                utils.create_meshgrid(2, 2)
+
+    def test_warning_does_not_mutate_the_global_filters(self):
+        """Emitting the warning must leave `warnings.filters` exactly as it found it.
+
+        The two `simplefilter` calls used to prepend a global entry each, so a single call
+        to any deprecated symbol permanently rewrote the process-wide warning config.
+        """
+        with warnings.catch_warnings():
+            warnings.resetwarnings()
+            assert warnings.filters == []
+            utils.create_meshgrid(2, 2)
+            assert warnings.filters == []
+
 
 class TestRestoredWrappers:
     """Names removed in 0.8.3 without a deprecation window, restored as warning shims.

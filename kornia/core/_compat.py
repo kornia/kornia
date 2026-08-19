@@ -135,19 +135,15 @@ def _emit_deprecation_warning(
     beginning = f"Since kornia {version} the " if version is not None else ""
     extra = f" {extra_reason}" if extra_reason else ""
 
-    warnings.simplefilter("always", DeprecationWarning)
-    try:
-        if replace_with is not None:
-            msg = f"{beginning}`{name}` is deprecated in favor of `{replace_with}`.{extra}"
-        else:
-            msg = f"{beginning}`{name}` is deprecated and will be removed in the future versions.{extra}"
-        warnings.warn(
-            msg,
-            category=DeprecationWarning,
-            stacklevel=3,
-        )
-    finally:
-        warnings.simplefilter("default", DeprecationWarning)
+    if replace_with is not None:
+        msg = f"{beginning}`{name}` is deprecated in favor of `{replace_with}`.{extra}"
+    else:
+        msg = f"{beginning}`{name}` is deprecated and will be removed in the future versions.{extra}"
+    warnings.warn(
+        msg,
+        category=DeprecationWarning,
+        stacklevel=3,
+    )
 
 
 def deprecated(
