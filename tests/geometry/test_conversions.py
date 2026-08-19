@@ -171,6 +171,36 @@ class TestAngleAxisToQuaternion(BaseTester):
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         self.assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
+    def test_forward_matches_plain_sqrt_formula(self, device, dtype):
+        # away from theta == 0 the guarded sqrt must return the very same bits as the plain
+        # `sqrt(theta_squared)` formula, so the NaN fix cannot move any existing forward value
+        axis_angle = torch.tensor(
+            ((0.1, 0.2, 0.3), (1.0, 0.0, 0.0), (3.0, -2.0, 0.5), (1e-9, 0.0, 0.0)), device=device, dtype=dtype
+        )
+        a0, a1, a2 = axis_angle[..., 0:1], axis_angle[..., 1:2], axis_angle[..., 2:3]
+        theta = torch.sqrt(a0 * a0 + a1 * a1 + a2 * a2)
+        half_theta = theta * 0.5
+        k = torch.sin(half_theta) / theta
+        expected = torch.cat((torch.cos(half_theta), a0 * k, a1 * k, a2 * k), dim=-1)
+        quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
+        assert torch.equal(quaternion, expected)
+
+    def test_gradient_at_zero_rotation(self, device):
+        # around theta == 0 the map is v -> (1, v / 2), so the gradient of the output sum
+        # with respect to v is (0.5, 0.5, 0.5). before the fix sqrt(0) made it NaN
+        dtype = torch.float64
+        axis_angle = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype, requires_grad=True)
+        kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle).sum().backward()
+        assert axis_angle.grad is not None
+        assert torch.isfinite(axis_angle.grad).all()
+        self.assert_close(axis_angle.grad, torch.tensor((0.5, 0.5, 0.5), device=device, dtype=dtype))
+
+        # a single zero rotation in a batch must not poison the other rows
+        batch = torch.tensor(((0.0, 0.0, 0.0), (0.1, 0.2, 0.3)), device=device, dtype=dtype, requires_grad=True)
+        kornia.geometry.conversions.axis_angle_to_quaternion(batch).sum().backward()
+        assert batch.grad is not None
+        assert torch.isfinite(batch.grad).all()
+
     def test_gradcheck(self, device):
         dtype = torch.float64
         eps = torch.finfo(dtype).eps
@@ -460,6 +490,43 @@ class TestQuaternionToAngleAxis(BaseTester):
         expected = torch.tensor((0.0, 0.0, theta), device=device, dtype=dtype)
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
         self.assert_close(axis_angle, expected, atol=atol, rtol=rtol)
+
+    def test_forward_matches_plain_sqrt_formula(self, device, dtype):
+        # away from sin_squared_theta == 0 the guarded sqrt must return the very same bits as the
+        # plain `sqrt(sin_squared_theta)` formula, so the NaN fix cannot move any forward value
+        quaternion = torch.tensor(
+            ((0.9, 0.1, 0.2, 0.3), (0.0, 1.0, 0.0, 0.0), (0.5, 3.0, -2.0, 0.5), (1.0, 1e-9, 0.0, 0.0)),
+            device=device,
+            dtype=dtype,
+        )
+        cos_theta = quaternion[..., 0]
+        q1, q2, q3 = quaternion[..., 1], quaternion[..., 2], quaternion[..., 3]
+        sin_theta = torch.sqrt(q1 * q1 + q2 * q2 + q3 * q3)
+        two_theta = 2.0 * torch.where(
+            cos_theta < 0.0, torch.atan2(-sin_theta, -cos_theta), torch.atan2(sin_theta, cos_theta)
+        )
+        k = two_theta / sin_theta
+        expected = torch.stack((q1 * k, q2 * k, q3 * k), dim=-1)
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+        assert torch.equal(axis_angle, expected)
+
+    def test_gradient_at_identity(self, device):
+        # around the identity the map is q -> 2 * (x, y, z), so the gradient of the output sum
+        # with respect to q is (0, 2, 2, 2). before the fix sqrt(0) made it NaN
+        dtype = torch.float64
+        quaternion = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype, requires_grad=True)
+        kornia.geometry.conversions.quaternion_to_axis_angle(quaternion).sum().backward()
+        assert quaternion.grad is not None
+        assert torch.isfinite(quaternion.grad).all()
+        self.assert_close(quaternion.grad, torch.tensor((0.0, 2.0, 2.0, 2.0), device=device, dtype=dtype))
+
+        # a single identity quaternion in a batch must not poison the other rows
+        batch = torch.tensor(
+            ((1.0, 0.0, 0.0, 0.0), (0.9, 0.1, 0.2, 0.3)), device=device, dtype=dtype, requires_grad=True
+        )
+        kornia.geometry.conversions.quaternion_to_axis_angle(batch).sum().backward()
+        assert batch.grad is not None
+        assert torch.isfinite(batch.grad).all()
 
     def test_gradcheck(self, device):
         dtype = torch.float64
