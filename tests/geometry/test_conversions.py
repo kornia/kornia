@@ -1460,6 +1460,13 @@ class TestQuaternionExpToLog(BaseTester):
         quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
         self.assert_close(quaternion_log, expected, atol=atol, rtol=rtol)
 
+    @pytest.mark.parametrize("scalar", (1.0, -1.0))
+    def test_zero_vector_part_fp16_default_eps(self, scalar, device):
+        quaternion_exp = torch.tensor((scalar, 0.0, 0.0, 0.0), device=device, dtype=torch.float16)
+        expected = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=torch.float16)
+        quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp)
+        self.assert_close(quaternion_log, expected)
+
     def test_pi_quaternion_x(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((0.0, 1.0, 0.0, 0.0), device=device, dtype=dtype)
