@@ -28,6 +28,7 @@ from .imgwarp import get_affine_matrix2d, get_projective_transform, get_rotation
 
 __all__ = [
     "Affine",
+    "Letterbox",
     "Rescale",
     "Resize",
     "Rotate",
@@ -36,6 +37,7 @@ __all__ = [
     "Translate",
     "affine",
     "affine3d",
+    "letterbox",
     "rescale",
     "resize",
     "resize_to_be_divisible",
@@ -763,6 +765,82 @@ def rescale(
     return resize(input, size, interpolation=interpolation, align_corners=align_corners, antialias=antialias)
 
 
+def letterbox(
+    input: torch.Tensor,
+    new_shape: Tuple[int, int],
+    fill_value: float = 0.0,
+    interpolation: str = "bilinear",
+    align_corners: Optional[bool] = None,
+    antialias: bool = False,
+) -> Tuple[torch.Tensor, dict]:
+    r"""Resizes and pads an image tensor to a target shape while maintaining aspect ratio.
+
+    Convention:
+        - ``new_shape`` is ``(height, width)``
+        - align_corners: ``None`` by default (follows ``torch.nn.functional.interpolate``)
+
+    Args:
+        input: The image tensor to be resized and padded with shape of :math:`(..., H, W)`.
+        new_shape: Target spatial dimensions as ``(height, width)``.
+        fill_value: Value used for padding. Default is 0.0 (Kornia expects tensors in [0, 1] range).
+        interpolation: algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
+            ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
+        align_corners: interpolation flag.
+        antialias: if True, then image will be filtered with Gaussian before downscaling.
+
+    Returns:
+        A tuple containing the padded and resized tensor with the shape of ``new_shape``,
+        and a dictionary with the scale ``ratio`` and ``padding`` metadata.
+
+    Example:
+        >>> img = torch.ones(1, 3, 100, 200)
+        >>> out, meta = letterbox(img, (200, 200))
+        >>> print(out.shape)
+        torch.Size([1, 3, 200, 200])
+        >>> print(meta["ratio"])
+        1.0
+    """
+    if not isinstance(input, torch.Tensor):
+        raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(input)}")
+
+    if len(input.shape) < 2:
+        raise ValueError(f"Input tensor must have at least two dimensions. Got {len(input.shape)}")
+
+    if new_shape[0] <= 0 or new_shape[1] <= 0:
+        raise ValueError(f"new_shape dimensions must be strictly positive. Got {new_shape}")
+
+    h, w = input.shape[-2:]
+    new_h, new_w = new_shape
+
+    ratio = min(new_h / h, new_w / w)
+
+    # Use max(1, ...) to prevent 0-pixel dimensions on extreme aspect ratios
+    unpad_h = max(1, round(h * ratio))
+    unpad_w = max(1, round(w * ratio))
+
+    resized_image = resize(
+        input, size=(unpad_h, unpad_w), interpolation=interpolation, align_corners=align_corners, antialias=antialias
+    )
+
+    pad_h = new_h - unpad_h
+    pad_w = new_w - unpad_w
+
+    pad_top = pad_h // 2
+    pad_bottom = pad_h - pad_top
+    pad_left = pad_w // 2
+    pad_right = pad_w - pad_left
+
+    padded_image = torch.nn.functional.pad(
+        resized_image,
+        (pad_left, pad_right, pad_top, pad_bottom),
+        value=fill_value,
+    )
+
+    metadata = {"ratio": ratio, "padding": (pad_left, pad_right, pad_top, pad_bottom)}
+
+    return padded_image, metadata
+
+
 class Resize(nn.Module):
     r"""Resize the input torch.Tensor to the given size.
 
@@ -1247,3 +1325,62 @@ class Shear(nn.Module):
             configured padding mode.
         """
         return shear(input, self.shear, self.mode, self.padding_mode, self.align_corners)
+
+
+class Letterbox(nn.Module):
+    r"""Resizes and pads the input torch.Tensor to the given shape while maintaining aspect ratio.
+
+    Convention:
+        - align_corners: ``None`` by default, matching :func:`letterbox`
+        - See the convention block of :func:`letterbox`.
+
+    Args:
+        new_shape: Desired output size as ``(height, width)``.
+        fill_value: Value used for padding. Default is 0.0.
+        interpolation: algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
+            'bicubic' | 'trilinear' | 'area'.
+        align_corners: interpolation flag.
+        antialias: if True, then image will be filtered with Gaussian before downscaling.
+
+    Returns:
+        A tuple containing the padded and resized tensor, and a dictionary with scale/pad metadata.
+
+    Example:
+        >>> img = torch.ones(1, 3, 100, 200)
+        >>> out, meta = Letterbox((200, 200))(img)
+        >>> print(out.shape)
+        torch.Size([1, 3, 200, 200])
+    """
+
+    def __init__(
+        self,
+        new_shape: Tuple[int, int],
+        fill_value: float = 0.0,
+        interpolation: str = "bilinear",
+        align_corners: Optional[bool] = None,
+        antialias: bool = False,
+    ) -> None:
+        super().__init__()
+        self.new_shape: Tuple[int, int] = new_shape
+        self.fill_value: float = fill_value
+        self.interpolation: str = interpolation
+        self.align_corners: Optional[bool] = align_corners
+        self.antialias: bool = antialias
+
+    def forward(self, input: torch.Tensor) -> Tuple[torch.Tensor, dict]:
+        """Resize and pad spatial dimensions.
+
+        Args:
+            input: Tensor with shape :math:`(*, C, H, W)`.
+
+        Returns:
+            Tuple containing the transformed tensor and a metadata dictionary.
+        """
+        return letterbox(
+            input,
+            self.new_shape,
+            self.fill_value,
+            self.interpolation,
+            align_corners=self.align_corners,
+            antialias=self.antialias,
+        )

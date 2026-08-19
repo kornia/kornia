@@ -29,6 +29,7 @@ Image 2d transforms
 -------------------
 
 .. autofunction:: affine
+.. autofunction:: letterbox
 .. autofunction:: rotate
 .. autofunction:: translate
 .. autofunction:: scale
@@ -103,6 +104,7 @@ Module
 .. autoclass:: Rescale
 .. autoclass:: Affine
 .. autoclass:: BaseWarper
+.. autoclass:: Letterbox
 .. autoclass:: HomographyWarper
 .. autoclass:: CenterCrop2D
 

@@ -855,3 +855,40 @@ class TestGetShearMatrix(BaseTester):
         )
         assert out.device.type == center.device.type, "Output device must match center device"
         assert out.dtype == center.dtype, "Output dtype must match center dtype"
+
+
+class TestLetterbox(BaseTester):
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 3, 100, 200, device=device, dtype=dtype)
+        out, meta = kornia.geometry.transform.letterbox(img, (200, 200))
+        assert out.shape == (1, 3, 200, 200)
+        assert "ratio" in meta
+        assert "padding" in meta
+
+    def test_metadata_math(self, device, dtype):
+        # 100x200 image scaling to 400x400
+        # Ratio should be min(400/100, 400/200) = 2.0
+        # Unpadded will be 200x400.
+        # Padding needed on height: 400 - 200 = 200 (100 top, 100 bottom)
+        img = torch.rand(1, 3, 100, 200, device=device, dtype=dtype)
+
+        _, meta = kornia.geometry.transform.letterbox(img, (400, 400))
+
+        assert meta["ratio"] == 2.0
+        # padding format: (left, right, top, bottom)
+        assert meta["padding"] == (0, 0, 100, 100)
+
+    def test_non_positive_shape(self, device, dtype):
+        img = torch.rand(1, 3, 100, 200, device=device, dtype=dtype)
+        with pytest.raises(ValueError):
+            kornia.geometry.transform.letterbox(img, (0, 200))
+        with pytest.raises(ValueError):
+            kornia.geometry.transform.letterbox(img, (200, -5))
+
+    def test_module(self, device, dtype):
+        img = torch.rand(1, 3, 100, 200, device=device, dtype=dtype)
+        transform = kornia.geometry.transform.Letterbox((200, 200))
+
+        out, _ = transform(img)
+
+        assert out.shape == (1, 3, 200, 200)
