@@ -1875,30 +1875,21 @@ class TestAngleAxisToRotationMatrix(BaseTester):
             ),
         )
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="axis_angle_to_rotation_matrix adds eps=1e-6 to theta when normalising the axis, so "
-        "the result is not orthogonal and det != 1 — kornia#3947",
-        strict=True,
-    )
     def test_convention_returns_an_orthogonal_matrix_3947(self, device):
-        # Intended behavior: axis_angle_to_rotation_matrix returns a rotation matrix, i.e.
-        # R @ R.T == I and det(R) == 1 to the precision of the input dtype. It does not: the axis
-        # is normalised by (theta + eps) with eps = 1e-6 hardcoded inside the function, so the axis
-        # is shrunk by eps/theta and what comes back is a slightly scaled rotation. Measured at
-        # theta = pi/2 about +z in float64 (torch 2.9.1, cpu):
+        # Regression test for kornia#3947. The function used to normalise the axis by
+        # (theta + eps) with eps = 1e-6 hardcoded inside _compute_rotation_matrix, so the axis
+        # was shrunk by eps/theta and what came back was a slightly scaled rotation. Measured at
+        # theta = pi/2 about +z in float64 (torch 2.9.1, cpu) before the fix:
         #   det(R)           = 0.9999974535249636       (should be 1.0)
         #   max|R @ R.T - I| = 2.5464750363912714e-06   (should be ~1e-16)
-        # and the error does not shrink with dtype -- float32 gives 2.5033950805664062e-06.
+        # and the error did not shrink with dtype -- float32 gave 2.5033950805664062e-06.
         # kornia's own quaternion route is the independent reference for the intended value:
         # quaternion_to_rotation_matrix(axis_angle_to_quaternion(v)) has det exactly 1.0 and
-        # max|R @ R.T - I| exactly 0.0 on this input, and differs from axis_angle_to_rotation_matrix
-        # by 1.273238328769466e-06 -- so the defect is in this function, not in the angle.
-        # float64 is hardcoded and the dtype fixture dropped so the literals mean one thing; the
-        # skip is visible so that on MPS, which has no float64, a raw TypeError cannot satisfy the
-        # raises=AssertionError mark instead of the assertion this pin documents. Marked
-        # xfail(strict=True) so fixing #3947 makes this XPASS and forces the mark out. Companion
-        # wart: test_wart_axis_normalisation_eps_breaks_orthogonality_3947.
+        # max|R @ R.T - I| exactly 0.0 on this input -- so the defect was in this function,
+        # not in the angle.
+        # float64 is hardcoded and the dtype fixture dropped so the literals mean one thing;
+        # the skip is visible so that on MPS, which has no float64, a raw TypeError cannot
+        # satisfy the assertions this test documents.
         _skip_if_dtype_unavailable(device, torch.float64)
 
         axis_angle = torch.tensor([[0.0, 0.0, torch.pi / 2]], device=device, dtype=torch.float64)
@@ -1913,35 +1904,35 @@ class TestAngleAxisToRotationMatrix(BaseTester):
             "kornia#3947: axis_angle_to_rotation_matrix returned a matrix whose determinant is not 1"
         )
 
-    def test_wart_axis_normalisation_eps_breaks_orthogonality_3947(self, device):
-        # Wart pin for kornia#3947, companion to the strict xfail above: assert the CURRENT
-        # non-rotation output on BOTH branches of the function. Two cells, because the function
-        # switches at theta**2 > 1e-6 and each branch is broken for its own reason, so a fix that
-        # touches only one of them must still flip a cell here:
-        #   (1) theta = pi/2 takes the general branch and the eps in the axis normalisation gives
+    def test_convention_both_branches_are_orthogonal_3947(self, device):
+        # Regression test for kornia#3947 covering BOTH branches of the function, which switch at
+        # theta**2 > 1e-6 and were each broken for its own reason before the fix:
+        #   (1) theta = pi/2 takes the general branch and the eps in the axis normalisation gave
         #       det = 0.9999974535249636 and max|R @ R.T - I| = 2.5464750363912714e-06;
-        #   (2) theta = 1e-3 takes the undocumented first-order Taylor branch, which returns
-        #       exactly [[1, -rz, ry], [rz, 1, -rx], [-ry, rx, 1]] -- no eps involved, but its
-        #       determinant is 1 + theta**2 = 1.000001, so it is not a rotation either. The matrix
-        #       is pinned at atol=rtol=0 and the determinant follows from it, so the determinant is
-        #       recorded in the snippet below rather than asserted as a cell of its own.
-        # If either fails, #3947 was (partly) fixed -- flip/remove the strict xfail above. NOT a
-        # contract that these matrices must stay non-orthogonal. The eps is a hardcoded local in
-        # _compute_rotation_matrix rather than a parameter, so unlike the other wart pins in this
-        # file there is no eps to pass explicitly; cell (1) would flip if it were exposed and
-        # re-tuned, which is the point.
-        # float64 is hardcoded and the dtype fixture dropped because both literals are float64
-        # facts: at float32 the same theta = 1e-3 input has theta**2 = 1.0000001111620804e-06 and
-        # falls into the *other* branch, so cell (2) would be pinning a different code path.
+        #   (2) theta = 1e-3 takes the low-angle branch, which returned the first-order Taylor
+        #       matrix [[1, -rz, ry], [rz, 1, -rx], [-ry, rx, 1]] with det = 1 + theta**2 = 1.000001.
+        # The low-angle branch now returns the second-order Taylor expansion R = I + [v]x + [v]x^2/2,
+        # whose determinant is 1 + theta**4 / 4 -- at theta = 1e-3 that is 1 + 2.5e-13, a rotation
+        # to the working precision -- so both branches must now pass the same orthogonality checks.
+        # The general branch must also agree with the quaternion route on a generic (non-axis
+        # aligned) rotation, which is where the eps defect showed up as an axis-dependent error.
+        # float64 is hardcoded and the dtype fixture dropped because both cells are float64 facts:
+        # at float32 the same theta = 1e-3 input has theta**2 = 1.0000001111620804e-06 and
+        # falls into the *other* branch, so cell (2) would be exercising a different code path.
         # Snippet used to generate expected (torch only, executed on cpu float64):
         #   v = torch.tensor([[0., 0., math.pi / 2]], dtype=torch.float64)
         #   R = axis_angle_to_rotation_matrix(v)[0]
-        #   torch.linalg.det(R).item()                                  -> 0.9999974535249636
-        #   (R @ R.T - torch.eye(3, dtype=torch.float64)).abs().max()   -> 2.5464750363912714e-06
+        #   torch.linalg.det(R).item()                                  -> 1.0
+        #   (R @ R.T - torch.eye(3, dtype=torch.float64)).abs().max()   -> 0.0
         #   t = torch.tensor([[0., 0., 1e-3]], dtype=torch.float64)   # theta**2 == 1e-06 exactly
         #   axis_angle_to_rotation_matrix(t)[0].tolist()
-        #     -> [[1.0, -0.001, 0.0], [0.001, 1.0, 0.0], [0.0, 0.0, 1.0]]
-        #   torch.linalg.det(that).item()                               -> 1.000001
+        #     -> [[0.9999995, -0.001, 0.0], [0.001, 0.9999995, 0.0], [0.0, 0.0, 1.0]]
+        #   torch.linalg.det(that).item()                               -> 1.00000000000025
+        #   g = torch.tensor([[1., 2., 3.]], dtype=torch.float64) * 0.6 / math.sqrt(14.0)  # generic axis
+        #   Rg = axis_angle_to_rotation_matrix(g)[0]
+        #   torch.linalg.det(Rg).item()                                 -> 1.0
+        #   Rq = quaternion_to_rotation_matrix(axis_angle_to_quaternion(g))[0]
+        #   (Rg - Rq).abs().max().item()                                -> 4.440892098500626e-16
         _skip_if_dtype_unavailable(device, torch.float64)
 
         axis_angle_to_rotation_matrix = kornia.geometry.conversions.axis_angle_to_rotation_matrix
@@ -1951,27 +1942,26 @@ class TestAngleAxisToRotationMatrix(BaseTester):
             torch.tensor([[0.0, 0.0, torch.pi / 2]], device=device, dtype=torch.float64)
         )[0]
         taylor = axis_angle_to_rotation_matrix(torch.tensor([[0.0, 0.0, 1e-3]], device=device, dtype=torch.float64))[0]
+        generic = axis_angle_to_rotation_matrix(
+            torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=torch.float64) * 0.6 / 14.0**0.5
+        )[0]
 
-        assert_close(
-            torch.linalg.det(general),
-            torch.tensor(0.9999974535249636, device=device, dtype=torch.float64),
-            atol=1e-12,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3947: the general branch determinant changed"),
-        )
-        assert_close(
-            (general @ general.T - identity).abs().max(),
-            torch.tensor(2.5464750363912714e-06, device=device, dtype=torch.float64),
-            atol=1e-12,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3947: the general branch orthogonality error changed"),
-        )
-        assert_close(
-            taylor,
-            torch.tensor([[1.0, -1e-3, 0.0], [1e-3, 1.0, 0.0], [0.0, 0.0, 1.0]], device=device, dtype=torch.float64),
-            atol=0.0,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3947: the low-angle branch no longer returns the first-order Taylor matrix"),
+        for rot in (general, taylor, generic):
+            assert (rot @ rot.T - identity).abs().max().item() < 1e-12, (
+                "kornia#3947: axis_angle_to_rotation_matrix did not return an orthogonal matrix"
+            )
+            assert abs(torch.linalg.det(rot).item() - 1.0) < 1e-12, (
+                "kornia#3947: axis_angle_to_rotation_matrix returned a matrix whose determinant is not 1"
+            )
+
+        # the general branch must agree with the independent quaternion route (machine precision)
+        quat_route = kornia.geometry.conversions.quaternion_to_rotation_matrix(
+            kornia.geometry.conversions.axis_angle_to_quaternion(
+                torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=torch.float64) * 0.6 / 14.0**0.5
+            )
+        )[0]
+        assert (generic - quat_route).abs().max().item() < 1e-12, (
+            "kornia#3947: axis_angle_to_rotation_matrix disagrees with the quaternion route"
         )
 
     @pytest.mark.xfail(
