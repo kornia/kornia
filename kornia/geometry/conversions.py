@@ -424,29 +424,7 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
           to this function, returning an equal result — see the alias warning
           below
 
-    .. warning::
-        The returned matrix is **not orthogonal**: ``eps = 1e-6`` is added to
-        the angle when the axis is normalised, which shrinks the axis. In
-        ``float64`` at ``theta = pi/2`` about ``+z``, ``det(R)`` is
-        ``0.9999974535249636`` and ``max|R R^T - I|`` is
-        ``2.5464750363912714e-06`` (torch 2.9.1, cpu — the trailing digits are
-        backend-dependent; the magnitude is the point); the determinant is
-        axis-independent to the last digit or two, while the orthogonality
-        residual is not (a generic axis gives
-        ``2.091747640764474e-06``). ``float32`` is no better
-        (``2.5033950805664062e-06`` on the same input), and
-        the second example below hides it — the printed ``1.0000e+00`` at
-        ``R[0, 0]`` is really ``0.9999987483024597``. Below an internal
-        threshold on ``theta ** 2`` the first-order matrix
-        ``[[1, -rz, ry], [rz, 1, -rx], [-ry, rx, 1]]`` is returned instead, with
-        ``det = 1 + theta ** 2``: in ``float64`` the input ``[0., 0., 1e-3]``
-        takes that branch (``det = 1.000001``) while ``1e-3 * (1, 2, 3)/sqrt(14)``
-        does not (``det = 0.9999999970044947``), so which branch an input takes
-        depends on its axis and dtype. Tracked in
-        `#3947 <https://github.com/kornia/kornia/issues/3947>`_.
-
-    .. warning::
-        Only rank-2 input is accepted, despite the guard's ``(*, 3)`` message:
+    .. warning::        Only rank-2 input is accepted, despite the guard's ``(*, 3)`` message:
         ``(3,)`` raises ``IndexError: Dimension out of range``, ``(2, 5, 3)``
         raises ``ValueError: too many values to unpack (expected 3)`` and
         ``(1, 1, 3)`` raises ``ValueError: not enough values to unpack``.
@@ -491,9 +469,9 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
     if not axis_angle.shape[-1] == 3:
         raise ValueError(f"Input size must be a (*, 3) tensor. Got {axis_angle.shape}")
 
-    def _compute_rotation_matrix(axis_angle: torch.Tensor, theta2: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+    def _compute_rotation_matrix(axis_angle: torch.Tensor, theta2: torch.Tensor) -> torch.Tensor:
         theta = torch.sqrt(theta2.clamp(min=1e-12))  # clamping to ensure no nan gradients
-        wxyz = axis_angle / (theta.unsqueeze(-1) + eps)  # (B, 3)
+        wxyz = axis_angle / theta.unsqueeze(-1)  # (B, 3)
         wx, wy, wz = wxyz.unbind(dim=1)  # (B,)
 
         cos_theta = torch.cos(theta)
@@ -530,18 +508,27 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
     def _compute_rotation_matrix_taylor(axis_angle: torch.Tensor) -> torch.Tensor:
         rx, ry, rz = axis_angle.unbind(-1)
         k_one = torch.ones_like(rx)
+        k_half = 0.5 * k_one
 
+        rx2, ry2, rz2 = rx * rx, ry * ry, rz * rz
+        rxry, rxrz, ryrz = rx * ry, rx * rz, ry * rz
+
+        # second-order Taylor expansion of Rodrigues' formula:
+        #   R = I + [v]x + [v]x^2 / 2
+        # the first-order truncation had det = 1 + theta^2; the second-order
+        # truncation has det = 1 + theta^4 / 4, so the matrix is a rotation to
+        # the working precision across the whole low-angle branch
         rot = torch.stack(
             [
-                k_one,
-                -rz,
-                ry,
-                rz,
-                k_one,
-                -rx,
-                -ry,
-                rx,
-                k_one,
+                k_one - k_half * (ry2 + rz2),
+                -rz + k_half * rxry,
+                ry + k_half * rxrz,
+                rz + k_half * rxry,
+                k_one - k_half * (rx2 + rz2),
+                -rx + k_half * ryrz,
+                -ry + k_half * rxrz,
+                rx + k_half * ryrz,
+                k_one - k_half * (rx2 + ry2),
             ],
             dim=-1,
         ).view(-1, 3, 3)
