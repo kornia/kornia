@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 import torch
@@ -1374,6 +1375,28 @@ def euler_from_quaternion(
     siny_cosp = 2.0 * (w * z + x * y)
     cosy_cosp = 1.0 - 2.0 * (yy + z * z)
     yaw = siny_cosp.atan2(cosy_cosp)
+
+    # Gimbal lock: at pitch = ±pi/2 the cos(pitch) factor shared by the roll and
+    # yaw atan2 arguments collapses to ~0, so each becomes atan2(0, 0) and the
+    # returned triple no longer represents the rotation (#3950). Only one combined
+    # angle survives there -- roll - yaw at +pi/2 and roll + yaw at -pi/2 -- so pin
+    # roll to 0 and fold that degree of freedom into yaw, which reconstructs the
+    # input rotation. The threshold scales with sqrt(eps): once the asin argument
+    # has rounded to within a few ulps of 1, cos(pitch) is a small multiple of
+    # sqrt(eps) (asin(1 - d) = pi/2 - sqrt(2 d)), so a modest factor above sqrt(eps)
+    # clears that rounding band while staying far from any genuinely resolvable
+    # pitch. float32 gimbal cases (cos(pitch) ~ 3e-4) are caught the same way.
+    cos_pitch = (1.0 - sinp * sinp).clamp(min=0.0).sqrt()
+    gimbal = cos_pitch < 8.0 * torch.finfo(w.dtype).eps ** 0.5
+    up = sinp > 0.0
+    # Snap pitch to exactly ±pi/2 there (asin returns pi/2 - O(sqrt(eps)) once its
+    # argument rounds below 1, which alone would leave the round trip off by ~1e-8),
+    # pin roll to 0 and put the resolved degree of freedom into yaw.
+    pitch_locked = torch.where(up, torch.full_like(pitch, math.pi / 2), torch.full_like(pitch, -math.pi / 2))
+    yaw_locked = torch.where(up, -2.0 * x.atan2(w), 2.0 * x.atan2(w))
+    pitch = torch.where(gimbal, pitch_locked, pitch)
+    roll = torch.where(gimbal, torch.zeros_like(roll), roll)
+    yaw = torch.where(gimbal, yaw_locked, yaw)
 
     return roll, pitch, yaw
 
