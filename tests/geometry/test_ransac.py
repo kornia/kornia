@@ -20,7 +20,7 @@ import pytest
 import torch
 
 from kornia.geometry import RANSAC, transform_points
-from kornia.geometry.epipolar import sampson_epipolar_distance
+from kornia.geometry.epipolar import find_fundamental, sampson_epipolar_distance
 
 from testing.base import BaseTester
 from testing.casts import dict_to
@@ -259,6 +259,39 @@ class TestRANSACFundamental(BaseTester):
             return model(p1, p2)[0]
 
         self.gradcheck(gradfun, (points1, points2), fast_mode=False, requires_grad=(True, False, False))
+
+class TestRANSACLocalOptimization:
+    def test_polish_step_uses_verify_best_model(self, device, dtype):
+        """Regression test for RANSAC.forward()'s local-optimization loop.
+
+        It must adopt the model verify() actually selects as best-scoring,
+        not blindly take index 0 of whatever the polisher solver returns.
+        This only becomes observable when a polisher returns more than one
+        candidate, so here we patch polisher_solver to return two: a
+        deliberately bad matrix at index 0, and a correct fit (from
+        find_fundamental on the real data) at index 1.
+        """
+        torch.random.manual_seed(0)
+        points1 = torch.rand(30, 2, device=device, dtype=dtype)
+        points2 = torch.rand(30, 2, device=device, dtype=dtype)
+
+        ransac = RANSAC("fundamental", max_lo_iters=1).to(device=device, dtype=dtype)
+
+        good_fit = find_fundamental(points1[None], points2[None])  # shape (1, 3, 3)
+        bad_fit = torch.eye(3, device=device, dtype=dtype)[None]  # a poor, arbitrary matrix
+
+        def fake_polisher(kp1, kp2, weights):
+            # index 0: bad, index 1: the actual best fit for this data
+            return torch.cat([bad_fit, good_fit], dim=0)
+
+        ransac.polisher_solver = fake_polisher
+
+        Fm, _ = ransac(points1, points2)
+
+        # If the bug were present (model = model_lo.clone()[0]), Fm would be
+        # (close to) the identity "bad_fit" matrix. With the fix, it must be
+        # close to the actual best fit instead.
+        assert not torch.allclose(Fm, bad_fit[0], atol=1e-2)
 
 
 class TestRansacMethods:
