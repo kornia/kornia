@@ -94,7 +94,6 @@ class TestLovaszSoftmaxLoss(BaseTester):
 
         self.assert_close(loss, 0.5 * torch.ones_like(loss), rtol=1e-3, atol=1e-3)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         num_classes = 4
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)
