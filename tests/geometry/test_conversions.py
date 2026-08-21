@@ -33,6 +33,7 @@ from kornia.core._compat import torch_version
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.ops import eye_like
+from kornia.core.utils import _inverse_3x3_closed_form
 from kornia.geometry.conversions import (
     ARKitQTVecs_to_ColmapQTVecs,
     Rt_to_matrix4x4,
@@ -145,22 +146,114 @@ def _skip_if_closed_form_inverse_unavailable(device, dtype) -> None:
     # 2.9.1 runs it, and torch.zeros in that dtype succeeds on both, so the allocation probe alone
     # lets the pin fail with a message about torch's kernel coverage rather than about kornia's
     # convention. Probed rather than version-gated: two builds are two data points, not a history.
-    # What is attempted is the PUBLIC operation, on a throwaway input, and only a failure
-    # positively identified as the missing torch kernel -- the primitive the route needs raises
-    # too, on the same device and dtype -- becomes a skip; every other failure is re-raised, so a
-    # kornia-side regression still fails the pin here rather than being skipped over. Probing the
-    # primitive alone would not do that, and would also outlive the limitation: the day kornia's
-    # inverse stops needing `cross`, these pins must run again on backends that lack it instead of
-    # skipping forever.
+    # What is attempted is the PUBLIC operation, on a throwaway input, and a failure becomes a skip
+    # only when BOTH halves of the identification hold: the call died INSIDE the closed-form
+    # inverse (innermost frame, matched by code object rather than by name or message, so a rename
+    # is a re-raise and not a silent skip) AND the primitive that routine is built from raises on
+    # the same device and dtype. Every other failure is re-raised, so a kornia-side regression
+    # still fails the pin here rather than being skipped over. The frame half is what keeps an
+    # UNRELATED RuntimeError from riding the skip: on a backend that genuinely lacks the kernel the
+    # primitive probe always fails, so on its own it would turn any new failure raised before the
+    # inverse -- in the guard, in normal_transform_pixel, in the chain matmul -- into a skip, and
+    # the regression would be invisible exactly where the skip is live. The primitive half is what
+    # keeps the skip from outliving the limitation: the day kornia's inverse stops needing `cross`,
+    # these pins must run again on backends that lack it instead of skipping forever.
+    # Residual, stated rather than hidden: this identifies the failing ROUTINE, not the individual
+    # `cross` line inside it. _inverse_3x3_closed_form is three `cross` calls, a multiply-sum and a
+    # divide, so a failure at one of the latter two on a backend whose `cross` is also missing
+    # would still skip. Narrowing further would mean pinning line numbers in another module.
     try:
         kornia.geometry.conversions.normalize_homography(torch.eye(3, device=device, dtype=dtype)[None], (2, 2), (2, 2))
     except (RuntimeError, NotImplementedError) as err:
+        innermost = err.__traceback__
+        while innermost is not None and innermost.tb_next is not None:
+            innermost = innermost.tb_next
+        died_in_the_closed_form_inverse = (
+            innermost is not None and innermost.tb_frame.f_code is _inverse_3x3_closed_form.__code__
+        )
         probe = torch.ones(1, 3, device=device, dtype=dtype)
         try:
             torch.linalg.cross(probe, probe, dim=-1)
         except (RuntimeError, NotImplementedError):
-            pytest.skip(f"torch.linalg.cross has no {dtype} kernel on device {device}: {err}")
+            if died_in_the_closed_form_inverse:
+                pytest.skip(f"torch.linalg.cross has no {dtype} kernel on device {device}: {err}")
         raise
+
+
+def _cross_is_unavailable(device: torch.device, dtype: torch.dtype) -> bool:
+    # "Can this build run torch.linalg.cross here?", for the pin below -- allocation failures
+    # (mps rejects float8 outright) count as unavailable rather than propagating as errors.
+    try:
+        probe = torch.ones(1, 3, device=device, dtype=dtype)
+        torch.linalg.cross(probe, probe, dim=-1)
+    except (RuntimeError, NotImplementedError, TypeError):
+        return True
+    return False
+
+
+def test_skip_probe_re_raises_everything_it_cannot_identify():
+    # Direct pin for _skip_if_closed_form_inverse_unavailable above, for the same reason
+    # test_guard_classifier_reads_the_raising_instruction pins the guard classifier: four pins
+    # route their "does normalize_homography work here at all" question through that helper, and if
+    # it starts skipping too readily they go quiet instead of failing, which is the mode a skip
+    # helper fails in. Nothing else in this file would notice.
+    # Case B needs a REAL kernel gap rather than a patched `cross`: patching it with a Python
+    # function puts that function in the innermost frame, which is precisely what the helper reads,
+    # so a patch cannot reproduce the branch it is meant to exercise. torch has no `cross` kernel
+    # for bool or float8 on cpu (executed, torch 2.9.1: NotImplementedError, and the route dies
+    # inside _inverse_3x3_closed_form), which is the same shape as the mps bfloat16 gap on torch
+    # 2.5.1 that the helper exists for, reachable on the default device without that build. The
+    # candidate list is searched rather than asserted: mps DOES have a bool `cross`, so a build
+    # that grows the missing kernels must make this case skip visibly, not fail.
+    # Cases C and D patch normal_transform_pixel, which normalize_homography calls BEFORE the
+    # inverse, so the route dies without ever reaching `cross` and the patch stays out of the
+    # frame the helper reads. D is the one that matters: it is exactly C on a backend that also
+    # lacks the kernel, and it is what a primitive-only probe cannot separate -- before the frame
+    # check, D skipped, and any kornia-side regression on a kernel-less backend was invisible.
+    cpu = torch.device("cpu")
+    conversions = kornia.geometry.conversions
+
+    _skip_if_closed_form_inverse_unavailable(cpu, torch.float32)  # A: healthy route, must not skip
+
+    unsupported = next(
+        (dtype for dtype in (torch.bool, torch.float8_e4m3fn) if _cross_is_unavailable(cpu, dtype)),
+        None,
+    )
+    if unsupported is None:
+        pytest.skip("no dtype without a torch.linalg.cross cpu kernel on this build")
+    with pytest.raises(pytest.skip.Exception):  # B: the gap the helper exists for
+        _skip_if_closed_form_inverse_unavailable(cpu, unsupported)
+
+    def regression(*args, **kwargs):
+        raise RuntimeError("kornia-side regression")
+
+    def assert_the_injected_failure_propagates(case: str) -> None:
+        # NOT pytest.raises: a skip is a BaseException that pytest.raises(RuntimeError) lets
+        # through, so the regression this pin exists to catch would turn the pin itself yellow
+        # instead of red -- the same going-quiet the helper's own over-eager skip causes, one level
+        # up. Executed against the pre-fix helper: case D reported SKIPPED under pytest.raises and
+        # FAILED once the skip is converted here.
+        try:
+            _skip_if_closed_form_inverse_unavailable(cpu, torch.float32)
+        except pytest.skip.Exception as skipped:
+            raise AssertionError(f"{case}: an unrelated failure was skipped over: {skipped}") from skipped
+        except RuntimeError as err:
+            assert "kornia-side regression" in str(err), f"{case}: wrong error re-raised: {err}"
+        else:
+            raise AssertionError(f"{case}: the injected failure did not propagate at all")
+
+    real_normal_transform_pixel = conversions.normal_transform_pixel
+    real_cross = torch.linalg.cross
+    conversions.normal_transform_pixel = regression
+    try:
+        assert_the_injected_failure_propagates("C, cross available")
+        torch.linalg.cross = regression
+        try:
+            assert_the_injected_failure_propagates("D, cross unavailable too")
+        finally:
+            torch.linalg.cross = real_cross
+    finally:
+        conversions.normal_transform_pixel = real_normal_transform_pixel
 
 
 def _undo_3954_upcast(matrix: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
@@ -222,6 +315,14 @@ def _raised_by_a_kornia_guard(err: BaseException) -> bool:
     # Both directions are exercised: test_guard_classifier_reads_the_raising_instruction below
     # covers the classifier itself, the #3960 strict xfail asserts this is True (XPASSing the day
     # a guard lands, in any style), and the four warts assert it is False.
+    # The instruction DECIDES; the type tuple is only the fallback for a frame whose instruction
+    # cannot be read. An earlier revision or-ed the two, which made the instruction unreachable for
+    # exactly the types kornia's guards raise and so scored any downstream ValueError as a guard --
+    # `normalize_homography(eye(3)[None], (4, 5, 6), (8, 9))` dies at the UNPACK_SEQUENCE of
+    # `src_h, src_w = dsize_src` with `too many values to unpack`, which is torch-free but is not a
+    # guard either. And-ing them instead would be worse, not better: it rejects the literal
+    # `raise RuntimeError(...)` guard that is the whole reason this function exists (executed --
+    # three of the six positives below are RuntimeError raised through `raise`).
     innermost = err.__traceback__
     while innermost is not None and innermost.tb_next is not None:
         innermost = innermost.tb_next
@@ -235,7 +336,9 @@ def _raised_by_a_kornia_guard(err: BaseException) -> bool:
         ),
         None,
     )
-    return isinstance(err, _KORNIA_GUARD_EXCEPTIONS) or raising_opname in ("RAISE_VARARGS", "RERAISE")
+    if raising_opname is None:
+        return isinstance(err, _KORNIA_GUARD_EXCEPTIONS)
+    return raising_opname in ("RAISE_VARARGS", "RERAISE")
 
 
 def test_guard_classifier_reads_the_raising_instruction():
@@ -245,8 +348,13 @@ def test_guard_classifier_reads_the_raising_instruction():
     # guarantee exists to prevent. `raise (X)` is in the positive set because a substring-matching
     # revision of the classifier scored it as NOT a guard: same semantics, different formatting.
     # The negative set is the two shapes of downstream failure the warts actually pin, a mixed
-    # matmul and a singular inverse. Device-independent by construction: default-device tensors,
-    # no fixture, and only the raising instruction is read.
+    # matmul and a singular inverse, plus a ValueError raised at a non-`raise` instruction: those
+    # two are RuntimeError and so can never reach the type tuple, which would leave the ONE
+    # combination that breaks -- a guard TYPE at a downstream instruction -- uncovered. It is not
+    # hypothetical for these functions: normalize_homography opens with `src_h, src_w = dsize_src`,
+    # so a 3-tuple dsize raises ValueError from UNPACK_SEQUENCE inside kornia and must still
+    # classify as NOT a guard. Device-independent by construction: default-device tensors, no
+    # fixture, and only the raising instruction is read.
     def spaced_raise():
         raise RuntimeError("guard")
 
@@ -272,6 +380,10 @@ def test_guard_classifier_reads_the_raising_instruction():
     def singular_inverse_failure():
         return torch.linalg.inv(torch.zeros(1, 3, 3))
 
+    def downstream_value_error():
+        # ValueError, but raised by UNPACK_SEQUENCE rather than by a `raise`.
+        first, second, third = [1, 2]  # noqa: F841
+
     for guard in (
         spaced_raise,
         parenthesised_raise,
@@ -286,11 +398,11 @@ def test_guard_classifier_reads_the_raising_instruction():
             f"{guard.__name__} rejects the input on kornia's side and must classify as a guard"
         )
 
-    for downstream in (mixed_matmul_failure, singular_inverse_failure):
-        with pytest.raises(RuntimeError) as excinfo:
+    for downstream in (mixed_matmul_failure, singular_inverse_failure, downstream_value_error):
+        with pytest.raises((RuntimeError, ValueError)) as excinfo:
             downstream()
         assert not _raised_by_a_kornia_guard(excinfo.value), (
-            f"{downstream.__name__} dies inside torch and must not classify as a kornia guard"
+            f"{downstream.__name__} does not reject the input at a kornia guard and must not classify as one"
         )
 
 
@@ -3926,6 +4038,35 @@ class TestNormalizeHomography(BaseTester):
     # current default behavior; none of them ratifies that choice as contract. (The #3958 pins would
     # also flip on a #3958 fix, which is their point; the #3904 exposure is separate and additional.)
 
+    def test_gradcheck(self, device):
+        # The three functions are on the warp_perspective path and are differentiable in their
+        # homography argument, and nothing in the suite checked that: neither this file nor
+        # test_homography_warper.py had a gradcheck for any of them before this pin
+        # (`grep -rn "normalize_homography" tests/ | grep gradcheck` was empty). Each is linear in
+        # the homography -- a fixed matrix on each side -- so the gradient is the composition of
+        # the two normalization matrices and any evaluation point checks the same thing; a
+        # non-identity one is used anyway so that a route which silently ignored its input would
+        # not still agree numerically. The dsize arguments are Python ints, so they are bound
+        # through partial rather than passed as gradcheck inputs.
+        # normal_transform_pixel and normal_transform_pixel3d get no gradcheck on purpose: they
+        # take ints and return a constant matrix, so there is no input to differentiate.
+        dtype = torch.float64
+        homography = torch.tensor([[[1.0, 0.2, 3.0], [0.1, 1.0, -2.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        homography3d = torch.eye(4, device=device, dtype=dtype)[None] + 0.1
+
+        self.gradcheck(
+            partial(kornia.geometry.conversions.normalize_homography, dsize_src=(4, 5), dsize_dst=(8, 9)),
+            (homography,),
+        )
+        self.gradcheck(
+            partial(kornia.geometry.conversions.denormalize_homography, dsize_src=(4, 5), dsize_dst=(8, 9)),
+            (homography,),
+        )
+        self.gradcheck(
+            partial(kornia.geometry.conversions.normalize_homography3d, dsize_src=(2, 4, 5), dsize_dst=(3, 8, 9)),
+            (homography3d,),
+        )
+
     def test_convention_maps_normalized_src_to_normalized_dst(self, device, dtype):
         # Convention pin: the returned matrix has the SAME src -> dst direction as its input,
         # re-expressed in the two [-1, 1] frames -- it maps normalized src coordinates to
@@ -5493,6 +5634,67 @@ class TestCARKitToColmap(BaseTester):
         self.assert_close(q_negated, q_reference)
         self.assert_close(t_negated, t_reference)
 
+    def test_wart_zero_quaternion_is_absorbed_or_nans_by_dtype_3952(self, device, dtype):
+        # Wart pin for the downstream reach of kornia#3952 into this function, companion to its
+        # zero-quaternion warning: the all-zero input is not rejected, and what it produces instead
+        # SPLITS BY DTYPE, which is the half the warning got wrong before this pin existed.
+        #   float64/float32/bfloat16: normalize_quaternion's ‖q‖ < eps clamp absorbs the zero, the
+        #     internal rotation comes back as the identity, and the call returns exactly what the
+        #     IDENTITY quaternion returns -- a plausible pose, silently, for an input that is not a
+        #     rotation at all.
+        #   float16: the default eps = 1e-12 underflows to 0 there (bfloat16's wider exponent keeps
+        #     it: 1.0018652574217413e-12), so the clamp is a no-op, the normalisation divides 0 by 0
+        #     and the whole pose is NaN. Same underflow class as kornia#3966.
+        # The first two legs assert against the IDENTITY input's own output rather than against a
+        # literal, so the claim the docstring makes -- "the same answer as the identity input" --
+        # is what runs, at every dtype and on every backend, with no constant to re-measure per
+        # build. The third leg pins the one value the warning quotes outright, t = (-1, 1, 1),
+        # which is exact in every dtype here; without it the first two would still pass if BOTH
+        # routes moved together.
+        # If the non-float16 leg fails, #3952 was (partly) fixed, or this function grew a guard --
+        # check which. If the float16 leg fails, the eps reaching normalize_quaternion is no longer
+        # underflowing, which is the #3966 half. NOT a contract that either is correct.
+        # Snippet used to generate expected (torch only, executed on cpu):
+        #   ARKitQTVecs_to_ColmapQTVecs(torch.zeros(1, 4), torch.ones(1, 3, 1))
+        #     -> q [0., 1., 0., 0.], t [-1., 1., 1.]         (float64 q_x: 1.0000000012499999)
+        #   the same call at float16 -> q [nan] * 4, t [nan] * 3
+        _skip_if_dtype_unavailable(device, dtype)
+        zeros = torch.zeros(1, 4, device=device, dtype=dtype)
+        identity = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        tvec = torch.tensor(_ARKIT_WORKED_TVEC, device=device, dtype=dtype)
+
+        q_zero, t_zero = ARKitQTVecs_to_ColmapQTVecs(zeros, tvec)
+
+        if dtype == torch.float16:
+            assert torch.isnan(q_zero).all() and torch.isnan(t_zero).all(), _issue_msg(
+                "kornia#3952/#3966: the float16 zero quaternion no longer underflows to an all-NaN pose"
+            )
+            return
+
+        q_identity, t_identity = ARKitQTVecs_to_ColmapQTVecs(identity, tvec)
+
+        assert_close(
+            q_zero,
+            q_identity,
+            atol=0.0,
+            rtol=0.0,
+            msg=_issue_msg("kornia#3952: the zero quaternion no longer gives the identity input's rotation"),
+        )
+        assert_close(
+            t_zero,
+            t_identity,
+            atol=0.0,
+            rtol=0.0,
+            msg=_issue_msg("kornia#3952: the zero quaternion no longer gives the identity input's translation"),
+        )
+        assert_close(
+            t_zero,
+            torch.tensor([[[-1.0], [1.0], [1.0]]], device=device, dtype=dtype),
+            atol=0.0,
+            rtol=0.0,
+            msg=_issue_msg("kornia#3952: the absorbed zero quaternion no longer produces the documented pose"),
+        )
+
     def test_convention_input_is_camtoworld_graphics_and_output_is_worldtocam_vision(self, device, dtype):
         # Convention pin: the frames, which the docstring never states -- it calls the output "the
         # camera-to-world transformation, expected by Colmap", and the output is world-to-camera.
@@ -6178,9 +6380,10 @@ class TestAxisAngleToRotationMatrix:
 # so that the filter mutation they provoke cannot leak into the rest of the suite: this bug is
 # contagious across tests, and an unisolated pin would silently disarm every other test's warning
 # discipline.
-# Both pins parametrize directly over the module-level _DEPRECATED_ALIASES table defined at the
-# top of this file (ignoring the replacement column they do not need), so the list of aliases is
-# maintained in exactly one place.
+# Both pins parametrize over the module-level _DEPRECATED_ALIASES table defined at the top of this
+# file, projected down to the two columns they use -- neither is about what the alias forwards TO,
+# only about the warning it emits on the way -- so the list of aliases is maintained in exactly one
+# place and neither signature carries a parameter it never reads.
 
 
 @pytest.mark.xfail(
@@ -6190,9 +6393,11 @@ class TestAxisAngleToRotationMatrix:
     strict=True,
 )
 @pytest.mark.parametrize(
-    ("alias_name", "replacement_name", "arg"), _DEPRECATED_ALIASES, ids=[row[0] for row in _DEPRECATED_ALIASES]
+    ("alias_name", "arg"),
+    [(alias_name, arg) for alias_name, _, arg in _DEPRECATED_ALIASES],
+    ids=[row[0] for row in _DEPRECATED_ALIASES],
 )
-def test_convention_deprecated_alias_warning_can_be_escalated_to_an_error_3956(alias_name, replacement_name, arg):
+def test_convention_deprecated_alias_warning_can_be_escalated_to_an_error_3956(alias_name, arg):
     # Intended behavior: a DeprecationWarning emitted by kornia obeys the caller's warning filters,
     # so a project that runs under -W error::DeprecationWarning (or pytest's filterwarnings =
     # error) sees the call fail and can find its deprecated usages. It does not:
@@ -6224,9 +6429,11 @@ def test_convention_deprecated_alias_warning_can_be_escalated_to_an_error_3956(a
 
 
 @pytest.mark.parametrize(
-    ("alias_name", "replacement_name", "arg"), _DEPRECATED_ALIASES, ids=[row[0] for row in _DEPRECATED_ALIASES]
+    ("alias_name", "arg"),
+    [(alias_name, arg) for alias_name, _, arg in _DEPRECATED_ALIASES],
+    ids=[row[0] for row in _DEPRECATED_ALIASES],
 )
-def test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956(alias_name, replacement_name, arg):
+def test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956(alias_name, arg):
     # Wart pin for kornia#3956, companion to the strict xfail above: assert that a single alias
     # call CURRENTLY leaves two entries of its own at the head of the process-global filter list,
     # starting from an empty one. Four cells, one per alias, because all four are separate

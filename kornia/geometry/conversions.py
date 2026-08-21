@@ -1737,20 +1737,46 @@ def normalize_homography(
         `#3960 <https://github.com/kornia/kornia/issues/3960>`_.
 
     .. warning::
+        The inverse this function takes is a closed-form 3x3 adjugate built from
+        ``torch.linalg.cross`` — chosen to keep ``cusolver`` off the path — and
+        a backend that has no ``cross`` kernel for the working dtype therefore
+        makes this function **raise from inside the inverse** rather than
+        return. That is kernel coverage, not a convention: nothing is wrong with
+        the input, and the same call in another dtype on the same backend
+        succeeds. Measured instance: on ``mps`` in ``bfloat16``, torch 2.5.1
+        raises ``RuntimeError: Failed to create function state object for:
+        cross_bfloat``, while torch 2.9.1 runs it — and on cpu at torch 2.9.1
+        the same shape of failure is still reachable in dtypes without a
+        ``cross`` kernel (``torch.bool``, ``float8_e4m3fn``:
+        ``NotImplementedError``). :func:`~kornia.geometry.conversions.normalize_homography3d`
+        and :func:`~kornia.geometry.conversions.denormalize_homography` invert
+        through ``torch.linalg.inv`` instead and do not have this gap; they
+        carry the ``cusolver`` dependency instead.
+
+    .. warning::
         The two normalization matrices are built without a ``dtype=``
-        pass-through and cast to the input afterwards, so a ``float64`` caller
-        gets ``float32``-rounded constants: ``normalize_homography`` of the
+        pass-through and cast to the input afterwards, so their precision is
+        decided by the **ambient default dtype** and not by the argument's. At
+        the ``float32`` default — the usual case — a ``float64`` caller gets
+        ``float32``-rounded constants: ``normalize_homography`` of the
         ``float64`` identity from ``(4, 4)`` to ``(6, 6)`` returns
         ``0.5999999910593036`` where the ``float64``-native composition gives
         ``0.6000000000000001`` — a deviation of ``8.94069651646845e-09``, about
-        eight significant digits instead of sixteen. Same mechanism in
+        eight significant digits instead of sixteen. Under
+        ``torch.set_default_dtype(torch.float64)`` that same ``float64`` call
+        returns the native ``0.6000000000000001`` instead, which is what
+        identifies the missing pass-through as the cause rather than an epsilon
+        or a rounding choice: it is
+        :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
+        documented ``dtype=None`` behaviour reaching through, so setting the
+        ambient default is also the workaround. Same mechanism in
         :func:`~kornia.geometry.conversions.denormalize_homography`
-        (``2.483526828633842e-08`` on the same input) and in
+        (``2.483526828633842e-08`` on the same input, at the ``float32``
+        default) and in
         :func:`~kornia.geometry.conversions.normalize_homography3d`. These
         deviations run through ``matmul`` and an inverse, so their trailing
-        digits are backend-dependent; the magnitude — half
-        the mantissa gone — is the point, and it is what the companion pin
-        compares against rather than the digits. Tracked in
+        digits are backend-dependent; the magnitude — half the mantissa gone —
+        is the point, not the digits. Tracked in
         `#3958 <https://github.com/kornia/kornia/issues/3958>`_.
 
     .. warning::
@@ -1770,8 +1796,7 @@ def normalize_homography(
         and an inverse, so their trailing digits are backend-dependent; the
         orders of magnitude are the point. This is the
         executed root of 1-pixel warp outputs coming back all-``nan`` on cpu
-        and mps — the devices executed; no CUDA behavior is claimed, matching
-        the companion pin's scope. Tracked
+        and mps — the devices executed; no CUDA behavior is claimed. Tracked
         in
         `#3957 <https://github.com/kornia/kornia/issues/3957>`_ and, for the
         symptom, `#3929 <https://github.com/kornia/kornia/issues/3929>`_.
@@ -1794,10 +1819,10 @@ def normalize_homography(
         matmul: the normalization matrices are truncated to ``int64``, the
         closed-form inverse silently promotes them back to an all-``nan``
         ``float32``, and the final chain matmul then sees a mixed pair — cpu
-        rejects it, ``mps`` multiplies it. The companion pin probes that
-        mechanism instead of listing device names, so the behavior recorded
-        here for cpu and ``mps`` is the behavior of any backend that makes the
-        same choice.
+        rejects it, ``mps`` multiplies it. That mechanism, not the device
+        names, is what decides: the behavior recorded here for cpu and ``mps``
+        is the behavior of any backend that makes the same choice, and no CUDA
+        behavior is claimed.
         Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
     .. warning::
@@ -1867,56 +1892,58 @@ def normal_transform_pixel(
           ``(0, 0)``, ``(4, 3)`` and ``(2, 1.5)`` to ``(-1, -1)``, ``(1, 1)``
           and ``(0, 0)``
         - for sizes ``>= 2`` this is the same convention as
-          :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`:
-          **in** ``float32`` **and** ``float64`` pushing one grid through both
-          agrees to a maximum absolute difference of ``0.0`` on cpu, executed
-          over every ``(height, width)`` pair in ``range(2, 60)`` on the full
-          pixel grid, on torch 2.9.1 and 2.5.1 alike (every figure in this
-          bullet was measured on macOS arm64; no x86-64 build was executed). That exactness is
-          backend-dependent — the same ``float32`` comparison at ``(2, 28)``
-          peaks at ``5.96e-08`` on ``mps``, which is ``2**-24``, the
-          ``float32`` spacing just below ``1.0``. In ``float16``/``bfloat16``
-          the two agree only where the arithmetic is exact. The scales are not
-          what differs — both routes hold the same rounded ``2 / (size - 1)``
-          — it is where the rounding falls: the helper multiplies and subtracts
-          elementwise in the working dtype, while applying this matrix is a
-          matmul, whose dot product is accumulated at higher precision and
-          rounded once at the end (the executed figures match a ``float32``
-          accumulation exactly). How far apart that puts them is a property of
-          the build's matmul kernel, not of the convention: on **torch 2.9.1,
-          cpu**, 3328 of 3364 size pairs differ in ``float16`` (worst
-          ``9.77e-04``) and 3315 of 3364 in ``bfloat16`` (worst ``7.81e-03``);
-          the ``float16`` sweep reproduces on torch 2.5.1 (the same 3328 of
-          3364), while the ``bfloat16`` one does not reproduce on that build's
-          cpu kernel at all (0 of 3364, and the ``(2, 28)`` gap is ``0.0``
-          against ``0.00390625`` on 2.9.1). On ``mps`` only the ``(2, 28)``
-          cell was measured — ``9.77e-04`` in ``float16`` and ``3.91e-03`` in
-          ``bfloat16``, on both builds. At ``(2, 28)`` in ``float16`` the x
-          coordinate of pixel ``(27, 0)`` comes back as ``1.0`` from the helper
-          and ``1.0009765625`` through the matrix — that one, unlike the
-          ``bfloat16`` figures, is the same on both backends and both builds.
-          The ``(2, 28)`` figures are pinned in
-          ``TestNormalTransformPixel::test_wart_agreement_gap_at_2_28_is_a_kernel_measurement``,
-          keyed by backend, machine and — for the cpu ``bfloat16`` cell —
-          torch build, so an unmeasured configuration skips rather than
-          inheriting a kernel literal. The ``range(2, 60)`` sweep counts above
-          are **not** pinned — 3364 size pairs per dtype is too slow for a unit
-          test — and are reproducible from the snippet in that pin; what runs
-          everywhere instead is a dtype-scaled bound, that the two routes stay
-          within ``2 * finfo(dtype).eps`` of each other, asserted by
-          ``test_convention_agrees_with_normalize_pixel_coordinates``. That
-          bound is *tolerated*, not derived: ``eps`` is already the spacing at
-          ``1.0``, so it allows two spacings there, and it holds with roughly
-          ``2x`` headroom over every cell measured above — a backend or
-          configuration that accumulates matmuls at reduced precision (``TF32``
-          on ``cuda``, say) can exceed it without anything here having changed.
-          At the degenerate sizes the two diverge — they clamp
-          through different ``eps`` mechanisms, ``2e14``-scale here against
-          ``2e8``-scale there at ``size == 1``, and with opposite signs at
-          ``size == 0`` (executed; see the warning below). It is **not**
+          :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`, and
+          for a caller that is usually the whole of it: in ``float32`` and
+          ``float64`` the two routes agree to the working dtype's rounding —
+          **exactly**, at every size measured, on cpu, and within one
+          ``float32`` ulp on ``mps`` — while in ``float16``/``bfloat16`` they
+          agree only where the arithmetic is exact, so a reduced-precision
+          pipeline should not mix the two routes and expect a match. It is
+          **not**
           :func:`torch.nn.functional.grid_sample`'s default half-pixel
           ``(2 * x + 1) / width - 1``, which would put column ``0`` of a 5-wide
-          image at ``-0.8`` rather than ``-1.0``
+          image at ``-0.8`` rather than ``-1.0``. At the degenerate sizes the
+          two diverge outright — they clamp through different ``eps``
+          mechanisms, ``2e14``-scale here against ``2e8``-scale there at
+          ``size == 1``, and with opposite signs at ``size == 0`` (executed; see
+          the warning below)
+        - *how far apart the two routes get, and why.* This bullet is a
+          measurement of the build's matmul kernel rather than a statement about
+          the convention; skip it unless a reduced-precision difference is what
+          brought you here. The scales are not what differs — both routes hold
+          the same rounded ``2 / (size - 1)`` — it is where the rounding falls:
+          the helper multiplies and subtracts elementwise in the working dtype,
+          while applying this matrix is a matmul, whose dot product is
+          accumulated at higher precision and rounded once at the end (the
+          executed figures match a ``float32`` accumulation exactly). The
+          ``float32``/``float64`` exactness above was executed over every
+          ``(height, width)`` pair in ``range(2, 60)`` on the full pixel grid,
+          on cpu, on torch 2.9.1 and 2.5.1 alike, to a maximum absolute
+          difference of ``0.0`` — and it is backend-dependent: the same
+          ``float32`` comparison at ``(2, 28)`` peaks at ``5.96e-08`` on
+          ``mps``, which is ``2**-24``, the ``float32`` spacing just below
+          ``1.0``. At reduced precision, on **torch 2.9.1, cpu**, 3328 of 3364
+          size pairs differ in ``float16`` (worst ``9.77e-04``) and 3315 of 3364
+          in ``bfloat16`` (worst ``7.81e-03``); the ``float16`` sweep reproduces
+          on torch 2.5.1 (the same 3328 of 3364), while the ``bfloat16`` one
+          does not reproduce on that build's cpu kernel at all (0 of 3364, and
+          the ``(2, 28)`` gap is ``0.0`` against ``0.00390625`` on 2.9.1). On
+          ``mps`` only the ``(2, 28)`` cell was measured — ``9.77e-04`` in
+          ``float16`` and ``3.91e-03`` in ``bfloat16``, on both builds. At
+          ``(2, 28)`` in ``float16`` the x coordinate of pixel ``(27, 0)`` comes
+          back as ``1.0`` from the helper and ``1.0009765625`` through the
+          matrix — that one, unlike the ``bfloat16`` figures, is the same on
+          both backends and both builds. Every figure in this bullet was
+          measured on macOS arm64; no x86-64 build was executed, and the
+          ``range(2, 60)`` sweep counts are reproducible rather than checked on
+          every run. What kornia's suite does check everywhere is a dtype-scaled
+          bound: that the two routes stay within ``2 * finfo(dtype).eps`` of
+          each other. That bound is *tolerated*, not derived — ``eps`` is
+          already the spacing at ``1.0``, so it allows two spacings there — and
+          it holds with roughly ``2x`` headroom over every cell above, so a
+          backend or configuration that accumulates matmuls at reduced precision
+          (``TF32`` on ``cuda``, say) can exceed it without anything here having
+          changed
         - the convention is applied **unconditionally** — there is no
           ``align_corners`` parameter — and
           :func:`~kornia.geometry.conversions.normalize_homography` and its
@@ -1930,8 +1957,8 @@ def normal_transform_pixel(
         This paragraph is about the degenerate-denominator branch only, not
         about the ``2 / (size - 1)`` scaling or the corner-aligned convention,
         which are `#3904 <https://github.com/kornia/kornia/issues/3904>`_'s
-        territory and reserved for its assigned contributor. ``height`` and
-        ``width`` are not validated. A size of ``1`` takes the ``eps`` branch,
+        territory. ``height`` and ``width`` are not validated. A size of ``1``
+        takes the ``eps`` branch,
         so with the default ``eps = 1e-14`` the scale becomes ``2 / eps``:
         ``normal_transform_pixel(4, 1)`` has ``sx = 200000000753664.0``, finite
         and silent. A size of ``0`` divides by ``-1`` instead and gives
@@ -2123,9 +2150,8 @@ def denormalize_homography(
           directions (the integer matrix matches only the first half: it too
           comes back bitwise from ``normalize(denormalize(H))``, but its
           ``denormalize(normalize(H))`` misses by ``3.0`` with either bottom
-          row). The convention pins in kornia's test suite assert the
-          bit-for-bit form at those sizes on a literal chosen so that every
-          intermediate is exact
+          row). The bit-for-bit form is the one that holds at those sizes on a
+          literal whose every intermediate is exact
         - the two functions do **not** invert their normalization matrix the
           same way, so their errors are not mirror images either: on the
           identity homography with equal sizes ``(4, 7)``,
@@ -2179,7 +2205,26 @@ def normalize_homography3d(
           right and ``dsize_dst`` on the left, and the same corner-aligned
           frames — with
           :func:`~kornia.geometry.conversions.normal_transform_pixel3d` in place
-          of the 2-D helper. Only the lines below differ
+          of the 2-D helper. It is **not** the 2-D function with wider matrices,
+          though: the shapes, the missing inverse and — least visibly — the
+          inversion routine all differ, as the bullets below record
+        - **the two do not invert their normalization matrix by the same
+          routine**, and the difference reaches callers. This function inverts
+          with ``torch.linalg.inv``;
+          :func:`~kornia.geometry.conversions.normalize_homography` inverts with
+          a closed-form 3x3 adjugate. Three consequences, none of them
+          cosmetic: it needs ``cusolver`` on ``cuda`` — which is the dependency
+          the 2-D closed form exists to avoid, so a build where
+          ``torch.linalg.inv`` fails to load still runs the 2-D function and not
+          this one; at ``float16``/``bfloat16`` it upcasts to ``float32``,
+          inverts and casts back, where the 2-D route inverts in the working
+          dtype, and over every ``(height, width)`` pair in ``range(2, 40)`` the
+          two routes' inverses of the same normalization matrix differ by up to
+          ``0.125`` in ``bfloat16`` and ``0.015625`` in ``float16`` (torch
+          2.9.1, cpu); and it does **not** inherit the 2-D route's dependence on
+          a ``torch.linalg.cross`` kernel, described in that function's warning.
+          :func:`~kornia.geometry.conversions.denormalize_homography` inverts
+          the same way this one does
         - the matrices are :math:`(B, 4, 4)` and act on ``(x, y, z, 1)`` column
           vectors, while both ``dsize`` arguments are
           ``(depth, height, width)`` triples
@@ -2189,7 +2234,8 @@ def normalize_homography3d(
           Tracked in `#3962 <https://github.com/kornia/kornia/issues/3962>`_
 
     .. warning::
-        The shape guard is the 2-D one, copied: it accepts an unbatched
+        The shape guard has the 2-D function's ``or``-structure and the 2-D
+        function's message, with only the size adapted: it accepts an unbatched
         ``(4, 4)`` (promoted to ``(1, 4, 4)``) and any number of leading batch
         dimensions, it lets a ``(B, 3, 3)`` through to die inside ``matmul``,
         and when it does fire its message names the wrong shape —
@@ -2673,10 +2719,13 @@ def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
           point it recovers the identity to the working dtype's rounding rather
           than bitwise: packing both pairs with
           :func:`~kornia.geometry.conversions.Rt_to_matrix4x4` and multiplying
-          gives ``max|M_inv @ M - I|`` of ``5.96e-07`` in ``float32`` and
-          ``1.33e-15`` in ``float64`` over 64 random rotations with random
-          translations (torch 2.9.1, cpu — sample points, not bounds), with
-          ``torch.equal`` against the identity ``False``
+          gives ``max|M_inv @ M - I|`` at the ``1e-07`` scale in ``float32``
+          and ``1e-15`` in ``float64``, over 64 random rotations with random
+          translations — a few ulps of the entries. Read the exponent, not the
+          digits: the maximum moves with the draw (``4.77e-07`` to
+          ``7.15e-07``, and ``6.66e-16`` to ``1.33e-15``, over six seeds of the
+          same sweep; torch 2.9.1, cpu). ``torch.equal`` against the identity is
+          ``False``
         - what ``t`` means on each side: the input is a camera-to-world pose, so
           its ``t`` is the **camera centre in world coordinates** (the 4x4 sends
           the origin to ``t``); the returned ``-R^T t`` is the **world-to-camera
@@ -2822,9 +2871,10 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           :func:`~kornia.geometry.conversions.normalize_quaternion`'s
           ``eps = 1e-12`` and **below** the point at which the norm's
           sum-of-squares accumulator overflows. Over 64 random unit quaternions
-          rescaled by factors from ``1e-3`` to ``1e5``, the output rotation
-          moved by at most ``5.96e-07`` and the translation by at most
-          ``9.54e-07`` in ``float32`` — sample points, not a bound. ``q`` and
+          rescaled by factors from ``1e-3`` to ``1e5``, the output rotation and
+          translation moved at the ``1e-06`` scale in ``float32`` — a few ulps
+          of their entries, with the maximum moving from draw to draw, so this
+          is an order of magnitude and not a bound. ``q`` and
           ``-q`` give bitwise the same output at every scale tried, since they
           are the same rotation
         - **past either end the pose changes outright, silently.** Below the
@@ -2857,8 +2907,10 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           ``diag(1, -1, -1)``, which negates two axes and not one — so
           **handedness is preserved** and ``det`` is ``+1`` up to the working
           dtype's rounding: over 512 random quaternions the largest
-          ``|det - 1|`` was ``8.3e-07`` in ``float32`` and ``1.8e-15`` in
-          ``float64``. It is the construction that guarantees
+          ``|det - 1|`` sits at the ``1e-06`` scale in ``float32`` and
+          ``1e-15`` in ``float64`` (``7.15e-07`` to ``8.34e-07`` and
+          ``1.78e-15`` to ``2e-15`` over four seeds — again the exponent, not
+          the digits). It is the construction that guarantees
           properness; the digits are just arithmetic. Below the floor the
           construction's premise fails — the clamp leaves the internal
           quaternion non-unit — and the guarantee with it; the previous
@@ -2898,14 +2950,20 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
         `#3951 <https://github.com/kornia/kornia/issues/3951>`_.
 
     .. warning::
-        The all-zero quaternion is silently accepted: the internal
-        normalisation floor absorbs it, ``torch.zeros(1, 4)`` with
-        ``t = (1, 1, 1)`` returns the plausible-looking
-        ``q = [0., 1., 0., 0.]``, ``t = (-1, 1, 1)`` — the same answer as the
-        identity input — rather than raising. Validate the quaternion before
-        calling if the input may be degenerate. This is the downstream reach of
-        the sub-``eps`` clamp in
-        :func:`~kornia.geometry.conversions.normalize_quaternion`. Tracked in
+        The all-zero quaternion is never rejected, and what it gives back
+        instead **splits by dtype**. In ``float64``, ``float32`` and
+        ``bfloat16`` the internal normalisation floor absorbs it:
+        ``torch.zeros(1, 4)`` with ``t = (1, 1, 1)`` returns the
+        plausible-looking ``q = [0., 1., 0., 0.]``, ``t = (-1, 1, 1)`` in
+        ``float32`` — the same answer as the identity input, at every one of
+        those three dtypes — rather than raising. In ``float16`` the default
+        ``eps = 1e-12`` underflows to ``0`` (``bfloat16``'s wider exponent
+        keeps it), so the clamp is a no-op, the normalisation divides ``0`` by
+        ``0``, and **both returned tensors are entirely** ``nan``. Neither
+        branch is an error: validate the quaternion before calling if the input
+        may be degenerate. This is the downstream reach of the sub-``eps``
+        clamp in :func:`~kornia.geometry.conversions.normalize_quaternion`,
+        whose own warning carries the same ``float16`` underflow. Tracked in
         `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
 
     Args:
