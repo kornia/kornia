@@ -145,7 +145,6 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
         image: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
         factor: How much to adjust the saturation. 0 will give a black
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
-        saturation_mode: The mode to adjust saturation.
 
     Return:
         Adjusted image in the shape of :math:`(*, 3, H, W)`.
@@ -1125,7 +1124,6 @@ class AdjustSaturation(nn.Module):
     Args:
         saturation_factor: How much to adjust the saturation. 0 will give a black
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
-        saturation_mode: The mode to adjust saturation.
 
     Shape:
         - Input: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
@@ -1184,7 +1182,6 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
     Args:
         saturation_factor: How much to adjust the saturation. 0 will give a black
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
-        saturation_mode: The mode to adjust saturation.
 
     Shape:
         - Input: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
