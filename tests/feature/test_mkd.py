@@ -199,7 +199,6 @@ class TestVonMisesKernel(BaseTester):
 
         self.gradcheck(vm_describe, (patches, ps), nondet_tol=1e-4)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 13, 13
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
@@ -251,7 +250,6 @@ class TestEmbedGradients(BaseTester):
 
         self.gradcheck(emb_grads_describe, (patches, ps), nondet_tol=1e-4)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 2, 13, 13
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
@@ -322,7 +320,6 @@ class TestExplicitSpacialEncoding(BaseTester):
 
         self.gradcheck(explicit_spatial_describe, (patches, ps), nondet_tol=1e-4)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 2, 13, 13
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
@@ -383,7 +380,6 @@ class TestWhitening(BaseTester):
 
         self.gradcheck(whitening_describe, (patches, in_dims), nondet_tol=1e-4)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         batch_size, in_dims = 1, 175
         patches = torch.rand(batch_size, in_dims).to(device)
@@ -457,7 +453,6 @@ class TestMKDDescriptor(BaseTester):
         self.gradcheck(mkd_describe, (patches, ps), nondet_tol=1e-4)
 
     @pytest.mark.skip("neither dict, nor nn.ModuleDict works")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         batch_size, channels, ps = 1, 1, 19
         patches = torch.rand(batch_size, channels, ps, ps).to(device)

@@ -235,7 +235,6 @@ class TestMatchSMNN(BaseTester):
         self.gradcheck(match_smnn, (desc1, desc2, 0.8), nondet_tol=1e-4)
         self.gradcheck(matcher, (desc1, desc2), nondet_tol=1e-4)
 
-    @pytest.mark.jit()
     @pytest.mark.parametrize("match_type", ["nn", "snn", "mnn", "smnn"])
     def test_jit(self, match_type, device, dtype):
         desc1 = torch.rand(5, 8, device=device, dtype=dtype)
@@ -341,7 +340,6 @@ class TestMatchFGINN(BaseTester):
         lafs2 = laf_from_center_scale_ori(center2)
         self.gradcheck(match_fginn, (desc1, desc2, lafs1, lafs2, 0.8, 0.05), nondet_tol=1e-4)
 
-    @pytest.mark.jit()
     @pytest.mark.skip("keyword-arg expansion is not supported")
     def test_jit(self, device, dtype):
         desc1 = torch.rand(5, 8, device=device, dtype=dtype)

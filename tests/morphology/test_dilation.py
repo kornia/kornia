@@ -153,7 +153,6 @@ class TestDilate(BaseTester):
         # Results should differ when the anchor point changes
         assert not torch.equal(out_default, out_custom)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = dilation
         op_script = torch.jit.script(op)
