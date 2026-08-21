@@ -88,7 +88,6 @@ class TestRgbToYuv(BaseTester):
 
         self.assert_close(rgb_back, rgb, atol=atol, rtol=1e-3)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(
@@ -98,7 +97,6 @@ class TestRgbToYuv(BaseTester):
             fast_mode=True,
         )
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
         op = kornia.color.rgb_to_yuv

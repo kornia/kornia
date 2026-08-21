@@ -113,7 +113,6 @@ class TestClosing(BaseTester):
             test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert closing(tensor, test)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = closing
         op_script = torch.jit.script(op)

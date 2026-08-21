@@ -22,7 +22,7 @@ pixi run test tests/ --device=all --dtype=all
 # Skip slow tests (default); include them with --runslow
 pixi run test tests/ --runslow
 
-# Quick tests (excludes jit, grad, nn markers)
+# Quick tests (same as `pixi run test`; slow tests are skipped by default)
 pixi run test-quick
 ```
 
@@ -61,9 +61,6 @@ The `device` and `dtype` fixtures are injected automatically from the CLI option
 | Marker | Meaning |
 |---|---|
 | `@pytest.mark.slow` | Long-running test; skipped unless `--runslow` is passed |
-| `@pytest.mark.grad` | Gradient-check test |
-| `@pytest.mark.jit` | TorchScript test |
-| `@pytest.mark.nn` | Module-level test |
 | `@pytest.mark.tf32` | Known to fail under TF32 (see section below); xfail unless `--tf32` |
 
 ---
