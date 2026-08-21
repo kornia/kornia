@@ -384,7 +384,9 @@ class RANSAC(nn.Module):
                     model_lo = self.polish_model(kp1, kp2, inliers)
                     if (model_lo is None) or (len(model_lo) == 0):
                         continue
-                    model_lo_best, inliers_lo, score_lo, num_inliers_lo = self.verify(kp1, kp2, model_lo, self.inl_th**2)
+                    model_lo_best, inliers_lo, score_lo, num_inliers_lo = self.verify(
+                        kp1, kp2, model_lo, self.inl_th**2
+                    )
                     if (score_lo > model_score) and (num_inliers_lo >= self.polisher_sample_size):
                         model = model_lo_best
                         inliers = inliers_lo.clone()

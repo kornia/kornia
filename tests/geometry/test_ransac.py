@@ -260,6 +260,7 @@ class TestRANSACFundamental(BaseTester):
 
         self.gradcheck(gradfun, (points1, points2), fast_mode=False, requires_grad=(True, False, False))
 
+
 class TestRANSACLocalOptimization:
     def test_polish_step_uses_verify_best_model(self, device, dtype):
         """Regression test for RANSAC.forward()'s local-optimization loop.
