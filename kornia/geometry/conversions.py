@@ -29,6 +29,7 @@ from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast
 
 __all__ = [
     "ARKitQTVecs_to_ColmapQTVecs",
+    "ColmapQTVecs_to_ARKitQTVecs",
     "Rt_to_matrix4x4",
     "angle_axis_to_quaternion",
     "angle_axis_to_rotation_matrix",
@@ -47,6 +48,7 @@ __all__ = [
     "convert_points_to_homogeneous",
     "deg2rad",
     "denormalize_homography",
+    "denormalize_homography3d",
     "denormalize_pixel_coordinates",
     "denormalize_pixel_coordinates3d",
     "denormalize_points_with_intrinsics",
@@ -1875,6 +1877,41 @@ def normalize_homography3d(
     return dst_norm_trans_src_norm
 
 
+def denormalize_homography3d(
+    dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int, int], dsize_dst: tuple[int, int, int]
+) -> torch.Tensor:
+    r"""De-normalize a given 3D homography from [-1, 1] to actual depth, height and width.
+
+    Args:
+        dst_pix_trans_src_pix: homography/ies from source to destination to be
+          denormalized. :math:`(B, 4, 4)`
+        dsize_src: size of the source image (depth, height, width).
+        dsize_dst: size of the destination image (depth, height, width).
+
+    Returns:
+        the denormalized homography of shape :math:`(B, 4, 4)`.
+
+    """
+    if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
+
+    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx4x4 tensor. Got {dst_pix_trans_src_pix.shape}")
+
+    # source and destination sizes
+    src_d, src_h, src_w = dsize_src
+    dst_d, dst_h, dst_w = dsize_dst
+
+    # compute the transformation pixel/norm for src/dst
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(src_d, src_h, src_w).to(dst_pix_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(dst_d, dst_h, dst_w).to(dst_pix_trans_src_pix)
+    dst_pix_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_dst_pix)
+
+    # compute chain transformations
+    dst_pix_trans_src_pix = dst_pix_trans_dst_norm @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
+    return dst_pix_trans_src_pix
+
+
 def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
     """Normalize points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
 
@@ -2221,6 +2258,28 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
     t_colmap = t_colmap.reshape(-1, 3, 1)
     q_colmap = rotation_matrix_to_quaternion(R_colmap.contiguous())
     return q_colmap, t_colmap
+
+
+def ColmapQTVecs_to_ARKitQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    r"""Convert Colmap world-to-camera pose to the Apple ARKit screen pose.
+
+    Both poses are in quaternion representation.
+
+    Args:
+        qvec: Colmap rotation quaternion :math:`(B, 4)`, [w, x, y, z] format.
+        tvec: translation vector :math:`(B, 3, 1)`, [x, y, z]
+
+    Returns:
+        qvec: ARKit rotation quaternion :math:`(B, 4)`, [w, x, y, z] format.
+        tvec: translation vector :math:`(B, 3, 1)`, [x, y, z]
+
+    """
+    R_colmap = quaternion_to_rotation_matrix(qvec)
+    Rcv, Tcv = worldtocam_to_camtoworld_Rt(R_colmap, tvec)
+    Rcg, Tcg = camtoworld_vision_to_graphics_Rt(Rcv, Tcv)
+    t_arkit = Tcg.reshape(-1, 3, 1)
+    q_arkit = rotation_matrix_to_quaternion(Rcg.contiguous())
+    return q_arkit, t_arkit
 
 
 def vector_to_skew_symmetric_matrix(vec: torch.Tensor) -> torch.Tensor:

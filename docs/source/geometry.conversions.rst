@@ -37,6 +37,7 @@ Homography
 .. autofunction:: normalize_homography
 .. autofunction:: denormalize_homography
 .. autofunction:: normalize_homography3d
+.. autofunction:: denormalize_homography3d
 
 Quaternion
 ----------
@@ -82,3 +83,4 @@ Pose
 .. autofunction:: camtoworld_graphics_to_vision_Rt
 .. autofunction:: camtoworld_vision_to_graphics_Rt
 .. autofunction:: ARKitQTVecs_to_ColmapQTVecs
+.. autofunction:: ColmapQTVecs_to_ARKitQTVecs
