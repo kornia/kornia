@@ -49,6 +49,10 @@ class TestRgbToHsv(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_hsv(img)
 
+        with pytest.raises(ValueError, match="range"):
+            img = torch.tensor([[[[1.5]], [[0.0]], [[0.0]]]], device=device, dtype=dtype)
+            assert kornia.color.rgb_to_hsv(img)
+
     def test_unit(self, device, dtype):
         data = torch.tensor(
             [
