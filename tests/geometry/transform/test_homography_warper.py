@@ -485,6 +485,42 @@ class TestHomographyWarper3D(BaseTester):
         ).expand(batch_size, -1, -1)
         self.assert_close(norm_homo, res)
 
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_normalize_denormalize_homography_round_trip(self, batch_size, device, dtype):
+        dsize_src = (3, 5, 7)
+        dsize_dst = (6, 8, 11)
+        dst_pix_trans_src_pix = torch.tensor(
+            [[1.2, 0.1, 0.0, 1.0], [0.0, 0.8, 0.2, -2.0], [0.0, 0.0, 1.1, 0.5], [0.0, 0.0, 0.0, 1.0]],
+            device=device,
+            dtype=dtype,
+        ).expand(batch_size, -1, -1)
+
+        normalized = kornia.geometry.conversions.normalize_homography3d(dst_pix_trans_src_pix, dsize_src, dsize_dst)
+        denormalized = kornia.geometry.conversions.denormalize_homography3d(normalized, dsize_src, dsize_dst)
+
+        assert denormalized.shape == (batch_size, 4, 4)
+        if dtype == torch.float16:
+            self.assert_close(denormalized, dst_pix_trans_src_pix, rtol=0.0, atol=5e-3)
+        else:
+            self.assert_close(denormalized, dst_pix_trans_src_pix)
+
+        renormalized = kornia.geometry.conversions.normalize_homography3d(
+            kornia.geometry.conversions.denormalize_homography3d(normalized, dsize_src, dsize_dst),
+            dsize_src,
+            dsize_dst,
+        )
+        if dtype == torch.float16:
+            self.assert_close(renormalized, normalized, rtol=0.0, atol=5e-3)
+        else:
+            self.assert_close(renormalized, normalized)
+
+    def test_denormalize_homography_invalid_input(self):
+        with pytest.raises(TypeError, match=r"Input type is not a torch.Tensor"):
+            kornia.geometry.conversions.denormalize_homography3d([[1.0]], (3, 5, 7), (6, 8, 11))
+
+        with pytest.raises(ValueError, match="must be a Bx4x4 tensor"):
+            kornia.geometry.conversions.denormalize_homography3d(torch.ones(2, 2), (3, 5, 7), (6, 8, 11))
+
     @pytest.mark.parametrize("offset", [1, 3, 7])
     @pytest.mark.parametrize("shape", [(4, 5, 6), (2, 4, 6), (4, 3, 9), (5, 7, 8)])
     def test_warp_grid_translation(self, shape, offset, device, dtype):
