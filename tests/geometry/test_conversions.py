@@ -35,6 +35,7 @@ from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.ops import eye_like
 from kornia.geometry.conversions import (
     ARKitQTVecs_to_ColmapQTVecs,
+    ColmapQTVecs_to_ARKitQTVecs,
     Rt_to_matrix4x4,
     axis_angle_to_rotation_matrix,
     camtoworld_graphics_to_vision_4x4,
@@ -5312,6 +5313,43 @@ def _euler_roundtrip_rotation_error(quaternion, euler) -> torch.Tensor:
     back = quaternion_from_euler(*[a.detach().cpu().double() for a in euler])
     rot_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(torch.stack(back, dim=-1))
     return (rot_in - rot_back).abs().flatten(1).amax(1)
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_round_trip(self, batch_size, device, dtype):
+        q_arkit = kornia.geometry.axis_angle_to_quaternion(
+            torch.tensor([[0.4, -0.6, 0.8]], device=device, dtype=dtype).repeat(batch_size, 1)
+        )
+        t_arkit = torch.tensor([[[1.0], [-2.0], [3.0]]], device=device, dtype=dtype).repeat(batch_size, 1, 1)
+
+        q_colmap, t_colmap = ARKitQTVecs_to_ColmapQTVecs(q_arkit, t_arkit)
+        q_arkit_back, t_arkit_back = ColmapQTVecs_to_ARKitQTVecs(q_colmap, t_colmap)
+
+        assert q_arkit_back.shape == (batch_size, 4)
+        assert t_arkit_back.shape == (batch_size, 3, 1)
+        self.assert_close(
+            kornia.geometry.quaternion_to_rotation_matrix(q_arkit_back),
+            kornia.geometry.quaternion_to_rotation_matrix(q_arkit),
+        )
+        self.assert_close(t_arkit_back, t_arkit)
+
+        q_colmap_back, t_colmap_back = ARKitQTVecs_to_ColmapQTVecs(q_arkit_back, t_arkit_back)
+        self.assert_close(
+            kornia.geometry.quaternion_to_rotation_matrix(q_colmap_back),
+            kornia.geometry.quaternion_to_rotation_matrix(q_colmap),
+        )
+        self.assert_close(t_colmap_back, t_colmap)
+
+    def test_reverse_shape_errors(self, device):
+        from kornia.core.exceptions import ShapeError
+
+        quaternion = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device)
+        translation = torch.ones(1, 3, 1, device=device)
+
+        with pytest.raises(ShapeError):
+            ColmapQTVecs_to_ARKitQTVecs(quaternion[0], translation)
+        with pytest.raises(ShapeError):
+            ColmapQTVecs_to_ARKitQTVecs(quaternion, translation[..., 0])
+        with pytest.raises(ValueError, match=r"shape \(\*, 4\)"):
+            ColmapQTVecs_to_ARKitQTVecs(quaternion[:, :3], translation)
 
 
 class TestEulerFromQuaternion(BaseTester):
