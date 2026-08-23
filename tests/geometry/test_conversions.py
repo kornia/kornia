@@ -6532,3 +6532,29 @@ def test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956(alias_na
         ("default", None, DeprecationWarning, None, 0),
         ("always", None, DeprecationWarning, None, 0),
     ], f"kornia#3956: {alias_name} no longer rewrites the global DeprecationWarning filters; got {head}"
+
+
+def test_homography_shape_guards():
+    from kornia.geometry.conversions import normalize_homography, denormalize_homography, normalize_homography3d
+
+    # Invalid rank 3 shapes with non-3x3 trailing dimensions
+    invalid_3d = torch.zeros(2, 4, 4)
+    with pytest.raises(ValueError, match="Bx3x3"):
+        normalize_homography(invalid_3d, (10, 10), (10, 10))
+
+    with pytest.raises(ValueError, match="Bx3x3"):
+        denormalize_homography(invalid_3d, (10, 10), (10, 10))
+
+    # Invalid rank 3 shape for 3d homography with non-4x4 trailing dimensions
+    invalid_4d_for_3d = torch.zeros(2, 3, 3)
+    with pytest.raises(ValueError, match="Bx4x4"):
+        normalize_homography3d(invalid_4d_for_3d, (5, 10, 10), (5, 10, 10))
+
+    # Valid shapes should succeed
+    valid_2d = torch.eye(3).unsqueeze(0)
+    assert normalize_homography(valid_2d, (10, 10), (10, 10)).shape == (1, 3, 3)
+    assert denormalize_homography(valid_2d, (10, 10), (10, 10)).shape == (1, 3, 3)
+
+    valid_3d = torch.eye(4).unsqueeze(0)
+    assert normalize_homography3d(valid_3d, (5, 10, 10), (5, 10, 10)).shape == (1, 4, 4)
+
