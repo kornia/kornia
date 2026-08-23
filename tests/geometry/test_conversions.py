@@ -6535,7 +6535,7 @@ def test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956(alias_na
 
 
 def test_homography_shape_guards():
-    from kornia.geometry.conversions import normalize_homography, denormalize_homography, normalize_homography3d
+    from kornia.geometry.conversions import denormalize_homography, normalize_homography, normalize_homography3d
 
     # Invalid rank 3 shapes with non-3x3 trailing dimensions
     invalid_3d = torch.zeros(2, 4, 4)
@@ -6557,4 +6557,3 @@ def test_homography_shape_guards():
 
     valid_3d = torch.eye(4).unsqueeze(0)
     assert normalize_homography3d(valid_3d, (5, 10, 10), (5, 10, 10)).shape == (1, 4, 4)
-
