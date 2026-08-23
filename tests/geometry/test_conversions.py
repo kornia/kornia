@@ -46,6 +46,11 @@ from kornia.geometry.quaternion import Quaternion
 from testing.base import BaseTester, assert_close
 
 
+@pytest.fixture(autouse=True)
+def seed_rng() -> None:
+    torch.manual_seed(0)
+
+
 @pytest.fixture()
 def atol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
