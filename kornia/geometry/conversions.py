@@ -1101,7 +1101,9 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
         raise ValueError(f"Input must be a tensor of shape (*, 3). Got {quaternion.shape}")
 
     # compute quaternion norm
-    norm_q: torch.Tensor = torch.norm(quaternion, p=2, dim=-1, keepdim=True).clamp(min=eps)
+    dtype_eps = torch.finfo(quaternion.dtype).eps if quaternion.is_floating_point() else eps
+    effective_eps = max(eps, dtype_eps)
+    norm_q: torch.Tensor = torch.norm(quaternion, p=2, dim=-1, keepdim=True).clamp(min=effective_eps)
 
     # compute scalar and vector
     quaternion_vector: torch.Tensor = quaternion * torch.sin(norm_q) / norm_q
@@ -1145,15 +1147,6 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
         ``1``. Tracked in
         `#3953 <https://github.com/kornia/kornia/issues/3953>`_.
 
-    .. warning::
-        In ``float16`` the default ``eps = 1e-8`` underflows to ``0``, so the
-        clamp that guards the division is a no-op and **any** quaternion with a
-        zero vector part returns ``[nan, nan, nan]`` — including the identity
-        ``[1., 0., 0., 0.]``, whose log is the origin at every other dtype.
-        Passing a representable ``eps`` (e.g. ``eps=1e-3``) returns
-        ``[0., 0., 0.]`` there. Tracked in
-        `#3966 <https://github.com/kornia/kornia/issues/3966>`_.
-
     Args:
         quaternion: a tensor containing a quaternion to be converted.
           The tensor can be of shape :math:`(*, 4)`.
@@ -1179,7 +1172,9 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     quaternion_vector = quaternion[..., 1:4]
 
     # compute quaternion norm
-    norm_q: torch.Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=eps)
+    dtype_eps = torch.finfo(quaternion.dtype).eps if quaternion.is_floating_point() else eps
+    effective_eps = max(eps, dtype_eps)
+    norm_q: torch.Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=effective_eps)
 
     # apply log map
     quaternion_log: torch.Tensor = (
@@ -1706,7 +1701,7 @@ def normalize_homography(
     if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
 
-    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
+    if not (len(dst_pix_trans_src_pix.shape) == 3 and dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
         raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
 
     # source and destination sizes
@@ -1821,7 +1816,7 @@ def denormalize_homography(
     if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
 
-    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
+    if not (len(dst_pix_trans_src_pix.shape) == 3 and dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
         raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
 
     # source and destination sizes
@@ -1859,8 +1854,8 @@ def normalize_homography3d(
     if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
 
-    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
-        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
+    if not (len(dst_pix_trans_src_pix.shape) == 3 and dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx4x4 tensor. Got {dst_pix_trans_src_pix.shape}")
 
     # source and destination sizes
     src_d, src_h, src_w = dsize_src
