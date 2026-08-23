@@ -4148,7 +4148,7 @@ def test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956(alias_na
 
 
 def test_homography_shape_guards():
-    from kornia.geometry.conversions import normalize_homography, denormalize_homography, normalize_homography3d
+    from kornia.geometry.conversions import denormalize_homography, normalize_homography, normalize_homography3d
 
     # Invalid rank 3 shapes with non-3x3 trailing dimensions
     invalid_3d = torch.zeros(2, 4, 4)
@@ -4185,5 +4185,3 @@ def test_quaternion_exp_log_float16_zero_vector():
     exp_res = quaternion_log_to_exp(zero_vec_f16)
     assert not torch.isnan(exp_res).any()
     assert torch.allclose(exp_res, torch.tensor([1.0, 0.0, 0.0, 0.0], dtype=torch.float16))
-
-
