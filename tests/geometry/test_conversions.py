@@ -110,7 +110,7 @@ def _skip_if_dtype_unavailable(device, dtype) -> None:
         pytest.skip(f"{dtype} is unavailable on device {device}: {err}")
 
 
-def _agreement_gap_at_2_28(device, dtype) -> float:
+def _agreement_gap_at_2_28(device: torch.device, dtype: torch.dtype) -> float:
     # max|normalize_pixel_coordinates(grid) - matrix @ grid| over the full pixel grid of a
     # (2, 28) image -- the size pair behind normal_transform_pixel's agreement bullet, chosen
     # because 2/(28 - 1) is not exactly representable in reduced precision. Shared by the two pins
@@ -136,7 +136,7 @@ def _agreement_gap_at_2_28(device, dtype) -> float:
     return (via_helper.float() - via_matrix.float()).abs().max().item()
 
 
-def _skip_if_closed_form_inverse_unavailable(device, dtype) -> None:
+def _skip_if_closed_form_inverse_unavailable(device: torch.device, dtype: torch.dtype) -> None:
     # Visible skip for the pins that route through normalize_homography, one layer deeper than
     # _skip_if_dtype_unavailable: a backend can REPRESENT a dtype and still have no kernel for an
     # operation the route needs. kornia's cusolver-free 3x3 inverse
@@ -171,12 +171,8 @@ def _skip_if_closed_form_inverse_unavailable(device, dtype) -> None:
         died_in_the_closed_form_inverse = (
             innermost is not None and innermost.tb_frame.f_code is _inverse_3x3_closed_form.__code__
         )
-        probe = torch.ones(1, 3, device=device, dtype=dtype)
-        try:
-            torch.linalg.cross(probe, probe, dim=-1)
-        except (RuntimeError, NotImplementedError):
-            if died_in_the_closed_form_inverse:
-                pytest.skip(f"torch.linalg.cross has no {dtype} kernel on device {device}: {err}")
+        if died_in_the_closed_form_inverse and _cross_is_unavailable(device, dtype):
+            pytest.skip(f"torch.linalg.cross has no {dtype} kernel on device {device}: {err}")
         raise
 
 
@@ -215,8 +211,11 @@ def test_skip_probe_re_raises_everything_it_cannot_identify():
 
     _skip_if_closed_form_inverse_unavailable(cpu, torch.float32)  # A: healthy route, must not skip
 
+    # torch.float8_e4m3fn was added in torch 2.1; kornia declares torch>=2.0.0, so it is probed
+    # through getattr rather than referenced unconditionally.
+    candidate_dtypes = (torch.bool, getattr(torch, "float8_e4m3fn", None))
     unsupported = next(
-        (dtype for dtype in (torch.bool, torch.float8_e4m3fn) if _cross_is_unavailable(cpu, dtype)),
+        (dtype for dtype in candidate_dtypes if dtype is not None and _cross_is_unavailable(cpu, dtype)),
         None,
     )
     if unsupported is None:
@@ -309,20 +308,22 @@ def _raised_by_a_kornia_guard(err: BaseException) -> bool:
     # exception is re-raised) whatever its source formatting -- `raise X`, `raise(X)`, a raise
     # split across lines, or a KORNIA_CHECK* helper raising inside kornia/core/check.py -- while
     # an exception surfacing out of a C call lands on the call site itself: BINARY_OP for
-    # `... @ ...` and `H[..., -1, -1] += 1.0`, CALL for `torch.linalg.inv(...)`. An earlier
-    # revision searched the source line for "raise " instead, which missed `raise(RuntimeError(
-    # ...))` -- matching source text made the classification formatting-sensitive, not semantic.
+    # `... @ ...` and `H[..., -1, -1] += 1.0`, CALL for `torch.linalg.inv(...)`. Matching the
+    # source line for "raise " instead of the bytecode would be formatting-sensitive rather than
+    # semantic -- it would miss `raise(RuntimeError(...))`, whose missing space before the
+    # parenthesis is not a semantic difference.
     # Both directions are exercised: test_guard_classifier_reads_the_raising_instruction below
     # covers the classifier itself, the #3960 strict xfail asserts this is True (XPASSing the day
     # a guard lands, in any style), and the four warts assert it is False.
     # The instruction DECIDES; the type tuple is only the fallback for a frame whose instruction
-    # cannot be read. An earlier revision or-ed the two, which made the instruction unreachable for
-    # exactly the types kornia's guards raise and so scored any downstream ValueError as a guard --
-    # `normalize_homography(eye(3)[None], (4, 5, 6), (8, 9))` dies at the UNPACK_SEQUENCE of
-    # `src_h, src_w = dsize_src` with `too many values to unpack`, which is torch-free but is not a
-    # guard either. And-ing them instead would be worse, not better: it rejects the literal
-    # `raise RuntimeError(...)` guard that is the whole reason this function exists (executed --
-    # three of the six positives below are RuntimeError raised through `raise`).
+    # cannot be read. ORing the two instead of falling back would make the instruction check
+    # unreachable for exactly the types kornia's guards raise, so it would score any downstream
+    # ValueError as a guard -- `normalize_homography(eye(3)[None], (4, 5, 6), (8, 9))` dies at the
+    # UNPACK_SEQUENCE of `src_h, src_w = dsize_src` with `too many values to unpack`, which is
+    # torch-free but is not a guard either. ANDing them instead would be worse, not better: it
+    # would reject the literal `raise RuntimeError(...)` guard that is the whole reason this
+    # function exists (executed -- three of the six positives below are RuntimeError raised
+    # through `raise`).
     innermost = err.__traceback__
     while innermost is not None and innermost.tb_next is not None:
         innermost = innermost.tb_next
@@ -345,8 +346,9 @@ def test_guard_classifier_reads_the_raising_instruction():
     # Direct pin for _raised_by_a_kornia_guard above. Every #3959/#3960 pin's "a guard fix cannot
     # land unnoticed" guarantee rests on that one function, and nothing else in this file would
     # notice it regressing -- the pins would simply go quiet, which is the failure mode the
-    # guarantee exists to prevent. `raise (X)` is in the positive set because a substring-matching
-    # revision of the classifier scored it as NOT a guard: same semantics, different formatting.
+    # guarantee exists to prevent. `raise (X)` is in the positive set because it is semantically
+    # identical to `raise X` -- only the formatting differs, and a classifier keyed on source text
+    # rather than bytecode would not see that.
     # The negative set is the two shapes of downstream failure the warts actually pin, a mixed
     # matmul and a singular inverse, plus a ValueError raised at a non-`raise` instruction: those
     # two are RuntimeError and so can never reach the type tuple, which would leave the ONE
@@ -3763,13 +3765,17 @@ class TestNormalTransformPixel(BaseTester):
         # test_convention_agrees_with_normalize_pixel_coordinates above -- because a bound would
         # let cpu float32/float64 regress from exact agreement to a small nonzero gap while the
         # docstring's "0.0" claim quietly became false.
-        # Keyed by (backend, machine, dtype), and cpu bfloat16 by torch build on top of that:
+        # Keyed by (torch version, backend, machine, dtype): every cell is a measurement of one
+        # build, not a portable contract, so an unmeasured torch release must not silently inherit
+        # an older release's kernel literal -- a future kernel reassociation could then fail this
+        # pin on a release that was never measured, without any kornia regression.
         #   - backend, because the mps matmul rounds once where cpu does not (float32: 2**-24 vs 0)
         #   - machine, because every figure below was taken on macOS arm64 and nothing here has
         #     run on x86-64/MKL; an unmeasured platform must not inherit a kernel literal
-        #   - build, because that one cpu bfloat16 kernel changed between the two torch versions
-        #     executed (no divergence at all on 2.5.1, one bfloat16 step on 2.9.1) while every
-        #     other cell reproduced on both
+        #   - version, because the cpu bfloat16 kernel changed between the two torch versions
+        #     executed (no divergence at all on 2.5.1, one bfloat16 step on 2.9.1) while every other
+        #     cell reproduced identically on both -- reproducing does not exempt a cell from being
+        #     keyed by version, since a later release could still change it
         # An unmeasured configuration skips visibly: the skip is a reminder to measure, not a
         # silent pass, and the dtype-scaled bound is still asserted by the pin above.
         # NOT a contract that these kernels must keep producing these numbers -- if a cell fails,
@@ -3787,30 +3793,30 @@ class TestNormalTransformPixel(BaseTester):
         #   cpu 2.5.1: float16 3328/3364 (worst 9.77e-04)   bfloat16    0/3364 (worst 0.0)
         _skip_if_dtype_unavailable(device, dtype)
         measured_gaps = {
-            ("cpu", "arm64", torch.float64): 0.0,
-            ("cpu", "arm64", torch.float32): 0.0,
-            ("cpu", "arm64", torch.float16): 0.0009765625,
-            ("mps", "arm64", torch.float32): 2.0**-24,
-            ("mps", "arm64", torch.float16): 0.0009765625,
-            ("mps", "arm64", torch.bfloat16): 0.00390625,
+            ("2.9.1", "cpu", "arm64", torch.float64): 0.0,
+            ("2.5.1", "cpu", "arm64", torch.float64): 0.0,
+            ("2.9.1", "cpu", "arm64", torch.float32): 0.0,
+            ("2.5.1", "cpu", "arm64", torch.float32): 0.0,
+            ("2.9.1", "cpu", "arm64", torch.float16): 0.0009765625,
+            ("2.5.1", "cpu", "arm64", torch.float16): 0.0009765625,
+            ("2.9.1", "cpu", "arm64", torch.bfloat16): 0.00390625,
+            ("2.5.1", "cpu", "arm64", torch.bfloat16): 0.0,
+            ("2.9.1", "mps", "arm64", torch.float32): 2.0**-24,
+            ("2.5.1", "mps", "arm64", torch.float32): 2.0**-24,
+            ("2.9.1", "mps", "arm64", torch.float16): 0.0009765625,
+            ("2.5.1", "mps", "arm64", torch.float16): 0.0009765625,
+            ("2.9.1", "mps", "arm64", torch.bfloat16): 0.00390625,
+            ("2.5.1", "mps", "arm64", torch.bfloat16): 0.00390625,
         }
-        measured_cpu_bfloat16_gaps = {("arm64", "2.9.1"): 0.00390625, ("arm64", "2.5.1"): 0.0}
         machine = platform.machine()
+        key = (torch_version(), device.type, machine, dtype)
 
-        if device.type == "cpu" and dtype == torch.bfloat16:
-            if (machine, torch_version()) not in measured_cpu_bfloat16_gaps:
-                pytest.skip(
-                    f"the cpu bfloat16 (2, 28) gap is a kernel measurement and "
-                    f"{machine} / torch {torch_version()} was not measured"
-                )
-            expected_gap = measured_cpu_bfloat16_gaps[(machine, torch_version())]
-        elif (device.type, machine, dtype) in measured_gaps:
-            expected_gap = measured_gaps[(device.type, machine, dtype)]
-        else:
+        if key not in measured_gaps:
             pytest.skip(
-                f"the (2, 28) agreement gap was not measured on {device.type} / {machine} at {dtype}; "
-                "no kernel literal to inherit"
+                f"the (2, 28) agreement gap was not measured on {device.type} / {machine} / torch "
+                f"{torch_version()} at {dtype}; no kernel literal to inherit"
             )
+        expected_gap = measured_gaps[key]
 
         largest_gap = _agreement_gap_at_2_28(device, dtype)
 
