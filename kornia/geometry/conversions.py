@@ -1737,18 +1737,28 @@ def normalize_homography(
         `#3960 <https://github.com/kornia/kornia/issues/3960>`_.
 
     .. warning::
-        The inverse this function takes is a closed-form 3x3 adjugate built from
-        ``torch.linalg.cross`` — chosen to keep ``cusolver`` off the path — and
-        a backend that has no ``cross`` kernel for the working dtype therefore
-        makes this function **raise from inside the inverse** rather than
-        return. That is kernel coverage, not a convention: nothing is wrong with
-        the input, and the same call in another dtype on the same backend
-        succeeds — measured on ``mps`` in ``bfloat16`` (torch 2.5.1; fixed in
-        2.9.1) and on cpu in ``torch.bool``/``float8_e4m3fn`` (torch 2.9.1).
-        :func:`~kornia.geometry.conversions.normalize_homography3d`
-        and :func:`~kornia.geometry.conversions.denormalize_homography` invert
-        through ``torch.linalg.inv`` instead and do not have this gap; they
-        carry the ``cusolver`` dependency instead.
+        In **eager mode** the inverse this function takes is a closed-form 3x3
+        adjugate built from ``torch.linalg.cross`` — chosen to keep ``cusolver``
+        off the path — and a backend that has no ``cross`` kernel for the
+        working dtype therefore makes this function **raise from inside the
+        inverse** rather than return. That is kernel coverage, not a convention:
+        nothing is wrong with the input, and the same call in another dtype on
+        the same backend succeeds — measured on ``mps`` in ``bfloat16``
+        (torch 2.5.1; fixed in 2.9.1) and on cpu in
+        ``torch.bool``/``float8_e4m3fn`` (torch 2.9.1). Under
+        ``torch.jit.trace`` and the legacy ONNX exporter that same closed form
+        switches to a scalar cofactor expansion which calls no ``cross`` at all,
+        so the gap is **eager-only**: with ``torch.linalg.cross`` replaced by a
+        raising stub the eager call raises and the traced call returns (executed,
+        torch 2.9.1, cpu).
+        :func:`~kornia.geometry.conversions.normalize_homography3d` inverts
+        through ``torch.linalg.inv`` in both modes — its matrices are 4x4 and
+        the tracing fallback is 3x3-only — while
+        :func:`~kornia.geometry.conversions.denormalize_homography` does so in
+        eager mode only and takes the same cofactor expansion under tracing, so
+        its traced graph holds no ``aten::linalg_inv`` either. Neither has this
+        ``cross`` gap in either mode, and both carry the ``cusolver`` dependency
+        wherever they do reach ``linalg.inv``.
 
     .. warning::
         The two normalization matrices are built without a ``dtype=``
@@ -1777,8 +1787,7 @@ def normalize_homography(
         `#3958 <https://github.com/kornia/kornia/issues/3958>`_.
 
     .. warning::
-        This paragraph is about the degenerate-denominator branch only; its
-        scope — and what stays out of it — is delimited in
+        Scope: the degenerate-denominator branch only, as delimited in
         :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
         degenerate-size warning. Neither ``dsize``
         is validated, so
@@ -1916,14 +1925,15 @@ def normal_transform_pixel(
           differs is where the rounding falls, since applying this matrix is a
           matmul (accumulated at higher precision, rounded once) while the
           helper multiplies and subtracts elementwise in the working dtype. The
-          two agree in ``float32``/``float64``, not at ``float16``/``bfloat16``
-          — a full size sweep and its per-backend, per-build breakdown are in
-          ``tests/geometry/test_conversions.py``, reproducibly, rather than
-          repeated here. What kornia's suite checks everywhere, and is a
-          contract rather than a build-specific figure, is a dtype-scaled
-          bound: the two routes stay within ``2 * finfo(dtype).eps`` of each
-          other — *tolerated*, not derived, with roughly ``2x`` headroom over
-          the measured cells, so a backend or configuration that accumulates
+          two agree in ``float32``/``float64``, not at ``float16``/``bfloat16``.
+          The exact per-configuration gaps are a measurement of one build's
+          kernel and are recorded, with the snippet that reproduces them, next
+          to the pin that asserts them in kornia's own suite rather than quoted
+          here. What holds everywhere, and is a contract rather than a
+          build-specific figure, is a dtype-scaled bound: the two routes stay
+          within ``2 * finfo(dtype).eps`` of each other — *tolerated*, not
+          derived, with roughly ``2x`` headroom over the measured cells, so a
+          backend or configuration that accumulates
           matmuls at reduced precision (``TF32`` on ``cuda``, say) can exceed it
           without anything here having changed
         - the convention is applied **unconditionally** — there is no
@@ -2030,8 +2040,7 @@ def normal_transform_pixel3d(
           grid built for one silently permutes axes when fed to the other
 
     .. warning::
-        This paragraph is about the degenerate-denominator branch only; its
-        scope — and what stays out of it — is delimited in
+        Scope: the degenerate-denominator branch only, as delimited in
         :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
         degenerate-size warning. The degenerate-size
         and integer-``dtype`` behaviours of
@@ -2104,23 +2113,27 @@ def denormalize_homography(
           (`#3959 <https://github.com/kornia/kornia/issues/3959>`_ — this
           function's own clause there) and corner-alignment (`#3904
           <https://github.com/kornia/kornia/issues/3904>`_) warnings. The
-          exception is the closed-form-inverse warning: this function inverts
-          through ``torch.linalg.inv`` instead of ``torch.linalg.cross``, so it
-          does not have that gap — it carries the ``cusolver`` dependency
-          instead
-        - both round trips hold, but neither is an exact identity in general:
-          rounding across four matrix products and an inverse gives an
-          eps-scale deviation — ``~2.4e-07`` in ``float32`` on a sample
-          projective literal (torch 2.9.1, cpu); see
-          ``test_convention_normalize_and_denormalize_round_trip`` in
-          ``tests/geometry/test_conversions.py`` for the reproducible figures,
-          the dyadic-size exact case and the non-dyadic tolerance derivation.
-          The round trip is **bitwise** only when every intermediate product
-          and sum of the chain is exactly representable in the working dtype —
-          a property of the whole computation, not of ``H``'s entries alone:
-          an integer, dyadic-entried ``H`` can still miss by whole units
-          through one leg (``denormalize(normalize(H))``) while the other leg
-          returns it bitwise, so the two legs are not symmetric
+          exception is the closed-form-inverse warning: in eager mode this
+          function inverts through ``torch.linalg.inv`` rather than through the
+          ``torch.linalg.cross`` adjugate, and under ``torch.jit.trace`` through
+          a cofactor expansion that calls neither, so it does not have that gap
+          in either mode — where it does reach ``linalg.inv`` it carries the
+          ``cusolver`` dependency instead
+        - both round trips hold, but neither is an exact identity in general.
+          Each leg runs four matrix products and **two** inverses — one per
+          function, and by different routines (see the bullet below) — so the
+          deviation is a small multiple of the working dtype's eps times the
+          largest entry, and the tolerance a caller should hold it to is that
+          product rather than a fixed constant. The round trip is **bitwise**
+          only when every intermediate product and sum of the chain is exactly
+          representable in the working dtype — a property of the whole
+          computation, not of ``H``'s entries alone, so dyadic sizes are
+          necessary and not sufficient. In ``float32`` and ``float64`` an
+          integer, dyadic-entried ``H`` does come back bitwise through **both**
+          legs; in ``float16``/``bfloat16`` neither leg is safe once the entries
+          grow, and the two legs miss at different rates — a precision artifact
+          of where the rounding falls, not a structural asymmetry between the
+          two directions
         - the two functions do **not** invert their normalization matrix the
           same way, so their errors are not mirror images either: on the
           identity homography with equal sizes ``(4, 7)``,
@@ -2187,13 +2200,15 @@ def normalize_homography3d(
           ``torch.linalg.inv`` fails to load still runs the 2-D function and not
           this one; at ``float16``/``bfloat16`` it upcasts to ``float32``,
           inverts and casts back, where the 2-D route inverts in the working
-          dtype, and over every ``(height, width)`` pair in ``range(2, 40)`` the
-          two routes' inverses of the same normalization matrix differ by up to
-          ``0.125`` in ``bfloat16`` and ``0.015625`` in ``float16`` (torch
-          2.9.1, cpu); and it does **not** inherit the 2-D route's dependence on
-          a ``torch.linalg.cross`` kernel, described in that function's warning.
+          dtype — so at those dtypes the two routes' inverses of the *same*
+          normalization matrix differ, by more than a rounding step, and a
+          reduced-precision pipeline should not expect the 2-D and 3-D paths to
+          agree; and it does **not** inherit the 2-D route's dependence on a
+          ``torch.linalg.cross`` kernel, described in that function's warning.
           :func:`~kornia.geometry.conversions.denormalize_homography` inverts
-          the same way this one does
+          the same way this one does in eager mode; under ``torch.jit.trace``
+          the 3x3 route falls back to a cofactor expansion and this 4x4 one does
+          not
         - the matrices are :math:`(B, 4, 4)` and act on ``(x, y, z, 1)`` column
           vectors, while both ``dsize`` arguments are
           ``(depth, height, width)`` triples
@@ -2213,8 +2228,7 @@ def normalize_homography3d(
         `#3960 <https://github.com/kornia/kornia/issues/3960>`_.
 
     .. warning::
-        This paragraph is about the degenerate-denominator branch only; its
-        scope — and what stays out of it — is delimited in
+        Scope: the degenerate-denominator branch only, as delimited in
         :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
         degenerate-size warning. A source
         ``depth`` of ``1`` collapses the ``z`` scale through
@@ -2371,8 +2385,11 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         - shapes are strict: exactly :math:`(B, 3, 3)` and :math:`(B, 3, 1)`.
           An unbatched ``(3, 3)``, a ``(B, 3)`` translation, a ``(B, 1, 3)``
           translation and extra leading dimensions each raise ``ShapeError``,
-          and the two batch sizes must match — ``R`` of batch 2 with ``t`` of
-          batch 1 raises rather than broadcasting, where
+          and the two batch sizes must match — but not through a kornia guard:
+          ``KORNIA_CHECK_SHAPE`` validates each argument on its own, so ``R`` of
+          batch 2 with ``t`` of batch 1 reaches ``torch.cat`` and raises
+          ``RuntimeError: Sizes of tensors must match except in dimension 2``
+          rather than broadcasting, where
           :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt`
           silently broadcasts the same pair
         - :func:`~kornia.geometry.conversions.matrix4x4_to_Rt` is the inverse,

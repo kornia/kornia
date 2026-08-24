@@ -22,7 +22,8 @@ import sys
 import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
-from functools import partial
+from functools import cache, partial
+from types import TracebackType
 
 import numpy as np
 import pytest
@@ -93,7 +94,33 @@ def _issue_msg(text: str):
     return lambda default_message: f"{text}\n{default_message}"
 
 
-def _skip_if_dtype_unavailable(device, dtype) -> None:
+def _innermost_frame(err: BaseException) -> TracebackType | None:
+    # The frame an exception actually died in: the last link of its traceback chain. Two helpers
+    # below read that frame for different questions -- which routine failed, and which bytecode
+    # instruction raised -- so the walk itself is written once and cannot drift between them.
+    frame = err.__traceback__
+    while frame is not None and frame.tb_next is not None:
+        frame = frame.tb_next
+    return frame
+
+
+@cache
+def _dtype_allocation_error(device: torch.device, dtype: torch.dtype) -> str | None:
+    # "Can this backend hold this dtype at all?", as ONE probe with ONE exception set, shared by
+    # _skip_if_dtype_unavailable and _cross_is_unavailable below. Two copies of it with different
+    # exception tuples would mean a backend that starts rejecting an allocation with a new
+    # exception type makes one of them skip while the other errors, for the same fact. Cached
+    # because the answer is a property of the build, not of the caller, and the pins below ask it
+    # once per test; the message is returned rather than the exception so no traceback is kept
+    # alive between tests.
+    try:
+        torch.zeros(1, device=device, dtype=dtype)
+    except (TypeError, RuntimeError, NotImplementedError) as err:
+        return str(err)
+    return None
+
+
+def _skip_if_dtype_unavailable(device: torch.device, dtype: torch.dtype) -> None:
     # Visible skip (never a silent guard) for the pins below, in both directions. The
     # dtype-hardcoded pins drop the dtype fixture on purpose so they run in every test
     # configuration, which means they would otherwise also run on a device that cannot represent
@@ -104,10 +131,9 @@ def _skip_if_dtype_unavailable(device, dtype) -> None:
     # a real one, when the only fact being reported is that MPS has no float64. Probed at runtime
     # rather than hardcoded per backend so the skip retires itself once a backend gains the
     # dtype.
-    try:
-        torch.zeros(1, device=device, dtype=dtype)
-    except (TypeError, RuntimeError) as err:
-        pytest.skip(f"{dtype} is unavailable on device {device}: {err}")
+    allocation_error = _dtype_allocation_error(device, dtype)
+    if allocation_error is not None:
+        pytest.skip(f"{dtype} is unavailable on device {device}: {allocation_error}")
 
 
 def _agreement_gap_at_2_28(device: torch.device, dtype: torch.dtype) -> float:
@@ -136,12 +162,36 @@ def _agreement_gap_at_2_28(device: torch.device, dtype: torch.dtype) -> float:
     return (via_helper.float() - via_matrix.float()).abs().max().item()
 
 
+def _matmul_input_eps(device: torch.device, dtype: torch.dtype) -> float:
+    # eps of the precision a matmul rounds its INPUTS to, which is not always the working dtype's:
+    # on cuda a float32 matmul can be configured to round its inputs to TF32, 10 explicit mantissa
+    # bits instead of 23. This suite can be run that way -- conftest.py's --tf32 / KORNIA_TEST_TF32
+    # calls torch.set_float32_matmul_precision("high"), and executed here, both "high" and "medium"
+    # leave torch.backends.cuda.matmul.allow_tf32 True (torch 2.9.1). The bound below is scaled by
+    # this rather than by finfo(dtype).eps so that such a run widens it instead of reporting a red
+    # test for a configuration change that touched no kornia code: the matrix route is a matmul
+    # while the helper route stays in the working dtype, so it is exactly the leg a
+    # reduced-precision mode rounds more coarsely.
+    # Scoped to cuda because that is where the mode applies: executed on cpu, the (2, 28) gap is
+    # identical under "highest", "high" and "medium" at all four dtypes, so widening the cpu bound
+    # would only lose resolution. TF32's mantissa width is the documented format rather than a
+    # measurement -- no CUDA device was available in this branch -- so this arm is a guard against
+    # an unmeasured configuration, not a claim about one; a measured cuda figure belongs in the
+    # wart pin's table below.
+    if device.type == "cuda" and dtype == torch.float32 and torch.backends.cuda.matmul.allow_tf32:
+        return 2.0**-10
+    return torch.finfo(dtype).eps
+
+
+_healthy_closed_form_inverse_routes: set[tuple[torch.device, torch.dtype]] = set()
+
+
 def _skip_if_closed_form_inverse_unavailable(device: torch.device, dtype: torch.dtype) -> None:
     # Visible skip for the pins that route through normalize_homography, one layer deeper than
     # _skip_if_dtype_unavailable: a backend can REPRESENT a dtype and still have no kernel for an
     # operation the route needs. kornia's cusolver-free 3x3 inverse
     # (_inverse_3x3_closed_form in kornia/core/utils.py) is three torch.linalg.cross calls, and
-    # MPS has no bfloat16 `cross` kernel in every build -- executed: torch 2.5.1 raises
+    # MPS lacks a bfloat16 `cross` kernel in SOME builds -- executed: torch 2.5.1 raises
     # `RuntimeError: Failed to create function state object for: cross_bfloat` there while torch
     # 2.9.1 runs it, and torch.zeros in that dtype succeeds on both, so the allocation probe alone
     # lets the pin fail with a message about torch's kernel coverage rather than about kornia's
@@ -162,23 +212,36 @@ def _skip_if_closed_form_inverse_unavailable(device: torch.device, dtype: torch.
     # `cross` line inside it. _inverse_3x3_closed_form is three `cross` calls, a multiply-sum and a
     # divide, so a failure at one of the latter two on a backend whose `cross` is also missing
     # would still skip. Narrowing further would mean pinning line numbers in another module.
+    # Only the HEALTHY verdict is memoized, keyed by (device, dtype): a route that works is a
+    # property of the build, and four pins ask this question in every test configuration, each
+    # paying a matmul and a 3x3 inverse for the answer. A failing route is deliberately never
+    # memoized -- it has to be re-raised with its own traceback every time, and it is the branch
+    # this helper exists for.
+    route = (device, dtype)
+    if route in _healthy_closed_form_inverse_routes:
+        return
     try:
         kornia.geometry.conversions.normalize_homography(torch.eye(3, device=device, dtype=dtype)[None], (2, 2), (2, 2))
     except (RuntimeError, NotImplementedError) as err:
-        innermost = err.__traceback__
-        while innermost is not None and innermost.tb_next is not None:
-            innermost = innermost.tb_next
+        innermost = _innermost_frame(err)
         died_in_the_closed_form_inverse = (
             innermost is not None and innermost.tb_frame.f_code is _inverse_3x3_closed_form.__code__
         )
         if died_in_the_closed_form_inverse and _cross_is_unavailable(device, dtype):
             pytest.skip(f"torch.linalg.cross has no {dtype} kernel on device {device}: {err}")
         raise
+    _healthy_closed_form_inverse_routes.add(route)
 
 
+@cache
 def _cross_is_unavailable(device: torch.device, dtype: torch.dtype) -> bool:
-    # "Can this build run torch.linalg.cross here?", for the pin below -- allocation failures
-    # (mps rejects float8 outright) count as unavailable rather than propagating as errors.
+    # "Can this build run torch.linalg.cross here?", for the helper above and the pin below.
+    # A dtype the backend cannot even allocate (mps rejects float8 outright) counts as unavailable
+    # rather than propagating as an error, and that half of the question is answered by the shared
+    # probe rather than by a second copy of it, so both helpers classify such a backend the same
+    # way. Cached for the same reason the probe is: it is a property of the build.
+    if _dtype_allocation_error(device, dtype) is not None:
+        return True
     try:
         probe = torch.ones(1, 3, device=device, dtype=dtype)
         torch.linalg.cross(probe, probe, dim=-1)
@@ -204,10 +267,17 @@ def test_skip_probe_re_raises_everything_it_cannot_identify():
     # Cases C and D patch normal_transform_pixel, which normalize_homography calls BEFORE the
     # inverse, so the route dies without ever reaching `cross` and the patch stays out of the
     # frame the helper reads. D is the one that matters: it is exactly C on a backend that also
-    # lacks the kernel, and it is what a primitive-only probe cannot separate -- before the frame
-    # check, D skipped, and any kornia-side regression on a kernel-less backend was invisible.
+    # lacks the kernel, which a probe of the primitive alone cannot tell apart from a real gap --
+    # it would skip there, and a kornia-side regression would be invisible on exactly the backends
+    # where the skip is live.
+    # The helper's memo and the two cached probes are cleared first: they are performance
+    # shortcuts, and a pin whose whole subject is which branch the helper takes has to run the
+    # branches rather than a remembered verdict from an earlier test.
     cpu = torch.device("cpu")
     conversions = kornia.geometry.conversions
+    _healthy_closed_form_inverse_routes.clear()
+    _cross_is_unavailable.cache_clear()
+    _dtype_allocation_error.cache_clear()
 
     _skip_if_closed_form_inverse_unavailable(cpu, torch.float32)  # A: healthy route, must not skip
 
@@ -230,8 +300,7 @@ def test_skip_probe_re_raises_everything_it_cannot_identify():
         # NOT pytest.raises: a skip is a BaseException that pytest.raises(RuntimeError) lets
         # through, so the regression this pin exists to catch would turn the pin itself yellow
         # instead of red -- the same going-quiet the helper's own over-eager skip causes, one level
-        # up. Executed against the pre-fix helper: case D reported SKIPPED under pytest.raises and
-        # FAILED once the skip is converted here.
+        # up.
         try:
             _skip_if_closed_form_inverse_unavailable(cpu, torch.float32)
         except pytest.skip.Exception as skipped:
@@ -243,6 +312,8 @@ def test_skip_probe_re_raises_everything_it_cannot_identify():
 
     real_normal_transform_pixel = conversions.normal_transform_pixel
     real_cross = torch.linalg.cross
+    # Cleared again: case A memoized (cpu, float32) as healthy, and C/D have to reach the body.
+    _healthy_closed_form_inverse_routes.clear()
     conversions.normal_transform_pixel = regression
     try:
         assert_the_injected_failure_propagates("C, cross available")
@@ -285,6 +356,14 @@ _DEPRECATED_ALIASES = [
     ("angle_axis_to_quaternion", "axis_angle_to_quaternion", [0.1, 0.2, 0.3]),
 ]
 
+# The projection the two module-level kornia#3956 pins parametrize over -- both read the alias name
+# and the call input and neither reads the replacement -- plus the ids both label their cells with.
+# Written once here rather than at each decorator: the table above being maintained in one place is
+# only true if what is derived from it is too, and an id suffix added to one copy of a duplicated
+# comprehension drifts silently from the other.
+_DEPRECATED_ALIAS_NAMES_AND_ARGS = [(alias_name, arg) for alias_name, _, arg in _DEPRECATED_ALIASES]
+_DEPRECATED_ALIAS_IDS = [row[0] for row in _DEPRECATED_ALIASES]
+
 
 # Exception types that mean "kornia's OWN guard rejected the input", for the kornia#3959 and
 # kornia#3960 pins below: kornia's guards raise BaseError subclasses (KORNIA_CHECK_SHAPE's ShapeError, plain
@@ -324,9 +403,7 @@ def _raised_by_a_kornia_guard(err: BaseException) -> bool:
     # would reject the literal `raise RuntimeError(...)` guard that is the whole reason this
     # function exists (executed -- three of the six positives below are RuntimeError raised
     # through `raise`).
-    innermost = err.__traceback__
-    while innermost is not None and innermost.tb_next is not None:
-        innermost = innermost.tb_next
+    innermost = _innermost_frame(err)
     if innermost is None:
         return isinstance(err, _KORNIA_GUARD_EXCEPTIONS)
     raising_opname = next(
@@ -700,9 +777,11 @@ class TestAngleAxisToQuaternion(BaseTester):
     # that kept a frozen copy behind the alias could diverge at a single dtype, and only a leg at
     # that dtype would see it. The comparison is
     # torch.testing.assert_close at rtol=atol=0 (exact, and it checks shape/dtype/device itself)
-    # rather than torch.equal, whose NaN != NaN would turn "both returned the same NaN" into a
-    # spurious failure; equal_nan=True keeps that case a pass, and a mismatch reports a real
-    # per-element diff.
+    # rather than torch.equal, which reports no per-element diff on a mismatch. NaN is excluded
+    # outright by the assertion above the comparison rather than tolerated through equal_nan=True:
+    # all four rows are finite at every dtype today, so equal_nan could only ever matter for an
+    # alias and a replacement that BOTH regressed to NaN, which is a pass this pin should not
+    # hand out.
     @pytest.mark.parametrize(("deprecated_name", "replacement_name", "arg"), _DEPRECATED_ALIASES)
     def test_convention_deprecated_alias_warns_and_matches_replacement(
         self, device, dtype, deprecated_name, replacement_name, arg
@@ -720,7 +799,10 @@ class TestAngleAxisToQuaternion(BaseTester):
             ):
                 actual = deprecated(tensor)
 
-        torch.testing.assert_close(actual, expected, rtol=0, atol=0, equal_nan=True)
+        assert not actual.isnan().any(), (
+            f"`{deprecated_name}` returned NaN; an exact comparison of two NaNs is not a match this pin should accept"
+        )
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
 
     def test_wart_integer_input_returns_the_zero_quaternion_3948(self, device):
         # Wart pin for kornia#3948: axis_angle_to_quaternion allocates its output buffer with
@@ -3739,20 +3821,23 @@ class TestNormalTransformPixel(BaseTester):
         largest_gap = _agreement_gap_at_2_28(device, dtype)
         # A tolerated bound, not a derived guarantee, and deliberately not called one rounding
         # step: eps IS the spacing at 1.0, so 2 * eps accepts two spacings there and four just
-        # below it, and torch promises no common accumulation precision for matmul across every
-        # backend and configuration -- a reduced-precision matmul mode (TF32 on cuda, say) rounds
-        # the matrix route far more coarsely than the working dtype and can exceed this
-        # legitimately. What the constant is: roughly 2x headroom over the worst gap measured in
-        # any configuration below, all of which are at most one eps (float16 is exactly eps on
-        # both backends; every other nonzero cell is eps/2), scaled by the dtype so no dtype
-        # inherits a bound sized for another. A failure is therefore not by itself a kornia regression: it
-        # says re-derive the bound against the configuration that produced it, which is the same
-        # instruction the docstring bullet carries.
-        tolerated_gap = 2 * torch.finfo(dtype).eps
+        # below it. What the constant is: roughly 2x headroom over the worst gap measured in any
+        # configuration below, all of which are at most one eps (float16 is exactly eps on both
+        # backends; every other nonzero cell is eps/2), scaled so no dtype inherits a bound sized
+        # for another. Scaled by _matmul_input_eps rather than by finfo(dtype).eps directly,
+        # because the matrix route is a matmul and a backend can be configured to round a matmul's
+        # inputs below the working dtype (TF32 or bfloat16 for float32 on cuda) -- there the
+        # coarser format IS the arithmetic, so the bound follows it instead of the pin going red on
+        # a configuration change that touched no kornia code.
+        # A failure is still not by itself a kornia regression: torch promises no common
+        # accumulation precision across every backend, so it says re-derive the bound against the
+        # configuration that produced it -- and record the measurement in the wart pin below,
+        # keyed like the rest.
+        tolerated_gap = 2 * _matmul_input_eps(device, dtype)
 
         assert largest_gap <= tolerated_gap, (
             f"the two routes now differ by {largest_gap!r} at (2, 28) in {dtype}, more than the "
-            f"tolerated {tolerated_gap!r} (2 * eps) -- either they no longer differ only in where "
+            f"tolerated {tolerated_gap!r} (2 * the matmul's input eps) -- either they no longer differ only in where "
             "the rounding falls, or this configuration accumulates matmuls at a precision none of "
             "the measured ones used and needs a bound derived for it"
         )
@@ -3771,7 +3856,18 @@ class TestNormalTransformPixel(BaseTester):
         # pin on a release that was never measured, without any kornia regression.
         #   - backend, because the mps matmul rounds once where cpu does not (float32: 2**-24 vs 0)
         #   - machine, because every figure below was taken on macOS arm64 and nothing here has
-        #     run on x86-64/MKL; an unmeasured platform must not inherit a kernel literal
+        #     run on x86-64/MKL; an unmeasured platform must not inherit a kernel literal.
+        #     What that costs, stated rather than left to be discovered: of the runners
+        #     pr_test_cpu.yml uses, only macos-latest is arm64, so the ubuntu and windows legs
+        #     skip every cell here, and no CI job sets KORNIA_TEST_DTYPE to float16/bfloat16, so
+        #     the reduced-precision cells -- the only ones with a nonzero literal on cpu -- run
+        #     on none of them. The x86-64 rows need one measurement on such a runner to become
+        #     live; deriving them from the arm64 figures instead is exactly what this key exists
+        #     to prevent. The portable half of the docstring's claim is asserted on every CI leg
+        #     by test_convention_agrees_with_normalize_pixel_coordinates above.
+        #   A cuda row, when one is measured, will need the float32 matmul precision mode in its
+        #   key as well: --tf32 rounds a matmul's inputs to 10 mantissa bits and the matrix route
+        #   is a matmul, while cpu is unaffected by that setting (executed, all four dtypes).
         #   - version, because the cpu bfloat16 kernel changed between the two torch versions
         #     executed (no divergence at all on 2.5.1, one bfloat16 step on 2.9.1) while every other
         #     cell reproduced identically on both -- reproducing does not exempt a cell from being
@@ -3779,16 +3875,19 @@ class TestNormalTransformPixel(BaseTester):
         # An unmeasured configuration skips visibly: the skip is a reminder to measure, not a
         # silent pass, and the dtype-scaled bound is still asserted by the pin above.
         # NOT a contract that these kernels must keep producing these numbers -- if a cell fails,
-        # re-measure and update the bullet, which is the only place the figures are documented.
+        # re-measure, update the cell here (this comment and the table below are where the figures
+        # live; normal_transform_pixel's bullet states the contract and quotes none of them) and
+        # check that the bullet's "agree in float32/float64, not at float16/bfloat16" still holds.
         # Snippet used to generate expected (torch + kornia, executed on macOS arm64 against both
         # torch 2.9.1 and torch 2.5.1; max|helper - matrix| over the full (2, 28) pixel grid):
         #   cpu 2.9.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.00390625
         #   cpu 2.5.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.0
         #   mps, both: float32 -> 5.960464477539063e-08 (2**-24)   float16 -> 0.0009765625
         #              bfloat16 -> 0.00390625            (float64 is unavailable on mps)
-        # The docstring also quotes range(2, 60) sweep counts. Those are NOT pinned here -- 3364
-        # size pairs per dtype is too slow for a unit test -- and the bullet says so; the same
-        # snippet with the (2, 28) call in a double loop over range(2, 60) reproduces them:
+        # The full size sweep behind the docstring's "not at float16/bfloat16" clause is NOT
+        # pinned -- 3364 size pairs per dtype is too slow for a unit test -- so its counts live in
+        # this comment and nowhere else; the same snippet with the (2, 28) call in a double loop
+        # over range(2, 60) reproduces them:
         #   cpu 2.9.1: float16 3328/3364 (worst 9.77e-04)   bfloat16 3315/3364 (worst 7.81e-03)
         #   cpu 2.5.1: float16 3328/3364 (worst 9.77e-04)   bfloat16    0/3364 (worst 0.0)
         _skip_if_dtype_unavailable(device, dtype)
@@ -4168,10 +4267,14 @@ class TestNormalizeHomography(BaseTester):
         # same high-level mutual-inverse invariant, on its own literal, sizes and tolerances. With
         # non-dyadic sizes ((4, 5) and (8, 9)) the constants are rounded and the round trip is only
         # approximate; its tolerance is sized from the mechanism rather than from a measurement --
-        # each entry passes through four matrix products and one 3x3 inverse, so the error is a
-        # small multiple of eps times the largest entry (max |H| = 4) -- giving atol = 32 * eps and
-        # rtol = 8 * eps. For scale: the measured float32 deviation is 1.19e-07, a sample point,
-        # against a bound of 3.8e-06.
+        # each entry passes through four matrix products and TWO 3x3 inverses, one per function and
+        # by different routines (normalize_homography inverts N_src with _inverse_3x3_closed_form,
+        # denormalize_homography inverts N_dst with _torch_inverse_cast), so the error is a small
+        # multiple of eps times the largest entry (max |H| = 4) -- giving atol = 32 * eps and
+        # rtol = 8 * eps. Both compositions are asserted at those sizes, not just one: they do not
+        # land on the same figure, and quoting one of them for the other is the mistake a
+        # single-leg pin invites. Measured float32 deviations, sample points against a bound of
+        # 3.8e-06: 1.19e-07 for denormalize(normalize(H)) and 2.38e-07 for the reverse.
         # Snippet used to generate expected (torch only, executed on cpu at every dtype):
         #   H = [[1.25, 0.25, 4], [-0.5, 0.75, 2], [0.0625, 0.125, 1]]
         #   denormalize_homography(normalize_homography(H, (3, 5), (5, 9)), (3, 5), (5, 9)) == H  (bitwise)
@@ -4190,8 +4293,10 @@ class TestNormalizeHomography(BaseTester):
 
         eps = torch.finfo(dtype).eps
         non_dyadic = denormalize_homography(normalize_homography(homography, (4, 5), (8, 9)), (4, 5), (8, 9))
+        non_dyadic_reverse = normalize_homography(denormalize_homography(homography, (4, 5), (8, 9)), (4, 5), (8, 9))
 
         self.assert_close(non_dyadic, homography, atol=32.0 * eps, rtol=8.0 * eps)
+        self.assert_close(non_dyadic_reverse, homography, atol=32.0 * eps, rtol=8.0 * eps)
 
     def test_convention_batch_is_per_sample(self, device, dtype):
         # Convention pin: both functions are per-sample -- the result for one batch element does not
@@ -6386,10 +6491,11 @@ class TestAxisAngleToRotationMatrix:
 # so that the filter mutation they provoke cannot leak into the rest of the suite: this bug is
 # contagious across tests, and an unisolated pin would silently disarm every other test's warning
 # discipline.
-# Both pins parametrize over the module-level _DEPRECATED_ALIASES table defined at the top of this
-# file, projected down to the two columns they use -- neither is about what the alias forwards TO,
-# only about the warning it emits on the way -- so the list of aliases is maintained in exactly one
-# place and neither signature carries a parameter it never reads.
+# Both pins parametrize over _DEPRECATED_ALIAS_NAMES_AND_ARGS, the projection of the module-level
+# _DEPRECATED_ALIASES table down to the two columns they use -- neither is about what the alias
+# forwards TO, only about the warning it emits on the way -- so both the list of aliases and the
+# projection of it are maintained in exactly one place, and neither signature carries a parameter
+# it never reads.
 
 
 @pytest.mark.xfail(
@@ -6398,11 +6504,7 @@ class TestAxisAngleToRotationMatrix:
     "-W error::DeprecationWarning cannot escalate it — kornia#3956",
     strict=True,
 )
-@pytest.mark.parametrize(
-    ("alias_name", "arg"),
-    [(alias_name, arg) for alias_name, _, arg in _DEPRECATED_ALIASES],
-    ids=[row[0] for row in _DEPRECATED_ALIASES],
-)
+@pytest.mark.parametrize(("alias_name", "arg"), _DEPRECATED_ALIAS_NAMES_AND_ARGS, ids=_DEPRECATED_ALIAS_IDS)
 def test_convention_deprecated_alias_warning_can_be_escalated_to_an_error_3956(alias_name, arg):
     # Intended behavior: a DeprecationWarning emitted by kornia obeys the caller's warning filters,
     # so a project that runs under -W error::DeprecationWarning (or pytest's filterwarnings =
@@ -6434,11 +6536,7 @@ def test_convention_deprecated_alias_warning_can_be_escalated_to_an_error_3956(a
     assert escalated, f"kornia#3956: {alias_name} did not raise under simplefilter('error', DeprecationWarning)"
 
 
-@pytest.mark.parametrize(
-    ("alias_name", "arg"),
-    [(alias_name, arg) for alias_name, _, arg in _DEPRECATED_ALIASES],
-    ids=[row[0] for row in _DEPRECATED_ALIASES],
-)
+@pytest.mark.parametrize(("alias_name", "arg"), _DEPRECATED_ALIAS_NAMES_AND_ARGS, ids=_DEPRECATED_ALIAS_IDS)
 def test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956(alias_name, arg):
     # Wart pin for kornia#3956, companion to the strict xfail above: assert that a single alias
     # call CURRENTLY leaves two entries of its own at the head of the process-global filter list,
