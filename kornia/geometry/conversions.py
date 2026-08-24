@@ -1789,8 +1789,7 @@ def normalize_homography(
     .. warning::
         Scope: the degenerate-denominator branch only, as delimited in
         :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
-        degenerate-size warning. Neither ``dsize``
-        is validated, so
+        degenerate-size warning. Neither ``dsize`` is validated, so
         :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
         degenerate sizes propagate straight into the homography. On the
         identity, holding the other size at ``(4, 5)``: a **source** ``dsize``
@@ -1841,8 +1840,13 @@ def normalize_homography(
         ``align_corners=False`` does not reproduce its input — on a 4x4
         ``arange`` image the maximum deviation is ``11.25``, against ``1.4e-05``
         at ``align_corners=True``. This function is not that cause: for equal
-        source and destination sizes, an identity homography normalizes to the
-        identity here (deviation ``5.96e-08``), and ``warp_perspective``'s
+        source and destination sizes, an identity homography normalizes back to
+        the identity to within a single ``float32`` rounding step — the
+        deviation is exactly ``0`` at most equal sizes and ``5.96e-08`` at the
+        rest, with the ``4x4`` case above among the latter; which size lands
+        where is a property of the inverse-and-matmul chain and not a rule
+        about the scale, so read the size you care about rather than a pattern
+        off these — and ``warp_perspective``'s
         ``11.25`` comes from its own ``create_meshgrid``-built, corner-aligned
         grid being sampled by ``grid_sample`` under the ``align_corners=False``
         half-pixel convention. Recorded in
@@ -1908,8 +1912,14 @@ def normal_transform_pixel(
           ``float64`` the two routes agree to the working dtype's rounding —
           **exactly**, at every size measured, on cpu, and within one
           ``float32`` ulp on ``mps`` — while in ``float16``/``bfloat16`` they
-          agree only where the arithmetic is exact, so a reduced-precision
-          pipeline should not mix the two routes and expect a match. It is
+          can and do diverge, and *whether* they diverge is a property of the
+          build's matmul kernel rather than of the convention: swept over
+          every size pair in ``range(2, 60)`` on cpu, ``float16`` disagrees at
+          almost all of them under both torch builds measured, whereas
+          ``bfloat16`` disagrees at almost all of them under one build and at
+          none at all under the other. A reduced-precision pipeline should
+          therefore not mix the two routes and expect a match — and should not
+          read one build's exact agreement as a contract either. It is
           **not**
           :func:`torch.nn.functional.grid_sample`'s default half-pixel
           ``(2 * x + 1) / width - 1``, which would put column ``0`` of a 5-wide
@@ -1925,17 +1935,23 @@ def normal_transform_pixel(
           differs is where the rounding falls, since applying this matrix is a
           matmul (accumulated at higher precision, rounded once) while the
           helper multiplies and subtracts elementwise in the working dtype. The
-          two agree in ``float32``/``float64``, not at ``float16``/``bfloat16``.
+          two agree in ``float32``/``float64``; whether they agree at
+          ``float16``/``bfloat16`` is a property of the build, as above.
           The exact per-configuration gaps are a measurement of one build's
           kernel and are recorded, with the snippet that reproduces them, next
-          to the pin that asserts them in kornia's own suite rather than quoted
-          here. What holds everywhere, and is a contract rather than a
-          build-specific figure, is a dtype-scaled bound: the two routes stay
-          within ``2 * finfo(dtype).eps`` of each other — *tolerated*, not
-          derived, with roughly ``2x`` headroom over the measured cells, so a
-          backend or configuration that accumulates
-          matmuls at reduced precision (``TF32`` on ``cuda``, say) can exceed it
-          without anything here having changed
+          to a pin that re-asserts each of them on the configuration it was
+          measured on — and skips visibly elsewhere — rather than quoted here.
+          What holds on any backend whose matmul rounds its inputs at the
+          working dtype, and is a contract rather than a build-specific figure,
+          is a dtype-scaled bound: the two routes stay within
+          ``2 * finfo(dtype).eps`` of each other — *tolerated*, not derived,
+          with roughly ``2x`` headroom over the measured cells. A backend or
+          configuration that rounds a matmul's inputs below the working dtype
+          (``TF32`` on ``cuda``, say) is outside that bound by construction and
+          gets the same bound taken at the coarser format instead —
+          ``2 * 2 ** -10`` rather than ``2 * 2 ** -23`` for ``TF32``
+          ``float32`` — which is what the pin enforces there, so such a
+          configuration widens the bound rather than exceeding it
         - the convention is applied **unconditionally** — there is no
           ``align_corners`` parameter — and
           :func:`~kornia.geometry.conversions.normalize_homography` and its
@@ -2127,10 +2143,15 @@ def denormalize_homography(
           product rather than a fixed constant. The round trip is **bitwise**
           only when every intermediate product and sum of the chain is exactly
           representable in the working dtype — a property of the whole
-          computation, not of ``H``'s entries alone, so dyadic sizes are
-          necessary and not sufficient. In ``float32`` and ``float64`` an
-          integer, dyadic-entried ``H`` does come back bitwise through **both**
-          legs; in ``float16``/``bfloat16`` neither leg is safe once the entries
+          computation, not of ``H``'s entries or of the sizes alone, so dyadic
+          sizes on their own are **neither necessary nor sufficient**: an ``H``
+          with non-dyadic entries at ``2 ** k + 1`` sizes misses in both legs
+          in ``float32``, while the ``float64`` identity comes back bitwise
+          through both legs at the non-dyadic ``(4, 5) -> (8, 9)``. What does
+          hold is the two halves together: in ``float32`` and ``float64`` a
+          dyadic-entried ``H`` at ``2 ** k + 1`` sizes comes back bitwise
+          through **both** legs, and that is what the pin relies on. In
+          ``float16``/``bfloat16`` neither leg is safe once the entries
           grow, and the two legs miss at different rates — a precision artifact
           of where the rounding falls, not a structural asymmetry between the
           two directions
@@ -2518,7 +2539,12 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
           functions compute the identical map:
           :func:`~kornia.geometry.conversions.camtoworld_vision_to_graphics_4x4`
           returns bitwise the same matrix as this one on the same input, and
-          applying either twice returns the input bitwise. The two names
+          applying either twice returns the input **value-exactly** — no
+          rounding, every entry compares equal at ``atol = rtol = 0``. Not
+          bitwise on a signed zero: the flip is a matmul, so any ``-0.0``
+          entry — in the flipped columns or not — is summed with ``+0.0`` and
+          comes back ``+0.0``, on the first application already (executed,
+          ``float32`` cpu, torch 2.9.1). The two names
           document the caller's intent, not different arithmetic
         - the shape is strictly :math:`(B, 4, 4)`; the ``_Rt`` variants take and
           return :math:`(B, 3, 3)` and :math:`(B, 3, 1)` and agree with this

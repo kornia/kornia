@@ -34,7 +34,6 @@ from kornia.core._compat import torch_version
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.ops import eye_like
-from kornia.core.utils import _inverse_3x3_closed_form
 from kornia.geometry.conversions import (
     ARKitQTVecs_to_ColmapQTVecs,
     Rt_to_matrix4x4,
@@ -217,6 +216,12 @@ def _skip_if_closed_form_inverse_unavailable(device: torch.device, dtype: torch.
     # paying a matmul and a 3x3 inverse for the answer. A failing route is deliberately never
     # memoized -- it has to be re-raised with its own traceback every time, and it is the branch
     # this helper exists for.
+    # Imported here rather than at module scope on purpose: this is a PRIVATE kornia helper, and a
+    # module-level import of it would make the WHOLE file uncollectable if it is ever renamed --
+    # every test in it erroring over a rename that concerns the four pins routed through here.
+    # Inside the probe, the same rename is an ImportError on those four and nothing else.
+    from kornia.core.utils import _inverse_3x3_closed_form
+
     route = (device, dtype)
     if route in _healthy_closed_form_inverse_routes:
         return
@@ -250,7 +255,7 @@ def _cross_is_unavailable(device: torch.device, dtype: torch.dtype) -> bool:
     return False
 
 
-def test_skip_probe_re_raises_everything_it_cannot_identify():
+def test_skip_probe_re_raises_everything_it_cannot_identify(monkeypatch):
     # Direct pin for _skip_if_closed_form_inverse_unavailable above, for the same reason
     # test_guard_classifier_reads_the_raising_instruction pins the guard classifier: four pins
     # route their "does normalize_homography work here at all" question through that helper, and if
@@ -273,6 +278,10 @@ def test_skip_probe_re_raises_everything_it_cannot_identify():
     # The helper's memo and the two cached probes are cleared first: they are performance
     # shortcuts, and a pin whose whole subject is which branch the helper takes has to run the
     # branches rather than a remembered verdict from an earlier test.
+    # The two globals that cases C and D patch go through monkeypatch rather than by hand: this is
+    # the one pin in the file that writes to torch and to the kornia module itself, and a leak from
+    # here would follow every later test in the process, so restoration belongs to pytest rather
+    # than to a nest of try/finally blocks that has to be read to be trusted.
     cpu = torch.device("cpu")
     conversions = kornia.geometry.conversions
     _healthy_closed_form_inverse_routes.clear()
@@ -310,20 +319,13 @@ def test_skip_probe_re_raises_everything_it_cannot_identify():
         else:
             raise AssertionError(f"{case}: the injected failure did not propagate at all")
 
-    real_normal_transform_pixel = conversions.normal_transform_pixel
-    real_cross = torch.linalg.cross
     # Cleared again: case A memoized (cpu, float32) as healthy, and C/D have to reach the body.
     _healthy_closed_form_inverse_routes.clear()
-    conversions.normal_transform_pixel = regression
-    try:
-        assert_the_injected_failure_propagates("C, cross available")
-        torch.linalg.cross = regression
-        try:
-            assert_the_injected_failure_propagates("D, cross unavailable too")
-        finally:
-            torch.linalg.cross = real_cross
-    finally:
-        conversions.normal_transform_pixel = real_normal_transform_pixel
+    monkeypatch.setattr(conversions, "normal_transform_pixel", regression)
+    assert_the_injected_failure_propagates("C, cross available")
+
+    monkeypatch.setattr(torch.linalg, "cross", regression)
+    assert_the_injected_failure_propagates("D, cross unavailable too")
 
 
 def _undo_3954_upcast(matrix: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
@@ -3789,7 +3791,10 @@ class TestNormalTransformPixel(BaseTester):
         # dot product is accumulated at higher precision and rounded once at the end.
         # What leg 2 asserts here is the dtype-scaled half of the docstring's claim -- the one that
         # runs everywhere rather than only where a kernel was measured: the disagreement stays
-        # within 2 * finfo(dtype).eps. That is a TOLERATED bound, not one derived from a portable
+        # within 2 * the eps of the format the matmul rounds its INPUTS to -- finfo(dtype).eps on
+        # every backend that evaluates the matmul at the working dtype, and the coarser format's eps
+        # where it does not (TF32 on cuda; see _matmul_input_eps). The docstring's bound is scoped
+        # the same way. That is a TOLERATED bound, not one derived from a portable
         # accuracy model (see the note at the assertion for what it does and does not promise),
         # computed from the dtype rather than hardcoded. The exact per-configuration
         # gaps are a kernel measurement and live in
@@ -3877,7 +3882,9 @@ class TestNormalTransformPixel(BaseTester):
         # NOT a contract that these kernels must keep producing these numbers -- if a cell fails,
         # re-measure, update the cell here (this comment and the table below are where the figures
         # live; normal_transform_pixel's bullet states the contract and quotes none of them) and
-        # check that the bullet's "agree in float32/float64, not at float16/bfloat16" still holds.
+        # check that the bullet's "agree in float32/float64; whether they agree at float16/bfloat16
+        # is a property of the build" still holds -- the cpu bfloat16 row is the whole reason that
+        # clause is build-scoped rather than absolute: 2.5.1 agrees at every size, 2.9.1 does not.
         # Snippet used to generate expected (torch + kornia, executed on macOS arm64 against both
         # torch 2.9.1 and torch 2.5.1; max|helper - matrix| over the full (2, 28) pixel grid):
         #   cpu 2.9.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.00390625
@@ -4196,6 +4203,40 @@ class TestNormalizeHomography(BaseTester):
         expected = torch.tensor([[[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         self.assert_close(normalized, expected, atol=0.0, rtol=0.0)
 
+    def test_wart_identity_at_equal_sizes_is_exact_at_some_sizes_and_not_others(self, device):
+        # Wart pin for the figures normalize_homography's kornia#3904 warning quotes. That warning
+        # exists to say this function is NOT the cause of warp_perspective's 11.25 deviation under
+        # align_corners=False, and it backs that up with how little this function itself deviates on
+        # the identity at equal sizes. Both halves of that figure are pinned here, because the
+        # tempting reading of it -- "exact where the 2/(size - 1) scale is dyadic" -- is FALSE:
+        # measured over equal sizes 2..32 in float32 the deviation is 0 at 2, 3, 5, 8, 9, 10, 12,
+        # 15..20, 22, 23, 24, 26, 28..32 and 5.96e-08 at 4, 6, 7, 11, 13, 14, 21, 25, 27, and 8
+        # (scale 2/7) is exact while 4 (scale 2/3) is not. Which size lands where is a property of
+        # the inverse-and-matmul chain, which is what the warning now says instead of a rule.
+        # Two sizes are enough to hold that: (4, 4), the size the warning quotes and the one the
+        # warp_perspective comparison uses, and (3, 3), an exact one -- a change that made the chain
+        # exact everywhere, or inexact everywhere, moves one of them.
+        # float32 is hardcoded and the dtype fixture dropped: 5.96e-08 IS 2**-24, a float32 rounding
+        # step, so the figure is only meaningful in float32 and every other dtype would need its own.
+        # NOT a contract that these sizes must keep these residuals -- the class header's #3904 note
+        # covers the whole surface, and a #3904 fix is expected to move both cells.
+        # Snippet used to generate expected (torch only, executed on cpu, torch 2.9.1):
+        #   I = torch.eye(3)[None]
+        #   (normalize_homography(I, (n, n), (n, n)) - I).abs().max()  for n = 4 -> 5.960464477539063e-08
+        #                                                              for n = 3 -> 0.0
+        _skip_if_dtype_unavailable(device, torch.float32)
+        _skip_if_closed_form_inverse_unavailable(device, torch.float32)
+        identity = torch.eye(3, device=device, dtype=torch.float32)[None]
+
+        inexact = kornia.geometry.conversions.normalize_homography(identity, (4, 4), (4, 4))
+        exact = kornia.geometry.conversions.normalize_homography(identity, (3, 3), (3, 3))
+
+        assert (inexact - identity).abs().max().item() == 2.0**-24, (
+            "normalize_homography's #3904 warning quotes 5.96e-08 for the identity at equal sizes "
+            f"(4, 4); got {(inexact - identity).abs().max().item()!r}"
+        )
+        self.assert_close(exact, identity, atol=0.0, rtol=0.0)
+
     def test_convention_dsize_src_is_the_right_factor_and_dsize_dst_the_left(self, device, dtype):
         # Convention pin: normalize_homography(H, dsize_src, dsize_dst) composes
         # N(dsize_dst) @ H @ N(dsize_src)^-1 -- the source size drives the RIGHT (input) factor and
@@ -4297,6 +4338,78 @@ class TestNormalizeHomography(BaseTester):
 
         self.assert_close(non_dyadic, homography, atol=32.0 * eps, rtol=8.0 * eps)
         self.assert_close(non_dyadic_reverse, homography, atol=32.0 * eps, rtol=8.0 * eps)
+
+    # The two pins below are the negative half of the round-trip claim above, which the pin above
+    # cannot express because it only ever runs the configuration that DOES come back bitwise:
+    # denormalize_homography's bullet says dyadic sizes on their own are neither necessary nor
+    # sufficient for a bitwise round trip, and each half of that needs a counterexample or it is an
+    # unfalsifiable hedge. Both inputs are hardcoded rather than searched for, and both are
+    # deterministic -- no rand, so neither pin can go quiet on a lucky seed. They are split into two
+    # tests, and each hardcodes ONE dtype with the fixture dropped, because each half IS a statement
+    # about one dtype: the same identity at (4, 5) -> (8, 9) in float32 misses through
+    # denormalize(normalize(.)) and returns bitwise through the reverse, so a dtype-parameterized
+    # form of either half would be false on the other dtype. Split rather than one test with two
+    # dtypes so that on a backend without float64 (mps) the sufficiency half still reports as run.
+    # NEITHER is a contract that these particular inputs must keep landing on these verdicts -- if a
+    # cell flips, re-derive the bullet's "neither necessary nor sufficient" from whatever the new
+    # counterexamples are.
+
+    def test_convention_dyadic_sizes_are_not_sufficient_for_a_bitwise_round_trip(self, device):
+        # The same dyadic sizes (3, 5) -> (5, 9) as the round-trip pin above, with entries that are
+        # NOT dyadic, miss in float32 through BOTH legs. This is what makes that pin's "property of
+        # the whole computation, not of the sizes" sentence load-bearing: nothing about the sizes
+        # changed between this case and the bitwise one, only H.
+        # Snippet used to generate expected (torch only, executed on cpu, torch 2.9.1):
+        #   H = [[1.1, 0.2, 3], [-0.3, 0.9, 1], [0.05, 0.1, 1]] (float32)
+        #   torch.equal(denormalize_homography(normalize_homography(H, (3,5), (5,9)), (3,5), (5,9)), H) -> False
+        #   torch.equal(normalize_homography(denormalize_homography(H, (3,5), (5,9)), (3,5), (5,9)), H) -> False
+        _skip_if_dtype_unavailable(device, torch.float32)
+        _skip_if_closed_form_inverse_unavailable(device, torch.float32)
+        normalize_homography = kornia.geometry.conversions.normalize_homography
+        denormalize_homography = kornia.geometry.conversions.denormalize_homography
+        not_dyadic_entried = torch.tensor(
+            [[[1.1, 0.2, 3.0], [-0.3, 0.9, 1.0], [0.05, 0.1, 1.0]]], device=device, dtype=torch.float32
+        )
+
+        forward = denormalize_homography(normalize_homography(not_dyadic_entried, (3, 5), (5, 9)), (3, 5), (5, 9))
+        reverse = normalize_homography(denormalize_homography(not_dyadic_entried, (3, 5), (5, 9)), (3, 5), (5, 9))
+
+        assert not torch.equal(forward, not_dyadic_entried), (
+            "dyadic sizes now make denormalize(normalize(H)) bitwise for a non-dyadic-entried H in "
+            "float32, so denormalize_homography's 'not sufficient' half has lost its counterexample"
+        )
+        assert not torch.equal(reverse, not_dyadic_entried), (
+            "dyadic sizes now make normalize(denormalize(H)) bitwise for a non-dyadic-entried H in "
+            "float32, so denormalize_homography's 'not sufficient' half has lost its counterexample"
+        )
+
+    def test_convention_dyadic_sizes_are_not_necessary_for_a_bitwise_round_trip(self, device):
+        # The float64 identity comes back bitwise through BOTH legs at the non-dyadic
+        # (4, 5) -> (8, 9) -- the exact size pair where the round-trip pin above has to fall back to
+        # a 32 * eps tolerance for a general H.
+        # Snippet used to generate expected (torch only, executed on cpu, torch 2.9.1):
+        #   I = torch.eye(3)[None] (float64), sizes (4, 5) -> (8, 9)
+        #   torch.equal(denormalize_homography(normalize_homography(I, (4,5), (8,9)), (4,5), (8,9)), I) -> True
+        #   torch.equal(normalize_homography(denormalize_homography(I, (4,5), (8,9)), (4,5), (8,9)), I) -> True
+        _skip_if_dtype_unavailable(device, torch.float64)
+        _skip_if_closed_form_inverse_unavailable(device, torch.float64)
+        normalize_homography = kornia.geometry.conversions.normalize_homography
+        denormalize_homography = kornia.geometry.conversions.denormalize_homography
+        identity = torch.eye(3, device=device, dtype=torch.float64)[None]
+
+        forward = denormalize_homography(normalize_homography(identity, (4, 5), (8, 9)), (4, 5), (8, 9))
+        reverse = normalize_homography(denormalize_homography(identity, (4, 5), (8, 9)), (4, 5), (8, 9))
+
+        assert torch.equal(forward, identity), (
+            "the float64 identity no longer survives denormalize(normalize(.)) bitwise at the "
+            "non-dyadic (4, 5) -> (8, 9), so denormalize_homography's 'not necessary' half has "
+            "lost its counterexample"
+        )
+        assert torch.equal(reverse, identity), (
+            "the float64 identity no longer survives normalize(denormalize(.)) bitwise at the "
+            "non-dyadic (4, 5) -> (8, 9), so denormalize_homography's 'not necessary' half has "
+            "lost its counterexample"
+        )
 
     def test_convention_batch_is_per_sample(self, device, dtype):
         # Convention pin: both functions are per-sample -- the result for one batch element does not
@@ -5403,7 +5516,10 @@ class TestCamtoworldGraphicsToVision(BaseTester):
     def test_convention_all_four_functions_are_the_same_involution(self, device, dtype):
         # Convention pin: diag(1, -1, -1, 1) is its own inverse, so graphics_to_vision and
         # vision_to_graphics are the IDENTICAL map -- the direction in the name is documentation for
-        # the reader, not behavior -- and applying either one twice returns the input bitwise. Both
+        # the reader, not behavior -- and applying either one twice returns the input value-exactly
+        # (atol=rtol=0, no rounding). VALUE-exactly and not bitwise: assert_close at atol=rtol=0
+        # treats -0.0 and +0.0 as equal, and the flip does not preserve the sign of a zero, which
+        # test_convention_involution_normalises_signed_zero below pins on the raw words. Both
         # halves are executed here rather than argued from the shared implementation: the two 4x4
         # functions are compared on the same input, the Rt pair is compared against the 4x4 pair,
         # and each round trip is run.
@@ -5429,6 +5545,57 @@ class TestCamtoworldGraphicsToVision(BaseTester):
         self.assert_close(graphics_R, vision_R, atol=0.0, rtol=0.0)
         self.assert_close(graphics_t, vision_t, atol=0.0, rtol=0.0)
         self.assert_close(Rt_to_matrix4x4(vision_R, vision_t), to_vision, atol=0.0, rtol=0.0)
+
+    def test_convention_involution_normalises_signed_zero(self, device):
+        # Convention pin for the one place the involution above is exact in VALUE but not in BITS,
+        # which the docstring states and no assert_close can check: assert_close at atol=rtol=0
+        # compares -0.0 equal to +0.0, so the pin above would pass either way and the docstring's
+        # "value-exact, not bitwise" clause would be unfalsifiable. Compared on the raw words
+        # instead, through an int32 view of the float32 buffer.
+        # The mechanism, and why it is not specific to the two flipped columns: the flip is
+        # extrinsics @ diag(1, -1, -1, 1), a matmul, so every output entry is a sum of four
+        # products. A -0.0 input entry contributes -0.0 to that sum and the other three terms
+        # contribute +0.0, and IEEE-754 round-to-nearest gives -0.0 + 0.0 = +0.0. So EVERY signed
+        # zero in the input is normalised to +0.0, in any column, on the FIRST application already,
+        # and a second application cannot restore it.
+        # float32 is hardcoded and the dtype fixture dropped: the subject is a sign bit, the
+        # comparison needs a fixed-width integer view to read it, and the summation that loses the
+        # sign is the same in every dtype.
+        # NOT a contract that the flip must clear these sign bits -- if a future implementation
+        # multiplies elementwise instead of through a matmul, -0.0 * -1.0 = +0.0 and -0.0 * 1.0
+        # stays -0.0, so the flipped columns would flip signs and the rest would be preserved.
+        # Then this pin fails and the docstring clause is what gets re-derived.
+        # The input is built from a nested literal rather than by assigning -0.0 into a zeros
+        # tensor: on mps (torch 2.9.1, executed) a Python-scalar assignment writes +0.0, so the
+        # item-assignment form would silently build an input with no signed zeros in it and the pin
+        # would assert nothing there. The guard below is what makes that failure loud, not silent.
+        # Snippet used to generate expected (torch only, executed on cpu, torch 2.9.1):
+        #   M = torch.tensor([[[0., -0., 0., 0.], [0.] * 4, [0.] * 4, [0.] * 4]])
+        #   torch.signbit(camtoworld_graphics_to_vision_4x4(M))[0, 0, 1] -> False
+        signed_zeros = torch.tensor(
+            [
+                [
+                    [0.0, -0.0, 0.0, 0.0],
+                    [-0.0, 0.0, -0.0, 0.0],
+                    [0.0, -0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                ]
+            ],
+            device=device,
+            dtype=torch.float32,
+        )
+        assert torch.signbit(signed_zeros).sum().item() == 4, "the input lost its signed zeros before the call"
+
+        once = camtoworld_graphics_to_vision_4x4(signed_zeros)
+        twice = camtoworld_graphics_to_vision_4x4(once)
+
+        self.assert_close(twice, signed_zeros, atol=0.0, rtol=0.0)
+        assert not torch.equal(twice.view(torch.int32), signed_zeros.view(torch.int32)), (
+            "the involution is now bitwise on signed zeros -- camtoworld_graphics_to_vision_4x4's "
+            "involution bullet says value-exact but not bitwise and needs re-deriving"
+        )
+        assert torch.signbit(once).sum().item() == 0, "a signed zero survived the first application"
+        assert torch.signbit(twice).sum().item() == 0, "a signed zero reappeared after the second application"
 
 
 class TestCamtoworldRtToPoseRt(BaseTester):
@@ -6550,7 +6717,7 @@ def test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956(alias_na
     # Snippet used to generate expected (stdlib + torch, executed on cpu):
     #   with warnings.catch_warnings():
     #       warnings.resetwarnings()
-    #       kornia.geometry.conversions.angle_axis_to_quaternion(torch.tensor([0., 0., 0.6]))
+    #       kornia.geometry.conversions.angle_axis_to_quaternion(torch.tensor([0.1, 0.2, 0.3]))
     #       warnings.filters[:2]
     #   -> [('default', None, <class 'DeprecationWarning'>, None, 0),
     #       ('always',  None, <class 'DeprecationWarning'>, None, 0)]
