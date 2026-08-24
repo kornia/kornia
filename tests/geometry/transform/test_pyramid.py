@@ -243,3 +243,22 @@ class TestBuildLaplacianPyramid(BaseTester):
         batch_size, channels, height, width = 1, 2, 7, 9
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.build_laplacian_pyramid, (img, max_level), nondet_tol=1e-8)
+
+
+def test_pad_importable_from_pyramid_module():
+    """Regression test for https://github.com/kornia/kornia/issues/3986.
+
+    ``kornia.geometry.transform.pyramid`` used to bind ``pad`` at module
+    scope (via ``from kornia.core import ..., pad, ...``), so third-party
+    code importing it directly (e.g. ``from
+    kornia.geometry.transform.pyramid import pad``) worked. That import
+    was dropped as an incidental side effect of switching the module to
+    call ``torch.nn.functional.pad`` directly, breaking any downstream
+    code relying on it -- see the linked ComfyUI-LTXVideo issue in #3986.
+
+    ``pad`` is kept available and equal to ``torch.nn.functional.pad`` so
+    that import path keeps working.
+    """
+    from kornia.geometry.transform.pyramid import pad
+
+    assert pad is torch.nn.functional.pad

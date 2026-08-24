@@ -26,6 +26,13 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.filters import filter2d, gaussian_blur2d
 
+# Kept as a module-level alias for backwards compatibility: earlier versions
+# imported `pad` from `kornia.core`, which made it importable from here too
+# (e.g. `from kornia.geometry.transform.pyramid import pad`). That import was
+# dropped when this module switched to calling `F.pad` directly, silently
+# breaking third-party code relying on it. See #3986.
+pad = F.pad
+
 __all__ = ["PyrDown", "PyrUp", "ScalePyramid", "build_laplacian_pyramid", "build_pyramid", "pyrdown", "pyrup"]
 
 
