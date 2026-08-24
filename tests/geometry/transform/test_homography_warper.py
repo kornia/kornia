@@ -126,6 +126,9 @@ class TestHomographyWarper(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_consistency(self, batch_size, device, dtype):
+        # The same high-level normalize/denormalize mutual-inverse invariant is pinned bitwise at
+        # dyadic sizes by TestNormalizeHomography::test_convention_normalize_and_denormalize_round_trip
+        # in tests/geometry/test_conversions.py, on its own literal, sizes and tolerances.
         # create input data
         height, width = 2, 5
         dst_homo_src = torch.eye(3, device=device, dtype=dtype)
@@ -364,12 +367,16 @@ class TestHomographyWarper(BaseTester):
 class TestHomographyNormalTransform(BaseTester):
     expected_2d_0 = torch.tensor([[[0.5, 0.0, -1.0], [0.0, 2.0, -1.0], [0.0, 0.0, 1.0]]])
 
+    # kornia#3957: the 2e14 rows below hardcode the size == 1 -> 2 / eps degenerate scale, the same
+    # literal pinned by TestNormalTransformPixel's wart matrix in tests/geometry/test_conversions.py
+    # -- a #3957 fix flips both files together.
     expected_2d_1 = torch.tensor([[[0.5, 0.0, -1.0], [0.0, 2e14, -1.0], [0.0, 0.0, 1.0]]])
 
     expected_3d_0 = expected = torch.tensor(
         [[[0.4, 0.0, 0.0, -1.0], [0.0, 2.0, 0.0, -1.0], [0.0, 0.0, 0.6667, -1.0], [0.0, 0.0, 0.0, 1.0]]]
     )
 
+    # kornia#3957: same degenerate-scale literal as expected_2d_1 above, 3-D variant.
     expected_3d_1 = torch.tensor(
         [[[0.4, 0.0, 0.0, -1.0], [0.0, 2e14, 0.0, -1.0], [0.0, 0.0, 0.6667, -1.0], [0.0, 0.0, 0.0, 1.0]]]
     )
