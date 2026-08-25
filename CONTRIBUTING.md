@@ -1,21 +1,15 @@
-# Contributing to Kornia
+# Contributing to kornia
 
-Welcome! This guide will help you contribute to Kornia.
+We (maintainers) develop kornia for ourselves and the computer vision community.
+If kornia is useful for you in any way — to import, to prototype, to use as a reference for your agent — that makes us happy.
+You are welcome to help us improve kornia: report a bug, implement a feature, propose an idea, answer a question, or simply tell others about the project.
+We try to do our best to accept your help — by reviewing PRs, fixing bugs, and so on — but we do not promise to review every PR, let alone quickly.
+We have jobs, families, health problems, and holidays, just like everyone else.
 
-## Policies and Guidelines
+You may use AI to do the work — so do we. Tell us how AI helped; we do the same.
+Above all, we ask you to care. Good work done with care makes the world better; sloppy work makes the world worse.
 
-- **Two lanes**: small evidence-bearing fixes need no permission — just send the PR. Features and behavior changes need discussion first. See [Which lane is your contribution?](#which-lane-is-your-contribution).
-
-- **AI Policy & Authorship**: See [AI_POLICY.md](AI_POLICY.md) for the complete policy. Short version: we don't care how much AI you used (our maintainers use it heavily too) — we care that you **verified** everything and can **explain** everything. That means:
-    - **Show us it runs**: PRs include pasted local test logs; bug fixes arrive with a test that fails on `main`.
-    - **Don't reinvent kornia**: use existing `kornia` utilities instead of writing new ones.
-    - **Own it**: you can explain any line during review; disclose AI use honestly in the PR template.
-
-- **15-Day Rule**: PRs waiting on their **author** for 15+ days may be closed to keep the queue readable — reopen anytime when you're back. Time spent waiting on *us* shouldn't count against you — but honestly, the stale bot can't tell who's waiting on whom, so this runs on a manual mechanism: if you're blocked on a review, say so and a maintainer will add the `awaiting-review` label, which pauses the timer.
-
-- **Transparency**: All discussions must be public.
-
-We're all volunteers. These policies exist so review time goes to real contributions.
+We write the technical guidelines below so nobody has to guess. If you have experience with open source, you probably already know most of them.
 
 ## Ways to Contribute
 
