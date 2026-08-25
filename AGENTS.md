@@ -27,9 +27,11 @@ pixi install -e py312
 pixi install -e py313
 pixi run -e cuda install
 pixi run test-module tests/path/to/test_file.py
+KORNIA_TEST_OPTIMIZER=inductor pixi run test-module tests/path/to/test_file.py
 pixi run test-quick
 pixi run test-slow
 pixi run lint
+uv run pre-commit run --all-files
 pixi run typecheck
 pixi run doctest
 pixi run build-docs
@@ -44,14 +46,14 @@ KORNIA_TEST_DEVICE=cuda KORNIA_TEST_DTYPE=float32 pixi run test-module tests/geo
 
 Supported fixtures include CPU, CUDA, MPS, and TPU when available, and `float16`, `bfloat16`, `float32`, and `float64`. Run focused checks first and expand them in proportion to the change.
 
-Use `KORNIA_TEST_RUNSLOW=true` to include slow tests and `KORNIA_TEST_OPTIMIZER=<backend>` to select the `torch.compile` optimizer. Run `pixi run lint` before presenting a code change as finished, together with the focused tests and other checks that match the files you changed.
+Use `KORNIA_TEST_RUNSLOW=true` to include slow tests. `KORNIA_TEST_OPTIMIZER=inductor` enables the dynamo and compile tests, which are deselected when the variable is unset. Before presenting a code change as finished, run the full pre-commit command above together with focused tests and other relevant checks; `pixi run lint` runs only the Ruff hooks.
 
 ### Precision and device details
 
-- Use `pixi run test-half` for CPU half-precision coverage.
+- For focused CPU half-precision coverage, add `--dtype=float16,bfloat16` to a `test-module` run. `pixi run test-half` runs the whole CPU test suite.
 - CUDA `float16`/`bfloat16` tests need per-test subprocess isolation; use `pixi run -e cuda test-cuda-half` or pytest's `--isolate-half-precision` option.
 - MPS does not support float64 gradcheck. MPS autocast can also change the effective dtype; inspect nearby tests before changing tolerances or skips.
-- TF32 is disabled by default for reproducibility. Enable it only when intentionally testing that mode.
+- TF32 matmul is disabled by default; `--tf32` enables it. cuDNN convolutions still use PyTorch's TF32 default.
 - Preserve device and dtype rather than creating implicit CPU or default-dtype tensors. Use the injected `device` and `dtype` fixtures in tests.
 
 ## Library preferences
@@ -59,7 +61,7 @@ Use `KORNIA_TEST_RUNSLOW=true` to include slow tests and `KORNIA_TEST_OPTIMIZER=
 - Search for an existing `kornia` operation before building the same operation from raw PyTorch.
 - Follow nearby batching, broadcasting, shape-validation, dtype, and device conventions.
 - Use `BaseTester` from `testing.base`, injected `device`/`dtype` fixtures, and `self.assert_close()` for tensor comparisons. Its dtype-specific tolerances are intentional.
-- Include smoke, exception, shape/cardinality, numerical, gradient, and `torch.compile` tests when they apply; not every change needs every kind.
+- Follow [TESTING.md](TESTING.md) for test mechanisms. Use `self.gradcheck()` for gradient checks and the injected `torch_optimizer` fixture for `torch.compile` coverage. Include smoke, exception, shape/cardinality, numerical, gradient, and compile tests when they apply; not every change needs every kind.
 - Keep numerical correctness tests self-contained. For expected values produced by an optional reference library, prefer a hardcoded literal plus the small generation snippet and source. Optional-dependency integration tests, including ONNX tests, may still use `pytest.importorskip`.
 - For a new algorithm, name the source that defines it, such as a paper or a reference implementation in PyTorch, OpenCV, or scikit-image.
 - Public APIs need type hints, docstrings, and exports.
@@ -74,15 +76,7 @@ Use `KORNIA_TEST_RUNSLOW=true` to include slow tests and `KORNIA_TEST_OPTIMIZER=
 
 ## Benchmarks
 
-Use `benchmarks/README.md` and the helpers in `benchmarks/common.py` as the current source of truth. Benchmark public kornia APIs rather than embedding a replacement implementation in the benchmark itself.
-
-When adding or changing a benchmark:
-
-- cover CPU and CUDA where the operation supports both, and label unsupported or unavailable regimes rather than hiding them;
-- include quality metrics when performance alone does not describe whether the result is useful;
-- record the date, hardware, git commit, Python, PyTorch, kornia, and device details needed to interpret the result;
-- compare the same benchmark on the relevant base revision and on the changed branch for performance work;
-- use the benchmark suite's `--contribute` flow when producing committed result JSON.
+Follow the methodology contract and new-benchmark checklist in [benchmarks/README.md](benchmarks/README.md), using the helpers in `benchmarks/common.py`. Benchmark public kornia APIs rather than embedding a replacement implementation. For performance changes, run the same benchmark on the relevant base revision and changed branch.
 
 ## ONNX work
 

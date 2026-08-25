@@ -11,16 +11,16 @@ Kornia uses [pixi](https://pixi.sh) to manage the test environment.
 pixi run test
 
 # Specific file
-pixi run test tests/geometry/test_boxes.py
+pixi run test-module tests/geometry/test_boxes.py
 
 # Specific device and dtype
-pixi run test tests/ --device=cuda --dtype=float32
+pixi run test-module tests/ --device=cuda --dtype=float32
 
 # All devices and dtypes
-pixi run test tests/ --device=all --dtype=all
+pixi run test --device=all --dtype=all
 
 # Skip slow tests (default); include them with --runslow
-pixi run test tests/ --runslow
+pixi run test --runslow
 
 # Quick tests (excludes jit, grad, nn markers)
 pixi run test-quick
@@ -199,7 +199,7 @@ If you write a new function that calls SVD, use `_torch_svd_cast` rather than ca
 
 ```bash
 # Standard CI — all devices, float32 and float64 only
-pixi run test tests/ --dtype=float32,float64
+pixi run test --dtype=float32,float64
 
 # Half-precision — run separately, per directory or file
 pytest tests/color/           --dtype=float16,bfloat16
@@ -225,7 +225,7 @@ pytest tests/geometry/  --device=cuda --dtype=all      --isolate-half-precision
 
 # Via pixi tasks
 pixi run test-half        # float16 + bfloat16, CPU
-pixi run test-cuda-half   # float16 + bfloat16, CUDA, with isolation
+pixi run -e cuda test-cuda-half   # float16 + bfloat16, CUDA, with isolation
 ```
 
 Without `--isolate-half-precision`, float16/bfloat16 CUDA tests are **skipped** (safe default for combined runs).

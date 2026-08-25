@@ -159,9 +159,9 @@ and finish under the rules they started under.
   (`warp(inv(H), warp(H, img)) ≈ img`, `project(unproject(d, K), K) ≈ uv`,
   `R @ R.T ≈ I`), and publish a docs page: *validate your (hand-written or
   LLM-generated) geometry code against Kornia*.
-- **The agent knowledge layer.** `llms.txt` / `llms-full.txt` are live and
-  benchmark-fed; after the final convention batch, ship `AGENTS.md` and a small set
-  of validated skills (image warping & homographies, batched differentiable
+- **The agent knowledge layer.** `AGENTS.md`, `llms.txt`, and `llms-full.txt` are live and
+  benchmark-fed; after the final convention batch, ship a small set of validated
+  skills (image warping & homographies, batched differentiable
   augmentation with transform tracking, camera/epipolar conventions, feature
   matching) — all derived from the canonical docs, never duplicating them.
 - **The compile / export spine.** *In progress — much of the augmentation surface now

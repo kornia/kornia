@@ -1,6 +1,6 @@
 # Claude guide for kornia
 
-Read [AGENTS.md](AGENTS.md) for the repository's operational guidance: project layout, library preferences, commands, test patterns, dtype/device behavior, ONNX work, and privacy-conscious diagnostics.
+@AGENTS.md
 
 When helping a user in this repository:
 

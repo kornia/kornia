@@ -384,12 +384,12 @@ For bug fixes, a regression test that fails before the fix is especially helpful
 
 Reviewers may ask for changes, tests, documentation, or a smaller scope. They may also decide that a contribution does not fit the project. We will try to explain why, but review is not guaranteed. Pull requests that have been quiet for a while may be closed and can be reopened later.
 
-**CI checks:**
-- All tests pass
-- Test coverage maintained
-- Type checking (ty)
-- Documentation builds successfully
-- Code formatting and linting (ruff via pre-commit)
+**PR checks and merge requirements:**
+- Code changes run the CPU test matrix, dynamo/compile tests, and type checking with `ty`
+- Pre-commit checks formatting, linting, license headers, spelling, and repository file hygiene
+- Documentation changes run the documentation build
+- Every pull request gets an automated Copilot review and needs one maintainer approval
+- Pull requests are squash-merged
 
 If a check fails because of your change, please fix it or explain what you found.
 

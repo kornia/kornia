@@ -141,10 +141,6 @@
 ## 贡献
 我们（维护者）为自己和计算机视觉社区开发 kornia。如果它对您有用，或者您愿意通过代码、错误报告、文档、问题或想法来帮助改进它，我们都会很高兴。维护者的时间有限，因此我们无法承诺审查或合并每一项提议。详情请阅读 [贡献指南](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md)。参与本项目时也请遵守 [行为准则](https://github.com/kornia/kornia/blob/main/CODE_OF_CONDUCT.md)。
 
-### AI 政策
-
-您可以使用 AI 完成工作，维护者也会使用。请说明 AI 如何提供了帮助，并认真检查最终的工作。我们不按 AI 的使用量对贡献进行分类，也没有一套专门针对 AI 生成内容的额外规则。完整的社会契约和技术指南请参阅 [贡献指南](CONTRIBUTING.md)；[AI 政策](AI_POLICY.md)只是该核心原则的简短说明。
-
 ## 社区
 - **GitHub Discussions:** 提问，并讨论代码实现、研究和想法。[参与讨论](https://github.com/kornia/kornia/discussions)
 - **GitHub Issues:** 报告错误和提出具体更改。[提交 Issue](https://github.com/kornia/kornia/issues/new/choose)
