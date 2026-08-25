@@ -28,7 +28,7 @@ How to contribute ?
 
 - Make a donation to the organization via:
     - `Open Collective <https://opencollective.com/kornia>`_
-    - `Github sponsors <https://github.com/sponsors/kornia>`_
+    - `GitHub Sponsors <https://github.com/sponsors/kornia>`_
 - Join the community and help us to maintain the library and its ecosystem projects.
     - `Kornia Discord <https://discord.gg/HfnywwpBnD>`_
 - Help us to organize events such as workshops, meetups related to Computer Vision and robotics.

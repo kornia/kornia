@@ -10,3 +10,4 @@ Use [AGENTS.md](../AGENTS.md) as the repository's operational guide. In particul
 - avoid requesting or exposing private environment information.
 
 When reviewing, comment on concrete correctness, compatibility, maintainability, documentation, or test issues and tie each suggestion to the code under review.
+Do not speculate about whether or how AI was used; that disclosure belongs to the author.

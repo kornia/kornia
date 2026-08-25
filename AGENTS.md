@@ -23,8 +23,12 @@ Use Pixi for project tasks and environment selection. The tasks call `uv`, and P
 
 ```bash
 pixi install
+pixi install -e py312
+pixi install -e py313
+pixi run -e cuda install
 pixi run test-module tests/path/to/test_file.py
 pixi run test-quick
+pixi run test-slow
 pixi run lint
 pixi run typecheck
 pixi run doctest
@@ -39,6 +43,8 @@ KORNIA_TEST_DEVICE=cuda KORNIA_TEST_DTYPE=float32 pixi run test-module tests/geo
 ```
 
 Supported fixtures include CPU, CUDA, MPS, and TPU when available, and `float16`, `bfloat16`, `float32`, and `float64`. Run focused checks first and expand them in proportion to the change.
+
+Use `KORNIA_TEST_RUNSLOW=true` to include slow tests and `KORNIA_TEST_OPTIMIZER=<backend>` to select the `torch.compile` optimizer. Run `pixi run lint` before presenting a code change as finished, together with the focused tests and other checks that match the files you changed.
 
 ### Precision and device details
 
@@ -56,6 +62,7 @@ Supported fixtures include CPU, CUDA, MPS, and TPU when available, and `float16`
 - Use `BaseTester` from `testing.base`, injected `device`/`dtype` fixtures, and `self.assert_close()` for tensor comparisons. Its dtype-specific tolerances are intentional.
 - Include smoke, exception, shape/cardinality, numerical, gradient, and `torch.compile` tests when they apply; not every change needs every kind.
 - Keep numerical correctness tests self-contained. For expected values produced by an optional reference library, prefer a hardcoded literal plus the small generation snippet and source. Optional-dependency integration tests, including ONNX tests, may still use `pytest.importorskip`.
+- For a new algorithm, name the source that defines it, such as a paper or a reference implementation in PyTorch, OpenCV, or scikit-image.
 - Public APIs need type hints, docstrings, and exports.
 - The codebase keeps a 120-character line length and Apache 2.0 source headers. Ruff and `ty` enforce the current style and types.
 - JIT-compatible modules have stricter typing constraints. Follow nearby annotations and use `torch.Tensor` directly where TorchScript expects it.
@@ -78,8 +85,6 @@ When adding or changing a benchmark:
 - compare the same benchmark on the relevant base revision and on the changed branch for performance work;
 - use the benchmark suite's `--contribute` flow when producing committed result JSON.
 
-Run `pixi run lint` before presenting a code change as finished. Also run the focused tests and other checks that match the files you changed.
-
 ## ONNX work
 
 ONNX support is a real subsystem, not a generic export afterthought. Inspect `kornia/onnx/`, its mixins in `kornia/core/`, and existing ONNX tests before changing export behavior. Development uses the optional `onnx`, `onnxruntime`, and `onnxscript` packages. Test both graph construction/export and runtime behavior when the change affects both.
@@ -88,7 +93,7 @@ ONNX support is a real subsystem, not a generic export afterthought. Inspect `ko
 
 Start with a minimal reproduction and the narrowest relevant test. Do not claim a failure is pre-existing until you have compared against the relevant base revision safely.
 
-Ask only for environment details that help the diagnosis: kornia, PyTorch, and Python versions; OS family; device backend; CUDA availability/version; and GPU model when relevant. Prefer this privacy-conscious command:
+Ask only for environment details that help the diagnosis: kornia, PyTorch, and Python versions; OS family; device backend; CUDA availability/version; and GPU model when relevant. Prefer the same privacy-conscious command used by the bug template:
 
 ```bash
 python -c "import kornia, platform, sys, torch; gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'; print(f'kornia {kornia.__version__} | torch {torch.__version__} | python {sys.version.split()[0]} | OS {platform.system()} {platform.release()} | CUDA {torch.version.cuda} (available={torch.cuda.is_available()}, GPU={gpu}) | MPS={torch.backends.mps.is_available()}')"

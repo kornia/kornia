@@ -146,8 +146,8 @@
 您可以使用 AI 完成工作，维护者也会使用。请说明 AI 如何提供了帮助，并认真检查最终的工作。我们不按 AI 的使用量对贡献进行分类，也没有一套专门针对 AI 生成内容的额外规则。完整的社会契约和技术指南请参阅 [贡献指南](CONTRIBUTING.md)；[AI 政策](AI_POLICY.md)只是该核心原则的简短说明。
 
 ## 社区
-- **论坛:** 讨论代码实现，学术研究等。[GitHub Forums](https://github.com/kornia/kornia/discussions)
-- **GitHub Issues:** bug reports, feature requests, install issues, RFCs, thoughts, etc. [OPEN](https://github.com/kornia/kornia/issues/new/choose)
+- **GitHub Discussions:** 提问，并讨论代码实现、研究和想法。[参与讨论](https://github.com/kornia/kornia/discussions)
+- **GitHub Issues:** 报告错误和提出具体更改。[提交 Issue](https://github.com/kornia/kornia/issues/new/choose)
 - **Discord:** 加入我们的 Discord 社区，与使用和开发 kornia 的人交流。[加入](https://discord.gg/HfnywwpBnD)
 - 常见信息请访问我们的网站 www.kornia.org
 

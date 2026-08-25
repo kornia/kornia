@@ -19,7 +19,7 @@ jobs:
           script: |
             const author = context.payload.issue.user.login;
 
-            // Maintainers triage issues they open without the automated label or reply.
+            // Maintainers triage issues they open without the automated label.
             let isMaintainer = false;
             try {
               const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
@@ -42,17 +42,4 @@ jobs:
               repo: context.repo.repo,
               issue_number: context.issue.number,
               labels: ['triage']
-            });
-
-            const welcomeMessage = '## 👋 Thanks for opening an issue!\n\n' +
-              'This issue is now in the triage queue. Maintainers will respond when they can, but we cannot promise a review or a timeline.\n\n' +
-              'If you learn more, add it here. A minimal reproduction is especially useful for bugs. ' +
-              'You are also welcome to send a pull request. See the ' +
-              '[Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md) for technical guidance.';
-
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: welcomeMessage
             });

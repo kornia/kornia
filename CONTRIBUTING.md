@@ -1,7 +1,9 @@
 # Contributing to kornia
 
+## Our social contract
+
 We (maintainers) develop kornia for ourselves and the computer vision community.
-If kornia is useful for you in any way — to import, to prototype, to use as a reference for your agent — that makes us happy.
+If kornia is useful to you in any way — to import, to prototype, to use as a reference for your agent — that makes us happy.
 You are welcome to help us improve kornia: report a bug, implement a feature, propose an idea, answer a question, or simply tell others about the project.
 We try to do our best to accept your help — by reviewing PRs, fixing bugs, and so on — but we do not promise to review every PR, let alone quickly.
 We have jobs, families, health problems, and holidays, just like everyone else.
@@ -9,15 +11,16 @@ We have jobs, families, health problems, and holidays, just like everyone else.
 You may use AI to do the work — so do we. Tell us how AI helped; we do the same.
 Above all, we ask you to care. Good work done with care makes the world better; sloppy work makes the world worse.
 
-We write the technical guidelines below so nobody has to guess. If you have experience with open source, you probably already know most of them.
+The rest of this guide contains practical and technical guidance so nobody has to guess. If you have experience with open source, you probably already know most of it.
 
-## Guidelines
+## Practical guidelines
 
 - Search existing issues and pull requests before starting. Focused fixes and documentation improvements are welcome as pull requests. For a new public API, a behavior change, or a large piece of work, an early issue or discussion can save everyone time. A conversation helps us align; it is not a promise that somebody will review or merge the result.
 - Check the part you changed and tell us what you ran. A bug fix is easier to trust when it includes a test that fails without the fix. Numerical work is easier to review when expected values come from a reference implementation, a paper, or a mathematical invariant.
 - Look for an existing `kornia` utility before adding another implementation. Keep changes focused, follow nearby code, and update the documentation when public behavior changes.
 - Read your own contribution and stay part of the conversation about it. You do not need perfect English or an immediate answer; we care that questions and technical concerns are treated seriously.
 - If AI helped, tell us how. There are no approved or disapproved amounts of AI use.
+- If you are contributing as part of an application, remember that we read the work and review conversation, not pull request counts.
 - Keep project decisions and review discussions in public GitHub issues, discussions, or pull requests so others can find and learn from them.
 - Quiet pull requests may be closed to keep the queue usable. This is housekeeping, not a judgment: reopen one or make a new pull request whenever you want to continue.
 
@@ -44,7 +47,7 @@ We write the technical guidelines below so nobody has to guess. If you have expe
    - [GitHub Sponsors](https://github.com/sponsors/kornia)
    - We're looking for CUDA server donations for testing.
 
-# Developing Kornia
+# Developing kornia
 
 ## Setup
 
@@ -97,7 +100,7 @@ We write the technical guidelines below so nobody has to guess. If you have expe
 
     **Available tasks:**
 
-    Kornia provides several tasks via pixi for common development workflows:
+    kornia provides several tasks via pixi for common development workflows:
 
     ```bash
     # Installation
@@ -110,11 +113,14 @@ We write the technical guidelines below so nobody has to guess. If you have expe
     pixi run test-f64         # Run tests with float64
     pixi run test-slow        # Run slow tests
     pixi run test-quick       # Run quick tests (excludes jit, grad, nn)
+    pixi run test-module tests/<path>  # Run a focused test path
+    KORNIA_TEST_DTYPE=float16,bfloat16 pixi run test  # Run CPU half-precision tests
 
     # CUDA testing (requires cuda environment)
     pixi run -e cuda test-cuda      # Run tests on CUDA
     pixi run -e cuda test-cuda-f32  # Run CUDA tests with float32
     pixi run -e cuda test-cuda-f64  # Run CUDA tests with float64
+    pixi run -e cuda test-cuda-half # Run isolated CUDA float16/bfloat16 tests
 
     # Code quality
     pixi run lint             # Run ruff linting
@@ -300,7 +306,7 @@ We write the technical guidelines below so nobody has to guess. If you have expe
 
 # Best Practices
 
-This section provides guidance for contributing to Kornia, with a focus on Python and PyTorch best practices, performance, and maintainability.
+This section provides guidance for contributing to kornia, with a focus on Python and PyTorch best practices, performance, and maintainability.
 
 ## Before You Start
 
