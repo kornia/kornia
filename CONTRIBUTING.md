@@ -8,7 +8,7 @@ You are welcome to help us improve kornia: report a bug, implement a feature, pr
 We try to do our best to accept your help — by reviewing PRs, fixing bugs, and so on — but we do not promise to review every PR, let alone quickly.
 We have jobs, families, health problems, and holidays, just like everyone else.
 
-You may use AI to do the work — so do we. Tell us how AI helped; we do the same.
+You may use AI to do the work — so do we. There are no approved or disapproved amounts of AI use. Tell us how AI helped; we do the same.
 Above all, we ask you to care. Good work done with care makes the world better; sloppy work makes the world worse.
 
 The rest of this guide contains practical and technical guidance so nobody has to guess. If you have experience with open source, you probably already know most of it.
@@ -19,7 +19,6 @@ The rest of this guide contains practical and technical guidance so nobody has t
 - Check the part you changed and tell us what you ran. A bug fix is easier to trust when it includes a test that fails without the fix. Numerical work is easier to review when expected values come from a reference implementation, a paper, or a mathematical invariant.
 - Look for an existing `kornia` utility before adding another implementation. Keep changes focused, follow nearby code, and update the documentation when public behavior changes.
 - Read your own contribution and stay part of the conversation about it. You do not need perfect English or an immediate answer; we care that questions and technical concerns are treated seriously.
-- If AI helped, tell us how. There are no approved or disapproved amounts of AI use.
 - If you are contributing as part of an application, remember that we read the work and review conversation, not pull request counts.
 - Keep project decisions and review discussions in public GitHub issues, discussions, or pull requests so others can find and learn from them.
 - Quiet pull requests may be closed to keep the queue usable. This is housekeeping, not a judgment: reopen one or make a new pull request whenever you want to continue.
@@ -47,15 +46,15 @@ The rest of this guide contains practical and technical guidance so nobody has t
    - [GitHub Sponsors](https://github.com/sponsors/kornia)
    - We're looking for CUDA server donations for testing.
 
-# Developing kornia
+## Developing kornia
 
-## Setup
+### Setup
 
 1. **Fork** the [repository](https://github.com/kornia/kornia/fork)
 
 2. **Clone your fork** and add upstream:
     ```bash
-    $ git clone git@github.com:<your Github username>/kornia.git
+    $ git clone git@github.com:<your GitHub username>/kornia.git
     $ cd kornia
     $ git remote add upstream https://github.com/kornia/kornia.git
     ```
@@ -114,7 +113,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
     pixi run test-slow        # Run slow tests
     pixi run test-quick       # Run quick tests (excludes jit, grad, nn)
     pixi run test-module tests/<path>  # Run a focused test path
-    KORNIA_TEST_DTYPE=float16,bfloat16 pixi run test  # Run CPU half-precision tests
+    pixi run test-half        # Run CPU float16/bfloat16 tests
 
     # CUDA testing (requires cuda environment)
     pixi run -e cuda test-cuda      # Run tests on CUDA
@@ -175,7 +174,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
 
     We use [pre-commit](https://pre-commit.com) for code quality. Install it with `pre-commit install`. See [coding standards](#coding-standards) below.
 
-# Contributing to Documentation
+## Contributing to Documentation
 
 1. Set up your development environment (see [above](#developing-kornia))
 2. Edit files in `docs/`
@@ -183,7 +182,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
 4. Preview: `open docs/build/html/index.html`
 5. Submit a PR following the [Pull Request](#pull-request) guidelines
 
-# Coding Standards
+## Coding Standards
 
 - **Write small incremental changes:**
   - Commit small, logical changes
@@ -304,11 +303,11 @@ The rest of this guide contains practical and technical guidance so nobody has t
 
 - **Dependencies:** Avoid adding runtime dependencies. If one is useful, explain why existing dependencies are not enough and discuss the trade-off first.
 
-# Best Practices
+## Best Practices
 
 This section provides guidance for contributing to kornia, with a focus on Python and PyTorch best practices, performance, and maintainability.
 
-## Before You Start
+### Before You Start
 
 1. **Start Small**: If you're new to the project, a small bug fix or documentation improvement is a good way to learn the codebase and contribution process.
 
@@ -316,7 +315,7 @@ This section provides guidance for contributing to kornia, with a focus on Pytho
 
 3. **Review Existing Utilities**: Before implementing new functionality, search the codebase for existing utilities in `kornia`.
 
-## Development Workflow
+### Development Workflow
 
 1. **Keep PRs Focused**: Each PR should address a single concern. If you're working on multiple features, create separate PRs for each.
 
@@ -329,7 +328,7 @@ This section provides guidance for contributing to kornia, with a focus on Pytho
 
 3. **Update Documentation**: When adding new features or changing behavior, update docstrings for public APIs. For documentation contributions, see [Contributing to Documentation](#contributing-to-documentation).
 
-## Code Quality
+### Code Quality
 
 1. **Performance Considerations**:
    - Prefer in-place operations when possible (e.g., `tensor.add_(other)` vs `tensor = tensor.add(other)`)
@@ -351,7 +350,7 @@ This section provides guidance for contributing to kornia, with a focus on Pytho
    - Support multiple dtypes (float32, float64, float16, bfloat16) when applicable
    - Handle batched and non-batched inputs consistently
 
-## Testing Best Practices
+### Testing Best Practices
 
 - Write tests for happy paths, error cases, edge conditions, boundary conditions, and integration scenarios
 - Use `BaseTester` from `testing.base` for consistent test structure (see [Coding Standards](#coding-standards) for examples)
@@ -359,25 +358,25 @@ This section provides guidance for contributing to kornia, with a focus on Pytho
 - Make tests deterministic, fast, and independent
 - Use descriptive test names; test both forward pass and gradients when applicable
 
-## Review Process
+### Review Process
 
 - Review your own PR first: check for typos and formatting, run relevant tests, and update affected documentation
 - Respond to review feedback when you can
 - Be open to feedback and explain your decisions when questioned
 - Remember that review is done by people with limited time and may not happen quickly
 
-## Working with AI
+### Working with AI
 
 - AI tools are welcome. Read their output, check it in the same way you would check your own work, and tell us briefly how they helped.
 - Useful details include what the tool did, what you changed afterward, and what you checked yourself. We do not need a percentage or an authorship category.
 
-## Communication
+### Communication
 
 - Write a clear, concise pull request description
 - Link related issues or discussions when they exist
-- Ask questions in Discord, GitHub Discussions, issues, or pull request comments when useful
+- Ask questions in Discord, GitHub Discussions, or pull request comments when useful
 
-# Pull Request
+## Pull Request
 
 Fill in the [pull request template](.github/pull_request_template.md) with enough context for another person to understand the change. Link related issues or discussions when they exist, say what you checked, and tell us how AI helped if you used it.
 
@@ -394,6 +393,6 @@ Reviewers may ask for changes, tests, documentation, or a smaller scope. They ma
 
 If a check fails because of your change, please fix it or explain what you found.
 
-# License
+## License
 
 By contributing, you agree to license your contributions under the Apache License. See [LICENSE](./LICENSE).

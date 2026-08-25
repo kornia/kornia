@@ -48,8 +48,7 @@ Use `KORNIA_TEST_RUNSLOW=true` to include slow tests and `KORNIA_TEST_OPTIMIZER=
 
 ### Precision and device details
 
-- For CPU half-precision coverage, use
-  `KORNIA_TEST_DTYPE=float16,bfloat16 pixi run test-module tests/<path>`.
+- Use `pixi run test-half` for CPU half-precision coverage.
 - CUDA `float16`/`bfloat16` tests need per-test subprocess isolation; use `pixi run -e cuda test-cuda-half` or pytest's `--isolate-half-precision` option.
 - MPS does not support float64 gradcheck. MPS autocast can also change the effective dtype; inspect nearby tests before changing tolerances or skips.
 - TF32 is disabled by default for reproducibility. Enable it only when intentionally testing that mode.

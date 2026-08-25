@@ -289,8 +289,6 @@ If you are using kornia in your research-related documents, it is recommended th
 
 ## Contributing
 
-We develop kornia for ourselves and the computer vision community, and we are happy when other people find it useful or help make it better. AI tools are welcome too; maintainers use them, and we simply ask people to say how AI helped and to treat the resulting work with care.
-
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for our social contract, development setup, and technical guidelines. Participation is subject to the [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 ## Community
