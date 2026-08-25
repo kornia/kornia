@@ -34,7 +34,7 @@ pixi run test-quick
 | `--dtype` | `KORNIA_TEST_DTYPE` | `float32` | `float32`, `float64`, `float16`, `bfloat16`, or `all` |
 | `--runslow` | `KORNIA_TEST_RUNSLOW` | off | Include `@pytest.mark.slow` tests |
 | `--tf32` | `KORNIA_TEST_TF32` | off | Enable TF32 mode (see below) |
-| `--optimizer` | `KORNIA_TEST_OPTIMIZER` | `inductor` | `torch.compile` backend for dynamo tests |
+| `--optimizer` | `KORNIA_TEST_OPTIMIZER` | CLI: `inductor`; env: unset | Select the backend. Only setting the environment variable enables dynamo/compile collection; the CLI option alone does not. |
 | `--isolate-half-precision` | `KORNIA_TEST_ISOLATE_HALF` | off | Run float16/bfloat16 CUDA tests each in a fresh `subprocess.run` process (no shared CUDA state) |
 
 ## Test Structure

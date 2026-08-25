@@ -21,7 +21,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
 - Read your own contribution and stay part of the conversation about it. You do not need perfect English or an immediate answer; we care that questions and technical concerns are treated seriously.
 - If you are contributing as part of an application, remember that we read the work and review conversation, not pull request counts.
 - Keep project decisions and review discussions in public GitHub issues, discussions, or pull requests so others can find and learn from them.
-- Quiet pull requests may be closed to keep the queue usable. This is housekeeping, not a judgment: reopen one or make a new pull request whenever you want to continue.
+- Pull requests are marked stale after 15 quiet days and may be closed 7 days later to keep the queue usable. Comment or push an update to keep yours active; maintainers can add `pinned` when a pull request should remain open without activity. This is housekeeping, not a judgment: reopen one or make a new pull request whenever you want to continue.
 
 ## Ways to Contribute
 
@@ -86,12 +86,15 @@ The rest of this guide contains practical and technical guidance so nobody has t
     **Set up the development environment:**
 
     ```bash
-    # Install all dependencies (defaults to Python 3.11)
+    # Create the default Pixi environment, then install development dependencies
     pixi install
+    pixi run install
 
     # For specific Python versions
     pixi install -e py312  # Python 3.12
+    pixi run -e py312 install
     pixi install -e py313  # Python 3.13
+    pixi run -e py313 install
 
     # For CUDA development (requires reinstall of PyTorch)
     pixi run -e cuda install
@@ -123,6 +126,8 @@ The rest of this guide contains practical and technical guidance so nobody has t
 
     # Code quality
     pixi run lint             # Run ruff linting
+    pixi run pre-commit       # Run all repository pre-commit checks
+    pixi run pre-commit-install  # Install the pre-commit Git hook
     pixi run typecheck        # Run type checking with ty
     pixi run doctest          # Run doctests
 
@@ -151,7 +156,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
     pixi run test
     ```
 
-    **Dependencies:** Defined in `pyproject.toml`. Update it and run `pixi install`.
+    **Dependencies:** Defined in `pyproject.toml`. Update it and run `pixi run install`.
 
     **CUDA:** The CUDA environment uses PyTorch with CUDA 12.1. Run `pixi run -e cuda install` to set it up.
 
@@ -172,7 +177,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
     **dtype options:** `bfloat16`, `float16`, `float32`, `float64`, `all`
     **device options:** `cpu`, `cuda`, `tpu`, `mps`, `all`
 
-    We use [pre-commit](https://pre-commit.com) for code quality. Install it with `pre-commit install`. See [coding standards](#coding-standards) below.
+    We use [pre-commit](https://pre-commit.com) for code quality. Install its Git hook with `pixi run pre-commit-install`. See [coding standards](#coding-standards) below.
 
 ## Contributing to Documentation
 
@@ -321,9 +326,10 @@ This section provides guidance for contributing to kornia, with a focus on Pytho
 
 2. **Test Locally**: Run the checks that are relevant to your change:
    ```bash
-   pixi run lint        # Check formatting and linting
-   pixi run test         # Run all tests
-   pixi run typecheck    # Verify type checking
+   pixi run lint          # Run the Ruff hooks
+   pixi run pre-commit    # Run the full repository checks
+   pixi run test          # Run all tests
+   pixi run typecheck     # Verify type checking
    ```
 
 3. **Update Documentation**: When adding new features or changing behavior, update docstrings for public APIs. For documentation contributions, see [Contributing to Documentation](#contributing-to-documentation).
@@ -388,7 +394,7 @@ Reviewers may ask for changes, tests, documentation, or a smaller scope. They ma
 - Code changes run the CPU test matrix, dynamo/compile tests, and type checking with `ty`
 - Pre-commit checks formatting, linting, license headers, spelling, and repository file hygiene
 - Documentation changes run the documentation build
-- Every pull request gets an automated Copilot review and needs one maintainer approval
+- Every non-draft pull request gets an automated Copilot review and needs one maintainer approval
 - Pull requests are squash-merged
 
 If a check fails because of your change, please fix it or explain what you found.

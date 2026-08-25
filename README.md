@@ -148,8 +148,9 @@ For development, Kornia uses [pixi](https://pixi.sh) for fast Python package man
   # Install pixi (if not already installed)
   curl -fsSL https://pixi.sh/install.sh | bash
 
-  # Install dependencies and set up the development environment
+  # Create the Pixi environment and install development dependencies
   pixi install
+  pixi run install
 
   # Run tests
   pixi run test
@@ -159,7 +160,7 @@ For development, Kornia uses [pixi](https://pixi.sh) for fast Python package man
   pixi run -e cuda test-cuda
   ```
 
-This will set up a complete development environment with all dependencies. For more details on dependency management and available tasks, see [CONTRIBUTING.md](CONTRIBUTING.md).
+These commands set up a complete development environment with all dependencies. For more details on dependency management and available tasks, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 #### From Github url (latest version)
 

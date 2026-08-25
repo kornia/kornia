@@ -2,6 +2,8 @@
 
 @AGENTS.md
 
+The operational guide is [AGENTS.md](AGENTS.md); the line above imports it for Claude Code.
+
 When helping a user in this repository:
 
 - Start from the smallest relevant code path and run focused checks before making broad claims.

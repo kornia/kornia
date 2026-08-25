@@ -4,11 +4,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, ready_for_review]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'LICENSE'
-      - 'COPYRIGHT'
   workflow_dispatch:
 
 permissions:
@@ -19,7 +14,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      run-tests: ${{ steps.filter.outputs.run-tests }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check whether code tests are needed
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]] || \
+             git diff --name-only "$BASE_SHA"...HEAD | grep -Ev '^(docs/|.*\.md$|LICENSE$|COPYRIGHT$)' | grep -q .; then
+            echo "run-tests=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run-tests=false" >> "$GITHUB_OUTPUT"
+          fi
+
   pre-tests:
+    needs: [changes]
+    if: needs.changes.outputs.run-tests == 'true'
     runs-on: ubuntu-latest
     outputs:
       hash: ${{ steps.hashid.outputs.weights-hash }}
@@ -133,7 +151,7 @@ jobs:
     uses: ./.github/workflows/tutorials.yml
 
   collector:
-    needs: [tests, dynamo, typecheck]
+    needs: [changes, pre-tests, tests, dynamo, typecheck, tutorials]
     if: always()
     runs-on: ubuntu-latest
     steps:

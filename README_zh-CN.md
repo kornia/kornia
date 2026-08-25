@@ -90,8 +90,9 @@
   # 安装 pixi（如果尚未安装）
   curl -fsSL https://pixi.sh/install.sh | bash
 
-  # 安装依赖并设置开发环境
+  # 创建 Pixi 环境并安装开发依赖
   pixi install
+  pixi run install
 
   # 运行测试
   pixi run test
@@ -101,7 +102,7 @@
   pixi run -e cuda test-cuda
   ```
 
-  这将设置一个包含所有依赖的完整开发环境。有关依赖管理和可用任务的更多详细信息，请参阅 [CONTRIBUTING.md](CONTRIBUTING.md)。
+  这些命令将设置一个包含所有依赖的完整开发环境。有关依赖管理和可用任务的更多详细信息，请参阅 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
   #### 通过源码安装（从GIT自动下载最新代码）:
 

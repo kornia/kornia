@@ -23,15 +23,18 @@ Use Pixi for project tasks and environment selection. The tasks call `uv`, and P
 
 ```bash
 pixi install
+pixi run install
 pixi install -e py312
+pixi run -e py312 install
 pixi install -e py313
+pixi run -e py313 install
 pixi run -e cuda install
 pixi run test-module tests/path/to/test_file.py
 KORNIA_TEST_OPTIMIZER=inductor pixi run test-module tests/path/to/test_file.py
 pixi run test-quick
 pixi run test-slow
 pixi run lint
-uv run pre-commit run --all-files
+pixi run pre-commit
 pixi run typecheck
 pixi run doctest
 pixi run build-docs
@@ -67,6 +70,7 @@ Use `KORNIA_TEST_RUNSLOW=true` to include slow tests. `KORNIA_TEST_OPTIMIZER=ind
 - Public APIs need type hints, docstrings, and exports.
 - The codebase keeps a 120-character line length and Apache 2.0 source headers. Ruff and `ty` enforce the current style and types.
 - JIT-compatible modules have stricter typing constraints. Follow nearby annotations and use `torch.Tensor` directly where TorchScript expects it.
+- For non-JIT modules, use `from __future__ import annotations`.
 - Avoid new runtime dependencies. If a dependency is genuinely useful, explain why the existing stack is insufficient and consider its install, build, and platform cost.
 
 ## Documentation and generated examples
@@ -89,7 +93,7 @@ Start with a minimal reproduction and the narrowest relevant test. Do not claim 
 Ask only for environment details that help the diagnosis: kornia, PyTorch, and Python versions; OS family; device backend; CUDA availability/version; and GPU model when relevant. Prefer the same privacy-conscious command used by the bug template:
 
 ```bash
-python -c "import kornia, platform, sys, torch; gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'; print(f'kornia {kornia.__version__} | torch {torch.__version__} | python {sys.version.split()[0]} | OS {platform.system()} {platform.release()} | CUDA {torch.version.cuda} (available={torch.cuda.is_available()}, GPU={gpu}) | MPS={torch.backends.mps.is_available()}')"
+python -W ignore -c "import kornia, platform, sys, torch; gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'; print(f'kornia {kornia.__version__} | torch {torch.__version__} | python {sys.version.split()[0]} | OS {platform.platform()} | CUDA {torch.version.cuda} (available={torch.cuda.is_available()}, GPU={gpu}) | MPS={torch.backends.mps.is_available()}')"
 ```
 
 Before asking a user to share broader diagnostic output, tell them to preview and redact it. Do not request usernames, home or project paths, environment variables, tokens, internal hostnames, or names of private data and models.
