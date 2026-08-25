@@ -21,8 +21,8 @@ python benchmarks/augmentation/flagship.py --batches 1,8,32 --size 256 --device 
 python benchmarks/augmentation/pipeline.py --batch 32 --size 224 --device cuda --compile
 ```
 
-Each script prints the git commit, platform, and (on CUDA) the device name, per the benchmark
-guidelines in the root `CLAUDE.md`. Optional libraries that are not installed are reported as a
+Each script prints the git commit, platform, and (on CUDA) the device name, per the methodology
+contract in [`benchmarks/README.md`](../README.md). Optional libraries that are not installed are reported as a
 skip line rather than failing the run.
 
 ## The regimes — why the numbers are not apples-to-apples

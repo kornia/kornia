@@ -1,22 +1,19 @@
-## Which lane? *(check one — see [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#which-lane-is-your-contribution))*
-- [ ] 🟢 **Green lane** — test-first bug fix / verified docs fix / [`help wanted`](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) issue / benchmark results. No prior issue needed.
-- [ ] 🟠 **Discuss-first** — feature or behavior change; a maintainer confirmed the scope on the linked issue.
+## What does this pull request do?
 
-**Fixes/Relates to:** # *(issue number, if any)*
+<!-- Explain the problem and the change. A few clear sentences are enough. -->
 
-## What does this PR do?
+## Related issue or discussion
 
-<!-- A few sentences. For bug fixes: which test fails on main without this fix? -->
+<!-- Link one if it exists, for example: Fixes #123. This is optional. -->
 
-## Test log
+## What did you check?
 
-<!-- Paste your local test run (required for functional changes): -->
+<!-- List the tests, examples, or manual checks you ran, and include useful results. -->
 
-```
-$ pixi run test tests/...
+```text
+$ pixi run test-module tests/...
 ```
 
-## AI Usage Disclosure *(pick the closest — the 🟡/🔴 line is fuzzy and only deception is sanctioned; none of these is a bad answer, see [AI_POLICY.md](https://github.com/kornia/kornia/blob/main/AI_POLICY.md))*
-- [ ] 🟢 **Human-written**
-- [ ] 🟡 **AI-assisted** — AI helped; I reviewed the resulting change and ran the relevant tests
-- [ ] 🔴 **AI-generated** — an agent wrote most of it; I verified the result and can address reviewer questions
+## How did AI help?
+
+<!-- If you used AI, briefly say what it helped with and what you checked or changed afterward. Otherwise, leave this blank. -->

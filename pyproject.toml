@@ -79,13 +79,6 @@ docs = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.codeflash]
-module-root = "kornia"
-tests-root = "tests"
-test-framework = "pytest"
-ignore-paths = []
-formatter-cmds = ["disabled"]
-
 # =============================================================================
 # uv configuration
 # =============================================================================

@@ -176,7 +176,7 @@ corrupting the CUDA context and causing unrelated float32 tests to fail.
 .. code-block:: bash
 
    # Standard precision — default CI
-   pixi run test tests/ --dtype=float32,float64
+   pixi run test --dtype=float32,float64
 
    # Half-precision — run in isolation, per directory
    pytest tests/color/     --dtype=float16,bfloat16

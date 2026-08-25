@@ -1,7 +1,7 @@
 name: 🐛 Bug Report
 description: Something is broken or gives wrong results
 title: "[Bug]: "
-labels: ["bug"]
+labels: ["bug :bug:"]
 
 body:
   - type: markdown
@@ -9,9 +9,8 @@ body:
       value: |
         Thanks for the report! Please search existing issues first.
 
-        **Want to fix it yourself?** You don't need permission: send a PR with a test
-        that fails on `main` plus your fix — see the
-        [green lane](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#which-lane-is-your-contribution).
+        If you want to investigate or fix it yourself, you are welcome to send a pull
+        request. A small reproduction and a regression test are especially helpful.
 
   - type: textarea
     id: what-happened
@@ -39,15 +38,18 @@ body:
     attributes:
       label: Environment
       description: |
-        Easiest: paste the output of this one-liner (add `python -m torch.utils.collect_env` for full GPU detail):
+        This command reports the versions and compute backend that usually matter without
+        collecting usernames, paths, environment variables, or hostnames:
         ```
-        python -c "import kornia, torch, sys, platform; print(f'kornia {kornia.__version__} | torch {torch.__version__} | python {sys.version.split()[0]} | {platform.platform()} | cuda {torch.version.cuda} (avail={torch.cuda.is_available()}) | mps={torch.backends.mps.is_available()}')"
+        python -W ignore -c "import kornia, platform, sys, torch; gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'; backend=torch.version.cuda or getattr(torch.version, 'hip', None); print(f'kornia {kornia.__version__} | torch {torch.__version__} | python {sys.version.split()[0]} | OS {platform.platform()} | CUDA/ROCm {backend} (available={torch.cuda.is_available()}, GPU={gpu}) | MPS={torch.backends.mps.is_available()}')"
         ```
+        Preview and redact any other diagnostic output before posting it. Do not share
+        usernames, home or project paths, tokens, internal hostnames, or private data names.
       value: |
         - Kornia version:
         - PyTorch version:
         - Python version:
-        - OS / device (CPU, CUDA, MPS):
+        - OS / device (CPU, CUDA, ROCm, MPS):
     validations:
       required: true
 

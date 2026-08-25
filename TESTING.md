@@ -11,16 +11,16 @@ Kornia uses [pixi](https://pixi.sh) to manage the test environment.
 pixi run test
 
 # Specific file
-pixi run test tests/geometry/test_boxes.py
+pixi run test-module tests/geometry/test_boxes.py
 
 # Specific device and dtype
-pixi run test tests/ --device=cuda --dtype=float32
+pixi run test-module tests/ --device=cuda --dtype=float32
 
 # All devices and dtypes
-pixi run test tests/ --device=all --dtype=all
+pixi run test --device=all --dtype=all
 
 # Skip slow tests (default); include them with --runslow
-pixi run test tests/ --runslow
+pixi run test --runslow
 
 # Quick tests (excludes jit, grad, nn markers)
 pixi run test-quick
@@ -34,7 +34,7 @@ pixi run test-quick
 | `--dtype` | `KORNIA_TEST_DTYPE` | `float32` | `float32`, `float64`, `float16`, `bfloat16`, or `all` |
 | `--runslow` | `KORNIA_TEST_RUNSLOW` | off | Include `@pytest.mark.slow` tests |
 | `--tf32` | `KORNIA_TEST_TF32` | off | Enable TF32 mode (see below) |
-| `--optimizer` | `KORNIA_TEST_OPTIMIZER` | `inductor` | `torch.compile` backend for dynamo tests |
+| `--optimizer` | `KORNIA_TEST_OPTIMIZER` | CLI: `inductor`; env: unset | Select the backend. Only setting the environment variable enables dynamo/compile collection; the CLI option alone does not. |
 | `--isolate-half-precision` | `KORNIA_TEST_ISOLATE_HALF` | off | Run float16/bfloat16 CUDA tests each in a fresh `subprocess.run` process (no shared CUDA state) |
 
 ## Test Structure
@@ -199,7 +199,7 @@ If you write a new function that calls SVD, use `_torch_svd_cast` rather than ca
 
 ```bash
 # Standard CI — all devices, float32 and float64 only
-pixi run test tests/ --dtype=float32,float64
+pixi run test --dtype=float32,float64
 
 # Half-precision — run separately, per directory or file
 pytest tests/color/           --dtype=float16,bfloat16
@@ -225,7 +225,7 @@ pytest tests/geometry/  --device=cuda --dtype=all      --isolate-half-precision
 
 # Via pixi tasks
 pixi run test-half        # float16 + bfloat16, CPU
-pixi run test-cuda-half   # float16 + bfloat16, CUDA, with isolation
+pixi run -e cuda test-cuda-half   # float16 + bfloat16, CUDA, with isolation
 ```
 
 Without `--isolate-half-precision`, float16/bfloat16 CUDA tests are **skipped** (safe default for combined runs).

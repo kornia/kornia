@@ -1,28 +1,21 @@
-Contribute to Kornia
+Contribute to kornia
 ====================
 
-Everyone is welcomed to get involved with the project. There are different ways in how you can put your two cents:
+We develop kornia for ourselves and the computer vision community. If the library is
+useful to you, that makes us happy, and you are welcome to help in whatever way suits
+you: report a bug, propose an idea, send code or documentation, answer a question, or
+tell others about the project.
 
-1. Ask/Answer questions in the #kornia tag in `Kornia Discuss <https://github.com/kornia/kornia/discussions>`_:
-    - Please, don't use GitHub issues for Q&A.
+Maintainers review and respond when they can, but we cannot promise that every issue
+or pull request will be reviewed or merged. Our social contract, development setup,
+and technical guidelines are in the
+`Contributing guide <https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md>`_.
 
-2. Report bugs through GitHub issues:
-    - Do a quick search first to see whether others reported a similar issue.
-    - In case you find an unreported bug, please open a new ticket.
-    - Try to provide as much information as possible.
+Community links
+---------------
 
-3. Join our Slack `[HERE] <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA>`_
-
-4. Fix a bug or develop a feature from the roadmap:
-    - We will always have an open ticket showing the current roadmap.
-    - Pick an unassigned feature (or potentially propose new one) or an open bug ticket.
-    - Follow the instructions from `Developing Kornia <https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#developing-kornia>`_ to set up your development environment and start coding.
-    - Checkout our coding conventions. See more details below.
-    - Run the test framework locally and make sure all works as expected before sending a pull request.
-    - Open a Pull Request, get the green light from the CI and get your code merged.
-
-5. Donate resources to the project through `GitHub Sponsor <https://github.com/sponsors/edgarriba>`_ or `Open Collective <https://opencollective.com/kornia>`_ !
-
-For more information about our development process, see our `Developers corner <https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#developing-kornia>`_.
-
-**Happy coding !**
+- Ask questions and discuss ideas in `GitHub Discussions <https://github.com/kornia/kornia/discussions>`_.
+- Report bugs and propose concrete changes in `GitHub Issues <https://github.com/kornia/kornia/issues/new/choose>`_.
+- Talk with people who use and develop kornia on `Discord <https://discord.gg/HfnywwpBnD>`_.
+- Support the project through `GitHub Sponsors <https://github.com/sponsors/kornia>`_
+  or `Open Collective <https://opencollective.com/kornia>`_.

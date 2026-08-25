@@ -148,8 +148,9 @@ For development, Kornia uses [pixi](https://pixi.sh) for fast Python package man
   # Install pixi (if not already installed)
   curl -fsSL https://pixi.sh/install.sh | bash
 
-  # Install dependencies and set up the development environment
+  # Create the Pixi environment and install development dependencies
   pixi install
+  pixi run install
 
   # Run tests
   pixi run test
@@ -159,7 +160,7 @@ For development, Kornia uses [pixi](https://pixi.sh) for fast Python package man
   pixi run -e cuda test-cuda
   ```
 
-This will set up a complete development environment with all dependencies. For more details on dependency management and available tasks, see [CONTRIBUTING.md](CONTRIBUTING.md).
+These commands set up a complete development environment with all dependencies. For more details on dependency management and available tasks, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 #### From Github url (latest version)
 
@@ -252,18 +253,18 @@ tf_kornia = kornia.to_tensorflow()
 
 ## Call For Contributors
 
-Are you passionate about computer vision, AI, and open-source development? Join us in shaping the future of Kornia! We are actively seeking contributors to help strengthen the library — making it more correct, faster, and better specified. Whether you're an experienced developer or just starting, there's a place for you in our community.
+If kornia is useful to you and you would like to help, contributions of many kinds are welcome: code, bug reports, benchmarks, documentation, questions, answers, and examples. The maintainers have limited time, so we cannot promise that every proposal or pull request will be reviewed or merged.
 
 ### Strengthen the Core (Priority)
 
 Kornia's differentiated value is its geometry core: warping and sampling, homographies, cameras, epipolar geometry, rotations and Lie groups, and geometry-consistent augmentation. The highest-impact contributions make that core more trustworthy — see the [Roadmap](ROADMAP.md) for the full picture. Great entry points:
 
-- **Benchmark results from your hardware** *(green lane — just send the PR)*: run the benchmark suite with `--contribute` and send the JSON — CUDA numbers from diverse GPUs are especially wanted.
-- **Convention pinning tests and conformance vectors** for core geometry ops *(green lane once curated into a `help wanted` issue with acceptance criteria)*.
-- **Corrective error messages** *(same curation rule)*: upgrade bare shape asserts into errors that state what was wrong, what was expected, and which convention applies.
-- **Classical vision in the core domain** *(discuss-first — open an issue)*: camera intrinsic calibration, fiducial markers (ArUco/ChArUco), classical tracking, dense stereo, Hough transforms.
+- **Benchmark results from your hardware**: run the benchmark suite with `--contribute` and send the JSON — CUDA numbers from diverse GPUs are especially useful.
+- **Convention pinning tests and conformance vectors** for core geometry operations.
+- **Corrective error messages**: upgrade bare shape assertions into errors that state what was wrong, what was expected, and which convention applies.
+- **Classical vision in the core domain**: camera intrinsic calibration, fiducial markers (ArUco/ChArUco), classical tracking, dense stereo, and Hough transforms. An early design discussion can be useful for work of this size.
 
-See the [Roadmap's contributor areas](ROADMAP.md#areas-seeking-contributors) for how each of these routes through the contribution lanes.
+See the [Roadmap's contributor areas](ROADMAP.md#areas-seeking-contributors) for more project context.
 
 ### AI Models
 
@@ -289,18 +290,13 @@ If you are using kornia in your research-related documents, it is recommended th
 
 ## Contributing
 
-We appreciate all contributions, and we are honest about the world we operate in: AI makes code cheap to write, and volunteer review time is our scarcest resource. So our process gates on **evidence, not permission**:
-
-- **Small, evidence-bearing fixes go straight to a PR** — a bug fix with a test that fails on `main`, a docs fix with a verification snippet, or any [`help wanted`](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) issue (pre-approved, no assignment needed — the best-supported PR wins).
-- **Features and behavior changes need a conversation first** — open an issue and get the scope confirmed before writing code. In a geometry library, changed defaults break users silently, so these get extra care.
-- **AI use is fine — including fully agent-written PRs.** Our own maintainers work this way. What we require is that *you* verified everything (pasted test logs, evidence-backed tests), can answer questions about the code during review, and disclose AI use honestly. What closes PRs is unverified work or unresolved correctness concerns — regardless of how the code was made.
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the details and [AI_POLICY.md](AI_POLICY.md) for the full policy. Participation is subject to the [Code of Conduct](./CODE_OF_CONDUCT.md).
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for our social contract, development setup, and technical guidelines. Participation is subject to the [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 ## Community
-- **Discord:** Join our workspace to keep in touch with our core contributors, get latest updates on the industry and  be part of our community. [JOIN HERE](https://discord.gg/HfnywwpBnD)
-- **GitHub Issues:** bug reports, feature requests, install issues, RFCs, thoughts, etc. [OPEN](https://github.com/kornia/kornia/issues/new/choose)
-- **Forums:** discuss implementations, research, etc. [GitHub Forums](https://github.com/kornia/kornia/discussions)
+
+- **Discord:** talk with people who use and develop kornia. [Join the server](https://discord.gg/HfnywwpBnD)
+- **GitHub Issues:** report bugs and propose concrete changes. [Open an issue](https://github.com/kornia/kornia/issues/new/choose)
+- **GitHub Discussions:** ask questions and discuss implementations, research, and ideas. [Join a discussion](https://github.com/kornia/kornia/discussions)
 
 <a href="https://github.com/Kornia/kornia/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=Kornia/kornia" width="60%" />

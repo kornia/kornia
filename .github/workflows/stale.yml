@@ -16,11 +16,11 @@ jobs:
     steps:
       - uses: actions/stale@v11
         with:
-          stale-pr-message: "This pull request has been quiet for a while, so we're marking it stale to keep the queue readable. If you're still working on it, any comment or push resets the clock. If you're waiting on *us* (a review or an answer), say so — a maintainer will add the `awaiting-review` label, which stops this timer. Otherwise it will be closed in 7 days; you can reopen anytime."
-          close-pr-message: "Closed for inactivity to keep the queue readable — this is bookkeeping, not a rejection. Feel free to reopen whenever you're ready to continue."
+          stale-pr-message: "This pull request has been quiet for a while, so we're marking it stale to keep the queue readable. If you want to keep it open, leave a comment or push an update. Maintainers can add the `pinned` label to exempt it from the stale sweep. Otherwise it will be closed in 7 days. This is housekeeping, not a rejection, and you can reopen it whenever you want to continue."
+          close-pr-message: "Closed for inactivity to keep the queue readable — this is housekeeping, not a rejection. Feel free to reopen whenever you're ready to continue."
           days-before-pr-stale: 15
           days-before-pr-close: 7
           stale-pr-label: "stale"
-          exempt-pr-labels: "pinned,work-in-progress,on-hold,awaiting-review"
+          exempt-pr-labels: "pinned"
           days-before-issue-stale: -1
           days-before-issue-close: -1
