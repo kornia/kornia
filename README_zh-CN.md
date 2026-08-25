@@ -139,24 +139,16 @@
   ```
 
 ## 贡献
-我们感谢所有的贡献者为改进和提升 Kornia 所作出的努力。您可以直接修复一个已知的BUG而无需进一步讨论；如果您想要添加一个任何新的或者扩展功能，请务必先通过提交一个Issue来与我们讨论。详情请阅读 [贡献指南](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md)。开源项目的参与者请务必了解如下 [规范](https://github.com/kornia/kornia/blob/main/CODE_OF_CONDUCT.md)。
+我们（维护者）为自己和计算机视觉社区开发 kornia。如果它对您有用，或者您愿意通过代码、错误报告、文档、问题或想法来帮助改进它，我们都会很高兴。维护者的时间有限，因此我们无法承诺审查或合并每一项提议。详情请阅读 [贡献指南](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md)。参与本项目时也请遵守 [行为准则](https://github.com/kornia/kornia/blob/main/CODE_OF_CONDUCT.md)。
 
 ### AI 政策
 
-Kornia 接受 AI 辅助的代码，但严格拒绝提交者仅作为代理的 AI 生成贡献。所有贡献者必须是每一行代码的**唯一责任作者**。在提交 pull request 之前，请查看我们的 [AI 政策](AI_POLICY.md)。主要要求包括：
-
-- **验证证据**：PR 必须包含本地测试日志以证明代码已执行
-- **事前讨论**：所有 PR 在实施前必须在 Discord 或通过 GitHub issue 进行讨论
-- **库引用**：实现必须基于现有库引用（PyTorch、OpenCV 等）
-- **使用现有工具**：使用现有的 `kornia` 工具，而不是重新发明轮子
-- **解释能力**：您必须能够解释您提交的任何代码
-
-自动化 AI 审查工具（例如 GitHub Copilot）将根据这些政策检查 PR。完整详情请参阅 [AI_POLICY.md](AI_POLICY.md)。
+您可以使用 AI 完成工作，维护者也会使用。请说明 AI 如何提供了帮助，并认真检查最终的工作。我们不按 AI 的使用量对贡献进行分类，也没有一套专门针对 AI 生成内容的额外规则。完整的社会契约和技术指南请参阅 [贡献指南](CONTRIBUTING.md)；[AI 政策](AI_POLICY.md)只是该核心原则的简短说明。
 
 ## 社区
 - **论坛:** 讨论代码实现，学术研究等。[GitHub Forums](https://github.com/kornia/kornia/discussions)
 - **GitHub Issues:** bug reports, feature requests, install issues, RFCs, thoughts, etc. [OPEN](https://github.com/kornia/kornia/issues/new/choose)
-- **Slack:** 加入我们的Slack社区，与我们的核心贡献者保持联系。 [JOIN HERE](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA)
+- **Discord:** 加入我们的 Discord 社区，与使用和开发 kornia 的人交流。[加入](https://discord.gg/HfnywwpBnD)
 - 常见信息请访问我们的网站 www.kornia.org
 
 ## 中文社区

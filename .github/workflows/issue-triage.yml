@@ -19,9 +19,7 @@ jobs:
           script: |
             const author = context.payload.issue.user.login;
 
-            // The triage label and wait-for-assignment message exist to route
-            // external contributors; maintainers (write access or above)
-            // triage their own issues.
+            // Maintainers triage issues they open without the automated label or reply.
             let isMaintainer = false;
             try {
               const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
@@ -35,7 +33,7 @@ jobs:
             }
 
             if (isMaintainer) {
-              core.info(`@${author} has write access or above; skipping triage label and welcome message.`);
+              core.info(`@${author} has write access or above; skipping automated triage.`);
               return;
             }
 
@@ -47,12 +45,10 @@ jobs:
             });
 
             const welcomeMessage = '## 👋 Thanks for opening an issue!\n\n' +
-              'A maintainer will take a look. If you want to contribute a fix, here is how it works:\n\n' +
-              '- **Bug you can reproduce?** You do not need to wait for anyone: send a PR with a test ' +
-              'that fails on `main` plus your fix — that failing test is your permission slip (🟢 green lane).\n' +
-              '- **Feature or behavior change?** Please wait for a maintainer to confirm the scope on this ' +
-              'issue before writing code (🟠 discuss-first lane) — it protects you from building something we cannot merge.\n\n' +
-              'See [Which lane is your contribution?](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#which-lane-is-your-contribution) for details.';
+              'This issue is now in the triage queue. Maintainers will respond when they can, but we cannot promise a review or a timeline.\n\n' +
+              'If you learn more, add it here. A minimal reproduction is especially useful for bugs. ' +
+              'You are also welcome to send a pull request. See the ' +
+              '[Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md) for technical guidance.';
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,

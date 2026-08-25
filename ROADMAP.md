@@ -5,10 +5,9 @@ high-impact work, to show users the direction of the project, and to make our
 priorities legible to the wider community.
 
 It is a living document. Dates are intentions, not commitments, and priorities shift
-as the ecosystem does. If you want to work on something here, check which
-contribution lane it falls into first (see
-[CONTRIBUTING.md](CONTRIBUTING.md)): small evidence-bearing fixes can go straight to
-a PR; features and behavior changes need a discussion on an issue first.
+as the ecosystem does. If you want to work on something here, the technical guidelines
+and social contract are in [CONTRIBUTING.md](CONTRIBUTING.md). For large features or
+behavior changes, an early conversation may save work and surface compatibility concerns.
 
 **Where Kornia is going.** Kornia is becoming the **reference implementation and
 executable specification** for differentiable computer vision and geometry in the
@@ -98,8 +97,8 @@ Four engineering north stars shape the roadmap below.
    and hand-written Triton kernels are reserved for the small set of ops `inductor`
    structurally cannot fuse.
 
-A fifth theme, **breadth**, is community-driven and runs through the discuss-first
-lane. One boundary is stated openly: **model-zoo expansion is frozen.** No new model
+A fifth theme, **breadth**, is community-driven. One boundary is stated openly:
+**model-zoo expansion is frozen.** No new model
 or VLM/VLA integrations while maintainer bandwidth concentrates on the core; shipped
 wrappers (LoFTR, LightGlue, DISK, DeDoDe, SAM, XFeat, ALIKED, Kimi-VL, …) remain
 available and maintained under a *usable-or-deleted* rule. The single exception
@@ -126,9 +125,8 @@ and finish under the rules they started under.
 - **CI truthfulness.** Every advertised CI matrix axis must actually reach the code
   under test; first repair is the unused pytorch-version axis
   ([#3930](https://github.com/kornia/kornia/issues/3930)).
-- **Contribution policy v2** ([#3932](https://github.com/kornia/kornia/pull/3932)):
-  the two-lane model (green lane / discuss-first), verification-based AI policy, and
-  minimized templates.
+- **Contribution documentation:** keep the social contract, technical guidance, and
+  project automation consistent and easy to understand.
 - **Progressively enable more `ruff` rule sets** to raise code health
   ([#2445](https://github.com/kornia/kornia/issues/2445)).
 - **Docs modernization** — evaluate the migration to MkDocs
@@ -139,8 +137,8 @@ and finish under the rules they started under.
   resolved; newly found maintenance work gets a current tracking issue with
   acceptance criteria — no new integrations.
 - **`help wanted` label audit.** Older issue templates auto-applied the label;
-  re-triage the open `help wanted` issues so the label only marks genuinely
-  pre-approved work with acceptance criteria, as the green lane requires.
+  re-triage open issues so the label points to current, well-described work where
+  outside help would be useful.
 
 ## Medium term — ~6 months
 
@@ -230,15 +228,12 @@ and finish under the rules they started under.
 
 ## Areas seeking contributors
 
-We especially welcome help in these areas. Curated
-[`help wanted`](https://github.com/kornia/kornia/labels/help%20wanted) issues with
-explicit acceptance criteria are green-lane entry points. While the legacy-label
-audit (short-term work above) is pending, check that the issue actually contains
-those criteria or an explicit maintainer confirmation before starting. No
-assignment needed — and if duplicate PRs land, maintainers merge the
-best-supported implementation, not the earliest. For anything feature-shaped,
-open or comment on an issue first (discuss-first lane, see
-[CONTRIBUTING.md](CONTRIBUTING.md)).
+We especially welcome help in these areas. The
+[`help wanted`](https://github.com/kornia/kornia/labels/help%20wanted) label is one
+place to look, although some older issues still need to be checked for current scope
+and context. Search for related issues and pull requests before investing substantial
+work, and see [CONTRIBUTING.md](CONTRIBUTING.md) for the social contract and technical
+guidelines.
 
 **Classical vision in the core domain (highest priority):** these strengthen exactly
 the geometry/camera surface the project is built around.
@@ -255,22 +250,20 @@ the geometry/camera surface the project is built around.
 
 **Reference-core contributions:**
 
-- **Benchmark results from your hardware** (unconditionally green lane) — run the
+- **Benchmark results from your hardware** — run the
   suite with `--contribute` and send the JSON; CUDA numbers from diverse GPUs are
   especially wanted.
-- **Good candidates for curated `help wanted` issues** — convention pinning tests
-  and conformance vectors for core geometry ops; corrective error messages
-  (upgrading bare shape asserts into errors that state what was wrong, what was
-  expected, which convention applies, and the likely fix). These become green-lane
-  once a maintainer has written acceptance criteria into a `help wanted` issue —
-  pinning behavior and changing raised errors are contract-adjacent edits, so they
-  need that curation step first.
+- **Convention pinning tests and conformance vectors** for core geometry operations,
+  and **corrective error messages** (upgrading bare shape asserts into errors that
+  state what was wrong, what was expected, which convention applies, and the likely
+  fix). Because these changes can define or alter public behavior, sharing the
+  intended contract early is useful.
 
-**Augmentation parity** — low-priority, community-driven, discuss-first: Kornia does
+**Augmentation parity** — low-priority and community-driven: Kornia does
 not compete on generic augmentation breadth (the differentiated value is
-differentiability, GPU batching, and transform tracking), but well-motivated parity
-transforms are accepted through the discuss-first lane: dropout-family transforms
-(CoarseDropout, GridDropout), grid/optical distortion, weather effects (fog, sun-flare),
+differentiability, GPU batching, and transform tracking). Ideas in this area include
+dropout-family transforms (CoarseDropout, GridDropout), grid/optical distortion,
+weather effects (fog, sun-flare),
 noise variants (ISO noise), and additional compression transforms.
 
 **Learned models — frozen (see the guiding themes):**
@@ -296,9 +289,7 @@ noise variants (ISO noise), and additional compression transforms.
 
 ## How to contribute
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, guidelines, and the two-lane
-model: **green lane** (test-first bug fixes, verified docs fixes, `help wanted`
-issues, benchmark results — just send the PR) and **discuss-first** (features and
-behavior changes — align on scope in an issue before writing code). Include local
-test output in your PR and cite a reference (paper, OpenCV, PyTorch, etc.) for any
-new algorithm.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the social contract, development setup,
+and technical guidelines. Tell us what you checked and how AI helped, if you used it.
+For a new algorithm, a reference such as a paper, OpenCV, or PyTorch makes the idea
+and implementation easier to understand.

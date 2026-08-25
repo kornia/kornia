@@ -11,6 +11,16 @@ Above all, we ask you to care. Good work done with care makes the world better; 
 
 We write the technical guidelines below so nobody has to guess. If you have experience with open source, you probably already know most of them.
 
+## Guidelines
+
+- Search existing issues and pull requests before starting. Focused fixes and documentation improvements are welcome as pull requests. For a new public API, a behavior change, or a large piece of work, an early issue or discussion can save everyone time. A conversation helps us align; it is not a promise that somebody will review or merge the result.
+- Check the part you changed and tell us what you ran. A bug fix is easier to trust when it includes a test that fails without the fix. Numerical work is easier to review when expected values come from a reference implementation, a paper, or a mathematical invariant.
+- Look for an existing `kornia` utility before adding another implementation. Keep changes focused, follow nearby code, and update the documentation when public behavior changes.
+- Read your own contribution and stay part of the conversation about it. You do not need perfect English or an immediate answer; we care that questions and technical concerns are treated seriously.
+- If AI helped, tell us how. There are no approved or disapproved amounts of AI use.
+- Keep project decisions and review discussions in public GitHub issues, discussions, or pull requests so others can find and learn from them.
+- Quiet pull requests may be closed to keep the queue usable. This is housekeeping, not a judgment: reopen one or make a new pull request whenever you want to continue.
+
 ## Ways to Contribute
 
 1. **Ask/Answer questions:**
@@ -27,7 +37,7 @@ We write the technical guidelines below so nobody has to guess. If you have expe
 3. **Fix bugs or add features:**
    - Check [help wanted issues](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) for starting points.
    - Follow the [development setup](#developing-kornia) below.
-   - See [Pull Request](#pull-request) section for PR requirements.
+   - See the [Pull Request](#pull-request) section for practical guidance.
 
 4. **Donate resources:**
    - [Open Collective](https://opencollective.com/kornia)
@@ -148,10 +158,10 @@ We write the technical guidelines below so nobody has to guess. If you have expe
     pixi run test
 
     # Run specific test file
-    pixi run test tests/<TEST_TO_RUN>.py
+    pixi run test-module tests/<TEST_TO_RUN>.py
 
     # For specific test with pytest options
-    pixi run test tests/<TEST_TO_RUN>.py --dtype=float32,float64 --device=all
+    pixi run test-module tests/<TEST_TO_RUN>.py --dtype=float32,float64 --device=all
     ```
 
     **dtype options:** `bfloat16`, `float16`, `float32`, `float64`, `all`
@@ -163,7 +173,7 @@ We write the technical guidelines below so nobody has to guess. If you have expe
 
 1. Set up your development environment (see [above](#developing-kornia))
 2. Edit files in `docs/`
-3. Build docs: `make build-docs`
+3. Build docs: `pixi run build-docs`
 4. Preview: `open docs/build/html/index.html`
 5. Submit a PR following the [Pull Request](#pull-request) guidelines
 
@@ -277,8 +287,8 @@ We write the technical guidelines below so nobody has to guess. If you have expe
   - Follow [PEP8](https://www.python.org/dev/peps/pep-0008/)
   - Use f-strings: [PEP 498](https://peps.python.org/pep-0498/)
   - Line length: 120 characters
-  - Comments must be written in English and verified by a human with a good understanding of the code
-  - Obvious or redundant comments are not allowed (see [Best Practices](#best-practices) for comment guidelines)
+  - Write comments in English so they are useful to the whole community
+  - Prefer comments that explain why; remove comments that merely repeat the code or no longer match it
   - W504 (line break after binary operator) is sometimes acceptable. Example:
 
     ```python
@@ -286,7 +296,7 @@ We write the technical guidelines below so nobody has to guess. If you have expe
                   A[:, :, 0:1, 1:2] * A[:, :, 1:2, 0:1])
     ```
 
-- **Third-party libraries:** Not allowed. Only PyTorch.
+- **Dependencies:** Avoid adding runtime dependencies. If one is useful, explain why existing dependencies are not enough and discuss the trade-off first.
 
 # Best Practices
 
@@ -294,19 +304,17 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
 
 ## Before You Start
 
-1. **Know Your Lane**: Fixes that carry their own evidence (failing test + fix, verified docs corrections, `help wanted` issues) can go straight to a PR. For features and behavior changes, discuss first — Discord is a fine place for the conversation, but capture the outcome in a GitHub issue with maintainer scope confirmation, since that issue is what your PR links to. See [Which lane is your contribution?](#which-lane-is-your-contribution).
+1. **Start Small**: If you're new to the project, a small bug fix or documentation improvement is a good way to learn the codebase and contribution process.
 
-2. **Start Small**: If you're new to the project, start with small bug fixes or documentation improvements to familiarize yourself with the codebase and contribution process.
+2. **Understand the Codebase**: Take time to explore existing code patterns, architecture, and conventions before implementing new features.
 
-3. **Understand the Codebase**: Take time to explore existing code patterns, architecture, and conventions before implementing new features.
-
-4. **Review Existing Utilities**: Before implementing new functionality, search the codebase for existing utilities in `kornia`. This aligns with the AI Policy's Hallucination & Redundancy Ban (see [Policies and Guidelines](#policies-and-guidelines)).
+3. **Review Existing Utilities**: Before implementing new functionality, search the codebase for existing utilities in `kornia`.
 
 ## Development Workflow
 
 1. **Keep PRs Focused**: Each PR should address a single concern. If you're working on multiple features, create separate PRs for each.
 
-2. **Test Locally First**: Always run all relevant tests locally before submitting (see [Pull Request](#pull-request) for requirements):
+2. **Test Locally**: Run the checks that are relevant to your change:
    ```bash
    pixi run lint        # Check formatting and linting
    pixi run test         # Run all tests
@@ -332,7 +340,7 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
    - Avoid over-engineering; start simple and refactor when needed
 
 3. **Tensor Operations**:
-   - Use `kornia` utilities instead of reimplementing common operations (see [AI Policy](#policies-and-guidelines))
+   - Use `kornia` utilities instead of reimplementing common operations
    - Ensure operations are device-agnostic (work on CPU, CUDA, MPS, etc.)
    - Support multiple dtypes (float32, float64, float16, bfloat16) when applicable
    - Handle batched and non-batched inputs consistently
@@ -347,120 +355,38 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
 
 ## Review Process
 
-- Review your own PR first: check for typos/formatting, verify tests pass, ensure documentation is updated, and confirm AI policy compliance
-- Respond promptly to review feedback
+- Review your own PR first: check for typos and formatting, run relevant tests, and update affected documentation
+- Respond to review feedback when you can
 - Be open to feedback and explain your decisions when questioned
-- See [Pull Request](#pull-request) section for review requirements
+- Remember that review is done by people with limited time and may not happen quickly
 
-## AI-Assisted Development
+## Working with AI
 
-- Own the code you submit: understand it and be ready to address reviewer questions about it (see [AI Policy](#policies-and-guidelines))
-- Review AI output thoroughly: check for unnecessary complexity, verify it follows project conventions, ensure it uses existing utilities, and test it
-- Be transparent in PR descriptions about what was AI-assisted and what you manually reviewed (see [Pull Request](#pull-request) for AI Usage Disclosure requirements)
-- **AI Usage Disclosure in PR Template**: When completing the PR template's "AI Usage Disclosure" section:
-  - Mark as **🟢 Human-written** if you wrote all code manually without AI assistance
-  - Mark as **🟡 AI-assisted** if AI tools (Copilot, Cursor, etc.) helped with boilerplate/refactoring/drafts and you reviewed the resulting change and ran the relevant tests
-  - Mark as **🔴 AI-generated** if an agent produced most of the code or the PR
-  - **None of these is a bad answer, and the 🟡/🔴 line is fuzzy — pick the closest** — well-verified 🔴 PRs are welcome (our maintainers ship them too). Only demonstrable deception (verification that never ran, fabricated logs) closes PRs; arguable classifications are never litigated. See [AI_POLICY.md](AI_POLICY.md).
+- AI tools are welcome. Read their output, check it in the same way you would check your own work, and tell us briefly how they helped.
+- Useful details include what the tool did, what you changed afterward, and what you checked yourself. We do not need a percentage or an authorship category.
 
 ## Communication
 
-- Write clear, concise PR descriptions (see [Pull Request](#pull-request) for requirements)
-- Always link to related issues or discussions in your PR description
-- Ask questions in Discord or PR comments if unsure; it's better to clarify early than to rework later
+- Write a clear, concise pull request description
+- Link related issues or discussions when they exist
+- Ask questions in Discord, GitHub Discussions, issues, or pull request comments when useful
 
 # Pull Request
 
-## Which lane is your contribution?
+Fill in the [pull request template](.github/pull_request_template.md) with enough context for another person to understand the change. Link related issues or discussions when they exist, say what you checked, and tell us how AI helped if you used it.
 
-First, the honest context: AI has made pull requests cheap to produce and expensive to
-review, and we are a small volunteer team. We used to require maintainer approval and
-assignment before *any* work. That slowed down exactly the people we want most — someone
-who spotted a real bug and has an hour to fix it properly — while barely slowing down
-low-effort submissions at all. So we changed the deal: **we gate on evidence, not
-permission.** Pick your lane:
+For bug fixes, a regression test that fails before the fix is especially helpful. For numerical or geometry changes, say where the expected behavior comes from. For new public APIs or behavior changes, an issue or discussion before a large implementation can uncover compatibility and design concerns early.
 
-### 🟢 Green lane — just send the PR (no issue, no assignment, no waiting)
-
-For contributions that carry their own evidence:
-
-- **Bug fixes, test-first**: your PR contains a test that **fails on `main`** and passes
-  with your fix, plus pasted test logs. That failing test *is* your permission slip —
-  it shows the bug is real, and it takes us minutes to verify. One honest caveat: it
-  proves the behavior *changed*, not that the new behavior is *correct* — for
-  numerical/geometry fixes, back the expected values with a reference or invariant
-  (see the evidence ranking in [AI_POLICY.md](AI_POLICY.md)).
-- **Documentation fixes** where the PR description shows the snippet you ran to verify
-  the corrected claim.
-- **[`help wanted` issues](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22)**:
-  these are pre-approved, with acceptance criteria written in the issue. No assignment,
-  no "can I work on this?" — the **first PR that meets the criteria wins**. (Interim
-  honesty note: some older issues inherited this label from our previous templates —
-  while we finish auditing them, check that the issue actually states acceptance
-  criteria or has explicit maintainer confirmation before starting.) Please do
-  check for an already-open PR on the same issue before starting; and to be fair about
-  what "wins" means: starting first creates no entitlement — if duplicates land,
-  maintainers merge the best-supported implementation, not the earliest timestamp.
-- **Benchmark results** from your hardware, via the `--contribute` flow in `benchmarks/`.
-
-### 🟠 Discuss-first lane — open an issue before writing code
-
-For contributions that change what kornia *means* or where it is going:
-
-- New features and new public APIs
-- **Any change to behavior, defaults, or conventions — even ones that look obviously
-  wrong.** In a geometry library, changing a default silently breaks everyone who
-  adapted to it. We have a specific protocol for fixing shipped conventions; propose
-  the change in an issue and we will route it.
-- New models or integrations (mostly frozen — see the project direction in the README)
-- Large refactors
-
-Why discuss first? Because for this kind of work, the design conversation *is* the
-work — and skipping it means we sometimes have to reject finished code, which is
-painful for everyone. A maintainer confirming scope on the issue is your green light;
-formal assignment is optional.
-
-One honest asymmetry, stated openly: **maintainers skip the lane guardrails** — they
-hold the scope-setting authority these gates exist to route to, so making them ask
-themselves for permission would be theater. Their PRs still meet the same evidence,
-disclosure, and review bar (see [AI_POLICY.md](AI_POLICY.md)).
-
-### Application seasons (GSoC and similar)
-
-Around application deadlines we receive a large wave of first-time PRs. During
-announced application windows, first-time contributions are accepted from the green
-lane only. One well-verified green-lane PR helps your application far more than five
-hasty ones — we read review threads, not PR counts.
-
-## PR requirements
-
-- Pass all local tests before submission, and paste the test log in the PR description
-  (this is how we know it ran — especially important for first-time contributors)
-- Green lane: state which green-lane category applies; for bug fixes, include the
-  failing-test-on-`main` evidence
-- Discuss-first lane: link the issue (use "Closes #123" or "Fixes #123") where a
-  maintainer confirmed the scope
-- Fill the [pull request template](.github/pull_request_template.md)
-- **AI Policy**: comply with [AI_POLICY.md](AI_POLICY.md) — use existing `kornia`
-  utilities, be able to explain all submitted code, and complete the AI disclosure
-  honestly (an honest 🔴 is fine; a dishonest 🟡 is not)
-- 15-Day Rule: PRs waiting on the author for 15+ days may be closed (reopen anytime)
-- Transparency: keep discussions public
-
-**Code review:**
-- By default, GitHub Copilot will check the PR against the AI Policy and the coding standards.
-- Code must be reviewed by the repository owner or a senior contributor, who have the final say on the quality and acceptance of the PR.
-
-**Note:** Tickets may be closed during cleanup. Feel free to reopen if you plan to finish the work.
+Reviewers may ask for changes, tests, documentation, or a smaller scope. They may also decide that a contribution does not fit the project. We will try to explain why, but review is not guaranteed. Pull requests that have been quiet for a while may be closed and can be reopened later.
 
 **CI checks:**
 - All tests pass
 - Test coverage maintained
 - Type checking (ty)
 - Documentation builds successfully
-- Code formatting (ruff, docformatter via pre-commit)
+- Code formatting and linting (ruff via pre-commit)
 
-Fix any failing checks before your PR will be considered.
+If a check fails because of your change, please fix it or explain what you found.
 
 # License
 

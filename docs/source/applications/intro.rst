@@ -20,4 +20,4 @@ that can be used across different domains such as Robotics, Industrial applicati
 
 .. admonition:: We are looking for contributors !!
 
-   If you have any suggestion, proposal or just want to give us a hand - join our `Slack <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA>`_
+   If you have a suggestion, proposal, or simply want to help, join our `Discord <https://discord.gg/HfnywwpBnD>`_.

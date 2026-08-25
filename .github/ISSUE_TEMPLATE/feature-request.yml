@@ -9,15 +9,13 @@ body:
       value: |
         Thanks for the suggestion! Please search existing issues first.
 
-        Two honest notes before you write:
+        Two notes that may help:
 
-        - Features are **discuss-first**: if you want to implement this yourself, wait for a
-          maintainer to confirm the scope here before writing code — it protects you from
-          building something we can't merge. See
-          [which lane is your contribution?](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#which-lane-is-your-contribution)
+        - If you want to implement the idea, sharing the shape of it here before doing a
+          large amount of work may reveal design or compatibility concerns early.
         - Kornia currently focuses on hardening its differentiable geometry / CV core rather
           than growing breadth — new model integrations are mostly frozen. Proposals in the
-          core areas have much better odds.
+          core areas are closest to the current project direction.
 
   - type: textarea
     id: what-and-why

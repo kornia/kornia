@@ -30,7 +30,7 @@ How to contribute ?
     - `Open Collective <https://opencollective.com/kornia>`_
     - `Github sponsors <https://github.com/sponsors/kornia>`_
 - Join the community and help us to maintain the library and its ecosystem projects.
-    - `Kornia Slack <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA>`_
+    - `Kornia Discord <https://discord.gg/HfnywwpBnD>`_
 - Help us to organize events such as workshops, meetups related to Computer Vision and robotics.
 - Help us to write blog posts, tutorials, and other educational material to promote the use of Kornia and its ecosystem projects in the industry and academia.
 
