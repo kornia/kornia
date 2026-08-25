@@ -19,7 +19,7 @@ Import order in `kornia/__init__.py` matters: `filters` and `geometry` are loade
 
 ## Environment and commands
 
-Use Pixi for project tasks and environment selection. The tasks call `uv`, and Python tests run in the repository `.venv`; do not assume packages in `.pixi` are the versions under test.
+Use Pixi for project tasks and environment selection. The tasks call `uv`, and Python tests run in the repository `.venv` or a versioned `.venv-py*`; do not assume packages in `.pixi` are the versions under test.
 
 ```bash
 pixi install
@@ -34,11 +34,13 @@ KORNIA_TEST_OPTIMIZER=inductor pixi run test-module tests/path/to/test_file.py
 pixi run test-quick
 pixi run test-slow
 pixi run lint
-pixi run pre-commit
+pixi run pre-commit-all
 pixi run typecheck
 pixi run doctest
 pixi run build-docs
 ```
+
+The `py312` and `py313` features select isolated `.venv-py312` and `.venv-py313` project environments automatically for install and test tasks.
 
 Select devices and dtypes with pytest options or environment variables:
 
@@ -93,7 +95,7 @@ Start with a minimal reproduction and the narrowest relevant test. Do not claim 
 Ask only for environment details that help the diagnosis: kornia, PyTorch, and Python versions; OS family; device backend; CUDA availability/version; and GPU model when relevant. Prefer the same privacy-conscious command used by the bug template:
 
 ```bash
-python -W ignore -c "import kornia, platform, sys, torch; gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'; print(f'kornia {kornia.__version__} | torch {torch.__version__} | python {sys.version.split()[0]} | OS {platform.platform()} | CUDA {torch.version.cuda} (available={torch.cuda.is_available()}, GPU={gpu}) | MPS={torch.backends.mps.is_available()}')"
+python -W ignore -c "import kornia, platform, sys, torch; gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'; backend=torch.version.cuda or getattr(torch.version, 'hip', None); print(f'kornia {kornia.__version__} | torch {torch.__version__} | python {sys.version.split()[0]} | OS {platform.platform()} | CUDA/ROCm {backend} (available={torch.cuda.is_available()}, GPU={gpu}) | MPS={torch.backends.mps.is_available()}')"
 ```
 
 Before asking a user to share broader diagnostic output, tell them to preview and redact it. Do not request usernames, home or project paths, environment variables, tokens, internal hostnames, or names of private data and models.

@@ -32,6 +32,8 @@ weights/
 
 # uv
 .uv_cache/
+.venv/
+.venv-py*/
 
 .python-version
 

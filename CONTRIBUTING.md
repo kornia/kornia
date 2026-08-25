@@ -100,6 +100,8 @@ The rest of this guide contains practical and technical guidance so nobody has t
     pixi run -e cuda install
     ```
 
+    The `py312` and `py313` environments use isolated `.venv-py312` and `.venv-py313` project environments automatically.
+
     **Available tasks:**
 
     kornia provides several tasks via pixi for common development workflows:
@@ -126,7 +128,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
 
     # Code quality
     pixi run lint             # Run ruff linting
-    pixi run pre-commit       # Run all repository pre-commit checks
+    pixi run pre-commit-all   # Run all repository pre-commit checks
     pixi run pre-commit-install  # Install the pre-commit Git hook
     pixi run typecheck        # Run type checking with ty
     pixi run doctest          # Run doctests
@@ -327,7 +329,7 @@ This section provides guidance for contributing to kornia, with a focus on Pytho
 2. **Test Locally**: Run the checks that are relevant to your change:
    ```bash
    pixi run lint          # Run the Ruff hooks
-   pixi run pre-commit    # Run the full repository checks
+   pixi run pre-commit-all  # Run the full repository checks
    pixi run test          # Run all tests
    pixi run typecheck     # Verify type checking
    ```
@@ -394,7 +396,7 @@ Reviewers may ask for changes, tests, documentation, or a smaller scope. They ma
 - Code changes run the CPU test matrix, dynamo/compile tests, and type checking with `ty`
 - Pre-commit checks formatting, linting, license headers, spelling, and repository file hygiene
 - Documentation changes run the documentation build
-- Every non-draft pull request gets an automated Copilot review and needs one maintainer approval
+- Every non-draft pull request gets an automated Copilot review when opened or marked ready and needs one maintainer approval
 - Pull requests are squash-merged
 
 If a check fails because of your change, please fix it or explain what you found.

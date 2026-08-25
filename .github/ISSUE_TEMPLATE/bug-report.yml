@@ -1,7 +1,7 @@
 name: 🐛 Bug Report
 description: Something is broken or gives wrong results
 title: "[Bug]: "
-labels: ["bug"]
+labels: ["bug :bug:"]
 
 body:
   - type: markdown
@@ -41,7 +41,7 @@ body:
         This command reports the versions and compute backend that usually matter without
         collecting usernames, paths, environment variables, or hostnames:
         ```
-        python -W ignore -c "import kornia, platform, sys, torch; gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'; print(f'kornia {kornia.__version__} | torch {torch.__version__} | python {sys.version.split()[0]} | OS {platform.platform()} | CUDA {torch.version.cuda} (available={torch.cuda.is_available()}, GPU={gpu}) | MPS={torch.backends.mps.is_available()}')"
+        python -W ignore -c "import kornia, platform, sys, torch; gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'; backend=torch.version.cuda or getattr(torch.version, 'hip', None); print(f'kornia {kornia.__version__} | torch {torch.__version__} | python {sys.version.split()[0]} | OS {platform.platform()} | CUDA/ROCm {backend} (available={torch.cuda.is_available()}, GPU={gpu}) | MPS={torch.backends.mps.is_available()}')"
         ```
         Preview and redact any other diagnostic output before posting it. Do not share
         usernames, home or project paths, tokens, internal hostnames, or private data names.
@@ -49,7 +49,7 @@ body:
         - Kornia version:
         - PyTorch version:
         - Python version:
-        - OS / device (CPU, CUDA, MPS):
+        - OS / device (CPU, CUDA, ROCm, MPS):
     validations:
       required: true
 

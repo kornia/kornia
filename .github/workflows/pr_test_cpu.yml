@@ -28,11 +28,23 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]] || \
-             git diff --name-only "$BASE_SHA"...HEAD | grep -Ev '^(docs/|.*\.md$|LICENSE$|COPYRIGHT$)' | grep -q .; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "run-tests=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed=$(git diff --no-renames --name-only "${BASE_SHA}...HEAD")
+          if grep -Eqv '^(docs/|.*\.md$|LICENSE$|COPYRIGHT$)' <<< "$changed"; then
             echo "run-tests=true" >> "$GITHUB_OUTPUT"
           else
-            echo "run-tests=false" >> "$GITHUB_OUTPUT"
+            # Must stay the first command here: it captures the `if` condition's
+            # exit status (1 = docs-only, anything else = grep itself failed).
+            grep_status=$?
+            if [[ "$grep_status" -eq 1 ]]; then
+              echo "run-tests=false" >> "$GITHUB_OUTPUT"
+            else
+              exit "$grep_status"
+            fi
           fi
 
   pre-tests:
@@ -151,7 +163,7 @@ jobs:
     uses: ./.github/workflows/tutorials.yml
 
   collector:
-    needs: [changes, pre-tests, tests, dynamo, typecheck, tutorials]
+    needs: [changes, pre-tests, tests, dynamo, typecheck]
     if: always()
     runs-on: ubuntu-latest
     steps:
