@@ -4084,7 +4084,7 @@ class TestNormalizeHomography(BaseTester):
     # constants leak, pinned separately below with non-dyadic sizes): a fix for #3958 must not flip
     # an ordering or direction pin. The exactness invariant is theirs alone -- the bug pins below
     # deliberately step outside it (the round-trip pin's non-dyadic (4, 5)/(8, 9) legs at
-    # atol=32*eps, the #3960 cells, the #3957 propagation warts), so a new atol=0 pin belongs here
+    # atol=32*eps, the #3960 cells), so a new atol=0 pin belongs here
     # only at these sizes AND with a literal whose intermediates are exact. The invariant also
     # leans on the SHAPE of the normalization matrices -- upper-triangular with power-of-two
     # pivots -- surviving BOTH inverse routes actually in play (the functions do NOT share one):
@@ -4099,8 +4099,8 @@ class TestNormalizeHomography(BaseTester):
     # No pin asserts anything about kornia#3962 (no denormalize_homography3d, no
     # ColmapQTVecs_to_ARKitQTVecs) -- a missing symbol is a scope question, not a defect.
     # NOTE: kornia#3904 (reserved) may extend this surface. EVERY literal in this class -- the
-    # composition, direction, round-trip, batching and 3-D pins as much as the #3957 and #3958 bug
-    # pins, and whether or not the pin repeats this line -- is built from the corner-aligned
+    # composition, direction, round-trip, batching and 3-D pins as much as the #3957 singleton and
+    # #3958 bug pins, and whether or not the pin repeats this line -- is built from the corner-aligned
     # 2/(size - 1) constants these three functions inherit from normal_transform_pixel, so a #3904
     # fix that made the normalization respect align_corners would flip all of them. They record
     # current default behavior; none of them ratifies that choice as contract. (The #3958 pins would
@@ -5601,7 +5601,7 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         # There is deliberately NO companion strict xfail: the intended behavior is undecided -- a
         # fix could raise on a non-orthogonal R, or fall back to a true inverse -- and an
         # assertion-shaped xfail could express only one of those and would stay silently XFAIL if
-        # the other were chosen. Same shape as the #3948 and #3957 wart pins in this file.
+        # the other were chosen. Same shape as the #3948 wart pins in this file.
         # If any cell fails, #3961 was (partly) fixed -- remove this pin. NOT a contract that a
         # non-orthogonal R must keep producing these numbers.
         # R = [[1, 0.5, 0], [0, 1, 0], [0, 0, 2]] has det = 2 and dyadic entries, so every literal

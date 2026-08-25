@@ -67,17 +67,26 @@ def create_meshgrid(
     ys: torch.Tensor = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
     # Fix TracerWarning
     # Note: normalize_pixel_coordinates still gots TracerWarning since new width and height
-    #       tensors will be generated.
+    #       tensors will be generated. It also still guards its denominator with
+    #       (size - 1).clamp(eps) and so maps a singleton axis to -1 rather than to the 0 used
+    #       here, which makes the commented-out code below no longer equivalent at size 1.
     # Below is the code using normalize_pixel_coordinates:
     # base_grid: torch.Tensor = torch.stack(torch.meshgrid([xs, ys]), dim=2)
     # if normalized_coordinates:
     #     base_grid = K.geometry.normalize_pixel_coordinates(base_grid, height, width)
     # return torch.unsqueeze(base_grid.transpose(0, 1), dim=0)
     if normalized_coordinates:
-        width_t = torch.scalar_tensor(width, device=xs.device, dtype=xs.dtype)
-        height_t = torch.scalar_tensor(height, device=ys.device, dtype=ys.dtype)
-        xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, torch.zeros_like(xs))
-        ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, torch.zeros_like(ys))
+        if torch.jit.is_tracing():
+            # Only tracing needs the tensor form: it is what keeps a traced size dynamic.
+            width_t = torch.scalar_tensor(width, device=xs.device, dtype=xs.dtype)
+            height_t = torch.scalar_tensor(height, device=ys.device, dtype=ys.dtype)
+            xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, torch.zeros_like(xs))
+            ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, torch.zeros_like(ys))
+        else:
+            # ``* 0.0`` rather than ``zeros_like`` so that a singleton axis follows the
+            # same integer-to-float promotion the non-singleton branch performs.
+            xs = (xs / (width - 1) - 0.5) * 2 if width > 1 else xs * 0.0
+            ys = (ys / (height - 1) - 0.5) * 2 if height > 1 else ys * 0.0
     # generate grid by stacking coordinates
     base_grid: torch.Tensor = torch.stack(torch.meshgrid([xs, ys], indexing="ij"), dim=-1)  # WxHx2
     return base_grid.permute(1, 0, 2).unsqueeze(0)  # 1xHxWx2
@@ -117,12 +126,17 @@ def create_meshgrid3d(
     zs: torch.Tensor = torch.linspace(0, depth - 1, depth, device=device, dtype=dtype)
     # Fix TracerWarning
     if normalized_coordinates:
-        width_t = torch.scalar_tensor(width, device=xs.device, dtype=xs.dtype)
-        height_t = torch.scalar_tensor(height, device=ys.device, dtype=ys.dtype)
-        depth_t = torch.scalar_tensor(depth, device=zs.device, dtype=zs.dtype)
-        xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, torch.zeros_like(xs))
-        ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, torch.zeros_like(ys))
-        zs = torch.where(depth_t > 1, (zs / (depth_t - 1) - 0.5) * 2, torch.zeros_like(zs))
+        if torch.jit.is_tracing():
+            width_t = torch.scalar_tensor(width, device=xs.device, dtype=xs.dtype)
+            height_t = torch.scalar_tensor(height, device=ys.device, dtype=ys.dtype)
+            depth_t = torch.scalar_tensor(depth, device=zs.device, dtype=zs.dtype)
+            xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, torch.zeros_like(xs))
+            ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, torch.zeros_like(ys))
+            zs = torch.where(depth_t > 1, (zs / (depth_t - 1) - 0.5) * 2, torch.zeros_like(zs))
+        else:
+            xs = (xs / (width - 1) - 0.5) * 2 if width > 1 else xs * 0.0
+            ys = (ys / (height - 1) - 0.5) * 2 if height > 1 else ys * 0.0
+            zs = (zs / (depth - 1) - 0.5) * 2 if depth > 1 else zs * 0.0
     # generate grid by stacking coordinates
     base_grid = torch.stack(torch.meshgrid([zs, xs, ys], indexing="ij"), dim=-1)  # DxWxHx3
     return base_grid.permute(0, 2, 1, 3).unsqueeze(0)  # 1xDxHxWx3

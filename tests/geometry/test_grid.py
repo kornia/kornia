@@ -81,6 +81,22 @@ def test_normalized_meshgrid_singleton_axis_is_centered(height, width, device, d
         assert_close(grid[..., 0], torch.zeros_like(grid[..., 0]), atol=0.0, rtol=0.0)
 
 
+@pytest.mark.parametrize(("height", "width"), [(1, 4), (4, 1), (1, 1), (4, 6)])
+@pytest.mark.parametrize("grid_dtype", [torch.int32, torch.int64])
+def test_normalized_meshgrid_integer_dtype_promotes_uniformly(height, width, grid_dtype, device):
+    # An integer ``dtype`` makes the non-singleton branch promote to the default float dtype
+    # (integer division), so the singleton branch must promote identically or torch.meshgrid
+    # rejects the mixed pair. Eager and tracing take different code paths here; this pins that
+    # they agree, and that a singleton axis is still centred once promoted.
+    grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=True, device=device, dtype=grid_dtype)
+
+    assert grid.dtype == torch.get_default_dtype()
+    if height == 1:
+        assert_close(grid[..., 1], torch.zeros_like(grid[..., 1]), atol=0.0, rtol=0.0)
+    if width == 1:
+        assert_close(grid[..., 0], torch.zeros_like(grid[..., 0]), atol=0.0, rtol=0.0)
+
+
 @pytest.mark.parametrize(("trace_height", "runtime_height"), [(2, 1), (1, 2)])
 def test_normalized_meshgrid_trace_crosses_singleton_boundary(trace_height, runtime_height, device, dtype):
     class MeshGrid(torch.nn.Module):

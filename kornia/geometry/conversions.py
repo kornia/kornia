@@ -1970,9 +1970,11 @@ def normal_transform_pixel(
     if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
 
-    if torch.jit.is_scripting():
-        # Scalar branches remain dynamic in TorchScript and preserve torch.tensor's
-        # historical dtype-casting behaviour.
+    if torch.jit.is_scripting() or not torch.jit.is_tracing():
+        # Only tracing needs the tensor form below: it is what keeps a traced size
+        # dynamic. Eager and TorchScript take the scalar branches, which are an order
+        # of magnitude cheaper on this hot path and preserve torch.tensor's historical
+        # dtype-casting behaviour.
         sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
         sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
         tx = 0.0 if width == 1 else -1.0
@@ -2062,7 +2064,8 @@ def normal_transform_pixel3d(
     if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
 
-    if torch.jit.is_scripting():
+    if torch.jit.is_scripting() or not torch.jit.is_tracing():
+        # As in 2-D, the tensor form below is only needed to keep a traced size dynamic.
         sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
         sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
         sz = 1.0 if depth == 1 else 2.0 / (depth - 1.0)
