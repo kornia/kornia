@@ -3982,43 +3982,6 @@ class TestNormalTransformPixel(BaseTester):
         self.assert_close(via_matrix, torch.tensor([1.0, -0.5, 0.75], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(via_helper[[1, 2, 0]], via_matrix, atol=0.0, rtol=0.0)
 
-    # Wart-pin matrix for kornia#3957: one cell per (size argument x degenerate class) of
-    # normal_transform_pixel and normal_transform_pixel3d, asserting the CURRENT scale factor that
-    # a degenerate size produces. If any cell fails, #3957 was (partly) fixed -- update or remove
-    # the degenerate-size warnings on normal_transform_pixel, normal_transform_pixel3d,
-    # normalize_homography and normalize_homography3d (denormalize_homography inherits these
-    # warnings by reference), and also the
-    # expected_2d_1 / expected_3d_1 rows of TestHomographyNormalTransform in
-    # tests/geometry/transform/test_homography_warper.py, which hardcode the same
-    # size == 1 -> 2e14 literal and would otherwise fail two directories away with nothing
-    # connecting them to the fix. The cells are NOT a
-    # contract that a degenerate size must keep returning these numbers.
-    # They are regular tests rather than strict xfails for the same reason as the #3940 matrix in
-    # TestNormalizePixelCoordinates: the intended behavior (raise, clamp, or keep the current
-    # silent pass-through) is a maintainer decision, and a strict xfail asserting one of those
-    # answers would stay silently XFAIL forever if a different one were chosen. A wart pin flips
-    # loudly under every polarity, and covering the full matrix means any partial fix -- one
-    # function, one argument, or one degenerate class -- flips at least one cell.
-    # Exactly one size argument is degenerate per cell (the others stay at 3/5 in 2-D and 3/5/9 in
-    # 3-D, whose scales are exact in every dtype), so the finite components pin which argument was
-    # degenerated. The three classes give three different answers because only size == 1 is routed
-    # to eps: size == 1 divides by eps = 1e-14 and gives 2e14, size == 0 divides by -1 and gives a
-    # sign-flipped -2.0 (a mirroring transform), size == -3 divides by -4 and gives -0.5.
-    # float32 is hardcoded and the dtype fixture dropped: any kornia-side change to a scale flips
-    # the float32 cell. The 2-D scales are pure Python floats (2.0 / width_denom and friends)
-    # computed before any tensor exists, so other legs would only test torch's cast; the 3-D
-    # helper computes its scales as tensor arithmetic in the requested dtype
-    # (tr_mat[i, i] * 2.0 / denominator), so its other legs would re-run that division under a
-    # different rounding -- a claim about torch's arithmetic, not about which scale kornia
-    # chooses, which the float32 cell already pins.
-    # Snippet used to generate expected (torch only, executed on cpu float32/float64):
-    #   normal_transform_pixel(3, 1)[0, 0, 0]        -> 200000000753664.0  (2 / 1e-14)
-    #   normal_transform_pixel(3, 0)[0, 0, 0]        -> -2.0
-    #   normal_transform_pixel(3, -3)[0, 0, 0]       -> -0.5
-    #   normal_transform_pixel3d(1, 5, 9)[0, 2, 2]   -> 200000000753664.0
-    @pytest.mark.parametrize(
-        ("degenerate_size", "degenerate_scale"), [(1, 2e14), (0, -2.0), (-3, -0.5)], ids=["one", "zero", "negative"]
-    )
     @pytest.mark.parametrize(
         ("ndim", "arg_name", "diagonal"),
         [
@@ -4030,21 +3993,20 @@ class TestNormalTransformPixel(BaseTester):
         ],
         ids=["2d-height", "2d-width", "3d-depth", "3d-height", "3d-width"],
     )
-    def test_wart_degenerate_size_scale_matrix_3957(
-        self, ndim, arg_name, diagonal, degenerate_size, degenerate_scale, device
-    ):
+    def test_singleton_axis_maps_to_center(self, ndim, arg_name, diagonal, device):
         expected = list(diagonal)
-        expected[diagonal.index(None)] = degenerate_scale
+        axis = diagonal.index(None)
+        expected[axis] = 1.0
 
         if ndim == "2d":
             sizes = {"height": 3, "width": 5}
-            sizes[arg_name] = degenerate_size
+            sizes[arg_name] = 1
             matrix = kornia.geometry.conversions.normal_transform_pixel(
                 sizes["height"], sizes["width"], device=device, dtype=torch.float32
             )
         else:
             sizes = {"depth": 3, "height": 5, "width": 9}
-            sizes[arg_name] = degenerate_size
+            sizes[arg_name] = 1
             matrix = kornia.geometry.conversions.normal_transform_pixel3d(
                 sizes["depth"], sizes["height"], sizes["width"], device=device, dtype=torch.float32
             )
@@ -4052,38 +4014,32 @@ class TestNormalTransformPixel(BaseTester):
         scales = torch.stack([matrix[0, i, i] for i in range(len(expected))])
 
         self.assert_close(scales, torch.tensor(expected, device=device, dtype=torch.float32), atol=0.0, rtol=0.0)
+        self.assert_close(matrix[0, axis, -1], torch.tensor(0.0, device=device), atol=0.0, rtol=0.0)
 
-    def test_wart_eps_guards_only_the_size_one_branch_3957(self, device):
-        # Wart pin for kornia#3957, companion to the matrix above: eps is consulted ONLY in the
-        # size == 1 branch -- the docstring now says exactly that ("denominator substituted for
-        # size - 1 when a size equals 1; it is not consulted on any other path"), and this pin is
-        # what keeps that sentence honest -- so the eps argument does not reach the case that is
-        # literally a zero-sized image. float32 is
-        # hardcoded and the dtype fixture dropped: which branch consults eps is a Python-level
-        # size comparison decided before any tensor arithmetic, and the pinned answers 2.0 and
-        # -2.0 are exact in every dtype, so no other-dtype leg can fail where float32 passes and
-        # the fixture only multiplied cells. Three cells:
-        #   (0) the eps default is still 1e-14 -- a re-tuned default already flips the size == 1
-        #       cells of the matrix above loudly (they call with the default and pin 2/1e-14), so
-        #       this cell adds attribution, not detection: it fails naming the default itself
-        #       instead of leaving a reader to reverse-engineer a 2e14 mismatch;
-        #   (1) eps=1.0 changes the size == 1 answer to 2.0, proving that branch reads eps;
-        #   (2) the same eps=1.0 leaves the size == 0 answer at -2.0, proving that branch does not.
-        # If any cell fails, #3957 was (partly) fixed -- flip/remove the matrix above. NOT a
-        # contract that eps must keep being ignored on the size == 0 path.
-        # Snippet used to generate expected (torch only, executed on cpu):
-        #   normal_transform_pixel(3, 1, eps=1.0)[0, 0, 0] -> 2.0
-        #   normal_transform_pixel(3, 0, eps=1.0)[0, 0, 0] -> -2.0
+    def test_eps_is_ignored(self, device):
         normal_transform_pixel = kornia.geometry.conversions.normal_transform_pixel
-        assert inspect.signature(normal_transform_pixel).parameters["eps"].default == 1e-14, (
-            "kornia#3957: the eps default moved, so the 2e14 literals pinned above no longer describe a default call"
-        )
+        default = normal_transform_pixel(3, 1, device=device, dtype=torch.float32)
+        overridden = normal_transform_pixel(3, 1, eps=1.0, device=device, dtype=torch.float32)
+        self.assert_close(default, overridden, atol=0.0, rtol=0.0)
 
-        size_one = normal_transform_pixel(3, 1, eps=1.0, device=device, dtype=torch.float32)[0, 0, 0]
-        size_zero = normal_transform_pixel(3, 0, eps=1.0, device=device, dtype=torch.float32)[0, 0, 0]
-
-        self.assert_close(size_one, torch.tensor(2.0, device=device, dtype=torch.float32), atol=0.0, rtol=0.0)
-        self.assert_close(size_zero, torch.tensor(-2.0, device=device, dtype=torch.float32), atol=0.0, rtol=0.0)
+    @pytest.mark.parametrize("invalid_size", [0, -3], ids=["zero", "negative"])
+    @pytest.mark.parametrize(
+        ("ndim", "arg_name"),
+        [("2d", "height"), ("2d", "width"), ("3d", "depth"), ("3d", "height"), ("3d", "width")],
+    )
+    def test_non_positive_size_raises(self, ndim, arg_name, invalid_size, device):
+        if ndim == "2d":
+            sizes = {"height": 3, "width": 5}
+            sizes[arg_name] = invalid_size
+            with pytest.raises(ValueError, match="Input image size must be positive"):
+                kornia.geometry.conversions.normal_transform_pixel(sizes["height"], sizes["width"], device=device)
+        else:
+            sizes = {"depth": 3, "height": 5, "width": 9}
+            sizes[arg_name] = invalid_size
+            with pytest.raises(ValueError, match="Input image size must be positive"):
+                kornia.geometry.conversions.normal_transform_pixel3d(
+                    sizes["depth"], sizes["height"], sizes["width"], device=device
+                )
 
     def test_wart_integer_dtype_truncates_the_scale_to_zero_3959(self, device):
         # Wart pin for kornia#3959: the matrix is built by torch.tensor([...], dtype=dtype) from
@@ -4607,9 +4563,8 @@ class TestNormalizeHomography(BaseTester):
         # rejects the mix. denormalize_homography inverts the other matrix and by the other route
         # -- _torch_inverse_cast, i.e. torch.linalg.inv -- which dies on the zero diagonal of the
         # truncated matrix before any matmul runs.
-        # Both legs are gated by capability PROBES rather than a device-name list, matching
-        # test_wart_one_pixel_output_makes_warp_perspective_all_nan_3957 below: each probe IS the
-        # mechanism its leg claims, so a future backend that behaves like cpu is covered instead
+        # Both legs are gated by capability PROBES rather than a device-name list: each probe IS
+        # the mechanism its leg claims, so a future backend that behaves like cpu is covered instead
         # of skipped. Executed: cpu rejects the mixed batched matmul and reports a singular
         # inverse as torch.linalg.LinAlgError; mps accepts the matmul (hence the all-nan float32
         # result) and reports the singular inverse as a plain RuntimeError. The matmul probe must
@@ -4766,100 +4721,21 @@ class TestNormalizeHomography(BaseTester):
                 torch.zeros(4, 5, device=device, dtype=torch.float32), (2, 4, 5), (3, 8, 9)
             )
 
-    def test_wart_degenerate_dsize_propagates_into_the_homography_3957(self, device):
-        # Wart pin for kornia#3957 in the homography functions: the degenerate scales pinned in
-        # TestNormalTransformPixel are not contained by the composition -- they arrive in the
-        # returned matrix, silently and finite. Four cells, each a different way the same root
-        # shows up:
-        #   (1) normalize_homography with a 1-pixel-wide source collapses the x scale to 2.5e-15;
-        #   (2) denormalize_homography with the same sizes explodes it to 4.0e+14 instead -- the
-        #       reciprocal, because the two functions invert opposite factors;
-        #   (3) normalize_homography with a ZERO-wide source silently mirrors (a negative x scale
-        #       and a shifted offset), a different degenerate class that no fix for (1) need touch;
-        #   (4) normalize_homography3d with depth == 1 returns a matrix whose z scale is 5.0e-15 --
-        #       near-singular in practice, not formally singular, so nothing downstream raises.
-        # If any cell fails, #3957 was (partly) fixed -- flip/remove the matrix in
-        # TestNormalTransformPixel too. NOT a contract that a degenerate dsize must keep producing
-        # these numbers.
-        # float32 is hardcoded and the dtype fixture dropped: at float16 the 2e14 scale overflows to
-        # inf and the chain degenerates by a different mechanism (this pin does not decide that
-        # case), while at float64 the constants are still built in float32 (kornia#3958) so the
-        # literals would be the same numbers pinned twice.
-        # rtol 1e-6 rather than an exact comparison: the entries are float32 values printed at
-        # float64 precision, and one ulp of 2.5e-15 is 5e-22 -- far tighter than any claim made here.
-        # Snippet used to generate expected (torch only, executed on cpu float32):
-        #   normalize_homography(eye(3)[None], (4, 1), (4, 5))[0, 0]     -> 2.500000167887412e-15
-        #   denormalize_homography(eye(3)[None], (4, 1), (4, 5))[0, 0]   -> 400000001507328.0
-        #   normalize_homography(eye(3)[None], (4, 0), (4, 5))[0]        -> [-0.25, 0.0, -1.25]
-        #   normalize_homography3d(eye(4)[None], (1, 4, 5), (3, 8, 9))[2, 2] -> 4.99999991225835e-15
+    def test_singleton_dsize_produces_finite_homographies(self, device):
         identity = torch.eye(3, device=device, dtype=torch.float32)[None]
         identity3d = torch.eye(4, device=device, dtype=torch.float32)[None]
 
-        collapsed = kornia.geometry.conversions.normalize_homography(identity, (4, 1), (4, 5))[0, 0, 0]
-        exploded = kornia.geometry.conversions.denormalize_homography(identity, (4, 1), (4, 5))[0, 0, 0]
-        mirrored = kornia.geometry.conversions.normalize_homography(identity, (4, 0), (4, 5))[0, 0]
-        near_singular = kornia.geometry.conversions.normalize_homography3d(identity3d, (1, 4, 5), (3, 8, 9))[0, 2, 2]
+        outputs = [
+            kornia.geometry.conversions.normalize_homography(identity, (4, 1), (4, 5)),
+            kornia.geometry.conversions.normalize_homography(identity, (4, 5), (4, 1)),
+            kornia.geometry.conversions.denormalize_homography(identity, (4, 1), (4, 5)),
+            kornia.geometry.conversions.denormalize_homography(identity, (4, 5), (4, 1)),
+            kornia.geometry.conversions.normalize_homography3d(identity3d, (1, 4, 5), (3, 8, 9)),
+            kornia.geometry.conversions.normalize_homography3d(identity3d, (3, 8, 9), (1, 4, 5)),
+        ]
+        assert all(torch.isfinite(output).all() for output in outputs)
 
-        assert_close(
-            collapsed,
-            torch.tensor(2.500000167887412e-15, device=device, dtype=torch.float32),
-            rtol=1e-6,
-            atol=0.0,
-            msg=_issue_msg("kornia#3957: a 1-pixel-wide source no longer collapses the normalized x scale"),
-        )
-        assert_close(
-            exploded,
-            torch.tensor(400000001507328.0, device=device, dtype=torch.float32),
-            rtol=1e-6,
-            atol=0.0,
-            msg=_issue_msg("kornia#3957: a 1-pixel-wide source no longer explodes the denormalized x scale"),
-        )
-        assert_close(
-            mirrored,
-            torch.tensor([-0.25, 0.0, -1.25], device=device, dtype=torch.float32),
-            rtol=1e-6,
-            atol=0.0,
-            msg=_issue_msg("kornia#3957: a zero-wide source no longer produces a mirrored normalization"),
-        )
-        assert_close(
-            near_singular,
-            torch.tensor(4.99999991225835e-15, device=device, dtype=torch.float32),
-            rtol=1e-6,
-            atol=0.0,
-            msg=_issue_msg("kornia#3957: depth == 1 no longer collapses the normalized z scale"),
-        )
-
-    def test_wart_one_pixel_output_makes_warp_perspective_all_nan_3957(self, device):
-        # Wart pin for the user-visible end of kornia#3957, executed rather than argued: a
-        # 1-pixel-high output size sends normalize_homography's 2e14 scale into
-        # warp_perspective's grid and every sampled value comes back NaN -- with align_corners=True,
-        # i.e. in the branch kornia#3904's reserved fix does not touch. crop_by_transform_mat is
-        # pinned in the same test because it is the caller kornia#3929 reports the symptom from.
-        # The finite control at a 2-pixel-high output is what makes the two NaN cells evidence of
-        # the degenerate denominator rather than of warp_perspective being broken in general.
-        # NaN is checked with torch.isnan, never with an equality against a NaN literal.
-        # If any cell fails, #3957 was (partly) fixed -- flip/remove the wart pins above. NOT a
-        # contract that a 1-pixel output must keep returning NaN.
-        # float32 is hardcoded and the dtype fixture dropped: this pin is about a size, not a dtype.
-        # TWO LAYERS, on purpose. The load-bearing claim -- the 1-pixel output is BROKEN while the
-        # 2-pixel control is not -- is asserted device-portably: the 1-row output does not reproduce
-        # the row the same identity warp produces at 2 rows. The stronger "and the breakage is
-        # specifically all-NaN" form is asserted only on the devices it was generated and verified
-        # on backends whose grid_sample propagates an all-NaN grid (probed below; cpu and mps,
-        # executed), because the NaN depends on backend NaN handling inside grid_sample: the
-        # sampling grid entering it is entirely NaN, and with padding_mode='zeros' a kernel that
-        # turns floor(NaN) into a failed within-bounds check would emit 0.0 instead of NaN. That
-        # would still be a broken output -- and the portable assertion would still catch it -- but
-        # it is not a fact this branch has executed, and no CUDA fact is claimed anywhere in this
-        # work. Asserting all-NaN unconditionally would let an untested backend fail here and be
-        # misread as "#3957 was partly fixed", which is the one misreading this pin must not invite.
-        # Snippet used to generate expected (torch only, executed on cpu float32, torch 2.9.1; the
-        # same three lines re-executed on mps give the same verdicts):
-        #   img = torch.arange(25.).view(1, 1, 5, 5)
-        #   warp_perspective(img, torch.eye(3)[None], (1, 4), align_corners=True)      -> all nan
-        #   crop_by_transform_mat(img, torch.eye(3)[None], (1, 4), align_corners=True) -> all nan
-        #   warp_perspective(img, torch.eye(3)[None], (2, 4), align_corners=True)
-        #     -> [[0., 1., 2., 3.], [5., 6., 7., 8.]]   (finite control)
+    def test_one_pixel_output_is_finite_3957(self, device):
         image = torch.arange(25.0, device=device, dtype=torch.float32).view(1, 1, 5, 5)
         identity = torch.eye(3, device=device, dtype=torch.float32)[None]
 
@@ -4867,37 +4743,22 @@ class TestNormalizeHomography(BaseTester):
         cropped = kornia.geometry.transform.crop_by_transform_mat(image, identity, (1, 4), align_corners=True)
         control = kornia.geometry.transform.warp_perspective(image, identity, (2, 4), align_corners=True)
 
-        assert torch.isfinite(control).all(), (
-            "kornia#3957: the 2-pixel-high control is no longer finite, so the cells above stopped being evidence"
-        )
-        assert not torch.equal(warped[0, 0, 0], control[0, 0, 0]), (
-            "kornia#3957: a 1-pixel-high warp_perspective output now reproduces the 2-row control's first row, "
-            "i.e. the degenerate size no longer corrupts the sampling grid"
-        )
-        assert not torch.equal(cropped[0, 0, 0], control[0, 0, 0]), (
-            "kornia#3957: a 1-pixel-high crop_by_transform_mat output now reproduces the 2-row control's first row"
-        )
+        assert torch.isfinite(warped).all()
+        assert torch.isfinite(cropped).all()
+        self.assert_close(warped[0, 0, 0], control[0, 0, 0], atol=0.0, rtol=0.0)
+        self.assert_close(cropped[0, 0, 0], control[0, 0, 0], atol=0.0, rtol=0.0)
 
-        # Capability probe instead of a device-name list, so the all-NaN leg self-extends to any
-        # backend whose grid_sample propagates an all-NaN grid and shows up as a SKIP (not a
-        # silent pass) anywhere else. The portable corruption assertions above have already run
-        # by this point on every device.
-        nan_grid = torch.full((1, 1, 1, 2), float("nan"), device=device, dtype=torch.float32)
-        probe = torch.nn.functional.grid_sample(
-            torch.zeros(1, 1, 2, 2, device=device, dtype=torch.float32), nan_grid, align_corners=True
-        )
-        if not torch.isnan(probe).all():
-            pytest.skip(
-                "this backend's grid_sample does not propagate an all-NaN sampling grid; the "
-                "all-NaN symptom leg is scoped to backends where it does (executed: cpu, mps)"
-            )
+    @pytest.mark.parametrize(("trace_height", "runtime_height"), [(5, 1), (1, 5)])
+    def test_one_pixel_output_trace_crosses_singleton_source_boundary(self, trace_height, runtime_height, device):
+        class WarpPerspective(torch.nn.Module):
+            def forward(self, image, transform):
+                return kornia.geometry.transform.warp_perspective(image, transform, (1, 4), align_corners=True)
 
-        assert torch.isnan(warped).all(), (
-            "kornia#3957: a 1-pixel-high warp_perspective output is no longer all-NaN on this device"
-        )
-        assert torch.isnan(cropped).all(), (
-            "kornia#3957: a 1-pixel-high crop_by_transform_mat output is no longer all-NaN on this device"
-        )
+        identity = torch.eye(3, device=device, dtype=torch.float32)[None]
+        example = torch.arange(float(trace_height * 5), device=device).view(1, 1, trace_height, 5)
+        runtime = torch.arange(float(runtime_height * 5), device=device).view(1, 1, runtime_height, 5)
+        traced = torch.jit.trace(WarpPerspective(), (example, identity))
+        self.assert_close(traced(runtime, identity), WarpPerspective()(runtime, identity), atol=0.0, rtol=0.0)
 
 
 class TestProjectPoints(BaseTester):

@@ -71,6 +71,30 @@ def test_normalize_pixel_grid(device, dtype):
     assert_close(grid_norm, grid_pix_to_norm)
 
 
+@pytest.mark.parametrize(("height", "width"), [(1, 4), (4, 1), (1, 1)])
+def test_normalized_meshgrid_singleton_axis_is_centered(height, width, device, dtype):
+    grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=True, device=device, dtype=dtype)
+
+    if height == 1:
+        assert_close(grid[..., 1], torch.zeros_like(grid[..., 1]), atol=0.0, rtol=0.0)
+    if width == 1:
+        assert_close(grid[..., 0], torch.zeros_like(grid[..., 0]), atol=0.0, rtol=0.0)
+
+
+@pytest.mark.parametrize(("trace_height", "runtime_height"), [(2, 1), (1, 2)])
+def test_normalized_meshgrid_trace_crosses_singleton_boundary(trace_height, runtime_height, device, dtype):
+    class MeshGrid(torch.nn.Module):
+        def forward(self, image):
+            return kornia.geometry.create_meshgrid(
+                image.shape[-2], image.shape[-1], normalized_coordinates=True, device=image.device, dtype=image.dtype
+            )
+
+    example = torch.zeros(1, 1, trace_height, 4, device=device, dtype=dtype)
+    runtime = torch.zeros(1, 1, runtime_height, 4, device=device, dtype=dtype)
+    traced = torch.jit.trace(MeshGrid(), example)
+    assert_close(traced(runtime), MeshGrid()(runtime), atol=0.0, rtol=0.0)
+
+
 def test_create_meshgrid3d(device, dtype):
     depth, height, width = 5, 4, 6
     normalized_coordinates = False
@@ -85,3 +109,30 @@ def test_create_meshgrid3d(device, dtype):
     # check grid corner values
     assert tuple(grid[0, 0, 0, 0].cpu().numpy()) == (0.0, 0.0, 0.0)
     assert tuple(grid[0, depth - 1, height - 1, width - 1].cpu().numpy()) == (depth - 1, width - 1, height - 1)
+
+
+@pytest.mark.parametrize(("depth", "height", "width", "axis"), [(1, 4, 6, 0), (5, 1, 6, 2), (5, 4, 1, 1)])
+def test_normalized_meshgrid3d_singleton_axis_is_centered(depth, height, width, axis, device, dtype):
+    grid = kornia.geometry.create_meshgrid3d(
+        depth, height, width, normalized_coordinates=True, device=device, dtype=dtype
+    )
+    assert_close(grid[..., axis], torch.zeros_like(grid[..., axis]), atol=0.0, rtol=0.0)
+
+
+@pytest.mark.parametrize(("trace_depth", "runtime_depth"), [(2, 1), (1, 2)])
+def test_normalized_meshgrid3d_trace_crosses_singleton_boundary(trace_depth, runtime_depth, device, dtype):
+    class MeshGrid3d(torch.nn.Module):
+        def forward(self, volume):
+            return kornia.geometry.create_meshgrid3d(
+                volume.shape[-3],
+                volume.shape[-2],
+                volume.shape[-1],
+                normalized_coordinates=True,
+                device=volume.device,
+                dtype=volume.dtype,
+            )
+
+    example = torch.zeros(1, 1, trace_depth, 3, 4, device=device, dtype=dtype)
+    runtime = torch.zeros(1, 1, runtime_depth, 3, 4, device=device, dtype=dtype)
+    traced = torch.jit.trace(MeshGrid3d(), example)
+    assert_close(traced(runtime), MeshGrid3d()(runtime), atol=0.0, rtol=0.0)

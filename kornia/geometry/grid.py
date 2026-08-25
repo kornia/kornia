@@ -32,7 +32,8 @@ def create_meshgrid(
 
     When the flag ``normalized_coordinates`` is set to True, the grid is
     normalized to be in the range :math:`[-1,1]` to be consistent with the pytorch
-    function :py:func:`torch.nn.functional.grid_sample`.
+    function :py:func:`torch.nn.functional.grid_sample`. A singleton axis is
+    represented by ``0``, the centre of the normalized range.
 
     Args:
         height: the image height (rows).
@@ -73,8 +74,10 @@ def create_meshgrid(
     #     base_grid = K.geometry.normalize_pixel_coordinates(base_grid, height, width)
     # return torch.unsqueeze(base_grid.transpose(0, 1), dim=0)
     if normalized_coordinates:
-        xs = (xs / (width - 1) - 0.5) * 2
-        ys = (ys / (height - 1) - 0.5) * 2
+        width_t = torch.scalar_tensor(width, device=xs.device, dtype=xs.dtype)
+        height_t = torch.scalar_tensor(height, device=ys.device, dtype=ys.dtype)
+        xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, torch.zeros_like(xs))
+        ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, torch.zeros_like(ys))
     # generate grid by stacking coordinates
     base_grid: torch.Tensor = torch.stack(torch.meshgrid([xs, ys], indexing="ij"), dim=-1)  # WxHx2
     return base_grid.permute(1, 0, 2).unsqueeze(0)  # 1xHxWx2
@@ -92,7 +95,8 @@ def create_meshgrid3d(
 
     When the flag ``normalized_coordinates`` is set to True, the grid is
     normalized to be in the range :math:`[-1,1]` to be consistent with the pytorch
-    function :py:func:`torch.nn.functional.grid_sample`.
+    function :py:func:`torch.nn.functional.grid_sample`. A singleton axis is
+    represented by ``0``, the centre of the normalized range.
 
     Args:
         depth: the image depth (channels).
@@ -113,9 +117,12 @@ def create_meshgrid3d(
     zs: torch.Tensor = torch.linspace(0, depth - 1, depth, device=device, dtype=dtype)
     # Fix TracerWarning
     if normalized_coordinates:
-        xs = (xs / (width - 1) - 0.5) * 2
-        ys = (ys / (height - 1) - 0.5) * 2
-        zs = (zs / (depth - 1) - 0.5) * 2
+        width_t = torch.scalar_tensor(width, device=xs.device, dtype=xs.dtype)
+        height_t = torch.scalar_tensor(height, device=ys.device, dtype=ys.dtype)
+        depth_t = torch.scalar_tensor(depth, device=zs.device, dtype=zs.dtype)
+        xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, torch.zeros_like(xs))
+        ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, torch.zeros_like(ys))
+        zs = torch.where(depth_t > 1, (zs / (depth_t - 1) - 0.5) * 2, torch.zeros_like(zs))
     # generate grid by stacking coordinates
     base_grid = torch.stack(torch.meshgrid([zs, xs, ys], indexing="ij"), dim=-1)  # DxWxHx3
     return base_grid.permute(0, 2, 1, 3).unsqueeze(0)  # 1xDxHxWx3

@@ -1787,26 +1787,6 @@ def normalize_homography(
         `#3958 <https://github.com/kornia/kornia/issues/3958>`_.
 
     .. warning::
-        Scope: the degenerate-denominator branch only, as delimited in
-        :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
-        degenerate-size warning. Neither ``dsize`` is validated, so
-        :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
-        degenerate sizes propagate straight into the homography. On the
-        identity, holding the other size at ``(4, 5)``: a **source** ``dsize``
-        of ``(4, 1)`` collapses the ``x`` scale to ``2.500000167887412e-15``,
-        the same ``(4, 1)`` as the **destination** blows it up to the reciprocal
-        ``400000001507328.0``, and a size of ``0`` silently mirrors that axis
-        (source ``(4, 0)``, destination ``(4, 5)``, first row
-        ``[-0.25, 0.0, -1.25]``). Those three figures pass through ``matmul``
-        and an inverse, so their trailing digits are backend-dependent; the
-        orders of magnitude are the point. This is the
-        executed root of 1-pixel warp outputs coming back all-``nan`` on cpu
-        and mps — the devices executed; no CUDA behavior is claimed. Tracked
-        in
-        `#3957 <https://github.com/kornia/kornia/issues/3957>`_ and, for the
-        symptom, `#3929 <https://github.com/kornia/kornia/issues/3929>`_.
-
-    .. warning::
         Integer inputs are handled inconsistently and the inconsistency is
         device-dependent: on cpu (torch 2.9.1) an ``int64`` call raises
         ``RuntimeError: expected scalar type Long but found Float`` here and a
@@ -1923,11 +1903,7 @@ def normal_transform_pixel(
           **not**
           :func:`torch.nn.functional.grid_sample`'s default half-pixel
           ``(2 * x + 1) / width - 1``, which would put column ``0`` of a 5-wide
-          image at ``-0.8`` rather than ``-1.0``. At the degenerate sizes the
-          two diverge outright — they clamp through different ``eps``
-          mechanisms, ``2e14``-scale here against ``2e8``-scale there at
-          ``size == 1``, and with opposite signs at ``size == 0`` (executed; see
-          the warning below)
+          image at ``-0.8`` rather than ``-1.0``
         - *how far apart the two routes get, and why* — a measurement of the
           build's matmul kernel rather than a statement about the convention;
           skip it unless a reduced-precision difference is what brought you
@@ -1956,31 +1932,15 @@ def normal_transform_pixel(
           ``align_corners`` parameter — and
           :func:`~kornia.geometry.conversions.normalize_homography` and its
           siblings inherit it; see the convention warning there
+        - a singleton axis maps its only pixel to the centre of the normalized
+          range: that axis uses scale ``1`` and offset ``0``. The unit scale is
+          an invertible extension outside the lone valid coordinate, allowing
+          homography composition to handle one-pixel source and destination
+          sizes. Zero and negative sizes raise ``ValueError``
         - with ``dtype=None`` the matrix is built from Python floats, so it
           takes ``torch.get_default_dtype()``: ``float32`` by default, and
           ``float64`` under ``torch.set_default_dtype(torch.float64)``. An
           explicit ``dtype=`` overrides that
-
-    .. warning::
-        This paragraph is about the degenerate-denominator branch only, not
-        about the ``2 / (size - 1)`` scaling or the corner-aligned convention,
-        which are `#3904 <https://github.com/kornia/kornia/issues/3904>`_'s
-        territory. ``height`` and ``width`` are not validated. A size of ``1``
-        takes the ``eps`` branch,
-        so with the default ``eps = 1e-14`` the scale becomes ``2 / eps``:
-        ``normal_transform_pixel(4, 1)`` has ``sx = 200000000753664.0``, finite
-        and silent. A size of ``0`` divides by ``-1`` instead and gives
-        ``sx = -2.0``, a mirroring transform, and negative sizes are accepted
-        too (``width = -3`` gives ``-0.5``). ``eps`` is consulted **only** in
-        the ``size == 1`` branch, so it does not guard the ``size == 0`` case;
-        raising it to ``eps=1.0`` changes the ``size == 1`` scale to ``2.0`` and
-        leaves the ``size == 0`` scale at ``-2.0``. The blow-up reaches users:
-        an identity :func:`~kornia.geometry.transform.warp_perspective` onto a
-        1-pixel-high output is all-``nan`` at ``align_corners=True``, where the
-        2-pixel-high control is finite (executed on cpu and mps; no CUDA
-        behavior is claimed). Tracked in
-        `#3957 <https://github.com/kornia/kornia/issues/3957>`_ and, for the
-        symptom, `#3929 <https://github.com/kornia/kornia/issues/3929>`_.
 
     .. warning::
         An integer ``dtype`` truncates the scale instead of raising:
@@ -1992,8 +1952,7 @@ def normal_transform_pixel(
     Args:
         height: image height.
         width: image width.
-        eps: denominator substituted for ``size - 1`` when a size equals ``1``;
-          it is not consulted on any other path.
+        eps: compatibility parameter retained from the former denominator guard. It is ignored.
         device: device to place the result on.
         dtype: dtype of the result. ``None`` means ``torch.get_default_dtype()``.
 
@@ -2007,19 +1966,36 @@ def normal_transform_pixel(
                  [ 0.0000,  0.0000,  1.0000]]])
 
     """
-    # prevent divide by zero bugs
-    width_denom: float = eps if width == 1 else width - 1.0
-    height_denom: float = eps if height == 1 else height - 1.0
+    _ = eps
+    if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
+        raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
 
-    sx: float = 2.0 / width_denom
-    sy: float = 2.0 / height_denom
+    if torch.jit.is_scripting():
+        # Scalar branches remain dynamic in TorchScript and preserve torch.tensor's
+        # historical dtype-casting behaviour.
+        sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
+        sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
+        tx = 0.0 if width == 1 else -1.0
+        ty = 0.0 if height == 1 else -1.0
+        tr_mat = torch.tensor([[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+    else:
+        work_dtype = dtype if dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64) else None
+        width_t = torch.scalar_tensor(width, device=device, dtype=work_dtype or torch.get_default_dtype())
+        height_t = torch.scalar_tensor(height, device=device, dtype=work_dtype or torch.get_default_dtype())
+        one = torch.ones((), device=device, dtype=work_dtype)
+        zero = torch.zeros((), device=device, dtype=work_dtype)
 
-    # Construct the matrix in one shot (no in-place mutation).
-    tr_mat = torch.tensor(
-        [[sx, 0.0, -1.0], [0.0, sy, -1.0], [0.0, 0.0, 1.0]],
-        device=device,
-        dtype=dtype,
-    )  # 3x3
+        # A singleton axis has no extent. Map its only pixel to the normalized centre
+        # while keeping the homogeneous transform invertible for homography composition.
+        sx_t = torch.where(width_t == 1, one, 2.0 / (width_t - 1.0))
+        sy_t = torch.where(height_t == 1, one, 2.0 / (height_t - 1.0))
+        tx_t = torch.where(width_t == 1, zero, -one)
+        ty_t = torch.where(height_t == 1, zero, -one)
+
+        # Construct the matrix in one shot (no in-place mutation).
+        tr_mat = torch.stack(
+            [torch.stack([sx_t, zero, tx_t]), torch.stack([zero, sy_t, ty_t]), torch.stack([zero, zero, one])]
+        ).to(dtype=dtype)  # 3x3
 
     return tr_mat.unsqueeze(0)  # 1x3x3
 
@@ -2040,7 +2016,8 @@ def normal_transform_pixel3d(
           corner-aligned ``2 / (size - 1)`` scaling with offset ``-1``, same
           unconditional application, same ``dtype=None`` /
           ``torch.get_default_dtype()`` rule, and likewise **never batched**.
-          Only the lines below differ
+          Singleton axes use the same invertible centre mapping, and zero or
+          negative sizes raise ``ValueError``. Only the lines below differ
         - the result has shape :math:`(1, 4, 4)` and acts on homogeneous
           ``(x, y, z, 1)`` column vectors with ``x`` scaled by ``width``, ``y``
           by ``height`` and ``z`` by ``depth``, while the positional argument
@@ -2056,25 +2033,17 @@ def normal_transform_pixel3d(
           grid built for one silently permutes axes when fed to the other
 
     .. warning::
-        Scope: the degenerate-denominator branch only, as delimited in
-        :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
-        degenerate-size warning. The degenerate-size
-        and integer-``dtype`` behaviours of
-        :func:`~kornia.geometry.conversions.normal_transform_pixel` apply here
-        per axis: ``depth=1`` gives a ``z``
-        scale of ``2e14`` under the default ``eps``, ``depth=0`` gives ``-2.0``,
-        negative sizes are accepted, and
-        ``normal_transform_pixel3d(2, 4, 5, dtype=torch.int64)`` returns a
-        matrix with diagonal ``[0, 0, 2]``. Tracked in
-        `#3957 <https://github.com/kornia/kornia/issues/3957>`_ and
-        `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
+        The integer-``dtype`` behaviour of
+        :func:`~kornia.geometry.conversions.normal_transform_pixel` applies
+        here per axis: ``normal_transform_pixel3d(2, 4, 5,
+        dtype=torch.int64)`` returns a matrix with diagonal ``[0, 0, 2]``.
+        Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
     Args:
         depth: image depth.
         height: image height.
         width: image width.
-        eps: denominator substituted for ``size - 1`` when a size equals ``1``;
-          it is not consulted on any other path.
+        eps: compatibility parameter retained from the former denominator guard. It is ignored.
         device: device to place the result on.
         dtype: dtype of the result. ``None`` means ``torch.get_default_dtype()``.
 
@@ -2089,20 +2058,47 @@ def normal_transform_pixel3d(
                  [ 0.0000,  0.0000,  0.0000,  1.0000]]])
 
     """
-    tr_mat = torch.tensor(
-        [[1.0, 0.0, 0.0, -1.0], [0.0, 1.0, 0.0, -1.0], [0.0, 0.0, 1.0, -1.0], [0.0, 0.0, 0.0, 1.0]],
-        device=device,
-        dtype=dtype,
-    )  # 4x4
+    _ = eps
+    if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
+        raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
 
-    # prevent divide by zero bugs
-    width_denom: float = eps if width == 1 else width - 1.0
-    height_denom: float = eps if height == 1 else height - 1.0
-    depth_denom: float = eps if depth == 1 else depth - 1.0
+    if torch.jit.is_scripting():
+        sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
+        sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
+        sz = 1.0 if depth == 1 else 2.0 / (depth - 1.0)
+        tx = 0.0 if width == 1 else -1.0
+        ty = 0.0 if height == 1 else -1.0
+        tz = 0.0 if depth == 1 else -1.0
+        tr_mat = torch.tensor(
+            [[sx, 0.0, 0.0, tx], [0.0, sy, 0.0, ty], [0.0, 0.0, sz, tz], [0.0, 0.0, 0.0, 1.0]],
+            device=device,
+            dtype=dtype,
+        )
+    else:
+        work_dtype = dtype if dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64) else None
+        width_t = torch.scalar_tensor(width, device=device, dtype=work_dtype or torch.get_default_dtype())
+        height_t = torch.scalar_tensor(height, device=device, dtype=work_dtype or torch.get_default_dtype())
+        depth_t = torch.scalar_tensor(depth, device=device, dtype=work_dtype or torch.get_default_dtype())
+        one = torch.ones((), device=device, dtype=work_dtype)
+        zero = torch.zeros((), device=device, dtype=work_dtype)
 
-    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / width_denom
-    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / height_denom
-    tr_mat[2, 2] = tr_mat[2, 2] * 2.0 / depth_denom
+        # As in 2-D, a singleton axis maps its only pixel to the normalized centre,
+        # with unit scale so that homography composition can still invert the matrix.
+        sx_t = torch.where(width_t == 1, one, 2.0 / (width_t - 1.0))
+        sy_t = torch.where(height_t == 1, one, 2.0 / (height_t - 1.0))
+        sz_t = torch.where(depth_t == 1, one, 2.0 / (depth_t - 1.0))
+        tx_t = torch.where(width_t == 1, zero, -one)
+        ty_t = torch.where(height_t == 1, zero, -one)
+        tz_t = torch.where(depth_t == 1, zero, -one)
+
+        tr_mat = torch.stack(
+            [
+                torch.stack([sx_t, zero, zero, tx_t]),
+                torch.stack([zero, sy_t, zero, ty_t]),
+                torch.stack([zero, zero, sz_t, tz_t]),
+                torch.stack([zero, zero, zero, one]),
+            ]
+        ).to(dtype=dtype)  # 4x4
 
     return tr_mat.unsqueeze(0)  # 1x4x4
 
@@ -2123,9 +2119,7 @@ def denormalize_homography(
           batching, the corner-aligned frames — is as documented there, and so
           are that function's shape-guard (`#3960
           <https://github.com/kornia/kornia/issues/3960>`_), dtype-pass-through
-          (`#3958 <https://github.com/kornia/kornia/issues/3958>`_),
-          degenerate-size (`#3957
-          <https://github.com/kornia/kornia/issues/3957>`_), int64-handling
+          (`#3958 <https://github.com/kornia/kornia/issues/3958>`_), int64-handling
           (`#3959 <https://github.com/kornia/kornia/issues/3959>`_ — this
           function's own clause there) and corner-alignment (`#3904
           <https://github.com/kornia/kornia/issues/3904>`_) warnings. The
@@ -2247,28 +2241,6 @@ def normalize_homography3d(
         ``Input dst_pix_trans_src_pix must be a Bx3x3 tensor`` from a function
         that takes 4x4 matrices. Tracked in
         `#3960 <https://github.com/kornia/kornia/issues/3960>`_.
-
-    .. warning::
-        Scope: the degenerate-denominator branch only, as delimited in
-        :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
-        degenerate-size warning. A source
-        ``depth`` of ``1`` collapses the ``z`` scale through
-        :func:`~kornia.geometry.conversions.normal_transform_pixel3d`'s ``2e14``
-        blow-up, leaving a value that is **not** an exact zero and merely prints
-        as ``0.`` at the default precision. Both it and the determinant scale
-        with the destination depth, so neither means anything without both
-        sizes: from ``dsize_src = (1, 4, 5)`` to ``dsize_dst = (3, 8, 9)`` the
-        ``z`` scale is ``4.99999991225835e-15`` and ``det`` is
-        ``1.0714285980035544e-15``, while the same source against
-        ``(2, 8, 9)`` gives ``9.9999998245167e-15`` and
-        ``2.1428571960071087e-15`` (torch 2.9.1, cpu — these run through an
-        inverse, a ``matmul`` and ``linalg.det``, so read the exponents, not
-        the trailing digits). ``torch.linalg.inv`` still succeeds on such
-        a matrix, so it is unusable in practice rather than formally singular,
-        and it annihilates every ``z`` coordinate. Returned without any
-        warning. The ``float32`` constants of
-        `#3958 <https://github.com/kornia/kornia/issues/3958>`_ apply here too.
-        Tracked in `#3957 <https://github.com/kornia/kornia/issues/3957>`_.
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
