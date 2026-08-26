@@ -6445,15 +6445,17 @@ class TestAxisAngleToRotationMatrix:
 
 # Module-level pins for kornia#3956: the four deprecated aliases of this module
 # (angle_axis_to_rotation_matrix, rotation_matrix_to_angle_axis, quaternion_to_angle_axis,
-# angle_axis_to_quaternion) are not the site of the defect -- the root cause is
-# _emit_deprecation_warning in kornia/core/_compat.py, which wraps its warnings.warn call in
+# angle_axis_to_quaternion) were never the site of the defect -- the root cause was
+# _emit_deprecation_warning in kornia/core/_compat.py, which wrapped its warnings.warn call in
 # warnings.simplefilter("always", DeprecationWarning) / simplefilter("default", DeprecationWarning)
-# and so rewrites the PROCESS-GLOBAL filter list on every call. Every deprecated symbol in kornia
-# is therefore affected, which is why these live at module level rather than in one symbol's class,
-# following the module-level wart precedent above. Both pins run inside warnings.catch_warnings()
-# so that the filter mutation they provoke cannot leak into the rest of the suite: this bug is
-# contagious across tests, and an unisolated pin would silently disarm every other test's warning
-# discipline.
+# and so rewrote the PROCESS-GLOBAL filter list on every call. Every deprecated symbol in kornia
+# was therefore affected, which is why these live at module level rather than in one symbol's
+# class, following the module-level wart precedent above; the emitter itself is pinned in
+# tests/utils/test_deprecated.py, and these four cells are what keeps the convention attached to
+# the aliases rather than to one caller of the decorator. Both pins run inside
+# warnings.catch_warnings() so that a regression's filter mutation cannot leak into the rest of the
+# suite: that bug was contagious across tests, and an unisolated pin would silently disarm every
+# other test's warning discipline.
 # Both pins parametrize over _DEPRECATED_ALIAS_NAMES_AND_ARGS, the projection of the module-level
 # _DEPRECATED_ALIASES table down to the two columns they use -- neither is about what the alias
 # forwards TO, only about the warning it emits on the way -- so both the list of aliases and the
@@ -6461,29 +6463,24 @@ class TestAxisAngleToRotationMatrix:
 # it never reads.
 
 
-@pytest.mark.xfail(
-    raises=AssertionError,
-    reason="_emit_deprecation_warning forces the DeprecationWarning filter to 'always', so "
-    "-W error::DeprecationWarning cannot escalate it — kornia#3956",
-    strict=True,
-)
 @pytest.mark.parametrize(("alias_name", "arg"), _DEPRECATED_ALIAS_NAMES_AND_ARGS, ids=_DEPRECATED_ALIAS_IDS)
 def test_convention_deprecated_alias_warning_can_be_escalated_to_an_error_3956(alias_name, arg):
-    # Intended behavior: a DeprecationWarning emitted by kornia obeys the caller's warning filters,
-    # so a project that runs under -W error::DeprecationWarning (or pytest's filterwarnings =
-    # error) sees the call fail and can find its deprecated usages. It does not:
-    # _emit_deprecation_warning installs simplefilter("always", DeprecationWarning) immediately
-    # before warnings.warn, which overrides the caller's "error" entry, so the warning is printed
-    # and execution continues. The escalated DeprecationWarning is caught by type rather than
-    # through the shared _runs_without_raising helper: that helper treats *any* exception as the
-    # awaited raise, so an unrelated TypeError from the alias would set escalated=True, pass the
-    # body, and -- under xfail(strict=True) -- be reported as XPASS(strict) on a test named
-    # ..._can_be_escalated_to_an_error_3956, which reads as "#3956 is fixed, drop the mark".
-    # Catching DeprecationWarning specifically lets any other exception propagate and be reported
-    # as an error instead. (The #3955 call sites keep the broad helper on purpose: there an
-    # unrelated exception makes the assertion *fail*, which is already the correct report.)
-    # Marked xfail(strict=True) so fixing #3956 makes all four cases XPASS and forces the mark out.
-    # Companion wart: test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956.
+    # Convention: a DeprecationWarning emitted by kornia obeys the caller's warning filters, so a
+    # project running under -W error::DeprecationWarning (or pytest's filterwarnings = error) sees
+    # the call fail and can find its deprecated usages. Until kornia#3956 was fixed it did not:
+    # _emit_deprecation_warning installed simplefilter("always", DeprecationWarning) immediately
+    # before warnings.warn, which overrode the caller's "error" entry, so the warning was printed
+    # and execution continued.
+    # The escalated DeprecationWarning is caught by type rather than through the shared
+    # _runs_without_raising helper: that helper treats *any* exception as the awaited raise, so an
+    # unrelated TypeError from the alias would set escalated=True and pass the body under a name
+    # that reads as "escalation works". Catching DeprecationWarning specifically lets any other
+    # exception propagate and be reported as an error instead. (The #3955 call sites keep the broad
+    # helper on purpose: there an unrelated exception makes the assertion *fail*, which is already
+    # the correct report.)
+    # Four cells, one per alias, because all four are separate @deprecated call sites: the fix is
+    # in _emit_deprecation_warning, but a future decorator that emits its own warning would have to
+    # honor this too.
     alias = getattr(kornia.geometry.conversions, alias_name)
     tensor = torch.tensor(arg)
 
@@ -6500,23 +6497,16 @@ def test_convention_deprecated_alias_warning_can_be_escalated_to_an_error_3956(a
 
 
 @pytest.mark.parametrize(("alias_name", "arg"), _DEPRECATED_ALIAS_NAMES_AND_ARGS, ids=_DEPRECATED_ALIAS_IDS)
-def test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956(alias_name, arg):
-    # Wart pin for kornia#3956, companion to the strict xfail above: assert that a single alias
-    # call CURRENTLY leaves two entries of its own at the head of the process-global filter list,
-    # starting from an empty one. Four cells, one per alias, because all four are separate
-    # @deprecated call sites and a fix could plausibly be applied per decorator rather than in
-    # _emit_deprecation_warning; the 'default' entry (pushed by the finally clause) and the
-    # 'always' entry (pushed before the warn) are both asserted, since a half fix that drops only
-    # the "always" would leave the caller's filters just as clobbered.
-    # If any cell fails, #3956 was (partly) fixed in kornia/core/_compat.py -- flip/remove the
-    # strict xfail above. NOT a contract that calling a deprecated alias must mutate global state.
-    # Snippet used to generate expected (stdlib + torch, executed on cpu):
-    #   with warnings.catch_warnings():
-    #       warnings.resetwarnings()
-    #       kornia.geometry.conversions.angle_axis_to_quaternion(torch.tensor([0.1, 0.2, 0.3]))
-    #       warnings.filters[:2]
-    #   -> [('default', None, <class 'DeprecationWarning'>, None, 0),
-    #       ('always',  None, <class 'DeprecationWarning'>, None, 0)]
+def test_convention_deprecated_alias_leaves_the_global_warning_filters_alone_3956(alias_name, arg):
+    # The other half of kornia#3956, and the half the escalation pin above cannot see: a call must
+    # leave warnings.filters exactly as it found it. Before the fix a single alias call pushed two
+    # entries of its own -- 'always' before the warn and 'default' from the finally clause -- so
+    # even a caller that never escalated had its process-global warning config rewritten, and the
+    # 'default' entry outlived the call. Pinned separately because a half fix that dropped only the
+    # "always" would restore escalation while still clobbering the caller's filters.
+    # Starts from an EMPTY filter list rather than the ambient one so the assertion is exact rather
+    # than a length comparison, and runs inside warnings.catch_warnings() so neither the reset nor
+    # any mutation a regression reintroduces can leak into the rest of the suite.
     alias = getattr(kornia.geometry.conversions, alias_name)
     tensor = torch.tensor(arg)
 
@@ -6526,9 +6516,6 @@ def test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956(alias_na
 
         alias(tensor)
 
-        head = warnings.filters[:2]
+        after = list(warnings.filters)
 
-    assert head == [
-        ("default", None, DeprecationWarning, None, 0),
-        ("always", None, DeprecationWarning, None, 0),
-    ], f"kornia#3956: {alias_name} no longer rewrites the global DeprecationWarning filters; got {head}"
+    assert after == [], f"kornia#3956: {alias_name} mutated the global DeprecationWarning filters; got {after}"
