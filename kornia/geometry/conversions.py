@@ -1722,16 +1722,15 @@ def normalize_homography(
           :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
           **corner-aligned** ones, inherited unconditionally — see the
           convention warning below
-
-    .. warning::
-        The documented :math:`(B, 3, 3)` is not what the guard enforces. An
-        unbatched ``(3, 3)`` is accepted and promoted to ``(1, 3, 3)``, and any
-        number of leading batch dimensions is accepted and preserved
-        (``(2, 4, 3, 3)`` returns ``(2, 4, 3, 3)``). Worse, a ``(B, 4, 4)``
-        input passes the guard entirely and fails later inside ``matmul`` with
-        a message naming neither the argument nor the expected shape. Which of
-        those ranks the contract will ratify is undecided. Tracked in
-        `#3960 <https://github.com/kornia/kornia/issues/3960>`_.
+        - the shape guard accepts a :math:`(3, 3)` or a :math:`(B, 3, 3)`
+          matrix and nothing else. An unbatched ``(3, 3)`` is promoted to
+          ``(1, 3, 3)`` — the returned matrix is batched even though the input
+          was not — while a rank-4 input such as ``(2, 4, 3, 3)`` and a
+          wrong-sized one such as ``(B, 4, 4)`` both raise ``ValueError``
+          naming the argument and the expected shape. Rank-4 inputs and
+          ``(B, 4, 4)`` inputs used to pass this guard, the first returned
+          unchanged in rank and the second dying later inside ``matmul``; fixed
+          in `#3999 <https://github.com/kornia/kornia/pull/3999>`_
 
     .. warning::
         In **eager mode** the inverse this function takes is a closed-form 3x3
@@ -2118,15 +2117,14 @@ def denormalize_homography(
           ``(height, width)`` ``dsize`` tuples, ``dsize_src`` on the right and
           ``dsize_dst`` on the left, ``(x, y, 1)`` column vectors, per-sample
           batching, the corner-aligned frames — is as documented there, and so
-          are that function's shape-guard (`#3960
-          <https://github.com/kornia/kornia/issues/3960>`_), dtype-pass-through
+          is its shape guard. That function's dtype-pass-through
           (`#3958 <https://github.com/kornia/kornia/issues/3958>`_),
           degenerate-size (`#3957
           <https://github.com/kornia/kornia/issues/3957>`_), int64-handling
           (`#3959 <https://github.com/kornia/kornia/issues/3959>`_ — this
           function's own clause there) and corner-alignment (`#3904
-          <https://github.com/kornia/kornia/issues/3904>`_) warnings. The
-          exception is the closed-form-inverse warning: in eager mode this
+          <https://github.com/kornia/kornia/issues/3904>`_) warnings apply here
+          too. The exception is the closed-form-inverse warning: in eager mode this
           function inverts through ``torch.linalg.inv`` rather than through the
           ``torch.linalg.cross`` adjugate, and under ``torch.jit.trace`` through
           a cofactor expansion that calls neither, so it does not have that gap
@@ -2234,16 +2232,14 @@ def normalize_homography3d(
           complete, this one is not, so an inverse has to be composed by hand
           from :func:`~kornia.geometry.conversions.normal_transform_pixel3d`.
           Tracked in `#3962 <https://github.com/kornia/kornia/issues/3962>`_
-
-    .. warning::
-        The shape guard has the 2-D function's ``or``-structure and the 2-D
-        function's message, with only the size adapted: it accepts an unbatched
-        ``(4, 4)`` (promoted to ``(1, 4, 4)``) and any number of leading batch
-        dimensions, it lets a ``(B, 3, 3)`` through to die inside ``matmul``,
-        and when it does fire its message names the wrong shape —
-        ``Input dst_pix_trans_src_pix must be a Bx3x3 tensor`` from a function
-        that takes 4x4 matrices. Tracked in
-        `#3960 <https://github.com/kornia/kornia/issues/3960>`_.
+        - the shape guard is the 2-D function's, with the size adapted: a
+          :math:`(4, 4)` or :math:`(B, 4, 4)` matrix and nothing else, an
+          unbatched ``(4, 4)`` promoted to ``(1, 4, 4)``, and anything else —
+          a rank-4 input, or a ``(B, 3, 3)`` — rejected with
+          ``Input dst_pix_trans_src_pix must be a Bx4x4 tensor``. Both the
+          ``or``-structured guard and its message, which used to name
+          ``Bx3x3`` from a function that takes 4x4 matrices, were fixed in
+          `#3999 <https://github.com/kornia/kornia/pull/3999>`_
 
     .. warning::
         Scope: the degenerate-denominator branch only, as delimited in
