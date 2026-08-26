@@ -165,7 +165,7 @@ def test_meshgrid_export_crosses_singleton_boundary(is_3d, normalized_coordinate
 
 @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("is_3d", [False, True], ids=["2d", "3d"])
-def test_pixel_meshgrid_default_dtype_matches_graph_capture(is_3d, default_dtype):
+def test_pixel_meshgrid_default_dtype_matches_compile(is_3d, default_dtype):
     class MeshGrid(torch.nn.Module):
         def forward(self, image):
             if is_3d:
