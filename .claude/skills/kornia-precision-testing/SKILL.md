@@ -21,7 +21,11 @@ sweeps; when a rule cannot be expressed through a helper, cite the rule in the t
 2. **Under capture, divide by the unrounded size and cast the quotient.** Eager divides by a Python
    int that stays exact through float32 opmath; `(size_t - 1).to(half)` does not.
 3. **Resolve `dtype=None` to `torch.get_default_dtype()` before deciding to promote.** The default
-   dtype may itself be half.
+   dtype may itself be half. The parity sweep for any function taking `dtype=None` must include the
+   cell `torch.set_default_dtype(<half>)` + `dtype=None`; explicit-`dtype=` scans cannot see this
+   defect, and "scanned all four dtypes, unchanged" is not evidence for it. Shape:
+   `previous = torch.get_default_dtype(); torch.set_default_dtype(torch.float16); try: ...
+   finally: torch.set_default_dtype(previous)`.
 4. **Guard a cast-back on `is_floating_point()`.** An integral coordinate dtype stays promoted, as
    eager's true-division leaves it.
 5. **A degenerate path validates exactly what the full path validates.** Empty `dsize`, singleton
@@ -36,6 +40,9 @@ sweeps; when a rule cannot be expressed through a helper, cite the rule in the t
 9. **A regression test must fail on the pre-fix SHA.** Check it before trusting it.
 10. **Historical negatives in `tests/testing/_historical.py` are trace-only fixtures** — do not run
     them under `capture="compile"`.
+11. **A `torch.compiler.is_compiling()` branch needs a `capture="compile"` sweep, not just
+    `"trace"`.** The inductor `-k "dynamo or compile"` surface only runs tests that exist, so a
+    compile-only divergence in a new code path has no other net.
 
 ## Helpers
 
@@ -52,11 +59,11 @@ assert_capture_matches_eager(fn, make_inputs, sizes=[1, 2, 258, 300], device=dev
 assert_degenerate_path_parity(warp_affine, full_kwargs, empty_kwargs, [("M", int_matrix), ("M", wrong_shape)])
 ```
 
-Gate the PR with `pixi run verify-delta` (see `kornia-review-loop` step 6 for the flags and exit
-codes) once these tests exist.
-
 Full reference: `TESTING.md` § "Precision and Degenerate-Path Helpers". Historical negatives that
 these helpers must catch live in `tests/testing/_historical.py`.
+
+Gate the PR with `pixi run verify-delta` (see `kornia-review-loop` step 6 for the flags and exit
+codes) once these tests exist.
 
 ## Related
 

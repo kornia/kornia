@@ -39,7 +39,9 @@ would have converged in two rounds if each push had been gated.
 3. **Fix defects only.** If a finding makes you want to *add* something — a helper, a rule in
    `AGENTS.md`, a deprecation, a new test file for an adjacent function — write it as a follow-up
    issue and link it in the reply. Mid-PR additions are reviewed as fixes and generate rounds. The
-   PR only shrinks or corrects during review.
+   PR only shrinks or corrects during review. A same-class defect in a sibling function is in scope
+   only after step 2's `main` probe has been run on that sibling too; a guard you tighten without
+   probing `main` may be removing behaviour `main` deliberately preserves.
 
 4. **Write tests that cannot pass vacuously.** Use the `kornia-precision-testing` skill for any
    test touching dtype, device, capture or degenerate sizes. Before trusting a new regression test,
@@ -59,7 +61,9 @@ would have converged in two rounds if each push had been gated.
    before promotion is decided; does a new compile test carry `dynamo`/`compile` in its name; do
    MPS/half skips match the nearest existing test; did a docstring, comment, or changelog sentence
    next to the change stop being true; does the fix in one function need mirroring in its 3d/other
-   sibling." Fix what it finds. Repeat once if it found anything.
+   sibling." Fix what it finds. Repeat once if it found anything. If you cannot dispatch a
+   subagent, perform the review yourself against the same list and paste the checklist WITH
+   outcomes into the reply to the reviewer — the step is not done until that artifact exists.
 
 6. **Gate: `pixi run verify-delta`.** Zero `new` failures on every available surface — the four
    `--only` names are `cpu float32`, `cpu float16,bfloat16,float64`, `mps float32`, and
