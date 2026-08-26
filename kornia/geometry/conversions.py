@@ -2140,10 +2140,12 @@ def normal_transform_pixel(
     else:
         # Low-precision floating types cannot represent every practical image size exactly
         # (e.g. bfloat16 rounds 257 to 256). Keep symbolic size arithmetic in at least
-        # float32, then cast the finished matrix to the requested output dtype.
-        work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
-        if work_dtype not in (torch.float32, torch.float64):
-            work_dtype = torch.get_default_dtype()
+        # float32, then cast the finished matrix to the requested output dtype. Resolve that
+        # output dtype FIRST: a ``dtype=None`` call inherits the default floating dtype, which
+        # may itself be a half type, so promoting only an *explicit* half ``dtype`` would leave
+        # ``torch.set_default_dtype(torch.float16)`` rounding the size below.
+        out_dtype = dtype if dtype is not None else torch.get_default_dtype()
+        work_dtype = out_dtype if out_dtype in (torch.float32, torch.float64) else torch.float32
         width_t = torch.scalar_tensor(width, device=device, dtype=work_dtype)
         height_t = torch.scalar_tensor(height, device=device, dtype=work_dtype)
         one = torch.ones((), device=device, dtype=work_dtype)
@@ -2159,7 +2161,7 @@ def normal_transform_pixel(
         # Construct the matrix in one shot (no in-place mutation).
         tr_mat = torch.stack(
             [torch.stack([sx_t, zero, tx_t]), torch.stack([zero, sy_t, ty_t]), torch.stack([zero, zero, one])]
-        ).to(dtype=dtype)  # 3x3
+        ).to(dtype=out_dtype)  # 3x3
 
     return tr_mat.unsqueeze(0)  # 1x3x3
 
@@ -2254,9 +2256,10 @@ def normal_transform_pixel3d(
             dtype=dtype,
         )
     else:
-        work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
-        if work_dtype not in (torch.float32, torch.float64):
-            work_dtype = torch.get_default_dtype()
+        # As in 2-D: keep the symbolic size arithmetic in at least float32, and resolve the
+        # output dtype first so a ``dtype=None`` call under a half default dtype is promoted too.
+        out_dtype = dtype if dtype is not None else torch.get_default_dtype()
+        work_dtype = out_dtype if out_dtype in (torch.float32, torch.float64) else torch.float32
         width_t = torch.scalar_tensor(width, device=device, dtype=work_dtype)
         height_t = torch.scalar_tensor(height, device=device, dtype=work_dtype)
         depth_t = torch.scalar_tensor(depth, device=device, dtype=work_dtype)
@@ -2279,7 +2282,7 @@ def normal_transform_pixel3d(
                 torch.stack([zero, zero, sz_t, tz_t]),
                 torch.stack([zero, zero, zero, one]),
             ]
-        ).to(dtype=dtype)  # 4x4
+        ).to(dtype=out_dtype)  # 4x4
 
     return tr_mat.unsqueeze(0)  # 1x4x4
 

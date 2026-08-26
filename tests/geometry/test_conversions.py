@@ -3895,6 +3895,44 @@ class TestNormalTransformPixel(BaseTester):
                     sizes["depth"], sizes["height"], sizes["width"], device=device
                 )
 
+    @pytest.mark.parametrize("ndim", ["2d", "3d"])
+    @pytest.mark.parametrize(
+        ("default_dtype", "size"), [(torch.float16, 2049), (torch.bfloat16, 257)], ids=["float16", "bfloat16"]
+    )
+    def test_half_default_dtype_does_not_round_the_size_under_tracing(self, ndim, default_dtype, size, device):
+        # The graph-capture branch keeps the size arithmetic in at least float32 because a half
+        # type cannot hold every practical image size. That promotion has to key off the dtype the
+        # matrix is actually built in, not off the ``dtype`` ARGUMENT: with ``dtype=None`` the
+        # matrix inherits torch.get_default_dtype(), which may itself be a half type, and reading
+        # the argument alone leaves the size rounded in exactly the case the promotion exists for.
+        # The coordinate helpers resolve the output dtype first and were always right here; these
+        # two did not, so nothing else in this file covers the ``dtype=None`` + half-default cell.
+        # Sizes are picked so the size ITSELF is unrepresentable in the default dtype AND the
+        # rounding survives into the scale: float16 holds 2049 only as 2048, bfloat16 holds 257
+        # only as 256. Merely-unrepresentable is not enough -- at float16 and size 3001 the two
+        # paths compute 2/3000 and 2/2999, which round to the SAME float16, so that cell would
+        # pass whether or not the promotion happens. 2049 and 257 are the smallest sizes at which
+        # each dtype actually disagrees under torch.jit.trace.
+        class NormalTransformPixel(torch.nn.Module):
+            def forward(self, image):
+                if ndim == "3d":
+                    return kornia.geometry.conversions.normal_transform_pixel3d(
+                        image.shape[-3], image.shape[-2], image.shape[-1], device=image.device
+                    )
+                return kornia.geometry.conversions.normal_transform_pixel(
+                    image.shape[-2], image.shape[-1], device=image.device
+                )
+
+        previous = torch.get_default_dtype()
+        torch.set_default_dtype(default_dtype)
+        try:
+            shape = (1, 1, 3, size, 5) if ndim == "3d" else (1, 1, size, 5)
+            image = torch.zeros(*shape, device=device)
+            traced = torch.jit.trace(NormalTransformPixel(), image)
+            self.assert_close(traced(image), NormalTransformPixel()(image), atol=0.0, rtol=0.0)
+        finally:
+            torch.set_default_dtype(previous)
+
     def test_wart_integer_dtype_truncates_the_scale_to_zero_3959(self, device):
         # Wart pin for kornia#3959: the matrix is built by torch.tensor([...], dtype=dtype) from
         # Python floats, so an integer dtype truncates every scale below 1 to 0 and the function
