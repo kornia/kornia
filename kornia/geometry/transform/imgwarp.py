@@ -66,6 +66,115 @@ __all__ = [
 ]
 
 
+def _matrix_warp_grid_dtype(src: torch.Tensor, transform: torch.Tensor) -> torch.dtype:
+    """Return the sampling-grid dtype the non-empty matrix-warp pipeline would build.
+
+    ``normalize_homography`` scales ``transform`` by floating factors, so an integral or boolean
+    matrix already fails there and must fail here too. Otherwise the base grid is created in
+    ``src.dtype`` and combined with the normalized matrix, so the grid promotes the two: a float32
+    matrix against a float64 image still samples in float64, while the reverse narrows and is
+    rejected by ``grid_sample``.
+    """
+    if not transform.is_floating_point():
+        raise RuntimeError(f"Expected a floating point transform, got {transform.dtype}.")
+    return torch.promote_types(src.dtype, transform.dtype)
+
+
+def _remap_grid_dtype(map_xy: torch.Tensor, normalized_coordinates: bool) -> torch.dtype:
+    """Return the sampling-grid dtype the non-empty :func:`remap` pipeline would build.
+
+    Already-normalized maps reach ``grid_sample`` untouched. Pixel maps first go through
+    :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`, which keeps a floating map in
+    its own dtype and lifts an integral or boolean one into the default floating dtype.
+    """
+    if normalized_coordinates or map_xy.is_floating_point():
+        return map_xy.dtype
+    # Read the default floating dtype off a zero-element promotion rather than
+    # ``torch.get_default_dtype()``, which TorchScript does not expose.
+    return (map_xy.reshape(-1)[:0] * 1.0).dtype
+
+
+def _empty_warp_output_2d(
+    src: torch.Tensor,
+    transform: torch.Tensor,
+    dsize: tuple[int, int],
+    mode: str,
+    padding_mode: str,
+    align_corners: bool,
+    grid_dtype: torch.dtype,
+    fill_value: Optional[torch.Tensor] = None,
+    expand_transform_batch: bool = False,
+    allow_fill: bool = True,
+    operand: str = "transform",
+) -> torch.Tensor:
+    """Return an empty warp while retaining normal grid-sample validation and autograd links.
+
+    ``operand`` names the second tensor in the error messages. ``remap`` has no ``transform``
+    parameter — it delegates here with its stacked maps — so it must not be told about one.
+    """
+    if src.device != transform.device:
+        raise RuntimeError(f"Expected src and {operand} on the same device, got {src.device} and {transform.device}.")
+    # An integral ``src`` fails inside ``grid_sample`` itself on the non-empty path, so it must
+    # fail here too — but name ``src`` rather than blaming the other operand for it below. (MPS is the
+    # exception: its ``grid_sample`` samples an integral image back into ``int64`` instead of
+    # rejecting it. Matching that would mean bilinear-sampling into an integer output, so the
+    # cpu/cuda contract is the one enforced here.)
+    if not src.is_floating_point():
+        raise RuntimeError(f"Expected a floating point src, got {src.dtype}.")
+    # ``grid_sample`` requires the sampling grid in ``src.dtype``. ``grid_dtype`` is the dtype the
+    # caller's non-empty pipeline would actually produce from ``transform``, so checking it here
+    # makes a zero-sized ``dsize`` neither stricter nor laxer than a non-empty one.
+    if grid_dtype != src.dtype:
+        raise RuntimeError(f"Expected src and {operand} with the same dtype, got {src.dtype} and {transform.dtype}.")
+    if src.dtype != transform.dtype:
+        transform = transform.to(src.dtype)
+    grid_zero = transform.reshape(-1)[:1].sum() * 0.0
+    grid = grid_zero.reshape(1, 1, 1, 1).expand(transform.shape[0], dsize[0], dsize[1], 2)
+    if expand_transform_batch and transform.shape[0] == 1 and src.shape[0] > 1:
+        grid = grid.expand(src.shape[0], -1, -1, -1)
+
+    # ``grid_sample`` rejects an empty source even when the destination is also empty. Validate
+    # all its other contracts against a connected 1x1 stand-in so the public empty-source policy
+    # remains useful without silently accepting invalid batches, dtypes, devices, or modes.
+    sample_src = src
+    if src.shape[-2] == 0 or src.shape[-1] == 0:
+        src_zero = src.reshape(-1)[:1].sum() * 0.0
+        sample_src = src_zero.reshape(1, 1, 1, 1).expand(src.shape[0], src.shape[1], 1, 1)
+
+    if padding_mode == "fill" and allow_fill:
+        if fill_value is None:
+            fill_value = torch.zeros(src.shape[1], device=src.device, dtype=src.dtype)
+        return _fill_and_warp(sample_src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
+    return F.grid_sample(sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+
+
+def _empty_warp_output_3d(
+    src: torch.Tensor,
+    transform: torch.Tensor,
+    dsize: tuple[int, int, int],
+    mode: str,
+    padding_mode: str,
+    align_corners: bool,
+) -> torch.Tensor:
+    """Return an empty volume warp with normal grid-sample validation and autograd links."""
+    if src.device != transform.device:
+        raise RuntimeError(f"Expected src and transform on the same device, got {src.device} and {transform.device}.")
+    # As in the 2-D helper: an integral ``src`` cannot reach cpu/cuda ``grid_sample`` on either
+    # path, so reject it by name instead of via the transform-dtype message below.
+    if not src.is_floating_point():
+        raise RuntimeError(f"Expected a floating point src, got {src.dtype}.")
+    if src.dtype != transform.dtype:
+        raise RuntimeError(f"Expected src and transform with the same dtype, got {src.dtype} and {transform.dtype}.")
+    grid_zero = transform.reshape(-1)[:1].sum() * 0.0
+    grid = grid_zero.reshape(1, 1, 1, 1, 1).expand(transform.shape[0], dsize[0], dsize[1], dsize[2], 3)
+
+    sample_src = src
+    if src.shape[-3] == 0 or src.shape[-2] == 0 or src.shape[-1] == 0:
+        src_zero = src.reshape(-1)[:1].sum() * 0.0
+        sample_src = src_zero.reshape(1, 1, 1, 1, 1).expand(src.shape[0], src.shape[1], 1, 1, 1)
+    return F.grid_sample(sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+
+
 def warp_perspective(
     src: torch.Tensor,
     M: torch.Tensor,
@@ -93,6 +202,8 @@ def warp_perspective(
         - coordinates: ``(x, y)``, pixel centers, origin at top-left
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default
+        - a zero output dimension returns an autograd-connected empty tensor;
+          negative output dimensions raise ``ValueError``
 
     Args:
         src: input image with shape :math:`(B, C, H, W)`.
@@ -142,6 +253,12 @@ def warp_perspective(
 
     B, _, H, W = src.size()
     h_out, w_out = dsize
+    if h_out < 0 or w_out < 0:
+        raise ValueError(f"Output size must be non-negative. Got {dsize}.")
+    if h_out == 0 or w_out == 0:
+        return _empty_warp_output_2d(
+            src, M, dsize, mode, padding_mode, align_corners, _matrix_warp_grid_dtype(src, M), fill_value
+        )
 
     # we F.normalize the 3x3 transformation matrix and convert to 3x4
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M, (H, W), (h_out, w_out))  # Bx3x3
@@ -202,6 +319,8 @@ def warp_affine(
         - coordinates: ``(x, y)``, pixel centers, origin at top-left
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default
+        - a zero output dimension returns an autograd-connected empty tensor;
+          negative output dimensions raise ``ValueError``
 
     Args:
         src: input torch.Tensor of shape :math:`(B, C, H, W)`.
@@ -240,11 +359,25 @@ def warp_affine(
     if not len(src.shape) == 4:
         raise ValueError(f"Input src must be a BxCxHxW torch.Tensor. Got {src.shape}")
 
-    if not (len(M.shape) == 3 or M.shape[-2:] == (2, 3)):
+    if not (len(M.shape) == 3 and M.shape[-2:] == (2, 3)):
         raise ValueError(f"Input M must be a Bx2x3 torch.Tensor. Got {M.shape}")
 
     B, C, H, W = src.size()
     B_M = M.shape[0]
+    if dsize[0] < 0 or dsize[1] < 0:
+        raise ValueError(f"Output size must be non-negative. Got {dsize}.")
+    if dsize[0] == 0 or dsize[1] == 0:
+        return _empty_warp_output_2d(
+            src,
+            M,
+            dsize,
+            mode,
+            padding_mode,
+            align_corners,
+            _matrix_warp_grid_dtype(src, M),
+            fill_value,
+            expand_transform_batch=True,
+        )
 
     M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M_3x3, (H, W), dsize)
@@ -269,8 +402,16 @@ def warp_affine(
         # corners at +/-1 vs pixel centers). A shared (1x2x3) matrix broadcasts across the batch.
         h_out, w_out = dsize
         if align_corners:
-            xs = torch.linspace(-1.0, 1.0, w_out, device=src.device, dtype=src.dtype)
-            ys = torch.linspace(-1.0, 1.0, h_out, device=src.device, dtype=src.dtype)
+            xs = (
+                torch.zeros(1, device=src.device, dtype=src.dtype)
+                if w_out == 1
+                else torch.linspace(-1.0, 1.0, w_out, device=src.device, dtype=src.dtype)
+            )
+            ys = (
+                torch.zeros(1, device=src.device, dtype=src.dtype)
+                if h_out == 1
+                else torch.linspace(-1.0, 1.0, h_out, device=src.device, dtype=src.dtype)
+            )
         else:
             xs = torch.linspace(-1.0 + 1.0 / w_out, 1.0 - 1.0 / w_out, w_out, device=src.device, dtype=src.dtype)
             ys = torch.linspace(-1.0 + 1.0 / h_out, 1.0 - 1.0 / h_out, h_out, device=src.device, dtype=src.dtype)
@@ -645,6 +786,8 @@ def remap(
           unless ``normalized_coordinates=True``
         - align_corners: ``None`` by default, resolved to ``False`` internally
         - padding_mode: ``'zeros'`` by default
+        - the output spatial size comes from the maps; a zero map axis returns an
+          autograd-connected empty output, including when the matching source axis is empty
 
     Args:
         image: the torch.Tensor to remap with shape (B, C, H, W).
@@ -687,16 +830,30 @@ def remap(
     # grid_sample need the grid between -1/1
     map_xy: torch.Tensor = torch.stack([map_x, map_y], -1)
 
+    # Default to False if align_corners is None to avoid PyTorch warning
+    if align_corners is None:
+        align_corners = False
+
+    if map_xy.shape[-3] == 0 or map_xy.shape[-2] == 0:
+        return _empty_warp_output_2d(
+            image,
+            map_xy,
+            (map_xy.shape[-3], map_xy.shape[-2]),
+            mode,
+            padding_mode,
+            align_corners,
+            _remap_grid_dtype(map_xy, normalized_coordinates),
+            expand_transform_batch=True,
+            allow_fill=False,
+            operand="map",
+        )
+
     # F.normalize coordinates if not already normalized
     if not normalized_coordinates:
         map_xy = normalize_pixel_coordinates(map_xy, height, width)
 
     # simulate broadcasting since grid_sample does not support it
     map_xy = map_xy.expand(batch_size, -1, -1, -1)
-
-    # Default to False if align_corners is None to avoid PyTorch warning
-    if align_corners is None:
-        align_corners = False
 
     # warp the image tensor and return
     return F.grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
@@ -1061,6 +1218,8 @@ def warp_affine3d(
         - ``M`` is the source→destination **pixel** affine matrix :math:`(B, 3, 4)`
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default
+        - a zero output dimension returns an autograd-connected empty tensor;
+          negative output dimensions raise ``ValueError``
 
     Args:
         src : input torch.Tensor of shape :math:`(B, C, D, H, W)`.
@@ -1087,6 +1246,10 @@ def warp_affine3d(
     if len(dsize) != 3:
         raise AssertionError(dsize)
     B, C, D, H, W = src.size()
+    if dsize[0] < 0 or dsize[1] < 0 or dsize[2] < 0:
+        raise ValueError(f"Output size must be non-negative. Got {dsize}.")
+    if dsize[0] == 0 or dsize[1] == 0 or dsize[2] == 0:
+        return _empty_warp_output_3d(src, M, dsize, flags, padding_mode, align_corners)
 
     size_src: tuple[int, int, int] = (D, H, W)
     size_out: tuple[int, int, int] = dsize
@@ -1438,6 +1601,8 @@ def warp_perspective3d(
         - align_corners: ``False`` by default (differs from the 2D :func:`warp_perspective`,
           whose default is ``True``)
         - border_mode: ``'zeros'`` by default
+        - a zero output dimension returns an autograd-connected empty tensor;
+          negative output dimensions raise ``ValueError``
 
     Args:
         src: input image with shape :math:`(B, C, D, H, W)`.
@@ -1465,8 +1630,19 @@ def warp_perspective3d(
     if not len(src.shape) == 5:
         raise ValueError(f"Input src must be a BxCxDxHxW torch.Tensor. Got {src.shape}")
 
-    if not (len(M.shape) == 3 or M.shape[-2:] == (4, 4)):
+    # An unbatched 4x4 matrix has always been accepted here (the historical shape guard used
+    # ``or``, so it never fired for one), and it warps correctly. Keep that working by promoting
+    # it, rather than letting the tightened guard below turn it into a ``ValueError``.
+    if len(M.shape) == 2 and M.shape[-2:] == (4, 4):
+        M = M[None]
+
+    if not (len(M.shape) == 3 and M.shape[-2:] == (4, 4)):
         raise ValueError(f"Input M must be a Bx4x4 torch.Tensor. Got {M.shape}")
+
+    if dsize[0] < 0 or dsize[1] < 0 or dsize[2] < 0:
+        raise ValueError(f"Output size must be non-negative. Got {dsize}.")
+    if dsize[0] == 0 or dsize[1] == 0 or dsize[2] == 0:
+        return _empty_warp_output_3d(src, M, dsize, flags, border_mode, align_corners)
 
     # launches the warper
     d, h, w = src.shape[-3:]
@@ -1499,6 +1675,7 @@ def homography_warp(
           honored when ``normalized_homography=True`` — the pixel-homography path currently
           forces ``align_corners=True`` and ``mode='bilinear'``)
         - padding_mode: ``'zeros'`` by default
+        - negative output dimensions raise ``ValueError``
 
     Args:
         patch_src: The image or torch.Tensor to warp. Should be from source of shape :math:`(N, C, H, W)`.
@@ -1531,6 +1708,8 @@ def homography_warp(
         torch.Size([1, 4, 4, 2])
 
     """
+    if dsize[0] < 0 or dsize[1] < 0:
+        raise ValueError(f"Output size must be non-negative. Got {dsize}.")
     if not src_homo_dst.device == patch_src.device:
         raise TypeError(
             f"Patch and homography must be on the same device. Got patch.device: {patch_src.device} "
@@ -1582,6 +1761,7 @@ def homography_warp3d(
           :math:`[-1, 1]` coordinates by default (``normalized_coordinates=True``)
         - align_corners: ``False`` by default
         - padding_mode: ``'zeros'`` by default
+        - negative output dimensions raise ``ValueError``
 
     Args:
         patch_src: The image or torch.Tensor to warp. Should be from source of shape :math:`(N, C, D, H, W)`.
@@ -1602,6 +1782,8 @@ def homography_warp3d(
         >>> output = homography_warp3d(input, homography, (8, 32, 32))
 
     """
+    if dsize[0] < 0 or dsize[1] < 0 or dsize[2] < 0:
+        raise ValueError(f"Output size must be non-negative. Got {dsize}.")
     if not src_homo_dst.device == patch_src.device:
         raise TypeError(
             f"Patch and homography must be on the same device. Got patch.device: {patch_src.device} "
