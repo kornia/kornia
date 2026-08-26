@@ -23,9 +23,18 @@ sweeps; when a rule cannot be expressed through a helper, cite the rule in the t
 3. **Resolve `dtype=None` to `torch.get_default_dtype()` before deciding to promote.** The default
    dtype may itself be half. The parity sweep for any function taking `dtype=None` must include the
    cell `torch.set_default_dtype(<half>)` + `dtype=None`; explicit-`dtype=` scans cannot see this
-   defect, and "scanned all four dtypes, unchanged" is not evidence for it. Shape:
-   `previous = torch.get_default_dtype(); torch.set_default_dtype(torch.float16); try: ...
-   finally: torch.set_default_dtype(previous)`.
+   defect, and "scanned all four dtypes, unchanged" is not evidence for it. Shape (see
+   `tests/geometry/test_conversions.py`'s `_ambient_default_dtype` helper for the same pattern):
+
+   ```python
+   previous = torch.get_default_dtype()
+   torch.set_default_dtype(torch.float16)
+   try:
+       ...  # the dtype=None cell under test
+   finally:
+       torch.set_default_dtype(previous)
+   ```
+
 4. **Guard a cast-back on `is_floating_point()`.** An integral coordinate dtype stays promoted, as
    eager's true-division leaves it.
 5. **A degenerate path validates exactly what the full path validates.** Empty `dsize`, singleton
