@@ -49,7 +49,8 @@ would have converged in two rounds if each push had been gated.
    `git worktree add ../prefix-probe prefix-<round>`, copy the new test file into the probe
    worktree (it does not exist there at that tag), then run
    `(cd ../prefix-probe && PYTHONPATH=$PWD python -m pytest <test>)` and confirm it FAILS, then
-   `git worktree remove ../prefix-probe`.
+   `git worktree remove --force ../prefix-probe` — the copied-in test file is untracked in the
+   probe, so a plain `git worktree remove` refuses ("contains modified or untracked files").
 
 5. **Self-review the delta with a fresh agent.** Dispatch a subagent on
    `git diff prefix-<round>..HEAD` with this instruction: "Attack only the new code. For
