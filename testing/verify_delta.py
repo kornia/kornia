@@ -69,25 +69,37 @@ class FailureDelta:
     new: list[str] = field(default_factory=list)
     fixed: list[str] = field(default_factory=list)
     unchanged: list[str] = field(default_factory=list)
+    baseline: bool = True  # False when the base revision had no such tests, so every failure counts as new
 
 
-def diff_failures(branch: set[str], main: set[str]) -> FailureDelta:
+def diff_failures(branch: set[str], main: set[str], *, baseline: bool = True) -> FailureDelta:
     """Split the two failing-test sets into the new, the fixed, and the already-failing ones."""
-    return FailureDelta(new=sorted(branch - main), fixed=sorted(main - branch), unchanged=sorted(branch & main))
+    return FailureDelta(
+        new=sorted(branch - main),
+        fixed=sorted(main - branch),
+        unchanged=sorted(branch & main),
+        baseline=baseline,
+    )
 
 
 def render_table(rows: Sequence[tuple[str, FailureDelta | None]]) -> str:
     """Render one markdown row per surface (``None`` means the surface was skipped) plus the NEW/FIXED ids."""
     lines = ["| surface | new | fixed | unchanged |", "|---|---|---|---|"]
     details: list[str] = []
+    no_baseline = False
     for name, delta in rows:
         if delta is None:
             lines.append(f"| {name} | skipped | | |")
             continue
-        lines.append(f"| {name} | {len(delta.new)} | {len(delta.fixed)} | {len(delta.unchanged)} |")
+        # a run with no baseline is a real measurement, so it must not share the `skipped` label,
+        # but its `new` count is unconditional and should not be read as a regression
+        new_cell = f"{len(delta.new)}*" if not delta.baseline else str(len(delta.new))
+        no_baseline |= not delta.baseline
+        lines.append(f"| {name} | {new_cell} | {len(delta.fixed)} | {len(delta.unchanged)} |")
         details.extend(f"NEW {t}" for t in delta.new)
         details.extend(f"FIXED {t}" for t in delta.fixed)
-    return "\n".join(lines + ([""] + details if details else []))
+    legend = ["", "* no baseline on the base revision for these paths; every failure there counts as new"]
+    return "\n".join(lines + (legend if no_baseline else []) + ([""] + details if details else []))
 
 
 @dataclass(frozen=True)
@@ -220,6 +232,7 @@ def _run_surface(tree: Path, surface: Surface, tests: Sequence[str], junit: Path
     missing = [t for t in tests if t not in present]
     if not present:
         print(f"{tree}: none of {' '.join(tests)} exist here; nothing to run")
+        junit.unlink(missing_ok=True)
         return None
     if missing:
         print(f"{tree}: {' '.join(missing)} does not exist here; running {' '.join(present)}")
@@ -271,16 +284,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             continue
         slug = surface.name.replace(" ", "_").replace(",", "-")
         branch_fail = _run_surface(repo, surface, tests, out / f"{slug}-branch.xml")
-        main_fail = _run_surface(main_wt, surface, tests, out / f"{slug}-main.xml")
-        if branch_fail is None or main_fail is None:  # no baseline, or nothing to compare it against
+        if branch_fail is None:  # nothing to verify on this surface at all
             rows.append((surface.name, None))
+            continue
+        main_fail = _run_surface(main_wt, surface, tests, out / f"{slug}-main.xml")
+        if main_fail is None:
+            # a path the base revision does not have yet is a legitimately empty baseline, not a failure
+            # to measure: the branch side really ran, and everything failing on it really is new.
+            print(f"no baseline on {args.base} for {' '.join(tests)}; branch failures there are unconditionally new")
+            rows.append((surface.name, diff_failures(branch_fail, set(), baseline=False)))
             continue
         rows.append((surface.name, diff_failures(branch_fail, main_fail)))
     table = render_table(rows)
     print("\n" + table)
     (out / "summary.md").write_text(table + "\n")
     if all(delta is None for _, delta in rows):
-        print("nothing was verified: no surface ran pytest on both trees; this is not a pass")
+        print("nothing was verified: no surface ran pytest on the branch; this is not a pass")
         return 2
     return 1 if any(d is not None and d.new for _, d in rows) else 0
 

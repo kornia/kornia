@@ -101,6 +101,20 @@ class TestRenderTable:
         assert "| mps float32 | skipped |" in out
         assert "NEW x::t1" in out
 
+    def test_distinguishes_a_row_that_had_no_baseline_from_a_deselected_one(self):
+        out = render_table(
+            [
+                ("cpu float32", FailureDelta(new=["x::t1"], baseline=False)),
+                ("mps float32", None),
+            ]
+        )
+        assert "| cpu float32 | 1* | 0 | 0 |" in out
+        assert "| mps float32 | skipped |" in out
+        assert "* no baseline on the base revision" in out
+
+    def test_no_legend_when_every_row_had_a_baseline(self):
+        assert "no baseline" not in render_table([("cpu float32", FailureDelta(new=["x::t1"]))])
+
 
 class TestSurfaces:
     def test_default_surfaces(self):
@@ -162,9 +176,10 @@ class TestOnlyThroughATaskShell:
 class _FakeRun:
     """Stand-in for ``subprocess.run`` that records argv and kwargs and never launches anything."""
 
-    def __init__(self, stdout: str = "", stdout_by_arg: dict[str, str] | None = None):
+    def __init__(self, stdout: str = "", stdout_by_arg: dict[str, str] | None = None, junit: str | None = None):
         self.stdout = stdout
         self.stdout_by_arg = stdout_by_arg or {}  # first matching argv entry wins, e.g. keyed by a tree path
+        self.junit = junit  # written to the --junitxml path, standing in for what pytest would report
         self.calls: list[list[str]] = []
         self.kwargs: list[dict] = []
 
@@ -172,6 +187,9 @@ class _FakeRun:
         argv = [str(a) for a in argv]
         self.calls.append(argv)
         self.kwargs.append(kwargs)
+        for arg in argv if self.junit is not None else []:
+            if arg.startswith("--junitxml="):
+                Path(arg.split("=", 1)[1]).write_text(self.junit)
         for key, stdout in self.stdout_by_arg.items():
             if key in argv:
                 return SimpleNamespace(stdout=stdout, returncode=0)
@@ -298,11 +316,11 @@ class TestEnsureMainWorktreeReuse:
             verify_delta._ensure_main_worktree(repo, "origin/main", wt, fetch=False)
 
 
-class TestMainRefusesAVacuousPass:
-    """Exiting 0 without having compared anything would make the gate useless."""
+class TestMainExitCodes:
+    """0 verified clean, 1 something is newly failing, 2 nothing was verified at all."""
 
     @staticmethod
-    def _stub_repo(monkeypatch, tmp_path: Path) -> _FakeRun:
+    def _stub_repo(monkeypatch, tmp_path: Path, junit: str | None = None) -> _FakeRun:
         def fake_git(repo, *cmd):
             if cmd[:2] == ("rev-parse", "--show-toplevel"):
                 return str(tmp_path)
@@ -310,7 +328,7 @@ class TestMainRefusesAVacuousPass:
                 return ""
             return "abc1234"
 
-        fake = _FakeRun()
+        fake = _FakeRun(stdout=str(tmp_path / "kornia" / "__init__.py"), junit=junit)
         monkeypatch.setattr(verify_delta, "_git", fake_git)
         monkeypatch.setattr(verify_delta, "_ensure_main_worktree", lambda *a, **k: None)
         monkeypatch.setattr(verify_delta.subprocess, "run", fake)
@@ -332,6 +350,30 @@ class TestMainRefusesAVacuousPass:
         assert code == 2
         assert "nothing was verified" in capsys.readouterr().out
         assert fake.calls == []
+
+    def test_a_path_only_the_branch_has_is_an_empty_baseline_not_a_refusal(self, tmp_path: Path, monkeypatch, capsys):
+        # tests/ exists here but not in the base worktree: the branch side really ran, so its failures
+        # are real and unconditionally new -- that is a verdict, not a failure to measure.
+        fake = self._stub_repo(monkeypatch, tmp_path, junit=JUNIT)
+        (tmp_path / "tests").mkdir()
+        code = verify_delta.main(self._argv(tmp_path, "--only", "cpu float32", "--tests", "tests"))
+        out = capsys.readouterr().out
+        assert code == 1
+        assert "no baseline on origin/main for tests; branch failures there are unconditionally new" in out
+        assert "| cpu float32 | 2* | 0 | 0 |" in out
+        assert "* no baseline on the base revision" in out
+        assert "NEW tests.geometry.test_grid::test_b[cpu-float32]" in out
+        assert not any("| cpu float32 | skipped" in line for line in out.splitlines())
+        assert sum("pytest" in call for call in fake.calls) == 1  # only the branch side had anything to run
+
+    def test_an_empty_baseline_with_a_clean_branch_still_passes(self, tmp_path: Path, monkeypatch, capsys):
+        self._stub_repo(monkeypatch, tmp_path)  # no junit written, so the branch side has no failures
+        (tmp_path / "tests").mkdir()
+        code = verify_delta.main(self._argv(tmp_path, "--only", "cpu float32", "--tests", "tests"))
+        out = capsys.readouterr().out
+        assert code == 0
+        assert "| cpu float32 | 0* | 0 | 0 |" in out
+        assert "no baseline on origin/main" in out
 
     def test_selecting_only_an_unavailable_surface_is_not_a_pass(self, tmp_path: Path, monkeypatch, capsys):
         import torch
