@@ -21,9 +21,10 @@ would have converged in two rounds if each push had been gated.
 ## Workflow
 
 1. **Record the pre-fix SHA.** `git tag -f prefix-<round> HEAD` before touching anything, where
-   `<round>` is this review round's number (1, 2, ...). A local tag, not a `/tmp` file — it is
-   discardable (`git tag -d prefix-<round>` once the PR merges) and never leaves scratch state in
-   the kornia tree.
+   `<round>` is this review round's number (1, 2, ...). A local tag, not a `/tmp` file, so it
+   survives a shell restart without leaving scratch state in the kornia tree. Never push it —
+   `git push --tags` or `--follow-tags` would leak it to the remote — and delete it
+   (`git tag -d prefix-<round>`) once the round is answered.
 
 2. **Triage every finding before writing code.** For each one, reproduce it on the branch AND on
    a worktree of `origin/main` (`git worktree add ../main-probe origin/main`). Three outcomes:
@@ -42,7 +43,13 @@ would have converged in two rounds if each push had been gated.
 
 4. **Write tests that cannot pass vacuously.** Use the `kornia-precision-testing` skill for any
    test touching dtype, device, capture or degenerate sizes. Before trusting a new regression test,
-   check it FAILS on the pre-fix SHA: `git stash; pytest <test>; git stash pop`.
+   check it FAILS on the pre-fix SHA — `git stash; pytest <test>; git stash pop` is a no-op once
+   the fix is committed (which step 5 presumes): there is nothing to stash, the test runs on the
+   already-fixed tree, passes, and you wrongly conclude it is vacuous. Use the step-1 tag instead:
+   `git worktree add ../prefix-probe prefix-<round>`, copy the new test file into the probe
+   worktree (it does not exist there at that tag), then run
+   `(cd ../prefix-probe && PYTHONPATH=$PWD python -m pytest <test>)` and confirm it FAILS, then
+   `git worktree remove ../prefix-probe`.
 
 5. **Self-review the delta with a fresh agent.** Dispatch a subagent on
    `git diff prefix-<round>..HEAD` with this instruction: "Attack only the new code. For
@@ -53,27 +60,31 @@ would have converged in two rounds if each push had been gated.
    next to the change stop being true; does the fix in one function need mirroring in its 3d/other
    sibling." Fix what it finds. Repeat once if it found anything.
 
-6. **Gate: `pixi run verify-delta`.** Zero `new` failures on every available surface (cpu float32;
-   cpu float16/bfloat16/float64; mps float32; inductor `-k "dynamo or compile"`). Half precision
-   and MPS have no CI job — this is their only signal. With no flags it derives test dirs from the
-   diff, and a change under `testing/`, `conftest.py`, `pyproject.toml`, or `pixi.toml` widens to
-   the whole suite (~20 min per surface per tree); scope it while iterating with
+6. **Gate: `pixi run verify-delta`.** Zero `new` failures on every available surface — the four
+   `--only` names are `cpu float32`, `cpu float16,bfloat16,float64`, `mps float32`, and
+   `inductor cpu float32` (runs `-k "dynamo or compile"`). Half precision and MPS have no CI job —
+   this is their only signal. With no flags it derives test dirs from the diff, and a change under
+   `testing/`, `conftest.py`, `pyproject.toml`, or `pixi.toml` widens to the whole suite (~20 min
+   per surface per tree); scope it while iterating with
    `pixi run verify-delta -- --tests tests/geometry --only "cpu float32"`. Exit 0 = no new
    failures, 1 = new failures (`NEW <id>` lines name them), 2 = nothing was verified (no surface
    ran pytest on the branch side — a typo'd `--tests` path or an unavailable `--only` surface),
-   which is a failure, not a pass. A `N*` row means the path had no baseline on `origin/main` (a
+   which is a failure, not a pass. A diff that maps to no test directory at all (a docs-only PR)
+   also exits 0 and prints "nothing to verify" — that is not a green gate; state in the reply which
+   surfaces you instead ran by hand. A `N*` row means the path had no baseline on `origin/main` (a
    new test package), so every failure there counts as new; `skipped` means that surface was
    deselected or unavailable. Paste the summary table into the reply — it is also written to
-   `<sibling>/.<repo>-verify-delta/summary.md`.
+   `../.<repo>-verify-delta/summary.md`.
 
 7. **Grep for closed issue numbers.** For every issue the PR closes, `grep -rn "#<n>\b" kornia/`
    in the touched modules: a surviving reference in a docstring or warning list means the change
    is incomplete (kornia#3999 shipped three docstrings promising behaviour it removed).
 
-8. **Push once, then check it is actually being tested.** After the push:
-   `gh pr view <n> --json mergeStateStatus,statusCheckRollup`. `DIRTY` means no test workflow
-   will run at all — GitHub runs nothing on an unmergeable PR, and the last green is stale. Test
-   check-runs must *exist* for the new head, not merely be green.
+8. **Push once, then check it is actually being tested.** Push commits only — never
+   `git push --tags` or `--follow-tags`, which would leak the round's `prefix-<round>` tag to the
+   remote. After the push: `gh pr view <n> --json mergeStateStatus,statusCheckRollup`. `DIRTY`
+   means no test workflow will run at all — GitHub runs nothing on an unmergeable PR, and the last
+   green is stale. Test check-runs must *exist* for the new head, not merely be green.
 
 9. **After two incremental rounds, ask for one full fresh review** of the whole branch with no
    prior context. Incremental reviews anchor on the last delta and miss interaction effects.

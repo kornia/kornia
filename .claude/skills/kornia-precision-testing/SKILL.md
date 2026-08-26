@@ -14,8 +14,10 @@ sweeps; when a rule cannot be expressed through a helper, cite the rule in the t
    `n - 1` is inexact in the dtype, and which one matters depends on the implementation: bfloat16
    257 caught a size-rounding bug and passed vacuously against a divisor-rounding bug; 258 does the
    reverse. Two "carefully chosen" sizes (257, 3001) each passed vacuously on kornia#4006.
-   `assert_capture_matches_eager` raises `ValueError` on an empty `sizes`, so pass
-   `sizes=[1, 2, *unrepresentable_sizes(dtype)[:8]]` rather than the bare sweep.
+   `unrepresentable_sizes` is `[]` for float32/float64 (every size below `2**24` is exact), so the
+   bare sweep `sizes=unrepresentable_sizes(dtype)` would be an empty, vacuous test on those dtypes —
+   which is why `assert_capture_matches_eager` raises `ValueError` on an empty `sizes`. Pass
+   `sizes=[1, 2, *unrepresentable_sizes(dtype)[:8]]` instead.
 2. **Under capture, divide by the unrounded size and cast the quotient.** Eager divides by a Python
    int that stays exact through float32 opmath; `(size_t - 1).to(half)` does not.
 3. **Resolve `dtype=None` to `torch.get_default_dtype()` before deciding to promote.** The default
