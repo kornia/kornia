@@ -396,8 +396,27 @@ class TestRANSACEssential(BaseTester):
         sv = torch.linalg.svdvals(E[0])
         # two non-zero singular values must be equal (essential-matrix constraint)
         assert (sv[0] / sv[1] - 1.0).abs() < 1e-2
-        # third singular value must be ~0
-        assert sv[2].abs() < 1e-4
+        # third singular value must be ~0 (relative to the largest singular value)
+        assert (sv[2] / sv[0]).abs() < 1e-4
+
+    def test_forward_enforces_essential_constraint(self, device, dtype):
+        """Regression test for https://github.com/kornia/kornia/issues/3874 (forward path).
+
+        forward() must return an essential matrix even when local optimization does not win and
+        the best model is the minimal-solver estimate (find_essential), which is not on the
+        essential manifold by itself. After projecting the minimal candidates inside forward(),
+        the returned matrix satisfies the essential-matrix constraint regardless of which path
+        selects the best model.
+        """
+        torch.random.manual_seed(0)
+        ransac = RANSAC("essential").to(device=device, dtype=dtype)
+        for _ in range(20):
+            kp1 = torch.rand(20, 2, device=device, dtype=dtype)
+            kp2 = torch.rand(20, 2, device=device, dtype=dtype)
+            E, _ = ransac(kp1, kp2)
+            sv = torch.linalg.svdvals(E)
+            assert (sv[0] / sv[1] - 1.0).abs() < 1e-2
+            assert (sv[2] / sv[0]).abs() < 1e-4
 
     def test_project_to_essential(self, device, dtype):
         """_project_to_essential must enforce the essential-matrix constraint."""
@@ -406,4 +425,25 @@ class TestRANSACEssential(BaseTester):
         E = RANSAC._project_to_essential(M)
         sv = torch.linalg.svdvals(E)
         assert torch.all((sv[..., 0] / sv[..., 1] - 1.0).abs() < 1e-2)
-        assert torch.all(sv[..., 2].abs() < 1e-4)
+        assert torch.all((sv[..., 2] / sv[..., 0]).abs() < 1e-4)
+
+    @pytest.mark.skip(reason="try except block in python version")
+    def test_jit(self, device, dtype):
+        torch.random.manual_seed(0)
+        points1 = torch.rand(8, 2, device=device, dtype=dtype)
+        points2 = torch.rand(8, 2, device=device, dtype=dtype)
+        model = RANSAC("essential").to(device=device, dtype=dtype)
+        model_jit = torch.jit.script(model)
+        self.assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-3, atol=1e-3)
+
+    @pytest.mark.skip(reason="RANSAC is random algorithm, so Jacobian is not defined")
+    def test_gradcheck(self, device):
+        torch.random.manual_seed(0)
+        points1 = torch.rand(8, 2, device=device, dtype=torch.float64, requires_grad=True)
+        points2 = torch.rand(8, 2, device=device, dtype=torch.float64)
+        model = RANSAC("essential").to(device=device, dtype=torch.float64)
+
+        def gradfun(p1, p2):
+            return model(p1, p2)[0]
+
+        self.gradcheck(gradfun, (points1, points2), fast_mode=False, requires_grad=(True, False, False))

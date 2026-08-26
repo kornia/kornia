@@ -314,7 +314,7 @@ class RANSAC(nn.Module):
         # Project it back onto the essential manifold so that downstream decompose_essential_matrix /
         # motion_from_essential do not silently fail.
         # See https://github.com/kornia/kornia/issues/3874
-        if self.model_type == "essential" and model is not None and len(model) > 0:
+        if self.model_type == "essential":
             model = self._project_to_essential(model)
         return model
 
@@ -409,6 +409,12 @@ class RANSAC(nn.Module):
             models = self.remove_bad_models(models)
             if (models is None) or (len(models) == 0):
                 continue
+            if self.model_type == "essential":
+                # The 5-point minimal solver (find_essential) does not return a matrix on the
+                # essential manifold; project it so that the model selected by verify() (and the
+                # best_model returned by forward when local optimization does not win) satisfies
+                # the essential-matrix constraint. See https://github.com/kornia/kornia/issues/3874
+                models = self._project_to_essential(models)
             # Score the models and select the best one
             model, inliers, model_score, num_inliers = self.verify(kp1, kp2, models, self.inl_th**2)
             # Store far-the-best model and (optionally) do a local optimization
