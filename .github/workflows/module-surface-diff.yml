@@ -1,0 +1,24 @@
+name: Module Surface Diff
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'kornia/**/*.py'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check for dropped module-level names
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Need the PR's merge-base commit to diff against, not just the tip.
+          fetch-depth: 0
+
+      - name: Check module surface diff
+        run: python scripts/check_module_surface_diff.py --base-ref "origin/${{ github.base_ref }}"

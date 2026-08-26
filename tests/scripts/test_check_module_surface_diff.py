@@ -1,0 +1,164 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
+from check_module_surface_diff import (
+    _changed_kornia_files,
+    check_file,
+    diff_surfaces,
+    parse_module_surface,
+)
+
+
+def test_parse_module_surface_collects_defs_imports_and_assignments():
+    source = """
+import math
+from torch import nn as torch_nn
+
+CONST = 1
+
+def foo():
+    pass
+
+class Bar:
+    pass
+"""
+    surface = parse_module_surface(source)
+    assert surface.other_names == {"math", "torch_nn", "CONST", "foo", "Bar"}
+    assert surface.all_names == set()
+    assert surface.has_all is False
+
+
+def test_parse_module_surface_reads_all_list():
+    source = """
+def foo():
+    pass
+
+def _private():
+    pass
+
+__all__ = ["foo"]
+"""
+    surface = parse_module_surface(source)
+    assert surface.has_all is True
+    assert surface.all_names == {"foo"}
+    # Anything in __all__ is excluded from other_names, so the two sets stay disjoint.
+    assert surface.other_names == {"_private"}
+
+
+def test_parse_module_surface_handles_concatenated_all():
+    source = """
+__all__ = ["a"] + ["b"]
+a = 1
+b = 2
+"""
+    surface = parse_module_surface(source)
+    assert surface.all_names == {"a", "b"}
+
+
+def test_diff_surfaces_flags_all_removal():
+    old = parse_module_surface("def foo():\n    pass\n\n__all__ = ['foo']\n")
+    new = parse_module_surface("__all__ = []\n")
+    removed_from_all, removed_undocumented = diff_surfaces(old, new)
+    assert removed_from_all == {"foo"}
+    assert removed_undocumented == set()
+
+
+def test_diff_surfaces_flags_undocumented_removal_separately():
+    # This is the pyramid.py/#3986 case: `pad` leaked out via an import that
+    # was never in __all__, and a later refactor dropped that import.
+    old = parse_module_surface("from torch.nn.functional import pad\n\n__all__ = []\n")
+    new = parse_module_surface("__all__ = []\n")
+    removed_from_all, removed_undocumented = diff_surfaces(old, new)
+    assert removed_from_all == set()
+    assert removed_undocumented == {"pad"}
+
+
+def test_diff_surfaces_no_change_reports_nothing():
+    old = parse_module_surface("def foo():\n    pass\n")
+    new = parse_module_surface("def foo():\n    pass\n\ndef bar():\n    pass\n")
+    removed_from_all, removed_undocumented = diff_surfaces(old, new)
+    assert removed_from_all == set()
+    assert removed_undocumented == set()
+
+
+def _git(*args, cwd):
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)  # noqa: S603, S607
+
+
+def test_check_file_end_to_end_against_a_real_git_repo(tmp_path):
+    # Build a throwaway repo so this doesn't depend on kornia's own history.
+    repo = tmp_path / "repo"
+    (repo / "kornia").mkdir(parents=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+
+    mod = repo / "kornia" / "mymodule.py"
+    mod.write_text("from torch.nn.functional import pad\n\n__all__ = ['foo']\n\ndef foo():\n    pass\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+    _git("branch", "base", cwd=repo)
+
+    # Refactor: drop both the undocumented `pad` import and the documented `foo` export.
+    mod.write_text("__all__ = []\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "refactor", cwd=repo)
+
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(repo)
+        report = check_file("base", "kornia/mymodule.py")
+    finally:
+        os.chdir(original_cwd)
+
+    assert report is not None
+    assert report.removed_from_all == {"foo"}
+    assert report.removed_undocumented == {"pad"}
+
+
+def test_changed_kornia_files_lists_only_python_files_under_kornia(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "kornia").mkdir(parents=True)
+    (repo / "docs").mkdir()
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+
+    (repo / "kornia" / "a.py").write_text("x = 1\n")
+    (repo / "docs" / "b.py").write_text("x = 1\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+    _git("branch", "base", cwd=repo)
+
+    (repo / "kornia" / "a.py").write_text("x = 2\n")
+    (repo / "docs" / "b.py").write_text("x = 2\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "change", cwd=repo)
+
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(repo)
+        files = _changed_kornia_files("base")
+    finally:
+        os.chdir(original_cwd)
+
+    assert files == ["kornia/a.py"]
