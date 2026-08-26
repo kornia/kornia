@@ -80,8 +80,16 @@ def _empty_warp_output_2d(
     """Return an empty warp while retaining normal grid-sample validation and autograd links."""
     if src.device != transform.device:
         raise RuntimeError(f"Expected src and transform on the same device, got {src.device} and {transform.device}.")
+    # The non-empty path builds its sampling grid in ``src.dtype``, so a transform that promotes
+    # into it (a float32 matrix against a float64 image, integer ``remap`` maps) is accepted there.
+    # Mirror that instead of demanding equality, so a zero-sized ``dsize`` is not stricter than a
+    # non-empty one; the reverse direction still fails, as it does on the non-empty path.
     if src.dtype != transform.dtype:
-        raise RuntimeError(f"Expected src and transform with the same dtype, got {src.dtype} and {transform.dtype}.")
+        if torch.promote_types(src.dtype, transform.dtype) != src.dtype:
+            raise RuntimeError(
+                f"Expected src and transform with the same dtype, got {src.dtype} and {transform.dtype}."
+            )
+        transform = transform.to(src.dtype)
     grid_zero = transform.reshape(-1)[:1].sum() * 0.0
     grid = grid_zero.reshape(1, 1, 1, 1).expand(transform.shape[0], dsize[0], dsize[1], 2)
     if expand_transform_batch and transform.shape[0] == 1 and src.shape[0] > 1:

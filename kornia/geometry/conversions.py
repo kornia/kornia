@@ -1518,7 +1518,11 @@ def normalize_pixel_coordinates(
             factor = torch.tensor([sx, sy], device=pixel_coordinates.device, dtype=work_dtype)
             offset = torch.tensor([tx, ty], device=pixel_coordinates.device, dtype=work_dtype)
     else:
-        work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        out_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        # Low-precision floating types cannot represent every practical image size exactly
+        # (e.g. bfloat16 rounds 257 to 256). Keep the symbolic size arithmetic in at least
+        # float32, then cast the finished factors back to the coordinate dtype.
+        work_dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype
         width_t = torch.scalar_tensor(width, device=pixel_coordinates.device, dtype=work_dtype)
         height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
         one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
@@ -1530,6 +1534,8 @@ def normalize_pixel_coordinates(
             ]
         )
         offset = torch.stack([torch.where(width_t == 1, zero, -one), torch.where(height_t == 1, zero, -one)])
+        factor = factor.to(out_dtype)
+        offset = offset.to(out_dtype)
 
     return factor * pixel_coordinates + offset
 
@@ -1592,7 +1598,11 @@ def denormalize_pixel_coordinates(
             factor = torch.tensor([sx, sy], device=pixel_coordinates.device, dtype=work_dtype)
             offset = torch.tensor([tx, ty], device=pixel_coordinates.device, dtype=work_dtype)
     else:
-        work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        out_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        # Low-precision floating types cannot represent every practical image size exactly
+        # (e.g. bfloat16 rounds 257 to 256). Keep the symbolic size arithmetic in at least
+        # float32, then cast the finished factors back to the coordinate dtype.
+        work_dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype
         width_t = torch.scalar_tensor(width, device=pixel_coordinates.device, dtype=work_dtype)
         height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
         one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
@@ -1601,6 +1611,8 @@ def denormalize_pixel_coordinates(
         sy_t = torch.where(height_t == 1, one, (height_t - 1.0) / 2.0)
         factor = torch.stack([sx_t, sy_t])
         offset = torch.stack([torch.where(width_t == 1, zero, sx_t), torch.where(height_t == 1, zero, sy_t)])
+        factor = factor.to(out_dtype)
+        offset = offset.to(out_dtype)
 
     return factor * pixel_coordinates + offset
 
@@ -1663,7 +1675,11 @@ def normalize_pixel_coordinates3d(
             factor = torch.tensor([sd, sx, sy], device=pixel_coordinates.device, dtype=work_dtype)
             offset = torch.tensor([td, tx, ty], device=pixel_coordinates.device, dtype=work_dtype)
     else:
-        work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        out_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        # Low-precision floating types cannot represent every practical image size exactly
+        # (e.g. bfloat16 rounds 257 to 256). Keep the symbolic size arithmetic in at least
+        # float32, then cast the finished factors back to the coordinate dtype.
+        work_dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype
         depth_t = torch.scalar_tensor(depth, device=pixel_coordinates.device, dtype=work_dtype)
         width_t = torch.scalar_tensor(width, device=pixel_coordinates.device, dtype=work_dtype)
         height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
@@ -1683,6 +1699,8 @@ def normalize_pixel_coordinates3d(
                 torch.where(height_t == 1, zero, -one),
             ]
         )
+        factor = factor.to(out_dtype)
+        offset = offset.to(out_dtype)
 
     return factor * pixel_coordinates + offset
 
@@ -1742,7 +1760,11 @@ def denormalize_pixel_coordinates3d(
             factor = torch.tensor([sd, sx, sy], device=pixel_coordinates.device, dtype=work_dtype)
             offset = torch.tensor([td, tx, ty], device=pixel_coordinates.device, dtype=work_dtype)
     else:
-        work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        out_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        # Low-precision floating types cannot represent every practical image size exactly
+        # (e.g. bfloat16 rounds 257 to 256). Keep the symbolic size arithmetic in at least
+        # float32, then cast the finished factors back to the coordinate dtype.
+        work_dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype
         depth_t = torch.scalar_tensor(depth, device=pixel_coordinates.device, dtype=work_dtype)
         width_t = torch.scalar_tensor(width, device=pixel_coordinates.device, dtype=work_dtype)
         height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
@@ -1759,6 +1781,8 @@ def denormalize_pixel_coordinates3d(
                 torch.where(height_t == 1, zero, sy_t),
             ]
         )
+        factor = factor.to(out_dtype)
+        offset = offset.to(out_dtype)
 
     return factor * pixel_coordinates + offset
 

@@ -85,11 +85,18 @@ def create_meshgrid(
     # return torch.unsqueeze(base_grid.transpose(0, 1), dim=0)
     if normalized_coordinates:
         if torch.jit.is_tracing() or torch.compiler.is_compiling():
-            # Graph capture needs the tensor form to keep a symbolic size dynamic.
-            width_t = torch.scalar_tensor(width, device=xs.device, dtype=xs.dtype)
-            height_t = torch.scalar_tensor(height, device=ys.device, dtype=ys.dtype)
-            xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, torch.zeros_like(xs))
-            ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, torch.zeros_like(ys))
+            # Graph capture needs the tensor form to keep a symbolic size dynamic. Low-precision
+            # floating types cannot represent every practical image size exactly (e.g. bfloat16
+            # rounds 257 to 256), so the size arithmetic runs in float32 and only the finished
+            # divisor is cast down, leaving the same rounding sequence the eager branch performs
+            # against its Python-int divisor.
+            work_dtype = torch.float32 if xs.dtype in (torch.float16, torch.bfloat16) else xs.dtype
+            width_t = torch.scalar_tensor(width, device=xs.device, dtype=work_dtype)
+            height_t = torch.scalar_tensor(height, device=ys.device, dtype=work_dtype)
+            w_den = (width_t - 1).to(xs.dtype)
+            h_den = (height_t - 1).to(ys.dtype)
+            xs = torch.where(width_t > 1, (xs / w_den - 0.5) * 2, torch.zeros_like(xs))
+            ys = torch.where(height_t > 1, (ys / h_den - 0.5) * 2, torch.zeros_like(ys))
         else:
             # ``* 0.0`` rather than ``zeros_like`` so that a singleton axis follows the
             # same integer-to-float promotion the non-singleton branch performs.
@@ -144,12 +151,18 @@ def create_meshgrid3d(
     # Fix TracerWarning
     if normalized_coordinates:
         if torch.jit.is_tracing() or torch.compiler.is_compiling():
-            width_t = torch.scalar_tensor(width, device=xs.device, dtype=xs.dtype)
-            height_t = torch.scalar_tensor(height, device=ys.device, dtype=ys.dtype)
-            depth_t = torch.scalar_tensor(depth, device=zs.device, dtype=zs.dtype)
-            xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, torch.zeros_like(xs))
-            ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, torch.zeros_like(ys))
-            zs = torch.where(depth_t > 1, (zs / (depth_t - 1) - 0.5) * 2, torch.zeros_like(zs))
+            # See ``create_meshgrid``: low-precision dtypes round large sizes, so the size
+            # arithmetic runs in float32 and only the finished divisor is cast down.
+            work_dtype = torch.float32 if xs.dtype in (torch.float16, torch.bfloat16) else xs.dtype
+            width_t = torch.scalar_tensor(width, device=xs.device, dtype=work_dtype)
+            height_t = torch.scalar_tensor(height, device=ys.device, dtype=work_dtype)
+            depth_t = torch.scalar_tensor(depth, device=zs.device, dtype=work_dtype)
+            w_den = (width_t - 1).to(xs.dtype)
+            h_den = (height_t - 1).to(ys.dtype)
+            d_den = (depth_t - 1).to(zs.dtype)
+            xs = torch.where(width_t > 1, (xs / w_den - 0.5) * 2, torch.zeros_like(xs))
+            ys = torch.where(height_t > 1, (ys / h_den - 0.5) * 2, torch.zeros_like(ys))
+            zs = torch.where(depth_t > 1, (zs / d_den - 0.5) * 2, torch.zeros_like(zs))
         else:
             xs = (xs / (width - 1) - 0.5) * 2 if width > 1 else xs * 0.0
             ys = (ys / (height - 1) - 0.5) * 2 if height > 1 else ys * 0.0

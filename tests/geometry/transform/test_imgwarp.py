@@ -109,9 +109,18 @@ def test_empty_destination_keeps_grid_sample_validation(op_name, device, dtype):
     with pytest.raises(ValueError, match="expected padding_mode"):
         op(src[:1], transform[:1], (0, 4), padding_mode="invalid")
     if device.type == "cpu":
-        other_dtype = torch.float64 if dtype != torch.float64 else torch.float32
+        # The dtype policy mirrors the non-empty path: a transform that promotes into
+        # ``src.dtype`` is accepted, one that would narrow it is not.
+        narrow_src, wide_transform = src[:1].to(torch.float32), transform[:1].to(torch.float64)
         with pytest.raises(RuntimeError):
-            op(src[:1], transform[:1].to(other_dtype), (0, 4))
+            op(narrow_src, wide_transform, (0, 4))
+        with pytest.raises(RuntimeError):
+            op(narrow_src, wide_transform, (1, 4))
+
+        wide_src, narrow_transform = src[:1].to(torch.float64), transform[:1].to(torch.float32)
+        empty_out = op(wide_src, narrow_transform, (0, 4))
+        assert empty_out.shape == (1, 3, 0, 4)
+        assert empty_out.dtype == op(wide_src, narrow_transform, (1, 4)).dtype == torch.float64
 
     if op_name == "warp_affine":
         with pytest.raises(ValueError, match="Bx2x3"):
@@ -728,6 +737,15 @@ class TestRemap(BaseTester):
             kornia.geometry.remap(image, map_x, map_y, mode="invalid")
         with pytest.raises(ValueError, match="expected padding_mode"):
             kornia.geometry.remap(image, map_x, map_y, padding_mode="fill")
+
+    def test_empty_maps_follow_nonempty_dtype_policy(self, device, dtype):
+        image = torch.empty(1, 2, 4, 5, device=device, dtype=dtype)
+        # Integer maps normalize into the image dtype on the non-empty path, so the empty
+        # path must accept them too rather than rejecting the dtype mismatch outright.
+        int_kwargs = {"device": device, "dtype": torch.int64}
+        empty_out = kornia.geometry.remap(image, torch.zeros(1, 0, 5, **int_kwargs), torch.zeros(1, 0, 5, **int_kwargs))
+        assert empty_out.shape == (1, 2, 0, 5)
+        assert empty_out.dtype == dtype
 
     def test_empty_source_with_nonempty_maps_raises(self, device, dtype):
         image = torch.empty(1, 2, 0, 5, device=device, dtype=dtype)
