@@ -1,4 +1,4 @@
-name: Module Surface Diff
+name: Import Surface
 
 on:
   pull_request:
@@ -6,6 +6,8 @@ on:
       - main
     paths:
       - 'kornia/**/*.py'
+      - '.github/scripts/check_import_surface.py'
+      - '.github/workflows/import-surface.yml'
 
 permissions:
   contents: read
@@ -20,5 +22,9 @@ jobs:
           # Need the PR's merge-base commit to diff against, not just the tip.
           fetch-depth: 0
 
-      - name: Check module surface diff
-        run: python scripts/check_module_surface_diff.py --base-ref "origin/${{ github.base_ref }}"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Check import surface
+        run: python3 .github/scripts/check_import_surface.py --base-ref "origin/${{ github.base_ref }}"

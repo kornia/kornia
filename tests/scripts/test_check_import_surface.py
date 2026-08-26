@@ -19,9 +19,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
-from check_module_surface_diff import (
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / ".github" / "scripts"))
+from check_import_surface import (
     _changed_kornia_files,
+    _is_experimental,
+    _module_name,
     check_file,
     diff_surfaces,
     parse_module_surface,
@@ -100,6 +102,53 @@ def test_diff_surfaces_no_change_reports_nothing():
     assert removed_undocumented == set()
 
 
+def test_parse_module_surface_recurses_into_try_and_if():
+    source = """
+try:
+    import ujson as jsonlib
+except ImportError:
+    import json as jsonlib
+
+if True:
+    def conditional_fn():
+        pass
+"""
+    surface = parse_module_surface(source)
+    assert surface.other_names == {"jsonlib", "conditional_fn"}
+
+
+def test_parse_module_surface_excludes_type_checking_block():
+    source = """
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from torch import Tensor
+"""
+    surface = parse_module_surface(source)
+    # TYPE_CHECKING is bound (a real runtime import); Tensor is not (never runs).
+    assert surface.other_names == {"TYPE_CHECKING"}
+
+
+def test_parse_module_surface_detects_module_level_getattr():
+    source = """
+def __getattr__(name):
+    raise AttributeError(name)
+"""
+    surface = parse_module_surface(source)
+    assert surface.has_getattr is True
+
+
+def test_module_name_from_path():
+    assert _module_name("kornia/geometry/transform/pyramid.py") == "kornia.geometry.transform.pyramid"
+    assert _module_name("kornia/core/__init__.py") == "kornia.core"
+
+
+def test_is_experimental_matches_contrib_and_submodules():
+    assert _is_experimental("kornia.contrib") is True
+    assert _is_experimental("kornia.contrib.foo") is True
+    assert _is_experimental("kornia.core") is False
+
+
 def _git(*args, cwd):
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)  # noqa: S603, S607
 
@@ -133,6 +182,67 @@ def test_check_file_end_to_end_against_a_real_git_repo(tmp_path):
     assert report is not None
     assert report.removed_from_all == {"foo"}
     assert report.removed_undocumented == {"pad"}
+    assert report.fatal is True
+
+
+def test_check_file_getattr_shim_is_not_fatal(tmp_path):
+    # kornia.utils's own pattern: a name leaves __all__ but is still served
+    # dynamically via a module-level __getattr__ deprecation shim.
+    repo = tmp_path / "repo"
+    (repo / "kornia").mkdir(parents=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+
+    mod = repo / "kornia" / "mymodule.py"
+    mod.write_text("__all__ = ['old_name']\n\ndef old_name():\n    pass\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+    _git("branch", "base", cwd=repo)
+
+    mod.write_text("__all__ = []\n\ndef __getattr__(name):\n    raise AttributeError(name)\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "shim", cwd=repo)
+
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(repo)
+        report = check_file("base", "kornia/mymodule.py")
+    finally:
+        os.chdir(original_cwd)
+
+    assert report is not None
+    assert report.removed_from_all == {"old_name"}
+    assert report.fatal is False
+
+
+def test_check_file_contrib_removal_is_not_fatal(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "kornia" / "contrib").mkdir(parents=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+
+    mod = repo / "kornia" / "contrib" / "experimental.py"
+    mod.write_text("__all__ = ['thing']\n\ndef thing():\n    pass\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+    _git("branch", "base", cwd=repo)
+
+    mod.write_text("__all__ = []\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "remove", cwd=repo)
+
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(repo)
+        report = check_file("base", "kornia/contrib/experimental.py")
+    finally:
+        os.chdir(original_cwd)
+
+    assert report is not None
+    assert report.removed_from_all == {"thing"}
+    assert report.fatal is False
 
 
 def test_changed_kornia_files_lists_only_python_files_under_kornia(tmp_path):

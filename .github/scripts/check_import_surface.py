@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # LICENSE HEADER MANAGED BY add-license-header
 #
 # Copyright 2018 Kornia Team
@@ -21,7 +23,7 @@ either a documented export (listed in ``__all__``) or a name that was merely
 importable because of how the module happened to be written (e.g. ``from
 kornia.core import ..., pad, ...`` made ``pad`` importable from that module
 too, even though it was never in ``__all__``). Either kind of removal can
-silently break third-party code.
+silently break third-party code. See #3986.
 
 This script statically compares the set of module-level names bound in each
 changed ``kornia/**/*.py`` file between a base revision and the working tree,
@@ -30,11 +32,20 @@ environment can't build/run the package.
 
 Usage::
 
-    python scripts/check_module_surface_diff.py --base-ref origin/main
+    python3 .github/scripts/check_import_surface.py --base-ref origin/main
 
 Exit status is 1 only when a name is removed from ``__all__`` (a break of
-documented public API). Names that disappear from module scope but were
-never in ``__all__`` are reported for visibility but do not fail the check.
+documented public API, per the stability policy). Names that disappear from
+module scope but were never in ``__all__`` are reported for visibility but do
+not fail the check -- hard-failing on those would make every incidental
+third-party re-export permanent API. Two exemptions from the hard-fail path:
+
+- A module with a module-level ``__getattr__`` in the new revision is
+  presumed to be using it as a deprecation shim (the pattern
+  ``kornia.utils`` uses) -- its removals are reported, not fatal.
+- ``kornia.contrib`` is the Experimental tier per
+  ``docs/source/get-started/stability.rst`` ("No stability promise") --
+  its removals are reported, not fatal.
 """
 
 from __future__ import annotations
@@ -44,6 +55,15 @@ import ast
 import subprocess
 import sys
 from dataclasses import dataclass, field
+
+
+def _is_type_checking(test: ast.expr) -> bool:
+    """Whether an `if` test is (a reference to) `typing.TYPE_CHECKING`."""
+    if isinstance(test, ast.Name):
+        return test.id == "TYPE_CHECKING"
+    if isinstance(test, ast.Attribute):
+        return test.attr == "TYPE_CHECKING"
+    return False
 
 
 @dataclass
@@ -59,6 +79,9 @@ class ModuleSurface:
     has_all: bool = False
     """Whether the module defines ``__all__`` at all."""
 
+    has_getattr: bool = False
+    """Whether the module defines a module-level ``__getattr__`` (deprecation shim)."""
+
 
 def _string_literals(node: ast.AST) -> list[str]:
     """Extract string literals from a list/tuple/set literal AST node."""
@@ -68,37 +91,54 @@ def _string_literals(node: ast.AST) -> list[str]:
 
 
 def parse_module_surface(source: str) -> ModuleSurface:
-    """Parse a module's source and collect the names it binds at module scope."""
-    surface = ModuleSurface()
-    tree = ast.parse(source)
+    """Parse a module's source and collect the names it binds at module scope.
 
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            surface.other_names.add(node.name)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                surface.other_names.add(alias.asname or alias.name.split(".")[0])
-        elif isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                if alias.name == "*":
+    Recurses into ``try``/``except``/``else``/``finally`` and plain ``if``
+    bodies, since names bound there (e.g. a version-conditional import) are
+    still real module-scope bindings. The one deliberate exception is an
+    ``if TYPE_CHECKING:`` body: those names are never bound at runtime, so
+    they are neither surface nor regression.
+    """
+    surface = ModuleSurface()
+
+    def walk(body: list[ast.stmt]) -> None:
+        for node in body:
+            if isinstance(node, ast.If):
+                walk(node.orelse if _is_type_checking(node.test) else node.body + node.orelse)
+            elif isinstance(node, ast.Try):
+                walk(node.body + node.orelse + node.finalbody)
+                for handler in node.handlers:
+                    walk(handler.body)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if node.name == "__getattr__":
+                    surface.has_getattr = True
+                surface.other_names.add(node.name)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    surface.other_names.add(alias.asname or alias.name.split(".")[0])
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    if alias.name == "*":
+                        continue
+                    surface.other_names.add(alias.asname or alias.name)
+            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                is_all_assignment = any(isinstance(t, ast.Name) and t.id == "__all__" for t in targets)
+                if is_all_assignment:
+                    surface.has_all = True
+                    value = node.value
+                    if isinstance(value, ast.BinOp):
+                        # Tolerate `__all__ = [...] + [...]`.
+                        for side in (value.left, value.right):
+                            surface.all_names.update(_string_literals(side))
+                    elif value is not None:
+                        surface.all_names.update(_string_literals(value))
                     continue
-                surface.other_names.add(alias.asname or alias.name)
-        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            is_all_assignment = any(isinstance(t, ast.Name) and t.id == "__all__" for t in targets)
-            if is_all_assignment:
-                surface.has_all = True
-                value = node.value
-                if isinstance(value, ast.BinOp):
-                    # Tolerate `__all__ = [...] + [...]`.
-                    for side in (value.left, value.right):
-                        surface.all_names.update(_string_literals(side))
-                else:
-                    surface.all_names.update(_string_literals(value))
-                continue
-            for t in targets:
-                if isinstance(t, ast.Name):
-                    surface.other_names.add(t.id)
+                for t in targets:
+                    if isinstance(t, ast.Name):
+                        surface.other_names.add(t.id)
+
+    walk(ast.parse(source).body)
 
     # Anything in __all__ is, by definition, also bound at module scope --
     # keep other_names as "everything else" so the two sets are disjoint.
@@ -108,11 +148,14 @@ def parse_module_surface(source: str) -> ModuleSurface:
 
 def _git_show(ref: str, path: str) -> str | None:
     """Return the file's content at `ref`, or None if it didn't exist there."""
-    # git is the trusted tool this script is built around.
+    # git is the trusted tool this script is built around. Force UTF-8 rather
+    # than the platform locale encoding (e.g. cp1252 on Windows), which can
+    # otherwise raise UnicodeDecodeError on non-ASCII source bytes.
     result = subprocess.run(  # noqa: S603
         ["git", "show", f"{ref}:{path}"],  # noqa: S607
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         check=False,
     )
     if result.returncode != 0:
@@ -134,11 +177,29 @@ def _changed_kornia_files(base_ref: str) -> list[str]:
     return [line for line in result.stdout.splitlines() if line.endswith(".py")]
 
 
+# docs/source/get-started/stability.rst puts kornia.contrib in the Experimental
+# tier: "No stability promise." Removals there are reported, never fatal.
+EXPERIMENTAL = ("kornia.contrib",)
+
+
+def _module_name(path: str) -> str:
+    stem = path[: -len(".py")]
+    if stem.endswith("/__init__"):
+        stem = stem[: -len("/__init__")]
+    return stem.replace("/", ".")
+
+
+def _is_experimental(module: str) -> bool:
+    return any(module == e or module.startswith(e + ".") for e in EXPERIMENTAL)
+
+
 @dataclass
 class FileReport:
     path: str
     removed_from_all: set[str]
     removed_undocumented: set[str]
+    fatal: bool
+    """Whether removed_from_all should actually fail the check for this file."""
 
 
 def diff_surfaces(old: ModuleSurface, new: ModuleSurface) -> tuple[set[str], set[str]]:
@@ -151,7 +212,7 @@ def diff_surfaces(old: ModuleSurface, new: ModuleSurface) -> tuple[set[str], set
 def check_file(base_ref: str, path: str) -> FileReport | None:
     """Compare `path`'s module surface between `base_ref` and the working tree.
 
-    Returns None if there's nothing to report (new/deleted file, unparseable
+    Returns None if there's nothing to report (new/deleted file, unparsable
     source, or no names removed).
     """
     old_source = _git_show(base_ref, path)
@@ -174,7 +235,17 @@ def check_file(base_ref: str, path: str) -> FileReport | None:
 
     if not removed_from_all and not removed_undocumented:
         return None
-    return FileReport(path=path, removed_from_all=removed_from_all, removed_undocumented=removed_undocumented)
+
+    # A module-level __getattr__ in the new revision is presumed to be
+    # serving these names as a deprecation shim (kornia.utils's pattern) --
+    # don't punish the one thing done right.
+    fatal = bool(removed_from_all) and not new_surface.has_getattr and not _is_experimental(_module_name(path))
+    return FileReport(
+        path=path,
+        removed_from_all=removed_from_all,
+        removed_undocumented=removed_undocumented,
+        fatal=fatal,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -189,8 +260,12 @@ def main(argv: list[str] | None = None) -> int:
     hard_fail = False
     for report in reports:
         if report.removed_from_all:
-            hard_fail = True
-            print(f"::error file={report.path}::Removed from __all__: {sorted(report.removed_from_all)}")
+            names = sorted(report.removed_from_all)
+            if report.fatal:
+                hard_fail = True
+                print(f"::error file={report.path}::Removed from __all__: {names}")
+            else:
+                print(f"::notice file={report.path}::Removed from __all__ (exempt, see comment above): {names}")
         if report.removed_undocumented:
             names = sorted(report.removed_undocumented)
             print(
