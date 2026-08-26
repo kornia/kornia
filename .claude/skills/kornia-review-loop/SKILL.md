@@ -23,11 +23,15 @@ would have converged in two rounds if each push had been gated.
 1. **Record the pre-fix SHA.** `git tag -f prefix-<round> HEAD` before touching anything, where
    `<round>` is this review round's number (1, 2, ...). A local tag, not a `/tmp` file, so it
    survives a shell restart without leaving scratch state in the kornia tree. Never push it —
-   `git push --tags` or `--follow-tags` would leak it to the remote — and delete it
+   `git push --tags` would leak it to the remote (`--follow-tags` would not: `git tag -f` makes a
+   lightweight tag and `--follow-tags` pushes only annotated ones) — and delete it
    (`git tag -d prefix-<round>`) once the round is answered.
 
 2. **Triage every finding before writing code.** For each one, reproduce it on the branch AND on
-   a worktree of `origin/main` (`git worktree add ../main-probe origin/main`). Three outcomes:
+   a worktree of `origin/main` (`git worktree add ../main-probe origin/main`, once per round —
+   a second `worktree add` onto the same path aborts with "already exists"; reuse the one probe for
+   every finding and `git worktree remove --force ../main-probe` when the round is answered).
+   Three outcomes:
    - *regression* (fails on branch, passes on main) → fix it;
    - *pre-existing* (fails on both) → reply with both measurements, file or link an issue, do
      NOT fix it in this PR;
@@ -50,7 +54,9 @@ would have converged in two rounds if each push had been gated.
    already-fixed tree, passes, and you wrongly conclude it is vacuous. Use the step-1 tag instead:
    `git worktree add ../prefix-probe prefix-<round>`, copy the new test file into the probe
    worktree (it does not exist there at that tag), then run
-   `(cd ../prefix-probe && PYTHONPATH=$PWD python -m pytest <test>)` and confirm it FAILS, then
+   `(cd ../prefix-probe && PYTHONPATH=$PWD "$OLDPWD/.venv/bin/python" -m pytest <test>)` and
+   confirm it FAILS — the probe worktree has no `.venv` of its own, so a bare `python` or `uv run`
+   there would answer the rounding question under a different interpreter and torch build — then
    `git worktree remove --force ../prefix-probe` — the copied-in test file is untracked in the
    probe, so a plain `git worktree remove` refuses ("contains modified or untracked files").
 
@@ -86,8 +92,8 @@ would have converged in two rounds if each push had been gated.
    is incomplete (kornia#3999 shipped three docstrings promising behaviour it removed).
 
 8. **Push once, then check it is actually being tested.** Push commits only — never
-   `git push --tags` or `--follow-tags`, which would leak the round's `prefix-<round>` tag to the
-   remote. After the push: `gh pr view <n> --json mergeStateStatus,statusCheckRollup`. `DIRTY`
+   `git push --tags`, which would leak the round's `prefix-<round>` tag to the remote.
+   After the push: `gh pr view <n> --json mergeStateStatus,statusCheckRollup`. `DIRTY`
    means no test workflow will run at all — GitHub runs nothing on an unmergeable PR, and the last
    green is stale. Test check-runs must *exist* for the new head, not merely be green.
 
