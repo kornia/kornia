@@ -110,7 +110,10 @@ def _empty_warp_output_2d(
     if src.device != transform.device:
         raise RuntimeError(f"Expected src and transform on the same device, got {src.device} and {transform.device}.")
     # An integral ``src`` fails inside ``grid_sample`` itself on the non-empty path, so it must
-    # fail here too — but name ``src`` rather than blaming the transform for it below.
+    # fail here too — but name ``src`` rather than blaming the transform for it below. (MPS is the
+    # exception: its ``grid_sample`` samples an integral image back into ``int64`` instead of
+    # rejecting it. Matching that would mean bilinear-sampling into an integer output, so the
+    # cpu/cuda contract is the one enforced here.)
     if not src.is_floating_point():
         raise RuntimeError(f"Expected a floating point src, got {src.dtype}.")
     # ``grid_sample`` requires the sampling grid in ``src.dtype``. ``grid_dtype`` is the dtype the
@@ -151,8 +154,8 @@ def _empty_warp_output_3d(
     """Return an empty volume warp with normal grid-sample validation and autograd links."""
     if src.device != transform.device:
         raise RuntimeError(f"Expected src and transform on the same device, got {src.device} and {transform.device}.")
-    # As in the 2-D helper: an integral ``src`` cannot reach ``grid_sample`` on either path, so
-    # reject it by name instead of via the transform-dtype message below.
+    # As in the 2-D helper: an integral ``src`` cannot reach cpu/cuda ``grid_sample`` on either
+    # path, so reject it by name instead of via the transform-dtype message below.
     if not src.is_floating_point():
         raise RuntimeError(f"Expected a floating point src, got {src.dtype}.")
     if src.dtype != transform.dtype:

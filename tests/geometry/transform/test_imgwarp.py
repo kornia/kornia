@@ -27,6 +27,17 @@ from kornia.core.utils import _torch_inverse_cast
 from testing.base import BaseTester
 
 
+def _skip_if_mps_empty_grid_sample(device):
+    """Skip when a zero-element sampling grid cannot reach ``grid_sample``.
+
+    PyTorch's MPS backend raises ``[srcBuf length] > 0 INTERNAL ASSERT FAILED ... Placeholder
+    tensor is empty!`` for a zero-element ``grid_sample`` argument, so an empty warp destination
+    is unreachable there regardless of how kornia builds it.
+    """
+    if device.type == "mps":
+        pytest.skip("MPS grid_sample asserts on zero-element tensors")
+
+
 class DummyNNModule(torch.nn.Module):
     def __init__(self, h: int, w: int, align_corners: bool, padding_mode: str):
         super().__init__()
@@ -42,6 +53,7 @@ class DummyNNModule(torch.nn.Module):
 @pytest.mark.parametrize("align_corners", [True, False])
 @pytest.mark.parametrize("padding_mode", ["zeros", "fill"])
 def test_empty_destination_is_autograd_connected(op_name, dsize, align_corners, padding_mode, device, dtype):
+    _skip_if_mps_empty_grid_sample(device)
     src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype, requires_grad=True)
     if op_name == "warp_affine":
         transform = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
@@ -67,6 +79,7 @@ def test_empty_destination_is_autograd_connected(op_name, dsize, align_corners, 
 
 @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
 def test_empty_source_policy(op_name, device, dtype):
+    _skip_if_mps_empty_grid_sample(device)
     src = torch.empty(1, 3, 0, 4, device=device, dtype=dtype, requires_grad=True)
     if op_name == "warp_affine":
         transform = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
@@ -115,7 +128,13 @@ def test_empty_destination_follows_nonempty_dtype_policy(op_name, src_dtype, mat
 
 @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
 def test_empty_destination_blames_an_integral_src_by_name(op_name, device):
-    """``grid_sample`` rejects an integral image on both paths; the message must name ``src``."""
+    """``grid_sample`` rejects an integral image on both paths; the message must name ``src``.
+
+    Scoped away from MPS, whose ``grid_sample`` accepts an integral image and samples it back into
+    ``int64`` instead of rejecting it, so the non-empty half of the pairing does not hold there.
+    """
+    if device.type == "mps":
+        pytest.skip("MPS grid_sample accepts an integral image instead of rejecting it")
     op = getattr(kornia.geometry.transform, op_name)
     rows = 2 if op_name == "warp_affine" else 3
     src = torch.zeros(1, 3, 3, 4, device=device, dtype=torch.int64)
@@ -379,13 +398,25 @@ class TestWarpAffine(BaseTester):
         self.assert_close(actual, expected)
         self.assert_close(actual, literal)
 
+    @pytest.mark.parametrize("dsize", [(1, 4), (3, 1)])
+    def test_singleton_identity_survives_tracing(self, dsize, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            # ``torch.jit.trace`` hands ``F.affine_grid`` tensor sizes, and ``affine_grid_generator``
+            # has no cpu Half/BFloat16 kernel, so tracing a singleton warp raises
+            # ``NotImplementedError: "tensor_cpu" not implemented for 'Half'`` before reaching any
+            # kornia code. A non-singleton ``dsize`` traces fine at the same dtype.
+            pytest.skip("traced affine_grid has no cpu half-precision kernel")
+        src = torch.arange(12.0, device=device, dtype=dtype).reshape(1, 1, 3, 4)
+        affine = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0)
+        expected = kornia.geometry.warp_affine(src, affine, dsize, align_corners=True)
+
         class SingletonWarp(torch.nn.Module):
             def forward(self, image, transform):
                 return kornia.geometry.warp_affine(image, transform, dsize, align_corners=True)
 
         with pytest.warns(UserWarning, match="unit-size grids"):
             traced = torch.jit.trace(SingletonWarp(), (src, affine), check_trace=False)
-        self.assert_close(traced(src, affine), actual)
+        self.assert_close(traced(src, affine), expected)
 
     @pytest.mark.parametrize("batch_shape", ([1, 3, 2, 5], [2, 4, 3, 4], [3, 5, 6, 2]))
     @pytest.mark.parametrize("out_shape", ([2, 5], [3, 4], [6, 2]))
@@ -760,6 +791,7 @@ class TestRemap(BaseTester):
 
     @pytest.mark.parametrize("source_empty", [False, True])
     def test_empty_maps_return_autograd_connected_output(self, source_empty, device, dtype):
+        _skip_if_mps_empty_grid_sample(device)
         source_height = 0 if source_empty else 3
         image = torch.empty(1, 2, source_height, 5, device=device, dtype=dtype, requires_grad=True)
         map_x = torch.empty(1, 0, 5, device=device, dtype=dtype, requires_grad=True)
