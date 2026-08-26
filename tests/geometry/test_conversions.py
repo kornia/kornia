@@ -1305,8 +1305,7 @@ class TestQuaternionLogToExp(BaseTester):
             msg=_issue_msg("kornia#3966: quaternion_log_to_exp of the float16 origin is not the identity"),
         )
 
-    
-    
+
 class TestQuaternionExpToLog(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
     def test_smoke_batch(self, batch_size, device, dtype):
@@ -1548,7 +1547,7 @@ class TestQuaternionExpToLog(BaseTester):
             msg=_issue_msg("kornia#3966: quaternion_exp_to_log of the float16 identity is not the origin"),
         )
 
-    
+
 class TestAngleAxisToRotationMatrix(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_rand_axis_angle_gradcheck(self, batch_size, device, atol, rtol):
