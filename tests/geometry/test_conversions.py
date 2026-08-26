@@ -394,8 +394,8 @@ def _raised_by_a_kornia_guard(err: BaseException) -> bool:
     # semantic -- it would miss `raise(RuntimeError(...))`, whose missing space before the
     # parenthesis is not a semantic difference.
     # Both directions are exercised: test_guard_classifier_reads_the_raising_instruction below
-    # covers the classifier itself, the #3960 strict xfail asserts this is True (XPASSing the day
-    # a guard lands, in any style), and the four warts assert it is False.
+    # covers the classifier itself, the #3960 convention pin asserts this is True (in any guard
+    # style), and the #3959 warts assert it is False.
     # The instruction DECIDES; the type tuple is only the fallback for a frame whose instruction
     # cannot be read. ORing the two instead of falling back would make the instruction check
     # unreachable for exactly the types kornia's guards raise, so it would score any downstream
@@ -487,12 +487,11 @@ def test_guard_classifier_reads_the_raising_instruction():
         )
 
 
-# The wrong-sized-matrix cells for the kornia#3960 pair: (op name, wrong square size). One table
-# feeds BOTH the strict xfail and its companion wart -- their comments say the cells must flip
-# together, and sharing the table is what enforces it rather than asking a future editor to
-# remember. A fourth op (a denormalize_homography3d per kornia#3962, say) becomes a one-line edit
-# that cannot land in one list and not the other. The sizes helper lives here for the same reason.
-# These are call INPUTS, not pinned expected values: each pin computes its own verdict from them.
+# The wrong-sized-matrix cells for the kornia#3960 convention pin: (op name, wrong square size).
+# Module-level rather than inline because a fourth op (a denormalize_homography3d per kornia#3962,
+# say) becomes a one-line edit that reaches the wrong-size pin and the rank pin together instead of
+# landing in one and not the other. The sizes helper lives here for the same reason.
+# These are call INPUTS, not pinned expected values: the pin computes its own verdict from them.
 _WRONG_SIZE_CASES = [
     ("normalize_homography", 4),
     ("denormalize_homography", 4),
@@ -502,6 +501,10 @@ _WRONG_SIZE_CASES = [
 # reorder of the table above would silently relabel the cells (a `[denormalize]` id reporting a
 # normalize_homography failure). Yields ["normalize", "denormalize", "normalize3d"] today.
 _WRONG_SIZE_IDS = [op_name.replace("_homography", "") for op_name, _ in _WRONG_SIZE_CASES]
+# The same three ops as _WRONG_SIZE_CASES, without the per-op wrong size: the rank pin below
+# derives its own sizes from the op name and only needs the names. Derived from the table above
+# rather than written out again so a fourth op reaches both pins from one edit.
+_HOMOGRAPHY_OP_NAMES = [op_name for op_name, _ in _WRONG_SIZE_CASES]
 
 
 def _homography_sizes(op_name: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
@@ -3924,7 +3927,8 @@ class TestNormalizeHomography(BaseTester):
     # constants leak, pinned separately below with non-dyadic sizes): a fix for #3958 must not flip
     # an ordering or direction pin. The exactness invariant is theirs alone -- the bug pins below
     # deliberately step outside it (the round-trip pin's non-dyadic (4, 5)/(8, 9) legs at
-    # atol=32*eps, the #3960 cells, the #3957 propagation warts), so a new atol=0 pin belongs here
+    # atol=32*eps, the #3960 shape-guard cells, the #3957 propagation warts), so a new atol=0 pin
+    # belongs here
     # only at these sizes AND with a literal whose intermediates are exact. The invariant also
     # leans on the SHAPE of the normalization matrices -- upper-triangular with power-of-two
     # pivots -- surviving BOTH inverse routes actually in play (the functions do NOT share one):
@@ -4475,34 +4479,27 @@ class TestNormalizeHomography(BaseTester):
             "-- update or remove the warning"
         )
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="the or-guard accepts any (B, N, N) tensor, so a wrong-sized matrix reaches matmul "
-        "instead of the shape check — kornia#3960",
-        strict=True,
-    )
     @pytest.mark.parametrize(("op_name", "wrong_size"), _WRONG_SIZE_CASES, ids=_WRONG_SIZE_IDS)
     def test_convention_wrong_sized_matrices_are_rejected_by_the_shape_guard_3960(self, op_name, wrong_size, device):
-        # Intended behavior: a matrix of the wrong size is rejected by the function's own shape
-        # guard, with a message naming the argument -- which is what the guard already does for a
-        # rank-2 input of the wrong shape. It is not: the guard reads
-        # `len(shape) == 3 or shape[-2:] == (3, 3)`, and the `or` means any rank-3 tensor passes
-        # whatever its trailing shape is, so a (1, 4, 4) input to the 3x3 functions (and a (1, 3, 3)
-        # input to the 4x4 one) reaches the matmul and dies there with a message that names neither
-        # the argument nor the expected shape.
+        # Convention: a matrix of the wrong size is rejected by the function's own shape guard,
+        # with a message naming the argument -- the same thing the guard already did for a rank-2
+        # input of the wrong shape. Until kornia#3960 was fixed the guard read
+        # `len(shape) == 3 or shape[-2:] == (3, 3)`, and the `or` meant any rank-3 tensor passed
+        # whatever its trailing shape was, so a (1, 4, 4) input to the 3x3 functions (and a
+        # (1, 3, 3) input to the 4x4 one) reached the matmul and died there with a message naming
+        # neither the argument nor the expected shape. The guard now reads
+        # `ndim in (2, 3) and shape[-2:] == (3, 3)`.
         # Three cells because the three functions carry three separate copies of the guard.
-        # The current behavior is a raise, so the body classifies the exception instead of letting
-        # it escape: under raises=AssertionError an escaping RuntimeError would be reported as an
-        # error rather than an XFAIL. float32 is hardcoded and the dtype fixture dropped because a
-        # shape guard runs before any arithmetic and cannot depend on the dtype.
+        # The body classifies the exception rather than asserting a type: the fix is a plain
+        # `raise ValueError(...)` today, but a later rewrite to KORNIA_CHECK_SHAPE would raise a
+        # ShapeError and a type test would fail on a change that keeps the convention. float32 is
+        # hardcoded and the dtype fixture dropped because a shape guard runs before any arithmetic
+        # and cannot depend on the dtype.
         # Classified by the module-level _raised_by_a_kornia_guard, so a guard in ANY style --
         # including a literal `raise RuntimeError(...)`, which no type test could tell apart from
-        # today's matmul failure -- counts as guarded and XPASSes this pin. Today's matmul
-        # RuntimeError, raised at the arithmetic statement itself, counts as unguarded, which
-        # keeps the pin XFAIL until #3960 is actually fixed. The cells come from the shared
-        # _WRONG_SIZE_CASES table for the same reason: the pair must cover identical cells.
-        # Marked xfail(strict=True) so fixing #3960 makes all three cases XPASS and forces the mark
-        # out. Companion wart: test_wart_wrong_sized_matrices_die_inside_matmul_3960.
+        # the old matmul failure -- counts as guarded. An exception raised at an arithmetic
+        # statement counts as unguarded, so a regression that reopens #3960 fails this pin instead
+        # of passing on the raise alone. The cells come from the shared _WRONG_SIZE_CASES table.
         op = getattr(kornia.geometry.conversions, op_name)
         wrong = torch.eye(wrong_size, device=device, dtype=torch.float32)[None]
 
@@ -4515,52 +4512,51 @@ class TestNormalizeHomography(BaseTester):
 
         assert guarded, f"kornia#3960: {op_name} did not reject a ({wrong_size}, {wrong_size}) matrix in its guard"
 
-    @pytest.mark.parametrize(("op_name", "wrong_size"), _WRONG_SIZE_CASES, ids=_WRONG_SIZE_IDS)
-    def test_wart_wrong_sized_matrices_die_inside_matmul_3960(self, op_name, wrong_size, device):
-        # Wart pin for kornia#3960, companion to the strict xfail above: assert that the wrong-sized
-        # matrix CURRENTLY escapes kornia's guard and dies in downstream arithmetic. Two layers, on
-        # purpose. pytest.raises(RuntimeError) requires the exception TYPE that torch's own
-        # arithmetic raises -- the name says the input dies inside matmul, and catching a broader
-        # Exception would let an unrelated TypeError or IndexError regression pass under that name;
-        # a guard fix in any of kornia's own check styles is not a RuntimeError at all and escapes
-        # the raises() outright. The assertion then holds the complement of the xfail's
-        # classification through the same module-level _raised_by_a_kornia_guard, which is what
-        # closes the remaining case: a guard raising a bare RuntimeError passes the raises() but
-        # fails this assert, so it cannot land unnoticed either. Neither layer depends on message
-        # text (the message below is quoted as a sample, asserted nowhere).
-        # If any cell fails, #3960 was (partly) fixed -- flip/remove the strict xfail above. NOT a
-        # contract that these shapes must keep dying outside the guard.
-        # Snippet used to generate expected (torch only, executed on cpu float32, torch 2.9.1):
-        #   normalize_homography(torch.eye(4)[None], (4, 5), (8, 9))
-        #     -> RuntimeError: Expected size for first two dimensions of batch2 tensor to be:
-        #        [1, 4] but got: [1, 3].
-        #   normalize_homography3d(torch.eye(3)[None], (2, 4, 5), (3, 8, 9))
-        #     -> RuntimeError: ... to be: [1, 3] but got: [1, 4].
-        op = getattr(kornia.geometry.conversions, op_name)
-        wrong = torch.eye(wrong_size, device=device, dtype=torch.float32)[None]
-
-        with pytest.raises(RuntimeError) as excinfo:
-            op(wrong, *_homography_sizes(op_name))
-
-        assert not _raised_by_a_kornia_guard(excinfo.value), (
-            f"kornia#3960: {op_name} now rejects a ({wrong_size}, {wrong_size}) matrix in its own "
-            "shape guard -- the companion strict xfail should be XPASSing"
-        )
-
-    def test_wart_normalize_homography3d_shape_error_says_bx3x3_3960(self, device):
-        # Wart pin for the message half of kornia#3960: normalize_homography3d is a 4x4 function
-        # whose own shape guard reports "must be a Bx3x3 tensor". Pinned separately from the cells
-        # above because it is a different failure path -- this input is caught by the guard, those
-        # are not -- and because a fix that only tightens the guard's *condition* would leave the
-        # wrong noun in place. If this fails, the message was corrected -- remove this pin. NOT a
-        # contract that the message must keep naming the wrong shape.
+    def test_convention_normalize_homography3d_shape_error_names_bx4x4_3960(self, device):
+        # The message half of kornia#3960, and the reason it is pinned apart from the cells above:
+        # normalize_homography3d is a 4x4 function whose guard used to report "must be a Bx3x3
+        # tensor", so a fix that only tightened the guard's *condition* would have left the wrong
+        # noun in place and the cells above would still have passed. This input is rejected by the
+        # guard on either side of the fix -- only the noun changed -- which is why it asserts the
+        # message text where the cells above deliberately assert none.
         # Snippet used to generate expected (torch only, executed on cpu float32):
         #   normalize_homography3d(torch.zeros(4, 5), (2, 4, 5), (3, 8, 9))
-        #     -> ValueError: Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got torch.Size([4, 5])
-        with pytest.raises(ValueError, match="must be a Bx3x3 tensor"):
+        #     -> ValueError: Input dst_pix_trans_src_pix must be a Bx4x4 tensor. Got torch.Size([4, 5])
+        with pytest.raises(ValueError, match="must be a Bx4x4 tensor"):
             kornia.geometry.conversions.normalize_homography3d(
                 torch.zeros(4, 5, device=device, dtype=torch.float32), (2, 4, 5), (3, 8, 9)
             )
+
+    @pytest.mark.parametrize("op_name", _HOMOGRAPHY_OP_NAMES)
+    def test_convention_the_guard_accepts_rank_2_and_3_and_rejects_higher_3960(self, op_name, device):
+        # The rank half of the #3960 guard rewrite, and the two cases the wrong-size cells above
+        # cannot see -- they only ever pass rank-3 inputs.
+        #   (1) An UNBATCHED matrix of the right size is accepted. The old `or` guard let it through
+        #       by its second clause, so this is behavior the fix had to PRESERVE, not behavior it
+        #       introduced: a narrower fix reading `ndim == 3 and shape[-2:] == (N, N)` would have
+        #       broken it, and nothing else in this file covers the unbatched path through these
+        #       three functions. The returned shape is (1, N, N), not (N, N) -- the composition
+        #       broadcasts against normal_transform_pixel's leading 1 and the input's missing batch
+        #       axis is not restored. Asserted as-is because it is what the old guard's callers
+        #       already got; kornia#3957's batch-axis policy is pinned elsewhere.
+        #   (2) A rank-4 input is now REJECTED, which the old `or` guard accepted through its second
+        #       clause: `normalize_homography(eye(3).expand(2, 1, 3, 3), (4, 5), (8, 9))` used to
+        #       broadcast all the way through and return a (2, 1, 3, 3) matrix. That is the
+        #       tightening #3960 asks for -- all three functions document a Bx3x3/Bx4x4 argument --
+        #       and it is pinned here so the break is deliberate rather than incidental.
+        # The guard is what is under test, so the accepting leg asserts only the returned shape;
+        # the values are pinned by the numerical tests above. float32 is hardcoded and the dtype
+        # fixture dropped for the same reason as the cells above.
+        op = getattr(kornia.geometry.conversions, op_name)
+        size = 4 if op_name.endswith("3d") else 3
+        sizes = _homography_sizes(op_name)
+        eye = torch.eye(size, device=device, dtype=torch.float32)
+
+        assert op(eye, *sizes).shape == (1, size, size)
+        assert op(eye[None], *sizes).shape == (1, size, size)
+
+        with pytest.raises(ValueError, match="dst_pix_trans_src_pix"):
+            op(eye.expand(2, 1, size, size), *sizes)
 
     def test_wart_degenerate_dsize_propagates_into_the_homography_3957(self, device):
         # Wart pin for kornia#3957 in the homography functions: the degenerate scales pinned in
@@ -5163,7 +5159,7 @@ class TestRt2Extrinsics(BaseTester):
         # Convention pin: Rt_to_matrix4x4 does NOT broadcast -- a batch of 2 rotations with a single
         # translation raises inside torch.cat instead of repeating the translation. RuntimeError is
         # asserted by type only: the message is entirely PyTorch's wording and may be reworded (a
-        # sample is quoted in the snippet), same rule as the int64 pin above and the #3960 wart.
+        # sample is quoted in the snippet), same rule as the int64 pin above.
         # float32 is hardcoded for the same reason as the pin above.
         # Snippet used to generate expected (torch only, executed on cpu float32):
         #   Rt_to_matrix4x4(torch.eye(3).expand(2, 3, 3), torch.ones(1, 3, 1))
@@ -6532,28 +6528,3 @@ def test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956(alias_na
         ("default", None, DeprecationWarning, None, 0),
         ("always", None, DeprecationWarning, None, 0),
     ], f"kornia#3956: {alias_name} no longer rewrites the global DeprecationWarning filters; got {head}"
-
-
-def test_homography_shape_guards():
-    from kornia.geometry.conversions import denormalize_homography, normalize_homography, normalize_homography3d
-
-    # Invalid rank 3 shapes with non-3x3 trailing dimensions
-    invalid_3d = torch.zeros(2, 4, 4)
-    with pytest.raises(ValueError, match="Bx3x3"):
-        normalize_homography(invalid_3d, (10, 10), (10, 10))
-
-    with pytest.raises(ValueError, match="Bx3x3"):
-        denormalize_homography(invalid_3d, (10, 10), (10, 10))
-
-    # Invalid rank 3 shape for 3d homography with non-4x4 trailing dimensions
-    invalid_4d_for_3d = torch.zeros(2, 3, 3)
-    with pytest.raises(ValueError, match="Bx4x4"):
-        normalize_homography3d(invalid_4d_for_3d, (5, 10, 10), (5, 10, 10))
-
-    # Valid shapes should succeed
-    valid_2d = torch.eye(3).unsqueeze(0)
-    assert normalize_homography(valid_2d, (10, 10), (10, 10)).shape == (1, 3, 3)
-    assert denormalize_homography(valid_2d, (10, 10), (10, 10)).shape == (1, 3, 3)
-
-    valid_3d = torch.eye(4).unsqueeze(0)
-    assert normalize_homography3d(valid_3d, (5, 10, 10), (5, 10, 10)).shape == (1, 4, 4)
