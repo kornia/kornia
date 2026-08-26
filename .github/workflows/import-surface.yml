@@ -1,0 +1,45 @@
+name: Import surface
+
+on:
+  pull_request:
+    paths:
+      - 'kornia/**.py'
+      - '.github/scripts/check_import_surface.py'
+      - '.github/workflows/import-surface.yml'
+  schedule:
+    - cron: '15 7 * * 1'  # Mondays, 07:15 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  surface:
+    name: Check the importable surface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # the check compares two revisions
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      # Compare against the merge base rather than the base branch tip, so the
+      # check sees what this PR removes and not what the base branch already
+      # lost. The script is stdlib-only and never imports kornia, so there is
+      # nothing to install.
+      - name: Check for removed public names
+        if: github.event_name == 'pull_request'
+        run: |
+          base="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
+          echo "merge base: ${base}"
+          python3 .github/scripts/check_import_surface.py regression --old "${base}" --new HEAD
+
+      # Informational: the standing undeclared surface, and any name that is in
+      # __all__ without resolving. The latter is a real bug (from <module>
+      # import * raises) but three exist on main today, tracked in #4023, so
+      # this step reports rather than fails until they are fixed.
+      - name: Inventory the undeclared surface
+        run: python3 .github/scripts/check_import_surface.py inventory || true
