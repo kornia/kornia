@@ -13,11 +13,11 @@ sweeps; when a rule cannot be expressed through a helper, cite the rule in the t
 1. **Sweep `unrepresentable_sizes(dtype)`, never pick one size.** A size is dangerous when `n` OR
    `n - 1` is inexact in the dtype, and which one matters depends on the implementation: bfloat16
    257 caught a size-rounding bug and passed vacuously against a divisor-rounding bug; 258 does the
-   reverse. Two "carefully chosen" sizes (257, 3001) each passed vacuously on kornia#4006.
-   `unrepresentable_sizes` is `[]` for float32/float64 (every size below `2**24` is exact), so the
-   bare sweep `sizes=unrepresentable_sizes(dtype)` would be an empty, vacuous test on those dtypes —
-   which is why `assert_capture_matches_eager` raises `ValueError` on an empty `sizes`. Pass
-   `sizes=[1, 2, *unrepresentable_sizes(dtype)[:8]]` instead.
+   reverse. Two "carefully chosen" sizes (257, 3001) each passed vacuously on kornia#4006. Always
+   pass `sizes=[1, 2, *unrepresentable_sizes(dtype)[:8]]`, never the bare call: the list is `[]` for
+   float32/float64 (every size below `2**24` is exact), and `assert_capture_matches_eager` refuses
+   an empty sweep rather than passing silently. The helper enforces its own bounds — a non-floating
+   dtype and an `hi` above `torch.finfo(dtype).max` both raise.
 2. **Under capture, divide by the unrounded size and cast the quotient.** Eager divides by a Python
    int that stays exact through float32 opmath; `(size_t - 1).to(half)` does not.
 3. **Resolve `dtype=None` to `torch.get_default_dtype()` before deciding to promote.** The default
@@ -35,11 +35,19 @@ sweeps; when a rule cannot be expressed through a helper, cite the rule in the t
        torch.set_default_dtype(previous)
    ```
 
+   `set_default_dtype` is a process-global mutation, so the restore must sit in a `finally` that
+   the assertion cannot jump over, inside the test itself. Never put it in a fixture that `yield`s:
+   a failure in a later fixture, or a `KeyboardInterrupt`, leaves the whole session in half
+   precision and every subsequent test starts lying about which dtype it exercised.
+
 4. **Guard a cast-back on `is_floating_point()`.** An integral coordinate dtype stays promoted, as
    eager's true-division leaves it.
 5. **A degenerate path validates exactly what the full path validates.** Empty `dsize`, singleton
    axis, empty batch: same exception types for the same invalid input, checked with
    `assert_degenerate_path_parity`. A guard that is stricter or laxer on the empty path is a bug.
+   Every `bad_inputs` name must be a real argument already present in both kwargs dicts — the
+   helper raises rather than let a typo'd name be *added* to the call, where both paths raise
+   `TypeError: unexpected keyword argument` and parity holds over a call that never happened.
 6. **Byte-equality between eager and capture**, `torch.equal` not `allclose` — the capture branch
    must perform the same rounding sequence.
 7. **Compile tests carry `dynamo` or `compile` in the name** so `conftest.py` deselects them when
