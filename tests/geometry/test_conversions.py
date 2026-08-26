@@ -394,8 +394,8 @@ def _raised_by_a_kornia_guard(err: BaseException) -> bool:
     # semantic -- it would miss `raise(RuntimeError(...))`, whose missing space before the
     # parenthesis is not a semantic difference.
     # Both directions are exercised: test_guard_classifier_reads_the_raising_instruction below
-    # covers the classifier itself, the #3960 strict xfail asserts this is True (XPASSing the day
-    # a guard lands, in any style), and the four warts assert it is False.
+    # covers the classifier itself, the #3960 convention pin asserts this is True (in any guard
+    # style), and the #3959 warts assert it is False.
     # The instruction DECIDES; the type tuple is only the fallback for a frame whose instruction
     # cannot be read. ORing the two instead of falling back would make the instruction check
     # unreachable for exactly the types kornia's guards raise, so it would score any downstream
@@ -487,12 +487,11 @@ def test_guard_classifier_reads_the_raising_instruction():
         )
 
 
-# The wrong-sized-matrix cells for the kornia#3960 pair: (op name, wrong square size). One table
-# feeds BOTH the strict xfail and its companion wart -- their comments say the cells must flip
-# together, and sharing the table is what enforces it rather than asking a future editor to
-# remember. A fourth op (a denormalize_homography3d per kornia#3962, say) becomes a one-line edit
-# that cannot land in one list and not the other. The sizes helper lives here for the same reason.
-# These are call INPUTS, not pinned expected values: each pin computes its own verdict from them.
+# The wrong-sized-matrix cells for the kornia#3960 convention pin: (op name, wrong square size).
+# Module-level rather than inline because a fourth op (a denormalize_homography3d per kornia#3962,
+# say) becomes a one-line edit that reaches the wrong-size pin and the rank pin together instead of
+# landing in one and not the other. The sizes helper lives here for the same reason.
+# These are call INPUTS, not pinned expected values: the pin computes its own verdict from them.
 _WRONG_SIZE_CASES = [
     ("normalize_homography", 4),
     ("denormalize_homography", 4),
@@ -502,6 +501,10 @@ _WRONG_SIZE_CASES = [
 # reorder of the table above would silently relabel the cells (a `[denormalize]` id reporting a
 # normalize_homography failure). Yields ["normalize", "denormalize", "normalize3d"] today.
 _WRONG_SIZE_IDS = [op_name.replace("_homography", "") for op_name, _ in _WRONG_SIZE_CASES]
+# The same three ops as _WRONG_SIZE_CASES, without the per-op wrong size: the rank pin below
+# derives its own sizes from the op name and only needs the names. Derived from the table above
+# rather than written out again so a fourth op reaches both pins from one edit.
+_HOMOGRAPHY_OP_NAMES = [op_name for op_name, _ in _WRONG_SIZE_CASES]
 
 
 def _homography_sizes(op_name: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
@@ -1773,12 +1776,6 @@ class TestQuaternionLogToExp(BaseTester):
         half_turn = torch.tensor([-0.7071067811865476, 0.0, 0.0, -0.7071067811865476], device=device, dtype=dtype)
         self.assert_close(log_to_exp(exp_to_log(half_turn)), half_turn)
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="the default eps=1e-8 is not representable in float16, so the norm clamp becomes a "
-        "no-op and 0/0 gives a NaN vector part — kornia#3966",
-        strict=True,
-    )
     def test_convention_log_to_exp_of_the_origin_is_the_identity_in_float16_3966(self, device):
         # Intended behavior: the exponential map of the zero vector is the identity quaternion, at
         # every dtype -- float64, float32 and bfloat16 all return [1, 0, 0, 0]. float16 returns
@@ -1800,139 +1797,6 @@ class TestQuaternionLogToExp(BaseTester):
             out,
             torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=torch.float16),
             msg=_issue_msg("kornia#3966: quaternion_log_to_exp of the float16 origin is not the identity"),
-        )
-
-    def test_wart_float16_eps_underflow_makes_log_to_exp_nan_3966(self, device):
-        # Wart pin for kornia#3966 on quaternion_log_to_exp, companion to the strict xfail above:
-        # assert the CURRENT float16 behavior. Three cells, each discriminating a different fix
-        # shape:
-        #   (0) the eps default is still 1e-8 -- cell 1 leaves eps at its default on purpose (the
-        #       underflow of the *default* is the claim), so a re-tuned default would otherwise be
-        #       an invisible half-fix;
-        #   (1) the origin returns w = 1 with an all-NaN vector part;
-        #   (2) the origin with an explicitly representable eps=1e-3 returns [1, 0, 0, 0] -- the
-        #       control that says the arithmetic is fine and only the default underflows, telling an
-        #       eps-shaped fix apart from a branch-shaped one;
-        #   (3) a v with a representable norm is unaffected and returns
-        #       [1.0, 0.0010128021240234375, 0, 0] -- the working case the existing suite exercises,
-        #       pinned so a fix cannot regress it.
-        # The affected class is exactly the zero vector, so there is no second broken input to pin:
-        # torch.norm does not underflow at float16, and every positive float16 value below 1e-2 in a
-        # single component (all 8478 of them, the 1023 subnormals included) plus 512 tiny
-        # multi-component combinations all give a non-zero norm and a finite result. A near-zero
-        # literal is no use either -- torch.tensor([1e-9, 0, 0], dtype=float16) IS torch.zeros(3)
-        # bitwise, so it would restate cell (1) rather than discriminate anything.
-        # If any cell fails, #3966 was (partly) fixed on this function -- flip/remove the strict
-        # xfail above. NOT a contract that float16 must keep returning NaN.
-        # Snippet used to generate expected (torch only, executed on cpu):
-        #   l2e = kornia.geometry.conversions.quaternion_log_to_exp
-        #   l2e(torch.zeros(3, dtype=torch.float16))               -> [1., nan, nan, nan]
-        #   l2e(torch.zeros(3, dtype=torch.float16), eps=1e-3)     -> [1., 0., 0., 0.]
-        #   l2e(torch.tensor([1e-3, 0., 0.], dtype=torch.float16))
-        #     -> [1.0, 0.0010128021240234375, 0.0, 0.0]
-        #   torch.tensor(1e-8, dtype=torch.float16).item() -> 0.0
-        #   (float64/float32/bfloat16 return [1, 0, 0, 0] for the origin)
-        _skip_if_dtype_unavailable(device, torch.float16)
-
-        log_to_exp = kornia.geometry.conversions.quaternion_log_to_exp
-        assert inspect.signature(log_to_exp).parameters["eps"].default == 1e-8, (
-            "kornia#3966: the eps default moved, so the float16 underflow pinned here no longer describes it"
-        )
-
-        origin = torch.zeros(3, device=device, dtype=torch.float16)
-
-        out = log_to_exp(origin)
-        assert out[0].item() == 1.0, "kornia#3966: the float16 origin no longer has a real part of 1"
-        assert torch.isnan(out[1:]).all(), "kornia#3966: the float16 origin no longer gives a NaN vector part"
-        assert_close(
-            log_to_exp(origin, eps=1e-3),
-            torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=torch.float16),
-            atol=0.0,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3966: a representable eps no longer rescues the float16 origin"),
-        )
-        # rtol 2e-3 is ~two float16 ulps of relative slack: the literal was generated on cpu, and a
-        # cuda/mps run computes the sin/cos chain through different intermediates that can move the
-        # last bit. The pinned fact -- a representable norm stays finite and correct, not NaN --
-        # survives that; the exact zeros are unaffected by rtol and stay exact.
-        assert_close(
-            log_to_exp(torch.tensor([1e-3, 0.0, 0.0], device=device, dtype=torch.float16)),
-            torch.tensor([1.0, 0.0010128021240234375, 0.0, 0.0], device=device, dtype=torch.float16),
-            atol=0.0,
-            rtol=2e-3,
-            msg=_issue_msg("kornia#3966: the float16 case with a representable norm changed"),
-        )
-
-    @pytest.mark.parametrize(
-        ("overflow_dtype", "finite_side", "nan_side"),
-        [
-            ("float32", [1e19, 0.0, 0.0], [1e20, 0.0, 0.0]),
-            ("float64", [1e153, 0.0, 0.0], [1e155, 0.0, 0.0]),
-            ("bfloat16", [1e18, 0.0, 0.0], [1e20, 0.0, 0.0]),
-            ("float16", [32768.0] * 3, [49152.0] * 3),
-        ],
-        ids=["float32", "float64", "bfloat16", "float16_three_components"],
-    )
-    def test_wart_large_finite_input_overflows_log_to_exp_to_nan_3975(
-        self, device, overflow_dtype, finite_side, nan_side
-    ):
-        # Wart pin for kornia#3975: assert that quaternion_log_to_exp CURRENTLY returns all-NaN for
-        # a finite input vector, because torch.norm(p=2) forms the sum of squares and overflows to
-        # inf well below the largest finite input. The exp map of a large finite vector is
-        # mathematically a perfectly good unit quaternion, so this is a defect, not a convention.
-        # Distinct from kornia#3966: that is the float16 eps *underflow* family, this is an
-        # *overflow* in the norm and is independent of eps.
-        # The threshold has two regimes, which is why the cells carry whole vectors and not one
-        # magnitude -- the number of non-zero components is part of the fact being pinned:
-        #   - float32 and bfloat16 accumulate the squares in their own dtype, so they turn over at
-        #     ||v|| > sqrt(finfo.max): 1.8446744e19 and ~1.841e19. One component is enough.
-        #   - float16 accumulates in wider precision, so the squares never overflow; the result
-        #     overflows only once the true ||v|| itself exceeds what float16 can hold, i.e. once
-        #     the wider-precision norm rounds to inf at ~65520 (the midpoint between float16's max
-        #     of 65504 and the next value up). A single component can never do that -- it would
-        #     have to exceed 65504 to begin with -- so it takes TWO OR MORE non-zero components.
-        #     Hence the three-component float16 cell.
-        # Both sides of the boundary are pinned -- one input that stays a unit quaternion, one
-        # that comes back all-NaN -- and each sits with deliberate margin from the measured
-        # crossover (cpu torch 2.9.1: ||v|| 1.8446744e19 for float32, 1.3407808e154 for float64,
-        # ~1.84e19 for bfloat16, ~65520 true norm for float16) rather than ulp-adjacent to it.
-        # The exact crossover is a property of torch.norm's accumulation strategy, not of kornia
-        # code -- the float16 regime above is that strategy differing by dtype -- so a torch
-        # upgrade or another backend may move it by an ulp; the margin keeps that from flipping a
-        # cell while any real fix (the NaN disappearing from the finite range) still does.
-        # float16's margins are percentage-scale rather than order-of-magnitude because the NaN
-        # side is capped by the dtype -- components must stay below float16's max of 65504, so
-        # three of them cannot push the true norm past ~113000: [49152]*3 has a true norm of
-        # 85134 (30% above the crossover) and [32768]*3 has 56756 (13% below).
-        # The dtypes are hardcoded (the boundary is a per-dtype fact) with a visible skip where
-        # the device lacks the dtype.
-        # If any cell fails, #3975 was (partly) fixed -- drop the pin. NOT a contract that NaN is
-        # the right answer; a fix making the whole finite range return unit quaternions is the
-        # intended outcome and would flip this.
-        # Snippet used to verify both sides (torch only, executed on cpu):
-        #   l2e = kornia.geometry.conversions.quaternion_log_to_exp
-        #   l2e(torch.tensor([finite_side], dtype=dtype))
-        #     -> finite, | ||q|| - 1 | of 1.1e-08 (f32), 0.0 (f64), 4.3e-04 (bf16), 8.1e-05 (f16)
-        #   l2e(torch.tensor([nan_side], dtype=dtype)) -> all NaN at every dtype
-        dtype = getattr(torch, overflow_dtype)
-        _skip_if_dtype_unavailable(device, dtype)
-
-        log_to_exp = kornia.geometry.conversions.quaternion_log_to_exp
-
-        finite = log_to_exp(torch.tensor([finite_side], device=device, dtype=dtype))
-        assert torch.isfinite(finite).all(), (
-            f"kornia#3975: {overflow_dtype} input {finite_side} no longer returns a finite quaternion"
-        )
-        # .cpu() before .double(): MPS has no float64, so accumulating the norm on-device raises.
-        # The float16 cell is only unit to its own rounding, hence the dtype-aware tolerance.
-        unit_tol = 8 * torch.finfo(dtype).eps
-        assert abs(finite.cpu().double().norm().item() - 1.0) < unit_tol, (
-            f"kornia#3975: {overflow_dtype} input {finite_side} no longer returns a unit quaternion"
-        )
-
-        overflowed = log_to_exp(torch.tensor([nan_side], device=device, dtype=dtype))
-        assert torch.isnan(overflowed).all(), (
-            f"kornia#3975: {overflow_dtype} input {nan_side} no longer overflows to all-NaN (got {overflowed.tolist()})"
         )
 
 
@@ -2151,12 +2015,6 @@ class TestQuaternionExpToLog(BaseTester):
             msg=_issue_msg("kornia#3953: the scalar-part clamp no longer sends an over-scaled quaternion to zero"),
         )
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="the default eps=1e-8 is not representable in float16, so the vector-norm clamp "
-        "becomes a no-op and 0/0 gives NaN — kornia#3966",
-        strict=True,
-    )
     def test_convention_exp_to_log_of_the_identity_is_the_origin_in_float16_3966(self, device):
         # Intended behavior: the log of the identity quaternion is the origin, at every dtype --
         # float32, float64 and bfloat16 all return [0, 0, 0]. float16 returns [nan, nan, nan]:
@@ -2181,65 +2039,6 @@ class TestQuaternionExpToLog(BaseTester):
             out,
             torch.zeros(3, device=device, dtype=torch.float16),
             msg=_issue_msg("kornia#3966: quaternion_exp_to_log of the float16 identity is not the origin"),
-        )
-
-    def test_wart_float16_eps_underflow_makes_exp_to_log_nan_3966(self, device):
-        # Wart pin for kornia#3966, companion to the strict xfail above: assert the CURRENT float16
-        # behavior. Four cells, each discriminating a different fix shape:
-        #   (1) the identity (1, 0, 0, 0) is NaN;
-        #   (2) its double-cover twin (-1, 0, 0, 0) is NaN too -- a branch-shaped fix keyed on the
-        #       sign of w (say, "return the origin when w >= 1") would flip (1) and leave (2), so
-        #       both halves must be pinned;
-        #   (3) the same identity with an explicitly representable eps=1e-3 returns the origin --
-        #       the control that says the arithmetic is fine and only the *default* underflows, so
-        #       an eps-shaped fix (a dtype-aware default) is told apart from a branch-shaped one;
-        #   (4) a quaternion with a non-zero vector part is unaffected at float16 and returns
-        #       [3.140625, 0, 0] -- the working case the existing suite exercises, which is why
-        #       this bug went unnoticed; pinned so that a fix cannot regress it.
-        # If any cell fails, #3966 was (partly) fixed -- flip/remove the strict xfail above. NOT a
-        # contract that float16 must keep returning NaN. eps is left at its DEFAULT in cells 1, 2
-        # and 4 on purpose: the underflow of the default is the claim (same reasoning as 3a's
-        # test_wart_float16_underflowed_default_eps_flips_branches), so the default is pinned
-        # explicitly here instead.
-        # Snippet used to generate expected (torch only, executed on cpu):
-        #   e2l = kornia.geometry.conversions.quaternion_exp_to_log
-        #   e2l(torch.tensor([1., 0., 0., 0.], dtype=torch.float16))  -> [nan, nan, nan]
-        #   e2l(torch.tensor([-1., 0., 0., 0.], dtype=torch.float16)) -> [nan, nan, nan]
-        #   e2l(torch.tensor([1., 0., 0., 0.], dtype=torch.float16), eps=1e-3) -> [0., 0., 0.]
-        #   e2l(torch.tensor([-1., 1e-3, 0., 0.], dtype=torch.float16)) -> [3.140625, 0., 0.]
-        #   torch.tensor(1e-8, dtype=torch.float16).item() -> 0.0
-        #   (float64/float32/bfloat16 return [0, 0, 0] for the first two cells)
-        _skip_if_dtype_unavailable(device, torch.float16)
-
-        exp_to_log = kornia.geometry.conversions.quaternion_exp_to_log
-        assert inspect.signature(exp_to_log).parameters["eps"].default == 1e-8, (
-            "kornia#3966: the eps default moved, so the float16 underflow pinned here no longer describes it"
-        )
-
-        identity = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=torch.float16)
-        negated_identity = torch.tensor([-1.0, 0.0, 0.0, 0.0], device=device, dtype=torch.float16)
-        with_vector_part = torch.tensor([-1.0, 1e-3, 0.0, 0.0], device=device, dtype=torch.float16)
-
-        assert torch.isnan(exp_to_log(identity)).all(), "kornia#3966: the float16 identity no longer gives NaN"
-        assert torch.isnan(exp_to_log(negated_identity)).all(), (
-            "kornia#3966: the float16 negated identity no longer gives NaN"
-        )
-        assert_close(
-            exp_to_log(identity, eps=1e-3),
-            torch.zeros(3, device=device, dtype=torch.float16),
-            atol=0.0,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3966: a representable eps no longer rescues the float16 identity"),
-        )
-        # rtol 2e-3 for the same reason as the log_to_exp #3966 pin above: the literal is
-        # cpu-generated and another backend's acos can move the last float16 bit; the pinned fact
-        # (finite and correct, not NaN) survives, and the exact zeros stay exact under rtol.
-        assert_close(
-            exp_to_log(with_vector_part),
-            torch.tensor([3.140625, 0.0, 0.0], device=device, dtype=torch.float16),
-            atol=0.0,
-            rtol=2e-3,
-            msg=_issue_msg("kornia#3966: the float16 case with a non-zero vector part changed"),
         )
 
 
@@ -4139,7 +3938,7 @@ class TestNormalizeHomography(BaseTester):
     # constants leak, pinned separately below with non-dyadic sizes): a fix for #3958 must not flip
     # an ordering or direction pin. The exactness invariant is theirs alone -- the bug pins below
     # deliberately step outside it (the round-trip pin's non-dyadic (4, 5)/(8, 9) legs at
-    # atol=32*eps, the #3960 cells), so a new atol=0 pin belongs here
+    # atol=32*eps, the #3960 shape-guard cells), so a new atol=0 pin belongs here
     # only at these sizes AND with a literal whose intermediates are exact. The invariant also
     # leans on the SHAPE of the normalization matrices -- upper-triangular with power-of-two
     # pivots -- surviving BOTH inverse routes actually in play (the functions do NOT share one):
@@ -4689,34 +4488,27 @@ class TestNormalizeHomography(BaseTester):
             "-- update or remove the warning"
         )
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="the or-guard accepts any (B, N, N) tensor, so a wrong-sized matrix reaches matmul "
-        "instead of the shape check — kornia#3960",
-        strict=True,
-    )
     @pytest.mark.parametrize(("op_name", "wrong_size"), _WRONG_SIZE_CASES, ids=_WRONG_SIZE_IDS)
     def test_convention_wrong_sized_matrices_are_rejected_by_the_shape_guard_3960(self, op_name, wrong_size, device):
-        # Intended behavior: a matrix of the wrong size is rejected by the function's own shape
-        # guard, with a message naming the argument -- which is what the guard already does for a
-        # rank-2 input of the wrong shape. It is not: the guard reads
-        # `len(shape) == 3 or shape[-2:] == (3, 3)`, and the `or` means any rank-3 tensor passes
-        # whatever its trailing shape is, so a (1, 4, 4) input to the 3x3 functions (and a (1, 3, 3)
-        # input to the 4x4 one) reaches the matmul and dies there with a message that names neither
-        # the argument nor the expected shape.
+        # Convention: a matrix of the wrong size is rejected by the function's own shape guard,
+        # with a message naming the argument -- the same thing the guard already did for a rank-2
+        # input of the wrong shape. Until kornia#3960 was fixed the guard read
+        # `len(shape) == 3 or shape[-2:] == (3, 3)`, and the `or` meant any rank-3 tensor passed
+        # whatever its trailing shape was, so a (1, 4, 4) input to the 3x3 functions (and a
+        # (1, 3, 3) input to the 4x4 one) reached the matmul and died there with a message naming
+        # neither the argument nor the expected shape. The guard now reads
+        # `ndim in (2, 3) and shape[-2:] == (3, 3)`.
         # Three cells because the three functions carry three separate copies of the guard.
-        # The current behavior is a raise, so the body classifies the exception instead of letting
-        # it escape: under raises=AssertionError an escaping RuntimeError would be reported as an
-        # error rather than an XFAIL. float32 is hardcoded and the dtype fixture dropped because a
-        # shape guard runs before any arithmetic and cannot depend on the dtype.
+        # The body classifies the exception rather than asserting a type: the fix is a plain
+        # `raise ValueError(...)` today, but a later rewrite to KORNIA_CHECK_SHAPE would raise a
+        # ShapeError and a type test would fail on a change that keeps the convention. float32 is
+        # hardcoded and the dtype fixture dropped because a shape guard runs before any arithmetic
+        # and cannot depend on the dtype.
         # Classified by the module-level _raised_by_a_kornia_guard, so a guard in ANY style --
         # including a literal `raise RuntimeError(...)`, which no type test could tell apart from
-        # today's matmul failure -- counts as guarded and XPASSes this pin. Today's matmul
-        # RuntimeError, raised at the arithmetic statement itself, counts as unguarded, which
-        # keeps the pin XFAIL until #3960 is actually fixed. The cells come from the shared
-        # _WRONG_SIZE_CASES table for the same reason: the pair must cover identical cells.
-        # Marked xfail(strict=True) so fixing #3960 makes all three cases XPASS and forces the mark
-        # out. Companion wart: test_wart_wrong_sized_matrices_die_inside_matmul_3960.
+        # the old matmul failure -- counts as guarded. An exception raised at an arithmetic
+        # statement counts as unguarded, so a regression that reopens #3960 fails this pin instead
+        # of passing on the raise alone. The cells come from the shared _WRONG_SIZE_CASES table.
         op = getattr(kornia.geometry.conversions, op_name)
         wrong = torch.eye(wrong_size, device=device, dtype=torch.float32)[None]
 
@@ -4729,52 +4521,51 @@ class TestNormalizeHomography(BaseTester):
 
         assert guarded, f"kornia#3960: {op_name} did not reject a ({wrong_size}, {wrong_size}) matrix in its guard"
 
-    @pytest.mark.parametrize(("op_name", "wrong_size"), _WRONG_SIZE_CASES, ids=_WRONG_SIZE_IDS)
-    def test_wart_wrong_sized_matrices_die_inside_matmul_3960(self, op_name, wrong_size, device):
-        # Wart pin for kornia#3960, companion to the strict xfail above: assert that the wrong-sized
-        # matrix CURRENTLY escapes kornia's guard and dies in downstream arithmetic. Two layers, on
-        # purpose. pytest.raises(RuntimeError) requires the exception TYPE that torch's own
-        # arithmetic raises -- the name says the input dies inside matmul, and catching a broader
-        # Exception would let an unrelated TypeError or IndexError regression pass under that name;
-        # a guard fix in any of kornia's own check styles is not a RuntimeError at all and escapes
-        # the raises() outright. The assertion then holds the complement of the xfail's
-        # classification through the same module-level _raised_by_a_kornia_guard, which is what
-        # closes the remaining case: a guard raising a bare RuntimeError passes the raises() but
-        # fails this assert, so it cannot land unnoticed either. Neither layer depends on message
-        # text (the message below is quoted as a sample, asserted nowhere).
-        # If any cell fails, #3960 was (partly) fixed -- flip/remove the strict xfail above. NOT a
-        # contract that these shapes must keep dying outside the guard.
-        # Snippet used to generate expected (torch only, executed on cpu float32, torch 2.9.1):
-        #   normalize_homography(torch.eye(4)[None], (4, 5), (8, 9))
-        #     -> RuntimeError: Expected size for first two dimensions of batch2 tensor to be:
-        #        [1, 4] but got: [1, 3].
-        #   normalize_homography3d(torch.eye(3)[None], (2, 4, 5), (3, 8, 9))
-        #     -> RuntimeError: ... to be: [1, 3] but got: [1, 4].
-        op = getattr(kornia.geometry.conversions, op_name)
-        wrong = torch.eye(wrong_size, device=device, dtype=torch.float32)[None]
-
-        with pytest.raises(RuntimeError) as excinfo:
-            op(wrong, *_homography_sizes(op_name))
-
-        assert not _raised_by_a_kornia_guard(excinfo.value), (
-            f"kornia#3960: {op_name} now rejects a ({wrong_size}, {wrong_size}) matrix in its own "
-            "shape guard -- the companion strict xfail should be XPASSing"
-        )
-
-    def test_wart_normalize_homography3d_shape_error_says_bx3x3_3960(self, device):
-        # Wart pin for the message half of kornia#3960: normalize_homography3d is a 4x4 function
-        # whose own shape guard reports "must be a Bx3x3 tensor". Pinned separately from the cells
-        # above because it is a different failure path -- this input is caught by the guard, those
-        # are not -- and because a fix that only tightens the guard's *condition* would leave the
-        # wrong noun in place. If this fails, the message was corrected -- remove this pin. NOT a
-        # contract that the message must keep naming the wrong shape.
+    def test_convention_normalize_homography3d_shape_error_names_bx4x4_3960(self, device):
+        # The message half of kornia#3960, and the reason it is pinned apart from the cells above:
+        # normalize_homography3d is a 4x4 function whose guard used to report "must be a Bx3x3
+        # tensor", so a fix that only tightened the guard's *condition* would have left the wrong
+        # noun in place and the cells above would still have passed. This input is rejected by the
+        # guard on either side of the fix -- only the noun changed -- which is why it asserts the
+        # message text where the cells above deliberately assert none.
         # Snippet used to generate expected (torch only, executed on cpu float32):
         #   normalize_homography3d(torch.zeros(4, 5), (2, 4, 5), (3, 8, 9))
-        #     -> ValueError: Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got torch.Size([4, 5])
-        with pytest.raises(ValueError, match="must be a Bx3x3 tensor"):
+        #     -> ValueError: Input dst_pix_trans_src_pix must be a Bx4x4 tensor. Got torch.Size([4, 5])
+        with pytest.raises(ValueError, match="must be a Bx4x4 tensor"):
             kornia.geometry.conversions.normalize_homography3d(
                 torch.zeros(4, 5, device=device, dtype=torch.float32), (2, 4, 5), (3, 8, 9)
             )
+
+    @pytest.mark.parametrize("op_name", _HOMOGRAPHY_OP_NAMES)
+    def test_convention_the_guard_accepts_rank_2_and_3_and_rejects_higher_3960(self, op_name, device):
+        # The rank half of the #3960 guard rewrite, and the two cases the wrong-size cells above
+        # cannot see -- they only ever pass rank-3 inputs.
+        #   (1) An UNBATCHED matrix of the right size is accepted. The old `or` guard let it through
+        #       by its second clause, so this is behavior the fix had to PRESERVE, not behavior it
+        #       introduced: a narrower fix reading `ndim == 3 and shape[-2:] == (N, N)` would have
+        #       broken it, and nothing else in this file covers the unbatched path through these
+        #       three functions. The returned shape is (1, N, N), not (N, N) -- the composition
+        #       broadcasts against normal_transform_pixel's leading 1 and the input's missing batch
+        #       axis is not restored. Asserted as-is because it is what the old guard's callers
+        #       already got; kornia#3957's batch-axis policy is pinned elsewhere.
+        #   (2) A rank-4 input is now REJECTED, which the old `or` guard accepted through its second
+        #       clause: `normalize_homography(eye(3).expand(2, 1, 3, 3), (4, 5), (8, 9))` used to
+        #       broadcast all the way through and return a (2, 1, 3, 3) matrix. That is the
+        #       tightening #3960 asks for -- all three functions document a Bx3x3/Bx4x4 argument --
+        #       and it is pinned here so the break is deliberate rather than incidental.
+        # The guard is what is under test, so the accepting leg asserts only the returned shape;
+        # the values are pinned by the numerical tests above. float32 is hardcoded and the dtype
+        # fixture dropped for the same reason as the cells above.
+        op = getattr(kornia.geometry.conversions, op_name)
+        size = 4 if op_name.endswith("3d") else 3
+        sizes = _homography_sizes(op_name)
+        eye = torch.eye(size, device=device, dtype=torch.float32)
+
+        assert op(eye, *sizes).shape == (1, size, size)
+        assert op(eye[None], *sizes).shape == (1, size, size)
+
+        with pytest.raises(ValueError, match="dst_pix_trans_src_pix"):
+            op(eye.expand(2, 1, size, size), *sizes)
 
     def test_singleton_dsize_produces_finite_homographies(self, device):
         identity = torch.eye(3, device=device, dtype=torch.float32)[None]
@@ -5283,7 +5074,7 @@ class TestRt2Extrinsics(BaseTester):
         # Convention pin: Rt_to_matrix4x4 does NOT broadcast -- a batch of 2 rotations with a single
         # translation raises inside torch.cat instead of repeating the translation. RuntimeError is
         # asserted by type only: the message is entirely PyTorch's wording and may be reworded (a
-        # sample is quoted in the snippet), same rule as the int64 pin above and the #3960 wart.
+        # sample is quoted in the snippet), same rule as the int64 pin above.
         # float32 is hardcoded for the same reason as the pin above.
         # Snippet used to generate expected (torch only, executed on cpu float32):
         #   Rt_to_matrix4x4(torch.eye(3).expand(2, 3, 3), torch.ones(1, 3, 1))
@@ -6565,15 +6356,17 @@ class TestAxisAngleToRotationMatrix:
 
 # Module-level pins for kornia#3956: the four deprecated aliases of this module
 # (angle_axis_to_rotation_matrix, rotation_matrix_to_angle_axis, quaternion_to_angle_axis,
-# angle_axis_to_quaternion) are not the site of the defect -- the root cause is
-# _emit_deprecation_warning in kornia/core/_compat.py, which wraps its warnings.warn call in
+# angle_axis_to_quaternion) were never the site of the defect -- the root cause was
+# _emit_deprecation_warning in kornia/core/_compat.py, which wrapped its warnings.warn call in
 # warnings.simplefilter("always", DeprecationWarning) / simplefilter("default", DeprecationWarning)
-# and so rewrites the PROCESS-GLOBAL filter list on every call. Every deprecated symbol in kornia
-# is therefore affected, which is why these live at module level rather than in one symbol's class,
-# following the module-level wart precedent above. Both pins run inside warnings.catch_warnings()
-# so that the filter mutation they provoke cannot leak into the rest of the suite: this bug is
-# contagious across tests, and an unisolated pin would silently disarm every other test's warning
-# discipline.
+# and so rewrote the PROCESS-GLOBAL filter list on every call. Every deprecated symbol in kornia
+# was therefore affected, which is why these live at module level rather than in one symbol's
+# class, following the module-level wart precedent above; the emitter itself is pinned in
+# tests/utils/test_deprecated.py, and these four cells are what keeps the convention attached to
+# the aliases rather than to one caller of the decorator. Both pins run inside
+# warnings.catch_warnings() so that a regression's filter mutation cannot leak into the rest of the
+# suite: that bug was contagious across tests, and an unisolated pin would silently disarm every
+# other test's warning discipline.
 # Both pins parametrize over _DEPRECATED_ALIAS_NAMES_AND_ARGS, the projection of the module-level
 # _DEPRECATED_ALIASES table down to the two columns they use -- neither is about what the alias
 # forwards TO, only about the warning it emits on the way -- so both the list of aliases and the
@@ -6581,29 +6374,24 @@ class TestAxisAngleToRotationMatrix:
 # it never reads.
 
 
-@pytest.mark.xfail(
-    raises=AssertionError,
-    reason="_emit_deprecation_warning forces the DeprecationWarning filter to 'always', so "
-    "-W error::DeprecationWarning cannot escalate it — kornia#3956",
-    strict=True,
-)
 @pytest.mark.parametrize(("alias_name", "arg"), _DEPRECATED_ALIAS_NAMES_AND_ARGS, ids=_DEPRECATED_ALIAS_IDS)
 def test_convention_deprecated_alias_warning_can_be_escalated_to_an_error_3956(alias_name, arg):
-    # Intended behavior: a DeprecationWarning emitted by kornia obeys the caller's warning filters,
-    # so a project that runs under -W error::DeprecationWarning (or pytest's filterwarnings =
-    # error) sees the call fail and can find its deprecated usages. It does not:
-    # _emit_deprecation_warning installs simplefilter("always", DeprecationWarning) immediately
-    # before warnings.warn, which overrides the caller's "error" entry, so the warning is printed
-    # and execution continues. The escalated DeprecationWarning is caught by type rather than
-    # through the shared _runs_without_raising helper: that helper treats *any* exception as the
-    # awaited raise, so an unrelated TypeError from the alias would set escalated=True, pass the
-    # body, and -- under xfail(strict=True) -- be reported as XPASS(strict) on a test named
-    # ..._can_be_escalated_to_an_error_3956, which reads as "#3956 is fixed, drop the mark".
-    # Catching DeprecationWarning specifically lets any other exception propagate and be reported
-    # as an error instead. (The #3955 call sites keep the broad helper on purpose: there an
-    # unrelated exception makes the assertion *fail*, which is already the correct report.)
-    # Marked xfail(strict=True) so fixing #3956 makes all four cases XPASS and forces the mark out.
-    # Companion wart: test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956.
+    # Convention: a DeprecationWarning emitted by kornia obeys the caller's warning filters, so a
+    # project running under -W error::DeprecationWarning (or pytest's filterwarnings = error) sees
+    # the call fail and can find its deprecated usages. Until kornia#3956 was fixed it did not:
+    # _emit_deprecation_warning installed simplefilter("always", DeprecationWarning) immediately
+    # before warnings.warn, which overrode the caller's "error" entry, so the warning was printed
+    # and execution continued.
+    # The escalated DeprecationWarning is caught by type rather than through the shared
+    # _runs_without_raising helper: that helper treats *any* exception as the awaited raise, so an
+    # unrelated TypeError from the alias would set escalated=True and pass the body under a name
+    # that reads as "escalation works". Catching DeprecationWarning specifically lets any other
+    # exception propagate and be reported as an error instead. (The #3955 call sites keep the broad
+    # helper on purpose: there an unrelated exception makes the assertion *fail*, which is already
+    # the correct report.)
+    # Four cells, one per alias, because all four are separate @deprecated call sites: the fix is
+    # in _emit_deprecation_warning, but a future decorator that emits its own warning would have to
+    # honor this too.
     alias = getattr(kornia.geometry.conversions, alias_name)
     tensor = torch.tensor(arg)
 
@@ -6620,23 +6408,16 @@ def test_convention_deprecated_alias_warning_can_be_escalated_to_an_error_3956(a
 
 
 @pytest.mark.parametrize(("alias_name", "arg"), _DEPRECATED_ALIAS_NAMES_AND_ARGS, ids=_DEPRECATED_ALIAS_IDS)
-def test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956(alias_name, arg):
-    # Wart pin for kornia#3956, companion to the strict xfail above: assert that a single alias
-    # call CURRENTLY leaves two entries of its own at the head of the process-global filter list,
-    # starting from an empty one. Four cells, one per alias, because all four are separate
-    # @deprecated call sites and a fix could plausibly be applied per decorator rather than in
-    # _emit_deprecation_warning; the 'default' entry (pushed by the finally clause) and the
-    # 'always' entry (pushed before the warn) are both asserted, since a half fix that drops only
-    # the "always" would leave the caller's filters just as clobbered.
-    # If any cell fails, #3956 was (partly) fixed in kornia/core/_compat.py -- flip/remove the
-    # strict xfail above. NOT a contract that calling a deprecated alias must mutate global state.
-    # Snippet used to generate expected (stdlib + torch, executed on cpu):
-    #   with warnings.catch_warnings():
-    #       warnings.resetwarnings()
-    #       kornia.geometry.conversions.angle_axis_to_quaternion(torch.tensor([0.1, 0.2, 0.3]))
-    #       warnings.filters[:2]
-    #   -> [('default', None, <class 'DeprecationWarning'>, None, 0),
-    #       ('always',  None, <class 'DeprecationWarning'>, None, 0)]
+def test_convention_deprecated_alias_leaves_the_global_warning_filters_alone_3956(alias_name, arg):
+    # The other half of kornia#3956, and the half the escalation pin above cannot see: a call must
+    # leave warnings.filters exactly as it found it. Before the fix a single alias call pushed two
+    # entries of its own -- 'always' before the warn and 'default' from the finally clause -- so
+    # even a caller that never escalated had its process-global warning config rewritten, and the
+    # 'default' entry outlived the call. Pinned separately because a half fix that dropped only the
+    # "always" would restore escalation while still clobbering the caller's filters.
+    # Starts from an EMPTY filter list rather than the ambient one so the assertion is exact rather
+    # than a length comparison, and runs inside warnings.catch_warnings() so neither the reset nor
+    # any mutation a regression reintroduces can leak into the rest of the suite.
     alias = getattr(kornia.geometry.conversions, alias_name)
     tensor = torch.tensor(arg)
 
@@ -6646,9 +6427,6 @@ def test_wart_deprecated_alias_rewrites_the_global_warning_filters_3956(alias_na
 
         alias(tensor)
 
-        head = warnings.filters[:2]
+        after = list(warnings.filters)
 
-    assert head == [
-        ("default", None, DeprecationWarning, None, 0),
-        ("always", None, DeprecationWarning, None, 0),
-    ], f"kornia#3956: {alias_name} no longer rewrites the global DeprecationWarning filters; got {head}"
+    assert after == [], f"kornia#3956: {alias_name} mutated the global DeprecationWarning filters; got {after}"
