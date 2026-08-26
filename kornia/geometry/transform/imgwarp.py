@@ -75,6 +75,7 @@ def _empty_warp_output_2d(
     align_corners: bool,
     fill_value: Optional[torch.Tensor] = None,
     expand_transform_batch: bool = False,
+    allow_fill: bool = True,
 ) -> torch.Tensor:
     """Return an empty warp while retaining normal grid-sample validation and autograd links."""
     if src.device != transform.device:
@@ -94,7 +95,7 @@ def _empty_warp_output_2d(
         src_zero = src.reshape(-1)[:1].sum() * 0.0
         sample_src = src_zero.reshape(1, 1, 1, 1).expand(src.shape[0], src.shape[1], 1, 1)
 
-    if padding_mode == "fill":
+    if padding_mode == "fill" and allow_fill:
         if fill_value is None:
             fill_value = torch.zeros(src.shape[1], device=src.device, dtype=src.dtype)
         return _fill_and_warp(sample_src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
@@ -306,7 +307,7 @@ def warp_affine(
     if not len(src.shape) == 4:
         raise ValueError(f"Input src must be a BxCxHxW torch.Tensor. Got {src.shape}")
 
-    if not (len(M.shape) == 3 or M.shape[-2:] == (2, 3)):
+    if not (len(M.shape) == 3 and M.shape[-2:] == (2, 3)):
         raise ValueError(f"Input M must be a Bx2x3 torch.Tensor. Got {M.shape}")
 
     B, C, H, W = src.size()
@@ -341,8 +342,16 @@ def warp_affine(
         # corners at +/-1 vs pixel centers). A shared (1x2x3) matrix broadcasts across the batch.
         h_out, w_out = dsize
         if align_corners:
-            xs = torch.linspace(-1.0, 1.0, w_out, device=src.device, dtype=src.dtype)
-            ys = torch.linspace(-1.0, 1.0, h_out, device=src.device, dtype=src.dtype)
+            xs = (
+                torch.zeros(1, device=src.device, dtype=src.dtype)
+                if w_out == 1
+                else torch.linspace(-1.0, 1.0, w_out, device=src.device, dtype=src.dtype)
+            )
+            ys = (
+                torch.zeros(1, device=src.device, dtype=src.dtype)
+                if h_out == 1
+                else torch.linspace(-1.0, 1.0, h_out, device=src.device, dtype=src.dtype)
+            )
         else:
             xs = torch.linspace(-1.0 + 1.0 / w_out, 1.0 - 1.0 / w_out, w_out, device=src.device, dtype=src.dtype)
             ys = torch.linspace(-1.0 + 1.0 / h_out, 1.0 - 1.0 / h_out, h_out, device=src.device, dtype=src.dtype)
@@ -717,7 +726,8 @@ def remap(
           unless ``normalized_coordinates=True``
         - align_corners: ``None`` by default, resolved to ``False`` internally
         - padding_mode: ``'zeros'`` by default
-        - negative output dimensions raise ``ValueError``
+        - the output spatial size comes from the maps; a zero map axis returns an
+          autograd-connected empty output, including when the matching source axis is empty
 
     Args:
         image: the torch.Tensor to remap with shape (B, C, H, W).
@@ -760,16 +770,28 @@ def remap(
     # grid_sample need the grid between -1/1
     map_xy: torch.Tensor = torch.stack([map_x, map_y], -1)
 
+    # Default to False if align_corners is None to avoid PyTorch warning
+    if align_corners is None:
+        align_corners = False
+
+    if map_xy.shape[-3] == 0 or map_xy.shape[-2] == 0:
+        return _empty_warp_output_2d(
+            image,
+            map_xy,
+            (map_xy.shape[-3], map_xy.shape[-2]),
+            mode,
+            padding_mode,
+            align_corners,
+            expand_transform_batch=True,
+            allow_fill=False,
+        )
+
     # F.normalize coordinates if not already normalized
     if not normalized_coordinates:
         map_xy = normalize_pixel_coordinates(map_xy, height, width)
 
     # simulate broadcasting since grid_sample does not support it
     map_xy = map_xy.expand(batch_size, -1, -1, -1)
-
-    # Default to False if align_corners is None to avoid PyTorch warning
-    if align_corners is None:
-        align_corners = False
 
     # warp the image tensor and return
     return F.grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
@@ -1546,7 +1568,7 @@ def warp_perspective3d(
     if not len(src.shape) == 5:
         raise ValueError(f"Input src must be a BxCxDxHxW torch.Tensor. Got {src.shape}")
 
-    if not (len(M.shape) == 3 or M.shape[-2:] == (4, 4)):
+    if not (len(M.shape) == 3 and M.shape[-2:] == (4, 4)):
         raise ValueError(f"Input M must be a Bx4x4 torch.Tensor. Got {M.shape}")
 
     if dsize[0] < 0 or dsize[1] < 0 or dsize[2] < 0:

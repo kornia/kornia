@@ -1496,7 +1496,12 @@ def normalize_pixel_coordinates(
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
     if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
-    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and eps != 1e-8:
+    if (
+        not torch.jit.is_scripting()
+        and not torch.jit.is_tracing()
+        and not torch.compiler.is_compiling()
+        and eps != 1e-8
+    ):
         warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
@@ -1565,7 +1570,12 @@ def denormalize_pixel_coordinates(
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
     if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
-    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and eps != 1e-8:
+    if (
+        not torch.jit.is_scripting()
+        and not torch.jit.is_tracing()
+        and not torch.compiler.is_compiling()
+        and eps != 1e-8
+    ):
         warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
@@ -1629,7 +1639,12 @@ def normalize_pixel_coordinates3d(
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
     if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
-    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and eps != 1e-8:
+    if (
+        not torch.jit.is_scripting()
+        and not torch.jit.is_tracing()
+        and not torch.compiler.is_compiling()
+        and eps != 1e-8
+    ):
         warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
@@ -1703,7 +1718,12 @@ def denormalize_pixel_coordinates3d(
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
     if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
-    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and eps != 1e-8:
+    if (
+        not torch.jit.is_scripting()
+        and not torch.jit.is_tracing()
+        and not torch.compiler.is_compiling()
+        and eps != 1e-8
+    ):
         warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
@@ -2067,23 +2087,32 @@ def normal_transform_pixel(
     """
     if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
-    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and eps != 1e-14:
+    if (
+        not torch.jit.is_scripting()
+        and not torch.jit.is_tracing()
+        and not torch.compiler.is_compiling()
+        and eps != 1e-14
+    ):
         warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
 
-    if torch.jit.is_scripting() or not torch.jit.is_tracing():
-        # Only tracing needs the tensor form below: it is what keeps a traced size
-        # dynamic. Eager and TorchScript take the scalar branches, which are an order
-        # of magnitude cheaper on this hot path and preserve torch.tensor's historical
-        # dtype-casting behaviour.
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
+        # Eager and TorchScript take the scalar branch, which is an order of magnitude
+        # cheaper on this hot path. Graph capture takes the tensor form below so symbolic
+        # sizes retain the singleton decision.
         sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
         sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
         tx = 0.0 if width == 1 else -1.0
         ty = 0.0 if height == 1 else -1.0
         tr_mat = torch.tensor([[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
     else:
-        work_dtype = dtype if dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64) else None
-        width_t = torch.scalar_tensor(width, device=device, dtype=work_dtype or torch.get_default_dtype())
-        height_t = torch.scalar_tensor(height, device=device, dtype=work_dtype or torch.get_default_dtype())
+        # Low-precision floating types cannot represent every practical image size exactly
+        # (e.g. bfloat16 rounds 257 to 256). Keep symbolic size arithmetic in at least
+        # float32, then cast the finished matrix to the requested output dtype.
+        work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        if work_dtype not in (torch.float32, torch.float64):
+            work_dtype = torch.get_default_dtype()
+        width_t = torch.scalar_tensor(width, device=device, dtype=work_dtype)
+        height_t = torch.scalar_tensor(height, device=device, dtype=work_dtype)
         one = torch.ones((), device=device, dtype=work_dtype)
         zero = torch.zeros((), device=device, dtype=work_dtype)
 
@@ -2170,11 +2199,16 @@ def normal_transform_pixel3d(
     """
     if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
-    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and eps != 1e-14:
+    if (
+        not torch.jit.is_scripting()
+        and not torch.jit.is_tracing()
+        and not torch.compiler.is_compiling()
+        and eps != 1e-14
+    ):
         warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
 
-    if torch.jit.is_scripting() or not torch.jit.is_tracing():
-        # As in 2-D, the tensor form below is only needed to keep a traced size dynamic.
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
+        # As in 2-D, graph capture uses the tensor form below for symbolic sizes.
         sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
         sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
         sz = 1.0 if depth == 1 else 2.0 / (depth - 1.0)
@@ -2187,10 +2221,12 @@ def normal_transform_pixel3d(
             dtype=dtype,
         )
     else:
-        work_dtype = dtype if dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64) else None
-        width_t = torch.scalar_tensor(width, device=device, dtype=work_dtype or torch.get_default_dtype())
-        height_t = torch.scalar_tensor(height, device=device, dtype=work_dtype or torch.get_default_dtype())
-        depth_t = torch.scalar_tensor(depth, device=device, dtype=work_dtype or torch.get_default_dtype())
+        work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        if work_dtype not in (torch.float32, torch.float64):
+            work_dtype = torch.get_default_dtype()
+        width_t = torch.scalar_tensor(width, device=device, dtype=work_dtype)
+        height_t = torch.scalar_tensor(height, device=device, dtype=work_dtype)
+        depth_t = torch.scalar_tensor(depth, device=device, dtype=work_dtype)
         one = torch.ones((), device=device, dtype=work_dtype)
         zero = torch.zeros((), device=device, dtype=work_dtype)
 

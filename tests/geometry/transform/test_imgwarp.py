@@ -113,6 +113,10 @@ def test_empty_destination_keeps_grid_sample_validation(op_name, device, dtype):
         with pytest.raises(RuntimeError):
             op(src[:1], transform[:1].to(other_dtype), (0, 4))
 
+    if op_name == "warp_affine":
+        with pytest.raises(ValueError, match="Bx2x3"):
+            op(src[:1], torch.eye(4, device=device, dtype=dtype).unsqueeze(0), (0, 4))
+
 
 @pytest.mark.parametrize("normalized_homography", [True, False])
 def test_homography_warp_negative_destination_raises(normalized_homography, device, dtype):
@@ -303,6 +307,31 @@ class TestWarpAffine(BaseTester):
         img_b = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img_a = kornia.geometry.warp_affine(img_b, aff_ab, (height, width))
         self.assert_close(img_b, img_a)
+
+    @pytest.mark.parametrize("dsize", [(1, 4), (3, 1)])
+    def test_singleton_identity_agrees_with_perspective(self, dsize, device, dtype):
+        src = torch.arange(12.0, device=device, dtype=dtype).reshape(1, 1, 3, 4)
+        affine = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0)
+        perspective = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
+
+        actual = kornia.geometry.warp_affine(src, affine, dsize, align_corners=True)
+        expected = kornia.geometry.warp_perspective(src, perspective, dsize, align_corners=True)
+        literal = (
+            torch.tensor([[[[0.0, 1.0, 2.0, 3.0]]]], device=device, dtype=dtype)
+            if dsize[0] == 1
+            else torch.tensor([[[[0.0], [4.0], [8.0]]]], device=device, dtype=dtype)
+        )
+
+        self.assert_close(actual, expected)
+        self.assert_close(actual, literal)
+
+        class SingletonWarp(torch.nn.Module):
+            def forward(self, image, transform):
+                return kornia.geometry.warp_affine(image, transform, dsize, align_corners=True)
+
+        with pytest.warns(UserWarning, match="unit-size grids"):
+            traced = torch.jit.trace(SingletonWarp(), (src, affine), check_trace=False)
+        self.assert_close(traced(src, affine), actual)
 
     @pytest.mark.parametrize("batch_shape", ([1, 3, 2, 5], [2, 4, 3, 4], [3, 5, 6, 2]))
     @pytest.mark.parametrize("out_shape", ([2, 5], [3, 4], [6, 2]))
@@ -674,6 +703,39 @@ class TestRemap(BaseTester):
         actual = kornia.geometry.remap(image, pixel_grid[..., 0], pixel_grid[..., 1])
 
         self.assert_close(actual, image, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("source_empty", [False, True])
+    def test_empty_maps_return_autograd_connected_output(self, source_empty, device, dtype):
+        source_height = 0 if source_empty else 3
+        image = torch.empty(1, 2, source_height, 5, device=device, dtype=dtype, requires_grad=True)
+        map_x = torch.empty(1, 0, 5, device=device, dtype=dtype, requires_grad=True)
+        map_y = torch.empty(1, 0, 5, device=device, dtype=dtype, requires_grad=True)
+
+        output = kornia.geometry.remap(image, map_x, map_y)
+
+        assert output.shape == (1, 2, 0, 5)
+        output.sum().backward()
+        assert image.grad is not None
+        assert map_x.grad is not None
+        assert map_y.grad is not None
+
+    def test_empty_maps_keep_grid_sample_validation(self, device, dtype):
+        image = torch.empty(1, 2, 0, 5, device=device, dtype=dtype)
+        map_x = torch.empty(1, 0, 5, device=device, dtype=dtype)
+        map_y = torch.empty(1, 0, 5, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="expected mode"):
+            kornia.geometry.remap(image, map_x, map_y, mode="invalid")
+        with pytest.raises(ValueError, match="expected padding_mode"):
+            kornia.geometry.remap(image, map_x, map_y, padding_mode="fill")
+
+    def test_empty_source_with_nonempty_maps_raises(self, device, dtype):
+        image = torch.empty(1, 2, 0, 5, device=device, dtype=dtype)
+        map_x = torch.empty(1, 2, 5, device=device, dtype=dtype)
+        map_y = torch.empty(1, 2, 5, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="must be positive"):
+            kornia.geometry.remap(image, map_x, map_y)
 
     def test_different_size(self, device, dtype):
         height, width = 3, 4

@@ -3683,6 +3683,75 @@ def test_pixel_coordinate_export_crosses_singleton_boundary(op_name, ndim):
         assert_close(exported(runtime, coords), ExportCoordinates()(runtime, coords), atol=0.0, rtol=0.0)
 
 
+@pytest.mark.parametrize(
+    ("op_name", "sizes"),
+    [
+        ("normalize_pixel_coordinates", (4, 5)),
+        ("denormalize_pixel_coordinates", (4, 5)),
+        ("normalize_pixel_coordinates3d", (4, 5, 6)),
+        ("denormalize_pixel_coordinates3d", (4, 5, 6)),
+        ("normal_transform_pixel", (4, 5)),
+        ("normal_transform_pixel3d", (4, 5, 6)),
+    ],
+)
+def test_non_default_eps_does_not_break_fullgraph_capture(op_name, sizes):
+    op = getattr(kornia.geometry, op_name)
+    value = torch.zeros(1, len(sizes))
+    if op_name.startswith("normal_transform"):
+
+        def captured(tensor):
+            return op(*sizes, eps=1e-6, device=tensor.device, dtype=tensor.dtype)
+
+        expected = op(*sizes, device=value.device, dtype=value.dtype)
+    else:
+
+        def captured(tensor):
+            return op(tensor, *sizes, eps=1e-6)
+
+        expected = op(value, *sizes)
+
+    actual = torch.compile(captured, fullgraph=True)(value)
+    assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+
+@pytest.mark.parametrize("is_3d", [False, True], ids=["2d", "3d"])
+@pytest.mark.parametrize(
+    ("dtype", "runtime_sizes"),
+    [
+        (torch.float32, (1, 5)),
+        (torch.bfloat16, (1, 257)),
+        (torch.float16, (1, 2049)),
+    ],
+    ids=["float32", "bfloat16-rounding-boundary", "float16-rounding-boundary"],
+)
+def test_normal_transform_export_crosses_singleton_boundary(is_3d, dtype, runtime_sizes):
+    class ExportTransform(torch.nn.Module):
+        def forward(self, image):
+            if is_3d:
+                return kornia.geometry.normal_transform_pixel3d(
+                    image.shape[-3],
+                    image.shape[-2],
+                    image.shape[-1],
+                    device=image.device,
+                    dtype=image.dtype,
+                )
+            return kornia.geometry.normal_transform_pixel(
+                image.shape[-2], image.shape[-1], device=image.device, dtype=image.dtype
+            )
+
+    image_shape = (1, 1, 2, 3, 4) if is_3d else (1, 1, 2, 4)
+    example = torch.zeros(image_shape, dtype=dtype)
+    exported = torch.export.export(
+        ExportTransform(),
+        (example,),
+        dynamic_shapes=({2: torch.export.Dim("singleton_axis", min=1, max=max(runtime_sizes) + 1)},),
+    ).module()
+
+    for runtime_size in runtime_sizes:
+        runtime = torch.zeros(*image_shape[:2], runtime_size, *image_shape[3:], dtype=dtype)
+        assert_close(exported(runtime), ExportTransform()(runtime), atol=0.0, rtol=0.0)
+
+
 class TestNormalTransformPixel(BaseTester):
     # normal_transform_pixel and normal_transform_pixel3d have no test class of their own in this
     # file -- their existing coverage lives in tests/geometry/transform/test_homography_warper.py.

@@ -95,6 +95,10 @@ def test_empty_destination_keeps_grid_sample_validation(op_name, device, dtype):
         with pytest.raises(RuntimeError):
             op(src[:1], transform[:1].to(other_dtype), (0, 4, 5))
 
+    if op_name == "warp_perspective3d":
+        with pytest.raises(ValueError, match="Bx4x4"):
+            op(src[:1], torch.eye(3, device=device, dtype=dtype).unsqueeze(0), (0, 4, 5))
+
 
 def test_homography_warp3d_negative_destination_raises(device, dtype):
     src = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)

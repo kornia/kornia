@@ -47,6 +47,9 @@ def create_meshgrid(
     Return:
         grid tensor with shape :math:`(1, H, W, 2)`.
 
+    A zero spatial size produces a correspondingly empty grid. This differs from
+    pixel-coordinate normalization, where a zero-sized coordinate system is undefined.
+
     Example:
         >>> create_meshgrid(2, 2)
         tensor([[[[-1., -1.],
@@ -65,9 +68,10 @@ def create_meshgrid(
     """
     if not torch.jit.is_scripting() and torch.compiler.is_compiling():
         # ``linspace`` specializes symbolic ``steps`` under export; ``arange`` retains the
-        # dynamic output length and is identical for this integer-spaced sequence.
-        xs = torch.arange(width, device=device, dtype=dtype)
-        ys = torch.arange(height, device=device, dtype=dtype)
+        # dynamic output length. Match ``linspace``'s default floating dtype when none is given.
+        arange_dtype = dtype if dtype is not None else torch.get_default_dtype()
+        xs = torch.arange(width, device=device, dtype=arange_dtype)
+        ys = torch.arange(height, device=device, dtype=arange_dtype)
     else:
         xs = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
         ys = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
@@ -124,11 +128,15 @@ def create_meshgrid3d(
     Return:
         grid tensor with shape :math:`(1, D, H, W, 3)`.
 
+    A zero spatial size produces a correspondingly empty grid. This differs from
+    pixel-coordinate normalization, where a zero-sized coordinate system is undefined.
+
     """
     if not torch.jit.is_scripting() and torch.compiler.is_compiling():
-        xs = torch.arange(width, device=device, dtype=dtype)
-        ys = torch.arange(height, device=device, dtype=dtype)
-        zs = torch.arange(depth, device=device, dtype=dtype)
+        arange_dtype = dtype if dtype is not None else torch.get_default_dtype()
+        xs = torch.arange(width, device=device, dtype=arange_dtype)
+        ys = torch.arange(height, device=device, dtype=arange_dtype)
+        zs = torch.arange(depth, device=device, dtype=arange_dtype)
     else:
         xs = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
         ys = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
