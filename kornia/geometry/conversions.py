@@ -2418,7 +2418,8 @@ def normalize_homography3d(
         - the shape guard is the 2-D function's, with the size adapted: a
           :math:`(4, 4)` or :math:`(B, 4, 4)` matrix and nothing else, an
           unbatched ``(4, 4)`` promoted to ``(1, 4, 4)``, and anything else —
-          a rank-4 input, or a ``(B, 3, 3)`` — rejected with
+          a rank-4 tensor such as ``(2, 4, 4, 4)``, or a ``(B, 3, 3)`` —
+          rejected with
           ``Input dst_pix_trans_src_pix must be a Bx4x4 tensor``. Both the
           guard's old ``or``-structure and its message, which used to name
           ``Bx3x3`` from a function that takes 4x4 matrices, were fixed in
