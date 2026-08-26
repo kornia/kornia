@@ -91,18 +91,28 @@ def assert_capture_matches_eager(
     Args:
         fn: callable of the tensors produced by ``make_inputs``; returns a tensor or tuple of tensors.
         make_inputs: builds the inputs for one size; the size goes into a tensor shape.
-        sizes: sizes to sweep -- normally ``unrepresentable_sizes(dtype)`` or a slice of it, plus
-            the degenerate sizes 1 and 2.
+        sizes: sizes to sweep. Write it as ``[1, 2, *unrepresentable_sizes(dtype)[:8]]``: the
+            degenerate sizes 1 and 2 always exercise the singleton and smallest non-trivial
+            paths, and they keep the list non-empty on an exact dtype, where
+            ``unrepresentable_sizes`` is ``[]`` (float32/float64 below ``2**24``). Must not be
+            empty -- a sweep of nothing is the vacuous green this helper exists to prevent.
         device: device for the inputs.
         dtype: dtype for the inputs (and the dtype the sizes were chosen for).
         capture: ``"trace"`` for ``torch.jit.trace`` (re-traced per size),
             ``"compile"`` for ``torch.compile(fullgraph=True, dynamic=True)``.
 
     Raises:
+        ValueError: when ``sizes`` is empty.
         AssertionError: on the first size where an output differs, naming size, output index,
             shape/dtype mismatch or max abs difference.
 
     """
+    if len(sizes) == 0:
+        raise ValueError(
+            "assert_capture_matches_eager needs at least one size: an empty sweep asserts nothing and "
+            "passes silently. unrepresentable_sizes is empty for exact dtypes such as float32, so pass "
+            "sizes=[1, 2, *unrepresentable_sizes(dtype)[:8]] rather than the bare call."
+        )
     if capture == "compile" and torch.device(device).type == "mps":
         pytest.skip("torch.compile inductor backend is not available on MPS")
     if capture == "compile":

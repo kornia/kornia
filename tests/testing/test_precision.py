@@ -88,15 +88,20 @@ class TestAssertCaptureMatchesEager:
             capture="trace",
         )
 
-    @pytest.mark.parametrize("wave_fn", [hist.create_meshgrid_9ed891c5, hist.create_meshgrid_32ab0eeb])
-    def test_historical_meshgrid_bodies_fail_under_trace(self, wave_fn, device):
+    @pytest.mark.parametrize(
+        ("wave_fn", "expected_size"),
+        [(hist.create_meshgrid_9ed891c5, 257), (hist.create_meshgrid_32ab0eeb, 258)],
+        ids=["9ed891c5", "32ab0eeb"],
+    )
+    def test_historical_meshgrid_bodies_fail_under_trace(self, wave_fn, expected_size, device):
         # These bodies are byte-equal to eager at every size that is exact in bfloat16, which is
         # why 1/2/4 let them through three review rounds. The sweep is what catches them -- and the
-        # two bodies need different sizes: 9ed891c5 rounds the size itself, so it already differs at
-        # 257 (divisor 255 instead of 256), while 32ab0eeb only rounds the divisor and so first
-        # differs at 258 (257 is exact as a divisor). A single hand-picked size catches one or the
-        # other, never both.
-        with pytest.raises(AssertionError, match=r"size (257|258|259|260|261|262)"):
+        # two bodies first differ at DIFFERENT sizes, which is why ``expected_size`` is pinned per
+        # body rather than matched loosely: 9ed891c5 rounds the size itself, so at 257 its divisor
+        # is 255 instead of 256 and it already differs; 32ab0eeb rounds only the divisor, and 256 is
+        # exact in bfloat16, so 257 passes vacuously there and 258 is the first size that catches
+        # it. A single hand-picked size catches one body or the other, never both.
+        with pytest.raises(AssertionError, match=rf"size {expected_size}, output"):
             assert_capture_matches_eager(
                 _meshgrid_of(wave_fn),
                 _image_hw,
@@ -142,7 +147,7 @@ class TestAssertCaptureMatchesEager:
         finally:
             torch.set_default_dtype(previous)
 
-    def test_reports_index_and_difference_for_tuple_outputs(self, device):
+    def test_accepts_tuple_outputs(self, device):
         def two_outputs(image):
             a = kornia.geometry.create_meshgrid(
                 image.shape[-2], image.shape[-1], device=image.device, dtype=image.dtype
@@ -150,6 +155,32 @@ class TestAssertCaptureMatchesEager:
             return a, a + 1
 
         assert_capture_matches_eager(two_outputs, _image_hw, sizes=[3], device=device, dtype=torch.float32)
+
+    def test_reports_index_and_difference_for_tuple_outputs(self, device):
+        # Output 0 is the fixed library function and agrees under trace; output 1 is the wave-8 body
+        # at 258, the size where it first diverges. The helper must name the offending index, not
+        # merely the size.
+        def good_then_bad(image):
+            h, w = image.shape[-2], image.shape[-1]
+            good = kornia.geometry.create_meshgrid(h, w, device=image.device, dtype=image.dtype)
+            bad = hist.create_meshgrid_32ab0eeb(h, w, device=image.device, dtype=image.dtype)
+            return good, bad
+
+        with pytest.raises(AssertionError, match=r"size 258, output 1.*max abs diff"):
+            assert_capture_matches_eager(good_then_bad, _image_hw, sizes=[258], device=device, dtype=torch.bfloat16)
+
+    def test_rejects_an_empty_sweep(self, device):
+        # unrepresentable_sizes is [] for float32/float64, so the documented-looking call
+        # ``sizes=unrepresentable_sizes(dtype)`` would otherwise be a green test that checked
+        # nothing under the default --dtype=float32 fixture.
+        with pytest.raises(ValueError, match="at least one size"):
+            assert_capture_matches_eager(
+                _meshgrid_of(kornia.geometry.create_meshgrid),
+                _image_hw,
+                sizes=unrepresentable_sizes(torch.float32),
+                device=device,
+                dtype=torch.float32,
+            )
 
     def test_compile_capture_runs_or_skips(self, device, torch_optimizer):
         # ``torch_optimizer`` is the conftest fixture; the test name carries ``compile`` so it is
