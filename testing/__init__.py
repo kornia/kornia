@@ -16,5 +16,6 @@
 #
 
 from .parametrized_tester import parametrized_test
+from .precision import unrepresentable_sizes
 
-__all__ = ["parametrized_test"]
+__all__ = ["parametrized_test", "unrepresentable_sizes"]
