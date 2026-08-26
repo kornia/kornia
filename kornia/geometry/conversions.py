@@ -1850,7 +1850,8 @@ def normalize_homography(
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
-          normalized. :math:`(B, 3, 3)`
+          normalized. :math:`(B, 3, 3)`, or an unbatched :math:`(3, 3)`, which
+          is promoted to :math:`(1, 3, 3)`
         dsize_src: size of the source image (height, width).
         dsize_dst: size of the destination image (height, width).
 
@@ -2123,13 +2124,13 @@ def denormalize_homography(
           <https://github.com/kornia/kornia/issues/3957>`_), int64-handling
           (`#3959 <https://github.com/kornia/kornia/issues/3959>`_ — this
           function's own clause there) and corner-alignment (`#3904
-          <https://github.com/kornia/kornia/issues/3904>`_) warnings apply here
-          too. The exception is the closed-form-inverse warning: in eager mode this
-          function inverts through ``torch.linalg.inv`` rather than through the
-          ``torch.linalg.cross`` adjugate, and under ``torch.jit.trace`` through
-          a cofactor expansion that calls neither, so it does not have that gap
-          in either mode — where it does reach ``linalg.inv`` it carries the
-          ``cusolver`` dependency instead
+          <https://github.com/kornia/kornia/issues/3904>`_) warnings apply
+          here too. The exception is the closed-form-inverse warning: in eager
+          mode this function inverts through ``torch.linalg.inv`` rather than
+          through the ``torch.linalg.cross`` adjugate, and under
+          ``torch.jit.trace`` through a cofactor expansion that calls neither,
+          so it does not have that gap in either mode — where it does reach
+          ``linalg.inv`` it carries the ``cusolver`` dependency instead
         - both round trips hold, but neither is an exact identity in general.
           Each leg runs four matrix products and **two** inverses — one per
           function, and by different routines (see the bullet below) — so the
@@ -2162,7 +2163,8 @@ def denormalize_homography(
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
-          denormalized. :math:`(B, 3, 3)`
+          denormalized. :math:`(B, 3, 3)`, or an unbatched :math:`(3, 3)`,
+          which is promoted to :math:`(1, 3, 3)`
         dsize_src: size of the source image (height, width).
         dsize_dst: size of the destination image (height, width).
 
@@ -2237,7 +2239,7 @@ def normalize_homography3d(
           unbatched ``(4, 4)`` promoted to ``(1, 4, 4)``, and anything else —
           a rank-4 input, or a ``(B, 3, 3)`` — rejected with
           ``Input dst_pix_trans_src_pix must be a Bx4x4 tensor``. Both the
-          ``or``-structured guard and its message, which used to name
+          guard's old ``or``-structure and its message, which used to name
           ``Bx3x3`` from a function that takes 4x4 matrices, were fixed in
           `#3999 <https://github.com/kornia/kornia/pull/3999>`_
 
@@ -2265,7 +2267,8 @@ def normalize_homography3d(
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
-          normalized. :math:`(B, 4, 4)`
+          normalized. :math:`(B, 4, 4)`, or an unbatched :math:`(4, 4)`, which
+          is promoted to :math:`(1, 4, 4)`
         dsize_src: size of the source image (depth, height, width).
         dsize_dst: size of the destination image (depth, height, width).
 

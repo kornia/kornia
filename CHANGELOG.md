@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ****
 
+## Unreleased
+
+### Breaking changes
+
+* The shape guards of `normalize_homography`, `denormalize_homography` and `normalize_homography3d` now reject
+  everything but a `(3, 3)`/`(B, 3, 3)` (respectively `(4, 4)`/`(B, 4, 4)`) matrix (#3999). A rank-4 input used to
+  pass the guard and come back with its rank unchanged — `normalize_homography(eye(3).expand(2, 4, 3, 3), (4, 5),
+  (8, 9))` returned a `(2, 4, 3, 3)` matrix and now raises `ValueError`. A wrong-sized input, such as a `(B, 4, 4)`
+  to the 2-D functions, used to pass the guard and fail later inside `matmul`; it now raises at the guard, and
+  `normalize_homography3d`'s message names `Bx4x4` instead of `Bx3x3`. Unbatched `(3, 3)`/`(4, 4)` matrices are
+  still accepted and still promoted to a leading batch of 1.
+
 
 ## :rocket: [0.6.11] - 2022-03-28
 ### :new:  New Features
