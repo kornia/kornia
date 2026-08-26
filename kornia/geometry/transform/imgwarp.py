@@ -105,12 +105,17 @@ def _empty_warp_output_2d(
     fill_value: Optional[torch.Tensor] = None,
     expand_transform_batch: bool = False,
     allow_fill: bool = True,
+    operand: str = "transform",
 ) -> torch.Tensor:
-    """Return an empty warp while retaining normal grid-sample validation and autograd links."""
+    """Return an empty warp while retaining normal grid-sample validation and autograd links.
+
+    ``operand`` names the second tensor in the error messages. ``remap`` has no ``transform``
+    parameter — it delegates here with its stacked maps — so it must not be told about one.
+    """
     if src.device != transform.device:
-        raise RuntimeError(f"Expected src and transform on the same device, got {src.device} and {transform.device}.")
+        raise RuntimeError(f"Expected src and {operand} on the same device, got {src.device} and {transform.device}.")
     # An integral ``src`` fails inside ``grid_sample`` itself on the non-empty path, so it must
-    # fail here too — but name ``src`` rather than blaming the transform for it below. (MPS is the
+    # fail here too — but name ``src`` rather than blaming the other operand for it below. (MPS is the
     # exception: its ``grid_sample`` samples an integral image back into ``int64`` instead of
     # rejecting it. Matching that would mean bilinear-sampling into an integer output, so the
     # cpu/cuda contract is the one enforced here.)
@@ -120,7 +125,7 @@ def _empty_warp_output_2d(
     # caller's non-empty pipeline would actually produce from ``transform``, so checking it here
     # makes a zero-sized ``dsize`` neither stricter nor laxer than a non-empty one.
     if grid_dtype != src.dtype:
-        raise RuntimeError(f"Expected src and transform with the same dtype, got {src.dtype} and {transform.dtype}.")
+        raise RuntimeError(f"Expected src and {operand} with the same dtype, got {src.dtype} and {transform.dtype}.")
     if src.dtype != transform.dtype:
         transform = transform.to(src.dtype)
     grid_zero = transform.reshape(-1)[:1].sum() * 0.0
@@ -840,6 +845,7 @@ def remap(
             _remap_grid_dtype(map_xy, normalized_coordinates),
             expand_transform_batch=True,
             allow_fill=False,
+            operand="map",
         )
 
     # F.normalize coordinates if not already normalized

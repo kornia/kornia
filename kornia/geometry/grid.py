@@ -86,16 +86,23 @@ def create_meshgrid(
         if torch.jit.is_tracing() or torch.compiler.is_compiling():
             # Graph capture needs the tensor form to keep a symbolic size dynamic. Low-precision
             # floating types cannot represent every practical image size exactly (e.g. bfloat16
-            # rounds 257 to 256), so the size arithmetic runs in float32 and only the finished
-            # divisor is cast down, leaving the same rounding sequence the eager branch performs
-            # against its Python-int divisor.
+            # rounds 257 to 256 and 299 to 300), so the size arithmetic runs in float32. Divide
+            # against the *unrounded* divisor and round the quotient, which is what eager does
+            # against its Python-int divisor: casting the divisor down first would round it into
+            # the coordinate dtype, which eager never does.
             work_dtype = torch.float32 if xs.dtype in (torch.float16, torch.bfloat16) else xs.dtype
             width_t = torch.scalar_tensor(width, device=xs.device, dtype=work_dtype)
             height_t = torch.scalar_tensor(height, device=ys.device, dtype=work_dtype)
-            w_den = (width_t - 1).to(xs.dtype)
-            h_den = (height_t - 1).to(ys.dtype)
-            xs = torch.where(width_t > 1, (xs / w_den - 0.5) * 2, torch.zeros_like(xs))
-            ys = torch.where(height_t > 1, (ys / h_den - 0.5) * 2, torch.zeros_like(ys))
+            xs_norm = xs.to(work_dtype) / (width_t - 1)
+            ys_norm = ys.to(work_dtype) / (height_t - 1)
+            if xs.is_floating_point():
+                # A widened half type rounds back down here, which is exactly where eager rounds.
+                # An integral grid dtype must instead stay promoted into the default float, as the
+                # eager true-division leaves it.
+                xs_norm = xs_norm.to(xs.dtype)
+                ys_norm = ys_norm.to(ys.dtype)
+            xs = torch.where(width_t > 1, (xs_norm - 0.5) * 2, torch.zeros_like(xs_norm))
+            ys = torch.where(height_t > 1, (ys_norm - 0.5) * 2, torch.zeros_like(ys_norm))
         else:
             # ``* 0.0`` rather than ``zeros_like`` so that a singleton axis follows the
             # same integer-to-float promotion the non-singleton branch performs.
@@ -150,17 +157,23 @@ def create_meshgrid3d(
     if normalized_coordinates:
         if torch.jit.is_tracing() or torch.compiler.is_compiling():
             # See ``create_meshgrid``: low-precision dtypes round large sizes, so the size
-            # arithmetic runs in float32 and only the finished divisor is cast down.
+            # arithmetic runs in float32 and the quotient, not the divisor, is what gets cast down.
             work_dtype = torch.float32 if xs.dtype in (torch.float16, torch.bfloat16) else xs.dtype
             width_t = torch.scalar_tensor(width, device=xs.device, dtype=work_dtype)
             height_t = torch.scalar_tensor(height, device=ys.device, dtype=work_dtype)
             depth_t = torch.scalar_tensor(depth, device=zs.device, dtype=work_dtype)
-            w_den = (width_t - 1).to(xs.dtype)
-            h_den = (height_t - 1).to(ys.dtype)
-            d_den = (depth_t - 1).to(zs.dtype)
-            xs = torch.where(width_t > 1, (xs / w_den - 0.5) * 2, torch.zeros_like(xs))
-            ys = torch.where(height_t > 1, (ys / h_den - 0.5) * 2, torch.zeros_like(ys))
-            zs = torch.where(depth_t > 1, (zs / d_den - 0.5) * 2, torch.zeros_like(zs))
+            xs_norm = xs.to(work_dtype) / (width_t - 1)
+            ys_norm = ys.to(work_dtype) / (height_t - 1)
+            zs_norm = zs.to(work_dtype) / (depth_t - 1)
+            if xs.is_floating_point():
+                # As in ``create_meshgrid``: round a widened half type back down, but leave an
+                # integral grid dtype promoted into the default float.
+                xs_norm = xs_norm.to(xs.dtype)
+                ys_norm = ys_norm.to(ys.dtype)
+                zs_norm = zs_norm.to(zs.dtype)
+            xs = torch.where(width_t > 1, (xs_norm - 0.5) * 2, torch.zeros_like(xs_norm))
+            ys = torch.where(height_t > 1, (ys_norm - 0.5) * 2, torch.zeros_like(ys_norm))
+            zs = torch.where(depth_t > 1, (zs_norm - 0.5) * 2, torch.zeros_like(zs_norm))
         else:
             xs = (xs / (width - 1) - 0.5) * 2 if width > 1 else xs * 0.0
             ys = (ys / (height - 1) - 0.5) * 2 if height > 1 else ys * 0.0

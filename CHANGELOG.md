@@ -11,9 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * Define singleton pixel axes at normalized center, reject non-positive normalization sizes, preserve empty warp
-  destinations, and deprecate the now-unused `eps` normalization parameters (#4006). `denormalize_pixel_coordinates`
-  and `denormalize_pixel_coordinates3d` no longer round-trip through a reciprocal, so results at non-degenerate sizes
-  can move by up to one ulp (toward the exact value).
+  destinations, and deprecate the now-unused `eps` normalization parameters (#4006). The four
+  `{de,}normalize_pixel_coordinates{,3d}` helpers and `normal_transform_pixel{,3d}` now derive their scale from the
+  size directly instead of rounding the size into the coordinate dtype first, so results at non-degenerate sizes can
+  move toward the exact value: by up to one ulp in `float32`/`float64`, but materially more in `float16`/`bfloat16`,
+  where the old code could not represent the size at all (`denormalize_pixel_coordinates` at `bfloat16` and size 3000
+  returns 1496 where it returned 1504).
 
 
 ## :rocket: [0.6.11] - 2022-03-28
