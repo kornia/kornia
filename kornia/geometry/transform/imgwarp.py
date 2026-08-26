@@ -66,6 +66,34 @@ __all__ = [
 ]
 
 
+def _matrix_warp_grid_dtype(src: torch.Tensor, transform: torch.Tensor) -> torch.dtype:
+    """Return the sampling-grid dtype the non-empty matrix-warp pipeline would build.
+
+    ``normalize_homography`` scales ``transform`` by floating factors, so an integral or boolean
+    matrix already fails there and must fail here too. Otherwise the base grid is created in
+    ``src.dtype`` and combined with the normalized matrix, so the grid promotes the two: a float32
+    matrix against a float64 image still samples in float64, while the reverse narrows and is
+    rejected by ``grid_sample``.
+    """
+    if not transform.is_floating_point():
+        raise RuntimeError(f"Expected a floating point transform, got {transform.dtype}.")
+    return torch.promote_types(src.dtype, transform.dtype)
+
+
+def _remap_grid_dtype(map_xy: torch.Tensor, normalized_coordinates: bool) -> torch.dtype:
+    """Return the sampling-grid dtype the non-empty :func:`remap` pipeline would build.
+
+    Already-normalized maps reach ``grid_sample`` untouched. Pixel maps first go through
+    :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`, which keeps a floating map in
+    its own dtype and lifts an integral or boolean one into the default floating dtype.
+    """
+    if normalized_coordinates or map_xy.is_floating_point():
+        return map_xy.dtype
+    # Read the default floating dtype off a zero-element promotion rather than
+    # ``torch.get_default_dtype()``, which TorchScript does not expose.
+    return (map_xy.reshape(-1)[:0] * 1.0).dtype
+
+
 def _empty_warp_output_2d(
     src: torch.Tensor,
     transform: torch.Tensor,
@@ -73,6 +101,7 @@ def _empty_warp_output_2d(
     mode: str,
     padding_mode: str,
     align_corners: bool,
+    grid_dtype: torch.dtype,
     fill_value: Optional[torch.Tensor] = None,
     expand_transform_batch: bool = False,
     allow_fill: bool = True,
@@ -80,15 +109,12 @@ def _empty_warp_output_2d(
     """Return an empty warp while retaining normal grid-sample validation and autograd links."""
     if src.device != transform.device:
         raise RuntimeError(f"Expected src and transform on the same device, got {src.device} and {transform.device}.")
-    # The non-empty path builds its sampling grid in ``src.dtype``, so a transform that promotes
-    # into it (a float32 matrix against a float64 image, integer ``remap`` maps) is accepted there.
-    # Mirror that instead of demanding equality, so a zero-sized ``dsize`` is not stricter than a
-    # non-empty one; the reverse direction still fails, as it does on the non-empty path.
+    # ``grid_sample`` requires the sampling grid in ``src.dtype``. ``grid_dtype`` is the dtype the
+    # caller's non-empty pipeline would actually produce from ``transform``, so checking it here
+    # makes a zero-sized ``dsize`` neither stricter nor laxer than a non-empty one.
+    if grid_dtype != src.dtype:
+        raise RuntimeError(f"Expected src and transform with the same dtype, got {src.dtype} and {transform.dtype}.")
     if src.dtype != transform.dtype:
-        if torch.promote_types(src.dtype, transform.dtype) != src.dtype:
-            raise RuntimeError(
-                f"Expected src and transform with the same dtype, got {src.dtype} and {transform.dtype}."
-            )
         transform = transform.to(src.dtype)
     grid_zero = transform.reshape(-1)[:1].sum() * 0.0
     grid = grid_zero.reshape(1, 1, 1, 1).expand(transform.shape[0], dsize[0], dsize[1], 2)
@@ -214,7 +240,9 @@ def warp_perspective(
     if h_out < 0 or w_out < 0:
         raise ValueError(f"Output size must be non-negative. Got {dsize}.")
     if h_out == 0 or w_out == 0:
-        return _empty_warp_output_2d(src, M, dsize, mode, padding_mode, align_corners, fill_value)
+        return _empty_warp_output_2d(
+            src, M, dsize, mode, padding_mode, align_corners, _matrix_warp_grid_dtype(src, M), fill_value
+        )
 
     # we F.normalize the 3x3 transformation matrix and convert to 3x4
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M, (H, W), (h_out, w_out))  # Bx3x3
@@ -324,7 +352,15 @@ def warp_affine(
         raise ValueError(f"Output size must be non-negative. Got {dsize}.")
     if dsize[0] == 0 or dsize[1] == 0:
         return _empty_warp_output_2d(
-            src, M, dsize, mode, padding_mode, align_corners, fill_value, expand_transform_batch=True
+            src,
+            M,
+            dsize,
+            mode,
+            padding_mode,
+            align_corners,
+            _matrix_warp_grid_dtype(src, M),
+            fill_value,
+            expand_transform_batch=True,
         )
 
     M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
@@ -790,6 +826,7 @@ def remap(
             mode,
             padding_mode,
             align_corners,
+            _remap_grid_dtype(map_xy, normalized_coordinates),
             expand_transform_batch=True,
             allow_fill=False,
         )

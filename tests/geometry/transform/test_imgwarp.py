@@ -83,6 +83,36 @@ def test_empty_source_policy(op_name, device, dtype):
         op(src, transform, (3, 4))
 
 
+def _output_dtype_or_none(call):
+    """Return the output dtype of ``call``, or ``None`` when it rejects its inputs."""
+    try:
+        return call().dtype
+    except Exception:
+        return None
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+@pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("matrix_dtype", [torch.float32, torch.float64, torch.int64])
+def test_empty_destination_follows_nonempty_dtype_policy(op_name, src_dtype, matrix_dtype, device):
+    if device.type == "mps":
+        pytest.skip("MPS does not support float64")
+    op = getattr(kornia.geometry.transform, op_name)
+    rows = 2 if op_name == "warp_affine" else 3
+    src = torch.zeros(1, 3, 3, 4, device=device, dtype=src_dtype)
+    matrix = torch.eye(3, device=device)[:rows].to(matrix_dtype).unsqueeze(0)
+
+    # An empty ``dsize`` must accept exactly the matrix dtypes the non-empty pipeline accepts:
+    # a matrix that promotes into ``src.dtype`` samples fine, one that narrows it or is integral
+    # (``normalize_homography`` scales it by floating factors) fails on both paths.
+    empty_dtype = _output_dtype_or_none(lambda: op(src, matrix, (0, 4)))
+    assert empty_dtype == _output_dtype_or_none(lambda: op(src, matrix, (1, 4)))
+    if src_dtype == matrix_dtype:
+        # Guards the paired assertion above against passing vacuously on two failures.
+        assert empty_dtype == src_dtype
+        assert op(src, matrix, (0, 4)).shape == (1, 3, 0, 4)
+
+
 @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
 def test_negative_destination_raises(op_name, device, dtype):
     src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
@@ -738,14 +768,30 @@ class TestRemap(BaseTester):
         with pytest.raises(ValueError, match="expected padding_mode"):
             kornia.geometry.remap(image, map_x, map_y, padding_mode="fill")
 
-    def test_empty_maps_follow_nonempty_dtype_policy(self, device, dtype):
-        image = torch.empty(1, 2, 4, 5, device=device, dtype=dtype)
-        # Integer maps normalize into the image dtype on the non-empty path, so the empty
-        # path must accept them too rather than rejecting the dtype mismatch outright.
-        int_kwargs = {"device": device, "dtype": torch.int64}
-        empty_out = kornia.geometry.remap(image, torch.zeros(1, 0, 5, **int_kwargs), torch.zeros(1, 0, 5, **int_kwargs))
-        assert empty_out.shape == (1, 2, 0, 5)
-        assert empty_out.dtype == dtype
+    @pytest.mark.parametrize("image_dtype", [torch.float32, torch.float64])
+    @pytest.mark.parametrize("map_dtype", [torch.float32, torch.float64, torch.int64])
+    @pytest.mark.parametrize("normalized_coordinates", [False, True])
+    def test_empty_maps_follow_nonempty_dtype_policy(self, image_dtype, map_dtype, normalized_coordinates, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        image = torch.zeros(1, 2, 4, 5, device=device, dtype=image_dtype)
+
+        def call(map_):
+            return kornia.geometry.remap(image, map_, map_, normalized_coordinates=normalized_coordinates)
+
+        empty_map = torch.zeros(1, 0, 5, device=device, dtype=map_dtype)
+        nonempty_map = torch.zeros(1, 1, 5, device=device, dtype=map_dtype)
+
+        # Empty maps must accept exactly what the non-empty pipeline accepts. Pixel maps are
+        # normalized first, so an integer map lifts into the default floating dtype (matching a
+        # float32 image, not a float64 one); already-normalized maps reach ``grid_sample``
+        # unchanged and must match the image dtype exactly.
+        empty_dtype = _output_dtype_or_none(lambda: call(empty_map))
+        assert empty_dtype == _output_dtype_or_none(lambda: call(nonempty_map))
+        if image_dtype == map_dtype:
+            # Guards the paired assertion above against passing vacuously on two failures.
+            assert empty_dtype == image_dtype
+            assert call(empty_map).shape == (1, 2, 0, 5)
 
     def test_empty_source_with_nonempty_maps_raises(self, device, dtype):
         image = torch.empty(1, 2, 0, 5, device=device, dtype=dtype)
