@@ -160,14 +160,21 @@ class TestOnlyThroughATaskShell:
 
 
 class _FakeRun:
-    """Stand-in for ``subprocess.run`` that records argv and never launches anything."""
+    """Stand-in for ``subprocess.run`` that records argv and kwargs and never launches anything."""
 
-    def __init__(self, stdout: str = ""):
+    def __init__(self, stdout: str = "", stdout_by_arg: dict[str, str] | None = None):
         self.stdout = stdout
+        self.stdout_by_arg = stdout_by_arg or {}  # first matching argv entry wins, e.g. keyed by a tree path
         self.calls: list[list[str]] = []
+        self.kwargs: list[dict] = []
 
     def __call__(self, argv, **kwargs):
-        self.calls.append([str(a) for a in argv])
+        argv = [str(a) for a in argv]
+        self.calls.append(argv)
+        self.kwargs.append(kwargs)
+        for key, stdout in self.stdout_by_arg.items():
+            if key in argv:
+                return SimpleNamespace(stdout=stdout, returncode=0)
         return SimpleNamespace(stdout=self.stdout, returncode=0)
 
 
@@ -182,12 +189,20 @@ class TestRunSurface:
         assert not junit.exists()
         assert "no junit report" in capsys.readouterr().out
 
-    def test_the_tree_under_test_is_on_pythonpath(self, tmp_path: Path, monkeypatch):
+    def test_the_child_gets_the_tree_on_pythonpath_and_the_surface_env(self, tmp_path: Path, monkeypatch):
         fake = _FakeRun(stdout=str(tmp_path / "kornia" / "__init__.py"))
         monkeypatch.setattr(verify_delta.subprocess, "run", fake)
         monkeypatch.delenv("PYTHONPATH", raising=False)
         (tmp_path / "tests").mkdir()
-        verify_delta._run_surface(tmp_path, SURFACES[0], ["tests"], tmp_path / "j.xml")
+        inductor = SURFACES[3]
+        verify_delta._run_surface(tmp_path, inductor, ["tests"], tmp_path / "j.xml")
+        assert len(fake.kwargs) == 2  # the import guard and pytest itself
+        for kwargs in fake.kwargs:
+            assert kwargs["cwd"] == tmp_path
+            assert kwargs["env"]["PYTHONPATH"] == str(tmp_path)
+            assert kwargs["env"]["KORNIA_TEST_DEVICE"] == "cpu"
+            assert kwargs["env"]["KORNIA_TEST_OPTIMIZER"] == "inductor"
+        assert fake.calls[-1][-3:] == ["-k", "dynamo or compile", "tests"]
         assert os.environ.get("PYTHONPATH") is None  # the child env is not leaked into this process
 
     def test_paths_absent_from_the_tree_are_dropped_not_fatal(self, tmp_path: Path, monkeypatch, capsys):
@@ -202,11 +217,15 @@ class TestRunSurface:
         assert "tests/testing" not in pytest_argv
         assert "tests/testing" in capsys.readouterr().out
 
-    def test_no_present_paths_means_no_run_and_no_failures(self, tmp_path: Path, monkeypatch):
+    def test_no_present_paths_reports_that_it_could_not_run_not_that_it_passed(
+        self, tmp_path: Path, monkeypatch, capsys
+    ):
         fake = _FakeRun(stdout=str(tmp_path / "kornia" / "__init__.py"))
         monkeypatch.setattr(verify_delta.subprocess, "run", fake)
-        assert verify_delta._run_surface(tmp_path, SURFACES[0], ["tests/testing"], tmp_path / "j.xml") == set()
-        assert not any("pytest" in call for call in fake.calls)
+        # `set()` here would read as "this tree has no failures", which is a pass it never measured.
+        assert verify_delta._run_surface(tmp_path, SURFACES[0], ["tests/testing"], tmp_path / "j.xml") is None
+        assert fake.calls == []
+        assert "nothing to run" in capsys.readouterr().out
 
 
 class TestEnsureMainWorktree:
@@ -221,3 +240,108 @@ class TestEnsureMainWorktree:
         monkeypatch.setattr(verify_delta.subprocess, "run", fake)
         verify_delta._ensure_main_worktree(tmp_path, "origin/main", tmp_path, fetch=True)
         assert ["git", "-C", str(tmp_path), "fetch", "origin", "main"] in fake.calls
+
+
+class TestAssertImportsFrom:
+    def test_accepts_kornia_imported_from_the_tree_under_test(self, tmp_path: Path, monkeypatch):
+        fake = _FakeRun(stdout=str(tmp_path / "kornia" / "__init__.py"))
+        monkeypatch.setattr(verify_delta.subprocess, "run", fake)
+        verify_delta._assert_imports_from(tmp_path, {"PYTHONPATH": str(tmp_path)})  # does not raise
+
+    def test_rejects_kornia_imported_from_another_checkout(self, tmp_path: Path, monkeypatch):
+        import pytest
+
+        # the shared .venv re-points its editable kornia install to whichever tree ran uv last
+        fake = _FakeRun(stdout=str(tmp_path.parent / "elsewhere" / "kornia" / "__init__.py"))
+        monkeypatch.setattr(verify_delta.subprocess, "run", fake)
+        with pytest.raises(SystemExit, match="refusing to test the wrong tree"):
+            verify_delta._assert_imports_from(tmp_path, {"PYTHONPATH": str(tmp_path)})
+
+
+class TestEnsureMainWorktreeReuse:
+    def test_reuses_a_path_that_is_a_worktree_of_this_repo(self, tmp_path: Path, monkeypatch):
+        repo, wt = tmp_path / "repo", tmp_path / "wt"
+        repo.mkdir()
+        wt.mkdir()
+        fake = _FakeRun(stdout=str(repo / ".git"))  # both trees share one .git common dir
+        monkeypatch.setattr(verify_delta.subprocess, "run", fake)
+        verify_delta._ensure_main_worktree(repo, "origin/main", wt, fetch=False)
+        assert ["git", "-C", str(wt), "checkout", "--detach", "origin/main"] in fake.calls
+
+    def test_refuses_a_leftover_directory_that_belongs_to_another_repo(self, tmp_path: Path, monkeypatch):
+        import pytest
+
+        repo, wt = tmp_path / "repo", tmp_path / "wt"
+        repo.mkdir()
+        wt.mkdir()
+        # `git -C <plain dir>` walks up to whatever repo encloses it, so the checkout would land there
+        fake = _FakeRun(stdout_by_arg={str(repo): str(repo / ".git"), str(wt): str(tmp_path / "other" / ".git")})
+        monkeypatch.setattr(verify_delta.subprocess, "run", fake)
+        with pytest.raises(SystemExit, match="is not a worktree of"):
+            verify_delta._ensure_main_worktree(repo, "origin/main", wt, fetch=False)
+        assert not any("checkout" in call for call in fake.calls)
+
+    def test_refuses_a_path_that_is_not_in_any_repository(self, tmp_path: Path, monkeypatch):
+        import pytest
+
+        repo, wt = tmp_path / "repo", tmp_path / "wt"
+        repo.mkdir()
+        wt.mkdir()
+
+        def explode(argv, **kwargs):
+            if str(wt) in [str(a) for a in argv]:
+                raise verify_delta.subprocess.CalledProcessError(128, argv)
+            return SimpleNamespace(stdout=str(repo / ".git"), returncode=0)
+
+        monkeypatch.setattr(verify_delta.subprocess, "run", explode)
+        with pytest.raises(SystemExit, match="is not a worktree of"):
+            verify_delta._ensure_main_worktree(repo, "origin/main", wt, fetch=False)
+
+
+class TestMainRefusesAVacuousPass:
+    """Exiting 0 without having compared anything would make the gate useless."""
+
+    @staticmethod
+    def _stub_repo(monkeypatch, tmp_path: Path) -> _FakeRun:
+        def fake_git(repo, *cmd):
+            if cmd[:2] == ("rev-parse", "--show-toplevel"):
+                return str(tmp_path)
+            if cmd[0] == "diff":
+                return ""
+            return "abc1234"
+
+        fake = _FakeRun()
+        monkeypatch.setattr(verify_delta, "_git", fake_git)
+        monkeypatch.setattr(verify_delta, "_ensure_main_worktree", lambda *a, **k: None)
+        monkeypatch.setattr(verify_delta.subprocess, "run", fake)
+        return fake
+
+    def _argv(self, tmp_path: Path, *extra: str) -> list[str]:
+        return [
+            "--no-fetch",
+            "--main-worktree",
+            str(tmp_path / "wt"),
+            "--out",
+            str(tmp_path / "out"),
+            *extra,
+        ]
+
+    def test_a_test_path_on_neither_tree_is_not_a_pass(self, tmp_path: Path, monkeypatch, capsys):
+        fake = self._stub_repo(monkeypatch, tmp_path)
+        code = verify_delta.main(self._argv(tmp_path, "--only", "cpu float32", "--tests", "tests/gone"))
+        assert code == 2
+        assert "nothing was verified" in capsys.readouterr().out
+        assert fake.calls == []
+
+    def test_selecting_only_an_unavailable_surface_is_not_a_pass(self, tmp_path: Path, monkeypatch, capsys):
+        import torch
+
+        fake = self._stub_repo(monkeypatch, tmp_path)
+        monkeypatch.setattr(torch.backends.mps, "is_available", lambda: False)
+        (tmp_path / "tests").mkdir()
+        code = verify_delta.main(self._argv(tmp_path, "--only", "mps float32", "--tests", "tests"))
+        assert code == 2
+        out = capsys.readouterr().out
+        assert "| mps float32 | skipped |" in out
+        assert "nothing was verified" in out
+        assert fake.calls == []

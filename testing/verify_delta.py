@@ -171,6 +171,11 @@ def _git(repo: Path, *cmd: str) -> str:
     ).stdout.strip()
 
 
+def _git_common_dir(tree: Path) -> Path:
+    """Return the shared ``.git`` directory backing ``tree``, which every worktree of a repo has in common."""
+    return (tree / _git(tree, "rev-parse", "--git-common-dir")).resolve()
+
+
 def _ensure_main_worktree(repo: Path, base: str, path: Path, fetch: bool) -> None:
     """Create (or re-point) a detached worktree of ``base`` at ``path``."""
     remote, _, ref = base.partition("/")
@@ -180,6 +185,14 @@ def _ensure_main_worktree(repo: Path, base: str, path: Path, fetch: bool) -> Non
             check=True,
         )
     if path.exists():
+        # `git -C` walks up out of a plain directory, so a leftover non-worktree here would silently
+        # check `base` out in whatever repository encloses it -- possibly the user's own checkout.
+        try:
+            same_repo = _git_common_dir(path) == _git_common_dir(repo)
+        except subprocess.CalledProcessError:
+            same_repo = False
+        if not same_repo:
+            raise SystemExit(f"{path} exists but is not a worktree of {repo}; remove it or pass --main-worktree")
         _git(path, "checkout", "--detach", base)
     else:
         _git(repo, "worktree", "add", "--detach", str(path), base)
@@ -199,18 +212,20 @@ def _assert_imports_from(tree: Path, env: dict[str, str]) -> None:
         raise SystemExit(f"{tree}: `import kornia` resolved to {out}; refusing to test the wrong tree")
 
 
-def _run_surface(tree: Path, surface: Surface, tests: Sequence[str], junit: Path) -> set[str]:
-    """Run one surface's pytest invocation inside ``tree`` and return its failing-test ids."""
-    env = {**os.environ, **surface.env, "PYTHONPATH": str(tree)}
-    _assert_imports_from(tree, env)
-    junit.unlink(missing_ok=True)  # a stale report from a previous run must never be read as this run's result
+def _run_surface(tree: Path, surface: Surface, tests: Sequence[str], junit: Path) -> set[str] | None:
+    """Run one surface inside ``tree`` and return its failing-test ids, or ``None`` if pytest could not run."""
     # pytest aborts collection outright when any argument path is missing, so a directory that the base
     # revision does not have yet would empty its whole failure set and make every branch failure look new.
     present = [t for t in tests if (tree / t).exists()]
-    if missing := [t for t in tests if t not in present]:
-        print(f"{tree}: {' '.join(missing)} does not exist here; running the rest")
+    missing = [t for t in tests if t not in present]
     if not present:
-        return set()
+        print(f"{tree}: none of {' '.join(tests)} exist here; nothing to run")
+        return None
+    if missing:
+        print(f"{tree}: {' '.join(missing)} does not exist here; running {' '.join(present)}")
+    env = {**os.environ, **surface.env, "PYTHONPATH": str(tree)}
+    _assert_imports_from(tree, env)
+    junit.unlink(missing_ok=True)  # a stale report from a previous run must never be read as this run's result
     cmd = [
         sys.executable,
         "-m",
@@ -257,10 +272,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         slug = surface.name.replace(" ", "_").replace(",", "-")
         branch_fail = _run_surface(repo, surface, tests, out / f"{slug}-branch.xml")
         main_fail = _run_surface(main_wt, surface, tests, out / f"{slug}-main.xml")
+        if branch_fail is None or main_fail is None:  # no baseline, or nothing to compare it against
+            rows.append((surface.name, None))
+            continue
         rows.append((surface.name, diff_failures(branch_fail, main_fail)))
     table = render_table(rows)
     print("\n" + table)
     (out / "summary.md").write_text(table + "\n")
+    if all(delta is None for _, delta in rows):
+        print("nothing was verified: no surface ran pytest on both trees; this is not a pass")
+        return 2
     return 1 if any(d is not None and d.new for _, d in rows) else 0
 
 
