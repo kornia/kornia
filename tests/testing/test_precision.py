@@ -18,7 +18,11 @@
 import pytest
 import torch
 
-from testing import unrepresentable_sizes
+import kornia
+
+from testing import assert_capture_matches_eager, unrepresentable_sizes
+
+from tests.testing import _historical as hist
 
 
 class TestUnrepresentableSizes:
@@ -53,3 +57,109 @@ class TestUnrepresentableSizes:
     def test_rejects_non_floating_dtype(self):
         with pytest.raises(TypeError, match="floating"):
             unrepresentable_sizes(torch.int64)
+
+
+def _image_hw(size: int, device: torch.device, dtype: torch.dtype) -> tuple[torch.Tensor]:
+    return (torch.zeros(1, 1, size, 4, device=device, dtype=dtype),)
+
+
+def _meshgrid_of(fn):
+    def run(image):
+        return fn(image.shape[-2], image.shape[-1], device=image.device, dtype=image.dtype)
+
+    return run
+
+
+def _ntp_default_dtype(fn):
+    def run(image):
+        return fn(image.shape[-2], image.shape[-1], device=image.device)
+
+    return run
+
+
+class TestAssertCaptureMatchesEager:
+    def test_current_meshgrid_passes_under_trace(self, device, dtype):
+        assert_capture_matches_eager(
+            _meshgrid_of(kornia.geometry.create_meshgrid),
+            _image_hw,
+            sizes=[1, 2, *unrepresentable_sizes(torch.bfloat16)[:6], 2050, 3000],
+            device=device,
+            dtype=dtype,
+            capture="trace",
+        )
+
+    @pytest.mark.parametrize("wave_fn", [hist.create_meshgrid_9ed891c5, hist.create_meshgrid_32ab0eeb])
+    def test_historical_meshgrid_bodies_fail_under_trace(self, wave_fn, device):
+        # These bodies are byte-equal to eager at every size that is exact in bfloat16, which is
+        # why 1/2/4 let them through three review rounds. The sweep is what catches them -- and the
+        # two bodies need different sizes: 9ed891c5 rounds the size itself, so it already differs at
+        # 257 (divisor 255 instead of 256), while 32ab0eeb only rounds the divisor and so first
+        # differs at 258 (257 is exact as a divisor). A single hand-picked size catches one or the
+        # other, never both.
+        with pytest.raises(AssertionError, match=r"size (257|258|259|260|261|262)"):
+            assert_capture_matches_eager(
+                _meshgrid_of(wave_fn),
+                _image_hw,
+                sizes=unrepresentable_sizes(torch.bfloat16)[:6],
+                device=device,
+                dtype=torch.bfloat16,
+                capture="trace",
+            )
+
+    def test_historical_meshgrid_bodies_pass_at_the_vacuous_sizes(self, device):
+        # Documents the trap: the old test sizes cannot distinguish the buggy body from the fix.
+        assert_capture_matches_eager(
+            _meshgrid_of(hist.create_meshgrid_32ab0eeb),
+            _image_hw,
+            sizes=[1, 2, 4, 257],
+            device=device,
+            dtype=torch.bfloat16,
+            capture="trace",
+        )
+
+    @pytest.mark.parametrize("default_dtype", [torch.float16, torch.bfloat16], ids=["float16", "bfloat16"])
+    def test_historical_normal_transform_pixel_fails_under_half_default_dtype(self, default_dtype, device):
+        previous = torch.get_default_dtype()
+        torch.set_default_dtype(default_dtype)
+        try:
+            with pytest.raises(AssertionError, match="size"):
+                assert_capture_matches_eager(
+                    _ntp_default_dtype(hist.normal_transform_pixel_1522441d),
+                    lambda size, device, dtype: (torch.zeros(1, 1, size, 5, device=device),),
+                    sizes=unrepresentable_sizes(default_dtype)[:4],
+                    device=device,
+                    dtype=default_dtype,
+                    capture="trace",
+                )
+            assert_capture_matches_eager(
+                _ntp_default_dtype(kornia.geometry.conversions.normal_transform_pixel),
+                lambda size, device, dtype: (torch.zeros(1, 1, size, 5, device=device),),
+                sizes=unrepresentable_sizes(default_dtype)[:4],
+                device=device,
+                dtype=default_dtype,
+                capture="trace",
+            )
+        finally:
+            torch.set_default_dtype(previous)
+
+    def test_reports_index_and_difference_for_tuple_outputs(self, device):
+        def two_outputs(image):
+            a = kornia.geometry.create_meshgrid(
+                image.shape[-2], image.shape[-1], device=image.device, dtype=image.dtype
+            )
+            return a, a + 1
+
+        assert_capture_matches_eager(two_outputs, _image_hw, sizes=[3], device=device, dtype=torch.float32)
+
+    def test_compile_capture_runs_or_skips(self, device, torch_optimizer):
+        # ``torch_optimizer`` is the conftest fixture; the test name carries ``compile`` so it is
+        # deselected unless KORNIA_TEST_OPTIMIZER is set, exactly like the rest of the suite.
+        del torch_optimizer
+        assert_capture_matches_eager(
+            _meshgrid_of(kornia.geometry.create_meshgrid),
+            _image_hw,
+            sizes=[1, 2, 258, 300],
+            device=device,
+            dtype=torch.float32,
+            capture="compile",
+        )
