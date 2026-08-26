@@ -275,14 +275,20 @@ The `padding_mode="border"` issue in `F.grid_sample` (2D) is worked around in th
 
 - `unrepresentable_sizes(dtype)` — sizes at which `n` or `n - 1` is inexact in `dtype`. Sweep a
   slice of this list; never pick one size. 257 is vacuous against a rounded divisor and decisive
-  against a rounded size; 258 is the reverse.
+  against a rounded size; 258 is the reverse. `hi` above `torch.finfo(dtype).max` raises
+  `ValueError`: every candidate there casts to `inf` and round-trips back unchanged, so the sweep
+  would be sizes no test can allocate.
 - `assert_capture_matches_eager(fn, make_inputs, sizes=..., device=..., dtype=..., capture="trace"|"compile")`
   — byte-equality (`torch.equal`) between eager and `torch.jit.trace` / `torch.compile(fullgraph=True,
   dynamic=True)`, size by size. Derive sizes from tensor shapes inside `fn`. `sizes` must not be
   empty: `float32`/`float64` return `[]` from `unrepresentable_sizes`, so always include the
   degenerate sizes 1 and 2, e.g. `sizes=[1, 2, *unrepresentable_sizes(dtype)[:8]]`.
 - `assert_degenerate_path_parity(fn, full_kwargs, degenerate_kwargs, bad_inputs)` — an empty or
-  singleton path must raise exactly what the full path raises for the same invalid input.
+  singleton path must raise exactly what the full path raises for the same invalid input. Every
+  `bad_inputs` name must already be a key of both kwargs dicts (an unknown name would be *added*
+  rather than substituted, and both paths would raise `TypeError` over a call never made); parity
+  is compared on the exception type, so check the messages when two paths could raise the same type
+  for unrelated reasons.
 
 ```python
 from testing import assert_capture_matches_eager, unrepresentable_sizes

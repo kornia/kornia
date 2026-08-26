@@ -51,7 +51,7 @@ lint = { cmd = "uv run pre-commit run ruff-check --all-files && uv run pre-commi
 pre-commit-all = { cmd = "uv run pre-commit run --all-files", description = "Run all repository pre-commit checks" }
 pre-commit-install = { cmd = "uv run pre-commit install", description = "Install the pre-commit Git hook" }
 typecheck = { cmd = "ty check kornia" }
-doctest = { cmd = "uv run pytest -v --doctest-modules kornia/" }
+doctest = { cmd = "uv run pytest -v --doctest-modules kornia/ testing/precision.py" }
 toml-fmt = { cmd = "tombi format", description = "Format TOML files" }
 toml-fmt-check = { cmd = "tombi format --check", description = "Check TOML formatting" }
 # Docs

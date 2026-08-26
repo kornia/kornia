@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Diff failing-test SETS between this branch and ``origin/main`` on every supported surface.
+"""Diff failing-test SETS between this branch and ``--base`` (``origin/main``) on every supported surface.
 
 Run as ``pixi run verify-delta`` (``python -m testing.verify_delta``). Counts are never compared —
 a branch can add and fix an equal number of tests and look unchanged by count.
@@ -106,13 +106,15 @@ def render_table(rows: Sequence[tuple[str, FailureDelta | None]]) -> str:
         new_cell = f"{len(delta.new)}*" if not delta.baseline else str(len(delta.new))
         no_baseline |= not delta.baseline
         lines.append(f"| {name} | {new_cell} | {len(delta.fixed)} | {len(delta.unchanged)} |")
-        details.extend(f"NEW {t}" for t in delta.new)
-        details.extend(f"FIXED {t}" for t in delta.fixed)
+        details.extend(f"NEW [{name}] {t}" for t in delta.new)
+        details.extend(f"FIXED [{name}] {t}" for t in delta.fixed)
     legend = ["", "* no baseline on the base revision for these paths; every failure there counts as new"]
     return "\n".join(lines + (legend if no_baseline else []) + ([""] + details if details else []))
 
 
-@dataclass(frozen=True)
+# eq=False keeps these hashable: a `dict` field makes a frozen dataclass's generated __eq__/__hash__
+# unusable (`unhashable type: 'dict'`), and identity is the right comparison for the fixed registry below.
+@dataclass(frozen=True, eq=False)
 class Surface:
     """One test surface: a display name, the ``KORNIA_TEST_*`` environment it needs, and extra pytest args."""
 
@@ -175,6 +177,11 @@ def select_surfaces(args: argparse.Namespace, *, mps_available: bool) -> list[Su
     return [s for s in chosen if s.name != "mps float32" or mps_available]
 
 
+def _present_paths(tree: Path, tests: Sequence[str]) -> list[str]:
+    """Return the subset of ``tests`` that exists in ``tree``; pytest aborts collection on a missing path."""
+    return [t for t in tests if (tree / t).exists()]
+
+
 def _failures_or_empty(junit: Path) -> set[str]:
     """Read a junit report, treating a missing one (collection error, no tests) as zero failures."""
     if not Path(junit).exists():
@@ -215,14 +222,22 @@ def _primary_worktree(repo: Path) -> Path | None:
     return Path(lines[0][len("worktree ") :]).resolve()
 
 
-def _ensure_main_worktree(repo: Path, base: str, path: Path, fetch: bool) -> None:
-    """Create (or re-point) a detached worktree of ``base`` at ``path``."""
+def _ensure_main_worktree(repo: Path, base: str, path: Path, fetch: bool) -> str:
+    """Create (or re-point) a detached worktree of ``base`` at ``path``; return the sha it resolved to."""
     remote, _, ref = base.partition("/")
     if fetch and ref:  # a local revision such as `--base HEAD~1` has nothing to fetch
         subprocess.run(  # noqa: S603 -- trusted: fixed argv, no shell
             ["git", "-C", str(repo), "fetch", remote, ref],  # noqa: S607 -- trusted: git resolved from PATH
             check=True,
         )
+    # resolve against the repo, once. On a reused worktree `git -C <path> checkout --detach <base>`
+    # would resolve a relative revision (`HEAD~1`) against the worktree's own HEAD -- the previous
+    # run's base -- so it walks back one commit per run while `git diff <base>...HEAD` in the repo
+    # does not, and the two trees quietly stop being the pair the table claims to compare.
+    try:
+        rev = _git(repo, "rev-parse", base)
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit(f"{repo}: cannot resolve --base {base}: {(exc.stderr or '').strip()}") from exc
     if path.exists():
         # `git -C` walks up out of a plain directory, so a leftover non-worktree here would silently
         # check `base` out in whatever repository encloses it -- possibly the user's own checkout.
@@ -241,11 +256,12 @@ def _ensure_main_worktree(repo: Path, base: str, path: Path, fetch: bool) -> Non
                 f"worktree), not a scratch worktree; remove it or pass --main-worktree"
             )
         try:
-            _git(path, "checkout", "--detach", base)
+            _git(path, "checkout", "--detach", rev)
         except subprocess.CalledProcessError as exc:
             raise SystemExit(f"{path} is dirty or cannot check out {base}: {(exc.stderr or '').strip()}") from exc
     else:
-        _git(repo, "worktree", "add", "--detach", str(path), base)
+        _git(repo, "worktree", "add", "--detach", str(path), rev)
+    return rev
 
 
 def _assert_imports_from(tree: Path, env: dict[str, str]) -> None:
@@ -266,7 +282,7 @@ def _run_surface(tree: Path, surface: Surface, tests: Sequence[str], junit: Path
     """Run one surface inside ``tree`` and return its failing-test ids, or ``None`` if pytest could not run."""
     # pytest aborts collection outright when any argument path is missing, so a directory that the base
     # revision does not have yet would empty its whole failure set and make every branch failure look new.
-    present = [t for t in tests if (tree / t).exists()]
+    present = _present_paths(tree, tests)
     missing = [t for t in tests if t not in present]
     if not present:
         print(f"{tree}: none of {' '.join(tests)} exist here; nothing to run")
@@ -289,7 +305,14 @@ def _run_surface(tree: Path, surface: Surface, tests: Sequence[str], junit: Path
         *surface.extra_args,
         *present,
     ]
-    subprocess.run(cmd, cwd=tree, env=env, check=False)  # noqa: S603 -- trusted: fixed argv, no shell
+    proc = subprocess.run(cmd, cwd=tree, env=env, check=False)  # noqa: S603 -- trusted: fixed argv, no shell
+    # 0 all passed, 1 tests failed, 5 nothing collected are the only codes where an absent or partial
+    # report really does mean "no failures here". 2 interrupted, 3 internal error, 4 usage error (a
+    # broken conftest, a bad -k) leave no junit at all, which would otherwise read as a clean surface.
+    if proc.returncode not in (0, 1, 5):
+        print(f"{tree}: pytest exited {proc.returncode}; this surface was not verified")
+        junit.unlink(missing_ok=True)
+        return None
     return _failures_or_empty(junit)
 
 
@@ -300,21 +323,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     main_wt = args.main_worktree or repo.parent / f".{repo.name}-verify-main"
     out = args.out or repo.parent / f".{repo.name}-verify-delta"
     out.mkdir(parents=True, exist_ok=True)
-    _ensure_main_worktree(repo, args.base, main_wt, fetch=not args.no_fetch)
+    base = _ensure_main_worktree(repo, args.base, main_wt, fetch=not args.no_fetch)
 
-    changed = _git(repo, "diff", "--name-only", f"{args.base}...HEAD").splitlines()
+    changed = _git(repo, "diff", "--name-only", f"{base}...HEAD").splitlines()
     tests = args.tests or changed_test_dirs(changed, repo)
     if not tests:
         print("no test directories map to the changed files; nothing to verify")
         return 0
     branch_rev = _git(repo, "rev-parse", "--short", "HEAD")
-    base_rev = _git(main_wt, "rev-parse", "--short", "HEAD")
+    base_rev = _git(repo, "rev-parse", "--short", base)
     print(f"branch {branch_rev} vs {args.base} {base_rev}")
     print(f"tests: {' '.join(tests)}")
 
     import torch
 
     selected = select_surfaces(args, mps_available=torch.backends.mps.is_available())
+    branch_paths = _present_paths(repo, tests)
+    base_paths = _present_paths(main_wt, tests)
+    # a base tree holding only some of the branch's test paths is a *partial* baseline: failures under
+    # a path it never ran are unconditionally new, so such a row earns the `*` an absent baseline gets.
+    complete_baseline = set(branch_paths) <= set(base_paths)
     rows: list[tuple[str, FailureDelta | None]] = []
     for surface in SURFACES:
         if surface not in selected:
@@ -326,13 +354,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             rows.append((surface.name, None))
             continue
         main_fail = _run_surface(main_wt, surface, tests, out / f"{slug}-main.xml")
-        if main_fail is None:
+        if main_fail is None and not base_paths:
             # a path the base revision does not have yet is a legitimately empty baseline, not a failure
             # to measure: the branch side really ran, and everything failing on it really is new.
             print(f"no baseline on {args.base} for {' '.join(tests)}; branch failures there are unconditionally new")
             rows.append((surface.name, diff_failures(branch_fail, set(), baseline=False)))
             continue
-        rows.append((surface.name, diff_failures(branch_fail, main_fail)))
+        if main_fail is None:
+            # the base tree has the paths but pytest did not finish there; reading that as an empty
+            # baseline would report every branch failure as new, the false positive `*` exists for.
+            print(f"{surface.name}: the base tree did not finish, so this surface was not verified")
+            rows.append((surface.name, None))
+            continue
+        rows.append((surface.name, diff_failures(branch_fail, main_fail, baseline=complete_baseline)))
     table = render_table(rows)
     print("\n" + table)
     (out / "summary.md").write_text(table + "\n")

@@ -26,7 +26,8 @@ empty/singleton code path that validated less (or more) than the non-empty path.
 from __future__ import annotations
 
 import warnings
-from typing import Any, Callable, Literal, Sequence
+from contextlib import contextmanager
+from typing import Any, Callable, Iterator, Literal, Sequence
 
 import pytest
 import torch
@@ -45,12 +46,16 @@ def unrepresentable_sizes(dtype: torch.dtype, *, lo: int = 2, hi: int = 4096) ->
     Args:
         dtype: a floating dtype. Integer dtypes raise ``TypeError``.
         lo: smallest size to consider (inclusive).
-        hi: largest size to consider (inclusive). Keep it below ``torch.finfo(dtype).max`` (65504 for
-            float16): above that every candidate casts to ``inf`` and the round-trip back to
+        hi: largest size to consider (inclusive). Must not exceed ``torch.finfo(dtype).max`` (65504
+            for float16): above that every candidate casts to ``inf`` and the round-trip back to
             ``int64`` is meaningless, so the result would be garbage rather than a size sweep.
 
     Returns:
         sorted sizes, empty when every integer in range is exact (float32/float64 below 2**24).
+
+    Raises:
+        TypeError: when ``dtype`` is not a floating dtype.
+        ValueError: when ``hi`` exceeds ``torch.finfo(dtype).max``.
 
     Example:
         >>> unrepresentable_sizes(torch.bfloat16)[:3]
@@ -60,10 +65,37 @@ def unrepresentable_sizes(dtype: torch.dtype, *, lo: int = 2, hi: int = 4096) ->
     """
     if not dtype.is_floating_point:
         raise TypeError(f"unrepresentable_sizes needs a floating dtype, got {dtype}")
+    finite_max = torch.finfo(dtype).max
+    if hi > finite_max:
+        raise ValueError(
+            f"hi={hi} is above torch.finfo({dtype}).max={finite_max:g}: every candidate there casts to inf "
+            "and round-trips back to the same int64, so the sweep would be garbage rather than sizes"
+        )
     n = torch.arange(lo, hi + 1, dtype=torch.int64)
     inexact_n = n.to(dtype).to(torch.int64) != n
     inexact_prev = (n - 1).to(dtype).to(torch.int64) != n - 1
     return n[inexact_n | inexact_prev].tolist()
+
+
+@contextmanager
+def _restoring_rng(device: torch.device) -> Iterator[None]:
+    """Restore the RNG state on exit, so the next call inside starts where this one did.
+
+    Tracing runs ``fn`` once itself, and the eager reference call runs it again; without this a
+    function that consumes randomness would be compared against a different draw and fail with the
+    rounding message below, which is not what went wrong.
+    """
+    cpu_state = torch.get_rng_state()
+    module = getattr(torch, device.type, None) if device.type != "cpu" else None
+    # ``torch.cuda``/``torch.mps``/``torch.xpu`` all take the device explicitly; the no-argument
+    # form would read whichever device is current, which need not be the one under test.
+    device_state = module.get_rng_state(device) if hasattr(module, "get_rng_state") else None
+    try:
+        yield
+    finally:
+        torch.set_rng_state(cpu_state)
+        if device_state is not None:
+            module.set_rng_state(device_state, device)
 
 
 def _as_tuple(out: Any) -> tuple[torch.Tensor, ...]:
@@ -129,11 +161,13 @@ def assert_capture_matches_eager(
     for size in sizes:
         inputs = make_inputs(size, torch.device(device), dtype)
         if capture == "trace":
-            with warnings.catch_warnings():
+            with warnings.catch_warnings(), _restoring_rng(torch.device(device)):
                 warnings.simplefilter("ignore", torch.jit.TracerWarning)
                 captured_fn = torch.jit.trace(fn, inputs, check_trace=False)
-        expected = _as_tuple(fn(*inputs))
-        actual = _as_tuple(captured_fn(*inputs))
+        with _restoring_rng(torch.device(device)):
+            expected = _as_tuple(fn(*inputs))
+        with _restoring_rng(torch.device(device)):
+            actual = _as_tuple(captured_fn(*inputs))
         if len(expected) != len(actual):
             raise AssertionError(
                 f"size {size}: eager returned {len(expected)} outputs, {capture} returned {len(actual)}"
@@ -182,11 +216,28 @@ def assert_degenerate_path_parity(
         full_kwargs: a call that takes the ordinary, non-degenerate path and succeeds.
         degenerate_kwargs: the same call routed through the degenerate path (``dsize=(0, w)``, a
             singleton axis, an empty batch).
-        bad_inputs: ``(argument name, invalid value)`` pairs to substitute into both calls.
+        bad_inputs: ``(argument name, invalid value)`` pairs to substitute into both calls. Each
+            name must already be a key of both kwargs dicts.
 
     Raises:
+        ValueError: when a ``bad_inputs`` name is absent from either kwargs dict.
         AssertionError: naming the argument and the two outcomes, ``None`` meaning "no exception".
+
+    Note:
+        Parity is compared on the exception *type* only. Two paths that raise the same type for
+        unrelated reasons read as parity here; check the messages when that is plausible.
     """
+    for name, _ in bad_inputs:
+        # substituting an unknown name *adds* a key rather than replacing one, so both paths raise
+        # TypeError("unexpected keyword argument") and the assertion below passes having tested nothing
+        missing = [
+            label for label, kwargs in (("full", full_kwargs), ("degenerate", degenerate_kwargs)) if name not in kwargs
+        ]
+        if missing:
+            raise ValueError(
+                f"{name!r} is not a key of {' or '.join(missing)}_kwargs; substituting an unknown argument name "
+                "raises TypeError on both paths and passes vacuously"
+            )
     for label, kwargs in (("full", full_kwargs), ("degenerate", degenerate_kwargs)):
         baseline = _outcome(fn, kwargs)
         if baseline is not None:

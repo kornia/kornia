@@ -58,6 +58,16 @@ class TestUnrepresentableSizes:
         with pytest.raises(TypeError, match="floating"):
             unrepresentable_sizes(torch.int64)
 
+    def test_rejects_an_hi_above_the_dtype_max(self):
+        # Above finfo.max every candidate casts to inf and round-trips back to itself, so `n` reads
+        # as "exact" and the sweep silently becomes a list of sizes no test can allocate. The
+        # docstring warned about it; the check is what makes it impossible.
+        with pytest.raises(ValueError, match=r"hi=70000 is above torch.finfo\(torch.float16\).max=65504"):
+            unrepresentable_sizes(torch.float16, lo=65000, hi=70000)
+
+    def test_accepts_an_hi_exactly_at_the_dtype_max(self):
+        assert unrepresentable_sizes(torch.float16, lo=65000, hi=65504)  # the boundary itself is fine
+
 
 def _image_hw(size: int, device: torch.device, dtype: torch.dtype) -> tuple[torch.Tensor]:
     return (torch.zeros(1, 1, size, 4, device=device, dtype=dtype),)
@@ -183,6 +193,15 @@ class TestAssertCaptureMatchesEager:
                 dtype=torch.float32,
             )
 
+    def test_a_function_that_consumes_randomness_is_not_a_false_failure(self, device, dtype):
+        # Tracing runs ``fn`` once itself and the eager reference runs it again, so without an RNG
+        # restore around each call the two draw different numbers and the helper reports a rounding
+        # divergence that never happened.
+        def adds_noise(image):
+            return image + torch.rand_like(image)
+
+        assert_capture_matches_eager(adds_noise, _image_hw, sizes=[1, 2, 5], device=device, dtype=dtype)
+
     def test_rejects_an_unknown_capture(self, device):
         # an unrecognised value used to fall through both branches and surface as an
         # UnboundLocalError on ``captured_fn``, which reads as a helper bug rather than a typo.
@@ -258,6 +277,23 @@ class TestAssertDegeneratePathParity:
                 {"x": torch.zeros(2), "dsize": (2,)},
                 {"x": torch.zeros(2), "dsize": (0,)},
                 [("x", torch.zeros(2, dtype=torch.int64))],
+            )
+
+    def test_rejects_a_bad_input_name_that_is_not_an_argument(self):
+        # ``{**kwargs, "srcc": v}`` ADDS a key instead of replacing one, so both paths raise
+        # TypeError("unexpected keyword argument") and parity holds over a call that was never made.
+        # A typo'd name is the vacuous green this module exists to make unwritable.
+        def op(x, dsize):
+            if not x.is_floating_point():
+                raise TypeError("float only")
+            return x
+
+        with pytest.raises(ValueError, match=r"'xx' is not a key of full or degenerate_kwargs"):
+            assert_degenerate_path_parity(
+                op,
+                {"x": torch.zeros(2), "dsize": (2,)},
+                {"x": torch.zeros(2), "dsize": (0,)},
+                [("xx", torch.zeros(2, dtype=torch.int64))],
             )
 
     def test_detects_a_stricter_degenerate_path(self):
