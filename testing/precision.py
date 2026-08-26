@@ -31,7 +31,7 @@ from typing import Any, Callable, Literal, Sequence
 import pytest
 import torch
 
-__all__ = ["assert_capture_matches_eager", "unrepresentable_sizes"]
+__all__ = ["assert_capture_matches_eager", "assert_degenerate_path_parity", "unrepresentable_sizes"]
 
 
 def unrepresentable_sizes(dtype: torch.dtype, *, lo: int = 2, hi: int = 4096) -> list[int]:
@@ -150,3 +150,49 @@ def assert_capture_matches_eager(
                     f"({e.dtype}). Under capture the size arithmetic must not round into {dtype}; "
                     "divide by the unrounded size and cast the quotient."
                 )
+
+
+def _outcome(fn: Callable[..., Any], kwargs: dict[str, Any]) -> type[BaseException] | None:
+    try:
+        fn(**kwargs)
+    except Exception as exc:  # noqa: BLE001 — the exception *type* is the observation
+        return type(exc)
+    return None
+
+
+def assert_degenerate_path_parity(
+    fn: Callable[..., Any],
+    full_kwargs: dict[str, Any],
+    degenerate_kwargs: dict[str, Any],
+    bad_inputs: Sequence[tuple[str, Any]],
+) -> None:
+    """Assert that a degenerate (empty/singleton) path rejects exactly what the full path rejects.
+
+    For each ``(name, bad_value)`` the function is called once with ``full_kwargs`` and once with
+    ``degenerate_kwargs``, each with ``name`` replaced by ``bad_value``. Both calls must raise the
+    same exception type, or both must succeed. A degenerate early-return that skips validation
+    (laxer) or adds its own (stricter) fails here.
+
+    Args:
+        fn: the function under test, called with keyword arguments only.
+        full_kwargs: a call that takes the ordinary, non-degenerate path and succeeds.
+        degenerate_kwargs: the same call routed through the degenerate path (``dsize=(0, w)``, a
+            singleton axis, an empty batch).
+        bad_inputs: ``(argument name, invalid value)`` pairs to substitute into both calls.
+
+    Raises:
+        AssertionError: naming the argument and the two outcomes, ``None`` meaning "no exception".
+    """
+    for label, kwargs in (("full", full_kwargs), ("degenerate", degenerate_kwargs)):
+        baseline = _outcome(fn, kwargs)
+        if baseline is not None:
+            raise AssertionError(f"the {label} baseline call raised {baseline.__name__}; fix the fixture first")
+    for name, bad in bad_inputs:
+        full = _outcome(fn, {**full_kwargs, name: bad})
+        degenerate = _outcome(fn, {**degenerate_kwargs, name: bad})
+        if full is not degenerate:
+            raise AssertionError(
+                f"{name}={type(bad).__name__}: full path -> {full and full.__name__} vs degenerate path -> "
+                f"{degenerate and degenerate.__name__}. The degenerate path must validate exactly what the "
+                "full path validates."
+            )

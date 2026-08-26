@@ -20,7 +20,7 @@ import torch
 
 import kornia
 
-from testing import assert_capture_matches_eager, unrepresentable_sizes
+from testing import assert_capture_matches_eager, assert_degenerate_path_parity, unrepresentable_sizes
 
 from tests.testing import _historical as hist
 
@@ -194,3 +194,71 @@ class TestAssertCaptureMatchesEager:
             dtype=torch.float32,
             capture="compile",
         )
+
+
+class TestAssertDegeneratePathParity:
+    @staticmethod
+    def _warp_kwargs(device, dsize):
+        src = torch.zeros(1, 1, 4, 4, device=device, dtype=torch.float32)
+        m = torch.eye(2, 3, device=device, dtype=torch.float32)[None]
+        return {"src": src, "M": m, "dsize": dsize}
+
+    def test_current_warp_affine_validates_the_same_on_the_empty_path(self, device):
+        if torch.device(device).type == "mps":
+            # Not a parity gap to weaken around: even the baseline (non-empty src, valid M,
+            # dsize=(0, 4)) crashes. kornia's empty-destination fast path still delegates to
+            # ``F.grid_sample`` with a zero-sized grid for validation/autograd, and MPS's
+            # grid_sampler asserts "Placeholder tensor is empty!" whenever the grid is
+            # zero-shaped, even though src is not. Reproduces with a bare
+            # ``F.grid_sample(torch.zeros(1, 1, 4, 4, device="mps"), torch.zeros(1, 0, 4, 2,
+            # device="mps"), align_corners=True, mode="bilinear", padding_mode="zeros")``, so this
+            # is a real, reportable MPS gap in warp_affine's degenerate path -- see
+            # task-4-report.md.
+            pytest.skip("warp_affine's empty-dsize path crashes on MPS: F.grid_sample asserts on a zero-sized grid")
+        full = self._warp_kwargs(device, (4, 4))
+        empty = self._warp_kwargs(device, (0, 4))
+        bad = [
+            ("M", torch.eye(2, 3, device=device, dtype=torch.int64)[None]),
+            ("M", torch.eye(3, 3, device=device, dtype=torch.float32)[None]),
+            # NOT an integral ``src`` (torch.zeros(1, 1, 4, 4, dtype=torch.int64)): on the full
+            # path it reaches ``F.grid_sample``, which raises NotImplementedError
+            # ("grid_sampler_2d_cpu_kernel_impl" not implemented for 'Long'); on the degenerate
+            # (dsize with a zero dimension) path, ``_empty_warp_output_2d`` raises its own
+            # RuntimeError ("Expected a floating point src, got torch.int64.") before ever
+            # reaching grid_sample. Real discrepancy -- see task-4-report.md.
+        ]
+        if torch.device(device).type != "mps":
+            # MPS has no float64 tensors at all (construction itself raises TypeError), so this
+            # dtype-mismatch case can only be exercised on cpu/cuda.
+            bad.append(("M", torch.zeros(1, 2, 3, device=device, dtype=torch.float64)))
+        assert_degenerate_path_parity(kornia.geometry.transform.warp_affine, full, empty, bad)
+
+    def test_detects_a_laxer_degenerate_path(self):
+        def op(x, dsize):
+            if dsize[0] == 0:
+                return x.new_zeros(0)
+            if x.dtype != torch.float32:
+                raise TypeError("float32 only")
+            return x
+
+        with pytest.raises(AssertionError, match=r"x=.*TypeError.*vs.*None"):
+            assert_degenerate_path_parity(
+                op,
+                {"x": torch.zeros(2), "dsize": (2,)},
+                {"x": torch.zeros(2), "dsize": (0,)},
+                [("x", torch.zeros(2, dtype=torch.int64))],
+            )
+
+    def test_detects_a_stricter_degenerate_path(self):
+        def op(x, dsize):
+            if dsize[0] == 0 and x.dtype != torch.float32:
+                raise TypeError("float32 only on the empty path")
+            return x
+
+        with pytest.raises(AssertionError, match=r"None.*vs.*TypeError"):
+            assert_degenerate_path_parity(
+                op,
+                {"x": torch.zeros(2), "dsize": (2,)},
+                {"x": torch.zeros(2), "dsize": (0,)},
+                [("x", torch.zeros(2, dtype=torch.int64))],
+            )
