@@ -28,10 +28,14 @@ would have converged in two rounds if each push had been gated.
    (`git tag -d prefix-<round>`) once the round is answered.
 
 2. **Triage every finding before writing code.** For each one, reproduce it on the branch AND on
-   a worktree of `origin/main` (`git worktree add ../main-probe origin/main`, once per round —
-   a second `worktree add` onto the same path aborts with "already exists"; reuse the one probe for
-   every finding and `git worktree remove --force ../main-probe` when the round is answered).
-   Three outcomes:
+   a worktree of `origin/main`. Create the probe once per round —
+   `git worktree add ../main-probe origin/main`; a second `worktree add` onto the same path aborts
+   with "already exists" — then run every finding's repro inside it as
+   `(cd ../main-probe && PYTHONPATH=$PWD "$OLDPWD/.venv/bin/python" -m pytest <test> -q)`, the same
+   form step 4 uses and for the same reason: the probe worktree has no `.venv` of its own, so a bare
+   `python` or `uv run` there would answer under a different interpreter and torch build. Reuse the
+   one probe for every finding, and `git worktree remove --force ../main-probe` when the round is
+   answered. Three outcomes:
    - *regression* (fails on branch, passes on main) → fix it;
    - *pre-existing* (fails on both) → reply with both measurements, file or link an issue, do
      NOT fix it in this PR;
@@ -52,13 +56,14 @@ would have converged in two rounds if each push had been gated.
    check it FAILS on the pre-fix SHA — `git stash; pytest <test>; git stash pop` is a no-op once
    the fix is committed (which step 5 presumes): there is nothing to stash, the test runs on the
    already-fixed tree, passes, and you wrongly conclude it is vacuous. Use the step-1 tag instead:
-   `git worktree add ../prefix-probe prefix-<round>`, copy the new test file into the probe
-   worktree (it does not exist there at that tag), then run
+   `git worktree add ../prefix-probe prefix-<round>`, copy the test file over (new or modified —
+   it overwrites the tag's version), then run
    `(cd ../prefix-probe && PYTHONPATH=$PWD "$OLDPWD/.venv/bin/python" -m pytest <test>)` and
    confirm it FAILS — the probe worktree has no `.venv` of its own, so a bare `python` or `uv run`
    there would answer the rounding question under a different interpreter and torch build — then
-   `git worktree remove --force ../prefix-probe` — the copied-in test file is untracked in the
-   probe, so a plain `git worktree remove` refuses ("contains modified or untracked files").
+   `git worktree remove --force ../prefix-probe` — the copied-in test file is untracked (new) or
+   modified (pre-existing) there, so a plain `git worktree remove` refuses ("contains modified or
+   untracked files").
 
 5. **Self-review the delta with a fresh agent.** Dispatch a subagent on
    `git diff prefix-<round>..HEAD` with this instruction: "Attack only the new code. For
@@ -87,9 +92,13 @@ would have converged in two rounds if each push had been gated.
    deselected or unavailable. Paste the summary table into the reply — it is also written to
    `../.<repo>-verify-delta/summary.md`.
 
-7. **Grep for closed issue numbers.** For every issue the PR closes, `grep -rn "#<n>\b" kornia/`
-   in the touched modules: a surviving reference in a docstring or warning list means the change
-   is incomplete (kornia#3999 shipped three docstrings promising behaviour it removed).
+7. **Grep for closed issue numbers.** For every issue the PR closes, run the `AGENTS.md` rule —
+   "before merging a change that closes one of those issues, run
+   `grep -rnE "#NNNN|issues/NNNN" kornia/ tests/`" — not a bare `#<n>` grep of `kornia/`: the
+   `#`/`issues/` anchors keep the pattern off float literals, and the `tests/` half finds the pins.
+   A surviving hit in `kornia/` means the change is incomplete (kornia#3999 shipped three docstrings
+   promising behaviour it removed); a hit in `tests/` is a pin to re-check in the same change, not
+   by itself a defect. `AGENTS.md` carries the full list of wordings the number hides behind.
 
 8. **Push once, then check it is actually being tested.** Push commits only — never
    `git push --tags`, which would leak the round's `prefix-<round>` tag to the remote.

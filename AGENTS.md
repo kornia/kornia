@@ -77,19 +77,13 @@ Use `KORNIA_TEST_RUNSLOW=true` to include slow tests. `KORNIA_TEST_OPTIMIZER=ind
 
 ## Skills
 
-Repo-local skills live in `.claude/skills/`; agents that do not read that directory should open the
-files directly. Each is a rigid workflow with a red-flags table.
+Repo-local skills live in `.claude/skills/`; agents that do not read that directory should open the files directly. `kornia-review-loop` is a rigid workflow with a red-flags table; the other two are rule lists.
 
 - `kornia-developer` — making an op `torch.compile(fullgraph=True)`-compatible and faster.
-- `kornia-precision-testing` — any test touching float16/bfloat16, device, `torch.jit.trace`,
-  `torch.compile`, or degenerate sizes. Uses `testing.precision`.
-- `kornia-review-loop` — responding to review findings on a PR: triage against `origin/main`,
-  fix defects only, delta self-review, `pixi run verify-delta`, then push once.
+- `kornia-precision-testing` — any test touching float16/bfloat16, device, `torch.jit.trace`, `torch.compile`, or degenerate sizes. Uses `testing.precision`.
+- `kornia-review-loop` — responding to review findings on a PR: triage against `origin/main`, fix defects only, delta self-review, `pixi run verify-delta`, then push once.
 
-`pixi run verify-delta` diffs failing-test *sets* between the branch and `origin/main` on cpu
-float32, cpu half/float64, MPS, and inductor. Half precision and MPS have no CI job; this is their
-only signal, so run it before every push of a review-response commit. Pass `--tests tests/<module>`
-and `--only "<surface>"` after `--` to bound the run; exit 2 means nothing was verified.
+`pixi run verify-delta` diffs failing-test *sets* between the branch and `origin/main` on cpu float32, cpu half/float64, MPS, and inductor. Half precision and MPS have no CI job; this is their only signal, so run it before every push of a review-response commit. Pass `--tests tests/<module>` and `--only "<surface>"` after `--` to bound the run; exit 2 means nothing was verified.
 
 ## Documentation and generated examples
 
