@@ -1504,11 +1504,14 @@ def normalize_pixel_coordinates(
         sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
         tx = 0.0 if width == 1 else -1.0
         ty = 0.0 if height == 1 else -1.0
-        factor = torch.tensor([sx, sy], device=pixel_coordinates.device)
-        offset = torch.tensor([tx, ty], device=pixel_coordinates.device)
-        if pixel_coordinates.is_floating_point():
-            factor = factor.to(pixel_coordinates)
-            offset = offset.to(pixel_coordinates)
+        if torch.jit.is_scripting():
+            anchor = torch.ones((), device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
+            factor = torch.stack([anchor * sx, anchor * sy])
+            offset = torch.stack([anchor * tx, anchor * ty])
+        else:
+            work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+            factor = torch.tensor([sx, sy], device=pixel_coordinates.device, dtype=work_dtype)
+            offset = torch.tensor([tx, ty], device=pixel_coordinates.device, dtype=work_dtype)
     else:
         work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
         width_t = torch.scalar_tensor(width, device=pixel_coordinates.device, dtype=work_dtype)
@@ -1570,11 +1573,14 @@ def denormalize_pixel_coordinates(
         sy = 1.0 if height == 1 else (height - 1.0) / 2.0
         tx = 0.0 if width == 1 else sx
         ty = 0.0 if height == 1 else sy
-        factor = torch.tensor([sx, sy], device=pixel_coordinates.device)
-        offset = torch.tensor([tx, ty], device=pixel_coordinates.device)
-        if pixel_coordinates.is_floating_point():
-            factor = factor.to(pixel_coordinates)
-            offset = offset.to(pixel_coordinates)
+        if torch.jit.is_scripting():
+            anchor = torch.ones((), device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
+            factor = torch.stack([anchor * sx, anchor * sy])
+            offset = torch.stack([anchor * tx, anchor * ty])
+        else:
+            work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+            factor = torch.tensor([sx, sy], device=pixel_coordinates.device, dtype=work_dtype)
+            offset = torch.tensor([tx, ty], device=pixel_coordinates.device, dtype=work_dtype)
     else:
         work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
         width_t = torch.scalar_tensor(width, device=pixel_coordinates.device, dtype=work_dtype)
@@ -1633,11 +1639,14 @@ def normalize_pixel_coordinates3d(
         td = 0.0 if depth == 1 else -1.0
         tx = 0.0 if width == 1 else -1.0
         ty = 0.0 if height == 1 else -1.0
-        factor = torch.tensor([sd, sx, sy], device=pixel_coordinates.device)
-        offset = torch.tensor([td, tx, ty], device=pixel_coordinates.device)
-        if pixel_coordinates.is_floating_point():
-            factor = factor.to(pixel_coordinates)
-            offset = offset.to(pixel_coordinates)
+        if torch.jit.is_scripting():
+            anchor = torch.ones((), device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
+            factor = torch.stack([anchor * sd, anchor * sx, anchor * sy])
+            offset = torch.stack([anchor * td, anchor * tx, anchor * ty])
+        else:
+            work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+            factor = torch.tensor([sd, sx, sy], device=pixel_coordinates.device, dtype=work_dtype)
+            offset = torch.tensor([td, tx, ty], device=pixel_coordinates.device, dtype=work_dtype)
     else:
         work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
         depth_t = torch.scalar_tensor(depth, device=pixel_coordinates.device, dtype=work_dtype)
@@ -1704,11 +1713,14 @@ def denormalize_pixel_coordinates3d(
         td = 0.0 if depth == 1 else sd
         tx = 0.0 if width == 1 else sx
         ty = 0.0 if height == 1 else sy
-        factor = torch.tensor([sd, sx, sy], device=pixel_coordinates.device)
-        offset = torch.tensor([td, tx, ty], device=pixel_coordinates.device)
-        if pixel_coordinates.is_floating_point():
-            factor = factor.to(pixel_coordinates)
-            offset = offset.to(pixel_coordinates)
+        if torch.jit.is_scripting():
+            anchor = torch.ones((), device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
+            factor = torch.stack([anchor * sd, anchor * sx, anchor * sy])
+            offset = torch.stack([anchor * td, anchor * tx, anchor * ty])
+        else:
+            work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+            factor = torch.tensor([sd, sx, sy], device=pixel_coordinates.device, dtype=work_dtype)
+            offset = torch.tensor([td, tx, ty], device=pixel_coordinates.device, dtype=work_dtype)
     else:
         work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
         depth_t = torch.scalar_tensor(depth, device=pixel_coordinates.device, dtype=work_dtype)
