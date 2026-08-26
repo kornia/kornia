@@ -1054,36 +1054,21 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
           ``[-1., 0., 0., 0.]`` comes back as ``[1., 0., 0., 0.]`` — the other
           half of the same rotation
 
-    .. warning::
-        In ``float16`` the default ``eps = 1e-8`` rounds to ``0``, so the clamp
-        that guards the division is a no-op and the zero vector returns
-        ``[1., nan, nan, nan]``. It is the only input that does: ``torch.norm``
-        does not underflow at ``float16``, so every ``v`` that is not exactly
-        zero has a non-zero norm and is unaffected. ``float64``, ``float32``
-        and ``bfloat16`` return ``[1., 0., 0., 0.]`` for ``zeros(3)``, and so
-        does ``float16`` with a representable ``eps`` (e.g. ``eps=1e-3``).
-        Tracked in
+    .. note::
+        ``float16``/``bfloat16`` inputs are upcast to ``float32`` for the computation, so the
+        default ``eps = 1e-8`` is representable there and the zero vector returns
+        ``[1., 0., 0., 0.]`` at every dtype (the clamp that guards the division is not a no-op).
+        This also removes the historical ``float16`` defect where the default ``eps`` rounded to
+        ``0`` and the zero vector came back ``[1., nan, nan, nan]``. Tracked in
         `#3966 <https://github.com/kornia/kornia/issues/3966>`_.
 
-    .. warning::
-        ``||v||`` is computed with ``torch.norm(p=2)``, which forms the sum of
-        squares and so overflows to ``inf`` far below the largest finite input.
-        Beyond that point **all four** components come back ``nan``, even
-        though the exponential map of a large finite vector is a perfectly good
-        unit quaternion. Where the turnover sits depends on the accumulator:
-        ``float32`` and ``bfloat16`` accumulate in their own dtype and so
-        overflow once ``||v||`` passes ``sqrt(finfo.max)`` — from about
-        ``1.8446744e19`` in ``float32`` (against a ``finfo.max`` of ``3.4e38``)
-        and about ``1.841e19`` in ``bfloat16`` — as does ``float64``, from
-        about ``1.3407808e154`` (against ``1.8e308``). ``float16`` accumulates
-        in wider precision, so its squares never overflow and it turns over
-        only once the true ``||v||`` exceeds what ``float16`` itself can hold,
-        near ``65520``. That still happens, but it takes **two or more**
-        non-zero components, since a single one cannot exceed ``65504``. Where
-        exactly the turnover falls tracks ``torch.norm``'s accumulation
-        strategy, so treat it as a bound and not as a threshold: on this build
-        (torch 2.9.1, cpu) ``[37824., 37824., 37824.]`` is still finite while
-        ``[37856., 37856., 37856.]`` is all ``nan``. Tracked in
+    .. note::
+        ``||v||`` is computed as ``scale * ||v / scale||`` with ``scale = max |v_i|`` (a scaling
+        that keeps the squared terms bounded by the number of components), so the norm cannot
+        overflow to ``inf`` from a sum of squares. The exponential map of a large finite vector
+        therefore returns a finite unit quaternion across the whole finite range of every dtype,
+        instead of all-``nan`` past the ``sqrt(finfo.max)`` turnover that ``torch.norm(p=2)``
+        would hit. Tracked in
         `#3975 <https://github.com/kornia/kornia/issues/3975>`_.
 
     Args:
@@ -1105,15 +1090,27 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     if not quaternion.shape[-1] == 3:
         raise ValueError(f"Input must be a tensor of shape (*, 3). Got {quaternion.shape}")
 
-    # compute quaternion norm
-    norm_q: torch.Tensor = torch.norm(quaternion, p=2, dim=-1, keepdim=True).clamp(min=eps)
+    # compute the quaternion norm in a way that cannot overflow (kornia#3975):
+    #  - float16/bfloat16 inputs are upcast to float32, where the default eps = 1e-8 is
+    #    representable, so the clamp below is not a no-op and the float16 zero vector stays the
+    #    identity quaternion (the kornia#3966 underflow class does not bite on this function);
+    #  - the norm is computed as scale * ||v / scale|| with scale = max |v_i|, so the squared
+    #    terms are bounded by the number of components and the whole finite input range of every
+    #    dtype returns a finite unit quaternion.
+    orig_dtype = quaternion.dtype
+    work_dtype = torch.float32 if orig_dtype in (torch.float16, torch.bfloat16) else orig_dtype
+    work = quaternion.to(work_dtype)
+
+    scale: torch.Tensor = work.abs().max(dim=-1, keepdim=True).values
+    norm_q: torch.Tensor = scale * torch.norm(work / scale.clamp(min=eps), p=2, dim=-1, keepdim=True)
+    norm_q = norm_q.clamp(min=eps)
 
     # compute scalar and vector
-    quaternion_vector: torch.Tensor = quaternion * torch.sin(norm_q) / norm_q
+    quaternion_vector: torch.Tensor = work * torch.sin(norm_q) / norm_q
     quaternion_scalar: torch.Tensor = torch.cos(norm_q)
 
     # compose quaternion and return
-    quaternion_exp = torch.cat((quaternion_scalar, quaternion_vector), dim=-1)
+    quaternion_exp = torch.cat((quaternion_scalar, quaternion_vector), dim=-1).to(orig_dtype)
 
     return quaternion_exp
 
@@ -1150,13 +1147,12 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
         ``1``. Tracked in
         `#3953 <https://github.com/kornia/kornia/issues/3953>`_.
 
-    .. warning::
-        In ``float16`` the default ``eps = 1e-8`` underflows to ``0``, so the
-        clamp that guards the division is a no-op and **any** quaternion with a
-        zero vector part returns ``[nan, nan, nan]`` — including the identity
-        ``[1., 0., 0., 0.]``, whose log is the origin at every other dtype.
-        Passing a representable ``eps`` (e.g. ``eps=1e-3``) returns
-        ``[0., 0., 0.]`` there. Tracked in
+    .. note::
+        ``float16``/``bfloat16`` inputs are upcast to ``float32`` for the computation, so the
+        default ``eps = 1e-8`` is representable there and the identity quaternion returns
+        ``[0., 0., 0.]`` at every dtype (the clamp that guards the division is not a no-op).
+        This also removes the historical ``float16`` defect where the default ``eps`` rounded to
+        ``0`` and the identity came back ``[nan, nan, nan]``. Tracked in
         `#3966 <https://github.com/kornia/kornia/issues/3966>`_.
 
     Args:
@@ -1179,17 +1175,18 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
 
-    # unpack quaternion vector and scalar
-    quaternion_scalar = quaternion[..., 0:1]
-    quaternion_vector = quaternion[..., 1:4]
+    # use float32 for float16/bfloat16 so the default eps is representable (kornia#3966)
+    orig_dtype = quaternion.dtype
+    work_dtype = torch.float32 if orig_dtype in (torch.float16, torch.bfloat16) else orig_dtype
+    work = quaternion.to(work_dtype)
+    quaternion_scalar = work[..., 0:1]
+    quaternion_vector = work[..., 1:4]
 
-    # compute quaternion norm
     norm_q: torch.Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=eps)
 
-    # apply log map
     quaternion_log: torch.Tensor = (
         quaternion_vector * torch.acos(torch.clamp(quaternion_scalar, min=-1.0, max=1.0)) / norm_q
-    )
+    ).to(orig_dtype)
 
     return quaternion_log
 
