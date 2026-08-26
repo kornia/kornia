@@ -268,6 +268,46 @@ The `padding_mode="border"` issue in `F.grid_sample` (2D) is worked around in th
 
 ---
 
+## Precision and Degenerate-Path Helpers
+
+`testing.precision` carries three assertions for the bug classes that recur in dtype/capture work
+(see kornia#4006 for the history). Use them instead of hand-picking a "boundary" size.
+
+- `unrepresentable_sizes(dtype)` — sizes at which `n` or `n - 1` is inexact in `dtype`. Sweep a
+  slice of this list; never pick one size. 257 is vacuous against a rounded divisor and decisive
+  against a rounded size; 258 is the reverse.
+- `assert_capture_matches_eager(fn, make_inputs, sizes=..., device=..., dtype=..., capture="trace"|"compile")`
+  — byte-equality (`torch.equal`) between eager and `torch.jit.trace` / `torch.compile(fullgraph=True,
+  dynamic=True)`, size by size. Derive sizes from tensor shapes inside `fn`. `sizes` must not be
+  empty: `float32`/`float64` return `[]` from `unrepresentable_sizes`, so always include the
+  degenerate sizes 1 and 2, e.g. `sizes=[1, 2, *unrepresentable_sizes(dtype)[:8]]`.
+- `assert_degenerate_path_parity(fn, full_kwargs, degenerate_kwargs, bad_inputs)` — an empty or
+  singleton path must raise exactly what the full path raises for the same invalid input.
+
+```python
+from testing import assert_capture_matches_eager, unrepresentable_sizes
+
+
+def test_trace_matches_eager(device, dtype):
+    def grid(image):
+        return kornia.geometry.create_meshgrid(image.shape[-2], image.shape[-1], device=image.device, dtype=image.dtype)
+
+    assert_capture_matches_eager(
+        grid,
+        lambda size, device, dtype: (torch.zeros(1, 1, size, 4, device=device, dtype=dtype),),
+        sizes=[1, 2, *unrepresentable_sizes(dtype)[:8]],
+        device=device,
+        dtype=dtype,
+    )
+```
+
+Rules the helpers enforce, for code that is written by hand:
+
+- Under capture, divide by the *unrounded* size and cast the quotient; never cast the divisor.
+- Resolve `dtype=None` to `torch.get_default_dtype()` *before* deciding whether to promote.
+- Guard a cast-back on `is_floating_point()` — an integral grid dtype must stay promoted.
+- Compile tests carry `dynamo` or `compile` in their name (they are deselected otherwise).
+
 ## Writing Robust Tests
 
 - **Seed the RNG** when the test compares against reference values: `torch.manual_seed(seed)`.
