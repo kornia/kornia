@@ -114,6 +114,21 @@ def test_empty_destination_follows_nonempty_dtype_policy(op_name, src_dtype, mat
 
 
 @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+def test_empty_destination_blames_an_integral_src_by_name(op_name, device):
+    """``grid_sample`` rejects an integral image on both paths; the message must name ``src``."""
+    op = getattr(kornia.geometry.transform, op_name)
+    rows = 2 if op_name == "warp_affine" else 3
+    src = torch.zeros(1, 3, 3, 4, device=device, dtype=torch.int64)
+    matrix = torch.eye(3, device=device)[:rows].unsqueeze(0)
+
+    with pytest.raises(RuntimeError, match="floating point src"):
+        op(src, matrix, (0, 4))
+    # The non-empty path rejects it too, so the empty guard is not stricter.
+    with pytest.raises((RuntimeError, NotImplementedError)):
+        op(src, matrix, (1, 4))
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
 def test_negative_destination_raises(op_name, device, dtype):
     src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
     transform = (

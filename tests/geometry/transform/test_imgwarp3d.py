@@ -100,6 +100,17 @@ def test_empty_destination_keeps_grid_sample_validation(op_name, device, dtype):
             op(src[:1], torch.eye(3, device=device, dtype=dtype).unsqueeze(0), (0, 4, 5))
 
 
+@pytest.mark.parametrize("dsize", [(3, 4, 5), (0, 4, 5)])
+def test_warp_perspective3d_accepts_an_unbatched_matrix(dsize, device, dtype):
+    """An unbatched 4x4 matrix has always warped correctly here; the shape guard must not reject it."""
+    src = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
+    transform = torch.eye(4, device=device, dtype=dtype)
+    unbatched = proj.warp_perspective3d(src, transform, dsize)
+    batched = proj.warp_perspective3d(src, transform.unsqueeze(0), dsize)
+    assert unbatched.shape == batched.shape
+    assert torch.equal(unbatched, batched)
+
+
 def test_homography_warp3d_negative_destination_raises(device, dtype):
     src = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
     transform = torch.eye(4, device=device, dtype=dtype).unsqueeze(0)

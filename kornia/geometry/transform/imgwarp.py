@@ -109,6 +109,10 @@ def _empty_warp_output_2d(
     """Return an empty warp while retaining normal grid-sample validation and autograd links."""
     if src.device != transform.device:
         raise RuntimeError(f"Expected src and transform on the same device, got {src.device} and {transform.device}.")
+    # An integral ``src`` fails inside ``grid_sample`` itself on the non-empty path, so it must
+    # fail here too — but name ``src`` rather than blaming the transform for it below.
+    if not src.is_floating_point():
+        raise RuntimeError(f"Expected a floating point src, got {src.dtype}.")
     # ``grid_sample`` requires the sampling grid in ``src.dtype``. ``grid_dtype`` is the dtype the
     # caller's non-empty pipeline would actually produce from ``transform``, so checking it here
     # makes a zero-sized ``dsize`` neither stricter nor laxer than a non-empty one.
@@ -147,6 +151,10 @@ def _empty_warp_output_3d(
     """Return an empty volume warp with normal grid-sample validation and autograd links."""
     if src.device != transform.device:
         raise RuntimeError(f"Expected src and transform on the same device, got {src.device} and {transform.device}.")
+    # As in the 2-D helper: an integral ``src`` cannot reach ``grid_sample`` on either path, so
+    # reject it by name instead of via the transform-dtype message below.
+    if not src.is_floating_point():
+        raise RuntimeError(f"Expected a floating point src, got {src.dtype}.")
     if src.dtype != transform.dtype:
         raise RuntimeError(f"Expected src and transform with the same dtype, got {src.dtype} and {transform.dtype}.")
     grid_zero = transform.reshape(-1)[:1].sum() * 0.0
@@ -1612,6 +1620,12 @@ def warp_perspective3d(
 
     if not len(src.shape) == 5:
         raise ValueError(f"Input src must be a BxCxDxHxW torch.Tensor. Got {src.shape}")
+
+    # An unbatched 4x4 matrix has always been accepted here (the historical shape guard used
+    # ``or``, so it never fired for one), and it warps correctly. Keep that working by promoting
+    # it, rather than letting the tightened guard below turn it into a ``ValueError``.
+    if len(M.shape) == 2 and M.shape[-2:] == (4, 4):
+        M = M[None]
 
     if not (len(M.shape) == 3 and M.shape[-2:] == (4, 4)):
         raise ValueError(f"Input M must be a Bx4x4 torch.Tensor. Got {M.shape}")

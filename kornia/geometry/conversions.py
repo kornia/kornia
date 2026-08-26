@@ -1502,7 +1502,7 @@ def normalize_pixel_coordinates(
         and not torch.compiler.is_compiling()
         and eps != 1e-8
     ):
-        warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
+        warnings.warn("`eps` is deprecated and ignored by `normalize_pixel_coordinates`.", FutureWarning, stacklevel=2)
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
         sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
@@ -1582,7 +1582,11 @@ def denormalize_pixel_coordinates(
         and not torch.compiler.is_compiling()
         and eps != 1e-8
     ):
-        warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
+        warnings.warn(
+            "`eps` is deprecated and ignored by `denormalize_pixel_coordinates`.",
+            FutureWarning,
+            stacklevel=2,
+        )
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
         sx = 1.0 if width == 1 else (width - 1.0) / 2.0
@@ -1657,7 +1661,11 @@ def normalize_pixel_coordinates3d(
         and not torch.compiler.is_compiling()
         and eps != 1e-8
     ):
-        warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
+        warnings.warn(
+            "`eps` is deprecated and ignored by `normalize_pixel_coordinates3d`.",
+            FutureWarning,
+            stacklevel=2,
+        )
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
         sd = 1.0 if depth == 1 else 2.0 / (depth - 1.0)
@@ -1742,7 +1750,11 @@ def denormalize_pixel_coordinates3d(
         and not torch.compiler.is_compiling()
         and eps != 1e-8
     ):
-        warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
+        warnings.warn(
+            "`eps` is deprecated and ignored by `denormalize_pixel_coordinates3d`.",
+            FutureWarning,
+            stacklevel=2,
+        )
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
         sd = 1.0 if depth == 1 else (depth - 1.0) / 2.0
@@ -2117,7 +2129,7 @@ def normal_transform_pixel(
         and not torch.compiler.is_compiling()
         and eps != 1e-14
     ):
-        warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
+        warnings.warn("`eps` is deprecated and ignored by `normal_transform_pixel`.", FutureWarning, stacklevel=2)
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
         # Eager and TorchScript take the scalar branch, which is an order of magnitude
@@ -2229,7 +2241,7 @@ def normal_transform_pixel3d(
         and not torch.compiler.is_compiling()
         and eps != 1e-14
     ):
-        warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
+        warnings.warn("`eps` is deprecated and ignored by `normal_transform_pixel3d`.", FutureWarning, stacklevel=2)
 
     if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
         # As in 2-D, graph capture uses the tensor form below for symbolic sizes.

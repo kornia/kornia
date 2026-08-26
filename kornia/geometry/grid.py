@@ -33,7 +33,9 @@ def create_meshgrid(
     When the flag ``normalized_coordinates`` is set to True, the grid is
     normalized to be in the range :math:`[-1,1]` to be consistent with the pytorch
     function :py:func:`torch.nn.functional.grid_sample`. A singleton axis is
-    represented by ``0``, the centre of the normalized range.
+    represented by ``0``, the centre of the normalized range. A zero spatial size
+    produces a correspondingly empty grid; this differs from pixel-coordinate
+    normalization, where a zero-sized coordinate system is undefined.
 
     Args:
         height: the image height (rows).
@@ -46,9 +48,6 @@ def create_meshgrid(
 
     Return:
         grid tensor with shape :math:`(1, H, W, 2)`.
-
-    A zero spatial size produces a correspondingly empty grid. This differs from
-    pixel-coordinate normalization, where a zero-sized coordinate system is undefined.
 
     Example:
         >>> create_meshgrid(2, 2)
@@ -120,7 +119,9 @@ def create_meshgrid3d(
     When the flag ``normalized_coordinates`` is set to True, the grid is
     normalized to be in the range :math:`[-1,1]` to be consistent with the pytorch
     function :py:func:`torch.nn.functional.grid_sample`. A singleton axis is
-    represented by ``0``, the centre of the normalized range.
+    represented by ``0``, the centre of the normalized range. A zero spatial size
+    produces a correspondingly empty grid; this differs from pixel-coordinate
+    normalization, where a zero-sized coordinate system is undefined.
 
     Args:
         depth: the image depth (channels).
@@ -134,9 +135,6 @@ def create_meshgrid3d(
 
     Return:
         grid tensor with shape :math:`(1, D, H, W, 3)`.
-
-    A zero spatial size produces a correspondingly empty grid. This differs from
-    pixel-coordinate normalization, where a zero-sized coordinate system is undefined.
 
     """
     if not torch.jit.is_scripting() and torch.compiler.is_compiling():
