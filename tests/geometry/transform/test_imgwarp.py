@@ -37,6 +37,91 @@ class DummyNNModule(torch.nn.Module):
         return kornia.geometry.transform.warp_affine(x, y, dsize=(self.h, self.w), align_corners=False)
 
 
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+@pytest.mark.parametrize("dsize", [(0, 4), (3, 0)])
+@pytest.mark.parametrize("align_corners", [True, False])
+@pytest.mark.parametrize("padding_mode", ["zeros", "fill"])
+def test_empty_destination_is_autograd_connected(op_name, dsize, align_corners, padding_mode, device, dtype):
+    src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype, requires_grad=True)
+    if op_name == "warp_affine":
+        transform = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+    else:
+        transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+    op = getattr(kornia.geometry.transform, op_name)
+
+    out = op(
+        src,
+        transform,
+        dsize,
+        padding_mode=padding_mode,
+        align_corners=align_corners,
+        fill_value=torch.tensor([0.1, 0.2, 0.3], device=device, dtype=dtype),
+    )
+
+    assert out.shape == (1, 3, *dsize)
+    assert out.numel() == 0
+    out.sum().backward()
+    assert src.grad is not None and torch.count_nonzero(src.grad) == 0
+    assert transform.grad is not None and torch.count_nonzero(transform.grad) == 0
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+def test_empty_source_policy(op_name, device, dtype):
+    src = torch.empty(1, 3, 0, 4, device=device, dtype=dtype, requires_grad=True)
+    if op_name == "warp_affine":
+        transform = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+    else:
+        transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+    op = getattr(kornia.geometry.transform, op_name)
+
+    empty = op(src, transform, (0, 4))
+    assert empty.shape == (1, 3, 0, 4)
+    empty.sum().backward()
+    assert src.grad is not None and transform.grad is not None
+
+    with pytest.raises(ValueError, match="must be positive"):
+        op(src, transform, (3, 4))
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+def test_negative_destination_raises(op_name, device, dtype):
+    src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
+    transform = (
+        torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0)
+        if op_name == "warp_affine"
+        else torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
+    )
+    with pytest.raises(ValueError, match="must be non-negative"):
+        getattr(kornia.geometry.transform, op_name)(src, transform, (-1, 4))
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+def test_empty_destination_keeps_grid_sample_validation(op_name, device, dtype):
+    src = torch.rand(2, 3, 3, 4, device=device, dtype=dtype)
+    matrix_size = (2, 3) if op_name == "warp_affine" else (3, 3)
+    transform = torch.eye(*matrix_size, device=device, dtype=dtype).repeat(3, 1, 1)
+    op = getattr(kornia.geometry.transform, op_name)
+
+    with pytest.raises(RuntimeError, match="same batch size"):
+        op(src, transform, (0, 4))
+    with pytest.raises(ValueError, match="expected mode"):
+        op(src[:1], transform[:1], (0, 4), mode="invalid")
+    with pytest.raises(ValueError, match="expected padding_mode"):
+        op(src[:1], transform[:1], (0, 4), padding_mode="invalid")
+    if device.type == "cpu":
+        other_dtype = torch.float64 if dtype != torch.float64 else torch.float32
+        with pytest.raises(RuntimeError):
+            op(src[:1], transform[:1].to(other_dtype), (0, 4))
+
+
+@pytest.mark.parametrize("normalized_homography", [True, False])
+def test_homography_warp_negative_destination_raises(normalized_homography, device, dtype):
+    src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
+    transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
+    with pytest.raises(ValueError, match="must be non-negative"):
+        kornia.geometry.transform.homography_warp(src, transform, (-1, 4), normalized_homography=normalized_homography)
+
+
 class TestGetPerspectiveTransform(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_smoke(self, device, dtype, batch_size):
@@ -581,6 +666,14 @@ class TestRemap(BaseTester):
             input_org, grid[..., 0], grid[..., 1], normalized_coordinates=False, align_corners=True
         )
         self.assert_close(input_org, input_warped, rtol=1e-4, atol=1e-4)
+
+    def test_singleton_identity_with_default_align_corners(self, device, dtype):
+        image = torch.tensor([[[[4.0]]]], device=device, dtype=dtype)
+        pixel_grid = kornia.geometry.create_meshgrid(1, 1, normalized_coordinates=False, device=device, dtype=dtype)
+
+        actual = kornia.geometry.remap(image, pixel_grid[..., 0], pixel_grid[..., 1])
+
+        self.assert_close(actual, image, atol=0.0, rtol=0.0)
 
     def test_different_size(self, device, dtype):
         height, width = 3, 4

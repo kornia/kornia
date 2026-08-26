@@ -63,21 +63,25 @@ def create_meshgrid(
                   [1., 1.]]]])
 
     """
-    xs: torch.Tensor = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
-    ys: torch.Tensor = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
+    if not torch.jit.is_scripting() and torch.compiler.is_compiling():
+        # ``linspace`` specializes symbolic ``steps`` under export; ``arange`` retains the
+        # dynamic output length and is identical for this integer-spaced sequence.
+        xs = torch.arange(width, device=device, dtype=dtype)
+        ys = torch.arange(height, device=device, dtype=dtype)
+    else:
+        xs = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
+        ys = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
     # Fix TracerWarning
-    # Note: normalize_pixel_coordinates still gots TracerWarning since new width and height
-    #       tensors will be generated. It also still guards its denominator with
-    #       (size - 1).clamp(eps) and so maps a singleton axis to -1 rather than to the 0 used
-    #       here, which makes the commented-out code below no longer equivalent at size 1.
+    # Note: keeping this formula inline avoids the extra tensors and shape checks incurred by
+    #       normalize_pixel_coordinates. The two paths use the same singleton-centre policy.
     # Below is the code using normalize_pixel_coordinates:
     # base_grid: torch.Tensor = torch.stack(torch.meshgrid([xs, ys]), dim=2)
     # if normalized_coordinates:
     #     base_grid = K.geometry.normalize_pixel_coordinates(base_grid, height, width)
     # return torch.unsqueeze(base_grid.transpose(0, 1), dim=0)
     if normalized_coordinates:
-        if torch.jit.is_tracing():
-            # Only tracing needs the tensor form: it is what keeps a traced size dynamic.
+        if torch.jit.is_tracing() or torch.compiler.is_compiling():
+            # Graph capture needs the tensor form to keep a symbolic size dynamic.
             width_t = torch.scalar_tensor(width, device=xs.device, dtype=xs.dtype)
             height_t = torch.scalar_tensor(height, device=ys.device, dtype=ys.dtype)
             xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, torch.zeros_like(xs))
@@ -121,12 +125,17 @@ def create_meshgrid3d(
         grid tensor with shape :math:`(1, D, H, W, 3)`.
 
     """
-    xs: torch.Tensor = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
-    ys: torch.Tensor = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
-    zs: torch.Tensor = torch.linspace(0, depth - 1, depth, device=device, dtype=dtype)
+    if not torch.jit.is_scripting() and torch.compiler.is_compiling():
+        xs = torch.arange(width, device=device, dtype=dtype)
+        ys = torch.arange(height, device=device, dtype=dtype)
+        zs = torch.arange(depth, device=device, dtype=dtype)
+    else:
+        xs = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
+        ys = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
+        zs = torch.linspace(0, depth - 1, depth, device=device, dtype=dtype)
     # Fix TracerWarning
     if normalized_coordinates:
-        if torch.jit.is_tracing():
+        if torch.jit.is_tracing() or torch.compiler.is_compiling():
             width_t = torch.scalar_tensor(width, device=xs.device, dtype=xs.dtype)
             height_t = torch.scalar_tensor(height, device=ys.device, dtype=ys.dtype)
             depth_t = torch.scalar_tensor(depth, device=zs.device, dtype=zs.dtype)

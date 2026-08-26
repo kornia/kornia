@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ****
 
+## Unreleased
+
+### Bug fixes
+
+* Define singleton pixel axes at normalized center, reject non-positive normalization sizes, preserve empty warp
+  destinations, and deprecate the now-unused `eps` normalization parameters (#4006).
+
 
 ## :rocket: [0.6.11] - 2022-03-28
 ### :new:  New Features

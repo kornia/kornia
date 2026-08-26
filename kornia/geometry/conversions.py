@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Optional
 
 import torch
@@ -1459,22 +1460,28 @@ def normalize_pixel_coordinates(
           explicitly when feeding this output to it. Note that kornia's own
           :func:`~kornia.geometry.transform.remap` resolves
           ``align_corners=None`` to ``False``
+        - a singleton axis uses scale ``1`` and offset ``0``: its only valid
+          pixel coordinate maps to the normalized centre, and the unit-scale
+          extension keeps this function exactly invertible outside that lone
+          valid coordinate. Zero and negative sizes raise ``ValueError``
         - the output is **not** clamped: coordinates outside the image
           extrapolate linearly past ``[-1, 1]``, as the example below shows
 
-    .. warning::
-        ``height`` and ``width`` are not validated. For a degenerate size (``1``,
-        ``0`` or negative) the denominator ``size - 1`` is clamped up to ``eps``,
-        so
-        ``normalize_pixel_coordinates(torch.tensor([[1., 1.]], dtype=torch.float64), 1, 1)``
-        silently returns ``[[199999999.0, 199999999.0]]`` instead of raising.
-        Tracked in `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
+    .. note::
+        Legacy ``torch.jit.trace`` graphs assume positive runtime sizes because
+        tracing cannot retain the Python ``ValueError`` validation. Eager,
+        TorchScript, and ``torch.compile`` calls validate sizes.
+
+    .. deprecated:: 0.9.0
+        ``eps`` no longer participates in the explicitly defined singleton-axis
+        mapping. Passing a non-default value warns in eager mode; the parameter
+        will be removed in a future breaking release.
 
     Args:
         pixel_coordinates: the grid with pixel coordinates. Shape can be :math:`(*, 2)`.
         height: the maximum height in the y-axis.
         width: the maximum width in the x-axis.
-        eps: safe division by zero.
+        eps: deprecated compatibility parameter. It is ignored.
 
     Return:
         the normalized pixel coordinates with shape :math:`(*, 2)`.
@@ -1487,20 +1494,36 @@ def normalize_pixel_coordinates(
     """
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
+    if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
+        raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and eps != 1e-8:
+        warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
 
-    # compute normalization factor
-    hw: torch.Tensor = torch.stack(
-        [
-            torch.tensor(width, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype),
-            torch.tensor(height, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype),
-        ]
-    )
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
+        sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
+        sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
+        tx = 0.0 if width == 1 else -1.0
+        ty = 0.0 if height == 1 else -1.0
+        factor = torch.tensor([sx, sy], device=pixel_coordinates.device)
+        offset = torch.tensor([tx, ty], device=pixel_coordinates.device)
+        if pixel_coordinates.is_floating_point():
+            factor = factor.to(pixel_coordinates)
+            offset = offset.to(pixel_coordinates)
+    else:
+        work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        width_t = torch.scalar_tensor(width, device=pixel_coordinates.device, dtype=work_dtype)
+        height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
+        one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
+        zero = torch.zeros((), device=pixel_coordinates.device, dtype=work_dtype)
+        factor = torch.stack(
+            [
+                torch.where(width_t == 1, one, 2.0 / (width_t - 1.0)),
+                torch.where(height_t == 1, one, 2.0 / (height_t - 1.0)),
+            ]
+        )
+        offset = torch.stack([torch.where(width_t == 1, zero, -one), torch.where(height_t == 1, zero, -one)])
 
-    factor: torch.Tensor = torch.tensor(2.0, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype) / (
-        hw - 1
-    ).clamp(eps)
-
-    return factor * pixel_coordinates - 1
+    return factor * pixel_coordinates + offset
 
 
 def denormalize_pixel_coordinates(
@@ -1517,23 +1540,14 @@ def denormalize_pixel_coordinates(
           component order and the same ``(pixel_coordinates, height, width)``
           positional order
 
-    .. warning::
-        For a degenerate ``height``/``width`` (``1``, ``0`` or negative) the
-        clamped denominator collapses that component instead of exploding it:
-        ``denormalize_pixel_coordinates(torch.tensor([[0., 0.]], dtype=torch.float64), 4, 1)``
-        returns ``[[5e-09, 1.5]]``. This clamp is the exact reciprocal of the one
-        in :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`, so a
-        normalize-then-denormalize round trip returns the input as long as the
-        normalized value is finite — in ``float16`` ``eps`` underflows, the
-        normalized component is ``inf`` and the round trip returns ``nan``; it
-        is a single call on its own that is wrong. Tracked in
-        `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
+        - singleton axes, non-positive-size validation, tracing assumptions, and
+          the deprecated ``eps`` parameter follow the normalization function
 
     Args:
         pixel_coordinates: the normalized grid coordinates. Shape can be :math:`(*, 2)`.
         height: the maximum height in the y-axis.
         width: the maximum width in the x-axis.
-        eps: safe division by zero.
+        eps: deprecated compatibility parameter. It is ignored.
 
     Return:
         the denormalized pixel coordinates with shape :math:`(*, 2)`.
@@ -1546,16 +1560,33 @@ def denormalize_pixel_coordinates(
     """
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
-    # compute normalization factor
-    hw: torch.Tensor = (
-        torch.stack([torch.tensor(width), torch.tensor(height)])
-        .to(pixel_coordinates.device)
-        .to(pixel_coordinates.dtype)
-    )
+    if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
+        raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and eps != 1e-8:
+        warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
 
-    factor: torch.Tensor = torch.tensor(2.0) / (hw - 1).clamp(eps)
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
+        sx = 1.0 if width == 1 else (width - 1.0) / 2.0
+        sy = 1.0 if height == 1 else (height - 1.0) / 2.0
+        tx = 0.0 if width == 1 else sx
+        ty = 0.0 if height == 1 else sy
+        factor = torch.tensor([sx, sy], device=pixel_coordinates.device)
+        offset = torch.tensor([tx, ty], device=pixel_coordinates.device)
+        if pixel_coordinates.is_floating_point():
+            factor = factor.to(pixel_coordinates)
+            offset = offset.to(pixel_coordinates)
+    else:
+        work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        width_t = torch.scalar_tensor(width, device=pixel_coordinates.device, dtype=work_dtype)
+        height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
+        one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
+        zero = torch.zeros((), device=pixel_coordinates.device, dtype=work_dtype)
+        sx_t = torch.where(width_t == 1, one, (width_t - 1.0) / 2.0)
+        sy_t = torch.where(height_t == 1, one, (height_t - 1.0) / 2.0)
+        factor = torch.stack([sx_t, sy_t])
+        offset = torch.stack([torch.where(width_t == 1, zero, sx_t), torch.where(height_t == 1, zero, sy_t)])
 
-    return torch.tensor(1.0) / factor * (pixel_coordinates + 1)
+    return factor * pixel_coordinates + offset
 
 
 def normalize_pixel_coordinates3d(
@@ -1574,20 +1605,15 @@ def normalize_pixel_coordinates3d(
           ``(pixel_coordinates, depth, height, width)``
         - corner-aligned and unclamped in each axis exactly as in
           :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`
-
-    .. warning::
-        ``depth``, ``height`` and ``width`` are not validated; a degenerate size
-        (``1``, ``0`` or negative) clamps that axis' denominator up to ``eps``
-        and blows the corresponding component up by a factor of ``2e8``
-        (``inf`` in ``float16``, where ``eps`` underflows). Tracked
-        in `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
+        - singleton axes, non-positive-size validation, tracing assumptions, and
+          the deprecated ``eps`` parameter likewise follow that function
 
     Args:
         pixel_coordinates: the grid with pixel coordinates. Shape can be :math:`(*, 3)`.
         depth: the maximum depth in the z-axis.
         height: the maximum height in the y-axis.
         width: the maximum width in the x-axis.
-        eps: safe division by zero.
+        eps: deprecated compatibility parameter. It is ignored.
 
     Return:
         the normalized pixel coordinates.
@@ -1595,16 +1621,46 @@ def normalize_pixel_coordinates3d(
     """
     if pixel_coordinates.shape[-1] != 3:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
-    # compute normalization factor
-    dhw: torch.Tensor = (
-        torch.stack([torch.tensor(depth), torch.tensor(width), torch.tensor(height)])
-        .to(pixel_coordinates.device)
-        .to(pixel_coordinates.dtype)
-    )
+    if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
+        raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and eps != 1e-8:
+        warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
 
-    factor: torch.Tensor = torch.tensor(2.0) / (dhw - 1).clamp(eps)
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
+        sd = 1.0 if depth == 1 else 2.0 / (depth - 1.0)
+        sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
+        sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
+        td = 0.0 if depth == 1 else -1.0
+        tx = 0.0 if width == 1 else -1.0
+        ty = 0.0 if height == 1 else -1.0
+        factor = torch.tensor([sd, sx, sy], device=pixel_coordinates.device)
+        offset = torch.tensor([td, tx, ty], device=pixel_coordinates.device)
+        if pixel_coordinates.is_floating_point():
+            factor = factor.to(pixel_coordinates)
+            offset = offset.to(pixel_coordinates)
+    else:
+        work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        depth_t = torch.scalar_tensor(depth, device=pixel_coordinates.device, dtype=work_dtype)
+        width_t = torch.scalar_tensor(width, device=pixel_coordinates.device, dtype=work_dtype)
+        height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
+        one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
+        zero = torch.zeros((), device=pixel_coordinates.device, dtype=work_dtype)
+        factor = torch.stack(
+            [
+                torch.where(depth_t == 1, one, 2.0 / (depth_t - 1.0)),
+                torch.where(width_t == 1, one, 2.0 / (width_t - 1.0)),
+                torch.where(height_t == 1, one, 2.0 / (height_t - 1.0)),
+            ]
+        )
+        offset = torch.stack(
+            [
+                torch.where(depth_t == 1, zero, -one),
+                torch.where(width_t == 1, zero, -one),
+                torch.where(height_t == 1, zero, -one),
+            ]
+        )
 
-    return factor * pixel_coordinates - 1
+    return factor * pixel_coordinates + offset
 
 
 def denormalize_pixel_coordinates3d(
@@ -1620,21 +1676,15 @@ def denormalize_pixel_coordinates3d(
           ``depth=3, height=5, width=9`` the input ``[0., 0., 0.]`` maps back to
           ``[1., 4., 2.]``
 
-    .. warning::
-        For a degenerate ``depth``/``height``/``width`` (``1``, ``0`` or
-        negative) the clamped denominator scales that component by ``5e-09``
-        (``0`` in ``float16``, where ``eps`` underflows) instead of by
-        ``(size - 1) / 2`` — the same reciprocal-clamp behavior as
-        :func:`~kornia.geometry.conversions.denormalize_pixel_coordinates`,
-        whose warning walks through the round trip. Tracked in
-        `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
+        - singleton axes, non-positive-size validation, tracing assumptions, and
+          the deprecated ``eps`` parameter follow the 2-D counterpart
 
     Args:
         pixel_coordinates: the normalized grid coordinates. Shape can be :math:`(*, 3)`.
         depth: the maximum depth in the z-axis.
         height: the maximum height in the y-axis.
         width: the maximum width in the x-axis.
-        eps: safe division by zero.
+        eps: deprecated compatibility parameter. It is ignored.
 
     Return:
         the denormalized pixel coordinates.
@@ -1642,16 +1692,43 @@ def denormalize_pixel_coordinates3d(
     """
     if pixel_coordinates.shape[-1] != 3:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
-    # compute normalization factor
-    dhw: torch.Tensor = (
-        torch.stack([torch.tensor(depth), torch.tensor(width), torch.tensor(height)])
-        .to(pixel_coordinates.device)
-        .to(pixel_coordinates.dtype)
-    )
+    if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
+        raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and eps != 1e-8:
+        warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
 
-    factor: torch.Tensor = torch.tensor(2.0) / (dhw - 1).clamp(eps)
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
+        sd = 1.0 if depth == 1 else (depth - 1.0) / 2.0
+        sx = 1.0 if width == 1 else (width - 1.0) / 2.0
+        sy = 1.0 if height == 1 else (height - 1.0) / 2.0
+        td = 0.0 if depth == 1 else sd
+        tx = 0.0 if width == 1 else sx
+        ty = 0.0 if height == 1 else sy
+        factor = torch.tensor([sd, sx, sy], device=pixel_coordinates.device)
+        offset = torch.tensor([td, tx, ty], device=pixel_coordinates.device)
+        if pixel_coordinates.is_floating_point():
+            factor = factor.to(pixel_coordinates)
+            offset = offset.to(pixel_coordinates)
+    else:
+        work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        depth_t = torch.scalar_tensor(depth, device=pixel_coordinates.device, dtype=work_dtype)
+        width_t = torch.scalar_tensor(width, device=pixel_coordinates.device, dtype=work_dtype)
+        height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
+        one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
+        zero = torch.zeros((), device=pixel_coordinates.device, dtype=work_dtype)
+        sd_t = torch.where(depth_t == 1, one, (depth_t - 1.0) / 2.0)
+        sx_t = torch.where(width_t == 1, one, (width_t - 1.0) / 2.0)
+        sy_t = torch.where(height_t == 1, one, (height_t - 1.0) / 2.0)
+        factor = torch.stack([sd_t, sx_t, sy_t])
+        offset = torch.stack(
+            [
+                torch.where(depth_t == 1, zero, sd_t),
+                torch.where(width_t == 1, zero, sx_t),
+                torch.where(height_t == 1, zero, sy_t),
+            ]
+        )
 
-    return torch.tensor(1.0) / factor * (pixel_coordinates + 1)
+    return factor * pixel_coordinates + offset
 
 
 def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
@@ -1949,10 +2026,20 @@ def normal_transform_pixel(
         constant ``(-1, -1)``. Tracked in
         `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
+    .. note::
+        Legacy ``torch.jit.trace`` graphs assume positive runtime sizes because
+        tracing cannot retain the Python ``ValueError`` validation. Eager,
+        TorchScript, and ``torch.compile`` calls validate sizes.
+
+    .. deprecated:: 0.9.0
+        ``eps`` no longer participates in the explicitly defined singleton-axis
+        mapping. Passing a non-default value warns in eager mode; the parameter
+        will be removed in a future breaking release.
+
     Args:
         height: image height.
         width: image width.
-        eps: compatibility parameter retained from the former denominator guard. It is ignored.
+        eps: deprecated compatibility parameter. It is ignored.
         device: device to place the result on.
         dtype: dtype of the result. ``None`` means ``torch.get_default_dtype()``.
 
@@ -1966,9 +2053,10 @@ def normal_transform_pixel(
                  [ 0.0000,  0.0000,  1.0000]]])
 
     """
-    _ = eps
     if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and eps != 1e-14:
+        warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
 
     if torch.jit.is_scripting() or not torch.jit.is_tracing():
         # Only tracing needs the tensor form below: it is what keeps a traced size
@@ -2041,11 +2129,19 @@ def normal_transform_pixel3d(
         dtype=torch.int64)`` returns a matrix with diagonal ``[0, 0, 2]``.
         Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
+    .. note::
+        Legacy ``torch.jit.trace`` graphs assume positive runtime sizes for the
+        same reason as the 2-D counterpart.
+
+    .. deprecated:: 0.9.0
+        ``eps`` is ignored and follows the deprecation policy of the 2-D
+        counterpart.
+
     Args:
         depth: image depth.
         height: image height.
         width: image width.
-        eps: compatibility parameter retained from the former denominator guard. It is ignored.
+        eps: deprecated compatibility parameter. It is ignored.
         device: device to place the result on.
         dtype: dtype of the result. ``None`` means ``torch.get_default_dtype()``.
 
@@ -2060,9 +2156,10 @@ def normal_transform_pixel3d(
                  [ 0.0000,  0.0000,  0.0000,  1.0000]]])
 
     """
-    _ = eps
     if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and eps != 1e-14:
+        warnings.warn("`eps` is deprecated and ignored.", FutureWarning, stacklevel=2)
 
     if torch.jit.is_scripting() or not torch.jit.is_tracing():
         # As in 2-D, the tensor form below is only needed to keep a traced size dynamic.

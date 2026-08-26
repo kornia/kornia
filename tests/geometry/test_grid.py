@@ -97,6 +97,25 @@ def test_normalized_meshgrid_integer_dtype_promotes_uniformly(height, width, gri
         assert_close(grid[..., 0], torch.zeros_like(grid[..., 0]), atol=0.0, rtol=0.0)
 
 
+@pytest.mark.parametrize("grid_dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize(("trace_height", "runtime_height"), [(2, 1), (1, 2)])
+def test_normalized_meshgrid_integer_trace_crosses_singleton_boundary(grid_dtype, trace_height, runtime_height, device):
+    class IntegerMeshGrid(torch.nn.Module):
+        def forward(self, image):
+            return kornia.geometry.create_meshgrid(
+                image.shape[-2],
+                image.shape[-1],
+                normalized_coordinates=True,
+                device=image.device,
+                dtype=grid_dtype,
+            )
+
+    example = torch.zeros(1, 1, trace_height, 4, device=device)
+    runtime = torch.zeros(1, 1, runtime_height, 4, device=device)
+    traced = torch.jit.trace(IntegerMeshGrid(), example)
+    assert_close(traced(runtime), IntegerMeshGrid()(runtime), atol=0.0, rtol=0.0)
+
+
 @pytest.mark.parametrize(("trace_height", "runtime_height"), [(2, 1), (1, 2)])
 def test_normalized_meshgrid_trace_crosses_singleton_boundary(trace_height, runtime_height, device, dtype):
     class MeshGrid(torch.nn.Module):
@@ -109,6 +128,40 @@ def test_normalized_meshgrid_trace_crosses_singleton_boundary(trace_height, runt
     runtime = torch.zeros(1, 1, runtime_height, 4, device=device, dtype=dtype)
     traced = torch.jit.trace(MeshGrid(), example)
     assert_close(traced(runtime), MeshGrid()(runtime), atol=0.0, rtol=0.0)
+
+
+@pytest.mark.parametrize("is_3d", [False, True], ids=["2d", "3d"])
+def test_normalized_meshgrid_export_crosses_singleton_boundary(is_3d):
+    class MeshGrid(torch.nn.Module):
+        def forward(self, image):
+            if is_3d:
+                return kornia.geometry.create_meshgrid3d(
+                    image.shape[-3],
+                    image.shape[-2],
+                    image.shape[-1],
+                    normalized_coordinates=True,
+                    device=image.device,
+                    dtype=image.dtype,
+                )
+            return kornia.geometry.create_meshgrid(
+                image.shape[-2],
+                image.shape[-1],
+                normalized_coordinates=True,
+                device=image.device,
+                dtype=image.dtype,
+            )
+
+    image_shape = (1, 1, 2, 3, 4) if is_3d else (1, 1, 2, 4)
+    example = torch.zeros(image_shape)
+    exported = torch.export.export(
+        MeshGrid(),
+        (example,),
+        dynamic_shapes=({2: torch.export.Dim("singleton_axis", min=1, max=8)},),
+    ).module()
+
+    for runtime_size in (1, 5):
+        runtime = torch.zeros(*image_shape[:2], runtime_size, *image_shape[3:])
+        assert_close(exported(runtime), MeshGrid()(runtime), atol=0.0, rtol=0.0)
 
 
 def test_create_meshgrid3d(device, dtype):
