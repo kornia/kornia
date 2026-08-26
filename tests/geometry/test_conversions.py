@@ -712,11 +712,24 @@ class TestAngleAxisToQuaternion(BaseTester):
         expected = torch.tensor((np.cos(0.5), np.sin(0.5), 0.0, 0.0), device=device, dtype=input_dtype)
         self.assert_close(quaternion, expected, atol=1.0e-2, rtol=1.0e-2)
 
-    def test_forward_matches_plain_sqrt_formula(self, device, dtype):
-        # away from theta == 0 the guarded sqrt must return the very same bits as the plain
-        # `sqrt(theta_squared)` formula, so the NaN fix cannot move any existing forward value
+    def test_convention_the_guarded_sqrt_moves_no_forward_value_3949(self, device, dtype):
+        # The #3949 fix is a BACKWARD-pass fix: away from theta == 0 the guarded sqrt must return
+        # the very same BITS as the plain `sqrt(theta_squared)` formula it replaced, so no existing
+        # forward value moves. torch.equal, not assert_close, for exactly that reason -- a
+        # tolerance would hide the reassociation this pin exists to rule out.
+        # The fourth row is the near-singular one, and it is derived from the dtype rather than
+        # written as a literal: a fixed 1e-9 UNDERFLOWS to 0 at float16 (its smallest subnormal is
+        # 5.96e-8), which puts the row on the guarded side of the branch, makes the reference
+        # formula's own sin(0)/0 a NaN, and fails this pin under `pixi run test-half` while passing
+        # everywhere else. finfo(dtype).eps squares to something representable in all four dtypes,
+        # so the row stays near-singular AND stays on the unguarded side in each.
+        # Companion: test_convention_gradients_at_the_identity_are_finite_3949 covers theta == 0
+        # itself, where the two formulas deliberately DISAGREE.
+        near_singular = torch.finfo(dtype).eps
         axis_angle = torch.tensor(
-            ((0.1, 0.2, 0.3), (1.0, 0.0, 0.0), (3.0, -2.0, 0.5), (1e-9, 0.0, 0.0)), device=device, dtype=dtype
+            ((0.1, 0.2, 0.3), (1.0, 0.0, 0.0), (3.0, -2.0, 0.5), (near_singular, 0.0, 0.0)),
+            device=device,
+            dtype=dtype,
         )
         a0, a1, a2 = axis_angle[..., 0:1], axis_angle[..., 1:2], axis_angle[..., 2:3]
         theta = torch.sqrt(a0 * a0 + a1 * a1 + a2 * a2)
@@ -725,22 +738,6 @@ class TestAngleAxisToQuaternion(BaseTester):
         expected = torch.cat((torch.cos(half_theta), a0 * k, a1 * k, a2 * k), dim=-1)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert torch.equal(quaternion, expected)
-
-    def test_gradient_at_zero_rotation(self, device):
-        # around theta == 0 the map is v -> (1, v / 2), so the gradient of the output sum
-        # with respect to v is (0.5, 0.5, 0.5). before the fix sqrt(0) made it NaN
-        dtype = torch.float64
-        axis_angle = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype, requires_grad=True)
-        kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle).sum().backward()
-        assert axis_angle.grad is not None
-        assert torch.isfinite(axis_angle.grad).all()
-        self.assert_close(axis_angle.grad, torch.tensor((0.5, 0.5, 0.5), device=device, dtype=dtype))
-
-        # a single zero rotation in a batch must not poison the other rows
-        batch = torch.tensor(((0.0, 0.0, 0.0), (0.1, 0.2, 0.3)), device=device, dtype=dtype, requires_grad=True)
-        kornia.geometry.conversions.axis_angle_to_quaternion(batch).sum().backward()
-        assert batch.grad is not None
-        assert torch.isfinite(batch.grad).all()
 
     def test_gradcheck(self, device):
         dtype = torch.float64
@@ -884,33 +881,47 @@ class TestAngleAxisToQuaternion(BaseTester):
         )
         torch.testing.assert_close(actual, expected, rtol=0, atol=0)
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="unguarded sqrt(0) in the axis-angle/quaternion pair makes the gradient NaN at the "
-        "identity rotation — kornia#3949",
-        strict=True,
-    )
-    @pytest.mark.parametrize(
-        ("op_name", "arg"),
-        [("quaternion_to_axis_angle", [1.0, 0.0, 0.0, 0.0]), ("axis_angle_to_quaternion", [0.0, 0.0, 0.0])],
-    )
-    def test_convention_gradients_at_the_identity_are_finite_3949(self, device, op_name, arg):
-        # Intended behavior: both directions of the axis-angle/quaternion pair are differentiable
-        # at the identity rotation -- the point every optimiser initialises at and converges to.
-        # They are not: each takes an unguarded sqrt of a quantity that is exactly 0 there, so the
-        # backward pass divides by 0 and the gradient is NaN for the whole input
-        # (quaternion_to_axis_angle at q = (1,0,0,0) and axis_angle_to_quaternion at aa = (0,0,0)).
-        # axis_angle_to_rotation_matrix is the in-kornia template for the fix: at the same point it
-        # returns a finite gradient [0, 0, 0] because it clamps theta2 to 1e-12 before the sqrt,
-        # with the comment "clamping to ensure no nan gradients". Away from the identity both
-        # gradients are already finite (measured at q = (0.938, 0.147, 0.196, 0.245):
-        # [-1.1751557857766646, 1.9227726795680562, 1.8829361000064004, 1.8430995204447442]).
-        # Both legs live in this class so the pair stays one edit even though
-        # quaternion_to_axis_angle is exercised by TestQuaternionToAngleAxis. float64 is hardcoded
-        # and the dtype fixture dropped because gradient claims in this file are float64 claims
-        # (see test_rad2deg_gradcheck); the NaN is not float64-specific -- float32 gives NaN too.
-        # Marked xfail(strict=True) so fixing #3949 makes both cases XPASS and forces this mark
-        # out. Companion wart: test_wart_gradients_at_the_identity_are_nan_3949.
+    # (op name, input at the identity rotation, expected gradient of the output sum) for the #3949
+    # pin below. The gradients are analytic, not measured: around theta == 0 axis_angle_to_quaternion
+    # is v -> (1, v/2) so d(sum)/dv = (0.5, 0.5, 0.5), and around the identity quaternion_to_axis_angle
+    # is q -> 2*(x, y, z) so d(sum)/dq = (0, 2, 2, 2) -- the w component does not reach the output.
+    # Pinning the VALUES and not just finiteness is what separates "the NaN is gone" from "the NaN
+    # was replaced by the right number": a guard that clamped the radicand to 1e-12 the way
+    # axis_angle_to_rotation_matrix does would also be finite here, and wrong by a factor of the
+    # clamp. One table, two cells, because the two functions have independent sqrt guards.
+    _IDENTITY_GRADIENT_CASES = [
+        ("quaternion_to_axis_angle", [1.0, 0.0, 0.0, 0.0], [0.0, 2.0, 2.0, 2.0]),
+        ("axis_angle_to_quaternion", [0.0, 0.0, 0.0], [0.5, 0.5, 0.5]),
+    ]
+
+    @pytest.mark.parametrize(("op_name", "arg", "expected_grad"), _IDENTITY_GRADIENT_CASES)
+    def test_convention_gradients_at_the_identity_are_finite_3949(self, device, op_name, arg, expected_grad):
+        # Convention: both directions of the axis-angle/quaternion pair are differentiable at the
+        # identity rotation -- the point every optimiser initialises at and converges to. Until
+        # kornia#3949 was fixed they were not: each took an unguarded sqrt of a quantity that is
+        # exactly 0 there, so the backward pass divided by 0 and the gradient was NaN for the whole
+        # input (quaternion_to_axis_angle at q = (1,0,0,0), axis_angle_to_quaternion at aa = (0,0,0)).
+        # The fix keeps the singular point away from the sqrt with a `where` on the radicand rather
+        # than clamping it, so the forward value at the identity is unchanged -- pinned separately
+        # by test_convention_the_guarded_sqrt_moves_no_forward_value_3949 in each class.
+        # Three claims per cell, in order:
+        #   (1) the gradient is finite -- the #3949 headline;
+        #   (2) it equals the analytic value from _IDENTITY_GRADIENT_CASES, so a merely-finite
+        #       wrong number (a clamped radicand) does not pass;
+        #   (3) the guard is ELEMENTWISE: in a batch holding an identity row and an ordinary one,
+        #       the identity row gets the identity gradient AND the ordinary row gets exactly the
+        #       gradient it gets on its own. Not a NaN-containment claim -- NaN never crossed rows,
+        #       measured on the unfixed code, since the ops are elementwise and .sum() sends an
+        #       independent gradient to each. What it rules out is a guard written as a PYTHON
+        #       branch (`if theta_squared > 0: ...`), which takes one branch for the whole tensor:
+        #       that is the shape a naive fix takes, it passes both scalar cells, and it is wrong
+        #       for every mixed batch. The ordinary row's own gradient is measured in the test
+        #       rather than pinned as a literal, so this cell stays a statement about
+        #       batched-vs-unbatched agreement and not a second copy of the numerical pins.
+        # Both legs live in this class so the pair stays one edit even though quaternion_to_axis_angle
+        # is exercised by TestQuaternionToAngleAxis. float64 is hardcoded and the dtype fixture
+        # dropped because gradient claims in this file are float64 claims (see test_rad2deg_gradcheck);
+        # the NaN was not float64-specific -- float32 gave NaN too.
         _skip_if_dtype_unavailable(device, torch.float64)
 
         op = getattr(kornia.geometry.conversions, op_name)
@@ -918,35 +929,23 @@ class TestAngleAxisToQuaternion(BaseTester):
 
         op(x).sum().backward()
 
+        assert x.grad is not None
         assert torch.isfinite(x.grad).all(), f"kornia#3949: {op_name} has a non-finite gradient at the identity"
+        self.assert_close(x.grad, torch.tensor(expected_grad, device=device, dtype=torch.float64))
 
-    @pytest.mark.parametrize(
-        ("op_name", "arg"),
-        [("quaternion_to_axis_angle", [1.0, 0.0, 0.0, 0.0]), ("axis_angle_to_quaternion", [0.0, 0.0, 0.0])],
-    )
-    def test_wart_gradients_at_the_identity_are_nan_3949(self, device, op_name, arg):
-        # Wart pin for kornia#3949, companion to the strict xfail above: assert that the gradient
-        # is CURRENTLY all-NaN at the identity rotation. Two cells because the two functions have
-        # independent sqrt guards -- clamping inside quaternion_to_axis_angle does nothing for
-        # axis_angle_to_quaternion and vice versa, so a half fix flips exactly one cell while the
-        # xfail's other case stays silently XFAIL. If either fails, #3949 was (partly) fixed --
-        # remove the corresponding case here and flip/remove the strict xfail above. NOT a contract
-        # that these gradients must stay NaN.
-        # Snippet used to generate expected (torch only, executed on cpu at float64 and float32):
-        #   q = torch.tensor([1., 0., 0., 0.], dtype=torch.float64, requires_grad=True)
-        #   quaternion_to_axis_angle(q).sum().backward(); q.grad -> [nan, nan, nan, nan]
-        #   a = torch.zeros(3, dtype=torch.float64, requires_grad=True)
-        #   axis_angle_to_quaternion(a).sum().backward(); a.grad -> [nan, nan, nan]
-        #   axis_angle_to_rotation_matrix(torch.zeros(1, 3, dtype=torch.float64, requires_grad=True))
-        #     .sum().backward() -> [[0.0, 0.0, 0.0]]   (finite: the clamped-theta2 reference)
-        _skip_if_dtype_unavailable(device, torch.float64)
+        # The batch leg: the identity row first, an ordinary rotation second.
+        regular = [0.9, 0.1, 0.2, 0.3] if op_name == "quaternion_to_axis_angle" else [0.1, 0.2, 0.3]
 
-        op = getattr(kornia.geometry.conversions, op_name)
-        x = torch.tensor(arg, device=device, dtype=torch.float64, requires_grad=True)
+        alone = torch.tensor(regular, device=device, dtype=torch.float64, requires_grad=True)
+        op(alone).sum().backward()
 
-        op(x).sum().backward()
+        batch = torch.tensor([arg, regular], device=device, dtype=torch.float64, requires_grad=True)
+        op(batch).sum().backward()
 
-        assert torch.isnan(x.grad).all(), f"kornia#3949: {op_name} no longer has an all-NaN gradient at the identity"
+        assert batch.grad is not None
+        assert torch.isfinite(batch.grad).all(), f"kornia#3949: {op_name} has a non-finite gradient in a batch"
+        self.assert_close(batch.grad[0], torch.tensor(expected_grad, device=device, dtype=torch.float64))
+        self.assert_close(batch.grad[1], alone.grad, atol=0.0, rtol=0.0)
 
 
 class TestQuaternionToAngleAxis(BaseTester):
@@ -1006,11 +1005,19 @@ class TestQuaternionToAngleAxis(BaseTester):
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
         self.assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
-    def test_forward_matches_plain_sqrt_formula(self, device, dtype):
-        # away from sin_squared_theta == 0 the guarded sqrt must return the very same bits as the
-        # plain `sqrt(sin_squared_theta)` formula, so the NaN fix cannot move any forward value
+    def test_convention_the_guarded_sqrt_moves_no_forward_value_3949(self, device, dtype):
+        # The quaternion_to_axis_angle half of the pin documented on
+        # TestAngleAxisToQuaternion.test_convention_the_guarded_sqrt_moves_no_forward_value_3949 --
+        # same claim, same reason the near-singular row is derived from finfo(dtype).eps rather
+        # than written as a fixed 1e-9, which underflows to 0 at float16. Kept in this class rather
+        # than as a third cell of that one because the reference formula is a different expression.
         quaternion = torch.tensor(
-            ((0.9, 0.1, 0.2, 0.3), (0.0, 1.0, 0.0, 0.0), (0.5, 3.0, -2.0, 0.5), (1.0, 1e-9, 0.0, 0.0)),
+            (
+                (0.9, 0.1, 0.2, 0.3),
+                (0.0, 1.0, 0.0, 0.0),
+                (0.5, 3.0, -2.0, 0.5),
+                (1.0, torch.finfo(dtype).eps, 0.0, 0.0),
+            ),
             device=device,
             dtype=dtype,
         )
@@ -1024,24 +1031,6 @@ class TestQuaternionToAngleAxis(BaseTester):
         expected = torch.stack((q1 * k, q2 * k, q3 * k), dim=-1)
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
         assert torch.equal(axis_angle, expected)
-
-    def test_gradient_at_identity(self, device):
-        # around the identity the map is q -> 2 * (x, y, z), so the gradient of the output sum
-        # with respect to q is (0, 2, 2, 2). before the fix sqrt(0) made it NaN
-        dtype = torch.float64
-        quaternion = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype, requires_grad=True)
-        kornia.geometry.conversions.quaternion_to_axis_angle(quaternion).sum().backward()
-        assert quaternion.grad is not None
-        assert torch.isfinite(quaternion.grad).all()
-        self.assert_close(quaternion.grad, torch.tensor((0.0, 2.0, 2.0, 2.0), device=device, dtype=dtype))
-
-        # a single identity quaternion in a batch must not poison the other rows
-        batch = torch.tensor(
-            ((1.0, 0.0, 0.0, 0.0), (0.9, 0.1, 0.2, 0.3)), device=device, dtype=dtype, requires_grad=True
-        )
-        kornia.geometry.conversions.quaternion_to_axis_angle(batch).sum().backward()
-        assert batch.grad is not None
-        assert torch.isfinite(batch.grad).all()
 
     def test_gradcheck(self, device):
         dtype = torch.float64
