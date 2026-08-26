@@ -2301,7 +2301,8 @@ def denormalize_homography(
           ``(height, width)`` ``dsize`` tuples, ``dsize_src`` on the right and
           ``dsize_dst`` on the left, ``(x, y, 1)`` column vectors, per-sample
           batching, the corner-aligned frames — is as documented there, and so
-          is its shape guard. That function's dtype-pass-through
+          is the shape guard: this function carries the same one and rejects
+          the same shapes. That function's dtype-pass-through
           (`#3958 <https://github.com/kornia/kornia/issues/3958>`_), int64-handling
           (`#3959 <https://github.com/kornia/kornia/issues/3959>`_ — this
           function's own clause there) and corner-alignment (`#3904
