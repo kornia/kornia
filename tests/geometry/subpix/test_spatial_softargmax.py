@@ -422,7 +422,7 @@ class TestConvSoftArgmax3d(BaseTester):
         )
         expected_val = torch.tensor([[[[[1.0, 0.0], [0.0, 1.0]]]]], device=device, dtype=dtype)
         expected_coord = torch.tensor(
-            [[[[[[-1.0, -1.0], [-1.0, -1.0]]], [[[-0.5, 0.5], [-0.5, 0.5]]], [[[-0.5, -0.5], [0.5, 0.5]]]]]],
+            [[[[[[0.0, 0.0], [0.0, 0.0]]], [[[-0.5, 0.5], [-0.5, 0.5]]], [[[-0.5, -0.5], [0.5, 0.5]]]]]],
             device=device,
             dtype=dtype,
         )
@@ -453,7 +453,7 @@ class TestConvSoftArgmax3d(BaseTester):
         )
         expected_val = torch.tensor([[[[[0.1214, 0.0], [0.0, 0.1214]]]]], device=device, dtype=dtype)
         expected_coord = torch.tensor(
-            [[[[[[-1.0, -1.0], [-1.0, -1.0]]], [[[-0.5, 0.5], [-0.5, 0.5]]], [[[-0.5, -0.5], [0.5, 0.5]]]]]],
+            [[[[[[0.0, 0.0], [0.0, 0.0]]], [[[-0.5, 0.5], [-0.5, 0.5]]], [[[-0.5, -0.5], [0.5, 0.5]]]]]],
             device=device,
             dtype=dtype,
         )

@@ -25,6 +25,99 @@ from kornia.core.utils import _torch_inverse_cast
 from testing.base import BaseTester
 
 
+@pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+@pytest.mark.parametrize("dsize", [(0, 4, 5), (3, 0, 5), (3, 4, 0)])
+@pytest.mark.parametrize("align_corners", [True, False])
+def test_empty_destination_is_autograd_connected(op_name, dsize, align_corners, device, dtype):
+    src = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype, requires_grad=True)
+    if op_name == "warp_affine3d":
+        transform = torch.eye(3, 4, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+        out = proj.warp_affine3d(src, transform, dsize, align_corners=align_corners)
+    else:
+        transform = torch.eye(4, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+        out = proj.warp_perspective3d(src, transform, dsize, align_corners=align_corners)
+
+    assert out.shape == (1, 2, *dsize)
+    assert out.numel() == 0
+    out.sum().backward()
+    assert src.grad is not None and torch.count_nonzero(src.grad) == 0
+    assert transform.grad is not None and torch.count_nonzero(transform.grad) == 0
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+def test_empty_source_policy(op_name, device, dtype):
+    src = torch.empty(1, 2, 0, 4, 5, device=device, dtype=dtype, requires_grad=True)
+    if op_name == "warp_affine3d":
+        transform = torch.eye(3, 4, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+        op = proj.warp_affine3d
+    else:
+        transform = torch.eye(4, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+        op = proj.warp_perspective3d
+
+    empty = op(src, transform, (0, 4, 5))
+    assert empty.shape == (1, 2, 0, 4, 5)
+    empty.sum().backward()
+    assert src.grad is not None and transform.grad is not None
+
+    with pytest.raises(ValueError, match="must be positive"):
+        op(src, transform, (3, 4, 5))
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+def test_negative_destination_raises(op_name, device, dtype):
+    src = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
+    if op_name == "warp_affine3d":
+        transform = torch.eye(3, 4, device=device, dtype=dtype).unsqueeze(0)
+        op = proj.warp_affine3d
+    else:
+        transform = torch.eye(4, device=device, dtype=dtype).unsqueeze(0)
+        op = proj.warp_perspective3d
+    with pytest.raises(ValueError, match="must be non-negative"):
+        op(src, transform, (-1, 4, 5))
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+def test_empty_destination_keeps_grid_sample_validation(op_name, device, dtype):
+    src = torch.rand(2, 2, 3, 4, 5, device=device, dtype=dtype)
+    matrix_size = (3, 4) if op_name == "warp_affine3d" else (4, 4)
+    transform = torch.eye(*matrix_size, device=device, dtype=dtype).repeat(3, 1, 1)
+    op = getattr(proj, op_name)
+
+    with pytest.raises(RuntimeError, match="same batch size"):
+        op(src, transform, (0, 4, 5))
+    with pytest.raises(ValueError, match="expected mode"):
+        op(src[:1], transform[:1], (0, 4, 5), flags="invalid")
+    padding_arg = "padding_mode" if op_name == "warp_affine3d" else "border_mode"
+    with pytest.raises(ValueError, match="expected padding_mode"):
+        op(src[:1], transform[:1], (0, 4, 5), **{padding_arg: "invalid"})
+    if device.type == "cpu":
+        other_dtype = torch.float64 if dtype != torch.float64 else torch.float32
+        with pytest.raises(RuntimeError):
+            op(src[:1], transform[:1].to(other_dtype), (0, 4, 5))
+
+    if op_name == "warp_perspective3d":
+        with pytest.raises(ValueError, match="Bx4x4"):
+            op(src[:1], torch.eye(3, device=device, dtype=dtype).unsqueeze(0), (0, 4, 5))
+
+
+@pytest.mark.parametrize("dsize", [(3, 4, 5), (0, 4, 5)])
+def test_warp_perspective3d_accepts_an_unbatched_matrix(dsize, device, dtype):
+    """An unbatched 4x4 matrix has always warped correctly here; the shape guard must not reject it."""
+    src = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
+    transform = torch.eye(4, device=device, dtype=dtype)
+    unbatched = proj.warp_perspective3d(src, transform, dsize)
+    batched = proj.warp_perspective3d(src, transform.unsqueeze(0), dsize)
+    assert unbatched.shape == batched.shape
+    assert torch.equal(unbatched, batched)
+
+
+def test_homography_warp3d_negative_destination_raises(device, dtype):
+    src = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
+    transform = torch.eye(4, device=device, dtype=dtype).unsqueeze(0)
+    with pytest.raises(ValueError, match="must be non-negative"):
+        proj.homography_warp3d(src, transform, (-1, 4, 5))
+
+
 class TestWarpAffine3d(BaseTester):
     def test_smoke(self, device, dtype):
         sample = torch.rand(1, 3, 3, 4, 5, device=device, dtype=dtype)

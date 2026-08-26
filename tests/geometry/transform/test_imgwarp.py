@@ -27,6 +27,17 @@ from kornia.core.utils import _torch_inverse_cast
 from testing.base import BaseTester
 
 
+def _skip_if_mps_empty_grid_sample(device):
+    """Skip when a zero-element sampling grid cannot reach ``grid_sample``.
+
+    PyTorch's MPS backend raises ``[srcBuf length] > 0 INTERNAL ASSERT FAILED ... Placeholder
+    tensor is empty!`` for a zero-element ``grid_sample`` argument, so an empty warp destination
+    is unreachable there regardless of how kornia builds it.
+    """
+    if device.type == "mps":
+        pytest.skip("MPS grid_sample asserts on zero-element tensors")
+
+
 class DummyNNModule(torch.nn.Module):
     def __init__(self, h: int, w: int, align_corners: bool, padding_mode: str):
         super().__init__()
@@ -35,6 +46,157 @@ class DummyNNModule(torch.nn.Module):
 
     def forward(self, x, y):
         return kornia.geometry.transform.warp_affine(x, y, dsize=(self.h, self.w), align_corners=False)
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+@pytest.mark.parametrize("dsize", [(0, 4), (3, 0)])
+@pytest.mark.parametrize("align_corners", [True, False])
+@pytest.mark.parametrize("padding_mode", ["zeros", "fill"])
+def test_empty_destination_is_autograd_connected(op_name, dsize, align_corners, padding_mode, device, dtype):
+    _skip_if_mps_empty_grid_sample(device)
+    src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype, requires_grad=True)
+    if op_name == "warp_affine":
+        transform = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+    else:
+        transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+    op = getattr(kornia.geometry.transform, op_name)
+
+    out = op(
+        src,
+        transform,
+        dsize,
+        padding_mode=padding_mode,
+        align_corners=align_corners,
+        fill_value=torch.tensor([0.1, 0.2, 0.3], device=device, dtype=dtype),
+    )
+
+    assert out.shape == (1, 3, *dsize)
+    assert out.numel() == 0
+    out.sum().backward()
+    assert src.grad is not None and torch.count_nonzero(src.grad) == 0
+    assert transform.grad is not None and torch.count_nonzero(transform.grad) == 0
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+def test_empty_source_policy(op_name, device, dtype):
+    _skip_if_mps_empty_grid_sample(device)
+    src = torch.empty(1, 3, 0, 4, device=device, dtype=dtype, requires_grad=True)
+    if op_name == "warp_affine":
+        transform = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+    else:
+        transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
+    op = getattr(kornia.geometry.transform, op_name)
+
+    empty = op(src, transform, (0, 4))
+    assert empty.shape == (1, 3, 0, 4)
+    empty.sum().backward()
+    assert src.grad is not None and transform.grad is not None
+
+    with pytest.raises(ValueError, match="must be positive"):
+        op(src, transform, (3, 4))
+
+
+def _output_dtype_or_none(call):
+    """Return the output dtype of ``call``, or ``None`` when it rejects its inputs."""
+    try:
+        return call().dtype
+    except Exception:
+        return None
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+@pytest.mark.parametrize("src_dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("matrix_dtype", [torch.float32, torch.float64, torch.int64])
+def test_empty_destination_follows_nonempty_dtype_policy(op_name, src_dtype, matrix_dtype, device):
+    if device.type == "mps":
+        pytest.skip("MPS does not support float64")
+    op = getattr(kornia.geometry.transform, op_name)
+    rows = 2 if op_name == "warp_affine" else 3
+    src = torch.zeros(1, 3, 3, 4, device=device, dtype=src_dtype)
+    matrix = torch.eye(3, device=device)[:rows].to(matrix_dtype).unsqueeze(0)
+
+    # An empty ``dsize`` must accept exactly the matrix dtypes the non-empty pipeline accepts:
+    # a matrix that promotes into ``src.dtype`` samples fine, one that narrows it or is integral
+    # (``normalize_homography`` scales it by floating factors) fails on both paths.
+    empty_dtype = _output_dtype_or_none(lambda: op(src, matrix, (0, 4)))
+    assert empty_dtype == _output_dtype_or_none(lambda: op(src, matrix, (1, 4)))
+    if src_dtype == matrix_dtype:
+        # Guards the paired assertion above against passing vacuously on two failures.
+        assert empty_dtype == src_dtype
+        assert op(src, matrix, (0, 4)).shape == (1, 3, 0, 4)
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+def test_empty_destination_blames_an_integral_src_by_name(op_name, device):
+    """``grid_sample`` rejects an integral image on both paths; the message must name ``src``.
+
+    Scoped away from MPS, whose ``grid_sample`` accepts an integral image and samples it back into
+    ``int64`` instead of rejecting it, so the non-empty half of the pairing does not hold there.
+    """
+    if device.type == "mps":
+        pytest.skip("MPS grid_sample accepts an integral image instead of rejecting it")
+    op = getattr(kornia.geometry.transform, op_name)
+    rows = 2 if op_name == "warp_affine" else 3
+    src = torch.zeros(1, 3, 3, 4, device=device, dtype=torch.int64)
+    matrix = torch.eye(3, device=device)[:rows].unsqueeze(0)
+
+    with pytest.raises(RuntimeError, match="floating point src"):
+        op(src, matrix, (0, 4))
+    # The non-empty path rejects it too, so the empty guard is not stricter.
+    with pytest.raises((RuntimeError, NotImplementedError)):
+        op(src, matrix, (1, 4))
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+def test_negative_destination_raises(op_name, device, dtype):
+    src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
+    transform = (
+        torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0)
+        if op_name == "warp_affine"
+        else torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
+    )
+    with pytest.raises(ValueError, match="must be non-negative"):
+        getattr(kornia.geometry.transform, op_name)(src, transform, (-1, 4))
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+def test_empty_destination_keeps_grid_sample_validation(op_name, device, dtype):
+    src = torch.rand(2, 3, 3, 4, device=device, dtype=dtype)
+    matrix_size = (2, 3) if op_name == "warp_affine" else (3, 3)
+    transform = torch.eye(*matrix_size, device=device, dtype=dtype).repeat(3, 1, 1)
+    op = getattr(kornia.geometry.transform, op_name)
+
+    with pytest.raises(RuntimeError, match="same batch size"):
+        op(src, transform, (0, 4))
+    with pytest.raises(ValueError, match="expected mode"):
+        op(src[:1], transform[:1], (0, 4), mode="invalid")
+    with pytest.raises(ValueError, match="expected padding_mode"):
+        op(src[:1], transform[:1], (0, 4), padding_mode="invalid")
+    if device.type == "cpu":
+        # The dtype policy mirrors the non-empty path: a transform that promotes into
+        # ``src.dtype`` is accepted, one that would narrow it is not.
+        narrow_src, wide_transform = src[:1].to(torch.float32), transform[:1].to(torch.float64)
+        with pytest.raises(RuntimeError):
+            op(narrow_src, wide_transform, (0, 4))
+        with pytest.raises(RuntimeError):
+            op(narrow_src, wide_transform, (1, 4))
+
+        wide_src, narrow_transform = src[:1].to(torch.float64), transform[:1].to(torch.float32)
+        empty_out = op(wide_src, narrow_transform, (0, 4))
+        assert empty_out.shape == (1, 3, 0, 4)
+        assert empty_out.dtype == op(wide_src, narrow_transform, (1, 4)).dtype == torch.float64
+
+    if op_name == "warp_affine":
+        with pytest.raises(ValueError, match="Bx2x3"):
+            op(src[:1], torch.eye(4, device=device, dtype=dtype).unsqueeze(0), (0, 4))
+
+
+@pytest.mark.parametrize("normalized_homography", [True, False])
+def test_homography_warp_negative_destination_raises(normalized_homography, device, dtype):
+    src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
+    transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
+    with pytest.raises(ValueError, match="must be non-negative"):
+        kornia.geometry.transform.homography_warp(src, transform, (-1, 4), normalized_homography=normalized_homography)
 
 
 class TestGetPerspectiveTransform(BaseTester):
@@ -218,6 +380,43 @@ class TestWarpAffine(BaseTester):
         img_b = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img_a = kornia.geometry.warp_affine(img_b, aff_ab, (height, width))
         self.assert_close(img_b, img_a)
+
+    @pytest.mark.parametrize("dsize", [(1, 4), (3, 1)])
+    def test_singleton_identity_agrees_with_perspective(self, dsize, device, dtype):
+        src = torch.arange(12.0, device=device, dtype=dtype).reshape(1, 1, 3, 4)
+        affine = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0)
+        perspective = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
+
+        actual = kornia.geometry.warp_affine(src, affine, dsize, align_corners=True)
+        expected = kornia.geometry.warp_perspective(src, perspective, dsize, align_corners=True)
+        literal = (
+            torch.tensor([[[[0.0, 1.0, 2.0, 3.0]]]], device=device, dtype=dtype)
+            if dsize[0] == 1
+            else torch.tensor([[[[0.0], [4.0], [8.0]]]], device=device, dtype=dtype)
+        )
+
+        self.assert_close(actual, expected)
+        self.assert_close(actual, literal)
+
+    @pytest.mark.parametrize("dsize", [(1, 4), (3, 1)])
+    def test_singleton_identity_survives_tracing(self, dsize, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            # ``torch.jit.trace`` hands ``F.affine_grid`` tensor sizes, and ``affine_grid_generator``
+            # has no cpu Half/BFloat16 kernel, so tracing a singleton warp raises
+            # ``NotImplementedError: "tensor_cpu" not implemented for 'Half'`` before reaching any
+            # kornia code. A non-singleton ``dsize`` traces fine at the same dtype.
+            pytest.skip("traced affine_grid has no cpu half-precision kernel")
+        src = torch.arange(12.0, device=device, dtype=dtype).reshape(1, 1, 3, 4)
+        affine = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0)
+        expected = kornia.geometry.warp_affine(src, affine, dsize, align_corners=True)
+
+        class SingletonWarp(torch.nn.Module):
+            def forward(self, image, transform):
+                return kornia.geometry.warp_affine(image, transform, dsize, align_corners=True)
+
+        with pytest.warns(UserWarning, match="unit-size grids"):
+            traced = torch.jit.trace(SingletonWarp(), (src, affine), check_trace=False)
+        self.assert_close(traced(src, affine), expected)
 
     @pytest.mark.parametrize("batch_shape", ([1, 3, 2, 5], [2, 4, 3, 4], [3, 5, 6, 2]))
     @pytest.mark.parametrize("out_shape", ([2, 5], [3, 4], [6, 2]))
@@ -581,6 +780,73 @@ class TestRemap(BaseTester):
             input_org, grid[..., 0], grid[..., 1], normalized_coordinates=False, align_corners=True
         )
         self.assert_close(input_org, input_warped, rtol=1e-4, atol=1e-4)
+
+    def test_singleton_identity_with_default_align_corners(self, device, dtype):
+        image = torch.tensor([[[[4.0]]]], device=device, dtype=dtype)
+        pixel_grid = kornia.geometry.create_meshgrid(1, 1, normalized_coordinates=False, device=device, dtype=dtype)
+
+        actual = kornia.geometry.remap(image, pixel_grid[..., 0], pixel_grid[..., 1])
+
+        self.assert_close(actual, image, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("source_empty", [False, True])
+    def test_empty_maps_return_autograd_connected_output(self, source_empty, device, dtype):
+        _skip_if_mps_empty_grid_sample(device)
+        source_height = 0 if source_empty else 3
+        image = torch.empty(1, 2, source_height, 5, device=device, dtype=dtype, requires_grad=True)
+        map_x = torch.empty(1, 0, 5, device=device, dtype=dtype, requires_grad=True)
+        map_y = torch.empty(1, 0, 5, device=device, dtype=dtype, requires_grad=True)
+
+        output = kornia.geometry.remap(image, map_x, map_y)
+
+        assert output.shape == (1, 2, 0, 5)
+        output.sum().backward()
+        assert image.grad is not None
+        assert map_x.grad is not None
+        assert map_y.grad is not None
+
+    def test_empty_maps_keep_grid_sample_validation(self, device, dtype):
+        image = torch.empty(1, 2, 0, 5, device=device, dtype=dtype)
+        map_x = torch.empty(1, 0, 5, device=device, dtype=dtype)
+        map_y = torch.empty(1, 0, 5, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="expected mode"):
+            kornia.geometry.remap(image, map_x, map_y, mode="invalid")
+        with pytest.raises(ValueError, match="expected padding_mode"):
+            kornia.geometry.remap(image, map_x, map_y, padding_mode="fill")
+
+    @pytest.mark.parametrize("image_dtype", [torch.float32, torch.float64])
+    @pytest.mark.parametrize("map_dtype", [torch.float32, torch.float64, torch.int64])
+    @pytest.mark.parametrize("normalized_coordinates", [False, True])
+    def test_empty_maps_follow_nonempty_dtype_policy(self, image_dtype, map_dtype, normalized_coordinates, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        image = torch.zeros(1, 2, 4, 5, device=device, dtype=image_dtype)
+
+        def call(map_):
+            return kornia.geometry.remap(image, map_, map_, normalized_coordinates=normalized_coordinates)
+
+        empty_map = torch.zeros(1, 0, 5, device=device, dtype=map_dtype)
+        nonempty_map = torch.zeros(1, 1, 5, device=device, dtype=map_dtype)
+
+        # Empty maps must accept exactly what the non-empty pipeline accepts. Pixel maps are
+        # normalized first, so an integer map lifts into the default floating dtype (matching a
+        # float32 image, not a float64 one); already-normalized maps reach ``grid_sample``
+        # unchanged and must match the image dtype exactly.
+        empty_dtype = _output_dtype_or_none(lambda: call(empty_map))
+        assert empty_dtype == _output_dtype_or_none(lambda: call(nonempty_map))
+        if image_dtype == map_dtype:
+            # Guards the paired assertion above against passing vacuously on two failures.
+            assert empty_dtype == image_dtype
+            assert call(empty_map).shape == (1, 2, 0, 5)
+
+    def test_empty_source_with_nonempty_maps_raises(self, device, dtype):
+        image = torch.empty(1, 2, 0, 5, device=device, dtype=dtype)
+        map_x = torch.empty(1, 2, 5, device=device, dtype=dtype)
+        map_y = torch.empty(1, 2, 5, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="must be positive"):
+            kornia.geometry.remap(image, map_x, map_y)
 
     def test_different_size(self, device, dtype):
         height, width = 3, 4
