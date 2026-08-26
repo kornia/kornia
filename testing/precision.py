@@ -45,7 +45,9 @@ def unrepresentable_sizes(dtype: torch.dtype, *, lo: int = 2, hi: int = 4096) ->
     Args:
         dtype: a floating dtype. Integer dtypes raise ``TypeError``.
         lo: smallest size to consider (inclusive).
-        hi: largest size to consider (inclusive).
+        hi: largest size to consider (inclusive). Keep it below ``torch.finfo(dtype).max`` (65504 for
+            float16): above that every candidate casts to ``inf`` and the round-trip back to
+            ``int64`` is meaningless, so the result would be garbage rather than a size sweep.
 
     Returns:
         sorted sizes, empty when every integer in range is exact (float32/float64 below 2**24).
@@ -102,11 +104,13 @@ def assert_capture_matches_eager(
             ``"compile"`` for ``torch.compile(fullgraph=True, dynamic=True)``.
 
     Raises:
-        ValueError: when ``sizes`` is empty.
+        ValueError: when ``capture`` is not ``"trace"`` or ``"compile"``, or when ``sizes`` is empty.
         AssertionError: on the first size where an output differs, naming size, output index,
             shape/dtype mismatch or max abs difference.
 
     """
+    if capture not in ("trace", "compile"):
+        raise ValueError(f"capture must be 'trace' or 'compile', got {capture!r}")
     if len(sizes) == 0:
         raise ValueError(
             "assert_capture_matches_eager needs at least one size: an empty sweep asserts nothing and "

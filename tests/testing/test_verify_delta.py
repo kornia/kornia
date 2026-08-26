@@ -16,8 +16,11 @@
 #
 
 import os
+import re
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from testing import verify_delta
 from testing.verify_delta import (
@@ -54,6 +57,17 @@ class TestChangedTestDirs:
     def test_top_level_module_files(self):
         assert changed_test_dirs(["kornia/constants.py"]) == ["tests"]
 
+    def test_a_module_without_a_test_dir_of_its_own_widens_to_everything(self, tmp_path: Path, capsys):
+        # kornia/transpiler/ is the live example: mapping it to a non-existent tests/transpiler and
+        # then dropping the missing path would leave the change unverified behind a clean verdict.
+        (tmp_path / "tests" / "geometry").mkdir(parents=True)
+        assert changed_test_dirs(["kornia/transpiler/transpiler.py"], tmp_path) == ["tests"]
+        assert "kornia/transpiler/transpiler.py maps to tests/transpiler" in capsys.readouterr().out
+
+    def test_a_module_with_a_test_dir_is_not_widened(self, tmp_path: Path):
+        (tmp_path / "tests" / "geometry").mkdir(parents=True)
+        assert changed_test_dirs(["kornia/geometry/grid.py"], tmp_path) == ["tests/geometry"]
+
 
 JUNIT = """<?xml version="1.0" encoding="utf-8"?>
 <testsuites><testsuite name="pytest" errors="1" failures="1" skipped="1" tests="4">
@@ -77,8 +91,6 @@ class TestFailingIds:
         }
 
     def test_missing_file_is_an_error(self, tmp_path: Path):
-        import pytest
-
         with pytest.raises(FileNotFoundError):
             failing_ids(tmp_path / "nope.xml")
 
@@ -167,8 +179,6 @@ class TestOnlyThroughATaskShell:
         assert [s.name for s in chosen] == ["cpu float32", "mps float32"]
 
     def test_unknown_surface_is_an_error(self):
-        import pytest
-
         with pytest.raises(SystemExit, match="unknown surface"):
             select_surfaces(parse_args(["--only", "cuda", "float32"]), mps_available=True)
 
@@ -176,10 +186,19 @@ class TestOnlyThroughATaskShell:
 class _FakeRun:
     """Stand-in for ``subprocess.run`` that records argv and kwargs and never launches anything."""
 
-    def __init__(self, stdout: str = "", stdout_by_arg: dict[str, str] | None = None, junit: str | None = None):
+    def __init__(
+        self,
+        stdout: str = "",
+        stdout_by_arg: dict[str, str] | None = None,
+        junit: str | None = None,
+        fails_for: tuple[str, ...] = (),
+        stderr: str = "",
+    ):
         self.stdout = stdout
         self.stdout_by_arg = stdout_by_arg or {}  # first matching argv entry wins, e.g. keyed by a tree path
         self.junit = junit  # written to the --junitxml path, standing in for what pytest would report
+        self.fails_for = fails_for  # argv entries whose command exits non-zero, e.g. "symbolic-ref"
+        self.stderr = stderr
         self.calls: list[list[str]] = []
         self.kwargs: list[dict] = []
 
@@ -187,6 +206,8 @@ class _FakeRun:
         argv = [str(a) for a in argv]
         self.calls.append(argv)
         self.kwargs.append(kwargs)
+        if any(token in argv for token in self.fails_for):
+            raise verify_delta.subprocess.CalledProcessError(1, argv, stderr=self.stderr)
         for arg in argv if self.junit is not None else []:
             if arg.startswith("--junitxml="):
                 Path(arg.split("=", 1)[1]).write_text(self.junit)
@@ -221,7 +242,8 @@ class TestRunSurface:
             assert kwargs["env"]["KORNIA_TEST_DEVICE"] == "cpu"
             assert kwargs["env"]["KORNIA_TEST_OPTIMIZER"] == "inductor"
         assert fake.calls[-1][-3:] == ["-k", "dynamo or compile", "tests"]
-        assert os.environ.get("PYTHONPATH") is None  # the child env is not leaked into this process
+        # a fresh dict, so setting PYTHONPATH for the child never mutates this process's environment
+        assert all(kwargs["env"] is not os.environ for kwargs in fake.kwargs)
 
     def test_paths_absent_from_the_tree_are_dropped_not_fatal(self, tmp_path: Path, monkeypatch, capsys):
         # pytest aborts collection entirely when any argument path is missing, which would silently
@@ -246,18 +268,29 @@ class TestRunSurface:
         assert "nothing to run" in capsys.readouterr().out
 
 
+def _reusable_worktree_run(repo: Path, **kwargs) -> _FakeRun:
+    """A fake git in which the reused path is a detached worktree of ``repo`` and ``repo`` is primary."""
+    defaults = {
+        "stdout": str(repo / ".git"),  # both trees report the same .git common dir
+        "stdout_by_arg": {"--porcelain": f"worktree {repo}\nHEAD abc1234\nbranch refs/heads/main\n"},
+        # `git symbolic-ref -q HEAD` exits non-zero exactly when HEAD is detached
+        "fails_for": ("symbolic-ref",),
+    }
+    return _FakeRun(**{**defaults, **kwargs})
+
+
 class TestEnsureMainWorktree:
     def test_a_local_base_revision_is_not_fetched(self, tmp_path: Path, monkeypatch):
-        fake = _FakeRun()
+        fake = _reusable_worktree_run(tmp_path / "repo")
         monkeypatch.setattr(verify_delta.subprocess, "run", fake)
-        verify_delta._ensure_main_worktree(tmp_path, "HEAD~1", tmp_path, fetch=True)
+        verify_delta._ensure_main_worktree(tmp_path / "repo", "HEAD~1", tmp_path, fetch=True)
         assert not any("fetch" in call for call in fake.calls)
 
     def test_a_remote_base_revision_is_fetched(self, tmp_path: Path, monkeypatch):
-        fake = _FakeRun()
+        fake = _reusable_worktree_run(tmp_path / "repo")
         monkeypatch.setattr(verify_delta.subprocess, "run", fake)
-        verify_delta._ensure_main_worktree(tmp_path, "origin/main", tmp_path, fetch=True)
-        assert ["git", "-C", str(tmp_path), "fetch", "origin", "main"] in fake.calls
+        verify_delta._ensure_main_worktree(tmp_path / "repo", "origin/main", tmp_path, fetch=True)
+        assert ["git", "-C", str(tmp_path / "repo"), "fetch", "origin", "main"] in fake.calls
 
 
 class TestAssertImportsFrom:
@@ -267,8 +300,6 @@ class TestAssertImportsFrom:
         verify_delta._assert_imports_from(tmp_path, {"PYTHONPATH": str(tmp_path)})  # does not raise
 
     def test_rejects_kornia_imported_from_another_checkout(self, tmp_path: Path, monkeypatch):
-        import pytest
-
         # the shared .venv re-points its editable kornia install to whichever tree ran uv last
         fake = _FakeRun(stdout=str(tmp_path.parent / "elsewhere" / "kornia" / "__init__.py"))
         monkeypatch.setattr(verify_delta.subprocess, "run", fake)
@@ -277,18 +308,49 @@ class TestAssertImportsFrom:
 
 
 class TestEnsureMainWorktreeReuse:
-    def test_reuses_a_path_that_is_a_worktree_of_this_repo(self, tmp_path: Path, monkeypatch):
+    def test_reuses_a_detached_scratch_worktree_of_this_repo(self, tmp_path: Path, monkeypatch):
         repo, wt = tmp_path / "repo", tmp_path / "wt"
         repo.mkdir()
         wt.mkdir()
-        fake = _FakeRun(stdout=str(repo / ".git"))  # both trees share one .git common dir
+        fake = _reusable_worktree_run(repo)
         monkeypatch.setattr(verify_delta.subprocess, "run", fake)
         verify_delta._ensure_main_worktree(repo, "origin/main", wt, fetch=False)
         assert ["git", "-C", str(wt), "checkout", "--detach", "origin/main"] in fake.calls
 
-    def test_refuses_a_leftover_directory_that_belongs_to_another_repo(self, tmp_path: Path, monkeypatch):
-        import pytest
+    def test_refuses_a_worktree_whose_head_is_on_a_branch(self, tmp_path: Path, monkeypatch):
+        # a linked worktree of this same repo, but with a branch checked out: detaching it at `base`
+        # would move somebody off the branch they were working on.
+        repo, wt = tmp_path / "repo", tmp_path / "wt"
+        repo.mkdir()
+        wt.mkdir()
+        fake = _FakeRun(stdout=str(repo / ".git"))  # symbolic-ref succeeds -> HEAD is attached
+        monkeypatch.setattr(verify_delta.subprocess, "run", fake)
+        with pytest.raises(SystemExit, match=rf"{re.escape(str(wt))}.*looks like a user checkout"):
+            verify_delta._ensure_main_worktree(repo, "origin/main", wt, fetch=False)
+        assert not any("checkout" in call for call in fake.calls)
 
+    def test_refuses_the_repos_own_main_worktree(self, tmp_path: Path, monkeypatch):
+        # detached, same repo, but it is the primary worktree -- the user's own checkout.
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        fake = _reusable_worktree_run(repo)
+        monkeypatch.setattr(verify_delta.subprocess, "run", fake)
+        with pytest.raises(SystemExit, match=rf"{re.escape(str(repo))}.*looks like a user checkout"):
+            verify_delta._ensure_main_worktree(repo, "origin/main", repo, fetch=False)
+        assert not any("checkout" in call for call in fake.calls)
+
+    def test_a_checkout_that_fails_is_reported_not_raised_raw(self, tmp_path: Path, monkeypatch):
+        repo, wt = tmp_path / "repo", tmp_path / "wt"
+        repo.mkdir()
+        wt.mkdir()
+        fake = _reusable_worktree_run(repo, fails_for=("symbolic-ref", "checkout"), stderr="local changes")
+        monkeypatch.setattr(verify_delta.subprocess, "run", fake)
+        with pytest.raises(
+            SystemExit, match=rf"{re.escape(str(wt))} is dirty or cannot check out origin/main: local changes"
+        ):
+            verify_delta._ensure_main_worktree(repo, "origin/main", wt, fetch=False)
+
+    def test_refuses_a_leftover_directory_that_belongs_to_another_repo(self, tmp_path: Path, monkeypatch):
         repo, wt = tmp_path / "repo", tmp_path / "wt"
         repo.mkdir()
         wt.mkdir()
@@ -300,8 +362,6 @@ class TestEnsureMainWorktreeReuse:
         assert not any("checkout" in call for call in fake.calls)
 
     def test_refuses_a_path_that_is_not_in_any_repository(self, tmp_path: Path, monkeypatch):
-        import pytest
-
         repo, wt = tmp_path / "repo", tmp_path / "wt"
         repo.mkdir()
         wt.mkdir()

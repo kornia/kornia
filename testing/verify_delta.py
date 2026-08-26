@@ -35,8 +35,14 @@ from pathlib import Path
 WIDEN_PREFIXES = ("testing/", "tests/conftest.py", "conftest.py", "pyproject.toml", "pixi.toml")
 
 
-def changed_test_dirs(changed_files: Iterable[str]) -> list[str]:
-    """Map changed paths to the test directories that exercise them (``["tests"]`` when everything)."""
+def changed_test_dirs(changed_files: Iterable[str], repo: Path | None = None) -> list[str]:
+    """Map changed paths to the test directories that exercise them (``["tests"]`` when everything).
+
+    Pass ``repo`` to check the mapping against the tree: a library module with no ``tests/<mod>``
+    directory of its own (``kornia/transpiler/`` today) widens the run to the whole suite instead of
+    mapping to a path that does not exist, which would otherwise leave the change unverified while
+    the tool still reported a pass.
+    """
     dirs: set[str] = set()
     for f in changed_files:
         if f.startswith(WIDEN_PREFIXES):
@@ -45,7 +51,11 @@ def changed_test_dirs(changed_files: Iterable[str]) -> list[str]:
         if parts[0] == "kornia":
             if len(parts) == 2:  # kornia/constants.py and friends have no dedicated test dir
                 return ["tests"]
-            dirs.add(f"tests/{parts[1]}")
+            mapped = f"tests/{parts[1]}"
+            if repo is not None and not (repo / mapped).exists():
+                print(f"{f} maps to {mapped}, which does not exist; widening to the whole suite")
+                return ["tests"]
+            dirs.add(mapped)
         elif parts[0] == "tests" and len(parts) > 2:
             dirs.add(f"tests/{parts[1]}")
     return sorted(dirs)
@@ -137,7 +147,7 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     p.add_argument("--only", nargs="+", help="surface names to run")
     p.add_argument("--main-worktree", type=Path, help="where to check out --base (default: a sibling dir)")
     p.add_argument("--no-fetch", action="store_true")
-    p.add_argument("--out", type=Path, help="directory for junit files (default: <main-worktree>/../.verify-delta)")
+    p.add_argument("--out", type=Path, help="directory for junit files (default: <repo>/../.<repo>-verify-delta)")
     return p.parse_args(args)
 
 
@@ -188,6 +198,23 @@ def _git_common_dir(tree: Path) -> Path:
     return (tree / _git(tree, "rev-parse", "--git-common-dir")).resolve()
 
 
+def _is_detached(tree: Path) -> bool:
+    """Report whether ``tree`` has a detached HEAD; ``symbolic-ref`` exits non-zero exactly then."""
+    try:
+        _git(tree, "symbolic-ref", "-q", "HEAD")
+    except subprocess.CalledProcessError:
+        return True
+    return False
+
+
+def _primary_worktree(repo: Path) -> Path | None:
+    """Return the repo's main (non-linked) worktree, the first ``git worktree list --porcelain`` entry."""
+    lines = _git(repo, "worktree", "list", "--porcelain").splitlines()
+    if not lines or not lines[0].startswith("worktree "):
+        return None  # unrecognised output: leave the verdict to the detached-HEAD check
+    return Path(lines[0][len("worktree ") :]).resolve()
+
+
 def _ensure_main_worktree(repo: Path, base: str, path: Path, fetch: bool) -> None:
     """Create (or re-point) a detached worktree of ``base`` at ``path``."""
     remote, _, ref = base.partition("/")
@@ -205,7 +232,18 @@ def _ensure_main_worktree(repo: Path, base: str, path: Path, fetch: bool) -> Non
             same_repo = False
         if not same_repo:
             raise SystemExit(f"{path} exists but is not a worktree of {repo}; remove it or pass --main-worktree")
-        _git(path, "checkout", "--detach", base)
+        # a worktree of this repo is still not ours to detach: an attached HEAD or the repo's own
+        # primary worktree is somebody's working copy, and checking `base` out there would move the
+        # branch they are on out from under them.
+        if not _is_detached(path) or path.resolve() == _primary_worktree(repo):
+            raise SystemExit(
+                f"{path} looks like a user checkout (its HEAD is on a branch, or it is the repo's main "
+                f"worktree), not a scratch worktree; remove it or pass --main-worktree"
+            )
+        try:
+            _git(path, "checkout", "--detach", base)
+        except subprocess.CalledProcessError as exc:
+            raise SystemExit(f"{path} is dirty or cannot check out {base}: {(exc.stderr or '').strip()}") from exc
     else:
         _git(repo, "worktree", "add", "--detach", str(path), base)
 
@@ -265,7 +303,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _ensure_main_worktree(repo, args.base, main_wt, fetch=not args.no_fetch)
 
     changed = _git(repo, "diff", "--name-only", f"{args.base}...HEAD").splitlines()
-    tests = args.tests or [d for d in changed_test_dirs(changed) if (repo / d).exists()]
+    tests = args.tests or changed_test_dirs(changed, repo)
     if not tests:
         print("no test directories map to the changed files; nothing to verify")
         return 0

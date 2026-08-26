@@ -127,7 +127,8 @@ class TestAssertCaptureMatchesEager:
         previous = torch.get_default_dtype()
         torch.set_default_dtype(default_dtype)
         try:
-            with pytest.raises(AssertionError, match="size"):
+            first_bad = unrepresentable_sizes(default_dtype)[0]
+            with pytest.raises(AssertionError, match=rf"size {first_bad}, output 0"):
                 assert_capture_matches_eager(
                     _ntp_default_dtype(hist.normal_transform_pixel_1522441d),
                     lambda size, device, dtype: (torch.zeros(1, 1, size, 5, device=device),),
@@ -182,6 +183,19 @@ class TestAssertCaptureMatchesEager:
                 dtype=torch.float32,
             )
 
+    def test_rejects_an_unknown_capture(self, device):
+        # an unrecognised value used to fall through both branches and surface as an
+        # UnboundLocalError on ``captured_fn``, which reads as a helper bug rather than a typo.
+        with pytest.raises(ValueError, match="capture must be 'trace' or 'compile', got 'inductor'"):
+            assert_capture_matches_eager(
+                _meshgrid_of(kornia.geometry.create_meshgrid),
+                _image_hw,
+                sizes=[2],
+                device=device,
+                dtype=torch.float32,
+                capture="inductor",
+            )
+
     def test_compile_capture_runs_or_skips(self, device, torch_optimizer):
         # ``torch_optimizer`` is the conftest fixture; the test name carries ``compile`` so it is
         # deselected unless KORNIA_TEST_OPTIMIZER is set, exactly like the rest of the suite.
@@ -212,25 +226,22 @@ class TestAssertDegeneratePathParity:
             # zero-shaped, even though src is not. Reproduces with a bare
             # ``F.grid_sample(torch.zeros(1, 1, 4, 4, device="mps"), torch.zeros(1, 0, 4, 2,
             # device="mps"), align_corners=True, mode="bilinear", padding_mode="zeros")``, so this
-            # is a real, reportable MPS gap in warp_affine's degenerate path -- see
-            # task-4-report.md.
+            # is a real, reportable MPS gap in warp_affine's degenerate path -- kornia#4032.
             pytest.skip("warp_affine's empty-dsize path crashes on MPS: F.grid_sample asserts on a zero-sized grid")
         full = self._warp_kwargs(device, (4, 4))
         empty = self._warp_kwargs(device, (0, 4))
         bad = [
             ("M", torch.eye(2, 3, device=device, dtype=torch.int64)[None]),
             ("M", torch.eye(3, 3, device=device, dtype=torch.float32)[None]),
+            # float64 is safe to build here: MPS, which has no float64 tensors at all, skipped above.
+            ("M", torch.zeros(1, 2, 3, device=device, dtype=torch.float64)),
             # NOT an integral ``src`` (torch.zeros(1, 1, 4, 4, dtype=torch.int64)): on the full
             # path it reaches ``F.grid_sample``, which raises NotImplementedError
             # ("grid_sampler_2d_cpu_kernel_impl" not implemented for 'Long'); on the degenerate
             # (dsize with a zero dimension) path, ``_empty_warp_output_2d`` raises its own
             # RuntimeError ("Expected a floating point src, got torch.int64.") before ever
-            # reaching grid_sample. Real discrepancy -- see task-4-report.md.
+            # reaching grid_sample. Real discrepancy -- kornia#4031.
         ]
-        if torch.device(device).type != "mps":
-            # MPS has no float64 tensors at all (construction itself raises TypeError), so this
-            # dtype-mismatch case can only be exercised on cpu/cuda.
-            bad.append(("M", torch.zeros(1, 2, 3, device=device, dtype=torch.float64)))
         assert_degenerate_path_parity(kornia.geometry.transform.warp_affine, full, empty, bad)
 
     def test_detects_a_laxer_degenerate_path(self):

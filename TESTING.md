@@ -290,7 +290,8 @@ from testing import assert_capture_matches_eager, unrepresentable_sizes
 
 def test_trace_matches_eager(device, dtype):
     def grid(image):
-        return kornia.geometry.create_meshgrid(image.shape[-2], image.shape[-1], device=image.device, dtype=image.dtype)
+        h, w = image.shape[-2], image.shape[-1]
+        return kornia.geometry.create_meshgrid(h, w, device=image.device, dtype=image.dtype)
 
     assert_capture_matches_eager(
         grid,
@@ -307,6 +308,8 @@ Rules the helpers enforce, for code that is written by hand:
 - Resolve `dtype=None` to `torch.get_default_dtype()` *before* deciding whether to promote.
 - Guard a cast-back on `is_floating_point()` — an integral grid dtype must stay promoted.
 - Compile tests carry `dynamo` or `compile` in their name (they are deselected otherwise).
+
+---
 
 ## Writing Robust Tests
 
