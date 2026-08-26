@@ -673,9 +673,25 @@ class TestAngleAxisToQuaternion(BaseTester):
         self.assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("input_dtype", (torch.int16, torch.int32, torch.int64, torch.uint8))
-    def test_integer_input(self, input_dtype, device):
-        # an integer input used to be written back into an integer output buffer, which truncated
-        # every component to zero. see https://github.com/kornia/kornia/issues/3948
+    def test_convention_integer_input_is_promoted_to_float_3948(self, input_dtype, device):
+        # Convention, and the answer kornia#3948 settled: an integer axis-angle is PROMOTED, not
+        # rejected. The output buffer used to be allocated with dtype=axis_angle.dtype, so an
+        # integer input got an integer buffer and every component was truncated on the way in --
+        # the function returned tensor([0, 0, 0, 0]), not merely a wrong quaternion but a zero-norm
+        # one, with no error and no warning. The buffer now takes its dtype from the computed
+        # values (sqrt already promotes them), so the result is the float quaternion below.
+        # The wart this replaces said the intended behavior was undecided -- promote, or raise a
+        # TypeError the way a dtype guard would. Promotion is the choice; the sibling wart
+        # TestNormalTransformPixel.test_wart_integer_dtype_truncates_the_scale_to_zero_3959 pins
+        # the same family of defect and is still open, so this pin is also the precedent it should
+        # follow.
+        # Four cells because the promotion happens through torch's own type rules rather than an
+        # explicit .float(): a signed/unsigned or narrow/wide difference would show up here.
+        # The dtype fixture is dropped because the claim is about the input dtype itself.
+        # Snippet used to generate expected (torch + stdlib, executed on cpu):
+        #   axis_angle_to_quaternion(torch.tensor([1., 0., 0.])) ->
+        #     [0.8775825500488281, 0.4794255495071411, 0.0, 0.0]      (float32 reference)
+        #   math.cos(0.5), math.sin(0.5) -> (0.8775825618903728, 0.479425538604203)
         axis_angle = torch.tensor((1, 0, 0), device=device, dtype=input_dtype)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert quaternion.is_floating_point()
@@ -683,7 +699,13 @@ class TestAngleAxisToQuaternion(BaseTester):
         self.assert_close(quaternion, expected, atol=1.0e-4, rtol=1.0e-4)
 
     @pytest.mark.parametrize("input_dtype", (torch.float16, torch.bfloat16, torch.float32, torch.float64))
-    def test_float_input_keeps_dtype(self, input_dtype, device):
+    def test_convention_float_input_keeps_its_dtype_3948(self, input_dtype, device):
+        # The other side of the #3948 buffer change, and the regression it could have introduced:
+        # taking the buffer dtype from the computed values must NOT widen a float input. float16
+        # and bfloat16 are the cells that matter -- a fix written as `.float()` or as an explicit
+        # torch.float32 buffer would silently upcast them, which is exactly the half-precision
+        # surface kornia treats as its own. The tolerance is set for float16, the widest of the
+        # four; the float32/float64 values are pinned exactly by the numerical tests above.
         axis_angle = torch.tensor((1.0, 0.0, 0.0), device=device, dtype=input_dtype)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert quaternion.dtype == input_dtype
@@ -831,30 +853,6 @@ class TestAngleAxisToQuaternion(BaseTester):
             f"`{deprecated_name}` returned NaN; an exact comparison of two NaNs is not a match this pin should accept"
         )
         torch.testing.assert_close(actual, expected, rtol=0, atol=0)
-
-    def test_wart_integer_input_returns_the_zero_quaternion_3948(self, device):
-        # Wart pin for kornia#3948: axis_angle_to_quaternion allocates its output buffer with
-        # dtype=axis_angle.dtype, so an integer input gets an int64 buffer and every component is
-        # truncated to 0. The function returns tensor([0, 0, 0, 0]) -- not merely a wrong
-        # quaternion but a zero-norm one, with no error and no warning. If this fails, #3948 was
-        # (partly) fixed -- remove this pin. NOT a contract that integer input must keep returning
-        # zeros.
-        # There is deliberately NO companion strict xfail here, unlike every other bug pinned in
-        # this batch: the intended behavior is genuinely undecided. A fix could promote to float
-        # and return the float reference in the snippet below, or it could raise TypeError the way
-        # a dtype guard would; an assertion-shaped xfail can express only the first, so it would
-        # stay silently XFAIL forever if the fix chose to raise. Same reasoning, and same shape, as
-        # TestRadDegConversions.test_wart_integer_input_truncates_pi_to_3_3937.
-        # Snippet used to generate expected (torch + stdlib, executed on cpu):
-        #   axis_angle_to_quaternion(torch.tensor([1, 0, 0]))    -> tensor([0, 0, 0, 0]), int64
-        #   (torch.int32 and torch.int16 inputs give [0, 0, 0, 0] in their own dtype too)
-        #   axis_angle_to_quaternion(torch.tensor([1., 0., 0.])) ->
-        #     [0.8775825500488281, 0.4794255495071411, 0.0, 0.0]      (float32 reference)
-        #   math.cos(0.5), math.sin(0.5) -> (0.8775825618903728, 0.479425538604203)
-        out = kornia.geometry.conversions.axis_angle_to_quaternion(torch.tensor([1, 0, 0], device=device))
-
-        assert out.dtype == torch.int64, "kornia#3948: integer input no longer keeps its integer output buffer"
-        assert out.tolist() == [0, 0, 0, 0], "kornia#3948: integer input no longer truncates to the zero quaternion"
 
     @pytest.mark.xfail(
         raises=AssertionError,
@@ -3967,11 +3965,14 @@ class TestNormalTransformPixel(BaseTester):
         # runs, which CUDA would not implement). The 3-D cell keeps depth = 2 so that its z scale, 2/1 = 2,
         # survives the truncation: a partial fix that only promotes float scales would still have
         # to flip the two zeroed axes.
-        # There is deliberately NO companion strict xfail, for the same reason as
-        # test_wart_integer_input_returns_the_zero_quaternion_3948: the intended behavior is
-        # undecided (promote to float, or raise), and an assertion-shaped xfail can express only
-        # the first. If either cell fails, #3959 was (partly) fixed -- remove this pin. NOT a
-        # contract that an integer dtype must keep returning a degenerate matrix.
+        # There is deliberately NO companion strict xfail: the intended behavior is undecided
+        # (promote to float, or raise), and an assertion-shaped xfail can express only the first.
+        # kornia#3948, the same defect in axis_angle_to_quaternion, was settled by PROMOTING --
+        # see TestAngleAxisToQuaternion.test_convention_integer_input_is_promoted_to_float_3948 --
+        # so that is the precedent a fix here should follow, but it is precedent and not a decision
+        # taken for this function, which is why the pin stays a wart rather than becoming an xfail.
+        # If either cell fails, #3959 was (partly) fixed -- remove this pin. NOT a contract that an
+        # integer dtype must keep returning a degenerate matrix.
         # The dtype fixture is dropped because the claim is about the dtype argument itself.
         # Snippet used to generate expected (torch only, executed on cpu):
         #   normal_transform_pixel(4, 5, dtype=torch.int64)
@@ -5510,7 +5511,7 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         # There is deliberately NO companion strict xfail: the intended behavior is undecided -- a
         # fix could raise on a non-orthogonal R, or fall back to a true inverse -- and an
         # assertion-shaped xfail could express only one of those and would stay silently XFAIL if
-        # the other were chosen. Same shape as the #3948 wart pins in this file.
+        # the other were chosen. Same shape as the #3959 and #3957 wart pins in this file.
         # If any cell fails, #3961 was (partly) fixed -- remove this pin. NOT a contract that a
         # non-orthogonal R must keep producing these numbers.
         # R = [[1, 0.5, 0], [0, 1, 0], [0, 0, 2]] has det = 2 and dyadic entries, so every literal
