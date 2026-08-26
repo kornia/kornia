@@ -90,3 +90,9 @@ When an op breaks, trace to the deepest `kornia/` frame first — the break is o
 ## What's already compile-clean
 
 Most of the numeric core already compiles (filters, color, geometry transforms, losses, morphology, metrics). Sweep before assuming a break exists.
+
+## Related skills
+
+Tests for the compiled path use `kornia-precision-testing` (sizes that cannot pass vacuously,
+eager-vs-compile byte-equality via `testing.precision`). Responding to review on the resulting PR
+follows `kornia-review-loop`.
