@@ -49,7 +49,11 @@ would have converged in two rounds if each push had been gated.
    issue and link it in the reply. Mid-PR additions are reviewed as fixes and generate rounds. The
    PR only shrinks or corrects during review. A same-class defect in a sibling function is in scope
    only after step 2's `main` probe has been run on that sibling too; a guard you tighten without
-   probing `main` may be removing behaviour `main` deliberately preserves.
+   probing `main` may be removing behaviour `main` deliberately preserves. Probe what the sibling
+   currently *accepts* as well as what it rejects — enumerate its working calls at the merge-base
+   (unbatched matrix, empty `dsize`, singleton axis) and keep one test per call. A guard tightened
+   from `or` to `and` in `warp_perspective3d` passed every rejection probe and still broke the
+   unbatched `eye(4)` call the merge-base accepted (kornia#4006 eval, both model tiers).
 
 4. **Write tests that cannot pass vacuously.** Use the `kornia-precision-testing` skill for any
    test touching dtype, device, capture or degenerate sizes. Before trusting a new regression test,
@@ -72,9 +76,22 @@ would have converged in two rounds if each push had been gated.
    before promotion is decided; does a new compile test carry `dynamo`/`compile` in its name; do
    MPS/half skips match the nearest existing test; did a docstring, comment, or changelog sentence
    next to the change stop being true; does the fix in one function need mirroring in its 3d/other
-   sibling." Fix what it finds. Repeat once if it found anything. If you cannot dispatch a
-   subagent, perform the review yourself against the same list and paste the checklist WITH
-   outcomes into the reply to the reviewer — the step is not done until that artifact exists.
+   sibling." Fix what it finds. Repeat once if it found anything. Whether or not you could dispatch
+   a subagent, the reply to the reviewer MUST include this section, filled in, verbatim:
+
+   ```text
+   ### Delta self-review (prefix-<round>..HEAD)
+   - size cast into a half dtype before a division: <none | file:line + outcome>
+   - degenerate/empty path validates less or more than the full path: <…>
+   - dtype=None resolved before promotion is decided: <…>
+   - new compile test carries dynamo/compile in its name: <…>
+   - MPS/half skips match the nearest existing test: <…>
+   - docstring/comment/changelog next to the change still true: <…>
+   - fix mirrored in the 3d/other sibling, and the sibling's accepted calls still pass: <…>
+   ```
+
+   A reply without this section is an unanswered round. In 10 of 12 evaluation runs the review was
+   skipped when it was only described; it is performed when the section has to be filled in.
 
 6. **Gate: `pixi run verify-delta`.** Zero `new` failures on every available surface — the four
    `--only` names are `cpu float32`, `cpu float16,bfloat16,float64`, `mps float32`, and
@@ -120,6 +137,7 @@ would have converged in two rounds if each push had been gated.
 | "The finding came with numbers, it must be right" | Re-measure on main. Refute in writing if it reproduces there. |
 | "CI is green" | Green from which head? Check the run exists for the current SHA and the PR is not DIRTY. |
 | "MPS/half is not in CI so it is not my problem" | It is documented as supported. `verify-delta` runs it. |
+| "The sibling has the same typo, I'll fix both" | Probe the sibling's accepted calls first; the 3d guard's `or` was load-bearing for unbatched input. |
 
 ## Related
 
