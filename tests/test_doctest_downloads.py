@@ -70,7 +70,7 @@ class TestInstallDownloadGuard:
             assert torch.hub.download_url_to_file is not original
         assert torch.hub.download_url_to_file is original
 
-    def test_callback_receives_url(self, monkeypatch) -> None:
+    def test_callback_receives_url(self, monkeypatch, tmp_path) -> None:
         seen: list[str] = []
 
         def record(url: str) -> None:
@@ -80,7 +80,7 @@ class TestInstallDownloadGuard:
         with monkeypatch.context() as m:
             install_download_guard(m.setattr, record)
             with pytest.raises(RuntimeError, match="blocked"):
-                torch.hub.download_url_to_file("http://example.com/w.pth", "/tmp/w.pth")
+                torch.hub.download_url_to_file("http://example.com/w.pth", str(tmp_path / "w.pth"))
 
         assert seen == ["http://example.com/w.pth"]
 
@@ -93,12 +93,12 @@ class TestInstallDownloadGuard:
             )
         assert patched == []
 
-    def test_returning_callback_is_an_error(self, monkeypatch) -> None:
+    def test_returning_callback_is_an_error(self, monkeypatch, tmp_path) -> None:
         # A callback that returns would let the download silently proceed as a no-op.
         with monkeypatch.context() as m:
             install_download_guard(m.setattr, lambda url: None)
             with pytest.raises(AssertionError, match="returned instead of raising"):
-                torch.hub.download_url_to_file("http://example.com/w.pth", "/tmp/w.pth")
+                torch.hub.download_url_to_file("http://example.com/w.pth", str(tmp_path / "w.pth"))
 
 
 class TestPrimitivesStillExist:
