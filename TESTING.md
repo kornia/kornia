@@ -279,14 +279,17 @@ The `padding_mode="border"` issue in `F.grid_sample` (2D) is worked around in th
   `ValueError`: every candidate there casts to `inf` and round-trips back unchanged, so the sweep
   would be sizes no test can allocate.
 - `assert_capture_matches_eager(fn, make_inputs, sizes=..., device=..., dtype=..., capture="trace"|"compile")`
-  — byte-equality (`torch.equal`) between eager and `torch.jit.trace` / `torch.compile(fullgraph=True,
-  dynamic=True)`, size by size. Derive sizes from tensor shapes inside `fn`. `sizes` must not be
+  — byte-equality between eager and `torch.jit.trace` / `torch.compile(fullgraph=True,
+  dynamic=True)`, size by size. The comparison is on the raw bytes, not `torch.equal`, which is
+  numeric: it calls two NaNs unequal (a spurious failure) and `+0.0` equal to `-0.0` (a missed
+  sign-bit change). Derive sizes from tensor shapes inside `fn`. `sizes` must not be
   empty: `float32`/`float64` return `[]` from `unrepresentable_sizes`, so always include the
   degenerate sizes 1 and 2, e.g. `sizes=[1, 2, *unrepresentable_sizes(dtype)[:8]]`.
 - `assert_degenerate_path_parity(fn, full_kwargs, degenerate_kwargs, bad_inputs)` — an empty or
   singleton path must raise exactly what the full path raises for the same invalid input. Every
   `bad_inputs` name must already be a key of both kwargs dicts (an unknown name would be *added*
-  rather than substituted, and both paths would raise `TypeError` over a call never made); parity
+  rather than substituted, and both paths would raise `TypeError` over a call never made), and
+  `bad_inputs` must not be empty (with no pairs only the two baseline calls run); parity
   is compared on the exception type, so check the messages when two paths could raise the same type
   for unrelated reasons.
 

@@ -19,6 +19,12 @@
 
 Run as ``pixi run verify-delta`` (``python -m testing.verify_delta``). Counts are never compared —
 a branch can add and fix an equal number of tests and look unchanged by count.
+
+Exit codes: ``0`` no new failures on any surface that ran; ``1`` at least one ``new`` failure;
+``2`` at least one selected, available surface could not be measured, so the gate is partial. A
+surface excluded by ``--only`` (``not selected``) or absent from the machine (``unavailable``) is
+not a gap and does not affect the code. The branch side is refused when the checkout is dirty —
+the scope is ``base...HEAD`` but pytest runs the working tree, so the two must agree.
 """
 
 from __future__ import annotations
@@ -36,7 +42,10 @@ WIDEN_PREFIXES = ("testing/", "tests/conftest.py", "conftest.py", "pyproject.tom
 
 
 def changed_test_dirs(changed_files: Iterable[str], repo: Path | None = None) -> list[str]:
-    """Map changed paths to the test directories that exercise them (``["tests"]`` when everything).
+    """Map changed paths to the test targets that exercise them (``["tests"]`` when everything).
+
+    A test file directly under ``tests/`` maps to itself: it has no package directory to stand for
+    it, and a shared one there (``tests/__init__.py``, ``tests/benchmark.py``) widens to the suite.
 
     Pass ``repo`` to check the mapping against the tree: a library module with no ``tests/<mod>``
     directory of its own (``kornia/transpiler/`` today) widens the run to the whole suite instead of
@@ -56,8 +65,17 @@ def changed_test_dirs(changed_files: Iterable[str], repo: Path | None = None) ->
                 print(f"{f} maps to {mapped}, which does not exist; widening to the whole suite")
                 return ["tests"]
             dirs.add(mapped)
-        elif parts[0] == "tests" and len(parts) > 2:
-            dirs.add(f"tests/{parts[1]}")
+        elif parts[0] == "tests":
+            if len(parts) > 2:
+                dirs.add(f"tests/{parts[1]}")
+            elif Path(f).name.startswith("test_") or Path(f).name.endswith("_test.py"):
+                # tests/test_import.py, tests/smoke_test.py: no package directory to map to, but the
+                # file is itself a runnable pytest target. Dropping it left such a change unverified,
+                # and a diff containing nothing else printed "nothing to verify" and exited 0.
+                dirs.add(f)
+            else:
+                # tests/__init__.py, tests/benchmark.py: shared by the whole tree, like tests/conftest.py
+                return ["tests"]
     return sorted(dirs)
 
 
@@ -92,24 +110,35 @@ def diff_failures(branch: set[str], main: set[str], *, baseline: bool = True) ->
     )
 
 
-def render_table(rows: Sequence[tuple[str, FailureDelta | None]]) -> str:
-    """Render one markdown row per surface (``None`` means the surface was skipped) plus the NEW/FIXED ids."""
+#: statuses a surface can carry instead of a measurement. Only ``UNVERIFIED`` is a failure: the other
+#: two say the surface was never meant to run here, while ``UNVERIFIED`` says it was and did not.
+NOT_SELECTED = "not selected"
+UNAVAILABLE = "unavailable"
+UNVERIFIED = "unverified"
+
+
+def render_table(rows: Sequence[tuple[str, FailureDelta | str]]) -> str:
+    """Render one markdown row per surface (a ``str`` in place of a delta is a status) plus the NEW/FIXED ids."""
     lines = ["| surface | new | fixed | unchanged |", "|---|---|---|---|"]
     details: list[str] = []
     no_baseline = False
     for name, delta in rows:
-        if delta is None:
-            lines.append(f"| {name} | skipped | | |")
+        if isinstance(delta, str):
+            lines.append(f"| {name} | {delta} | | |")
             continue
-        # a run with no baseline is a real measurement, so it must not share the `skipped` label,
+        # a run with no baseline is a real measurement, so it must not share a status label,
         # but its `new` count is unconditional and should not be read as a regression
         new_cell = f"{len(delta.new)}*" if not delta.baseline else str(len(delta.new))
         no_baseline |= not delta.baseline
         lines.append(f"| {name} | {new_cell} | {len(delta.fixed)} | {len(delta.unchanged)} |")
         details.extend(f"NEW [{name}] {t}" for t in delta.new)
         details.extend(f"FIXED [{name}] {t}" for t in delta.fixed)
-    legend = ["", "* no baseline on the base revision for these paths; every failure there counts as new"]
-    return "\n".join(lines + (legend if no_baseline else []) + ([""] + details if details else []))
+    legend: list[str] = []
+    if no_baseline:
+        legend.append("* no baseline on the base revision for these paths; every failure there counts as new")
+    if any(delta == UNVERIFIED for _, delta in rows):
+        legend.append(f"{UNVERIFIED}: selected and available, but could not be measured -- not a pass")
+    return "\n".join(lines + ([""] + legend if legend else []) + ([""] + details if details else []))
 
 
 # eq=False keeps these hashable: a `dict` field makes a frozen dataclass's generated __eq__/__hash__
@@ -123,13 +152,15 @@ class Surface:
     extra_args: tuple[str, ...] = ()
 
 
+MPS_SURFACE = "mps float32"
+
 SURFACES: list[Surface] = [
     Surface("cpu float32", {"KORNIA_TEST_DEVICE": "cpu", "KORNIA_TEST_DTYPE": "float32"}),
     Surface(
         "cpu float16,bfloat16,float64",
         {"KORNIA_TEST_DEVICE": "cpu", "KORNIA_TEST_DTYPE": "float16,bfloat16,float64"},
     ),
-    Surface("mps float32", {"KORNIA_TEST_DEVICE": "mps", "KORNIA_TEST_DTYPE": "float32"}),
+    Surface(MPS_SURFACE, {"KORNIA_TEST_DEVICE": "mps", "KORNIA_TEST_DTYPE": "float32"}),
     Surface(
         "inductor cpu float32",
         {"KORNIA_TEST_DEVICE": "cpu", "KORNIA_TEST_DTYPE": "float32", "KORNIA_TEST_OPTIMIZER": "inductor"},
@@ -149,6 +180,11 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     p.add_argument("--only", nargs="+", help="surface names to run")
     p.add_argument("--main-worktree", type=Path, help="where to check out --base (default: a sibling dir)")
     p.add_argument("--no-fetch", action="store_true")
+    p.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="gate the working tree instead of HEAD (the default refuses an uncommitted change)",
+    )
     p.add_argument("--out", type=Path, help="directory for junit files (default: <repo>/../.<repo>-verify-delta)")
     return p.parse_args(args)
 
@@ -174,7 +210,7 @@ def select_surfaces(args: argparse.Namespace, *, mps_available: bool) -> list[Su
     """Keep the surfaces named by ``--only`` (all of them by default), dropping MPS when it is unavailable."""
     wanted = _resolve_only(args.only) if args.only else []
     chosen = [s for s in SURFACES if not wanted or s.name in wanted]
-    return [s for s in chosen if s.name != "mps float32" or mps_available]
+    return [s for s in chosen if s.name != MPS_SURFACE or mps_available]
 
 
 def _present_paths(tree: Path, tests: Sequence[str]) -> list[str]:
@@ -198,6 +234,11 @@ def _git(repo: Path, *cmd: str) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+def _dirty(tree: Path) -> list[str]:
+    """Return the ``git status --porcelain`` lines of ``tree``; empty when it has nothing uncommitted."""
+    return [line for line in _git(tree, "status", "--porcelain").splitlines() if line.strip()]
 
 
 def _git_common_dir(tree: Path) -> Path:
@@ -255,10 +296,19 @@ def _ensure_main_worktree(repo: Path, base: str, path: Path, fetch: bool) -> str
                 f"{path} looks like a user checkout (its HEAD is on a branch, or it is the repo's main "
                 f"worktree), not a scratch worktree; remove it or pass --main-worktree"
             )
+        # `checkout --detach` carries non-conflicting modifications across instead of refusing, so a
+        # leftover edit here would be measured as part of the baseline and make a real branch failure
+        # read as `unchanged`. Refuse rather than reset: the edit may be somebody's work.
+        if dirty := _dirty(path):
+            raise SystemExit(
+                f"{path} has uncommitted changes and would contaminate the baseline:\n"
+                + "\n".join(f"  {line}" for line in dirty[:10])
+                + f"\nclean it (git -C {path} reset --hard && git -C {path} clean -fd) or pass --main-worktree"
+            )
         try:
             _git(path, "checkout", "--detach", rev)
         except subprocess.CalledProcessError as exc:
-            raise SystemExit(f"{path} is dirty or cannot check out {base}: {(exc.stderr or '').strip()}") from exc
+            raise SystemExit(f"{path} cannot check out {base}: {(exc.stderr or '').strip()}") from exc
     else:
         _git(repo, "worktree", "add", "--detach", str(path), rev)
     return rev
@@ -317,9 +367,22 @@ def _run_surface(tree: Path, surface: Surface, tests: Sequence[str], junit: Path
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run every selected surface on both trees and print the failing-set delta."""
+    """Run every selected surface on both trees, print the failing-set delta, and return an exit code.
+
+    ``0`` clean, ``1`` a ``new`` failure somewhere, ``2`` a selected and available surface was never
+    measured (see the module docstring).
+    """
     args = parse_args(argv)
     repo = Path(_git(Path.cwd(), "rev-parse", "--show-toplevel"))
+    # the scope comes from `base...HEAD` but pytest runs the checkout, so an uncommitted change is
+    # measured while the table names two commits: an unpushed fix can make a broken HEAD read green,
+    # and an unpushed break can fail a HEAD that is fine.
+    if (dirty := _dirty(repo)) and not args.allow_dirty:
+        raise SystemExit(
+            f"{repo} has uncommitted changes, so the run would not describe HEAD:\n"
+            + "\n".join(f"  {line}" for line in dirty[:10])
+            + "\ncommit or stash them, or pass --allow-dirty to gate the working tree instead"
+        )
     main_wt = args.main_worktree or repo.parent / f".{repo.name}-verify-main"
     out = args.out or repo.parent / f".{repo.name}-verify-delta"
     out.mkdir(parents=True, exist_ok=True)
@@ -332,26 +395,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     branch_rev = _git(repo, "rev-parse", "--short", "HEAD")
     base_rev = _git(repo, "rev-parse", "--short", base)
-    print(f"branch {branch_rev} vs {args.base} {base_rev}")
+    suffix = " + uncommitted changes (--allow-dirty)" if dirty else ""
+    print(f"branch {branch_rev}{suffix} vs {args.base} {base_rev}")
     print(f"tests: {' '.join(tests)}")
 
     import torch
 
-    selected = select_surfaces(args, mps_available=torch.backends.mps.is_available())
+    mps_available = torch.backends.mps.is_available()
+    selected = select_surfaces(args, mps_available=mps_available)
     branch_paths = _present_paths(repo, tests)
     base_paths = _present_paths(main_wt, tests)
     # a base tree holding only some of the branch's test paths is a *partial* baseline: failures under
     # a path it never ran are unconditionally new, so such a row earns the `*` an absent baseline gets.
     complete_baseline = set(branch_paths) <= set(base_paths)
-    rows: list[tuple[str, FailureDelta | None]] = []
+    rows: list[tuple[str, FailureDelta | str]] = []
     for surface in SURFACES:
         if surface not in selected:
-            rows.append((surface.name, None))
+            # a surface nobody asked for, or one this machine does not have, is not a gap in the gate;
+            # a surface that *was* asked for and did not run is, so the two must not share a label.
+            absent = surface.name == MPS_SURFACE and not mps_available
+            rows.append((surface.name, UNAVAILABLE if absent else NOT_SELECTED))
             continue
         slug = surface.name.replace(" ", "_").replace(",", "-")
         branch_fail = _run_surface(repo, surface, tests, out / f"{slug}-branch.xml")
         if branch_fail is None:  # nothing to verify on this surface at all
-            rows.append((surface.name, None))
+            rows.append((surface.name, UNVERIFIED))
             continue
         main_fail = _run_surface(main_wt, surface, tests, out / f"{slug}-main.xml")
         if main_fail is None and not base_paths:
@@ -364,16 +432,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             # the base tree has the paths but pytest did not finish there; reading that as an empty
             # baseline would report every branch failure as new, the false positive `*` exists for.
             print(f"{surface.name}: the base tree did not finish, so this surface was not verified")
-            rows.append((surface.name, None))
+            rows.append((surface.name, UNVERIFIED))
             continue
         rows.append((surface.name, diff_failures(branch_fail, main_fail, baseline=complete_baseline)))
     table = render_table(rows)
     print("\n" + table)
     (out / "summary.md").write_text(table + "\n")
-    if all(delta is None for _, delta in rows):
+    measured = [name for name, delta in rows if isinstance(delta, FailureDelta)]
+    unverified = [name for name, delta in rows if delta == UNVERIFIED]
+    if any(isinstance(d, FailureDelta) and d.new for _, d in rows):
+        return 1  # named by the NEW lines above; the loudest signal, so it wins over an unverified row
+    if not measured:
         print("nothing was verified: no surface ran pytest on the branch; this is not a pass")
         return 2
-    return 1 if any(d is not None and d.new for _, d in rows) else 0
+    if unverified:
+        # one measured surface does not cover for another: a gate with a hole is not a pass, and the
+        # holes have to be nonzero or a crash on half/MPS reads exactly like a clean run.
+        print(f"not verified on {', '.join(unverified)}; the gate is partial, which is not a pass")
+        return 2
+    return 0
 
 
 if __name__ == "__main__":

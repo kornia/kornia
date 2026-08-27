@@ -98,6 +98,15 @@ def _restoring_rng(device: torch.device) -> Iterator[None]:
             module.set_rng_state(device_state, device)
 
 
+def _bits(t: torch.Tensor) -> torch.Tensor:
+    """Return ``t``'s raw bytes as a flat ``uint8`` tensor, for a bitwise rather than numeric compare.
+
+    ``view(torch.uint8)`` needs a last stride of 1 and at least one dimension, so the tensor is made
+    contiguous and flattened first; the callers have already established that the two shapes match.
+    """
+    return t.detach().contiguous().reshape(-1).view(torch.uint8)
+
+
 def _as_tuple(out: Any) -> tuple[torch.Tensor, ...]:
     if isinstance(out, torch.Tensor):
         return (out,)
@@ -115,12 +124,15 @@ def assert_capture_matches_eager(
     dtype: torch.dtype,
     capture: Literal["trace", "compile"] = "trace",
 ) -> None:
-    """Assert that ``fn`` returns byte-identical outputs eagerly and under graph capture, per size.
+    """Assert that ``fn`` returns bit-identical outputs eagerly and under graph capture, per size.
 
     ``fn`` receives the tensors built by ``make_inputs(size, device, dtype)`` and must derive every
     size from a tensor shape (not from a Python int closed over), otherwise the capture cannot see
-    the size at all. Comparison is ``torch.equal`` -- the contract for a capture branch is the same
-    rounding sequence as eager, not "close enough".
+    the size at all. Outputs are compared as raw bytes -- the contract for a capture branch is the
+    same rounding sequence as eager, not "close enough". That is deliberately stricter than
+    ``torch.equal``, which is numeric rather than bitwise: it calls two NaNs unequal (a
+    spurious failure) and ``+0.0`` equal to ``-0.0`` (a missed sign-bit change). Under a byte
+    comparison a NaN matches a NaN with the same payload, and the two zeros differ.
 
     Args:
         fn: callable of the tensors produced by ``make_inputs``; returns a tensor or tuple of tensors.
@@ -137,8 +149,9 @@ def assert_capture_matches_eager(
 
     Raises:
         ValueError: when ``capture`` is not ``"trace"`` or ``"compile"``, or when ``sizes`` is empty.
-        AssertionError: on the first size where an output differs, naming size, output index,
-            shape/dtype mismatch or max abs difference.
+        AssertionError: on the first size where an output differs, naming size, output index, and
+            either the shape/dtype mismatch, the max abs difference, or -- when the values agree but
+            the bytes do not -- that only the bit pattern moved.
 
     """
     if capture not in ("trace", "compile"):
@@ -177,14 +190,20 @@ def assert_capture_matches_eager(
                 raise AssertionError(
                     f"size {size}, output {i}: eager {tuple(e.shape)} {e.dtype} vs {capture} {tuple(a.shape)} {a.dtype}"
                 )
-            if not torch.equal(e, a):
+            if not torch.equal(_bits(e), _bits(a)):
                 # via CPU float64: MPS has no float64, and subtracting in the tensor's own
                 # half dtype would round the very difference being reported.
                 lhs = e.detach().cpu().to(torch.float64)
                 rhs = a.detach().cpu().to(torch.float64)
-                diff = (lhs - rhs).abs().max().item()
+                # a NaN on both sides is the same *value*; only its payload bits moved
+                if bool(((lhs == rhs) | (lhs.isnan() & rhs.isnan())).all()):
+                    detail = "the values are equal but their bits are not (a signed zero or a NaN payload changed)"
+                else:
+                    # nan_to_num after the subtraction: a NaN on one side only must not hide the mismatch
+                    diff = (lhs - rhs).abs().nan_to_num(nan=float("inf")).max().item()
+                    detail = f"max abs diff {diff:.3g}"
                 raise AssertionError(
-                    f"size {size}, output {i}: {capture} output differs from eager, max abs diff {diff:.3g} "
+                    f"size {size}, output {i}: {capture} output differs from eager, {detail} "
                     f"({e.dtype}). Under capture the size arithmetic must not round into {dtype}; "
                     "divide by the unrounded size and cast the quotient."
                 )
@@ -217,16 +236,24 @@ def assert_degenerate_path_parity(
         degenerate_kwargs: the same call routed through the degenerate path (``dsize=(0, w)``, a
             singleton axis, an empty batch).
         bad_inputs: ``(argument name, invalid value)`` pairs to substitute into both calls. Each
-            name must already be a key of both kwargs dicts.
+            name must already be a key of both kwargs dicts. Must not be empty -- with no pairs
+            only the two baseline calls run and nothing is compared.
 
     Raises:
-        ValueError: when a ``bad_inputs`` name is absent from either kwargs dict.
+        ValueError: when ``bad_inputs`` is empty, or a ``bad_inputs`` name is absent from either
+            kwargs dict.
         AssertionError: naming the argument and the two outcomes, ``None`` meaning "no exception".
 
     Note:
         Parity is compared on the exception *type* only. Two paths that raise the same type for
         unrelated reasons read as parity here; check the messages when that is plausible.
     """
+    if len(bad_inputs) == 0:
+        raise ValueError(
+            "assert_degenerate_path_parity needs at least one (name, bad_value) pair: with none, only the two "
+            "baseline calls run, no invalid input is ever substituted, and the parity assertion passes having "
+            "compared nothing -- the vacuous green this helper exists to prevent."
+        )
     for name, _ in bad_inputs:
         # substituting an unknown name *adds* a key rather than replacing one, so both paths raise
         # TypeError("unexpected keyword argument") and the assertion below passes having tested nothing

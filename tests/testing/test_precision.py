@@ -193,6 +193,26 @@ class TestAssertCaptureMatchesEager:
                 dtype=torch.float32,
             )
 
+    def test_a_sign_bit_change_that_torch_equal_calls_equal_is_caught(self, device, dtype):
+        # torch.equal is numeric, not bitwise: it reads -0.0 as equal to +0.0, so a capture branch
+        # that flipped the sign of a zero coordinate would have compared clean under it.
+        class NegatesZerosUnderTrace(torch.nn.Module):
+            def forward(self, image: torch.Tensor) -> torch.Tensor:
+                zeros = torch.zeros_like(image)
+                return zeros * -1.0 if torch.jit.is_tracing() else zeros
+
+        with pytest.raises(AssertionError, match="the values are equal but their bits are not"):
+            assert_capture_matches_eager(NegatesZerosUnderTrace(), _image_hw, sizes=[3], device=device, dtype=dtype)
+
+    def test_matching_nans_are_not_reported_as_a_divergence(self, device, dtype):
+        # the other half of the same defect: torch.equal calls NaN != NaN, so an op that legitimately
+        # produces NaN on both sides used to fail with the rounding message, which is not what broke.
+        def all_nan(image):
+            zeros = torch.zeros_like(image)
+            return zeros / zeros
+
+        assert_capture_matches_eager(all_nan, _image_hw, sizes=[1, 3], device=device, dtype=dtype)
+
     def test_a_function_that_consumes_randomness_is_not_a_false_failure(self, device, dtype):
         # Tracing runs ``fn`` once itself and the eager reference runs it again, so without an RNG
         # restore around each call the two draw different numbers and the helper reports a rounding
@@ -294,6 +314,22 @@ class TestAssertDegeneratePathParity:
                 {"x": torch.zeros(2), "dsize": (2,)},
                 {"x": torch.zeros(2), "dsize": (0,)},
                 [("xx", torch.zeros(2, dtype=torch.int64))],
+            )
+
+    def test_rejects_an_empty_bad_inputs_sweep(self):
+        # with no pairs only the two baseline calls run, nothing invalid is ever substituted, and the
+        # helper returns green having compared nothing -- the vacuous pass it exists to prevent.
+        def op(x, dsize):
+            if not x.is_floating_point():
+                raise TypeError("float only")
+            return x
+
+        with pytest.raises(ValueError, match=r"at least one \(name, bad_value\) pair"):
+            assert_degenerate_path_parity(
+                op,
+                {"x": torch.zeros(2), "dsize": (2,)},
+                {"x": torch.zeros(2), "dsize": (0,)},
+                [],
             )
 
     def test_detects_a_stricter_degenerate_path(self):

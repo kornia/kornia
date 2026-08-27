@@ -24,7 +24,10 @@ import pytest
 
 from testing import verify_delta
 from testing.verify_delta import (
+    NOT_SELECTED,
     SURFACES,
+    UNAVAILABLE,
+    UNVERIFIED,
     FailureDelta,
     _failures_or_empty,
     changed_test_dirs,
@@ -56,6 +59,22 @@ class TestChangedTestDirs:
 
     def test_top_level_module_files(self):
         assert changed_test_dirs(["kornia/constants.py"]) == ["tests"]
+
+    def test_a_test_file_directly_under_tests_maps_to_itself(self):
+        # these have no tests/<package> directory to stand for them; they used to map to nothing, so
+        # a diff of only tests/test_import.py printed "nothing to verify" and exited 0.
+        assert changed_test_dirs(["tests/test_import.py"]) == ["tests/test_import.py"]
+        assert changed_test_dirs(["tests/smoke_test.py"]) == ["tests/smoke_test.py"]
+        assert changed_test_dirs(["tests/test_api_surface.py", "kornia/color/gray.py"]) == [
+            "tests/color",
+            "tests/test_api_surface.py",
+        ]
+
+    def test_a_shared_file_directly_under_tests_widens_to_everything(self):
+        # not a pytest target: tests/benchmark.py and tests/__init__.py are imported by the tree,
+        # so running them alone would collect nothing and report a pass over an unmeasured suite.
+        assert changed_test_dirs(["tests/benchmark.py"]) == ["tests"]
+        assert changed_test_dirs(["tests/__init__.py"]) == ["tests"]
 
     def test_a_module_without_a_test_dir_of_its_own_widens_to_everything(self, tmp_path: Path, capsys):
         # kornia/transpiler/ is the live example: mapping it to a non-existent tests/transpiler and
@@ -102,26 +121,47 @@ class TestDiffFailures:
 
 
 class TestRenderTable:
-    def test_lists_new_and_fixed_ids_and_marks_skipped_surfaces(self):
+    def test_lists_new_and_fixed_ids_and_marks_unrun_surfaces(self):
         out = render_table(
             [
                 ("cpu float32", FailureDelta(new=["x::t1"], fixed=[], unchanged=["x::t0"])),
-                ("mps float32", None),
+                ("mps float32", NOT_SELECTED),
             ]
         )
         assert "| cpu float32 | 1 | 0 | 1 |" in out
-        assert "| mps float32 | skipped |" in out
+        assert "| mps float32 | not selected |" in out
         assert "NEW [cpu float32] x::t1" in out
+
+    def test_a_surface_that_could_not_be_measured_is_not_labelled_like_one_nobody_asked_for(self):
+        # `skipped` used to cover both, so a crashed half-precision run and a `--only cpu float32`
+        # run printed the same cell -- and only the second of those is a green gate.
+        out = render_table(
+            [
+                ("cpu float32", FailureDelta()),
+                ("cpu float16,bfloat16,float64", UNVERIFIED),
+                ("mps float32", UNAVAILABLE),
+                ("inductor cpu float32", NOT_SELECTED),
+            ]
+        )
+        assert "| cpu float16,bfloat16,float64 | unverified |" in out
+        assert "| mps float32 | unavailable |" in out
+        assert "| inductor cpu float32 | not selected |" in out
+        assert "unverified: selected and available, but could not be measured -- not a pass" in out
+
+    def test_no_unverified_legend_when_every_selected_surface_ran(self):
+        assert "could not be measured" not in render_table(
+            [("cpu float32", FailureDelta()), ("mps float32", NOT_SELECTED)]
+        )
 
     def test_distinguishes_a_row_that_had_no_baseline_from_a_deselected_one(self):
         out = render_table(
             [
                 ("cpu float32", FailureDelta(new=["x::t1"], baseline=False)),
-                ("mps float32", None),
+                ("mps float32", NOT_SELECTED),
             ]
         )
         assert "| cpu float32 | 1* | 0 | 0 |" in out
-        assert "| mps float32 | skipped |" in out
+        assert "| mps float32 | not selected |" in out
         assert "* no baseline on the base revision" in out
 
     def test_no_legend_when_every_row_had_a_baseline(self):
@@ -299,7 +339,12 @@ def _reusable_worktree_run(repo: Path, **kwargs) -> _FakeRun:
     """A fake git in which the reused path is a detached worktree of ``repo`` and ``repo`` is primary."""
     defaults = {
         "stdout": str(repo / ".git"),  # both trees report the same .git common dir
-        "stdout_by_arg": {"--porcelain": f"worktree {repo}\nHEAD abc1234\nbranch refs/heads/main\n"},
+        # "status" is matched before "--porcelain" so that `git status --porcelain`, whose argv holds
+        # both tokens, answers "clean" rather than picking up the worktree listing below
+        "stdout_by_arg": {
+            "status": "",
+            "--porcelain": f"worktree {repo}\nHEAD abc1234\nbranch refs/heads/main\n",
+        },
         # `git symbolic-ref -q HEAD` exits non-zero exactly when HEAD is detached
         "fails_for": ("symbolic-ref",),
     }
@@ -329,6 +374,7 @@ class TestBaseRevisionIsResolvedOnce:
         fake = _reusable_worktree_run(
             repo,
             stdout_by_arg={
+                "status": "",
                 "--porcelain": f"worktree {repo}\nHEAD abc1234\n",
                 "HEAD~1": "deadbee",  # what the relative revision resolves to *in the repo*
             },
@@ -405,15 +451,31 @@ class TestEnsureMainWorktreeReuse:
             verify_delta._ensure_main_worktree(repo, "origin/main", repo, fetch=False)
         assert not any("checkout" in call for call in fake.calls)
 
+    def test_refuses_a_dirty_baseline_worktree_instead_of_carrying_the_edit_across(self, tmp_path: Path, monkeypatch):
+        # `git checkout --detach` keeps non-conflicting modifications rather than refusing them, so a
+        # leftover edit here is measured as part of the baseline and a real branch failure reads
+        # `unchanged`. Refuse rather than reset: the edit may be somebody's work.
+        repo, wt = tmp_path / "repo", tmp_path / "wt"
+        wt.mkdir()
+        fake = _reusable_worktree_run(
+            repo,
+            stdout_by_arg={
+                "status": " M kornia/geometry/grid.py\n",
+                "--porcelain": f"worktree {repo}\nHEAD abc1234\nbranch refs/heads/main\n",
+            },
+        )
+        monkeypatch.setattr(verify_delta.subprocess, "run", fake)
+        with pytest.raises(SystemExit, match="would contaminate the baseline"):
+            verify_delta._ensure_main_worktree(repo, "origin/main", wt, fetch=False)
+        assert not any("checkout" in call for call in fake.calls)
+
     def test_a_checkout_that_fails_is_reported_not_raised_raw(self, tmp_path: Path, monkeypatch):
         repo, wt = tmp_path / "repo", tmp_path / "wt"
         repo.mkdir()
         wt.mkdir()
         fake = _reusable_worktree_run(repo, fails_for=("symbolic-ref", "checkout"), stderr="local changes")
         monkeypatch.setattr(verify_delta.subprocess, "run", fake)
-        with pytest.raises(
-            SystemExit, match=rf"{re.escape(str(wt))} is dirty or cannot check out origin/main: local changes"
-        ):
+        with pytest.raises(SystemExit, match=rf"{re.escape(str(wt))} cannot check out origin/main: local changes"):
             verify_delta._ensure_main_worktree(repo, "origin/main", wt, fetch=False)
 
     def test_refuses_a_leftover_directory_that_belongs_to_another_repo(self, tmp_path: Path, monkeypatch):
@@ -446,12 +508,14 @@ class TestMainExitCodes:
     """0 verified clean, 1 something is newly failing, 2 nothing was verified at all."""
 
     @staticmethod
-    def _stub_repo(monkeypatch, tmp_path: Path, junit: str | None = None) -> _FakeRun:
+    def _stub_repo(monkeypatch, tmp_path: Path, junit: str | None = None, dirty: str = "") -> _FakeRun:
         def fake_git(repo, *cmd):
             if cmd[:2] == ("rev-parse", "--show-toplevel"):
                 return str(tmp_path)
             if cmd[0] == "diff":
                 return ""
+            if cmd[0] == "status":
+                return dirty
             return "abc1234"
 
         fake = _FakeRun(stdout=str(tmp_path / "kornia" / "__init__.py"), junit=junit)
@@ -489,7 +553,7 @@ class TestMainExitCodes:
         assert "| cpu float32 | 2* | 0 | 0 |" in out
         assert "* no baseline on the base revision" in out
         assert "NEW [cpu float32] tests.geometry.test_grid::test_b[cpu-float32]" in out
-        assert not any("| cpu float32 | skipped" in line for line in out.splitlines())
+        assert not any(f"| cpu float32 | {status}" in out for status in (UNVERIFIED, NOT_SELECTED, UNAVAILABLE))
         assert sum("pytest" in call for call in fake.calls) == 1  # only the branch side had anything to run
 
     def test_an_empty_baseline_with_a_clean_branch_still_passes(self, tmp_path: Path, monkeypatch, capsys):
@@ -547,8 +611,45 @@ class TestMainExitCodes:
         out = capsys.readouterr().out
         assert code == 2
         assert "the base tree did not finish, so this surface was not verified" in out
-        assert "| cpu float32 | skipped |" in out
+        assert "| cpu float32 | unverified |" in out
         assert "no baseline on origin/main" not in out
+
+    def test_one_surface_that_could_not_be_measured_sinks_a_run_the_others_passed(
+        self, tmp_path: Path, monkeypatch, capsys
+    ):
+        # The hole this closes: only the all-surfaces-unmeasured case used to be nonzero, so a clean
+        # cpu row carried the run while half precision -- which has no CI job at all -- never ran.
+        self._stub_repo(monkeypatch, tmp_path)
+        (tmp_path / "tests").mkdir()
+        monkeypatch.setattr(
+            verify_delta,
+            "_run_surface",
+            lambda tree, surface, tests, junit: set() if surface.name == "cpu float32" else None,
+        )
+        code = verify_delta.main(
+            self._argv(tmp_path, "--only", "cpu float32", "cpu float16,bfloat16,float64", "--tests", "tests")
+        )
+        out = capsys.readouterr().out
+        assert code == 2
+        assert "| cpu float32 | 0* | 0 | 0 |" in out  # this surface really was measured, and is clean
+        assert "| cpu float16,bfloat16,float64 | unverified |" in out
+        assert "not verified on cpu float16,bfloat16,float64; the gate is partial" in out
+
+    def test_an_uncommitted_change_is_refused_because_the_run_would_not_describe_head(
+        self, tmp_path: Path, monkeypatch
+    ):
+        # The scope is `base...HEAD` but pytest runs the checkout, so an uncommitted fix makes a
+        # broken, pushable HEAD read green -- the gate would be measuring code nobody can review.
+        self._stub_repo(monkeypatch, tmp_path, dirty="?? tests/testing/scratch.py\n")
+        with pytest.raises(SystemExit, match="uncommitted changes, so the run would not describe HEAD"):
+            verify_delta.main(self._argv(tmp_path, "--only", "cpu float32", "--tests", "tests"))
+
+    def test_allow_dirty_runs_but_says_the_branch_side_is_the_working_tree(self, tmp_path: Path, monkeypatch, capsys):
+        self._stub_repo(monkeypatch, tmp_path, dirty=" M kornia/geometry/grid.py\n")
+        (tmp_path / "tests").mkdir()
+        code = verify_delta.main(self._argv(tmp_path, "--allow-dirty", "--only", "cpu float32", "--tests", "tests"))
+        assert code == 0
+        assert "+ uncommitted changes (--allow-dirty) vs origin/main" in capsys.readouterr().out
 
     def test_selecting_only_an_unavailable_surface_is_not_a_pass(self, tmp_path: Path, monkeypatch, capsys):
         import torch
@@ -559,6 +660,6 @@ class TestMainExitCodes:
         code = verify_delta.main(self._argv(tmp_path, "--only", "mps float32", "--tests", "tests"))
         assert code == 2
         out = capsys.readouterr().out
-        assert "| mps float32 | skipped |" in out
+        assert "| mps float32 | unavailable |" in out
         assert "nothing was verified" in out
         assert fake.calls == []
