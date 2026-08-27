@@ -25,6 +25,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Fix the inverted `SigLip2` attention-mask polarity, so every call that passes an `attention_mask` changes (#4043).
+  All three mask branches of `SigLip2Attention` (2-D `(B, N)`, 3-D `(B, N, N)` and 4-D `(B, 1, N, N)`) negated the
+  mask before handing it to `torch.nn.functional.scaled_dot_product_attention`, whose boolean form reads `True` as
+  *attend*, not as *mask out*. Every position the caller asked to attend to was masked out and every padded position
+  attended to, so an all-ones mask left every query row fully masked. The symptom is version-dependent because a
+  fully masked row returns `0` from SDPA on PyTorch 2.5 and later and `nan` on PyTorch 2.4 and earlier:
+  `SigLip2.get_text_features(..., attention_mask=...)` has been returning a zeroed attention output on current
+  PyTorch and `nan` text features on the declared `torch>=2.0` floor. 2-D padding masks are now broadcast over the
+  key axis only, matching `SiglipTextTransformer.create_bidirectional_mask` in Hugging Face `transformers`, so a
+  partially padded sequence no longer produces a fully masked row. A row whose mask is entirely zero — an empty
+  caption in a batch — is still fully masked and still follows the SDPA behavior above.
+
+* Fix `find_essential` and `run_5point` raising `TypeError: all() received an invalid combination of arguments` on
+  PyTorch before 2.2 (#4043). `run_5point`, `_solve_2x2_tikhonov_safe` and the scripted Nister helper each reduced
+  over two axes at once with `Tensor.any(dim=(-2, -1))` / `Tensor.all(dim=(-1, -2))`, and multi-dimension `any`/`all`
+  only landed in PyTorch 2.2, so the whole five-point solver was unusable on the declared `torch>=2.0` floor. The
+  reductions now flatten the two trailing axes first, which is equivalent on every version.
+
+* Fix `torch.jit.script` of `rgb_to_yuv`, `yuv_to_rgb`, `rgb_to_xyz` and `xyz_to_rgb` on older PyTorch (#4043). Their
+  shared `kornia.color.utils._apply_linear_transformation` helper annotated its optional argument with the PEP 604
+  `torch.Tensor | None` form, which the TorchScript compiler on the declared floor does not accept (reproduced on
+  PyTorch 2.1.2, while PyTorch 2.9.1 compiles it), so scripting any of the four conversions failed. The annotation is
+  `Optional[torch.Tensor]` now, which every supported version accepts.
+
 * Define singleton pixel axes at normalized center, reject non-positive normalization sizes, preserve empty warp
   destinations, and deprecate the now-unused `eps` normalization parameters (#4006). The four
   `{de,}normalize_pixel_coordinates{,3d}` helpers and `normal_transform_pixel{,3d}` now derive their scale from the

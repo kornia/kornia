@@ -54,6 +54,11 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+from kornia.core._compat import torch_version_ge, torch_version_lt
+
+pytestmark = pytest.mark.skipif(
+    torch_version_lt(2, 4, 0), reason="augmentation ONNX regression tests require opset 20 support from PyTorch 2.4"
+)
 
 
 def _hflip() -> torch.nn.Module:
@@ -158,21 +163,25 @@ EXPORTABLE_OPS: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
 XFAIL_OPS: list[Tuple[str, Callable[[], torch.nn.Module], str]] = []
 
 
+def _legacy_onnx_export(module: torch.nn.Module, x: torch.Tensor, buf: io.BytesIO) -> None:
+    """Export through the legacy tracer across supported PyTorch versions."""
+    kwargs: dict[str, Any] = {
+        "opset_version": 20,
+        "input_names": ["input"],
+        "output_names": ["output"],
+    }
+    if torch_version_ge(2, 5, 0):
+        kwargs["dynamo"] = False
+    torch.onnx.export(module, (x,), buf, **kwargs)
+
+
 def _try_export(module: torch.nn.Module, x: torch.Tensor) -> int:
     """Run ``torch.onnx.export`` against an in-memory buffer and return the byte count."""
     module.eval()
     buf = io.BytesIO()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        torch.onnx.export(
-            module,
-            (x,),
-            buf,
-            opset_version=20,
-            input_names=["input"],
-            output_names=["output"],
-            dynamo=False,
-        )
+        _legacy_onnx_export(module, x, buf)
     return len(buf.getvalue())
 
 
@@ -293,15 +302,7 @@ def _run_onnx(module: torch.nn.Module, x: torch.Tensor) -> Any:
     buf = io.BytesIO()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        torch.onnx.export(
-            module,
-            (x,),
-            buf,
-            opset_version=20,
-            dynamo=False,
-            input_names=["input"],
-            output_names=["output"],
-        )
+        _legacy_onnx_export(module, x, buf)
     sess = ort.InferenceSession(buf.getvalue())
     return sess.run(["output"], {"input": x.numpy()})[0]
 

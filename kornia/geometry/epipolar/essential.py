@@ -72,7 +72,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     X = torch.cat([x1 * x2, x1 * y2, x1, y1 * x2, y1 * y2, y1, x2, y2, ones], dim=-1)
     # use Nister's 5PC to solve essential matrix
     E = null_to_Nister_solution(X, batch_size)
-    bad = torch.isnan(E).all(dim=(-1, -2)).all(dim=-1)  # (B,)
+    bad = torch.isnan(E).flatten(-2).all(-1).all(-1)  # (B,)
     if bad.any():
         eye3 = torch.eye(3, device=E.device, dtype=E.dtype).view(1, 1, 3, 3).expand(batch_size, 10, 3, 3)
         E = torch.where(bad.view(batch_size, 1, 1, 1), eye3, E)
@@ -180,7 +180,7 @@ def _solve_2x2_tikhonov_safe(A: torch.Tensor, b: torch.Tensor, eps: float = 1e-1
     x = torch.where(bad.unsqueeze(-1).unsqueeze(-1), x_fb, x_dir)
 
     # if still non-finite, mark bad and zero it
-    nonfinite = torch.isnan(x).any(dim=(-2, -1)) | torch.isinf(x).any(dim=(-2, -1))
+    nonfinite = torch.isnan(x).flatten(-2).any(-1) | torch.isinf(x).flatten(-2).any(-1)
     bad = bad | nonfinite
     x = torch.where(bad.unsqueeze(-1).unsqueeze(-1), torch.zeros_like(x), x)
 
@@ -275,7 +275,7 @@ def _null_to_Nister_solution_script(
     eliminated = torch.linalg.solve(A10, b_poly)  # (B,10,10)
 
     # Detect NaN/Inf from singular solve and fix with damping solve
-    bad = torch.isnan(eliminated).any(dim=(-2, -1)) | torch.isinf(eliminated).any(dim=(-2, -1))  # (B,)
+    bad = torch.isnan(eliminated).flatten(-2).any(-1) | torch.isinf(eliminated).flatten(-2).any(-1)  # (B,)
     if bad.any():
         # Damped solve only for bad rows but WITHOUT compaction:
         # build damped A = A10 + λI, where λ depends on scale

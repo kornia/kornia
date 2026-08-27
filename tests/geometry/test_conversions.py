@@ -30,7 +30,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.core._compat import torch_version
+from kornia.core._compat import torch_version, torch_version_lt
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.ops import eye_like
@@ -50,7 +50,14 @@ from kornia.geometry.conversions import (
 )
 from kornia.geometry.quaternion import Quaternion
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, assert_close, dynamo_is_available
+from testing.base import (
+    DYNAMIC_EXPORT_UNAVAILABLE_REASON,
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    assert_close,
+    dynamic_export_is_available,
+    dynamo_is_available,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -3304,9 +3311,13 @@ def test_wart_float16_underflowed_default_eps_flips_branches(device):
     #     -> 0.0  (not sqrt(eps) = 1e-4: eps underflows the sum inside the sqrt)
     #   convert_points_from_homogeneous(torch.tensor([[2., 4., 2e-8]], dtype=torch.float16))
     #     -> [[2., 4.]]  (w underflows to 0 and takes the abs(w) <= eps passthrough branch)
-    zero = torch.tensor(0.0, device=device, dtype=torch.float16)
-    rho = kornia.geometry.conversions.cart2pol(zero, zero)[0]
-    assert_close(rho, zero, atol=0.0, rtol=0.0)
+    # The cart2pol half is narrowed rather than skipped whole: it reaches torch.atan2, whose CPU
+    # float16 kernel ("atan2_cpu" not implemented for 'Half') only landed in PyTorch 2.2, while the
+    # convert_points_from_homogeneous claim below has no such floor and stays pinned everywhere.
+    if not (device.type == "cpu" and torch_version_lt(2, 2, 0)):
+        zero = torch.tensor(0.0, device=device, dtype=torch.float16)
+        rho = kornia.geometry.conversions.cart2pol(zero, zero)[0]
+        assert_close(rho, zero, atol=0.0, rtol=0.0)
 
     out = kornia.geometry.conversions.convert_points_from_homogeneous(
         torch.tensor([[2.0, 4.0, 2e-8]], device=device, dtype=torch.float16)
@@ -3503,7 +3514,7 @@ def test_pixel_coordinate_singleton_policy_scripts(op_name, args, device, dtype)
         ("denormalize_pixel_coordinates3d", 3),
     ],
 )
-@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+@pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
 def test_pixel_coordinate_export_crosses_singleton_boundary(op_name, ndim):
     op = getattr(kornia.geometry.conversions, op_name)
 
@@ -3538,6 +3549,7 @@ def test_pixel_coordinate_export_crosses_singleton_boundary(op_name, ndim):
         ("normal_transform_pixel3d", (4, 5, 6)),
     ],
 )
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 def test_non_default_eps_does_not_break_fullgraph_compile(op_name, sizes):
     op = getattr(kornia.geometry, op_name)
     value = torch.zeros(1, len(sizes))
@@ -3568,7 +3580,7 @@ def test_non_default_eps_does_not_break_fullgraph_compile(op_name, sizes):
     ],
     ids=["float32", "bfloat16-rounding-boundary", "float16-rounding-boundary"],
 )
-@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+@pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
 def test_normal_transform_export_crosses_singleton_boundary(is_3d, dtype, runtime_sizes):
     class ExportTransform(torch.nn.Module):
         def forward(self, image):

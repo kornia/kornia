@@ -82,10 +82,20 @@ class SigLip2Attention(nn.Module):
 
         Args:
             hidden_states: Input tensor of shape (batch_size, seq_len, hidden_size).
-            attention_mask: Optional attention mask. Can be:
-                - (batch_size, seq_len): 1D mask where 1 = attend, 0 = mask
-                - (batch_size, seq_len, seq_len): 2D mask where 1 = attend, 0 = mask
-                - (batch_size, 1, seq_len, seq_len): 4D mask (broadcastable)
+            attention_mask: Optional attention mask, where ``1``/``True`` means attend and ``0``/``False``
+                means mask out. Can be:
+
+                - (batch_size, seq_len): a padding mask, broadcast over the key axis only, matching
+                  ``SiglipTextTransformer.create_bidirectional_mask`` in Hugging Face ``transformers``.
+                  A padded query row is therefore *not* masked and its output is finite but meaningless;
+                  callers are expected to discard those positions.
+                - (batch_size, seq_len, seq_len): a per-query mask, broadcast over the head axis.
+                - (batch_size, 1, seq_len, seq_len): already in the layout
+                  ``torch.nn.functional.scaled_dot_product_attention`` expects.
+
+                A query row whose mask is entirely ``0`` follows the behavior of
+                ``scaled_dot_product_attention`` for a fully masked row: ``0`` on PyTorch 2.5 and later,
+                ``nan`` before it.
 
         Returns:
             Output tensor of shape (batch_size, seq_len, hidden_size).
@@ -112,19 +122,17 @@ class SigLip2Attention(nn.Module):
         if attention_mask is not None:
             # Handle different mask formats
             if attention_mask.dim() == 2:
-                # (batch_size, seq_len) -> (batch_size, 1, seq_len, seq_len)
-                # Create 2D mask: both query and key positions must be valid
-                # Convert to boolean: 1 = attend (False = don't mask), 0 = mask (True = mask out)
-                mask_bool = attention_mask.bool()
-                # Expand to (batch_size, 1, seq_len, seq_len) where True means mask out
-                # We need: if either query or key is masked, then mask that attention
-                attn_mask = ~(mask_bool.unsqueeze(1).unsqueeze(2) & mask_bool.unsqueeze(1).unsqueeze(3))
+                # (batch_size, seq_len) -> (batch_size, 1, 1, seq_len)
+                # Mask keys only so padded query positions do not create fully masked
+                # rows, which produce NaNs in older SDPA implementations.
+                # Boolean SDPA masks use True = attend and False = mask out.
+                attn_mask = attention_mask.bool().unsqueeze(1).unsqueeze(2)
             elif attention_mask.dim() == 3:
                 # (batch_size, seq_len, seq_len) -> (batch_size, 1, seq_len, seq_len)
-                attn_mask = ~attention_mask.bool().unsqueeze(1)
+                attn_mask = attention_mask.bool().unsqueeze(1)
             elif attention_mask.dim() == 4:
-                # Already in correct format (batch_size, 1, seq_len, seq_len)
-                attn_mask = ~attention_mask.bool()
+                # Already in the SDPA layout (batch_size, 1, seq_len, seq_len); True = attend
+                attn_mask = attention_mask.bool()
             else:
                 raise ValueError(f"Unsupported attention_mask dimension: {attention_mask.dim()}")
 
