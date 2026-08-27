@@ -276,8 +276,8 @@ The `padding_mode="border"` issue in `F.grid_sample` (2D) is worked around in th
 - `unrepresentable_sizes(dtype)` — sizes at which `n` or `n - 1` is inexact in `dtype`. Sweep a
   slice of this list; never pick one size. 257 is vacuous against a rounded divisor and decisive
   against a rounded size; 258 is the reverse. `hi` above `torch.finfo(dtype).max` raises
-  `ValueError`: every candidate there casts to `inf` and round-trips back unchanged, so the sweep
-  would be sizes no test can allocate.
+  `ValueError`: candidates there cast to non-finite values and conversion back to `int64` produces
+  a sentinel rather than the original size, corrupting the sweep.
 - `assert_capture_matches_eager(fn, make_inputs, sizes=..., device=..., dtype=..., capture="trace"|"compile")`
   — byte-equality between eager and `torch.jit.trace` / `torch.compile(fullgraph=True,
   dynamic=True)`, size by size. The comparison is on the raw bytes, not `torch.equal`, which is
@@ -317,6 +317,21 @@ Rules the helpers enforce, for code that is written by hand:
 - Resolve `dtype=None` to `torch.get_default_dtype()` *before* deciding whether to promote.
 - Guard a cast-back on `is_floating_point()` — an integral grid dtype must stay promoted.
 - Compile tests carry `dynamo` or `compile` in their name (they are deselected otherwise).
+
+### Comparing branch and base failures
+
+`pixi run verify-delta` compares failing-test sets between the branch and `--base` across the CPU,
+reduced-precision, available MPS, and inductor surfaces. Its automatic test selection is deliberately
+local: a change under `kornia/geometry` maps to `tests/geometry`. That cannot discover every
+cross-package consumer (for example, augmentation code that calls geometry), so pass `--tests tests`
+for shared primitives or any cross-cutting change.
+
+The default refuses a dirty checkout because it describes committed `HEAD`. To intentionally test
+working-tree changes, pass both `--allow-dirty` and explicit `--tests`, listing every affected target;
+the tool cannot infer whether a caller-chosen scope omits a tracked or untracked change outside
+`base...HEAD`. Every selected and available surface must produce a measurement. A machine without MPS
+records that row as unavailable, but a run that selects only unavailable rows still exits non-zero
+because it verified nothing.
 
 ---
 

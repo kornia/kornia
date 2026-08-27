@@ -293,6 +293,17 @@ class TestRunSurface:
         # a fresh dict, so setting PYTHONPATH for the child never mutates this process's environment
         assert all(kwargs["env"] is not os.environ for kwargs in fake.kwargs)
 
+    def test_the_tree_is_prepended_to_an_existing_pythonpath(self, tmp_path: Path, monkeypatch):
+        extra = str(tmp_path / "support")
+        monkeypatch.setenv("PYTHONPATH", extra)
+        (tmp_path / "tests").mkdir()
+        fake = _FakeRun(stdout=str(tmp_path / "kornia" / "__init__.py"))
+        monkeypatch.setattr(verify_delta.subprocess, "run", fake)
+
+        verify_delta._run_surface(tmp_path, SURFACES[0], ["tests"], tmp_path / "j.xml")
+
+        assert all(kwargs["env"]["PYTHONPATH"] == os.pathsep.join((str(tmp_path), extra)) for kwargs in fake.kwargs)
+
     def test_paths_absent_from_the_tree_are_dropped_not_fatal(self, tmp_path: Path, monkeypatch, capsys):
         # pytest aborts collection entirely when any argument path is missing, which would silently
         # empty the base tree's failure set and report every branch failure as new.
@@ -314,15 +325,26 @@ class TestRunSurface:
         assert verify_delta._run_surface(tmp_path, SURFACES[0], ["tests"], tmp_path / "j.xml") is None
         assert "pytest exited 4" in capsys.readouterr().out
 
-    @pytest.mark.parametrize("code", [0, 1, 5], ids=["all-passed", "tests-failed", "nothing-collected"])
+    @pytest.mark.parametrize("code", [0, 1], ids=["all-passed", "tests-failed"])
     def test_the_ordinary_pytest_exit_codes_still_report_failures(self, code, tmp_path: Path, monkeypatch):
-        # 0/1/5 are the three codes where an absent or empty report really does mean zero failures.
+        # 0/1 prove pytest ran; their junit failure set is a real measurement.
         (tmp_path / "tests").mkdir()
         fake = _FakeRun(stdout=str(tmp_path / "kornia" / "__init__.py"), junit=JUNIT, pytest_returncode=code)
         monkeypatch.setattr(verify_delta.subprocess, "run", fake)
         assert verify_delta._run_surface(tmp_path, SURFACES[0], ["tests"], tmp_path / "j.xml") == failing_ids(
             tmp_path / "j.xml"
         )
+
+    def test_nothing_collected_is_unverified_even_with_a_junit_report(self, tmp_path: Path, monkeypatch, capsys):
+        # In particular, the inductor surface can select no tests with its `-k` expression. That is
+        # not evidence of a clean compile surface, even if pytest writes an empty junit report.
+        (tmp_path / "tests").mkdir()
+        fake = _FakeRun(stdout=str(tmp_path / "kornia" / "__init__.py"), junit=JUNIT, pytest_returncode=5)
+        monkeypatch.setattr(verify_delta.subprocess, "run", fake)
+
+        assert verify_delta._run_surface(tmp_path, SURFACES[3], ["tests"], tmp_path / "j.xml") is None
+        assert "pytest exited 5" in capsys.readouterr().out
+        assert not (tmp_path / "j.xml").exists()
 
     def test_no_present_paths_reports_that_it_could_not_run_not_that_it_passed(
         self, tmp_path: Path, monkeypatch, capsys
@@ -363,6 +385,13 @@ class TestEnsureMainWorktree:
         monkeypatch.setattr(verify_delta.subprocess, "run", fake)
         verify_delta._ensure_main_worktree(tmp_path / "repo", "origin/main", tmp_path, fetch=True)
         assert ["git", "-C", str(tmp_path / "repo"), "fetch", "origin", "main"] in fake.calls
+
+    def test_a_fetch_failure_is_reported_with_the_no_fetch_escape_hatch(self, tmp_path: Path, monkeypatch):
+        fake = _FakeRun(fails_for=("fetch",), stderr="network unreachable")
+        monkeypatch.setattr(verify_delta.subprocess, "run", fake)
+
+        with pytest.raises(SystemExit, match=r"cannot fetch origin main: network unreachable;.*--no-fetch"):
+            verify_delta._ensure_main_worktree(tmp_path / "repo", "origin/main", tmp_path / "wt", fetch=True)
 
 
 class TestBaseRevisionIsResolvedOnce:
@@ -414,6 +443,13 @@ class TestAssertImportsFrom:
         fake = _FakeRun(stdout=str(tmp_path.parent / "elsewhere" / "kornia" / "__init__.py"))
         monkeypatch.setattr(verify_delta.subprocess, "run", fake)
         with pytest.raises(SystemExit, match="refusing to test the wrong tree"):
+            verify_delta._assert_imports_from(tmp_path, {"PYTHONPATH": str(tmp_path)})
+
+    def test_an_import_failure_reports_stderr_without_a_traceback(self, tmp_path: Path, monkeypatch):
+        fake = _FakeRun(fails_for=("-c",), stderr="missing torch")
+        monkeypatch.setattr(verify_delta.subprocess, "run", fake)
+
+        with pytest.raises(SystemExit, match=r"could not import kornia.*missing torch"):
             verify_delta._assert_imports_from(tmp_path, {"PYTHONPATH": str(tmp_path)})
 
 
@@ -650,6 +686,30 @@ class TestMainExitCodes:
         code = verify_delta.main(self._argv(tmp_path, "--allow-dirty", "--only", "cpu float32", "--tests", "tests"))
         assert code == 0
         assert "+ uncommitted changes (--allow-dirty) vs origin/main" in capsys.readouterr().out
+
+    def test_allow_dirty_requires_explicit_tests_so_working_tree_changes_are_in_scope(
+        self, tmp_path: Path, monkeypatch
+    ):
+        self._stub_repo(monkeypatch, tmp_path, dirty="?? kornia/new_module.py\n")
+
+        with pytest.raises(SystemExit, match=r"--allow-dirty requires explicit --tests"):
+            verify_delta.main(self._argv(tmp_path, "--allow-dirty", "--only", "cpu float32"))
+
+    @pytest.mark.parametrize("target", ["/branch/tests", "../branch/tests", "tests/../../branch/tests"])
+    def test_explicit_tests_must_be_confined_relative_paths(self, target, tmp_path: Path, monkeypatch):
+        self._stub_repo(monkeypatch, tmp_path)
+
+        with pytest.raises(SystemExit, match="relative path confined to each checkout"):
+            verify_delta.main(self._argv(tmp_path, "--only", "cpu float32", "--tests", target))
+
+    def test_an_explicit_test_symlink_must_stay_inside_the_checkout(self, tmp_path: Path, monkeypatch):
+        self._stub_repo(monkeypatch, tmp_path)
+        outside = tmp_path.parent / f"{tmp_path.name}-outside"
+        outside.mkdir()
+        (tmp_path / "tests-link").symlink_to(outside, target_is_directory=True)
+
+        with pytest.raises(SystemExit, match="resolves outside checkout"):
+            verify_delta.main(self._argv(tmp_path, "--only", "cpu float32", "--tests", "tests-link"))
 
     def test_selecting_only_an_unavailable_surface_is_not_a_pass(self, tmp_path: Path, monkeypatch, capsys):
         import torch

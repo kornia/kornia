@@ -47,8 +47,9 @@ def unrepresentable_sizes(dtype: torch.dtype, *, lo: int = 2, hi: int = 4096) ->
         dtype: a floating dtype. Integer dtypes raise ``TypeError``.
         lo: smallest size to consider (inclusive).
         hi: largest size to consider (inclusive). Must not exceed ``torch.finfo(dtype).max`` (65504
-            for float16): above that every candidate casts to ``inf`` and the round-trip back to
-            ``int64`` is meaningless, so the result would be garbage rather than a size sweep.
+            for float16): above that candidates cast to non-finite values and converting them back
+            to ``int64`` produces a sentinel rather than the original integer, so the result would
+            be garbage rather than a usable size sweep.
 
     Returns:
         sorted sizes, empty when every integer in range is exact (float32/float64 below 2**24).
@@ -68,8 +69,8 @@ def unrepresentable_sizes(dtype: torch.dtype, *, lo: int = 2, hi: int = 4096) ->
     finite_max = torch.finfo(dtype).max
     if hi > finite_max:
         raise ValueError(
-            f"hi={hi} is above torch.finfo({dtype}).max={finite_max:g}: every candidate there casts to inf "
-            "and round-trips back to the same int64, so the sweep would be garbage rather than sizes"
+            f"hi={hi} is above torch.finfo({dtype}).max={finite_max:g}: candidates there cast to non-finite "
+            "values and conversion back to int64 yields a sentinel, so the sweep would be garbage rather than sizes"
         )
     n = torch.arange(lo, hi + 1, dtype=torch.int64)
     inexact_n = n.to(dtype).to(torch.int64) != n
@@ -111,8 +112,15 @@ def _as_tuple(out: Any) -> tuple[torch.Tensor, ...]:
     if isinstance(out, torch.Tensor):
         return (out,)
     if isinstance(out, (tuple, list)) and all(isinstance(t, torch.Tensor) for t in out):
+        if not out:
+            raise ValueError("assert_capture_matches_eager cannot compare an empty output sequence")
         return tuple(out)
     raise TypeError(f"assert_capture_matches_eager expects a tensor or a tuple of tensors, got {type(out)}")
+
+
+def _snapshot(out: Any) -> tuple[torch.Tensor, ...]:
+    """Copy outputs before a later invocation can mutate tensors that they alias."""
+    return tuple(t.detach().clone() for t in _as_tuple(out))
 
 
 def assert_capture_matches_eager(
@@ -172,15 +180,17 @@ def assert_capture_matches_eager(
         _dynamo.reset()
         captured_fn = torch.compile(fn, fullgraph=True, dynamic=True)
     for size in sizes:
-        inputs = make_inputs(size, torch.device(device), dtype)
         if capture == "trace":
             with warnings.catch_warnings(), _restoring_rng(torch.device(device)):
                 warnings.simplefilter("ignore", torch.jit.TracerWarning)
-                captured_fn = torch.jit.trace(fn, inputs, check_trace=False)
+                trace_inputs = make_inputs(size, torch.device(device), dtype)
+                captured_fn = torch.jit.trace(fn, trace_inputs, check_trace=False)
         with _restoring_rng(torch.device(device)):
-            expected = _as_tuple(fn(*inputs))
+            eager_inputs = make_inputs(size, torch.device(device), dtype)
+            expected = _snapshot(fn(*eager_inputs))
         with _restoring_rng(torch.device(device)):
-            actual = _as_tuple(captured_fn(*inputs))
+            captured_inputs = make_inputs(size, torch.device(device), dtype)
+            actual = _snapshot(captured_fn(*captured_inputs))
         if len(expected) != len(actual):
             raise AssertionError(
                 f"size {size}: eager returned {len(expected)} outputs, {capture} returned {len(actual)}"

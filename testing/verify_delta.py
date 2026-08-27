@@ -23,8 +23,10 @@ a branch can add and fix an equal number of tests and look unchanged by count.
 Exit codes: ``0`` no new failures on any surface that ran; ``1`` at least one ``new`` failure;
 ``2`` at least one selected, available surface could not be measured, so the gate is partial. A
 surface excluded by ``--only`` (``not selected``) or absent from the machine (``unavailable``) is
-not a gap and does not affect the code. The branch side is refused when the checkout is dirty —
-the scope is ``base...HEAD`` but pytest runs the working tree, so the two must agree.
+not itself a gap. A run that selects only unavailable surfaces still exits 2 because it measured
+nothing. The branch side is refused when the checkout is dirty unless ``--allow-dirty`` is paired
+with explicit ``--tests`` — the automatic scope is ``base...HEAD`` and cannot see working-tree-only
+paths.
 """
 
 from __future__ import annotations
@@ -176,14 +178,21 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         args = args[1:]
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--base", default="origin/main", help="revision to compare against")
-    p.add_argument("--tests", nargs="+", help="test dirs to run (default: derived from the diff)")
+    p.add_argument(
+        "--tests",
+        nargs="+",
+        help=(
+            "test paths to run (default: a local module mapping derived from the diff; "
+            "use 'tests' for cross-cutting changes)"
+        ),
+    )
     p.add_argument("--only", nargs="+", help="surface names to run")
     p.add_argument("--main-worktree", type=Path, help="where to check out --base (default: a sibling dir)")
     p.add_argument("--no-fetch", action="store_true")
     p.add_argument(
         "--allow-dirty",
         action="store_true",
-        help="gate the working tree instead of HEAD (the default refuses an uncommitted change)",
+        help="gate the working tree instead of HEAD; requires explicit --tests when the tree is dirty",
     )
     p.add_argument("--out", type=Path, help="directory for junit files (default: <repo>/../.<repo>-verify-delta)")
     return p.parse_args(args)
@@ -214,8 +223,30 @@ def select_surfaces(args: argparse.Namespace, *, mps_available: bool) -> list[Su
 
 
 def _present_paths(tree: Path, tests: Sequence[str]) -> list[str]:
-    """Return the subset of ``tests`` that exists in ``tree``; pytest aborts collection on a missing path."""
-    return [t for t in tests if (tree / t).exists()]
+    """Return test targets that exist inside ``tree``; reject symlinks escaping the checkout."""
+    root = tree.resolve()
+    present: list[str] = []
+    for target in tests:
+        candidate = (tree / target).resolve()
+        if not candidate.is_relative_to(root):
+            raise SystemExit(f"test target {target!r} resolves outside checkout {tree}")
+        if candidate.exists():
+            present.append(target)
+    return present
+
+
+def _normalize_test_targets(tests: Sequence[str]) -> list[str]:
+    """Normalize relative test targets and reject paths that can escape either checkout."""
+    normalized: list[str] = []
+    for target in tests:
+        path = Path(target)
+        if path.is_absolute() or ".." in path.parts:
+            raise SystemExit(f"test target {target!r} must be a relative path confined to each checkout")
+        clean = path.as_posix()
+        if clean in ("", "."):
+            raise SystemExit(f"test target {target!r} does not name a test path")
+        normalized.append(clean)
+    return normalized
 
 
 def _failures_or_empty(junit: Path) -> set[str]:
@@ -267,10 +298,16 @@ def _ensure_main_worktree(repo: Path, base: str, path: Path, fetch: bool) -> str
     """Create (or re-point) a detached worktree of ``base`` at ``path``; return the sha it resolved to."""
     remote, _, ref = base.partition("/")
     if fetch and ref:  # a local revision such as `--base HEAD~1` has nothing to fetch
-        subprocess.run(  # noqa: S603 -- trusted: fixed argv, no shell
-            ["git", "-C", str(repo), "fetch", remote, ref],  # noqa: S607 -- trusted: git resolved from PATH
-            check=True,
-        )
+        try:
+            subprocess.run(  # noqa: S603 -- trusted: fixed argv, no shell
+                ["git", "-C", str(repo), "fetch", remote, ref],  # noqa: S607 -- trusted: git resolved from PATH
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or "fetch failed").strip()
+            raise SystemExit(f"cannot fetch {remote} {ref}: {detail}; retry when online or pass --no-fetch") from exc
     # resolve against the repo, once. On a reused worktree `git -C <path> checkout --detach <base>`
     # would resolve a relative revision (`HEAD~1`) against the worktree's own HEAD -- the previous
     # run's base -- so it walks back one commit per run while `git diff <base>...HEAD` in the repo
@@ -316,14 +353,18 @@ def _ensure_main_worktree(repo: Path, base: str, path: Path, fetch: bool) -> str
 
 def _assert_imports_from(tree: Path, env: dict[str, str]) -> None:
     """Refuse to run when ``import kornia`` in ``tree`` resolves to a checkout other than ``tree``."""
-    out = subprocess.run(
-        [sys.executable, "-c", "import kornia, pathlib; print(pathlib.Path(kornia.__file__).resolve())"],
-        cwd=tree,
-        env=env,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
+    try:
+        out = subprocess.run(
+            [sys.executable, "-c", "import kornia, pathlib; print(pathlib.Path(kornia.__file__).resolve())"],
+            cwd=tree,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "import failed").strip()
+        raise SystemExit(f"{tree}: could not import kornia with the active interpreter: {detail}") from exc
     if not Path(out).is_relative_to(tree.resolve()):
         raise SystemExit(f"{tree}: `import kornia` resolved to {out}; refusing to test the wrong tree")
 
@@ -340,7 +381,9 @@ def _run_surface(tree: Path, surface: Surface, tests: Sequence[str], junit: Path
         return None
     if missing:
         print(f"{tree}: {' '.join(missing)} does not exist here; running {' '.join(present)}")
-    env = {**os.environ, **surface.env, "PYTHONPATH": str(tree)}
+    existing_pythonpath = os.environ.get("PYTHONPATH")
+    pythonpath = str(tree) if not existing_pythonpath else os.pathsep.join((str(tree), existing_pythonpath))
+    env = {**os.environ, **surface.env, "PYTHONPATH": pythonpath}
     _assert_imports_from(tree, env)
     junit.unlink(missing_ok=True)  # a stale report from a previous run must never be read as this run's result
     cmd = [
@@ -356,10 +399,10 @@ def _run_surface(tree: Path, surface: Surface, tests: Sequence[str], junit: Path
         *present,
     ]
     proc = subprocess.run(cmd, cwd=tree, env=env, check=False)  # noqa: S603 -- trusted: fixed argv, no shell
-    # 0 all passed, 1 tests failed, 5 nothing collected are the only codes where an absent or partial
-    # report really does mean "no failures here". 2 interrupted, 3 internal error, 4 usage error (a
-    # broken conftest, a bad -k) leave no junit at all, which would otherwise read as a clean surface.
-    if proc.returncode not in (0, 1, 5):
+    # Only 0 (all passed) and 1 (tests failed) prove that tests ran. Exit 5 means nothing was
+    # collected, which is especially dangerous for the inductor surface's `-k` filter: an empty
+    # selection must be unverified, not a clean measurement. 2/3/4 likewise did not finish.
+    if proc.returncode not in (0, 1):
         print(f"{tree}: pytest exited {proc.returncode}; this surface was not verified")
         junit.unlink(missing_ok=True)
         return None
@@ -374,6 +417,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """
     args = parse_args(argv)
     repo = Path(_git(Path.cwd(), "rev-parse", "--show-toplevel"))
+    explicit_tests = _normalize_test_targets(args.tests) if args.tests else None
     # the scope comes from `base...HEAD` but pytest runs the checkout, so an uncommitted change is
     # measured while the table names two commits: an unpushed fix can make a broken HEAD read green,
     # and an unpushed break can fail a HEAD that is fine.
@@ -383,13 +427,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             + "\n".join(f"  {line}" for line in dirty[:10])
             + "\ncommit or stash them, or pass --allow-dirty to gate the working tree instead"
         )
+    if dirty and args.allow_dirty and not args.tests:
+        raise SystemExit(
+            "--allow-dirty requires explicit --tests: the base...HEAD diff cannot discover tracked or untracked "
+            "working-tree-only changes, so automatic test selection could omit the regression"
+        )
     main_wt = args.main_worktree or repo.parent / f".{repo.name}-verify-main"
     out = args.out or repo.parent / f".{repo.name}-verify-delta"
     out.mkdir(parents=True, exist_ok=True)
     base = _ensure_main_worktree(repo, args.base, main_wt, fetch=not args.no_fetch)
 
     changed = _git(repo, "diff", "--name-only", f"{base}...HEAD").splitlines()
-    tests = args.tests or changed_test_dirs(changed, repo)
+    tests = explicit_tests or _normalize_test_targets(changed_test_dirs(changed, repo))
     if not tests:
         print("no test directories map to the changed files; nothing to verify")
         return 0

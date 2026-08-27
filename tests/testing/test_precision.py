@@ -59,9 +59,9 @@ class TestUnrepresentableSizes:
             unrepresentable_sizes(torch.int64)
 
     def test_rejects_an_hi_above_the_dtype_max(self):
-        # Above finfo.max every candidate casts to inf and round-trips back to itself, so `n` reads
-        # as "exact" and the sweep silently becomes a list of sizes no test can allocate. The
-        # docstring warned about it; the check is what makes it impossible.
+        # Above finfo.max candidates cast to inf and conversion back to int64 produces a sentinel,
+        # so the resulting list no longer describes representable, allocatable sizes. The check
+        # rejects that meaningless range before doing the conversion.
         with pytest.raises(ValueError, match=r"hi=70000 is above torch.finfo\(torch.float16\).max=65504"):
             unrepresentable_sizes(torch.float16, lo=65000, hi=70000)
 
@@ -167,6 +167,23 @@ class TestAssertCaptureMatchesEager:
 
         assert_capture_matches_eager(two_outputs, _image_hw, sizes=[3], device=device, dtype=torch.float32)
 
+    def test_rejects_an_empty_output_sequence(self, device, monkeypatch):
+        # A zero-element tensor still has a shape/dtype/bit contract, but an empty tuple has no
+        # output to compare and would make every execution look equal vacuously.
+        monkeypatch.setattr(torch.jit, "trace", lambda fn, inputs, check_trace: fn)
+
+        with pytest.raises(ValueError, match="empty output sequence"):
+            assert_capture_matches_eager(
+                lambda image: (), _image_hw, sizes=[1], device=device, dtype=torch.float32, capture="trace"
+            )
+
+    def test_accepts_a_zero_element_tensor_output(self, device):
+        # Empty tensors are not vacuous: their shape and dtype are checked and their empty byte
+        # representation is the correct result for many degenerate paths.
+        assert_capture_matches_eager(
+            lambda image: image[..., :0], _image_hw, sizes=[1], device=device, dtype=torch.float32
+        )
+
     def test_reports_index_and_difference_for_tuple_outputs(self, device):
         # Output 0 is the fixed library function and agrees under trace; output 1 is the wave-8 body
         # at 258, the size where it first diverges. The helper must name the offending index, not
@@ -221,6 +238,18 @@ class TestAssertCaptureMatchesEager:
             return image + torch.rand_like(image)
 
         assert_capture_matches_eager(adds_noise, _image_hw, sizes=[1, 2, 5], device=device, dtype=dtype)
+
+    def test_in_place_outputs_cannot_alias_across_executions(self, device):
+        # With one shared input, trace adds 2, eager adds 1, then captured adds 2 to the same tensor.
+        # The saved eager output aliases that tensor and ends equal to captured, hiding the mismatch.
+        class DifferentInPlaceUpdateUnderTrace(torch.nn.Module):
+            def forward(self, image: torch.Tensor) -> torch.Tensor:
+                return image.add_(2.0 if torch.jit.is_tracing() else 1.0)
+
+        with pytest.raises(AssertionError, match=r"size 1, output 0.*max abs diff 1"):
+            assert_capture_matches_eager(
+                DifferentInPlaceUpdateUnderTrace(), _image_hw, sizes=[1], device=device, dtype=torch.float32
+            )
 
     def test_rejects_an_unknown_capture(self, device):
         # an unrecognised value used to fall through both branches and surface as an
