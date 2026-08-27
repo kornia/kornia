@@ -133,13 +133,16 @@ would have converged in two rounds if each push had been gated.
    The fourth verdict exists because the first three only ask whether the *symptom* reproduces.
    A finding's diagnosis and its suggested fix are claims to verify, not instructions to execute.
    Whenever a finding states a **condition** ("requires X", "only when X"), a **cause** ("because
-   X") or a **threshold** ("from N on"), run the two falsifying probes before writing any of it
-   into the tree: one instance that satisfies X and still fails, and one that violates X and still
-   succeeds. Paste both outputs under the verdict line. The pattern this guards against, measured
-   on kornia#3984 and again in the skill evaluation: a finding's *figures* are re-measured and
-   match, which feels like verification, and its *diagnosis* is then adopted untested; the
-   historical round and both evaluation arms shipped a reviewer-supplied condition that four probe
-   lines would have refuted, and a reviewer-supplied cause reached a public docstring the same way.
+   X"), a **threshold** ("from N on") or a **property** its suggested change is said to keep
+   ("still catches every partial fix", "loses nothing"), run the two falsifying probes before
+   writing any of it into the tree: one instance that satisfies X and still fails, and one that
+   violates X and still succeeds. For a property, search A is an instance the finding says the
+   change still handles and the change does not. Paste both outputs under the verdict line. The
+   pattern this guards against, measured on kornia#3984 and again in the skill evaluation: a
+   finding's *figures* are re-measured and match, which feels like verification, and its
+   *diagnosis* is then adopted untested; the historical round and both evaluation arms shipped a
+   reviewer-supplied condition that four probe lines would have refuted, and a reviewer-supplied
+   cause reached a public docstring the same way.
 
    Write every verdict into the reply as its own fenced block, so a finding you never answered is
    visibly absent instead of quietly missing:
@@ -148,9 +151,11 @@ would have converged in two rounds if each push had been gated.
    ### Triage: <finding, abridged>
    - symptom on branch / at merge-base: <command → output> / <command → output>
    - verdict: regression | pre-existing | wrong | reproduces, diagnosis wrong | reproduces, diagnosis confirmed
-   - stated condition/cause/threshold: <"X" quoted from the finding | none stated>
+   - stated condition/cause/threshold/property: <"X" quoted from the finding | none stated>
    - counterexample search A — an input that SATISFIES X and still FAILS: <inputs tried (≥2, none from the finding) → outputs> → found | not found
    - counterexample search B — an input that VIOLATES X and still SUCCEEDS: <inputs tried (≥2, none from the finding) → outputs> → found | not found
+   - stated set (consumers, sites, cells, files): <list quoted from the finding | none stated>
+   - tree-wide search for that set: <`git grep`/`--collect-only` command → output> → finding's list complete | incomplete: <what it misses>
    ```
 
    The two searches are attempts to *break* the diagnosis, not to illustrate it. The finding's
@@ -158,8 +163,22 @@ would have converged in two rounds if each push had been gated.
    new inputs that isolate X from everything else the finding's examples vary (the same matrix
    with one row changed, exact integers at a large power of two, a shape the finding never tried).
    If either search finds an instance, the verdict is "diagnosis wrong" and X does not enter the
-   tree. "Diagnosis confirmed" is only available with both searches run on new inputs and both
-   `not found`; matching the finding's figures is not a probe of its diagnosis. In the evaluation,
+   tree. A *found* instance ends the change; it is not a caveat inside it. The reply declines, or
+   narrows the change to what the instance leaves standing, and carries the instance. Shipping the
+   suggested change with a comment that discloses the gap is not one of the four outcomes: it
+   records that the probe ran and adopts the refuted premise anyway. In the evaluation one run
+   monkeypatched the partial fix the finding said could not escape its reduced matrix, watched it
+   escape, wrote "an inherent tradeoff of the reduction", and shipped the reduction.
+
+   No class of finding waives the block. A finding that reads as organisational — consolidate,
+   deduplicate, move, reorder — still states facts to search: the **set** it names (which modules
+   consume the constant, how many skip sites, how many cells) and the **property** the
+   consolidation keeps. For a set the search is one tree-wide `git grep` or `--collect-only`, and
+   its output is the list that ships; the finding's list never does, however complete it looks.
+   On kornia#3942 a reviewer-supplied consumer list went into the canonical docstring three files
+   short of the grep, and the next round found the gap. "Diagnosis confirmed" is only available
+   with both searches run on new inputs and both `not found`; matching the finding's figures is
+   not a probe of its diagnosis. In the evaluation,
    one run skipped both searches and wrote "confirmed — fix applied as diagnosed", and the next
    filled them with the finding's own two examples and did the same, for a diagnosis that one
    modified matrix refutes. A finding is never dropped silently; the next
@@ -232,7 +251,8 @@ would have converged in two rounds if each push had been gated.
    docstring, comment, or changelog sentence next to the change stop being true; does the fix in
    one function need mirroring in its 3d/other sibling; and does any sentence the diff adds assert
    a mechanism, cause, condition or threshold that no command in this round executed — including
-   one the reviewer supplied? For that last item, run the counterexample; do not read for it." Fix
+   one the reviewer supplied; and what in the diff can change elsewhere in the tree without any
+   test in the diff failing? For the mechanism item, run the counterexample; do not read for it." Fix
    what it finds. Repeat once if it found anything. For a comments-and-docstrings-only delta,
    answer the same questions yourself — the subagent is the expensive part and the pasted section
    is the part that works.
@@ -247,17 +267,32 @@ would have converged in two rounds if each push had been gated.
    - docstring/comment/changelog next to the change still true: <…>
    - fix mirrored in the 3d/other sibling, and the sibling's accepted calls still pass: <…>
    - a mechanism/cause/condition/threshold asserted that this round did not execute: <none | which, and the probe that settled it>
+   - goes stale without failing any test in this diff (version string, default, count, list of sites): <none | which → pinned by <test/probe> | unpinned, said so in the reply>
    ```
 
    The first seven lines look inward at the code and catch incompleteness (in the evaluation they
    turned one arm's first draft, which matched the control arm's answer, into the complete one).
    They do not catch a premise inherited from the reviewer — the same section confirmed a wrong
-   condition in the evaluation — which is what the last line and the ledger below are for.
+   condition in the evaluation — which is what the eighth line and the ledger below are for.
 
-   **(b) Claims ledger.** One row per sentence the delta *adds* — docstring, comment, changelog,
-   test comment, reply — that asserts a **mechanism** (why), a **cause** (because), a
-   **condition** (only when / requires / whenever) or a **threshold** (from N on / at k). Not for
-   text moved verbatim.
+   The ninth line looks at the *result* rather than the diagnosis: after the diff is written, name
+   one thing in it that can go stale on its own because nothing in the diff fails when it changes
+   — a torch version in a skip reason, a default read from another module, a count, a list of
+   sites. Pin it (a runtime probe in place of the version string, an assertion on the default, a
+   grep-derived list) or write in the reply that it is unpinned and where it lives. Every step-2
+   search is on the diagnosis; without this line nothing asks what the fix itself now depends on.
+   Both evaluation arms consolidated three MPS skips into one reason string and kept a torch
+   version number in it that gates nothing — the sentence the next round raised.
+
+   **(b) Claims ledger.** One row per sentence the delta *adds or moves* — docstring, comment,
+   changelog, test comment, reply — that asserts a **mechanism** (why), a **cause** (because), a
+   **condition** (only when / requires / whenever), a **threshold** (from N on / at k) or a
+   **count/set** ("one site", "N cells", "every consumer: A, B, C"). A sentence you move is a
+   sentence you write: this round makes it the canonical copy, so every figure in it is
+   re-derived here, not inherited. A consolidation that promotes an unexecuted figure into the one
+   place everyone reads is how a wrong number outlives the round that could have caught it
+   (kornia#3942 carried "loses about seven digits" into the canonical copy; it was off by more
+   than a digit). A refactor has rows too: the sentence saying what it consolidated is a count.
 
    ```text
    ### Claims ledger ($PREFIX_TAG..HEAD)
@@ -276,7 +311,9 @@ would have converged in two rounds if each push had been gated.
    - `condition` — counterexample searches A and B from the triage block, both `not found` on
      inputs the finding did not supply;
    - `threshold` — the bisect: the smallest `k` at which the behaviour flips, with the value on
-     each side. A pin that backs a threshold asserts at the boundary, not at the example.
+     each side. A pin that backs a threshold asserts at the boundary, not at the example;
+   - `count`/`set` — the tree-wide `git grep` or `--collect-only` whose output *is* the list or the
+     number. A list taken from the finding has source "the reviewer said so" and does not ship.
 
    `source` is `measured` (this round ran it at that exact literal, size, dtype and device) or
    `read` (a claim about code, with the file:line you opened). A row whose only source would be
@@ -357,6 +394,11 @@ would have converged in two rounds if each push had been gated.
 | "CI is green" | Green from which head? Check the run exists for the current SHA and the PR is not DIRTY. |
 | "MPS/half is not in CI so it is not my problem" | It is documented as supported. `verify-delta` runs it. |
 | "The sibling has the same typo, I'll fix both" | Probe the sibling's accepted calls first; the 3d guard's `or` was load-bearing for unbatched input. |
+| "A docs-organization finding — nothing to falsify" | It names a set. One tree-wide grep; its output replaces the finding's list (step 2). |
+| "The probe found a gap, but that is inherent to the suggested change; I'll disclose it in a comment" | The finding claimed there was no gap. Found = diagnosis wrong = decline or narrow. A disclosure line is adoption. |
+| "Pure refactor, nothing to ledger" | "One site", "N cells", "every consumer" are counts. Run the command that counts them and ledger it (step 5b). |
+| "That figure was already in the tree; I only moved it" | Your sentence is now the canonical copy. Re-derive every figure in it (step 5b). |
+| "Every test passes, the refactor is done" | Name what in the diff goes stale without failing a test — a version string, a default, a count — and pin it or say it is unpinned (step 5a, last line). |
 
 ## Related
 
