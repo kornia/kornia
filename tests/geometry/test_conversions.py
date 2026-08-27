@@ -1115,6 +1115,28 @@ class TestConvertPointsFromHomogeneous(BaseTester):
 
         self.assert_close(cpfh(cpth(points)), points, atol=0.0, rtol=0.0)
 
+    def test_convention_the_masked_division_keeps_the_gradient_finite(self, device):
+        # Companion to the forward pins above, for the half of the fix they cannot see. The old
+        # `1.0 / (z_vec + eps)` is evaluated for EVERY point, including the ones the mask discards.
+        # At w == -eps that denominator is exactly zero, so the reciprocal is inf; torch.where drops
+        # that lane from the forward value but the backward pass still multiplies it by the zero
+        # cotangent and 0 * inf is NaN. Measured on the unfixed code the gradient at this input is
+        # [1., 1., nan]; the double-`where` makes it [1., 1., 0.].
+        # w is the exact pole rather than merely a small value: a nearby w only makes the reciprocal
+        # large, which no assertion on finiteness would catch. eps is passed explicitly so the input
+        # tracks the guard rather than the default. float64 only -- at float16 the default eps
+        # underflows to 0 (pinned in test_wart_float16_underflowed_default_eps_flips_branches), so
+        # w == -eps is not the pole there.
+        eps = 1e-8
+        points = torch.tensor([[2.0, 4.0, -eps]], device=device, dtype=torch.float64, requires_grad=True)
+
+        kornia.geometry.conversions.convert_points_from_homogeneous(points, eps=eps).sum().backward()
+
+        assert torch.isfinite(points.grad).all(), (
+            "kornia#3938: convert_points_from_homogeneous divides by exactly zero at w == -eps, so "
+            f"the discarded branch poisons the gradient: {points.grad.tolist()}"
+        )
+
 
 def _skip_if_mps_clamp_caching(device):
     # Runtime probe instead of a torch-version pin, so the skip retires itself on any torch
