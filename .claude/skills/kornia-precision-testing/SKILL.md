@@ -21,6 +21,9 @@ sweeps; when a rule cannot be expressed through a helper, cite the rule in the t
    start at 2049, so a 2-D+ workload can be expensive; keep the required sweep, but use the
    smallest representative prefix and a narrowly shaped input rather than silently replacing it
    with 257 or another hand-picked size.
+   The same rule applies to a *number in prose*: a docstring or comment that treats a size or
+   value as a threshold has bisected it, and its pin asserts at the boundary, not at the example
+   (`kornia-review-loop` step 5b).
 2. **Under capture, divide by the unrounded size and cast the quotient.** Eager divides by a Python
    int that stays exact through float32 opmath; `(size_t - 1).to(half)` does not.
 3. **Resolve `dtype=None` to `torch.get_default_dtype()` before deciding to promote.** The default

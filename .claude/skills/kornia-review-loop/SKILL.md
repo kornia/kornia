@@ -121,16 +121,49 @@ would have converged in two rounds if each push had been gated.
    flips from regression to pre-existing with nothing visible to show for it — which is why
    `verify_delta._assert_imports_from` exists.
 
-   Three outcomes:
+   Four outcomes:
    - *regression* (fails on branch, passes at the merge-base) → fix it;
    - *pre-existing* (fails on both) → reply with both measurements, file or link an issue, do
      NOT fix it in this PR;
-   - *wrong* → refute in writing with the measurement.
+   - *wrong* → refute in writing with the measurement;
+   - *reproduces, diagnosis wrong* → the symptom is real and the finding's stated cause, condition
+     or "Suggested fix" is not. Fix the symptom from your own measurement, and say which part of
+     the finding you are not adopting.
 
-   Write every verdict into the reply as its own line — `<finding> — regression | pre-existing |
-   wrong — <the two measurements>` — so a finding you never answered is visibly absent instead of
-   quietly missing. A finding is never dropped silently; the next reviewer re-raises anything
-   unanswered. Findings that arrive with confident numbers are still re-measured — one on #4006
+   The fourth verdict exists because the first three only ask whether the *symptom* reproduces.
+   A finding's diagnosis and its suggested fix are claims to verify, not instructions to execute.
+   Whenever a finding states a **condition** ("requires X", "only when X"), a **cause** ("because
+   X") or a **threshold** ("from N on"), run the two falsifying probes before writing any of it
+   into the tree: one instance that satisfies X and still fails, and one that violates X and still
+   succeeds. Paste both outputs under the verdict line. The pattern this guards against, measured
+   on kornia#3984 and again in the skill evaluation: a finding's *figures* are re-measured and
+   match, which feels like verification, and its *diagnosis* is then adopted untested; the
+   historical round and both evaluation arms shipped a reviewer-supplied condition that four probe
+   lines would have refuted, and a reviewer-supplied cause reached a public docstring the same way.
+
+   Write every verdict into the reply as its own fenced block, so a finding you never answered is
+   visibly absent instead of quietly missing:
+
+   ```text
+   ### Triage: <finding, abridged>
+   - symptom on branch / at merge-base: <command → output> / <command → output>
+   - verdict: regression | pre-existing | wrong | reproduces, diagnosis wrong | reproduces, diagnosis confirmed
+   - stated condition/cause/threshold: <"X" quoted from the finding | none stated>
+   - counterexample search A — an input that SATISFIES X and still FAILS: <inputs tried (≥2, none from the finding) → outputs> → found | not found
+   - counterexample search B — an input that VIOLATES X and still SUCCEEDS: <inputs tried (≥2, none from the finding) → outputs> → found | not found
+   ```
+
+   The two searches are attempts to *break* the diagnosis, not to illustrate it. The finding's
+   own examples are consistent with its diagnosis by construction, so they do not count; construct
+   new inputs that isolate X from everything else the finding's examples vary (the same matrix
+   with one row changed, exact integers at a large power of two, a shape the finding never tried).
+   If either search finds an instance, the verdict is "diagnosis wrong" and X does not enter the
+   tree. "Diagnosis confirmed" is only available with both searches run on new inputs and both
+   `not found`; matching the finding's figures is not a probe of its diagnosis. In the evaluation,
+   one run skipped both searches and wrote "confirmed — fix applied as diagnosed", and the next
+   filled them with the finding's own two examples and did the same, for a diagnosis that one
+   modified matrix refutes. A finding is never dropped silently; the next
+   reviewer re-raises anything unanswered. Findings that arrive with confident numbers are still re-measured — one on #4006
    attributed to the branch a divergence that was identical at the merge-base.
 
 3. **Fix defects only.** If a finding makes you want to *add* something — a helper, a rule in
@@ -185,15 +218,24 @@ would have converged in two rounds if each push had been gated.
    SHA" green-lights a test that has never been executed against the bug. Read the failure line
    (`AssertionError`, `Failed: DID NOT RAISE`), never a bare non-zero exit code.
 
-5. **Self-review the delta with a fresh agent.** Dispatch a subagent on
-   `git diff "$PREFIX_TAG"..HEAD` with this instruction: "Attack only the new code. For
-   every changed line check: is a size cast into a half dtype before a division; does a
-   degenerate/empty path validate less or more than the full path; is a `dtype=None` resolved
-   before promotion is decided; does a new compile test carry `dynamo`/`compile` in its name; do
-   MPS/half skips match the nearest existing test; did a docstring, comment, or changelog sentence
-   next to the change stop being true; does the fix in one function need mirroring in its 3d/other
-   sibling." Fix what it finds. Repeat once if it found anything. Whether or not you could dispatch
-   a subagent, the reply to the reviewer MUST include this section, filled in, verbatim:
+5. **Self-review the delta, and ledger every claim it makes.** Two fenced sections go into the
+   reply, filled in. Neither is optional; in 10 of 12 evaluation runs the review was skipped when
+   it was only described, and performed in 5 of 5 once the section had to be pasted.
+
+   **(a) Delta self-review.** When the delta touches code under `kornia/` or test *logic* (not only
+   comments and docstrings), dispatch a fresh subagent on `git diff "$PREFIX_TAG"..HEAD` **together
+   with the finding's text**, with this instruction: "The reviewer's diagnosis is a hypothesis, not
+   a fact. Attack only the new code. For every changed line check: is a size cast into a half dtype
+   before a division; does a degenerate/empty path validate less or more than the full path; is a
+   `dtype=None` resolved before promotion is decided; does a new compile test carry
+   `dynamo`/`compile` in its name; do MPS/half skips match the nearest existing test; did a
+   docstring, comment, or changelog sentence next to the change stop being true; does the fix in
+   one function need mirroring in its 3d/other sibling; and does any sentence the diff adds assert
+   a mechanism, cause, condition or threshold that no command in this round executed — including
+   one the reviewer supplied? For that last item, run the counterexample; do not read for it." Fix
+   what it finds. Repeat once if it found anything. For a comments-and-docstrings-only delta,
+   answer the same questions yourself — the subagent is the expensive part and the pasted section
+   is the part that works.
 
    ```text
    ### Delta self-review ($PREFIX_TAG..HEAD)
@@ -204,10 +246,47 @@ would have converged in two rounds if each push had been gated.
    - MPS/half skips match the nearest existing test: <…>
    - docstring/comment/changelog next to the change still true: <…>
    - fix mirrored in the 3d/other sibling, and the sibling's accepted calls still pass: <…>
+   - a mechanism/cause/condition/threshold asserted that this round did not execute: <none | which, and the probe that settled it>
    ```
 
-   A reply without this section is an unanswered round. In 10 of 12 evaluation runs the review was
-   skipped when it was only described; it is performed when the section has to be filled in.
+   The first seven lines look inward at the code and catch incompleteness (in the evaluation they
+   turned one arm's first draft, which matched the control arm's answer, into the complete one).
+   They do not catch a premise inherited from the reviewer — the same section confirmed a wrong
+   condition in the evaluation — which is what the last line and the ledger below are for.
+
+   **(b) Claims ledger.** One row per sentence the delta *adds* — docstring, comment, changelog,
+   test comment, reply — that asserts a **mechanism** (why), a **cause** (because), a
+   **condition** (only when / requires / whenever) or a **threshold** (from N on / at k). Not for
+   text moved verbatim.
+
+   ```text
+   ### Claims ledger ($PREFIX_TAG..HEAD)
+   | claim (file:line) | kind | executed by | scope (dtype · device · sizes · torch build) | source |
+   | <sentence, abridged> | figure | mechanism | cause | condition | threshold | <see below> | <…> | measured | read <file:line> |
+   ```
+
+   One sentence can be several rows: "returns `0.0` *because* the value is below the smallest
+   subnormal" is a `figure` row and a `cause` row, and the cause needs its own execution. What
+   `executed by` must contain depends on `kind`:
+
+   - `figure` — the command whose output the sentence states;
+   - `mechanism` / `cause` — a probe that distinguishes it from the alternative, not the result it
+     explains: a bitwise-equal result does not execute "no pivot swap occurs", and a `0.0` does
+     not execute "because it is below the subnormal";
+   - `condition` — counterexample searches A and B from the triage block, both `not found` on
+     inputs the finding did not supply;
+   - `threshold` — the bisect: the smallest `k` at which the behaviour flips, with the value on
+     each side. A pin that backs a threshold asserts at the boundary, not at the example.
+
+   `source` is `measured` (this round ran it at that exact literal, size, dtype and device) or
+   `read` (a claim about code, with the file:line you opened). A row whose only source would be
+   *the reviewer said so* or *it is plausible* does not ship: run it, or delete the sentence.
+   Checking other dtypes at the example size is not a bisect (kornia#3984 promoted a reviewer's example size to a threshold
+   that was several powers of two off; the evaluation's with-arm did the same with
+   `kornia-precision-testing` loaded — the rule is stated here because it did not transfer from
+   the test register on its own).
+
+   A reply without both sections is an unanswered round.
 
 6. **Gate: `pixi run verify-delta`.** Zero `new` failures on every available surface — the four
    `--only` names are `cpu float32`, `cpu float16,bfloat16,float64`, `mps float32`, and
@@ -236,10 +315,13 @@ would have converged in two rounds if each push had been gated.
      it; do not push on it. This is the exit-2 case.
 
    A diff that maps to no test target at all (a docs-only PR) exits 0 and prints "nothing to
-   verify" — that is not a green gate either; state in the reply which surfaces you instead ran by
-   hand. A `N*` row means the base revision ran fewer of the test paths than the branch did (a new
-   test package it does not have at all, or only some of them), so failures under a path it never
-   ran count as new unconditionally. Paste the summary table into the reply — it is also written to
+   verify" — that is not a green gate either. The hand gate for such a delta is bounded, not the
+   four-surface sweep: `pixi run doctest` on the touched module, plus the companion pins of every
+   sentence you changed, run at exactly the dtypes and devices those sentences name (a sentence
+   about float16 is gated on float16; one that names no dtype is gated on cpu float32). State in
+   the reply which of these you ran and their result. A `N*` row means the base revision ran
+   fewer of the test paths than the branch did (a new test package it does not have at all, or
+   only some of them), so failures under a path it never ran count as new unconditionally. Paste the summary table into the reply — it is also written to
    `../.<repo>-verify-delta/summary.md`.
 
 7. **Grep for closed issue numbers.** For every issue the PR closes, run the `AGENTS.md` rule —
@@ -266,8 +348,9 @@ would have converged in two rounds if each push had been gated.
 | "The reviewer asked for it, so it is in scope" | Findings expose defects; they do not authorise additions. Follow-up issue. |
 | "The fix is a one-liner, no need to re-run the bar" | The one-liner in #4006 wave 9 keyed promotion off the wrong dtype. Run it. |
 | "I'll add the rule to AGENTS.md while I'm here" | That bullet cost #4028 two rounds. Separate PR. |
-| "257 is the boundary case" | Sweep `unrepresentable_sizes`; which operand rounds is unknown. |
+| "257 is the boundary case" / "it underflows from the reviewer's example size on" | An example is not a boundary until bisected. In a test, sweep `unrepresentable_sizes`; in prose, find the smallest `k` where it flips (step 5b). |
 | "The finding came with numbers, it must be right" | Re-measure at the merge-base with the PR's own base ref. Refute in writing if it reproduces there. |
+| "The reviewer's diagnosis explains the numbers, and the suggested fix follows from it" | The numbers were measured; the diagnosis was not. Run the two falsifying probes (step 2) before the condition or cause enters the tree. |
 | "The base branch is `main`" | `gh pr view --json baseRefName`. A stacked PR measured against `main` gates its parent's diff too. |
 | "The test already fails at the base, so it's pre-existing" | `verify-delta` diffs failure *ids*. Same id, new cause, still reads `unchanged`. Compare the two failures. |
 | "verify-delta exited 0" | Read the table. An `unverified` row is a hole; `not selected` and `unavailable` rows need naming in the reply. |
