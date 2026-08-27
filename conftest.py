@@ -316,9 +316,12 @@ def pytest_sessionstart(session):
     if session.config.getoption("--tf32"):
         torch.set_float32_matmul_precision("high")
 
-    # Skip torch.compile warmup in subprocess mode — it adds startup overhead and
-    # pollutes the captured output used for failure reporting in pytest_runtest_protocol.
-    if not os.environ.get("KORNIA_TEST_IN_SUBPROCESS"):
+    # Warm torch.compile only for explicit optimizer jobs. Ordinary jobs deselect compile tests,
+    # while subprocess mode also avoids startup overhead and captured-output pollution.
+    should_warm_compile = bool(os.environ.get("KORNIA_TEST_OPTIMIZER", "").strip()) and not os.environ.get(
+        "KORNIA_TEST_IN_SUBPROCESS"
+    )
+    if should_warm_compile:
         try:
             _setup_torch_compile()
         except RuntimeError as ex:

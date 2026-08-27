@@ -39,11 +39,11 @@ from .video import VideoSequential
 
 __all__ = ["AugmentationSequential"]
 
-_BOXES_OPTIONS = {DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH}
-_KEYPOINTS_OPTIONS = {DataKey.KEYPOINTS}
-_IMG_OPTIONS = {DataKey.INPUT, DataKey.IMAGE}
-_MSK_OPTIONS = {DataKey.MASK}
-_CLS_OPTIONS = {DataKey.CLASS, DataKey.LABEL}
+_BOXES_OPTIONS = (DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH)
+_KEYPOINTS_OPTIONS = (DataKey.KEYPOINTS,)
+_IMG_OPTIONS = (DataKey.INPUT, DataKey.IMAGE)
+_MSK_OPTIONS = (DataKey.MASK,)
+_CLS_OPTIONS = (DataKey.CLASS, DataKey.LABEL)
 
 MaskDataType = Union[torch.Tensor, List[torch.Tensor]]
 

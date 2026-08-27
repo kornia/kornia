@@ -23,15 +23,13 @@ TorchGeo migrated its inference-time transforms off kornia onto ``torchvision.tr
 citing exactly this gap ("kornia augmentations can't be torch.exported").
 
 The augmentation base ``forward`` stashes per-call state on ``self`` (``_params`` and the lazy
-transform matrix), which ``torch.export`` on torch <= 2.9 rejects ("attrs created in forward" /
-pytree "Node arity mismatch"). Those side effects are now skipped under ``torch.export`` (the
-captured image output is unchanged), so the deterministic transforms export cleanly and
-numerically match eager. This pins that so it does not regress.
+transform matrix). ``torch.compiler.is_exporting`` lets the base skip those side effects during
+``torch.export`` capture without changing the captured image output. This capability was added in
+torch 2.7, so the tests are skipped on earlier versions.
 
-Only *deterministic single* transforms are covered — random augmentations sample parameters
-during capture in ways that don't line up with a separate eager call (RNG bookkeeping), and
-``AugmentationSequential`` containers still stash their own per-call state and are not export-clean
-yet.
+The cases cover deterministic single transforms and ``AugmentationSequential`` containers. Random
+augmentations that sample parameters during capture are excluded because their RNG bookkeeping does
+not line up with a separate eager call.
 """
 
 from __future__ import annotations
@@ -42,6 +40,9 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+
+_HAS_TORCH_EXPORT_TRACKING = hasattr(torch, "compiler") and hasattr(torch.compiler, "is_exporting")
+_TORCH_EXPORT_TRACKING_REASON = "torch.export tracking requires torch.compiler.is_exporting (torch>=2.7)"
 
 
 def _normalize() -> torch.nn.Module:
@@ -74,6 +75,7 @@ TORCH_EXPORT_DETERMINISTIC: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
 
 
 @pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("name,factory", TORCH_EXPORT_DETERMINISTIC, ids=[n for n, _ in TORCH_EXPORT_DETERMINISTIC])
 def test_torch_export_deterministic(name: str, factory: Callable[[], torch.nn.Module]) -> None:
     """Deterministic inference transform captures via ``torch.export`` and matches eager."""
@@ -116,6 +118,7 @@ TORCH_EXPORT_CONTAINERS: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
 
 
 @pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("name,factory", TORCH_EXPORT_CONTAINERS, ids=[n for n, _ in TORCH_EXPORT_CONTAINERS])
 def test_torch_export_container(name: str, factory: Callable[[], torch.nn.Module]) -> None:
     """A deterministic ``AugmentationSequential`` pipeline captures via ``torch.export`` and matches eager."""

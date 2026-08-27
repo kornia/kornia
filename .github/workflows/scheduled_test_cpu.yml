@@ -97,7 +97,7 @@ jobs:
         id: hashid
         run: echo "weights-hash=${{ hashFiles('.github/download-models-weights.py') }}" >> "$GITHUB_OUTPUT"
 
-  tests-cpu-ubuntu:
+  tests-cpu-ubuntu-py311:
     needs: [check-skip, pre-tests]
     if: needs.check-skip.outputs.should-skip == 'false'
     strategy:
@@ -108,8 +108,48 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: "ubuntu-latest"
-      python-version: '["3.11", "3.12", "3.13"]'
+      python-version: '["3.11"]'
       pytorch-version: '["2.1.2", "2.2.2", "2.3.1", "2.4.0", "2.5.1", "2.9.1"]'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
+
+  tests-cpu-ubuntu-py312:
+    needs: [check-skip, pre-tests]
+    if: needs.check-skip.outputs.should-skip == 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        pytorch-dtype: ["float32", "float64"]
+
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: "ubuntu-latest"
+      python-version: '["3.12"]'
+      pytorch-version: '["2.2.2", "2.3.1", "2.4.0", "2.5.1", "2.9.1"]'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
+
+  tests-cpu-ubuntu-py313:
+    needs: [check-skip, pre-tests]
+    if: needs.check-skip.outputs.should-skip == 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        pytorch-dtype: ["float32", "float64"]
+
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: "ubuntu-latest"
+      python-version: '["3.13"]'
+      pytorch-version: '["2.5.1", "2.9.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}

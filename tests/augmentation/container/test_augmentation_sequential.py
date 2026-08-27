@@ -25,6 +25,7 @@ import kornia
 import kornia.augmentation as K
 from kornia.augmentation.container.base import ParamItem
 from kornia.constants import BorderType
+from kornia.core._compat import torch_version_lt
 from kornia.geometry.bbox import bbox_to_mask
 
 from testing.augmentation.utils import reproducibility_test
@@ -111,6 +112,8 @@ class TestAugmentationSequential:
     def test_mixed_image_bbox_dtypes(self, device, image_dtype):
         # Regression test for https://github.com/kornia/kornia/issues/3705 and #3706:
         # bbox stays in fp32 while the image uses a half/double compute dtype.
+        if device.type == "cpu" and image_dtype in (torch.float16, torch.bfloat16) and torch_version_lt(2, 6, 0):
+            pytest.skip("PyTorch <2.6 has no CPU Half/BFloat16 grid_sample kernel")
         torch.manual_seed(0)
         img = torch.rand(2, 3, 32, 32, device=device, dtype=image_dtype)
         bb = torch.tensor(
