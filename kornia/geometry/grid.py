@@ -85,7 +85,7 @@ def create_meshgrid(
     #     base_grid = K.geometry.normalize_pixel_coordinates(base_grid, height, width)
     # return torch.unsqueeze(base_grid.transpose(0, 1), dim=0)
     if normalized_coordinates:
-        if torch.jit.is_tracing() or is_compiling():
+        if not torch.jit.is_scripting() and (torch.jit.is_tracing() or is_compiling()):
             # Graph capture needs the tensor form to keep a symbolic size dynamic. Low-precision
             # floating types cannot represent every practical image size exactly (e.g. bfloat16
             # rounds 257 to 256 and 299 to 300), so the size arithmetic runs in float32. Divide
@@ -157,7 +157,7 @@ def create_meshgrid3d(
         zs = torch.linspace(0, depth - 1, depth, device=device, dtype=dtype)
     # Fix TracerWarning
     if normalized_coordinates:
-        if torch.jit.is_tracing() or is_compiling():
+        if not torch.jit.is_scripting() and (torch.jit.is_tracing() or is_compiling()):
             # See ``create_meshgrid``: low-precision dtypes round large sizes, so the size
             # arithmetic runs in float32 and the quotient, not the divisor, is what gets cast down.
             work_dtype = torch.float32 if xs.dtype in (torch.float16, torch.bfloat16) else xs.dtype
