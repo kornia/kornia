@@ -17,7 +17,10 @@ sweeps; when a rule cannot be expressed through a helper, cite the rule in the t
    pass `sizes=[1, 2, *unrepresentable_sizes(dtype)[:8]]`, never the bare call: the list is `[]` for
    float32/float64 (every size below `2**24` is exact), and `assert_capture_matches_eager` refuses
    an empty sweep rather than passing silently. The helper enforces its own bounds — a non-floating
-   dtype and an `hi` above `torch.finfo(dtype).max` both raise.
+   dtype and an `hi` above `torch.finfo(dtype).max` both raise. Float16's first dangerous sizes
+   start at 2049, so a 2-D+ workload can be expensive; keep the required sweep, but use the
+   smallest representative prefix and a narrowly shaped input rather than silently replacing it
+   with 257 or another hand-picked size.
 2. **Under capture, divide by the unrounded size and cast the quotient.** Eager divides by a Python
    int that stays exact through float32 opmath; `(size_t - 1).to(half)` does not.
 3. **Resolve `dtype=None` to `torch.get_default_dtype()` before deciding to promote.** The default
@@ -36,15 +39,19 @@ sweeps; when a rule cannot be expressed through a helper, cite the rule in the t
    ```
 
    `set_default_dtype` is a process-global mutation, so the restore must sit in a `finally` that
-   the assertion cannot jump over, inside the test itself. Never put it in a fixture that `yield`s:
-   a failure in a later fixture, or a `KeyboardInterrupt`, leaves the whole session in half
-   precision and every subsequent test starts lying about which dtype it exercised.
+   the assertion cannot jump over, inside the test itself. Do not hand-roll save/restore in a
+   yielding fixture: a failure in a later fixture, or a `KeyboardInterrupt`, can leave the whole
+   session in half precision. A fixture that yields a properly scoped context manager is acceptable
+   when the test enters that context itself, so its `finally` encloses the assertion.
 
 4. **Guard a cast-back on `is_floating_point()`.** An integral coordinate dtype stays promoted, as
    eager's true-division leaves it.
 5. **A degenerate path validates exactly what the full path validates.** Empty `dsize`, singleton
    axis, empty batch: same exception types for the same invalid input, checked with
-   `assert_degenerate_path_parity`. A guard that is stricter or laxer on the empty path is a bug.
+   `assert_degenerate_path_parity`. When the same exception class has plausible distinct sources,
+   also disambiguate the cause/message (and, when useful, the first library traceback frame): a
+   matching `ValueError` from an unrelated shape check is not parity. A guard that is stricter or
+   laxer on the empty path is a bug.
    Every `bad_inputs` name must be a real argument already present in both kwargs dicts — the
    helper raises rather than let a typo'd name be *added* to the call, where both paths raise
    `TypeError: unexpected keyword argument` and parity holds over a call that never happened. It
@@ -54,7 +61,9 @@ sweeps; when a rule cannot be expressed through a helper, cite the rule in the t
    `torch.equal`, which is numeric: it reads two NaNs as unequal (a spurious failure on any op that
    legitimately produces one) and `+0.0` as equal to `-0.0` (a sign-bit change it would miss).
 7. **Compile tests carry `dynamo` or `compile` in the name** so `conftest.py` deselects them when
-   `KORNIA_TEST_OPTIMIZER` is unset; use the `torch_optimizer` fixture. Trace tests do not need it.
+   `KORNIA_TEST_OPTIMIZER` is unset. `capture="compile"` hardcodes `torch.compile`; it does not
+   honor the `torch_optimizer` fixture. Route optimizer-specific compile coverage through a
+   separate test using that fixture. Trace tests do not need it.
 8. **MPS and half-precision skips copy the nearest existing test's skip**, with the reason. Do not
    invent a new tolerance; `BaseTester.assert_close` already has dtype-specific ones.
 9. **A regression test must fail on the pre-fix SHA.** Check it before trusting it.
@@ -73,8 +82,9 @@ from testing import assert_capture_matches_eager, assert_degenerate_path_parity,
 assert_capture_matches_eager(fn, make_inputs, sizes=[1, 2, *unrepresentable_sizes(dtype)[:8]],
                              device=device, dtype=dtype, capture="trace")
 # eager vs torch.compile(fullgraph=True, dynamic=True); name the test test_*_compile_*
-assert_capture_matches_eager(fn, make_inputs, sizes=[1, 2, 258, 300], device=device,
-                             dtype=torch.float32, capture="compile")
+# Parameterize dtype over relevant floating dtypes; do not substitute hand-picked sizes.
+assert_capture_matches_eager(fn, make_inputs, sizes=[1, 2, *unrepresentable_sizes(dtype)[:8]],
+                             device=device, dtype=dtype, capture="compile")
 # the empty path must reject what the full path rejects
 assert_degenerate_path_parity(warp_affine, full_kwargs, empty_kwargs, [("M", int_matrix), ("M", wrong_shape)])
 ```

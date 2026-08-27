@@ -58,9 +58,8 @@ would have converged in two rounds if each push had been gated.
    commits back and drags 9 files belonging to the parent PR into the delta, so every finding
    against the parent's code triages as "this branch broke it" and the gate below measures a delta
    nobody asked for. `merge-base "origin/$BASE_REF" HEAD` is 10 commits back and covers exactly the
-   files under review. `--base` is a flag on `verify-delta` for the same reason: pass
-   `--base "origin/$BASE_REF"` on any PR that does not target `main`, and let the default stand on
-   one that does.
+   files under review. Reserve `origin/$BASE_REF` for step 6's tip-vs-tip gate; every step-2
+   finding probe uses the merge-base `$BASE` above, including a non-pytest reproduction.
 
    The cheapest correct probe reuses the tool, which already creates the worktree, guards the
    import, and diffs failing-test sets — which is the triage question:
@@ -81,19 +80,28 @@ would have converged in two rounds if each push had been gated.
    the round's work in progress before probing (or pass `--allow-dirty` and say so in the reply —
    its verdict then describes your working tree, not HEAD).
 
-   When the repro is not a pytest run — a REPL snippet, a script — run it in that same worktree,
-   and check what it imported before believing the answer:
+   When the repro is not a pytest run — a REPL snippet or a script — run the **exact repro** on
+   the branch and the `$BASE` worktree, rather than substituting a nearby pytest invocation. Check
+   what each tree imported before believing either answer:
 
    ```bash
-   PY=$(python -c 'import sys; print(sys.executable)')   # capture BEFORE the cd, from the env under test
-   PROBE=../.kornia-verify-main   # ../.<checkout-dir-name>-verify-main, the worktree just made at $BASE
-   (cd "$PROBE" \
-    && PYTHONPATH=$PWD "$PY" -c \
-       'import kornia, pathlib, sys; p = pathlib.Path(kornia.__file__).resolve(); sys.exit(0 if p.is_relative_to(pathlib.Path.cwd()) else f"kornia imported from {p}")' \
-    && PYTHONPATH=$PWD "$PY" -m pytest <test> -q)
+   BRANCH_WT=$(git rev-parse --show-toplevel) || exit $?
+   PIXI_ENV=${PIXI_ENVIRONMENT_NAME:-default}  # or set this to the environment used by the failing test
+   PY=$(cd "$BRANCH_WT" && pixi run -e "$PIXI_ENV" uv run python -c 'import sys; print(sys.executable)') || exit $?
+   PROBE_WT="$(dirname "$BRANCH_WT")/.$(basename "$BRANCH_WT")-verify-main"  # made at $BASE
+   run_repro() {
+       local tree=$1
+       (cd "$tree" \
+        && PYTHONPATH=$PWD "$PY" -c 'import kornia, pathlib, sys; p = pathlib.Path(kornia.__file__).resolve(); sys.exit(0 if p.is_relative_to(pathlib.Path.cwd()) else f"kornia imported from {p}")' \
+        && PYTHONPATH=$PWD "$PY" -c '<paste the exact REPL snippet here>')
+       # For a script, replace only the final command with: PYTHONPATH=$PWD "$PY" path/to/repro.py <args>
+   }
+   run_repro "$BRANCH_WT"
+   run_repro "$PROBE_WT"
    ```
 
-   `sys.executable`, not a hard-coded `.venv/bin/python`: `pixi.toml` points the `py312` and `py313`
+   `sys.executable` from the project task's `uv run` environment, not bare
+   `python` or a hard-coded `.venv/bin/python`: `pixi.toml` points the `py312` and `py313`
    features at `.venv-py312` and `.venv-py313` (`UV_PROJECT_ENVIRONMENT`), so under
    `pixi run -e py312` that literal path is either absent or a *different* Python and torch build —
    and the rounding question you are probing is answered by the build, not by the source. It is also
@@ -104,7 +112,7 @@ would have converged in two rounds if each push had been gated.
    `IndentationError`, which exits non-zero and reads as "the guard fired". Do not set
    `PYTHONPATH` and stop there: the `.venv` is shared across these worktrees and its editable
    install points at whichever tree installed last, so the same command *without* `PYTHONPATH`
-   answers from that tree instead — measured here, `cd $PROBE && python -c "import kornia"` printed
+   answers from that tree instead — measured here, `cd $PROBE_WT && "$PY" -c "import kornia"` printed
    the `kornia/__init__.py` of a *different* checkout than the one it was standing in. Whether
    `PYTHONPATH` wins depends on how the editable install was built (a `.pth` path entry loses to
    it; an `__editable___*` meta-path finder does not, being consulted before `sys.path` at all), so
@@ -141,24 +149,41 @@ would have converged in two rounds if each push had been gated.
    test touching dtype, device, capture or degenerate sizes. Before trusting a new regression test,
    check it FAILS on the pre-fix SHA — `git stash; pytest <test>; git stash pop` is a no-op once
    the fix is committed (which step 5 presumes): there is nothing to stash, the test runs on the
-   already-fixed tree, passes, and you wrongly conclude it is vacuous. Use the step-1 tag instead:
-   `git worktree add --detach "../.$(basename "$PWD")-prefix-probe" "$PREFIX_TAG"` — the checkout's
-   own name in the path, because `../prefix-probe` is a global name that two concurrent reviews in
-   two worktrees of this repo would both claim, and the loser measures the winner's branch. Call it
-   `$PROBE_WT`. Copy the test file over (new or
-   modified — it overwrites the tag's version) **together with every module it now imports that the
-   tag does not have** (a new `testing/` helper, a new fixture, a new `_historical.py`), then run
-   `(cd "$PROBE_WT" && PYTHONPATH=$PWD "$PY" -m pytest <test>)` with step 2's `$PY` and its import
-   guard in front — the shared `.venv` misdirects this probe the same way, and the
+   already-fixed tree, passes, and you wrongly conclude it is vacuous. Use the step-1 tag and the
+   self-contained probe below. It derives its path from the repository root, so it is safe even
+   when invoked from a subdirectory, and gives each tag a distinct worktree:
+
+   ```bash
+   REPO_WT=$(git rev-parse --show-toplevel) || exit $?
+   PIXI_ENV=${PIXI_ENVIRONMENT_NAME:-default}  # or set this to the environment used by the failing test
+   PY=$(cd "$REPO_WT" && pixi run -e "$PIXI_ENV" uv run python -c 'import sys; print(sys.executable)') || exit $?
+   PROBE_WT=$(mktemp -d "$(dirname "$REPO_WT")/.$(basename "$REPO_WT")-prefix-probe-XXXXXX") || exit $?
+   rmdir "$PROBE_WT" || exit $?  # reserve a collision-free name, then let git create the worktree
+   PROBE_CREATED=0
+   cleanup_prefix_probe() { [ "$PROBE_CREATED" -eq 1 ] && git -C "$REPO_WT" worktree remove --force "$PROBE_WT" 2>/dev/null || true; }
+   trap cleanup_prefix_probe EXIT HUP INT TERM
+   git -C "$REPO_WT" worktree add --detach "$PROBE_WT" "$PREFIX_TAG" || exit $?
+   PROBE_CREATED=1
+   # Copy <test> and every new module it imports into the same relative paths in "$PROBE_WT".
+   (cd "$PROBE_WT" \
+    && PYTHONPATH=$PWD "$PY" -c 'import kornia, pathlib, sys; p = pathlib.Path(kornia.__file__).resolve(); sys.exit(0 if p.is_relative_to(pathlib.Path.cwd()) else f"kornia imported from {p}")' \
+    && PYTHONPATH=$PWD "$PY" -m pytest <test>)
+   # Inspect the failure: it must be the target assertion, not collection/import failure.
+   ```
+
+   The active `$PY` and `$PROBE_WT` are assigned in the same shell that creates and probes the
+   worktree; the guarded trap removes it only after this shell created it, when the expected
+   assertion failure ends the command. Copy the test file over (new or modified — it overwrites
+   the tag's version)
+   **together with every module it now imports that the tag does not have** (a new `testing/`
+   helper, a new fixture, a new `_historical.py`), then run the shown command with its import guard
+   in front — the shared `.venv` misdirects this probe the same way, and the
    probe worktree has no `.venv` of its own, so a bare `python` or `uv run` there would answer the
    rounding question under a different interpreter and torch build. Confirm it fails **with the
    assertion the fix is about**. A collection error or `ImportError` is *not* that
    failure: it means the test never ran at the tag, and counting it as "it fails on the pre-fix
    SHA" green-lights a test that has never been executed against the bug. Read the failure line
-   (`AssertionError`, `Failed: DID NOT RAISE`), never a bare non-zero exit code. Then
-   `git worktree remove --force "$PROBE_WT"` — the copied-in test file is untracked (new) or
-   modified (pre-existing) there, so a plain `git worktree remove` refuses ("contains modified or
-   untracked files").
+   (`AssertionError`, `Failed: DID NOT RAISE`), never a bare non-zero exit code.
 
 5. **Self-review the delta with a fresh agent.** Dispatch a subagent on
    `git diff "$PREFIX_TAG"..HEAD` with this instruction: "Attack only the new code. For
@@ -193,8 +218,10 @@ would have converged in two rounds if each push had been gated.
    `pixi run verify-delta -- --tests tests/geometry --only "cpu float32"`. On a PR that does not
    target `main`, add `--base "origin/$BASE_REF"` from step 2 — the gate asks "does the tip break
    the branch it merges into", so it wants that branch's *tip*, where step 2's triage wanted the
-   *merge-base* with it. The tool refuses a dirty checkout: its scope is `base...HEAD`, so an
-   uncommitted fix would make a broken, pushable HEAD read green.
+   *merge-base* with it. The tool refuses a dirty checkout by default: its automatic scope is
+   `base...HEAD`, so an uncommitted fix would make a broken, pushable HEAD read green. If you
+   intentionally gate work in progress, pair `--allow-dirty` with explicit `--tests`; automatic
+   selection cannot discover working-tree-only paths.
 
    Exit 0 = no new failures, 1 = new failures (the `NEW [<surface>] <id>` lines name them), 2 = a
    selected, available surface was never measured — a failure, not a pass. **Exit 0 is necessary
