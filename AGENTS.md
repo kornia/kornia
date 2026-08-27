@@ -37,6 +37,7 @@ pixi run lint
 pixi run pre-commit-all
 pixi run typecheck
 pixi run doctest
+pixi run doctest-weights
 pixi run build-docs
 ```
 
@@ -51,7 +52,7 @@ KORNIA_TEST_DEVICE=cuda KORNIA_TEST_DTYPE=float32 pixi run test-module tests/geo
 
 Supported fixtures include CPU, CUDA, MPS, and TPU when available, and `float16`, `bfloat16`, `float32`, and `float64`. Run focused checks first and expand them in proportion to the change.
 
-Use `KORNIA_TEST_RUNSLOW=true` to include slow tests. `KORNIA_TEST_OPTIMIZER=inductor` enables the dynamo and compile tests, which are deselected when the variable is unset. Before presenting a code change as finished, run the full pre-commit command above together with focused tests and other relevant checks; `pixi run lint` runs only the Ruff hooks.
+Use `KORNIA_TEST_RUNSLOW=true` to include slow tests. `KORNIA_TEST_OPTIMIZER=inductor` enables the dynamo and compile tests, which are deselected when the variable is unset. `pixi run doctest` skips docstring examples that would download an uncached model checkpoint, so it stays fast and works offline; use `pixi run doctest-weights` (or `KORNIA_DOCTEST_DOWNLOAD=1`) to run those examples for real, which costs ~838 MB on a cold cache. Pull-request CI relies on the restored weights cache and skips whatever it misses; the post-merge run on `main` downloads, so the model examples are always exercised somewhere. Before presenting a code change as finished, run the full pre-commit command above together with focused tests and other relevant checks; `pixi run lint` runs only the Ruff hooks.
 
 ### Precision and device details
 

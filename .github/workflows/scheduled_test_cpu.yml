@@ -220,6 +220,9 @@ jobs:
     uses: ./.github/workflows/docs.yml
     with:
       python-version: '["3.11"]'
+      # Post-merge run: the model doctests download on a cache miss instead of
+      # skipping, so main always exercises them for real.
+      download-weights: true
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |

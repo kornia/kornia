@@ -38,6 +38,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.download import load_state_dict_from_url
 from kornia.geometry.subpix import nms2d
 
 
@@ -314,7 +315,7 @@ class XFeat(nn.Module):
             XFeat model with pretrained weights loaded, set to eval mode.
         """
         model = cls(top_k=top_k, detection_threshold=detection_threshold)
-        state_dict = torch.hub.load_state_dict_from_url(cls.weights_url, file_name="xfeat.pt")
+        state_dict = load_state_dict_from_url(cls.weights_url, file_name="xfeat.pt")
         model.net.load_state_dict(state_dict)
         model.eval()
         return model

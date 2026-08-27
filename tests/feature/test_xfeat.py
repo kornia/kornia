@@ -220,6 +220,21 @@ class TestXFeat(BaseTester):
         assert len(out) == 1
         assert out[0]["keypoints"].shape[-1] == 2
 
+    def test_pretrained_uses_kornia_downloader(self, monkeypatch):
+        # Going through kornia.core.download keeps torch.hub's progress line off
+        # stdout, which a bare torch.hub call would leak into doctests (#4005).
+        calls = []
+
+        def fake_download(url, **kwargs):
+            calls.append((url, kwargs))
+            return XFeat().net.state_dict()
+
+        monkeypatch.setattr("kornia.feature.xfeat.load_state_dict_from_url", fake_download)
+        model = XFeat.from_pretrained()
+
+        assert calls == [(XFeat.weights_url, {"file_name": "xfeat.pt"})]
+        assert not model.net.training
+
 
 # ---------------------------------------------------------------------------
 # LighterGlue (xfeat config in LightGlue) tests
