@@ -26,7 +26,7 @@ import torch.nn.functional as F
 from kornia.constants import pi
 from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast
+from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast, is_compiling
 
 __all__ = [
     "ARKitQTVecs_to_ColmapQTVecs",
@@ -1493,15 +1493,10 @@ def normalize_pixel_coordinates(
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
     if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
-    if (
-        not torch.jit.is_scripting()
-        and not torch.jit.is_tracing()
-        and not torch.compiler.is_compiling()
-        and eps != 1e-8
-    ):
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-8:
         warnings.warn("`eps` is deprecated and ignored by `normalize_pixel_coordinates`.", FutureWarning, stacklevel=2)
 
-    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
         sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
         sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
         tx = 0.0 if width == 1 else -1.0
@@ -1573,19 +1568,14 @@ def denormalize_pixel_coordinates(
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
     if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
-    if (
-        not torch.jit.is_scripting()
-        and not torch.jit.is_tracing()
-        and not torch.compiler.is_compiling()
-        and eps != 1e-8
-    ):
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-8:
         warnings.warn(
             "`eps` is deprecated and ignored by `denormalize_pixel_coordinates`.",
             FutureWarning,
             stacklevel=2,
         )
 
-    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
         sx = 1.0 if width == 1 else (width - 1.0) / 2.0
         sy = 1.0 if height == 1 else (height - 1.0) / 2.0
         tx = 0.0 if width == 1 else sx
@@ -1652,19 +1642,14 @@ def normalize_pixel_coordinates3d(
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
     if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
-    if (
-        not torch.jit.is_scripting()
-        and not torch.jit.is_tracing()
-        and not torch.compiler.is_compiling()
-        and eps != 1e-8
-    ):
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-8:
         warnings.warn(
             "`eps` is deprecated and ignored by `normalize_pixel_coordinates3d`.",
             FutureWarning,
             stacklevel=2,
         )
 
-    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
         sd = 1.0 if depth == 1 else 2.0 / (depth - 1.0)
         sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
         sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
@@ -1741,19 +1726,14 @@ def denormalize_pixel_coordinates3d(
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
     if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
-    if (
-        not torch.jit.is_scripting()
-        and not torch.jit.is_tracing()
-        and not torch.compiler.is_compiling()
-        and eps != 1e-8
-    ):
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-8:
         warnings.warn(
             "`eps` is deprecated and ignored by `denormalize_pixel_coordinates3d`.",
             FutureWarning,
             stacklevel=2,
         )
 
-    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
         sd = 1.0 if depth == 1 else (depth - 1.0) / 2.0
         sx = 1.0 if width == 1 else (width - 1.0) / 2.0
         sy = 1.0 if height == 1 else (height - 1.0) / 2.0
@@ -2120,15 +2100,10 @@ def normal_transform_pixel(
     """
     if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
-    if (
-        not torch.jit.is_scripting()
-        and not torch.jit.is_tracing()
-        and not torch.compiler.is_compiling()
-        and eps != 1e-14
-    ):
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-14:
         warnings.warn("`eps` is deprecated and ignored by `normal_transform_pixel`.", FutureWarning, stacklevel=2)
 
-    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
         # Eager and TorchScript take the scalar branch, which is an order of magnitude
         # cheaper on this hot path. Graph capture takes the tensor form below so symbolic
         # sizes retain the singleton decision.
@@ -2234,15 +2209,10 @@ def normal_transform_pixel3d(
     """
     if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
-    if (
-        not torch.jit.is_scripting()
-        and not torch.jit.is_tracing()
-        and not torch.compiler.is_compiling()
-        and eps != 1e-14
-    ):
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-14:
         warnings.warn("`eps` is deprecated and ignored by `normal_transform_pixel3d`.", FutureWarning, stacklevel=2)
 
-    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not torch.compiler.is_compiling()):
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
         # As in 2-D, graph capture uses the tensor form below for symbolic sizes.
         sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
         sy = 1.0 if height == 1 else 2.0 / (height - 1.0)

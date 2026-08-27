@@ -88,6 +88,23 @@ jobs:
       - name: Install dependencies
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} install
 
+      - name: Install PyTorch matrix version
+        shell: bash
+        env:
+          PYTORCH_VERSION: ${{ matrix.pytorch-version }}
+        run: |
+          if [[ "$PYTORCH_VERSION" =~ ^2\.[1-4]\. ]]; then
+            pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync uv pip install "numpy<2"
+          fi
+          pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync uv pip install \
+            --reinstall-package torch --index-url https://download.pytorch.org/whl/cpu "torch==$PYTORCH_VERSION"
+
+      - name: Verify PyTorch version
+        env:
+          EXPECTED_PYTORCH_VERSION: ${{ matrix.pytorch-version }}
+        run: |
+          pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync python -c 'import os, torch; expected = os.environ["EXPECTED_PYTORCH_VERSION"]; version = torch.__version__; print(f"expected {expected}, got {version}"); assert version.startswith(expected)'
+
       # torch Windows wheels crash with STATUS_ILLEGAL_INSTRUCTION (0xc000001d) inside
       # affine_grid on part of the runner fleet — observed on torch 2.5.1 AND 2.9.1, on both
       # windows-2022 and windows-2025 (host-CPU-dependent: the CPU-autocast bf16 path
@@ -106,4 +123,5 @@ jobs:
           KORNIA_TEST_DTYPE: ${{ inputs.pytorch-dtype }}
           KORNIA_TEST_RUNSLOW: ${{ inputs.runslow }}
           KORNIA_TEST_OPTIMIZER: ${{ inputs.optimizer }}
+          UV_NO_SYNC: "1"
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} test ${{ inputs.pytest-extra }}

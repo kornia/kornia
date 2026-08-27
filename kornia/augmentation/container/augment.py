@@ -39,11 +39,13 @@ from .video import VideoSequential
 
 __all__ = ["AugmentationSequential"]
 
-_BOXES_OPTIONS = {DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH}
-_KEYPOINTS_OPTIONS = {DataKey.KEYPOINTS}
-_IMG_OPTIONS = {DataKey.INPUT, DataKey.IMAGE}
-_MSK_OPTIONS = {DataKey.MASK}
-_CLS_OPTIONS = {DataKey.CLASS, DataKey.LABEL}
+# Dynamo cannot trace membership checks against a Python set; tuples keep these constants
+# capture-friendly while preserving the membership-only behavior used below.
+_BOXES_OPTIONS = (DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH)
+_KEYPOINTS_OPTIONS = (DataKey.KEYPOINTS,)
+_IMG_OPTIONS = (DataKey.INPUT, DataKey.IMAGE)
+_MSK_OPTIONS = (DataKey.MASK,)
+_CLS_OPTIONS = (DataKey.CLASS, DataKey.LABEL)
 
 MaskDataType = Union[torch.Tensor, List[torch.Tensor]]
 
