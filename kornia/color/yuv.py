@@ -48,7 +48,8 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = rgb_to_yuv(input)  # 2x3x4x5
+        >>> rgb_to_yuv(input).shape
+        torch.Size([2, 3, 4, 5])
 
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
@@ -87,7 +88,9 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
-        >>> output = rgb_to_yuv420(input)  # (2x1x4x6, 2x2x2x3)
+        >>> y, uv = rgb_to_yuv420(input)
+        >>> y.shape, uv.shape
+        (torch.Size([2, 1, 4, 6]), torch.Size([2, 2, 2, 3]))
 
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
@@ -125,7 +128,9 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
-        >>> output = rgb_to_yuv420(input)  # (2x1x4x6, 2x1x4x3)
+        >>> y, uv = rgb_to_yuv422(input)
+        >>> y.shape, uv.shape
+        (torch.Size([2, 1, 4, 6]), torch.Size([2, 2, 4, 3]))
 
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
@@ -156,7 +161,8 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = yuv_to_rgb(input)  # 2x3x4x5
+        >>> yuv_to_rgb(input).shape
+        torch.Size([2, 3, 4, 5])
 
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
@@ -196,7 +202,8 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     Example:
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 2, 3)
-        >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x6
+        >>> yuv420_to_rgb(inputy, inputuv).shape
+        torch.Size([2, 3, 4, 6])
 
     """
     KORNIA_CHECK_SHAPE(imagey, ["*", "1", "H", "W"])
@@ -245,8 +252,9 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> inputy = torch.rand(2, 1, 4, 6)
-        >>> inputuv = torch.rand(2, 2, 2, 3)
-        >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x5
+        >>> inputuv = torch.rand(2, 2, 4, 3)
+        >>> yuv422_to_rgb(inputy, inputuv).shape
+        torch.Size([2, 3, 4, 6])
 
     """
     KORNIA_CHECK_SHAPE(imagey, ["*", "1", "H", "W"])
@@ -285,7 +293,8 @@ class RgbToYuv(nn.Module):
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> yuv = RgbToYuv()
-        >>> output = yuv(input)  # 2x3x4x5
+        >>> yuv(input).shape
+        torch.Size([2, 3, 4, 5])
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
@@ -330,7 +339,9 @@ class RgbToYuv420(nn.Module):
     Examples:
         >>> yuvinput = torch.rand(2, 3, 4, 6)
         >>> yuv = RgbToYuv420()
-        >>> output = yuv(yuvinput)  # # (2x1x4x6, 2x1x2x3)
+        >>> y, uv = yuv(yuvinput)
+        >>> y.shape, uv.shape
+        (torch.Size([2, 1, 4, 6]), torch.Size([2, 2, 2, 3]))
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
@@ -377,7 +388,9 @@ class RgbToYuv422(nn.Module):
     Examples:
         >>> yuvinput = torch.rand(2, 3, 4, 6)
         >>> yuv = RgbToYuv422()
-        >>> output = yuv(yuvinput)  # # (2x1x4x6, 2x2x4x3)
+        >>> y, uv = yuv(yuvinput)
+        >>> y.shape, uv.shape
+        (torch.Size([2, 1, 4, 6]), torch.Size([2, 2, 4, 3]))
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
@@ -423,7 +436,8 @@ class YuvToRgb(nn.Module):
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = YuvToRgb()
-        >>> output = rgb(input)  # 2x3x4x5
+        >>> rgb(input).shape
+        torch.Size([2, 3, 4, 5])
 
     """
 
@@ -468,7 +482,8 @@ class Yuv420ToRgb(nn.Module):
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 2, 3)
         >>> rgb = Yuv420ToRgb()
-        >>> output = rgb(inputy, inputuv)  # 2x3x4x6
+        >>> rgb(inputy, inputuv).shape
+        torch.Size([2, 3, 4, 6])
 
     """
 
@@ -514,7 +529,8 @@ class Yuv422ToRgb(nn.Module):
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 4, 3)
         >>> rgb = Yuv422ToRgb()
-        >>> output = rgb(inputy, inputuv)  # 2x3x4x6
+        >>> rgb(inputy, inputuv).shape
+        torch.Size([2, 3, 4, 6])
 
     """
 

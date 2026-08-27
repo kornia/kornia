@@ -67,6 +67,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   axis is `1` (`conv_soft_argmax2d` with a `(3, 1)` kernel returned `[-1.6667, -1.0, ...]` and now returns
   `[-1.0, -0.3333, ...]`).
 
+* Restore the YUV test coverage that #3539 deleted, and fix the `kornia.color` YUV docstring examples (#4045).
+  `rgb_to_yuv422` and `yuv422_to_rgb` both documented an example that called the 4:2:0 function instead of
+  themselves, so a reader copying either got the wrong conversion and the wrong chroma shapes; several other
+  examples stated a shape in a trailing comment that disagreed with what the function returns
+  (`RgbToYuv420` said `2x1x2x3` for a `(2, 2, 2, 3)` chroma plane). Every example in `kornia/color/yuv.py` now
+  asserts its output shape as a doctest instead of stating it in a comment. No runtime behavior changed.
+
 
 ## :rocket: [0.6.11] - 2022-03-28
 ### :new:  New Features
