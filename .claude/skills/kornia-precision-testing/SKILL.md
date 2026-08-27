@@ -47,9 +47,12 @@ sweeps; when a rule cannot be expressed through a helper, cite the rule in the t
    `assert_degenerate_path_parity`. A guard that is stricter or laxer on the empty path is a bug.
    Every `bad_inputs` name must be a real argument already present in both kwargs dicts — the
    helper raises rather than let a typo'd name be *added* to the call, where both paths raise
-   `TypeError: unexpected keyword argument` and parity holds over a call that never happened.
-6. **Byte-equality between eager and capture**, `torch.equal` not `allclose` — the capture branch
-   must perform the same rounding sequence.
+   `TypeError: unexpected keyword argument` and parity holds over a call that never happened. It
+   also refuses an empty `bad_inputs`, which would run the two baseline calls and compare nothing.
+6. **Byte-equality between eager and capture**, not `allclose` — the capture branch must perform
+   the same rounding sequence. `assert_capture_matches_eager` compares the raw bytes rather than
+   `torch.equal`, which is numeric: it reads two NaNs as unequal (a spurious failure on any op that
+   legitimately produces one) and `+0.0` as equal to `-0.0` (a sign-bit change it would miss).
 7. **Compile tests carry `dynamo` or `compile` in the name** so `conftest.py` deselects them when
    `KORNIA_TEST_OPTIMIZER` is unset; use the `torch_optimizer` fixture. Trace tests do not need it.
 8. **MPS and half-precision skips copy the nearest existing test's skip**, with the reason. Do not
@@ -79,8 +82,8 @@ assert_degenerate_path_parity(warp_affine, full_kwargs, empty_kwargs, [("M", int
 Full reference: `TESTING.md` § "Precision and Degenerate-Path Helpers". Historical negatives that
 these helpers must catch live in `tests/testing/_historical.py`.
 
-Gate the PR with `pixi run verify-delta` (see `kornia-review-loop` step 6 for the flags and exit
-codes) once these tests exist.
+Gate the PR with `pixi run verify-delta` (see `kornia-review-loop` step 6 for the flags, the exit
+codes, and why exit 0 alone is not the verdict) once these tests exist.
 
 ## Related
 
