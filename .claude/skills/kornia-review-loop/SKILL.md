@@ -1,6 +1,6 @@
 ---
 name: kornia-review-loop
-description: Use when a code-review finding on a kornia PR states a cause or mechanism, a numeric condition or threshold, or enumerates files, sites or consumers — or when its suggested fix does. Not for refactor, dedupe, test-structure or style findings; those take the short path named inside.
+description: Use when a code-review finding on a kornia PR asks for a change to a line under kornia/, to a docstring or docs sentence, or to a test's expected value, tolerance, skip or xfail. A finding whose fix only reorganises tests (parametrize tables, helpers, skip plumbing, comments) takes the short path named inside.
 ---
 
 # kornia-review-loop: a fix commit carries the whole verification bar
@@ -20,22 +20,22 @@ would have converged in two rounds if each push had been gated.
 
 ## Does this finding need this workflow?
 
-Read the finding once and answer with the first line that matches:
+Decide by **what the fix will touch**, read off the finding's suggested change, not by what the
+finding cites (a refactor request will usually name a mechanism or a count):
 
-- It states **why** something happens ("because", "the mechanism is", "rounds at"), a **condition
-  or threshold** with a number in it ("only when", "requires", "from `2**k` on"), or **enumerates**
-  files, call sites, consumers or cells ("A, B and C also use it", "three sites") — **or its
-  suggested fix does** → run the workflow below.
-- It asks for a **refactor, dedupe, driver, reorder, rename, style or test-structure change** and
-  states none of the above → **short path**: fix it, run the tests the diff touches on cpu float32
-  and on any device/dtype the changed test names, self-review the diff yourself, reply. Do not tag,
-  do not build a merge-base worktree, do not dispatch a subagent.
+- The fix changes a line under `kornia/`, a sentence in a docstring or in `docs/`, or the
+  expected value, tolerance, skip condition or xfail of a test → **run the workflow below**.
+- The fix changes only how tests are organised — a parametrize table, a shared helper or driver,
+  skip plumbing, ids, comments — and no expected value → **short path**: make the change, run the
+  touched tests on cpu float32 and on any device/dtype the changed test names, read your own diff
+  once, reply. Do not tag, do not build a merge-base worktree, do not dispatch a subagent, do not
+  write the fenced blocks.
 
-Measured on fifteen replayed review rounds (kornia#4006, #3984, #3942), the workflow changed the
-outcome only on findings of the first kind — five wins and one loss, every one a finding whose
-diagnosis or list turned out to be wrong when executed — and on the second kind it produced the
-same diff as no workflow at all at two to three times the wall clock. A finding of the second kind
-that also carries a stated set ("three skip sites") is of the first kind.
+Measured on fifteen replayed review rounds (kornia#4006, #3984, #3942): the workflow changed the
+outcome only on the first kind — every win was a finding whose diagnosis or list turned out to be
+wrong when executed — and on the second kind it produced the same diff as no workflow at all, at
+two to three times the wall clock, on every one of four cases across three revisions. If the
+short-path change *would* alter an expected value, it is of the first kind.
 
 ## Workflow
 
@@ -397,7 +397,7 @@ that also carries a stated set ("three skip sites") is of the first kind.
 | "The sibling has the same typo, I'll fix both" | Probe the sibling's accepted calls first; the 3d guard's `or` was load-bearing for unbatched input. |
 | "A docs-organization finding — nothing to falsify" | It names a set. One tree-wide grep; its output replaces the finding's list (step 2). |
 | "That figure was already in the tree; I only moved it" | Your sentence is now the canonical copy. Re-derive every figure in it (step 5b). |
-| "It's a refactor, but I'll run the whole workflow to be safe" | Measured: same diff, 2–3× the time. Take the short path at the top. |
+| "It's a test refactor, but the finding cites a mechanism, so the full workflow applies" | The gate is what the fix touches, not what the finding cites. Same diff at 2–3× the time, four cases, three revisions. Short path. |
 | "The finding says these seven modules lack a warning, so I'll add seven warnings" | The list is a set to grep and a cross-reference to place. Seven additions are a follow-up issue (step 3). |
 
 ## Related
