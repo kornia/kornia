@@ -958,13 +958,11 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
         - ``quaternion_to_angle_axis`` is the deprecated alias of this function
           since 0.7.0; see the alias warning on
           :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
-
-    .. warning::
-        The gradient at the identity quaternion is ``nan``:
-        ``quaternion_to_axis_angle(torch.tensor([1., 0., 0., 0.])).sum().backward()``
-        leaves ``[nan, nan, nan, nan]`` in ``.grad``, from an unclamped
-        ``sqrt(0)``. Away from the identity the gradient is finite. Tracked in
-        `#3949 <https://github.com/kornia/kornia/issues/3949>`_.
+        - differentiable at the identity quaternion. The ``sqrt`` whose
+          derivative is unbounded there never sees its zero radicand, so the
+          gradient is the analytic limit of the surrounding map rather than
+          ``nan``. The guard is elementwise, and away from the identity it
+          moves no forward bit
 
     Args:
         quaternion: tensor with quaternions.
@@ -996,14 +994,18 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
 
     sin_squared_theta: torch.Tensor = q1 * q1 + q2 * q2 + q3 * q3
 
-    sin_theta: torch.Tensor = torch.sqrt(sin_squared_theta)
+    # the sqrt and the division below are only taken where the radicand is non zero. the inner
+    # `where` keeps the identity rotation away from the sqrt so its backward pass stays finite.
+    pos: torch.Tensor = sin_squared_theta > 0.0
+    safe_sin_squared_theta: torch.Tensor = torch.where(pos, sin_squared_theta, torch.ones_like(sin_squared_theta))
+    sin_theta: torch.Tensor = torch.where(pos, torch.sqrt(safe_sin_squared_theta), torch.zeros_like(sin_squared_theta))
     two_theta: torch.Tensor = 2.0 * torch.where(
         cos_theta < 0.0, torch.atan2(-sin_theta, -cos_theta), torch.atan2(sin_theta, cos_theta)
     )
 
-    k_pos: torch.Tensor = two_theta / sin_theta
+    k_pos: torch.Tensor = two_theta / torch.where(pos, sin_theta, torch.ones_like(sin_theta))
     k_neg: torch.Tensor = 2.0 * torch.ones_like(sin_theta)
-    k: torch.Tensor = torch.where(sin_squared_theta > 0.0, k_pos, k_neg)
+    k: torch.Tensor = torch.where(pos, k_pos, k_neg)
 
     axis_angle: torch.Tensor = torch.zeros_like(quaternion)[..., :3]
     axis_angle[..., 0] += q1 * k
@@ -1212,12 +1214,10 @@ def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
           ``sqrt`` on the way in already produces a floating tensor, and the
           output is allocated from that rather than from the input, so the
           result comes back at the ambient default floating dtype
-
-    .. warning::
-        The gradient at the zero rotation is ``nan``:
-        ``axis_angle_to_quaternion(torch.zeros(3)).sum().backward()`` leaves
-        ``[nan, nan, nan]`` in ``.grad``, from an unclamped ``sqrt(0)``.
-        Tracked in `#3949 <https://github.com/kornia/kornia/issues/3949>`_.
+        - differentiable at the zero rotation. The ``sqrt`` whose derivative is
+          unbounded there never sees its zero radicand, so the gradient is the
+          analytic limit of the surrounding map rather than ``nan``. The guard
+          is elementwise, and away from zero it moves no forward bit
 
     Args:
         axis_angle: tensor with axis angle in radians.
@@ -1247,14 +1247,18 @@ def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
     a2: torch.Tensor = axis_angle[..., 2:3]
     theta_squared: torch.Tensor = a0 * a0 + a1 * a1 + a2 * a2
 
-    theta: torch.Tensor = torch.sqrt(theta_squared)
+    mask: torch.Tensor = theta_squared > 0.0
+
+    # the sqrt and the division below are only taken where the radicand is non zero. the inner
+    # `where` keeps the zero rotation away from the sqrt so its backward pass stays finite.
+    safe_theta_squared: torch.Tensor = torch.where(mask, theta_squared, torch.ones_like(theta_squared))
+    theta: torch.Tensor = torch.where(mask, torch.sqrt(safe_theta_squared), torch.zeros_like(theta_squared))
     half_theta: torch.Tensor = theta * 0.5
 
-    mask: torch.Tensor = theta_squared > 0.0
     ones: torch.Tensor = torch.ones_like(half_theta)
 
     k_neg: torch.Tensor = 0.5 * ones
-    k_pos: torch.Tensor = torch.sin(half_theta) / theta
+    k_pos: torch.Tensor = torch.sin(half_theta) / torch.where(mask, theta, ones)
     k: torch.Tensor = torch.where(mask, k_pos, k_neg)
     w: torch.Tensor = torch.where(mask, torch.cos(half_theta), ones)
 
