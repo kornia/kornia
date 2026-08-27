@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-import contextlib
+import os
 import sys
 import warnings
 from pathlib import Path
@@ -47,6 +47,59 @@ def hf_url(repo: str, filename: str) -> str:
     return f"{_HF_KORNIA_BASE}/{repo}/resolve/main/{filename}"
 
 
+def _cached_file_path(url: str, kwargs: dict[str, Any]) -> str:
+    """Return the path :func:`torch.hub.load_state_dict_from_url` would cache *url* at.
+
+    Mirrors torch's own resolution: ``<model_dir>/<file_name or basename(url)>``,
+    where ``model_dir`` defaults to ``<torch.hub.get_dir()>/checkpoints``.
+
+    Args:
+        url: the URL that would be downloaded.
+        kwargs: the keyword arguments destined for the torch function; only
+            ``model_dir`` and ``file_name`` are consulted.
+
+    Returns:
+        The absolute path of the cache entry for *url*.
+    """
+    model_dir = kwargs.get("model_dir")
+    if model_dir is None:
+        model_dir = os.path.join(torch.hub.get_dir(), "checkpoints")
+    filename = kwargs.get("file_name") or os.path.basename(urlparse(url).path)
+    return os.path.join(model_dir, filename)
+
+
+def _prefetch_to_cache(url: str, kwargs: dict[str, Any]) -> None:
+    """Download *url* into the torch hub cache if it is not already there.
+
+    Doing the fetch here rather than letting :func:`torch.hub.load_state_dict_from_url`
+    do it means torch finds the file present and never writes its status line to
+    stdout. A no-op when the file is already cached, which is the common case.
+
+    If the path computed here ever disagreed with torch's, the only consequence
+    is that torch downloads the file again -- the result stays correct.
+
+    Args:
+        url: the URL to fetch.
+        kwargs: the keyword arguments destined for the torch function;
+            ``model_dir``, ``file_name``, ``check_hash`` and ``progress`` are
+            honoured so the cache entry is identical to torch's.
+    """
+    cached_file = _cached_file_path(url, kwargs)
+    if os.path.exists(cached_file):
+        return
+
+    os.makedirs(os.path.dirname(cached_file), exist_ok=True)
+
+    hash_prefix = None
+    if kwargs.get("check_hash"):
+        match = torch.hub.HASH_REGEX.search(os.path.basename(cached_file))
+        hash_prefix = match.group(1) if match else None
+
+    # torch writes this to stdout; status output belongs on stderr.
+    sys.stderr.write(f'Downloading: "{url}" to {cached_file}\n')
+    torch.hub.download_url_to_file(url, cached_file, hash_prefix, progress=kwargs.get("progress", True))
+
+
 def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, Any]:
     """Load a state dict from a URL, trying fallback URLs on failure.
 
@@ -62,6 +115,15 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     corrupts any caller that treats stdout as data -- most visibly doctests,
     where the line is captured as unexpected example output and fails an
     example that downloads on a cold cache.
+
+    That line is reached only when the file is absent from the cache, so this
+    function fetches a missing file itself -- announcing it on stderr -- and
+    leaves torch with nothing to report. Nothing process-global is touched:
+    redirecting :data:`sys.stdout` around the call would divert unrelated
+    threads' output for the whole transfer, and concurrent calls restoring out
+    of order would leave stdout permanently pointing at stderr. This mirrors
+    :func:`kornia.feature.lightglue_onnx.utils.download.download_onnx_from_url`,
+    which already reimplements torch's caching for the same reason.
 
     When multiple URLs are given and ``file_name`` is not already in *kwargs*,
     the basename of the **first** URL is used as the local cache filename for
@@ -102,9 +164,9 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     last_exc: Exception | None = None
     for i, u in enumerate(urls):
         try:
-            # Keep torch's download chatter off stdout; see the docstring note.
-            with contextlib.redirect_stdout(sys.stderr):
-                return torch.hub.load_state_dict_from_url(u, **kwargs)
+            # Populate the cache ourselves so torch's stdout line is never reached.
+            _prefetch_to_cache(u, kwargs)
+            return torch.hub.load_state_dict_from_url(u, **kwargs)
         except Exception as e:  # noqa: BLE001
             last_exc = e
             if i < len(urls) - 1:
