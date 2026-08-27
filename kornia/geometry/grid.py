@@ -67,15 +67,23 @@ def create_meshgrid(
                   [1., 1.]]]])
 
     """
-    if not torch.jit.is_scripting() and is_compiling():
-        # ``linspace`` specializes symbolic ``steps`` under export; ``arange`` retains the
-        # dynamic output length. Match ``linspace``'s default floating dtype when none is given.
-        arange_dtype = dtype if dtype is not None else torch.get_default_dtype()
-        xs = torch.arange(width, device=device, dtype=arange_dtype)
-        ys = torch.arange(height, device=device, dtype=arange_dtype)
-    else:
-        xs = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
-        ys = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
+    # Build the pixel ramp with ``arange`` in both eager and capture. ``linspace`` rounds its
+    # endpoint into the coordinate dtype first and fills the upper half of the ramp backwards from
+    # that rounded value, so its step is exactly 1 only while ``size - 1`` is an exactly
+    # representable integer -- ``size <= 2 ** p + 1`` for a ``p``-bit significand. Past that it
+    # lands one ulp off the correctly rounded column index. The bound is 257 in bfloat16 and 2049
+    # in float16, and 2 ** 24 + 1 / 2 ** 53 + 1 in float32/float64, so no non-half grid can move.
+    # Inductor lowers the same call to a per-index computation that rounds correctly, so eager and
+    # compiled grids disagreed by up to one ulp of the width. ``arange`` also retains the dynamic
+    # output length under export, where ``linspace`` specializes symbolic ``steps``. Match
+    # ``linspace``'s default floating dtype when none is given -- read off an empty tensor rather
+    # than via ``torch.get_default_dtype()``, for which TorchScript has no builtin. The empty
+    # tensor takes ``device`` so that the read depends on an argument: a no-input factory call is
+    # constant-folded by TorchScript's optimizing executor after the first run, which would freeze
+    # the ramp at whatever the default dtype happened to be on that call.
+    ramp_dtype = dtype if dtype is not None else torch.empty(0, device=device).dtype
+    xs = torch.arange(width, device=device, dtype=ramp_dtype)
+    ys = torch.arange(height, device=device, dtype=ramp_dtype)
     # Fix TracerWarning
     # Note: keeping this formula inline avoids the extra tensors and shape checks incurred by
     #       normalize_pixel_coordinates. The two paths use the same singleton-centre policy.
@@ -146,15 +154,13 @@ def create_meshgrid3d(
         grid tensor with shape :math:`(1, D, H, W, 3)`.
 
     """
-    if not torch.jit.is_scripting() and is_compiling():
-        arange_dtype = dtype if dtype is not None else torch.get_default_dtype()
-        xs = torch.arange(width, device=device, dtype=arange_dtype)
-        ys = torch.arange(height, device=device, dtype=arange_dtype)
-        zs = torch.arange(depth, device=device, dtype=arange_dtype)
-    else:
-        xs = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
-        ys = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
-        zs = torch.linspace(0, depth - 1, depth, device=device, dtype=dtype)
+    # See ``create_meshgrid``: ``arange`` keeps eager and captured pixel ramps identical at
+    # float16/bfloat16, keeps the output length dynamic under export, and reads the default dtype
+    # off a ``device``-bearing empty tensor so TorchScript cannot constant-fold the read.
+    ramp_dtype = dtype if dtype is not None else torch.empty(0, device=device).dtype
+    xs = torch.arange(width, device=device, dtype=ramp_dtype)
+    ys = torch.arange(height, device=device, dtype=ramp_dtype)
+    zs = torch.arange(depth, device=device, dtype=ramp_dtype)
     # Fix TracerWarning
     if normalized_coordinates:
         if not torch.jit.is_scripting() and (torch.jit.is_tracing() or is_compiling()):

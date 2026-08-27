@@ -225,6 +225,69 @@ def test_pixel_meshgrid_default_dtype_matches_compile(is_3d, default_dtype):
     assert_close(actual, expected, atol=0.0, rtol=0.0)
 
 
+@pytest.mark.parametrize("is_3d", [False, True], ids=["2d", "3d"])
+def test_pixel_meshgrid_scripted_ramp_follows_the_runtime_default_dtype(is_3d):
+    """A scripted grid with no explicit dtype must track ``torch.get_default_dtype()`` per call.
+
+    The default dtype is read off an empty tensor because TorchScript has no
+    ``aten::get_default_dtype``. A factory call with no graph input is constant-folded by
+    TorchScript's optimizing executor once profiling completes, which froze the ramp at whatever
+    the default happened to be on the first call -- ``linspace(0, size - 1, size)`` never folded
+    because it consumed ``size``. Passing ``device`` restores that dependency. The first call here
+    is deliberately made under a *different* default from the assertion, since the freeze only
+    shows from the second call onwards. No "compile"/"dynamo" in the name on purpose: this is
+    plain TorchScript and must run in the ordinary test jobs, which deselect those by name.
+    """
+    op = kornia.geometry.create_meshgrid3d if is_3d else kornia.geometry.create_meshgrid
+    args = (2, 3, 4) if is_3d else (3, 4)
+    scripted = torch.jit.script(op)
+
+    previous_dtype = torch.get_default_dtype()
+    try:
+        torch.set_default_dtype(torch.float32)
+        assert scripted(*args).dtype == torch.float32
+
+        torch.set_default_dtype(torch.float64)
+        assert scripted(*args).dtype == torch.float64 == op(*args).dtype
+        assert scripted(*args).dtype == torch.float64, "the scripted ramp froze its default dtype"
+    finally:
+        torch.set_default_dtype(previous_dtype)
+
+
+@pytest.mark.parametrize("grid_dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("is_3d", [False, True], ids=["2d", "3d"])
+def test_pixel_meshgrid_half_dtype_matches_compile(is_3d, grid_dtype):
+    """A half-precision pixel ramp must not change when the grid is built under ``torch.compile``.
+
+    ``linspace`` rounds its endpoint into the coordinate dtype and fills the upper half of the ramp
+    backwards from that rounded value, so it lands one ulp off the correctly rounded column index --
+    ``linspace(0, 299, 300)`` gives 258 at index 257 where bfloat16 holds 257 as 256. Inductor lowers
+    the same call to a per-index computation that rounds correctly, so the eager and compiled grids
+    disagreed by up to one ulp of the width. The sizes here are the first at which the two diverge:
+    258 for bfloat16 and 2050 for float16.
+    """
+
+    class MeshGrid(torch.nn.Module):
+        def forward(self, image):
+            if is_3d:
+                return kornia.geometry.create_meshgrid3d(
+                    image.shape[-3], image.shape[-2], image.shape[-1], False, device=image.device, dtype=image.dtype
+                )
+            return kornia.geometry.create_meshgrid(
+                image.shape[-2], image.shape[-1], False, device=image.device, dtype=image.dtype
+            )
+
+    size = 258 if grid_dtype == torch.bfloat16 else 2050
+    shape = (1, 1, 2, 2, size) if is_3d else (1, 1, 2, size)
+    image = torch.zeros(*shape, dtype=grid_dtype)
+
+    expected = MeshGrid()(image)
+    actual = torch.compile(MeshGrid(), fullgraph=True)(image)
+
+    assert actual.dtype == expected.dtype == grid_dtype
+    assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+
 def test_create_meshgrid3d(device, dtype):
     depth, height, width = 5, 4, 6
     normalized_coordinates = False
