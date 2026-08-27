@@ -50,7 +50,7 @@ from kornia.geometry.conversions import (
 )
 from kornia.geometry.quaternion import Quaternion
 
-from testing.base import BaseTester, assert_close
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, assert_close, dynamo_is_available
 
 
 @pytest.fixture()
@@ -3459,6 +3459,7 @@ def test_pixel_coordinate_singleton_policy_scripts(op_name, args, device, dtype)
         ("denormalize_pixel_coordinates3d", 3),
     ],
 )
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 def test_pixel_coordinate_export_crosses_singleton_boundary(op_name, ndim):
     op = getattr(kornia.geometry.conversions, op_name)
 
@@ -3523,6 +3524,7 @@ def test_non_default_eps_does_not_break_fullgraph_compile(op_name, sizes):
     ],
     ids=["float32", "bfloat16-rounding-boundary", "float16-rounding-boundary"],
 )
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 def test_normal_transform_export_crosses_singleton_boundary(is_3d, dtype, runtime_sizes):
     class ExportTransform(torch.nn.Module):
         def forward(self, image):

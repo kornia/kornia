@@ -89,7 +89,15 @@ jobs:
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} install
 
       - name: Install PyTorch matrix version
-        run: pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync uv pip install --reinstall "torch==${{ matrix.pytorch-version }}"
+        shell: bash
+        env:
+          PYTORCH_VERSION: ${{ matrix.pytorch-version }}
+        run: |
+          if [[ "$PYTORCH_VERSION" =~ ^2\.[1-4]\. ]]; then
+            pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync uv pip install "numpy<2"
+          fi
+          pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync uv pip install \
+            --reinstall-package torch --index-url https://download.pytorch.org/whl/cpu "torch==$PYTORCH_VERSION"
 
       - name: Verify PyTorch version
         env:

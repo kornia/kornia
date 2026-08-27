@@ -45,7 +45,12 @@ def math_clamp(x, min_, max_):  # type: ignore
     return min(max(x, min_), max_)
 
 
-AMP_CUSTOM_FWD_F32 = torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
+if hasattr(torch.amp, "custom_fwd"):
+    AMP_CUSTOM_FWD_F32 = torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
+else:
+    # ``torch.amp.custom_fwd`` was introduced after Kornia's minimum supported Torch;
+    # the CUDA-specific spelling provides the same behavior on older releases.
+    AMP_CUSTOM_FWD_F32 = torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
 
 
 @AMP_CUSTOM_FWD_F32

@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import math
+import sys
 from functools import cache
 from typing import Any, Callable, Optional, Sequence, Union
 
@@ -27,8 +28,18 @@ import torch.nn.functional as F
 from torch.autograd import gradcheck
 from torch.testing import assert_close as _assert_close
 
+from kornia.core._compat import torch_version_lt
+
 Dtype = Union[torch.dtype, None]
 Tensor = torch.Tensor
+
+DYNAMO_UNAVAILABLE_REASON = "torch.compile requires torch>=2.6 on Python>=3.13"
+
+
+def dynamo_is_available() -> bool:
+    """Return whether this Torch/Python pair can run Dynamo-backed capture."""
+    return not (torch_version_lt(2, 6, 0) and sys.version_info >= (3, 13))
+
 
 # {dtype: (rtol, atol)}
 _DTYPE_PRECISIONS = {

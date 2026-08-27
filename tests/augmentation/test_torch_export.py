@@ -41,6 +41,8 @@ import torch
 
 import kornia.augmentation as K
 
+from testing.base import DYNAMO_UNAVAILABLE_REASON, dynamo_is_available
+
 _HAS_TORCH_EXPORT_TRACKING = hasattr(torch, "compiler") and hasattr(torch.compiler, "is_exporting")
 _TORCH_EXPORT_TRACKING_REASON = "torch.export tracking requires torch.compiler.is_exporting (torch>=2.7)"
 
@@ -75,6 +77,7 @@ TORCH_EXPORT_DETERMINISTIC: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
 
 
 @pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 @pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("name,factory", TORCH_EXPORT_DETERMINISTIC, ids=[n for n, _ in TORCH_EXPORT_DETERMINISTIC])
 def test_torch_export_deterministic(name: str, factory: Callable[[], torch.nn.Module]) -> None:
@@ -118,6 +121,7 @@ TORCH_EXPORT_CONTAINERS: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
 
 
 @pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 @pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("name,factory", TORCH_EXPORT_CONTAINERS, ids=[n for n, _ in TORCH_EXPORT_CONTAINERS])
 def test_torch_export_container(name: str, factory: Callable[[], torch.nn.Module]) -> None:

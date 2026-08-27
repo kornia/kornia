@@ -355,8 +355,18 @@ def is_autocast_enabled(both: bool = True) -> bool:
     return torch.is_autocast_enabled()
 
 
-# ``torch.compiler.is_exporting`` is absent on very old torch; resolve it once at import.
+# These helpers moved into ``torch.compiler`` over time; resolve them once at import.
+_torch_is_compiling = getattr(torch.compiler, "is_compiling", None) or getattr(torch._dynamo, "is_compiling", None)
 _torch_is_exporting = getattr(torch.compiler, "is_exporting", None)
+
+
+@torch.jit.unused
+def is_compiling() -> bool:
+    """Whether execution is inside ``torch.compile`` or ``torch.export`` capture.
+
+    Falls back to Torch's older private Dynamo spelling when the public compiler helper is absent.
+    """
+    return bool(_torch_is_compiling()) if _torch_is_compiling is not None else False
 
 
 def is_exporting() -> bool:

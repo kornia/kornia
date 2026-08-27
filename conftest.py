@@ -325,9 +325,9 @@ def pytest_sessionstart(session):
         try:
             _setup_torch_compile()
         except RuntimeError as ex:
-            if "not yet supported for torch.compile" not in str(
+            if "not yet supported for torch.compile" not in str(ex) and "Dynamo is not supported on Python" not in str(
                 ex
-            ) and "Dynamo is not supported on Python 3.12+" not in str(ex):
+            ):
                 raise ex
 
     os.makedirs(WEIGHTS_CACHE_DIR, exist_ok=True)

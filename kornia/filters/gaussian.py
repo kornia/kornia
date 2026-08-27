@@ -24,6 +24,7 @@ from torch import nn
 
 from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_compiling
 
 from .filter import filter2d, filter2d_separable
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
@@ -100,7 +101,7 @@ def gaussian_blur2d(
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
     # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
-    if not torch.compiler.is_compiling():
+    if not is_compiling():
         # Only interpolate `sigma` into the message when the check actually fails: a plain
         # f-string here would format the whole `sigma` tensor (a costly tensor->str) on every
         # eager call even when it passes — which dominated the eager Gaussian-blur runtime.
