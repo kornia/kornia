@@ -3494,6 +3494,7 @@ def test_pixel_coordinate_export_crosses_singleton_boundary(op_name, ndim):
         ("normal_transform_pixel3d", (4, 5, 6)),
     ],
 )
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 def test_non_default_eps_does_not_break_fullgraph_compile(op_name, sizes):
     op = getattr(kornia.geometry, op_name)
     value = torch.zeros(1, len(sizes))

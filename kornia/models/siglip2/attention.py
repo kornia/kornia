@@ -112,19 +112,17 @@ class SigLip2Attention(nn.Module):
         if attention_mask is not None:
             # Handle different mask formats
             if attention_mask.dim() == 2:
-                # (batch_size, seq_len) -> (batch_size, 1, seq_len, seq_len)
-                # Create 2D mask: both query and key positions must be valid
-                # Convert to boolean: 1 = attend (False = don't mask), 0 = mask (True = mask out)
-                mask_bool = attention_mask.bool()
-                # Expand to (batch_size, 1, seq_len, seq_len) where True means mask out
-                # We need: if either query or key is masked, then mask that attention
-                attn_mask = ~(mask_bool.unsqueeze(1).unsqueeze(2) & mask_bool.unsqueeze(1).unsqueeze(3))
+                # (batch_size, seq_len) -> (batch_size, 1, 1, seq_len)
+                # Mask keys only so padded query positions do not create fully masked
+                # rows, which produce NaNs in older SDPA implementations.
+                # Boolean SDPA masks use True = attend and False = mask out.
+                attn_mask = attention_mask.bool().unsqueeze(1).unsqueeze(2)
             elif attention_mask.dim() == 3:
                 # (batch_size, seq_len, seq_len) -> (batch_size, 1, seq_len, seq_len)
-                attn_mask = ~attention_mask.bool().unsqueeze(1)
+                attn_mask = attention_mask.bool().unsqueeze(1)
             elif attention_mask.dim() == 4:
                 # Already in correct format (batch_size, 1, seq_len, seq_len)
-                attn_mask = ~attention_mask.bool()
+                attn_mask = attention_mask.bool()
             else:
                 raise ValueError(f"Unsupported attention_mask dimension: {attention_mask.dim()}")
 

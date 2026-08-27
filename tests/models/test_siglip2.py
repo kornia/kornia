@@ -126,6 +126,7 @@ class TestSigLip2Model(BaseTester):
             features = model.get_text_features(input_ids, attention_mask=attention_mask)
 
         assert features.shape == (batch_size, config.projection_dim)
+        assert torch.isfinite(features).all()
         # Check normalization
         norms = features.norm(dim=-1)
         self.assert_close(norms, torch.ones_like(norms), rtol=1e-5, atol=1e-5)
@@ -135,7 +136,9 @@ class TestSigLip2Model(BaseTester):
 
         batch_size = 2
         seq_len = 10
-        input_ids = _create_input_ids(batch_size, seq_len, config, device)
+        input_ids = torch.zeros(batch_size, seq_len, dtype=torch.long, device=device)
+        input_ids[0, :5] = torch.arange(1, 6, device=device)
+        input_ids[1, :8] = torch.arange(11, 19, device=device)
 
         # Create attention mask with different lengths
         attention_mask = torch.ones(batch_size, seq_len, device=device)
@@ -146,6 +149,8 @@ class TestSigLip2Model(BaseTester):
             features = model.get_text_features(input_ids, attention_mask=attention_mask)
 
         assert features.shape == (batch_size, config.projection_dim)
+        assert torch.isfinite(features).all()
+        assert not torch.allclose(features[0], features[1])
 
     def test_return_loss(self, device, dtype, model, config):
         """Test forward pass with return_loss=True and verify logit_scale clamping."""
@@ -336,9 +341,11 @@ class TestSigLip2Components(BaseTester):
 
         with torch.no_grad():
             output = attention(hidden_states, attention_mask=attention_mask)
+            output_without_mask = attention(hidden_states)
 
         # Attention returns a single tensor, not a tuple
         assert output.shape == (batch_size, seq_len, hidden_size)
+        self.assert_close(output, output_without_mask)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     @pytest.mark.parametrize("input_size", [(256, 256), (300, 400), (512, 512)])

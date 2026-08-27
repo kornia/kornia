@@ -203,6 +203,7 @@ def test_meshgrid_export_crosses_singleton_boundary(is_3d, normalized_coordinate
 
 @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize("is_3d", [False, True], ids=["2d", "3d"])
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 def test_pixel_meshgrid_default_dtype_matches_compile(is_3d, default_dtype):
     class MeshGrid(torch.nn.Module):
         def forward(self, image):

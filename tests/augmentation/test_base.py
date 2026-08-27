@@ -26,6 +26,7 @@ from kornia.augmentation._2d.intensity.gaussian_blur import RandomGaussianBlur
 from kornia.augmentation._3d.geometric.affine import RandomAffine3D
 from kornia.augmentation._3d.intensity.motion_blur import RandomMotionBlur3D
 from kornia.augmentation.base import _BasicAugmentationBase
+from kornia.core._compat import torch_version_lt
 
 from testing.base import BaseTester
 
@@ -181,7 +182,6 @@ class TestGeometricAugmentationBase2D:
     def test_autocast(self, batch_prob, device, dtype):
         if not hasattr(torch, "autocast"):
             pytest.skip("PyTorch version without autocast support")
-
         # Uses some subclass of `GeometricAugmentationBase2D` which perform some op which can mismatch the dtype
         # Will cover AugmentationBase2D and RigidAffineAugmentationBase2D too
         aug = RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0)
@@ -202,7 +202,6 @@ class TestIntensityAugmentationBase2D:
     def test_autocast(self, batch_prob, device, dtype):
         if not hasattr(torch, "autocast"):
             pytest.skip("PyTorch version without autocast support")
-
         # Uses some subclass of `IntensityAugmentationBase2D` which perform some op which can mismatch the dtype
         # Will cover AugmentationBase2D and RigidAffineAugmentationBase2D too
         aug = RandomGaussianBlur((3, 3), (0.1, 3), p=1)
@@ -223,6 +222,8 @@ class TestIntensityAugmentationBase3D:
     def test_autocast(self, batch_prob, device, dtype):
         if not hasattr(torch, "autocast"):
             pytest.skip("PyTorch version without autocast support")
+        if device.type == "cpu" and torch_version_lt(2, 5, 0):
+            pytest.skip("3D CPU autocast requires bfloat16 eye support from PyTorch 2.5")
 
         # Uses some subclass of `IntensityAugmentationBase3D` which perform some op which can mismatch the dtype
         # Will cover RigidAffineAugmentationBase3D and AugmentationBase3D too
@@ -244,6 +245,8 @@ class TestGeometricAugmentationBase3D:
     def test_autocast(self, batch_prob, device, dtype):
         if not hasattr(torch, "autocast"):
             pytest.skip("PyTorch version without autocast support")
+        if device.type == "cpu" and torch_version_lt(2, 5, 0):
+            pytest.skip("3D CPU autocast requires bfloat16 eye support from PyTorch 2.5")
 
         # Uses some subclass of `GeometricAugmentationBase3D` which perform some op which can mismatch the dtype
         # Will cover RigidAffineAugmentationBase3D and AugmentationBase3D too

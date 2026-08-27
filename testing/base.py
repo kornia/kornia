@@ -33,12 +33,15 @@ from kornia.core._compat import torch_version_lt
 Dtype = Union[torch.dtype, None]
 Tensor = torch.Tensor
 
-DYNAMO_UNAVAILABLE_REASON = "torch.compile requires torch>=2.6 on Python>=3.13"
+DYNAMO_UNAVAILABLE_REASON = "torch.compile requires torch>=2.5 on Python>=3.12 and torch>=2.6 on Python>=3.13"
 
 
 def dynamo_is_available() -> bool:
     """Return whether this Torch/Python pair can run Dynamo-backed capture."""
-    return not (torch_version_lt(2, 6, 0) and sys.version_info >= (3, 13))
+    return not (
+        (torch_version_lt(2, 5, 0) and sys.version_info >= (3, 12))
+        or (torch_version_lt(2, 6, 0) and sys.version_info >= (3, 13))
+    )
 
 
 # {dtype: (rtol, atol)}
