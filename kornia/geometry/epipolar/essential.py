@@ -72,7 +72,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     X = torch.cat([x1 * x2, x1 * y2, x1, y1 * x2, y1 * y2, y1, x2, y2, ones], dim=-1)
     # use Nister's 5PC to solve essential matrix
     E = null_to_Nister_solution(X, batch_size)
-    bad = torch.isnan(E).all(dim=(-1, -2)).all(dim=-1)  # (B,)
+    bad = torch.isnan(E).flatten(-2).all(-1).all(-1)  # (B,)
     if bad.any():
         eye3 = torch.eye(3, device=E.device, dtype=E.dtype).view(1, 1, 3, 3).expand(batch_size, 10, 3, 3)
         E = torch.where(bad.view(batch_size, 1, 1, 1), eye3, E)

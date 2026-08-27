@@ -15,12 +15,14 @@
 # limitations under the License.
 #
 
+from typing import Optional
+
 import torch
 from torch.nn import functional as F
 
 
 def _apply_linear_transformation(
-    image: torch.Tensor, kernel: torch.Tensor, bias: torch.Tensor | None = None
+    image: torch.Tensor, kernel: torch.Tensor, bias: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
     """Apply a 3x3 linear color transformation with device-aware optimization.
 
