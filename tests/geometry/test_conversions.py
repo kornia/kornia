@@ -53,6 +53,11 @@ from kornia.geometry.quaternion import Quaternion
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, assert_close, dynamo_is_available
 
 
+@pytest.fixture(autouse=True)
+def seed_rng() -> None:
+    torch.manual_seed(0)
+
+
 @pytest.fixture()
 def atol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
