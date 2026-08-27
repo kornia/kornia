@@ -1208,20 +1208,16 @@ def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
         - ``angle_axis_to_quaternion`` is the deprecated alias of this function
           since 0.7.0; see the alias warning on
           :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
+        - an integral or boolean input is **promoted**, not rejected: the
+          ``sqrt`` on the way in already produces a floating tensor, and the
+          output is allocated from that rather than from the input, so the
+          result comes back at the ambient default floating dtype
 
     .. warning::
         The gradient at the zero rotation is ``nan``:
         ``axis_angle_to_quaternion(torch.zeros(3)).sum().backward()`` leaves
         ``[nan, nan, nan]`` in ``.grad``, from an unclamped ``sqrt(0)``.
         Tracked in `#3949 <https://github.com/kornia/kornia/issues/3949>`_.
-
-    .. warning::
-        An integer tensor returns an all-zero integer tensor instead of a
-        quaternion: ``axis_angle_to_quaternion(torch.tensor([1, 0, 0]))`` is
-        ``tensor([0, 0, 0, 0])`` of dtype ``int64``, against the ``float32``
-        answer ``[0.8776, 0.4794, 0., 0.]``, because the output buffer is
-        allocated with the input dtype. Tracked in
-        `#3948 <https://github.com/kornia/kornia/issues/3948>`_.
 
     Args:
         axis_angle: tensor with axis angle in radians.
@@ -1262,9 +1258,10 @@ def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
     k: torch.Tensor = torch.where(mask, k_pos, k_neg)
     w: torch.Tensor = torch.where(mask, torch.cos(half_theta), ones)
 
-    quaternion: torch.Tensor = torch.zeros(
-        size=(*axis_angle.shape[:-1], 4), dtype=axis_angle.dtype, device=axis_angle.device
-    )
+    # the output dtype comes from the computed values, not from the input: an integer input is
+    # promoted to floating point by the sqrt above, and writing that back into an integer buffer
+    # would truncate every component to zero.
+    quaternion: torch.Tensor = torch.zeros(size=(*axis_angle.shape[:-1], 4), dtype=w.dtype, device=axis_angle.device)
     quaternion[..., 1:2] = a0 * k
     quaternion[..., 2:3] = a1 * k
     quaternion[..., 3:4] = a2 * k
