@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+* `testing.precision`: `unrepresentable_sizes`, `assert_capture_matches_eager`, `assert_degenerate_path_parity`
+  for reduced-precision, graph-capture and degenerate-path tests, and `pixi run verify-delta`, which diffs the
+  failing-test *sets* of a branch and its base revision across the cpu, half, MPS and inductor surfaces. (#4034)
+  `verify-delta` refuses to run on a dirty checkout by default, since its automatic scope is `base...HEAD`;
+  `--allow-dirty` requires explicit test paths. It exits non-zero whenever a selected, available surface could
+  not be measured.
+
 ### Breaking changes
 
 * The shape guards of `normalize_homography` and `denormalize_homography` now reject everything but a
