@@ -82,10 +82,20 @@ class SigLip2Attention(nn.Module):
 
         Args:
             hidden_states: Input tensor of shape (batch_size, seq_len, hidden_size).
-            attention_mask: Optional attention mask. Can be:
-                - (batch_size, seq_len): 1D mask where 1 = attend, 0 = mask
-                - (batch_size, seq_len, seq_len): 2D mask where 1 = attend, 0 = mask
-                - (batch_size, 1, seq_len, seq_len): 4D mask (broadcastable)
+            attention_mask: Optional attention mask, where ``1``/``True`` means attend and ``0``/``False``
+                means mask out. Can be:
+
+                - (batch_size, seq_len): a padding mask, broadcast over the key axis only, matching
+                  ``SiglipTextTransformer.create_bidirectional_mask`` in Hugging Face ``transformers``.
+                  A padded query row is therefore *not* masked and its output is finite but meaningless;
+                  callers are expected to discard those positions.
+                - (batch_size, seq_len, seq_len): a per-query mask, broadcast over the head axis.
+                - (batch_size, 1, seq_len, seq_len): already in the layout
+                  ``torch.nn.functional.scaled_dot_product_attention`` expects.
+
+                A query row whose mask is entirely ``0`` follows the behavior of
+                ``scaled_dot_product_attention`` for a fully masked row: ``0`` on PyTorch 2.5 and later,
+                ``nan`` before it.
 
         Returns:
             Output tensor of shape (batch_size, seq_len, hidden_size).
@@ -121,7 +131,7 @@ class SigLip2Attention(nn.Module):
                 # (batch_size, seq_len, seq_len) -> (batch_size, 1, seq_len, seq_len)
                 attn_mask = attention_mask.bool().unsqueeze(1)
             elif attention_mask.dim() == 4:
-                # Already in correct format (batch_size, 1, seq_len, seq_len)
+                # Already in the SDPA layout (batch_size, 1, seq_len, seq_len); True = attend
                 attn_mask = attention_mask.bool()
             else:
                 raise ValueError(f"Unsupported attention_mask dimension: {attention_mask.dim()}")

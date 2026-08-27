@@ -345,7 +345,11 @@ class TestSigLip2Components(BaseTester):
 
         # Attention returns a single tensor, not a tuple
         assert output.shape == (batch_size, seq_len, hidden_size)
-        self.assert_close(output, output_without_mask)
+        # An all-ones mask must be a no-op. Passing any ``attn_mask`` disqualifies the CUDA flash
+        # backend, so the two calls can run different SDPA kernels and agree only up to kernel-level
+        # rounding, which is the same order as the default half-precision tolerance.
+        tol = {"rtol": 5e-2, "atol": 5e-2} if dtype in (torch.float16, torch.bfloat16) else {}
+        self.assert_close(output, output_without_mask, **tol)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     @pytest.mark.parametrize("input_size", [(256, 256), (300, 400), (512, 512)])
