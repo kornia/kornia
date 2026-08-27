@@ -182,6 +182,7 @@ class TestGeometricAugmentationBase2D:
     def test_autocast(self, batch_prob, device, dtype):
         if not hasattr(torch, "autocast"):
             pytest.skip("PyTorch version without autocast support")
+
         # Uses some subclass of `GeometricAugmentationBase2D` which perform some op which can mismatch the dtype
         # Will cover AugmentationBase2D and RigidAffineAugmentationBase2D too
         aug = RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0)
@@ -202,6 +203,7 @@ class TestIntensityAugmentationBase2D:
     def test_autocast(self, batch_prob, device, dtype):
         if not hasattr(torch, "autocast"):
             pytest.skip("PyTorch version without autocast support")
+
         # Uses some subclass of `IntensityAugmentationBase2D` which perform some op which can mismatch the dtype
         # Will cover AugmentationBase2D and RigidAffineAugmentationBase2D too
         aug = RandomGaussianBlur((3, 3), (0.1, 3), p=1)

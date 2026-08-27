@@ -30,7 +30,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.core._compat import torch_version
+from kornia.core._compat import torch_version, torch_version_lt
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.ops import eye_like
@@ -3267,9 +3267,13 @@ def test_wart_float16_underflowed_default_eps_flips_branches(device):
     #     -> 0.0  (not sqrt(eps) = 1e-4: eps underflows the sum inside the sqrt)
     #   convert_points_from_homogeneous(torch.tensor([[2., 4., 2e-8]], dtype=torch.float16))
     #     -> [[2., 4.]]  (w underflows to 0 and takes the abs(w) <= eps passthrough branch)
-    zero = torch.tensor(0.0, device=device, dtype=torch.float16)
-    rho = kornia.geometry.conversions.cart2pol(zero, zero)[0]
-    assert_close(rho, zero, atol=0.0, rtol=0.0)
+    # The cart2pol half is narrowed rather than skipped whole: it reaches torch.atan2, whose CPU
+    # float16 kernel ("atan2_cpu" not implemented for 'Half') only landed in PyTorch 2.2, while the
+    # convert_points_from_homogeneous claim below has no such floor and stays pinned everywhere.
+    if not (device.type == "cpu" and torch_version_lt(2, 2, 0)):
+        zero = torch.tensor(0.0, device=device, dtype=torch.float16)
+        rho = kornia.geometry.conversions.cart2pol(zero, zero)[0]
+        assert_close(rho, zero, atol=0.0, rtol=0.0)
 
     out = kornia.geometry.conversions.convert_points_from_homogeneous(
         torch.tensor([[2.0, 4.0, 2e-8]], device=device, dtype=torch.float16)
