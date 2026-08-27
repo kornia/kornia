@@ -67,16 +67,17 @@ def create_meshgrid(
                   [1., 1.]]]])
 
     """
-    # Build the pixel ramp with ``arange`` in both eager and capture. ``linspace`` over
-    # ``(0, size - 1, size)`` and ``arange(size)`` are bitwise equal at float32/float64, but
-    # ``linspace`` rounds its endpoint into the coordinate dtype and fills the upper half of the
-    # ramp backwards from that rounded value, landing one ulp off the correctly rounded column
-    # index at float16/bfloat16 -- from width 258 in bfloat16 and 2050 in float16. Inductor lowers
-    # the same call to a per-index computation that rounds correctly, so eager and compiled grids
-    # disagreed by up to one ulp of the width. ``arange`` also retains the dynamic output length
-    # under export, where ``linspace`` specializes symbolic ``steps``. Match ``linspace``'s default
-    # floating dtype when none is given -- read off an empty tensor rather than via
-    # ``torch.get_default_dtype()``, for which TorchScript has no builtin.
+    # Build the pixel ramp with ``arange`` in both eager and capture. ``linspace`` rounds its
+    # endpoint into the coordinate dtype first and fills the upper half of the ramp backwards from
+    # that rounded value, so its step is exactly 1 only while ``size - 1`` is an exactly
+    # representable integer -- ``size <= 2 ** p + 1`` for a ``p``-bit significand. Past that it
+    # lands one ulp off the correctly rounded column index. The bound is 257 in bfloat16 and 2049
+    # in float16, and 2 ** 24 + 1 / 2 ** 53 + 1 in float32/float64, so no non-half grid can move.
+    # Inductor lowers the same call to a per-index computation that rounds correctly, so eager and
+    # compiled grids disagreed by up to one ulp of the width. ``arange`` also retains the dynamic
+    # output length under export, where ``linspace`` specializes symbolic ``steps``. Match
+    # ``linspace``'s default floating dtype when none is given -- read off an empty tensor rather
+    # than via ``torch.get_default_dtype()``, for which TorchScript has no builtin.
     ramp_dtype = dtype if dtype is not None else torch.empty(0).dtype
     xs = torch.arange(width, device=device, dtype=ramp_dtype)
     ys = torch.arange(height, device=device, dtype=ramp_dtype)
