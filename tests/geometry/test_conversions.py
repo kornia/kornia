@@ -1286,14 +1286,31 @@ class TestQuaternionToRotationMatrix(BaseTester):
         matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
         assert matrix.shape == (*batch_dims, 3, 3)
 
-    @pytest.mark.parametrize("low_precision_dtype", (torch.float16, torch.bfloat16))
-    def test_unbatched_preserves_low_precision_dtype(self, device, low_precision_dtype):
-        quaternion = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=low_precision_dtype)
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_convention_output_dtype_equals_input_dtype_3954(self, device, half_dtype):
+        # Convention: the output dtype follows the input at every shape, like the rest of the
+        # rotation-representation family. Until kornia#3954 was fixed that held for batched input
+        # only. The function built its matrix around `one = torch.tensor(1.0)`, a 0-dim float32
+        # tensor, and type promotion ranks a dimensioned tensor above a 0-dim one: the components
+        # of a batched input therefore outranked the literal and kept their dtype, while the 0-dim
+        # components of an unbatched (4,) input tied with it and float32 won the category. The fix
+        # makes `one` a Python float, which is a wrapped scalar and does not participate in
+        # promotion at all. That mechanism is why this pin is UNBATCHED -- the batched shape passed
+        # both before and after and cannot detect the defect. It is carried here as the third
+        # assertion anyway, so a fix that special-cased one shape would not satisfy this pin.
+        # Two dtype cells because a fix could plausibly handle float16, the common half dtype, and
+        # leave bfloat16 upcast. The dtypes are hardcoded and the dtype fixture dropped so both
+        # cells run in every test configuration; the skip is explicit so a backend without the
+        # dtype reports as skipped rather than failing on a RuntimeError.
+        _skip_if_dtype_unavailable(device, half_dtype)
+
+        quaternion = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=half_dtype)
 
         matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
 
-        assert matrix.dtype == low_precision_dtype
-        self.assert_close(matrix, torch.eye(3, device=device, dtype=low_precision_dtype))
+        assert matrix.dtype == half_dtype, f"kornia#3954: quaternion_to_rotation_matrix returned {matrix.dtype}"
+        self.assert_close(matrix, torch.eye(3, device=device, dtype=half_dtype))
+        assert kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion[None]).dtype == half_dtype
 
     def test_unit_quaternion(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
