@@ -28,6 +28,15 @@ on:
       cache-restore-keys:
         required: false
         type: string
+      download-weights:
+        description: >-
+          Let the doctests download pretrained model weights when the cache
+          misses. Enabled for the scheduled/main-branch run so the model
+          examples keep real coverage; left off for pull requests, where a
+          cold cache would mean an ~838 MB download.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -51,9 +60,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || inputs.ref }}
 
       # On direct pull_request runs (empty inputs) fall back to a prefix restore of the
-      # model-weights caches saved by the test workflows: doctests download ~10 model
-      # checkpoints, and a cold cache both takes minutes and breaks doctests (torch.hub
-      # prints 'Downloading: ...', which the examples do not expect).
+      # model-weights caches saved by the test workflows. A dozen doctests build
+      # pretrained models, so a warm cache is what keeps them covered here: without
+      # `download-weights` a cache miss skips those examples rather than downloading
+      # ~838 MB of checkpoints (see #4005).
       - name: Restore cache
         uses: actions/cache/restore@v6
         with:
@@ -80,6 +90,11 @@ jobs:
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} install-docs
 
       - name: Run doctest
+        # Empty on direct pull_request events (the `inputs` context is empty there and
+        # the workflow_call default does not apply), which is the intended PR behaviour:
+        # doctests needing an uncached checkpoint are skipped instead of downloading it.
+        env:
+          KORNIA_DOCTEST_DOWNLOAD: ${{ inputs.download-weights && '1' || '' }}
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} doctest
 
       - name: Build Documentation

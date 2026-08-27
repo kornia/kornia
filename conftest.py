@@ -33,6 +33,8 @@ except ImportError:  # pragma: no cover
 
 import kornia
 
+from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
+
 try:
     import torch._dynamo
 
@@ -223,6 +225,7 @@ def pytest_addoption(parser):
         KORNIA_TEST_OPTIMIZER: Optimizer backend (default: inductor)
         KORNIA_TEST_RUNSLOW: Run slow tests (default: false)
         KORNIA_TEST_TF32: Enable TF32 (TensorFloat-32) mode for CUDA matrix multiplications (default: false)
+        KORNIA_DOCTEST_DOWNLOAD: Let doctests download model weights (default: false)
     """
     parser.addoption(
         "--device",
@@ -257,6 +260,17 @@ def pytest_addoption(parser):
             "(torch.set_float32_matmul_precision('high')). "
             "Tests marked @pytest.mark.tf32 are expected to fail under TF32 and are skipped unless this flag is set. "
             "(env: KORNIA_TEST_TF32)"
+        ),
+    )
+    parser.addoption(
+        "--doctest-download",
+        action="store_true",
+        default=downloads_allowed(os.environ),
+        help=(
+            "Let doctests download pretrained model weights. Without this flag a doctest that "
+            "would hit the network is skipped instead, so `pixi run doctest` stays fast and "
+            "offline-safe on a cold cache; doctests whose weights are already cached still run. "
+            f"(env: {DOWNLOAD_ENV_VAR})"
         ),
     )
     parser.addoption(
@@ -645,6 +659,27 @@ def cuda_device_assert_guard(request):
     except RuntimeError as exc:
         torch.cuda.empty_cache()
         pytest.fail(f"CUDA device-side assert triggered during this test: {exc}")
+
+
+@pytest.fixture(autouse=True)
+def skip_doctests_needing_downloads(request, monkeypatch):
+    """Skip doctests that would download pretrained weights.
+
+    A dozen docstring examples in ``kornia/`` build pretrained models, which on a
+    cold cache turns ``pixi run doctest`` into an ~838 MB download. The guard
+    patches the download primitives, which run only on a cache miss, so an
+    example whose weights are already present still runs for real.
+
+    Opt in with ``--doctest-download`` / ``KORNIA_DOCTEST_DOWNLOAD=1``; the
+    scheduled main-branch documentation job does, so the examples keep real
+    coverage there.
+    """
+    if not isinstance(request.node, pytest.DoctestItem):
+        return
+    if request.config.getoption("--doctest-download"):
+        return
+
+    install_download_guard(monkeypatch.setattr, lambda url: pytest.skip(skip_reason(url)))
 
 
 @pytest.fixture(autouse=True)

@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import sys
 import warnings
 from pathlib import Path
 from typing import Any
@@ -52,6 +54,14 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     accepts either a single URL string or an ordered list of URLs. Each URL is
     tried in turn; a :mod:`warnings` message is emitted for every failed
     attempt before the next source is tried.
+
+    Progress reporting is written to :data:`sys.stderr`. This is the one
+    deliberate deviation from the torch function, which since torch 2.x writes
+    its ``Downloading: "<url>" to <path>`` line to :data:`sys.stdout` (the
+    accompanying progress bar already goes to stderr). Status output on stdout
+    corrupts any caller that treats stdout as data -- most visibly doctests,
+    where the line is captured as unexpected example output and fails an
+    example that downloads on a cold cache.
 
     When multiple URLs are given and ``file_name`` is not already in *kwargs*,
     the basename of the **first** URL is used as the local cache filename for
@@ -92,7 +102,9 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     last_exc: Exception | None = None
     for i, u in enumerate(urls):
         try:
-            return torch.hub.load_state_dict_from_url(u, **kwargs)
+            # Keep torch's download chatter off stdout; see the docstring note.
+            with contextlib.redirect_stdout(sys.stderr):
+                return torch.hub.load_state_dict_from_url(u, **kwargs)
         except Exception as e:  # noqa: BLE001
             last_exc = e
             if i < len(urls) - 1:

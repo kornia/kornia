@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import sys
 import warnings
 from unittest.mock import call, patch
 
@@ -115,3 +116,42 @@ class TestLoadStateDictFromUrl:
         with patch(self._MOCK_TARGET, return_value=self._SD) as mock:
             load_state_dict_from_url("http://example.com/model.pth", map_location="cpu")
         mock.assert_called_once_with("http://example.com/model.pth", map_location="cpu")
+
+
+class TestProgressGoesToStderr:
+    """torch.hub writes its 'Downloading: ...' line to stdout (torch 2.x).
+
+    Status output on stdout corrupts callers that treat stdout as data. The most
+    visible victim is ``pytest --doctest-modules kornia/``: the line is captured as
+    unexpected example output and fails any example that downloads on a cold cache
+    (#4005). The wrapper keeps that chatter on stderr instead.
+    """
+
+    _MOCK_TARGET = "kornia.core.download.torch.hub.load_state_dict_from_url"
+    _CHATTER = 'Downloading: "http://example.com/model.pth" to /cache/model.pth'
+
+    def _noisy(self, url: str, **kwargs: object) -> dict:
+        print(self._CHATTER)
+        return {"weight": 1}
+
+    def test_stdout_stays_clean(self, capsys) -> None:
+        with patch(self._MOCK_TARGET, side_effect=self._noisy):
+            result = load_state_dict_from_url("http://example.com/model.pth")
+
+        captured = capsys.readouterr()
+        assert result == {"weight": 1}
+        assert captured.out == ""
+        assert self._CHATTER in captured.err
+
+    def test_stdout_restored_after_call(self, capsys) -> None:
+        original = sys.stdout
+        with patch(self._MOCK_TARGET, side_effect=self._noisy):
+            load_state_dict_from_url("http://example.com/model.pth")
+        assert sys.stdout is original
+
+    def test_stdout_restored_after_failure(self, capsys) -> None:
+        original = sys.stdout
+        with patch(self._MOCK_TARGET, side_effect=OSError("down")):
+            with pytest.raises(RuntimeError):
+                load_state_dict_from_url("http://example.com/model.pth")
+        assert sys.stdout is original
