@@ -180,7 +180,7 @@ def _solve_2x2_tikhonov_safe(A: torch.Tensor, b: torch.Tensor, eps: float = 1e-1
     x = torch.where(bad.unsqueeze(-1).unsqueeze(-1), x_fb, x_dir)
 
     # if still non-finite, mark bad and zero it
-    nonfinite = torch.isnan(x).any(dim=(-2, -1)) | torch.isinf(x).any(dim=(-2, -1))
+    nonfinite = torch.isnan(x).flatten(-2).any(-1) | torch.isinf(x).flatten(-2).any(-1)
     bad = bad | nonfinite
     x = torch.where(bad.unsqueeze(-1).unsqueeze(-1), torch.zeros_like(x), x)
 
@@ -275,7 +275,7 @@ def _null_to_Nister_solution_script(
     eliminated = torch.linalg.solve(A10, b_poly)  # (B,10,10)
 
     # Detect NaN/Inf from singular solve and fix with damping solve
-    bad = torch.isnan(eliminated).any(dim=(-2, -1)) | torch.isinf(eliminated).any(dim=(-2, -1))  # (B,)
+    bad = torch.isnan(eliminated).flatten(-2).any(-1) | torch.isinf(eliminated).flatten(-2).any(-1)  # (B,)
     if bad.any():
         # Damped solve only for bad rows but WITHOUT compaction:
         # build damped A = A10 + λI, where λ depends on scale

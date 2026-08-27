@@ -105,12 +105,6 @@ jobs:
           - os: windows-latest
             pytorch-version: "2.5.1"
         include:
-          # Keep the oldest supported PyTorch version visible on every PR without
-          # duplicating the full scheduled compatibility matrix.
-          - os: ubuntu-latest
-            pytorch-dtype: "float32"
-            python-version: "3.11"
-            pytorch-version: "2.1.2"
           - os: windows-2022
             pytorch-dtype: "float32"
             python-version: "3.11"

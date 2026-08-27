@@ -20,7 +20,13 @@ import torch
 
 import kornia
 
-from testing.base import DYNAMO_UNAVAILABLE_REASON, assert_close, dynamo_is_available
+from testing.base import (
+    DYNAMIC_EXPORT_UNAVAILABLE_REASON,
+    DYNAMO_UNAVAILABLE_REASON,
+    assert_close,
+    dynamic_export_is_available,
+    dynamo_is_available,
+)
 
 
 def test_create_meshgrid(device, dtype):
@@ -169,7 +175,7 @@ def test_normalized_meshgrid_trace_matches_eager_at_unrepresentable_sizes(is_3d,
 
 @pytest.mark.parametrize("normalized_coordinates", [False, True], ids=["pixel", "normalized"])
 @pytest.mark.parametrize("is_3d", [False, True], ids=["2d", "3d"])
-@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+@pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
 def test_meshgrid_export_crosses_singleton_boundary(is_3d, normalized_coordinates):
     class MeshGrid(torch.nn.Module):
         def forward(self, image):
