@@ -406,6 +406,75 @@ class TestGenPatchGrid(BaseTester):
         self.gradcheck(generate_patch_grid_from_normalized_LAF, (img, laf, PS))
 
 
+class TestClampGridToPixelCenters(BaseTester):
+    """Pin the MPS ``padding_mode="border"`` emulation used by the patch extractors.
+
+    MPS has no ``border`` padding for ``grid_sample``, so the extractors clamp the grid and use
+    zero padding instead. The clamp must target the outermost pixel *center*; clamping to
+    :math:`\\pm 1` lands on the outer *edge* of the border pixel and halves its value.
+
+    The reference is always computed on CPU, because ``padding_mode="border"`` is exactly what the
+    target device may not support.
+    """
+
+    @staticmethod
+    def _make(h, w, dtype):
+        torch.manual_seed(0)
+        img = torch.rand(1, 2, h, w, dtype=dtype)
+        # a grid that deliberately runs off every edge
+        grid = (torch.rand(1, 9, 11, 2, dtype=dtype) * 3.0) - 1.5
+        return img, grid
+
+    def test_matches_border_padding(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("grid_sample reference comparison is meaningful only in full precision")
+        h, w = 17, 23
+        img, grid = self._make(h, w, dtype)
+        expected = torch.nn.functional.grid_sample(img, grid, padding_mode="border", align_corners=False)
+
+        clamped = kornia.feature.laf._clamp_grid_to_pixel_centers(grid.to(device), h, w)
+        actual = torch.nn.functional.grid_sample(img.to(device), clamped, padding_mode="zeros", align_corners=False)
+        self.assert_close(actual.cpu(), expected)
+
+    def test_naive_clamp_is_not_equivalent(self, device, dtype):
+        """Guard against regressing to ``grid.clamp(-1, 1)``, which is off by half a pixel."""
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("grid_sample reference comparison is meaningful only in full precision")
+        h, w = 17, 23
+        img, grid = self._make(h, w, dtype)
+        expected = torch.nn.functional.grid_sample(img, grid, padding_mode="border", align_corners=False)
+        naive = torch.nn.functional.grid_sample(
+            img.to(device), grid.clamp(-1, 1).to(device), padding_mode="zeros", align_corners=False
+        )
+        assert (naive.cpu() - expected).abs().max() > 1e-3
+
+    def test_shape(self, device, dtype):
+        grid = torch.rand(4, 5, 6, 2, device=device, dtype=dtype)
+        assert kornia.feature.laf._clamp_grid_to_pixel_centers(grid, 8, 9).shape == grid.shape
+
+    def test_gradcheck(self, device):
+        grid = ((torch.rand(1, 3, 3, 2, device=device, dtype=torch.float64) * 3.0) - 1.5).requires_grad_()
+        self.gradcheck(lambda g: kornia.feature.laf._clamp_grid_to_pixel_centers(g, 7, 11), (grid,), fast_mode=False)
+
+    @pytest.mark.parametrize(
+        "extractor",
+        [kornia.feature.extract_patches_simple, kornia.feature.extract_patches_from_pyramid],
+    )
+    def test_extractors_match_cpu_at_the_border(self, device, dtype, extractor):
+        """Patches overlapping the image border must not depend on the device."""
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("cross-device comparison is meaningful only in full precision")
+        torch.manual_seed(0)
+        img = torch.rand(1, 1, 64, 64, dtype=dtype)
+        # centered near the corner with a large scale, so the patch runs off two edges
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[3.0, 3.0]]], dtype=dtype), torch.full((1, 1, 1, 1), 12.0, dtype=dtype)
+        )
+        expected = extractor(img, laf, 32)
+        actual = extractor(img.to(device), laf.to(device), 32)
+        self.assert_close(actual.cpu(), expected)
+
+
 class TestExtractPatchesSimple(BaseTester):
     def test_shape(self, device):
         laf = torch.rand(5, 4, 2, 3, device=device)

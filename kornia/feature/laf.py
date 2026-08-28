@@ -402,6 +402,31 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor
     return grid
 
 
+def _clamp_grid_to_pixel_centers(grid: torch.Tensor, h: int, w: int) -> torch.Tensor:
+    r"""Clamp a normalized sampling grid to the outermost pixel centers.
+
+    MPS does not implement ``padding_mode="border"`` for :func:`torch.nn.functional.grid_sample`,
+    so the border behavior has to be emulated with zero padding plus a clamped grid. Clamping to
+    :math:`\pm 1` is *not* equivalent: with ``align_corners=False`` that is the outer **edge** of
+    the border pixel, i.e. pixel index :math:`-0.5`, where bilinear sampling blends the border
+    pixel with the zero padding and returns roughly half its value. The outermost pixel **center**
+    sits at :math:`\pm (1 - 1/\text{size})`, and clamping there reproduces ``padding_mode="border"``
+    exactly.
+
+    Args:
+        grid: sampling grid :math:`(B, PS, PS, 2)`, last dimension ordered ``(x, y)``.
+        h: height of the sampled image.
+        w: width of the sampled image.
+
+    Returns:
+        the clamped grid :math:`(B, PS, PS, 2)`.
+
+    """
+    x = grid[..., 0].clamp(-1.0 + 1.0 / float(w), 1.0 - 1.0 / float(w))
+    y = grid[..., 1].clamp(-1.0 + 1.0 / float(h), 1.0 - 1.0 / float(h))
+    return torch.stack([x, y], dim=-1)
+
+
 def extract_patches_simple(
     img: torch.Tensor, laf: torch.Tensor, PS: int = 32, normalize_lafs_before_extraction: bool = True
 ) -> torch.Tensor:
@@ -434,7 +459,7 @@ def extract_patches_simple(
             out.append(
                 F.grid_sample(
                     img[i : i + 1].expand(grid.size(0), ch, h, w),
-                    grid.clamp(-1, 1),
+                    _clamp_grid_to_pixel_centers(grid, h, w),
                     padding_mode="zeros",
                     align_corners=False,
                 )
@@ -489,7 +514,7 @@ def extract_patches_from_pyramid(
             if cur_img.device.type == "mps":
                 patches = F.grid_sample(
                     cur_img[i : i + 1].expand(N, ch_l, h_l, w_l),
-                    grid.clamp(-1, 1),
+                    _clamp_grid_to_pixel_centers(grid, h_l, w_l),
                     padding_mode="zeros",
                     align_corners=False,
                 )
