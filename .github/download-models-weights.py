@@ -90,6 +90,8 @@ MODELS: dict[str, "str | list[str]"] = {
         "https://huggingface.co/kornia/disk/resolve/main/depth-save.pth",
         "https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth",
     ],
+    # SANDesc descriptor: the docs example build calls SANDesc.from_pretrained.
+    "sandesc_aliked.pth": "https://cloud.tugraz.at/index.php/s/dBiF999GBMoRg8w/download/sandesc_aliked.pth",
     # -- matchers ------------------------------------------------------------
     # LoFTR: tests instantiate both the outdoor and indoor weights.
     "loftr_outdoor.ckpt": [

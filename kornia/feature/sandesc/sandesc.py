@@ -30,13 +30,11 @@ from kornia.geometry.conversions import normalize_pixel_coordinates
 
 from ._modules import UNetDownBlock, UNetUpBlock
 
-# Descriptor checkpoint, trained to pair with the ALIKED detector.
+# Descriptor checkpoint, trained to pair with the ALIKED detector. The trailing
+# filename makes Nextcloud name the download, which is also the hub cache filename.
 urls: list[str] = [
-    "https://cloud.tugraz.at/index.php/s/dBiF999GBMoRg8w/download",
+    "https://cloud.tugraz.at/index.php/s/dBiF999GBMoRg8w/download/sandesc_aliked.pth",
 ]
-
-# The URL above has no meaningful basename, so the hub cache filename is set explicitly.
-_CHECKPOINT_FILE_NAME: str = "sandesc_aliked.pth"
 
 # ALIKED normalizes keypoints with ``wh = [w-1, h-1]``, i.e. the ``grid_sample``
 # ``align_corners=True`` convention: [-1, 1] maps to the pixel centers 0 and w-1/h-1.
@@ -246,12 +244,8 @@ class SANDesc(nn.Module):
         Returns:
             The SANDesc model with the pretrained weights loaded, in eval mode.
         """
-        # Only the predefined URL needs an explicit cache filename; a user-supplied URL
-        # keeps its own basename so it does not collide with the default checkpoint.
-        file_name_kwargs: dict[str, str] = {}
         if url is None:
             url = urls
-            file_name_kwargs["file_name"] = _CHECKPOINT_FILE_NAME
 
         model = cls(
             skip_connection=True,
@@ -265,7 +259,6 @@ class SANDesc(nn.Module):
             url,
             map_location=torch.device("cpu"),
             weights_only=True,
-            **file_name_kwargs,
         )
         # The released checkpoint wraps the weights together with the training config.
         state_dict = checkpoint["state_dict"] if "state_dict" in checkpoint else checkpoint
