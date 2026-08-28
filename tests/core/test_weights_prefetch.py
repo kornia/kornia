@@ -139,8 +139,8 @@ WEIGHT_REGISTRIES: dict[str, dict[str, Any]] = {
 # weight source" claim by checking this set against the files that actually call
 # ``load_state_dict_from_url``: a new model with weights is then a failure here
 # rather than a checkpoint nothing in this file can see.
-_ENUMERATED_MODULES = {
-    Path(module.__file__).resolve().relative_to(_REPO_ROOT).as_posix()
+_ENUMERATED_MODULE_PATHS = tuple(
+    Path(module.__file__).resolve()
     for module in (
         affine_shape,
         orientation,
@@ -168,7 +168,17 @@ _ENUMERATED_MODULES = {
         vit,
         efficient_vit,
     )
-}
+)
+
+# The call-site scan reads ``kornia/`` from the checkout, so it can only speak
+# for a kornia imported from that same checkout. An installed copy is a legitimate
+# way to run the suite; it just makes this one check meaningless rather than
+# failing, so it is skipped there instead of turning the whole file into a
+# collection error on a path that is not relative to the repository.
+_KORNIA_IS_THE_CHECKOUT = all(path.is_relative_to(_REPO_ROOT) for path in _ENUMERATED_MODULE_PATHS)
+_ENUMERATED_MODULES = (
+    {path.relative_to(_REPO_ROOT).as_posix() for path in _ENUMERATED_MODULE_PATHS} if _KORNIA_IS_THE_CHECKOUT else set()
+)
 
 # Modules that call ``load_state_dict_from_url`` without being a registry of
 # their own, with the reason they need no entry above.
@@ -180,8 +190,14 @@ _DOWNLOAD_CALL_ALLOWLIST = {
 }
 
 # Checkpoints deliberately left out of the CI cache, with the reason. A variant
-# belongs here when no test or doctest instantiates it; the cost of caching every
+# belongs here when nothing CI runs instantiates it; the cost of caching every
 # variant of every model is paid on every job, so only what CI runs is cached.
+#
+# "What CI runs" is wider than the pytest matrix. The docs job restores the same
+# cache and then builds the API reference, and ``docs/generate_examples.py``
+# constructs KeyNet, DISK, ALIKED and XFeat pretrained with no download guard --
+# so a reason phrased only in terms of tests and doctests can be true and still
+# leave a checkpoint being fetched live on every documentation build.
 NOT_PREFETCHED: dict[str, str] = {
     # Alternative training sets -- tests only ever build the liberty variants.
     "HardNetPP.pth": "HardNet++ weights; no test or doctest requests them",
@@ -194,7 +210,6 @@ NOT_PREFETCHED: dict[str, str] = {
     # Model variants no test selects.
     "loftr_indoor_ds_new.ckpt": "tests instantiate LoFTR('indoor') and LoFTR('outdoor') only",
     "sold2_wireframe.tar": "every SOLD2_detector in the suite passes pretrained=False",
-    "xfeat.pt": "XFeat.from_pretrained is not exercised by the CPU test suite",
     "epipolar-save.pth": "tests call DISK.from_pretrained(checkpoint='depth')",
     # LightGlue heads: tests build the disk and doghardnet matchers, and the
     # suite also reaches the superpoint head. The rest are unused.
@@ -217,10 +232,10 @@ NOT_PREFETCHED: dict[str, str] = {
     "G_C4_Perm_descriptor_setting_C.pth": "steerer variant no test selects",
     "G_SO2_Spread_descriptor_setting_C.pth": "steerer variant no test selects",
     # Whole-model checkpoints whose only pretrained test carries
-    # ``@pytest.mark.slow``. The PR matrix leaves KORNIA_TEST_RUNSLOW unset and
-    # deselects them; the scheduled run that does select them fetches these live,
-    # which is the pre-existing state and not what the OriNet failures were.
-    "aliked-n16.pth": "ALIKED.from_pretrained('aliked-n16') is slow-marked",
+    # ``@pytest.mark.slow``, and which nothing in the docs build constructs. The
+    # PR matrix leaves KORNIA_TEST_RUNSLOW unset and deselects them; the
+    # scheduled run that does select them fetches these live, which is the
+    # pre-existing state and not what the OriNet failures were.
     "tiny_vit_5m_22kto1k_distill.pth": "TinyViT.from_config('5m', pretrained=True) is slow-marked",
     "tiny_vit_11m_22kto1k_distill.pth": "TinyViT.from_config('11m', pretrained=True) is slow-marked",
     "tiny_vit_21m_22kto1k_distill.pth": "TinyViT.from_config('21m', pretrained=True) is slow-marked",
@@ -411,6 +426,8 @@ class TestWeightsPrefetchCoverage:
         the instance: the next model that loads weights fails here until its
         registry is listed.
         """
+        if not _KORNIA_IS_THE_CHECKOUT:
+            pytest.skip("kornia is imported from outside this checkout; the call-site scan cannot match it")
         call = re.compile(r"\bload_state_dict_from_url\s*\(")
         callers = {
             path.relative_to(_REPO_ROOT).as_posix()

@@ -490,21 +490,95 @@ class TestPoisonedCacheEntry:
         assert transfers == [self._PRIMARY]
         assert cached.exists()
 
+    def test_multi_source_load_failure_offline_leaves_the_cache_entry_in_place(self, monkeypatch, tmp_path) -> None:
+        """A discard nothing could pay for is undone rather than left as a deletion.
+
+        Pairing the discard with a refetch on the *last* URL alone left the
+        primary's discard to be paid by the fallback, which offline writes
+        nothing: ``DISK.from_pretrained('depth', device='cuda')`` on a CPU-only
+        build destroyed an intact checkpoint, and the corrected ``device='cpu'``
+        call -- which used to succeed offline -- then failed too.
+        """
+        monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+        transfers: list[str] = []
+
+        def offline(url, dst, hash_prefix=None, progress=True):
+            transfers.append(url)
+            raise URLError("network is unreachable")
+
+        monkeypatch.setattr(torch.hub, "download_url_to_file", offline)
+
+        cached = tmp_path / "checkpoints" / "model.pth"
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self._GOOD, cached)
+        before = cached.read_bytes()
+
+        def always_fails(url: str, **kwargs: object) -> dict:
+            raise RuntimeError("Attempting to deserialize object on a CUDA device")
+
+        with patch(self._MOCK_TARGET, side_effect=always_fails):
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                with pytest.raises(RuntimeError):
+                    load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+
+        # The fallback really was tried, and each of its transient failures retried.
+        assert transfers == [self._FALLBACK] * download_mod._MAX_ATTEMPTS
+        assert cached.read_bytes() == before  # and the caller kept its checkpoint
+        assert not list(cached.parent.glob("*" + download_mod._QUARANTINE_SUFFIX))
+
+    def test_a_discard_nothing_refetched_is_not_charged_to_the_bound(self, monkeypatch, tmp_path) -> None:
+        """The bound counts refetches, so a call that fetched nothing must not spend it.
+
+        Otherwise the first offline call in a process would use up the single
+        allowed discard on a path it could not repair, and a later call -- with
+        the network back -- could never clear a genuinely poisoned entry.
+        """
+        monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+        offline = True
+        transfers: list[str] = []
+
+        def fake_download(url, dst, hash_prefix=None, progress=True):
+            transfers.append(url)
+            if offline:
+                raise URLError("network is unreachable")
+            torch.save(self._GOOD, dst)
+
+        monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+
+        cached = tmp_path / "checkpoints" / "model.pth"
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.write_bytes(b"<html>429 Too Many Requests</html>")
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError):
+                load_state_dict_from_url(self._PRIMARY)
+
+            assert cached.read_bytes() == b"<html>429 Too Many Requests</html>"
+
+            offline = False
+            result = load_state_dict_from_url(self._PRIMARY)
+
+        assert "weight" in result
+
     def test_unremovable_entry_is_reported(self, monkeypatch, tmp_path) -> None:
         """A cache the process cannot write to locks the fallback out silently."""
         self._cache(monkeypatch, tmp_path, bad_urls={self._PRIMARY})
 
         # ``download_mod.os`` *is* the os module, so delegate everything that is
-        # not this cache entry rather than break removal process-wide.
+        # not this cache entry rather than break renaming process-wide.
         cached = str(tmp_path / "checkpoints" / "model.pth")
-        real_remove = os.remove
+        real_replace = os.replace
 
-        def refuse(path: str) -> None:
-            if os.path.abspath(path) == cached:
+        def refuse(src: str, dst: str) -> None:
+            if os.path.abspath(src) == cached:
                 raise PermissionError(13, "Permission denied")
-            real_remove(path)
+            real_replace(src, dst)
 
-        monkeypatch.setattr(download_mod.os, "remove", refuse)
+        monkeypatch.setattr(download_mod.os, "replace", refuse)
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -682,6 +756,68 @@ class TestTransientRetry:
         assert "weight" in result
         assert attempts == [primary] * 3 + [fallback] * 2
 
+    @pytest.mark.parametrize("code", [408, 500, 503])
+    def test_retry_after_is_honoured_on_any_transient_status(self, monkeypatch, tmp_path, code) -> None:
+        """``Retry-After`` is defined for 503 and 408 too, not only for the rate limits."""
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        attempts = self._cache(monkeypatch, tmp_path, [_http_error(self._URL, code, {"Retry-After": "10"}), None])
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            load_state_dict_from_url(self._URL)
+
+        assert len(attempts) == 2
+        assert clock.slept == [10.0]  # the server's number, not the 1s guess
+
+    def test_rate_limit_reset_is_ignored_on_an_unrelated_failure(self, monkeypatch, tmp_path) -> None:
+        """GitHub sends the window's end on every response, limited or not."""
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        headers = {"X-RateLimit-Remaining": "57", "X-RateLimit-Reset": str(int(_FakeTime.NOW) + 3000)}
+        attempts = self._cache(monkeypatch, tmp_path, [_http_error(self._URL, 500, headers), None])
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            load_state_dict_from_url(self._URL)
+
+        assert len(attempts) == 2
+        assert clock.slept == [1.0]
+
+    @pytest.mark.parametrize("value", ["nan", "inf", "-5", "0"])
+    def test_unusable_retry_after_falls_back_to_the_guess(self, monkeypatch, tmp_path, value) -> None:
+        """``time.sleep(nan)`` raises, from inside the handler, so the 429 is never retried."""
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        attempts = self._cache(monkeypatch, tmp_path, [_http_error(self._URL, 429, {"Retry-After": value}), None])
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = load_state_dict_from_url(self._URL)
+
+        assert "weight" in result
+        assert len(attempts) == 2
+        assert clock.slept == [1.0]
+
+    def test_a_call_stops_waiting_once_its_sleep_budget_is_gone(self, monkeypatch, tmp_path) -> None:
+        """Clamping each wait does not bound the call: four waits at the clamp is four minutes."""
+        primary = "http://primary.example.com/model.pth"
+        fallback = "http://fallback.example.com/model.pth"
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        limited = _http_error(primary, 429, {"Retry-After": "3600"})
+        attempts = self._cache(monkeypatch, tmp_path, [limited] * 6)
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError):
+                load_state_dict_from_url([primary, fallback])
+
+        assert sum(clock.slept) <= download_mod._MAX_CALL_SLEEP_SECONDS
+        # Two attempts on the primary -- the second is what the one wait bought --
+        # then one on the fallback, which has nothing left to wait with.
+        assert attempts == [primary] * 2 + [fallback]
+
 
 class TestFailureMessageCarriesCause:
     """A CI failure summary shows only the exception's own message.
@@ -709,5 +845,7 @@ class TestFailureMessageCarriesCause:
         assert "Failed to load weights from all 2 source" in message
         assert "HTTPError" in message
         assert "429" in message
+        # And the cache path, so a caller stuck behind a corrupt entry knows what to delete.
+        assert str(tmp_path) in message and "m.pth" in message
         # The original exception stays chained for a full traceback.
         assert isinstance(excinfo.value.__cause__, HTTPError)

@@ -59,6 +59,17 @@ except AttributeError:
     sphinx_autodoc_defaultargs = None
 
 
+# ``generate_examples.main`` builds four pretrained models (KeyNet, DISK, ALIKED
+# and XFeat), so this build fetches checkpoints from the same rate-limited hosts
+# the test jobs do. CI restores the shared ``weights/`` cache for this job, but
+# nothing here is running under ``conftest.py``, which is what points torch at
+# it for the test and doctest runs -- so point at it here too, or the cache is
+# restored and then ignored. Sphinx executes this file with the working
+# directory set to its own folder, hence the path off ``__file__``.
+import torch.hub  # noqa: E402
+
+torch.hub.set_dir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "weights"))
+
 # readthedocs generated the whole documentation in an isolated environment
 # by cloning the git repo. Thus, any on-the-fly operation will not effect
 # on the resulting documentation. We therefore need to import and run the

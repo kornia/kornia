@@ -151,6 +151,14 @@ MODELS: dict[str, "str | list[str]"] = {
         "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth",
     ],
     "vit_b-16.pth": "https://huggingface.co/kornia/vit_b16_augreg_i21k_r224/resolve/main/vit_b-16.pth",
+    # ALIKED and XFeat: no pytest job builds them pretrained, but
+    # ``generate_examples.main`` does, once per docs build, and the docs job
+    # restores this same cache.
+    "aliked-n16.pth": [
+        "https://huggingface.co/kornia/aliked/resolve/main/aliked-n16.pth",
+        "https://github.com/Shiaoming/ALIKED/raw/main/models/aliked-n16.pth",
+    ],
+    "xfeat.pt": "https://github.com/verlab/accelerated_features/raw/main/weights/xfeat.pt",
     # -- deblurring ----------------------------------------------------------
     # DeFMO(True): smoke and jit tests instantiate both halves.
     "encoder_best.pt": [
