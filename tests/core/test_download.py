@@ -523,8 +523,10 @@ class TestPoisonedCacheEntry:
                 with pytest.raises(RuntimeError):
                     load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
 
-        # The fallback really was tried, and each of its transient failures retried.
-        assert transfers == [self._FALLBACK] * download_mod._MAX_ATTEMPTS
+        # The fallback really was tried, and each of its transient failures retried;
+        # then, since nothing had replaced the path, the discarded primary was given
+        # the fetch the entry had denied it. Both are bounded by the sleep budget.
+        assert transfers == [self._FALLBACK] * download_mod._MAX_ATTEMPTS + [self._PRIMARY] * download_mod._MAX_ATTEMPTS
         assert cached.read_bytes() == before  # and the caller kept its checkpoint
         assert not list(cached.parent.glob("*" + download_mod._QUARANTINE_SUFFIX))
 
@@ -563,6 +565,96 @@ class TestPoisonedCacheEntry:
             result = load_state_dict_from_url(self._PRIMARY)
 
         assert "weight" in result
+
+    def test_a_bad_fallback_download_does_not_destroy_the_healthy_entry(self, monkeypatch, tmp_path) -> None:
+        """Settling on *path existence* kept whatever the network last wrote.
+
+        The network being up but rate limited is this PR's own common case: the
+        fallback answers with an HTML page and a 200, which lands at the shared
+        cache path. Deciding by "is there a file there?" then dropped the intact
+        quarantined checkpoint in favour of that page -- so a ``map_location``
+        mistake, which every ``ModelBase.load_checkpoint`` caller can make, cost
+        the caller a checkpoint of up to 2.4 GB *and* poisoned the entry, and the
+        corrected call failed too. The call's outcome decides instead: nothing
+        loaded, so nothing on disk is trusted and the original goes back.
+        """
+        self._cache(monkeypatch, tmp_path, bad_urls={self._FALLBACK})
+        cached = tmp_path / "checkpoints" / "model.pth"
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self._GOOD, cached)
+        before = cached.read_bytes()
+
+        def cuda_on_a_cpu_build(url: str, **kwargs: object) -> dict:
+            raise RuntimeError("Attempting to deserialize object on a CUDA device")
+
+        with patch(self._MOCK_TARGET, side_effect=cuda_on_a_cpu_build):
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                with pytest.raises(RuntimeError):
+                    load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+
+        assert cached.read_bytes() == before
+        assert not list(cached.parent.glob("*" + download_mod._QUARANTINE_SUFFIX))
+
+        # And the corrected call -- the whole point of not destroying the file --
+        # succeeds without touching the network.
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            assert "weight" in load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+
+    def test_poisoned_entry_recovers_when_the_mirror_is_dead(self, monkeypatch, tmp_path) -> None:
+        """The primary is refetched even though it is not the last URL.
+
+        A poisoned entry short-circuits the primary's prefetch, so the primary is
+        never actually fetched; the discard it triggers is meant to be paid for by
+        a later source, and a dead mirror -- ``cmp.felk.cvut.cz`` and the
+        ``raw.githubusercontent.com`` copies are exactly the sources that go away
+        -- pays nothing. Pairing the refetch with the *last* URL alone left the
+        entry poisoned in every call of every process.
+        """
+        transfers = self._cache(monkeypatch, tmp_path, bad_urls=set())
+        cached = tmp_path / "checkpoints" / "model.pth"
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.write_bytes(b"<html>429 Too Many Requests</html>")
+
+        def fake_download(url, dst, hash_prefix=None, progress=True):
+            transfers.append(url)
+            if url == self._FALLBACK:
+                raise HTTPError(url, 404, "Not Found", None, None)
+            torch.save(self._GOOD, dst)
+
+        monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+
+        assert "weight" in result
+        # The dead mirror was tried once (404 is permanent), then the primary was
+        # fetched for real against the emptied path.
+        assert transfers == [self._FALLBACK, self._PRIMARY]
+        assert not list(cached.parent.glob("*" + download_mod._QUARANTINE_SUFFIX))
+
+    def test_explicit_file_name_none_still_shares_one_cache_path(self, monkeypatch, tmp_path) -> None:
+        """``file_name=None`` must mean the same thing as omitting it.
+
+        Pinning on ``"file_name" not in kwargs`` while resolving the path with
+        ``kwargs.get("file_name")`` split the two: each URL got its own cache
+        path, but the single quarantine still covered only the primary's, so a
+        failed call left the primary's slot holding the *fallback's* bytes and
+        stranded a quarantine file next to it.
+        """
+        transfers = self._cache(monkeypatch, tmp_path, bad_urls={self._PRIMARY})
+        other = "http://fallback.example.com/other.pth"
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = load_state_dict_from_url([self._PRIMARY, other], file_name=None)
+
+        assert "weight" in result
+        assert transfers == [self._PRIMARY, other]
+        checkpoints = tmp_path / "checkpoints"
+        assert {p.name for p in checkpoints.iterdir()} == {"model.pth"}
 
     def test_unremovable_entry_is_reported(self, monkeypatch, tmp_path) -> None:
         """A cache the process cannot write to locks the fallback out silently."""

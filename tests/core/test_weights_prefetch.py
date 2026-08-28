@@ -38,6 +38,12 @@ invisible to both -- ``huggingface_hub.hf_hub_download``
 ``kornia/feature/lightglue_onnx/utils/download.py``). Nothing in the PR matrix
 downloads through either today; a test that did would fetch live from every
 matrix cell with this file still green.
+
+``docs/generate_examples.py`` also fetches one non-checkpoint tensor
+(``knchurch_disk.pt``, the image pair the matching examples are drawn on)
+straight through ``torch.hub.load_state_dict_from_url``. It lands in the same
+``weights/`` cache but comes from no registry, so it is outside this guard as
+well; it is small, single-source and fetched once per docs build.
 """
 
 from __future__ import annotations
@@ -46,6 +52,7 @@ import functools
 import importlib.util
 import re
 from pathlib import Path
+from types import ModuleType
 from typing import Any, get_args, get_type_hints
 from urllib.parse import urlparse
 
@@ -96,42 +103,49 @@ def _load_prefetch_script() -> Any:
 # list it guards did. ``test_every_prefetched_entry_is_still_requested`` is what
 # holds this table to "every": a checkpoint CI caches but no entry here accounts
 # for is a hole in the enumeration.
-WEIGHT_REGISTRIES: dict[str, dict[str, Any]] = {
-    "affine_shape": affine_shape.urls,
-    "orientation": orientation.urls,
-    "hardnet": hardnet.urls,
-    "hynet": hynet.urls,
-    "sosnet": sosnet.urls,
-    "tfeat": tfeat.urls,
-    "mkd": mkd.urls,
-    "defmo": defmo.urls,
-    "loftr": loftr.urls,
-    "sold2": sold2.urls,
-    "sold2_detector": sold2_detector.urls,
-    "disk": disk.urls,
-    "dedode": dedode.urls,
-    "rt_detr": rt_detr.URLs,
-    "keynet": {"keynet": keynet.KeyNet_URL},
-    "yunet": {"yunet": yunet.url},
+# Each entry pairs the module the URLs live in with the registry itself, so the
+# call-site scan below and the coverage checks read one list rather than two --
+# a second hand-written copy of these modules is exactly the drift this file
+# exists to catch.
+WEIGHT_REGISTRIES: dict[str, tuple[ModuleType, dict[str, Any]]] = {
+    "affine_shape": (affine_shape, affine_shape.urls),
+    "orientation": (orientation, orientation.urls),
+    "hardnet": (hardnet, hardnet.urls),
+    "hynet": (hynet, hynet.urls),
+    "sosnet": (sosnet, sosnet.urls),
+    "tfeat": (tfeat, tfeat.urls),
+    "mkd": (mkd, mkd.urls),
+    "defmo": (defmo, defmo.urls),
+    "loftr": (loftr, loftr.urls),
+    "sold2": (sold2, sold2.urls),
+    "sold2_detector": (sold2_detector, sold2_detector.urls),
+    "disk": (disk, disk.urls),
+    "dedode": (dedode, dedode.urls),
+    "rt_detr": (rt_detr, rt_detr.URLs),
+    "keynet": (keynet, {"keynet": keynet.KeyNet_URL}),
+    "yunet": (yunet, {"yunet": yunet.url}),
     # Two independent registries, identical today, both loading the same cache
     # name -- which is what hides the models copy from the coverage check: the
     # filters copy accounts for the name either way. Holding both to MODELS also
     # holds the two copies equal to each other.
-    "dexined": {"dexined": dexined.url},
-    "dexined_model": {"dexined": dexined_model.url},
-    "xfeat": {"xfeat": xfeat.XFeat.weights_url},
-    "dedode_encoder": dedode_encoder.urls,
-    "tiny_vit": tiny_vit.urls,
-    "sam": {variant.name: url for variant, url in sam.urls.items()},
+    "dexined": (dexined, {"dexined": dexined.url}),
+    "dexined_model": (dexined_model, {"dexined": dexined_model.url}),
+    "xfeat": (xfeat, {"xfeat": xfeat.XFeat.weights_url}),
+    "dedode_encoder": (dedode_encoder, dedode_encoder.urls),
+    "tiny_vit": (tiny_vit, tiny_vit.urls),
+    "sam": (sam, {variant.name: url for variant, url in sam.urls.items()}),
     # ALIKED formats one template pair per backbone configuration.
-    "aliked": {name: [t.format(name) for t in aliked._CHECKPOINT_URLS] for name in aliked._ALIKED_CFGS},
+    "aliked": (aliked, {name: [t.format(name) for t in aliked._CHECKPOINT_URLS] for name in aliked._ALIKED_CFGS}),
     # ViT and EfficientViT compute their URL from the variant.
-    "vit": {variant: vit._get_weight_url(variant) for variant in vit._AVAILABLE_WEIGHTS},
-    "efficient_vit": {
-        f"{model_type}-r{resolution}": efficient_vit._get_base_url(model_type, resolution)
-        for model_type in get_args(get_type_hints(efficient_vit._get_base_url)["model_type"])
-        for resolution in get_args(get_type_hints(efficient_vit._get_base_url)["resolution"])
-    },
+    "vit": (vit, {variant: vit._get_weight_url(variant) for variant in vit._AVAILABLE_WEIGHTS}),
+    "efficient_vit": (
+        efficient_vit,
+        {
+            f"{model_type}-r{resolution}": efficient_vit._get_base_url(model_type, resolution)
+            for model_type in get_args(get_type_hints(efficient_vit._get_base_url)["model_type"])
+            for resolution in get_args(get_type_hints(efficient_vit._get_base_url)["resolution"])
+        },
+    ),
 }
 
 # The modules :data:`WEIGHT_REGISTRIES` reads from, as repository-relative paths.
@@ -140,34 +154,7 @@ WEIGHT_REGISTRIES: dict[str, dict[str, Any]] = {
 # ``load_state_dict_from_url``: a new model with weights is then a failure here
 # rather than a checkpoint nothing in this file can see.
 _ENUMERATED_MODULE_PATHS = tuple(
-    Path(module.__file__).resolve()
-    for module in (
-        affine_shape,
-        orientation,
-        hardnet,
-        hynet,
-        sosnet,
-        tfeat,
-        mkd,
-        defmo,
-        loftr,
-        sold2,
-        sold2_detector,
-        disk,
-        dedode,
-        dedode_encoder,
-        rt_detr,
-        keynet,
-        yunet,
-        dexined,
-        dexined_model,
-        xfeat,
-        tiny_vit,
-        sam,
-        aliked,
-        vit,
-        efficient_vit,
-    )
+    dict.fromkeys(Path(module.__file__).resolve() for module, _ in WEIGHT_REGISTRIES.values())
 )
 
 # The call-site scan reads ``kornia/`` from the checkout, so it can only speak
@@ -224,13 +211,22 @@ NOT_PREFETCHED: dict[str, str] = {
     "rtdetr_r50vd_6x_coco_from_paddle.pth": "only the r18vd variant is tested",
     "rtdetr_r50vd_m_6x_coco_from_paddle.pth": "only the r18vd variant is tested",
     "rtdetr_r101vd_6x_coco_from_paddle.pth": "only the r18vd variant is tested",
-    # DeDoDe: tests cover the v2 detector and the B/G upright + B-SO2 descriptors.
-    "dedode_detector_L.pth": "superseded by the L_v2 detector the tests use",
-    "dedode_detector_C4.pth": "steerer variant no test selects",
-    "dedode_detector_SO2.pth": "steerer variant no test selects",
-    "B_C4_Perm_descriptor_setting_C.pth": "steerer variant no test selects",
-    "G_C4_Perm_descriptor_setting_C.pth": "steerer variant no test selects",
-    "G_SO2_Spread_descriptor_setting_C.pth": "steerer variant no test selects",
+    # DeDoDe: ``TestDeDoDe`` is class-level ``@pytest.mark.skip`` ("DeDoDe is
+    # ummaintained"), so the scheduled slow run does not reach it either. The only
+    # DeDoDe construction CI performs is the ``DeDoDe.from_pretrained`` doctest,
+    # which selects the ``L-C4-v2`` detector and the ``B-upright`` descriptor --
+    # those two are prefetched and every other variant is dead weight in the
+    # cache. ``dedode_descriptor_G`` and the DINOv2 backbone it pulls are 2.2 GB
+    # of it.
+    "dedode_detector_L.pth": "superseded by the L_v2 detector the doctest uses",
+    "dedode_detector_C4.pth": "steerer variant nothing in CI selects",
+    "dedode_detector_SO2.pth": "steerer variant nothing in CI selects",
+    "B_C4_Perm_descriptor_setting_C.pth": "steerer variant nothing in CI selects",
+    "B_SO2_Spread_descriptor_setting_C.pth": "steerer variant nothing in CI selects",
+    "G_C4_Perm_descriptor_setting_C.pth": "steerer variant nothing in CI selects",
+    "G_SO2_Spread_descriptor_setting_C.pth": "steerer variant nothing in CI selects",
+    "dedode_descriptor_G.pth": "only TestDeDoDe builds the G descriptor, and it is skipped",
+    "dinov2_vitl14_pretrain.pth": "reachable only through the G descriptor, which nothing in CI builds",
     # Whole-model checkpoints whose only pretrained test carries
     # ``@pytest.mark.slow``, and which nothing in the docs build constructs. The
     # PR matrix leaves KORNIA_TEST_RUNSLOW unset and deselects them; the
@@ -323,7 +319,7 @@ class _Captured(Exception):
 
 def _iter_checkpoints():
     """Yield ``(label, cache filename, source urls)`` for every checkpoint the library requests."""
-    for registry, entries in WEIGHT_REGISTRIES.items():
+    for registry, (_, entries) in WEIGHT_REGISTRIES.items():
         for variant, url in entries.items():
             if isinstance(url, dict):  # dedode nests detector/descriptor tables
                 for sub, sub_url in url.items():

@@ -114,6 +114,9 @@ MODELS: dict[str, "str | list[str]"] = {
         "https://github.com/cvg/LightGlue/releases/download/v0.1_arxiv/disk_lightglue.pth",
     ],
     # -- DeDoDe --------------------------------------------------------------
+    # Only the pair the ``DeDoDe.from_pretrained`` doctest builds: ``TestDeDoDe``
+    # is skipped outright, so every other variant -- and the 1.2 GB DINOv2
+    # backbone the G descriptor pulls -- would be cached for nothing.
     "dedode_detector_L_v2.pth": [
         "https://huggingface.co/kornia/dedode/resolve/main/dedode_detector_L_v2.pth",
         "https://github.com/Parskatt/DeDoDe/releases/download/v2/dedode_detector_L_v2.pth",
@@ -122,17 +125,6 @@ MODELS: dict[str, "str | list[str]"] = {
         "https://huggingface.co/kornia/dedode/resolve/main/dedode_descriptor_B.pth",
         "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_B.pth",
     ],
-    "dedode_descriptor_G.pth": [
-        "https://huggingface.co/kornia/dedode/resolve/main/dedode_descriptor_G.pth",
-        "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_G.pth",
-    ],
-    "B_SO2_Spread_descriptor_setting_C.pth": [
-        "https://huggingface.co/kornia/dedode/resolve/main/B_SO2_Spread_descriptor_setting_C.pth",
-        "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/"
-        "B_SO2_Spread_descriptor_setting_C.pth",
-    ],
-    # DINOv2 backbone used by the DeDoDe encoder.
-    "dinov2_vitl14_pretrain.pth": "https://dl.fbaipublicfiles.com/dinov2/dinov2_vitl14/dinov2_vitl14_pretrain.pth",
     # -- line, edge and object models ---------------------------------------
     "sold2_wireframe.pth": [
         "https://huggingface.co/kornia/sold2/resolve/main/sold2_wireframe.pth",
@@ -190,12 +182,28 @@ if __name__ == "__main__":
 
     logger.info(f"Downloading models to: {torch.hub.get_dir()}/checkpoints/")
 
+    # A failure is recorded rather than raised, so one run reports every dead
+    # source instead of the first one and then stopping -- with two sources and
+    # three attempts each behind every entry, finding them one push at a time is
+    # expensive. The exit code still fails the job: ``actions/cache`` does not
+    # save on a failed job, and the test matrix is gated on this one
+    # (``needs: [pre-tests]``), so a missing checkpoint stops CI rather than
+    # letting every matrix cell fetch it live.
+    failed: list[str] = []
     for file_name, url in MODELS.items():
         logger.info(f"Downloading `{file_name}` from `{url if isinstance(url, str) else url[0]}`...")
-        # Don't pass model_dir - use the default from torch.hub.set_dir()
-        # This ensures files go to {hub_dir}/checkpoints/ matching test behavior.
-        # file_name is pinned so the entry lands where kornia will look for it.
-        load_state_dict_from_url(url, map_location=torch.device("cpu"), file_name=file_name)
+        try:
+            # Don't pass model_dir - use the default from torch.hub.set_dir()
+            # This ensures files go to {hub_dir}/checkpoints/ matching test behavior.
+            # file_name is pinned so the entry lands where kornia will look for it.
+            load_state_dict_from_url(url, map_location=torch.device("cpu"), file_name=file_name)
+        except Exception as e:  # noqa: BLE001 - report every failure, not just the first
+            logger.error(f"Failed to download `{file_name}`: {type(e).__name__}: {e}")
+            failed.append(file_name)
+
+    if failed:
+        logger.error(f"{len(failed)} of {len(MODELS)} checkpoints could not be downloaded: {failed}")
+        raise SystemExit(1)
 
     logger.info("All models downloaded successfully!")
     raise SystemExit(0)

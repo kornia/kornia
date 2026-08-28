@@ -273,11 +273,15 @@ def _cached_file_path(url: str, kwargs: dict[str, Any]) -> str:
     model_dir = kwargs.get("model_dir")
     if model_dir is None:
         model_dir = os.path.join(torch.hub.get_dir(), "checkpoints")
-    filename = kwargs.get("file_name") or os.path.basename(urlparse(url).path)
+    # ``is not None``, not truthiness: this must agree with torch, which pins the
+    # name whenever ``file_name`` is not None, and with the pin in
+    # :func:`load_state_dict_from_url`, which decides on the same test.
+    file_name = kwargs.get("file_name")
+    filename = file_name if file_name is not None else os.path.basename(urlparse(url).path)
     return os.path.join(model_dir, filename)
 
 
-def _prefetch_to_cache(url: str, kwargs: dict[str, Any]) -> None:
+def _prefetch_to_cache(url: str, kwargs: dict[str, Any]) -> bool:
     """Download *url* into the torch hub cache if it is not already there.
 
     Doing the fetch here rather than letting :func:`torch.hub.load_state_dict_from_url`
@@ -292,10 +296,15 @@ def _prefetch_to_cache(url: str, kwargs: dict[str, Any]) -> None:
         kwargs: the keyword arguments destined for the torch function;
             ``model_dir``, ``file_name``, ``check_hash`` and ``progress`` are
             honoured so the cache entry is identical to torch's.
+
+    Returns:
+        Whether a transfer happened. A cache hit returns ``False``, which is how
+        :func:`load_state_dict_from_url` tells a source that was really fetched
+        from one that was handed the file already on disk.
     """
     cached_file = _cached_file_path(url, kwargs)
     if os.path.exists(cached_file):
-        return
+        return False
 
     os.makedirs(os.path.dirname(cached_file), exist_ok=True)
 
@@ -307,6 +316,7 @@ def _prefetch_to_cache(url: str, kwargs: dict[str, Any]) -> None:
     # torch writes this to stdout; status output belongs on stderr.
     sys.stderr.write(f'Downloading: "{url}" to {cached_file}\n')
     torch.hub.download_url_to_file(url, cached_file, hash_prefix, progress=kwargs.get("progress", True))
+    return True
 
 
 _DISCARDED_CACHE_PATHS: set[str] = set()
@@ -334,16 +344,13 @@ def _discard_cache_entry(url: str, kwargs: dict[str, Any]) -> str | None:
     process, the failure would repeat on every later run until the cache was
     cleared by hand.
 
-    The entry is *renamed*, not deleted. A load failure cannot tell a corrupt
-    cache entry from a healthy one that failed for an unrelated reason -- a bad
-    ``map_location``, a ``weights_only`` rejection -- so a delete would sometimes
-    destroy an intact checkpoint, several of which are over a gigabyte, in
-    exchange for a download that may not be available: offline, it turns a call
-    that used to succeed into one that cannot, and leaves the caller worse off
-    than if nothing had been tried. Renaming makes the discard reversible, and
-    :func:`_settle_quarantine` puts the file back unless a source really replaced
-    it. Within the same directory the rename is a metadata operation, so the
-    size of the checkpoint does not matter.
+    The entry is *renamed*, not deleted, because a load failure cannot tell a
+    corrupt cache entry from a healthy one that failed for an unrelated reason --
+    a bad ``map_location``, a ``weights_only`` rejection -- and a delete would
+    sometimes destroy an intact checkpoint, several of which are over a gigabyte.
+    Renaming makes the discard reversible; :func:`_settle_quarantine` owns the
+    decision and documents it. Within the same directory the rename is a metadata
+    operation, so the size of the checkpoint does not matter.
 
     Gating the discard on the exception type instead was considered and does not
     work. The types do not separate the two classes (torch 2.9.1): an HTML
@@ -357,9 +364,13 @@ def _discard_cache_entry(url: str, kwargs: dict[str, Any]) -> str | None:
     tracked in :data:`_DISCARDED_CACHE_PATHS`. Without that, a failure the cache
     cannot fix would re-download the checkpoint on every call, once per test that
     builds the model -- the download storm this module exists to prevent, reached
-    from the other side. :func:`_settle_quarantine` releases the bound again when
-    the discard turned out to cost nothing, so what it really limits is the
-    number of times a path is successfully refetched.
+    from the other side.
+
+    Neither the ledger nor the rename is synchronised: two threads loading the
+    same checkpoint through one poisoned entry can have one of them find the path
+    already moved aside and fail where a single thread would have recovered. The
+    entry itself is never left in a worse state, and nothing in kornia loads one
+    checkpoint concurrently, so a lock is not worth its deadlock surface here.
 
     Args:
         url: the URL whose cache entry should be moved aside.
@@ -368,11 +379,9 @@ def _discard_cache_entry(url: str, kwargs: dict[str, Any]) -> str | None:
 
     Returns:
         The path the entry was moved to, or ``None`` if there was nothing to move
-        or the bound is already spent. The caller needs this both to hand to
-        :func:`_settle_quarantine` and because a discard only pays for itself once
-        something refetches the path: on the last URL of a list nothing follows,
-        so the caller re-attempts that URL itself rather than leave the rename as
-        pure loss.
+        or the bound is already spent. The caller needs this to hand to
+        :func:`_settle_quarantine`, and to know which source was denied a real
+        fetch by the entry that is now out of the way.
     """
     path = _cached_file_path(url, kwargs)
     if path in _DISCARDED_CACHE_PATHS:
@@ -404,22 +413,39 @@ def _discard_cache_entry(url: str, kwargs: dict[str, Any]) -> str | None:
     return quarantine
 
 
-def _settle_quarantine(path: str, quarantine: str) -> None:
+def _settle_quarantine(path: str, quarantine: str, *, loaded: bool, downloaded: bool) -> None:
     """Resolve a quarantined cache entry once every source has had its turn.
 
-    If a source refetched *path*, the quarantined copy is the one that failed and
-    is dropped. If nothing did -- an offline machine, or every source rate
-    limited -- the discard bought nothing, so the entry goes back and the bound
-    it spent is released: what the caller keeps is the cache it started the call
-    with. That is the whole point of renaming rather than deleting; the healthy
-    checkpoint behind a ``map_location='cuda'`` failure on a CPU-only build
-    survives a call that could not reach the network.
+    The decision is the *outcome of the call*, never what happens to be sitting
+    at *path*. Whether a file is there says only that some source wrote one, not
+    that it is any good: a rate-limited mirror serving an HTML page with a 200
+    puts a file there, and settling on its presence would drop the quarantined
+    original in its favour -- destroying an intact multi-gigabyte checkpoint
+    behind a ``map_location='cuda'`` failure on a CPU-only build, which is the
+    very case renaming rather than deleting exists to survive.
+
+    So:
+
+    * *loaded*: whatever is at *path* is what just loaded, so the quarantined
+      copy is the one that failed and is dropped.
+    * not *loaded*: everything tried failed, including anything a source wrote,
+      so nothing on disk is known-good and the pre-call state is the safest one
+      to leave behind. The original is moved back over whatever is there, and
+      the caller ends the call with the cache it started with.
+
+    The bound in :data:`_DISCARDED_CACHE_PATHS` counts *successful refetches*, so
+    a failed call releases it again unless a source really did transfer the file.
+    Otherwise the first offline call in a process would spend the single allowed
+    discard on a path it could not repair, and a later call -- with the network
+    back -- could never clear a genuinely poisoned entry.
 
     Args:
         path: the cache path the entry was moved out of.
         quarantine: the path :func:`_discard_cache_entry` moved it to.
+        loaded: whether the call is returning a state dict.
+        downloaded: whether any source transferred the file during the call.
     """
-    if os.path.exists(path):
+    if loaded:
         try:
             os.remove(quarantine)
         except OSError as e:  # pragma: no cover - a cache that cannot be written to
@@ -427,7 +453,7 @@ def _settle_quarantine(path: str, quarantine: str) -> None:
         return
 
     try:
-        os.replace(quarantine, path)
+        os.replace(quarantine, path)  # atomically overwrites whatever a source left there
     except OSError as e:  # pragma: no cover - a cache that cannot be written to
         warnings.warn(
             f"Could not restore the cache entry at {path!r} from {quarantine!r}: {e}. "
@@ -435,13 +461,11 @@ def _settle_quarantine(path: str, quarantine: str) -> None:
             stacklevel=3,
         )
         return
-    # Nothing replaced the file, so nothing was downloaded and the bound has
-    # bought nothing. Release it, or a later call in this process -- one that can
-    # reach the network -- could never fix a genuinely poisoned entry.
-    _DISCARDED_CACHE_PATHS.discard(path)
+    if not downloaded:
+        _DISCARDED_CACHE_PATHS.discard(path)
 
 
-def _prefetch_with_retry(url: str, kwargs: dict[str, Any], budget: _SleepBudget) -> None:
+def _prefetch_with_retry(url: str, kwargs: dict[str, Any], budget: _SleepBudget) -> bool:
     """Run :func:`_prefetch_to_cache`, retrying transient failures with backoff.
 
     Args:
@@ -450,14 +474,16 @@ def _prefetch_with_retry(url: str, kwargs: dict[str, Any], budget: _SleepBudget)
         budget: the waiting time the whole call has left; a retry that would
             exceed it is not taken.
 
+    Returns:
+        Whether a transfer happened; see :func:`_prefetch_to_cache`.
+
     Raises:
         Exception: the last failure, once the attempts are exhausted, the failure
             is not transient, or the call has no waiting time left.
     """
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
-            _prefetch_to_cache(url, kwargs)
-            return
+            return _prefetch_to_cache(url, kwargs)
         except Exception as e:
             if attempt == _MAX_ATTEMPTS or not _is_transient(e):
                 raise
@@ -472,6 +498,7 @@ def _prefetch_with_retry(url: str, kwargs: dict[str, Any], budget: _SleepBudget)
                 stacklevel=3,
             )
             budget.sleep(delay)
+    raise AssertionError("unreachable: the loop above always returns or raises")  # pragma: no cover
 
 
 def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, Any]:
@@ -512,13 +539,14 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     Because that one path is shared, a failed attempt moves the cache entry aside
     before the next URL is tried. Otherwise a single bad write would be handed
     straight back to torch by every remaining source -- and by every later
-    process -- making the fallback URLs unreachable. On the last URL nothing
-    follows to refetch what was moved aside, so that attempt is retried once here
-    instead; a single-source checkpoint therefore recovers from a poisoned entry
-    within the same call. If the call ends with nothing having replaced the file
-    -- offline, or every source rate limited -- the entry is put back, so a
-    failure the cache could not have fixed never costs the caller a checkpoint it
-    already had. A path is refetched at most once per process this way; see
+    process -- making the fallback URLs unreachable. If no source ends up
+    transferring the file, the source the entry was moved aside for is tried once
+    more, this time against an empty path, so a poisoned entry is repaired inside
+    the call rather than after one guaranteed spurious failure -- which matters
+    most for the single-source checkpoints, where there is no fallback to do it.
+    Should the call still fail, the entry is put back, so a failure the cache
+    could not have fixed never costs the caller a checkpoint it already had. A
+    path is refetched at most once per process this way; see
     :func:`_discard_cache_entry` and :func:`_settle_quarantine`.
 
     Each URL is attempted up to :data:`_MAX_ATTEMPTS` times, with exponential
@@ -541,7 +569,7 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
 
     Raises:
         RuntimeError: if every URL fails. The message carries the last
-            exception's type and text and the cache path in play, and the
+            exception's type and text, the source it came from and the cache path in play, and the
             exception itself is chained; without them a rate limit is
             indistinguishable from a dead link in a CI failure summary, and a
             caller stuck behind a corrupt entry has no file to delete.
@@ -557,51 +585,68 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
 
     # Pin the cache filename to the primary URL's basename so that all
     # attempts share one cache slot and hash validation stays consistent.
-    if len(urls) > 1 and "file_name" not in kwargs:
+    # ``is None`` rather than ``not in``: an explicit ``file_name=None`` means
+    # "use the basename", which for a list of URLs is a *different* path per
+    # source, while the quarantine below can only cover one. Pinning on the same
+    # test :func:`_cached_file_path` uses is what makes the one-path claim true.
+    if len(urls) > 1 and kwargs.get("file_name") is None:
         kwargs["file_name"] = Path(urlparse(urls[0]).path).name
 
     # Every URL resolves to this one path, so a single quarantine covers the call.
     cache_path = _cached_file_path(urls[0], kwargs)
     budget = _SleepBudget(_MAX_CALL_SLEEP_SECONDS)
     quarantine: str | None = None
+    discarded_url: str | None = None
+    downloaded = False
     last_exc: Exception | None = None
+    last_url: str | None = None
+    sources = urls
+    re_attempted = False
     try:
-        for i, u in enumerate(urls):
-            try:
-                # Populate the cache ourselves so torch's stdout line is never reached.
-                _prefetch_with_retry(u, kwargs, budget)
-                return torch.hub.load_state_dict_from_url(u, **kwargs)
-            except Exception as e:  # noqa: BLE001
-                last_exc = e
-                # Whatever is in the cache is not loadable, and every remaining
-                # URL shares its path. Move it aside so the next source is really
-                # fetched; it comes back below if none of them manages that.
-                moved = _discard_cache_entry(u, kwargs)
-                quarantine = moved or quarantine
-                if i < len(urls) - 1:
-                    warnings.warn(
-                        f"Failed to load weights from {u!r}: {e}. Trying next source.",
-                        stacklevel=2,
-                    )
-                elif moved is not None:
-                    # Nothing follows the last URL, so the rename alone would leave
-                    # the call with no fetch at all. Pair it with the refetch the
-                    # next source would otherwise have done. The ledger is already
-                    # spent on this path, so this stays one extra fetch per path per
-                    # process, and a single-source poisoned entry recovers inside the
-                    # call instead of after one guaranteed spurious failure.
-                    try:
-                        _prefetch_with_retry(u, kwargs, budget)
-                        return torch.hub.load_state_dict_from_url(u, **kwargs)
-                    except Exception as retry_exc:  # noqa: BLE001
-                        last_exc = retry_exc
+        while True:
+            for i, u in enumerate(sources):
+                try:
+                    # Populate the cache ourselves so torch's stdout line is never reached.
+                    downloaded |= _prefetch_with_retry(u, kwargs, budget)
+                    state_dict = torch.hub.load_state_dict_from_url(u, **kwargs)
+                except Exception as e:  # noqa: BLE001
+                    last_exc, last_url = e, u
+                    # Whatever is in the cache is not loadable, and every remaining
+                    # URL shares its path. Move it aside so the next source is really
+                    # fetched; it comes back below if none of them manages that.
+                    moved = _discard_cache_entry(u, kwargs)
+                    if moved is not None:
+                        quarantine, discarded_url = moved, u
+                    if i < len(sources) - 1:
+                        warnings.warn(
+                            f"Failed to load weights from {u!r}: {e}. Trying next source.",
+                            stacklevel=2,
+                        )
+                    continue
+                if quarantine is not None:
+                    _settle_quarantine(cache_path, quarantine, loaded=True, downloaded=downloaded)
+                    quarantine = None
+                return state_dict
+
+            # A discard that nothing refetched is pure loss: the source it fired
+            # for was handed the bad file instead of being fetched, and no later
+            # source replaced it either -- the last URL of a list has nothing
+            # after it, and a mirror that is dead or offline writes nothing. Give
+            # that one source the fetch it never got. The ledger is already spent
+            # on this path, so this stays one extra pass per path per process, and
+            # a poisoned entry recovers inside the call rather than after one
+            # guaranteed spurious failure.
+            if re_attempted or discarded_url is None or downloaded:
+                break
+            sources = [discarded_url]
+            re_attempted = True
     finally:
         if quarantine is not None:
-            _settle_quarantine(cache_path, quarantine)
+            _settle_quarantine(cache_path, quarantine, loaded=False, downloaded=downloaded)
 
     raise RuntimeError(
         f"Failed to load weights from all {len(urls)} source(s). "
-        f"Last URL tried: {urls[-1]!r}. "
+        f"Last URL tried: {last_url!r}. "
         f"Last error: {type(last_exc).__name__}: {last_exc}. "
         f"Cache path: {cache_path!r} -- delete it if it is corrupt and this repeats."
     ) from last_exc
