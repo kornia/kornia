@@ -167,7 +167,7 @@ def load_pointcloud_ply_binary(filename: str, header_size: int = 8) -> torch.Ten
 
     Args:
         filename: the path to the pointcloud.
-        header_size: the number of header lines to skip.
+        header_size: retained for backwards compatibility. The header is read through ``end_header``.
 
     Return:
         tensor containing the loaded points with shape :math:`(*, 3)` where
@@ -182,10 +182,22 @@ def load_pointcloud_ply_binary(filename: str, header_size: int = 8) -> torch.Ten
 
     vertex_count = None
     with open(filename, "rb") as f:
-        for _ in range(header_size):
-            header_line = f.readline().decode("ascii", errors="ignore").split()
+        for _ in range(10000):
+            raw_header_line = f.readline()
+            if not raw_header_line:
+                raise ValueError(f"PLY header in {filename!r} does not contain end_header.")
+            header_line = raw_header_line.decode("ascii", errors="replace").split()
             if len(header_line) == 3 and header_line[:2] == ["element", "vertex"]:
-                vertex_count = int(header_line[2])
+                try:
+                    vertex_count = int(header_line[2])
+                except ValueError as exc:
+                    raise ValueError(f"Invalid PLY vertex count {header_line[2]!r} in {filename!r}.") from exc
+                if vertex_count < 0:
+                    raise ValueError(f"PLY vertex count must be non-negative in {filename!r}. Got {vertex_count}.")
+            if header_line == ["end_header"]:
+                break
+        else:
+            raise ValueError(f"PLY header in {filename!r} exceeds 10000 lines.")
         raw_data = f.read()
 
     if vertex_count is not None:
@@ -193,6 +205,9 @@ def load_pointcloud_ply_binary(filename: str, header_size: int = 8) -> torch.Ten
         if len(raw_data) < vertex_data_size:
             raise ValueError(f"Expected {vertex_data_size} bytes for {vertex_count} points, got {len(raw_data)} bytes.")
         raw_data = raw_data[:vertex_data_size]
+
+    if not raw_data:
+        return torch.empty((0, 3), dtype=torch.float32)
 
     # One point equals 24 bytes (3 * 8 bytes for double float)
     if len(raw_data) % 24 != 0:

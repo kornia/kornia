@@ -145,3 +145,37 @@ class TestSaveLoadPointCloud(BaseTester):
         xyz_load = kornia.geometry.load_pointcloud_ply_binary(str(filename))
 
         self.assert_close(xyz_load, xyz_save)
+
+    def test_load_pointcloud_binary_finds_end_header(self, tmp_path):
+        xyz_save = torch.tensor([[1.0, 2.0, 3.0]])
+        filename = tmp_path / "pointcloud_binary_long_header.ply"
+        kornia.geometry.save_pointcloud_ply_binary(str(filename), xyz_save)
+
+        header, payload = filename.read_bytes().split(b"end_header\n", maxsplit=1)
+        filename.write_bytes(header + b"comment extra header line\nend_header\n" + payload)
+
+        xyz_load = kornia.geometry.load_pointcloud_ply_binary(str(filename))
+
+        self.assert_close(xyz_load, xyz_save)
+
+    @pytest.mark.parametrize("vertex_count", ["-1", "invalid"])
+    def test_load_pointcloud_binary_rejects_invalid_vertex_count(self, tmp_path, vertex_count):
+        filename = tmp_path / "pointcloud_binary_invalid_count.ply"
+        filename.write_bytes(
+            b"ply\n"
+            b"format binary_little_endian 1.0\n"
+            + f"element vertex {vertex_count}\n".encode()
+            + b"property double x\nproperty double y\nproperty double z\nend_header\n"
+        )
+
+        with pytest.raises(ValueError, match="PLY vertex count"):
+            kornia.geometry.load_pointcloud_ply_binary(str(filename))
+
+    def test_load_pointcloud_binary_empty(self, tmp_path):
+        xyz_save = torch.empty((0, 3))
+        filename = tmp_path / "pointcloud_binary_empty.ply"
+        kornia.geometry.save_pointcloud_ply_binary(str(filename), xyz_save)
+
+        xyz_load = kornia.geometry.load_pointcloud_ply_binary(str(filename))
+
+        self.assert_close(xyz_load, xyz_save)
