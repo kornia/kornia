@@ -559,8 +559,8 @@ def _ambient_default_dtype(dtype: torch.dtype) -> Iterator[None]:
     # Swap the PROCESS-WIDE torch default dtype for the duration of a with-block, restoring it even
     # if the body raises. The finally-restore is the safety-critical part -- a leaked float64
     # default would silently change every later test's tolerances across the whole suite -- so it
-    # lives in one place instead of being hand-rolled at each ambient-default pin (the two #3958
-    # pins today; any future one should use this too).
+    # lives in one place instead of being hand-rolled at each ambient-default pin (any future one
+    # should use this too).
     previous = torch.get_default_dtype()
     torch.set_default_dtype(dtype)
     try:
@@ -4021,11 +4021,11 @@ class TestNormalizeHomography(BaseTester):
     # ColmapQTVecs_to_ARKitQTVecs) -- a missing symbol is a scope question, not a defect.
     # NOTE: kornia#3904 (reserved) may extend this surface. EVERY literal in this class -- the
     # composition, direction, round-trip, batching and 3-D pins as much as the #3957 singleton and
-    # #3958 bug pins, and whether or not the pin repeats this line -- is built from the corner-aligned
+    # #3958 regression guard -- is built from the corner-aligned
     # 2/(size - 1) constants these three functions inherit from normal_transform_pixel, so a #3904
     # fix that made the normalization respect align_corners would flip all of them. They record
-    # current default behavior; none of them ratifies that choice as contract. (The #3958 pins would
-    # also flip on a #3958 fix, which is their point; the #3904 exposure is separate and additional.)
+    # current default behavior; none of them ratifies that choice as contract. (The #3958 guard
+    # would also flip on a #3958 regression, which is its point; the #3904 exposure is separate and additional.)
 
     def test_gradcheck(self, device):
         # The three functions are on the warp_perspective path and are differentiable in their
@@ -4261,13 +4261,12 @@ class TestNormalizeHomography(BaseTester):
         )
 
     def test_convention_dyadic_sizes_are_not_necessary_for_a_bitwise_round_trip(self, device):
-        # The float64 identity comes back bitwise through BOTH legs at the non-dyadic
+        # The float64 identity survives denormalize(normalize(.)) bitwise at the non-dyadic
         # (4, 5) -> (8, 9) -- the exact size pair where the round-trip pin above has to fall back to
         # a 32 * eps tolerance for a general H.
-        # Snippet used to generate expected (torch only, executed on cpu, torch 2.9.1):
-        #   I = torch.eye(3)[None] (float64), sizes (4, 5) -> (8, 9)
-        #   torch.equal(denormalize_homography(normalize_homography(I, (4,5), (8,9)), (4,5), (8,9)), I) -> True
-        #   torch.equal(normalize_homography(denormalize_homography(I, (4,5), (8,9)), (4,5), (8,9)), I) -> True
+        # The reverse leg (normalize(denormalize(.))) is no longer bitwise exact with genuine
+        # float64 constants because 2/3 and 2/7 are 53-bit approximations; one ulp appears.
+        # The previous bitwise result was an artifact of the float32-rounded constants being dyadic.
         _skip_if_dtype_unavailable(device, torch.float64)
         _skip_if_closed_form_inverse_unavailable(device, torch.float64)
         normalize_homography = kornia.geometry.conversions.normalize_homography
@@ -4282,11 +4281,7 @@ class TestNormalizeHomography(BaseTester):
             "non-dyadic (4, 5) -> (8, 9), so denormalize_homography's 'not necessary' half has "
             "lost its counterexample"
         )
-        assert torch.equal(reverse, identity), (
-            "the float64 identity no longer survives normalize(denormalize(.)) bitwise at the "
-            "non-dyadic (4, 5) -> (8, 9), so denormalize_homography's 'not necessary' half has "
-            "lost its counterexample"
-        )
+        self.assert_close(reverse, identity, atol=1e-15, rtol=0.0)
 
     def test_convention_batch_is_per_sample(self, device, dtype):
         # Convention pin: both functions are per-sample -- the result for one batch element does not
@@ -4373,28 +4368,13 @@ class TestNormalizeHomography(BaseTester):
             rtol=0.0,
         )
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="the normalization matrices are built at the ambient default dtype and cast to the "
-        "input afterwards, so a float64 caller gets float32-rounded constants — kornia#3958",
-        strict=True,
-    )
-    def test_convention_float64_input_gets_float64_normalization_constants_3958(self, device):
-        # Intended behavior: a float64 homography is normalized with float64 constants, so the
-        # entries carry float64 accuracy. They do not: normalize_homography calls
-        # normal_transform_pixel() without passing dtype= through, so the constants materialise at
-        # the ambient default (float32) and are cast to float64 afterwards, leaving about eight
-        # significant digits. For sizes (4, 4) -> (6, 6) the (0, 0) entry is mathematically
-        # 2/(6 - 1) * (4 - 1)/2 = 0.6 exactly, and any float64-native evaluation lands within an ulp
-        # of it; the tolerance 1e-12 sits four orders above float64 noise and three below the
-        # deviation the current implementation produces.
-        # Non-dyadic sizes are required here: with 2**k + 1 sizes the float32 constants are exact
-        # and there is nothing to leak, which is why the ordering pins above use them and this pin
-        # does not. float64 is hardcoded and the dtype fixture dropped because the claim is a
-        # float64 claim, and the skip is visible so that on MPS, which has no float64, a raw
-        # TypeError cannot satisfy the raises=AssertionError mark instead of the assertion.
-        # Marked xfail(strict=True) so fixing #3958 makes this XPASS and forces the mark out.
-        # Companion wart: test_wart_float32_constants_leak_into_float64_results_3958.
+    def test_convention_float64_input_gets_float64_normalization_constants(self, device):
+        # Regression guard for kornia#3958: a float64 homography is normalized with float64
+        # constants, so the entries carry float64 accuracy. Non-dyadic sizes are required here:
+        # with 2**k + 1 sizes the float32 constants are exact and there is nothing to leak.
+        # float64 is hardcoded and the dtype fixture dropped because the claim is a float64
+        # claim, and the skip is visible so that on MPS, which has no float64, a raw TypeError
+        # cannot satisfy the raises=AssertionError mark instead of the assertion.
         _skip_if_dtype_unavailable(device, torch.float64)
 
         identity = torch.eye(3, device=device, dtype=torch.float64)[None]
@@ -4402,75 +4382,7 @@ class TestNormalizeHomography(BaseTester):
         normalized = kornia.geometry.conversions.normalize_homography(identity, (4, 4), (6, 6))
 
         assert abs(normalized[0, 0, 0].item() - 0.6) < 1e-12, (
-            "kornia#3958: normalize_homography did not use float64 normalization constants"
-        )
-
-    def test_wart_float32_constants_leak_into_float64_results_3958(self, device):
-        # Wart pin for kornia#3958, companion to the strict xfail above: assert the CURRENT
-        # float32-rounded entries in a float64 result. Four cells:
-        #   (1) normalize_homography, whose src factor is inverted by the closed-form 3x3 inverse;
-        #   (2) denormalize_homography, whose dst factor is inverted by _torch_inverse_cast instead
-        #       -- a separate code path that could be fixed on its own;
-        #   (3) normalize_homography3d, which calls the 3-D helper and is a third call site;
-        #   (4) the control that proves the cause is the missing dtype= pass-through and not an
-        #       epsilon or a rounding choice: with the ambient default dtype set to float64 the
-        #       same call returns the float64-native value 0.6000000000000001, because the helper
-        #       now materialises in float64 before the cast. Cell (4) also fails if the helpers stop
-        #       reading the ambient default, which is the other half of the same mechanism.
-        # If any cell fails, #3958 was (partly) fixed -- flip/remove the strict xfail above. NOT a
-        # contract that float64 callers must keep receiving float32-rounded constants.
-        # atol 1e-10 pins the MAGNITUDE of the deviation, which is what the docstring warning
-        # promises ("the magnitude -- half the mantissa gone -- is the point ... rather than the
-        # digits"): it sits an order below the ~8.9e-09 deviation being discriminated (so a fix
-        # still flips these cells red) and six above the ~1.1e-16 ulp of the entries, so no
-        # backend's reassociation of the matmul-and-inverse chain can flip them. float64 is
-        # hardcoded for the same reason as the xfail above.
-        # Snippet used to generate expected (torch only, executed on cpu float64):
-        #   normalize_homography(eye(3, float64), (4, 4), (6, 6))[0, 0]     -> 0.5999999910593036
-        #   denormalize_homography(eye(3, float64), (4, 4), (6, 6))[0, 0]   -> 1.6666666915019348
-        #   normalize_homography3d(eye(4, float64), (4, 4, 4), (6, 6, 6))[0, 0] -> 0.5999999910593036
-        #   with torch.set_default_dtype(torch.float64):
-        #     normalize_homography(eye(3, float64), (4, 4), (6, 6))[0, 0]   -> 0.6000000000000001
-        _skip_if_dtype_unavailable(device, torch.float64)
-
-        normalize_homography = kornia.geometry.conversions.normalize_homography
-        identity = torch.eye(3, device=device, dtype=torch.float64)[None]
-        identity3d = torch.eye(4, device=device, dtype=torch.float64)[None]
-
-        normalized = normalize_homography(identity, (4, 4), (6, 6))[0, 0, 0]
-        denormalized = kornia.geometry.conversions.denormalize_homography(identity, (4, 4), (6, 6))[0, 0, 0]
-        normalized3d = kornia.geometry.conversions.normalize_homography3d(identity3d, (4, 4, 4), (6, 6, 6))[0, 0, 0]
-
-        with _ambient_default_dtype(torch.float64):
-            with_float64_default = normalize_homography(identity, (4, 4), (6, 6))[0, 0, 0]
-
-        assert_close(
-            normalized,
-            torch.tensor(0.5999999910593036, device=device, dtype=torch.float64),
-            atol=1e-10,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3958: normalize_homography no longer rounds its constants to float32"),
-        )
-        assert_close(
-            denormalized,
-            torch.tensor(1.6666666915019348, device=device, dtype=torch.float64),
-            atol=1e-10,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3958: denormalize_homography no longer rounds its constants to float32"),
-        )
-        assert_close(
-            normalized3d,
-            torch.tensor(0.5999999910593036, device=device, dtype=torch.float64),
-            atol=1e-10,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3958: normalize_homography3d no longer rounds its constants to float32"),
-        )
-        assert_close(
-            with_float64_default,
-            torch.tensor(0.6000000000000001, device=device, dtype=torch.float64),
-            atol=1e-10,
-            rtol=0.0,
-            msg=_issue_msg("kornia#3958: the ambient default dtype no longer decides the constants' precision"),
+            "normalize_homography did not use float64 normalization constants"
         )
 
     def test_wart_integer_input_raises_or_nans_by_backend_3959(self, device):
