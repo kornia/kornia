@@ -38,16 +38,18 @@ __all__ = [
 
 
 def validate_bbox(boxes: torch.Tensor) -> bool:
-    """Validate if a 2D bounding box usable or not. This function checks if the boxes are rectangular or not.
+    """Validate whether a 2D bounding box is usable. This function checks if the boxes are rectangular or not.
 
     Convention:
         Vertices use inclusive coordinates in clockwise top-left, top-right, bottom-right, bottom-left order.
         The function accepts :math:`(B, 4, 2)` and :math:`(B, N, 4, 2)` tensors and returns ``False`` for an
-        invalid shape or a non-rectangular box; it does not raise for those inputs.
+        invalid shape or a non-rectangular box; it does not raise for those inputs. The inclusive ``+1`` terms
+        cancel inside the width and height comparisons, so the returned value is the same under exclusive
+        arithmetic.
 
     .. warning::
-        The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked in
-        `#3934 <https://github.com/kornia/kornia/issues/3934>`_.
+        :func:`validate_bbox3d` raises ``AssertionError`` where this function returns ``False``. That
+        inconsistency is tracked in `#4013 <https://github.com/kornia/kornia/issues/4013>`_.
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
@@ -123,7 +125,13 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Convention:
         Vertices use inclusive coordinates in clockwise top-left, top-right, bottom-right, bottom-left order.
-        The returned tuple is ``(heights, widths)``, with each extent computed as ``maximum - minimum + 1``.
+        The returned tuple is ``(heights, widths)``, in that order. Both extents are read from fixed vertex
+        indices, as ``width = boxes[:, 1, 0] - boxes[:, 0, 0] + 1`` and
+        ``height = boxes[:, 2, 1] - boxes[:, 0, 1] + 1``, rather than from a ``maximum - minimum`` reduction.
+        The two agree only for an axis-aligned box in the documented order; for any other vertex order,
+        including the rotated quadrilaterals that :func:`transform_bbox` produces, the result can be negative.
+        :meth:`kornia.geometry.boxes.Boxes.get_boxes_shape` is reduction based and does not share that
+        behavior.
 
     .. warning::
         The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked in

@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 import kornia
@@ -32,12 +33,22 @@ from testing.base import BaseTester
 
 class TestBbox2D(BaseTester):
     def test_wart_infer_bbox_shape_is_inclusive_3934(self, device, dtype):
-        # Wart pin for kornia#3934: a raw box spanning x=1..2 and y=1..2 has
-        # width and height 2 because infer_bbox_shape adds one on both axes.
-        boxes = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        # Wart pin for kornia#3934: a raw box spanning x=1..4 and y=1..2 reports
+        # (height, width) = (2, 4) because infer_bbox_shape adds one on both axes.
+        # The non-square extents also pin the (heights, widths) return order.
+        boxes = torch.tensor([[[1.0, 1.0], [4.0, 1.0], [4.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
         height, width = infer_bbox_shape(boxes)
         self.assert_close(height, torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        self.assert_close(width, torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(width, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+    def test_convention_infer_bbox_shape_reads_fixed_vertex_indices(self, device, dtype):
+        # Convention pin: the extents come from fixed vertex indices, not from a
+        # maximum - minimum reduction. Swapping the top-left and top-right vertices in
+        # x therefore yields a negative width, where max - min + 1 would give 5.
+        boxes = torch.tensor([[[5.0, 2.0], [1.0, 2.0], [1.0, 3.0], [5.0, 3.0]]], device=device, dtype=dtype)
+        height, width = infer_bbox_shape(boxes)
+        self.assert_close(height, torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(width, torch.tensor([-3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_convention_validate_bbox_returns_bool_and_accepts_batched_boxes(self, device, dtype):
         boxes = torch.tensor([[[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]]], device=device, dtype=dtype)
@@ -46,6 +57,32 @@ class TestBbox2D(BaseTester):
         non_rectangular = boxes.clone()
         non_rectangular[..., 2, 0] += 1
         assert validate_bbox(non_rectangular) is False
+
+    def test_wart_validate_bbox_returns_false_where_validate_bbox3d_raises_4013(self, device, dtype):
+        # Wart pin for kornia#4013: the 2D validator reports an invalid shape and a
+        # non-rectangular box by returning False, while the 3D validator raises.
+        assert validate_bbox(torch.rand(3, 3, device=device, dtype=dtype)) is False
+        with pytest.raises(AssertionError):
+            validate_bbox3d(torch.rand(1, 3, 3, device=device, dtype=dtype))
+
+        non_cube = torch.tensor(
+            [
+                [
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [1.0, 1.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                    [2.0, 0.0, 1.0],
+                    [2.0, 1.0, 1.0],
+                    [0.0, 1.0, 1.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        with pytest.raises(AssertionError):
+            validate_bbox3d(non_cube)
 
     def test_smoke(self, device, dtype):
         # Sample two points of the rectangle

@@ -195,26 +195,43 @@ class Boxes:
         mode: the box format of the input boxes.
 
     Convention:
-        - A box is four floating-point ``(x, y)`` vertices in clockwise top-left, top-right, bottom-right,
-          bottom-left order, stored as :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)` data.
+        - A box is a quadrilateral of four floating-point ``(x, y)`` vertices, stored as :math:`(N, 4, 2)` or
+          :math:`(B, N, 4, 2)` data. Axis-aligned boxes are built in clockwise top-left, top-right,
+          bottom-right, bottom-left order, but the vertices stay arbitrary: :meth:`transform_boxes` produces
+          rotated quadrilaterals, and :meth:`compute_area` runs the shoelace formula over any four-gon.
         - The stored form is inclusive (``'vertices_plus'``): ``width = xmax - xmin + 1``. The exclusive
-          ``'xyxy'``, ``'xywh'``, and ``'vertices'`` modes convert to this form in :meth:`from_tensor` and
-          back in :meth:`to_tensor`. Axis-aligned rectangles round-trip exactly in their own mode; exporting
-          arbitrary vertex input derives its axis-aligned bounds.
+          ``'xyxy'``, ``'xywh'``, and ``'vertices'`` modes convert to this form in :meth:`from_tensor` and back
+          in :meth:`to_tensor`. The constructor converts nothing and stores ``mode`` as a label, so
+          ``Boxes(data, mode='xyxy').to_tensor()`` applies the export offsets to data that was never imported.
+        - A box whose extent is at least one unit per axis round-trips exactly in its own mode. A sub-unit
+          extent does not: the inclusive ``- 1`` inverts the stored quadrilateral, so boxes in normalized
+          ``[0, 1]`` coordinates are silently corrupted by the three converting modes. The ``'_plus'`` modes
+          are unaffected because their ``+ 1`` cancels the ``- 1``.
+        - :meth:`to_tensor` reduces the stored vertices with ``amin``/``amax``, so every export is an
+          axis-aligned bounding box. It is lossy for rotated boxes, and ``to_tensor('vertices_plus')`` is
+          therefore not the identity on :attr:`data`.
         - :meth:`get_boxes_shape` returns ``(heights, widths)`` in that order and in inclusive terms.
-        - Inclusive free functions in :mod:`kornia.geometry.bbox` have no mode argument. Pass them the
-          ``'vertices_plus'`` export rather than ``'vertices'``: the latter is read as one pixel larger per axis.
-          See :func:`~kornia.geometry.bbox.infer_bbox_shape`.
-        - With ``validate_boxes=True``, the ``'xy*'`` modes reject non-positive extents; vertex modes are not
-          validated.
+        - The free functions in :mod:`kornia.geometry.bbox` have no mode argument, and they do not all share
+          one convention. :func:`~kornia.geometry.bbox.infer_bbox_shape` adds one per axis and
+          :func:`~kornia.geometry.bbox.bbox_to_mask` fills through the maximum row and column, so both read
+          their input as inclusive: pass them the ``'vertices_plus'`` export rather than ``'vertices'``, which
+          they read as one pixel larger per axis. :func:`~kornia.geometry.bbox.validate_bbox` is invariant,
+          because its ``+1`` terms cancel; :func:`~kornia.geometry.bbox.nms` computes exclusive areas, and
+          :func:`~kornia.geometry.bbox.transform_bbox` converts ``'xywh'`` with the exclusive
+          ``xmax = xmin + width``.
+        - With ``validate_boxes=True``, the ``'xy*'`` modes reject non-positive extents. Vertex modes are not
+          validated, and ``'vertices'`` additionally deforms a non-rectangular quadrilateral: its exclusive
+          import subtracts one from the ``x`` of the top-right and bottom-right vertices and from the ``y``
+          of the bottom-right and bottom-left vertices, wherever those vertices actually lie.
         - The constructor rejects integer input unless ``raise_if_not_floating_point=False``; :meth:`from_tensor`
           silently casts integer input to ``float32``.
 
     .. warning::
         The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked as a
-        coordinated repair in `#3934 <https://github.com/kornia/kornia/issues/3934>`_. The cross-module export
-        trap is `#4009 <https://github.com/kornia/kornia/issues/4009>`_, and the constructor/``from_tensor`` dtype
-        split is `#4012 <https://github.com/kornia/kornia/issues/4012>`_. The current behavior is pinned in
+        coordinated repair in `#3934 <https://github.com/kornia/kornia/issues/3934>`_. The sub-unit conversion
+        corruption is `#4061 <https://github.com/kornia/kornia/issues/4061>`_, the cross-module export trap is
+        `#4009 <https://github.com/kornia/kornia/issues/4009>`_, and the constructor/``from_tensor`` dtype split
+        is `#4012 <https://github.com/kornia/kornia/issues/4012>`_. The current behavior is pinned in
         ``tests/geometry/test_boxes.py``.
 
     """
@@ -529,15 +546,21 @@ class Boxes:
             boxes: 2D boxes, shape of :math:`(N, 4)`, :math:`(B, N, 4)`, :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
             mode: The format in which the boxes are provided:
 
-                * 'xyxy': ``xmin, ymin, xmax, ymax`` with exclusive extent.
-                * 'xyxy_plus': ``xmin, ymin, xmax, ymax`` with inclusive extent.
-                * 'xywh': ``xmin, ymin, width, height`` with exclusive extent.
+                * 'xyxy': ``xmin, ymin, xmax, ymax`` with exclusive extent. With shape :math:`(N, 4)`,
+                  :math:`(B, N, 4)`.
+                * 'xyxy_plus': ``xmin, ymin, xmax, ymax`` with inclusive extent. With shape :math:`(N, 4)`,
+                  :math:`(B, N, 4)`.
+                * 'xywh': ``xmin, ymin, width, height`` with exclusive extent. With shape :math:`(N, 4)`,
+                  :math:`(B, N, 4)`.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
-                  *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. Finally,
-                  this is the exclusive export form.
-                * 'vertices_plus': the inclusive stored vertex form.
+                  *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. This is
+                  the exclusive input form. With shape :math:`(N, 4, 2)`, :math:`(B, N, 4, 2)`.
+                * 'vertices_plus': the inclusive stored vertex form. With shape :math:`(N, 4, 2)`,
+                  :math:`(B, N, 4, 2)`.
 
-            validate_boxes: Check extents for the ``'xy*'`` modes. Vertex modes are not checked for rectangularity.
+            validate_boxes: Check extents for the ``'xy*'`` modes. Vertex modes are not checked for rectangularity,
+                and the ``'vertices'`` import subtracts one from fixed vertex positions, which deforms a
+                non-rectangular quadrilateral rather than rejecting it.
 
         Returns:
             :class:`Boxes` containing the converted inclusive vertex representation.
@@ -573,10 +596,14 @@ class Boxes:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
         ``mode`` selects the output representation. ``'xyxy'``, ``'xywh'``, and ``'vertices'`` are exclusive
-        exports; the ``'_plus'`` variants are inclusive.
+        exports; the ``'_plus'`` variants are inclusive. Every mode exports the axis-aligned bounds of the
+        stored vertices, reduced with ``amin``/``amax``, so the export is lossy for rotated boxes:
+        ``to_tensor('vertices_plus')`` does not return :attr:`data` unchanged after :meth:`transform_boxes`.
 
         Args:
-            mode: the output box format. It could be:
+            mode: the output box format, or ``None`` to reuse :attr:`mode`. That attribute depends on the
+                construction path: the constructor defaults to ``'vertices_plus'``, while :meth:`from_tensor`
+                records the mode its input was given in. It could be:
 
                 * 'xyxy': ``xmin, ymin, xmax, ymax`` with exclusive extent.
                 * 'xyxy_plus': ``xmin, ymin, xmax, ymax`` with inclusive extent.

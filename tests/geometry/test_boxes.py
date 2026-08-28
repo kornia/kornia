@@ -20,6 +20,7 @@ from functools import partial
 import pytest
 import torch
 
+from kornia.geometry.bbox import infer_bbox_shape
 from kornia.geometry.boxes import Boxes, Boxes3D
 
 from testing.base import BaseTester
@@ -37,8 +38,10 @@ class TestBoxes2D(BaseTester):
 
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
     def test_convention_axis_aligned_box_round_trips_in_each_mode(self, mode, device, dtype):
-        # Convention pin: an axis-aligned rectangle round-trips in each mode. The
-        # source values describe the same asymmetric box with exclusive extent (4, 2).
+        # Convention pin: an axis-aligned rectangle whose extent is at least one unit
+        # per axis round-trips in each mode. The source values describe the same
+        # asymmetric box with exclusive extent (4, 2). Sub-unit extents are the
+        # documented boundary of this guarantee and are pinned separately below.
         source_by_mode = {
             "xyxy": [1.0, 2.0, 5.0, 4.0],
             "xyxy_plus": [1.0, 2.0, 4.0, 3.0],
@@ -49,6 +52,32 @@ class TestBoxes2D(BaseTester):
         source = torch.tensor([source_by_mode[mode]], device=device, dtype=dtype)
         output = Boxes.from_tensor(source, mode=mode).to_tensor(mode=mode)
         self.assert_close(output, source, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
+    def test_wart_sub_unit_extent_does_not_round_trip_4061(self, mode, device, dtype):
+        # Wart pin for kornia#4061: the three converting modes place the top-right
+        # vertex at ``xmin + width - 1``, which lands left of the top-left vertex when
+        # the extent is below one unit. The stored quadrilateral is inverted on both
+        # axes and to_tensor recovers a larger box. The '_plus' modes cancel the -1.
+        source_by_mode = {
+            "xyxy": [0.1, 0.1, 0.6, 0.9],
+            "xyxy_plus": [0.1, 0.1, 0.6, 0.9],
+            "xywh": [0.1, 0.1, 0.5, 0.8],
+            "vertices": [[0.1, 0.1], [0.6, 0.1], [0.6, 0.9], [0.1, 0.9]],
+            "vertices_plus": [[0.1, 0.1], [0.6, 0.1], [0.6, 0.9], [0.1, 0.9]],
+        }
+        expected_by_mode = {
+            "xyxy": [-0.4, -0.1, 1.1, 1.1],
+            "xyxy_plus": [0.1, 0.1, 0.6, 0.9],
+            "xywh": [-0.4, -0.1, 1.5, 1.2],
+            "vertices": [[-0.4, -0.1], [1.1, -0.1], [1.1, 1.1], [-0.4, 1.1]],
+            "vertices_plus": [[0.1, 0.1], [0.6, 0.1], [0.6, 0.9], [0.1, 0.9]],
+        }
+        source = torch.tensor([source_by_mode[mode]], device=device, dtype=dtype)
+        expected = torch.tensor([expected_by_mode[mode]], device=device, dtype=dtype)
+        # validate_boxes=True does not reject the input: the extents are positive.
+        output = Boxes.from_tensor(source, mode=mode, validate_boxes=True).to_tensor(mode=mode)
+        self.assert_close(output, expected)
 
     def test_wart_get_boxes_shape_uses_inclusive_extent_3934(self, device, dtype):
         # Wart pin for kornia#3934: raw inclusive vertices spanning x=1..4 and
@@ -61,12 +90,31 @@ class TestBoxes2D(BaseTester):
     def test_wart_vertices_export_is_exclusive_for_inclusive_bbox_consumers_4009(self, device, dtype):
         # Wart pin for kornia#4009: vertices is an exclusive export, while
         # infer_bbox_shape reads vertices as inclusive and therefore adds one per axis.
-        from kornia.geometry.bbox import infer_bbox_shape
-
         boxes = Boxes.from_tensor(torch.tensor([[1.0, 2.0, 5.0, 4.0]], device=device, dtype=dtype), mode="xyxy")
         heights, widths = infer_bbox_shape(boxes.to_tensor("vertices"))
         self.assert_close(heights, torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(widths, torch.tensor([5.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+    def test_convention_vertices_import_deforms_a_non_rectangular_quadrilateral(self, device, dtype):
+        # Convention pin: 'vertices' is not merely unvalidated. Its exclusive import
+        # subtracts one from fixed vertex positions, so a non-rectangular quadrilateral
+        # is silently reshaped instead of rejected, even with validate_boxes=True.
+        quadrilateral = torch.tensor([[[0.0, 0.0], [9.0, 0.0], [3.0, 7.0], [0.0, 1.0]]], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(quadrilateral, mode="vertices", validate_boxes=True)
+        expected = torch.tensor([[[0.0, 0.0], [8.0, 0.0], [2.0, 6.0], [0.0, 0.0]]], device=device, dtype=dtype)
+        self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
+
+    def test_convention_to_tensor_exports_axis_aligned_bounds_of_a_rotated_box(self, device, dtype):
+        # Convention pin: to_tensor reduces the stored vertices with amin/amax, so it
+        # exports axis-aligned bounds. After a shear the export is lossy and
+        # to_tensor('vertices_plus') is not the identity on data.
+        boxes = Boxes(torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype))
+        shear = torch.tensor([[[1.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        sheared = boxes.transform_boxes(shear)
+        expected_data = torch.tensor([[[3.0, 2.0], [6.0, 2.0], [7.0, 3.0], [4.0, 3.0]]], device=device, dtype=dtype)
+        self.assert_close(sheared.data, expected_data, atol=0.0, rtol=0.0)
+        expected_export = torch.tensor([[[3.0, 2.0], [7.0, 2.0], [7.0, 3.0], [3.0, 3.0]]], device=device, dtype=dtype)
+        self.assert_close(sheared.to_tensor("vertices_plus"), expected_export, atol=0.0, rtol=0.0)
 
     def test_wart_constructor_and_from_tensor_have_different_integer_policies_4012(self):
         # Wart pin for kornia#4012: the constructor rejects integer coordinates,
