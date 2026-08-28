@@ -24,6 +24,13 @@ from kornia.core.download import load_state_dict_from_url
 
 from .vgg import vgg19_bn
 
+# Module level, like every other weight registry in kornia, so the CI weights
+# cache can enumerate it -- see tests/core/test_weights_prefetch.py. The DeDoDe
+# G descriptor pulls this backbone in, so CI needs it cached.
+urls: dict[str, str] = {
+    "dinov2_vitl14": "https://dl.fbaipublicfiles.com/dinov2/dinov2_vitl14/dinov2_vitl14_pretrain.pth"
+}
+
 
 class VGG19(nn.Module):
     """Implement the VGG19 encoder for feature encoding.
@@ -76,9 +83,7 @@ class FrozenDINOv2(nn.Module):
     def __init__(self, amp: bool = True, amp_dtype: torch.dtype = torch.float16, dinov2_weights: Optional[Any] = None):
         super().__init__()
         if dinov2_weights is None:
-            dinov2_weights = load_state_dict_from_url(
-                "https://dl.fbaipublicfiles.com/dinov2/dinov2_vitl14/dinov2_vitl14_pretrain.pth", map_location="cpu"
-            )
+            dinov2_weights = load_state_dict_from_url(urls["dinov2_vitl14"], map_location="cpu")
         from .transformer import vit_large
 
         vit_kwargs = dict(

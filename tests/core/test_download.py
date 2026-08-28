@@ -31,6 +31,14 @@ from kornia.core import download as download_mod
 from kornia.core.download import hf_url, load_state_dict_from_url
 
 
+@pytest.fixture(autouse=True)
+def _clear_discard_ledger():
+    """The one-discard-per-path bound is process-global; keep tests independent."""
+    download_mod._DISCARDED_CACHE_PATHS.clear()
+    yield
+    download_mod._DISCARDED_CACHE_PATHS.clear()
+
+
 class TestHfUrl:
     def test_format(self) -> None:
         assert hf_url("hardnet", "HardNetPP.pth") == (
@@ -308,6 +316,7 @@ class TestPoisonedCacheEntry:
     _PRIMARY = "http://primary.example.com/model.pth"
     _FALLBACK = "http://fallback.example.com/model.pth"
     _GOOD = {"weight": torch.zeros(1)}
+    _MOCK_TARGET = "kornia.core.download.torch.hub.load_state_dict_from_url"
 
     @staticmethod
     def _cache(monkeypatch, tmp_path, bad_urls):
@@ -352,16 +361,79 @@ class TestPoisonedCacheEntry:
         # The primary short-circuits on the poisoned file, so only the fallback transfers.
         assert transfers == [self._FALLBACK]
 
-    def test_bad_entry_is_not_left_behind_when_all_sources_fail(self, monkeypatch, tmp_path) -> None:
-        self._cache(monkeypatch, tmp_path, bad_urls={self._PRIMARY, self._FALLBACK})
+    def test_bad_entry_never_survives_into_the_next_run(self, monkeypatch, tmp_path) -> None:
+        """A run in which every source fails may leave its last write behind.
+
+        The discard is bounded to one per cache path per process, so the file the
+        final source wrote is still there afterwards. What must not survive is the
+        *poisoning*: the next process spends its own discard on that path, so the
+        fallback is reached again rather than being locked out for good.
+        """
+        bad = {self._PRIMARY, self._FALLBACK}
+        transfers = self._cache(monkeypatch, tmp_path, bad_urls=bad)
 
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             with pytest.raises(RuntimeError):
                 load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
 
-        # Nothing corrupt survives to poison the next process.
-        assert not (tmp_path / "checkpoints" / "model.pth").exists()
+        cached = tmp_path / "checkpoints" / "model.pth"
+        assert cached.read_bytes().startswith(b"<html>")
+
+        # A later run, with the fallback healthy again: the ledger is per-process.
+        download_mod._DISCARDED_CACHE_PATHS.clear()
+        bad.discard(self._FALLBACK)
+        transfers.clear()
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+
+        assert "weight" in result
+        assert transfers == [self._FALLBACK]
+
+    def test_load_side_failure_refetches_once_not_once_per_call(self, monkeypatch, tmp_path) -> None:
+        """An unloadable-but-intact cache entry must not re-download on every call.
+
+        A failure the cache cannot fix -- a bad ``map_location``, a ``weights_only``
+        rejection -- used to cost a full transfer of every source on each call,
+        because the discard fired unconditionally and the entry never came back.
+        Once per model construction across a matrix is the storm this module
+        exists to prevent.
+        """
+        transfers = self._cache(monkeypatch, tmp_path, bad_urls=set())
+        cached = tmp_path / "checkpoints" / "model.pth"
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self._GOOD, cached)
+
+        def always_fails(url: str, **kwargs: object) -> dict:
+            raise RuntimeError("Attempting to deserialize object on a CUDA device")
+
+        with patch(self._MOCK_TARGET, side_effect=always_fails):
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                for _ in range(3):
+                    with pytest.raises(RuntimeError):
+                        load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+
+        # One refetch in total, not one per source per call.
+        assert transfers == [self._FALLBACK]
+
+    def test_unremovable_entry_is_reported(self, monkeypatch, tmp_path) -> None:
+        """A cache the process cannot write to locks the fallback out silently."""
+        self._cache(monkeypatch, tmp_path, bad_urls={self._PRIMARY})
+
+        def refuse(path: str) -> None:
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(download_mod.os, "remove", refuse)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError):
+                load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+
+        assert any("Could not discard the cache entry" in str(w.message) for w in caught)
 
 
 class TestTransientRetry:

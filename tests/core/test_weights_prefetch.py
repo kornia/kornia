@@ -31,29 +31,41 @@ prefetched or listed in :data:`NOT_PREFETCHED` with a reason.
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args, get_type_hints
 from urllib.parse import urlparse
 
 import pytest
 
 from kornia.feature import affine_shape, defmo, hardnet, hynet, keynet, mkd, orientation, sosnet, tfeat, xfeat
 from kornia.feature import lightglue as lightglue_mod
+from kornia.feature.aliked import aliked
 from kornia.feature.dedode import dedode
+from kornia.feature.dedode import encoder as dedode_encoder
 from kornia.feature.disk import disk
 from kornia.feature.lightglue import LightGlue
 from kornia.feature.loftr import loftr
 from kornia.feature.sold2 import sold2, sold2_detector
 from kornia.filters import dexined
+from kornia.models import tiny_vit, vit
+from kornia.models.efficient_vit import model as efficient_vit
 from kornia.models.rt_detr import model as rt_detr
+from kornia.models.sam import model as sam
 from kornia.models.yunet import model as yunet
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO_ROOT / ".github" / "download-models-weights.py"
 
 
+@functools.lru_cache(maxsize=1)
 def _load_prefetch_script() -> Any:
+    """Import the prefetch script for its ``MODELS`` table.
+
+    Cached: the parametrized coverage test asks for it once per checkpoint, and
+    re-executing a script for every case is pure overhead.
+    """
     spec = importlib.util.spec_from_file_location("_download_models_weights", _SCRIPT)
     if spec is None or spec.loader is None:  # pragma: no cover - defensive
         pytest.fail(f"could not load {_SCRIPT}")
@@ -62,8 +74,15 @@ def _load_prefetch_script() -> Any:
     return module
 
 
-# Every module-level weight registry in the library. A registry maps a variant
-# name to the URL (or ordered fallback list) that variant loads from.
+# Every weight source in the library. A registry maps a variant name to the URL
+# (or ordered fallback list) that variant loads from.
+#
+# Most are module-level dicts. The rest build their URLs from a template or a
+# helper, and are reconstructed below from the very constants the library
+# formats -- never transcribed, or this file would drift the way the prefetch
+# list it guards did. ``test_every_prefetched_entry_is_still_requested`` is what
+# holds this table to "every": a checkpoint CI caches but no entry here accounts
+# for is a hole in the enumeration.
 WEIGHT_REGISTRIES: dict[str, dict[str, Any]] = {
     "affine_shape": affine_shape.urls,
     "orientation": orientation.urls,
@@ -83,6 +102,18 @@ WEIGHT_REGISTRIES: dict[str, dict[str, Any]] = {
     "yunet": {"yunet": yunet.url},
     "dexined": {"dexined": dexined.url},
     "xfeat": {"xfeat": xfeat.XFeat.weights_url},
+    "dedode_encoder": dedode_encoder.urls,
+    "tiny_vit": tiny_vit.urls,
+    "sam": {variant.name: url for variant, url in sam.urls.items()},
+    # ALIKED formats one template pair per backbone configuration.
+    "aliked": {name: [t.format(name) for t in aliked._CHECKPOINT_URLS] for name in aliked._ALIKED_CFGS},
+    # ViT and EfficientViT compute their URL from the variant.
+    "vit": {variant: vit._get_weight_url(variant) for variant in vit._AVAILABLE_WEIGHTS},
+    "efficient_vit": {
+        f"{model_type}-r{resolution}": efficient_vit._get_base_url(model_type, resolution)
+        for model_type in get_args(get_type_hints(efficient_vit._get_base_url)["model_type"])
+        for resolution in get_args(get_type_hints(efficient_vit._get_base_url)["resolution"])
+    },
 }
 
 # Checkpoints deliberately left out of the CI cache, with the reason. A variant
@@ -122,6 +153,42 @@ NOT_PREFETCHED: dict[str, str] = {
     "B_C4_Perm_descriptor_setting_C.pth": "steerer variant no test selects",
     "G_C4_Perm_descriptor_setting_C.pth": "steerer variant no test selects",
     "G_SO2_Spread_descriptor_setting_C.pth": "steerer variant no test selects",
+    # Whole-model checkpoints whose only pretrained test carries
+    # ``@pytest.mark.slow``. The PR matrix leaves KORNIA_TEST_RUNSLOW unset and
+    # deselects them; the scheduled run that does select them fetches these live,
+    # which is the pre-existing state and not what the OriNet failures were.
+    "aliked-n16.pth": "ALIKED.from_pretrained('aliked-n16') is slow-marked",
+    "tiny_vit_5m_22kto1k_distill.pth": "TinyViT.from_config('5m', pretrained=True) is slow-marked",
+    "tiny_vit_11m_22kto1k_distill.pth": "TinyViT.from_config('11m', pretrained=True) is slow-marked",
+    "tiny_vit_21m_22kto1k_distill.pth": "TinyViT.from_config('21m', pretrained=True) is slow-marked",
+    "sam_vit_b_01ec64.pth": "Sam.from_config(SamConfig('vit_b', pretrained=True)) is slow-marked",
+    "mobile_sam.pt": "Sam.from_config(SamConfig('mobile_sam', pretrained=True)) is slow-marked",
+    "b1-r224.pt": "EfficientViT.from_config(EfficientViTConfig()) is slow-marked",
+    # Variants of those models that no test selects at all.
+    "aliked-t16.pth": "tests build ALIKED(model_name='aliked-t16') untrained",
+    "aliked-n16rot.pth": "no test loads pretrained weights for this ALIKED variant",
+    "aliked-n32.pth": "no test loads pretrained weights for this ALIKED variant",
+    "tiny_vit_5m_22k_distill.pth": "in22k variant; pretrained=True selects in1k",
+    "tiny_vit_11m_22k_distill.pth": "in22k variant; pretrained=True selects in1k",
+    "tiny_vit_21m_22k_distill.pth": "in22k variant; pretrained=True selects in1k",
+    "tiny_vit_21m_22kto1k_384_distill.pth": "img_size>=384 variant; no test asks for it",
+    "tiny_vit_21m_22kto1k_512_distill.pth": "img_size>=512 variant; no test asks for it",
+    "sam_vit_l_0b3195.pth": "only vit_b and mobile_sam have a pretrained test",
+    "sam_vit_h_4b8939.pth": "only vit_b and mobile_sam have a pretrained test",
+    "b2-r224.pt": "test_config only checks the URL string; nothing downloads it",
+    "b3-r224.pt": "test_config only checks the URL string; nothing downloads it",
+    "b1-r256.pt": "test_config only checks the URL string; nothing downloads it",
+    "b2-r256.pt": "test_config only checks the URL string; nothing downloads it",
+    "b3-r256.pt": "test_config only checks the URL string; nothing downloads it",
+    "b1-r288.pt": "test_config only checks the URL string; nothing downloads it",
+    "b2-r288.pt": "test_config only checks the URL string; nothing downloads it",
+    "b3-r288.pt": "test_config only checks the URL string; nothing downloads it",
+    # ViT: the from_config doctest builds vit_b/16, which is prefetched.
+    "vit_l-16.pth": "no test or doctest selects this ViT variant",
+    "vit_s-16.pth": "no test or doctest selects this ViT variant",
+    "vit_ti-16.pth": "no test or doctest selects this ViT variant",
+    "vit_b-32.pth": "no test or doctest selects this ViT variant",
+    "vit_s-32.pth": "no test or doctest selects this ViT variant",
 }
 
 
@@ -208,6 +275,22 @@ class TestWeightsPrefetchCoverage:
                 f"LightGlue({feature!r}) looks for {cache_name!r}, which CI neither "
                 f"prefetches nor exempts. Note this is not the URL basename."
             )
+
+    def test_every_prefetched_entry_is_still_requested(self, monkeypatch) -> None:
+        """A cached checkpoint no registry accounts for is a hole in the enumeration.
+
+        The other direction of the guard. Without it :data:`WEIGHT_REGISTRIES` --
+        itself hand-maintained -- can miss a weight source entirely, and every
+        checkpoint that source loads is then invisible: the prefetch list can go
+        stale exactly the way OriNet's did and this file stays green.
+        """
+        live = {name for _, name in _iter_checkpoints()}
+        live |= set(_lightglue_cache_names(monkeypatch).values())
+        orphaned = sorted(set(_load_prefetch_script().MODELS) - live)
+        assert not orphaned, (
+            f"CI prefetches {orphaned}, which no registry here accounts for. Add the "
+            f"weight source to WEIGHT_REGISTRIES so the entry is guarded in both directions."
+        )
 
     def test_no_entry_is_both_prefetched_and_exempt(self) -> None:
         prefetched = _load_prefetch_script().MODELS

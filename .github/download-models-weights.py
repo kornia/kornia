@@ -42,7 +42,6 @@ import torch
 
 from kornia.core.download import load_state_dict_from_url
 
-logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 # Format: "<cache filename>": "<url>" | ["<primary url>", "<fallback url>"]
@@ -159,6 +158,11 @@ MODELS: dict[str, "str | list[str]"] = {
 
 
 if __name__ == "__main__":
+    # Configured here rather than at import time: the drift guard imports this
+    # file to read MODELS, and a test helper has no business installing a handler
+    # on the root logger for the rest of the session.
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+
     parser = argparse.ArgumentParser("WeightsDownloader")
     parser.add_argument("--target_directory", "-t", required=False, default="weights")
 

@@ -131,8 +131,12 @@ def _prefetch_to_cache(url: str, kwargs: dict[str, Any]) -> None:
     torch.hub.download_url_to_file(url, cached_file, hash_prefix, progress=kwargs.get("progress", True))
 
 
+_DISCARDED_CACHE_PATHS: set[str] = set()
+"""Cache paths already dropped once in this process; see :func:`_discard_cache_entry`."""
+
+
 def _discard_cache_entry(url: str, kwargs: dict[str, Any]) -> None:
-    """Delete the cache entry for *url* so a later attempt fetches it again.
+    """Delete the cache entry for *url*, at most once per path per process.
 
     Every URL in a fallback list resolves to the same path, because the cache
     filename is pinned to the primary URL (see :func:`load_state_dict_from_url`).
@@ -143,22 +147,45 @@ def _discard_cache_entry(url: str, kwargs: dict[str, Any]) -> None:
     process, the failure would repeat on every later run until the cache was
     cleared by hand.
 
-    A failure cannot distinguish a corrupt cache entry from a healthy one that
-    failed to load for an unrelated reason, so a good file is occasionally
-    discarded and downloaded again. That costs a transfer; keeping a corrupt one
-    costs correctness.
+    A load failure cannot tell a corrupt cache entry from a healthy one that
+    failed for an unrelated reason -- a bad ``map_location``, a ``weights_only``
+    rejection -- so the discard is bounded instead of conditional. One discard
+    per path is all a poisoned entry ever needs: the next source refetches it.
+    Anything still failing after that refetch is not the file's fault, and
+    dropping it again would re-download the checkpoint on every later call, once
+    per test that builds the model. That is the download storm this module exists
+    to prevent, reached from the other side.
+
+    The bound is what makes a corrupt entry outlive a run in which *every* source
+    failed. It cannot outlive more than that: the ledger is per-process, so the
+    next run spends its one discard on the same path and refetches.
 
     Args:
         url: the URL whose cache entry should be dropped.
         kwargs: the keyword arguments destined for the torch function; only
             ``model_dir`` and ``file_name`` are consulted.
     """
+    path = _cached_file_path(url, kwargs)
+    if path in _DISCARDED_CACHE_PATHS:
+        return
+
     try:
-        os.remove(_cached_file_path(url, kwargs))
-    except OSError:
-        # Absent already (the common case when the transfer itself failed), or
-        # held by a concurrent reader. Either way there is nothing to clean up.
-        pass
+        os.remove(path)
+    except FileNotFoundError:
+        # The transfer itself failed, so there is nothing to clean up -- and
+        # nothing was refetched either, so the one allowed discard stays unspent.
+        return
+    except OSError as e:
+        # A read-only cache, or a Windows reader holding the file open. Removing
+        # it again would fail the same way, so the ledger is marked either way,
+        # but a fallback that can never be reached is worth saying out loud.
+        warnings.warn(
+            f"Could not discard the cache entry at {path!r}: {e}. If that file is corrupt, "
+            f"the fallback sources cannot take effect until it is deleted by hand.",
+            stacklevel=3,
+        )
+
+    _DISCARDED_CACHE_PATHS.add(path)
 
 
 def _prefetch_with_retry(url: str, kwargs: dict[str, Any]) -> None:
@@ -228,7 +255,9 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     Because that one path is shared, a failed attempt drops the cache entry
     before the next URL is tried. Otherwise a single bad write would be handed
     straight back to torch by every remaining source -- and by every later
-    process -- making the fallback URLs unreachable.
+    process -- making the fallback URLs unreachable. That discard happens at most
+    once per cache path per process, so a failure the cache cannot fix costs one
+    refetch rather than one per call; see :func:`_discard_cache_entry`.
 
     Each URL is attempted up to :data:`_MAX_ATTEMPTS` times, with exponential
     backoff, when it fails with a transient network condition such as an HTTP
