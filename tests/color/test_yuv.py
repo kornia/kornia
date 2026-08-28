@@ -85,57 +85,44 @@ _REFERENCE_COLORS = {
 # (Y uses the standard's own three constants, so it is exact.) 5e-4 clears both with margin.
 _FORWARD_ATOL = 5.0e-4
 
-# The inverse kernel is *separately* rounded rather than inverted, and one literal is rounded
-# badly -- ``2.029`` where the published value is ``2.03211``. Summing |kornia - exact| times the
-# documented YUV domain (Y in [0, 1], U in [-0.436, 0.436], V in [-0.615, 0.615]) row by row
-# bounds the disagreement with the exact inverse of the relations at
-#   R: |1.14 - 1.14025086| * 0.615                                   = 1.543e-4
-#   G: |0.396 - 0.39473137| * 0.436 + |0.581 - 0.58080921| * 0.615   = 6.705e-4
-#   B: |2.029 - 2.03252033| * 0.436                                  = 1.535e-3
-# so B alone sets the tolerance. That excess is kornia#4044, pinned by
-# TestYuvToRgb.test_convention_* / test_wart_* below; 1.7e-3 is what the current constants need.
-_INVERSE_ATOL = 1.7e-3
+# ``kornia.color.yuv_to_rgb``'s kernel is the *exact* inverse of the rounded forward kernel
+# above, so it inherits that rounding instead of adding a second, independent one. Summing
+# |kornia - exact| times the documented YUV domain (Y in [0, 1], U in [-0.436, 0.436],
+# V in [-0.615, 0.615]) row by row bounds its disagreement with the exact inverse of the
+# relations at
+#   R: |3.9457e-5|              * 0.436 + |1.13982797 - 1.14025086| * 0.615 = 2.773e-4
+#   G: |0.39461016 - 0.39473137| * 0.436 + |0.58050032 - 0.58080921| * 0.615 = 2.428e-4
+#   B: |2.03199968 - 2.03252033| * 0.436 + |4.81376e-4|              * 0.615 = 5.231e-4
+# so B still sets the tolerance, at a third of what the separately rounded kernel needed
+# (1.535e-3, kornia#4044). 6e-4 clears all three with margin.
+_INVERSE_ATOL = 6.0e-4
 
-# Per-dtype tolerances for every RGB <-> YUV round trip in this file. These are *not* float
-# precision: ``K_yuv2rgb @ K_rgb2yuv`` is off the identity by up to 1.356e-3 (B, at rgb=(1,1,0))
-# and ``K_rgb2yuv @ K_yuv2rgb`` by up to 6.472e-4 over the documented YUV domain, so a round trip
-# cannot do better than that at any precision. See kornia#4044 -- when it lands these should fall
-# to the dtype noise floor. float16/bfloat16 are widened to their own measured floors instead.
+# Per-dtype tolerances for every RGB <-> YUV round trip in this file. Now that ``yuv_to_rgb``
+# inverts ``rgb_to_yuv`` exactly, these are pure float precision: the two kernels compose to the
+# identity to 1.1e-16 in float64 and 1.2e-7 in float32, and a round trip over the whole file's
+# inputs measures 3.3e-16 / 1.3e-7 on cpu. The float32 entry is two orders above that measured
+# floor rather than one, because off cpu ``_apply_linear_transformation`` runs a cuDNN conv2d
+# instead of an einsum and no CUDA device is available to measure it; it still sits 100x below
+# the 1.356e-3 of kornia#4044, which is what these bounds have to exclude. float16/bfloat16 keep
+# their own representation floors, measured at 6.6e-4 and 7.8e-3 and unchanged by this fix.
 _ROUND_TRIP_TOL = {
-    torch.float64: (1e-5, 1.5e-3),
-    torch.float32: (1e-4, 1.5e-3),
+    torch.float64: (1e-12, 1e-12),
+    torch.float32: (1e-5, 1e-5),
     torch.float16: (1e-3, 2.5e-3),
     torch.bfloat16: (8e-3, 1.5e-2),
 }
 
 
 def _round_trip_tol(dtype):
-    return _ROUND_TRIP_TOL.get(dtype, (1e-4, 1.5e-3))
-
-
-# rgb = (1, 1, 0) is the analytic worst case of the #4044 round trip, and its expected B is
-# exactly 0.0 -- so ``rtol`` contributes nothing there and the whole budget is ``atol``. The
-# shared _ROUND_TRIP_TOL is sized for the seeded random input asserted beside it; this cell sits
-# *at* the analytic maximum, where the measured error is 1.35604e-3 (cpu, float32 and float64
-# alike -- the dtype contributes ~4e-8) and would consume 90% of that 1.5e-3. Its own 1.8e-3
-# keeps it ~25% clear, so a regression that widened the defect stays distinguishable from one
-# that merely reached the edge.
-#
-# That is looser than the three tightest assertions in the file, which do sit at ~10% free
-# (TestYuvToRgb::test_unit[blue] 1.5346e-3, TestYuv422ToRgb::test_unit_upsampling 1.5322e-3,
-# TestYuvToRgb::test_unit_matches_the_reference_relations 1.5097e-3, all against _INVERSE_ATOL's
-# 1.7e-3). Those are deliberately not padded: they are one transform applied to exact decimal
-# constants, so the derived 1.535e-3 bound above *is* the value they measure, and widening them
-# would stop pinning it. Backend noise is not budgeted in anywhere -- see _cudnn_tf32_disabled.
-_WORST_CORNER_ATOL = 1.8e-3
+    return _ROUND_TRIP_TOL.get(dtype, (1e-4, 1e-4))
 
 
 def _skip_without_real_float64(device) -> None:
-    # The two #4044 constant pins below hardcode float64 and assert raw deviations at 1e-9, so
-    # they need a backend that actually computes in float64. MPS has none at all, and XLA
-    # executes a float64 request as float32 (the ``tpu`` fixture in conftest is
-    # ``xm.xla_device()``), which moves the pinned values by 3.9e-8 (round-trip error) and
-    # 4.4e-8 (U -> B coefficient) -- ~40x the tolerance -- for a pure precision reason.
+    # The #4044 regression below hardcodes float64 and asserts a raw deviation at 1e-12, so it
+    # needs a backend that actually computes in float64. MPS has none at all, and XLA executes a
+    # float64 request as float32 (the ``tpu`` fixture in conftest is ``xm.xla_device()``), where
+    # the round trip bottoms out around 1e-7 -- five orders above the tolerance -- for a pure
+    # precision reason.
     #
     # XLA breaks the rest of the file's contract too, for an unrelated reason:
     # ``BaseTester.assert_close`` *replaces* a caller-supplied ``rtol``/``atol`` with
@@ -276,22 +263,21 @@ class TestRgbToYuv(BaseTester):
         self.assert_close(yuv[4], torch.zeros_like(yuv[4]), atol=chroma_atol, rtol=0.0)
 
     def test_round_trip_rgb_yuv_rgb(self, device, dtype):
-        # Seeded: with unseeded ``torch.rand`` this test failed on roughly one run in eight,
-        # because the systematic error of kornia#4044 (1.356e-3) sits *outside* the 1e-3 the
-        # test used to assert. The tolerance now states the defect instead of racing it, and
-        # the worst-case corner is checked explicitly rather than waited for.
+        # Seeded so a failure is reproducible rather than one-run-in-eight; the analytic worst
+        # case is asserted explicitly below rather than waited for in the random sample.
         rtol, atol = _round_trip_tol(dtype)
 
         rgb = _seeded_rand(3, 4, 5, seed=4045).to(device=device, dtype=dtype)
         self.assert_close(kornia.color.yuv_to_rgb(kornia.color.rgb_to_yuv(rgb)), rgb, atol=atol, rtol=rtol)
 
-        # rgb = (1, 1, 0) maximises the B-channel round-trip error over the whole unit cube. Its
-        # expected B is exactly zero, so this cell gets its own atol -- see _WORST_CORNER_ATOL.
+        # rgb = (1, 1, 0) maximised the B-channel round-trip error of kornia#4044 over the whole
+        # unit cube (1.356e-3, dtype-independent). Its expected B is exactly zero, so ``rtol``
+        # contributes nothing here and the shared ``atol`` carries the assertion on its own.
         worst = torch.tensor([1.0, 1.0, 0.0], device=device, dtype=dtype).view(3, 1, 1)
         self.assert_close(
             kornia.color.yuv_to_rgb(kornia.color.rgb_to_yuv(worst)),
             worst,
-            atol=max(atol, _WORST_CORNER_ATOL),
+            atol=atol,
             rtol=rtol,
         )
 
@@ -394,7 +380,7 @@ class TestRgbToYuv420(BaseTester):
 
     def test_forth_and_back(self, device, dtype):
         # 2x2-constant input, so the chroma subsample-then-upsample is lossless and what is
-        # measured is the colour transform. Tolerance is bounded by kornia#4044.
+        # measured is the colour transform.
         rtol, atol = _round_trip_tol(dtype)
         data = (
             _seeded_rand(3, 4, 5, seed=420)
@@ -564,7 +550,8 @@ class TestYuvToRgb(BaseTester):
     @pytest.mark.parametrize("name", list(_REFERENCE_COLORS))
     def test_unit(self, device, dtype, name):
         # The YUV of each reference colour must map back to that colour. ``_INVERSE_ATOL`` is
-        # 1.7e-3 rather than the 5e-4 the forward direction manages, because of kornia#4044.
+        # 6e-4 rather than the 5e-4 the forward direction manages, because the inverse kernel
+        # inherits the forward kernel's rounding on top of its own.
         rgb_values, yuv_values = _REFERENCE_COLORS[name]
         yuv = torch.tensor(yuv_values, device=device, dtype=dtype).view(3, 1, 1)
         expected = torch.tensor(rgb_values, device=device, dtype=dtype).view(3, 1, 1)
@@ -582,58 +569,47 @@ class TestYuvToRgb(BaseTester):
             rtol=0.0,
         )
 
-    @pytest.mark.xfail(
-        reason="kornia#4044: yuv_to_rgb's matrix is a separately rounded copy of the published "
-        "BT.470-5 inverse, not the inverse of rgb_to_yuv's matrix",
-        strict=True,
-    )
     def test_convention_yuv_to_rgb_inverts_rgb_to_yuv_4044(self, device):
-        # Intended behavior: yuv_to_rgb undoes rgb_to_yuv to the precision of the input dtype.
-        # It does not. ``K_yuv2rgb @ K_rgb2yuv - I`` is
-        #   [[ 0.000100, -0.000100,  0.000000],
-        #    [-0.000103,  0.000659, -0.000556],
-        #    [ 0.000737,  0.000619, -0.001356]]
-        # so the round trip loses up to 1.356e-3 of blue at rgb = (1, 1, 0), independently of
-        # dtype -- float64 fails exactly as float32 does, because the error is in the constants.
-        # float64 is hardcoded and the dtype fixture dropped so that the mark cannot flip for a
-        # precision reason; 1e-6 sits far above the float64 noise floor of a 3x3 matmul and far
-        # below the 1.356e-3 being caught. Marked xfail(strict=True) so fixing #4044 makes this
-        # XPASS and forces the mark out. Companion wart: test_wart_yuv_to_rgb_kernel_is_not_the_
-        # inverse_4044.
+        # Regression for kornia#4044. Two cells, both in float64 so a failure cannot be a
+        # precision artefact:
+        #   (0) the round trip at rgb = (1, 1, 0) -- the analytic worst case over the unit cube,
+        #       where the separately rounded kernel lost 1.356e-3 of blue at every dtype;
+        #   (1) the U -> B coefficient itself, read back through a unit U impulse. It must be the
+        #       exact inverse of kornia's own forward kernel (2.0319996843...), not the published
+        #       inverse relation's 2.03252033 and not the 2.029 that shipped before this fix.
+        # Snippet used to generate the expected coefficient (torch only, cpu float64):
+        #   K = [[0.299, 0.587, 0.114], [-0.147, -0.289, 0.436], [0.615, -0.515, -0.100]]
+        #   torch.linalg.inv(torch.tensor(K, dtype=torch.float64))[2, 1]  # -> 2.0319996843434343
+        # 1e-12 sits four orders above the float64 noise floor of a 3x3 matmul (1.1e-16 measured)
+        # and nine orders below the 1.356e-3 defect being excluded.
         _skip_without_real_float64(device)
 
         rgb = torch.tensor([1.0, 1.0, 0.0], device=device, dtype=torch.float64).view(3, 1, 1)
         rgb_back = kornia.color.yuv_to_rgb(kornia.color.rgb_to_yuv(rgb))
+        assert (rgb_back - rgb).abs().max().item() < 1e-12
 
-        assert (rgb_back - rgb).abs().max().item() < 1e-6, "kornia#4044: yuv_to_rgb is not the inverse of rgb_to_yuv"
-
-    def test_wart_yuv_to_rgb_kernel_is_not_the_inverse_4044(self, device):
-        # Wart pin for kornia#4044, companion to the strict xfail above: assert the CURRENT
-        # error, so a partial fix cannot land unnoticed. Two cells:
-        #   (0) the round trip at rgb = (1, 1, 0) still loses 1.356e-3 of blue -- flips as soon
-        #       as any of the four inverse literals moves;
-        #   (1) the single worst literal is still 2.029 where the exact inverse of kornia's own
-        #       forward kernel wants 2.03199968 -- flips on the minimal fix (2.029 -> 2.032).
-        # If either fails, #4044 was (partly) fixed -- flip/remove the strict xfail above. NOT a
-        # contract that yuv_to_rgb must keep its current constants.
-        # Snippet used to generate expected (torch only, cpu float64):
-        #   K    = [[0.299, 0.587, 0.114], [-0.147, -0.289, 0.436], [0.615, -0.515, -0.100]]
-        #   Kinv = [[1.0, 0.0, 1.14], [1.0, -0.396, -0.581], [1.0, 2.029, 0.0]]
-        #   M = torch.tensor(Kinv) @ torch.tensor(K) - torch.eye(3)
-        #   M[2, 0] + M[2, 1]                        # B error at rgb=(1,1,0)  ->  0.001356
-        #   torch.linalg.inv(torch.tensor(K))[2, 1]  # the U -> B coefficient  ->  2.03199968...
-        # atol 1e-9 on the error magnitude sits six orders below the 1.356e-3 being pinned and
-        # well above the float64 noise of a 3x3 matmul.
-        _skip_without_real_float64(device)
-
-        rgb = torch.tensor([1.0, 1.0, 0.0], device=device, dtype=torch.float64).view(3, 1, 1)
-        rgb_back = kornia.color.yuv_to_rgb(kornia.color.rgb_to_yuv(rgb))
-        assert abs((rgb_back - rgb)[2].item() - 0.001356) < 1e-9
-
-        # The U -> B coefficient the library ships, read back through a unit U impulse.
         impulse = torch.tensor([0.0, 1.0, 0.0], device=device, dtype=torch.float64).view(3, 1, 1)
         u_to_b = kornia.color.yuv_to_rgb(impulse)[2].item()
-        assert abs(u_to_b - 2.029) < 1e-9
+        assert abs(u_to_b - 2.0319996843434343) < 1e-12
+
+    def test_wart_integer_input_truncates_the_kernel_4053(self):
+        # NOT a contract that integer input is supported -- kornia#4053 is still deciding whether
+        # it should be rejected outright. This pins the single interaction between #4053 and this
+        # fix: ``yuv_to_rgb`` builds its kernel at the image dtype, and the exact inverse carries
+        # two near-zero *negative* literals (-3.95e-5 in the R row, -4.81e-4 in the B row) where
+        # the old kernel carried exact zeros. Truncation toward zero leaves the integer kernel at
+        # [[1, 0, 1], [1, 0, 0], [1, 2, 0]] -- bit for bit what shipped before this fix -- while
+        # rounding away from zero would make those cells -1 and turn the integer path from
+        # useless (#4053) into actively wrong.
+        #
+        # U and V are both non-zero on purpose: at U = V = 0 the two changed literals are
+        # multiplied by zero and the cell passes whatever they truncate to.
+        # cpu-only and no ``device`` fixture on purpose: #4053 also records that the cpu einsum
+        # branch keeps the integer kernel while the conv2d branch silently upcasts to float32,
+        # so this cell would be asserting a different code path off cpu.
+        yuv = torch.tensor([0, 1, 1], dtype=torch.int64).view(3, 1, 1)
+
+        assert kornia.color.yuv_to_rgb(yuv).flatten().tolist() == [1, 0, 2]
 
     def test_forth_and_back(self, device, dtype):
         rtol, atol = _round_trip_tol(dtype)

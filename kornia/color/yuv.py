@@ -153,13 +153,9 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
-    .. warning::
-        This is not an exact inverse of :func:`~kornia.color.rgb_to_yuv`. The two kernels are
-        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
-        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
-        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
-        measures 5.86e-3 in ``bfloat16``. Tracked in
-        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
+    This is the exact inverse of :func:`~kornia.color.rgb_to_yuv`: its kernel is that function's
+    kernel inverted rather than a separately rounded copy of the published inverse relations, so
+    an RGB -> YUV -> RGB round trip is limited only by the precision of the input dtype.
 
     Args:
         image: YUV Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
@@ -175,11 +171,20 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
+    # The exact inverse of the rounded M/PAL kernel in ``rgb_to_yuv``, rather than a separately
+    # rounded copy of the published inverse relations, so a round trip is lossless to the dtype.
+    # Over the rationals that inverse is
+    #   [[1,      -1/25344,  144439/126720],
+    #    [1,  -10001/25344,  -73561/126720],
+    #    [1,   51499/25344,     -61/126720]]
+    # and every literal below is that value correctly rounded to float64. ``torch.linalg.inv``
+    # reproduces it only to 3.3e-16 -- its LU factorization does not even return an exact 1.0 in
+    # the first column -- so the constants are rounded from the exact fractions, not from it.
     kernel = torch.tensor(
         [
-            [1.0, 0.0, 1.14],
-            [1.0, -0.396, -0.581],
-            [1.0, 2.029, 0.0],
+            [1.0, -3.945707070707071e-05, 1.139827967171717],
+            [1.0, -0.39461016414141414, -0.5805003156565657],
+            [1.0, 2.0319996843434343, -0.00048137626262626264],
         ],
         device=image.device,
         dtype=image.dtype,
@@ -199,14 +204,6 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
-
-    .. warning::
-        This is not an exact inverse of :func:`~kornia.color.rgb_to_yuv420`. The two kernels are
-        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
-        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
-        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
-        measures 5.86e-3 in ``bfloat16``. Tracked in
-        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
 
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
@@ -258,14 +255,6 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
-
-    .. warning::
-        This is not an exact inverse of :func:`~kornia.color.rgb_to_yuv422`. The two kernels are
-        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
-        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
-        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
-        measures 5.86e-3 in ``bfloat16``. Tracked in
-        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
 
     .. warning::
         Only the chroma *width* is validated against the luma plane. A chroma plane of the
@@ -456,13 +445,8 @@ class YuvToRgb(nn.Module):
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
-    .. warning::
-        This is not an exact inverse of :class:`~kornia.color.RgbToYuv`. The two kernels are
-        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
-        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
-        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
-        measures 5.86e-3 in ``bfloat16``. Tracked in
-        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
+    This is the exact inverse of :class:`~kornia.color.RgbToYuv`, so an RGB -> YUV -> RGB round
+    trip is limited only by the precision of the input dtype.
 
     Returns:
         RGB version of the image.
@@ -507,14 +491,6 @@ class Yuv420ToRgb(nn.Module):
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
-
-    .. warning::
-        This is not an exact inverse of :class:`~kornia.color.RgbToYuv420`. The two kernels are
-        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
-        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
-        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
-        measures 5.86e-3 in ``bfloat16``. Tracked in
-        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
 
     Returns:
         RGB version of the image.
@@ -562,14 +538,6 @@ class Yuv422ToRgb(nn.Module):
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
-
-    .. warning::
-        This is not an exact inverse of :class:`~kornia.color.RgbToYuv422`. The two kernels are
-        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
-        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
-        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
-        measures 5.86e-3 in ``bfloat16``. Tracked in
-        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
 
     .. warning::
         Only the chroma *width* is validated against the luma plane. A chroma plane of the
