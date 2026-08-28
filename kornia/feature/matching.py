@@ -300,8 +300,10 @@ def match_fginn(
     vals_cand, idxs_in_2 = torch.topk(distance_matrix, num_candidates, dim=1, largest=False)
     vals = vals_cand[:, 0]
     xy2 = get_laf_center(lafs2).view(-1, 2)
-    candidates_xy = xy2[idxs_in_2]
-    kdist = torch.norm(candidates_xy - candidates_xy[0:1], p=2, dim=2)
+    candidates_xy = xy2[idxs_in_2]  # (B1, num_candidates, 2)
+    # Distance from every candidate to the 1st nearest neighbour *of the same query*.
+    # Indexing dim 0 here would take query 0's candidate list and broadcast it over all queries.
+    kdist = torch.norm(candidates_xy - candidates_xy[:, 0:1], p=2, dim=2)
     fginn_vals = vals_cand[:, 1:] + (kdist[:, 1:] < spatial_th).to(dtype) * BIG_NUMBER
     fginn_vals_best, _fginn_idxs_best = fginn_vals.min(dim=1)
 
