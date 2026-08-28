@@ -173,11 +173,13 @@ def pytest_collection_modifyitems(config, items):
         # Filter out tests with "dynamo" or "compile" in their name
         items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
 
-    # MPS does not support float64; gradcheck requires float64 — skip all gradcheck tests on MPS
-    skip_mps_gradcheck = pytest.mark.skip(reason="gradcheck requires float64 which is not supported on MPS")
+    # gradcheck requires float64. MPS does not support it at all, and XLA lowers a float64 request
+    # to float32, where gradcheck's default eps=1e-6 makes the numerical Jacobian invalid — so a
+    # float64 gradcheck on the tpu fixture fails for a pure precision reason. Skip on both.
+    skip_gradcheck = pytest.mark.skip(reason="gradcheck requires float64, which this device does not compute in")
     for item in items:
-        if "gradcheck" in item.name.lower() and "[mps" in item.nodeid:
-            item.add_marker(skip_mps_gradcheck)
+        if "gradcheck" in item.name.lower() and ("[mps" in item.nodeid or "[tpu" in item.nodeid):
+            item.add_marker(skip_gradcheck)
 
     # MPS does not support complex128 (cdouble); skip tests parametrized with it
     skip_mps_cdouble = pytest.mark.skip(reason="MPS does not support complex128 (cdouble)")

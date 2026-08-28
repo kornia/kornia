@@ -156,7 +156,9 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     .. warning::
         This is not an exact inverse of :func:`~kornia.color.rgb_to_yuv`. The two kernels are
         rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
-        ``rgb = (1, 1, 0)``) at every dtype. Tracked in
+        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
+        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
+        measures 5.86e-3 in ``bfloat16``. Tracked in
         `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
 
     Args:
@@ -201,7 +203,9 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     .. warning::
         This is not an exact inverse of :func:`~kornia.color.rgb_to_yuv420`. The two kernels are
         rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
-        ``rgb = (1, 1, 0)``) at every dtype. Tracked in
+        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
+        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
+        measures 5.86e-3 in ``bfloat16``. Tracked in
         `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
 
     Args:
@@ -258,7 +262,9 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     .. warning::
         This is not an exact inverse of :func:`~kornia.color.rgb_to_yuv422`. The two kernels are
         rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
-        ``rgb = (1, 1, 0)``) at every dtype. Tracked in
+        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
+        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
+        measures 5.86e-3 in ``bfloat16``. Tracked in
         `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
 
     .. warning::
@@ -453,7 +459,9 @@ class YuvToRgb(nn.Module):
     .. warning::
         This is not an exact inverse of :class:`~kornia.color.RgbToYuv`. The two kernels are
         rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
-        ``rgb = (1, 1, 0)``) at every dtype. Tracked in
+        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
+        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
+        measures 5.86e-3 in ``bfloat16``. Tracked in
         `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
 
     Returns:
@@ -503,7 +511,9 @@ class Yuv420ToRgb(nn.Module):
     .. warning::
         This is not an exact inverse of :class:`~kornia.color.RgbToYuv420`. The two kernels are
         rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
-        ``rgb = (1, 1, 0)``) at every dtype. Tracked in
+        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
+        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
+        measures 5.86e-3 in ``bfloat16``. Tracked in
         `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
 
     Returns:
@@ -556,7 +566,9 @@ class Yuv422ToRgb(nn.Module):
     .. warning::
         This is not an exact inverse of :class:`~kornia.color.RgbToYuv422`. The two kernels are
         rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
-        ``rgb = (1, 1, 0)``) at every dtype. Tracked in
+        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
+        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
+        measures 5.86e-3 in ``bfloat16``. Tracked in
         `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
 
     .. warning::
