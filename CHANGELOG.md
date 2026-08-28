@@ -81,9 +81,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rgb_to_yuv` loses up to 1.356e-3 in float64 because the two kernels are rounded separately rather than
   inverted, with `float16` and `bfloat16` adding their own representation error on top (#4044); and
   `yuv422_to_rgb`/`Yuv422ToRgb` validate only the chroma *width*, so a wrong chroma height surfaces as a bare
-  `RuntimeError` from `torch.cat` (#4050). On the test side, the central gradcheck skip in `conftest.py` now
-  covers the XLA/TPU fixture as well as MPS, since XLA lowers a float64 request to float32, where gradcheck's
-  default `eps=1e-6` makes the numerical Jacobian invalid. No runtime behavior changed.
+  `RuntimeError` from `torch.cat` (#4050). On the test side, both gradcheck skips now cover the XLA/TPU
+  fixture as well as MPS, since XLA lowers a float64 request to float32, where gradcheck's default `eps=1e-6`
+  makes the numerical Jacobian invalid: the name-based marker in `conftest.py` for tests called `*gradcheck*`,
+  and the device guard in `BaseTester.gradcheck` for the six callers named something else. No runtime
+  behavior changed.
 
 
 ## :rocket: [0.6.11] - 2022-03-28
