@@ -169,6 +169,13 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     # The exact inverse of the rounded M/PAL kernel in ``rgb_to_yuv``, rather than a separately
     # rounded copy of the published inverse relations, so a round trip is lossless to the dtype.
+    # Over the rationals that inverse is
+    #   [[1,      -1/25344,  144439/126720],
+    #    [1,  -10001/25344,  -73561/126720],
+    #    [1,   51499/25344,     -61/126720]]
+    # and every literal below is that value correctly rounded to float64. ``torch.linalg.inv``
+    # reproduces it only to 3.3e-16 -- its LU factorization does not even return an exact 1.0 in
+    # the first column -- so the constants are rounded from the exact fractions, not from it.
     kernel = torch.tensor(
         [
             [1.0, -3.945707070707071e-05, 1.139827967171717],
