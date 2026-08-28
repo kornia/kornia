@@ -96,7 +96,7 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
 
@@ -136,7 +136,7 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
 
@@ -167,12 +167,13 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
-    # Exact inverse of the rounded M/PAL kernel used in rgb_to_yuv.
+    # The exact inverse of the rounded M/PAL kernel in ``rgb_to_yuv``, rather than a separately
+    # rounded copy of the published inverse relations, so a round trip is lossless to the dtype.
     kernel = torch.tensor(
         [
-            [1.0, -0.00003945707070708, 1.139827967171717],
-            [1.0, -0.39461016414141414, -0.5805003156565656],
-            [1.0, 2.0319996843434343, -0.00048137626262622],
+            [1.0, -3.945707070707071e-05, 1.139827967171717],
+            [1.0, -0.39461016414141414, -0.5805003156565657],
+            [1.0, 2.0319996843434343, -0.00048137626262626264],
         ],
         device=image.device,
         dtype=image.dtype,
@@ -211,7 +212,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(imageuv, ["*", "2", "H", "W"])
 
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
+        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {imagey.shape}")
 
     if (
         len(imageuv.shape) < 2
@@ -244,9 +245,15 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    .. warning::
+        Only the chroma *width* is validated against the luma plane. A chroma plane of the
+        wrong height escapes the ``ShapeError`` below and surfaces as a bare ``RuntimeError``
+        from ``torch.cat``, where :func:`~kornia.color.yuv420_to_rgb` checks both. Tracked in
+        `#4050 <https://github.com/kornia/kornia/issues/4050>`_.
+
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
-        imageuv: UV (luma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
+        imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
 
     Returns:
         RGB version of the image with shape :math:`(*, 3, H, W)`.
@@ -262,7 +269,7 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(imageuv, ["*", "2", "H", "W"])
 
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
+        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {imagey.shape}")
 
     if len(imageuv.shape) < 2 or len(imagey.shape) < 2 or imagey.shape[-1] / imageuv.shape[-1] != 2:
         raise ShapeError(
@@ -322,7 +329,7 @@ class RgbToYuv(nn.Module):
 class RgbToYuv420(nn.Module):
     r"""Convert an image from RGB to YUV420.
 
-    Width and Height evenly divisible by 2.
+    Width and Height must be evenly divisible by 2.
 
     The image data is assumed to be in the range of :math:`(0, 1)`.
 
@@ -517,6 +524,12 @@ class Yuv422ToRgb(nn.Module):
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
+
+    .. warning::
+        Only the chroma *width* is validated against the luma plane. A chroma plane of the
+        wrong height escapes the ``ShapeError`` and surfaces as a bare ``RuntimeError`` from
+        ``torch.cat``, where :class:`~kornia.color.Yuv420ToRgb` checks both. Tracked in
+        `#4050 <https://github.com/kornia/kornia/issues/4050>`_.
 
     Returns:
         RGB version of the image.
