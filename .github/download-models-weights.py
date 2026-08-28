@@ -101,11 +101,18 @@ MODELS: dict[str, "str | list[str]"] = {
         "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt",
     ],
     # LightGlue pins its own cache names; these keys are not the URL basenames.
-    "superpoint_lightglue_v0-1_arxiv-pth": (
-        "https://huggingface.co/kornia/lightglue/resolve/main/superpoint_lightglue.pth"
-    ),
-    "doghardnet_v0-1_arxiv-pth": "https://huggingface.co/kornia/lightglue/resolve/main/doghardnet_lightglue.pth",
-    "disk_lightglue_v0-1_arxiv-pth": "https://huggingface.co/kornia/lightglue/resolve/main/disk_lightglue.pth",
+    "superpoint_lightglue_v0-1_arxiv-pth": [
+        "https://huggingface.co/kornia/lightglue/resolve/main/superpoint_lightglue.pth",
+        "https://github.com/cvg/LightGlue/releases/download/v0.1_arxiv/superpoint_lightglue.pth",
+    ],
+    "doghardnet_v0-1_arxiv-pth": [
+        "https://huggingface.co/kornia/lightglue/resolve/main/doghardnet_lightglue.pth",
+        "https://github.com/cvg/LightGlue/releases/download/v0.1_arxiv/doghardnet_lightglue.pth",
+    ],
+    "disk_lightglue_v0-1_arxiv-pth": [
+        "https://huggingface.co/kornia/lightglue/resolve/main/disk_lightglue.pth",
+        "https://github.com/cvg/LightGlue/releases/download/v0.1_arxiv/disk_lightglue.pth",
+    ],
     # -- DeDoDe --------------------------------------------------------------
     "dedode_detector_L_v2.pth": [
         "https://huggingface.co/kornia/dedode/resolve/main/dedode_detector_L_v2.pth",

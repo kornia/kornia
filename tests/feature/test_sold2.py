@@ -47,7 +47,10 @@ class TestSOLD2_detector(BaseTester):
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 128, 128
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        model = SOLD2_detector().to(img.device, img.dtype).eval()
+        # pretrained=False: scripting does not need the weights, and the CI cache
+        # deliberately does not carry ``sold2_wireframe.tar`` -- see
+        # ``NOT_PREFETCHED`` in tests/core/test_weights_prefetch.py.
+        model = SOLD2_detector(pretrained=False).to(img.device, img.dtype).eval()
         model_jit = torch.jit.script(model)
         self.assert_close(model(img), model_jit(img))
 

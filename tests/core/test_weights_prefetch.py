@@ -130,7 +130,7 @@ NOT_PREFETCHED: dict[str, str] = {
     "tfeat-yosemite.params": "yosemite variant; tests use the liberty default",
     # Model variants no test selects.
     "loftr_indoor_ds_new.ckpt": "tests instantiate LoFTR('indoor') and LoFTR('outdoor') only",
-    "sold2_wireframe.tar": "SOLD2_detector is only tested with pretrained=False",
+    "sold2_wireframe.tar": "every SOLD2_detector in the suite passes pretrained=False",
     "xfeat.pt": "XFeat.from_pretrained is not exercised by the CPU test suite",
     "epipolar-save.pth": "tests call DISK.from_pretrained(checkpoint='depth')",
     # LightGlue heads: tests build the disk and doghardnet matchers, and the
@@ -192,14 +192,18 @@ NOT_PREFETCHED: dict[str, str] = {
 }
 
 
+def _as_list(url: str | list[str]) -> list[str]:
+    """Normalise a registry value to the ordered source list it stands for."""
+    return [url] if isinstance(url, str) else list(url)
+
+
 def _pinned_cache_name(url: str | list[str]) -> str:
     """Return the cache filename :func:`load_state_dict_from_url` would use.
 
     A list pins the basename of its **first** entry for every attempt, so the
     fallback source shares one cache slot with the primary.
     """
-    primary = url if isinstance(url, str) else url[0]
-    return Path(urlparse(primary).path).name
+    return Path(urlparse(_as_list(url)[0]).path).name
 
 
 # LightGlue does not expose a registry: it derives both the URL and the cache
@@ -211,13 +215,13 @@ def _pinned_cache_name(url: str | list[str]) -> str:
 LIGHTGLUE_FEATURES = tuple(sorted(LightGlue.features))
 
 
-def _lightglue_cache_names(monkeypatch) -> dict[str, str]:
-    """Return ``{feature: cache filename}`` without downloading anything."""
-    captured: dict[str, str] = {}
+def _lightglue_sources(monkeypatch) -> dict[str, tuple[str, list[str]]]:
+    """Return ``{feature: (cache filename, source urls)}`` without downloading anything."""
+    captured: dict[str, tuple[str, list[str]]] = {}
     pending: list[str] = []
 
     def _capture(url: Any, **kwargs: Any) -> dict[str, Any]:
-        captured[pending[-1]] = kwargs["file_name"]
+        captured[pending[-1]] = (kwargs["file_name"], _as_list(url))
         raise _Captured
 
     monkeypatch.setattr(lightglue_mod, "load_state_dict_from_url", _capture)
@@ -230,19 +234,28 @@ def _lightglue_cache_names(monkeypatch) -> dict[str, str]:
     return captured
 
 
+def _lightglue_cache_names(monkeypatch) -> dict[str, str]:
+    """Return ``{feature: cache filename}`` without downloading anything."""
+    return {feature: name for feature, (name, _) in _lightglue_sources(monkeypatch).items()}
+
+
 class _Captured(Exception):
     """Raised to stop LightGlue's ``__init__`` once the cache name is known."""
 
 
 def _iter_checkpoints():
-    """Yield ``(label, cache filename)`` for every checkpoint the library requests."""
+    """Yield ``(label, cache filename, source urls)`` for every checkpoint the library requests."""
     for registry, entries in WEIGHT_REGISTRIES.items():
         for variant, url in entries.items():
             if isinstance(url, dict):  # dedode nests detector/descriptor tables
                 for sub, sub_url in url.items():
-                    yield f"{registry}.{variant}.{sub}", _pinned_cache_name(sub_url)
+                    yield f"{registry}.{variant}.{sub}", _pinned_cache_name(sub_url), _as_list(sub_url)
             else:
-                yield f"{registry}.{variant}", _pinned_cache_name(url)
+                yield f"{registry}.{variant}", _pinned_cache_name(url), _as_list(url)
+
+
+_CHECKPOINTS = list(_iter_checkpoints())
+_CHECKPOINT_IDS = [label for label, _, _ in _CHECKPOINTS]
 
 
 class TestWeightsPrefetchCoverage:
@@ -250,7 +263,9 @@ class TestWeightsPrefetchCoverage:
         assert _SCRIPT.is_file(), f"{_SCRIPT} is missing"
         assert _load_prefetch_script().MODELS
 
-    @pytest.mark.parametrize(("label", "cache_name"), list(_iter_checkpoints()), ids=str)
+    @pytest.mark.parametrize(
+        ("label", "cache_name"), [(label, name) for label, name, _ in _CHECKPOINTS], ids=_CHECKPOINT_IDS
+    )
     def test_checkpoint_is_prefetched_or_exempt(self, label: str, cache_name: str) -> None:
         prefetched = _load_prefetch_script().MODELS
         assert cache_name in prefetched or cache_name in NOT_PREFETCHED, (
@@ -259,22 +274,52 @@ class TestWeightsPrefetchCoverage:
             f"cache filename), or to NOT_PREFETCHED here with the reason it is not needed."
         )
 
+    def test_prefetched_urls_match_the_library(self) -> None:
+        """The cache is keyed by filename, so a repointed URL is invisible to the check above.
+
+        ``MODELS`` is a second copy of the registries in ``kornia/``, and nothing
+        else holds the two equal. Repoint a registry at a new revision or swap a
+        dead mirror without touching the prefetch list and the key is unchanged:
+        the coverage check stays green while CI caches the *old* bytes under the
+        exact name every job looks for, so either the prefetch job hard-fails on a
+        dead link or every matrix cell loads a stale checkpoint from a silent
+        cache hit -- no download, no warning.
+        """
+        prefetched = _load_prefetch_script().MODELS
+        drifted = [
+            f"{label}: library {urls} != prefetch {_as_list(prefetched[cache_name])}"
+            for label, cache_name, urls in _CHECKPOINTS
+            if cache_name in prefetched and _as_list(prefetched[cache_name]) != urls
+        ]
+        assert not drifted, (
+            "the prefetch list no longer mirrors the registries it copies:\n  "
+            + "\n  ".join(drifted)
+            + f"\nUpdate MODELS in {_SCRIPT.relative_to(_REPO_ROOT)}."
+        )
+
     def test_exemptions_are_still_reachable(self, monkeypatch) -> None:
         """A stale exemption hides a checkpoint that no longer exists."""
-        live = {name for _, name in _iter_checkpoints()}
+        live = {name for _, name, _ in _iter_checkpoints()}
         live |= set(_lightglue_cache_names(monkeypatch).values())
         stale = sorted(set(NOT_PREFETCHED) - live)
         assert not stale, f"NOT_PREFETCHED lists checkpoints the library no longer requests: {stale}"
 
     def test_lightglue_heads_are_prefetched_or_exempt(self, monkeypatch) -> None:
         prefetched = _load_prefetch_script().MODELS
-        names = _lightglue_cache_names(monkeypatch)
-        assert set(names) == set(LIGHTGLUE_FEATURES), "a LightGlue head stopped loading weights"
-        for feature, cache_name in sorted(names.items()):
+        sources = _lightglue_sources(monkeypatch)
+        assert set(sources) == set(LIGHTGLUE_FEATURES), "a LightGlue head stopped loading weights"
+        for feature, (cache_name, urls) in sorted(sources.items()):
             assert cache_name in prefetched or cache_name in NOT_PREFETCHED, (
                 f"LightGlue({feature!r}) looks for {cache_name!r}, which CI neither "
                 f"prefetches nor exempts. Note this is not the URL basename."
             )
+            if cache_name in prefetched:
+                assert _as_list(prefetched[cache_name]) == urls, (
+                    f"LightGlue({feature!r}) loads {cache_name!r} from {urls}, but CI "
+                    f"prefetches it from {_as_list(prefetched[cache_name])}. A head prefetched "
+                    f"from fewer sources than it loads from has no fallback in the one job "
+                    f"that runs before the matrix."
+                )
 
     def test_every_prefetched_entry_is_still_requested(self, monkeypatch) -> None:
         """A cached checkpoint no registry accounts for is a hole in the enumeration.
@@ -284,7 +329,7 @@ class TestWeightsPrefetchCoverage:
         checkpoint that source loads is then invisible: the prefetch list can go
         stale exactly the way OriNet's did and this file stays green.
         """
-        live = {name for _, name in _iter_checkpoints()}
+        live = {name for _, name, _ in _iter_checkpoints()}
         live |= set(_lightglue_cache_names(monkeypatch).values())
         orphaned = sorted(set(_load_prefetch_script().MODELS) - live)
         assert not orphaned, (

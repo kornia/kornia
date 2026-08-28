@@ -156,6 +156,16 @@ def _discard_cache_entry(url: str, kwargs: dict[str, Any]) -> None:
     per test that builds the model. That is the download storm this module exists
     to prevent, reached from the other side.
 
+    Bounding it rather than gating it on the exception type is deliberate. The
+    types that would make up such a gate do not separate the two classes (torch
+    2.9.1): an HTML rate-limit page served with a 200 -- the case that motivated
+    this function -- and a ``weights_only`` rejection of a perfectly good file
+    both raise ``UnpicklingError``, while a truncated zip checkpoint raises a
+    bare ``RuntimeError``. A gate would therefore still discard the healthy entry
+    it was meant to spare, and stop discarding the commonest corruption there is.
+    The bound caps the cost instead: one extra fetch per path per process, spent
+    only inside a call that raises either way.
+
     The bound is what makes a corrupt entry outlive a run in which *every* source
     failed. It cannot outlive more than that: the ledger is per-process, so the
     next run spends its one discard on the same path and refetches.
