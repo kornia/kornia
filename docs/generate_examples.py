@@ -736,9 +736,9 @@ def main():
         elif fn_name == "SANDesc":
             # SANDesc has no detector head; visualize the per-pixel descriptor
             # magnitude (L2 norm over channels) as the response map.
-            fn = K.feature.SANDesc.from_pretrained(detector="aliked")
+            fn = K.feature.SANDesc.from_pretrained(load_detector=False)
             with torch.no_grad():
-                volume = fn(img_outdoor, pad_if_not_divisible=True)
+                volume = fn.extract_dense_map(img_outdoor, pad_if_not_divisible=True)
             out = volume.norm(dim=1, keepdim=True)
             out = K.color.grayscale_to_rgb(out)
             img_in = K.color.rgb_to_bgr(img_outdoor)

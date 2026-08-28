@@ -83,12 +83,13 @@ class ALIKEDFeatures:
 
     Args:
         keypoints: pixel coordinates ``(N, 2)`` as ``[x, y]``.
-        descriptors: L2-normalised descriptors ``(N, D)``.
+        descriptors: L2-normalised descriptors ``(N, D)``, or ``None`` when the model was
+            built with ``disable_descriptors=True``.
         keypoint_scores: detection confidence scores ``(N,)``.
     """
 
     keypoints: torch.Tensor
-    descriptors: torch.Tensor
+    descriptors: Optional[torch.Tensor]
     keypoint_scores: torch.Tensor
 
     @property
@@ -100,7 +101,7 @@ class ALIKEDFeatures:
         """Move all tensors to a new device / dtype."""
         return ALIKEDFeatures(
             self.keypoints.to(*args, **kwargs),
-            self.descriptors.to(*args, **kwargs),
+            None if self.descriptors is None else self.descriptors.to(*args, **kwargs),
             self.keypoint_scores.to(*args, **kwargs),
         )
 
@@ -388,7 +389,12 @@ class InputPadder:
         self.wd = w
         pad_ht = (((h // divis_by) + 1) * divis_by - h) % divis_by
         pad_wd = (((w // divis_by) + 1) * divis_by - w) % divis_by
-        self._pad = [pad_wd // 2, pad_wd - pad_wd // 2, pad_ht // 2, pad_ht - pad_ht // 2]
+        self._pad = [
+            pad_wd // 2,
+            pad_wd - pad_wd // 2,
+            pad_ht // 2,
+            pad_ht - pad_ht // 2,
+        ]
 
     def pad(self, x: torch.Tensor) -> torch.Tensor:
         """Pad *x* (BCHW)."""
@@ -504,7 +510,14 @@ def get_conv(
 ) -> nn.Module:
     """Return a standard or deformable conv2d layer."""
     if conv_type == "conv":
-        return nn.Conv2d(inplanes, planes, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias)
+        return nn.Conv2d(
+            inplanes,
+            planes,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            bias=bias,
+        )
     if conv_type == "dcn":
         return DeformableConv2d(
             inplanes,
@@ -649,9 +662,23 @@ class SDDH(nn.Module):
 
         self.channel_num = 3 * n_pos if mask else 2 * n_pos
         self.offset_conv = nn.Sequential(
-            nn.Conv2d(dims, self.channel_num, kernel_size=kernel_size, stride=1, padding=0, bias=True),
+            nn.Conv2d(
+                dims,
+                self.channel_num,
+                kernel_size=kernel_size,
+                stride=1,
+                padding=0,
+                bias=True,
+            ),
             gate,
-            nn.Conv2d(self.channel_num, self.channel_num, kernel_size=1, stride=1, padding=0, bias=True),
+            nn.Conv2d(
+                self.channel_num,
+                self.channel_num,
+                kernel_size=1,
+                stride=1,
+                padding=0,
+                bias=True,
+            ),
         )
         self.sf_conv = nn.Conv2d(dims, dims, kernel_size=1, stride=1, padding=0, bias=False)
 
@@ -764,6 +791,9 @@ class ALIKED(nn.Module):
             ``-1`` means no limit (threshold-based mode).
         detection_threshold: minimum detection score in threshold mode.
         nms_radius: NMS radius (kernel size ``= 2 * nms_radius + 1``).
+        disable_descriptors: if ``True``, the descriptor head is not built and the descriptor
+            outputs of :meth:`forward` and :meth:`forward_laf` are ``None``. Use it when the
+            descriptors come from another model, e.g. :class:`~kornia.feature.SANDesc`, or not needed.
 
     Example:
         >>> aliked = ALIKED.from_pretrained('aliked-n16')  # doctest: +SKIP
@@ -779,6 +809,7 @@ class ALIKED(nn.Module):
         max_num_keypoints: int = -1,
         detection_threshold: float = 0.2,
         nms_radius: int = 2,
+        disable_descriptors: bool = False,
     ) -> None:
         super().__init__()
 
@@ -789,6 +820,7 @@ class ALIKED(nn.Module):
         self.max_num_keypoints = max_num_keypoints
         self.detection_threshold = detection_threshold
         self.nms_radius = nms_radius
+        self.disable_descriptors = disable_descriptors
 
         c1, c2, c3, c4, dim, K, M = _ALIKED_CFGS[model_name]
         conv_types = ["conv", "conv", "dcn", "dcn"]
@@ -824,7 +856,7 @@ class ALIKED(nn.Module):
             self.gate,
             _conv3x3(4, 1),
         )
-        self.desc_head = SDDH(dim, K, M, gate=self.gate, conv2d=conv2d, mask=mask)
+        self.desc_head = None if disable_descriptors else SDDH(dim, K, M, gate=self.gate, conv2d=conv2d, mask=mask)
         self.dkd = DKD(
             radius=nms_radius,
             top_k=-1 if detection_threshold > 0 else max_num_keypoints,
@@ -897,14 +929,15 @@ class ALIKED(nn.Module):
 
         Returns:
             A list of :class:`ALIKEDFeatures` of length B, one per image.
-            Keypoints are in pixel coordinates ``[x, y]``.
+            Keypoints are in pixel coordinates ``[x, y]``. ``descriptors`` is ``None`` when the
+            model was built with ``disable_descriptors=True``.
         """
         if images.shape[1] == 1:
             images = grayscale_to_rgb(images)
 
         feature_map, score_map = self.extract_dense_map(images)
         keypoints, kptscores, _scoredispersitys = self.dkd(score_map, image_size=image_size)
-        descriptors, _offsets = self.desc_head(feature_map, keypoints)
+        descriptors = None if self.desc_head is None else self.desc_head(feature_map, keypoints)[0]
 
         B = images.shape[0]
         _, _, h, w = images.shape
@@ -914,7 +947,8 @@ class ALIKED(nn.Module):
         for i in range(B):
             # Convert normalised [-1,1] coords back to pixel coordinates
             kps_px = wh * (keypoints[i] + 1) / 2.0
-            results.append(ALIKEDFeatures(kps_px, descriptors[i], kptscores[i]))
+            desc_i = None if descriptors is None else descriptors[i]
+            results.append(ALIKEDFeatures(kps_px, desc_i, kptscores[i]))
         return results
 
     def forward_laf(
@@ -922,7 +956,7 @@ class ALIKED(nn.Module):
         img: torch.Tensor,
         mask: Optional[torch.Tensor] = None,
         compute_affine: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         """Detect and describe local features, returning results in kornia LAF format.
 
         Local Affine Frames are estimated from the soft-argmax weight covariance
@@ -948,7 +982,8 @@ class ALIKED(nn.Module):
         Returns:
             - Detected local affine frames with shape :math:`(B,N,2,3)`.
             - Response function values for corresponding LAFs with shape :math:`(B,N,1)`.
-            - Local descriptors of shape :math:`(B,N,D)`.
+            - Local descriptors of shape :math:`(B,N,D)`, or ``None`` when the model was built
+              with ``disable_descriptors=True``.
 
         """
         if img.shape[1] == 1:
@@ -959,7 +994,10 @@ class ALIKED(nn.Module):
         if mask is not None:
             # Resize mask to score map resolution and apply.
             mask_rs = F.interpolate(
-                mask.to(score_map.dtype), size=score_map.shape[-2:], mode="bilinear", align_corners=True
+                mask.to(score_map.dtype),
+                size=score_map.shape[-2:],
+                mode="bilinear",
+                align_corners=True,
             )
             score_map = score_map * mask_rs
 
@@ -969,7 +1007,7 @@ class ALIKED(nn.Module):
         else:
             keypoints, kptscores, _scoredispersitys = dkd_out  # type: ignore[misc]
             local_affines = None
-        descriptors, _offsets = self.desc_head(feature_map, keypoints)
+        descriptors = None if self.desc_head is None else self.desc_head(feature_map, keypoints)[0]
 
         B, _, H, W = img.shape
         wh = torch.tensor([W - 1, H - 1], device=img.device, dtype=img.dtype)
@@ -998,7 +1036,7 @@ class ALIKED(nn.Module):
 
         lafs = torch.stack([_pad(laf, n_max) for laf in lafs_list])  # (B, N, 2, 3)
         responses = torch.stack([_pad(s, n_max).unsqueeze(-1) for s in kptscores])  # (B, N, 1)
-        descs = torch.stack([_pad(d, n_max) for d in descriptors])  # (B, N, D)
+        descs = None if descriptors is None else torch.stack([_pad(d, n_max) for d in descriptors])  # (B, N, D)
 
         return lafs, responses, descs
 
@@ -1010,6 +1048,7 @@ class ALIKED(nn.Module):
         detection_threshold: float = 0.2,
         nms_radius: int = 2,
         device: Optional[torch.device] = None,
+        disable_descriptors: bool = False,
     ) -> ALIKED:
         """Load a pretrained ALIKED model from the official checkpoint repository.
 
@@ -1020,6 +1059,8 @@ class ALIKED(nn.Module):
             detection_threshold: passed to :class:`ALIKED` constructor.
             nms_radius: passed to :class:`ALIKED` constructor.
             device: target device; defaults to CPU.
+            disable_descriptors: passed to :class:`ALIKED` constructor. The descriptor weights
+                present in the checkpoint are then ignored.
 
         Returns:
             Pretrained :class:`ALIKED` in eval mode.
@@ -1031,6 +1072,7 @@ class ALIKED(nn.Module):
             max_num_keypoints=max_num_keypoints,
             detection_threshold=detection_threshold,
             nms_radius=nms_radius,
+            disable_descriptors=disable_descriptors,
         ).to(device)
         urls = [t.format(model_name) for t in _CHECKPOINT_URLS]
         state_dict = load_state_dict_from_url(urls, map_location=device)

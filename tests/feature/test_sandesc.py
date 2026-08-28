@@ -20,9 +20,7 @@ import torch
 
 from kornia.core.exceptions import ShapeError
 from kornia.feature.aliked import ALIKED
-from kornia.feature.dedode import DeDoDe
 from kornia.feature.sandesc import SANDesc
-from kornia.feature.sandesc.sandesc import detector_align_corners
 from kornia.geometry import normalize_pixel_coordinates
 
 from testing.base import BaseTester
@@ -57,7 +55,7 @@ class TestSANDesc(BaseTester):
     def test_smoke(self, device, dtype):
         model = SANDesc().to(device, dtype).eval()
         img = _ramp_image(1, 3, 64, 64, device=device, dtype=dtype)
-        volume = model(img)
+        volume = model.extract_dense_map(img)
         assert volume.shape[0] == 1
         assert volume.shape[-2:] == img.shape[-2:]
 
@@ -75,7 +73,7 @@ class TestSANDesc(BaseTester):
             .to(device, dtype)
             .eval()
         )
-        volume = model(_ramp_image(1, 3, 32, 32, device=device, dtype=dtype))
+        volume = model.extract_dense_map(_ramp_image(1, 3, 32, 32, device=device, dtype=dtype))
         assert volume.shape[-2:] == (32, 32)
         # attention and the extra blocks hang off the skip path, so they must not add
         # parameters that the forward pass never reaches
@@ -85,7 +83,7 @@ class TestSANDesc(BaseTester):
     def test_non_uniform_channels(self, device, dtype):
         """``align`` sits on the residual path, so its input is the coarser block's width."""
         model = SANDesc(skip_connection=True, up_output_channels=[64, 128, 64, 32]).to(device, dtype).eval()
-        volume = model(_ramp_image(1, 3, 32, 32, device=device, dtype=dtype))
+        volume = model.extract_dense_map(_ramp_image(1, 3, 32, 32, device=device, dtype=dtype))
         assert volume.shape == (1, 32, 32, 32)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -102,12 +100,12 @@ class TestSANDesc(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):
         model = SANDesc().to(device, dtype).eval()
         img = _ramp_image(1, 3, 32, 32, device=device, dtype=dtype)
-        op_optimized = torch_optimizer(model)
-        self.assert_close(model(img), op_optimized(img))
+        op_optimized = torch_optimizer(model.extract_dense_map)
+        self.assert_close(model.extract_dense_map(img), op_optimized(img))
 
     def test_describe(self, device, dtype):
         model = SANDesc().to(device, dtype).eval()
-        des_dim = model(_ramp_image(1, 3, 32, 32, device=device, dtype=dtype)).shape[1]
+        des_dim = model.extract_dense_map(_ramp_image(1, 3, 32, 32, device=device, dtype=dtype)).shape[1]
         images = _ramp_image(2, 3, 64, 64, device=device, dtype=dtype)
         keypoints = _ramp_keypoints(2, 10, device=device, dtype=dtype)
         descriptors = model.describe(images, keypoints)
@@ -120,48 +118,116 @@ class TestSANDesc(BaseTester):
         norms = volume.norm(dim=1)
         self.assert_close(norms, torch.ones_like(norms))
 
-    def test_detector_align_corners_convention(self):
-        """ALIKED normalizes with wh=[w-1, h-1] (align_corners=True); DeDoDe uses half-pixel
-        centers (align_corners=False). from_pretrained must select the matching convention.
-        """
-        assert detector_align_corners["aliked"] is True
-        assert detector_align_corners["dedode"] is False
-
     def test_align_corners(self, device, dtype):
         model = SANDesc().to(device, dtype).eval()
         images = _ramp_image(1, 3, 32, 32, device=device, dtype=dtype)
         keypoints = _ramp_keypoints(1, 5, device=device, dtype=dtype)
 
-        # default (unset) keypoint_align_corners matches the pre-existing align_corners=False behavior
-        assert model.keypoint_align_corners is False
+        # the default keypoint_align_corners is ALIKED's convention
+        assert model.keypoint_align_corners is True
         default = model.describe(images, keypoints)
-        self.assert_close(default, model.describe(images, keypoints, align_corners=False))
+        self.assert_close(default, model.describe(images, keypoints, align_corners=True))
 
         # a per-call override takes precedence over the instance attribute
-        overridden = model.describe(images, keypoints, align_corners=True)
+        overridden = model.describe(images, keypoints, align_corners=False)
         assert not torch.allclose(default, overridden)
 
         # setting the instance attribute changes the default used when no override is passed
-        model.keypoint_align_corners = True
+        model.keypoint_align_corners = False
         self.assert_close(model.describe(images, keypoints), overridden)
 
-    def test_pad_if_not_divisible(self, device, dtype):
+    @pytest.mark.parametrize(("height", "width"), [(30, 32), (32, 30), (30, 33)])
+    def test_pad_if_not_divisible(self, device, dtype, height, width):
+        """Height-only, width-only and both-non-divisible each raise, or pad and crop back."""
         model = SANDesc().to(device, dtype).eval()
-        images = _ramp_image(1, 3, 30, 33, device=device, dtype=dtype)
+        images = _ramp_image(1, 3, height, width, device=device, dtype=dtype)
         keypoints = _ramp_keypoints(1, 10, device=device, dtype=dtype)
-        volume = model(images, pad_if_not_divisible=True)
-        assert volume.shape[-2:] == (30, 33)
+        with pytest.raises(ValueError):
+            model.extract_dense_map(images)
+        volume = model.extract_dense_map(images, pad_if_not_divisible=True)
+        assert volume.shape[-2:] == (height, width)
         descriptors = model.describe(images, keypoints, pad_if_not_divisible=True)
         assert descriptors.shape == (1, 10, volume.shape[1])
+
+    @pytest.mark.parametrize(("height", "width"), [(1, 1), (4, 7), (8, 8), (15, 16)])
+    def test_small_images(self, device, dtype, height, width):
+        """Images smaller than the 16x downsampling factor survive the padded round trip."""
+        model = SANDesc().to(device, dtype).eval()
+        images = _ramp_image(1, 3, height, width, device=device, dtype=dtype)
+        volume = model.extract_dense_map(images, pad_if_not_divisible=True)
+        assert volume.shape[-2:] == (height, width)
+        assert torch.isfinite(volume).all()
+
+        keypoints = _ramp_keypoints(1, 4, device=device, dtype=dtype)
+        descriptors = model.describe(images, keypoints, pad_if_not_divisible=True)
+        assert torch.isfinite(descriptors).all()
+
+    def test_large_image(self, device):
+        """A resolution well past the sizes used elsewhere still produces a finite volume."""
+        model = SANDesc().to(device).eval()
+        images = _ramp_image(1, 3, 512, 512, device=device)
+        with torch.no_grad():
+            volume = model.extract_dense_map(images)
+        assert volume.shape == (1, 128, 512, 512)
+        assert torch.isfinite(volume).all()
+
+    def test_extreme_value_images(self, device, dtype):
+        """Constant images have zero spatial variance; normalization must not divide by zero."""
+        model = SANDesc().to(device, dtype).eval()
+        keypoints = _ramp_keypoints(1, 4, device=device, dtype=dtype)
+        for value in (0.0, 1.0):
+            images = torch.full((1, 3, 32, 32), value, device=device, dtype=dtype)
+            volume = model.extract_dense_map(images)
+            assert torch.isfinite(volume).all()
+            descriptors = model.describe(images, keypoints)
+            assert torch.isfinite(descriptors).all()
+            norms = descriptors.norm(dim=-1)
+            self.assert_close(norms, torch.ones_like(norms))
+
+    def test_out_of_bounds_keypoints(self, device, dtype):
+        """Keypoints outside [-1, 1] sample the zero padding: zero descriptors, never NaN.
+
+        This is the failure mode of passing pixel coordinates instead of normalized ones, so
+        the zero norm is the signal the caller has to notice -- it must not become NaN, which
+        would only surface much later in a matching pipeline.
+        """
+        model = SANDesc().to(device, dtype).eval()
+        images = _ramp_image(1, 3, 32, 32, device=device, dtype=dtype)
+        keypoints = torch.tensor([[[5.0, 5.0], [-3.0, 0.0], [0.0, 0.0]]], device=device, dtype=dtype)
+        descriptors = model.describe(images, keypoints)
+        assert torch.isfinite(descriptors).all()
+        norms = descriptors.norm(dim=-1)[0]
+        self.assert_close(norms[:2], torch.zeros_like(norms[:2]))
+        self.assert_close(norms[2], torch.ones_like(norms[2]))
+
+    def test_wrong_n_channels(self, device, dtype):
+        """Channel mismatch raises a descriptive ValueError, as DISK's U-Net does."""
+        model = SANDesc().to(device, dtype).eval()
+        for channels in (1, 4):
+            with pytest.raises(ValueError):
+                model.extract_dense_map(_ramp_image(1, channels, 32, 32, device=device, dtype=dtype))
+
+        # the check keys off ch_in, so a matching model accepts the same input
+        gray_model = SANDesc(ch_in=1).to(device, dtype).eval()
+        volume = gray_model.extract_dense_map(_ramp_image(1, 1, 32, 32, device=device, dtype=dtype))
+        assert volume.shape == (1, 128, 32, 32)
+
+    def test_empty_keypoints(self, device, dtype):
+        """Describing zero keypoints returns an empty (B, 0, D) tensor instead of crashing."""
+        model = SANDesc().to(device, dtype).eval()
+        images = _ramp_image(1, 3, 32, 32, device=device, dtype=dtype)
+        descriptors = model.describe(images, torch.zeros(1, 0, 2, device=device, dtype=dtype))
+        assert descriptors.shape == (1, 0, 128)
+        assert torch.isfinite(descriptors).all()
 
     def test_exception(self, device, dtype):
         model = SANDesc().to(device, dtype).eval()
         # forward requires spatial dims that are multiples of 16 unless padding is requested
         with pytest.raises(ValueError):
-            model(_ramp_image(1, 3, 30, 32, device=device, dtype=dtype))
+            model.extract_dense_map(_ramp_image(1, 3, 30, 32, device=device, dtype=dtype))
         # forward requires a (B, C, H, W) image
         with pytest.raises(ShapeError):
-            model(_ramp_image(1, 3, 32, 32, device=device, dtype=dtype)[0])
+            model.extract_dense_map(_ramp_image(1, 3, 32, 32, device=device, dtype=dtype)[0])
         # describe requires (B, N, 2) keypoints
         with pytest.raises(ShapeError):
             model.describe(
@@ -178,38 +244,49 @@ class TestSANDesc(BaseTester):
             SANDesc(down_output_channels=[16, 32, 64, 64])
         with pytest.raises(ValueError):
             SANDesc(up_output_channels=[64, 64, 64])
-        # unknown detector in from_pretrained (raised before any download)
+
+    def test_keypoint_detector(self, device):
+        """``keypoint_detector`` builds the paired detector and fixes the sampling convention."""
+        model = SANDesc(keypoint_detector=True, num_keypoints=16).to(device).eval()
+        assert model.keypoint_detector is not None
+        assert model.keypoint_align_corners is True
+
+        images = _ramp_image(2, 3, 64, 64, device=device)
+        with torch.no_grad():
+            keypoints, scores, descriptors = model(images)
+        assert keypoints.shape == (2, 16, 2)
+        assert scores.shape == (2, 16)
+        assert descriptors.shape == (2, 16, 128)
+        norms = descriptors.norm(dim=-1)
+        self.assert_close(norms, torch.ones_like(norms))
+
+        # keypoints come back in pixel coordinates, inside the image
+        assert (keypoints[..., 0] >= 0).all() and (keypoints[..., 0] <= 64).all()
+        assert (keypoints[..., 1] >= 0).all() and (keypoints[..., 1] <= 64).all()
+
+    def test_keypoint_detector_has_no_descriptors(self, device):
+        """SANDesc supplies the descriptors, so the detector's own head is not built."""
+        model = SANDesc(keypoint_detector=True, num_keypoints=16).to(device).eval()
+        assert model.keypoint_detector.desc_head is None
+
+    def test_forward_without_detector_exception(self, device, dtype):
+        # forward needs a detector, which the default constructor does not build
+        model = SANDesc().to(device, dtype).eval()
+        assert model.keypoint_detector is None
+        with pytest.raises(RuntimeError):
+            model(_ramp_image(1, 3, 32, 32, device=device, dtype=dtype))
+        # asking for more keypoints than the image has pixels is caught before the detector runs
+        budget = SANDesc(keypoint_detector=True, num_keypoints=5000).to(device, dtype).eval()
         with pytest.raises(ValueError):
-            SANDesc.from_pretrained(detector="not_a_detector")
+            budget(_ramp_image(1, 3, 32, 32, device=device, dtype=dtype))
 
     def test_gradcheck(self, device):
         img = _ramp_image(1, 3, 16, 16, device=device, dtype=torch.float64)
         model = SANDesc().to(device, img.dtype).eval()
-        self.gradcheck(model, (img,), eps=1e-4, atol=1e-4, nondet_tol=1e-4)
+        self.gradcheck(model.extract_dense_map, (img,), eps=1e-4, atol=1e-4, nondet_tol=1e-4)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize(
-        ("detector", "expected"),
-        [
-            (
-                "aliked",
-                [
-                    [-0.157611, 0.027860, -0.117423, 0.083916, -0.105181, -0.028156],
-                    [0.100992, -0.076817, 0.221748, -0.015796, 0.059756, 0.232232],
-                    [-0.125828, -0.041003, 0.220314, 0.101813, -0.008282, 0.069005],
-                ],
-            ),
-            (
-                "dedode",
-                [
-                    [0.115363, -0.077948, 0.049350, 0.029223, 0.051257, 0.001052],
-                    [0.106579, -0.124094, -0.052825, -0.010934, 0.080602, -0.002354],
-                    [-0.036962, -0.198061, 0.025702, -0.019343, 0.017758, 0.014779],
-                ],
-            ),
-        ],
-    )
-    def test_pretrained_values(self, device, detector, expected):
+    def test_pretrained_values(self, device):
         """Descriptors from the pretrained weights match a saved reference.
 
         The input is a deterministic horizontal color ramp (no RNG), so the
@@ -219,10 +296,16 @@ class TestSANDesc(BaseTester):
         # Snippet used to generate ``expected`` (requires the pretrained weights):
         # img = _ramp_image(1, 3, 256, 256)  # deterministic horizontal ramp, no RNG
         # kpts = torch.tensor([[[-0.5, -0.5], [0.0, 0.0], [0.5, 0.5]]])
-        # expected = SANDesc.from_pretrained(detector=detector).eval().describe(img, kpts)[0, :, :6]
+        # expected = SANDesc.from_pretrained(load_detector=False).eval().describe(img, kpts)[0, :, :6]
+        expected = [
+            [0.012115, 0.012292, -0.015393, -0.012649, 0.017301, -0.000850],
+            [0.027959, -0.001189, 0.034381, 0.020057, 0.035708, -0.046235],
+            [0.030159, -0.021707, 0.084352, 0.031746, 0.031509, -0.097772],
+        ]
         img = _ramp_image(1, 3, 256, 256, device=device)
         kpts = torch.tensor([[[-0.5, -0.5], [0.0, 0.0], [0.5, 0.5]]], device=device)
-        model = SANDesc.from_pretrained(detector=detector).to(device).eval()
+        model = SANDesc.from_pretrained(load_detector=False).to(device).eval()
+        assert model.keypoint_detector is None
         # cuDNN runs float32 convolutions in TF32 by default, which costs ~5e-4 of accuracy
         # on CUDA and would exceed the tolerance below; conftest only pins matmul precision.
         with torch.backends.cudnn.flags(allow_tf32=False), torch.no_grad():
@@ -234,10 +317,10 @@ class TestSANDesc(BaseTester):
     def test_pretrained_aliked_pipeline(self, device):
         """ALIKED detects keypoints; SANDesc (aliked weights) describes them."""
         aliked = ALIKED.from_pretrained(model_name="aliked-n16", device=device)
-        sandesc = SANDesc.from_pretrained(detector="aliked").to(device).eval()
+        sandesc = SANDesc.from_pretrained(load_detector=False).to(device).eval()
 
         img = _ramp_image(1, 3, 480, 480, device=device)
-        des_dim = sandesc(_ramp_image(1, 3, 64, 64, device=device)).shape[1]
+        des_dim = sandesc.extract_dense_map(_ramp_image(1, 3, 64, 64, device=device)).shape[1]
         with torch.no_grad():
             features = aliked(img)[0]
             keypoints = normalize_pixel_coordinates(features.keypoints, img.shape[-2], img.shape[-1])
@@ -249,17 +332,24 @@ class TestSANDesc(BaseTester):
         self.assert_close(norms, torch.ones_like(norms))
 
     @pytest.mark.slow
-    def test_pretrained_dedode_pipeline(self, device):
-        """DeDoDe detects keypoints; SANDesc (dedode weights) describes them."""
-        dedode = DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-upright").to(device)
-        sandesc = SANDesc.from_pretrained(detector="dedode").to(device).eval()
+    def test_pretrained_forward(self, device):
+        """``from_pretrained`` bundles a pretrained detector by default, ready for ``forward``.
 
-        img = _ramp_image(1, 3, 480, 480, device=device)
-        des_dim = sandesc(_ramp_image(1, 3, 64, 64, device=device)).shape[1]
+        Also covers that the strict ``load_state_dict`` of the descriptor checkpoint still
+        succeeds once a detector submodule is attached to the model.
+        """
+        model = SANDesc.from_pretrained(num_keypoints=64).to(device).eval()
+        assert model.keypoint_detector is not None
+        assert model.keypoint_detector.desc_head is None
+
+        img = _ramp_image(1, 3, 256, 256, device=device)
         with torch.no_grad():
-            keypoints, _scores = dedode.detect(img, n=1000)
-            descriptors = sandesc.describe(img, keypoints)[0]
+            keypoints, scores, descriptors = model(img)
 
-        assert descriptors.shape == (keypoints.shape[1], des_dim)
+        assert keypoints.shape == (1, 64, 2)
+        assert scores.shape == (1, 64)
+        assert descriptors.shape == (1, 64, 128)
+        assert (keypoints[..., 0] >= 0).all() and (keypoints[..., 0] <= 255).all()
+        assert (keypoints[..., 1] >= 0).all() and (keypoints[..., 1] <= 255).all()
         norms = descriptors.norm(dim=-1)
         self.assert_close(norms, torch.ones_like(norms))
