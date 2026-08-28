@@ -349,9 +349,6 @@ class PinholeCamera:
                 world coordinates. The shape of the torch.Tensor can be :math:`(*, 2)`.
             depth: torch.Tensor containing the depth value of each 2d
                 points. The torch.Tensor shape must be equal to point2d :math:`(*, 1)`.
-            normalize: whether to F.normalize the pointcloud. This
-                must be set to `True` when the depth is represented as the Euclidean
-                ray length from the camera position.
 
         Returns:
             torch.Tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
