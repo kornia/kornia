@@ -90,9 +90,9 @@ _FORWARD_ATOL = 5.0e-4
 # |kornia - exact| times the documented YUV domain (Y in [0, 1], U in [-0.436, 0.436],
 # V in [-0.615, 0.615]) row by row bounds its disagreement with the exact inverse of the
 # relations at
-#   R: |3.9457e-5| * 0.436         + |1.13982797 - 1.14025086| * 0.615   = 2.773e-4
+#   R: |3.9457e-5|              * 0.436 + |1.13982797 - 1.14025086| * 0.615 = 2.773e-4
 #   G: |0.39461016 - 0.39473137| * 0.436 + |0.58050032 - 0.58080921| * 0.615 = 2.428e-4
-#   B: |2.03199968 - 2.03252033| * 0.436 + |4.81376e-4| * 0.615          = 5.231e-4
+#   B: |2.03199968 - 2.03252033| * 0.436 + |4.81376e-4|              * 0.615 = 5.231e-4
 # so B still sets the tolerance, at a third of what the separately rounded kernel needed
 # (1.535e-3, kornia#4044). 6e-4 clears all three with margin.
 _INVERSE_ATOL = 6.0e-4
@@ -575,7 +575,7 @@ class TestYuvToRgb(BaseTester):
         #       inverse relation's 2.03252033 and not the 2.029 that shipped before this fix.
         # Snippet used to generate the expected coefficient (torch only, cpu float64):
         #   K = [[0.299, 0.587, 0.114], [-0.147, -0.289, 0.436], [0.615, -0.515, -0.100]]
-        #   torch.linalg.inv(torch.tensor(K))[2, 1]  # -> 2.0319996843434343
+        #   torch.linalg.inv(torch.tensor(K, dtype=torch.float64))[2, 1]  # -> 2.0319996843434343
         # 1e-12 sits four orders above the float64 noise floor of a 3x3 matmul (1.1e-16 measured)
         # and nine orders below the 1.356e-3 defect being excluded.
         _skip_without_real_float64(device)
@@ -590,16 +590,22 @@ class TestYuvToRgb(BaseTester):
 
     def test_wart_integer_input_truncates_the_kernel_4053(self):
         # NOT a contract that integer input is supported -- kornia#4053 is still deciding whether
-        # it should be rejected outright. This only pins that the near-zero *negative* literals
-        # this fix introduced (-3.95e-5 in the R row, -4.81e-4 in the B row) still truncate
-        # toward zero when ``yuv_to_rgb`` builds its kernel at the image dtype, rather than to
-        # -1, which would turn the integer path from useless (#4053) into actively wrong.
+        # it should be rejected outright. This pins the single interaction between #4053 and this
+        # fix: ``yuv_to_rgb`` builds its kernel at the image dtype, and the exact inverse carries
+        # two near-zero *negative* literals (-3.95e-5 in the R row, -4.81e-4 in the B row) where
+        # the old kernel carried exact zeros. Truncation toward zero leaves the integer kernel at
+        # [[1, 0, 1], [1, 0, 0], [1, 2, 0]] -- bit for bit what shipped before this fix -- while
+        # rounding away from zero would make those cells -1 and turn the integer path from
+        # useless (#4053) into actively wrong.
+        #
+        # U and V are both non-zero on purpose: at U = V = 0 the two changed literals are
+        # multiplied by zero and the cell passes whatever they truncate to.
         # cpu-only and no ``device`` fixture on purpose: #4053 also records that the cpu einsum
         # branch keeps the integer kernel while the conv2d branch silently upcasts to float32,
         # so this cell would be asserting a different code path off cpu.
-        yuv = torch.tensor([1, 0, 0], dtype=torch.int64).view(3, 1, 1)
+        yuv = torch.tensor([0, 1, 1], dtype=torch.int64).view(3, 1, 1)
 
-        assert kornia.color.yuv_to_rgb(yuv).flatten().tolist() == [1, 1, 1]
+        assert kornia.color.yuv_to_rgb(yuv).flatten().tolist() == [1, 0, 2]
 
     def test_forth_and_back(self, device, dtype):
         rtol, atol = _round_trip_tol(dtype)
