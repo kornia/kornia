@@ -72,7 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   themselves, so a reader copying either got the wrong conversion and the wrong chroma shapes; several other
   examples stated a shape in a trailing comment that disagreed with what the function returns
   (`RgbToYuv420` said `2x1x2x3` for a `(2, 2, 2, 3)` chroma plane). Every example in `kornia/color/yuv.py` now
-  asserts its output shape as a doctest instead of stating it in a comment. No runtime behavior changed.
+  asserts its output shape as a doctest instead of stating it in a comment. The 4:2:2 docstrings also claimed
+  the input only had to be divisible by 2 "vertical" while the guard rejects odd height *and* odd width, so a
+  reader padding one axis hit a `ShapeError`. No runtime behavior changed.
 
 
 ## :rocket: [0.6.11] - 2022-03-28

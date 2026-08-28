@@ -86,11 +86,14 @@ _REFERENCE_COLORS = {
 _FORWARD_ATOL = 5.0e-4
 
 # The inverse kernel is *separately* rounded rather than inverted, and one literal is rounded
-# badly -- ``2.029`` where the published value is ``2.03211``. Over the documented YUV domain
-# (Y in [0, 1], U in [-0.436, 0.436], V in [-0.615, 0.615]) it disagrees with the exact inverse
-# of the relations by up to 1.535e-3 in B, versus 5.5e-4 in R and 8.3e-4 in G. That excess is
-# kornia#4044, pinned by TestYuvToRgb.test_convention_* / test_wart_* below; 1.7e-3 is what the
-# current constants need.
+# badly -- ``2.029`` where the published value is ``2.03211``. Summing |kornia - exact| times the
+# documented YUV domain (Y in [0, 1], U in [-0.436, 0.436], V in [-0.615, 0.615]) row by row
+# bounds the disagreement with the exact inverse of the relations at
+#   R: |1.14 - 1.14025086| * 0.615                                   = 1.543e-4
+#   G: |0.396 - 0.39473137| * 0.436 + |0.581 - 0.58080921| * 0.615   = 6.705e-4
+#   B: |2.029 - 2.03251865| * 0.436                                  = 1.535e-3
+# so B alone sets the tolerance. That excess is kornia#4044, pinned by
+# TestYuvToRgb.test_convention_* / test_wart_* below; 1.7e-3 is what the current constants need.
 _INVERSE_ATOL = 1.7e-3
 
 # Per-dtype tolerances for every RGB <-> YUV round trip in this file. These are *not* float
@@ -108,6 +111,30 @@ _ROUND_TRIP_TOL = {
 
 def _round_trip_tol(dtype):
     return _ROUND_TRIP_TOL.get(dtype, (1e-4, 1.5e-3))
+
+
+# rgb = (1, 1, 0) is the analytic worst case of the #4044 round trip, and its expected B is
+# exactly 0.0 -- so ``rtol`` contributes nothing there and the whole budget is ``atol``. Against
+# the shared 1.5e-3 the systematic 1.356e-3 uses 90% of it, where every other assertion in this
+# file keeps >=22% free, and on CUDA float32 the remaining 1.4e-4 is not enough:
+# ``_apply_linear_transformation`` takes the ``F.conv2d`` branch off cpu, cuDNN keeps PyTorch's
+# TF32 default (conftest only sets ``set_float32_matmul_precision``), and TF32 rounds both conv
+# inputs and every kernel literal to 10 mantissa bits. Summing those half ulps into B at this
+# corner, with u(x) the TF32 ulp at x --
+#   forward kernel   dY + 2.029*dU = (u(.299)+u(.587))/2 + 2.029*(u(.147)+u(.289))/2  = 7.4e-4
+#   inverse kernel   0.436 * u(2.029)/2                                               = 4.3e-4
+#   inverse input    u(0.886)/2 + 2.029 * u(0.436)/2                                  = 4.9e-4
+# -- bounds the backend noise at 1.66e-3 (1.0 and 0.0 are exact in TF32 and contribute nothing).
+# With the systematic 1.356e-3 on top that is 3.02e-3, so CUDA float32 gets 3.5e-3. cpu (einsum)
+# and MPS (no TF32) keep a tight 1.8e-3, ~25% clear of the defect they exist to pin.
+_WORST_CORNER_ATOL = 1.8e-3
+_WORST_CORNER_ATOL_TF32 = 3.5e-3
+
+
+def _worst_corner_atol(device, dtype) -> float:
+    if device.type == "cuda" and dtype == torch.float32:
+        return _WORST_CORNER_ATOL_TF32
+    return _WORST_CORNER_ATOL
 
 
 def _unit_atol(base: float, dtype: torch.dtype) -> float:
@@ -216,9 +243,15 @@ class TestRgbToYuv(BaseTester):
         rgb = _seeded_rand(3, 4, 5, seed=4045).to(device=device, dtype=dtype)
         self.assert_close(kornia.color.yuv_to_rgb(kornia.color.rgb_to_yuv(rgb)), rgb, atol=atol, rtol=rtol)
 
-        # rgb = (1, 1, 0) maximises the B-channel round-trip error over the whole unit cube.
+        # rgb = (1, 1, 0) maximises the B-channel round-trip error over the whole unit cube. Its
+        # expected B is exactly zero, so this cell gets its own atol -- see _WORST_CORNER_ATOL.
         worst = torch.tensor([1.0, 1.0, 0.0], device=device, dtype=dtype).view(3, 1, 1)
-        self.assert_close(kornia.color.yuv_to_rgb(kornia.color.rgb_to_yuv(worst)), worst, atol=atol, rtol=rtol)
+        self.assert_close(
+            kornia.color.yuv_to_rgb(kornia.color.rgb_to_yuv(worst)),
+            worst,
+            atol=max(atol, _worst_corner_atol(device, dtype)),
+            rtol=rtol,
+        )
 
     @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
@@ -389,6 +422,12 @@ class TestRgbToYuv422(BaseTester):
         with pytest.raises(ShapeError):
             kornia.color.rgb_to_yuv422(torch.ones(3, 2, 1, device=device, dtype=dtype))
 
+        # Odd H is rejected too, even though 4:2:2 subsamples width only. Pinned because the
+        # guard is shared verbatim with rgb_to_yuv420 and may well be over-strict here: if it
+        # is ever relaxed to the width test alone, that is a behavior change, not a cleanup.
+        with pytest.raises(ShapeError):
+            kornia.color.rgb_to_yuv422(torch.ones(3, 3, 4, device=device, dtype=dtype))
+
     @pytest.mark.parametrize("name", list(_REFERENCE_COLORS))
     def test_unit(self, device, dtype, name):
         rgb_values, yuv_values = _REFERENCE_COLORS[name]
@@ -530,8 +569,7 @@ class TestYuvToRgb(BaseTester):
         #   (0) the round trip at rgb = (1, 1, 0) still loses 1.356e-3 of blue -- flips as soon
         #       as any of the four inverse literals moves;
         #   (1) the single worst literal is still 2.029 where the exact inverse of kornia's own
-        #       forward kernel wants 2.03199968 -- flips on the minimal fix (2.029 -> 2.032)
-        #       even if the round-trip cell were somehow satisfied another way.
+        #       forward kernel wants 2.03199968 -- flips on the minimal fix (2.029 -> 2.032).
         # If either fails, #4044 was (partly) fixed -- flip/remove the strict xfail above. NOT a
         # contract that yuv_to_rgb must keep its current constants.
         # Snippet used to generate expected (torch only, cpu float64):
@@ -553,7 +591,6 @@ class TestYuvToRgb(BaseTester):
         impulse = torch.tensor([0.0, 1.0, 0.0], device=device, dtype=torch.float64).view(3, 1, 1)
         u_to_b = kornia.color.yuv_to_rgb(impulse)[2].item()
         assert abs(u_to_b - 2.029) < 1e-9
-        assert abs(u_to_b - 2.03199968) > 1e-3
 
     def test_forth_and_back(self, device, dtype):
         rtol, atol = _round_trip_tol(dtype)
@@ -635,6 +672,9 @@ class TestYuv420ToRgb(BaseTester):
             imguv = torch.ones(2, 2, 4, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
+        # Luma must be single-channel. (1, 2, 2) / (2, 1, 1) is the accepted shape; the same
+        # sizes with a 2-channel luma are rejected by the channel slot of the shape spec, which
+        # the rank case above does not reach.
         with pytest.raises(ShapeError):
             imgy = torch.ones(2, 2, 2, device=device, dtype=dtype)
             imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
@@ -740,15 +780,37 @@ class TestYuv422ToRgb(BaseTester):
             imguv = torch.ones(2, 4, 1, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
+        # Odd luma H is rejected too, even though 4:2:2 subsamples width only. Pinned because
+        # the guard is shared verbatim with yuv420_to_rgb and may well be over-strict here.
+        with pytest.raises(ShapeError):
+            imgy = torch.ones(1, 3, 4, device=device, dtype=dtype)
+            imguv = torch.ones(2, 3, 2, device=device, dtype=dtype)
+            kornia.color.yuv422_to_rgb(imgy, imguv)
+
         # Chroma must be exactly half the luma width.
         with pytest.raises(ShapeError):
             imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
             imguv = torch.ones(2, 4, 4, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
+        # Luma must be single-channel: rejected by the channel slot of the shape spec, which the
+        # rank case above does not reach. Note this is *not* a width-relation case -- 2/1 == 2
+        # holds; the height relation it looks like it covers is unchecked, see kornia#4050.
         with pytest.raises(ShapeError):
             imgy = torch.ones(2, 2, 2, device=device, dtype=dtype)
             imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
+            kornia.color.yuv422_to_rgb(imgy, imguv)
+
+    def test_wart_chroma_height_is_unchecked_4050(self, device, dtype):
+        # Wart pin for kornia#4050. yuv422_to_rgb validates only the *width* ratio, so a chroma
+        # plane whose height does not match the luma reaches ``torch.cat`` and dies there with a
+        # bare RuntimeError instead of the ShapeError every other malformed input gets -- the
+        # 4:2:0 twin checks both axes. ShapeError does not derive from RuntimeError, so adding
+        # the missing guard flips this test: delete it then, and move the case up into
+        # test_exception alongside the other ShapeError raise-sites.
+        imgy = torch.ones(1, 2, 2, device=device, dtype=dtype)
+        imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
+        with pytest.raises(RuntimeError, match="Sizes of tensors must match"):
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
     @pytest.mark.parametrize("name", list(_REFERENCE_COLORS))

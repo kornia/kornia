@@ -109,7 +109,7 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert an RGB image to YUV 422 (subsampled).
 
-    Input need to be padded to be evenly divisible by 2 vertical.
+    Input need to be padded to be evenly divisible by 2 horizontal and vertical.
 
     The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of
     :math:`(0, 1)` to luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`,
@@ -234,7 +234,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     r"""Convert an YUV422 image to RGB.
 
-    Input need to be padded to be evenly divisible by 2 vertical.
+    Input need to be padded to be evenly divisible by 2 horizontal and vertical.
 
     The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
     :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
@@ -370,7 +370,7 @@ class RgbToYuv420(nn.Module):
 class RgbToYuv422(nn.Module):
     r"""Convert an image from RGB to YUV422.
 
-    Width must be evenly disvisible by 2.
+    Width and Height must be evenly divisible by 2.
 
     The image data is assumed to be in the range of :math:`(0, 1)`.
 
@@ -508,7 +508,7 @@ class Yuv420ToRgb(nn.Module):
 class Yuv422ToRgb(nn.Module):
     r"""Convert an image from YUV to RGB.
 
-    Width must be evenly divisible by 2.
+    Width and Height must be evenly divisible by 2.
 
     The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
     :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
