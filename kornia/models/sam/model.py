@@ -55,6 +55,19 @@ class SamModelType(Enum):
     mobile_sam = 3
 
 
+# Module level, like every other weight registry in kornia, so the CI weights
+# cache can enumerate it -- see tests/core/test_weights_prefetch.py.
+urls: dict[SamModelType, str | list[str]] = {
+    SamModelType.vit_b: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth",
+    SamModelType.vit_l: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth",
+    SamModelType.vit_h: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth",
+    SamModelType.mobile_sam: [
+        hf_url("mobile_sam", "mobile_sam.pt"),
+        "https://github.com/ChaoningZhang/MobileSAM/raw/a509aac54fdd7af59f843135f2f7cee307283c88/weights/mobile_sam.pt",
+    ],
+}
+
+
 @dataclass
 class SamConfig:
     """Encapsulate the Config to build a SAM model.
@@ -225,15 +238,7 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
         checkpoint = config.checkpoint
         if config.pretrained:
             if checkpoint is None:
-                checkpoint = {
-                    SamModelType.vit_b: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth",
-                    SamModelType.vit_l: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth",
-                    SamModelType.vit_h: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth",
-                    SamModelType.mobile_sam: [
-                        hf_url("mobile_sam", "mobile_sam.pt"),
-                        "https://github.com/ChaoningZhang/MobileSAM/raw/a509aac54fdd7af59f843135f2f7cee307283c88/weights/mobile_sam.pt",
-                    ],
-                }[model_type]
+                checkpoint = urls[model_type]
             else:
                 warnings.warn("checkpoint is not None. pretrained=True is ignored", stacklevel=1)
 

@@ -27,6 +27,19 @@ from ._unets import Unet
 from .detector import heatmap_to_keypoints
 from .structs import DISKFeatures
 
+# Module level, like every other weight registry in kornia, so the CI weights
+# cache can enumerate it -- see tests/core/test_weights_prefetch.py.
+urls: dict[str, list[str]] = {
+    "depth": [
+        hf_url("disk", "depth-save.pth"),
+        "https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth",
+    ],
+    "epipolar": [
+        hf_url("disk", "epipolar-save.pth"),
+        "https://raw.githubusercontent.com/cvlab-epfl/disk/master/epipolar-save.pth",
+    ],
+}
+
 
 class DISK(nn.Module):
     r"""nn.Module which detects and described local features in an image using the DISK method.
@@ -144,17 +157,6 @@ class DISK(nn.Module):
             The pretrained model.
 
         """
-        urls = {
-            "depth": [
-                hf_url("disk", "depth-save.pth"),
-                "https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth",
-            ],
-            "epipolar": [
-                hf_url("disk", "epipolar-save.pth"),
-                "https://raw.githubusercontent.com/cvlab-epfl/disk/master/epipolar-save.pth",
-            ],
-        }
-
         if checkpoint not in urls:
             raise ValueError(f"Unknown pretrained model: {checkpoint}")
 
