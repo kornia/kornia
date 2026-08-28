@@ -140,7 +140,7 @@ Descriptors
 .. autoclass:: TFeat
 .. autoclass:: SOSNet
 .. autoclass:: SANDesc
-   :members: describe, extract_dense_map, forward, from_pretrained
+   :members: extract_dense_map, forward, from_pretrained
 .. autoclass:: LAFDescriptor
    :members: forward
 
