@@ -153,6 +153,10 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    This is the exact inverse of :func:`~kornia.color.rgb_to_yuv`: its kernel is that function's
+    kernel inverted rather than a separately rounded copy of the published inverse relations, so
+    an RGB -> YUV -> RGB round trip is limited only by the precision of the input dtype.
+
     Args:
         image: YUV Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
@@ -440,6 +444,9 @@ class YuvToRgb(nn.Module):
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
+
+    This is the exact inverse of :class:`~kornia.color.RgbToYuv`, so an RGB -> YUV -> RGB round
+    trip is limited only by the precision of the input dtype.
 
     Returns:
         RGB version of the image.
