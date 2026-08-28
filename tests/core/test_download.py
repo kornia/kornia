@@ -17,10 +17,14 @@
 
 from __future__ import annotations
 
+import http.client
+import os
 import sys
 import threading
 import time
 import warnings
+from email.message import Message
+from email.utils import formatdate
 from unittest.mock import call, patch
 from urllib.error import HTTPError, URLError
 
@@ -288,18 +292,28 @@ class TestConcurrentLoadsDoNotDisturbStdout:
         assert "unrelated thread output" in "".join(written)
 
 
-def _http_error(url: str, code: int) -> HTTPError:
-    return HTTPError(url, code, "boom", hdrs=None, fp=None)
+def _http_error(url: str, code: int, headers: dict[str, str] | None = None) -> HTTPError:
+    hdrs = None
+    if headers is not None:
+        hdrs = Message()
+        for name, value in headers.items():
+            hdrs[name] = value
+    return HTTPError(url, code, "boom", hdrs=hdrs, fp=None)
 
 
 class _FakeTime:
     """Stand-in for the ``time`` module that records sleeps instead of taking them."""
+
+    NOW = 1_700_000_000.0
 
     def __init__(self) -> None:
         self.slept: list[float] = []
 
     def sleep(self, seconds: float) -> None:
         self.slept.append(seconds)
+
+    def time(self) -> float:
+        return self.NOW
 
 
 class TestPoisonedCacheEntry:
@@ -419,12 +433,76 @@ class TestPoisonedCacheEntry:
         # One refetch in total, not one per source per call.
         assert transfers == [self._FALLBACK]
 
+    def test_single_source_recovers_from_a_poisoned_entry_in_the_same_call(self, monkeypatch, tmp_path) -> None:
+        """With no fallback to refetch the path, the failing URL must refetch it itself.
+
+        Twenty-four of the library's checkpoints have a single source, so for
+        them every URL is the last one. A discard with nothing after it deletes
+        the entry and fetches nothing, leaving the call to fail and the recovery
+        to the *next* process -- one guaranteed spurious failure per poisoned
+        entry, on models where the fallback list cannot help.
+        """
+        transfers = self._cache(monkeypatch, tmp_path, bad_urls=set())
+        cached = tmp_path / "checkpoints" / "model.pth"
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.write_bytes(b"<html>429 Too Many Requests</html>")
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = load_state_dict_from_url(self._PRIMARY)
+
+        assert "weight" in result
+        assert transfers == [self._PRIMARY]
+
+    def test_single_source_load_failure_leaves_the_cache_entry_in_place(self, monkeypatch, tmp_path) -> None:
+        """A failure the cache cannot fix must not cost the caller its checkpoint.
+
+        ``map_location='cuda'`` on a CPU-only build is the everyday trigger, and
+        it is what ``ModelBase.load_checkpoint`` passes. An unpaired discard would
+        delete an intact file -- up to 2.4 GB for ``sam.vit_h`` -- and refetch
+        nothing, which on an offline machine turns a call that used to succeed
+        into one that cannot.
+        """
+        transfers = self._cache(monkeypatch, tmp_path, bad_urls=set())
+        cached = tmp_path / "checkpoints" / "model.pth"
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self._GOOD, cached)
+
+        def always_fails(url: str, **kwargs: object) -> dict:
+            raise RuntimeError("Attempting to deserialize object on a CUDA device")
+
+        with patch(self._MOCK_TARGET, side_effect=always_fails):
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                with pytest.raises(RuntimeError):
+                    load_state_dict_from_url(self._PRIMARY)
+
+                # Within the failing call itself: the discard was paid for by a
+                # refetch, so the caller ends it with the entry it started with.
+                assert transfers == [self._PRIMARY]
+                assert cached.exists()
+
+                for _ in range(2):
+                    with pytest.raises(RuntimeError):
+                        load_state_dict_from_url(self._PRIMARY)
+
+        # And the bound holds: one refetch per path per process, not one per call.
+        assert transfers == [self._PRIMARY]
+        assert cached.exists()
+
     def test_unremovable_entry_is_reported(self, monkeypatch, tmp_path) -> None:
         """A cache the process cannot write to locks the fallback out silently."""
         self._cache(monkeypatch, tmp_path, bad_urls={self._PRIMARY})
 
+        # ``download_mod.os`` *is* the os module, so delegate everything that is
+        # not this cache entry rather than break removal process-wide.
+        cached = str(tmp_path / "checkpoints" / "model.pth")
+        real_remove = os.remove
+
         def refuse(path: str) -> None:
-            raise PermissionError(13, "Permission denied")
+            if os.path.abspath(path) == cached:
+                raise PermissionError(13, "Permission denied")
+            real_remove(path)
 
         monkeypatch.setattr(download_mod.os, "remove", refuse)
 
@@ -487,6 +565,87 @@ class TestTransientRetry:
         clock = _FakeTime()
         monkeypatch.setattr(download_mod, "time", clock)
         attempts = self._cache(monkeypatch, tmp_path, [URLError("dns"), None])
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            load_state_dict_from_url(self._URL)
+
+        assert len(attempts) == 2
+
+    def test_rate_limited_403_is_retried_and_honours_retry_after(self, monkeypatch, tmp_path) -> None:
+        """GitHub answers a rate limit with 403 as well as 429, and says when to return.
+
+        A bare 403 stays permanent -- it is also the "you may not have this file"
+        answer -- so the rate-limit headers are what tells the two apart.
+        """
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        attempts = self._cache(monkeypatch, tmp_path, [_http_error(self._URL, 403, {"Retry-After": "5"}), None])
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = load_state_dict_from_url(self._URL)
+
+        assert "weight" in result
+        assert len(attempts) == 2
+        assert clock.slept == [5.0]  # the server's number, not the 1s guess
+
+    def test_rate_limit_reset_header_is_honoured(self, monkeypatch, tmp_path) -> None:
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        headers = {"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": str(int(_FakeTime.NOW) + 7)}
+        attempts = self._cache(monkeypatch, tmp_path, [_http_error(self._URL, 403, headers), None])
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            load_state_dict_from_url(self._URL)
+
+        assert len(attempts) == 2
+        assert clock.slept == [7.0]
+
+    def test_retry_after_accepts_an_http_date(self, monkeypatch, tmp_path) -> None:
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        when = formatdate(time.time() + 4, usegmt=True)  # the other form RFC 9110 allows
+        attempts = self._cache(monkeypatch, tmp_path, [_http_error(self._URL, 429, {"Retry-After": when}), None])
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            load_state_dict_from_url(self._URL)
+
+        assert len(attempts) == 2
+        assert clock.slept[0] == pytest.approx(4.0, abs=1.5)
+
+    def test_server_requested_delay_is_clamped(self, monkeypatch, tmp_path) -> None:
+        """A host may name minutes; holding a CI job open that long costs more than a refetch."""
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        attempts = self._cache(monkeypatch, tmp_path, [_http_error(self._URL, 429, {"Retry-After": "3600"}), None])
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            load_state_dict_from_url(self._URL)
+
+        assert len(attempts) == 2
+        assert clock.slept == [download_mod._MAX_BACKOFF_SECONDS]
+
+    def test_unparseable_retry_after_still_marks_the_failure_transient(self, monkeypatch, tmp_path) -> None:
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        attempts = self._cache(monkeypatch, tmp_path, [_http_error(self._URL, 403, {"Retry-After": "soon"}), None])
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            load_state_dict_from_url(self._URL)
+
+        assert len(attempts) == 2
+        assert clock.slept == [1.0]  # falls back to the exponential guess
+
+    def test_incomplete_read_is_retried(self, monkeypatch, tmp_path) -> None:
+        """A truncated chunked response is neither a URLError nor a ConnectionError."""
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        attempts = self._cache(monkeypatch, tmp_path, [http.client.IncompleteRead(b"partial"), None])
 
         with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")

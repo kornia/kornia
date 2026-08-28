@@ -27,12 +27,24 @@ and sixteen other checkpoints were never cached.
 
 Adding a checkpoint to kornia therefore fails this test until it is either
 prefetched or listed in :data:`NOT_PREFETCHED` with a reason.
+
+Scope: this guards the checkpoints that go through
+:func:`kornia.core.download.load_state_dict_from_url`, which is what the
+``weights/`` cache holds. Two other download paths live in ``kornia/`` and are
+invisible to both -- ``huggingface_hub.hf_hub_download``
+(``kornia/models/{kimi_vl,siglip2}/builder.py``) and ``CachedDownloader`` into
+``.kornia_hub/`` (``kornia/models/small_sr.py``, ``kornia/contrib/super_resolution.py``,
+``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``,
+``kornia/feature/lightglue_onnx/utils/download.py``). Nothing in the PR matrix
+downloads through either today; a test that did would fetch live from every
+matrix cell with this file still green.
 """
 
 from __future__ import annotations
 
 import functools
 import importlib.util
+import re
 from pathlib import Path
 from typing import Any, get_args, get_type_hints
 from urllib.parse import urlparse
@@ -49,6 +61,7 @@ from kornia.feature.lightglue import LightGlue
 from kornia.feature.loftr import loftr
 from kornia.feature.sold2 import sold2, sold2_detector
 from kornia.filters import dexined
+from kornia.models import dexined as dexined_model
 from kornia.models import tiny_vit, vit
 from kornia.models.efficient_vit import model as efficient_vit
 from kornia.models.rt_detr import model as rt_detr
@@ -100,7 +113,12 @@ WEIGHT_REGISTRIES: dict[str, dict[str, Any]] = {
     "rt_detr": rt_detr.URLs,
     "keynet": {"keynet": keynet.KeyNet_URL},
     "yunet": {"yunet": yunet.url},
+    # Two independent registries, identical today, both loading the same cache
+    # name -- which is what hides the models copy from the coverage check: the
+    # filters copy accounts for the name either way. Holding both to MODELS also
+    # holds the two copies equal to each other.
     "dexined": {"dexined": dexined.url},
+    "dexined_model": {"dexined": dexined_model.url},
     "xfeat": {"xfeat": xfeat.XFeat.weights_url},
     "dedode_encoder": dedode_encoder.urls,
     "tiny_vit": tiny_vit.urls,
@@ -114,6 +132,51 @@ WEIGHT_REGISTRIES: dict[str, dict[str, Any]] = {
         for model_type in get_args(get_type_hints(efficient_vit._get_base_url)["model_type"])
         for resolution in get_args(get_type_hints(efficient_vit._get_base_url)["resolution"])
     },
+}
+
+# The modules :data:`WEIGHT_REGISTRIES` reads from, as repository-relative paths.
+# ``test_every_download_call_site_is_enumerated`` holds the table to its "every
+# weight source" claim by checking this set against the files that actually call
+# ``load_state_dict_from_url``: a new model with weights is then a failure here
+# rather than a checkpoint nothing in this file can see.
+_ENUMERATED_MODULES = {
+    Path(module.__file__).resolve().relative_to(_REPO_ROOT).as_posix()
+    for module in (
+        affine_shape,
+        orientation,
+        hardnet,
+        hynet,
+        sosnet,
+        tfeat,
+        mkd,
+        defmo,
+        loftr,
+        sold2,
+        sold2_detector,
+        disk,
+        dedode,
+        dedode_encoder,
+        rt_detr,
+        keynet,
+        yunet,
+        dexined,
+        dexined_model,
+        xfeat,
+        tiny_vit,
+        sam,
+        aliked,
+        vit,
+        efficient_vit,
+    )
+}
+
+# Modules that call ``load_state_dict_from_url`` without being a registry of
+# their own, with the reason they need no entry above.
+_DOWNLOAD_CALL_ALLOWLIST = {
+    "kornia/core/download.py": "defines the function",
+    "kornia/core/__init__.py": "re-exports it",
+    "kornia/feature/lightglue.py": "builds its URLs in __init__; captured by _lightglue_sources",
+    "kornia/models/base.py": "loads whatever checkpoint the config it is handed carries",
 }
 
 # Checkpoints deliberately left out of the CI cache, with the reason. A variant
@@ -335,6 +398,31 @@ class TestWeightsPrefetchCoverage:
         assert not orphaned, (
             f"CI prefetches {orphaned}, which no registry here accounts for. Add the "
             f"weight source to WEIGHT_REGISTRIES so the entry is guarded in both directions."
+        )
+
+    def test_every_download_call_site_is_enumerated(self) -> None:
+        """Nothing else holds :data:`WEIGHT_REGISTRIES` to "every weight source in the library".
+
+        The two directions above both start from this table, so a source missing
+        from it is invisible to all of them -- and a duplicated cache name hides
+        the miss even from ``test_every_prefetched_entry_is_still_requested``,
+        which is exactly how the second DexiNed registry in ``kornia/models``
+        went unenumerated. Checking the call sites closes the class rather than
+        the instance: the next model that loads weights fails here until its
+        registry is listed.
+        """
+        call = re.compile(r"\bload_state_dict_from_url\s*\(")
+        callers = {
+            path.relative_to(_REPO_ROOT).as_posix()
+            for path in sorted((_REPO_ROOT / "kornia").rglob("*.py"))
+            if call.search(path.read_text(encoding="utf-8"))
+        }
+        unaccounted = sorted(callers - _ENUMERATED_MODULES - set(_DOWNLOAD_CALL_ALLOWLIST))
+        assert not unaccounted, (
+            f"these modules download weights but no entry in WEIGHT_REGISTRIES reads their "
+            f"URLs, so their checkpoints are invisible to every check in this file: "
+            f"{unaccounted}. Add the registry to WEIGHT_REGISTRIES (and _ENUMERATED_MODULES), "
+            f"or to _DOWNLOAD_CALL_ALLOWLIST with the reason it has no registry of its own."
         )
 
     def test_no_entry_is_both_prefetched_and_exempt(self) -> None:
