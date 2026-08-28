@@ -212,8 +212,11 @@ def diff_surfaces(old: ModuleSurface, new: ModuleSurface) -> tuple[set[str], set
 def check_file(base_ref: str, path: str) -> FileReport | None:
     """Compare `path`'s module surface between `base_ref` and the working tree.
 
-    Returns None if there's nothing to report (new/deleted file, unparsable
-    source, or no names removed).
+    A deleted file is diffed against an empty surface, so removing a whole
+    module is reported (and can be fatal) just like emptying its `__all__`.
+
+    Returns None if there's nothing to report (new file, unparsable source,
+    or no names removed).
     """
     old_source = _git_show(base_ref, path)
     if old_source is None:
@@ -221,13 +224,13 @@ def check_file(base_ref: str, path: str) -> FileReport | None:
 
     try:
         with open(path, encoding="utf-8") as f:
-            new_source = f.read()
+            new_source: str | None = f.read()
     except FileNotFoundError:
-        return None  # file was deleted; not this check's concern
+        new_source = None  # file was deleted -- diff against an empty surface, not "nothing to report"
 
     try:
         old_surface = parse_module_surface(old_source)
-        new_surface = parse_module_surface(new_source)
+        new_surface = parse_module_surface(new_source) if new_source is not None else ModuleSurface()
     except SyntaxError:
         return None
 
@@ -254,8 +257,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base-ref", default="origin/main", help="Git ref to diff against (default: origin/main)")
     args = parser.parse_args(argv)
 
-    files = _changed_kornia_files(args.base_ref)
-    reports = [r for r in (check_file(args.base_ref, path) for path in files) if r is not None]
+    # _changed_kornia_files diffs against the merge-base (triple-dot); check_file must read old
+    # content from that same commit, not the tip of base_ref, or the two can disagree whenever
+    # base_ref has moved since the branch point (see review discussion on #4029).
+    base = subprocess.run(  # noqa: S603
+        ["git", "merge-base", args.base_ref, "HEAD"],  # noqa: S607
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+    files = _changed_kornia_files(base)
+    reports = [r for r in (check_file(base, path) for path in files) if r is not None]
 
     hard_fail = False
     for report in reports:

@@ -26,6 +26,7 @@ from check_import_surface import (
     _module_name,
     check_file,
     diff_surfaces,
+    main,
     parse_module_surface,
 )
 
@@ -232,6 +233,106 @@ def test_check_file_contrib_removal_is_not_fatal(tmp_path):
     mod.write_text("__all__ = []\n")
     _git("add", "-A", cwd=repo)
     _git("commit", "-q", "-m", "remove", cwd=repo)
+
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(repo)
+        report = check_file("base", "kornia/contrib/experimental.py")
+    finally:
+        os.chdir(original_cwd)
+
+    assert report is not None
+    assert report.removed_from_all == {"thing"}
+    assert report.fatal is False
+
+
+def test_main_uses_merge_base_not_tip_of_base_ref(tmp_path, capsys):
+    # Reproduces the review's repro on #4029: the PR branch never touches __all__, but
+    # base_ref (main) moves forward *after* the branch point and adds a name to it. Diffing
+    # check_file against the tip of base_ref (instead of the merge-base) would blame the PR for
+    # a name it never removed. Non-linear on purpose -- the existing linear-history tests can't
+    # exercise this, since merge-base and tip coincide when nothing has moved main forward.
+    repo = tmp_path / "repo"
+    (repo / "kornia").mkdir(parents=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+    _git("checkout", "-q", "-b", "main", cwd=repo)
+
+    mod = repo / "kornia" / "mod.py"
+    mod.write_text("__all__ = ['a']\n\ndef a():\n    pass\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+
+    _git("checkout", "-q", "-b", "pr", cwd=repo)
+    mod.write_text("# a docstring, __all__ untouched\n__all__ = ['a']\n\ndef a():\n    pass\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "pr change", cwd=repo)
+
+    _git("checkout", "-q", "main", cwd=repo)
+    mod.write_text("__all__ = ['a', 'b']\n\ndef a():\n    pass\n\ndef b():\n    pass\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "main moved on", cwd=repo)
+
+    _git("checkout", "-q", "pr", cwd=repo)
+
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(repo)
+        exit_code = main(["--base-ref", "main"])
+    finally:
+        os.chdir(original_cwd)
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "b" not in captured.out
+
+
+def test_check_file_reports_and_fails_whole_module_deletion(tmp_path):
+    # Deleting an entire module is the largest version of the break this check exists to catch;
+    # it must not pass silently.
+    repo = tmp_path / "repo"
+    (repo / "kornia").mkdir(parents=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+
+    mod = repo / "kornia" / "mymodule.py"
+    mod.write_text("__all__ = ['a', 'b']\n\ndef a():\n    pass\n\ndef b():\n    pass\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+    _git("branch", "base", cwd=repo)
+
+    _git("rm", "-q", "kornia/mymodule.py", cwd=repo)
+    _git("commit", "-q", "-m", "delete module", cwd=repo)
+
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(repo)
+        report = check_file("base", "kornia/mymodule.py")
+    finally:
+        os.chdir(original_cwd)
+
+    assert report is not None
+    assert report.removed_from_all == {"a", "b"}
+    assert report.fatal is True
+
+
+def test_check_file_contrib_module_deletion_is_not_fatal(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "kornia" / "contrib").mkdir(parents=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+
+    mod = repo / "kornia" / "contrib" / "experimental.py"
+    mod.write_text("__all__ = ['thing']\n\ndef thing():\n    pass\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+    _git("branch", "base", cwd=repo)
+
+    _git("rm", "-q", "kornia/contrib/experimental.py", cwd=repo)
+    _git("commit", "-q", "-m", "delete module", cwd=repo)
 
     original_cwd = Path.cwd()
     try:
