@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 import warnings
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 
 import torch
@@ -45,6 +47,35 @@ def hf_url(repo: str, filename: str) -> str:
         'https://huggingface.co/kornia/hardnet/resolve/main/HardNetPP.pth'
     """
     return f"{_HF_KORNIA_BASE}/{repo}/resolve/main/{filename}"
+
+
+_TRANSIENT_HTTP_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
+"""HTTP statuses worth another attempt: request timeout, too early, rate limit, server errors."""
+
+_MAX_ATTEMPTS = 3
+"""Total attempts per URL, including the first."""
+
+_BACKOFF_SECONDS = 1.0
+"""Delay before the second attempt; doubled for each further one."""
+
+
+def _is_transient(exc: BaseException) -> bool:
+    """Return whether *exc* is a temporary network condition worth retrying.
+
+    Rate limiting is the motivating case. An unauthenticated CI matrix fans many
+    jobs out at once, which regularly trips the anonymous request limits of
+    huggingface.co and github.com even though the checkpoint is served normally a
+    moment later.
+
+    Args:
+        exc: the exception raised by a download attempt.
+
+    Returns:
+        ``True`` if another attempt could plausibly succeed.
+    """
+    if isinstance(exc, HTTPError):  # a subclass of URLError, so it must be tested first
+        return exc.code in _TRANSIENT_HTTP_STATUS
+    return isinstance(exc, (URLError, TimeoutError, ConnectionError))
 
 
 def _cached_file_path(url: str, kwargs: dict[str, Any]) -> str:
@@ -100,6 +131,65 @@ def _prefetch_to_cache(url: str, kwargs: dict[str, Any]) -> None:
     torch.hub.download_url_to_file(url, cached_file, hash_prefix, progress=kwargs.get("progress", True))
 
 
+def _discard_cache_entry(url: str, kwargs: dict[str, Any]) -> None:
+    """Delete the cache entry for *url* so a later attempt fetches it again.
+
+    Every URL in a fallback list resolves to the same path, because the cache
+    filename is pinned to the primary URL (see :func:`load_state_dict_from_url`).
+    A single bad write -- a truncated transfer, or an HTML rate-limit page served
+    with a 200 -- would therefore make :func:`_prefetch_to_cache` short-circuit on
+    each remaining source and hand torch the same broken file every time. The
+    fallback URLs could never take effect, and because the bad file survives the
+    process, the failure would repeat on every later run until the cache was
+    cleared by hand.
+
+    A failure cannot distinguish a corrupt cache entry from a healthy one that
+    failed to load for an unrelated reason, so a good file is occasionally
+    discarded and downloaded again. That costs a transfer; keeping a corrupt one
+    costs correctness.
+
+    Args:
+        url: the URL whose cache entry should be dropped.
+        kwargs: the keyword arguments destined for the torch function; only
+            ``model_dir`` and ``file_name`` are consulted.
+    """
+    try:
+        os.remove(_cached_file_path(url, kwargs))
+    except OSError:
+        # Absent already (the common case when the transfer itself failed), or
+        # held by a concurrent reader. Either way there is nothing to clean up.
+        pass
+
+
+def _prefetch_with_retry(url: str, kwargs: dict[str, Any]) -> None:
+    """Run :func:`_prefetch_to_cache`, retrying transient failures with backoff.
+
+    Args:
+        url: the URL to fetch.
+        kwargs: the keyword arguments destined for the torch function.
+
+    Raises:
+        Exception: the last failure, once the attempts are exhausted or the
+            failure is not transient.
+    """
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            _prefetch_to_cache(url, kwargs)
+            return
+        except Exception as e:
+            if attempt == _MAX_ATTEMPTS or not _is_transient(e):
+                raise
+            delay = _BACKOFF_SECONDS * 2 ** (attempt - 1)
+            warnings.warn(
+                f"Transient failure fetching {url!r}: {e}. Retrying in {delay:.0f}s "
+                f"(attempt {attempt + 1} of {_MAX_ATTEMPTS}).",
+                # 1 = here, 2 = load_state_dict_from_url, 3 = its caller, which is
+                # the frame the sibling warning below also points at.
+                stacklevel=3,
+            )
+            time.sleep(delay)
+
+
 def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, Any]:
     """Load a state dict from a URL, trying fallback URLs on failure.
 
@@ -135,6 +225,16 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
       the hash embedded in it — of the primary URL consistently across all
       fallback attempts.
 
+    Because that one path is shared, a failed attempt drops the cache entry
+    before the next URL is tried. Otherwise a single bad write would be handed
+    straight back to torch by every remaining source -- and by every later
+    process -- making the fallback URLs unreachable.
+
+    Each URL is attempted up to :data:`_MAX_ATTEMPTS` times, with exponential
+    backoff, when it fails with a transient network condition such as an HTTP
+    429. Unauthenticated CI matrices trip the rate limits of huggingface.co and
+    github.com routinely, and a retry is far cheaper than a failed job.
+
     Args:
         url: a URL string, or a list of URL strings tried left-to-right.
         **kwargs: forwarded verbatim to
@@ -145,7 +245,10 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
         The loaded state dict.
 
     Raises:
-        RuntimeError: if every URL fails, chaining the last exception.
+        RuntimeError: if every URL fails. The message carries the last
+            exception's type and text, and the exception itself is chained;
+            without it a rate limit is indistinguishable from a dead link in a
+            CI failure summary.
 
     Example:
         >>> sd = load_state_dict_from_url([          # doctest: +SKIP
@@ -165,10 +268,13 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     for i, u in enumerate(urls):
         try:
             # Populate the cache ourselves so torch's stdout line is never reached.
-            _prefetch_to_cache(u, kwargs)
+            _prefetch_with_retry(u, kwargs)
             return torch.hub.load_state_dict_from_url(u, **kwargs)
         except Exception as e:  # noqa: BLE001
             last_exc = e
+            # Whatever landed in the cache is not loadable, and every remaining
+            # URL shares its path. Drop it so the next source is really fetched.
+            _discard_cache_entry(u, kwargs)
             if i < len(urls) - 1:
                 warnings.warn(
                     f"Failed to load weights from {u!r}: {e}. Trying next source.",
@@ -176,5 +282,7 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
                 )
 
     raise RuntimeError(
-        f"Failed to load weights from all {len(urls)} source(s). Last URL tried: {urls[-1]!r}"
+        f"Failed to load weights from all {len(urls)} source(s). "
+        f"Last URL tried: {urls[-1]!r}. "
+        f"Last error: {type(last_exc).__name__}: {last_exc}"
     ) from last_exc

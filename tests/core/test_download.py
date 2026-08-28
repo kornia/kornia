@@ -22,10 +22,12 @@ import threading
 import time
 import warnings
 from unittest.mock import call, patch
+from urllib.error import HTTPError, URLError
 
 import pytest
 import torch
 
+from kornia.core import download as download_mod
 from kornia.core.download import hf_url, load_state_dict_from_url
 
 
@@ -276,3 +278,205 @@ class TestConcurrentLoadsDoNotDisturbStdout:
         loader.join(timeout=10)
 
         assert "unrelated thread output" in "".join(written)
+
+
+def _http_error(url: str, code: int) -> HTTPError:
+    return HTTPError(url, code, "boom", hdrs=None, fp=None)
+
+
+class _FakeTime:
+    """Stand-in for the ``time`` module that records sleeps instead of taking them."""
+
+    def __init__(self) -> None:
+        self.slept: list[float] = []
+
+    def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+
+
+class TestPoisonedCacheEntry:
+    """A bad cache entry must not disable the fallback URLs.
+
+    All URLs in a list share one cache path, because ``file_name`` is pinned to
+    the primary. ``_prefetch_to_cache`` skips a path that already exists, so
+    before the discard step a single bad write was handed straight back to torch
+    by every remaining source -- the fallback URL was named in the error without
+    ever being fetched -- and the bad file outlived the process, so every later
+    run failed the same way until the cache was cleared by hand.
+    """
+
+    _PRIMARY = "http://primary.example.com/model.pth"
+    _FALLBACK = "http://fallback.example.com/model.pth"
+    _GOOD = {"weight": torch.zeros(1)}
+
+    @staticmethod
+    def _cache(monkeypatch, tmp_path, bad_urls):
+        """Point the hub cache at *tmp_path*; URLs in *bad_urls* download garbage."""
+        transfers: list[str] = []
+        monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
+
+        def fake_download(url, dst, hash_prefix=None, progress=True):
+            transfers.append(url)
+            if url in bad_urls:
+                # A rate-limit page served with a 200, or a truncated transfer.
+                with open(dst, "wb") as f:
+                    f.write(b"<html>429 Too Many Requests</html>")
+            else:
+                torch.save(TestPoisonedCacheEntry._GOOD, dst)
+
+        monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+        return transfers
+
+    def test_fallback_recovers_from_bad_primary_download(self, monkeypatch, tmp_path) -> None:
+        transfers = self._cache(monkeypatch, tmp_path, bad_urls={self._PRIMARY})
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+
+        assert "weight" in result
+        # The fallback was really fetched, not just named in an error message.
+        assert transfers == [self._PRIMARY, self._FALLBACK]
+
+    def test_fallback_recovers_from_preexisting_bad_cache_file(self, monkeypatch, tmp_path) -> None:
+        transfers = self._cache(monkeypatch, tmp_path, bad_urls=set())
+        cached = tmp_path / "checkpoints" / "model.pth"
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.write_bytes(b"<html>429 Too Many Requests</html>")
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+
+        assert "weight" in result
+        # The primary short-circuits on the poisoned file, so only the fallback transfers.
+        assert transfers == [self._FALLBACK]
+
+    def test_bad_entry_is_not_left_behind_when_all_sources_fail(self, monkeypatch, tmp_path) -> None:
+        self._cache(monkeypatch, tmp_path, bad_urls={self._PRIMARY, self._FALLBACK})
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError):
+                load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+
+        # Nothing corrupt survives to poison the next process.
+        assert not (tmp_path / "checkpoints" / "model.pth").exists()
+
+
+class TestTransientRetry:
+    """Rate limits are the common CI failure; a retry is cheaper than a failed job."""
+
+    _URL = "http://example.com/model.pth"
+
+    @staticmethod
+    def _cache(monkeypatch, tmp_path, side_effects):
+        """Each call pops one entry off *side_effects*: an exception to raise, or None."""
+        attempts: list[str] = []
+        monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
+
+        def fake_download(url, dst, hash_prefix=None, progress=True):
+            attempts.append(url)
+            outcome = side_effects.pop(0)
+            if outcome is not None:
+                raise outcome
+            torch.save({"weight": torch.zeros(1)}, dst)
+
+        monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+        return attempts
+
+    @pytest.mark.parametrize("code", [408, 425, 429, 500, 502, 503, 504])
+    def test_transient_http_status_is_retried(self, monkeypatch, tmp_path, code) -> None:
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        attempts = self._cache(monkeypatch, tmp_path, [_http_error(self._URL, code), None])
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = load_state_dict_from_url(self._URL)
+
+        assert "weight" in result
+        assert len(attempts) == 2
+        assert clock.slept == [1.0]
+
+    @pytest.mark.parametrize("code", [400, 401, 403, 404, 410])
+    def test_permanent_http_status_is_not_retried(self, monkeypatch, tmp_path, code) -> None:
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        attempts = self._cache(monkeypatch, tmp_path, [_http_error(self._URL, code)])
+
+        with pytest.raises(RuntimeError):
+            load_state_dict_from_url(self._URL)
+
+        assert len(attempts) == 1
+        assert clock.slept == []
+
+    def test_connection_error_is_retried(self, monkeypatch, tmp_path) -> None:
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        attempts = self._cache(monkeypatch, tmp_path, [URLError("dns"), None])
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            load_state_dict_from_url(self._URL)
+
+        assert len(attempts) == 2
+
+    def test_attempts_are_capped_with_exponential_backoff(self, monkeypatch, tmp_path) -> None:
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        attempts = self._cache(monkeypatch, tmp_path, [_http_error(self._URL, 429)] * 3)
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError):
+                load_state_dict_from_url(self._URL)
+
+        assert len(attempts) == download_mod._MAX_ATTEMPTS == 3
+        assert clock.slept == [1.0, 2.0]  # no sleep after the final attempt
+
+    def test_every_url_gets_its_own_retries(self, monkeypatch, tmp_path) -> None:
+        primary = "http://primary.example.com/model.pth"
+        fallback = "http://fallback.example.com/model.pth"
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        attempts = self._cache(
+            monkeypatch, tmp_path, [_http_error(primary, 429)] * 3 + [_http_error(fallback, 429), None]
+        )
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            result = load_state_dict_from_url([primary, fallback])
+
+        assert "weight" in result
+        assert attempts == [primary] * 3 + [fallback] * 2
+
+
+class TestFailureMessageCarriesCause:
+    """A CI failure summary shows only the exception's own message.
+
+    Without the cause in that line, a rate limit, a DNS failure and a dead link
+    are indistinguishable -- which is what made the OriNet CI failures read as
+    broken URLs that were in fact serving fine.
+    """
+
+    def test_message_names_the_underlying_error(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(
+            torch.hub,
+            "download_url_to_file",
+            lambda url, dst, *a, **k: (_ for _ in ()).throw(_http_error(url, 429)),
+        )
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError) as excinfo:
+                load_state_dict_from_url(["http://a.example.com/m.pth", "http://b.example.com/m.pth"])
+
+        message = str(excinfo.value)
+        assert "Failed to load weights from all 2 source" in message
+        assert "HTTPError" in message
+        assert "429" in message
+        # The original exception stays chained for a full traceback.
+        assert isinstance(excinfo.value.__cause__, HTTPError)

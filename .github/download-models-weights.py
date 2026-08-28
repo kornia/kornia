@@ -15,45 +15,146 @@
 # limitations under the License.
 #
 
+"""Pre-populate the torch hub cache with the checkpoints CI needs.
+
+CI restores the resulting ``weights/`` directory before the test and doctest
+jobs, so a checkpoint listed here is never fetched from inside a test run. One
+that is *missing* is fetched live by every matrix cell at once, which is how
+unauthenticated jobs trip the rate limits of huggingface.co and github.com and
+fail with what looks like a dead URL. ``tests/core/test_weights_prefetch.py``
+guards against that: every checkpoint kornia can request must be listed here or
+explicitly exempted there.
+
+Keys are the **cache filename** kornia will look for, not a friendly name.
+That is usually the basename of the primary URL, but not always -- LightGlue
+pins names such as ``superpoint_lightglue_v0-1_arxiv-pth`` -- and a key that
+disagrees stores the file where nothing looks for it, leaving the cache
+silently useless. Values mirror the URL list in kornia, so the fallback source
+and the retry/backoff of :func:`kornia.core.download.load_state_dict_from_url`
+apply to the prefetch too.
+"""
+
 import argparse
 import logging
 import os
 
 import torch
 
+from kornia.core.download import load_state_dict_from_url
+
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
-# Models used in doctests and tests
-# Format: "name": url
-# All models use torch.hub.load_state_dict_from_url
-MODELS = {
-    # SOLD2 - line detection
-    "sold2_wireframe": "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
-    # DexiNed - edge detection (used by EdgeDetector doctest)
-    "dexined": "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
-    # DISK - feature extraction (used by DISK.from_pretrained doctest)
-    "disk_depth": "https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth",
-    # DeDoDe - feature detection/description (used by DeDoDe.from_pretrained doctest)
-    "dedode_detector_L_v2": "https://github.com/Parskatt/DeDoDe/releases/download/v2/dedode_detector_L_v2.pth",
-    "dedode_descriptor_B_SO2": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_SO2_Spread_descriptor_setting_C.pth",
-    "dedode_descriptor_B_upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_B.pth",
-    "dedode_descriptor_G_upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_G.pth",
-    # DINOv2 - used by DeDoDe encoder
-    "dinov2_vitl14": "https://dl.fbaipublicfiles.com/dinov2/dinov2_vitl14/dinov2_vitl14_pretrain.pth",
-    # YuNet - face detection
-    "yunet": "https://github.com/kornia/data/raw/main/yunet_final.pth",
-    # RT-DETR - object detection (used by RTDETR.from_pretrained doctest)
-    "rtdetr_r18vd": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth",
-    # VisionTransformer - used by VisionTransformer.from_config doctest
-    "vit_b_16": "https://huggingface.co/kornia/vit_b16_augreg_i21k_r224/resolve/main/vit_b-16.pth",
-    # LocalFeatureMatcher - AffNet and HardNet (used by LocalFeatureMatcher doctest)
-    "affnet": "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth",
-    "hardnet_liberty": "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth",
-    # LoFTR - feature matching (used by LoFTR doctest)
-    "loftr_outdoor": "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt",
-    # MKD - descriptor (used by MKDDescriptor doctest)
-    "mkd_concat": "https://github.com/manyids2/mkd_pytorch/raw/master/mkd_pytorch/mkd-concat-64.pth",
+# Format: "<cache filename>": "<url>" | ["<primary url>", "<fallback url>"]
+MODELS: dict[str, "str | list[str]"] = {
+    # -- detectors, descriptors and orientation estimators -------------------
+    # AffNet + OriNet: LAFAffNetShapeEstimator / LAFOrienter, and every composite
+    # built on them (GFTTAffNetHardNet, KeyNetHardNet, KeyNetAffNetHardNet).
+    "AffNet.pth": [
+        "https://huggingface.co/kornia/affnet/resolve/main/AffNet.pth",
+        "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth",
+    ],
+    "OriNet.pth": [
+        "https://huggingface.co/kornia/orinet/resolve/main/OriNet.pth",
+        "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth",
+    ],
+    # KeyNet detector: KeyNetDetector(True), used by KeyNetHardNet.
+    "keynet_pytorch.pth": [
+        "https://huggingface.co/kornia/keynet/resolve/main/keynet_pytorch.pth",
+        "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth",
+    ],
+    # HardNet: the default descriptor of LAFDescriptor, so nearly every composite.
+    "checkpoint_liberty_with_aug.pth": [
+        "https://huggingface.co/kornia/hardnet/resolve/main/checkpoint_liberty_with_aug.pth",
+        "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/"
+        "checkpoint_liberty_with_aug.pth",
+    ],
+    # Patch descriptors with pretrained smoke/jit tests.
+    "HyNet_LIB.pth": [
+        "https://huggingface.co/kornia/hynet/resolve/main/HyNet_LIB.pth",
+        "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth",
+    ],
+    "sosnet_32x32_liberty.pth": [
+        "https://huggingface.co/kornia/sosnet/resolve/main/sosnet_32x32_liberty.pth",
+        "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_liberty.pth",
+    ],
+    "tfeat-liberty.params": [
+        "https://huggingface.co/kornia/tfeat/resolve/main/tfeat-liberty.params",
+        "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params",
+    ],
+    # MKD whitening models: TestMKDDescriptor parametrizes over all three kernels.
+    "mkd-concat-64.pth": "https://github.com/manyids2/mkd_pytorch/raw/master/mkd_pytorch/mkd-concat-64.pth",
+    "mkd-polar-64.pth": "https://github.com/manyids2/mkd_pytorch/raw/master/mkd_pytorch/mkd-polar-64.pth",
+    "mkd-cart-64.pth": "https://github.com/manyids2/mkd_pytorch/raw/master/mkd_pytorch/mkd-cart-64.pth",
+    # DISK - feature extraction (DISK.from_pretrained doctest and tests)
+    "depth-save.pth": [
+        "https://huggingface.co/kornia/disk/resolve/main/depth-save.pth",
+        "https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth",
+    ],
+    # -- matchers ------------------------------------------------------------
+    # LoFTR: tests instantiate both the outdoor and indoor weights.
+    "loftr_outdoor.ckpt": [
+        "https://huggingface.co/kornia/loftr/resolve/main/loftr_outdoor.ckpt",
+        "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt",
+    ],
+    "loftr_indoor.ckpt": [
+        "https://huggingface.co/kornia/loftr/resolve/main/loftr_indoor.ckpt",
+        "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt",
+    ],
+    # LightGlue pins its own cache names; these keys are not the URL basenames.
+    "superpoint_lightglue_v0-1_arxiv-pth": (
+        "https://huggingface.co/kornia/lightglue/resolve/main/superpoint_lightglue.pth"
+    ),
+    "doghardnet_v0-1_arxiv-pth": "https://huggingface.co/kornia/lightglue/resolve/main/doghardnet_lightglue.pth",
+    "disk_lightglue_v0-1_arxiv-pth": "https://huggingface.co/kornia/lightglue/resolve/main/disk_lightglue.pth",
+    # -- DeDoDe --------------------------------------------------------------
+    "dedode_detector_L_v2.pth": [
+        "https://huggingface.co/kornia/dedode/resolve/main/dedode_detector_L_v2.pth",
+        "https://github.com/Parskatt/DeDoDe/releases/download/v2/dedode_detector_L_v2.pth",
+    ],
+    "dedode_descriptor_B.pth": [
+        "https://huggingface.co/kornia/dedode/resolve/main/dedode_descriptor_B.pth",
+        "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_B.pth",
+    ],
+    "dedode_descriptor_G.pth": [
+        "https://huggingface.co/kornia/dedode/resolve/main/dedode_descriptor_G.pth",
+        "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_G.pth",
+    ],
+    "B_SO2_Spread_descriptor_setting_C.pth": [
+        "https://huggingface.co/kornia/dedode/resolve/main/B_SO2_Spread_descriptor_setting_C.pth",
+        "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/"
+        "B_SO2_Spread_descriptor_setting_C.pth",
+    ],
+    # DINOv2 backbone used by the DeDoDe encoder.
+    "dinov2_vitl14_pretrain.pth": "https://dl.fbaipublicfiles.com/dinov2/dinov2_vitl14/dinov2_vitl14_pretrain.pth",
+    # -- line, edge and object models ---------------------------------------
+    "sold2_wireframe.pth": [
+        "https://huggingface.co/kornia/sold2/resolve/main/sold2_wireframe.pth",
+        "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
+    ],
+    "DexiNed_BIPED_10.pth": [
+        "https://huggingface.co/kornia/dexined/resolve/main/DexiNed_BIPED_10.pth",
+        "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
+    ],
+    "yunet_final.pth": [
+        "https://huggingface.co/kornia/yunet/resolve/main/yunet_final.pth",
+        "https://github.com/kornia/data/raw/main/yunet_final.pth",
+    ],
+    "rtdetr_r18vd_dec3_6x_coco_from_paddle.pth": [
+        "https://huggingface.co/kornia/rt_detr/resolve/main/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth",
+        "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth",
+    ],
+    "vit_b-16.pth": "https://huggingface.co/kornia/vit_b16_augreg_i21k_r224/resolve/main/vit_b-16.pth",
+    # -- deblurring ----------------------------------------------------------
+    # DeFMO(True): smoke and jit tests instantiate both halves.
+    "encoder_best.pt": [
+        "https://huggingface.co/kornia/defmo/resolve/main/encoder_best.pt",
+        "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt",
+    ],
+    "rendering_best.pt": [
+        "https://huggingface.co/kornia/defmo/resolve/main/rendering_best.pt",
+        "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt",
+    ],
 }
 
 
@@ -70,11 +171,12 @@ if __name__ == "__main__":
 
     logger.info(f"Downloading models to: {torch.hub.get_dir()}/checkpoints/")
 
-    for name, url in MODELS.items():
-        logger.info(f"Downloading `{name}` from `{url}`...")
+    for file_name, url in MODELS.items():
+        logger.info(f"Downloading `{file_name}` from `{url if isinstance(url, str) else url[0]}`...")
         # Don't pass model_dir - use the default from torch.hub.set_dir()
-        # This ensures files go to {hub_dir}/checkpoints/ matching test behavior
-        torch.hub.load_state_dict_from_url(url, map_location=torch.device("cpu"))
+        # This ensures files go to {hub_dir}/checkpoints/ matching test behavior.
+        # file_name is pinned so the entry lands where kornia will look for it.
+        load_state_dict_from_url(url, map_location=torch.device("cpu"), file_name=file_name)
 
     logger.info("All models downloaded successfully!")
     raise SystemExit(0)
