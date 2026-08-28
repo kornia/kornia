@@ -114,10 +114,19 @@ def _round_trip_tol(dtype):
 
 
 # rgb = (1, 1, 0) is the analytic worst case of the #4044 round trip, and its expected B is
-# exactly 0.0 -- so ``rtol`` contributes nothing there and the whole budget is ``atol``. Against
-# the shared 1.5e-3 the systematic 1.356e-3 uses 90% of it, where every other assertion in this
-# file keeps >=22% free, so that cell takes its own tolerance: 1.8e-3, ~25% clear of the defect
-# it exists to pin. Backend noise is not budgeted in anywhere -- see _cudnn_tf32_disabled below.
+# exactly 0.0 -- so ``rtol`` contributes nothing there and the whole budget is ``atol``. The
+# shared _ROUND_TRIP_TOL is sized for the seeded random input asserted beside it; this cell sits
+# *at* the analytic maximum, where the measured error is 1.35604e-3 (cpu, float32 and float64
+# alike -- the dtype contributes ~4e-8) and would consume 90% of that 1.5e-3. Its own 1.8e-3
+# keeps it ~25% clear, so a regression that widened the defect stays distinguishable from one
+# that merely reached the edge.
+#
+# That is looser than the three tightest assertions in the file, which do sit at ~10% free
+# (TestYuvToRgb::test_unit[blue] 1.5346e-3, TestYuv422ToRgb::test_unit_upsampling 1.5322e-3,
+# TestYuvToRgb::test_unit_matches_the_reference_relations 1.5097e-3, all against _INVERSE_ATOL's
+# 1.7e-3). Those are deliberately not padded: they are one transform applied to exact decimal
+# constants, so the derived 1.535e-3 bound above *is* the value they measure, and widening them
+# would stop pinning it. Backend noise is not budgeted in anywhere -- see _cudnn_tf32_disabled.
 _WORST_CORNER_ATOL = 1.8e-3
 
 
@@ -143,8 +152,8 @@ def _unit_atol(base: float, dtype: torch.dtype) -> float:
 
 
 @pytest.fixture(autouse=True)
-def _cudnn_tf32_disabled():
-    """Compute in real float32 on CUDA, so every tolerance here means what it derives.
+def _cudnn_tf32_disabled(request):
+    """Compute in real float32 on CUDA by default, so every tolerance here means what it derives.
 
     Off cpu, ``_apply_linear_transformation`` takes the ``F.conv2d`` branch, and cuDNN keeps
     PyTorch's ``allow_tf32 = True`` default -- conftest's ``--tf32`` flag drives only
@@ -153,10 +162,16 @@ def _cudnn_tf32_disabled():
     ``2 * 2**-11 * sum|k_i * x_i|`` = 1.2e-3 of backend noise on the V row alone -- twice
     _FORWARD_ATOL, and the same order as the 1.356e-3 constants defect this file exists to pin.
     Every tolerance here is derived from the *constants*, not from a backend's kernel precision,
-    so TF32 is taken out of the picture for the module rather than budgeted into each assertion.
+    so an ordinary run takes TF32 out of the picture rather than budgeting it into each assertion.
+
+    The flag follows ``--tf32`` rather than being forced off, so this module does not become the
+    one place in the suite that ignores the option: a ``--tf32`` run gets TF32 in cuDNN as well
+    as in matmul, and measures the backend instead of the constants. The repo-wide fix is for
+    ``pytest_sessionstart`` to set ``cudnn.allow_tf32`` from the same option -- until then this
+    is the only module whose derived bounds depend on it.
     """
     previous = torch.backends.cudnn.allow_tf32
-    torch.backends.cudnn.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = bool(request.config.getoption("--tf32"))
     try:
         yield
     finally:
@@ -249,8 +264,8 @@ class TestRgbToYuv(BaseTester):
         # this test used to assert is below the representation error of float16/bfloat16, so it
         # failed on every half-precision run of the suite.
         chroma_atol = _unit_atol(1e-4, dtype)
-        self.assert_close(yuv[3, 1:], torch.zeros_like(yuv[3, 1:]), atol=chroma_atol, rtol=1e-4)
-        self.assert_close(yuv[4], torch.zeros_like(yuv[4]), atol=chroma_atol, rtol=1e-4)
+        self.assert_close(yuv[3, 1:], torch.zeros_like(yuv[3, 1:]), atol=chroma_atol, rtol=0.0)
+        self.assert_close(yuv[4], torch.zeros_like(yuv[4]), atol=chroma_atol, rtol=0.0)
 
     def test_round_trip_rgb_yuv_rgb(self, device, dtype):
         # Seeded: with unseeded ``torch.rand`` this test failed on roughly one run in eight,
@@ -353,7 +368,10 @@ class TestRgbToYuv420(BaseTester):
         # the chroma of a cell pins the whole box average rather than any one of its pixels. The
         # expected chroma is averaged with an explicit reshape, which does not share the
         # library's ``unfold`` grouping, so a wrong axis, stride or cell boundary shows up here.
-        rgb = _color_image(["red", "green", "blue", "white", "black", "gray", "red", "green"], 2, 4)
+        # Both cells are chosen to have non-zero chroma -- with ``blue, white / red, green`` the
+        # second cell box-averages to (0, 0), where a scale, sign flip or U/V swap confined to
+        # that cell would map 0 to 0 and pass.
+        rgb = _color_image(["red", "green", "blue", "white", "black", "gray", "red", "gray"], 2, 4)
         reference = _rgb_to_yuv_reference(rgb)
         expected_y = reference[:1]
         expected_uv = reference[1:].reshape(2, 1, 2, 2, 2).mean((-3, -1))
@@ -464,7 +482,7 @@ class TestRgbToYuv422(BaseTester):
         # 4:2:2 pairs pixels *horizontally only*; rows stay independent. The expected chroma is
         # averaged over the last axis with an explicit reshape, so subsampling the wrong axis
         # (the failure this file could not previously see) fails here.
-        rgb = _color_image(["red", "green", "blue", "white", "white", "blue", "green", "red"], 2, 4)
+        rgb = _color_image(["red", "green", "blue", "white", "black", "red", "green", "blue"], 2, 4)
         reference = _rgb_to_yuv_reference(rgb)
         expected_y = reference[:1]
         expected_uv = reference[1:].reshape(2, 2, 2, 2).mean(-1)
@@ -474,7 +492,9 @@ class TestRgbToYuv422(BaseTester):
         atol = _unit_atol(_FORWARD_ATOL, dtype)
         self.assert_close(y, expected_y.to(device=device, dtype=dtype), atol=atol, rtol=0.0)
         self.assert_close(uv, expected_uv.to(device=device, dtype=dtype), atol=atol, rtol=0.0)
-        # Rows differ, so an axis swap in the subsample cannot pass by accident.
+        # Rows differ, and the chroma plane is neither its own transpose nor its own 180-degree
+        # rotation (the palindrome ``red, green, blue, white / white, blue, green, red`` is
+        # both), so an axis swap in the subsample cannot pass by accident.
         assert not torch.allclose(uv[:, 0], uv[:, 1])
 
     def test_forth_and_back(self, device, dtype):

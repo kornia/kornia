@@ -75,8 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   asserts its output shape as a doctest instead of stating it in a comment. The 4:2:2 docstrings also claimed
   the input only had to be divisible by 2 "vertical" while the guard rejects odd height *and* odd width, so a
   reader padding one axis hit a `ShapeError`, and `yuv422_to_rgb` labelled its chroma argument "UV (luma)".
-  The four `ShapeError` messages those guards raise said "evenly disible by 2" and now say "divisible"; no
-  other runtime behavior changed.
+  The four `ShapeError` messages those guards raise said "evenly disible by 2" and now say "divisible".
+  `yuv_to_rgb` and `yuv422_to_rgb` also gained a `.. warning::` naming a known defect each: the round trip
+  through `rgb_to_yuv` loses up to 1.356e-3 because the two kernels are rounded separately rather than
+  inverted (#4044), and `yuv422_to_rgb` validates only the chroma *width*, so a wrong chroma height surfaces
+  as a bare `RuntimeError` from `torch.cat` (#4050). No runtime behavior changed.
 
 
 ## :rocket: [0.6.11] - 2022-03-28

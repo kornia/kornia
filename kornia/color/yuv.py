@@ -153,6 +153,12 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    .. warning::
+        This is not an exact inverse of :func:`~kornia.color.rgb_to_yuv`. The two kernels are
+        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
+        ``rgb = (1, 1, 0)``) at every dtype. Tracked in
+        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
+
     Args:
         image: YUV Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
@@ -327,7 +333,7 @@ class RgbToYuv(nn.Module):
 class RgbToYuv420(nn.Module):
     r"""Convert an image from RGB to YUV420.
 
-    Width and Height evenly divisible by 2.
+    Width and Height must be evenly divisible by 2.
 
     The image data is assumed to be in the range of :math:`(0, 1)`.
 
