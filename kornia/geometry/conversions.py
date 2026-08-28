@@ -1793,32 +1793,6 @@ def normalize_homography(
           without a ``cross`` kernel for the dtype raises here
 
     .. warning::
-        The two normalization matrices are built without a ``dtype=``
-        pass-through and cast to the input afterwards, so their precision is
-        decided by the **ambient default dtype** and not by the argument's. At
-        the ``float32`` default — the usual case — a ``float64`` caller gets
-        ``float32``-rounded constants: ``normalize_homography`` of the
-        ``float64`` identity from ``(4, 4)`` to ``(6, 6)`` returns
-        ``0.5999999910593036`` where the ``float64``-native composition gives
-        ``0.6000000000000001`` — a deviation of ``8.94069651646845e-09``, about
-        eight significant digits instead of sixteen. Under
-        ``torch.set_default_dtype(torch.float64)`` that same ``float64`` call
-        returns the native ``0.6000000000000001`` instead, which is what
-        identifies the missing pass-through as the cause rather than an epsilon
-        or a rounding choice: it is
-        :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
-        documented ``dtype=None`` behaviour reaching through, so setting the
-        ambient default is also the workaround. Same mechanism in
-        :func:`~kornia.geometry.conversions.denormalize_homography`
-        (``2.483526828633842e-08`` on the same input, at the ``float32``
-        default) and in
-        :func:`~kornia.geometry.conversions.normalize_homography3d`. These
-        deviations run through ``matmul`` and an inverse, so their trailing
-        digits are backend-dependent; the magnitude — half the mantissa gone —
-        is the point, not the digits. Tracked in
-        `#3958 <https://github.com/kornia/kornia/issues/3958>`_.
-
-    .. warning::
         An integer matrix is not rejected: the normalization matrices are cast
         to it and truncated, and the call then fails inside torch or returns
         ``nan``, depending on the backend. Tracked in
@@ -2208,9 +2182,8 @@ def denormalize_homography(
           source pixels to destination pixels. The ``dsize`` roles, the
           ``(x, y, 1)`` column vectors, per-sample batching, the
           ``align_corners``-selected frames and the shape guard are as
-          documented there, and so are its dtype
-          (`#3958 <https://github.com/kornia/kornia/issues/3958>`_) and integer
-          (`#3959 <https://github.com/kornia/kornia/issues/3959>`_) warnings
+          documented there, including its integer-input
+          (`#3959 <https://github.com/kornia/kornia/issues/3959>`_) warning
         - ``inv(N_dst)`` goes through ``torch.linalg.inv`` in eager mode (so
           ``cusolver`` on ``cuda``), not through the ``cross``-based adjugate
         - the two functions invert each other to a small multiple of the
