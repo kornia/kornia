@@ -131,6 +131,16 @@ _WORST_CORNER_ATOL = 1.8e-3
 _WORST_CORNER_ATOL_TF32 = 3.5e-3
 
 
+def _skip_without_real_float64(device) -> None:
+    # The two #4044 constant pins below hardcode float64 and assert raw deviations at 1e-9, so
+    # they need a backend that actually computes in float64. MPS has none at all, and XLA
+    # executes a float64 request as float32 (the ``tpu`` fixture in conftest is
+    # ``xm.xla_device()``), which moves the pinned values by 3.9e-8 (round-trip error) and
+    # 4.4e-8 (U -> B coefficient) -- ~40x the tolerance -- for a pure precision reason.
+    if "xla" in device.type or device.type == "mps":
+        pytest.skip(f"{device.type} does not compute in float64")
+
+
 def _worst_corner_atol(device, dtype) -> float:
     if device.type == "cuda" and dtype == torch.float32:
         return _WORST_CORNER_ATOL_TF32
@@ -555,8 +565,7 @@ class TestYuvToRgb(BaseTester):
         # below the 1.356e-3 being caught. Marked xfail(strict=True) so fixing #4044 makes this
         # XPASS and forces the mark out. Companion wart: test_wart_yuv_to_rgb_kernel_is_not_the_
         # inverse_4044.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
+        _skip_without_real_float64(device)
 
         rgb = torch.tensor([1.0, 1.0, 0.0], device=device, dtype=torch.float64).view(3, 1, 1)
         rgb_back = kornia.color.yuv_to_rgb(kornia.color.rgb_to_yuv(rgb))
@@ -580,8 +589,7 @@ class TestYuvToRgb(BaseTester):
         #   torch.linalg.inv(torch.tensor(K))[2, 1]  # the U -> B coefficient  ->  2.03199968...
         # atol 1e-9 on the error magnitude sits six orders below the 1.356e-3 being pinned and
         # well above the float64 noise of a 3x3 matmul.
-        if device.type == "mps":
-            pytest.skip("MPS has no float64")
+        _skip_without_real_float64(device)
 
         rgb = torch.tensor([1.0, 1.0, 0.0], device=device, dtype=torch.float64).view(3, 1, 1)
         rgb_back = kornia.color.yuv_to_rgb(kornia.color.rgb_to_yuv(rgb))
