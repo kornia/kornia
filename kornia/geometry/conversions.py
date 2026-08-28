@@ -565,11 +565,12 @@ def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor) -> torch.Tensor
           :math:`(3,)` and :math:`(2, 5, 3)` results above cannot be fed
           straight back (see its shape warning)
         - the round trip through
-          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix` is
-          accurate only to about ``1e-6`` even in ``float64`` — measured
-          ``8.0e-07`` at ``theta = 1e-3`` and ``5.4e-07`` at ``theta = pi``
-          about ``(1, 2, 3)/sqrt(14)`` — because of that function's
-          `#3947 <https://github.com/kornia/kornia/issues/3947>`_
+          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
+          is accurate to about ``5e-09`` in ``float64`` — measured
+          ``2.0e-12`` at ``theta = 1e-3`` and ``4.2e-09`` at ``theta = pi``
+          about ``(1, 2, 3)/sqrt(14)`` — the latter is
+          :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`'s
+          own conditioning near the ``pi`` singularity
         - the input is **not** checked for being a rotation matrix:
           ``zeros(3, 3)`` returns ``[0., 0., 3.1416]``, ``2 * eye(3)`` returns
           ``[0., 0., 0.]``, and the reflection ``diag(-1, 1, 1)``
@@ -2827,11 +2828,9 @@ def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
           and ``1e-15`` in ``float64``, over 64 unit-normalized random
           quaternions turned into rotations via
           :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
-          — an orthogonality-preserving route; contrast
-          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`,
-          whose own non-orthogonality (`#3947
-          <https://github.com/kornia/kornia/issues/3947>`_) inflates this
-          figure to ``3.16e-06`` — with matching random translations, both
+          — an orthogonality-preserving route, as is
+          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
+          — with matching random translations, both
           drawn from ``torch.Generator().manual_seed(seed)``, ``seed=0`` — a
           few ulps of the entries. Read the exponent, not the digits: the
           maximum moves with the draw (``4.77e-07`` to ``8.34e-07``, and
