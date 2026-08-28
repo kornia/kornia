@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Make `yuv_to_rgb` the numerical inverse of `rgb_to_yuv`, eliminating RGB → YUV → RGB round-trip errors of up
+  to `1.36e-3` (#4044). This also changes `yuv420_to_rgb` and `yuv422_to_rgb` output by at most approximately `1.6e-3`
+  over the documented YUV range.
+
 * Fix the inverted `SigLip2` attention-mask polarity, so every call that passes an `attention_mask` changes (#4043).
   All three mask branches of `SigLip2Attention` (2-D `(B, N)`, 3-D `(B, N, N)` and 4-D `(B, 1, N, N)`) negated the
   mask before handing it to `torch.nn.functional.scaled_dot_product_attention`, whose boolean form reads `True` as

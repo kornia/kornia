@@ -167,11 +167,12 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
+    # Exact inverse of the rounded M/PAL kernel used in rgb_to_yuv.
     kernel = torch.tensor(
         [
-            [1.0, 0.0, 1.14],
-            [1.0, -0.396, -0.581],
-            [1.0, 2.029, 0.0],
+            [1.0, -0.00003945707070708, 1.139827967171717],
+            [1.0, -0.39461016414141414, -0.5805003156565656],
+            [1.0, 2.0319996843434343, -0.00048137626262622],
         ],
         device=image.device,
         dtype=image.dtype,
