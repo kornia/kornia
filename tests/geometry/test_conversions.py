@@ -1396,7 +1396,9 @@ class TestQuaternionToRotationMatrix(BaseTester):
         matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
 
         assert matrix.dtype == half_dtype, f"kornia#3954: quaternion_to_rotation_matrix returned {matrix.dtype}"
-        self.assert_close(matrix, torch.eye(3, device=device, dtype=half_dtype))
+        # torch.eye has no CPU bfloat16 kernel before PyTorch 2.3, while direct tensor construction does (#4051).
+        expected = torch.tensor(((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)), device=device, dtype=half_dtype)
+        self.assert_close(matrix, expected)
         assert kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion[None]).dtype == half_dtype
 
     def test_unit_quaternion(self, device, dtype, atol, rtol):
