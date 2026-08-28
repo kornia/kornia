@@ -184,10 +184,12 @@ def _server_requested_delay(exc: BaseException) -> float | None:
 
     # ``Retry-After`` is defined for every status that can carry it -- 503 and 408
     # are its canonical uses, not just the rate limits -- so it is read whenever
-    # the host sends one.
+    # the host sends one. A header that does not parse, or whose date has already
+    # passed, is no guidance at all, so it falls through to the branch below
+    # rather than answering ``None`` for the whole function.
     retry_after = headers.get("Retry-After")
-    if retry_after is not None:
-        return _retry_after_seconds(retry_after)
+    if retry_after is not None and (delay := _retry_after_seconds(retry_after)) is not None:
+        return delay
 
     # ``X-RateLimit-Reset`` is different: GitHub attaches it to *every* response,
     # including ones nothing is limiting, and it points at the end of the current
@@ -399,7 +401,7 @@ def _discard_cache_entry(url: str, kwargs: dict[str, Any]) -> str | None:
         # it again would fail the same way, so the ledger is marked either way,
         # but a fallback that can never be reached is worth saying out loud.
         warnings.warn(
-            f"Could not discard the cache entry at {path!r}: {e}. If that file is corrupt, "
+            f"Could not discard the cache entry at {path}: {e}. If that file is corrupt, "
             f"the fallback sources cannot take effect until it is deleted by hand.",
             stacklevel=3,
         )
@@ -449,14 +451,14 @@ def _settle_quarantine(path: str, quarantine: str, *, loaded: bool, downloaded: 
         try:
             os.remove(quarantine)
         except OSError as e:  # pragma: no cover - a cache that cannot be written to
-            warnings.warn(f"Could not remove the discarded cache entry at {quarantine!r}: {e}.", stacklevel=3)
+            warnings.warn(f"Could not remove the discarded cache entry at {quarantine}: {e}.", stacklevel=3)
         return
 
     try:
         os.replace(quarantine, path)  # atomically overwrites whatever a source left there
     except OSError as e:  # pragma: no cover - a cache that cannot be written to
         warnings.warn(
-            f"Could not restore the cache entry at {path!r} from {quarantine!r}: {e}. "
+            f"Could not restore the cache entry at {path} from {quarantine}: {e}. "
             f"Move it back by hand to avoid re-downloading the checkpoint.",
             stacklevel=3,
         )
@@ -608,11 +610,14 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
         The loaded state dict.
 
     Raises:
-        RuntimeError: if every URL fails. The message carries the last
+        RuntimeError: if every URL fails. The message carries the failing
             exception's type and text, the source it came from and the cache path in play, and the
             exception itself is chained; without them a rate limit is
             indistinguishable from a dead link in a CI failure summary, and a
-            caller stuck behind a corrupt entry has no file to delete.
+            caller stuck behind a corrupt entry has no file to delete. Where a
+            load failure set the cache entry aside and the refetch then failed
+            too, the load failure is the one reported and chained, and the
+            refetch failure rides along as context.
 
     Example:
         >>> sd = load_state_dict_from_url([          # doctest: +SKIP
@@ -637,6 +642,7 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     budget = _SleepBudget(_MAX_CALL_SLEEP_SECONDS)
     quarantine: str | None = None
     discarded_url: str | None = None
+    discard_exc: Exception | None = None
     downloaded = False
     last_exc: Exception | None = None
     last_url: str | None = None
@@ -669,7 +675,7 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
                         # fetched; it comes back below if none of them manages that.
                         moved = _discard_cache_entry(u, kwargs)
                         if moved is not None:
-                            quarantine, discarded_url = moved, u
+                            quarantine, discarded_url, discard_exc = moved, u, e
                     if more_sources:
                         warnings.warn(
                             f"Failed to load weights from {u!r}: {e}. Trying next source.",
@@ -697,10 +703,24 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
         if quarantine is not None:
             _settle_quarantine(cache_path, quarantine, loaded=False, downloaded=downloaded)
 
+    # The re-attempt pass runs only when nothing transferred, so if it also failed
+    # without transferring, ``last_exc`` is a refetch failure sitting on top of the
+    # load failure that fired the discard -- and that load failure is the one thing
+    # naming what actually went wrong. Reporting the network instead points the
+    # caller at a checkpoint that is intact and, offline, restored by the ``finally``
+    # above. The refetch failure is still worth stating, as context.
+    refetch_note = ""
+    if re_attempted and not downloaded and discard_exc is not None:
+        refetch_note = (
+            f" (the cache entry was set aside and refetching it from that same source "
+            f"failed too: {type(last_exc).__name__}: {last_exc})"
+        )
+        last_exc, last_url = discard_exc, discarded_url
+
     raise RuntimeError(
         f"Failed to load weights from all {len(urls)} source(s). "
         f"Last URL tried: {last_url!r}. "
-        f"Last error: {type(last_exc).__name__}: {last_exc}. "
+        f"Last error: {type(last_exc).__name__}: {last_exc}{refetch_note}. "
         # Unquoted: the point of naming the path is that it can be pasted into
         # ``rm``/``del``, and ``repr`` doubles every backslash of a Windows path.
         f"Cache path: {cache_path} -- delete it if it is corrupt and this repeats."

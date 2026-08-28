@@ -68,7 +68,13 @@ except AttributeError:
 # directory set to its own folder, hence the path off ``__file__``.
 import torch.hub  # noqa: E402
 
-torch.hub.set_dir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "weights"))
+_weights_cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "weights")
+# Only when there is a restored cache to use and the developer has not pointed
+# torch somewhere themselves: a local ``pixi run build-docs`` in a fresh clone has
+# neither, and redirecting it would re-download all four checkpoints past a warm
+# ``~/.cache/torch/hub``.
+if os.path.isdir(_weights_cache) and not os.environ.get("TORCH_HOME"):
+    torch.hub.set_dir(_weights_cache)
 
 # readthedocs generated the whole documentation in an isolated environment
 # by cloning the git repo. Thus, any on-the-fly operation will not effect

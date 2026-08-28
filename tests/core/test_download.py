@@ -530,6 +530,45 @@ class TestPoisonedCacheEntry:
         assert cached.read_bytes() == before  # and the caller kept its checkpoint
         assert not list(cached.parent.glob("*" + download_mod._QUARANTINE_SUFFIX))
 
+    def test_a_failed_refetch_does_not_hide_the_load_failure(self, monkeypatch, tmp_path) -> None:
+        """The refetch error is context; the failure that fired the discard is the cause.
+
+        The re-attempt pass writes over ``last_exc``, so ``map_location='cuda'`` on
+        a CPU-only build with the network down reported ``URLError`` and told the
+        caller to delete an intact checkpoint -- up to 2.4 GB for ``sam.vit_h`` --
+        while the one exception naming what actually went wrong was gone from both
+        the message and ``__cause__``. Before the re-attempt existed this call
+        raised the load error directly.
+        """
+        monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+
+        def offline(url, dst, hash_prefix=None, progress=True):
+            raise URLError("network is unreachable")
+
+        monkeypatch.setattr(torch.hub, "download_url_to_file", offline)
+
+        cached = tmp_path / "checkpoints" / "model.pth"
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self._GOOD, cached)
+
+        def always_fails(url: str, **kwargs: object) -> dict:
+            raise RuntimeError("Attempting to deserialize object on a CUDA device")
+
+        with patch(self._MOCK_TARGET, side_effect=always_fails):
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                with pytest.raises(RuntimeError) as excinfo:
+                    load_state_dict_from_url(self._PRIMARY)
+
+        message = str(excinfo.value)
+        assert "Last error: RuntimeError: Attempting to deserialize object on a CUDA device" in message
+        assert isinstance(excinfo.value.__cause__, RuntimeError)
+        assert "CUDA device" in str(excinfo.value.__cause__)
+        # The refetch failure is still reported, as context rather than as the cause.
+        assert "URLError" in message
+        assert cached.exists()  # and the file the message points at is the intact one
+
     def test_a_discard_nothing_refetched_is_not_charged_to_the_bound(self, monkeypatch, tmp_path) -> None:
         """The bound counts refetches, so a call that fetched nothing must not spend it.
 
@@ -884,6 +923,29 @@ class TestTransientRetry:
 
         assert len(attempts) == 2
         assert clock.slept == [7.0]
+
+    def test_an_unusable_retry_after_falls_through_to_the_reset_header(self, monkeypatch, tmp_path) -> None:
+        """An unparsable ``Retry-After`` is no guidance, not an answer for the function.
+
+        Returning its ``None`` outright skipped the ``X-RateLimit-Reset`` branch
+        below it, so a rate limit that sent both headers was retried on the 1s/2s
+        guess -- inside the window it had just been told to wait out.
+        """
+        clock = _FakeTime()
+        monkeypatch.setattr(download_mod, "time", clock)
+        headers = {
+            "Retry-After": "garbage",
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": str(int(_FakeTime.NOW) + 40),
+        }
+        attempts = self._cache(monkeypatch, tmp_path, [_http_error(self._URL, 403, headers), None])
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            load_state_dict_from_url(self._URL)
+
+        assert len(attempts) == 2
+        assert clock.slept == [40.0]  # the window the host named, not the guess
 
     def test_retry_after_accepts_an_http_date(self, monkeypatch, tmp_path) -> None:
         clock = _FakeTime()

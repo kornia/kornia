@@ -434,8 +434,8 @@ class TestWeightsPrefetchCoverage:
         assert not unaccounted, (
             f"these modules download weights but no entry in WEIGHT_REGISTRIES reads their "
             f"URLs, so their checkpoints are invisible to every check in this file: "
-            f"{unaccounted}. Add the registry to WEIGHT_REGISTRIES (and _ENUMERATED_MODULES), "
-            f"or to _DOWNLOAD_CALL_ALLOWLIST with the reason it has no registry of its own."
+            f"{unaccounted}. Add the registry to WEIGHT_REGISTRIES, or the module to "
+            f"_DOWNLOAD_CALL_ALLOWLIST with the reason it has no registry of its own."
         )
 
     def test_no_entry_is_both_prefetched_and_exempt(self) -> None:
