@@ -699,7 +699,6 @@ def main():
         "DISK",
         "ALIKED",
         "XFeat",
-        "SANDesc",
     ]
     # ITERATE OVER THE TRANSFORMS
     for fn_name in responses:
@@ -731,15 +730,6 @@ def main():
                 out = K.feature.XFeat._get_kpts_heatmap(K1)
             # upsample heatmap from preprocessed size back to original image size
             out = torch.nn.functional.interpolate(out, img_outdoor.shape[-2:], mode="bilinear", align_corners=False)
-            out = K.color.grayscale_to_rgb(out)
-            img_in = K.color.rgb_to_bgr(img_outdoor)
-        elif fn_name == "SANDesc":
-            # SANDesc has no detector head; visualize the per-pixel descriptor
-            # magnitude (L2 norm over channels) as the response map.
-            fn = K.feature.SANDesc.from_pretrained(load_detector=False)
-            with torch.no_grad():
-                volume = fn.extract_dense_map(img_outdoor, pad_if_not_divisible=True)
-            out = volume.norm(dim=1, keepdim=True)
             out = K.color.grayscale_to_rgb(out)
             img_in = K.color.rgb_to_bgr(img_outdoor)
         else:

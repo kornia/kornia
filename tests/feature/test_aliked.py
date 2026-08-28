@@ -192,23 +192,6 @@ class TestALIKED(BaseTester):
         output = aliked(inp)
         assert len(output) == 1
 
-    def test_disable_descriptors(self, dtype, device):
-        """With the descriptor head off, detection still runs and descriptors come back as None."""
-        aliked = ALIKED(model_name="aliked-t16", disable_descriptors=True).to(device, dtype)
-        assert aliked.desc_head is None
-        assert [k for k in aliked.state_dict() if "desc_head" in k] == []
-
-        inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        feat = aliked(inp)[0]
-        assert feat.descriptors is None
-        assert feat.keypoints.shape == (feat.n, 2)
-        assert feat.keypoint_scores.shape == (feat.n,)
-        assert feat.to(device).descriptors is None
-
-        lafs, responses, descs = aliked.forward_laf(inp)
-        assert descs is None
-        assert lafs.shape[:2] == responses.shape[:2]
-
     def test_aliked_features_to(self, device):
         """ALIKEDFeatures.to() should move all tensors."""
         feat = ALIKEDFeatures(

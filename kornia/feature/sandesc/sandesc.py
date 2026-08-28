@@ -25,40 +25,18 @@ from torch import Tensor, nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import load_state_dict_from_url
-from kornia.feature.aliked import ALIKED
 from kornia.geometry.conversions import normalize_pixel_coordinates
 
 from ._modules import UNetDownBlock, UNetUpBlock
 
-# Descriptor checkpoint, trained to pair with the ALIKED detector. The trailing
-# filename makes Nextcloud name the download, which is also the hub cache filename.
+# Descriptor checkpoint, trained to pair with the ALIKED detector, served from mirrors
+# holding the same file (sha256 0805481bd7b40672ee5fe07343904c45937f4cadc28ff52a01b1dd401d584808).
+# The primary URL's trailing filename is also the hub cache filename; its query string is
+# dropped by the cache-name resolution.
 urls: list[str] = [
+    "https://huggingface.co/mattia-durso/SANDesc/resolve/main/pretrained/sandesc_aliked.pth?download=true",
     "https://cloud.tugraz.at/index.php/s/dBiF999GBMoRg8w/download/sandesc_aliked.pth",
 ]
-
-# ALIKED normalizes keypoints with ``wh = [w-1, h-1]``, i.e. the ``grid_sample``
-# ``align_corners=True`` convention: [-1, 1] maps to the pixel centers 0 and w-1/h-1.
-_ALIGN_CORNERS: bool = True
-
-
-def _build_detector(num_keypoints: int, pretrained: bool) -> nn.Module:
-    """Build the ALIKED keypoint detector SANDesc is paired with, without its descriptor head.
-
-    The variant is the one SANDesc was trained against, ``aliked-n16rot``; its checkpoint is
-    resolved by :meth:`ALIKED.from_pretrained`.
-
-    ALIKED is put in top-k mode (``detection_threshold=0``) so that it returns exactly
-    ``num_keypoints`` keypoints per image; its threshold mode returns a variable count and
-    could not be stacked into the batched output of :meth:`SANDesc.forward`.
-    """
-    kwargs = {
-        "max_num_keypoints": num_keypoints,
-        "detection_threshold": 0.0,
-        "disable_descriptors": True,
-    }
-    if pretrained:
-        return ALIKED.from_pretrained(model_name="aliked-n16rot", **kwargs)
-    return ALIKED(model_name="aliked-n16rot", **kwargs)
 
 
 class SANDesc(nn.Module):
@@ -70,8 +48,6 @@ class SANDesc(nn.Module):
     U-Net-like encoder-decoder enhanced with Convolutional Block Attention Modules and residual paths
     to produce a dense descriptor volume from an input image, which is then sampled at the keypoints.
     The checkpoint returned by :meth:`from_pretrained` is trained to pair with the ALIKED detector.
-
-    .. image:: _static/img/SANDesc.png
 
     .. note::
         :cite:`durso2026sandesc` reports improved matching performance over ALIKED descriptors at
@@ -93,36 +69,17 @@ class SANDesc(nn.Module):
         up_output_channels: Output channels of each up block, 4 elements. The last element is the
             descriptor dimension. Add +1 to the last element to match the DISK unet,
             e.g. ``[64, 64, 64, 128 + 1]``.
-        keypoint_detector: If True, build the ALIKED detector as a submodule so that
-            :meth:`forward` can run the full detect-and-describe pipeline. It is built with its
-            descriptor head disabled, since SANDesc provides the descriptors. If False (default),
-            no detector is built and only :meth:`describe` and :meth:`extract_dense_map` are
-            available.
-        num_keypoints: Number of keypoints :meth:`forward` asks the detector for. ALIKED fixes
-            this at construction time, so it is a constructor argument here; a fixed count is
-            also what makes the batched ``(B, N, ...)`` outputs of :meth:`forward` well defined.
-            Must not exceed :math:`H \times W` of the images it is later run on.
         amp: If True, run :meth:`extract_dense_map` under CUDA automatic mixed precision.
         amp_dtype: Autocast dtype used when ``amp`` is enabled (e.g. ``torch.float16``
             or ``torch.bfloat16``). AMP is scoped to CUDA; it is a no-op on CPU/MPS.
-        keypoint_align_corners: ``align_corners`` convention used by :meth:`describe` to sample
-            the descriptor volume at normalized keypoints. Must match the convention the keypoints
-            were normalized with; the default matches ALIKED. Pass ``False`` for keypoints
-            normalized with half-pixel centers, e.g. kornia DeDoDe's. Can also be overridden per
-            call via ``describe(..., align_corners=...)``.
 
     Example:
-        >>> sandesc = SANDesc().eval()
+        >>> sandesc = SANDesc.from_pretrained()
         >>> images = torch.rand(1, 3, 64, 64)
-        >>> keypoints = torch.rand(1, 10, 2) * 2 - 1
-        >>> descriptors = sandesc.describe(images, keypoints)
+        >>> keypoints = torch.rand(1, 10, 2) * 63  # pixel coordinates [x, y], from any detector
+        >>> descriptors = sandesc(images, keypoints)
         >>> descriptors.shape
         torch.Size([1, 10, 128])
-
-        Detect and describe in one call:
-
-        >>> sandesc = SANDesc.from_pretrained()  # doctest: +SKIP
-        >>> keypoints, scores, descriptors = sandesc(images)  # doctest: +SKIP
 
     """
 
@@ -137,20 +94,12 @@ class SANDesc(nn.Module):
         third_block: bool = False,
         down_output_channels: list[int] | None = None,
         up_output_channels: list[int] | None = None,
-        keypoint_detector: bool = False,
-        num_keypoints: int = 2048,
         amp: bool = False,
         amp_dtype: torch.dtype = torch.bfloat16,
-        keypoint_align_corners: bool = _ALIGN_CORNERS,
     ) -> None:
         super().__init__()
         self.amp = amp
         self.amp_dtype = amp_dtype
-        self.keypoint_align_corners = keypoint_align_corners
-        self.num_keypoints = num_keypoints
-        self.keypoint_detector: nn.Module | None = None
-        if keypoint_detector:
-            self.keypoint_detector = _build_detector(num_keypoints, pretrained=False)
         if down_output_channels is None:
             down_output_channels = [16, 32, 64, 64, 64]
         if up_output_channels is None:
@@ -214,8 +163,6 @@ class SANDesc(nn.Module):
         url: str | list[str] | None = None,
         amp: bool = False,
         amp_dtype: torch.dtype = torch.bfloat16,
-        load_detector: bool = True,
-        num_keypoints: int = 2048,
     ) -> SANDesc:
         """Load the SANDesc descriptor weights trained to pair with the ALIKED detector.
 
@@ -234,12 +181,6 @@ class SANDesc(nn.Module):
                 ``None``, the predefined :data:`urls` are used.
             amp: If True, run :meth:`extract_dense_map` under CUDA automatic mixed precision.
             amp_dtype: Autocast dtype used when ``amp`` is enabled.
-            load_detector: If True (default), also build the ALIKED detector with its own
-                pretrained weights, so that the returned model is ready for :meth:`forward`.
-                Pass False to load the descriptor alone -- it skips the detector checkpoint
-                download, and leaves only :meth:`describe` and :meth:`extract_dense_map` usable.
-            num_keypoints: Number of keypoints the detector is built for, see :class:`SANDesc`.
-                Ignored when ``load_detector`` is False.
 
         Returns:
             The SANDesc model with the pretrained weights loaded, in eval mode.
@@ -247,14 +188,6 @@ class SANDesc(nn.Module):
         if url is None:
             url = urls
 
-        model = cls(
-            skip_connection=True,
-            spatial_attention=True,
-            third_block=True,
-            amp=amp,
-            amp_dtype=amp_dtype,
-            keypoint_align_corners=_ALIGN_CORNERS,
-        )
         checkpoint = load_state_dict_from_url(
             url,
             map_location=torch.device("cpu"),
@@ -262,12 +195,21 @@ class SANDesc(nn.Module):
         )
         # The released checkpoint wraps the weights together with the training config.
         state_dict = checkpoint["state_dict"] if "state_dict" in checkpoint else checkpoint
-        # Loaded before the detector is attached: the checkpoint only holds descriptor weights,
-        # so a registered detector submodule would make this strict load fail on missing keys.
+        # Build the architecture from the checkpoint's own config so a revised checkpoint
+        # loads into the right network; missing keys fall back to the released config.
+        config = checkpoint.get("config", {}).get("model", {})
+        model = cls(
+            ch_in=config.get("unet_ch_in", 3),
+            kernel_size=config.get("unet_kernel_size", 5),
+            activation=config.get("unet_activ", "gelu"),
+            norm=config.get("unet_norm", "batch"),
+            skip_connection=config.get("unet_with_skip_connections", True),
+            spatial_attention=config.get("unet_spatial_attention", True),
+            third_block=config.get("third_block", True),
+            amp=amp,
+            amp_dtype=amp_dtype,
+        )
         model.load_state_dict(state_dict)
-        if load_detector:
-            model.keypoint_detector = _build_detector(num_keypoints, pretrained=True)
-            model.num_keypoints = num_keypoints
         model.eval()
         return model
 
@@ -279,9 +221,7 @@ class SANDesc(nn.Module):
                 range and :math:`C` equal to ``ch_in``. No further normalization is applied.
                 Grayscale inputs are rejected rather than replicated to 3 channels: the pretrained
                 weights were trained on RGB, so the caller decides whether that substitution is
-                acceptable and applies :func:`kornia.color.grayscale_to_rgb` themselves. The
-                bundled ALIKED detector does convert them, so :meth:`forward` still requires the
-                caller to convert first.
+                acceptable and applies :func:`kornia.color.grayscale_to_rgb` themselves.
             pad_if_not_divisible: if True, the non-16 divisible input is zero-padded to the
                 closest 16-multiply and the output is cropped back to the input resolution.
 
@@ -330,110 +270,58 @@ class SANDesc(nn.Module):
 
         return x8[..., :h, :w]
 
-    def describe(
+    def forward(
         self,
         images: Tensor,
-        keypoints: Tensor | None = None,
-        mode: str = "nearest",
+        keypoints: Tensor,
+        mode: str = "bilinear",
         normalize: bool = True,
         pad_if_not_divisible: bool = False,
-        align_corners: bool | None = None,
-    ) -> Tensor:
-        """Describe keypoints in the input images. If keypoints are not provided, returns the dense descriptors.
+        return_volume: bool = False,
+    ) -> Tensor | tuple[Tensor, Tensor]:
+        """Describe keypoints given in pixel coordinates.
 
-        The images are passed through :meth:`extract_dense_map` to obtain a dense descriptor
-        volume, which is then sampled at the keypoints with ``grid_sample``.
+        SANDesc does not bundle a detector: run any keypoint detector and pass its pixel
+        coordinates here. The images are passed through :meth:`extract_dense_map` and the
+        resulting descriptor volume is sampled at the keypoints with ``grid_sample``.
 
         Args:
             images: Input images of shape :math:`(B, C, H, W)`, with values in the :math:`[0, 1]`
                 range and :math:`C` equal to ``ch_in``. No further normalization is applied.
-            keypoints: An optional tensor of shape :math:`(B, N, 2)` containing the detected
-                keypoints, normalized to the :math:`[-1, 1]` range. The normalization convention
-                must match ``align_corners``: kornia ALIKED keypoints use ``align_corners=True``,
-                keypoints normalized with half-pixel centers use ``align_corners=False``.
-            mode: ``grid_sample`` interpolation mode, ``"nearest"`` (default) or
-                ``"bilinear"``.
-            normalize: If True (default), L2-normalize the descriptors.
+            keypoints: Keypoints in pixel coordinates of shape :math:`(B, N, 2)` as ``[x, y]``,
+                e.g. the output of a kornia detector such as ALIKED or DISK. Keypoints outside
+                the image sample the zero padding and come back as zero descriptors.
+            mode: ``grid_sample`` interpolation mode, ``"bilinear"`` (default) or ``"nearest"``.
+            normalize: If True (default), L2-normalize the descriptors after sampling.
             pad_if_not_divisible: if True, the non-16 divisible input is zero-padded to the
-                closest 16-multiply.
-            align_corners: ``grid_sample`` convention to sample ``keypoints`` with. If ``None``
-                (default), uses :attr:`keypoint_align_corners`.
+                closest 16-multiply before the descriptor volume is computed.
+            return_volume: If True, also return the dense descriptor volume of shape
+                :math:`(B, D, H, W)`, L2-normalized over the channel dimension when
+                ``normalize`` is True.
 
         Returns:
-            The descriptors of shape :math:`(B, N, D)`, or the dense descriptor volume of
-            shape :math:`(B, D, H, W)` when ``keypoints`` is None. :math:`D` is the descriptor
-            dimension.
+            The descriptors of shape :math:`(B, N, D)` in the dtype of ``images`` (sampling
+            happens in float32 for half-precision volumes), where :math:`D` is the descriptor
+            dimension. With ``return_volume=True``, a tuple of the descriptors and the dense
+            descriptor volume.
 
         """
-        volume = self.extract_dense_map(images, pad_if_not_divisible=pad_if_not_divisible)
-        if keypoints is None:
-            return F.normalize(volume, p=2, dim=1) if normalize else volume
-
         KORNIA_CHECK_SHAPE(keypoints, ["B", "N", "2"])
-        if align_corners is None:
-            align_corners = self.keypoint_align_corners
+        volume = self.extract_dense_map(images, pad_if_not_divisible=pad_if_not_divisible)
+        height, width = images.shape[-2:]
+        # normalize_pixel_coordinates divides by (side - 1), which is the
+        # ``align_corners=True`` convention grid_sample is called with below.
+        grid = normalize_pixel_coordinates(keypoints, height, width)[:, None]
         # grid_sample does not support half/bfloat16 (autocast) volumes; upcast those to
         # float32 and match the grid dtype to the volume to avoid a dtype mismatch.
         sample_volume = volume.float() if volume.dtype in (torch.float16, torch.bfloat16) else volume
-        grid = keypoints[:, None].to(device=sample_volume.device, dtype=sample_volume.dtype)
-        sampled = F.grid_sample(sample_volume, grid, mode=mode, align_corners=align_corners)
+        grid = grid.to(device=sample_volume.device, dtype=sample_volume.dtype)
+        sampled = F.grid_sample(sample_volume, grid, mode=mode, align_corners=True)
         descriptors = sampled[:, :, 0].mT  # B,N,des_dim
-        return F.normalize(descriptors, p=2, dim=-1) if normalize else descriptors
-
-    def forward(
-        self,
-        images: Tensor,
-        mode: str = "nearest",
-        normalize: bool = True,
-        pad_if_not_divisible: bool = False,
-    ) -> tuple[Tensor, Tensor, Tensor]:
-        """Detect keypoints with ALIKED and describe them with SANDesc.
-
-        Requires the model to have been built with ``keypoint_detector=True`` (or loaded via
-        ``from_pretrained(load_detector=True)``). The detector runs with its own descriptor head
-        disabled, so the descriptors returned here always come from SANDesc.
-
-        Both models receive the raw ``[0, 1]`` images: each applies its own normalization and
-        padding internally, so no preprocessed tensor is shared between them.
-
-        .. note::
-            To pair SANDesc with a detector it does not build itself, run that detector and pass
-            its normalized keypoints to :meth:`describe`.
-
-        Args:
-            images: Input images of shape :math:`(B, C, H, W)`, with values in the :math:`[0, 1]`
-                range and :math:`C` equal to ``ch_in``.
-            mode: ``grid_sample`` interpolation mode, ``"nearest"`` (default) or ``"bilinear"``.
-            normalize: If True (default), L2-normalize the descriptors.
-            pad_if_not_divisible: if True, the non-16 divisible input is zero-padded to the
-                closest 16-multiply before the descriptor volume is computed.
-
-        Returns:
-            A tuple of keypoints in pixel coordinates :math:`(B, N, 2)` as ``[x, y]``, their
-            detection scores :math:`(B, N)`, and the descriptors :math:`(B, N, D)`.
-
-        """
-        if self.keypoint_detector is None:
-            raise RuntimeError(
-                "SANDesc has no keypoint detector. Build it with "
-                "SANDesc(keypoint_detector=True), or with "
-                "SANDesc.from_pretrained(load_detector=True)."
-            )
-        height, width = images.shape[-2:]
-        if self.num_keypoints > height * width:
-            raise ValueError(
-                f"num_keypoints={self.num_keypoints} exceeds the {height * width} pixels of a "
-                f"{height}x{width} image; the detector cannot return that many keypoints."
-            )
-        features = self.keypoint_detector(images)
-        keypoints_px = torch.stack([f.keypoints for f in features])
-        scores = torch.stack([f.keypoint_scores for f in features])
-        keypoints = normalize_pixel_coordinates(keypoints_px, height, width)
-        descriptors = self.describe(
-            images,
-            keypoints,
-            mode=mode,
-            normalize=normalize,
-            pad_if_not_divisible=pad_if_not_divisible,
-        )
-        return keypoints_px, scores, descriptors
+        if normalize:
+            descriptors = F.normalize(descriptors, p=2, dim=-1)
+        if return_volume:
+            # the descriptor dimension of the (B, D, H, W) volume is dim=1
+            volume = F.normalize(volume, p=2, dim=1) if normalize else volume
+            return descriptors.to(images.dtype), volume.to(images.dtype)
+        return descriptors.to(images.dtype)
