@@ -74,7 +74,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`RgbToYuv420` said `2x1x2x3` for a `(2, 2, 2, 3)` chroma plane). Every example in `kornia/color/yuv.py` now
   asserts its output shape as a doctest instead of stating it in a comment. The 4:2:2 docstrings also claimed
   the input only had to be divisible by 2 "vertical" while the guard rejects odd height *and* odd width, so a
-  reader padding one axis hit a `ShapeError`. No runtime behavior changed.
+  reader padding one axis hit a `ShapeError`, and `yuv422_to_rgb` labelled its chroma argument "UV (luma)".
+  The four `ShapeError` messages those guards raise said "evenly disible by 2" and now say "divisible"; no
+  other runtime behavior changed.
 
 
 ## :rocket: [0.6.11] - 2022-03-28

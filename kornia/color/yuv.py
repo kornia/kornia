@@ -96,7 +96,7 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
 
@@ -136,7 +136,7 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
 
@@ -210,7 +210,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(imageuv, ["*", "2", "H", "W"])
 
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
+        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {imagey.shape}")
 
     if (
         len(imageuv.shape) < 2
@@ -243,9 +243,15 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    .. warning::
+        Only the chroma *width* is validated against the luma plane. A chroma plane of the
+        wrong height escapes the ``ShapeError`` below and surfaces as a bare ``RuntimeError``
+        from ``torch.cat``, where :func:`~kornia.color.yuv420_to_rgb` checks both. Tracked in
+        `#4050 <https://github.com/kornia/kornia/issues/4050>`_.
+
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
-        imageuv: UV (luma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
+        imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
 
     Returns:
         RGB version of the image with shape :math:`(*, 3, H, W)`.
@@ -261,7 +267,7 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_SHAPE(imageuv, ["*", "2", "H", "W"])
 
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
+        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {imagey.shape}")
 
     if len(imageuv.shape) < 2 or len(imagey.shape) < 2 or imagey.shape[-1] / imageuv.shape[-1] != 2:
         raise ShapeError(
