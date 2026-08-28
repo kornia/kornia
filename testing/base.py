@@ -201,14 +201,18 @@ class BaseTester:
         requires_grad = requires_grad if len(requires_grad) > 0 else [True] * len(inputs)
         dtypes = dtypes if len(dtypes) > 0 else [torch.float64] * len(inputs)
 
-        # MPS does not support float64; gradcheck requires float64, so skip on MPS
+        # gradcheck requires float64. MPS does not support it at all, and XLA lowers a float64
+        # request to float32, where gradcheck's default eps=1e-6 makes the numerical Jacobian
+        # invalid. The name-based marker in conftest.py covers tests *called* ``*gradcheck*``,
+        # including every caller that imports ``torch.autograd.gradcheck`` directly; this guard
+        # covers the callers of this method named something else (``test_grad_zca_with_fit``).
         _all_inputs = (
             [inputs]
             if isinstance(inputs, torch.Tensor)
             else list(inputs.values() if isinstance(inputs, dict) else inputs)
         )
-        if any(isinstance(t, torch.Tensor) and t.device.type == "mps" for t in _all_inputs):
-            pytest.skip("gradcheck requires float64 which is not supported on MPS")
+        if any(isinstance(t, torch.Tensor) and (t.device.type == "mps" or "xla" in t.device.type) for t in _all_inputs):
+            pytest.skip("gradcheck requires float64, which this device does not compute in")
 
         if isinstance(inputs, torch.Tensor):
             inputs = tensor_to_gradcheck_var(inputs)

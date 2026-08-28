@@ -48,7 +48,8 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = rgb_to_yuv(input)  # 2x3x4x5
+        >>> rgb_to_yuv(input).shape
+        torch.Size([2, 3, 4, 5])
 
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
@@ -87,13 +88,15 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
-        >>> output = rgb_to_yuv420(input)  # (2x1x4x6, 2x2x2x3)
+        >>> y, uv = rgb_to_yuv420(input)
+        >>> y.shape, uv.shape
+        (torch.Size([2, 1, 4, 6]), torch.Size([2, 2, 2, 3]))
 
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
 
@@ -106,7 +109,7 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert an RGB image to YUV 422 (subsampled).
 
-    Input need to be padded to be evenly divisible by 2 vertical.
+    Input need to be padded to be evenly divisible by 2 horizontal and vertical.
 
     The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of
     :math:`(0, 1)` to luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`,
@@ -125,13 +128,15 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
-        >>> output = rgb_to_yuv420(input)  # (2x1x4x6, 2x1x4x3)
+        >>> y, uv = rgb_to_yuv422(input)
+        >>> y.shape, uv.shape
+        (torch.Size([2, 1, 4, 6]), torch.Size([2, 2, 4, 3]))
 
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
 
@@ -148,6 +153,14 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    .. warning::
+        This is not an exact inverse of :func:`~kornia.color.rgb_to_yuv`. The two kernels are
+        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
+        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
+        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
+        measures 5.86e-3 in ``bfloat16``. Tracked in
+        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
+
     Args:
         image: YUV Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
@@ -156,7 +169,8 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = yuv_to_rgb(input)  # 2x3x4x5
+        >>> yuv_to_rgb(input).shape
+        torch.Size([2, 3, 4, 5])
 
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
@@ -186,6 +200,14 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    .. warning::
+        This is not an exact inverse of :func:`~kornia.color.rgb_to_yuv420`. The two kernels are
+        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
+        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
+        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
+        measures 5.86e-3 in ``bfloat16``. Tracked in
+        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
+
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
         imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H/2, W/2)`.
@@ -196,14 +218,15 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     Example:
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 2, 3)
-        >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x6
+        >>> yuv420_to_rgb(inputy, inputuv).shape
+        torch.Size([2, 3, 4, 6])
 
     """
     KORNIA_CHECK_SHAPE(imagey, ["*", "1", "H", "W"])
     KORNIA_CHECK_SHAPE(imageuv, ["*", "2", "H", "W"])
 
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
+        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {imagey.shape}")
 
     if (
         len(imageuv.shape) < 2
@@ -227,7 +250,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     r"""Convert an YUV422 image to RGB.
 
-    Input need to be padded to be evenly divisible by 2 vertical.
+    Input need to be padded to be evenly divisible by 2 horizontal and vertical.
 
     The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
     :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
@@ -236,24 +259,39 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    .. warning::
+        This is not an exact inverse of :func:`~kornia.color.rgb_to_yuv422`. The two kernels are
+        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
+        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
+        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
+        measures 5.86e-3 in ``bfloat16``. Tracked in
+        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
+
+    .. warning::
+        Only the chroma *width* is validated against the luma plane. A chroma plane of the
+        wrong height escapes the ``ShapeError`` below and surfaces as a bare ``RuntimeError``
+        from ``torch.cat``, where :func:`~kornia.color.yuv420_to_rgb` checks both. Tracked in
+        `#4050 <https://github.com/kornia/kornia/issues/4050>`_.
+
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
-        imageuv: UV (luma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
+        imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
 
     Returns:
         RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> inputy = torch.rand(2, 1, 4, 6)
-        >>> inputuv = torch.rand(2, 2, 2, 3)
-        >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x5
+        >>> inputuv = torch.rand(2, 2, 4, 3)
+        >>> yuv422_to_rgb(inputy, inputuv).shape
+        torch.Size([2, 3, 4, 6])
 
     """
     KORNIA_CHECK_SHAPE(imagey, ["*", "1", "H", "W"])
     KORNIA_CHECK_SHAPE(imageuv, ["*", "2", "H", "W"])
 
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
-        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
+        raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {imagey.shape}")
 
     if len(imageuv.shape) < 2 or len(imagey.shape) < 2 or imagey.shape[-1] / imageuv.shape[-1] != 2:
         raise ShapeError(
@@ -285,7 +323,8 @@ class RgbToYuv(nn.Module):
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> yuv = RgbToYuv()
-        >>> output = yuv(input)  # 2x3x4x5
+        >>> yuv(input).shape
+        torch.Size([2, 3, 4, 5])
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
@@ -312,7 +351,7 @@ class RgbToYuv(nn.Module):
 class RgbToYuv420(nn.Module):
     r"""Convert an image from RGB to YUV420.
 
-    Width and Height evenly divisible by 2.
+    Width and Height must be evenly divisible by 2.
 
     The image data is assumed to be in the range of :math:`(0, 1)`.
 
@@ -330,7 +369,9 @@ class RgbToYuv420(nn.Module):
     Examples:
         >>> yuvinput = torch.rand(2, 3, 4, 6)
         >>> yuv = RgbToYuv420()
-        >>> output = yuv(yuvinput)  # # (2x1x4x6, 2x1x2x3)
+        >>> y, uv = yuv(yuvinput)
+        >>> y.shape, uv.shape
+        (torch.Size([2, 1, 4, 6]), torch.Size([2, 2, 2, 3]))
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
@@ -359,7 +400,7 @@ class RgbToYuv420(nn.Module):
 class RgbToYuv422(nn.Module):
     r"""Convert an image from RGB to YUV422.
 
-    Width must be evenly disvisible by 2.
+    Width and Height must be evenly divisible by 2.
 
     The image data is assumed to be in the range of :math:`(0, 1)`.
 
@@ -377,7 +418,9 @@ class RgbToYuv422(nn.Module):
     Examples:
         >>> yuvinput = torch.rand(2, 3, 4, 6)
         >>> yuv = RgbToYuv422()
-        >>> output = yuv(yuvinput)  # # (2x1x4x6, 2x2x4x3)
+        >>> y, uv = yuv(yuvinput)
+        >>> y.shape, uv.shape
+        (torch.Size([2, 1, 4, 6]), torch.Size([2, 2, 4, 3]))
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
@@ -413,6 +456,14 @@ class YuvToRgb(nn.Module):
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    .. warning::
+        This is not an exact inverse of :class:`~kornia.color.RgbToYuv`. The two kernels are
+        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
+        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
+        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
+        measures 5.86e-3 in ``bfloat16``. Tracked in
+        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
+
     Returns:
         RGB version of the image.
 
@@ -423,7 +474,8 @@ class YuvToRgb(nn.Module):
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = YuvToRgb()
-        >>> output = rgb(input)  # 2x3x4x5
+        >>> rgb(input).shape
+        torch.Size([2, 3, 4, 5])
 
     """
 
@@ -456,6 +508,14 @@ class Yuv420ToRgb(nn.Module):
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    .. warning::
+        This is not an exact inverse of :class:`~kornia.color.RgbToYuv420`. The two kernels are
+        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
+        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
+        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
+        measures 5.86e-3 in ``bfloat16``. Tracked in
+        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
+
     Returns:
         RGB version of the image.
 
@@ -468,7 +528,8 @@ class Yuv420ToRgb(nn.Module):
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 2, 3)
         >>> rgb = Yuv420ToRgb()
-        >>> output = rgb(inputy, inputuv)  # 2x3x4x6
+        >>> rgb(inputy, inputuv).shape
+        torch.Size([2, 3, 4, 6])
 
     """
 
@@ -493,7 +554,7 @@ class Yuv420ToRgb(nn.Module):
 class Yuv422ToRgb(nn.Module):
     r"""Convert an image from YUV to RGB.
 
-    Width must be evenly divisible by 2.
+    Width and Height must be evenly divisible by 2.
 
     The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
     :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
@@ -501,6 +562,20 @@ class Yuv422ToRgb(nn.Module):
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
+
+    .. warning::
+        This is not an exact inverse of :class:`~kornia.color.RgbToYuv422`. The two kernels are
+        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
+        ``rgb = (1, 1, 0)``) even in float64. That figure is the systematic kernel mismatch alone;
+        ``float16`` and ``bfloat16`` add their own representation error, which at that corner
+        measures 5.86e-3 in ``bfloat16``. Tracked in
+        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
+
+    .. warning::
+        Only the chroma *width* is validated against the luma plane. A chroma plane of the
+        wrong height escapes the ``ShapeError`` and surfaces as a bare ``RuntimeError`` from
+        ``torch.cat``, where :class:`~kornia.color.Yuv420ToRgb` checks both. Tracked in
+        `#4050 <https://github.com/kornia/kornia/issues/4050>`_.
 
     Returns:
         RGB version of the image.
@@ -514,7 +589,8 @@ class Yuv422ToRgb(nn.Module):
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 4, 3)
         >>> rgb = Yuv422ToRgb()
-        >>> output = rgb(inputy, inputuv)  # 2x3x4x6
+        >>> rgb(inputy, inputuv).shape
+        torch.Size([2, 3, 4, 6])
 
     """
 
