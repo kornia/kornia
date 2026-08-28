@@ -635,6 +635,117 @@ class TestPoisonedCacheEntry:
         assert transfers == [self._FALLBACK, self._PRIMARY]
         assert not list(cached.parent.glob("*" + download_mod._QUARANTINE_SUFFIX))
 
+    def test_a_sources_own_bad_download_is_not_left_behind(self, monkeypatch, tmp_path) -> None:
+        """A call must not leave a poisoned entry where it found none.
+
+        Cold cache, the primary rate limited into serving an HTML page with a
+        200, the mirror offline. Quarantining the page -- bytes this very source
+        had just written -- meant :func:`_settle_quarantine` put it back, so the
+        call ended with an entry it had created and the one allowed discard
+        already spent on it: if the primary recovered while the mirror stayed
+        dead, every later call in the process short-circuited on the page and
+        failed. There was nothing on disk to protect, so there is nothing to move
+        aside.
+        """
+        monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+        healthy = False
+
+        def fake_download(url, dst, hash_prefix=None, progress=True):
+            if url == self._FALLBACK:
+                raise URLError("network is unreachable")
+            if healthy:
+                torch.save(self._GOOD, dst)
+            else:
+                with open(dst, "wb") as f:
+                    f.write(b"<html>429 Too Many Requests</html>")
+
+        monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+        cached = tmp_path / "checkpoints" / "model.pth"
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError):
+                load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+
+        assert not cached.exists()
+        assert not list(cached.parent.glob("*" + download_mod._QUARANTINE_SUFFIX))
+        # And the bound is unspent, since nothing was refetched to pay for it.
+        assert not download_mod._DISCARDED_CACHE_PATHS
+
+        # So the primary recovering is enough, with the mirror still dead.
+        healthy = True
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            assert "weight" in load_state_dict_from_url([self._PRIMARY, self._FALLBACK])
+
+    def test_a_cold_cache_load_side_failure_stays_bounded(self, monkeypatch, tmp_path) -> None:
+        """Dropping every failed download unbounds the transfers it was meant to bound.
+
+        On a cold cache a caller-side failure -- ``map_location='cuda'`` on a
+        CPU-only build -- rejects a *healthy* file the source just fetched, and no
+        exception type separates that from a corrupt one. Deleting whatever a
+        source wrote would make every later call fetch it again to fail
+        identically: 3 transfers over the three calls below rather than 2, and 6
+        rather than 3 for a two-source list, once per test that builds the model,
+        on checkpoints of up to 2.4 GB. After the last source the bytes stay, so
+        the count is bounded per process however often the call is repeated.
+        """
+        transfers = self._cache(monkeypatch, tmp_path, bad_urls=set())
+        cached = tmp_path / "checkpoints" / "model.pth"
+
+        def always_fails(url: str, **kwargs: object) -> dict:
+            raise RuntimeError("Attempting to deserialize object on a CUDA device")
+
+        with patch(self._MOCK_TARGET, side_effect=always_fails):
+            with warnings.catch_warnings(record=True):
+                warnings.simplefilter("always")
+                for _ in range(3):
+                    with pytest.raises(RuntimeError):
+                        load_state_dict_from_url(self._PRIMARY)
+
+        # The first call's transfer, then the one discard this path is allowed.
+        assert transfers == [self._PRIMARY, self._PRIMARY]
+        assert cached.exists()
+
+    def test_a_single_sources_own_bad_download_is_still_discardable(self, monkeypatch, tmp_path) -> None:
+        """Twenty-four checkpoints have no mirror, so the recovery has to work there too.
+
+        Bytes the last source wrote are kept, but they must not cost the path its
+        discard: quarantining them spent the bound on an entry the call had just
+        created, and the process could then never clear it. Nothing is spent, so
+        the source recovering is enough.
+        """
+        monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
+        healthy = False
+        transfers: list[str] = []
+
+        def fake_download(url, dst, hash_prefix=None, progress=True):
+            transfers.append(url)
+            if healthy:
+                torch.save(self._GOOD, dst)
+            else:
+                with open(dst, "wb") as f:
+                    f.write(b"<html>429 Too Many Requests</html>")
+
+        monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+        cached = tmp_path / "checkpoints" / "model.pth"
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError):
+                load_state_dict_from_url(self._PRIMARY)
+
+            assert cached.read_bytes().startswith(b"<html>")
+            assert not download_mod._DISCARDED_CACHE_PATHS
+
+            # The rate limit lifts; the same process must be able to recover.
+            healthy = True
+            assert "weight" in load_state_dict_from_url(self._PRIMARY)
+
+        # The poisoned write, then the one refetch this path is allowed.
+        assert transfers == [self._PRIMARY, self._PRIMARY]
+
     def test_explicit_file_name_none_still_shares_one_cache_path(self, monkeypatch, tmp_path) -> None:
         """``file_name=None`` must mean the same thing as omitting it.
 
@@ -658,11 +769,16 @@ class TestPoisonedCacheEntry:
 
     def test_unremovable_entry_is_reported(self, monkeypatch, tmp_path) -> None:
         """A cache the process cannot write to locks the fallback out silently."""
-        self._cache(monkeypatch, tmp_path, bad_urls={self._PRIMARY})
+        self._cache(monkeypatch, tmp_path, bad_urls=set())
+        # A *pre-existing* poisoned entry: only those are moved aside, and only a
+        # rename that fails leaves the fallback unreachable.
+        cached_path = tmp_path / "checkpoints" / "model.pth"
+        cached_path.parent.mkdir(parents=True, exist_ok=True)
+        cached_path.write_bytes(b"<html>429 Too Many Requests</html>")
 
         # ``download_mod.os`` *is* the os module, so delegate everything that is
         # not this cache entry rather than break renaming process-wide.
-        cached = str(tmp_path / "checkpoints" / "model.pth")
+        cached = str(cached_path)
         real_replace = os.replace
 
         def refuse(src: str, dst: str) -> None:
@@ -937,7 +1053,8 @@ class TestFailureMessageCarriesCause:
         assert "Failed to load weights from all 2 source" in message
         assert "HTTPError" in message
         assert "429" in message
-        # And the cache path, so a caller stuck behind a corrupt entry knows what to delete.
-        assert str(tmp_path) in message and "m.pth" in message
+        # And the cache path, verbatim, so a caller stuck behind a corrupt entry can
+        # paste it into ``rm``/``del`` -- which a repr-escaped Windows path is not.
+        assert os.path.join(str(tmp_path), "checkpoints", "m.pth") in message
         # The original exception stays chained for a full traceback.
         assert isinstance(excinfo.value.__cause__, HTTPError)

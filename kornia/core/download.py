@@ -465,6 +465,36 @@ def _settle_quarantine(path: str, quarantine: str, *, loaded: bool, downloaded: 
         _DISCARDED_CACHE_PATHS.discard(path)
 
 
+def _drop_failed_download(path: str) -> None:
+    """Delete bytes the current source transferred and then failed to load.
+
+    Nothing is quarantined here: the file did not exist before this source wrote
+    it -- :func:`_prefetch_to_cache` only transfers into an empty path -- so there
+    is no earlier state to preserve and nothing to weigh it against. Setting it
+    aside instead would put it *back* in :func:`_settle_quarantine`, leaving the
+    caller a poisoned entry where the call found none, with the one allowed
+    discard spent on it, so no later call in the process could clear it. Deleting
+    returns the path to the state the call found, which is also the empty path the
+    next source needs in order to be fetched at all.
+
+    Only called while a later source remains; see :func:`load_state_dict_from_url`
+    for why the final source keeps what it wrote.
+
+    Args:
+        path: the cache path this source just wrote.
+    """
+    try:
+        os.remove(path)
+    except FileNotFoundError:  # pragma: no cover - torch removed it itself
+        pass
+    except OSError as e:  # pragma: no cover - a cache that cannot be written to
+        warnings.warn(
+            f"Could not remove the failed download at {path}: {e}. "
+            f"Delete it by hand if the fallback sources stop taking effect.",
+            stacklevel=3,
+        )
+
+
 def _prefetch_with_retry(url: str, kwargs: dict[str, Any], budget: _SleepBudget) -> bool:
     """Run :func:`_prefetch_to_cache`, retrying transient failures with backoff.
 
@@ -549,6 +579,16 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     path is refetched at most once per process this way; see
     :func:`_discard_cache_entry` and :func:`_settle_quarantine`.
 
+    Only an entry that *predates* the call is ever quarantined. Bytes a source
+    transferred itself and then could not load are not something the caller had,
+    so there is nothing to make reversible: they are deleted outright while a
+    later source remains, which is what hands that source an empty path to fetch
+    into (see :func:`_drop_failed_download`). After the last source they are left
+    where they are -- deleting them would make every later call in the process
+    transfer the file again, unbounded and up to 2.4 GB a time, to fail in the
+    same way -- but no discard is spent on them either, so the next call can still
+    move them aside and reach the sources behind them.
+
     Each URL is attempted up to :data:`_MAX_ATTEMPTS` times, with exponential
     backoff, when it fails with a transient network condition such as an HTTP
     429. Unauthenticated CI matrices trip the rate limits of huggingface.co and
@@ -605,19 +645,32 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     try:
         while True:
             for i, u in enumerate(sources):
+                fetched = False
+                more_sources = i < len(sources) - 1
                 try:
                     # Populate the cache ourselves so torch's stdout line is never reached.
-                    downloaded |= _prefetch_with_retry(u, kwargs, budget)
+                    fetched = _prefetch_with_retry(u, kwargs, budget)
+                    downloaded |= fetched
                     state_dict = torch.hub.load_state_dict_from_url(u, **kwargs)
                 except Exception as e:  # noqa: BLE001
                     last_exc, last_url = e, u
-                    # Whatever is in the cache is not loadable, and every remaining
-                    # URL shares its path. Move it aside so the next source is really
-                    # fetched; it comes back below if none of them manages that.
-                    moved = _discard_cache_entry(u, kwargs)
-                    if moved is not None:
-                        quarantine, discarded_url = moved, u
-                    if i < len(sources) - 1:
+                    if fetched:
+                        # These bytes are this source's own transfer, not an entry
+                        # the call found, so there is nothing to preserve and the
+                        # quarantine -- which exists to make a discard reversible --
+                        # does not apply. Drop them when a later source can use the
+                        # emptied path; otherwise leave them, and leave the bound
+                        # unspent so a later call can still discard them.
+                        if more_sources:
+                            _drop_failed_download(cache_path)
+                    else:
+                        # Whatever is in the cache is not loadable, and every remaining
+                        # URL shares its path. Move it aside so the next source is really
+                        # fetched; it comes back below if none of them manages that.
+                        moved = _discard_cache_entry(u, kwargs)
+                        if moved is not None:
+                            quarantine, discarded_url = moved, u
+                    if more_sources:
                         warnings.warn(
                             f"Failed to load weights from {u!r}: {e}. Trying next source.",
                             stacklevel=2,
@@ -648,5 +701,7 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
         f"Failed to load weights from all {len(urls)} source(s). "
         f"Last URL tried: {last_url!r}. "
         f"Last error: {type(last_exc).__name__}: {last_exc}. "
-        f"Cache path: {cache_path!r} -- delete it if it is corrupt and this repeats."
+        # Unquoted: the point of naming the path is that it can be pasted into
+        # ``rm``/``del``, and ``repr`` doubles every backslash of a Windows path.
+        f"Cache path: {cache_path} -- delete it if it is corrupt and this repeats."
     ) from last_exc
