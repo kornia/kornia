@@ -31,9 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   than the inverse of the rounded forward kernel kornia actually ships, and one of its literals — `2.029`, where the
   inverse of kornia's forward kernel is `2.03199968` — carried most of the error. `yuv_to_rgb` output therefore moves
   by up to `1.23e-4` in R, `9.13e-4` in G and `1.60e-3` in B over the documented YUV domain, and `yuv420_to_rgb` and
-  `yuv422_to_rgb` move with it. The forward direction (`rgb_to_yuv`, `rgb_to_yuv420`, `rgb_to_yuv422`) is unchanged,
-  and so is the agreement of the inverse with the standard's own relations, which improves from `1.54e-3` to
-  `5.24e-4`. The `.. warning::` blocks that documented the defect on the six affected functions and classes are gone.
+  `yuv422_to_rgb` move with it. The forward direction (`rgb_to_yuv`, `rgb_to_yuv420`, `rgb_to_yuv422`) is unchanged.
+  Agreement of the inverse with the standard's own relations improves overall, from `1.54e-3` to `5.24e-4`, though R
+  alone moves the other way (`1.54e-4` to `2.77e-4`). The `.. warning::` blocks that documented the defect on the six
+  affected functions and classes are gone.
 
 * Fix the inverted `SigLip2` attention-mask polarity, so every call that passes an `attention_mask` changes (#4043).
   All three mask branches of `SigLip2Attention` (2-D `(B, N)`, 3-D `(B, N, N)` and 4-D `(B, 1, N, N)`) negated the
@@ -86,13 +87,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the input only had to be divisible by 2 "vertical" while the guard rejects odd height *and* odd width, so a
   reader padding one axis hit a `ShapeError`, and `yuv422_to_rgb` labelled its chroma argument "UV (luma)".
   The four `ShapeError` messages those guards raise said "evenly disible by 2" and now say "divisible", as do
-  the two identical messages in `kornia/color/raw.py`. Every YUV-to-RGB form -- the three functions and the
-  three `nn.Module` classes -- also gained a `.. warning::` naming a known defect: the round trip through
-  `rgb_to_yuv` loses up to 1.356e-3 in float64 because the two kernels are rounded separately rather than
-  inverted, with `float16` and `bfloat16` adding their own representation error on top (#4044); and
-  `yuv422_to_rgb`/`Yuv422ToRgb` validate only the chroma *width*, so a wrong chroma height surfaces as a bare
-  `RuntimeError` from `torch.cat` (#4050). On the test side, both gradcheck skips now cover the XLA/TPU
-  fixture as well as MPS, since XLA lowers a float64 request to float32, where gradcheck's default `eps=1e-6`
+  the two identical messages in `kornia/color/raw.py`. `yuv422_to_rgb`/`Yuv422ToRgb` also gained a
+  `.. warning::` naming a known defect: they validate only the chroma *width*, so a wrong chroma height
+  surfaces as a bare `RuntimeError` from `torch.cat` (#4050). The same entry gave every YUV-to-RGB form a
+  second warning, for the round trip that #4044 has since fixed; those blocks are gone, see the entry
+  above. On the test side, both gradcheck skips now cover the XLA/TPU fixture as well as MPS, since XLA
+  lowers a float64 request to float32, where gradcheck's default `eps=1e-6`
   makes the numerical Jacobian invalid: the name-based marker in `conftest.py` for tests called `*gradcheck*`,
   and the device guard in `BaseTester.gradcheck` for the six callers named something else. No runtime
   behavior changed.
