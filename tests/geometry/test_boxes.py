@@ -36,9 +36,9 @@ class TestBoxes2D(BaseTester):
         self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
-    def test_convention_from_tensor_and_to_tensor_round_trip_in_each_mode(self, mode, device, dtype):
-        # Convention pin: each documented mode round-trips in itself. The source
-        # values describe the same asymmetric box with exclusive extent (4, 2).
+    def test_convention_axis_aligned_box_round_trips_in_each_mode(self, mode, device, dtype):
+        # Convention pin: an axis-aligned rectangle round-trips in each mode. The
+        # source values describe the same asymmetric box with exclusive extent (4, 2).
         source_by_mode = {
             "xyxy": [1.0, 2.0, 5.0, 4.0],
             "xyxy_plus": [1.0, 2.0, 4.0, 3.0],
@@ -51,11 +51,10 @@ class TestBoxes2D(BaseTester):
         self.assert_close(output, source, atol=0.0, rtol=0.0)
 
     def test_wart_get_boxes_shape_uses_inclusive_extent_3934(self, device, dtype):
-        # Wart pin for kornia#3934: the internal vertices are inclusive, so an
-        # exclusive xyxy box [1, 2, 5, 4] reports (height, width) = (2, 4).
-        heights, widths = Boxes.from_tensor(
-            torch.tensor([[1.0, 2.0, 5.0, 4.0]], device=device, dtype=dtype), mode="xyxy"
-        ).get_boxes_shape()
+        # Wart pin for kornia#3934: raw inclusive vertices spanning x=1..4 and
+        # y=2..3 report (height, width) = (2, 4) because both axes add one.
+        vertices = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        heights, widths = Boxes(vertices).get_boxes_shape()
         self.assert_close(heights, torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(widths, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
@@ -72,29 +71,38 @@ class TestBoxes2D(BaseTester):
     def test_wart_constructor_and_from_tensor_have_different_integer_policies_4012(self):
         # Wart pin for kornia#4012: the constructor rejects integer coordinates,
         # while from_tensor silently casts them to float32.
-        coordinates = torch.tensor([[1, 2, 5, 4]])
+        vertices = torch.tensor([[[1, 2], [4, 2], [4, 3], [1, 3]]])
         with pytest.raises(ValueError, match="floating point"):
-            Boxes(coordinates)
+            Boxes(vertices)
+        coordinates = torch.tensor([[1, 2, 5, 4]])
         assert Boxes.from_tensor(coordinates, mode="xyxy").dtype == torch.float32
 
     def test_convention_merge_concatenates_batched_boxes_without_mutating_by_default(self, device, dtype):
         first = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype))
         second = Boxes.from_tensor(torch.tensor([[[6.0, 3.0, 9.0, 8.0]]], device=device, dtype=dtype))
+        first_before = first.data.clone()
+        second_before = second.data.clone()
         merged = first.merge(second)
         assert merged is not first
         assert merged.data.shape == (1, 2, 4, 2)
-        self.assert_close(merged.data[:, 0], first.data[:, 0], atol=0.0, rtol=0.0)
-        self.assert_close(merged.data[:, 1], second.data[:, 0], atol=0.0, rtol=0.0)
+        self.assert_close(merged.data[:, 0], first_before[:, 0], atol=0.0, rtol=0.0)
+        self.assert_close(merged.data[:, 1], second_before[:, 0], atol=0.0, rtol=0.0)
+        self.assert_close(first.data, first_before, atol=0.0, rtol=0.0)
+        self.assert_close(second.data, second_before, atol=0.0, rtol=0.0)
 
     def test_convention_index_put_replaces_coordinates_without_mutating_by_default(self, device, dtype):
         boxes = Boxes.from_tensor(
             torch.tensor([[[1.0, 2.0, 5.0, 4.0], [6.0, 3.0, 9.0, 8.0]]], device=device, dtype=dtype)
         )
         replacement = Boxes.from_tensor(torch.tensor([[10.0, 20.0, 14.0, 23.0]], device=device, dtype=dtype))
+        boxes_before = boxes.data.clone()
+        replacement_before = replacement.data.clone()
         updated = boxes.index_put((torch.tensor([0], device=device), torch.tensor([1], device=device)), replacement)
         assert updated is not boxes
-        self.assert_close(updated.data[:, 0], boxes.data[:, 0], atol=0.0, rtol=0.0)
-        self.assert_close(updated.data[:, 1], replacement.data, atol=0.0, rtol=0.0)
+        self.assert_close(updated.data[:, 0], boxes_before[:, 0], atol=0.0, rtol=0.0)
+        self.assert_close(updated.data[:, 1], replacement_before, atol=0.0, rtol=0.0)
+        self.assert_close(boxes.data, boxes_before, atol=0.0, rtol=0.0)
+        self.assert_close(replacement.data, replacement_before, atol=0.0, rtol=0.0)
 
     def test_smoke(self, device, dtype):
         def _create_tensor_box():

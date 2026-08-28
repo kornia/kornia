@@ -31,6 +31,22 @@ from testing.base import BaseTester
 
 
 class TestBbox2D(BaseTester):
+    def test_wart_infer_bbox_shape_is_inclusive_3934(self, device, dtype):
+        # Wart pin for kornia#3934: a raw box spanning x=1..2 and y=1..2 has
+        # width and height 2 because infer_bbox_shape adds one on both axes.
+        boxes = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        height, width = infer_bbox_shape(boxes)
+        self.assert_close(height, torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(width, torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+    def test_convention_validate_bbox_returns_bool_and_accepts_batched_boxes(self, device, dtype):
+        boxes = torch.tensor([[[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]]], device=device, dtype=dtype)
+        assert validate_bbox(boxes) is True
+
+        non_rectangular = boxes.clone()
+        non_rectangular[..., 2, 0] += 1
+        assert validate_bbox(non_rectangular) is False
+
     def test_smoke(self, device, dtype):
         # Sample two points of the rectangle
         points = torch.rand(1, 4, device=device, dtype=dtype)

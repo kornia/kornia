@@ -40,10 +40,19 @@ __all__ = [
 def validate_bbox(boxes: torch.Tensor) -> bool:
     """Validate if a 2D bounding box usable or not. This function checks if the boxes are rectangular or not.
 
+    Convention:
+        Vertices use inclusive coordinates in clockwise top-left, top-right, bottom-right, bottom-left order.
+        The function accepts :math:`(B, 4, 2)` and :math:`(B, N, 4, 2)` tensors and returns ``False`` for an
+        invalid shape or a non-rectangular box; it does not raise for those inputs.
+
+    .. warning::
+        The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked in
+        `#3934 <https://github.com/kornia/kornia/issues/3934>`_.
+
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of Bx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right, bottom-right,
-            bottom-left. The coordinates must be in the x, y order.
+            of :math:`(B, 4, 2)` or :math:`(B, N, 4, 2)`, where each box is defined in the following ``clockwise``
+            order: top-left, top-right, bottom-right, bottom-left. The coordinates must be in the x, y order.
 
     """
     if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([4, 2])):
@@ -111,6 +120,14 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
 
 def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Auto-infer the output sizes for the given 2D bounding boxes.
+
+    Convention:
+        Vertices use inclusive coordinates in clockwise top-left, top-right, bottom-right, bottom-left order.
+        The returned tuple is ``(heights, widths)``, with each extent computed as ``maximum - minimum + 1``.
+
+    .. warning::
+        The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked in
+        `#3934 <https://github.com/kornia/kornia/issues/3934>`_.
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape

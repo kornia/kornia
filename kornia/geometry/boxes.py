@@ -199,7 +199,8 @@ class Boxes:
           bottom-left order, stored as :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)` data.
         - The stored form is inclusive (``'vertices_plus'``): ``width = xmax - xmin + 1``. The exclusive
           ``'xyxy'``, ``'xywh'``, and ``'vertices'`` modes convert to this form in :meth:`from_tensor` and
-          back in :meth:`to_tensor`, so a box round-trips exactly in its own mode.
+          back in :meth:`to_tensor`. Axis-aligned rectangles round-trip exactly in their own mode; exporting
+          arbitrary vertex input derives its axis-aligned bounds.
         - :meth:`get_boxes_shape` returns ``(heights, widths)`` in that order and in inclusive terms.
         - Inclusive free functions in :mod:`kornia.geometry.bbox` have no mode argument. Pass them the
           ``'vertices_plus'`` export rather than ``'vertices'``: the latter is read as one pixel larger per axis.
@@ -526,8 +527,7 @@ class Boxes:
 
         Args:
             boxes: 2D boxes, shape of :math:`(N, 4)`, :math:`(B, N, 4)`, :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
-            mode: The format in which the boxes are provided.
-            validate_boxes: Check if boxes are valid. Default is True.
+            mode: The format in which the boxes are provided:
 
                 * 'xyxy': ``xmin, ymin, xmax, ymax`` with exclusive extent.
                 * 'xyxy_plus': ``xmin, ymin, xmax, ymax`` with inclusive extent.
@@ -586,10 +586,11 @@ class Boxes:
                   this is the exclusive export form.
                 * 'vertices_plus': the inclusive stored vertex form.
             as_padded_sequence: If this object was created from a list, return its padded tensor rather than a list
-                of its original lengths. The padded values follow the selected output mode.
+                of tensors trimmed to their original lengths. The padded values follow the selected output mode.
 
         Returns:
-            Boxes tensor in the ``mode`` format. The shape depends with the ``mode`` value:
+            Boxes tensor in the ``mode`` format, or a list of tensors when the object was created from a list and
+            ``as_padded_sequence=False``. The tensor shape depends on the ``mode`` value:
 
                 * 'vertices' or 'vertices_plus': :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
                 * Any other value: :math:`(N, 4)` or :math:`(B, N, 4)`.
