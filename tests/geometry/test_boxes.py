@@ -54,7 +54,7 @@ class TestBoxes2D(BaseTester):
         self.assert_close(output, source, atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
-    def test_wart_sub_unit_extent_does_not_round_trip_4061(self, mode, device, dtype):
+    def test_wart_sub_unit_extent_round_trip_boundary_4061(self, mode, device, dtype):
         # Wart pin for kornia#4061: the three converting modes place the top-right
         # vertex at ``xmin + width - 1``, which lands left of the top-left vertex when
         # the extent is below one unit. The stored quadrilateral is inverted on both

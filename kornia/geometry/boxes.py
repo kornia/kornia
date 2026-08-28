@@ -203,20 +203,22 @@ class Boxes:
           ``'xyxy'``, ``'xywh'``, and ``'vertices'`` modes convert to this form in :meth:`from_tensor` and back
           in :meth:`to_tensor`. The constructor converts nothing and stores ``mode`` as a label, so
           ``Boxes(data, mode='xyxy').to_tensor()`` applies the export offsets to data that was never imported.
-        - A box whose extent is at least one unit per axis round-trips exactly in its own mode. A sub-unit
-          extent does not: the inclusive ``- 1`` inverts the stored quadrilateral, so boxes in normalized
-          ``[0, 1]`` coordinates are silently corrupted by the three converting modes. The ``'_plus'`` modes
-          are unaffected because their ``+ 1`` cancels the ``- 1``.
+        - An axis-aligned box in the documented vertex order whose extent is at least one unit per axis
+          round-trips exactly in its own mode. A sub-unit extent does not: the inclusive ``- 1`` inverts the
+          stored quadrilateral, so boxes in normalized ``[0, 1]`` coordinates are silently corrupted by the
+          three converting modes. The ``'_plus'`` modes are unaffected because their ``+ 1`` cancels the
+          ``- 1``.
         - :meth:`to_tensor` reduces the stored vertices with ``amin``/``amax``, so every export is an
           axis-aligned bounding box. It is lossy for rotated boxes, and ``to_tensor('vertices_plus')`` is
           therefore not the identity on :attr:`data`.
         - :meth:`get_boxes_shape` returns ``(heights, widths)`` in that order and in inclusive terms.
         - The free functions in :mod:`kornia.geometry.bbox` have no mode argument, and they do not all share
           one convention. :func:`~kornia.geometry.bbox.infer_bbox_shape` adds one per axis and
-          :func:`~kornia.geometry.bbox.bbox_to_mask` fills through the maximum row and column, so both read
-          their input as inclusive: pass them the ``'vertices_plus'`` export rather than ``'vertices'``, which
-          they read as one pixel larger per axis. :func:`~kornia.geometry.bbox.validate_bbox` is invariant,
-          because its ``+1`` terms cancel; :func:`~kornia.geometry.bbox.nms` computes exclusive areas, and
+          :func:`~kornia.geometry.bbox.bbox_to_mask` fills through the bottom-right vertex's row and column, so
+          both read their input as inclusive: pass them the ``'vertices_plus'`` export rather than
+          ``'vertices'``, which they read as one pixel larger per axis.
+          :func:`~kornia.geometry.bbox.validate_bbox` is invariant, because its ``+1`` terms cancel;
+          :func:`~kornia.geometry.bbox.nms` computes exclusive areas, and
           :func:`~kornia.geometry.bbox.transform_bbox` converts ``'xywh'`` with the exclusive
           ``xmax = xmin + width``.
         - With ``validate_boxes=True``, the ``'xy*'`` modes reject non-positive extents. Vertex modes are not
@@ -598,7 +600,9 @@ class Boxes:
         ``mode`` selects the output representation. ``'xyxy'``, ``'xywh'``, and ``'vertices'`` are exclusive
         exports; the ``'_plus'`` variants are inclusive. Every mode exports the axis-aligned bounds of the
         stored vertices, reduced with ``amin``/``amax``, so the export is lossy for rotated boxes:
-        ``to_tensor('vertices_plus')`` does not return :attr:`data` unchanged after :meth:`transform_boxes`.
+        ``to_tensor('vertices_plus')`` does not return :attr:`data` unchanged after a :meth:`transform_boxes`
+        call that rotates, shears, or otherwise reorders the vertices. A quarter turn keeps the box
+        axis-aligned and still changes the export, because the reduction re-canonicalizes the vertex order.
 
         Args:
             mode: the output box format, or ``None`` to reuse :attr:`mode`. That attribute depends on the

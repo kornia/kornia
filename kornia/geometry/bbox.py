@@ -128,10 +128,10 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         The returned tuple is ``(heights, widths)``, in that order. Both extents are read from fixed vertex
         indices, as ``width = boxes[:, 1, 0] - boxes[:, 0, 0] + 1`` and
         ``height = boxes[:, 2, 1] - boxes[:, 0, 1] + 1``, rather than from a ``maximum - minimum`` reduction.
-        The two agree only for an axis-aligned box in the documented order; for any other vertex order,
-        including the rotated quadrilaterals that :func:`transform_bbox` produces, the result can be negative.
-        :meth:`kornia.geometry.boxes.Boxes.get_boxes_shape` is reduction based and does not share that
-        behavior.
+        The two agree for an axis-aligned box in the documented order; for any other vertex order, including
+        the rotated quadrilaterals that :func:`transform_bbox` produces, they can diverge and the result can be
+        negative. :meth:`kornia.geometry.boxes.Boxes.get_boxes_shape` is reduction based and does not share
+        that behavior.
 
     .. warning::
         The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked in
