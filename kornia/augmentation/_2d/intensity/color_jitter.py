@@ -168,7 +168,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
     ) -> "ColorJitter":
-        self.brightness_fn = torch.compile(
+        self._brightness_fn = torch.compile(
             self._brightness_fn,
             fullgraph=fullgraph,
             dynamic=dynamic,
@@ -177,7 +177,7 @@ class ColorJitter(IntensityAugmentationBase2D):
             options=options,
             disable=disable,
         )
-        self.contrast_fn = torch.compile(
+        self._contrast_fn = torch.compile(
             self._contrast_fn,
             fullgraph=fullgraph,
             dynamic=dynamic,
@@ -186,7 +186,7 @@ class ColorJitter(IntensityAugmentationBase2D):
             options=options,
             disable=disable,
         )
-        self.saturation_fn = torch.compile(
+        self._saturation_fn = torch.compile(
             self._saturation_fn,
             fullgraph=fullgraph,
             dynamic=dynamic,
@@ -195,7 +195,7 @@ class ColorJitter(IntensityAugmentationBase2D):
             options=options,
             disable=disable,
         )
-        self.hue_fn = torch.compile(
+        self._hue_fn = torch.compile(
             self._hue_fn,
             fullgraph=fullgraph,
             dynamic=dynamic,

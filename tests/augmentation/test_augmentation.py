@@ -2114,6 +2114,38 @@ class TestColorJitter(BaseTester):
         self.assert_close(f(input), expected)
         self.assert_close(f.transform_matrix, expected_transform)
 
+    @pytest.mark.parametrize(
+        "jitter_kwargs,order",
+        [
+            ({"brightness": (1.2, 1.2)}, (0,)),
+            ({"contrast": (1.2, 1.2)}, (1,)),
+            ({"saturation": (1.2, 1.2)}, (2,)),
+            ({"hue": (0.1, 0.1)}, (3,)),
+        ],
+        ids=["brightness", "contrast", "saturation", "hue"],
+    )
+    def test_compile_uses_helpers(self, device, dtype, jitter_kwargs, order):
+        compiled_graphs = []
+
+        def backend(graph_module, _example_inputs):
+            compiled_graphs.append(graph_module)
+            return graph_module.forward
+
+        input = torch.tensor(
+            [[[[0.1, 0.2], [0.3, 0.4]], [[0.2, 0.4], [0.6, 0.8]], [[0.9, 0.7], [0.5, 0.3]]]],
+            device=device,
+            dtype=dtype,
+        )
+        f = ColorJitter(**jitter_kwargs, p=1.0, order=order)
+        params = f.forward_parameters(input.shape)
+        expected = f(input, params=params)
+        assert not torch.equal(expected, input)
+
+        torch._dynamo.reset()
+        f.compile(fullgraph=True, backend=backend)
+        self.assert_close(f(input, params=params), expected)
+        assert len(compiled_graphs) == 1
+
     @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         input = torch.rand((1, 3, 5, 5), device=device, dtype=dtype)
