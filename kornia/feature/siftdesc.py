@@ -28,11 +28,15 @@ from kornia.geometry.conversions import pi
 
 
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:
-    """Return neigh2channels conv kernel."""
+    """Return neigh2channels conv kernel.
+
+    The identity matrix is memoised per ``numel`` to avoid rebuilding it for the common kernel
+    sizes, but the caller always receives a **fresh copy**. Handing out the cached tensor itself
+    would let one consumer's in-place write -- ``load_state_dict`` copies into buffers in place --
+    corrupt the cache and therefore every other consumer, including modules constructed later.
+    """
     numel: int = kd * ky * kx
 
-    # Fast-path: use static _eye_cache if available for small numel
-    # (to avoid repeated allocations for common kernel sizes)
     # The cache size is limited for memory efficiency.
     # NOTE: If memory is a concern and large kd/ky/kx are rare, adjust _MAX_CACHED.
     _MAX_CACHED = 4096
@@ -44,7 +48,8 @@ def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:
         if res is None:
             res = torch.eye(numel)
             cache[numel] = res
-        return res.view(numel, kd, ky, kx)
+        # clone: never expose the cached tensor to the caller
+        return res.view(numel, kd, ky, kx).clone()
     else:
         # fallback to normal allocation for big kernels
         return torch.eye(numel).view(numel, kd, ky, kx)
