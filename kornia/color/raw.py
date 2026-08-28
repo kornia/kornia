@@ -78,7 +78,7 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
         raise ValueError(f"Input size must have a shape of (*, 1, H, W). Got {image.shape}.")
 
     if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ValueError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+        raise ValueError(f"Input H&W must be evenly divisible by 2. Got {image.shape}")
 
     imagesize = image.size()
 
@@ -262,7 +262,7 @@ def raw_to_rgb_2x2_downscaled(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
 
     KORNIA_CHECK(
         image.shape[-2] % 2 == 0 and image.shape[-1] % 2 == 0,
-        f"Input H&W must be evenly disible by 2. Got {image.shape}",
+        f"Input H&W must be evenly divisible by 2. Got {image.shape}",
     )
 
     if cfa == CFA.BG:

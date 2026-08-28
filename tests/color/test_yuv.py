@@ -136,6 +136,14 @@ def _skip_without_real_float64(device) -> None:
     # executes a float64 request as float32 (the ``tpu`` fixture in conftest is
     # ``xm.xla_device()``), which moves the pinned values by 3.9e-8 (round-trip error) and
     # 4.4e-8 (U -> B coefficient) -- ~40x the tolerance -- for a pure precision reason.
+    #
+    # XLA breaks the rest of the file's contract too, for an unrelated reason:
+    # ``BaseTester.assert_close`` *replaces* a caller-supplied ``rtol``/``atol`` with
+    # ``(1e-2, 1e-2)`` whenever either tensor sits on an XLA device (see ``testing/base.py``). On
+    # TPU, then, no tolerance below asserts what it derives -- _FORWARD_ATOL's 5e-4 is loosened
+    # past a U/V row swap, and _ROUND_TRIP_TOL[bfloat16]'s (8e-3, 1.5e-2) is *tightened* below
+    # the error it budgets for. That is a harness-wide gap rather than a YUV one, and no TPU runs
+    # in CI, so nothing here is skipped for it.
     if "xla" in device.type or device.type == "mps":
         pytest.skip(f"{device.type} does not compute in float64")
 
@@ -740,8 +748,11 @@ class TestYuv420ToRgb(BaseTester):
 
         expected = expected.to(device=device, dtype=dtype)
         self.assert_close(out, expected, atol=_unit_atol(_INVERSE_ATOL, dtype), rtol=0.0)
-        # The four cells carry different chroma, so a mis-shaped upsample cannot pass silently.
-        assert not torch.allclose(uv[:, 0, 0], uv[:, 1, 1])
+        # A mis-shaped upsample can only fail to pass silently if no two of the four cells agree:
+        # a wrong factor is caught by the diagonal pair, but a transposed 2x2 upsample is
+        # distinguished by the anti-diagonal alone. Assert every pair, not one of them.
+        cells = [uv[:, i, j] for i in range(2) for j in range(2)]
+        assert all(not torch.allclose(a, b) for k, a in enumerate(cells) for b in cells[k + 1 :])
 
     def test_forth_and_back(self, device, dtype):
         rtol, atol = _round_trip_tol(dtype)

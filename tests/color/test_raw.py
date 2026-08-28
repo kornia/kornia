@@ -240,12 +240,12 @@ class TestRawToRgb2x2Downscaled(BaseTester):
         with pytest.raises(Exception) as errinf:
             img = torch.ones(1, 3, 2, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
-        assert "Input H&W must be evenly disible by 2. Got" in str(errinf)
+        assert "Input H&W must be evenly divisible by 2. Got" in str(errinf)
 
         with pytest.raises(Exception) as errinf:
             img = torch.ones(1, 2, 3, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
-        assert "Input H&W must be evenly disible by 2. Got" in str(errinf)
+        assert "Input H&W must be evenly divisible by 2. Got" in str(errinf)
 
         with pytest.raises(ValueError) as errinf:
             img = torch.ones(1, 4, 8, device=device, dtype=dtype)

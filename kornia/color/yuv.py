@@ -198,6 +198,12 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    .. warning::
+        This is not an exact inverse of :func:`~kornia.color.rgb_to_yuv420`. The two kernels are
+        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
+        ``rgb = (1, 1, 0)``) at every dtype. Tracked in
+        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
+
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
         imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H/2, W/2)`.
@@ -248,6 +254,12 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
+
+    .. warning::
+        This is not an exact inverse of :func:`~kornia.color.rgb_to_yuv422`. The two kernels are
+        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
+        ``rgb = (1, 1, 0)``) at every dtype. Tracked in
+        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
 
     .. warning::
         Only the chroma *width* is validated against the luma plane. A chroma plane of the
@@ -438,6 +450,12 @@ class YuvToRgb(nn.Module):
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
+    .. warning::
+        This is not an exact inverse of :class:`~kornia.color.RgbToYuv`. The two kernels are
+        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
+        ``rgb = (1, 1, 0)``) at every dtype. Tracked in
+        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
+
     Returns:
         RGB version of the image.
 
@@ -481,6 +499,12 @@ class Yuv420ToRgb(nn.Module):
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
+
+    .. warning::
+        This is not an exact inverse of :class:`~kornia.color.RgbToYuv420`. The two kernels are
+        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
+        ``rgb = (1, 1, 0)``) at every dtype. Tracked in
+        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
 
     Returns:
         RGB version of the image.
@@ -528,6 +552,18 @@ class Yuv422ToRgb(nn.Module):
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
+
+    .. warning::
+        This is not an exact inverse of :class:`~kornia.color.RgbToYuv422`. The two kernels are
+        rounded separately rather than inverted, so a round trip loses up to 1.356e-3 (in B, at
+        ``rgb = (1, 1, 0)``) at every dtype. Tracked in
+        `#4044 <https://github.com/kornia/kornia/issues/4044>`_.
+
+    .. warning::
+        Only the chroma *width* is validated against the luma plane. A chroma plane of the
+        wrong height escapes the ``ShapeError`` and surfaces as a bare ``RuntimeError`` from
+        ``torch.cat``, where :class:`~kornia.color.Yuv420ToRgb` checks both. Tracked in
+        `#4050 <https://github.com/kornia/kornia/issues/4050>`_.
 
     Returns:
         RGB version of the image.
