@@ -88,8 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   behavior changed.
 
 * Fix `match_fginn`'s geometric consistency check comparing every query's candidates against **query 0**'s
-  candidates instead of against the query's own 1st nearest neighbor, which changes every `match_fginn`,
-  `DescriptorMatcher("fginn")` and `GeometryAwareDescriptorMatcher("fginn")` result (#4062). The distance
+  candidates instead of against the query's own 1st nearest neighbor, which changes every `match_fginn` and
+  `GeometryAwareDescriptorMatcher("fginn")` result -- the latter being that class's *default* mode (#4062). The distance
   `kdist[i, k] = || xy2[idx[i, k]] - xy2[idx[0, k]] ||` was measured from a slice of dim 0 that broadcast query 0's
   whole candidate list over the batch; it is now `candidates_xy[:, 0:1]`, i.e.
   `kdist[i, k] = || xy2[idx[i, k]] - xy2[idx[i, 0]] ||`. Three consequences disappear with it. The geometric term
