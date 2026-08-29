@@ -320,8 +320,9 @@ class TestMultiResolutionDetector(BaseTester):
         assert (cy >= 0).all() and (cy <= 63).all()
 
     def test_result_is_padded_to_num_features(self, device, dtype):
-        # A level is capped at its own pixel count and the per-level quotas round down, so the
-        # concatenated result could come back shorter than `num_features` -- or empty.
+        # An 8x8 image is smaller than the 15px border `remove_borders` strips, so there is
+        # genuinely nothing to detect and every slot is padding. A level is also capped at its
+        # own pixel count (64 here), so the concatenated result used to come back short.
         cfg = get_default_detector_config()
         cfg["pyramid_levels"] = 0
         cfg["up_levels"] = 0
@@ -329,11 +330,24 @@ class TestMultiResolutionDetector(BaseTester):
         lafs, resps = tiny(torch.rand(1, 1, 8, 8, device=device, dtype=dtype))
         assert lafs.shape == torch.Size([1, 100, 2, 3])
         assert resps.shape == torch.Size([1, 100])
+        # Say so explicitly, so this test cannot pass by codifying a dummy result elsewhere.
+        assert (resps == 0).all()
+        assert (lafs == 0).all()
 
-        one = self._make_detector(num_features=1).to(device, dtype)
-        lafs, resps = one(torch.rand(1, 1, 64, 64, device=device, dtype=dtype))
-        assert lafs.shape == torch.Size([1, 1, 2, 3])
-        assert resps.shape == torch.Size([1, 1])
+    def test_single_feature_request_returns_a_real_detection(self, device, dtype):
+        # With the default configuration and `num_features=1` every proportional quota truncates
+        # to zero (the shares are 0.508 .. 0.016), so every level was queried for zero candidates
+        # and the result was a padded dummy on an image full of maxima.
+        torch.manual_seed(11)
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        lafs_one, resps_one = self._make_detector(num_features=1).to(device, dtype)(inp)
+        lafs_two, resps_two = self._make_detector(num_features=2).to(device, dtype)(inp)
+
+        assert resps_one.shape == torch.Size([1, 1])
+        assert resps_one[0, 0] > 0
+        # Asking for one feature must return the same best feature as asking for two.
+        self.assert_close(resps_one[0, 0], resps_two[0].max())
+        self.assert_close(lafs_one[0, 0], lafs_two[0, int(resps_two[0].argmax())])
 
     def test_negative_score_threshold_is_rejected(self, device, dtype):
         # NMS writes an exact zero at every suppressed position, so a negative threshold would

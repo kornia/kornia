@@ -213,7 +213,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   *trimmed* an over-long result, so a level capped at its own pixel count, or a per-level quota rounded down to
   zero, produced a short one: a one-level `8x8` image asking for 100 features returned 64, and the default
   configuration asking for 1 feature returned **0**, which made `lafs[0, 0]` raise. The concatenated result is now
-  padded up with the same zero response and zero LAF. **A multi-channel response map no longer places detections
+  padded up with the same zero response and zero LAF. A third round found the reason the second case was empty
+  rather than merely short: the per-level quotas each truncate independently, and at `num_features=1` the six
+  shares are `0.508 .. 0.016`, so every one of them rounds to zero and no level is asked for a single candidate.
+  The apportionment now hands its one slot to the level with the largest share whenever truncation would otherwise
+  lose every slot, so `num_features=1` returns the same best feature that `num_features=2` returns first instead of
+  a zero. Any apportionment that already gives out a slot is untouched, which is every `num_features >= 2`
+  (verified byte-identical with `torch.equal` over 16 size/count combinations). **A multi-channel response map no longer places detections
   outside the image.** `detect_features_on_single_level` flattens the whole response tensor and decoded the flat
   top-K index with the width alone, so a candidate from channel `c` landed at `y + c * H`; a response function that
   preserves the image channels — `BlobHessian` on an RGB image — put 56 of 100 LAFs outside a `64x64` frame, up to
