@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Raise `NotImplementedError` instead of `RuntimeError` for an integral `src` on the empty-`dsize` paths of
+  `warp_affine`, `warp_perspective`, `remap`, `warp_affine3d` and `warp_perspective3d`, matching what the non-empty path already raises from
+  `grid_sample` (#4031). The degenerate path had its own explicit guard that fired first with a different exception
+  type, so the exception a caller saw for the same invalid input depended on whether `dsize` had a zero dimension.
+  The message is unchanged. `NotImplementedError` derives from `RuntimeError`, so `except RuntimeError` around these
+  functions still catches it; only code matching on the exact type sees a difference.
+
 * Make `yuv_to_rgb` the exact inverse of `rgb_to_yuv`, so an RGB → YUV → RGB round trip is now limited only by the
   input dtype instead of losing up to `1.36e-3` (in B, at `rgb = (1, 1, 0)`) at every precision, `float64` included
   (#4044). The inverse kernel was a separately rounded copy of the published BT.470-5 M/PAL inverse relations rather
