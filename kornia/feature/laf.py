@@ -549,9 +549,11 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
     KORNIA_CHECK_LAF(laf)
     _, _, h, w = images.size()
     pts = laf_to_boundary_points(laf, 12)
-    good_lafs_mask = (
-        (pts[..., 0] >= border) * (pts[..., 0] <= w - border) * (pts[..., 1] >= border) * (pts[..., 1] <= h - border)
-    )
+    # Valid pixel coordinates run 0 .. w-1 and 0 .. h-1, matching the convention documented on
+    # `get_laf_center` and the `w - 1` / `h - 1` extent used by `normalize_laf` / `denormalize_laf`.
+    x_max = float(w - 1) - border
+    y_max = float(h - 1) - border
+    good_lafs_mask = (pts[..., 0] >= border) * (pts[..., 0] <= x_max) * (pts[..., 1] >= border) * (pts[..., 1] <= y_max)
     good_lafs_mask = good_lafs_mask.min(dim=2)[0]
     return good_lafs_mask
 

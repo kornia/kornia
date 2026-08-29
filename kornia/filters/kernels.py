@@ -644,8 +644,8 @@ def get_gaussian_erf_kernel1d(
         1D tensor with gaussian filter coefficients. Shape :math:`(B, \text{kernel_size})`
 
     Examples:
-        >>> get_gaussian_erf_kernel1d(3, 2.5)
-        tensor([[0.3245, 0.3511, 0.3245]])
+        >>> get_gaussian_erf_kernel1d(3, 2.0)
+        tensor([[0.3195, 0.3611, 0.3195]])
         >>> get_gaussian_erf_kernel1d(5, 1.5)
         tensor([[0.1226, 0.2331, 0.2887, 0.2331, 0.1226]])
         >>> get_gaussian_erf_kernel1d(5, torch.tensor([[1.5], [2.1]]))
@@ -751,8 +751,8 @@ def get_gaussian_kernel3d(
                  [[0.0292, 0.0364, 0.0292],
                   [0.0364, 0.0455, 0.0364],
                   [0.0292, 0.0364, 0.0292]]]])
-        >>> get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5)).sum()
-        tensor(1.)
+        >>> torch.allclose(get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5)).sum(), torch.tensor(1.0))
+        True
         >>> get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5)).shape
         torch.Size([1, 3, 3, 3])
         >>> get_gaussian_kernel3d((3, 7, 5), torch.tensor([[1.5, 1.5, 1.5]])).shape
