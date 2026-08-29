@@ -299,11 +299,14 @@ class ScaleSpaceDetector(nn.Module):
         cx = current_lafs[:, :, 0, 2]
         cy = current_lafs[:, :, 1, 2]
         h, w = octave.shape[3], octave.shape[4]
+        # Valid pixel coordinates run 0 .. w-1 / 0 .. h-1, so the upper bound is (size - 1) - border.
+        x_max = float(w - 1) - 5
+        y_max = float(h - 1) - 5
         good_mask = (
             (cx - half_s * _MAX_ABS_SIN_12 >= 5)
-            & (cx + half_s * _MAX_ABS_SIN_12 <= w - 5)
+            & (cx + half_s * _MAX_ABS_SIN_12 <= x_max)
             & (cy - half_s >= 5)
-            & (cy + half_s <= h - 5)
+            & (cy + half_s <= y_max)
         )
         resp_flat_best = resp_flat_best * good_mask.to(dev, dtype)
         current_lafs.mul_(px_size)
