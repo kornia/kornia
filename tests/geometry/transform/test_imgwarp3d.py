@@ -96,7 +96,7 @@ def test_empty_destination_blames_an_integral_src_by_name(op_name, device):
     with pytest.raises(type(full.value), match="floating point src"):
         op(src, matrix, (0, 4, 5))
 
-        
+
 @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
 def test_empty_destination_keeps_grid_sample_validation(op_name, device, dtype):
     src = torch.rand(2, 2, 3, 4, 5, device=device, dtype=dtype)
