@@ -79,8 +79,9 @@ class TestScaleSpaceDetector(BaseTester):
         # cannot pull the detector's output away from the image dtype.
         inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
         other = torch.float64 if dtype != torch.float64 else torch.float32
-        if device.type == "mps" and other == torch.float64:
-            other = torch.float16  # MPS has no float64
+        if device.type == "mps" and other == torch.float64:  # MPS has no float64
+            other = torch.float32 if dtype != torch.float32 else torch.float16
+        assert other != dtype
         mask = torch.ones(1, 1, 32, 32, device=device, dtype=other)
         det = ScaleSpaceDetector(5).to(device, dtype)
         lafs, resps = det(inp, mask)
@@ -96,6 +97,47 @@ class TestScaleSpaceDetector(BaseTester):
             det(inp, torch.ones(1, 1, 8, 8, device=device, dtype=dtype))
         with pytest.raises(Exception, match="spatial size"):
             det(inp, torch.ones(1, 1, 32, 16, device=device, dtype=dtype))
+
+    def test_mask_must_be_single_channel(self, device, dtype):
+        # `_create_octave_mask` broadcasts the mask over the scale levels, so a channel axis would
+        # land on the level axis: an error when the counts differ, the wrong weighting when they match.
+        det = ScaleSpaceDetector(5).to(device, dtype)
+        inp = torch.rand(2, 1, 32, 32, device=device, dtype=dtype)
+        with pytest.raises(Exception, match="1, H, W"):
+            det(inp, torch.ones(2, 3, 32, 32, device=device, dtype=dtype))
+        with pytest.raises(Exception, match="batch"):
+            det(inp, torch.ones(3, 1, 32, 32, device=device, dtype=dtype))
+        for b in (1, 2):
+            lafs, _ = det(inp, torch.ones(b, 1, 32, 32, device=device, dtype=dtype))
+            assert lafs.shape == torch.Size([2, 5, 2, 3])
+
+    def test_zero_response_slots_carry_a_zero_laf(self, device, dtype):
+        # An NMS maximum with a response of exactly zero reaches the octave top-K as a candidate
+        # and used to keep its coordinates beside the zero response, indistinguishable from a
+        # detection except by the score. Every zero-response slot now has a zero LAF, from
+        # `detect` and `forward` alike.
+        torch.manual_seed(0)
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        det = ScaleSpaceDetector(50).to(device, dtype)
+        resps, lafs = det.detect(inp, 50)
+        empty = resps[0] == 0
+        assert bool(empty.any()), "expected this image to under-fill 50 slots"
+        assert (lafs[0][empty] == 0).all()
+        assert (lafs[0][~empty] != 0).any(dim=-1).any(dim=-1).all()
+        lafs_fwd, resps_fwd = det(inp)
+        assert torch.equal(resps_fwd, resps) and torch.equal(lafs_fwd, lafs)
+
+    def test_padding_survives_the_affine_and_orientation_modules(self, device, dtype):
+        # Same contract as `MultiResolutionDetector.forward`: the shape and orientation modules
+        # normalise a zero frame into a finite one, so the padding is re-applied after them.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("LAFAffineShapeEstimator uses linalg.inv, which has no half-precision kernel")
+        det = ScaleSpaceDetector(
+            10, aff_module=kornia.feature.LAFAffineShapeEstimator(19), ori_module=kornia.feature.LAFOrienter(19)
+        ).to(device, dtype)
+        lafs, resps = det(torch.zeros(1, 1, 64, 64, device=device, dtype=dtype))
+        assert (resps == 0).all()
+        assert (lafs == 0).all()
 
     def test_minima_are_also_good(self, device, dtype):
         # Image with a bright blob (local max) and dark blob (local min).

@@ -86,6 +86,40 @@ def _create_octave_mask(mask: torch.Tensor, octave_resp: torch.Tensor) -> torch.
     return _resize_mask(mask, octave_resp).unsqueeze(1)
 
 
+def _check_mask(mask: torch.Tensor, img: torch.Tensor) -> None:
+    r"""Check that ``mask`` is ``(1 or B, 1, H, W)`` for an image ``(B, C, H, W)``.
+
+    The mask is resampled onto every level, so a mask of another spatial size would be stretched
+    silently onto the wrong geometry -- a stale mask from before a resize, or a transposed one.
+    It must be single-channel: it multiplies a single-channel response per level in
+    :class:`MultiResolutionDetector`, and in :class:`ScaleSpaceDetector` it is broadcast over the
+    scale levels, where a channel axis would land on the level axis instead.
+    """
+    KORNIA_CHECK(mask.dim() == 4 and mask.shape[1] == 1, f"mask must be (1 or B, 1, H, W). Got {tuple(mask.shape)}")
+    KORNIA_CHECK(
+        mask.shape[0] in (1, img.shape[0]),
+        f"mask batch {mask.shape[0]} must be 1 or match the image batch {img.shape[0]}",
+    )
+    KORNIA_CHECK(
+        mask.shape[-2:] == img.shape[-2:],
+        f"mask spatial size {tuple(mask.shape[-2:])} must match the image {tuple(img.shape[-2:])}",
+    )
+
+
+def _zero_unfilled(lafs: torch.Tensor, responses: torch.Tensor) -> torch.Tensor:
+    r"""Zero the LAFs of the slots whose response is zero, i.e. the padding.
+
+    The affine-shape and orientation modules normalise a frame, and a zero LAF comes out of
+    :class:`LAFAffineShapeEstimator` as a finite 1e-5-scale frame at the origin. A padded slot
+    carries a response of exactly zero in both detectors; a real detection is above the
+    non-negative threshold in :class:`MultiResolutionDetector`, and non-zero in
+    :class:`ScaleSpaceDetector`, whose octave maxima can be slightly negative. ``where`` rather
+    than a multiply, so a module that returns NaN for a zero frame cannot leak it into the padding.
+    """
+    filled = (responses != 0).view(responses.shape[0], -1, 1, 1)
+    return torch.where(filled, lafs, torch.zeros_like(lafs))
+
+
 class ScaleSpaceDetector(nn.Module):
     r"""nn.Module for differentiable local feature detection.
 
@@ -333,7 +367,7 @@ class ScaleSpaceDetector(nn.Module):
         Args:
             img: Input image tensor with shape `(B, C, H, W)`.
             num_feats: Number of features requested from the detector.
-            mask: Optional weight mask with the image's spatial size, broadcastable over its channels. It is
+            mask: Optional weight mask with shape `(1 or B, 1, H, W)`, boolean or numeric, used as weights. It is
                 resampled onto every octave and multiplies the response there, so a zero region suppresses
                 detections; the resampled edge softens by about one octave pixel.
 
@@ -342,13 +376,7 @@ class ScaleSpaceDetector(nn.Module):
             3)`, where `N` is the selected feature count.
         """
         if mask is not None:
-            # Same check as `MultiResolutionDetector.detect`: `_create_octave_mask` resamples the
-            # mask onto each octave, so a mask of any size is otherwise stretched silently onto
-            # the wrong geometry — a stale mask from before a resize, or a transposed one.
-            KORNIA_CHECK(
-                mask.shape[-2:] == img.shape[-2:],
-                f"mask spatial size {tuple(mask.shape[-2:])} must match the image {tuple(img.shape[-2:])}",
-            )
+            _check_mask(mask, img)
         dev = img.device
         dtype: torch.dtype = img.dtype
         sp, sigmas, _ = self.scale_pyr(img)
@@ -394,7 +422,10 @@ class ScaleSpaceDetector(nn.Module):
             lafs = F.pad(lafs, (0, 0, 0, 0, 0, pad))
         responses, idxs = torch.topk(responses, k=num_feats, dim=1)
         lafs = torch.gather(lafs, 1, idxs.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 2, 3))
-        return responses, lafs
+        # An NMS maximum whose response is exactly zero is a candidate for the octave top-K but
+        # not a detection; it used to keep its coordinates beside a zero response. Give every
+        # zero-response slot the zero LAF the padding above already has.
+        return responses, _zero_unfilled(lafs, responses)
 
     def forward(self, img: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Three stage local feature detection.
@@ -404,18 +435,21 @@ class ScaleSpaceDetector(nn.Module):
 
         Args:
             img: image to extract features with shape [BxCxHxW]
-            mask: a mask with weights where to apply the response function. The shape must be the same as
-              the input image.
+            mask: a mask with weights where to apply the response function, shape [1x1xHxW] or [Bx1xHxW],
+              boolean or numeric. It is resampled onto every octave and multiplies the response there, so a
+              zero region suppresses detections.
 
         Returns:
             lafs: shape [BxNx2x3]. Detected local affine frames.
-            responses: shape [BxNx1]. Response function values for corresponding lafs
+            responses: shape [BxN]. Response function values for corresponding lafs. When an image yields fewer
+              maxima than ``num_features``, the remaining slots hold a zero response and a zero LAF, whichever
+              affine-shape and orientation modules are configured.
 
         """
         responses, lafs = self.detect(img, self.num_features, mask)
         lafs = self.aff(lafs, img)
         lafs = self.ori(lafs, img)
-        return lafs, responses
+        return _zero_unfilled(lafs, responses), responses
 
 
 class Detector_config(TypedDict):
@@ -585,7 +619,7 @@ class MultiResolutionDetector(nn.Module):
 
         Args:
             img: Input image tensor with shape `(1, C, H, W)`.
-            mask: Optional weight mask with shape `(1, 1, H, W)`, boolean or numeric. It is resampled bilinearly
+            mask: Optional weight mask with shape `(1, 1, H, W)`, boolean or numeric, used as weights. It is resampled
                 onto every pyramid level and multiplies the response function there, so a zero region suppresses
                 detections; the resampled edge softens by about one level pixel.
 
@@ -598,12 +632,7 @@ class MultiResolutionDetector(nn.Module):
         """
         KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])
         if mask is not None:
-            KORNIA_CHECK_SHAPE(mask, ["1", "1", "H", "W"])
-            # The named dims above are free per call: they do not tie the mask to the image.
-            KORNIA_CHECK(
-                mask.shape[-2:] == img.shape[-2:],
-                f"mask spatial size {tuple(mask.shape[-2:])} must match the image {tuple(img.shape[-2:])}",
-            )
+            _check_mask(mask, img)
         # Compute points per level
         num_features_per_level: List[float] = []
         tmp = 0.0
@@ -700,13 +729,7 @@ class MultiResolutionDetector(nn.Module):
         responses, lafs = self.detect(img, mask)
         lafs = self.aff(lafs, img)
         lafs = self.ori(lafs, img)
-        # The shape and orientation modules normalise a frame, and a zero LAF comes out of
-        # `LAFAffineShapeEstimator` as a finite 1e-5-scale frame at the origin. Re-apply the
-        # padding so the zero-LAF contract above holds for `forward` as well as for `detect`;
-        # a real detection is strictly above the non-negative threshold, so `responses > 0`
-        # is exactly the set of filled slots.
-        lafs = lafs * (responses > 0).view(1, -1, 1, 1).to(lafs.dtype)
-        return lafs, responses
+        return _zero_unfilled(lafs, responses), responses
 
 
 _DEFAULT_DETECTOR_CONFIG: Detector_config = {
