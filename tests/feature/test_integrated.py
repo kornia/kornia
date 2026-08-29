@@ -112,6 +112,43 @@ class TestGetLAFDescriptorsEmptyPath(BaseTester):
         assert empty.dtype == non_empty.dtype
         assert empty.device.type == non_empty.device.type
 
+    @pytest.mark.parametrize("descriptor", ["four_dim", "dense_sift"])
+    def test_empty_matches_a_non_2d_descriptor(self, device, dtype, descriptor):
+        """The width must be what `.view(B, N, -1)` produces, not the probe's last dimension.
+
+        The non-empty path flattens *everything* the descriptor produced per patch, so taking
+        `probe.shape[-1]` agreed only for descriptors whose output is 2-D. `patch_descriptor` is
+        typed as a bare `nn.Module`; `DenseSIFTDescriptor` returns `(N, C, H, W)` and so does any
+        user module of that shape, and those got a narrower empty result that could not be
+        concatenated with a non-empty one -- the very defect this path exists to remove (#4065).
+        """
+
+        class FourDimDescriptor(nn.Module):
+            """Minimal descriptor whose output is not 2-D."""
+
+            def forward(self, patches: torch.Tensor) -> torch.Tensor:
+                return patches.new_zeros(patches.shape[0], 3, 2, 5)
+
+        desc = (
+            FourDimDescriptor()
+            if descriptor == "four_dim"
+            else kornia.feature.DenseSIFTDescriptor(num_ang_bins=8, num_spatial_bins=4)
+        )
+        desc = desc.to(device, dtype)
+        img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[16.0, 16.0]]], device=device, dtype=dtype),
+            torch.full((1, 1, 1, 1), 8.0, device=device, dtype=dtype),
+        )
+        non_empty = kornia.feature.get_laf_descriptors(img, laf, desc, 32)
+        with pytest.warns(UserWarning):
+            empty = kornia.feature.get_laf_descriptors(
+                img, torch.zeros(1, 0, 2, 3, device=device, dtype=dtype), desc, 32
+            )
+        assert empty.shape == (1, 0, non_empty.shape[-1])
+        # which is the point: an empty batch has to be concatenable with a non-empty one
+        assert torch.cat([non_empty, empty], dim=1).shape == non_empty.shape
+
 
 class TestLocalFeatureMatcherEmptyPath(BaseTester):
     """`no_match_output` must keep the rank the success path uses (see #4065)."""
