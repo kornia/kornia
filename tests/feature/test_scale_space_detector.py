@@ -304,6 +304,37 @@ class TestMultiResolutionDetector(BaseTester):
         assert lafs.dtype == half_dtype
         assert resps.dtype == half_dtype
 
+    def test_multichannel_response_stays_inside_the_image(self, device, dtype):
+        # `BlobHessian` keeps the image channels, so an RGB image gives a 3-channel response.
+        # Decoding the flat top-K index with the width alone placed a candidate from channel `c`
+        # at `y + c * H`, i.e. outside the image for every channel past the first.
+        torch.manual_seed(3)
+        inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        det = self._make_detector(num_features=100).to(device, dtype)
+        lafs, resps = det(inp)
+        found = resps[0] != 0
+        assert bool(found.any())
+        cx = lafs[0, :, 0, 2]
+        cy = lafs[0, :, 1, 2]
+        assert (cx >= 0).all() and (cx <= 63).all()
+        assert (cy >= 0).all() and (cy <= 63).all()
+
+    def test_result_is_padded_to_num_features(self, device, dtype):
+        # A level is capped at its own pixel count and the per-level quotas round down, so the
+        # concatenated result could come back shorter than `num_features` -- or empty.
+        cfg = get_default_detector_config()
+        cfg["pyramid_levels"] = 0
+        cfg["up_levels"] = 0
+        tiny = MultiResolutionDetector(kornia.feature.BlobHessian(), num_features=100, config=cfg).to(device, dtype)
+        lafs, resps = tiny(torch.rand(1, 1, 8, 8, device=device, dtype=dtype))
+        assert lafs.shape == torch.Size([1, 100, 2, 3])
+        assert resps.shape == torch.Size([1, 100])
+
+        one = self._make_detector(num_features=1).to(device, dtype)
+        lafs, resps = one(torch.rand(1, 1, 64, 64, device=device, dtype=dtype))
+        assert lafs.shape == torch.Size([1, 1, 2, 3])
+        assert resps.shape == torch.Size([1, 1])
+
     def test_negative_score_threshold_is_rejected(self, device, dtype):
         # NMS writes an exact zero at every suppressed position, so a negative threshold would
         # admit all of them -- and collide with the zero response that marks an unfilled slot.

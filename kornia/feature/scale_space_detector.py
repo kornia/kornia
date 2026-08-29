@@ -508,6 +508,9 @@ class MultiResolutionDetector(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Detect keypoints on one image-pyramid level.
 
+        A response function that preserves the image channels gives one response map per channel; the candidates
+        of all channels are pooled into one top-K, as :class:`ScaleSpaceDetector` also does.
+
         Args:
             level_img: Image tensor for a single pyramid level.
             num_kp: Number of keypoints requested from this pyramid level.
@@ -526,8 +529,12 @@ class MultiResolutionDetector(nn.Module):
         if mask is not None:
             resp_map = resp_map * _resize_mask(mask, resp_map)
         det_map = self.nms(self.remove_borders(resp_map))
-        _, _, _h, w = det_map.shape
-        det_flat = det_map.view(-1)  # (H*W,) — B=1, C=1 guaranteed by MultiResolutionDetector
+        _, _, h, w = det_map.shape
+        # (C*H*W,) — B=1 is guaranteed by `detect`'s shape guard, but C is not: a response
+        # function that keeps the image channels, such as `BlobHessian` on an RGB image, gives
+        # one response map per channel. They are pooled into a single candidate set here and the
+        # channel is divided back out below, the way `ScaleSpaceDetector` merges its own channels.
+        det_flat = det_map.view(-1)
 
         # Mask out non-maxima (zeroed by NMS) and below-threshold scores, then topk.
         # Using masked_fill + topk instead of nonzero: avoids data-dependent output shapes,
@@ -545,8 +552,12 @@ class MultiResolutionDetector(nn.Module):
         valid = top_scores > self.score_threshold
         top_scores = torch.where(valid, top_scores, torch.zeros_like(top_scores))
 
-        # Convert flat indices to (y, x) pixel coordinates.
-        yx = torch.stack([top_flat_idx // w, top_flat_idx % w], dim=1)  # (k, 2)
+        # Convert flat indices to (y, x) pixel coordinates. `% (h * w)` drops the channel the
+        # candidate came from; it is the identity for a single-channel response map, so this is
+        # byte-identical there and only changes the multi-channel case, where decoding with `w`
+        # alone put a candidate from channel `c` at `y + c * h` — outside the image for `c > 0`.
+        hw = h * w
+        yx = torch.stack([(top_flat_idx % hw) // w, top_flat_idx % w], dim=1)  # (k, 2)
 
         fx = level_img.new_tensor([factor[0], factor[1]])
         xy_projected = yx.view(1, k, 2).flip(2).to(level_img.dtype) * fx
@@ -565,9 +576,9 @@ class MultiResolutionDetector(nn.Module):
                 multiplies the response function there, so a zero region yields no detections.
 
         Returns:
-            Tuple containing detection scores and local affine frames. Local affine frames are usually shaped
-            `(1, N, 2, 3)`, where `N` is the selected feature count. Slots beyond the number of above-threshold
-            maxima carry a zero response and a zero LAF.
+            Tuple containing detection scores and local affine frames, shaped `(1, num_features)` and
+            `(1, num_features, 2, 3)`. The shape holds even when the image yields fewer above-threshold maxima
+            than requested: those slots carry a zero response and a zero LAF.
         """
         KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])
         if mask is not None:
@@ -622,7 +633,15 @@ class MultiResolutionDetector(nn.Module):
             all_lafs.append(cur_lafs)
         responses = torch.cat(all_responses, 1)
         lafs = torch.cat(all_lafs, 1)
-        if lafs.shape[1] > self.num_features:
+        # The levels can produce fewer slots than requested — a level is capped at its own pixel
+        # count, and the per-level quotas round down, to zero for a small `num_features`. Pad up
+        # so the returned shape is always `num_features`, the same way `ScaleSpaceDetector.detect`
+        # does; the padding is the zero response and zero LAF used everywhere else here.
+        if lafs.shape[1] < self.num_features:
+            pad = self.num_features - lafs.shape[1]
+            responses = F.pad(responses, (0, pad))
+            lafs = F.pad(lafs, (0, 0, 0, 0, 0, pad))
+        elif lafs.shape[1] > self.num_features:
             responses, idxs = torch.topk(responses, k=self.num_features, dim=1)
             lafs = torch.gather(lafs, 1, idxs[..., None, None].expand(-1, -1, 2, 3))
         return responses, lafs

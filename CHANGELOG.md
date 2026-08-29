@@ -26,9 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `MultiResolutionDetector` and `KeyNetDetector` change their output on three counts — padded slots now read as a
   zero response and a zero LAF instead of `torch.finfo(dtype).min / 2` and an arbitrary border coordinate, the
   previously inert `mask` argument now suppresses detections, and half-precision input now yields half-precision
-  LAFs. A negative `score_threshold` is now rejected with `ValueError`, `detect` enforces its documented
-  `(1, C, H, W)` input, and a mask whose dtype differs from the image no longer promotes the response dtype — that
-  last one applies to `ScaleSpaceDetector` too. See the entry under **Bug fixes** (#4089, #4090, #4091) for the
+  LAFs. The returned shape is now always `num_features` where a short result was possible before, a multi-channel
+  response no longer yields out-of-image LAFs, a negative `score_threshold` is rejected with `ValueError`, `detect`
+  enforces its documented `(1, C, H, W)` input, and a mask whose dtype differs from the image no longer promotes
+  the response dtype — that last one applies to `ScaleSpaceDetector` too. See the entry under **Bug fixes** (#4089, #4090, #4091) for the
   details and the migration.
 
 ### Bug fixes
@@ -207,7 +208,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   image came back with `float32` LAFs beside half-precision responses. Coordinates now convert to the input dtype;
   `float32` and `float64` output is unchanged.
 
-  Three further points came out of review. **A mask no longer changes the response dtype** — it is now resampled
+  Two more defects surfaced in the second review round, both present on `main` before this PR and both in direct
+  conflict with the contract above. **The returned shape is now always `num_features`.** `detect` only ever
+  *trimmed* an over-long result, so a level capped at its own pixel count, or a per-level quota rounded down to
+  zero, produced a short one: a one-level `8x8` image asking for 100 features returned 64, and the default
+  configuration asking for 1 feature returned **0**, which made `lafs[0, 0]` raise. The concatenated result is now
+  padded up with the same zero response and zero LAF. **A multi-channel response map no longer places detections
+  outside the image.** `detect_features_on_single_level` flattens the whole response tensor and decoded the flat
+  top-K index with the width alone, so a candidate from channel `c` landed at `y + c * H`; a response function that
+  preserves the image channels — `BlobHessian` on an RGB image — put 56 of 100 LAFs outside a `64x64` frame, up to
+  `y = 179.9`. The channel is now divided back out and the channels' candidates are pooled into one top-K, as
+  `ScaleSpaceDetector` already does. Single-channel output is byte-identical (`%` by `H*W` is the identity there,
+  verified with `torch.equal` at three sizes).
+
+  Three further points came out of the first review round. **A mask no longer changes the response dtype** — it is now resampled
   *and cast* onto the response map, where the multiplication used to promote it, so a `float16` image with a
   `float32` mask returned `float32` responses beside `float16` LAFs. This one also applies to `ScaleSpaceDetector`,
   which shares the resampling helper: a `float32` image with a `float64` mask used to return `float64` and now
