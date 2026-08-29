@@ -104,6 +104,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `strict=True`. The three `forward` methods also cast into a local instead of rebinding the attribute, so a call
   no longer leaves the module's kernel in whatever dtype and device the last input happened to have. Numerical
   output is unchanged: the kernels were already cast to the input's dtype and device inside `forward`.
+* Fix patch extraction on MPS returning darkened patches for any LAF that touches an image border (#4063).
+  MPS has no `padding_mode="border"` for `torch.nn.functional.grid_sample`, so `extract_patches_simple` and
+  `extract_patches_from_pyramid` emulate it with zero padding and a clamped grid. The clamp was `grid.clamp(-1, 1)`,
+  but with `align_corners=False` normalized coordinate `±1` is the outer *edge* of the border pixel, not its center,
+  so bilinear sampling blended the border pixel with the zero padding and returned roughly half its value. The grid
+  is now clamped to the outermost pixel centers, `±(1 - 1/size)` per axis, which reproduces `padding_mode="border"`
+  exactly. On a patch overlapping the image corner the maximum deviation from the CPU result drops from `0.395` to
+  `2.5e-6` on a `[0, 1]` image, with 64.7% of the patch's pixels previously off by more than `1e-3`. Every descriptor
+  built on these patches — `get_laf_descriptors`, `LAFDescriptor`, `SIFTFeature`, `KeyNetAffNetHardNet` and the rest —
+  moves with them for keypoints near the border. The CPU and CUDA paths never took this branch and are byte-identical
+  to before.
+* Fix `match_fginn`'s geometric consistency check comparing every query's candidates against **query 0**'s
+  candidates instead of against the query's own 1st nearest neighbor, which changes every `match_fginn` and
+  `GeometryAwareDescriptorMatcher("fginn")` result -- the latter being that class's *default* mode (#4062). The distance
+  `kdist[i, k] = || xy2[idx[i, k]] - xy2[idx[0, k]] ||` was measured from a slice of dim 0 that broadcast query 0's
+  whole candidate list over the batch; it is now `candidates_xy[:, 0:1]`, i.e.
+  `kdist[i, k] = || xy2[idx[i, k]] - xy2[idx[i, 0]] ||`. Three consequences disappear with it. The geometric term
+  was inert -- an unrelated query's candidates are almost always farther apart than `spatial_th`, so nothing was
+  penalized and the raw 2nd nearest neighbor was used, making `match_fginn` behave as `match_snn`: on a 300x300
+  descriptor set with planted near-duplicates, 15 of the 15 matches shared with `match_snn` had an identical ratio
+  before and 14 of 15 after. Query 0 always matched, since `candidates_xy[0] - candidates_xy[0]` is identically zero,
+  so all of its candidates were penalized and its ratio collapsed to ~0. And a query's ratio depended on the other
+  queries in the batch: with only query 0 changed, one query's ratio moved between `0.9005` and `2.8e-08`. The seven
+  existing FGINN tests pass unchanged on both sides, which is how this survived; two tests that discriminate it were
+  added. `match_fginn`'s docstring now also records the saturation corner, where every candidate falls within
+  `spatial_th` of the 1st nearest neighbor, the ratio collapses towards zero and the match is accepted.
 
 
 ## :rocket: [0.6.11] - 2022-03-28

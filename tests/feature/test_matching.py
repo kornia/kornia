@@ -332,6 +332,65 @@ class TestMatchFGINN(BaseTester):
         self.assert_close(dists1, expected_dists, rtol=0.001, atol=1e-3)
         self.assert_close(idxs1, expected_idx)
 
+    @staticmethod
+    def _suppression_case(device, dtype):
+        """A textbook FGINN case.
+
+        The 2nd nearest neighbour in descriptor space sits 1 px from the 1st, so it is a repeated
+        detection of the same structure and must not be used for the ratio test. The effective 2nd
+        neighbour is then ``desc2[2]``, giving ``0.1 / 0.5 = 0.2`` rather than ``0.1 / 0.2 = 0.5``.
+        """
+        desc2 = torch.tensor([[0.1, 0.0], [0.2, 0.0], [0.5, 0.0], [0.9, 0.0]], device=device, dtype=dtype)
+        xy2 = torch.tensor(
+            [
+                [10.0, 10.0],  # 1st NN
+                [11.0, 10.0],  # 1 px away -> suppressed by the spatial check
+                [50.0, 50.0],  # far -> the effective 2nd NN
+                [90.0, 90.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        lafs2 = laf_from_center_scale_ori(xy2[None], torch.ones(1, 4, 1, 1, device=device, dtype=dtype))
+        return desc2, lafs2
+
+    def test_second_neighbour_near_the_first_is_suppressed(self, device, dtype):
+        desc2, lafs2 = self._suppression_case(device, dtype)
+        query = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
+        desc1 = torch.stack([query, query])
+        lafs1 = laf_from_center_scale_ori(
+            torch.zeros(1, 2, 2, device=device, dtype=dtype), torch.ones(1, 2, 1, 1, device=device, dtype=dtype)
+        )
+
+        dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, th=0.3, spatial_th=5.0)
+
+        expected_dists = torch.tensor([0.2, 0.2], device=device, dtype=dtype).view(-1, 1)
+        expected_idx = torch.tensor([[0, 0], [1, 0]], device=device)
+        self.assert_close(dists, expected_dists, rtol=1e-3, atol=1e-3)
+        self.assert_close(idxs, expected_idx)
+
+    def test_result_is_independent_of_the_other_queries(self, device, dtype):
+        """A query's ratio must not depend on unrelated queries in the same batch (see #4062)."""
+        desc2, lafs2 = self._suppression_case(device, dtype)
+        query = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
+        # a decoy whose own nearest neighbour is desc2[3], i.e. a different candidate ordering
+        decoy = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
+
+        ratios = []
+        for first in (query, decoy):
+            desc1 = torch.stack([first, query])
+            lafs1 = laf_from_center_scale_ori(
+                torch.zeros(1, 2, 2, device=device, dtype=dtype),
+                torch.ones(1, 2, 1, 1, device=device, dtype=dtype),
+            )
+            dists, idxs = match_fginn(desc1, desc2, lafs1, lafs2, th=0.3, spatial_th=5.0)
+            hit = dists[idxs[:, 0] == 1]
+            assert len(hit) == 1, "the second query must match regardless of the first"
+            ratios.append(hit[0, 0])
+
+        self.assert_close(ratios[0], ratios[1], rtol=1e-4, atol=1e-4)
+        self.assert_close(ratios[1], torch.tensor(0.2, device=device, dtype=dtype), rtol=1e-3, atol=1e-3)
+
     def test_gradcheck(self, device):
         desc1 = torch.rand(5, 8, device=device, dtype=torch.float64)
         desc2 = torch.rand(7, 8, device=device, dtype=torch.float64)
