@@ -18,7 +18,12 @@
 import torch
 
 import kornia
-from kornia.feature.scale_space_detector import MultiResolutionDetector, ScaleSpaceDetector, get_default_detector_config
+from kornia.feature.scale_space_detector import (
+    _MAX_ABS_SIN_12,
+    MultiResolutionDetector,
+    ScaleSpaceDetector,
+    get_default_detector_config,
+)
 from kornia.geometry.subpix import ConvQuadInterp3d
 
 from testing.base import BaseTester
@@ -108,6 +113,27 @@ class TestScaleSpaceDetector(BaseTester):
         lafs, resps = det(inp)
         assert lafs.shape == torch.Size([1, n_feats, 2, 3])
         assert resps.shape == torch.Size([1, n_feats])
+
+    def test_inline_boundary_constant_matches_reference(self):
+        """`_MAX_ABS_SIN_12` must be the x-extent `laf_to_boundary_points(laf, 12)` actually produces.
+
+        `_process_octave` inlines `laf_is_inside_image(scale_laf(lafs, 0.5), octave, 5)` for the
+        isotropic LAFs it builds. That inline form is only equivalent to the reference if the
+        constant is the maximum ``|sin|`` over the angles the reference samples, which are
+        ``linspace(0, 2 * pi, n_pts - 1)`` -- spacing ``2 * pi / 10``, not ``2 * pi / 11`` (#4064).
+        Device- and dtype-independent: this pins a Python float against a sampling convention.
+        """
+        cx, cy, half_s = 10.0, 20.0, 3.0
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[cx, cy]]], dtype=torch.float64),
+            torch.full((1, 1, 1, 1), half_s, dtype=torch.float64),
+        )
+        pts = kornia.feature.laf_to_boundary_points(laf, 12)
+        # `laf_to_boundary_points` builds its angles in float32 before casting, so compare at
+        # float32 resolution -- the wrong spacing is off by 4e-2, four orders of magnitude more.
+        assert abs(((pts[..., 0].max() - cx) / half_s).item() - _MAX_ABS_SIN_12) < 1e-6
+        # ... and the y-extent the same block hardcodes as `half_s` (max|cos| = 1).
+        assert abs(((pts[..., 1].max() - cy) / half_s).item() - 1.0) < 1e-6
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 7, 7

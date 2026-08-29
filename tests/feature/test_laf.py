@@ -594,6 +594,60 @@ class TestLAFIsTouchingBoundary(BaseTester):
         expected = torch.tensor([[False, True]], device=device)
         assert torch.all(kornia.feature.laf_is_inside_image(laf, img) == expected).item()
 
+    @staticmethod
+    def _radius_laf(cx, cy, radius, device, dtype):
+        return kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[cx, cy]]], device=device, dtype=dtype),
+            torch.full((1, 1, 1, 1), radius, device=device, dtype=dtype),
+        )
+
+    def test_boundary_is_the_last_valid_pixel(self, device, dtype):
+        """Valid coordinates run 0 .. size-1, matching `get_laf_center`'s documented convention.
+
+        A LAF reaching exactly `w - 1` is inside; anything past it is not (see #4064).
+        """
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("boundary comparison needs full precision")
+        w = h = 32  # valid coordinates 0 .. 31
+        img = torch.zeros(1, 1, h, w, device=device, dtype=dtype)
+        r = 2.0
+
+        # rightmost boundary lands exactly on 31.0 -> inside
+        assert bool(kornia.feature.laf_is_inside_image(self._radius_laf(29.0, 16.0, r, device, dtype), img)[0, 0])
+        # ... and half a pixel past it -> outside
+        assert not bool(kornia.feature.laf_is_inside_image(self._radius_laf(29.5, 16.0, r, device, dtype), img)[0, 0])
+        # same for the bottom edge
+        assert bool(kornia.feature.laf_is_inside_image(self._radius_laf(16.0, 29.0, r, device, dtype), img)[0, 0])
+        assert not bool(kornia.feature.laf_is_inside_image(self._radius_laf(16.0, 29.5, r, device, dtype), img)[0, 0])
+
+    def test_boundary_is_symmetric(self, device, dtype):
+        """The low and high edges must be equally strict."""
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("boundary comparison needs full precision")
+        w = h = 32
+        img = torch.zeros(1, 1, h, w, device=device, dtype=dtype)
+        r = 2.0
+        # negative offsets push the LAF past the edge, which is where an asymmetric
+        # upper bound shows up: on the low side it is rejected, on the high side it was not.
+        for offset in (-1.0, -0.5, 0.0, 0.5, 1.0):
+            low = kornia.feature.laf_is_inside_image(self._radius_laf(r + offset, 16.0, r, device, dtype), img)
+            high = kornia.feature.laf_is_inside_image(
+                self._radius_laf(float(w - 1) - r - offset, 16.0, r, device, dtype), img
+            )
+            assert bool(low[0, 0]) == bool(high[0, 0]), f"asymmetric at offset {offset}"
+
+    def test_border_argument_shrinks_both_edges(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("boundary comparison needs full precision")
+        w = h = 32
+        img = torch.zeros(1, 1, h, w, device=device, dtype=dtype)
+        r = 2.0
+        # with border=3 the usable range is 3 .. 28, so a radius-2 LAF centred at 26 just fits
+        assert bool(kornia.feature.laf_is_inside_image(self._radius_laf(26.0, 16.0, r, device, dtype), img, 3)[0, 0])
+        assert not bool(
+            kornia.feature.laf_is_inside_image(self._radius_laf(26.5, 16.0, r, device, dtype), img, 3)[0, 0]
+        )
+
     @pytest.mark.jit()
     def test_jit(self, device, dtype):
         w, h = 10, 5
