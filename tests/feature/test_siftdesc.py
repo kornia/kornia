@@ -135,6 +135,34 @@ class TestDenseSIFTDescriptor(BaseTester):
         sift = DenseSIFTDescriptor()
         sift.__repr__()
 
+    def test_instances_do_not_share_buffer_storage(self, device):
+        """Instances must not share storage for `_poolingconv_weight` (see #4068).
+
+        `_get_reshape_kernel` used to memoise `torch.eye(numel)` and hand out a view of it, so
+        every `DenseSIFTDescriptor` with the same configuration shared one storage and a single
+        in-place write leaked into all of them.
+        """
+        a = DenseSIFTDescriptor(num_ang_bins=8, num_spatial_bins=4)
+        b = DenseSIFTDescriptor(num_ang_bins=8, num_spatial_bins=4)
+        assert a._poolingconv_weight.untyped_storage().data_ptr() != (
+            b._poolingconv_weight.untyped_storage().data_ptr()
+        )
+
+    def test_load_state_dict_does_not_leak_into_other_instances(self, device):
+        """`load_state_dict` copies into buffers in place; that must stay local to one module."""
+        a = DenseSIFTDescriptor(num_ang_bins=8, num_spatial_bins=4)
+        b = DenseSIFTDescriptor(num_ang_bins=8, num_spatial_bins=4)
+        expected = a._poolingconv_weight.clone()
+
+        state = b.state_dict()
+        state["_poolingconv_weight"] = torch.zeros_like(state["_poolingconv_weight"])
+        b.load_state_dict(state)
+
+        self.assert_close(a._poolingconv_weight, expected)
+        # and a module built afterwards is still healthy
+        c = DenseSIFTDescriptor(num_ang_bins=8, num_spatial_bins=4)
+        self.assert_close(c._poolingconv_weight, expected)
+
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 16, 16
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)

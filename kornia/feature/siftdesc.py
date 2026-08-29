@@ -28,26 +28,14 @@ from kornia.geometry.conversions import pi
 
 
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:
-    """Return neigh2channels conv kernel."""
-    numel: int = kd * ky * kx
+    """Return neigh2channels conv kernel.
 
-    # Fast-path: use static _eye_cache if available for small numel
-    # (to avoid repeated allocations for common kernel sizes)
-    # The cache size is limited for memory efficiency.
-    # NOTE: If memory is a concern and large kd/ky/kx are rare, adjust _MAX_CACHED.
-    _MAX_CACHED = 4096
-    if numel <= _MAX_CACHED:
-        if not hasattr(_get_reshape_kernel, "_eye_cache"):
-            _get_reshape_kernel._eye_cache = {}  # type: ignore[attr-defined]
-        cache = _get_reshape_kernel._eye_cache  # type: ignore[attr-defined]
-        res = cache.get(numel)
-        if res is None:
-            res = torch.eye(numel)
-            cache[numel] = res
-        return res.view(numel, kd, ky, kx)
-    else:
-        # fallback to normal allocation for big kernels
-        return torch.eye(numel).view(numel, kd, ky, kx)
+    Deliberately not memoised: the result is registered as a buffer, so a shared cache has to clone
+    on the way out to keep callers from writing into it, and the clone costs more than rebuilding
+    the identity.
+    """
+    numel: int = kd * ky * kx
+    return torch.eye(numel).view(numel, kd, ky, kx)
 
 
 def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
