@@ -113,7 +113,16 @@ def _guided_blur_multichannel_guidance(
         _eps = torch.eye(C, device=guidance.device, dtype=guidance.dtype).view(1, 1, 1, C, C) * eps.view(-1, 1, 1, 1, 1)
     else:
         _eps = guidance.new_full((C,), eps).diag().view(1, 1, 1, C, C)
-    a = torch.linalg.solve(var_I + _eps, cov_Ip)  # B, H, W, C_guidance, C_input
+    # ``torch.linalg.solve`` has no half-precision LU kernel, so a float16/bfloat16 guidance dies
+    # here with ``NotImplementedError: "lu_cpu" not implemented for 'Half'``. Solve the tiny C x C
+    # systems in float32 and cast back. Deliberately not ``_torch_solve_cast``: that promotes
+    # float32 to float64, which would change the results of the default path and pay for a float64
+    # solve at every pixel.
+    A = var_I + _eps
+    if A.dtype in (torch.float16, torch.bfloat16):
+        a = torch.linalg.solve(A.float(), cov_Ip.float()).to(A.dtype)  # B, H, W, C_guidance, C_input
+    else:
+        a = torch.linalg.solve(A, cov_Ip)  # B, H, W, C_guidance, C_input
     b = mean_p - (mean_I.unsqueeze(-2) @ a).squeeze(-2)  # B, H, W, C_input
 
     mean_a = box_blur(a.flatten(-2).permute(0, 3, 1, 2), kernel_size, border_type, separable=separable)

@@ -107,8 +107,10 @@ class TestGuidedBlur(BaseTester):
             separable=True,
         )
 
-        if dtype in (torch.float16, torch.bfloat16):
-            # The two convolution decompositions accumulate rounding errors in different orders at half precision.
+        if dtype == torch.float16:
+            # The two convolution decompositions accumulate rounding errors in different orders at
+            # half precision. Only float16 needs this: measured worst case is 1.953e-03 against the
+            # harness's 1e-03, while every bfloat16 case fits inside _DTYPE_PRECISIONS already.
             tolerance = 3 * torch.finfo(dtype).eps
             self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
         else:
@@ -200,6 +202,30 @@ class TestGuidedBlur(BaseTester):
             op_module(guide, img),
             op(guide, img, kernel_size, eps, subsample=subsample, separable=separable),
         )
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_multichannel_guidance_in_half_precision(self, half_dtype, device) -> None:
+        """Multi-channel guidance must run in float16/bfloat16 rather than dying in the solver.
+
+        ``_guided_blur_multichannel_guidance`` solves a C x C system per pixel, and
+        ``torch.linalg.solve`` has no half-precision LU kernel: before the fix this raised
+        ``NotImplementedError: "lu_cpu" not implemented for 'Half'`` on CPU, and on MPS it aborted
+        the process outright with ``Only MPSDataTypeFloat32 is supported``. Single-channel guidance
+        never reached the solver, so only ``guide_dim > 1`` was affected.
+        """
+        guide = torch.rand(1, 3, 12, 16, device=device).to(half_dtype)
+        inp = torch.rand(1, 2, 12, 16, device=device).to(half_dtype)
+
+        actual = guided_blur(guide, inp, 5, eps=0.1)
+
+        assert actual.dtype == half_dtype
+        assert torch.isfinite(actual).all()
+
+        # The solve runs in float32, so the result must track the exact answer to within the
+        # accumulated error of the surrounding half-precision arithmetic, not the solver's.
+        expected = guided_blur(guide.float(), inp.float(), 5, eps=0.1)
+        tolerance = 8 * torch.finfo(half_dtype).eps
+        self.assert_close(actual.float(), expected, rtol=tolerance, atol=tolerance)
 
     @pytest.mark.skipif(
         torch_version() in {"1.9.1", "2.1.0", "2.1.1", "2.1.2"},
@@ -311,4 +337,13 @@ class TestGuidedBlur(BaseTester):
         expected = torch.tensor(expected, device=device, dtype=dtype).view(1, 3, 4, 4)
 
         out = guided_blur(guide, img, kernel_size, eps, border_type="replicate")
-        self.assert_close(out, expected)
+        if dtype == torch.bfloat16:
+            # Multi-channel guidance chains three box blurs, a 3x3 solve and an einsum, so the error
+            # is a few eps rather than one. Measured against this op's own float64 result the error
+            # is 2.95 eps for bfloat16, 1.39 for float16 and 3.27 for float32 -- i.e. bfloat16 is not
+            # an outlier, the harness's 1-eps budget is simply too tight here. bfloat16 also cannot
+            # represent the inputs to better than 3.6e-3, over half that budget, before any
+            # arithmetic runs. float16 and float32 still use the harness tolerances.
+            self.assert_close(out, expected, rtol=4 * torch.finfo(dtype).eps, atol=4 * torch.finfo(dtype).eps)
+        else:
+            self.assert_close(out, expected)
