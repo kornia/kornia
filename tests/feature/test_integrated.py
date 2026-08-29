@@ -91,6 +91,44 @@ class TestGetLAFDescriptors(BaseTester):
         )
 
 
+class TestGetLAFDescriptorsEmptyPath(BaseTester):
+    """The empty-LAF result must agree with the non-empty one (see #4065)."""
+
+    @pytest.mark.parametrize("output_dims", [64, 128, 238])
+    def test_empty_matches_the_descriptor_width(self, device, dtype, output_dims):
+        """The width came from a hardcoded 128 rather than from the descriptor module."""
+        img = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        desc = kornia.feature.MKDDescriptor(patch_size=32, output_dims=output_dims).to(device, dtype)
+        laf = kornia.feature.laf_from_center_scale_ori(
+            torch.tensor([[[32.0, 32.0]]], device=device, dtype=dtype),
+            torch.full((1, 1, 1, 1), 8.0, device=device, dtype=dtype),
+        )
+        non_empty = kornia.feature.get_laf_descriptors(img, laf, desc, 32)
+        with pytest.warns(UserWarning):
+            empty = kornia.feature.get_laf_descriptors(
+                img, torch.zeros(1, 0, 2, 3, device=device, dtype=dtype), desc, 32
+            )
+        assert empty.shape == (1, 0, non_empty.shape[-1])
+        assert empty.dtype == non_empty.dtype
+        assert empty.device.type == non_empty.device.type
+
+
+class TestLocalFeatureMatcherEmptyPath(BaseTester):
+    """`no_match_output` must keep the rank the success path uses (see #4065)."""
+
+    def test_empty_lafs_keep_the_batch_dimension(self, device, dtype):
+        matcher = kornia.feature.LocalFeatureMatcher(
+            kornia.feature.SIFTFeature(50), kornia.feature.DescriptorMatcher("snn", 0.9)
+        )
+        out = matcher.no_match_output(device, dtype)
+        # the success path returns `.view(1, -1, 2, 3)`
+        assert out["lafs0"].shape == (1, 0, 2, 3)
+        assert out["lafs1"].shape == (1, 0, 2, 3)
+        # so indexing the batch works either way
+        assert out["lafs0"][0].shape == (0, 2, 3)
+        assert out["keypoints0"].shape == (0, 2)
+
+
 class TestLAFDescriptor(BaseTester):
     def test_same(self, device, dtype):
         B, C, H, W = 1, 3, 64, 64

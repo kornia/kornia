@@ -70,11 +70,16 @@ def get_laf_descriptors(
     patch_descriptor.eval()
 
     timg: torch.Tensor = img
-    if lafs.shape[1] == 0:
-        warnings.warn(f"LAF contains no keypoints {lafs.shape}, returning empty torch.Tensor", stacklevel=1)
-        return torch.empty(lafs.shape[0], lafs.shape[1], 128, dtype=lafs.dtype, device=lafs.device)
     if grayscale_descriptor and img.size(1) == 3:
         timg = rgb_to_grayscale(img)
+
+    if lafs.shape[1] == 0:
+        warnings.warn(f"LAF contains no keypoints {lafs.shape}, returning empty torch.Tensor", stacklevel=1)
+        # Probe the descriptor for its output width instead of assuming 128, so the empty result
+        # has the same trailing dimension and dtype as a non-empty one.
+        with torch.no_grad():
+            probe = patch_descriptor(torch.zeros(1, timg.size(1), patch_size, patch_size).to(timg))
+        return torch.empty(lafs.shape[0], 0, probe.shape[-1], dtype=probe.dtype, device=probe.device)
 
     patches: torch.Tensor = extract_patches_from_pyramid(timg, lafs, patch_size)
     # Descriptor accepts standard torch.Tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
@@ -404,8 +409,10 @@ class LocalFeatureMatcher(nn.Module):
         return {
             "keypoints0": torch.empty(0, 2, device=device, dtype=dtype),
             "keypoints1": torch.empty(0, 2, device=device, dtype=dtype),
-            "lafs0": torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
-            "lafs1": torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
+            # batch dim 1, matching the success path's `.view(1, -1, 2, 3)`, so that callers
+            # can index `lafs0[0]` regardless of whether anything matched.
+            "lafs0": torch.empty(1, 0, 2, 3, device=device, dtype=dtype),
+            "lafs1": torch.empty(1, 0, 2, 3, device=device, dtype=dtype),
             "confidence": torch.empty(0, device=device, dtype=dtype),
             "batch_indexes": torch.empty(0, device=device, dtype=torch.long),
         }
@@ -425,7 +432,10 @@ class LocalFeatureMatcher(nn.Module):
         Returns:
             - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
             - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
-            - ``confidence``, confidence score [0, 1] :math:`(NC)`.
+            - ``confidence``, ``1 - descriptor distance`` :math:`(NC)`. This lies in :math:`[0, 1]`
+              only for ratio-based matchers (``snn``, ``smnn``, ``fginn``, ``adalam``); ``nn`` and
+              ``mnn`` return raw distances, which reach 2.0 for unit-norm descriptors and therefore
+              give confidences down to -1.
             - ``lafs0``, matching LAFs from image0 :math:`(1, NC, 2, 3)`.
             - ``lafs1``, matching LAFs from image1 :math:`(1, NC, 2, 3)`.
             - ``batch_indexes``, batch indexes for the keypoints and lafs :math:`(NC)`.
