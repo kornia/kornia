@@ -398,8 +398,8 @@ class DescriptorMatcherWithSteerer(nn.Module):
         full-resolution images and many more keypoints, and is worth moving onto an accelerator --
         uncomment the ``device`` lines to do that.
 
-        >>> import kornia as K
         >>> import kornia.feature as KF
+        >>> # import kornia as K
         >>> # device = K.core.utils.get_cuda_or_mps_device_if_available()
         >>> img1 = torch.randn([1, 3, 128, 128])
         >>> img2 = torch.randn([1, 3, 128, 128])
@@ -421,8 +421,10 @@ class DescriptorMatcherWithSteerer(nn.Module):
         ...     dists, idxs, num_rot = matcher(
         ...         descs1, descs2, normalize=True, subset_size=500,
         ...     )
-        >>> idxs.shape[1], 0 <= num_rot < steerer_order
-        (2, True)
+        >>> idxs.shape == (dists.shape[0], 2), 0 <= num_rot < steerer_order
+        (True, True)
+        >>> bool((idxs[:, 0] < len(kps1)).all()), bool((idxs[:, 1] < len(kps2)).all())
+        (True, True)
         >>> # print(f"{idxs.shape[0]} tentative matches with steered DeDoDe")
         >>> # print(f"at rotation of {num_rot * 360 / steerer_order} degrees")
 
