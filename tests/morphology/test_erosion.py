@@ -77,7 +77,7 @@ class TestErode(BaseTester):
             None, None, :, :
         ]
         assert_close(erosion(tensor, kernel), expected, atol=1e-4, rtol=1e-4)
-        assert_close(erosion(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
+        assert_close(erosion(tensor, kernel, engine="convolution"), expected)
 
     def test_structural_element(self, device, dtype):
         tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
@@ -103,8 +103,6 @@ class TestErode(BaseTester):
                 engine="convolution",
             ),
             expected,
-            atol=1e-3,
-            rtol=1e-3,
         )
 
     def test_flip(self, device, dtype):
@@ -116,7 +114,7 @@ class TestErode(BaseTester):
             None, None, :, :
         ]
         assert_close(erosion(tensor, kernel, engine="unfold"), expected, atol=1e-4, rtol=1e-4)
-        assert_close(erosion(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
+        assert_close(erosion(tensor, kernel, engine="convolution"), expected)
 
     def test_exception(self, device, dtype):
         tensor = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)

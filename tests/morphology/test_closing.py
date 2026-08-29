@@ -91,8 +91,6 @@ class TestClosing(BaseTester):
         assert_close(
             closing(tensor, torch.ones_like(structural_element), structuring_element=structural_element),
             expected,
-            atol=1e-3,
-            rtol=1e-3,
         )
 
     def test_exception(self, device, dtype):

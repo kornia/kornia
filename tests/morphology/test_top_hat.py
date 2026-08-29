@@ -76,7 +76,7 @@ class TestTopHat(BaseTester):
         expected = torch.tensor([[0.0, 0.5, 0.0], [0.2, 0.0, 0.5], [0.0, 0.5, 0.0]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        assert_close(top_hat(tensor, kernel), expected, atol=1e-3, rtol=1e-3)
+        assert_close(top_hat(tensor, kernel), expected)
 
     def test_structural_element(self, device, dtype):
         tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
@@ -91,8 +91,6 @@ class TestTopHat(BaseTester):
         assert_close(
             top_hat(tensor, torch.ones_like(structural_element), structuring_element=structural_element),
             expected,
-            atol=1e-3,
-            rtol=1e-3,
         )
 
     def test_exception(self, device, dtype):

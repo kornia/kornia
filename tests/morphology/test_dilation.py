@@ -77,7 +77,7 @@ class TestDilate(BaseTester):
             None, None, :, :
         ]
         assert_close(dilation(tensor, kernel, engine="unfold"), expected, atol=1e-4, rtol=1e-4)
-        assert_close(dilation(tensor, kernel, engine="convolution"), expected, atol=1e-3, rtol=1e-3)
+        assert_close(dilation(tensor, kernel, engine="convolution"), expected)
 
     def test_structural_element(self, device, dtype):
         tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
@@ -94,8 +94,6 @@ class TestDilate(BaseTester):
                 tensor, torch.ones_like(structural_element), structuring_element=structural_element, engine="unfold"
             ),
             expected,
-            atol=1e-3,
-            rtol=1e-3,
         )
         assert_close(
             dilation(
@@ -105,8 +103,6 @@ class TestDilate(BaseTester):
                 engine="convolution",
             ),
             expected,
-            atol=1e-3,
-            rtol=1e-3,
         )
 
     def test_flip(self, device, dtype):
@@ -117,7 +113,7 @@ class TestDilate(BaseTester):
         expected = torch.tensor([[0.7, 1.0, 1.0], [0.7, 1.0, 1.0], [0.7, 0.9, 0.9]], device=device, dtype=dtype)[
             None, None, :, :
         ]
-        assert_close(dilation(tensor, kernel), expected, atol=1e-3, rtol=1e-3)
+        assert_close(dilation(tensor, kernel), expected)
 
     def test_exception(self, device, dtype):
         tensor = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
