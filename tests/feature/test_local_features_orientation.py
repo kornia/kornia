@@ -98,6 +98,32 @@ class TestPatchDominantGradientOrientation(BaseTester):
         self.assert_close(model(patches), model_jit(patches))
 
 
+class TestOrientationKernelBuffer(BaseTester):
+    """`weighting` must be a real buffer so `.to()` moves it, and `forward` must not rebind it (#4069)."""
+
+    def test_to_moves_the_kernel(self, device):
+        """`.to()` must carry the kernel along with the parameters.
+
+        float16 rather than the default float32, or the dtype assertion would hold
+        vacuously; float16 also works on MPS, where float64 is unavailable.
+        """
+        mod = PatchDominantGradientOrientation(32).to(device, torch.float16)
+        assert mod.weighting.dtype == torch.float16
+        assert mod.weighting.device.type == torch.empty(0, device=device).device.type
+
+    def test_kernel_stays_out_of_state_dict(self, device):
+        """Registered non-persistent, so existing checkpoints keep loading with strict=True."""
+        assert "weighting" not in PatchDominantGradientOrientation(32).state_dict()
+
+    def test_forward_does_not_mutate_the_module(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        mod = PatchDominantGradientOrientation(32)
+        before = (mod.weighting.dtype, mod.weighting.device)
+        mod(torch.rand(2, 1, 32, 32, dtype=torch.float64))
+        assert (mod.weighting.dtype, mod.weighting.device) == before
+
+
 class TestOriNet(BaseTester):
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)

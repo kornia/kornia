@@ -60,7 +60,12 @@ class PatchAffineShapeEstimator(nn.Module):
         self.gradient: nn.Module = SpatialGradient("sobel", 1)
         self.eps: float = eps
         sigma: float = float(self.patch_size) / math.sqrt(2.0)
-        self.weighting: torch.Tensor = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
+        # non-persistent: derived from `patch_size`, so it stays out of `state_dict()` but follows `.to()`
+        self.register_buffer(
+            "weighting",
+            get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True),
+            persistent=False,
+        )
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(patch_size={self.patch_size}, eps={self.eps})"
@@ -76,8 +81,10 @@ class PatchAffineShapeEstimator(nn.Module):
 
         """
         KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
-        self.weighting = self.weighting.to(patch.dtype).to(patch.device)
-        grads: torch.Tensor = self.gradient(patch) * self.weighting
+        # cast into a local; rebinding `self.weighting` would make the module's dtype/device depend
+        # on whichever tensor was passed last.
+        weighting = self.weighting.to(patch.dtype).to(patch.device)
+        grads: torch.Tensor = self.gradient(patch) * weighting
         # unpack the edges
         gx: torch.Tensor = grads[:, :, 0]
         gy: torch.Tensor = grads[:, :, 1]

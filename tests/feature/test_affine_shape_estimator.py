@@ -55,6 +55,32 @@ class TestPatchAffineShapeEstimator(BaseTester):
         self.gradcheck(ori, (patches,), nondet_tol=1e-4)
 
 
+class TestAffineShapeKernelBuffer(BaseTester):
+    """`weighting` must be a real buffer so `.to()` moves it, and `forward` must not rebind it (#4069)."""
+
+    def test_to_moves_the_kernel(self, device):
+        """`.to()` must carry the kernel along with the parameters.
+
+        float16 rather than the default float32, or the dtype assertion would hold
+        vacuously; float16 also works on MPS, where float64 is unavailable.
+        """
+        mod = PatchAffineShapeEstimator(19).to(device, torch.float16)
+        assert mod.weighting.dtype == torch.float16
+        assert mod.weighting.device.type == torch.empty(0, device=device).device.type
+
+    def test_kernel_stays_out_of_state_dict(self, device):
+        """Registered non-persistent, so existing checkpoints keep loading with strict=True."""
+        assert "weighting" not in PatchAffineShapeEstimator(19).state_dict()
+
+    def test_forward_does_not_mutate_the_module(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        mod = PatchAffineShapeEstimator(19)
+        before = (mod.weighting.dtype, mod.weighting.device)
+        mod(torch.rand(2, 1, 19, 19, dtype=torch.float64))
+        assert (mod.weighting.dtype, mod.weighting.device) == before
+
+
 class TestLAFAffineShapeEstimator(BaseTester):
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
