@@ -314,17 +314,17 @@ def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0) -> Tuple[List[int],
 
 
 def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
-    """De-F.normalize LAFs from scale to image scale.
+    """Denormalize LAFs from the [0, 1] scale to image (pixel) scale.
 
     The convention is that center of 5-pixel image (coordinates from 0 to 4) is 2, and not 2.5.
 
-        B,N,H,W = images.size()
+        B,CH,H,W = images.size()
         MIN_SIZE = min(H - 1, W -1)
-        [a11 a21 x]
+        [a11 a12 x]
         [a21 a22 y]
         becomes
-        [a11*MIN_SIZE a21*MIN_SIZE x*(W-1)]
-        [a21*MIN_SIZE a22*MIN_SIZE y*(W-1)]
+        [a11*MIN_SIZE a12*MIN_SIZE x*(W-1)]
+        [a21*MIN_SIZE a22*MIN_SIZE y*(H-1)]
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -349,12 +349,12 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """Normalize LAFs to [0,1] scale from pixel scale.
 
     See below:
-        B,N,H,W = images.size()
+        B,CH,H,W = images.size()
         MIN_SIZE =  min(H - 1, W -1)
-        [a11 a21 x]
+        [a11 a12 x]
         [a21 a22 y]
         becomes:
-        [a11/MIN_SIZE a21/MIN_SIZE x/(W-1)]
+        [a11/MIN_SIZE a12/MIN_SIZE x/(W-1)]
         [a21/MIN_SIZE a22/MIN_SIZE y/(H-1)]
 
     Args:
@@ -362,7 +362,7 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
         images: :math:`(B, CH, H, W)`
 
     Returns:
-        the denormalized LAF: :math:`(B, N, 2, 3)`, scale in image percentage (0, 1)
+        the normalized LAF: :math:`(B, N, 2, 3)`, scale in image percentage (0, 1)
 
     """
     KORNIA_CHECK_LAF(LAF)

@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Make `yuv_to_rgb` the exact inverse of `rgb_to_yuv`, so an RGB → YUV → RGB round trip is now limited only by the
+  input dtype instead of losing up to `1.36e-3` (in B, at `rgb = (1, 1, 0)`) at every precision, `float64` included
+  (#4044). The inverse kernel was a separately rounded copy of the published BT.470-5 M/PAL inverse relations rather
+  than the inverse of the rounded forward kernel kornia actually ships, and one of its literals — `2.029`, where the
+  inverse of kornia's forward kernel is `2.03199968` — carried most of the error. `yuv_to_rgb` output therefore moves
+  by up to `1.23e-4` in R, `9.13e-4` in G and `1.60e-3` in B over the documented YUV domain, and `yuv420_to_rgb` and
+  `yuv422_to_rgb` move with it. The forward direction (`rgb_to_yuv`, `rgb_to_yuv420`, `rgb_to_yuv422`) is unchanged.
+  Agreement of the inverse with the standard's own relations improves overall, from `1.54e-3` to `5.24e-4`, though R
+  alone moves the other way (`1.54e-4` to `2.77e-4`). The `.. warning::` blocks that documented the defect on the six
+  affected functions and classes are gone.
+
 * Fix the inverted `SigLip2` attention-mask polarity, so every call that passes an `attention_mask` changes (#4043).
   All three mask branches of `SigLip2Attention` (2-D `(B, N)`, 3-D `(B, N, N)` and 4-D `(B, 1, N, N)`) negated the
   mask before handing it to `torch.nn.functional.scaled_dot_product_attention`, whose boolean form reads `True` as
@@ -76,13 +87,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the input only had to be divisible by 2 "vertical" while the guard rejects odd height *and* odd width, so a
   reader padding one axis hit a `ShapeError`, and `yuv422_to_rgb` labelled its chroma argument "UV (luma)".
   The four `ShapeError` messages those guards raise said "evenly disible by 2" and now say "divisible", as do
-  the two identical messages in `kornia/color/raw.py`. Every YUV-to-RGB form -- the three functions and the
-  three `nn.Module` classes -- also gained a `.. warning::` naming a known defect: the round trip through
-  `rgb_to_yuv` loses up to 1.356e-3 in float64 because the two kernels are rounded separately rather than
-  inverted, with `float16` and `bfloat16` adding their own representation error on top (#4044); and
-  `yuv422_to_rgb`/`Yuv422ToRgb` validate only the chroma *width*, so a wrong chroma height surfaces as a bare
-  `RuntimeError` from `torch.cat` (#4050). On the test side, both gradcheck skips now cover the XLA/TPU
-  fixture as well as MPS, since XLA lowers a float64 request to float32, where gradcheck's default `eps=1e-6`
+  the two identical messages in `kornia/color/raw.py`. `yuv422_to_rgb`/`Yuv422ToRgb` also gained a
+  `.. warning::` naming a known defect: they validate only the chroma *width*, so a wrong chroma height
+  surfaces as a bare `RuntimeError` from `torch.cat` (#4050). The same entry gave every YUV-to-RGB form a
+  second warning, for the round trip that #4044 has since fixed; those blocks are gone, see the entry
+  above. On the test side, both gradcheck skips now cover the XLA/TPU fixture as well as MPS, since XLA
+  lowers a float64 request to float32, where gradcheck's default `eps=1e-6`
   makes the numerical Jacobian invalid: the name-based marker in `conftest.py` for tests called `*gradcheck*`,
   and the device guard in `BaseTester.gradcheck` for the six callers named something else. No runtime
   behavior changed.
@@ -98,6 +108,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   built on these patches — `get_laf_descriptors`, `LAFDescriptor`, `SIFTFeature`, `KeyNetAffNetHardNet` and the rest —
   moves with them for keypoints near the border. The CPU and CUDA paths never took this branch and are byte-identical
   to before.
+* Fix `match_fginn`'s geometric consistency check comparing every query's candidates against **query 0**'s
+  candidates instead of against the query's own 1st nearest neighbor, which changes every `match_fginn` and
+  `GeometryAwareDescriptorMatcher("fginn")` result -- the latter being that class's *default* mode (#4062). The distance
+  `kdist[i, k] = || xy2[idx[i, k]] - xy2[idx[0, k]] ||` was measured from a slice of dim 0 that broadcast query 0's
+  whole candidate list over the batch; it is now `candidates_xy[:, 0:1]`, i.e.
+  `kdist[i, k] = || xy2[idx[i, k]] - xy2[idx[i, 0]] ||`. Three consequences disappear with it. The geometric term
+  was inert -- an unrelated query's candidates are almost always farther apart than `spatial_th`, so nothing was
+  penalized and the raw 2nd nearest neighbor was used, making `match_fginn` behave as `match_snn`: on a 300x300
+  descriptor set with planted near-duplicates, 15 of the 15 matches shared with `match_snn` had an identical ratio
+  before and 14 of 15 after. Query 0 always matched, since `candidates_xy[0] - candidates_xy[0]` is identically zero,
+  so all of its candidates were penalized and its ratio collapsed to ~0. And a query's ratio depended on the other
+  queries in the batch: with only query 0 changed, one query's ratio moved between `0.9005` and `2.8e-08`. The seven
+  existing FGINN tests pass unchanged on both sides, which is how this survived; two tests that discriminate it were
+  added. `match_fginn`'s docstring now also records the saturation corner, where every candidate falls within
+  `spatial_th` of the 1st nearest neighbor, the ratio collapses towards zero and the match is accepted.
 
 
 ## :rocket: [0.6.11] - 2022-03-28
