@@ -136,10 +136,10 @@ class TestDenseSIFTDescriptor(BaseTester):
         sift.__repr__()
 
     def test_instances_do_not_share_buffer_storage(self, device):
-        """Instances must not alias the module-level identity cache (see #4068).
+        """Instances must not share storage for `_poolingconv_weight` (see #4068).
 
-        `_get_reshape_kernel` memoises `torch.eye(numel)`. Returning the cached tensor itself made
-        every `DenseSIFTDescriptor` with the same configuration share one storage, so a single
+        `_get_reshape_kernel` used to memoise `torch.eye(numel)` and hand out a view of it, so
+        every `DenseSIFTDescriptor` with the same configuration shared one storage and a single
         in-place write leaked into all of them.
         """
         a = DenseSIFTDescriptor(num_ang_bins=8, num_spatial_bins=4)

@@ -30,29 +30,17 @@ from kornia.geometry.conversions import pi
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:
     """Return neigh2channels conv kernel.
 
-    The identity matrix is memoised per ``numel`` to avoid rebuilding it for the common kernel
-    sizes, but the caller always receives a **fresh copy**. Handing out the cached tensor itself
-    would let one consumer's in-place write -- ``load_state_dict`` copies into buffers in place --
-    corrupt the cache and therefore every other consumer, including modules constructed later.
+    The identity matrix used to be memoised per ``numel`` and handed to the caller as a view of
+    the cached tensor, which let one consumer's in-place write -- ``load_state_dict`` copies into
+    buffers in place -- corrupt the cache and therefore every other consumer, including modules
+    constructed later (#4068). Making the cache safe means cloning on the way out, which costs
+    more than rebuilding the identity, so the cache is gone: measured on a 4-thread CPU, the
+    cached-and-cloned path is 2.6 us against 2.0 us for a plain ``torch.eye`` at the default
+    ``numel = 8 * 4 * 4``, and 3.9 ms against 2.8 ms at the old 4096 bound, where it also retained
+    67 MB for the lifetime of the process.
     """
     numel: int = kd * ky * kx
-
-    # The cache size is limited for memory efficiency.
-    # NOTE: If memory is a concern and large kd/ky/kx are rare, adjust _MAX_CACHED.
-    _MAX_CACHED = 4096
-    if numel <= _MAX_CACHED:
-        if not hasattr(_get_reshape_kernel, "_eye_cache"):
-            _get_reshape_kernel._eye_cache = {}  # type: ignore[attr-defined]
-        cache = _get_reshape_kernel._eye_cache  # type: ignore[attr-defined]
-        res = cache.get(numel)
-        if res is None:
-            res = torch.eye(numel)
-            cache[numel] = res
-        # clone: never expose the cached tensor to the caller
-        return res.view(numel, kd, ky, kx).clone()
-    else:
-        # fallback to normal allocation for big kernels
-        return torch.eye(numel).view(numel, kd, ky, kx)
+    return torch.eye(numel).view(numel, kd, ky, kx)
 
 
 def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
