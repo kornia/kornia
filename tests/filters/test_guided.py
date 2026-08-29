@@ -107,7 +107,12 @@ class TestGuidedBlur(BaseTester):
             separable=True,
         )
 
-        self.assert_close(actual, expected)
+        if dtype in (torch.float16, torch.bfloat16):
+            # The two convolution decompositions accumulate rounding errors in different orders at half precision.
+            tolerance = 3 * torch.finfo(dtype).eps
+            self.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
+        else:
+            self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("guide_dim", [1, 3])
     def test_module_forwards_separable_to_all_box_blurs(
