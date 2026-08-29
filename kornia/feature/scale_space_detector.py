@@ -66,11 +66,14 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_le
     return max_coords
 
 
+def _resize_mask(mask: torch.Tensor, shape: List[int]) -> torch.Tensor:
+    r"""Resample a full-resolution mask onto the spatial size of ``shape``."""
+    return F.interpolate(mask, shape[-2:], mode="bilinear", align_corners=False)
+
+
 def _create_octave_mask(mask: torch.Tensor, octave_shape: List[int]) -> torch.Tensor:
     r"""Downsample a mask based on the given octave shape."""
-    mask_shape = octave_shape[-2:]
-    mask_octave = F.interpolate(mask, mask_shape, mode="bilinear", align_corners=False)
-    return mask_octave.unsqueeze(1)
+    return _resize_mask(mask, octave_shape).unsqueeze(1)
 
 
 class ScaleSpaceDetector(nn.Module):
@@ -481,7 +484,11 @@ class MultiResolutionDetector(nn.Module):
         return mask * score_map
 
     def detect_features_on_single_level(
-        self, level_img: torch.Tensor, num_kp: int, factor: Tuple[float, float]
+        self,
+        level_img: torch.Tensor,
+        num_kp: int,
+        factor: Tuple[float, float],
+        mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Detect keypoints on one image-pyramid level.
 
@@ -490,11 +497,19 @@ class MultiResolutionDetector(nn.Module):
             num_kp: Number of keypoints requested from this pyramid level.
             factor: Scale factor mapping coordinates from the current pyramid level back to the original image
                 resolution.
+            mask: Optional weight mask with shape :math:`(1, 1, H, W)` at the *original* image resolution. It is
+                resampled onto this level and multiplies the response map before non-maxima suppression, the same
+                way :class:`ScaleSpaceDetector` applies its mask per octave.
 
         Returns:
-            Tuple containing scores and local affine frames detected at the requested pyramid level.
+            Tuple containing scores and local affine frames detected at the requested pyramid level. When the level
+            holds fewer above-threshold maxima than ``num_kp``, the remaining slots are padded with a zero response
+            and a zero LAF.
         """
-        det_map = self.nms(self.remove_borders(self.model(level_img)))
+        resp_map = self.model(level_img)
+        if mask is not None:
+            resp_map = resp_map * _resize_mask(mask, list(resp_map.shape))
+        det_map = self.nms(self.remove_borders(resp_map))
         _, _, _h, w = det_map.shape
         det_flat = det_map.view(-1)  # (H*W,) — B=1, C=1 guaranteed by MultiResolutionDetector
 
@@ -506,28 +521,41 @@ class MultiResolutionDetector(nn.Module):
         k = min(num_kp, det_flat.numel())
         top_scores, top_flat_idx = torch.topk(det_masked, k=k)
 
+        # `topk` cannot rank among the masked-out positions — they all carry the same `fill` —
+        # so once this level runs out of real candidates it returns an arbitrary tie-break subset
+        # of them, in practice the lowest flat indices, i.e. the border strip `remove_borders` has
+        # just zeroed. Neutralise those slots rather than handing the sentinel back: zero response
+        # and zero LAF, which is how `ScaleSpaceDetector.detect` already pads a short result.
+        valid = top_scores > self.score_threshold
+        top_scores = torch.where(valid, top_scores, torch.zeros_like(top_scores))
+
         # Convert flat indices to (y, x) pixel coordinates.
         yx = torch.stack([top_flat_idx // w, top_flat_idx % w], dim=1)  # (k, 2)
 
         fx = level_img.new_tensor([factor[0], factor[1]])
-        xy_projected = yx.view(1, k, 2).flip(2).float() * fx
+        xy_projected = yx.view(1, k, 2).flip(2).to(level_img.dtype) * fx
         scale_val = 0.5 * (factor[0] + factor[1]) * self.mr_size
         scale = level_img.new_full((1, k, 1, 1), scale_val)
         lafs = laf_from_center_scale_ori(xy_projected, scale, level_img.new_zeros(1, k, 1))
+        lafs = lafs * valid.view(1, k, 1, 1).to(lafs.dtype)
         return top_scores, lafs
 
     def detect(self, img: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Compute points per level
         """Detect local features in an image batch.
 
         Args:
-            img: Input image tensor with shape `(B, C, H, W)`.
-            mask: Optional mask tensor used to restrict valid image locations.
+            img: Input image tensor with shape `(1, C, H, W)`.
+            mask: Optional weight mask with shape `(1, 1, H, W)`. It is resampled onto every pyramid level and
+                multiplies the response function there, so a zero region yields no detections.
 
         Returns:
-            Tuple containing detection scores and local affine frames. Local affine frames are usually shaped `(B, N, 2,
-            3)`, where `N` is the selected feature count.
+            Tuple containing detection scores and local affine frames. Local affine frames are usually shaped
+            `(1, N, 2, 3)`, where `N` is the selected feature count. Slots beyond the number of above-threshold
+            maxima carry a zero response and a zero LAF.
         """
+        if mask is not None:
+            KORNIA_CHECK_SHAPE(mask, ["1", "1", "H", "W"])
+        # Compute points per level
         num_features_per_level: List[float] = []
         tmp = 0.0
         factor_points = self.scale_factor_levels**2
@@ -554,7 +582,7 @@ class MultiResolutionDetector(nn.Module):
             up_factor_kpts = (float(w) / float(nw), float(h) / float(nh))
             img_up = resize(img_up, (nh, nw), interpolation="bilinear", align_corners=False)
 
-            cur_scores, cur_lafs = self.detect_features_on_single_level(img_up, num_points_level, up_factor_kpts)
+            cur_scores, cur_lafs = self.detect_features_on_single_level(img_up, num_points_level, up_factor_kpts, mask)
 
             all_responses.append(cur_scores.view(1, -1))
             all_lafs.append(cur_lafs)
@@ -572,7 +600,7 @@ class MultiResolutionDetector(nn.Module):
             if idx_level > 0 or (self.num_upscale_levels > 0):
                 num_points_level = sum(num_features_per_level[: idx_level + 1 + self.num_upscale_levels])
 
-            cur_scores, cur_lafs = self.detect_features_on_single_level(cur_img, num_points_level, factor)
+            cur_scores, cur_lafs = self.detect_features_on_single_level(cur_img, num_points_level, factor, mask)
             all_responses.append(cur_scores.view(1, -1))
             all_lafs.append(cur_lafs)
         responses = torch.cat(all_responses, 1)
@@ -591,12 +619,13 @@ class MultiResolutionDetector(nn.Module):
         Args:
             img: image to extract features with shape [1xCxHxW]. KeyNetDetector does not support batch processing,
         because the number of detections is different on each image.
-            mask: a mask with weights where to apply the response function. The shape must be the same as
-              the input image.
+            mask: a mask with weights where to apply the response function, shape [1x1xHxW]. It is resampled onto
+              every pyramid level and multiplies the response there, so a zero region yields no detections.
 
         Returns:
             lafs: shape [1xNx2x3]. Detected local affine frames.
-            responses: shape [1xNx1]. Response function values for corresponding lafs
+            responses: shape [1xN]. Response function values for corresponding lafs. When the image yields fewer
+              above-threshold maxima than ``num_features``, the remaining slots hold a zero response and a zero LAF.
 
         """
         KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])

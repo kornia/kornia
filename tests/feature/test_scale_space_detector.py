@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 import kornia
@@ -194,8 +195,8 @@ class TestMultiResolutionDetector(BaseTester):
         assert lafs.shape == torch.Size([1, 20, 2, 3])
 
     def test_score_threshold_reduces_detections(self, device, dtype):
-        # A very high score_threshold should leave no real detections: all returned responses
-        # will be the sentinel fill value (very negative), while shape remains fixed.
+        # A very high score_threshold should leave no real detections: every slot is padding,
+        # which reads as an exactly zero response, while the shape remains fixed.
         inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
         det_no_thresh = self._make_detector(num_features=50).to(device, dtype)
         det_high_thresh = MultiResolutionDetector(
@@ -204,10 +205,70 @@ class TestMultiResolutionDetector(BaseTester):
         lafs_no_thresh, resps_no_thresh = det_no_thresh(inp)
         lafs_high_thresh, resps_high_thresh = det_high_thresh(inp)
         assert lafs_high_thresh.shape == lafs_no_thresh.shape
-        # With an impossibly high threshold all slots contain the fill sentinel (< 0),
-        # while real detections always have positive responses.
+        # With an impossibly high threshold every slot is padding: a zero response and a zero
+        # LAF. Real detections always have positive responses.
         assert resps_no_thresh.max().item() > 0
-        assert (resps_high_thresh <= 0).all()
+        assert (resps_high_thresh == 0).all()
+        assert (lafs_high_thresh == 0).all()
+
+    def test_short_result_is_padded_with_zeros(self, device, dtype):
+        # A level with fewer above-threshold maxima than its quota must not return the
+        # `torch.finfo(dtype).min / 2` top-K sentinel, nor the arbitrary border coordinates
+        # `topk` picks once every remaining candidate is tied at that value.
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        det = self._make_detector(num_features=100).to(device, dtype)
+        lafs, resps = det(inp)
+
+        assert resps.shape == torch.Size([1, 100])
+        assert (resps >= 0).all()
+        padding = resps[0] == 0
+        assert bool(padding.any()), "expected this image to under-fill 100 slots"
+        assert (lafs[0][padding] == 0).all()
+        assert (resps[0][~padding] > 0).all()
+
+    def test_mask_suppresses_detections(self, device, dtype):
+        # Two blobs: a bright one top-left, a dimmer one bottom-right. Unmasked, the bright
+        # blob wins; with a mask covering only the bottom-right quadrant the dim blob must be
+        # the best -- and nothing may be detected outside the mask.
+        inp = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        inp[:, :, 14:19, 14:19] = 1.0
+        inp[:, :, 46:51, 46:51] = 0.5
+        mask = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        mask[:, :, 32:, 32:] = 1.0
+
+        det = self._make_detector(num_features=10).to(device, dtype)
+        lafs_free, resps_free = det(inp)
+        lafs_masked, resps_masked = det(inp, mask)
+
+        assert lafs_free[0, int(resps_free[0].argmax()), 0, 2].item() < 32
+        assert lafs_masked[0, int(resps_masked[0].argmax()), 0, 2].item() > 32
+        found = resps_masked[0] != 0
+        assert bool(found.any())
+        # The mask is resampled bilinearly onto every level, so its edge softens by a level
+        # pixel or two; 40 keeps the bound well clear of that without weakening the check
+        # (the unmasked run puts its best detection at ~17.8).
+        assert (lafs_masked[0][found][:, :, 2] >= 40).all()
+
+    def test_zero_mask_detects_nothing(self, device, dtype):
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        mask = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        det = self._make_detector(num_features=20).to(device, dtype)
+        lafs, resps = det(inp, mask)
+        assert (resps == 0).all()
+        assert (lafs == 0).all()
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_dtype_is_preserved(self, device, half_dtype):
+        # `detect_features_on_single_level` used to hardcode `.float()` on the pixel
+        # coordinates, so half-precision input came back with float32 LAFs beside
+        # half-precision responses.
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=half_dtype)
+        det = self._make_detector(num_features=20).to(device, half_dtype)
+        lafs, resps = det(inp)
+        assert lafs.dtype == half_dtype
+        assert resps.dtype == half_dtype
 
     def test_smoke_with_blob_image(self, device, dtype):
         # Synthetic image with a bright blob — detector should find it.

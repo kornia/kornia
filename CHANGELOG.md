@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now emits a `TracerWarning` about converting a tensor to a Python boolean that it did not emit before. The guard
   is a static check and the traced graph is unchanged — the warning is noise, not a correctness signal.
 
+* `MultiResolutionDetector` and `KeyNetDetector` change their output on three counts — padded slots now read as a
+  zero response and a zero LAF instead of `torch.finfo(dtype).min / 2` and an arbitrary border coordinate, the
+  previously inert `mask` argument now suppresses detections, and half-precision input now yields half-precision
+  LAFs. See the entry under **Bug fixes** (#4089, #4090, #4091) for the details and the migration.
+
 ### Bug fixes
 
 * Raise `NotImplementedError` instead of `RuntimeError` for an integral `src` on the empty-`dsize` paths of
@@ -175,6 +180,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   docstring also stops claiming `confidence` is in `[0, 1]`: it is `1 - distance`, which for the raw-distance
   matchers `nn` and `mnn` goes at least down to -1 on unit-norm descriptors, and is unbounded below for arbitrary
   ones.
+
+* Stop `MultiResolutionDetector` (and therefore `KeyNetDetector`) fabricating detections, honour its `mask` argument,
+  and keep its LAFs in the input dtype (#4089, #4090, #4091).
+
+  `detect_features_on_single_level` masked every non-candidate position to `torch.finfo(dtype).min / 2` and then ran
+  `topk` with `k` clamped against the *pixel count* rather than the number of surviving candidates. Once a pyramid
+  level ran out of above-threshold maxima, `topk` could no longer rank -- every remaining position carried the same
+  sentinel -- so it returned an arbitrary tie-break subset, in practice the low flat indices, which is exactly the
+  border strip `remove_borders` had just zeroed. `MultiResolutionDetector(BlobHessian(), num_features=100)` on a
+  plain `64x64` image returned 70 of its 100 features that way, each with a response of `-1.7e38` and a real-looking
+  coordinate. Those slots are now padded with a zero response and a zero LAF, which is what
+  `ScaleSpaceDetector.detect` already does for a short result. Callers that tested for the sentinel (`resp < 0`)
+  should test `resp == 0`; callers that consumed the responses as scores no longer need to.
+
+  `forward(img, mask)` and `detect(img, mask)` accepted a `mask`, documented it as "a mask with weights where to
+  apply the response function", and ignored it -- an all-zero mask returned bit-identical output. The mask is now
+  resampled onto each pyramid level and multiplies the response before non-maxima suppression, the same way
+  `ScaleSpaceDetector` applies its own mask per octave, and its shape is checked as `(1, 1, H, W)`. Anyone who was
+  passing a mask and silently getting unmasked detections now gets masked ones.
+
+  `detect_features_on_single_level` also hardcoded `.float()` on the pixel coordinates, so a `float16`/`bfloat16`
+  image came back with `float32` LAFs beside half-precision responses. Coordinates now convert to the input dtype;
+  `float32` and `float64` output is unchanged.
 
 
 ## :rocket: [0.6.11] - 2022-03-28
