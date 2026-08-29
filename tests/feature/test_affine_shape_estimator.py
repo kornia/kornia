@@ -66,7 +66,7 @@ class TestAffineShapeKernelBuffer(BaseTester):
         """
         mod = PatchAffineShapeEstimator(19).to(device, torch.float16)
         assert mod.weighting.dtype == torch.float16
-        assert mod.weighting.device.type == torch.empty(0, device=device).device.type
+        assert mod.weighting.device == torch.empty(0, device=device).device
 
     def test_kernel_stays_out_of_state_dict(self, device):
         """Registered non-persistent, so existing checkpoints keep loading with strict=True."""

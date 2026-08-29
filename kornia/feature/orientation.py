@@ -103,8 +103,9 @@ class PatchDominantGradientOrientation(nn.Module):
             raise TypeError(
                 f"input shape should be must be [Bx1x{self.patch_size}x{self.patch_size}]. Got {patch.size()}"
             )
-        # cast into locals; rebinding `self.*` here would make the module's dtype/device depend on
-        # whichever tensor was passed last, and is a `torch.compile` guard hazard.
+        # cast into a local; rebinding `self.weighting` would make the buffer's dtype/device depend on
+        # whichever tensor was passed last, and is a `torch.compile` guard hazard. (The `self.angular_smooth`
+        # line below rebinds a submodule to itself -- `nn.Module.to` is in-place -- which is a different case.)
         weighting = self.weighting.to(patch.dtype).to(patch.device)
         self.angular_smooth = self.angular_smooth.to(patch.dtype).to(patch.device)
         grads: torch.Tensor = self.gradient(patch)

@@ -94,7 +94,7 @@ class TestSIFTDescriptorKernelBuffer(BaseTester):
         """
         mod = SIFTDescriptor(32).to(device, torch.float16)
         assert mod.gk.dtype == torch.float16
-        assert mod.gk.device.type == torch.empty(0, device=device).device.type
+        assert mod.gk.device == torch.empty(0, device=device).device
 
     def test_kernel_stays_out_of_state_dict(self, device):
         """Registered non-persistent, so existing checkpoints keep loading with strict=True."""
