@@ -130,6 +130,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existing FGINN tests pass unchanged on both sides, which is how this survived; two tests that discriminate it were
   added. `match_fginn`'s docstring now also records the saturation corner, where every candidate falls within
   `spatial_th` of the 1st nearest neighbor, the ratio collapses towards zero and the match is accepted.
+* Fix `DenseSIFTDescriptor` registering a process-global cached tensor as its `_poolingconv_weight` buffer, so that
+  one instance's `load_state_dict` silently corrupted every other instance and every instance constructed later
+  (#4068). `_get_reshape_kernel` memoises `torch.eye(numel)` per `numel` and used to return a *view* of the cached
+  tensor; `.float()` on an already-float tensor returns the same object, so no copy happened between the cache and
+  the buffer, and `load_state_dict` copies into buffers in place. Loading a checkpoint into one `DenseSIFTDescriptor`
+  therefore overwrote the shared identity matrix, with no error raised and every descriptor built from it wrong from
+  then on. The cached tensor is now cloned before it is handed out. Descriptor output is byte-identical to before.
 
 
 ## :rocket: [0.6.11] - 2022-03-28
