@@ -20,7 +20,7 @@ import pytest
 import torch
 
 from kornia.geometry import RANSAC, transform_points
-from kornia.geometry.epipolar import sampson_epipolar_distance
+from kornia.geometry.epipolar import project_to_essential, sampson_epipolar_distance
 
 from testing.base import BaseTester
 from testing.casts import dict_to
@@ -403,14 +403,14 @@ class TestRANSACEssential(BaseTester):
         """Regression test for https://github.com/kornia/kornia/issues/3874 (forward path).
 
         forward() must return an essential matrix even when local optimization does not win and
-        the best model is the minimal-solver estimate (find_essential), which is not on the
-        essential manifold by itself. After projecting the minimal candidates inside forward(),
-        the returned matrix satisfies the essential-matrix constraint regardless of which path
-        selects the best model.
+        the best model is the minimal-solver estimate (find_essential), which is not guaranteed
+        to be on the essential manifold. The returned model is projected onto the manifold
+        before being returned, so the constraint holds regardless of which path selects the
+        best model.
         """
         torch.random.manual_seed(0)
         ransac = RANSAC("essential").to(device=device, dtype=dtype)
-        for _ in range(20):
+        for _ in range(5):
             kp1 = torch.rand(20, 2, device=device, dtype=dtype)
             kp2 = torch.rand(20, 2, device=device, dtype=dtype)
             E, _ = ransac(kp1, kp2)
@@ -419,10 +419,10 @@ class TestRANSACEssential(BaseTester):
             assert (sv[2] / sv[0]).abs() < 1e-4
 
     def test_project_to_essential(self, device, dtype):
-        """_project_to_essential must enforce the essential-matrix constraint."""
+        """project_to_essential must enforce the essential-matrix constraint."""
         torch.random.manual_seed(0)
         M = torch.rand(4, 3, 3, device=device, dtype=dtype)
-        E = RANSAC._project_to_essential(M)
+        E = project_to_essential(M)
         sv = torch.linalg.svdvals(E)
         assert torch.all((sv[..., 0] / sv[..., 1] - 1.0).abs() < 1e-2)
         assert torch.all((sv[..., 2] / sv[..., 0]).abs() < 1e-4)

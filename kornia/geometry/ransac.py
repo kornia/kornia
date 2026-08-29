@@ -25,8 +25,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.utils import _torch_svd_cast
-from kornia.geometry.epipolar import find_essential, find_fundamental, sampson_epipolar_distance
+from kornia.geometry.epipolar import find_essential, find_fundamental, project_to_essential, sampson_epipolar_distance
 from kornia.geometry.homography import (
     find_homography_dlt,
     find_homography_dlt_iterated,
@@ -315,34 +314,8 @@ class RANSAC(nn.Module):
         # motion_from_essential do not silently fail.
         # See https://github.com/kornia/kornia/issues/3874
         if self.model_type == "essential":
-            model = self._project_to_essential(model)
+            model = project_to_essential(model)
         return model
-
-    @staticmethod
-    def _project_to_essential(model: torch.Tensor) -> torch.Tensor:
-        """Project a matrix onto the essential-matrix manifold.
-
-        An essential matrix must be of the form ``U diag(s, s, 0) V^T``. The 8-point DLT used by the
-        polisher returns a general fundamental matrix that violates this constraint, so we enforce it
-        by averaging the two largest singular values and zeroing the smallest one (the classic 8-point
-        essential-matrix normalization).
-
-        Args:
-            model: estimated matrix with shape :math:`(B, 3, 3)`.
-
-        Returns:
-            Matrix satisfying the essential-matrix constraint, shape :math:`(B, 3, 3)`.
-
-        """
-        if model is None or len(model) == 0:
-            return model
-        U, S, V = _torch_svd_cast(model)
-        S = S.clone()
-        mean_sv = 0.5 * (S[..., 0] + S[..., 1])
-        S[..., 0] = mean_sv
-        S[..., 1] = mean_sv
-        S[..., 2] = torch.zeros_like(S[..., 2])
-        return U @ torch.diag_embed(S) @ V.mH
 
     def validate_inputs(self, kp1: torch.Tensor, kp2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> None:
         """Validate input tensors for shape and size requirements.
@@ -409,12 +382,6 @@ class RANSAC(nn.Module):
             models = self.remove_bad_models(models)
             if (models is None) or (len(models) == 0):
                 continue
-            if self.model_type == "essential":
-                # The 5-point minimal solver (find_essential) does not return a matrix on the
-                # essential manifold; project it so that the model selected by verify() (and the
-                # best_model returned by forward when local optimization does not win) satisfies
-                # the essential-matrix constraint. See https://github.com/kornia/kornia/issues/3874
-                models = self._project_to_essential(models)
             # Score the models and select the best one
             model, inliers, model_score, num_inliers = self.verify(kp1, kp2, models, self.inl_th**2)
             # Store far-the-best model and (optionally) do a local optimization
@@ -445,4 +412,10 @@ class RANSAC(nn.Module):
                 if (i + 1) * self.batch_size >= new_max_iter:
                     break
         # local optimization with all inliers for better precision
+        # The best model may come from the 5-point minimal solver (find_essential), which is not
+        # guaranteed to return a matrix on the essential manifold. Project the returned model once
+        # instead of projecting every candidate inside the loop, so that model selection is unaffected.
+        # See https://github.com/kornia/kornia/issues/3874
+        if self.model_type == "essential":
+            best_model_total = project_to_essential(best_model_total[None])[0]
         return best_model_total, inliers_best_total
