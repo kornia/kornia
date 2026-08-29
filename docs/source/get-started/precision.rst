@@ -30,8 +30,10 @@ This page documents which kornia modules support half-precision floating-point d
        ``_torch_inverse_cast`` which promote to float32 before computing.
    * - ``kornia.morphology``
      - ✅ Yes
-     - ✅ Yes
-     - Uses only convolution and pooling; no dtype restrictions.
+     - ⚠️ Partial
+     - Uses only convolution and pooling. ``top_hat``, ``bottom_hat`` and
+       ``gradient`` subtract two dilation/erosion results, so bfloat16 loses
+       roughly 0.4% relative accuracy on them; see `issue #4081 <https://github.com/kornia/kornia/issues/4081>`_.
    * - ``kornia.augmentation``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -111,8 +113,12 @@ Legend
 Test Results
 ------------
 
-Measured on commit ``6131e98`` (2026-03-21), full test suite (no ``--runslow``).
-Pass% = passed ÷ (passed + failed); skipped and xfailed tests are excluded.
+Full test suite (no ``--runslow``). Pass% = passed ÷ (passed + failed);
+skipped and xfailed tests are excluded. CPU rows were measured on commit
+``4ab79c78`` (2026-08-29); CUDA rows are still from ``6131e98`` (2026-03-21).
+
+The half-precision suite is not run in CI (see `issue #4070 <https://github.com/kornia/kornia/issues/4070>`_), so these numbers
+are refreshed by hand with ``pixi run test-half``.
 
 .. list-table::
    :header-rows: 1
@@ -124,25 +130,25 @@ Pass% = passed ÷ (passed + failed); skipped and xfailed tests are excluded.
      - Skipped
      - Pass%
    * - CPU float32 *(baseline)*
-     - 7647
-     - 3
-     - 3269
-     - **99.9%**
+     - 8499
+     - 0
+     - 3535
+     - **100.0%**
+   * - CPU float16
+     - 7751
+     - 689
+     - 3595
+     - **91.8%**
+   * - CPU bfloat16
+     - 7794
+     - 695
+     - 3545
+     - **91.8%**
    * - CUDA float32 *(baseline)*
      - 7634
      - 3
      - 3280
      - **99.9%**
-   * - CPU float16
-     - 6866
-     - 747
-     - 3306
-     - **90.1%**
-   * - CPU bfloat16
-     - 6838
-     - 812
-     - 3269
-     - **89.3%**
    * - CUDA float16 *(KORNIA_TEST_IN_SUBPROCESS=1)*
      - 6727
      - 643
