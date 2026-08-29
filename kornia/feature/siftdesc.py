@@ -71,7 +71,7 @@ def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tup
 
     Args:
         patch_size: the given patch size.
-        num_spatial_bins: the ggiven number of spatial bins.
+        num_spatial_bins: the given number of spatial bins.
 
     Returns:
         ksize, stride, pad.
