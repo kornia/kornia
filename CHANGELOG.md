@@ -137,7 +137,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   upper bound is now `w - 1 - border` and `h - 1 - border`. A LAF whose boundary points reach past the last valid
   pixel coordinate is now reported as outside; anything strictly inside is unchanged. The equivalent inlined check
   in `ScaleSpaceDetector._process_octave` moved with it, so detections within one pixel of the right or bottom edge
-  that used to survive its `border=5` filter are now discarded.
+  that used to survive its `border=5` filter are now discarded. That inlined check also computed its `max |sin|`
+  constant with the wrong angular spacing (`2*pi/11` instead of the `2*pi/10` that `laf_to_boundary_points(n_pts=12)`
+  actually samples), inflating the tested x-extent by 4% and making the inline check stricter than the reference it
+  claims to reproduce; the two now agree exactly. `ScaleSpaceDetector` output is unchanged.
 
 
 ## :rocket: [0.6.11] - 2022-03-28

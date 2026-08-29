@@ -38,11 +38,11 @@ from .orientation import PassLAF
 from .responses import BlobHessian
 
 # Max |sin| among the 11 boundary points sampled by laf_to_boundary_points(n_pts=12):
-#   angles = linspace(0, 2π, 11) → k * 2π/11 for k=0..10
-#   max|sin| at k=3: sin(6π/11) ≈ 0.9898;  max|cos| at k=0: cos(0) = 1.0
+#   angles = linspace(0, 2π, n_pts - 1) = linspace(0, 2π, 11) → k * 2π/10 for k=0..10
+#   max|sin| at k=2 and k=3: sin(2π/5) ≈ 0.9511;  max|cos| at k=0: cos(0) = 1.0
 # Used to inline the boundary check in _process_octave for isotropic LAFs (rotmat=eye(2)),
 # avoiding CPU→GPU allocation + bmm every octave.
-_MAX_ABS_SIN_12: float = math.sin(3 * 2 * math.pi / 11)  # ≈ 0.9898
+_MAX_ABS_SIN_12: float = math.sin(2 * 2 * math.pi / 10)  # ≈ 0.9511
 
 
 def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
