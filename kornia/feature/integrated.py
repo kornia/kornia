@@ -438,7 +438,7 @@ class LocalFeatureMatcher(nn.Module):
             - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
             - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
             - ``confidence``, ``1 - descriptor distance`` :math:`(NC)`. This lies in :math:`[0, 1]`
-              only for ratio-based matchers (``snn``, ``smnn``, ``fginn``, ``adalam``); ``nn`` and
+              only for the ratio-based ``DescriptorMatcher`` modes (``snn``, ``smnn``); ``nn`` and
               ``mnn`` return raw distances, which are unbounded for an arbitrary descriptor, so the
               confidence has no lower bound in general -- it goes at least down to -1, the value
               reached by unit-norm descriptors, whose distance tops out at 2.0.
