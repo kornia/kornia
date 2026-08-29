@@ -200,8 +200,10 @@ class Se2(nn.Module):
         Example:
             >>> v = torch.ones((1, 3))
             >>> s = Se2.exp(v).log()
-            >>> s
-            tensor([[1.0000, 1.0000, 1.0000]], grad_fn=<StackBackward0>)
+            >>> s.shape
+            torch.Size([1, 3])
+            >>> torch.allclose(s, v)
+            True
 
         """
         theta = self.so2.log()
