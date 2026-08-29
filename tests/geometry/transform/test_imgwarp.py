@@ -140,10 +140,10 @@ def test_empty_destination_blames_an_integral_src_by_name(op_name, device):
     src = torch.zeros(1, 3, 3, 4, device=device, dtype=torch.int64)
     matrix = torch.eye(3, device=device)[:rows].unsqueeze(0)
 
-    with pytest.raises(RuntimeError, match="floating point src"):
+    with pytest.raises(NotImplementedError, match="floating point src"):
         op(src, matrix, (0, 4))
-    # The non-empty path rejects it too, so the empty guard is not stricter.
-    with pytest.raises((RuntimeError, NotImplementedError)):
+    # The non-empty path rejects it with the same type, so the two paths stay in parity.
+    with pytest.raises(NotImplementedError):
         op(src, matrix, (1, 4))
 
 

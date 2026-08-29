@@ -120,7 +120,7 @@ def _empty_warp_output_2d(
     # rejecting it. Matching that would mean bilinear-sampling into an integer output, so the
     # cpu/cuda contract is the one enforced here.)
     if not src.is_floating_point():
-        raise RuntimeError(f"Expected a floating point src, got {src.dtype}.")
+        raise NotImplementedError(f"Expected a floating point src, got {src.dtype}.")
     # ``grid_sample`` requires the sampling grid in ``src.dtype``. ``grid_dtype`` is the dtype the
     # caller's non-empty pipeline would actually produce from ``transform``, so checking it here
     # makes a zero-sized ``dsize`` neither stricter nor laxer than a non-empty one.
@@ -162,7 +162,7 @@ def _empty_warp_output_3d(
     # As in the 2-D helper: an integral ``src`` cannot reach cpu/cuda ``grid_sample`` on either
     # path, so reject it by name instead of via the transform-dtype message below.
     if not src.is_floating_point():
-        raise RuntimeError(f"Expected a floating point src, got {src.dtype}.")
+        raise NotImplementedError(f"Expected a floating point src, got {src.dtype}.")
     if src.dtype != transform.dtype:
         raise RuntimeError(f"Expected src and transform with the same dtype, got {src.dtype} and {transform.dtype}.")
     grid_zero = transform.reshape(-1)[:1].sum() * 0.0
