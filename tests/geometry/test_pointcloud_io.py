@@ -179,3 +179,19 @@ class TestSaveLoadPointCloud(BaseTester):
         xyz_load = kornia.geometry.load_pointcloud_ply_binary(str(filename))
 
         self.assert_close(xyz_load, xyz_save)
+
+    def test_load_pointcloud_binary_rejects_extra_vertex_properties(self, tmp_path):
+        filename = tmp_path / "pointcloud_binary_with_normals.ply"
+        header = (
+            b"ply\n"
+            b"format binary_little_endian 1.0\n"
+            b"element vertex 2\n"
+            b"property double x\nproperty double y\nproperty double z\n"
+            b"property double nx\nproperty double ny\nproperty double nz\n"
+            b"end_header\n"
+        )
+        vertices_and_normals = np.array([[1.0, 2.0, 3.0, 9.0, 9.0, 9.0], [4.0, 5.0, 6.0, 8.0, 8.0, 8.0]], dtype="<f8")
+        filename.write_bytes(header + vertices_and_normals.tobytes())
+
+        with pytest.raises(ValueError, match="exactly three double properties"):
+            kornia.geometry.load_pointcloud_ply_binary(str(filename))

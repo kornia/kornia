@@ -181,12 +181,16 @@ def load_pointcloud_ply_binary(filename: str, header_size: int = 8) -> torch.Ten
         raise TypeError(f"Input header_size must be a positive integer. Got {header_size}.")
 
     vertex_count = None
+    vertex_properties: list[tuple[str, str]] = []
+    in_vertex_element = False
     with open(filename, "rb") as f:
         for _ in range(10000):
             raw_header_line = f.readline()
             if not raw_header_line:
                 raise ValueError(f"PLY header in {filename!r} does not contain end_header.")
             header_line = raw_header_line.decode("ascii", errors="replace").split()
+            if header_line[:1] == ["element"]:
+                in_vertex_element = header_line[:2] == ["element", "vertex"]
             if len(header_line) == 3 and header_line[:2] == ["element", "vertex"]:
                 try:
                     vertex_count = int(header_line[2])
@@ -194,6 +198,8 @@ def load_pointcloud_ply_binary(filename: str, header_size: int = 8) -> torch.Ten
                     raise ValueError(f"Invalid PLY vertex count {header_line[2]!r} in {filename!r}.") from exc
                 if vertex_count < 0:
                     raise ValueError(f"PLY vertex count must be non-negative in {filename!r}. Got {vertex_count}.")
+            elif in_vertex_element and len(header_line) == 3 and header_line[0] == "property":
+                vertex_properties.append((header_line[1], header_line[2]))
             if header_line == ["end_header"]:
                 break
         else:
@@ -201,6 +207,12 @@ def load_pointcloud_ply_binary(filename: str, header_size: int = 8) -> torch.Ten
         raw_data = f.read()
 
     if vertex_count is not None:
+        expected_properties = [("double", "x"), ("double", "y"), ("double", "z")]
+        if vertex_properties != expected_properties:
+            raise ValueError(
+                f"Only vertices with exactly three double properties (x, y, z) are supported in {filename!r}. "
+                f"Got {vertex_properties}."
+            )
         vertex_data_size = vertex_count * 24
         if len(raw_data) < vertex_data_size:
             raise ValueError(f"Expected {vertex_data_size} bytes for {vertex_count} points, got {len(raw_data)} bytes.")
