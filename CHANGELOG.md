@@ -26,7 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `MultiResolutionDetector` and `KeyNetDetector` change their output on three counts — padded slots now read as a
   zero response and a zero LAF instead of `torch.finfo(dtype).min / 2` and an arbitrary border coordinate, the
   previously inert `mask` argument now suppresses detections, and half-precision input now yields half-precision
-  LAFs. See the entry under **Bug fixes** (#4089, #4090, #4091) for the details and the migration.
+  LAFs. A negative `score_threshold` is now rejected with `ValueError`, `detect` enforces its documented
+  `(1, C, H, W)` input, and a mask whose dtype differs from the image no longer promotes the response dtype — that
+  last one applies to `ScaleSpaceDetector` too. See the entry under **Bug fixes** (#4089, #4090, #4091) for the
+  details and the migration.
 
 ### Bug fixes
 
@@ -203,6 +206,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `detect_features_on_single_level` also hardcoded `.float()` on the pixel coordinates, so a `float16`/`bfloat16`
   image came back with `float32` LAFs beside half-precision responses. Coordinates now convert to the input dtype;
   `float32` and `float64` output is unchanged.
+
+  Three further points came out of review. **A mask no longer changes the response dtype** — it is now resampled
+  *and cast* onto the response map, where the multiplication used to promote it, so a `float16` image with a
+  `float32` mask returned `float32` responses beside `float16` LAFs. This one also applies to `ScaleSpaceDetector`,
+  which shares the resampling helper: a `float32` image with a `float64` mask used to return `float64` and now
+  returns `float32`, i.e. the image dtype, in both detectors. **`score_threshold` must now be non-negative** and
+  `MultiResolutionDetector.__init__` raises `ValueError` otherwise — non-maxima suppression writes an exact zero at
+  every suppressed position, so a negative threshold admitted all of them as detections (with `score_threshold=-1.0`
+  on a `64x64` image, 70 of 100 returned features were suppressed border pixels, both before and after this change)
+  and would now also be indistinguishable from the zero response that marks an unfilled slot. **`detect` enforces
+  its documented `(1, C, H, W)`**: it is public, and a larger batch was flattened across the batch axis and silently
+  returned coordinates for the wrong image. `forward` already had that guard, so only direct `detect` callers see a
+  difference.
 
 
 ## :rocket: [0.6.11] - 2022-03-28

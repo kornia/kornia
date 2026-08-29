@@ -66,14 +66,21 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_le
     return max_coords
 
 
-def _resize_mask(mask: torch.Tensor, shape: List[int]) -> torch.Tensor:
-    r"""Resample a full-resolution mask onto the spatial size of ``shape``."""
-    return F.interpolate(mask, shape[-2:], mode="bilinear", align_corners=False)
+def _resize_mask(mask: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
+    r"""Resample a full-resolution mask onto ``ref``'s spatial size and dtype.
+
+    The interpolation runs in the mask's own dtype and the cast comes afterwards, so a
+    higher-precision mask keeps its accuracy on the way down. The cast itself is what matters:
+    without it the multiplication that follows promotes the response map to the mask's dtype,
+    and a half-precision detector handed a float32 mask returns float32 responses beside
+    half-precision LAFs.
+    """
+    return F.interpolate(mask, list(ref.shape[-2:]), mode="bilinear", align_corners=False).to(ref.dtype)
 
 
-def _create_octave_mask(mask: torch.Tensor, octave_shape: List[int]) -> torch.Tensor:
-    r"""Downsample a mask based on the given octave shape."""
-    return _resize_mask(mask, octave_shape).unsqueeze(1)
+def _create_octave_mask(mask: torch.Tensor, octave_resp: torch.Tensor) -> torch.Tensor:
+    r"""Downsample a mask onto the given octave response map."""
+    return _resize_mask(mask, octave_resp).unsqueeze(1)
 
 
 class ScaleSpaceDetector(nn.Module):
@@ -215,7 +222,7 @@ class ScaleSpaceDetector(nn.Module):
         scale_sigmas = sigmas_oct[:, : oct_resp.shape[2]]
 
         if mask is not None:
-            oct_mask: torch.Tensor = _create_octave_mask(mask, oct_resp.shape)
+            oct_mask: torch.Tensor = _create_octave_mask(mask, oct_resp)
             oct_resp = oct_mask * oct_resp
 
         # Always precompute NMS masks in one fused pass.
@@ -434,6 +441,10 @@ class MultiResolutionDetector(nn.Module):
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
         aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,
             which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
+        compile_model: wrap the response function and the non-maxima suppression with :func:`torch.compile`.
+        score_threshold: minimum response for a position to count as a detection. Must be non-negative:
+            non-maxima suppression writes an exact zero at every suppressed position, so a negative
+            threshold would admit all of them.
 
     """
 
@@ -456,6 +467,11 @@ class MultiResolutionDetector(nn.Module):
         self.scale_factor_levels = config["scale_factor_levels"]
         self.mr_size = config["s_mult"]
         self.nms_size = config["nms_size"]
+        if score_threshold < 0:
+            # Non-maxima suppression encodes a suppressed position as an exact zero, so a
+            # negative threshold admits every suppressed pixel in the image as a "detection"
+            # and collides with the zero response that marks an unfilled slot.
+            raise ValueError(f"score_threshold must be non-negative. Got {score_threshold}")
         self.score_threshold = score_threshold
         nms = NonMaximaSuppression2d((self.nms_size, self.nms_size))
         self.num_features = num_features
@@ -508,7 +524,7 @@ class MultiResolutionDetector(nn.Module):
         """
         resp_map = self.model(level_img)
         if mask is not None:
-            resp_map = resp_map * _resize_mask(mask, list(resp_map.shape))
+            resp_map = resp_map * _resize_mask(mask, resp_map)
         det_map = self.nms(self.remove_borders(resp_map))
         _, _, _h, w = det_map.shape
         det_flat = det_map.view(-1)  # (H*W,) — B=1, C=1 guaranteed by MultiResolutionDetector
@@ -553,6 +569,7 @@ class MultiResolutionDetector(nn.Module):
             `(1, N, 2, 3)`, where `N` is the selected feature count. Slots beyond the number of above-threshold
             maxima carry a zero response and a zero LAF.
         """
+        KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])
         if mask is not None:
             KORNIA_CHECK_SHAPE(mask, ["1", "1", "H", "W"])
         # Compute points per level

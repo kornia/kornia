@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.check import ShapeError
 from kornia.feature.scale_space_detector import (
     _MAX_ABS_SIN_12,
     MultiResolutionDetector,
@@ -72,6 +73,17 @@ class TestScaleSpaceDetector(BaseTester):
         expected_resp = torch.tensor([[0.1159]], device=device, dtype=dtype)
         self.assert_close(lafs, expected_laf, rtol=0.001, atol=1e-03)
         self.assert_close(resps, expected_resp, rtol=0.001, atol=1e-03)
+
+    def test_mask_does_not_promote_the_response_dtype(self, device, dtype):
+        # The mask is resampled and cast onto the response map, so a mask in a different dtype
+        # cannot pull the detector's output away from the image dtype.
+        inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        other = torch.float64 if dtype != torch.float64 else torch.float32
+        mask = torch.ones(1, 1, 32, 32, device=device, dtype=other)
+        det = ScaleSpaceDetector(5).to(device, dtype)
+        lafs, resps = det(inp, mask)
+        assert lafs.dtype == dtype
+        assert resps.dtype == dtype
 
     def test_minima_are_also_good(self, device, dtype):
         # Image with a bright blob (local max) and dark blob (local min).
@@ -257,18 +269,53 @@ class TestMultiResolutionDetector(BaseTester):
         assert (resps == 0).all()
         assert (lafs == 0).all()
 
+    @staticmethod
+    def _require_half_response(device, half_dtype):
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        # `BlobHessian` reaches `spatial_gradient`, which pads with mode="replicate".
+        # `replication_pad2d` has no CPU float16 kernel before torch 2.6.
+        try:
+            torch.nn.functional.pad(torch.zeros(1, 1, 4, 4, device=device, dtype=half_dtype), (1, 1, 1, 1), "replicate")
+        except RuntimeError as err:
+            pytest.skip(f"torch has no replicate-padding kernel for {half_dtype} on {device.type}: {err}")
+
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_half_precision_dtype_is_preserved(self, device, half_dtype):
         # `detect_features_on_single_level` used to hardcode `.float()` on the pixel
         # coordinates, so half-precision input came back with float32 LAFs beside
         # half-precision responses.
-        if device.type == "mps":
-            pytest.skip("MPS autocast changes the effective dtype")
+        self._require_half_response(device, half_dtype)
         inp = torch.rand(1, 1, 64, 64, device=device, dtype=half_dtype)
         det = self._make_detector(num_features=20).to(device, half_dtype)
         lafs, resps = det(inp)
         assert lafs.dtype == half_dtype
         assert resps.dtype == half_dtype
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_mask_does_not_promote_the_response_dtype(self, device, half_dtype):
+        # A float32 mask multiplied into a half-precision response map used to promote the
+        # responses to float32 while the LAFs stayed half.
+        self._require_half_response(device, half_dtype)
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=half_dtype)
+        mask = torch.ones(1, 1, 64, 64, device=device, dtype=torch.float32)
+        det = self._make_detector(num_features=20).to(device, half_dtype)
+        lafs, resps = det(inp, mask)
+        assert lafs.dtype == half_dtype
+        assert resps.dtype == half_dtype
+
+    def test_negative_score_threshold_is_rejected(self, device, dtype):
+        # NMS writes an exact zero at every suppressed position, so a negative threshold would
+        # admit all of them -- and collide with the zero response that marks an unfilled slot.
+        with pytest.raises(ValueError):
+            MultiResolutionDetector(kornia.feature.BlobHessian(), num_features=10, score_threshold=-1.0)
+
+    def test_detect_rejects_a_batch(self, device, dtype):
+        # `detect` is public and documents `(1, C, H, W)`; a larger batch would be flattened
+        # across the batch axis and silently return coordinates for the wrong image.
+        det = self._make_detector(num_features=10).to(device, dtype)
+        with pytest.raises(ShapeError):
+            det.detect(torch.rand(2, 1, 64, 64, device=device, dtype=dtype))
 
     def test_smoke_with_blob_image(self, device, dtype):
         # Synthetic image with a bright blob — detector should find it.
