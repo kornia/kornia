@@ -269,6 +269,13 @@ def match_fginn(
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
+    .. note::
+        The geometric check looks at the ``min(10, B2)`` nearest candidates and penalizes every one of them
+        that lies within ``spatial_th`` pixels of the query's own 1st nearest neighbor. When *all* of them do --
+        a dense cluster of detections on one structure -- the effective 2nd nearest neighbor distance saturates,
+        the ratio collapses towards zero and the match is **accepted**. That is the intended reading: no distinct
+        competing structure among the candidates means the 1st nearest neighbor is unambiguous.
+
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
         desc2: Batch of descriptors of a shape :math:`(B2, D)`.
@@ -305,12 +312,7 @@ def match_fginn(
     # Indexing dim 0 here would take query 0's candidate list and broadcast it over all queries.
     kdist = torch.norm(candidates_xy - candidates_xy[:, 0:1], p=2, dim=2)
     fginn_vals = vals_cand[:, 1:] + (kdist[:, 1:] < spatial_th).to(dtype) * BIG_NUMBER
-    fginn_vals_best, _fginn_idxs_best = fginn_vals.min(dim=1)
-
-    # orig_idxs = idxs_in_2.gather(1, fginn_idxs_best.unsqueeze(1))[0]
-    # if you need to know fginn indexes - uncomment
-
-    vals_2nd = fginn_vals_best
+    vals_2nd, _ = fginn_vals.min(dim=1)
     idxs_in_2 = idxs_in_2[:, 0]
 
     ratio = vals / vals_2nd
