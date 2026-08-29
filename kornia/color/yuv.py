@@ -256,12 +256,6 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
 
-    .. warning::
-        Only the chroma *width* is validated against the luma plane. A chroma plane of the
-        wrong height escapes the ``ShapeError`` below and surfaces as a bare ``RuntimeError``
-        from ``torch.cat``, where :func:`~kornia.color.yuv420_to_rgb` checks both. Tracked in
-        `#4050 <https://github.com/kornia/kornia/issues/4050>`_.
-
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
         imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
@@ -282,9 +276,15 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
         raise ShapeError(f"Input H&W must be evenly divisible by 2. Got {imagey.shape}")
 
-    if len(imageuv.shape) < 2 or len(imagey.shape) < 2 or imagey.shape[-1] / imageuv.shape[-1] != 2:
+    if (
+        len(imageuv.shape) < 2
+        or len(imagey.shape) < 2
+        or imagey.shape[-2] != imageuv.shape[-2]
+        or imagey.shape[-1] / imageuv.shape[-1] != 2
+    ):
         raise ShapeError(
-            f"Input imageuv W must be half the size of the luma plane. Got {imagey.shape} and {imageuv.shape}"
+            f"Input imageuv H must match the luma plane and W must be half its size. "
+            f"Got {imagey.shape} and {imageuv.shape}"
         )
 
     # first upsample
@@ -538,12 +538,6 @@ class Yuv422ToRgb(nn.Module):
     YUV formula follows M/PAL values (see
     `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
     items 2.5 and 2.6).
-
-    .. warning::
-        Only the chroma *width* is validated against the luma plane. A chroma plane of the
-        wrong height escapes the ``ShapeError`` and surfaces as a bare ``RuntimeError`` from
-        ``torch.cat``, where :class:`~kornia.color.Yuv420ToRgb` checks both. Tracked in
-        `#4050 <https://github.com/kornia/kornia/issues/4050>`_.
 
     Returns:
         RGB version of the image.

@@ -37,11 +37,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   169 passed under `--dtype=float16,bfloat16`.
 
 * Raise `NotImplementedError` instead of `RuntimeError` for an integral `src` on the empty-`dsize` paths of
-  `warp_affine`, `warp_perspective`, `remap`, `warp_affine3d` and `warp_perspective3d`, matching what the non-empty path already raises from
-  `grid_sample` (#4031). The degenerate path had its own explicit guard that fired first with a different exception
-  type, so the exception a caller saw for the same invalid input depended on whether `dsize` had a zero dimension.
-  The message is unchanged. `NotImplementedError` derives from `RuntimeError`, so `except RuntimeError` around these
-  functions still catches it; only code matching on the exact type sees a difference.
+  `warp_affine`, `warp_perspective`, `remap`, `warp_affine3d` and `warp_perspective3d`, matching what the non-empty
+  path already raises from `grid_sample` (#4031). The degenerate path had its own explicit guard that fired first
+  with a different exception type, so the exception a caller saw for the same invalid input depended on whether
+  `dsize` had a zero dimension. The message is unchanged. `NotImplementedError` derives from `RuntimeError`, so
+  `except RuntimeError` around these functions still catches it; only code matching on the exact type sees a
+  difference.
+
+* Validate the chroma plane height in `yuv422_to_rgb`, so a chroma plane whose height does not match the luma now
+  raises `ShapeError` instead of reaching `torch.cat` and dying there with a bare `RuntimeError` (#4050). 4:2:2
+  subsamples width only, so chroma keeps the full luma height; the guard checked only the width ratio, where the
+  4:2:0 twin `yuv420_to_rgb` checks both axes. This is observable to callers on the error path: `ShapeError` derives
+  from `BaseError`, not `RuntimeError`, so code catching `RuntimeError` around `yuv422_to_rgb` to handle a malformed
+  chroma plane will stop catching it. No previously working input changes behaviour — `torch.cat` already rejected
+  every mismatched height. A zero-width chroma plane whose height *also* differs now reaches the guard, since the
+  new clause short-circuits the width division; the matching-height case still raises `ZeroDivisionError` and
+  remains open as #4056.
 
 * Make `yuv_to_rgb` the exact inverse of `rgb_to_yuv`, so an RGB → YUV → RGB round trip is now limited only by the
   input dtype instead of losing up to `1.36e-3` (in B, at `rgb = (1, 1, 0)`) at every precision, `float64` included

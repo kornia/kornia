@@ -815,22 +815,16 @@ class TestYuv422ToRgb(BaseTester):
 
         # Luma must be single-channel: rejected by the channel slot of the shape spec, which the
         # rank case above does not reach. Note this is *not* a width-relation case -- 2/1 == 2
-        # holds; the height relation it looks like it covers is unchecked, see kornia#4050.
+        # holds.
         with pytest.raises(ShapeError):
             imgy = torch.ones(2, 2, 2, device=device, dtype=dtype)
             imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
-    def test_wart_chroma_height_is_unchecked_4050(self, device, dtype):
-        # Wart pin for kornia#4050. yuv422_to_rgb validates only the *width* ratio, so a chroma
-        # plane whose height does not match the luma reaches ``torch.cat`` and dies there with a
-        # bare RuntimeError instead of the ShapeError every other malformed input gets -- the
-        # 4:2:0 twin checks both axes. ShapeError does not derive from RuntimeError, so adding
-        # the missing guard flips this test: delete it then, and move the case up into
-        # test_exception alongside the other ShapeError raise-sites.
-        imgy = torch.ones(1, 2, 2, device=device, dtype=dtype)
-        imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
-        with pytest.raises(RuntimeError, match="Sizes of tensors must match"):
+        # 4:2:2 subsamples width only, so chroma keeps the full luma height.
+        with pytest.raises(ShapeError):
+            imgy = torch.ones(1, 2, 2, device=device, dtype=dtype)
+            imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
     @pytest.mark.parametrize("name", list(_REFERENCE_COLORS))
