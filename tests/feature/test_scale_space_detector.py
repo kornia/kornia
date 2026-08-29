@@ -87,6 +87,16 @@ class TestScaleSpaceDetector(BaseTester):
         assert lafs.dtype == dtype
         assert resps.dtype == dtype
 
+    def test_mask_spatial_size_must_match_the_image(self, device, dtype):
+        # `_create_octave_mask` resamples the mask onto every octave, so without this check a
+        # mask of any size is stretched silently onto the wrong geometry.
+        det = ScaleSpaceDetector(5).to(device, dtype)
+        inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        with pytest.raises(Exception, match="spatial size"):
+            det(inp, torch.ones(1, 1, 8, 8, device=device, dtype=dtype))
+        with pytest.raises(Exception, match="spatial size"):
+            det(inp, torch.ones(1, 1, 32, 16, device=device, dtype=dtype))
+
     def test_minima_are_also_good(self, device, dtype):
         # Image with a bright blob (local max) and dark blob (local min).
         # With minima_are_also_good=True both should contribute to detections.

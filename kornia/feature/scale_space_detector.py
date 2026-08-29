@@ -333,12 +333,22 @@ class ScaleSpaceDetector(nn.Module):
         Args:
             img: Input image tensor with shape `(B, C, H, W)`.
             num_feats: Number of features requested from the detector.
-            mask: Optional mask tensor used to restrict valid image locations.
+            mask: Optional weight mask with the image's spatial size, broadcastable over its channels. It is
+                resampled onto every octave and multiplies the response there, so a zero region suppresses
+                detections; the resampled edge softens by about one octave pixel.
 
         Returns:
             Tuple containing detection scores and local affine frames. Local affine frames are usually shaped `(B, N, 2,
             3)`, where `N` is the selected feature count.
         """
+        if mask is not None:
+            # Same check as `MultiResolutionDetector.detect`: `_create_octave_mask` resamples the
+            # mask onto each octave, so a mask of any size is otherwise stretched silently onto
+            # the wrong geometry — a stale mask from before a resize, or a transposed one.
+            KORNIA_CHECK(
+                mask.shape[-2:] == img.shape[-2:],
+                f"mask spatial size {tuple(mask.shape[-2:])} must match the image {tuple(img.shape[-2:])}",
+            )
         dev = img.device
         dtype: torch.dtype = img.dtype
         sp, sigmas, _ = self.scale_pyr(img)

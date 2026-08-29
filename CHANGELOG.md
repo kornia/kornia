@@ -28,8 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   argument now suppresses detections, and must be `(1, 1, H, W)` at the image size; half-precision input yields
   half-precision LAFs; the returned shape is always `num_features`; a multi-channel response no longer yields
   out-of-image LAFs; a negative `score_threshold` is rejected with `ValueError`; and `detect` enforces its documented
-  `(1, C, H, W)` input. A mask whose dtype differs from the image no longer promotes the response dtype, in
-  `ScaleSpaceDetector` too. See the entry under **Bug fixes** (#4089, #4090, #4091) for the details and the
+  `(1, C, H, W)` input. A mask whose dtype differs from the image no longer promotes the response dtype, and a mask
+  whose spatial size differs is rejected instead of stretched — both in `ScaleSpaceDetector` too. See the entry under **Bug fixes** (#4089, #4090, #4091) for the details and the
   migration.
 
 ### Bug fixes
@@ -224,6 +224,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   multiplication used to promote it, so a `float16` image with a `float32` mask returned `float32` responses beside
   `float16` LAFs. This also applies to `ScaleSpaceDetector`, which shares the resampling helper: a `float32` image
   with a `float64` mask used to return `float64` and now returns `float32`, i.e. the image dtype, in both detectors.
+  `ScaleSpaceDetector` gains the spatial-size check too, and accepts a boolean or integer mask through the same
+  helper. It resampled a mask of any size onto its octaves without complaint, so a stale mask from before a resize,
+  or a transposed one, was silently stretched onto the wrong geometry; it now raises. Its mask may still have any
+  batch and channel count broadcastable against the response, which is what the multi-channel scale space needs.
 
   **Half-precision input yields half-precision LAFs.** `detect_features_on_single_level` hardcoded `.float()` on the
   pixel coordinates, so a `float16`/`bfloat16` image came back with `float32` LAFs beside half-precision responses.
