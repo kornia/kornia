@@ -414,7 +414,8 @@ def _clamp_grid_to_pixel_centers(grid: torch.Tensor, h: int, w: int) -> torch.Te
     exactly.
 
     Args:
-        grid: sampling grid :math:`(B, PS, PS, 2)`, last dimension ordered ``(x, y)``.
+        grid: sampling grid :math:`(B, PS, PS, 2)`, last dimension ordered ``(x, y)``. Only the 2-D form is
+            handled; a 3-D grid would need a third bound from the depth of the sampled volume.
         h: height of the sampled image.
         w: width of the sampled image.
 
