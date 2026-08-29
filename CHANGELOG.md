@@ -140,7 +140,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that used to survive its `border=5` filter are now discarded. That inlined check also computed its `max |sin|`
   constant with the wrong angular spacing (`2*pi/11` instead of the `2*pi/10` that `laf_to_boundary_points(n_pts=12)`
   actually samples), inflating the tested x-extent by 4% and making the inline check stricter than the reference it
-  claims to reproduce; the two now agree exactly. `ScaleSpaceDetector` output is unchanged.
+  claims to reproduce; the two now agree exactly. That correction is a loosening in x, so it can change
+  `ScaleSpaceDetector` output on its own: a detection whose x-extent falls between the two constants used to be
+  discarded and is now kept. It is rare -- the detection has to land in a band of width `0.039 * half_s` against the
+  x bound -- but when it fires it can promote the strongest response in the image, so it is not output-neutral.
 
 
 ## :rocket: [0.6.11] - 2022-03-28
