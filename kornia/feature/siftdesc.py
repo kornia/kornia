@@ -30,14 +30,9 @@ from kornia.geometry.conversions import pi
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:
     """Return neigh2channels conv kernel.
 
-    The identity matrix used to be memoised per ``numel`` and handed to the caller as a view of
-    the cached tensor, which let one consumer's in-place write -- ``load_state_dict`` copies into
-    buffers in place -- corrupt the cache and therefore every other consumer, including modules
-    constructed later (#4068). Making the cache safe means cloning on the way out, which costs
-    more than rebuilding the identity, so the cache is gone: measured on a 4-thread CPU, the
-    cached-and-cloned path is 2.6 us against 2.0 us for a plain ``torch.eye`` at the default
-    ``numel = 8 * 4 * 4``, and 3.9 ms against 2.8 ms at the old 4096 bound, where it also retained
-    67 MB for the lifetime of the process.
+    Deliberately not memoised: the result is registered as a buffer, so a shared cache has to clone
+    on the way out to keep callers from writing into it, and the clone costs more than rebuilding
+    the identity.
     """
     numel: int = kd * ky * kx
     return torch.eye(numel).view(numel, kd, ky, kx)
