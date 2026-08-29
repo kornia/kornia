@@ -82,7 +82,7 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 | `kornia.color` | ⚠️ | ⚠️ | Most conversions work for both; FFT-based ops may fail |
 | `kornia.filters` | ⚠️ | ⚠️ | Basic filters work; FFT-based ops may fail on CUDA |
 | `kornia.enhance` | ⚠️ | ⚠️ | Histogram eq / gamma / ZCA work (linalg ops use cast helpers) |
-| `kornia.morphology` | ✅ | ⚠️ | Pure conv/pool ops. `top_hat` / `bottom_hat` / `gradient` subtract two dilation/erosion results, so bfloat16 loses ~0.4% relative accuracy ([#4081](https://github.com/kornia/kornia/issues/4081)) |
+| `kornia.morphology` | ✅ | ✅ | Conv/pool ops; `top_hat` / `bottom_hat` / `gradient` also subtract two dilation/erosion results, so bfloat16 loses ~0.4% relative accuracy — within kornia's own bfloat16 tolerance, though 6 tests override it with a tighter one ([#4081](https://github.com/kornia/kornia/issues/4081)) |
 | `kornia.augmentation` | ⚠️ | ⚠️ | Most ops work; precision-sensitive transforms may be inaccurate |
 | `kornia.geometry.transform` | ⚠️ | ⚠️ | Affine/warp/resize work via cast helpers; thin-plate spline may fail |
 | `kornia.geometry.camera` | ⚠️ | ⚠️ | Pinhole model and most camera ops work; `StereoCamera` accepts both |
@@ -110,8 +110,10 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 | CUDA float16 *(KORNIA_TEST_IN_SUBPROCESS=1)* | 6727 | 643 | 3556 | **91.3%** | `6131e98`, 2026-03-21 |
 | CUDA bfloat16 *(KORNIA_TEST_IN_SUBPROCESS=1)* | 6695 | 713 | 3518 | **90.4%** | `6131e98`, 2026-03-21 |
 
-Reproduce the CPU rows with `pixi run test-half`. The half-precision suite is not run in CI
-(see [#4070](https://github.com/kornia/kornia/issues/4070)), so these numbers are refreshed by hand.
+Reproduce the two CPU half rows with `pixi run test-half` and the CPU float32 baseline with `pixi run test-f32`
+(`test-half` pins `KORNIA_TEST_DTYPE` to `float16,bfloat16`, so it cannot produce the baseline). The half-precision
+suite is not run in CI (see [#4070](https://github.com/kornia/kornia/issues/4070)), so these numbers are refreshed
+by hand.
 
 See the [full precision guide](https://kornia.readthedocs.io/en/stable/get-started/precision.html) for details.
 

@@ -30,10 +30,12 @@ This page documents which kornia modules support half-precision floating-point d
        ``_torch_inverse_cast`` which promote to float32 before computing.
    * - ``kornia.morphology``
      - ✅ Yes
-     - ⚠️ Partial
-     - Uses only convolution and pooling. ``top_hat``, ``bottom_hat`` and
-       ``gradient`` subtract two dilation/erosion results, so bfloat16 loses
-       roughly 0.4% relative accuracy on them; see `issue #4081 <https://github.com/kornia/kornia/issues/4081>`_.
+     - ✅ Yes
+     - Convolution and pooling; ``top_hat``, ``bottom_hat`` and ``gradient``
+       also subtract two dilation/erosion results, so bfloat16 loses roughly
+       0.4% relative accuracy on them. That is within kornia's own bfloat16
+       tolerance, but six tests override it with a tighter constant and fail;
+       see `issue #4081 <https://github.com/kornia/kornia/issues/4081>`_.
    * - ``kornia.augmentation``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -117,8 +119,10 @@ Full test suite (no ``--runslow``). Pass% = passed ÷ (passed + failed);
 skipped and xfailed tests are excluded. CPU rows were measured on commit
 ``4ab79c78`` (2026-08-29); CUDA rows are still from ``6131e98`` (2026-03-21).
 
-The half-precision suite is not run in CI (see `issue #4070 <https://github.com/kornia/kornia/issues/4070>`_), so these numbers
-are refreshed by hand with ``pixi run test-half``.
+The half-precision suite is not run in CI (see `issue #4070
+<https://github.com/kornia/kornia/issues/4070>`_), so these numbers are refreshed by hand: the two CPU half rows
+with ``pixi run test-half``, and the CPU float32 baseline with ``pixi run test-f32``, since ``test-half`` pins
+``KORNIA_TEST_DTYPE`` to ``float16,bfloat16``.
 
 .. list-table::
    :header-rows: 1
