@@ -154,6 +154,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ScaleSpaceDetector` output on its own: a detection whose x-extent falls between the two constants used to be
   discarded and is now kept. It is rare -- the detection has to land in a band of width `0.039 * half_s` against the
   x bound -- but when it fires it can promote the strongest response in the image, so it is not output-neutral.
+* Fix the empty-result paths in `kornia.feature.integrated` disagreeing with the corresponding non-empty ones
+  (#4065). `get_laf_descriptors` returned a hardcoded width of 128 with the *LAF's* dtype and device when it was
+  handed no keypoints, so an empty batch through, say, a 256-d descriptor produced a `(B, 0, 128)` result that could
+  not be concatenated with a real one; it now probes the descriptor once and returns its actual width, dtype and
+  device. `LocalFeatureMatcher.no_match_output` returned `lafs0`/`lafs1` of shape `(0, 0, 2, 3)` where the success
+  path returns `(1, NC, 2, 3)`, so `lafs0[0]` raised `IndexError` exactly when nothing matched; the empty tensors
+  now keep the leading batch of 1. `LocalFeatureMatcher.forward`'s docstring also stops claiming `confidence` is in
+  `[0, 1]`: it is `1 - distance`, which for the raw-distance matchers `nn` and `mnn` reaches -1 on unit-norm
+  descriptors.
 
 
 ## :rocket: [0.6.11] - 2022-03-28

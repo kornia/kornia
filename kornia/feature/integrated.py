@@ -78,7 +78,9 @@ def get_laf_descriptors(
         # Probe the descriptor for its output width instead of assuming 128, so the empty result
         # has the same trailing dimension and dtype as a non-empty one.
         with torch.no_grad():
-            probe = patch_descriptor(torch.zeros(1, timg.size(1), patch_size, patch_size).to(timg))
+            probe = patch_descriptor(
+                torch.zeros(1, timg.size(1), patch_size, patch_size, dtype=timg.dtype, device=timg.device)
+            )
         return torch.empty(lafs.shape[0], 0, probe.shape[-1], dtype=probe.dtype, device=probe.device)
 
     patches: torch.Tensor = extract_patches_from_pyramid(timg, lafs, patch_size)
