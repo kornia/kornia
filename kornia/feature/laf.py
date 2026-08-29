@@ -318,7 +318,7 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
 
     The convention is that center of 5-pixel image (coordinates from 0 to 4) is 2, and not 2.5.
 
-        B,N,H,W = images.size()
+        B,CH,H,W = images.size()
         MIN_SIZE = min(H - 1, W -1)
         [a11 a12 x]
         [a21 a22 y]
@@ -349,7 +349,7 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """Normalize LAFs to [0,1] scale from pixel scale.
 
     See below:
-        B,N,H,W = images.size()
+        B,CH,H,W = images.size()
         MIN_SIZE =  min(H - 1, W -1)
         [a11 a12 x]
         [a21 a22 y]
