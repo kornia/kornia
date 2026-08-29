@@ -204,6 +204,8 @@ class Se2(nn.Module):
             torch.Size([1, 3])
             >>> torch.allclose(s, v)
             True
+            >>> s.requires_grad
+            True
 
         """
         theta = self.so2.log()
