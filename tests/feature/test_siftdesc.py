@@ -83,6 +83,32 @@ class TestSIFTDescriptor(BaseTester):
         self.assert_close(model(patches), model_jit(patches))
 
 
+class TestSIFTDescriptorKernelBuffer(BaseTester):
+    """`gk` must be a real buffer so `.to()` moves it, and `forward` must not rebind it (#4069)."""
+
+    def test_to_moves_the_kernel(self, device):
+        """`.to()` must carry the kernel along with the parameters.
+
+        float16 rather than the default float32, or the dtype assertion would hold
+        vacuously; float16 also works on MPS, where float64 is unavailable.
+        """
+        mod = SIFTDescriptor(32).to(device, torch.float16)
+        assert mod.gk.dtype == torch.float16
+        assert mod.gk.device == torch.empty(0, device=device).device
+
+    def test_kernel_stays_out_of_state_dict(self, device):
+        """Registered non-persistent, so existing checkpoints keep loading with strict=True."""
+        assert "gk" not in SIFTDescriptor(32).state_dict()
+
+    def test_forward_does_not_mutate_the_module(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        mod = SIFTDescriptor(32)
+        before = (mod.gk.dtype, mod.gk.device)
+        mod(torch.rand(2, 1, 32, 32, dtype=torch.float64))
+        assert (mod.gk.dtype, mod.gk.device) == before
+
+
 class TestDenseSIFTDescriptor(BaseTester):
     def test_shape_default(self, device, dtype):
         bs, h, w = 1, 20, 15

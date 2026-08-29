@@ -75,7 +75,12 @@ class PatchDominantGradientOrientation(nn.Module):
         with torch.no_grad():
             self.angular_smooth.weight[:] = get_gaussian_discrete_kernel1d(5, 1.6)
         sigma: float = float(self.patch_size) / 6.0
-        self.weighting = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
+        # non-persistent: derived from `patch_size`, so it stays out of `state_dict()` but follows `.to()`
+        self.register_buffer(
+            "weighting",
+            get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True),
+            persistent=False,
+        )
 
     def __repr__(self) -> str:
         return (
@@ -98,14 +103,17 @@ class PatchDominantGradientOrientation(nn.Module):
             raise TypeError(
                 f"input shape should be must be [Bx1x{self.patch_size}x{self.patch_size}]. Got {patch.size()}"
             )
-        self.weighting = self.weighting.to(patch.dtype).to(patch.device)
+        # cast into a local; rebinding `self.weighting` would make the buffer's dtype/device depend on
+        # whichever tensor was passed last, and is a `torch.compile` guard hazard. (The `self.angular_smooth`
+        # line below rebinds a submodule to itself -- `nn.Module.to` is in-place -- which is a different case.)
+        weighting = self.weighting.to(patch.dtype).to(patch.device)
         self.angular_smooth = self.angular_smooth.to(patch.dtype).to(patch.device)
         grads: torch.Tensor = self.gradient(patch)
         # unpack the edges
         gx: torch.Tensor = grads[:, :, 0]
         gy: torch.Tensor = grads[:, :, 1]
 
-        mag: torch.Tensor = torch.sqrt(gx * gx + gy * gy + self.eps) * self.weighting
+        mag: torch.Tensor = torch.sqrt(gx * gx + gy * gy + self.eps) * weighting
         ori: torch.Tensor = torch.atan2(gy, gx + self.eps) + 2.0 * pi
 
         o_big = float(self.num_ang_bins) * (ori + 1.0 * pi) / (2.0 * pi)

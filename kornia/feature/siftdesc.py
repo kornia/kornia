@@ -142,7 +142,9 @@ class SIFTDescriptor(nn.Module):
 
         ks: int = self.patch_size
         sigma: float = float(ks) / math.sqrt(2.0)
-        self.gk = get_gaussian_kernel2d((ks, ks), (sigma, sigma), True)
+        # non-persistent: fully determined by `patch_size`, so it must not enter `state_dict()`
+        # (that would break existing checkpoints), but it must still follow `.to()`.
+        self.register_buffer("gk", get_gaussian_kernel2d((ks, ks), (sigma, sigma), True), persistent=False)
 
         (self.bin_ksize, self.bin_stride, self.pad) = get_sift_bin_ksize_stride_pad(patch_size, num_spatial_bins)
 
