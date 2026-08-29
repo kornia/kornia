@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from torch import nn
 from typing_extensions import TypedDict
 
-from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.geometry.subpix import (
     AdaptiveQuadInterp3d,
     ConvQuadInterp3d,
@@ -69,12 +69,15 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_le
 def _resize_mask(mask: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
     r"""Resample a full-resolution mask onto ``ref``'s spatial size and dtype.
 
-    The interpolation runs in the mask's own dtype and the cast comes afterwards, so a
-    higher-precision mask keeps its accuracy on the way down. The cast itself is what matters:
-    without it the multiplication that follows promotes the response map to the mask's dtype,
-    and a half-precision detector handed a float32 mask returns float32 responses beside
+    A floating-point mask is interpolated in its own dtype and cast afterwards, so a
+    higher-precision mask keeps its accuracy on the way down. A boolean or integer mask has no
+    bilinear kernel, so it is cast first. The cast itself is what matters: without it the
+    multiplication that follows promotes the response map to the mask's dtype, and a
+    half-precision detector handed a float32 mask returns float32 responses beside
     half-precision LAFs.
     """
+    if not mask.is_floating_point():
+        mask = mask.to(ref.dtype)
     return F.interpolate(mask, list(ref.shape[-2:]), mode="bilinear", align_corners=False).to(ref.dtype)
 
 
@@ -572,17 +575,25 @@ class MultiResolutionDetector(nn.Module):
 
         Args:
             img: Input image tensor with shape `(1, C, H, W)`.
-            mask: Optional weight mask with shape `(1, 1, H, W)`. It is resampled onto every pyramid level and
-                multiplies the response function there, so a zero region yields no detections.
+            mask: Optional weight mask with shape `(1, 1, H, W)`, boolean or numeric. It is resampled bilinearly
+                onto every pyramid level and multiplies the response function there, so a zero region suppresses
+                detections; the resampled edge softens by about one level pixel.
 
         Returns:
             Tuple containing detection scores and local affine frames, shaped `(1, num_features)` and
             `(1, num_features, 2, 3)`. The shape holds even when the image yields fewer above-threshold maxima
-            than requested: those slots carry a zero response and a zero LAF.
+            than requested: those slots carry a zero response and a zero LAF. LAF centres are pixel indices in the
+            image dtype, so a half-precision image gives centres at that dtype's integer resolution: exact up to
+            256 in bfloat16 and up to 2048 in float16.
         """
         KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])
         if mask is not None:
             KORNIA_CHECK_SHAPE(mask, ["1", "1", "H", "W"])
+            # The named dims above are free per call: they do not tie the mask to the image.
+            KORNIA_CHECK(
+                mask.shape[-2:] == img.shape[-2:],
+                f"mask spatial size {tuple(mask.shape[-2:])} must match the image {tuple(img.shape[-2:])}",
+            )
         # Compute points per level
         num_features_per_level: List[float] = []
         tmp = 0.0
@@ -664,19 +675,27 @@ class MultiResolutionDetector(nn.Module):
         Args:
             img: image to extract features with shape [1xCxHxW]. KeyNetDetector does not support batch processing,
         because the number of detections is different on each image.
-            mask: a mask with weights where to apply the response function, shape [1x1xHxW]. It is resampled onto
-              every pyramid level and multiplies the response there, so a zero region yields no detections.
+            mask: a mask with weights where to apply the response function, shape [1x1xHxW], boolean or numeric.
+              It is resampled onto every pyramid level and multiplies the response there, so a zero region
+              suppresses detections.
 
         Returns:
             lafs: shape [1xNx2x3]. Detected local affine frames.
             responses: shape [1xN]. Response function values for corresponding lafs. When the image yields fewer
-              above-threshold maxima than ``num_features``, the remaining slots hold a zero response and a zero LAF.
+              above-threshold maxima than ``num_features``, the remaining slots hold a zero response and a zero LAF,
+              whichever affine-shape and orientation modules are configured.
 
         """
         KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])
         responses, lafs = self.detect(img, mask)
         lafs = self.aff(lafs, img)
         lafs = self.ori(lafs, img)
+        # The shape and orientation modules normalise a frame, and a zero LAF comes out of
+        # `LAFAffineShapeEstimator` as a finite 1e-5-scale frame at the origin. Re-apply the
+        # padding so the zero-LAF contract above holds for `forward` as well as for `detect`;
+        # a real detection is strictly above the non-negative threshold, so `responses > 0`
+        # is exactly the set of filled slots.
+        lafs = lafs * (responses > 0).view(1, -1, 1, 1).to(lafs.dtype)
         return lafs, responses
 
 

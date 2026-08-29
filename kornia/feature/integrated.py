@@ -169,8 +169,8 @@ class LocalFeature(nn.Module):
 
         Args:
             img: image to extract features with shape :math:`(B,C,H,W)`.
-            mask: a mask with weights where to apply the response function.
-                The shape must be the same as the input image.
+            mask: a mask with weights where to apply the response function, shape :math:`(B,1,H,W)` with the
+                spatial size of the image. It is forwarded to the detector unchanged.
 
         Returns:
             - Detected local affine frames with shape :math:`(B,N,2,3)`.

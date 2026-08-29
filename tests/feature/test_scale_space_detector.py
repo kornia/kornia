@@ -79,6 +79,8 @@ class TestScaleSpaceDetector(BaseTester):
         # cannot pull the detector's output away from the image dtype.
         inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
         other = torch.float64 if dtype != torch.float64 else torch.float32
+        if device.type == "mps" and other == torch.float64:
+            other = torch.float16  # MPS has no float64
         mask = torch.ones(1, 1, 32, 32, device=device, dtype=other)
         det = ScaleSpaceDetector(5).to(device, dtype)
         lafs, resps = det(inp, mask)
@@ -260,6 +262,44 @@ class TestMultiResolutionDetector(BaseTester):
         # pixel or two; 40 keeps the bound well clear of that without weakening the check
         # (the unmasked run puts its best detection at ~17.8).
         assert (lafs_masked[0][found][:, :, 2] >= 40).all()
+
+    def test_mask_spatial_size_must_match_the_image(self, device, dtype):
+        # `KORNIA_CHECK_SHAPE`'s named dims are free per call, so on their own they let a mask
+        # of any size through to be stretched onto the image; the explicit check is what rejects it.
+        det = self._make_detector(num_features=10).to(device, dtype)
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        with pytest.raises(Exception, match="spatial size"):
+            det(inp, torch.ones(1, 1, 32, 32, device=device, dtype=dtype))
+        with pytest.raises(Exception, match="spatial size"):
+            det(inp, torch.ones(1, 1, 64, 32, device=device, dtype=dtype))
+
+    def test_bool_mask_matches_float_mask(self, device, dtype):
+        # A boolean mask has no bilinear kernel; it is cast before the resample and gives the
+        # same detections as the equivalent 0/1 float mask instead of raising.
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        mask = torch.zeros(1, 1, 64, 64, device=device, dtype=torch.bool)
+        mask[:, :, 32:, 32:] = True
+        det = self._make_detector(num_features=10).to(device, dtype)
+        lafs_bool, resps_bool = det(inp, mask)
+        lafs_float, resps_float = det(inp, mask.to(dtype))
+        assert bool((resps_bool != 0).any())
+        assert torch.equal(resps_bool, resps_float)
+        assert torch.equal(lafs_bool, lafs_float)
+
+    def test_padding_survives_the_affine_and_orientation_modules(self, device, dtype):
+        # `forward` runs `aff` and `ori` after `detect`; `LAFAffineShapeEstimator` normalises a
+        # zero frame into a finite 1e-5-scale one, so the zero-LAF contract has to be re-applied.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("LAFAffineShapeEstimator uses linalg.inv, which has no half-precision kernel")
+        det = MultiResolutionDetector(
+            kornia.feature.BlobHessian(),
+            num_features=10,
+            aff_module=kornia.feature.LAFAffineShapeEstimator(19),
+            ori_module=kornia.feature.LAFOrienter(19),
+        ).to(device, dtype)
+        lafs, resps = det(torch.zeros(1, 1, 64, 64, device=device, dtype=dtype))
+        assert (resps == 0).all()
+        assert (lafs == 0).all()
 
     def test_zero_mask_detects_nothing(self, device, dtype):
         inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
