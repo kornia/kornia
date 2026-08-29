@@ -113,16 +113,21 @@ def _guided_blur_multichannel_guidance(
         _eps = torch.eye(C, device=guidance.device, dtype=guidance.dtype).view(1, 1, 1, C, C) * eps.view(-1, 1, 1, 1, 1)
     else:
         _eps = guidance.new_full((C,), eps).diag().view(1, 1, 1, C, C)
-    # ``torch.linalg.solve`` has no half-precision LU kernel, so a float16/bfloat16 guidance dies
-    # here with ``NotImplementedError: "lu_cpu" not implemented for 'Half'``. Solve the tiny C x C
-    # systems in float32 and cast back. Deliberately not ``_torch_solve_cast``: that promotes
-    # float32 to float64, which would change the results of the default path and pay for a float64
-    # solve at every pixel.
+    # ``torch.linalg.solve`` needs both operands in one dtype, and it has no half-precision LU
+    # kernel: a float16/bfloat16 guidance dies here with ``NotImplementedError: "lu_cpu" not
+    # implemented for 'Half'``, and on MPS it aborts the process instead of raising. A tensor
+    # ``eps`` also takes part in promotion, so ``A`` can come out wider than ``cov_Ip`` -- the
+    # common ``eps=torch.tensor(0.1)`` is float32 -- and ``solve`` rejects the mismatched pair.
+    # So pick a single dtype for both operands, lifting half to float32, and cast the solution
+    # back. Deliberately not ``_torch_solve_cast``: that promotes float32 to float64, which would
+    # change the results of the default path and pay for a float64 solve at every pixel.
+    # ``Tensor.to`` is a no-op when the dtype already matches, so an all-float32 or all-float64
+    # call takes exactly the path it took before.
     A = var_I + _eps
-    if A.dtype in (torch.float16, torch.bfloat16):
-        a = torch.linalg.solve(A.float(), cov_Ip.float()).to(A.dtype)  # B, H, W, C_guidance, C_input
-    else:
-        a = torch.linalg.solve(A, cov_Ip)  # B, H, W, C_guidance, C_input
+    solve_dtype = torch.promote_types(A.dtype, cov_Ip.dtype)
+    if solve_dtype in (torch.float16, torch.bfloat16):
+        solve_dtype = torch.float32
+    a = torch.linalg.solve(A.to(solve_dtype), cov_Ip.to(solve_dtype)).to(cov_Ip.dtype)
     b = mean_p - (mean_I.unsqueeze(-2) @ a).squeeze(-2)  # B, H, W, C_input
 
     mean_a = box_blur(a.flatten(-2).permute(0, 3, 1, 2), kernel_size, border_type, separable=separable)

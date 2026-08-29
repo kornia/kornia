@@ -203,8 +203,8 @@ class TestGuidedBlur(BaseTester):
             op(guide, img, kernel_size, eps, subsample=subsample, separable=separable),
         )
 
-    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
-    def test_multichannel_guidance_in_half_precision(self, half_dtype, device) -> None:
+    @pytest.mark.parametrize("tensor_eps", [False, True], ids=["float_eps", "tensor_eps"])
+    def test_multichannel_guidance_in_half_precision(self, tensor_eps, device, dtype) -> None:
         """Multi-channel guidance must run in float16/bfloat16 rather than dying in the solver.
 
         ``_guided_blur_multichannel_guidance`` solves a C x C system per pixel, and
@@ -212,19 +212,31 @@ class TestGuidedBlur(BaseTester):
         ``NotImplementedError: "lu_cpu" not implemented for 'Half'`` on CPU, and on MPS it aborted
         the process outright with ``Only MPSDataTypeFloat32 is supported``. Single-channel guidance
         never reached the solver, so only ``guide_dim > 1`` was affected.
+
+        The ``tensor_eps`` case is the second half of the same bug: ``torch.tensor(0.1)`` is float32
+        even next to a half guidance and takes part in dtype promotion, so the matrix handed to
+        ``solve`` is wider than the right-hand side.
         """
-        guide = torch.rand(1, 3, 12, 16, device=device).to(half_dtype)
-        inp = torch.rand(1, 2, 12, 16, device=device).to(half_dtype)
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("regression test for the half-precision solve path")
 
-        actual = guided_blur(guide, inp, 5, eps=0.1)
+        # ``constant`` keeps this test on the solver: the default ``reflect`` border needs a
+        # half-precision ``reflection_pad2d``, which CPU PyTorch 2.5.1 does not have for float16.
+        border_type = "constant"
+        eps = torch.tensor(0.1, device=device) if tensor_eps else 0.1
 
-        assert actual.dtype == half_dtype
+        guide = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+        inp = torch.rand(1, 2, 12, 16, device=device, dtype=dtype)
+
+        actual = guided_blur(guide, inp, 5, eps, border_type=border_type)
+
+        assert actual.dtype == dtype
         assert torch.isfinite(actual).all()
 
         # The solve runs in float32, so the result must track the exact answer to within the
         # accumulated error of the surrounding half-precision arithmetic, not the solver's.
-        expected = guided_blur(guide.float(), inp.float(), 5, eps=0.1)
-        tolerance = 8 * torch.finfo(half_dtype).eps
+        expected = guided_blur(guide.float(), inp.float(), 5, eps, border_type=border_type)
+        tolerance = 8 * torch.finfo(dtype).eps
         self.assert_close(actual.float(), expected, rtol=tolerance, atol=tolerance)
 
     @pytest.mark.skipif(
