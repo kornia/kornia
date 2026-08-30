@@ -289,6 +289,14 @@ class TestBbox3D(BaseTester):
 
 
 class TestNMS(BaseTester):
+    def test_empty(self, device):
+        boxes = torch.empty((0, 4), device=device)
+        scores = torch.empty((0,), device=device)
+        actual = nms(boxes, scores, iou_threshold=0.8)
+        assert actual.shape == (0,)
+        assert actual.dtype == torch.long
+        assert actual.device == boxes.device
+
     def test_smoke(self, device, dtype):
         boxes = torch.tensor(
             [
