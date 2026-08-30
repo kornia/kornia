@@ -28,7 +28,7 @@ from kornia.feature.scale_space_detector import (
 )
 from kornia.geometry.subpix import ConvQuadInterp3d
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_replicate_padding
 
 
 class TestScaleSpaceDetector(BaseTester):
@@ -401,10 +401,8 @@ class TestMultiResolutionDetector(BaseTester):
             pytest.skip("MPS autocast changes the effective dtype")
         # `BlobHessian` reaches `spatial_gradient`, which pads with mode="replicate".
         # `replication_pad2d` has no CPU float16 kernel before torch 2.6.
-        try:
-            torch.nn.functional.pad(torch.zeros(1, 1, 4, 4, device=device, dtype=half_dtype), (1, 1, 1, 1), "replicate")
-        except RuntimeError as err:
-            pytest.skip(f"torch has no replicate-padding kernel for {half_dtype} on {device.type}: {err}")
+        if not supports_replicate_padding(device, half_dtype):
+            pytest.skip(f"no replicate-padding kernel for {half_dtype} on {device.type}")
 
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_half_precision_dtype_is_preserved(self, device, half_dtype):

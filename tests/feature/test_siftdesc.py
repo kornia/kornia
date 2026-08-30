@@ -25,7 +25,7 @@ from kornia.feature.siftdesc import (
     get_sift_pooling_kernel,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_replicate_padding
 
 
 @pytest.mark.parametrize("ksize", [5, 13, 25])
@@ -120,12 +120,18 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
     @pytest.mark.parametrize("rootsift", [False, True])
     def test_sift(self, device, desc_dtype, rootsift):
+        if not supports_replicate_padding(device, desc_dtype):
+            # `spatial_gradient` pads with mode="replicate"; torch 2.5.1 has no float16 CPU kernel.
+            pytest.skip(f"no replicate-padding kernel for {desc_dtype} on {device.type}")
         patches = torch.zeros(2, 1, 16, 16, device=device, dtype=desc_dtype)
         out = SIFTDescriptor(16, rootsift=rootsift).to(device, desc_dtype)(patches)
         assert torch.isfinite(out).all()
 
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
     def test_dense_sift(self, device, desc_dtype):
+        if not supports_replicate_padding(device, desc_dtype):
+            # `spatial_gradient` pads with mode="replicate"; torch 2.5.1 has no float16 CPU kernel.
+            pytest.skip(f"no replicate-padding kernel for {desc_dtype} on {device.type}")
         img = torch.zeros(1, 1, 32, 32, device=device, dtype=desc_dtype)
         out = DenseSIFTDescriptor().to(device, desc_dtype)(img)
         assert torch.isfinite(out).all()

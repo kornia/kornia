@@ -137,6 +137,39 @@ def supports_2d_border_padding(device: torch.device) -> bool:
     return _supports_2d_border_padding_probe(device.type)
 
 
+_UNIMPLEMENTED_KERNEL_MSG = "not implemented for"
+
+
+@cache
+def _supports_replicate_padding_probe(device_type: str, dtype: torch.dtype) -> bool:
+    try:
+        # Allocated outside the `try` below: a device that cannot hold `dtype` at all (MPS and
+        # float64) raises TypeError here, which is still "unsupported" and must not escape a
+        # helper whose whole contract is to return a bool.
+        probe = torch.zeros(1, 1, 2, 2, device=device_type, dtype=dtype)
+    except TypeError:
+        return False
+    try:
+        F.pad(probe, (1, 1, 1, 1), mode="replicate")
+    except RuntimeError as e:
+        if _UNIMPLEMENTED_KERNEL_MSG in str(e):
+            return False
+        raise
+    return True
+
+
+def supports_replicate_padding(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a 2D ``mode="replicate"`` pad kernel for ``dtype``.
+
+    :func:`kornia.filters.spatial_gradient` pads that way, so everything built on it inherits the
+    gap: both SIFT descriptors, and ``BlobHessian`` with the detectors above it. torch 2.5.1 has no
+    float16 CPU ``replication_pad2d`` (bfloat16 is fine), so a test that hardcodes float16 rather
+    than reading the injected dtype fails there on every job. Probed at runtime and cached per
+    (device type, dtype), so it auto-enables once PyTorch fills the kernel in.
+    """
+    return _supports_replicate_padding_probe(device.type, dtype)
+
+
 class BaseTester:
     @staticmethod
     def assert_close(
