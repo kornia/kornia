@@ -39,11 +39,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parameter is keyword-only. See the entry under **Bug fixes** (#4089, #4090, #4091) for the details and the
   migration.
 
+* `DescriptorMatcherWithSteerer(normalize=True)`, `DiscreteSteerer.steer_descriptions(normalize=True)` and the
+  `MKD` descriptors normalise with an `eps` representable in the
+  input dtype, so an all-zero float16 descriptor normalises to zero instead of NaN, the same guard `SIFTDescriptor`
+  and `HardNet` gain in this release. `SIFTDescriptor(rootsift=True)` and `DenseSIFTDescriptor(rootsift=True)`
+  compute the RootSIFT square root in float32 for a float16 input: the float16-representable guard would have
+  read every empty bin as `sqrt(6.1e-5)` and biased the descriptor norm to ~1.004. Float32 and float64 outputs are
+  unchanged.
+
 * `LocalFeatureMatcher` no longer matches the zero-LAF slots with which a fixed-shape detector pads an under-filled
   result, and now forwards its documented `mask0`/`mask1` inputs to feature extraction. `nn` and `mnn` callers can
   therefore receive fewer correspondences: identical descriptors sampled at padded origin frames are no longer
   reported as matches. Three-dimensional `(B, H, W)` masks keep working and are promoted to the detectors'
-  `(B, 1, H, W)` form; four-dimensional masks are forwarded unchanged.
+  `(B, 1, H, W)` form; four-dimensional masks are forwarded unchanged. Because the masks now reach the detector,
+  they are subject to its check: a mask that is not at the image's spatial size, which used to be ignored, is
+  rejected. A floating-point mask changes meaning in `ScaleSpaceDetector`-based pipelines too, see below.
 
 ### Bug fixes
 
@@ -238,7 +248,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the response the suppression reads: multiplying the response first carves an edge into it, and the bilinear
   ramp of that edge was a "maximum" on the suppressed side, so a blob wholly inside the zero region was still
   detected (#4102). `ScaleSpaceDetector`, which did multiply its response per octave, takes the same path; its
-  detections inside the kept region are unchanged.
+  detections inside the region kept by a binary mask are unchanged. A *floating-point* mask used to weight the
+  response before the non-maxima suppression and the sub-pixel refinement, so a graded mask moved maxima and
+  their refined positions; it now weights only the score of a maximum found in the unweighted response, so the
+  set of candidates and their positions are those of the unmasked image and the weight decides their rank.
 
   `LocalFeatureMatcher` now carries those masks through the full extraction-and-matching path. It documented
   `mask0`/`mask1` as `(B, H, W)` inputs but never passed either to its local feature module; that historical shape is

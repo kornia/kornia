@@ -180,10 +180,17 @@ class LocalFeature(nn.Module):
         The shape is fixed at the detector's ``num_features``. When an image yields fewer detections, the
         remaining slots carry a zero response and a zero LAF, and their descriptor is that of a patch sampled
         at the origin -- one and the same vector for every such slot. :class:`LocalFeatureMatcher` drops them
-        before matching; a hand-rolled pipeline that uses plain nearest-neighbour matching should do the same
-        (``lafs[..., :2, :2].abs().sum((-1, -2)) > 0`` or ``responses != 0``), since identical descriptors match
-        each other at zero distance. The ratio and mutual tests in :func:`~kornia.feature.match_snn`,
-        :func:`~kornia.feature.match_mnn` and :func:`~kornia.feature.match_smnn` reject them on their own.
+        before matching; a hand-rolled pipeline must do the same before any other matcher, including
+        :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_mnn`, :func:`~kornia.feature.match_fginn`,
+        :func:`~kornia.feature.match_adalam` and :class:`~kornia.feature.LightGlueMatcher`, since identical
+        descriptors match each other at zero distance and a mutual test does not reject a pair of them::
+
+            valid = lafs.ne(0).any(-1).any(-1)  # (B, N); the zero LAF marks a padded slot
+            descs, lafs = descs[0][valid[0]], lafs[:, valid[0]]
+
+        Test the LAF, not the response: a signed response can legitimately peak at exactly zero. Only the ratio
+        tests in :func:`~kornia.feature.match_snn` and :func:`~kornia.feature.match_smnn` reject padded slots on
+        their own, because the second-nearest padded descriptor is at the same zero distance.
 
         """
         lafs, responses = self.detector(img, mask)

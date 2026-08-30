@@ -608,6 +608,21 @@ class TestMatchSteererGlobal(BaseTester):
         assert idxs.shape[1] == 2
         assert idxs.shape[0] == dists.shape[0]
 
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
+    def test_normalize_is_finite_on_a_zero_descriptor(self, device, desc_dtype):
+        # `F.normalize`'s default eps underflows in float16, so a zero row -- the descriptor of a
+        # padded slot -- became NaN, and `cdist` then poisoned its whole row and column.
+        torch.manual_seed(0)
+        desc1 = torch.rand(5, 8, device=device, dtype=desc_dtype)
+        desc2 = torch.rand(6, 8, device=device, dtype=desc_dtype)
+        desc1[1] = 0
+        desc2[4] = 0
+        steerer = DiscreteSteerer(torch.eye(8, device=device, dtype=desc_dtype))
+        matcher = DescriptorMatcherWithSteerer(steerer=steerer, steerer_order=2, steer_mode="global", match_mode="mnn")
+        dists, idxs, _ = matcher(desc1, desc2, normalize=True)
+        assert torch.isfinite(dists).all()
+        assert idxs.shape[0] >= 1
+
     def test_matching(self, device):
         desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
         desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1], [0, 0.0]], device=device)

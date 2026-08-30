@@ -21,6 +21,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.utils import _normalize_eps
+
 
 class DiscreteSteerer(nn.Module):
     """nn.Module for discrete rotation steerers.
@@ -74,7 +76,7 @@ class DiscreteSteerer(nn.Module):
         for _ in range(steerer_power):
             descriptions = self.forward(descriptions)
         if normalize:
-            descriptions = F.normalize(descriptions, dim=-1)
+            descriptions = F.normalize(descriptions, dim=-1, eps=_normalize_eps(descriptions))
         return descriptions
 
     @classmethod

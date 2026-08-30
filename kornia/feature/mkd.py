@@ -23,6 +23,7 @@ from torch import nn
 
 from kornia.constants import pi
 from kornia.core.download import load_state_dict_from_url
+from kornia.core.utils import _normalize_eps
 from kornia.filters import GaussianBlur2d, SpatialGradient
 from kornia.geometry.conversions import cart2pol
 from kornia.geometry.grid import create_meshgrid
@@ -392,7 +393,7 @@ class ExplicitSpacialEncoding(nn.Module):
         output = emb1 * self.emb2
         output = output.sum(dim=(2, 3))
         if self.do_l2:
-            output = F.normalize(output, dim=1)
+            output = F.normalize(output, dim=1, eps=_normalize_eps(output))
         return output
 
     def __repr__(self) -> str:
@@ -532,7 +533,7 @@ class Whitening(nn.Module):
         x = x - self.mean  # Center the data.
         x = x @ self.evecs  # Apply rotation and/or scaling.
         x = torch.sign(x) * torch.pow(torch.abs(x), self.pval)  # Powerlaw.
-        return F.normalize(x, dim=1)
+        return F.normalize(x, dim=1, eps=_normalize_eps(x))
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(xform={self.xform}, in_dims={self.in_dims}, output_dims={self.output_dims})"
@@ -646,7 +647,7 @@ class MKDDescriptor(nn.Module):
         y = torch.cat(features, dim=1)
 
         # l2-F.normalize.
-        y = F.normalize(y, dim=1)
+        y = F.normalize(y, dim=1, eps=_normalize_eps(y))
 
         # Whiten descriptors.
         if self.whitening is not None:

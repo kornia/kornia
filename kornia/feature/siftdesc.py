@@ -230,10 +230,22 @@ class SIFTDescriptor(nn.Module):
         ang_bins = torch.clamp(ang_bins, 0.0, float(self.clipval))
         ang_bins = F.normalize(ang_bins, p=2, eps=norm_eps)
         if self.rootsift:
-            # `sqrt` has an infinite backward at zero, and most bins of a SIFT histogram are zero;
-            # the guard must survive the dtype, which 1e-10 does not in float16.
-            ang_bins = torch.sqrt(F.normalize(ang_bins, p=1, eps=norm_eps) + max(self.eps, norm_eps))
+            ang_bins = _rootsift(ang_bins, self.eps)
         return ang_bins
+
+
+def _rootsift(desc: torch.Tensor, eps: float) -> torch.Tensor:
+    r"""L1-normalise and take the square root, the RootSIFT step, with a dtype-safe ``eps``.
+
+    ``sqrt`` has an infinite backward at zero, and most bins of a SIFT histogram are zero, so ``eps`` keeps
+    the gradient finite. A float16 input cannot carry the 1e-10 guard -- it underflows to zero -- and the
+    smallest float16 normal, 6.1e-5, is not neutral: every empty bin would read ``sqrt(6.1e-5) = 0.0078``
+    and push the descriptor norm to ~1.004. The step is therefore computed in float32 for a float16 input
+    and cast back; float32 and float64 inputs take the same expression as before, unchanged.
+    """
+    if desc.dtype == torch.float16:
+        return torch.sqrt(F.normalize(desc.float(), p=1, eps=1e-12) + eps).to(desc.dtype)
+    return torch.sqrt(F.normalize(desc, p=1, eps=_normalize_eps(desc)) + eps)
 
 
 def sift_describe(
@@ -392,5 +404,5 @@ class DenseSIFTDescriptor(nn.Module):
         out = F.normalize(out_no_norm, dim=1, p=2, eps=norm_eps).clamp_(0, float(self.clipval))
         out = F.normalize(out, dim=1, p=2, eps=norm_eps)
         if self.rootsift:
-            out = torch.sqrt(F.normalize(out, p=1, eps=norm_eps) + max(self.eps, norm_eps))
+            out = _rootsift(out, self.eps)
         return out

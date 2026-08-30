@@ -151,6 +151,20 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         out = DenseSIFTDescriptor().to(device, desc_dtype)(img)
         assert torch.isfinite(out).all()
 
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
+    def test_rootsift_half_precision_matches_float32(self, device, desc_dtype):
+        # The float16-representable `eps` is 6.1e-5, and `sqrt(6.1e-5)` in every empty bin pushed
+        # the norm to ~1.004; the RootSIFT step therefore runs in float32 for a float16 input.
+        if not supports_replicate_padding(device, desc_dtype):
+            pytest.skip(f"no replicate-padding kernel for {desc_dtype} on {device.type}")
+        torch.manual_seed(0)
+        patches = torch.rand(4, 1, 41, 41, device=device)
+        ref = SIFTDescriptor(41, rootsift=True).to(device)(patches)
+        out = SIFTDescriptor(41, rootsift=True).to(device, desc_dtype)(patches.to(desc_dtype))
+        assert out.dtype == desc_dtype
+        self.assert_close(out.float().norm(dim=1), torch.ones(4, device=device), atol=2e-3, rtol=0)
+        self.assert_close(out.float(), ref, atol=2e-2, rtol=0)
+
     def test_the_float16_eps_is_the_smallest_normal(self):
         # `_normalize_eps` spells it as a literal, because TorchScript cannot read `torch.finfo`.
         from kornia.core.utils import _normalize_eps

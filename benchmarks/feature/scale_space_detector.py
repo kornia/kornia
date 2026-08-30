@@ -193,11 +193,12 @@ class ScaleSpaceExtractor(nn.Module):
         # features: describing and matching them distorts both quality and end-to-end timing.
         valid = lafs[0].ne(0).any(dim=-1).any(dim=-1)
         lafs = lafs[:, valid]
-        lafs = self.aff(lafs, img)
-        lafs = self.ori(lafs, img)
-        # The shared helper preserves the descriptor width on the empty path too, so a blank or
-        # fully masked image produces a valid (0, D) result rather than asking patch extraction
-        # for an impossible zero-sized output.
+        # The affine-shape and orientation modules extract patches, which is impossible for zero
+        # frames; a blank or fully masked image skips them and produces a valid (0, D) result,
+        # whose descriptor width the shared helper preserves on the empty path.
+        if lafs.shape[1] > 0:
+            lafs = self.aff(lafs, img)
+            lafs = self.ori(lafs, img)
         desc = KF.get_laf_descriptors(img, lafs, self.desc, self.patch_size)
         return KF.get_laf_center(lafs)[0], desc[0], det_ms
 

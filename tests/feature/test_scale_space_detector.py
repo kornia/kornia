@@ -24,6 +24,7 @@ from kornia.feature.scale_space_detector import (
     _MAX_ABS_SIN_12,
     MultiResolutionDetector,
     ScaleSpaceDetector,
+    _resize_mask,
     get_default_detector_config,
 )
 from kornia.geometry.subpix import ConvQuadInterp3d
@@ -447,6 +448,53 @@ class TestMultiResolutionDetector(BaseTester):
         xs = lafs[0][resps[0] != 0][:, 0, 2]
         assert xs.numel() > 100
         assert not bool(((xs >= 120) & (xs < 122)).any()), sorted(xs[(xs >= 119) & (xs < 123)].tolist())
+
+    @pytest.mark.parametrize("src, dst", [((100, 100), (45, 45)), ((38, 38), (90, 90)), ((7, 9), (3, 4))])
+    def test_mask_resample_is_the_cpu_adaptive_min_pool_on_every_device(self, device, dtype, src, dst):
+        # `F.adaptive_max_pool2d` on MPS returns the wrong shape when the output is larger than the
+        # input (the KeyNet up-level, the double-image octave) and pools other windows than CPU for
+        # a non-integer ratio, so the resampled mask would depend on the device. The hand-rolled
+        # resample pins the CPU windows on every device.
+        torch.manual_seed(0)
+        mask = torch.rand(2, 1, *src, device=device, dtype=dtype)
+        ref = torch.empty(1, 1, *dst, device=device, dtype=dtype)
+        expected = -torch.nn.functional.adaptive_max_pool2d(-mask.cpu().float(), dst)
+        got = _resize_mask(mask, ref)
+        assert got.shape == (2, 1, *dst)
+        assert got.dtype == dtype
+        self.assert_close(got.cpu().float(), expected.to(got.cpu().float().dtype))
+
+    def test_float_mask_weights_the_score_and_keeps_the_candidates(self, device, dtype):
+        # A graded mask used to be multiplied into the response before the NMS and the sub-pixel
+        # step, which moved maxima and their refined positions. It now weights only the score of a
+        # maximum found in the unweighted response: same detections, same positions, ranked by weight.
+        torch.manual_seed(0)
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        det = self._make_detector(num_features=2000).to(device, dtype)
+        lafs_plain, resps_plain = det(inp)
+        ramp = torch.linspace(0.2, 1.0, 64, device=device, dtype=dtype).view(1, 1, 1, 64).expand(1, 1, 64, 64)
+        lafs, resps = det(inp, ramp.contiguous())
+        keep_plain, keep = resps_plain[0] != 0, resps[0] != 0
+        assert int(keep.sum()) == int(keep_plain.sum()) > 20
+        # Same set of frames, up to the order the weighted score imposes.
+
+        def order(t: torch.Tensor) -> torch.Tensor:
+            key = t[:, 0, 2].cpu().double() * 1000 + t[:, 1, 2].cpu().double()
+            return t[torch.sort(key).indices.to(t.device)]
+
+        self.assert_close(order(lafs[0][keep]), order(lafs_plain[0][keep_plain]))
+        ratio = resps[0][keep] / resps_plain[0][keep]
+        assert float(ratio.min()) >= 0.2 - 1e-2 and float(ratio.max()) <= 1.0 + 1e-2
+        assert not torch.allclose(resps[0][keep], resps_plain[0][keep_plain])
+
+    def test_response_function_may_return_a_smaller_map(self, device, dtype):
+        # A valid-convolution response net returns a map that is a few pixels smaller than the level;
+        # the multi-channel check only asks for a single (1, 1, H, W) map, not for the level's size.
+        torch.manual_seed(0)
+        kernel = torch.ones(1, 1, 3, 3, device=device, dtype=dtype) / 9
+        det = MultiResolutionDetector(lambda x: torch.nn.functional.conv2d(x, kernel), num_features=8).to(device, dtype)
+        lafs, resps = det(torch.rand(1, 1, 64, 64, device=device, dtype=dtype))
+        assert lafs.shape == (1, 8, 2, 3) and int((resps != 0).sum()) > 0
 
     def test_mask_spatial_size_must_match_the_image(self, device, dtype):
         # `KORNIA_CHECK_SHAPE`'s named dims are free per call, so on their own they let a mask

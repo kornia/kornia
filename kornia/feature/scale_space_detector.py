@@ -82,7 +82,38 @@ def _resize_mask(mask: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
     else:
         m = mask.ne(0).to(torch.float32)
     h, w = ref.shape[-2], ref.shape[-1]
-    return -F.adaptive_max_pool2d(-m, (h, w)).to(ref.dtype)
+    m = _adaptive_min_pool_1d(m, h, dim=-2)
+    m = _adaptive_min_pool_1d(m, w, dim=-1)
+    return m.to(ref.dtype)
+
+
+def _adaptive_min_pool_1d(m: torch.Tensor, out_size: int, dim: int) -> torch.Tensor:
+    r"""Min-pool ``m`` along ``dim`` onto ``out_size`` samples with :func:`adaptive_max_pool2d`'s windows.
+
+    Output sample ``i`` covers the source samples ``floor(i * n / out_size) .. ceil((i + 1) * n / out_size) - 1``,
+    exactly the window of ``torch.nn.functional.adaptive_max_pool2d``, so the result equals
+    ``-adaptive_max_pool2d(-m)`` on CPU. It is spelled as a gather so that every device pools the same windows:
+    on MPS, ``adaptive_max_pool2d`` returns the wrong shape when the output is larger than the input and pools
+    other windows than CPU when the ratio is not an integer, so the resampled mask, and with it the detections,
+    would depend on the device.
+    """
+    dim = dim % m.dim()
+    n = m.shape[dim]
+    if n == out_size:
+        return m
+    # Window bounds are shape arithmetic, so they are Python constants under `torch.compile`.
+    starts = [(i * n) // out_size for i in range(out_size)]
+    ends = [-((-(i + 1) * n) // out_size) for i in range(out_size)]
+    width = max(e - s for s, e in zip(starts, ends))
+    # (out_size, width) source indices per output sample; the positions past a window's end are
+    # clamped onto its last sample, which is inside the window, so they never change the min.
+    idx = [[min(s + j, e - 1) for j in range(width)] for s, e in zip(starts, ends)]
+    index = torch.tensor(idx, device=m.device, dtype=torch.long).reshape(-1)
+    gathered = m.index_select(dim, index)
+    shape = list(m.shape)
+    shape[dim] = out_size
+    shape.insert(dim + 1, width)
+    return gathered.reshape(shape).amin(dim=dim + 1)
 
 
 def _create_octave_mask(mask: torch.Tensor, octave_resp: torch.Tensor) -> torch.Tensor:
@@ -657,12 +688,8 @@ class MultiResolutionDetector(nn.Module):
         """
         resp_map = self.model(level_img)
         KORNIA_CHECK(
-            resp_map.dim() == 4
-            and resp_map.shape[0] == 1
-            and resp_map.shape[1] == 1
-            and resp_map.shape[-2:] == level_img.shape[-2:],
-            "model must return one response map with shape "
-            f"(1, 1, {level_img.shape[-2]}, {level_img.shape[-1]}). Got {tuple(resp_map.shape)}. "
+            resp_map.dim() == 4 and resp_map.shape[0] == 1 and resp_map.shape[1] == 1,
+            f"model must return one response map with shape (1, 1, H, W). Got {tuple(resp_map.shape)}. "
             "For a multi-channel image, convert it to grayscale first or use a response function that "
             "reduces the channels to one map.",
         )
