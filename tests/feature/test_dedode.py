@@ -20,6 +20,7 @@ import torch
 
 from kornia.feature.dedode import DeDoDe
 from kornia.feature.dedode.decoder import ConvRefiner
+
 from testing.base import BaseTester
 
 
