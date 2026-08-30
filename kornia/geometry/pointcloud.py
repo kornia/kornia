@@ -301,11 +301,16 @@ def load_pointcloud_ply(filename: str, header_size: Optional[int] = None) -> tor
         index_x, index_y, index_z = xyz
         points: List[float] = []
         for row in range(vertex.count):
-            tokens = f.readline().split()
+            line = f.readline()
+            if not line:
+                raise ValueError(
+                    f"PLY file {filename!r} declares {vertex.count} vertices but the payload ends after {row} of them."
+                )
+            tokens = line.split()
             if len(tokens) < num_columns:
                 raise ValueError(
                     f"PLY file {filename!r} declares {vertex.count} vertices with {num_columns} properties, "
-                    f"but a vertex line has {len(tokens)} values."
+                    f"but vertex {row} has {len(tokens)} values."
                 )
             try:
                 points.extend((float(tokens[index_x]), float(tokens[index_y]), float(tokens[index_z])))
@@ -381,7 +386,8 @@ def load_pointcloud_ply_binary(filename: str, header_size: Optional[int] = None)
             if (endian == "<") != (sys.byteorder == "little"):
                 values.byteswap()
             table = torch.frombuffer(values, dtype=dtype).reshape(vertex.count, len(vertex.properties))
-            return table[:, list(xyz)].to(torch.float32).clone()
+            # Advanced indexing already copies out of the buffer, so the result never aliases ``values``.
+            return table[:, list(xyz)].to(torch.float32)
 
     # Mixed layout (or an unsigned type torch cannot hold): unpack row by row.
     rows = struct.iter_unpack(vertex_format, data)

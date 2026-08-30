@@ -263,7 +263,23 @@ class TestLoadPointCloudPlyHeaderParsing(BaseTester):
     def test_ascii_rejects_short_vertex_line(self, tmp_path):
         filename = tmp_path / "ascii_short.ply"
         filename.write_bytes(_ply_header("ascii", 1, _XYZ_DOUBLE) + b"1 2\n")
-        with pytest.raises(ValueError, match="a vertex line has 2 values"):
+        with pytest.raises(ValueError, match="vertex 0 has 2 values"):
+            kornia.geometry.load_pointcloud_ply(str(filename))
+
+    def test_ascii_rejects_truncated_payload(self, tmp_path):
+        # A file that simply ends is a truncation, not a malformed line: it must not be reported as one.
+        filename = tmp_path / "ascii_trunc.ply"
+        filename.write_bytes(_ply_header("ascii", 3, _XYZ_DOUBLE) + b"1 2 3\n")
+        with pytest.raises(ValueError, match="declares 3 vertices but the payload ends after 1 of them"):
+            kornia.geometry.load_pointcloud_ply(str(filename))
+
+    def test_ascii_rejects_truncated_preceding_element(self, tmp_path):
+        filename = tmp_path / "ascii_trunc_camera.ply"
+        header = _ply_header("ascii", 1, _XYZ_DOUBLE).replace(
+            b"element vertex", b"element camera 2\nproperty float fx\nelement vertex"
+        )
+        filename.write_bytes(header + b"500\n")
+        with pytest.raises(ValueError, match="ends inside element 'camera'"):
             kornia.geometry.load_pointcloud_ply(str(filename))
 
     def test_ascii_rejects_non_numeric_coordinate(self, tmp_path):
@@ -298,6 +314,18 @@ class TestLoadPointCloudPlyHeaderParsing(BaseTester):
         payload = b"2 10 20 1 2 3\n" if fmt == "ascii" else b"\x02" + struct.pack("<2i3d", 10, 20, 1, 2, 3)
         filename.write_bytes(_ply_header(fmt, 1, props) + payload)
         with pytest.raises(ValueError, match="has a list property 'tags'"):
+            getattr(kornia.geometry, loader)(str(filename))
+
+    @pytest.mark.parametrize("loader", ["load_pointcloud_ply", "load_pointcloud_ply_binary"])
+    def test_rejects_missing_vertex_element(self, tmp_path, loader):
+        filename = tmp_path / "no_vertex.ply"
+        fmt = "ascii" if loader == "load_pointcloud_ply" else "binary_little_endian"
+        filename.write_bytes(
+            f"ply\nformat {fmt} 1.0\nelement face 1\nproperty list uchar int vertex_indices\nend_header\n".encode(
+                "ascii"
+            )
+        )
+        with pytest.raises(ValueError, match="declares no 'vertex' element"):
             getattr(kornia.geometry, loader)(str(filename))
 
     @pytest.mark.parametrize(
