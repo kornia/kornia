@@ -18,12 +18,18 @@
 import pytest
 import torch
 
-from kornia.feature import HyNet
+from kornia.feature import FilterResponseNorm2d, HyNet
 
 from testing.base import BaseTester
 
 
 class TestHyNet(BaseTester):
+    def test_learnable_eps(self, device):
+        layer = FilterResponseNorm2d(4, is_eps_leanable=True).to(device)
+        output = layer(torch.ones(2, 4, 8, 8, device=device))
+        assert output.shape == (2, 4, 8, 8)
+        assert layer.eps.requires_grad
+
     def test_shape(self, device):
         inp = torch.ones(1, 1, 32, 32, device=device)
         hynet = HyNet().to(device)
