@@ -162,6 +162,42 @@ class TestScaleSpaceDetector(BaseTester):
         assert (resps[0, :n_real] < 0).all()
         assert (resps[0, n_real:] == 0).all()
 
+    def test_float_mask_never_promotes_a_down_weighted_negative_response(self, device, dtype):
+        # A weight scales a score toward the worst, not toward zero: a negative score is divided
+        # by the weight, a positive one multiplied. A plain multiply pulled a down-weighted negative
+        # score toward zero and ranked it above every full-weight one.
+        class SignedSpikes(torch.nn.Module):
+            # Four maxima on a -1 floor, all negative: two in the left half, two in the right.
+            spikes = {(24, 24): -0.20, (24, 72): -0.25, (72, 24): -0.40, (72, 72): -0.30}
+
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                out = -torch.ones_like(x)
+                if out.shape[-1] == 96:  # the full-resolution octave only; the coarser ones stay flat
+                    for (y, xx), v in self.spikes.items():
+                        out[:, :, out.shape[2] // 2, y, xx] = v
+                return out
+
+        det = ScaleSpaceDetector(4, resp_module=SignedSpikes(), scale_space_response=True, mr_size=3.0).to(
+            device, dtype
+        )
+        img = torch.zeros(1, 1, 96, 96, device=device, dtype=dtype)
+        lafs_plain, resps_plain = det(img)
+        assert bool(lafs_plain.ne(0).any(dim=-1).any(dim=-1).all()), "expected all four spikes"
+        assert resps_plain[0].tolist() == sorted(resps_plain[0].tolist(), reverse=True)
+        mask = torch.ones(1, 1, 96, 96, device=device, dtype=dtype)
+        mask[..., 48:] = 0.5  # the right half is down-weighted
+        lafs, resps = det(img, mask)
+        xs = lafs[0, :, 0, 2]
+        right = xs >= 48
+        # Same four frames; the full-weight (left, x=24) ones keep their score, the down-weighted
+        # (right, x=72) ones get worse, and the down-weighted best (-0.25) no longer ranks above the
+        # full-weight runner-up (-0.40) -- a multiply would have reported it as -0.125 and put it first.
+        assert int(right.sum()) == 2
+        self.assert_close(resps[0][~right], torch.tensor([-0.20, -0.40], device=device, dtype=dtype))
+        self.assert_close(resps[0][right], torch.tensor([-0.50, -0.60], device=device, dtype=dtype))
+        assert resps[0].tolist() == sorted(resps[0].tolist(), reverse=True)
+        assert xs[0] < 48 and xs[1] < 48, f"a down-weighted candidate outranked a full-weight one: {xs.tolist()}"
+
     def test_a_zero_response_maximum_keeps_its_laf(self, device, dtype):
         # The response function is pluggable and may be signed, so an exact zero can be a genuine
         # maximum rather than an unfilled slot. Classifying the padding by `response == 0` erased

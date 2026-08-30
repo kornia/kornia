@@ -57,7 +57,6 @@ class TestVisualPrompter(BaseTester):
         assert results.logits.shape == (batch_size, 3, 256, 256)
 
     def test_exception(self, device, dtype):
-
         prompter = VisualPrompter(device=device, dtype=dtype)
 
         image = torch.rand(1, 2, 3, 256, 256).to(device=device, dtype=dtype)

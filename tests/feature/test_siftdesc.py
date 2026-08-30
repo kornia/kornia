@@ -165,6 +165,21 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         self.assert_close(out.float().norm(dim=1), torch.ones(4, device=device), atol=2e-3, rtol=0)
         self.assert_close(out.float(), ref, atol=2e-2, rtol=0)
 
+    def test_float16_subnormal_norm_still_normalises_to_one(self, device):
+        # A float16 vector whose norm sits below the smallest normal (6.1e-5) is representable
+        # and torch's fp16 `norm` accumulates in fp32, so clamping the norm to 6.1e-5 shrank the
+        # result to 0.55 instead of 1. The normalisation runs in float32 for a float16 input.
+        from kornia.core.utils import _l2_normalize
+
+        x = torch.full((1, 128), 3e-6, device=device, dtype=torch.float16)
+        out = _l2_normalize(x, dim=1)
+        assert out.dtype == torch.float16
+        self.assert_close(out.float().norm(dim=1), torch.ones(1, device=device), atol=2e-3, rtol=0)
+        assert (_l2_normalize(torch.zeros_like(x), dim=1) == 0).all()
+        for dt in (torch.bfloat16, torch.float32, torch.float64):
+            y = torch.rand(3, 8, device=device, dtype=dt)
+            assert torch.equal(_l2_normalize(y, dim=1), torch.nn.functional.normalize(y, dim=1, eps=1e-12))
+
     def test_the_float16_eps_is_the_smallest_normal(self):
         # `_normalize_eps` spells it as a literal, because TorchScript cannot read `torch.finfo`.
         from kornia.core.utils import _normalize_eps

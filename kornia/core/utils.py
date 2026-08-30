@@ -23,6 +23,7 @@ from dataclasses import asdict, fields, is_dataclass
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import torch
+import torch.nn.functional as F
 from torch.linalg import inv_ex
 
 from kornia.core._compat import torch_version_ge
@@ -154,6 +155,27 @@ def _normalize_eps(input: torch.Tensor) -> float:
         # constant read from it, and this runs inside the scripted descriptors.
         return 6.103515625e-05
     return 1e-12
+
+
+def _l2_normalize(input: torch.Tensor, dim: int = 1) -> torch.Tensor:
+    """L2-normalise ``input`` along ``dim`` with :func:`torch.nn.functional.normalize`'s default ``eps``.
+
+    A float16 input is normalised in float32 and cast back. Clamping the norm at the smallest
+    float16 normal instead (see :func:`_normalize_eps`) is safe but not neutral: a vector whose
+    norm sits in the subnormal window -- representable, and computed exactly because the float16
+    ``norm`` accumulates in float32 -- came back with a norm of 0.5 rather than 1. Every other
+    floating dtype carries the 1e-12 default and is unchanged.
+
+    Args:
+        input: the tensor to normalise.
+        dim: the dimension to normalise along.
+
+    Returns:
+        the normalised tensor, in ``input``'s dtype; an all-zero vector normalises to zero.
+    """
+    if input.dtype == torch.float16:
+        return F.normalize(input.float(), dim=dim, eps=1e-12).to(input.dtype)
+    return F.normalize(input, dim=dim, eps=1e-12)
 
 
 def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:

@@ -28,6 +28,7 @@ from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_
 from kornia.geometry import rad2deg
 
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
+from .siftdesc import _gradient_magnitude_orientation
 
 urls: Dict[str, str | list[str]] = {}
 urls["orinet"] = [
@@ -113,8 +114,11 @@ class PatchDominantGradientOrientation(nn.Module):
         gx: torch.Tensor = grads[:, :, 0]
         gy: torch.Tensor = grads[:, :, 1]
 
-        mag: torch.Tensor = torch.sqrt(gx * gx + gy * gy + self.eps) * weighting
-        ori: torch.Tensor = torch.atan2(gy, gx + self.eps) + 2.0 * pi
+        # Half precision is lifted to float32 inside: the squared gradient of a flat patch
+        # underflows and `sqrt(0 + eps)` with an underflowed `eps` is NaN in the backward and,
+        # through `atan2`, in the forward as well.
+        mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
+        mag = mag * weighting
 
         o_big = float(self.num_ang_bins) * (ori + 1.0 * pi) / (2.0 * pi)
         bo0_big = torch.floor(o_big)

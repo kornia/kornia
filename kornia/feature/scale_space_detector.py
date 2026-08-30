@@ -71,11 +71,12 @@ def _resize_mask(mask: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
 
     A mask says where a detection may be. A boolean or integer mask is binary -- any non-zero
     value keeps a position, so a 0/1 and an OpenCV-style 0/255 mask mean the same thing -- and a
-    floating-point mask is used as weights. The resample is a min-pool: a level pixel takes the
-    smallest mask value among the source pixels it covers, so a zero region suppresses every
-    level pixel it touches and a thin one cannot fall between the samples of an interpolation.
-    The result is cast to ``ref``'s dtype, so the multiplication that follows cannot promote the
-    response map to the mask's dtype.
+    floating-point mask is used as weights (see :func:`_weight_scores`). The resample is a
+    min-pool: a level pixel takes the smallest mask value among the source pixels it covers, so a
+    zero region suppresses every level pixel it touches and a thin one cannot fall between the
+    samples of an interpolation. The result is cast to ``ref``'s dtype, so the weighting that
+    follows cannot promote the response map to the mask's dtype; a weight the image dtype cannot
+    hold (below ~6e-8 for a float16 image) rounds to zero and suppresses.
     """
     if mask.is_floating_point():
         m = mask.to(torch.float64 if mask.dtype == torch.float64 else torch.float32)
@@ -114,6 +115,20 @@ def _adaptive_min_pool_1d(m: torch.Tensor, out_size: int, dim: int) -> torch.Ten
     shape[dim] = out_size
     shape.insert(dim + 1, width)
     return gathered.reshape(shape).amin(dim=dim + 1)
+
+
+def _weight_scores(scores: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
+    r"""Scale detection ``scores`` by ``weights`` toward the worst score, so a weight never promotes.
+
+    A weight in ``(0, 1]`` multiplies a non-negative score and *divides* a negative one: the score
+    moves away from the best in both cases, and a down-weighted candidate can never outrank a
+    full-weight candidate whose unweighted score was at least as good. A plain multiply pulls a
+    negative score toward zero, i.e. up the ranking, which inverted the order of a signed
+    response. Positions with a zero or negative weight are excluded from the candidates before
+    this runs; their divisor is replaced by one so no ``inf`` is produced there.
+    """
+    divisor = torch.where(weights > 0, weights, torch.ones_like(weights))
+    return torch.where(scores >= 0, scores * weights, scores / divisor)
 
 
 def _create_octave_mask(mask: torch.Tensor, octave_resp: torch.Tensor) -> torch.Tensor:
@@ -312,7 +327,8 @@ class ScaleSpaceDetector(nn.Module):
         KORNIA_CHECK(
             oct_resp.dim() == 5 and oct_resp.shape[0] == B and oct_resp.shape[1] == 1 and oct_resp.shape[-2:] == (H, W),
             "resp_module must return one scale-space response channel with shape "
-            f"({B}, 1, L, {H}, {W}). Got {tuple(oct_resp.shape)}",
+            f"({B}, 1, L, {H}, {W}). Got {tuple(oct_resp.shape)}. For a multi-channel image, convert it to "
+            "grayscale first or use a response function that reduces the channels to one.",
         )
         # Iterative sub-pixel modules flatten the full response volume internally. The
         # level/channel permutation above is contiguous when CH == 1 (the common path), but
@@ -357,13 +373,13 @@ class ScaleSpaceDetector(nn.Module):
         response_max[:, :, 0] = 0.0
         response_max[:, :, -1] = 0.0
         if oct_mask is not None:
-            response_max = response_max * oct_mask
+            response_max = _weight_scores(response_max, oct_mask)
 
         if self.minima_are_also_good:
             response_min[:, :, 0] = 0.0
             response_min[:, :, -1] = 0.0
             if oct_mask is not None:
-                response_min = response_min * oct_mask
+                response_min = _weight_scores(response_min, oct_mask)
             take_min_mask = (response_min > response_max) & min_nms_mask
             response_max = torch.where(take_min_mask, response_min, response_max)
             coord_max = torch.where(take_min_mask.unsqueeze(2), coord_min, coord_max)
@@ -523,8 +539,11 @@ class ScaleSpaceDetector(nn.Module):
             num_feats: Number of features requested from the detector.
             mask: Optional mask with shape `(1 or B, 1, H, W)` saying where a detection may be. A boolean or integer
                 mask is binary (any non-zero value keeps a position), a floating-point mask is used as weights on the
-                detection scores. It is resampled onto every octave conservatively, so a zero region suppresses every
-                candidate within one octave pixel of it.
+                detection scores: a weight in `(0, 1]` scales a score toward the worst (a non-negative score is
+                multiplied by it, a negative one divided), so a down-weighted candidate never outranks a full-weight
+                one, and a zero or negative weight suppresses. The weights are cast to the image dtype. The mask is
+                resampled onto every octave conservatively, so a zero region suppresses every candidate within one
+                octave pixel of it.
 
         Returns:
             Tuple containing detection scores and local affine frames, shaped `(B, num_feats)` and `(B, num_feats,
@@ -697,7 +716,7 @@ class MultiResolutionDetector(nn.Module):
         # The mask is applied to the maxima, not to the response the NMS reads: a hard edge in the
         # response would turn every pixel beside a zeroed neighbour into a "maximum".
         if mask is not None:
-            det_map = det_map * _resize_mask(mask, det_map)
+            det_map = _weight_scores(det_map, _resize_mask(mask, det_map))
         w = det_map.shape[-1]
         det_flat = det_map.view(-1)  # (H*W,)
 
@@ -747,8 +766,10 @@ class MultiResolutionDetector(nn.Module):
             img: Input image tensor with shape `(1, C, H, W)`.
             mask: Optional mask with shape `(1, 1, H, W)` saying where a detection may be. A boolean or integer
                 mask is binary (any non-zero value keeps a position), a floating-point mask is used as weights on
-                the detection scores. It is resampled onto every pyramid level conservatively, so a zero region
-                suppresses every maximum within one level pixel of it.
+                the detection scores: a weight in `(0, 1]` scales a score toward the worst, so a down-weighted
+                maximum never outranks a full-weight one, and a zero or negative weight suppresses. The weights are
+                cast to the image dtype. The mask is resampled onto every pyramid level conservatively, so a zero
+                region suppresses every maximum within one level pixel of it.
 
         Returns:
             Tuple containing detection scores and local affine frames, shaped `(1, num_features)` and

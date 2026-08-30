@@ -98,6 +98,43 @@ class TestPatchDominantGradientOrientation(BaseTester):
         self.assert_close(model(patches), model_jit(patches))
 
 
+class TestOrientationHalfPrecisionIsFinite(BaseTester):
+    """A flat patch has a zero gradient; `sqrt(gx*gx + gy*gy + eps)` must not give NaN in float16.
+
+    The 1e-10 guard underflows to zero in float16 and so does a squared float16 gradient, so
+    the descriptor-side helper lifts the step to float32. The orienter took the same expression
+    unguarded and sent a NaN LAF into the descriptor at a *filled* slot.
+    """
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_flat_patch(self, device, half_dtype):
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        patches = torch.zeros(2, 1, 32, 32, device=device, dtype=half_dtype)
+        out = PatchDominantGradientOrientation(32).to(device, half_dtype)(patches)
+        assert out.dtype == half_dtype
+        assert torch.isfinite(out).all()
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_flat_image_laf(self, device, half_dtype):
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        img = torch.full((1, 1, 32, 32), 0.5, device=device, dtype=half_dtype)
+        laf = torch.tensor([[[[5.0, 0.0, 16.0], [0.0, 5.0, 16.0]]]], device=device, dtype=half_dtype)
+        out = LAFOrienter(19).to(device, half_dtype)(laf, img)
+        assert out.dtype == half_dtype
+        assert torch.isfinite(out).all()
+
+    def test_half_precision_matches_float32(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        torch.manual_seed(0)
+        patches = torch.rand(4, 1, 32, 32, device=device)
+        ref = PatchDominantGradientOrientation(32).to(device)(patches)
+        out = PatchDominantGradientOrientation(32).to(device, torch.float16)(patches.half())
+        self.assert_close(out.float(), ref, atol=5e-2, rtol=0)
+
+
 class TestOrientationKernelBuffer(BaseTester):
     """`weighting` must be a real buffer so `.to()` moves it, and `forward` must not rebind it (#4069)."""
 

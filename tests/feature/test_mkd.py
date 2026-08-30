@@ -424,6 +424,23 @@ class TestMKDDescriptor(BaseTester):
         output_dims = min(self.dims[kernel_type], 128)
         assert out.shape == (1, output_dims)
 
+    def test_state_dict_from_before_the_moduledict_loads_strictly(self, device):
+        # The stages used to live in a plain dict, so a saved state dict has no `feats.*` keys.
+        # Those buffers are derived from the constructor arguments, so a strict load fills them in.
+        mkd = MKDDescriptor(patch_size=19, kernel_type="concat", whitening=None).to(device)
+        old = {k: v for k, v in mkd.state_dict().items() if not k.startswith("feats.")}
+        assert len(old) < len(mkd.state_dict())
+        fresh = MKDDescriptor(patch_size=19, kernel_type="concat", whitening=None).to(device)
+        fresh.load_state_dict(old, strict=True)
+        inp = torch.rand(2, 1, 19, 19, device=device)
+        self.assert_close(fresh(inp), mkd(inp))
+        # A saved `feats.*` key is still honoured over the freshly computed buffer.
+        new = mkd.state_dict()
+        key = next(k for k in new if k.startswith("feats."))
+        new[key] = torch.zeros_like(new[key])
+        fresh.load_state_dict(new, strict=True)
+        assert bool((fresh.state_dict()[key] == 0).all())
+
     @pytest.mark.parametrize("bs", [1, 3, 7])
     def test_batch_shape(self, bs, device):
         mkd = MKDDescriptor(patch_size=19, kernel_type="concat", whitening=None).to(device)

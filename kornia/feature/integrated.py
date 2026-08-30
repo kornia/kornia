@@ -23,7 +23,7 @@ from torch import nn
 
 from kornia.color import rgb_to_grayscale
 from kornia.constants import pi
-from kornia.core.check import KORNIA_CHECK_LAF
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
 
@@ -484,6 +484,20 @@ class LocalFeatureMatcher(nn.Module):
             lafs1, descs1 = feats_dict1["lafs"], feats_dict1["descriptors"]
         else:
             lafs1, descs1 = data["lafs1"], data["descriptors1"]
+
+        # The padding mask below is read off the LAFs and applied to the descriptors, so the two
+        # must describe the same features; a mismatch would otherwise surface as an opaque
+        # boolean-index error, or silently mis-associate the matches when every index fits.
+        KORNIA_CHECK(
+            lafs0.shape[:2] == descs0.shape[:2],
+            f"lafs0 and descriptors0 must describe the same features, "
+            f"got {tuple(lafs0.shape)} and {tuple(descs0.shape)}",
+        )
+        KORNIA_CHECK(
+            lafs1.shape[:2] == descs1.shape[:2],
+            f"lafs1 and descriptors1 must describe the same features, "
+            f"got {tuple(lafs1.shape)} and {tuple(descs1.shape)}",
+        )
 
         keypoints0: torch.Tensor = get_laf_center(lafs0)
         keypoints1: torch.Tensor = get_laf_center(lafs1)

@@ -25,8 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * `MultiResolutionDetector` and `KeyNetDetector` change their output: padded slots now read as a zero response and
   a zero LAF instead of `torch.finfo(dtype).min / 2` and an arbitrary border coordinate; the previously inert `mask`
-  argument now suppresses detections, and must be `(1, 1, H, W)` at the image size; half-precision input yields
-  half-precision LAFs; the returned shape is always `num_features`; a multi-channel response is rejected instead of
+  argument now suppresses detections, and must be `(1 or B, 1, H, W)` at the image size -- a `(B, H, W)` mask
+  passed directly to either detector, which was accepted only because it went unread, is rejected; half-precision
+  input yields half-precision LAFs; the returned shape is always `num_features`; a multi-channel response is rejected instead of
   producing invalid or duplicate LAFs; a negative `score_threshold` is rejected with `ValueError`; and `detect`
   enforces its documented `(1, C, H, W)` input. The `mask` of both detectors is now "where a detection may be": a
   boolean or integer mask is binary (a 0/255 mask no longer scales the responses by 255), a floating-point mask
@@ -42,13 +43,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `MKDDescriptor` runs in `float16` and `bfloat16`. Its gradient-embedding and spatial-encoding stages were held in
   a plain `dict`, so `.to(device, dtype)` never reached their buffers and a half-precision input failed at the
   whitening matmul with `expected m1 and m2 to have the same dtype`. They are now an `nn.ModuleDict`; float32 and
-  float64 outputs are byte-identical, and `state_dict()` gains the stages' buffer keys (`feats.<parametrization>.*`),
-  so a state dict saved by an earlier release loads with `strict=False`.
+  float64 outputs are byte-identical, and `state_dict()` gains the stages' buffer keys (`feats.<parametrization>.*`).
+  A state dict saved by an earlier release still loads with `strict=True`: those buffers are derived from the
+  constructor arguments, and the missing keys are filled in from the module being loaded into.
 
 * `DescriptorMatcherWithSteerer(normalize=True)`, `DiscreteSteerer.steer_descriptions(normalize=True)` and the
-  `MKD` descriptors normalise with an `eps` representable in the
-  input dtype, so an all-zero float16 descriptor normalises to zero instead of NaN, the same guard `SIFTDescriptor`
-  and `HardNet` gain in this release. `SIFTDescriptor(rootsift=True)` and `DenseSIFTDescriptor(rootsift=True)`
+  `MKD` descriptors, like `SIFTDescriptor` and `HardNet`, L2-normalise a float16 input in float32 and cast back,
+  so an all-zero float16 descriptor normalises to zero instead of NaN (the 1e-12 guard underflows in float16) and a
+  descriptor whose norm sits below the smallest float16 normal still normalises to one rather than being clamped.
+  `PatchDominantGradientOrientation`, and with it `LAFOrienter`, take the gradient magnitude and orientation of a
+  float16 patch through the same float32 step `SIFTDescriptor` uses, so a flat patch yields a finite angle instead
+  of a NaN LAF -- which reached a *filled* detection slot in a float16 `SIFTFeature` pipeline and poisoned that
+  descriptor row. `SIFTDescriptor(rootsift=True)` and `DenseSIFTDescriptor(rootsift=True)`
   compute the RootSIFT square root in float32 for a float16 input: the float16-representable guard would have
   read every empty bin as `sqrt(6.1e-5)` and biased the descriptor norm to ~1.004. Float32 and float64 outputs are
   unchanged.
@@ -247,8 +253,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   detections now gets masked ones. The semantics are the same in both detectors and are chosen from the caller's
   side. A boolean or integer mask is binary: any non-zero value keeps a position, so a 0/1 mask, an OpenCV 0/255
   mask and `img > 0` all mean the same thing (a raw cast would have multiplied the responses by 255 and defeated an
-  absolute `score_threshold`). A floating-point mask is used as weights on the detection scores. The mask must be
-  `(1 or B, 1, H, W)` with the image's spatial size. It is resampled onto every pyramid level or octave with a
+  absolute `score_threshold`). A floating-point mask is used as weights on the detection scores: a weight in
+  `(0, 1]` scales a score toward the worst -- a non-negative score is multiplied by it, a negative one divided -- so
+  a down-weighted candidate never outranks a full-weight one with an at-least-as-good score (a plain multiply pulled
+  a negative score toward zero, i.e. *up* the ranking of a signed response), and a zero or negative weight
+  suppresses. The weights are cast to the image dtype, so a weight a half-precision image cannot hold rounds to
+  zero and suppresses. The mask must be `(1 or B, 1, H, W)` with the image's spatial size. It is resampled onto every pyramid level or octave with a
   min-pool rather than an interpolation, so a zero region suppresses every level pixel it touches and a two-pixel
   zero stripe does not vanish at a factor-four level. And it is applied to the non-maxima-suppression output, not
   to the response the suppression reads: multiplying the response first carves an edge into it, and the bilinear
