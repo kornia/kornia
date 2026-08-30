@@ -590,4 +590,4 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
     if len(keep) > 0:
         return torch.stack(keep)
 
-    return torch.tensor(keep)
+    return boxes.new_empty((0,), dtype=torch.long)
