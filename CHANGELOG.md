@@ -78,6 +78,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Replace the batched `torch.inverse` in `ellipse_to_laf` with the closed-form inverse of its lower-triangular
+  2x2 matrix. Results agree with the previous implementation to ~1.6e-7 relative in `float32` (machine epsilon in
+  `float64`); throughput improves ~12x eager / ~19x compiled on CPU and ~1500x on MPS (measured at B=1, N=20000,
+  Apple Silicon, torch 2.9.1), where the batched inverse hit a pathological `linalg` path, emitted a deprecated-resize
+  `UserWarning` on every call, and failed to `torch.compile`. The function now also works in `float16`/`bfloat16` on
+  CPU, where `linalg.inv` raises for low-precision dtypes, and compiles with `fullgraph=True` on every backend. One
+  edge changes: an exactly degenerate ellipse (`a == 0` or `c == 0`) used to raise `linalg.LinAlgError` from the
+  batched inverse and now returns non-finite values in that LAF, as documented.
+
 * Make `load_pointcloud_ply` and `load_pointcloud_ply_binary` parse the PLY header instead of skipping a fixed
   number of lines. Both loaders skipped `header_size=8` lines and read everything after them as `x y z` triples, so a
   minimal PLY file (seven header lines, no `comment`) lost its first point to a header line -- the binary reader

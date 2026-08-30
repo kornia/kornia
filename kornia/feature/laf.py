@@ -228,6 +228,10 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     Returns:
         LAF :math:`(B, N, 2, 3)`
 
+    Note:
+        A degenerate ellipse with ``a == 0`` or ``c == 0`` describes no area, so its LAF
+        contains non-finite values.
+
     Example:
         >>> input = torch.ones(1, 10, 5)  # BxNx5
         >>> output = ellipse_to_laf(input)  #  BxNx2x3
@@ -248,10 +252,15 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     # M = (A 0; C D)
     # R = (sqrt(A) 0; C / (sqrt(A)+sqrt(D)) sqrt(D))
     a11 = ells[..., 2:3].abs().sqrt()
-    a12 = torch.zeros_like(a11)
     a22 = ells[..., 4:5].abs().sqrt()
     a21 = ells[..., 3:4] / (a11 + a22).clamp(1e-9)
-    A = torch.stack([a11, a12, a21, a22], dim=-1).view(B, N, 2, 2).inverse()
+    # The matrix [[a11, 0], [a21, a22]] is lower-triangular, so its inverse is the closed form
+    # [[1/a11, 0], [-a21/(a11*a22), 1/a22]] — no batched torch.inverse, which is orders of
+    # magnitude slower, unsupported in float16/bfloat16 on CPU, and pathological on MPS.
+    inv11 = 1.0 / a11
+    inv22 = 1.0 / a22
+    inv21 = -a21 * (inv11 * inv22)
+    A = torch.stack([inv11, torch.zeros_like(inv11), inv21, inv22], dim=-1).view(B, N, 2, 2)
     out = torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
     return out
 
