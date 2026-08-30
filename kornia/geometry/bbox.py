@@ -512,6 +512,7 @@ def transform_bbox(
 
     # convert boxes to format xyxy
     if mode == "xywh":
+        boxes = boxes.clone()
         boxes[..., 2] = boxes[..., 0] + boxes[..., 2]  # x + w
         boxes[..., 3] = boxes[..., 1] + boxes[..., 3]  # y + h
 
