@@ -217,6 +217,40 @@ class TestLoadPointCloudPlyHeaderParsing(BaseTester):
             (_ply_header("ascii", 1, _XYZ_DOUBLE), "use `load_pointcloud_ply`"),
             (b"not a ply\n" + _ply_header("binary_little_endian", 1, _XYZ_DOUBLE), "first line must be 'ply'"),
             (_ply_header("binary_little_endian", 1, _XYZ_DOUBLE).replace(b"format", b"frmt"), "Unknown PLY header"),
+            (
+                _ply_header("binary_little_endian", 1, _XYZ_DOUBLE).replace(b"binary_little_endian", b"binary_weird"),
+                "Unsupported PLY format line",
+            ),
+            (
+                _ply_header("binary_little_endian", 1, _XYZ_DOUBLE).replace(b"format binary_little_endian 1.0\n", b""),
+                "no 'format' line",
+            ),
+            (
+                _ply_header("binary_little_endian", 1, _XYZ_DOUBLE).replace(b"vertex 1", b"vertex"),
+                "Malformed PLY element",
+            ),
+            (
+                _ply_header("binary_little_endian", 1, _XYZ_DOUBLE).replace(b"vertex 1", b"vertex 1 extra"),
+                "Malformed PLY element",
+            ),
+            (
+                _ply_header("binary_little_endian", 1, _XYZ_DOUBLE).replace(
+                    b"element vertex", b"property double w\nelement vertex"
+                ),
+                "property before any element",
+            ),
+            (
+                _ply_header("binary_little_endian", 1, _XYZ_DOUBLE).replace(
+                    b"property double x", b"property quadruple x"
+                ),
+                "Malformed PLY property",
+            ),
+            (
+                _ply_header("binary_little_endian", 1, _XYZ_DOUBLE).replace(
+                    b"property double x", b"property list uchar tags"
+                ),
+                "Malformed PLY property",
+            ),
         ],
     )
     def test_binary_rejects_malformed_header(self, tmp_path, header, match):
