@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.feature import HyNet
+from kornia.feature import FilterResponseNorm2d, HyNet
 
 from testing.base import BaseTester
 
@@ -35,6 +35,11 @@ class TestHyNet(BaseTester):
         hynet = HyNet().to(device)
         out = hynet(inp)
         assert out.shape == (16, 128)
+
+    def test_learnable_eps(self):
+        layer = FilterResponseNorm2d(4, eps=1e-4, is_eps_leanable=True)
+        assert layer.eps.is_floating_point()
+        assert layer.eps.item() == pytest.approx(1e-4)
 
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
