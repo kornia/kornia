@@ -81,7 +81,7 @@ class FilterResponseNorm2d(nn.Module):
         self.weight = nn.Parameter(torch.ones(1, num_features, 1, 1), requires_grad=True)
         self.bias = nn.Parameter(torch.zeros(1, num_features, 1, 1), requires_grad=True)
         if is_eps_leanable:
-            self.eps = nn.Parameter(torch.tensor(1), requires_grad=True)
+            self.eps = nn.Parameter(torch.tensor([eps]), requires_grad=True)
         else:
             self.register_buffer("eps", torch.tensor([eps]))
         self.reset_parameters()
