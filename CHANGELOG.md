@@ -78,7 +78,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
-* Make `load_pointcloud_ply` and `load_pointcloud_ply_binary` parse the PLY header instead of skipping a fixed
+* Keep `extract_patches_simple` and `extract_patches_from_pyramid` off a broken reduced-precision CPU kernel: for a
+  `float16`/`bfloat16` CPU image, the `grid_sample` kernels in torch <= 2.9 read out of bounds when a rotated patch
+  straddles the image border and return NaN or garbage values far outside the image's range, so both extractors now
+  sample reduced-precision CPU images in `float32` and cast the patches back. Half-precision CPU patches change as a
+  result (they are computed with `float32` sampling coordinates, which is also more accurate for large images);
+  `float32`, `float64`, CUDA, and MPS results are byte-for-byte unchanged. Both extractors also replace their
+  per-image Python loop with one batched `grid_sample` call over a `(B, N*PS, PS, 2)` grid, so they trace as a
+  single `fullgraph=True` graph; measured throughput is unchanged on CPU and MPS, where `grid_sample` dominates.
   number of lines. Both loaders skipped `header_size=8` lines and read everything after them as `x y z` triples, so a
   minimal PLY file (seven header lines, no `comment`) lost its first point to a header line -- the binary reader
   returned header bytes decoded as doubles -- and any file with extra vertex properties (normals, colours) or a

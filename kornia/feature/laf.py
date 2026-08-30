@@ -428,6 +428,23 @@ def _clamp_grid_to_pixel_centers(grid: torch.Tensor, h: int, w: int) -> torch.Te
     return torch.stack([x, y], dim=-1)
 
 
+def _grid_sample_patches(img: torch.Tensor, grid: torch.Tensor, h: int, w: int) -> torch.Tensor:
+    r"""Run ``grid_sample`` with border padding, robust across devices and dtypes.
+
+    MPS does not implement ``padding_mode="border"``; it is emulated with a clamped grid plus
+    zero padding (see :func:`_clamp_grid_to_pixel_centers`). The float16/bfloat16 CPU kernel in
+    torch <= 2.9 reads out of bounds for coordinates at or beyond the border and returns
+    nondeterministic garbage or NaN, so reduced-precision CPU inputs are sampled in float32 and
+    cast back.
+    """
+    if img.device.type == "mps":
+        return F.grid_sample(img, _clamp_grid_to_pixel_centers(grid, h, w), padding_mode="zeros", align_corners=False)
+    if img.device.type == "cpu" and img.dtype in (torch.float16, torch.bfloat16):
+        out = F.grid_sample(img.float(), grid.float(), padding_mode="border", align_corners=False)
+        return out.to(img.dtype)
+    return F.grid_sample(img, grid, padding_mode="border", align_corners=False)
+
+
 def extract_patches_simple(
     img: torch.Tensor, laf: torch.Tensor, PS: int = 32, normalize_lafs_before_extraction: bool = True
 ) -> torch.Tensor:
@@ -452,26 +469,11 @@ def extract_patches_simple(
         nlaf = laf
     _, ch, h, w = img.size()
     B, N, _, _ = laf.size()
-    out = []
-    # for loop temporarily, to be refactored
-    for i in range(B):
-        grid = generate_patch_grid_from_normalized_LAF(img[i : i + 1], nlaf[i : i + 1], PS).to(img.device)
-        if img.device.type == "mps":
-            out.append(
-                F.grid_sample(
-                    img[i : i + 1].expand(grid.size(0), ch, h, w),
-                    _clamp_grid_to_pixel_centers(grid, h, w),
-                    padding_mode="zeros",
-                    align_corners=False,
-                )
-            )
-        else:
-            out.append(
-                F.grid_sample(
-                    img[i : i + 1].expand(grid.size(0), ch, h, w), grid, padding_mode="border", align_corners=False
-                )
-            )
-    return torch.cat(out, dim=0).view(B, N, ch, PS, PS)
+    # Fold the (B*N, PS, PS, 2) grid to (B, N*PS, PS, 2) so one grid_sample call samples every
+    # patch of every image, without a Python loop over B or a (B*N, CH, H, W) input copy.
+    grid = generate_patch_grid_from_normalized_LAF(img, nlaf, PS).view(B, N * PS, PS, 2)
+    patches = _grid_sample_patches(img, grid, h, w)
+    return patches.view(B, ch, N, PS, PS).permute(0, 2, 1, 3, 4).contiguous()
 
 
 def extract_patches_from_pyramid(
@@ -508,22 +510,12 @@ def extract_patches_from_pyramid(
     num_levels = max(1, max_level)
     for cur_pyr_level in range(num_levels):
         _, ch_l, h_l, w_l = cur_img.size()
-        for i in range(B):
-            # torch.where avoids nonzero/data-dependent shapes → fully compilable.
-            level_mask = (pyr_idx[i] == cur_pyr_level).view(N, 1, 1, 1)
-            grid = generate_patch_grid_from_normalized_LAF(cur_img[i : i + 1], nlaf[i : i + 1], PS)
-            if cur_img.device.type == "mps":
-                patches = F.grid_sample(
-                    cur_img[i : i + 1].expand(N, ch_l, h_l, w_l),
-                    _clamp_grid_to_pixel_centers(grid, h_l, w_l),
-                    padding_mode="zeros",
-                    align_corners=False,
-                )
-            else:
-                patches = F.grid_sample(
-                    cur_img[i : i + 1].expand(N, ch_l, h_l, w_l), grid, padding_mode="border", align_corners=False
-                )
-            out[i] = torch.where(level_mask, patches.to(nlaf.dtype), out[i])
+        # torch.where avoids nonzero/data-dependent shapes → fully compilable; the (B*N, PS, PS, 2)
+        # grid is folded to (B, N*PS, PS, 2) so one grid_sample call covers the whole batch.
+        level_mask = (pyr_idx == cur_pyr_level).view(B, N, 1, 1, 1)
+        grid = generate_patch_grid_from_normalized_LAF(cur_img, nlaf, PS).view(B, N * PS, PS, 2)
+        patches = _grid_sample_patches(cur_img, grid, h_l, w_l).view(B, ch_l, N, PS, PS).permute(0, 2, 1, 3, 4)
+        out = torch.where(level_mask, patches.to(nlaf.dtype), out)
         if cur_pyr_level < num_levels - 1:
             cur_img = pyrdown(cur_img)
             # Stop early if the pyramided image is too small for further levels.

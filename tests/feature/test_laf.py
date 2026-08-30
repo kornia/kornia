@@ -514,6 +514,35 @@ class TestExtractPatchesSimple(BaseTester):
         PS = 11
         self.gradcheck(kornia.feature.extract_patches_simple, (img, nlaf, PS, False), fast_mode=False)
 
+    def test_batch_independence(self, device, dtype):
+        # Each patch must come only from its own batch element.
+        B, N, PS = 3, 4, 8
+        img = torch.arange(B, device=device, dtype=dtype).view(B, 1, 1, 1).expand(B, 1, 32, 32).contiguous()
+        laf = torch.tensor([[4.0, 0.0, 16.0], [0.0, 4.0, 16.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
+        patches = kornia.feature.extract_patches_simple(img, laf.expand(B, N, 2, 3), PS)
+        assert patches.shape == (B, N, 1, PS, PS)
+        expected = torch.arange(B, device=device, dtype=dtype).view(B, 1, 1, 1, 1).expand(B, N, 1, PS, PS)
+        self.assert_close(patches, expected)
+
+    def test_border_patches_stay_in_range(self, device, dtype):
+        # A rotated patch straddling the frame reads border pixels; the values must never leave
+        # the image's value range. The float16/bfloat16 CPU grid_sample kernels in torch <= 2.9
+        # read out of bounds for such coordinates and return NaN or garbage.
+        torch.manual_seed(0)
+        img = torch.rand(1, 1, 256, 256, device=device, dtype=dtype)
+        laf = torch.tensor([[1.76, -90.38, -19.14], [90.38, 1.76, 268.75]], device=device, dtype=dtype)
+        laf = laf.view(1, 1, 2, 3).expand(1, 3, 2, 3)
+        patches = kornia.feature.extract_patches_simple(img, laf, 16)
+        assert bool(patches.isfinite().all())
+        assert patches.min() >= img.min()
+        assert patches.max() <= img.max()
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
+        img = torch.rand(2, 1, 40, 30, device=device, dtype=dtype)
+        op = torch_optimizer(kornia.feature.extract_patches_simple)
+        self.assert_close(op(img, laf, 10), kornia.feature.extract_patches_simple(img, laf, 10))
+
 
 class TestExtractPatchesPyr(BaseTester):
     def test_shape(self, device):
@@ -579,6 +608,38 @@ class TestExtractPatchesPyr(BaseTester):
             (img, nlaf, PS, False),
             nondet_tol=1e-8,
         )
+
+    def test_batch_independence(self, device, dtype):
+        # Each patch must come only from its own batch element, across pyramid levels: the two
+        # scales route the patches through level 0 and a downsampled level respectively.
+        B, PS = 3, 8
+        img = torch.arange(B, device=device, dtype=dtype).view(B, 1, 1, 1).expand(B, 1, 64, 64).contiguous()
+        laf_small = torch.tensor([[4.0, 0.0, 32.0], [0.0, 4.0, 32.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
+        laf_large = torch.tensor([[16.0, 0.0, 32.0], [0.0, 16.0, 32.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
+        laf = torch.cat([laf_small, laf_large], dim=1).expand(B, 2, 2, 3)
+        patches = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
+        assert patches.shape == (B, 2, 1, PS, PS)
+        expected = torch.arange(B, device=device, dtype=dtype).view(B, 1, 1, 1, 1).expand(B, 2, 1, PS, PS)
+        self.assert_close(patches, expected)
+
+    def test_border_patches_stay_in_range(self, device, dtype):
+        # A rotated patch straddling the frame reads border pixels; the values must never leave
+        # the image's value range. The float16/bfloat16 CPU grid_sample kernels in torch <= 2.9
+        # read out of bounds for such coordinates and return NaN or garbage.
+        torch.manual_seed(0)
+        img = torch.rand(1, 1, 256, 256, device=device, dtype=dtype)
+        laf = torch.tensor([[1.76, -90.38, -19.14], [90.38, 1.76, 268.75]], device=device, dtype=dtype)
+        laf = laf.view(1, 1, 2, 3).expand(1, 3, 2, 3)
+        patches = kornia.feature.extract_patches_from_pyramid(img, laf, 16)
+        assert bool(patches.isfinite().all())
+        assert patches.min() >= img.min()
+        assert patches.max() <= img.max()
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
+        img = torch.rand(2, 1, 40, 30, device=device, dtype=dtype)
+        op = torch_optimizer(kornia.feature.extract_patches_from_pyramid)
+        self.assert_close(op(img, laf, 10), kornia.feature.extract_patches_from_pyramid(img, laf, 10))
 
 
 class TestLAFIsTouchingBoundary(BaseTester):
