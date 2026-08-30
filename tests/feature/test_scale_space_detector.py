@@ -15,9 +15,11 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 import kornia
+from kornia.core.check import ShapeError
 from kornia.feature.scale_space_detector import (
     _MAX_ABS_SIN_12,
     MultiResolutionDetector,
@@ -30,6 +32,11 @@ from testing.base import BaseTester
 
 
 class TestScaleSpaceDetector(BaseTester):
+    def test_rejects_multichannel_input(self, device, dtype):
+        detector = ScaleSpaceDetector(2).to(device, dtype)
+        with pytest.raises(ShapeError, match="Expected shape"):
+            detector(torch.rand(1, 3, 32, 32, device=device, dtype=dtype))
+
     def test_shape(self, device, dtype):
         inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
         n_feats = 10

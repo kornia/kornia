@@ -326,6 +326,7 @@ class ScaleSpaceDetector(nn.Module):
             Tuple containing detection scores and local affine frames. Local affine frames are usually shaped `(B, N, 2,
             3)`, where `N` is the selected feature count.
         """
+        KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         dev = img.device
         dtype: torch.dtype = img.dtype
         sp, sigmas, _ = self.scale_pyr(img)
