@@ -278,7 +278,9 @@ def match_fginn(
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
         desc2: Batch of descriptors of a shape :math:`(B2, D)`.
-        lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
+        lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`. Accepted for API symmetry with
+          :func:`~kornia.feature.match_adalam` but not read by this function -- only
+          ``lafs2`` feeds the geometric check.
         lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
         th: distance ratio threshold.
         spatial_th: minimal distance in pixels to 2nd nearest neighbor.
