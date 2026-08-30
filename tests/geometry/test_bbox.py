@@ -19,6 +19,7 @@ import torch
 
 import kornia
 from kornia.geometry.bbox import (
+    bbox_generator3d,
     infer_bbox_shape,
     infer_bbox_shape3d,
     nms,
@@ -208,6 +209,13 @@ class TestTransformBoxes2D(BaseTester):
 
 
 class TestBbox3D(BaseTester):
+    def test_generator_scalar_inputs(self, device, dtype):
+        args = [torch.tensor(value, device=device, dtype=dtype) for value in (1, 2, 3, 4, 5, 6)]
+        boxes = bbox_generator3d(*args)
+        assert boxes.shape == (1, 8, 3)
+        self.assert_close(boxes[0, 0], torch.tensor([1, 2, 3], device=device, dtype=dtype))
+        self.assert_close(boxes[0, 6], torch.tensor([5, 7, 9], device=device, dtype=dtype))
+
     def test_smoke(self, device, dtype):
         # Sample two points of the 3d rect
         points = torch.rand(1, 6, device=device, dtype=dtype)
