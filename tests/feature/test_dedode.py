@@ -19,6 +19,21 @@ import pytest
 import torch
 
 from kornia.feature.dedode import DeDoDe
+from kornia.feature.dedode.decoder import ConvRefiner
+from testing.base import BaseTester
+
+
+class TestConvRefiner(BaseTester):
+    def test_amp_matches_input_device(self, device):
+        refiner = ConvRefiner(in_dim=4, hidden_dim=4, out_dim=4)
+        autocast_enabled = []
+        refiner.block1.register_forward_pre_hook(
+            lambda _module, _inputs: autocast_enabled.append(torch.is_autocast_enabled("cuda"))
+        )
+
+        refiner(torch.rand(1, 4, 8, 8, device=device))
+
+        assert autocast_enabled == [device.type == "cuda"]
 
 
 @pytest.mark.skip(reason="DeDoDe is ummaintained")

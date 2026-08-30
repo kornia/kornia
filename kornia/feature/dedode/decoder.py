@@ -165,10 +165,8 @@ class ConvRefiner(nn.Module):
             surrounding class.
         """
         _b, _c, _hs, _ws = feats.shape
-        # AMP is intentionally scoped to "cuda" only: float16 autocast on CPU is not
-        # supported by PyTorch and a no-op on MPS. Use amp_dtype=torch.float32 on
-        # non-CUDA devices to disable AMP entirely.
-        with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
+        # AMP runs only for CUDA tensors.
+        with torch.autocast("cuda", enabled=self.amp and feats.is_cuda, dtype=self.amp_dtype):
             x0 = self.block1(feats)
             x = self.hidden_blocks(x0)
             if self.residual:
