@@ -20,7 +20,7 @@ import torch
 
 from kornia.feature import HardNet, HardNet8
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_conv2d
 
 
 class TestHardNet(BaseTester):
@@ -92,6 +92,9 @@ class TestHardNetConstantPatchIsFinite(BaseTester):
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
     @pytest.mark.parametrize("model", [HardNet, HardNet8])
     def test_constant_patch(self, device, desc_dtype, model):
+        if not supports_conv2d(device, desc_dtype):
+            # The descriptor is a stack of convolutions; torch 2.1.2 has no float16 CPU kernel.
+            pytest.skip(f"no conv2d kernel for {desc_dtype} on {device.type}")
         patches = torch.zeros(2, 1, 32, 32, device=device, dtype=desc_dtype)
         out = model().to(device, desc_dtype)(patches)
         assert torch.isfinite(out).all()

@@ -141,21 +141,28 @@ _UNIMPLEMENTED_KERNEL_MSG = "not implemented for"
 
 
 @cache
-def _supports_replicate_padding_probe(device_type: str, dtype: torch.dtype) -> bool:
+def _supports_kernel_probe(op: Callable[[str, torch.dtype], object], device_type: str, dtype: torch.dtype) -> bool:
+    """Run ``op`` on a tiny tensor and report whether this build has a kernel for it.
+
+    ``op`` allocates its own probe tensors and then calls the operator, because a device that
+    cannot hold ``dtype`` at all (MPS and float64) raises TypeError while allocating, which is
+    still "unsupported" and must not escape a helper whose whole contract is to return a bool.
+    Cached per (op, device type, dtype), so every probe below runs once per session and
+    auto-enables once PyTorch fills the kernel in.
+    """
     try:
-        # Allocated outside the `try` below: a device that cannot hold `dtype` at all (MPS and
-        # float64) raises TypeError here, which is still "unsupported" and must not escape a
-        # helper whose whole contract is to return a bool.
-        probe = torch.zeros(1, 1, 2, 2, device=device_type, dtype=dtype)
+        op(device_type, dtype)
     except TypeError:
         return False
-    try:
-        F.pad(probe, (1, 1, 1, 1), mode="replicate")
     except RuntimeError as e:
         if _UNIMPLEMENTED_KERNEL_MSG in str(e):
             return False
         raise
     return True
+
+
+def _replicate_padding_op(device_type: str, dtype: torch.dtype) -> None:
+    F.pad(torch.zeros(1, 1, 2, 2, device=device_type, dtype=dtype), (1, 1, 1, 1), mode="replicate")
 
 
 def supports_replicate_padding(device: torch.device, dtype: torch.dtype) -> bool:
@@ -167,23 +174,15 @@ def supports_replicate_padding(device: torch.device, dtype: torch.dtype) -> bool
     than reading the injected dtype fails there on every job. Probed at runtime and cached per
     (device type, dtype), so it auto-enables once PyTorch fills the kernel in.
     """
-    return _supports_replicate_padding_probe(device.type, dtype)
+    return _supports_kernel_probe(_replicate_padding_op, device.type, dtype)
 
 
-@cache
-def _supports_grid_sample_probe(device_type: str, dtype: torch.dtype) -> bool:
-    try:
-        probe = torch.zeros(1, 1, 2, 2, device=device_type, dtype=dtype)
-        grid = torch.zeros(1, 2, 2, 2, device=device_type, dtype=dtype)
-    except TypeError:
-        return False
-    try:
-        F.grid_sample(probe, grid, align_corners=False)
-    except RuntimeError as e:
-        if _UNIMPLEMENTED_KERNEL_MSG in str(e):
-            return False
-        raise
-    return True
+def _grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
+    F.grid_sample(
+        torch.zeros(1, 1, 2, 2, device=device_type, dtype=dtype),
+        torch.zeros(1, 2, 2, 2, device=device_type, dtype=dtype),
+        align_corners=False,
+    )
 
 
 def supports_grid_sample(device: torch.device, dtype: torch.dtype) -> bool:
@@ -195,7 +194,59 @@ def supports_grid_sample(device: torch.device, dtype: torch.dtype) -> bool:
     half dtype rather than reading the injected one fails there on every job. Probed at runtime
     and cached per (device type, dtype), like :func:`supports_replicate_padding`.
     """
-    return _supports_grid_sample_probe(device.type, dtype)
+    return _supports_kernel_probe(_grid_sample_op, device.type, dtype)
+
+
+def _conv2d_op(device_type: str, dtype: torch.dtype) -> None:
+    F.conv2d(
+        torch.zeros(1, 1, 3, 3, device=device_type, dtype=dtype),
+        torch.zeros(1, 1, 2, 2, device=device_type, dtype=dtype),
+    )
+
+
+def supports_conv2d(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a 2D convolution kernel for ``dtype``.
+
+    Every CNN descriptor -- :class:`kornia.feature.HardNet`, ``HardNet8``, ``SOSNet``, ``TFeat`` --
+    is a stack of convolutions. torch 2.1.2 has no float16 CPU ``slow_conv2d`` (bfloat16 is fine),
+    so a test that hardcodes a half dtype rather than reading the injected one fails there on every
+    job. Probed at runtime and cached per (device type, dtype), like
+    :func:`supports_replicate_padding`.
+    """
+    return _supports_kernel_probe(_conv2d_op, device.type, dtype)
+
+
+def _matmul_op(device_type: str, dtype: torch.dtype) -> None:
+    torch.zeros(2, 3, device=device_type, dtype=dtype) @ torch.zeros(3, 2, device=device_type, dtype=dtype)
+
+
+def supports_matmul(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a matrix-multiply kernel for ``dtype``.
+
+    Descriptor matching multiplies: :func:`kornia.feature.match_mnn` and friends route half
+    precision around ``torch.cdist`` into a manual expand-and-multiply distance matrix, and
+    ``kornia.feature.steerers.DiscreteSteerer`` steers through ``F.linear``. torch 2.1.2 has no
+    float16 CPU ``addmm`` (bfloat16 is fine), so a test that hardcodes a half dtype rather than
+    reading the injected one fails there on every job. Probed at runtime and cached per
+    (device type, dtype), like :func:`supports_replicate_padding`.
+    """
+    return _supports_kernel_probe(_matmul_op, device.type, dtype)
+
+
+def _topk_op(device_type: str, dtype: torch.dtype) -> None:
+    torch.zeros(2, device=device_type, dtype=dtype).topk(k=1)
+
+
+def supports_topk(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a ``topk`` kernel for ``dtype``.
+
+    Every detector ranks its candidates that way, so a response map in a narrower dtype than the
+    image -- what a learned response module under autocast produces -- reaches ``topk`` in that
+    dtype. torch 2.1.2 has no float16 CPU ``topk`` (bfloat16 is fine), so a test that hardcodes a
+    half dtype rather than reading the injected one fails there on every job. Probed at runtime and
+    cached per (device type, dtype), like :func:`supports_replicate_padding`.
+    """
+    return _supports_kernel_probe(_topk_op, device.type, dtype)
 
 
 class BaseTester:

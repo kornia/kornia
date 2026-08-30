@@ -29,7 +29,7 @@ from kornia.feature.scale_space_detector import (
 )
 from kornia.geometry.subpix import ConvQuadInterp3d
 
-from testing.base import BaseTester, supports_replicate_padding
+from testing.base import BaseTester, supports_replicate_padding, supports_topk
 
 
 class TestScaleSpaceDetector(BaseTester):
@@ -283,6 +283,11 @@ class TestScaleSpaceDetector(BaseTester):
         # The top-K sentinel is written into the *response* tensor, so it must fit that dtype: a
         # response module that emits a narrower dtype than the image -- a learned response under
         # autocast -- raised "value cannot be converted to type at::Half without overflow".
+        if not supports_topk(device, torch.float16):
+            # The top-K ranks the response, which this module narrows to float16; torch 2.1.2 has
+            # no float16 CPU `topk` kernel.
+            pytest.skip(f"no topk kernel for torch.float16 on {device.type}")
+
         class NarrowResponse(torch.nn.Module):
             def __init__(self) -> None:
                 super().__init__()
