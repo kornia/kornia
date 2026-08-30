@@ -464,19 +464,19 @@ def bbox_generator3d(
     # front
     bbox = torch.tensor(
         [[[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]], device=x_start.device, dtype=x_start.dtype
-    ).repeat(len(x_start), 1, 1)
+    ).repeat(x_start.numel(), 1, 1)
 
     bbox[:, :, 0] += x_start.view(-1, 1)
     bbox[:, :, 1] += y_start.view(-1, 1)
     bbox[:, :, 2] += z_start.view(-1, 1)
-    bbox[:, 1, 0] += width
-    bbox[:, 2, 0] += width
-    bbox[:, 2, 1] += height
-    bbox[:, 3, 1] += height
+    bbox[:, 1, 0] += width.view(-1)
+    bbox[:, 2, 0] += width.view(-1)
+    bbox[:, 2, 1] += height.view(-1)
+    bbox[:, 3, 1] += height.view(-1)
 
     # back
     bbox_back = bbox.clone()
-    bbox_back[:, :, -1] += depth.unsqueeze(dim=1).repeat(1, 4)
+    bbox_back[:, :, -1] += depth.view(-1, 1).expand(-1, 4)
     bbox = torch.cat([bbox, bbox_back], dim=1)
 
     return bbox
