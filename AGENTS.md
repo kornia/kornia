@@ -54,6 +54,32 @@ Supported fixtures include CPU, CUDA, MPS, and TPU when available, and `float16`
 
 Use `KORNIA_TEST_RUNSLOW=true` to include slow tests. `KORNIA_TEST_OPTIMIZER=inductor` enables the dynamo and compile tests, which are deselected when the variable is unset. `pixi run doctest` skips docstring examples that would download an uncached model checkpoint, so it stays fast and works offline; use `pixi run doctest-weights` (or `KORNIA_DOCTEST_DOWNLOAD=1`) to run those examples for real, which costs ~838 MB on a cold cache. Pull-request CI relies on the restored weights cache and skips whatever it misses; the post-merge run on `main` downloads, so the model examples are always exercised somewhere. Before presenting a code change as finished, run the full pre-commit command above together with focused tests and other relevant checks; `pixi run lint` runs only the Ruff hooks.
 
+### Comparing a branch against another revision
+
+kornia is installed in editable mode, so `import kornia` resolves through the editable finder to
+the **primary checkout** regardless of the current directory. A measurement script that lives
+outside a worktree therefore imports the primary tree even when you run it from the worktree:
+`python /tmp/probe.py` puts `/tmp` first on `sys.path`, nothing shadows the editable install, and
+an A/B comparison silently measures the same revision twice and reports "no difference".
+
+Run comparison snippets from the worktree root, as stdin or `-c`, never as a file stored
+elsewhere. Only then does the leading empty `sys.path` entry -- the working directory -- shadow
+the editable install:
+
+```bash
+git worktree add /tmp/base-wt <base-revision>
+cd /tmp/base-wt && python - <<'EOF'
+import kornia
+print(kornia.__file__)  # must name the worktree, not the primary checkout
+EOF
+```
+
+Print `kornia.__file__` inside every measurement block and check that it names the tree you
+meant. A `cd` into the worktree is not by itself enough, and neither is putting the worktree on
+`PYTHONPATH` while the script still lives somewhere else. The same applies to `sys.executable`
+when more than one virtualenv is in play: name the interpreter explicitly rather than relying on
+`PATH`.
+
 ### Precision and device details
 
 - For focused CPU half-precision coverage, add `--dtype=float16,bfloat16` to a `test-module` run. `pixi run test-half` runs the whole CPU test suite.
