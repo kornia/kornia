@@ -50,15 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   4:2:0 twin `yuv420_to_rgb` checks both axes. This is observable to callers on the error path: `ShapeError` derives
   from `BaseError`, not `RuntimeError`, so code catching `RuntimeError` around `yuv422_to_rgb` to handle a malformed
   chroma plane will stop catching it. No previously working input changes behaviour — `torch.cat` already rejected
-<<<<<<< HEAD
-  every mismatched height. A zero-width chroma plane whose height *also* differs now reaches the guard, since the
-  new clause short-circuits the width division; the matching-height case still raises `ZeroDivisionError` and
-  remains open as #4056.
-=======
   every mismatched height. A zero-width chroma plane whose height *also* differs now reaches the guard, since the new
   clause short-circuits the width division; the matching-height case still raises
   `ZeroDivisionError` and remains open as #4056.
->>>>>>> 0e3bcaf6 (docs: scope the zero-width claim to the mismatched-height case)
 
 * Make `yuv_to_rgb` the exact inverse of `rgb_to_yuv`, so an RGB → YUV → RGB round trip is now limited only by the
   input dtype instead of losing up to `1.36e-3` (in B, at `rgb = (1, 1, 0)`) at every precision, `float64` included
