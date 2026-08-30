@@ -12,7 +12,7 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 | [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. |
 | [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL. |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions. |
-| [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) op microbenchmark (base-revision A/B, no cross-library baseline exists). |
+| [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`laf_ops.py`](feature/laf_ops.py) microbenchmarks the shared LAF operations and [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) drills into one of them (both base-revision A/B — no cross-library baseline exists). |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |
 
 ## Methodology contract
@@ -176,6 +176,56 @@ NVIDIA RTX PRO 6000 Blackwell (AMD Turin host):
 - **WSL2 + RTX 4090: inductor failed for all ops** (`InductorError`, reported by the harness's
   compile-failure NOTE rather than silently skipped); eager still led OpenCV by ~23× on
   batch-128 warp_perspective.
+
+## Sample results — feature LAF ops
+
+Directional numbers only — reproduce on your own hardware for anything you cite. Measured
+2026-08-30, commit `2009933e`, Apple Silicon (macOS 26.5, arm64), Python 3.11, torch 2.9.1,
+kornia 0.9.0rc1, float32, image 256×256, patch size 32, 4 threads. Throughput in LAFs/s
+(higher is better); no cross-library column exists — no other library exposes LAFs.
+
+`--device cpu --compile`, B=1 N=20000:
+
+| op | kornia (eager) | kornia (compiled) |
+| --- | --: | --: |
+| laf_from_center_scale_ori | 24211670 | **81618661** |
+| make_upright | 21971887 | **92325445** |
+| ellipse_to_laf | 7657249 | 8607163 |
+| laf_to_boundary_points | 813138 | 1066982 |
+| laf_is_inside_image | 4698606 | **9681421** |
+| extract_patches_simple | 40758 | **152179** |
+| extract_patches_from_pyramid | 9968 | 11250 |
+
+`--device mps --compile`, B=1 N=20000 (`-` = torch.compile warmup failed, reported as a NOTE):
+
+| op | kornia (eager) | kornia (compiled) |
+| --- | --: | --: |
+| laf_from_center_scale_ori | 10231588 | **20391257** |
+| make_upright | 10720309 | **33146882** |
+| ellipse_to_laf | 10695 | - |
+| laf_to_boundary_points | 1316854 | 1640011 |
+| laf_is_inside_image | 1952013 | - |
+| extract_patches_simple | 93555 | **1324427** |
+| extract_patches_from_pyramid | 23317 | 298487 |
+
+The honest reading:
+
+- **Patch extraction dominates everything.** `extract_patches_from_pyramid` runs at ~10k LAFs/s
+  eager on CPU — a 20k-keypoint `SIFTDescriptor` pass pays ~2 s in patch sampling before any
+  descriptor math. It runs a full `grid_sample` of all N patches at every pyramid level
+  (deliberate, for compile-friendliness) plus a Python loop over the batch; `torch.compile`
+  recovers ~3.7× for the simple extractor on CPU (~14× on MPS) and ~2.9× for the pyramid at
+  N=2000 — but only ~1.1× at N=20000, where the redundant per-level sampling dominates.
+- **Found weak spot: `ellipse_to_laf` on MPS is ~700× slower than CPU** (10.7k vs 7.7M LAFs/s)
+  — the batched 2×2 `torch.inverse` hits a pathological MPS linalg path and additionally emits
+  a deprecated-resize `UserWarning` per call from `laf.py`. A closed-form 2×2 inverse removes
+  both; on CPU it is also the difference between 7.7M LAFs/s and an arithmetic-bound kernel.
+- **`laf_to_boundary_points` is ~25× slower than the similar-sized `make_upright`** on CPU and
+  the only op whose IQR is large (~40% of the median): it rebuilds its `linspace` basis on CPU
+  in float32 every call and pays a host→device transfer.
+- **Compile coverage on MPS is holey:** `ellipse_to_laf` (`AssertionError`) and
+  `laf_is_inside_image` (`InductorError`) fail to compile everywhere on this stack, and
+  `extract_patches_simple` fails at B=8 only.
 
 ## Sample results — augmentation flagship (class API)
 
