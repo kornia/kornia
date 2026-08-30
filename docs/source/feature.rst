@@ -123,7 +123,7 @@ Detectors
 
 
 .. autoclass:: ScaleSpaceDetector
-  :members: forward
+  :members: forward, detect
 
 .. autoclass:: KeyNetDetector
    :members: forward

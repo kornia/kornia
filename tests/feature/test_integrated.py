@@ -310,6 +310,34 @@ class TestLocalFeatureMatcher(BaseTester):
         matcher = LocalFeatureMatcher(SIFTFeature(5), DescriptorMatcher("snn", 0.8)).to(device)
         assert matcher is not None
 
+    @pytest.mark.parametrize("match_type", ["nn", "mnn"])
+    def test_detector_padding_is_not_matched(self, device, dtype, match_type):
+        # A fixed-shape detector with no maxima returns zero LAFs. Their descriptors are finite,
+        # but NN/MNN would otherwise report them as false correspondences at the image origin.
+        feat = SIFTFeature(8, upright=True, score_threshold=1e6).to(device, dtype)
+        matcher = LocalFeatureMatcher(feat, DescriptorMatcher(match_type, 0.8)).to(device, dtype)
+        image0 = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        image1 = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        with torch.no_grad():
+            out = matcher({"image0": image0, "image1": image1})
+        assert out["keypoints0"].shape == (0, 2)
+        assert out["keypoints1"].shape == (0, 2)
+        assert out["lafs0"].shape == (1, 0, 2, 3)
+        assert out["lafs1"].shape == (1, 0, 2, 3)
+
+    def test_masks_are_forwarded_to_the_detector(self, device, dtype):
+        feat = SIFTFeature(8, upright=True).to(device, dtype)
+        matcher = LocalFeatureMatcher(feat, DescriptorMatcher("nn", 0.8)).to(device, dtype)
+        image0 = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        image1 = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        # LocalFeatureMatcher historically documents masks without a channel dimension; it adds
+        # that singleton axis before forwarding to the detector's (B, 1, H, W) mask contract.
+        mask = torch.zeros(1, 64, 64, device=device, dtype=torch.bool)
+        with torch.no_grad():
+            out = matcher({"image0": image0, "image1": image1, "mask0": mask, "mask1": mask})
+        assert out["keypoints0"].shape == (0, 2)
+        assert out["keypoints1"].shape == (0, 2)
+
     @pytest.mark.slow
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_nomatch(self, device, dtype, data):

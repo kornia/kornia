@@ -182,16 +182,23 @@ class ScaleSpaceExtractor(nn.Module):
 
     @torch.no_grad()
     def forward(self, img: torch.Tensor):
+        if img.device.type == "cuda":
+            torch.cuda.synchronize()
         t_det0 = time.perf_counter()
         lafs, _ = self.detector(img)
         if img.device.type == "cuda":
             torch.cuda.synchronize()
         det_ms = (time.perf_counter() - t_det0) * 1000
+        # Fixed-shape detectors pad an under-filled result with zero LAFs. They are not
+        # features: describing and matching them distorts both quality and end-to-end timing.
+        valid = lafs[0].ne(0).any(dim=-1).any(dim=-1)
+        lafs = lafs[:, valid]
         lafs = self.aff(lafs, img)
         lafs = self.ori(lafs, img)
-        patches = KF.extract_patches_from_pyramid(img, lafs, self.patch_size)
-        B, N, C, H, W = patches.shape
-        desc = self.desc(patches.view(B * N, C, H, W)).view(B, N, -1)
+        # The shared helper preserves the descriptor width on the empty path too, so a blank or
+        # fully masked image produces a valid (0, D) result rather than asking patch extraction
+        # for an impossible zero-sized output.
+        desc = KF.get_laf_descriptors(img, lafs, self.desc, self.patch_size)
         return KF.get_laf_center(lafs)[0], desc[0], det_ms
 
 
@@ -280,7 +287,8 @@ class KeyNetExtractor(nn.Module):
     @torch.no_grad()
     def forward(self, img: torch.Tensor):
         lafs, _, desc = self.feat(img)
-        return KF.get_laf_center(lafs)[0], desc[0], None
+        valid = lafs[0].ne(0).any(dim=-1).any(dim=-1)
+        return KF.get_laf_center(lafs[:, valid])[0], desc[0, valid], None
 
 
 # ---------------------------------------------------------------------------
@@ -354,10 +362,14 @@ def make_label(method: str, resp: str, subpix: str, desc: str, ori: str, aff: st
 
 @torch.no_grad()
 def match_pair(img1, img2, extractor, ransac):
+    if img1.device.type == "cuda":
+        torch.cuda.synchronize()
     t0 = time.perf_counter()
     kp1, desc1, det_ms1 = extractor(img1)
     kp2, desc2, det_ms2 = extractor(img2)
     _, idxs = KF.match_snn(desc1, desc2, 0.85)
+    if img1.device.type == "cuda":
+        torch.cuda.synchronize()
     ms = (time.perf_counter() - t0) * 1000
     det_ms = (det_ms1 + det_ms2) if (det_ms1 is not None and det_ms2 is not None) else None
     if idxs.shape[0] < 4:

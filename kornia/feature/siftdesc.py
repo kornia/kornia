@@ -39,6 +39,26 @@ def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:
     return torch.eye(numel).view(numel, kd, ky, kx)
 
 
+def _gradient_magnitude_orientation(
+    gx: torch.Tensor, gy: torch.Tensor, eps: float
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Per-pixel gradient magnitude and orientation in ``[2pi, 4pi)``.
+
+    ``eps`` keeps ``sqrt`` and ``atan2`` away from their singular point at a zero gradient, where
+    both have an undefined backward. Half-precision inputs are lifted to float32 for this step:
+    the 1e-10 guard is not representable in float16, and a squared float16 gradient underflows
+    long before that, so a flat pair of pixels -- ordinary with a 10-bit mantissa -- would send
+    NaN into the input gradient. The result is cast back, so wider dtypes are unchanged.
+    """
+    dtype = gx.dtype
+    if dtype == torch.float16 or dtype == torch.bfloat16:  # noqa: PLR1714 -- TorchScript has no tuple `in`
+        gx = gx.float()
+        gy = gy.float()
+    mag = torch.sqrt(gx * gx + gy * gy + eps)
+    ori = torch.atan2(gy, gx + eps) + 2.0 * pi
+    return mag.to(dtype), ori.to(dtype)
+
+
 def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
     r"""Return a weighted pooling kernel for SIFT descriptor.
 
@@ -184,8 +204,7 @@ class SIFTDescriptor(nn.Module):
         gx = grads[:, :, 0]
         gy = grads[:, :, 1]
 
-        mag = torch.sqrt(gx * gx + gy * gy + self.eps)
-        ori = torch.atan2(gy, gx + self.eps) + 2.0 * pi
+        mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
         mag = mag * self.gk.expand_as(mag).type_as(mag).to(mag.device)
         o_big = float(self.num_ang_bins) * ori / (2.0 * pi)
 
@@ -211,7 +230,9 @@ class SIFTDescriptor(nn.Module):
         ang_bins = torch.clamp(ang_bins, 0.0, float(self.clipval))
         ang_bins = F.normalize(ang_bins, p=2, eps=norm_eps)
         if self.rootsift:
-            ang_bins = torch.sqrt(F.normalize(ang_bins, p=1, eps=norm_eps) + self.eps)
+            # `sqrt` has an infinite backward at zero, and most bins of a SIFT histogram are zero;
+            # the guard must survive the dtype, which 1e-10 does not in float16.
+            ang_bins = torch.sqrt(F.normalize(ang_bins, p=1, eps=norm_eps) + max(self.eps, norm_eps))
         return ang_bins
 
 
@@ -347,8 +368,7 @@ class DenseSIFTDescriptor(nn.Module):
         # unpack the edges
         gx = grads[:, :, 0]
         gy = grads[:, :, 1]
-        mag = torch.sqrt(gx * gx + gy * gy + self.eps)
-        ori = torch.atan2(gy, gx + self.eps) + 2.0 * pi
+        mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
         o_big = float(self.num_ang_bins) * ori / (2.0 * pi)
 
         bo0_big_ = torch.floor(o_big)
@@ -372,5 +392,5 @@ class DenseSIFTDescriptor(nn.Module):
         out = F.normalize(out_no_norm, dim=1, p=2, eps=norm_eps).clamp_(0, float(self.clipval))
         out = F.normalize(out, dim=1, p=2, eps=norm_eps)
         if self.rootsift:
-            out = torch.sqrt(F.normalize(out, p=1, eps=norm_eps) + self.eps)
+            out = torch.sqrt(F.normalize(out, p=1, eps=norm_eps) + max(self.eps, norm_eps))
         return out

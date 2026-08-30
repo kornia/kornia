@@ -112,10 +112,10 @@ class TestScaleSpaceDetector(BaseTester):
             assert lafs.shape == torch.Size([2, 5, 2, 3])
 
     def test_unfilled_slots_carry_a_zero_laf(self, device, dtype):
-        # A slot that no candidate filled -- the padding -- has a zero response and a zero LAF.
-        # The converse is deliberately not true: a candidate the border check rejects keeps its
-        # coordinates beside its zeroed response, so the zero LAFs are a strict subset of the
-        # zero-response slots. Inferring the padding from `response == 0` would collapse the two.
+        # A slot that no detection filled -- the padding, or a candidate whose frame reaches
+        # outside the image -- has a zero response and a zero LAF, and every real detection sorts
+        # ahead of it. On `main` a border-rejected candidate kept its coordinates beside a zero
+        # response, i.e. a keypoint that was never detected.
         torch.manual_seed(0)
         inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
         det = ScaleSpaceDetector(50).to(device, dtype)
@@ -123,10 +123,37 @@ class TestScaleSpaceDetector(BaseTester):
         zero_laf = (lafs[0] == 0).all(dim=-1).all(dim=-1)
         empty = resps[0] == 0
         assert bool(zero_laf.any()), "expected this image to under-fill 50 slots"
-        assert bool((empty[zero_laf]).all()), "a zero LAF must carry a zero response"
-        assert bool((empty & ~zero_laf).any()), "a border-rejected candidate keeps its frame"
+        assert bool((~zero_laf).any()), "expected this image to yield real detections"
+        assert torch.equal(zero_laf, empty)
+        n_real = int((~zero_laf).sum())
+        assert bool((~zero_laf[:n_real]).all()), "real detections must come first"
         lafs_fwd, resps_fwd = det(inp)
         assert torch.equal(resps_fwd, resps) and torch.equal(lafs_fwd, lafs)
+
+    def test_negative_detections_sort_before_the_padding(self, device, dtype):
+        # A signed response function can have every maximum below zero. The padding must still
+        # come last: it is ranked with a sentinel and zeroed only afterwards.
+        class NegatedHessian(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.resp = kornia.feature.BlobHessian()
+
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                return self.resp(x) - 1.0
+
+        if dtype in (torch.float16, torch.bfloat16):
+            # The shifted response is flat at half precision and yields no maxima at all.
+            pytest.skip("a Hessian response offset by 1.0 has no resolution left in half precision")
+        torch.manual_seed(0)
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        det = ScaleSpaceDetector(50, resp_module=NegatedHessian()).to(device, dtype)
+        lafs, resps = det(inp)
+        filled = lafs[0].ne(0).any(dim=-1).any(dim=-1)
+        n_real = int(filled.sum())
+        assert 0 < n_real < 50, f"expected a partially filled result, got {n_real}"
+        assert bool(filled[:n_real].all()) and not bool(filled[n_real:].any())
+        assert (resps[0, :n_real] < 0).all()
+        assert (resps[0, n_real:] == 0).all()
 
     def test_a_zero_response_maximum_keeps_its_laf(self, device, dtype):
         # The response function is pluggable and may be signed, so an exact zero can be a genuine
@@ -138,7 +165,11 @@ class TestScaleSpaceDetector(BaseTester):
                 out[:, :, out.shape[2] // 2, out.shape[-2] // 2, out.shape[-1] // 2] = 0.0
                 return out
 
-        det = ScaleSpaceDetector(5, resp_module=SignedResponse(), scale_space_response=True).to(device, dtype)
+        # `mr_size=3` keeps the coarsest octave's frame inside the 96 px image; at the default 6 it
+        # is 76.8 px wide, and a candidate whose frame leaves the image is not a detection.
+        det = ScaleSpaceDetector(5, resp_module=SignedResponse(), scale_space_response=True, mr_size=3.0).to(
+            device, dtype
+        )
         lafs, resps = det(torch.zeros(1, 1, 96, 96, device=device, dtype=dtype))
         assert (resps == 0).all()
         centers = lafs[0, :, :, 2]
@@ -149,12 +180,16 @@ class TestScaleSpaceDetector(BaseTester):
         # For B > 1 the octave top-K ranks over the whole volume with non-candidates masked to
         # `finfo.min / 2`. An image with fewer maxima than requested gets those sentinels back;
         # they are not detections and must not reach the caller as a response or as a LAF.
+        torch.manual_seed(0)
+        inp = torch.rand(2, 1, 64, 64, device=device, dtype=dtype)
         det = ScaleSpaceDetector().to(device, dtype)
-        lafs, resps = det(torch.zeros(2, 1, 32, 32, device=device, dtype=dtype))
-        assert (resps == 0).all(), f"sentinel leaked: min response {resps.min().item()}"
-        assert (lafs == 0).all()
+        lafs, resps = det(inp)
+        filled = lafs.ne(0).any(dim=-1).any(dim=-1)
+        assert 0 < int(filled[0].sum()) < det.num_features, "expected a partially filled result"
+        assert bool((resps[~filled] == 0).all()), f"sentinel leaked: min response {resps.min().item()}"
+        assert (resps > torch.finfo(dtype).min / 4).all()
         # and the single-image path agrees, which it did not before
-        lafs1, resps1 = det(torch.zeros(1, 1, 32, 32, device=device, dtype=dtype))
+        lafs1, resps1 = det(inp[:1])
         assert torch.equal(resps1[0], resps[0]) and torch.equal(lafs1[0], lafs[0])
 
     def test_padding_survives_the_affine_and_orientation_modules(self, device, dtype):
@@ -168,6 +203,48 @@ class TestScaleSpaceDetector(BaseTester):
         lafs, resps = det(torch.zeros(1, 1, 64, 64, device=device, dtype=dtype))
         assert (resps == 0).all()
         assert (lafs == 0).all()
+
+    def test_forward_uses_overridden_detect(self, device, dtype):
+        class CustomDetector(ScaleSpaceDetector):
+            def detect(self, img, num_feats, mask=None):
+                responses = img.new_full((img.shape[0], num_feats), 123.0)
+                lafs = img.new_full((img.shape[0], num_feats, 2, 3), 7.0)
+                return responses, lafs
+
+        inp = torch.zeros(2, 1, 32, 32, device=device, dtype=dtype)
+        det = CustomDetector(3).to(device, dtype)
+        lafs, responses = det(inp)
+        assert torch.equal(responses, inp.new_full((2, 3), 123.0))
+        assert torch.equal(lafs, inp.new_full((2, 3, 2, 3), 7.0))
+
+    @pytest.mark.parametrize("subpix", ["adaptive", "conv"])
+    def test_color_input_with_single_channel_response(self, device, dtype, subpix):
+        class ColorResponse(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.response = kornia.feature.BlobHessian()
+
+            def forward(self, x: torch.Tensor, _sigmas: torch.Tensor) -> torch.Tensor:
+                return self.response(x.mean(dim=1, keepdim=True))
+
+        torch.manual_seed(3)
+        inp = torch.rand(1, 3, 96, 96, device=device, dtype=dtype)
+        kwargs = {} if subpix == "adaptive" else {"subpix_module": ConvQuadInterp3d(10)}
+        det = ScaleSpaceDetector(20, resp_module=ColorResponse(), **kwargs).to(device, dtype)
+        lafs, responses = det(inp)
+        assert lafs.shape == torch.Size([1, 20, 2, 3])
+        assert responses.shape == torch.Size([1, 20])
+        valid = lafs.ne(0).any(dim=-1).any(dim=-1)
+        centers = lafs[..., 2][valid]
+        assert bool(valid.any())
+        assert (centers[:, 0] >= 0).all() and (centers[:, 0] <= 95).all()
+        assert (centers[:, 1] >= 0).all() and (centers[:, 1] <= 95).all()
+
+    def test_multichannel_response_is_rejected(self, device, dtype):
+        inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        detector = ScaleSpaceDetector(20, resp_module=kornia.feature.BlobHessian()).to(device, dtype)
+        with pytest.raises(Exception, match="one response map"):
+            detector(inp)
 
     def test_minima_are_also_good(self, device, dtype):
         # Image with a bright blob (local max) and dark blob (local min).
@@ -340,10 +417,36 @@ class TestMultiResolutionDetector(BaseTester):
         assert lafs_masked[0, int(resps_masked[0].argmax()), 0, 2].item() > 32
         found = resps_masked[0] != 0
         assert bool(found.any())
-        # The mask is resampled bilinearly onto every level, so its edge softens by a level
-        # pixel or two; 40 keeps the bound well clear of that without weakening the check
-        # (the unmasked run puts its best detection at ~17.8).
-        assert (lafs_masked[0][found][:, :, 2] >= 40).all()
+        # The mask is resampled conservatively onto every level, so nothing is detected on the
+        # zero side of its edge at any level.
+        assert (lafs_masked[0][found][:, :, 2] >= 32).all()
+
+    def test_mask_edge_does_not_create_maxima(self, device, dtype):
+        # A blob wholly inside the zero region, next to the mask edge. Multiplying the response by
+        # a resampled mask before non-maxima suppression carved an edge into it, and the bilinear
+        # ramp of that edge was a "maximum" on the suppressed side (kornia#4102).
+        inp = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        inp[:, :, 30:34, 28:32] = 1.0
+        mask = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        mask[:, :, :, 32:] = 1.0
+        det = self._make_detector(num_features=5).to(device, dtype)
+        lafs, resps = det(inp, mask)
+        assert (resps == 0).all(), f"detected on the masked side: {lafs[0][resps[0] != 0][:, 0, 2].tolist()}"
+        assert (lafs == 0).all()
+
+    def test_thin_masked_stripe_survives_downsampling(self, device, dtype):
+        # A two-pixel zero stripe is narrower than the sampling step of a coarse level, so an
+        # interpolated mask reads 1.0 there and the stripe is gone; the conservative resample keeps
+        # every level pixel it touches at zero.
+        torch.manual_seed(0)
+        inp = torch.rand(1, 1, 256, 256, device=device, dtype=dtype)
+        mask = torch.ones(1, 1, 256, 256, device=device, dtype=dtype)
+        mask[:, :, :, 120:122] = 0.0
+        det = self._make_detector(num_features=2000).to(device, dtype)
+        lafs, resps = det(inp, mask)
+        xs = lafs[0][resps[0] != 0][:, 0, 2]
+        assert xs.numel() > 100
+        assert not bool(((xs >= 120) & (xs < 122)).any()), sorted(xs[(xs >= 119) & (xs < 123)].tolist())
 
     def test_mask_spatial_size_must_match_the_image(self, device, dtype):
         # `KORNIA_CHECK_SHAPE`'s named dims are free per call, so on their own they let a mask
@@ -355,15 +458,20 @@ class TestMultiResolutionDetector(BaseTester):
         with pytest.raises(Exception, match="spatial size"):
             det(inp, torch.ones(1, 1, 64, 32, device=device, dtype=dtype))
 
-    def test_bool_mask_matches_float_mask(self, device, dtype):
-        # A boolean mask has no bilinear kernel; it is cast before the resample and gives the
-        # same detections as the equivalent 0/1 float mask instead of raising.
+    @pytest.mark.parametrize("mask_kind", ["bool", "uint8_255", "int32_100"])
+    def test_binary_masks_match_float_mask(self, device, dtype, mask_kind):
+        # A boolean or integer mask is binary: any non-zero value keeps a position, so an OpenCV
+        # 0/255 mask means the same as a 0/1 one and does not scale the responses by 255.
         inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
         mask = torch.zeros(1, 1, 64, 64, device=device, dtype=torch.bool)
         mask[:, :, 32:, 32:] = True
+        if mask_kind == "uint8_255":
+            mask = mask.to(torch.uint8) * 255
+        elif mask_kind == "int32_100":
+            mask = mask.to(torch.int32) * 100
         det = self._make_detector(num_features=10).to(device, dtype)
         lafs_bool, resps_bool = det(inp, mask)
-        lafs_float, resps_float = det(inp, mask.to(dtype))
+        lafs_float, resps_float = det(inp, mask.ne(0).to(dtype))
         assert bool((resps_bool != 0).any())
         assert torch.equal(resps_bool, resps_float)
         assert torch.equal(lafs_bool, lafs_float)
@@ -428,13 +536,14 @@ class TestMultiResolutionDetector(BaseTester):
         assert lafs.dtype == half_dtype
         assert resps.dtype == half_dtype
 
-    def test_multichannel_response_stays_inside_the_image(self, device, dtype):
-        # `BlobHessian` keeps the image channels, so an RGB image gives a 3-channel response.
-        # Decoding the flat top-K index with the width alone placed a candidate from channel `c`
-        # at `y + c * H`, i.e. outside the image for every channel past the first.
+    def test_color_input_with_single_channel_response(self, device, dtype):
+        class ColorResponse(torch.nn.Module):
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                return x.mean(dim=1, keepdim=True)
+
         torch.manual_seed(3)
         inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        det = self._make_detector(num_features=100).to(device, dtype)
+        det = MultiResolutionDetector(ColorResponse(), num_features=100).to(device, dtype)
         lafs, resps = det(inp)
         found = resps[0] != 0
         assert bool(found.any())
@@ -442,6 +551,12 @@ class TestMultiResolutionDetector(BaseTester):
         cy = lafs[0, :, 1, 2]
         assert (cx >= 0).all() and (cx <= 63).all()
         assert (cy >= 0).all() and (cy <= 63).all()
+
+    def test_multichannel_response_is_rejected(self, device, dtype):
+        inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        detector = self._make_detector(num_features=100).to(device, dtype)
+        with pytest.raises(Exception, match="one response map"):
+            detector(inp)
 
     def test_result_is_padded_to_num_features(self, device, dtype):
         # An 8x8 image is smaller than the 15px border `remove_borders` strips, so there is
@@ -496,6 +611,39 @@ class TestMultiResolutionDetector(BaseTester):
         det = self._make_detector(num_features=10).to(device, dtype)
         with pytest.raises(ShapeError):
             det.detect(torch.rand(2, 1, 64, 64, device=device, dtype=dtype))
+
+    def test_forward_uses_overridden_detect(self, device, dtype):
+        # `detect` is the public extension point; `forward` reads occupancy off its zero-LAF
+        # padding rather than off the response, so an override is honoured whole.
+        class CustomDetector(MultiResolutionDetector):
+            def detect(self, img, mask=None):
+                responses = img.new_full((1, self.num_features), 123.0)
+                lafs = img.new_full((1, self.num_features, 2, 3), 7.0)
+                return responses, lafs
+
+        inp = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
+        det = CustomDetector(kornia.feature.BlobHessian(), num_features=3).to(device, dtype)
+        lafs, responses = det(inp)
+        assert torch.equal(responses, inp.new_full((1, 3), 123.0))
+        assert torch.equal(lafs, inp.new_full((1, 3, 2, 3), 7.0))
+
+    def test_three_argument_level_override_still_runs_unmasked(self, device, dtype):
+        # `detect_features_on_single_level` is public and gained a keyword-only `mask`; a subclass
+        # written against the historical three-argument signature keeps working without a mask
+        # and gets a TypeError, not silent misbehaviour, with one.
+        class LegacyLevel(MultiResolutionDetector):
+            def detect_features_on_single_level(self, level_img, num_kp, factor):
+                return super().detect_features_on_single_level(level_img, num_kp, factor)
+
+        torch.manual_seed(0)
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        det = LegacyLevel(kornia.feature.BlobHessian(), num_features=10).to(device, dtype)
+        ref = self._make_detector(num_features=10).to(device, dtype)
+        lafs, resps = det(inp)
+        lafs_ref, resps_ref = ref(inp)
+        assert torch.equal(lafs, lafs_ref) and torch.equal(resps, resps_ref)
+        with pytest.raises(TypeError):
+            det(inp, torch.ones(1, 1, 64, 64, device=device, dtype=dtype))
 
     def test_smoke_with_blob_image(self, device, dtype):
         # Synthetic image with a bright blob — detector should find it.

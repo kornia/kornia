@@ -128,6 +128,21 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         assert torch.isfinite(out).all()
 
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
+    @pytest.mark.parametrize("rootsift", [False, True])
+    def test_gradients_are_finite_on_ordinary_patches(self, device, desc_dtype, rootsift):
+        # Not only the forward: `sqrt` and `atan2` have an undefined backward at a zero gradient,
+        # and the 1e-10 guard is zero in float16, so two equal neighbouring pixels -- ordinary
+        # with a 10-bit mantissa -- put NaN into the input gradient (9 of 4096 on this seed).
+        if not supports_replicate_padding(device, desc_dtype):
+            pytest.skip(f"no replicate-padding kernel for {desc_dtype} on {device.type}")
+        torch.manual_seed(0)
+        patches = torch.rand(4, 1, 32, 32, device=device, dtype=desc_dtype, requires_grad=True)
+        out = SIFTDescriptor(32, rootsift=rootsift).to(device, desc_dtype)(patches)
+        out.sum().backward()
+        assert torch.isfinite(out).all()
+        assert patches.grad is not None and torch.isfinite(patches.grad).all()
+
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
     def test_dense_sift(self, device, desc_dtype):
         if not supports_replicate_padding(device, desc_dtype):
             # `spatial_gradient` pads with mode="replicate"; torch 2.5.1 has no float16 CPU kernel.

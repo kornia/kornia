@@ -26,13 +26,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `MultiResolutionDetector` and `KeyNetDetector` change their output: padded slots now read as a zero response and
   a zero LAF instead of `torch.finfo(dtype).min / 2` and an arbitrary border coordinate; the previously inert `mask`
   argument now suppresses detections, and must be `(1, 1, H, W)` at the image size; half-precision input yields
-  half-precision LAFs; the returned shape is always `num_features`; a multi-channel response no longer yields
-  out-of-image LAFs; a negative `score_threshold` is rejected with `ValueError`; and `detect` enforces its documented
-  `(1, C, H, W)` input. A mask whose dtype differs from the image no longer promotes the response dtype, and a mask
-  that is not `(1 or B, 1, H, W)` for the image is rejected instead of stretched or broadcast onto the wrong axis —
-  both in `ScaleSpaceDetector` too, which additionally stops returning its own top-K sentinel as a detection for a
-  batch. A short `MultiResolutionDetector` result is now sorted rather than interleaved with its padding. See the
-  entry under **Bug fixes** (#4089, #4090, #4091) for the details and the migration.
+  half-precision LAFs; the returned shape is always `num_features`; a multi-channel response is rejected instead of
+  producing invalid or duplicate LAFs; a negative `score_threshold` is rejected with `ValueError`; and `detect`
+  enforces its documented `(1, C, H, W)` input. The `mask` of both detectors is now "where a detection may be": a
+  boolean or integer mask is binary (a 0/255 mask no longer scales the responses by 255), a floating-point mask
+  weights the scores, it is resampled conservatively so a thin zero region survives the coarse levels, and it is
+  applied to the non-maxima-suppression output, so its edge cannot manufacture maxima (#4102). A mask whose dtype
+  differs from the image no longer promotes the response dtype, and a mask that is not `(1 or B, 1, H, W)` for the
+  image is rejected instead of stretched or broadcast onto the wrong axis. `ScaleSpaceDetector` additionally stops
+  returning its own top-K sentinel as a detection for a batch and no longer returns a frame for a candidate its
+  border check rejected; a short result is sorted in both detectors. `detect_features_on_single_level`'s new `mask`
+  parameter is keyword-only. See the entry under **Bug fixes** (#4089, #4090, #4091) for the details and the
+  migration.
+
+* `LocalFeatureMatcher` no longer matches the zero-LAF slots with which a fixed-shape detector pads an under-filled
+  result, and now forwards its documented `mask0`/`mask1` inputs to feature extraction. `nn` and `mnn` callers can
+  therefore receive fewer correspondences: identical descriptors sampled at padded origin frames are no longer
+  reported as matches. Three-dimensional `(B, H, W)` masks keep working and are promoted to the detectors'
+  `(B, 1, H, W)` form; four-dimensional masks are forwarded unchanged.
 
 ### Bug fixes
 
@@ -214,47 +225,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default configuration is every `num_features >= 2` (verified byte-identical with `torch.equal` over 16 size/count
   combinations).
 
-  **The `mask` argument works.** `forward(img, mask)` and `detect(img, mask)` accepted a `mask`, documented it as "a
-  mask with weights where to apply the response function", and ignored it -- an all-zero mask returned bit-identical
-  output. The mask is now resampled onto each pyramid level and multiplies the response before non-maxima
-  suppression, the same way `ScaleSpaceDetector` applies its own mask per octave. It must be `(1, 1, H, W)` with the
-  image's spatial size, and it may be boolean or integer: a non-floating mask is cast to the response dtype before
-  the bilinear resample, which has no kernel for those dtypes. Anyone who was passing a mask and silently getting
-  unmasked detections now gets masked ones.
+  **The `mask` argument works, and means "where a detection may be".** `forward(img, mask)` and `detect(img, mask)`
+  accepted a `mask`, documented it as "a mask with weights where to apply the response function", and ignored it --
+  an all-zero mask returned bit-identical output. Anyone who was passing a mask and silently getting unmasked
+  detections now gets masked ones. The semantics are the same in both detectors and are chosen from the caller's
+  side. A boolean or integer mask is binary: any non-zero value keeps a position, so a 0/1 mask, an OpenCV 0/255
+  mask and `img > 0` all mean the same thing (a raw cast would have multiplied the responses by 255 and defeated an
+  absolute `score_threshold`). A floating-point mask is used as weights on the detection scores. The mask must be
+  `(1 or B, 1, H, W)` with the image's spatial size. It is resampled onto every pyramid level or octave with a
+  min-pool rather than an interpolation, so a zero region suppresses every level pixel it touches and a two-pixel
+  zero stripe does not vanish at a factor-four level. And it is applied to the non-maxima-suppression output, not
+  to the response the suppression reads: multiplying the response first carves an edge into it, and the bilinear
+  ramp of that edge was a "maximum" on the suppressed side, so a blob wholly inside the zero region was still
+  detected (#4102). `ScaleSpaceDetector`, which did multiply its response per octave, takes the same path; its
+  detections inside the kept region are unchanged.
+
+  `LocalFeatureMatcher` now carries those masks through the full extraction-and-matching path. It documented
+  `mask0`/`mask1` as `(B, H, W)` inputs but never passed either to its local feature module; that historical shape is
+  accepted by adding the singleton channel, and the detectors' `(B, 1, H, W)` form is also accepted directly.
 
   **A mask no longer changes the response dtype.** It is resampled *and cast* onto the response map, where the
   multiplication used to promote it, so a `float16` image with a `float32` mask returned `float32` responses beside
   `float16` LAFs. This also applies to `ScaleSpaceDetector`, which shares the resampling helper: a `float32` image
   with a `float64` mask used to return `float64` and now returns `float32`, i.e. the image dtype, in both detectors.
-  `ScaleSpaceDetector` gains the same shape check, and accepts a boolean or integer mask through the same helper.
-  It resampled a mask of any size onto its octaves without complaint, so a stale mask from before a resize, or a
-  transposed one, was silently stretched onto the wrong geometry, and a multi-channel mask was broadcast over the
-  scale levels rather than the channels -- an error when the counts differed, the wrong weighting when they
-  matched. Both detectors now require `(1 or B, 1, H, W)`.
+  `ScaleSpaceDetector` gains the same shape check, and accepts a boolean or integer mask through the same helper
+  (it raised on one before). It resampled a mask of any size onto its octaves without complaint, so a stale mask
+  from before a resize, or a transposed one, was silently stretched onto the wrong geometry, and a multi-channel
+  mask was broadcast over the scale levels rather than the channels -- an error when the counts differed, the wrong
+  weighting when they matched. Both detectors now require `(1 or B, 1, H, W)`.
 
   **`ScaleSpaceDetector` no longer leaks its own top-K sentinel for a batch.** For `B > 1` the per-octave top-K
   ranks over the whole scale-space volume with non-candidates masked to `torch.finfo(dtype).min / 2`, and an image
   with fewer maxima than requested got those sentinels back as detections: `ScaleSpaceDetector()` on
   `torch.zeros(2, 1, 32, 32)` returned 70 slots per image with a response of `-1.7e38` and an arbitrary LAF, where
   the same input at `B = 1` returned 500 zeros. Which slots a detection filled is now tracked through the top-K
-  rather than inferred from the response, and an unfilled one -- the sentinel, or the padding that tops a short
-  result up to `num_features` -- carries a zero response and a zero LAF, in `detect` and, after the affine-shape and
-  orientation modules have run, in `forward`. The mask is deliberately *not* `response == 0`: the response function
-  is pluggable and may be signed, so an exact zero can be a genuine maximum, and a candidate the border check
-  rejects keeps its coordinates beside its zeroed response, as before.
+  rather than inferred from the response, and an unfilled one -- the sentinel, the padding that tops a short
+  result up to `num_features`, or a candidate whose frame reached outside the image -- carries a zero response and
+  a zero LAF, in `detect` and, after the affine-shape and orientation modules have run, in `forward`, and sorts
+  after every real detection, including a negative one. The mask is deliberately *not* `response == 0`: the
+  response function is pluggable and may be signed, so an exact zero can be a genuine maximum and keeps its frame.
+  The border-rejected candidate is the one visible change at `B = 1`: it used to keep its coordinates beside a
+  zero response, i.e. a keypoint that was never detected, and its scale was often the largest in the result. Both
+  detectors' `forward` read occupancy off the zero LAF, so a subclass overriding `detect` is honoured whole.
 
   **Half-precision input yields half-precision LAFs.** `detect_features_on_single_level` hardcoded `.float()` on the
   pixel coordinates, so a `float16`/`bfloat16` image came back with `float32` LAFs beside half-precision responses.
-  Coordinates now convert to the input dtype; `float32` and `float64` output is unchanged. The LAF centres are pixel
-  indices, so they carry the dtype's integer resolution: exact up to 256 in `bfloat16` and up to 2048 in `float16`,
-  and on a 2 px grid past that in `bfloat16` -- where the old `float32` LAFs were exact.
+  The index-to-coordinate arithmetic runs in float32 (float64 for a float64 image) and only the finished coordinate
+  is cast to the input dtype; `float32` and `float64` output is unchanged. A half-precision LAF centre carries the
+  dtype's integer resolution: exact up to 256 in `bfloat16` and up to 2048 in `float16`, then on a 2 px grid up to
+  twice that, 4 px up to four times, and so on -- where the old `float32` LAFs were exact.
 
-  **A multi-channel response map no longer places detections outside the image.** `detect_features_on_single_level`
-  flattens the whole response tensor and decoded the flat top-K index with the width alone, so a candidate from
-  channel `c` landed at `y + c * H`; a response function that preserves the image channels -- `BlobHessian` on an
-  RGB image -- put 56 of 100 LAFs outside a `64x64` frame, up to `y = 179.9`. The channel is now divided back out
-  and the channels' candidates are pooled into one top-K, as `ScaleSpaceDetector` already does. Single-channel
-  output is byte-identical (`%` by `H*W` is the identity there, verified with `torch.equal` at three sizes).
+  **A detector model must return one spatial response map.** `detect_features_on_single_level` flattened the
+  whole response tensor and decoded the flat top-K index with the width alone, so a candidate from channel `c`
+  landed at `y + c * H`; `BlobHessian` on an RGB image put 56 of 100 LAFs outside a `64x64` frame, up to
+  `y = 179.9`. Merely decoding the channel would still spend the budget on duplicate LAFs -- a grayscale image
+  repeated into RGB returned three copies of almost every feature, whose grayscale descriptors are identical.
+  `MultiResolutionDetector` and `ScaleSpaceDetector` now require their detector model to emit one response channel
+  and fail with a named error otherwise. This does not restrict the model input: a learned detector may consume RGB
+  (or any other channel count) and collapse it to one response map itself, which is the intended color-image path.
+  Single-channel input and response output are unchanged.
 
   **`score_threshold` must be non-negative**, and `MultiResolutionDetector.__init__` raises `ValueError` otherwise:
   non-maxima suppression writes an exact zero at every suppressed position, so a negative threshold admitted all of
@@ -271,7 +300,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   detections sat at flat indices 0, 1 and 2304. The ranking is now unconditional, as it is in
   `ScaleSpaceDetector.detect`, and the zero-response padding sorts to the end.
 
-* `SIFTDescriptor`, `DenseSIFTDescriptor`, `HardNet` and `HardNet8` return NaN for a constant patch in `float16`.
+  **Padding is not a correspondence.** `LocalFeatureMatcher` used to describe and match every fixed-shape slot, so
+  `DescriptorMatcher("nn")` returned every padded origin frame and `mnn` returned one false origin match even when
+  neither image contained a detection. Zero LAFs are honest, but they are also identical, and identical descriptors
+  match each other at zero distance -- with plain nearest-neighbour matching the padded block became the largest
+  consistent set of "correspondences" and captured RANSAC (`SIFTFeature(400)` on two crops of one image: 0.09 px
+  mean reprojection error on `main`, 31 px with the zero LAFs matched, 0.09 px with them dropped). The matcher now
+  filters zero LAFs before matching; `match_snn`, `match_mnn` and `match_smnn` reject the block on their own, and
+  `LocalFeature.forward` documents the one-line filter for a hand-rolled `match_nn` pipeline. The feature benchmark
+  does the same before affine/orientation/description, avoiding meaningless descriptor work and the quadratic
+  distance-matrix cost of padded rows; its CUDA timers also synchronize around the measured detector and full
+  matching regions.
+
+* `SIFTDescriptor`, `DenseSIFTDescriptor`, `HardNet` and `HardNet8` return NaN for a constant patch in `float16`,
+  and the SIFT descriptors' backward is NaN in `float16` wherever two neighbouring pixels are equal.
 
   `F.normalize`'s default `eps` of 1e-12 is not representable in `float16` and rounds to zero, so the
   `norm.clamp_min(eps)` that exists to stop a zero-norm input becoming `0 / 0` was itself zero in exactly that
@@ -281,6 +323,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   -- and a NaN descriptor is worse than a meaningless one, because it propagates through `torch.cdist` and poisons
   the whole matching. The nine `F.normalize` calls in those four modules now pass an `eps` representable in the
   input dtype. `bfloat16`, `float32` and `float64` results are unchanged: they keep the 1e-12 default.
+
+  The forward pass was only half of it. `SIFTDescriptor` and `DenseSIFTDescriptor` guard `sqrt(gx^2 + gy^2 + eps)`
+  and `atan2(gy, gx + eps)` with `eps = 1e-10`, which is zero in `float16` -- and a squared `float16` gradient
+  underflows long before that -- so at every pixel with a zero gradient both sat on their singular point and the
+  input gradient came back NaN (9 of 4096 on ordinary random `32x32` patches). The gradient magnitude and
+  orientation are now computed in float32 for half-precision input and cast back, and the RootSIFT `sqrt` uses the
+  same dtype-aware `eps`; wider dtypes are byte-identical.
 
 ## :rocket: [0.6.11] - 2022-03-28
 ### :new:  New Features
