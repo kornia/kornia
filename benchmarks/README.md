@@ -188,44 +188,43 @@ kornia 0.9.0rc1, float32, image 256×256, patch size 32, 4 threads. Throughput i
 
 | op | kornia (eager) | kornia (compiled) |
 | --- | --: | --: |
-| laf_from_center_scale_ori | 24211670 | **81618661** |
-| make_upright | 21971887 | **92325445** |
-| ellipse_to_laf | 7657249 | 8607163 |
-| laf_to_boundary_points | 813138 | 1066982 |
-| laf_is_inside_image | 4698606 | **9681421** |
-| extract_patches_simple | 40758 | **152179** |
-| extract_patches_from_pyramid | 9968 | 11250 |
+| laf_from_center_scale_ori | 23969858 | **83857443** |
+| make_upright | 24353058 | **94321158** |
+| ellipse_to_laf | 7977868 | 8732195 |
+| laf_to_boundary_points | 809834 | 1022052 |
+| laf_is_inside_image | 4726938 | **9708540** |
+| extract_patches_simple | 41525 | **320274** |
+| extract_patches_from_pyramid | 10050 | **75731** |
 
 `--device mps --compile`, B=1 N=20000 (`-` = torch.compile warmup failed, reported as a NOTE):
 
 | op | kornia (eager) | kornia (compiled) |
 | --- | --: | --: |
-| laf_from_center_scale_ori | 10231588 | **20391257** |
-| make_upright | 10720309 | **33146882** |
-| ellipse_to_laf | 10695 | - |
-| laf_to_boundary_points | 1316854 | 1640011 |
-| laf_is_inside_image | 1952013 | - |
-| extract_patches_simple | 93555 | **1324427** |
-| extract_patches_from_pyramid | 23317 | 298487 |
+| laf_from_center_scale_ori | 10680032 | **21311556** |
+| make_upright | 11381861 | **33145729** |
+| ellipse_to_laf | 10907 | - |
+| laf_to_boundary_points | 1302105 | 1683478 |
+| laf_is_inside_image | 1966278 | - |
+| extract_patches_simple | 96756 | **1328058** |
+| extract_patches_from_pyramid | 23636 | 299586 |
 
 The honest reading:
 
 - **Patch extraction dominates everything.** `extract_patches_from_pyramid` runs at ~10k LAFs/s
   eager on CPU — a 20k-keypoint `SIFTDescriptor` pass pays ~2 s in patch sampling before any
   descriptor math. It runs a full `grid_sample` of all N patches at every pyramid level
-  (deliberate, for compile-friendliness) plus a Python loop over the batch; `torch.compile`
-  recovers ~3.7× for the simple extractor on CPU (~14× on MPS) and ~2.9× for the pyramid at
-  N=2000 — but only ~1.1× at N=20000, where the redundant per-level sampling dominates.
+  (deliberate, for compile-friendliness); `torch.compile` recovers ~7.5× for both extractors
+  on CPU and ~13× for the simple one on MPS at B=1 — but the win collapses with batch: at
+  B=8 the compiled pyramid extractor is no faster than eager on either device.
 - **Found weak spot: `ellipse_to_laf` on MPS is ~700× slower than CPU** (10.7k vs 7.7M LAFs/s)
   — the batched 2×2 `torch.inverse` hits a pathological MPS linalg path and additionally emits
   a deprecated-resize `UserWarning` per call from `laf.py`. A closed-form 2×2 inverse removes
   both; on CPU it is also the difference between 7.7M LAFs/s and an arithmetic-bound kernel.
-- **`laf_to_boundary_points` is ~25× slower than the similar-sized `make_upright`** on CPU and
+- **`laf_to_boundary_points` is ~30× slower than the similar-sized `make_upright`** on CPU and
   the only op whose IQR is large (~40% of the median): it rebuilds its `linspace` basis on CPU
   in float32 every call and pays a host→device transfer.
 - **Compile coverage on MPS is holey:** `ellipse_to_laf` (`AssertionError`) and
-  `laf_is_inside_image` (`InductorError`) fail to compile everywhere on this stack, and
-  `extract_patches_simple` fails at B=8 only.
+  `laf_is_inside_image` (`InductorError`) fail to compile on this stack in every config.
 
 ## Sample results — augmentation flagship (class API)
 
