@@ -114,9 +114,9 @@ class PatchDominantGradientOrientation(nn.Module):
         gx: torch.Tensor = grads[:, :, 0]
         gy: torch.Tensor = grads[:, :, 1]
 
-        # Half precision is lifted to float32 inside: the squared gradient of a flat patch
-        # underflows and `sqrt(0 + eps)` with an underflowed `eps` is NaN in the backward and,
-        # through `atan2`, in the forward as well.
+        # float16 is lifted to float32 inside: the squared gradient of a flat patch underflows
+        # and `sqrt(0 + eps)` with an underflowed `eps` is NaN in the backward and, through
+        # `atan2`, in the forward as well. bfloat16 holds both and takes the plain expression.
         mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
         mag = mag * weighting
 

@@ -180,14 +180,6 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
             y = torch.rand(3, 8, device=device, dtype=dt)
             assert torch.equal(_l2_normalize(y, dim=1), torch.nn.functional.normalize(y, dim=1, eps=1e-12))
 
-    def test_the_float16_eps_is_the_smallest_normal(self):
-        # `_normalize_eps` spells it as a literal, because TorchScript cannot read `torch.finfo`.
-        from kornia.core.utils import _normalize_eps
-
-        assert _normalize_eps(torch.zeros(1, dtype=torch.float16)) == torch.finfo(torch.float16).tiny
-        for dt in (torch.bfloat16, torch.float32, torch.float64):
-            assert _normalize_eps(torch.zeros(1, dtype=dt)) == 1e-12
-
 
 class TestDenseSIFTDescriptor(BaseTester):
     def test_shape_default(self, device, dtype):

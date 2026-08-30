@@ -258,7 +258,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a down-weighted candidate never outranks a full-weight one with an at-least-as-good score (a plain multiply pulled
   a negative score toward zero, i.e. *up* the ranking of a signed response), and a zero or negative weight
   suppresses. The weights are cast to the image dtype, so a weight a half-precision image cannot hold rounds to
-  zero and suppresses. The mask must be `(1 or B, 1, H, W)` with the image's spatial size. It is resampled onto every pyramid level or octave with a
+  zero and suppresses, and clamped to one, so a float 0/255 mask (an OpenCV mask through `.astype(np.float32)`)
+  means what the integer one means rather than scaling every score by 255. The weighting runs in float32 for
+  half-precision input and is bounded above the padding sentinel, so a negative score divided by a small weight
+  cannot overflow to `-inf` and sort below an unfilled slot. The mask must be `(1 or B, 1, H, W)` with the
+  image's spatial size. It is resampled onto every pyramid level or octave with a
   min-pool rather than an interpolation, so a zero region suppresses every level pixel it touches and a two-pixel
   zero stripe does not vanish at a factor-four level. And it is applied to the non-maxima-suppression output, not
   to the response the suppression reads: multiplying the response first carves an edge into it, and the bilinear
@@ -350,15 +354,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pads a short result hands the descriptor a zero LAF, which samples one image point repeatedly and produces
   exactly that patch -- `ScaleSpaceDetector(400)` on a random `64x64` `float16` image gave 365 NaN descriptor rows
   -- and a NaN descriptor is worse than a meaningless one, because it propagates through `torch.cdist` and poisons
-  the whole matching. The nine `F.normalize` calls in those four modules now pass an `eps` representable in the
-  input dtype. `bfloat16`, `float32` and `float64` results are unchanged: they keep the 1e-12 default.
+  the whole matching. The nine `F.normalize` calls in those four modules now go through one helper that
+  normalises a `float16` input in float32 and casts back (an `eps` representable in `float16` is safe but not
+  neutral: a norm in the subnormal window came back as 0.5). `bfloat16`, `float32` and `float64` results are
+  unchanged: they keep the 1e-12 default.
 
   The forward pass was only half of it. `SIFTDescriptor` and `DenseSIFTDescriptor` guard `sqrt(gx^2 + gy^2 + eps)`
   and `atan2(gy, gx + eps)` with `eps = 1e-10`, which is zero in `float16` -- and a squared `float16` gradient
   underflows long before that -- so at every pixel with a zero gradient both sat on their singular point and the
   input gradient came back NaN (9 of 4096 on ordinary random `32x32` patches). The gradient magnitude and
-  orientation are now computed in float32 for half-precision input and cast back, and the RootSIFT `sqrt` uses the
-  same dtype-aware `eps`; wider dtypes are byte-identical.
+  orientation are now computed in float32 for `float16` input and cast back, and the RootSIFT `sqrt` is computed
+  in float32 for `float16` as well; `bfloat16`, whose exponent range holds both the guard and the squares, and
+  the wider dtypes are byte-identical.
 
 ## :rocket: [0.6.11] - 2022-03-28
 ### :new:  New Features

@@ -21,7 +21,7 @@ import torch
 from kornia.feature.orientation import LAFOrienter, OriNet, PassLAF, PatchDominantGradientOrientation
 from kornia.geometry.conversions import rad2deg
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_grid_sample, supports_replicate_padding
 
 
 class TestPassLAF(BaseTester):
@@ -110,6 +110,9 @@ class TestOrientationHalfPrecisionIsFinite(BaseTester):
     def test_flat_patch(self, device, half_dtype):
         if device.type == "mps":
             pytest.skip("MPS autocast changes the effective dtype")
+        if not supports_replicate_padding(device, half_dtype):
+            # `spatial_gradient` pads with mode="replicate"; torch 2.5.1 has no float16 CPU kernel.
+            pytest.skip(f"no replicate-pad kernel for {half_dtype} on {device.type}")
         patches = torch.zeros(2, 1, 32, 32, device=device, dtype=half_dtype)
         out = PatchDominantGradientOrientation(32).to(device, half_dtype)(patches)
         assert out.dtype == half_dtype
@@ -119,6 +122,10 @@ class TestOrientationHalfPrecisionIsFinite(BaseTester):
     def test_flat_image_laf(self, device, half_dtype):
         if device.type == "mps":
             pytest.skip("MPS autocast changes the effective dtype")
+        if not (supports_replicate_padding(device, half_dtype) and supports_grid_sample(device, half_dtype)):
+            # The orienter extracts patches with `grid_sample` and differentiates them with a
+            # replicate pad; torch 2.5.1 has neither CPU kernel for float16, nor `grid_sample` for bfloat16.
+            pytest.skip(f"no half-precision patch-extraction kernels for {half_dtype} on {device.type}")
         img = torch.full((1, 1, 32, 32), 0.5, device=device, dtype=half_dtype)
         laf = torch.tensor([[[[5.0, 0.0, 16.0], [0.0, 5.0, 16.0]]]], device=device, dtype=half_dtype)
         out = LAFOrienter(19).to(device, half_dtype)(laf, img)
@@ -128,6 +135,8 @@ class TestOrientationHalfPrecisionIsFinite(BaseTester):
     def test_half_precision_matches_float32(self, device):
         if device.type == "mps":
             pytest.skip("MPS autocast changes the effective dtype")
+        if not supports_replicate_padding(device, torch.float16):
+            pytest.skip(f"no float16 replicate-pad kernel on {device.type}")
         torch.manual_seed(0)
         patches = torch.rand(4, 1, 32, 32, device=device)
         ref = PatchDominantGradientOrientation(32).to(device)(patches)

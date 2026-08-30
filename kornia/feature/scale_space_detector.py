@@ -76,10 +76,12 @@ def _resize_mask(mask: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
     zero region suppresses every level pixel it touches and a thin one cannot fall between the
     samples of an interpolation. The result is cast to ``ref``'s dtype, so the weighting that
     follows cannot promote the response map to the mask's dtype; a weight the image dtype cannot
-    hold (below ~6e-8 for a float16 image) rounds to zero and suppresses.
+    hold (below ~6e-8 for a float16 image) rounds to zero and suppresses. Weights above one are
+    clamped to one -- a weight never promotes -- so a float 0/255 mask, an OpenCV mask that went
+    through ``.astype(np.float32)``, means the same as the integer one.
     """
     if mask.is_floating_point():
-        m = mask.to(torch.float64 if mask.dtype == torch.float64 else torch.float32)
+        m = mask.to(torch.float64 if mask.dtype == torch.float64 else torch.float32).clamp_max(1.0)
     else:
         m = mask.ne(0).to(torch.float32)
     h, w = ref.shape[-2], ref.shape[-1]
@@ -126,9 +128,19 @@ def _weight_scores(scores: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
     negative score toward zero, i.e. up the ranking, which inverted the order of a signed
     response. Positions with a zero or negative weight are excluded from the candidates before
     this runs; their divisor is replaced by one so no ``inf`` is produced there.
+
+    The quotient of a negative score and a small weight can leave the dtype's range, and ``-inf``
+    would sort *below* the ``finfo.min / 2`` sentinel an unfilled slot carries into the ranking, so
+    the arithmetic runs in float32 for half-precision input and the result is bounded at
+    ``finfo.min / 4`` of the score dtype before the cast back: a weighted detection always stays
+    ahead of the padding. Wider dtypes are unchanged wherever the quotient is representable.
     """
-    divisor = torch.where(weights > 0, weights, torch.ones_like(weights))
-    return torch.where(scores >= 0, scores * weights, scores / divisor)
+    dtype = scores.dtype
+    wide = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+    s, w = scores.to(wide), weights.to(wide)
+    divisor = torch.where(w > 0, w, torch.ones_like(w))
+    out = torch.where(s >= 0, s * w, s / divisor)
+    return out.clamp_min(torch.finfo(dtype).min / 4).to(dtype)
 
 
 def _create_octave_mask(mask: torch.Tensor, octave_resp: torch.Tensor) -> torch.Tensor:
@@ -305,7 +317,6 @@ class ScaleSpaceDetector(nn.Module):
         since the response alone cannot.
         """
         dev = octave.device
-        dtype = octave.dtype
         B, CH, L, H, W = octave.size()
 
         # Run response function
@@ -351,10 +362,14 @@ class ScaleSpaceDetector(nn.Module):
         # score of the candidates it keeps.
         oct_mask: Optional[torch.Tensor] = None
         if mask is not None:
-            oct_mask = _create_octave_mask(mask, oct_resp)
-            keep = oct_mask > 0
+            resampled = _create_octave_mask(mask, oct_resp)
+            keep = resampled > 0
             max_nms_mask = max_nms_mask & keep
             min_nms_mask = min_nms_mask & keep
+            # A boolean or integer mask resamples to exactly 0/1, and the zeros are already dropped
+            # above, so weighting by it is a no-op over the whole volume; only real weights run.
+            if mask.is_floating_point():
+                oct_mask = resampled
 
         if self.minima_are_also_good:
             if is_iterative_subpix:
@@ -415,8 +430,10 @@ class ScaleSpaceDetector(nn.Module):
                 resp_flat_best = resp_flat.new_zeros(1, 0)
                 max_coords_best = coord_flat.new_zeros(1, 0, 3)
         else:
-            # Batched fallback: mask non-candidates to -inf so they lose top-K.
-            fill = torch.finfo(dtype).min / 2
+            # Batched fallback: mask non-candidates to -inf so they lose top-K. The sentinel is
+            # written into the response, so it is taken from the response dtype: a response module
+            # may emit a narrower dtype than the image (a learned response under autocast).
+            fill = torch.finfo(resp_flat.dtype).min / 2
             resp_masked = resp_flat.masked_fill(~mask_flat, fill)
             k_eff = min(num_feats, resp_masked.size(1))
             resp_flat_best, idxs = torch.topk(resp_masked, k=k_eff, dim=1)
@@ -461,7 +478,7 @@ class ScaleSpaceDetector(nn.Module):
         # sentinel from here so that it loses the cross-octave ranking in `_detect` to every real
         # detection, including a negative one; `_detect` zeroes its response and LAF once ranked.
         filled = is_cand & good_mask
-        fill = torch.finfo(dtype).min / 2
+        fill = torch.finfo(resp_flat_best.dtype).min / 2
         resp_flat_best = torch.where(filled, resp_flat_best, torch.full_like(resp_flat_best, fill))
         current_lafs.mul_(px_size)
         return resp_flat_best, current_lafs, filled
@@ -520,7 +537,7 @@ class ScaleSpaceDetector(nn.Module):
         n_candidates = responses.size(1)
         if n_candidates < num_feats:
             pad = num_feats - n_candidates
-            responses = F.pad(responses, (0, pad), value=torch.finfo(dtype).min / 2)
+            responses = F.pad(responses, (0, pad), value=torch.finfo(responses.dtype).min / 2)
             lafs = F.pad(lafs, (0, 0, 0, 0, 0, pad))
             filled = F.pad(filled, (0, pad))
         responses, idxs = torch.topk(responses, k=num_feats, dim=1)
@@ -541,7 +558,8 @@ class ScaleSpaceDetector(nn.Module):
                 mask is binary (any non-zero value keeps a position), a floating-point mask is used as weights on the
                 detection scores: a weight in `(0, 1]` scales a score toward the worst (a non-negative score is
                 multiplied by it, a negative one divided), so a down-weighted candidate never outranks a full-weight
-                one, and a zero or negative weight suppresses. The weights are cast to the image dtype. The mask is
+                one, and a zero or negative weight suppresses. Weights above one are clamped to one, so a float
+                0/255 mask means what the integer one means. The weights are cast to the image dtype. The mask is
                 resampled onto every octave conservatively, so a zero region suppresses every candidate within one
                 octave pixel of it.
 
@@ -564,13 +582,13 @@ class ScaleSpaceDetector(nn.Module):
         Args:
             img: image to extract features with shape [BxCxHxW]
             mask: a mask saying where a detection may be, shape [1x1xHxW] or [Bx1xHxW]. A boolean or integer mask
-              is binary, a floating-point mask weights the detection scores; see :meth:`detect`.
+                is binary, a floating-point mask weights the detection scores; see :meth:`detect`.
 
         Returns:
-            lafs: shape [BxNx2x3]. Detected local affine frames.
-            responses: shape [BxN]. Response function values for corresponding lafs. When an image yields fewer
-              maxima than ``num_features``, the remaining slots hold a zero response and a zero LAF, whichever
-              affine-shape and orientation modules are configured.
+            Tuple of ``lafs`` with shape [BxNx2x3], the detected local affine frames, and ``responses`` with shape
+            [BxN], the response function values for the corresponding lafs. When an image yields fewer maxima than
+            ``num_features``, the remaining slots hold a zero response and a zero LAF, whichever affine-shape and
+            orientation modules are configured.
 
         """
         # `detect` is the public extension point used by subclasses. Infer occupancy from its
@@ -716,7 +734,9 @@ class MultiResolutionDetector(nn.Module):
         # The mask is applied to the maxima, not to the response the NMS reads: a hard edge in the
         # response would turn every pixel beside a zeroed neighbour into a "maximum".
         if mask is not None:
-            det_map = _weight_scores(det_map, _resize_mask(mask, det_map))
+            weights = _resize_mask(mask, det_map)
+            # A boolean or integer mask resamples to exactly 0/1: dropping is all it can do.
+            det_map = _weight_scores(det_map, weights) if mask.is_floating_point() else det_map * weights
         w = det_map.shape[-1]
         det_flat = det_map.view(-1)  # (H*W,)
 
@@ -767,7 +787,8 @@ class MultiResolutionDetector(nn.Module):
             mask: Optional mask with shape `(1, 1, H, W)` saying where a detection may be. A boolean or integer
                 mask is binary (any non-zero value keeps a position), a floating-point mask is used as weights on
                 the detection scores: a weight in `(0, 1]` scales a score toward the worst, so a down-weighted
-                maximum never outranks a full-weight one, and a zero or negative weight suppresses. The weights are
+                maximum never outranks a full-weight one, and a zero or negative weight suppresses. Weights above
+                one are clamped to one, so a float 0/255 mask means what the integer one means. The weights are
                 cast to the image dtype. The mask is resampled onto every pyramid level conservatively, so a zero
                 region suppresses every maximum within one level pixel of it.
 
@@ -866,15 +887,15 @@ class MultiResolutionDetector(nn.Module):
 
         Args:
             img: image to extract features with shape [1xCxHxW]. KeyNetDetector does not support batch processing,
-        because the number of detections is different on each image.
+                because the number of detections is different on each image.
             mask: a mask saying where a detection may be, shape [1x1xHxW]. A boolean or integer mask is binary, a
-              floating-point mask weights the detection scores; see :meth:`detect`.
+                floating-point mask weights the detection scores; see :meth:`detect`.
 
         Returns:
-            lafs: shape [1xNx2x3]. Detected local affine frames.
-            responses: shape [1xN]. Response function values for corresponding lafs. When the image yields fewer
-              above-threshold maxima than ``num_features``, the remaining slots hold a zero response and a zero LAF,
-              whichever affine-shape and orientation modules are configured.
+            Tuple of ``lafs`` with shape [1xNx2x3], the detected local affine frames, and ``responses`` with shape
+            [1xN], the response function values for the corresponding lafs. When the image yields fewer
+            above-threshold maxima than ``num_features``, the remaining slots hold a zero response and a zero LAF,
+            whichever affine-shape and orientation modules are configured.
 
         """
         KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])

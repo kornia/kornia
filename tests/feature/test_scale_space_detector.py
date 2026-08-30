@@ -198,6 +198,67 @@ class TestScaleSpaceDetector(BaseTester):
         assert resps[0].tolist() == sorted(resps[0].tolist(), reverse=True)
         assert xs[0] < 48 and xs[1] < 48, f"a down-weighted candidate outranked a full-weight one: {xs.tolist()}"
 
+    def test_a_weighted_negative_response_never_sorts_below_the_padding(self, device, dtype):
+        # A weight *divides* a negative score, and a small weight can push the quotient past the
+        # dtype's range: -inf sorts below the `finfo.min / 2` sentinel an unfilled slot carries into
+        # the ranking, so a non-detection outranked a real one. The weighting is bounded above the
+        # sentinel instead.
+        floor = -float(torch.finfo(dtype).max) / 4
+        spike = -float(torch.finfo(dtype).max) / 8
+
+        class HugeNegativeSpikes(torch.nn.Module):
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                out = torch.full_like(x, floor)
+                if out.shape[-1] == 96:
+                    for y, xx in ((24, 24), (24, 72), (72, 24), (72, 72)):
+                        out[:, :, out.shape[2] // 2, y, xx] = spike
+                return out
+
+        det = ScaleSpaceDetector(4, resp_module=HugeNegativeSpikes(), scale_space_response=True, mr_size=3.0).to(
+            device, dtype
+        )
+        img = torch.zeros(1, 1, 96, 96, device=device, dtype=dtype)
+        mask = torch.full((1, 1, 96, 96), 1e-3, device=device, dtype=dtype)
+        lafs, resps = det(img, mask)
+        filled = lafs.ne(0).any(dim=-1).any(dim=-1)
+        assert int(filled.sum()) == 4, "expected all four spikes"
+        assert torch.isfinite(resps).all(), f"a weighted score overflowed: {resps.tolist()}"
+        assert bool((resps[filled] > torch.finfo(dtype).min / 2).all()), "a detection sorts below the sentinel"
+
+    def test_fill_sentinel_follows_the_response_dtype(self, device, dtype):
+        # The top-K sentinel is written into the *response* tensor, so it must fit that dtype: a
+        # response module that emits a narrower dtype than the image -- a learned response under
+        # autocast -- raised "value cannot be converted to type at::Half without overflow".
+        class NarrowResponse(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.resp = kornia.feature.BlobHessian()
+
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                return self.resp(x, sigmas).to(torch.float16)
+
+        torch.manual_seed(0)
+        inp = torch.rand(2, 1, 64, 64, device=device, dtype=dtype)
+        det = ScaleSpaceDetector(20, resp_module=NarrowResponse()).to(device, dtype)
+        for b in (1, 2):
+            lafs, resps = det(inp[:b])
+            assert resps.dtype == torch.float16
+            assert torch.isfinite(resps).all()
+            filled = lafs.ne(0).any(dim=-1).any(dim=-1)
+            assert 0 < int(filled[0].sum()) < 20
+            assert bool((resps[~filled] == 0).all())
+
+    def test_float_weights_above_one_are_clamped(self, device, dtype):
+        # A float 0/255 mask -- an OpenCV mask after `.astype(np.float32)` -- is weights, and a weight
+        # above one scaled every score by 255. Weights are clamped to one, so it means what the
+        # integer 0/255 mask means.
+        torch.manual_seed(0)
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        det = ScaleSpaceDetector(50).to(device, dtype)
+        lafs_b, resps_b = det(inp, torch.ones(1, 1, 64, 64, device=device, dtype=torch.bool))
+        lafs_f, resps_f = det(inp, torch.full((1, 1, 64, 64), 255.0, device=device, dtype=dtype))
+        assert torch.equal(resps_f, resps_b) and torch.equal(lafs_f, lafs_b)
+
     def test_a_zero_response_maximum_keeps_its_laf(self, device, dtype):
         # The response function is pluggable and may be signed, so an exact zero can be a genuine
         # maximum rather than an unfilled slot. Classifying the padding by `response == 0` erased
@@ -231,9 +292,12 @@ class TestScaleSpaceDetector(BaseTester):
         assert 0 < int(filled[0].sum()) < det.num_features, "expected a partially filled result"
         assert bool((resps[~filled] == 0).all()), f"sentinel leaked: min response {resps.min().item()}"
         assert (resps > torch.finfo(dtype).min / 4).all()
-        # and the single-image path agrees, which it did not before
+        # and the single-image path agrees, which it did not before. Up to tolerance, not bit-for-bit:
+        # the response convolutions pick batch-size-dependent kernels on some CPUs (ubuntu CI), so the
+        # same candidates carry last-ULP-different scores.
         lafs1, resps1 = det(inp[:1])
-        assert torch.equal(resps1[0], resps[0]) and torch.equal(lafs1[0], lafs[0])
+        self.assert_close(resps1[0], resps[0])
+        self.assert_close(lafs1[0], lafs[0])
 
     def test_padding_survives_the_affine_and_orientation_modules(self, device, dtype):
         # Same contract as `MultiResolutionDetector.forward`: the shape and orientation modules
@@ -505,6 +569,16 @@ class TestMultiResolutionDetector(BaseTester):
         assert got.shape == (2, 1, *dst)
         assert got.dtype == dtype
         self.assert_close(got.cpu().float(), expected.to(got.cpu().float().dtype))
+
+    def test_float_weights_above_one_are_clamped(self, device, dtype):
+        # The weighting runs before the `score_threshold` test, so a weight above one lifted
+        # sub-threshold maxima over it. A float 0/255 mask now means what the integer one means.
+        torch.manual_seed(0)
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        det = self._make_detector().to(device, dtype)
+        lafs_b, resps_b = det(inp, torch.ones(1, 1, 64, 64, device=device, dtype=torch.bool))
+        lafs_f, resps_f = det(inp, torch.full((1, 1, 64, 64), 255.0, device=device, dtype=dtype))
+        assert torch.equal(resps_f, resps_b) and torch.equal(lafs_f, lafs_b)
 
     def test_float_mask_weights_the_score_and_keeps_the_candidates(self, device, dtype):
         # A graded mask used to be multiplied into the response before the NMS and the sub-pixel

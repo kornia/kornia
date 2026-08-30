@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.utils import _l2_normalize, _normalize_eps
+from kornia.core.utils import _l2_normalize
 from kornia.filters import get_gaussian_kernel2d, spatial_gradient
 from kornia.geometry.conversions import pi
 
@@ -45,13 +45,15 @@ def _gradient_magnitude_orientation(
     """Per-pixel gradient magnitude and orientation in ``[2pi, 4pi)``.
 
     ``eps`` keeps ``sqrt`` and ``atan2`` away from their singular point at a zero gradient, where
-    both have an undefined backward. Half-precision inputs are lifted to float32 for this step:
-    the 1e-10 guard is not representable in float16, and a squared float16 gradient underflows
-    long before that, so a flat pair of pixels -- ordinary with a 10-bit mantissa -- would send
-    NaN into the input gradient. The result is cast back, so wider dtypes are unchanged.
+    both have an undefined backward. A float16 input is lifted to float32 for this step: the
+    1e-10 guard is not representable in float16, and a squared float16 gradient underflows long
+    before that, so a flat pair of pixels -- ordinary with a 10-bit mantissa -- would send NaN
+    into the input gradient. The result is cast back. bfloat16 has float32's exponent range, so
+    both the guard and the squares are representable there and it takes the same expression as
+    float32 and float64; every dtype but float16 is unchanged.
     """
     dtype = gx.dtype
-    if dtype == torch.float16 or dtype == torch.bfloat16:  # noqa: PLR1714 -- TorchScript has no tuple `in`
+    if dtype == torch.float16:
         gx = gx.float()
         gy = gy.float()
     mag = torch.sqrt(gx * gx + gy * gy + eps)
@@ -244,7 +246,7 @@ def _rootsift(desc: torch.Tensor, eps: float) -> torch.Tensor:
     """
     if desc.dtype == torch.float16:
         return torch.sqrt(F.normalize(desc.float(), p=1, eps=1e-12) + eps).to(desc.dtype)
-    return torch.sqrt(F.normalize(desc, p=1, eps=_normalize_eps(desc)) + eps)
+    return torch.sqrt(F.normalize(desc, p=1, eps=1e-12) + eps)
 
 
 def sift_describe(
