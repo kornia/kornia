@@ -106,18 +106,21 @@ def _check_mask(mask: torch.Tensor, img: torch.Tensor) -> None:
     )
 
 
-def _zero_unfilled(lafs: torch.Tensor, responses: torch.Tensor) -> torch.Tensor:
-    r"""Zero the LAFs of the slots whose response is zero, i.e. the padding.
+def _zero_unfilled(lafs: torch.Tensor, filled: torch.Tensor) -> torch.Tensor:
+    r"""Replace the LAFs of the slots no detection filled with the zero LAF.
 
-    The affine-shape and orientation modules normalise a frame, and a zero LAF comes out of
-    :class:`LAFAffineShapeEstimator` as a finite 1e-5-scale frame at the origin. A padded slot
-    carries a response of exactly zero in both detectors; a real detection is above the
-    non-negative threshold in :class:`MultiResolutionDetector`, and non-zero in
-    :class:`ScaleSpaceDetector`, whose octave maxima can be slightly negative. ``where`` rather
-    than a multiply, so a module that returns NaN for a zero frame cannot leak it into the padding.
+    ``filled`` is a ``(B, N)`` boolean mask of the slots a detection actually filled. The
+    affine-shape and orientation modules normalise a frame, and a zero LAF comes out of
+    :class:`LAFAffineShapeEstimator` as a finite 1e-5-scale frame at the origin, so the mask is
+    re-applied after them. ``where`` rather than a multiply, so a module that returns NaN for a
+    zero frame cannot leak it into the padding.
+
+    :class:`MultiResolutionDetector` can derive the mask from the response: its threshold is
+    non-negative, so every detection scores strictly above zero. :class:`ScaleSpaceDetector`
+    cannot -- its response function is pluggable and may be signed, so an exact zero is a
+    legitimate maximum -- and tracks the mask through the top-K instead.
     """
-    filled = (responses != 0).view(responses.shape[0], -1, 1, 1)
-    return torch.where(filled, lafs, torch.zeros_like(lafs))
+    return torch.where(filled.view(filled.shape[0], -1, 1, 1), lafs, torch.zeros_like(lafs))
 
 
 class ScaleSpaceDetector(nn.Module):
@@ -241,8 +244,14 @@ class ScaleSpaceDetector(nn.Module):
         num_levels: int,
         is_iterative_subpix: bool,
         px_size: float,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Process one scale-space octave: response → NMS/subpix → top-K → LAF."""
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Process one scale-space octave: response → NMS/subpix → top-K → LAF.
+
+        Returns the top-K responses, their LAFs, and a boolean mask of the slots an NMS candidate
+        actually filled. The batched top-K below ranks over the whole volume and returns its
+        ``fill`` sentinel once the octave runs out of candidates; the mask is what tells those
+        slots apart from a detection, since the response alone cannot.
+        """
         dev = octave.device
         dtype = octave.dtype
         B, CH, L, H, W = octave.size()
@@ -310,6 +319,8 @@ class ScaleSpaceDetector(nn.Module):
             resp_cands = resp_flat[0][nms_idx]  # (M,)
             coord_cands = coord_flat[0][nms_idx]  # (M, 3)
             k_eff = min(num_feats, nms_idx.shape[0])
+            # Only NMS candidates are gathered here, so every returned slot is one.
+            is_cand = torch.ones(1, k_eff, dtype=torch.bool, device=dev)
             if k_eff > 0:
                 resp_flat_best, local_idx = torch.topk(resp_cands, k=k_eff)
                 max_coords_best = coord_cands[local_idx].unsqueeze(0)  # (1, k_eff, 3)
@@ -324,6 +335,10 @@ class ScaleSpaceDetector(nn.Module):
             k_eff = min(num_feats, resp_masked.size(1))
             resp_flat_best, idxs = torch.topk(resp_masked, k=k_eff, dim=1)
             max_coords_best = torch.gather(coord_flat, 1, idxs.unsqueeze(-1).expand(-1, -1, 3))
+            # `topk` cannot rank among the masked-out positions -- they all carry the same
+            # `fill` -- so an image with fewer than `num_feats` maxima gets an arbitrary subset
+            # of non-candidates back. Carry the candidacy of each selected slot forward.
+            is_cand = torch.gather(mask_flat, 1, idxs)
 
         B, N = resp_flat_best.size()
 
@@ -355,25 +370,20 @@ class ScaleSpaceDetector(nn.Module):
             & (cy - half_s >= 5)
             & (cy + half_s <= y_max)
         )
-        resp_flat_best = resp_flat_best * good_mask.to(dev, dtype)
+        # A candidate the border check rejects keeps its coordinates beside a zero response, as
+        # before. A non-candidate keeps the sentinel so that it still loses the top-K across
+        # octaves in `_detect`, which zeroes it there once the ranking is done.
+        resp_flat_best = torch.where(is_cand, resp_flat_best * good_mask.to(dev, dtype), resp_flat_best)
         current_lafs.mul_(px_size)
-        return resp_flat_best, current_lafs
+        return resp_flat_best, current_lafs, is_cand
 
-    def detect(
+    def _detect(
         self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Detect local features in an image batch.
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Run the detection and also return the boolean mask of the slots a detection filled.
 
-        Args:
-            img: Input image tensor with shape `(B, C, H, W)`.
-            num_feats: Number of features requested from the detector.
-            mask: Optional weight mask with shape `(1 or B, 1, H, W)`, boolean or numeric, used as weights. It is
-                resampled onto every octave and multiplies the response there, so a zero region suppresses
-                detections; the resampled edge softens by about one octave pixel.
-
-        Returns:
-            Tuple containing detection scores and local affine frames. Local affine frames are usually shaped `(B, N, 2,
-            3)`, where `N` is the selected feature count.
+        ``forward`` needs the mask after ``aff`` and ``ori`` have run, and it cannot be recovered
+        from the responses, so :meth:`detect` is a two-value view of this.
         """
         if mask is not None:
             _check_mask(mask, img)
@@ -402,7 +412,7 @@ class ScaleSpaceDetector(nn.Module):
         # tables per call, and concurrent CUDA allocations contend for the same
         # device memory allocator lock.  Tested: sequential ≈ parallel on GPU.
         n_oct = len(sp)
-        results: List[Tuple[torch.Tensor, torch.Tensor]] = [
+        results: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = [
             self._process_octave(
                 sp[i], sigmas[i], num_feats, mask, rotmat, num_levels, is_iterative_subpix, px_sizes[i]
             )
@@ -415,17 +425,42 @@ class ScaleSpaceDetector(nn.Module):
         # to preserve the shape contract [B, num_feats, ...].
         responses = torch.cat([r[0] for r in results], 1)
         lafs = torch.cat([r[1] for r in results], 1)
+        filled = torch.cat([r[2] for r in results], 1)
         n_candidates = responses.size(1)
         if n_candidates < num_feats:
             pad = num_feats - n_candidates
             responses = F.pad(responses, (0, pad))
             lafs = F.pad(lafs, (0, 0, 0, 0, 0, pad))
+            filled = F.pad(filled, (0, pad))
         responses, idxs = torch.topk(responses, k=num_feats, dim=1)
         lafs = torch.gather(lafs, 1, idxs.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 2, 3))
-        # An NMS maximum whose response is exactly zero is a candidate for the octave top-K but
-        # not a detection; it used to keep its coordinates beside a zero response. Give every
-        # zero-response slot the zero LAF the padding above already has.
-        return responses, _zero_unfilled(lafs, responses)
+        filled = torch.gather(filled, 1, idxs)
+        # An unfilled slot is the `F.pad` tail above, or a batched octave whose top-K ran out of
+        # candidates and handed back its `fill` sentinel. Both get the zero response and the zero
+        # LAF; the sentinel had to survive the ranking just above to lose it.
+        responses = torch.where(filled, responses, torch.zeros_like(responses))
+        return responses, _zero_unfilled(lafs, filled), filled
+
+    def detect(
+        self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Detect local features in an image batch.
+
+        Args:
+            img: Input image tensor with shape `(B, C, H, W)`.
+            num_feats: Number of features requested from the detector.
+            mask: Optional weight mask with shape `(1 or B, 1, H, W)`, boolean or numeric, used as weights. It is
+                resampled onto every octave and multiplies the response there, so a zero region suppresses
+                detections; the resampled edge softens by about one octave pixel.
+
+        Returns:
+            Tuple containing detection scores and local affine frames. Local affine frames are usually shaped `(B, N, 2,
+            3)`, where `N` is the selected feature count. A slot that no detection filled -- there were fewer
+            candidates than requested -- carries a zero response and a zero LAF. The converse does not hold: a signed
+            response function can peak at exactly zero, and that slot keeps its frame.
+        """
+        responses, lafs, _ = self._detect(img, num_feats, mask)
+        return responses, lafs
 
     def forward(self, img: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Three stage local feature detection.
@@ -446,10 +481,10 @@ class ScaleSpaceDetector(nn.Module):
               affine-shape and orientation modules are configured.
 
         """
-        responses, lafs = self.detect(img, self.num_features, mask)
+        responses, lafs, filled = self._detect(img, self.num_features, mask)
         lafs = self.aff(lafs, img)
         lafs = self.ori(lafs, img)
-        return _zero_unfilled(lafs, responses), responses
+        return _zero_unfilled(lafs, filled), responses
 
 
 class Detector_config(TypedDict):
@@ -700,9 +735,13 @@ class MultiResolutionDetector(nn.Module):
             pad = self.num_features - lafs.shape[1]
             responses = F.pad(responses, (0, pad))
             lafs = F.pad(lafs, (0, 0, 0, 0, 0, pad))
-        elif lafs.shape[1] > self.num_features:
-            responses, idxs = torch.topk(responses, k=self.num_features, dim=1)
-            lafs = torch.gather(lafs, 1, idxs[..., None, None].expand(-1, -1, 2, 3))
+        # Rank unconditionally. The levels are concatenated in level order, and a level that under-
+        # fills its own quota pads in place, so without this a short result interleaves the real
+        # detections with the padding instead of listing them first, unlike every other path here
+        # and unlike `ScaleSpaceDetector.detect`. Detections score strictly above the non-negative
+        # threshold, so they sort ahead of the zero-response padding.
+        responses, idxs = torch.topk(responses, k=self.num_features, dim=1)
+        lafs = torch.gather(lafs, 1, idxs[..., None, None].expand(-1, -1, 2, 3))
         return responses, lafs
 
     def forward(self, img: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -729,7 +768,9 @@ class MultiResolutionDetector(nn.Module):
         responses, lafs = self.detect(img, mask)
         lafs = self.aff(lafs, img)
         lafs = self.ori(lafs, img)
-        return _zero_unfilled(lafs, responses), responses
+        # `score_threshold` is non-negative, so a detection scores strictly above zero and the
+        # zero-response slots are exactly the unfilled ones.
+        return _zero_unfilled(lafs, responses != 0), responses
 
 
 _DEFAULT_DETECTOR_CONFIG: Detector_config = {

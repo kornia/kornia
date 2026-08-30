@@ -23,7 +23,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
-from kornia.core.utils import is_mps_tensor_safe
+from kornia.core.utils import _normalize_eps, is_mps_tensor_safe
 
 urls: Dict[str, str | list[str]] = {}
 urls["hardnet++"] = [
@@ -123,7 +123,9 @@ class HardNet(nn.Module):
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)
         x_out = x_features.view(x_features.size(0), -1)
-        return F.normalize(x_out, dim=1)
+        # A constant patch drives the features to zero; the default `eps` is not representable in
+        # float16, where the normalisation would then return NaN.
+        return F.normalize(x_out, dim=1, eps=_normalize_eps(x_out))
 
 
 class HardNet8(nn.Module):
@@ -228,6 +230,7 @@ class HardNet8(nn.Module):
         x_features: torch.Tensor = self.features(x_norm)
         mean: torch.Tensor = torch.jit.annotate(torch.Tensor, self.mean)
         components: torch.Tensor = torch.jit.annotate(torch.Tensor, self.components)
-        x_prePCA = F.normalize(x_features.view(x_features.size(0), -1))
+        x_flat = x_features.view(x_features.size(0), -1)
+        x_prePCA = F.normalize(x_flat, eps=_normalize_eps(x_flat))
         pca = torch.mm(x_prePCA - mean, components)
-        return F.normalize(pca, dim=1)
+        return F.normalize(pca, dim=1, eps=_normalize_eps(pca))

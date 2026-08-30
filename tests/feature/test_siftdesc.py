@@ -109,6 +109,36 @@ class TestSIFTDescriptorKernelBuffer(BaseTester):
         assert (mod.gk.dtype, mod.gk.device) == before
 
 
+class TestSIFTConstantPatchIsFinite(BaseTester):
+    """A constant patch has a zero-norm descriptor; normalising it must not give NaN.
+
+    `F.normalize`'s default eps of 1e-12 is not representable in float16, so the clamp that
+    exists to stop `0 / 0` was itself zero there. A detector that pads a short result hands the
+    descriptor a zero LAF, which samples one point repeatedly and produces exactly this patch.
+    """
+
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
+    @pytest.mark.parametrize("rootsift", [False, True])
+    def test_sift(self, device, desc_dtype, rootsift):
+        patches = torch.zeros(2, 1, 16, 16, device=device, dtype=desc_dtype)
+        out = SIFTDescriptor(16, rootsift=rootsift).to(device, desc_dtype)(patches)
+        assert torch.isfinite(out).all()
+
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
+    def test_dense_sift(self, device, desc_dtype):
+        img = torch.zeros(1, 1, 32, 32, device=device, dtype=desc_dtype)
+        out = DenseSIFTDescriptor().to(device, desc_dtype)(img)
+        assert torch.isfinite(out).all()
+
+    def test_the_float16_eps_is_the_smallest_normal(self):
+        # `_normalize_eps` spells it as a literal, because TorchScript cannot read `torch.finfo`.
+        from kornia.core.utils import _normalize_eps
+
+        assert _normalize_eps(torch.zeros(1, dtype=torch.float16)) == torch.finfo(torch.float16).tiny
+        for dt in (torch.bfloat16, torch.float32, torch.float64):
+            assert _normalize_eps(torch.zeros(1, dtype=dt)) == 1e-12
+
+
 class TestDenseSIFTDescriptor(BaseTester):
     def test_shape_default(self, device, dtype):
         bs, h, w = 1, 20, 15

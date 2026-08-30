@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import _normalize_eps
 from kornia.filters import get_gaussian_kernel2d, spatial_gradient
 from kornia.geometry.conversions import pi
 
@@ -203,11 +204,14 @@ class SIFTDescriptor(nn.Module):
             1,
         )
         ang_bins = ang_bins.view(B, -1)
-        ang_bins = F.normalize(ang_bins, p=2)
+        # A constant patch has an all-zero gradient and therefore a zero-norm descriptor; the
+        # default `eps` is not representable in float16, where it would come back NaN.
+        norm_eps = _normalize_eps(ang_bins)
+        ang_bins = F.normalize(ang_bins, p=2, eps=norm_eps)
         ang_bins = torch.clamp(ang_bins, 0.0, float(self.clipval))
-        ang_bins = F.normalize(ang_bins, p=2)
+        ang_bins = F.normalize(ang_bins, p=2, eps=norm_eps)
         if self.rootsift:
-            ang_bins = torch.sqrt(F.normalize(ang_bins, p=1) + self.eps)
+            ang_bins = torch.sqrt(F.normalize(ang_bins, p=1, eps=norm_eps) + self.eps)
         return ang_bins
 
 
@@ -364,8 +368,9 @@ class DenseSIFTDescriptor(nn.Module):
         )
 
         out_no_norm = self.PoolingConv(ang_bins)
-        out = F.normalize(out_no_norm, dim=1, p=2).clamp_(0, float(self.clipval))
-        out = F.normalize(out, dim=1, p=2)
+        norm_eps = _normalize_eps(out_no_norm)
+        out = F.normalize(out_no_norm, dim=1, p=2, eps=norm_eps).clamp_(0, float(self.clipval))
+        out = F.normalize(out, dim=1, p=2, eps=norm_eps)
         if self.rootsift:
-            out = torch.sqrt(F.normalize(out, p=1) + self.eps)
+            out = torch.sqrt(F.normalize(out, p=1, eps=norm_eps) + self.eps)
         return out

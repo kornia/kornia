@@ -111,21 +111,51 @@ class TestScaleSpaceDetector(BaseTester):
             lafs, _ = det(inp, torch.ones(b, 1, 32, 32, device=device, dtype=dtype))
             assert lafs.shape == torch.Size([2, 5, 2, 3])
 
-    def test_zero_response_slots_carry_a_zero_laf(self, device, dtype):
-        # An NMS maximum with a response of exactly zero reaches the octave top-K as a candidate
-        # and used to keep its coordinates beside the zero response, indistinguishable from a
-        # detection except by the score. Every zero-response slot now has a zero LAF, from
-        # `detect` and `forward` alike.
+    def test_unfilled_slots_carry_a_zero_laf(self, device, dtype):
+        # A slot that no candidate filled -- the padding -- has a zero response and a zero LAF.
+        # The converse is deliberately not true: a candidate the border check rejects keeps its
+        # coordinates beside its zeroed response, so the zero LAFs are a strict subset of the
+        # zero-response slots. Inferring the padding from `response == 0` would collapse the two.
         torch.manual_seed(0)
         inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
         det = ScaleSpaceDetector(50).to(device, dtype)
         resps, lafs = det.detect(inp, 50)
+        zero_laf = (lafs[0] == 0).all(dim=-1).all(dim=-1)
         empty = resps[0] == 0
-        assert bool(empty.any()), "expected this image to under-fill 50 slots"
-        assert (lafs[0][empty] == 0).all()
-        assert (lafs[0][~empty] != 0).any(dim=-1).any(dim=-1).all()
+        assert bool(zero_laf.any()), "expected this image to under-fill 50 slots"
+        assert bool((empty[zero_laf]).all()), "a zero LAF must carry a zero response"
+        assert bool((empty & ~zero_laf).any()), "a border-rejected candidate keeps its frame"
         lafs_fwd, resps_fwd = det(inp)
         assert torch.equal(resps_fwd, resps) and torch.equal(lafs_fwd, lafs)
+
+    def test_a_zero_response_maximum_keeps_its_laf(self, device, dtype):
+        # The response function is pluggable and may be signed, so an exact zero can be a genuine
+        # maximum rather than an unfilled slot. Classifying the padding by `response == 0` erased
+        # all three detections here.
+        class SignedResponse(torch.nn.Module):
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                out = -torch.ones_like(x)
+                out[:, :, out.shape[2] // 2, out.shape[-2] // 2, out.shape[-1] // 2] = 0.0
+                return out
+
+        det = ScaleSpaceDetector(5, resp_module=SignedResponse(), scale_space_response=True).to(device, dtype)
+        lafs, resps = det(torch.zeros(1, 1, 96, 96, device=device, dtype=dtype))
+        assert (resps == 0).all()
+        centers = lafs[0, :, :, 2]
+        found = (centers == 48).all(dim=-1)
+        assert int(found.sum()) == 3, f"expected the three centre maxima, got {centers.tolist()}"
+
+    def test_batched_underfill_does_not_leak_the_topk_sentinel(self, device, dtype):
+        # For B > 1 the octave top-K ranks over the whole volume with non-candidates masked to
+        # `finfo.min / 2`. An image with fewer maxima than requested gets those sentinels back;
+        # they are not detections and must not reach the caller as a response or as a LAF.
+        det = ScaleSpaceDetector().to(device, dtype)
+        lafs, resps = det(torch.zeros(2, 1, 32, 32, device=device, dtype=dtype))
+        assert (resps == 0).all(), f"sentinel leaked: min response {resps.min().item()}"
+        assert (lafs == 0).all()
+        # and the single-image path agrees, which it did not before
+        lafs1, resps1 = det(torch.zeros(1, 1, 32, 32, device=device, dtype=dtype))
+        assert torch.equal(resps1[0], resps[0]) and torch.equal(lafs1[0], lafs[0])
 
     def test_padding_survives_the_affine_and_orientation_modules(self, device, dtype):
         # Same contract as `MultiResolutionDetector.forward`: the shape and orientation modules
@@ -337,6 +367,10 @@ class TestMultiResolutionDetector(BaseTester):
         assert bool((resps_bool != 0).any())
         assert torch.equal(resps_bool, resps_float)
         assert torch.equal(lafs_bool, lafs_float)
+        # ... and the mask is doing something, so the two arms cannot agree vacuously the way
+        # they would if the mask were ignored altogether.
+        _lafs_free, resps_free = det(inp)
+        assert not torch.equal(resps_bool, resps_free)
 
     def test_padding_survives_the_affine_and_orientation_modules(self, device, dtype):
         # `forward` runs `aff` and `ori` after `detect`; `LAFAffineShapeEstimator` normalises a
@@ -425,6 +459,17 @@ class TestMultiResolutionDetector(BaseTester):
         # Say so explicitly, so this test cannot pass by codifying a dummy result elsewhere.
         assert (resps == 0).all()
         assert (lafs == 0).all()
+
+    def test_short_result_is_sorted(self, device, dtype):
+        # `detect` used to run its final top-K only when the levels had produced *more* slots than
+        # `num_features`, so a short result came back in level order with each level's own padding
+        # left in place and the real detections scattered through it.
+        det = self._make_detector(num_features=6000, pyramid_levels=2, up_levels=0).to(device, dtype)
+        resps, _lafs = det.detect(torch.rand(1, 1, 48, 48, device=device, dtype=dtype))
+        found = int((resps[0] != 0).sum())
+        assert 0 < found < 6000, f"expected a short result, got {found} detections"
+        assert bool((resps[0][:found] != 0).all()), "the detections do not come first"
+        assert torch.equal(resps[0], torch.sort(resps[0], descending=True).values)
 
     def test_single_feature_request_returns_a_real_detection(self, device, dtype):
         # With the default configuration and `num_features=1` every proportional quota truncates

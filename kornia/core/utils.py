@@ -134,6 +134,28 @@ def _normalize_to_float32_or_float64(dtype: torch.dtype) -> torch.dtype:
     return dtype if dtype in (torch.float32, torch.float64) else torch.float32
 
 
+def _normalize_eps(input: torch.Tensor) -> float:
+    """Return an :func:`torch.nn.functional.normalize` ``eps`` representable in ``input``'s dtype.
+
+    ``normalize`` divides by ``norm.clamp_min(eps)``, so ``eps`` is what keeps a zero-norm input
+    from becoming ``0 / 0``. Its 1e-12 default underflows to zero in float16, where an all-zero or
+    constant input therefore normalises to NaN rather than to zero. Every other floating dtype
+    reaches at least 1e-38, so this returns the default there and the result is unchanged.
+
+    Args:
+        input: the tensor about to be normalized; only its dtype is read.
+
+    Returns:
+        1e-12, or the smallest normal float16 when ``input`` is float16.
+    """
+    if input.dtype == torch.float16:
+        # 2 ** -14, the smallest normal float16, i.e. `torch.finfo(torch.float16).tiny`. Spelled
+        # as a literal because TorchScript cannot resolve `torch.finfo`, nor a module-level
+        # constant read from it, and this runs inside the scripted descriptors.
+        return 6.103515625e-05
+    return 1e-12
+
+
 def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
     """Closed-form inverse for batched 3x3 matrices.
 
