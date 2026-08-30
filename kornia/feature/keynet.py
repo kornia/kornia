@@ -210,6 +210,10 @@ class KeyNetDetector(MultiResolutionDetector):
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
         aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,
             which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
+        compile_model: wrap the response function and the non-maxima suppression with :func:`torch.compile`.
+        score_threshold: minimum response for a position to count as a detection. Must be non-negative:
+            non-maxima suppression writes an exact zero at every suppressed position, so a negative
+            threshold would admit all of them.
 
     """
 

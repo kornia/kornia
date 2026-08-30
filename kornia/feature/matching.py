@@ -18,11 +18,10 @@
 from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_mps_tensor_safe
+from kornia.core.utils import _l2_normalize, is_mps_tensor_safe
 from kornia.feature.laf import get_laf_center
 from kornia.feature.steerers import DiscreteSteerer
 
@@ -512,8 +511,8 @@ class DescriptorMatcherWithSteerer(nn.Module):
         rot1to2 = None
 
         if normalize:
-            desc1 = F.normalize(desc1, dim=-1)
-            desc2 = F.normalize(desc2, dim=-1)
+            desc1 = _l2_normalize(desc1, dim=-1)
+            desc2 = _l2_normalize(desc2, dim=-1)
 
         if self.steer_mode == "global":
             if subset_size is not None:

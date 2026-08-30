@@ -28,6 +28,7 @@ from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_
 from kornia.geometry import rad2deg
 
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
+from .siftdesc import _gradient_magnitude_orientation
 
 urls: Dict[str, str | list[str]] = {}
 urls["orinet"] = [
@@ -113,8 +114,11 @@ class PatchDominantGradientOrientation(nn.Module):
         gx: torch.Tensor = grads[:, :, 0]
         gy: torch.Tensor = grads[:, :, 1]
 
-        mag: torch.Tensor = torch.sqrt(gx * gx + gy * gy + self.eps) * weighting
-        ori: torch.Tensor = torch.atan2(gy, gx + self.eps) + 2.0 * pi
+        # float16 is lifted to float32 inside: the squared gradient of a flat patch underflows
+        # and `sqrt(0 + eps)` with an underflowed `eps` is NaN in the backward and, through
+        # `atan2`, in the forward as well. bfloat16 holds both and takes the plain expression.
+        mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
+        mag = mag * weighting
 
         o_big = float(self.num_ang_bins) * (ori + 1.0 * pi) / (2.0 * pi)
         bo0_big = torch.floor(o_big)
@@ -137,7 +141,10 @@ class PatchDominantGradientOrientation(nn.Module):
         left = torch.gather(ang_bins, 1, indices_left.reshape(-1, 1)).reshape(-1)
         center = values
         right = torch.gather(ang_bins, 1, indices_right.reshape(-1, 1)).reshape(-1)
-        c_subpix = 0.5 * (left - right) / (left + right - 2.0 * center)
+        # A flat patch has an empty histogram (a zero-gradient pixel contributes no magnitude), and a
+        # uniform one has no peak: the parabolic refinement is `0 / 0` there, so it is skipped.
+        denom = left + right - 2.0 * center
+        c_subpix = torch.where(denom != 0, 0.5 * (left - right) / denom, torch.zeros_like(denom))
         angle = -((2.0 * pi * (indices.to(patch.dtype) + c_subpix) / float(self.num_ang_bins)) - pi)
         return angle
 

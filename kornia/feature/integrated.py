@@ -23,7 +23,7 @@ from torch import nn
 
 from kornia.color import rgb_to_grayscale
 from kornia.constants import pi
-from kornia.core.check import KORNIA_CHECK_LAF
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
 
@@ -169,13 +169,28 @@ class LocalFeature(nn.Module):
 
         Args:
             img: image to extract features with shape :math:`(B,C,H,W)`.
-            mask: a mask with weights where to apply the response function.
-                The shape must be the same as the input image.
+            mask: a mask saying where a detection may be, shape :math:`(B,1,H,W)` with the spatial size of the
+                image. It is forwarded to the detector unchanged; see the detector for its semantics.
 
         Returns:
             - Detected local affine frames with shape :math:`(B,N,2,3)`.
-            - Response function values for corresponding lafs with shape :math:`(B,N,1)`.
+            - Response function values for corresponding lafs with shape :math:`(B,N)`.
             - Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
+
+        The shape is fixed at the detector's ``num_features``. When an image yields fewer detections, the
+        remaining slots carry a zero response and a zero LAF, and their descriptor is that of a patch sampled
+        at the origin -- one and the same vector for every such slot. :class:`LocalFeatureMatcher` drops them
+        before matching; a hand-rolled pipeline must do the same before any other matcher, including
+        :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_mnn`, :func:`~kornia.feature.match_fginn`,
+        :func:`~kornia.feature.match_adalam` and :class:`~kornia.feature.LightGlueMatcher`, since identical
+        descriptors match each other at zero distance and a mutual test does not reject a pair of them::
+
+            valid = lafs.ne(0).any(-1).any(-1)  # (B, N); the zero LAF marks a padded slot
+            descs, lafs = descs[0][valid[0]], lafs[:, valid[0]]
+
+        Test the LAF, not the response: a signed response can legitimately peak at exactly zero. Only the ratio
+        tests in :func:`~kornia.feature.match_snn` and :func:`~kornia.feature.match_smnn` reject padded slots on
+        their own, because the second-nearest padded descriptor is at the same zero distance.
 
         """
         lafs, responses = self.detector(img, mask)
@@ -431,8 +446,10 @@ class LocalFeatureMatcher(nn.Module):
         Keyword Args:
             image0: left image with shape :math:`(N, 1, H1, W1)`.
             image1: right image with shape :math:`(N, 1, H2, W2)`.
-            mask0 (optional): left image mask. '0' indicates a padded position :math:`(N, H1, W1)`.
-            mask1 (optional): right image mask. '0' indicates a padded position :math:`(N, H2, W2)`.
+            mask0 (optional): left image mask. '0' suppresses detection, with shape
+                :math:`(N, H1, W1)` or :math:`(N, 1, H1, W1)`.
+            mask1 (optional): right image mask. '0' suppresses detection, with shape
+                :math:`(N, H2, W2)` or :math:`(N, 1, H2, W2)`.
 
         Returns:
             - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
@@ -451,16 +468,36 @@ class LocalFeatureMatcher(nn.Module):
 
         if ("lafs0" not in data.keys()) or ("descriptors0" not in data.keys()):
             # One can supply pre-extracted local features
-            feats_dict0: Dict[str, torch.Tensor] = self.extract_features(data["image0"])
+            mask0 = data.get("mask0")
+            if mask0 is not None and mask0.dim() == 3:
+                mask0 = mask0.unsqueeze(1)
+            feats_dict0: Dict[str, torch.Tensor] = self.extract_features(data["image0"], mask0)
             lafs0, descs0 = feats_dict0["lafs"], feats_dict0["descriptors"]
         else:
             lafs0, descs0 = data["lafs0"], data["descriptors0"]
 
         if ("lafs1" not in data.keys()) or ("descriptors1" not in data.keys()):
-            feats_dict1: Dict[str, torch.Tensor] = self.extract_features(data["image1"])
+            mask1 = data.get("mask1")
+            if mask1 is not None and mask1.dim() == 3:
+                mask1 = mask1.unsqueeze(1)
+            feats_dict1: Dict[str, torch.Tensor] = self.extract_features(data["image1"], mask1)
             lafs1, descs1 = feats_dict1["lafs"], feats_dict1["descriptors"]
         else:
             lafs1, descs1 = data["lafs1"], data["descriptors1"]
+
+        # The padding mask below is read off the LAFs and applied to the descriptors, so the two
+        # must describe the same features; a mismatch would otherwise surface as an opaque
+        # boolean-index error, or silently mis-associate the matches when every index fits.
+        KORNIA_CHECK(
+            lafs0.shape[:2] == descs0.shape[:2],
+            f"lafs0 and descriptors0 must describe the same features, "
+            f"got {tuple(lafs0.shape)} and {tuple(descs0.shape)}",
+        )
+        KORNIA_CHECK(
+            lafs1.shape[:2] == descs1.shape[:2],
+            f"lafs1 and descriptors1 must describe the same features, "
+            f"got {tuple(lafs1.shape)} and {tuple(descs1.shape)}",
+        )
 
         keypoints0: torch.Tensor = get_laf_center(lafs0)
         keypoints1: torch.Tensor = get_laf_center(lafs1)
@@ -473,14 +510,32 @@ class LocalFeatureMatcher(nn.Module):
         out_lafs1: List[torch.Tensor] = []
 
         for batch_idx in range(num_image_pairs):
-            dists, idxs = self.matcher(descs0[batch_idx], descs1[batch_idx])
+            # Fixed-shape detectors represent an unfilled slot with a zero LAF. Do not let the
+            # descriptor sampled at that dummy frame become a correspondence (NN/MNN would match
+            # identical padding at the origin). Occupancy cannot be inferred from the response:
+            # a pluggable signed scale-space response may have a genuine maximum at exactly zero.
+            valid0 = lafs0[batch_idx].ne(0).any(dim=-1).any(dim=-1)
+            valid1 = lafs1[batch_idx].ne(0).any(dim=-1).any(dim=-1)
+            current_descs0 = descs0[batch_idx][valid0]
+            current_descs1 = descs1[batch_idx][valid1]
+            current_keypoints0 = keypoints0[batch_idx][valid0]
+            current_keypoints1 = keypoints1[batch_idx][valid1]
+            current_lafs0 = lafs0[batch_idx][valid0]
+            current_lafs1 = lafs1[batch_idx][valid1]
+
+            # `matcher` is an arbitrary module with no obligation to accept a `(0, D)` input, and a
+            # textureless or fully masked image leaves nothing to match anyway.
+            if current_descs0.shape[0] == 0 or current_descs1.shape[0] == 0:
+                continue
+
+            dists, idxs = self.matcher(current_descs0, current_descs1)
             if len(idxs) == 0:
                 continue
 
-            current_keypoints_0 = keypoints0[batch_idx, idxs[:, 0]]
-            current_keypoints_1 = keypoints1[batch_idx, idxs[:, 1]]
-            current_lafs_0 = lafs0[batch_idx, idxs[:, 0]]
-            current_lafs_1 = lafs1[batch_idx, idxs[:, 1]]
+            current_keypoints_0 = current_keypoints0[idxs[:, 0]]
+            current_keypoints_1 = current_keypoints1[idxs[:, 1]]
+            current_lafs_0 = current_lafs0[idxs[:, 0]]
+            current_lafs_1 = current_lafs1[idxs[:, 1]]
 
             out_confidence.append(1.0 - dists)
             batch_idxs = batch_idx * torch.ones(len(dists), device=keypoints0.device, dtype=torch.long)

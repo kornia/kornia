@@ -80,3 +80,18 @@ class TestHardNet8(BaseTester):
         model = HardNet8().to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(HardNet8().to(patches.device, patches.dtype).eval())
         self.assert_close(model(patches), model_jit(patches))
+
+
+class TestHardNetConstantPatchIsFinite(BaseTester):
+    """A constant patch drives the features to zero; the L2 normalisation must not give NaN.
+
+    `F.normalize`'s default eps of 1e-12 rounds to zero in float16, so `0 / 0` reached the
+    descriptor. A detector that pads a short result feeds exactly this patch through a zero LAF.
+    """
+
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
+    @pytest.mark.parametrize("model", [HardNet, HardNet8])
+    def test_constant_patch(self, device, desc_dtype, model):
+        patches = torch.zeros(2, 1, 32, 32, device=device, dtype=desc_dtype)
+        out = model().to(device, desc_dtype)(patches)
+        assert torch.isfinite(out).all()
