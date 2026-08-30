@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Make YUV and XYZ transformations compute integer inputs in `float32` instead of truncating their kernels, and
+  preserve directly constructed `float64` coefficients. This makes `rgb_to_yuv(uint8)` return `float32` on the
+  input's original 0--255 scale, fixes signed-integer YUV results, and removes the existing float32 coefficient loss
+  from float64 XYZ conversions. The two private linear-transformation helpers are now one implementation, whose CPU
+  path uses its dtype/device-aligned compute operands (#4053).
+
 * Make `guided_blur` / `GuidedBlur` work in `float16` and `bfloat16` when the guidance has more than one channel.
   Multi-channel guidance solves a per-pixel `C x C` system, and `torch.linalg.solve` has no half-precision LU
   kernel, so every such call failed: on CPU with `NotImplementedError: "lu_cpu" not implemented for 'Half'`, and on

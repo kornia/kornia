@@ -54,6 +54,7 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
+    dtype = image.dtype if image.is_floating_point() else torch.float32
     kernel = torch.tensor(
         [
             [0.299, 0.587, 0.114],
@@ -61,7 +62,7 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
             [0.615, -0.515, -0.100],
         ],
         device=image.device,
-        dtype=image.dtype,
+        dtype=dtype,
     )
 
     return _apply_linear_transformation(image, kernel)
@@ -180,6 +181,7 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     # and every literal below is that value correctly rounded to float64. ``torch.linalg.inv``
     # reproduces it only to 3.3e-16 -- its LU factorization does not even return an exact 1.0 in
     # the first column -- so the constants are rounded from the exact fractions, not from it.
+    dtype = image.dtype if image.is_floating_point() else torch.float32
     kernel = torch.tensor(
         [
             [1.0, -3.945707070707071e-05, 1.139827967171717],
@@ -187,7 +189,7 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
             [1.0, 2.0319996843434343, -0.00048137626262626264],
         ],
         device=image.device,
-        dtype=image.dtype,
+        dtype=dtype,
     )
 
     return _apply_linear_transformation(image, kernel)
