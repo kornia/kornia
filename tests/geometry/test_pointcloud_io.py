@@ -266,6 +266,40 @@ class TestLoadPointCloudPlyHeaderParsing(BaseTester):
         with pytest.raises(ValueError, match="a vertex line has 2 values"):
             kornia.geometry.load_pointcloud_ply(str(filename))
 
+    def test_ascii_rejects_non_numeric_coordinate(self, tmp_path):
+        filename = tmp_path / "ascii_nan_token.ply"
+        filename.write_bytes(_ply_header("ascii", 2, _XYZ_DOUBLE) + b"1 2 3\n4 5 oops\n")
+        with pytest.raises(ValueError, match="non-numeric coordinate on vertex 1"):
+            kornia.geometry.load_pointcloud_ply(str(filename))
+
+    def test_ascii_skips_preceding_scalar_element(self, tmp_path):
+        filename = tmp_path / "ascii_camera_first.ply"
+        header = _ply_header("ascii", 1, _XYZ_DOUBLE).replace(
+            b"element vertex", b"element camera 2\nproperty float fx\nelement vertex"
+        )
+        filename.write_bytes(header + b"500\n600\n7 8 9\n")
+        self.assert_close(kornia.geometry.load_pointcloud_ply(str(filename)), torch.tensor([[7.0, 8.0, 9.0]]))
+
+    def test_ascii_empty(self, tmp_path):
+        filename = tmp_path / "ascii_empty.ply"
+        kornia.geometry.save_pointcloud_ply(str(filename), torch.empty(0, 3))
+        actual = kornia.geometry.load_pointcloud_ply(str(filename))
+        assert actual.shape == (0, 3)
+        assert actual.dtype == torch.float32
+
+    @pytest.mark.parametrize("loader", ["load_pointcloud_ply", "load_pointcloud_ply_binary"])
+    def test_rejects_list_property_in_vertex_element(self, tmp_path, loader):
+        # A list spans a variable number of tokens (ASCII) or an unknowable number of bytes (binary),
+        # so x, y and z cannot be located after it. Both readers must reject it rather than read the
+        # wrong columns: the ASCII reader used to return the tags as coordinates.
+        filename = tmp_path / "list_vertex.ply"
+        fmt = "ascii" if loader == "load_pointcloud_ply" else "binary_little_endian"
+        props = "property list uchar int tags\n" + _XYZ_DOUBLE
+        payload = b"2 10 20 1 2 3\n" if fmt == "ascii" else b"\x02" + struct.pack("<2i3d", 10, 20, 1, 2, 3)
+        filename.write_bytes(_ply_header(fmt, 1, props) + payload)
+        with pytest.raises(ValueError, match="has a list property 'tags'"):
+            getattr(kornia.geometry, loader)(str(filename))
+
     @pytest.mark.parametrize(
         "loader, saver",
         [("load_pointcloud_ply", "save_pointcloud_ply"), ("load_pointcloud_ply_binary", "save_pointcloud_ply_binary")],

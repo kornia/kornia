@@ -86,7 +86,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   count from `element vertex N`, select `x`, `y`, `z` by property name whatever their scalar type, skip trailing
   elements, and read big-endian payloads. `header_size` is deprecated and ignored (a `DeprecationWarning` is
   emitted when it is passed). Files without a proper PLY header, which the old line-skipping loader could read
-  by accident, are now rejected with a `ValueError`.
+  by accident, are now rejected with a `ValueError`, and so is a file that declares a `list` property among the
+  vertex properties or in an element that precedes them -- a list has no statically known length, so the columns
+  after it cannot be located.
 
 * Make `guided_blur` / `GuidedBlur` work in `float16` and `bfloat16` when the guidance has more than one channel.
   Multi-channel guidance solves a per-pixel `C x C` system, and `torch.linalg.solve` has no half-precision LU
