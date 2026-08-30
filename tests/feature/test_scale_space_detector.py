@@ -57,8 +57,11 @@ class TestScaleSpaceDetector(BaseTester):
         lafs, resps = det(inp)
         expected_laf = torch.tensor([[[[8.4260, 0.0000, 16.0], [0.0, 8.4260, 16.0]]]], device=device, dtype=dtype)
         expected_resp = torch.tensor([[0.1159]], device=device, dtype=dtype)
-        self.assert_close(lafs, expected_laf, rtol=0.001, atol=1e-03)
-        self.assert_close(resps, expected_resp, rtol=0.001, atol=1e-03)
+        # The scale is `sigma * 2 ** (level / num_levels)` after a sub-pixel refinement; float16
+        # resolves it to ~3e-3 and bfloat16, with its 8-bit mantissa, to ~3e-2.
+        rtol = {torch.float16: 5e-3, torch.bfloat16: 4e-2}.get(dtype, 1e-3)
+        self.assert_close(lafs, expected_laf, rtol=rtol, atol=1e-03)
+        self.assert_close(resps, expected_resp, rtol=rtol, atol=1e-03)
 
     def test_toy_mask(self, device, dtype):
         inp = torch.zeros(1, 1, 33, 33, device=device, dtype=dtype)
@@ -72,8 +75,11 @@ class TestScaleSpaceDetector(BaseTester):
         lafs, resps = det(inp, mask)
         expected_laf = torch.tensor([[[[8.4260, 0.0000, 16.0], [0.0, 8.4260, 16.0]]]], device=device, dtype=dtype)
         expected_resp = torch.tensor([[0.1159]], device=device, dtype=dtype)
-        self.assert_close(lafs, expected_laf, rtol=0.001, atol=1e-03)
-        self.assert_close(resps, expected_resp, rtol=0.001, atol=1e-03)
+        # The scale is `sigma * 2 ** (level / num_levels)` after a sub-pixel refinement; float16
+        # resolves it to ~3e-3 and bfloat16, with its 8-bit mantissa, to ~3e-2.
+        rtol = {torch.float16: 5e-3, torch.bfloat16: 4e-2}.get(dtype, 1e-3)
+        self.assert_close(lafs, expected_laf, rtol=rtol, atol=1e-03)
+        self.assert_close(resps, expected_resp, rtol=rtol, atol=1e-03)
 
     def test_mask_does_not_promote_the_response_dtype(self, device, dtype):
         # The mask is resampled and cast onto the response map, so a mask in a different dtype

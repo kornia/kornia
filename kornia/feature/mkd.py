@@ -596,7 +596,9 @@ class MKDDescriptor(nn.Module):
         # Initialize cartesian/polar embedding with absolute/relative gradients.
         self.odims: int = 0
         relative_orientations = {polar_s: True, cart_s: False}
-        self.feats = {}
+        # A `ModuleDict`, so that `.to(device, dtype)` reaches the embedding buffers; a plain dict
+        # left them float32 and a half-precision input failed at the whitening matmul.
+        self.feats = nn.ModuleDict()
         for parametrization in self.parametrizations:
             gradient_embedding = EmbedGradients(patch_size=patch_size, relative=relative_orientations[parametrization])
             spatial_encoding = ExplicitSpacialEncoding(

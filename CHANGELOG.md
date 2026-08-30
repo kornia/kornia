@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   parameter is keyword-only. See the entry under **Bug fixes** (#4089, #4090, #4091) for the details and the
   migration.
 
+* `MKDDescriptor` runs in `float16` and `bfloat16`. Its gradient-embedding and spatial-encoding stages were held in
+  a plain `dict`, so `.to(device, dtype)` never reached their buffers and a half-precision input failed at the
+  whitening matmul with `expected m1 and m2 to have the same dtype`. They are now an `nn.ModuleDict`; float32 and
+  float64 outputs are byte-identical, and `state_dict()` gains the stages' buffer keys (`feats.<parametrization>.*`),
+  so a state dict saved by an earlier release loads with `strict=False`.
+
 * `DescriptorMatcherWithSteerer(normalize=True)`, `DiscreteSteerer.steer_descriptions(normalize=True)` and the
   `MKD` descriptors normalise with an `eps` representable in the
   input dtype, so an all-zero float16 descriptor normalises to zero instead of NaN, the same guard `SIFTDescriptor`
