@@ -141,7 +141,10 @@ class PatchDominantGradientOrientation(nn.Module):
         left = torch.gather(ang_bins, 1, indices_left.reshape(-1, 1)).reshape(-1)
         center = values
         right = torch.gather(ang_bins, 1, indices_right.reshape(-1, 1)).reshape(-1)
-        c_subpix = 0.5 * (left - right) / (left + right - 2.0 * center)
+        # A flat patch has an empty histogram (a zero-gradient pixel contributes no magnitude), and a
+        # uniform one has no peak: the parabolic refinement is `0 / 0` there, so it is skipped.
+        denom = left + right - 2.0 * center
+        c_subpix = torch.where(denom != 0, 0.5 * (left - right) / denom, torch.zeros_like(denom))
         angle = -((2.0 * pi * (indices.to(patch.dtype) + c_subpix) / float(self.num_ang_bins)) - pi)
         return angle
 

@@ -118,6 +118,20 @@ class TestOrientationHalfPrecisionIsFinite(BaseTester):
         assert out.dtype == half_dtype
         assert torch.isfinite(out).all()
 
+    @pytest.mark.parametrize("ori_dtype", [torch.float16, torch.bfloat16, torch.float32])
+    def test_flat_patch_backward_is_finite(self, device, ori_dtype):
+        # A flat patch has no orientation; `atan2`'s `1 / eps` derivative there is an artefact that
+        # overflowed to `inf` through the float16 cast and reached the patch as NaN (all 1024 pixels).
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        if not supports_replicate_padding(device, ori_dtype):
+            pytest.skip(f"no replicate-pad kernel for {ori_dtype} on {device.type}")
+        patches = torch.zeros(2, 1, 32, 32, device=device, dtype=ori_dtype, requires_grad=True)
+        out = PatchDominantGradientOrientation(32).to(device, ori_dtype)(patches)
+        out.sum().backward()
+        assert patches.grad is not None and torch.isfinite(patches.grad).all()
+        assert bool((patches.grad == 0).all()), patches.grad.abs().max().item()
+
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_flat_image_laf(self, device, half_dtype):
         if device.type == "mps":

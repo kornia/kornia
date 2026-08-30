@@ -200,9 +200,8 @@ class TestScaleSpaceDetector(BaseTester):
 
     def test_a_weighted_negative_response_never_sorts_below_the_padding(self, device, dtype):
         # A weight *divides* a negative score, and a small weight can push the quotient past the
-        # dtype's range: -inf sorts below the `finfo.min / 2` sentinel an unfilled slot carries into
-        # the ranking, so a non-detection outranked a real one. The weighting is bounded above the
-        # sentinel instead.
+        # dtype's range: -inf ties with the `-inf` an unfilled slot carries into the ranking, so a
+        # non-detection could outrank a real one. The weighted score is kept finite instead.
         floor = -float(torch.finfo(dtype).max) / 4
         spike = -float(torch.finfo(dtype).max) / 8
 
@@ -223,7 +222,62 @@ class TestScaleSpaceDetector(BaseTester):
         filled = lafs.ne(0).any(dim=-1).any(dim=-1)
         assert int(filled.sum()) == 4, "expected all four spikes"
         assert torch.isfinite(resps).all(), f"a weighted score overflowed: {resps.tolist()}"
-        assert bool((resps[filled] > torch.finfo(dtype).min / 2).all()), "a detection sorts below the sentinel"
+
+    def test_an_extreme_finite_response_still_outranks_the_padding(self, device, dtype):
+        # `finfo.min / 2` is not below every finite response: four maxima at `-2e38` (float32) on a
+        # `finfo.min` floor are real detections, and the single-image path returned all four while
+        # the batched top-K preferred the sentinel and returned none. Padding is ranked with `-inf`,
+        # and a finite response, however extreme, sorts ahead of it on both paths.
+        floor = float(torch.finfo(dtype).min)
+        spike = -float(torch.finfo(dtype).max) * 0.6
+
+        class ExtremeSpikes(torch.nn.Module):
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                out = torch.full_like(x, floor)
+                if out.shape[-1] == 96:
+                    for y, xx in ((24, 24), (24, 72), (72, 24), (72, 72)):
+                        out[:, :, out.shape[2] // 2, y, xx] = spike
+                return out
+
+        det = ScaleSpaceDetector(4, resp_module=ExtremeSpikes(), scale_space_response=True, mr_size=3.0).to(
+            device, dtype
+        )
+        img = torch.zeros(2, 1, 96, 96, device=device, dtype=dtype)
+        lafs1, resps1 = det(img[:1])
+        lafs2, resps2 = det(img)
+        filled1 = lafs1.ne(0).any(dim=-1).any(dim=-1)
+        filled2 = lafs2.ne(0).any(dim=-1).any(dim=-1)
+        assert int(filled1.sum()) == 4, f"single-image path lost a detection: {resps1.tolist()}"
+        assert int(filled2[0].sum()) == 4 and int(filled2[1].sum()) == 4, f"batched path lost one: {resps2.tolist()}"
+        assert torch.isfinite(resps2).all()
+        self.assert_close(resps2[0], resps1[0])
+
+    def test_subpixel_refinement_cannot_cross_the_mask(self, device, dtype):
+        # The mask is checked at the integer NMS site, but the sub-pixel step moves the centre. A
+        # parabola peaked at x = 31.6 has its discrete maximum at x = 32; a mask allowing only
+        # x >= 32 passed that site and returned a centre of 31.6, inside the zero region. The refined
+        # centre is re-checked against the resampled mask conservatively (every pixel it touches).
+        class Parabola(torch.nn.Module):
+            def forward(self, x: torch.Tensor, sigmas: torch.Tensor) -> torch.Tensor:
+                B, L, H, W = x.shape[0], x.shape[2], x.shape[-2], x.shape[-1]
+                xs = torch.arange(W, device=x.device, dtype=x.dtype).view(1, 1, 1, 1, W)
+                ys = torch.arange(H, device=x.device, dtype=x.dtype).view(1, 1, 1, H, 1)
+                ls = torch.arange(L, device=x.device, dtype=x.dtype).view(1, 1, L, 1, 1)
+                return (10.0 - (xs - 31.6) ** 2 - (ys - 48.0) ** 2 - (ls - L // 2) ** 2).expand(B, 1, L, H, W).clone()
+
+        det = ScaleSpaceDetector(1, resp_module=Parabola(), scale_space_response=True, mr_size=1.0).to(device, dtype)
+        img = torch.zeros(1, 1, 96, 96, device=device, dtype=dtype)
+        mask = torch.zeros(1, 1, 96, 96, device=device, dtype=torch.bool)
+        mask[..., 32:] = True
+        lafs, resps = det(img, mask)
+        assert bool((lafs == 0).all()) and bool((resps == 0).all()), (
+            f"a refined centre at {lafs[0, 0, :, 2].tolist()} lies in the masked-out region"
+        )
+        # Control: the same peak is returned, refined, when the mask allows the pixels it touches.
+        mask[..., 31:] = True
+        lafs, resps = det(img, mask)
+        assert bool(resps[0, 0] > 0)
+        self.assert_close(lafs[0, 0, :, 2], torch.tensor([31.6, 48.0], device=device, dtype=dtype), atol=0.2, rtol=0)
 
     def test_fill_sentinel_follows_the_response_dtype(self, device, dtype):
         # The top-K sentinel is written into the *response* tensor, so it must fit that dtype: a
@@ -603,14 +657,32 @@ class TestMultiResolutionDetector(BaseTester):
         assert float(ratio.min()) >= 0.2 - 1e-2 and float(ratio.max()) <= 1.0 + 1e-2
         assert not torch.allclose(resps[0][keep], resps_plain[0][keep_plain])
 
-    def test_response_function_may_return_a_smaller_map(self, device, dtype):
-        # A valid-convolution response net returns a map that is a few pixels smaller than the level;
-        # the multi-channel check only asks for a single (1, 1, H, W) map, not for the level's size.
-        torch.manual_seed(0)
+    def test_response_map_must_match_the_level_size(self, device, dtype):
+        # A response index is decoded as a level pixel with no offset, so a valid-convolution net
+        # that returns a smaller map put every keypoint one pixel up and left of its peak and had
+        # the mask resampled onto the shifted geometry. Nothing can infer the offset from the shape,
+        # so a map of another size is rejected rather than silently misplaced.
         kernel = torch.ones(1, 1, 3, 3, device=device, dtype=dtype) / 9
         det = MultiResolutionDetector(lambda x: torch.nn.functional.conv2d(x, kernel), num_features=8).to(device, dtype)
-        lafs, resps = det(torch.rand(1, 1, 64, 64, device=device, dtype=dtype))
-        assert lafs.shape == (1, 8, 2, 3) and int((resps != 0).sum()) > 0
+        with pytest.raises(Exception, match=r"spatial size"):
+            det(torch.rand(1, 1, 64, 64, device=device, dtype=dtype))
+
+    def test_a_nan_weight_does_not_consume_a_slot(self, device, dtype):
+        # `s * NaN` sorts first in `topk`, so one NaN pixel in a float mask took a slot on every
+        # pyramid level and displaced a real maximum (18 filled slots became 13); `ScaleSpaceDetector`
+        # gates its candidates with `weight > 0`, which drops NaN, and this detector does the same.
+        torch.manual_seed(0)
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        det = self._make_detector(num_features=20).to(device, dtype)
+        lafs_ref, _ = det(inp)
+        mask = torch.ones(1, 1, 64, 64, device=device, dtype=dtype)
+        mask[0, 0, 30, 30] = float("nan")
+        lafs, resps = det(inp, mask)
+        filled_ref = lafs_ref.ne(0).any(dim=-1).any(dim=-1)
+        filled = lafs.ne(0).any(dim=-1).any(dim=-1)
+        assert torch.isfinite(resps).all()
+        # the NaN pixel suppresses its neighbourhood on every level, nothing more
+        assert int(filled_ref.sum()) - 4 <= int(filled.sum()) <= int(filled_ref.sum())
 
     def test_mask_spatial_size_must_match_the_image(self, device, dtype):
         # `KORNIA_CHECK_SHAPE`'s named dims are free per call, so on their own they let a mask

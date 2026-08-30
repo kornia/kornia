@@ -441,6 +441,20 @@ class TestMKDDescriptor(BaseTester):
         fresh.load_state_dict(new, strict=True)
         assert bool((fresh.state_dict()[key] == 0).all())
 
+    def test_partial_stage_state_dict_fails_strictly(self, device):
+        # The legacy fill is for a state dict with *no* `feats.*` keys. One saved by this release
+        # that lost a single stage buffer is a corrupt checkpoint, and a strict load has to say so
+        # rather than silently fill the hole from the live instance.
+        mkd = MKDDescriptor(patch_size=19, kernel_type="concat", whitening=None).to(device)
+        partial = mkd.state_dict()
+        key = next(k for k in partial if k.startswith("feats."))
+        del partial[key]
+        fresh = MKDDescriptor(patch_size=19, kernel_type="concat", whitening=None).to(device)
+        with pytest.raises(RuntimeError, match=key.replace(".", r"\.")):
+            fresh.load_state_dict(partial, strict=True)
+        # non-strict still loads, as it does for any missing key
+        fresh.load_state_dict(partial, strict=False)
+
     @pytest.mark.parametrize("bs", [1, 3, 7])
     def test_batch_shape(self, bs, device):
         mkd = MKDDescriptor(patch_size=19, kernel_type="concat", whitening=None).to(device)

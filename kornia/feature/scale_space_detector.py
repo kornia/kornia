@@ -130,17 +130,17 @@ def _weight_scores(scores: torch.Tensor, weights: torch.Tensor) -> torch.Tensor:
     this runs; their divisor is replaced by one so no ``inf`` is produced there.
 
     The quotient of a negative score and a small weight can leave the dtype's range, and ``-inf``
-    would sort *below* the ``finfo.min / 2`` sentinel an unfilled slot carries into the ranking, so
-    the arithmetic runs in float32 for half-precision input and the result is bounded at
-    ``finfo.min / 4`` of the score dtype before the cast back: a weighted detection always stays
-    ahead of the padding. Wider dtypes are unchanged wherever the quotient is representable.
+    is the sentinel an unfilled slot carries into the ranking, so the arithmetic runs in float32
+    for half-precision input and the result is bounded at ``finfo.min`` of the score dtype before
+    the cast back: a weighted detection is finite and so always stays ahead of the padding. Wider
+    dtypes are unchanged wherever the quotient is representable.
     """
     dtype = scores.dtype
     wide = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     s, w = scores.to(wide), weights.to(wide)
     divisor = torch.where(w > 0, w, torch.ones_like(w))
     out = torch.where(s >= 0, s * w, s / divisor)
-    return out.clamp_min(torch.finfo(dtype).min / 4).to(dtype)
+    return out.clamp_min(torch.finfo(dtype).min).to(dtype)
 
 
 def _create_octave_mask(mask: torch.Tensor, octave_resp: torch.Tensor) -> torch.Tensor:
@@ -361,11 +361,12 @@ class ScaleSpaceDetector(nn.Module):
         # `_resize_mask`), so a zero region drops every candidate it touches; a weight scales the
         # score of the candidates it keeps.
         oct_mask: Optional[torch.Tensor] = None
+        oct_keep: Optional[torch.Tensor] = None
         if mask is not None:
             resampled = _create_octave_mask(mask, oct_resp)
-            keep = resampled > 0
-            max_nms_mask = max_nms_mask & keep
-            min_nms_mask = min_nms_mask & keep
+            oct_keep = resampled > 0
+            max_nms_mask = max_nms_mask & oct_keep
+            min_nms_mask = min_nms_mask & oct_keep
             # A boolean or integer mask resamples to exactly 0/1, and the zeros are already dropped
             # above, so weighting by it is a no-op over the whole volume; only real weights run.
             if mask.is_floating_point():
@@ -430,11 +431,10 @@ class ScaleSpaceDetector(nn.Module):
                 resp_flat_best = resp_flat.new_zeros(1, 0)
                 max_coords_best = coord_flat.new_zeros(1, 0, 3)
         else:
-            # Batched fallback: mask non-candidates to -inf so they lose top-K. The sentinel is
-            # written into the response, so it is taken from the response dtype: a response module
-            # may emit a narrower dtype than the image (a learned response under autocast).
-            fill = torch.finfo(resp_flat.dtype).min / 2
-            resp_masked = resp_flat.masked_fill(~mask_flat, fill)
+            # Batched fallback: mask non-candidates to -inf so they lose top-K to every finite
+            # response. (A finite sentinel such as `finfo.min / 2` is not below every finite
+            # response, and outranked a genuine extreme maximum.)
+            resp_masked = resp_flat.masked_fill(~mask_flat, float("-inf"))
             k_eff = min(num_feats, resp_masked.size(1))
             resp_flat_best, idxs = torch.topk(resp_masked, k=k_eff, dim=1)
             max_coords_best = torch.gather(coord_flat, 1, idxs.unsqueeze(-1).expand(-1, -1, 3))
@@ -473,13 +473,28 @@ class ScaleSpaceDetector(nn.Module):
             & (cy - half_s >= 5)
             & (cy + half_s <= y_max)
         )
-        # A slot is filled by a candidate whose frame lies inside the image. Everything else --
-        # a batched top-K sentinel, or a candidate the border check rejects -- carries the
-        # sentinel from here so that it loses the cross-octave ranking in `_detect` to every real
-        # detection, including a negative one; `_detect` zeroes its response and LAF once ranked.
+        if oct_keep is not None:
+            # The mask was checked at the integer NMS site, and the sub-pixel step has since moved
+            # the centre -- across the mask boundary, when the true peak lies just inside the zero
+            # region. Re-check the refined centre against the resampled mask, conservatively: every
+            # octave pixel the centre touches (its floor and ceil in x and y) has to be allowed, as a
+            # zero region already suppresses every candidate within one octave pixel of it.
+            keep_flat = oct_keep.reshape(oct_keep.shape[0], -1)  # (1 or B, H*W)
+            if keep_flat.shape[0] != B:
+                keep_flat = keep_flat.expand(B, -1)
+            x0 = cx.floor().long().clamp_(0, w - 1)
+            x1 = cx.ceil().long().clamp_(0, w - 1)
+            y0 = cy.floor().long().clamp_(0, h - 1)
+            y1 = cy.ceil().long().clamp_(0, h - 1)
+            for yy in (y0, y1):
+                for xx in (x0, x1):
+                    good_mask = good_mask & torch.gather(keep_flat, 1, yy * w + xx)
+        # A slot is filled by a candidate whose frame lies inside the image and the mask. Everything
+        # else -- a batched top-K sentinel, or a candidate the border or mask check rejects --
+        # carries `-inf` from here so that it loses the cross-octave ranking in `_detect` to every
+        # real detection, however negative; `_detect` zeroes its response and LAF once ranked.
         filled = is_cand & good_mask
-        fill = torch.finfo(resp_flat_best.dtype).min / 2
-        resp_flat_best = torch.where(filled, resp_flat_best, torch.full_like(resp_flat_best, fill))
+        resp_flat_best = resp_flat_best.masked_fill(~filled, float("-inf"))
         current_lafs.mul_(px_size)
         return resp_flat_best, current_lafs, filled
 
@@ -528,16 +543,16 @@ class ScaleSpaceDetector(nn.Module):
         # Sort and keep best n across all octaves. Sparse per-octave top-K may yield fewer total
         # candidates than num_feats (e.g. small images with very few NMS maxima); the result is
         # padded to preserve the shape contract [B, num_feats, ...]. Every unfilled slot -- the
-        # padding, a batched top-K sentinel, a border-rejected candidate -- carries the `fill`
-        # sentinel through the ranking so that a genuine negative detection still sorts ahead of
-        # it, and is zeroed only afterwards.
+        # padding, a batched top-K sentinel, a border- or mask-rejected candidate -- carries `-inf`
+        # through the ranking so that a genuine detection, however negative, still sorts ahead of
+        # it, and is zeroed only afterwards. (`_weight_scores` keeps a weighted score finite.)
         responses = torch.cat([r[0] for r in results], 1)
         lafs = torch.cat([r[1] for r in results], 1)
         filled = torch.cat([r[2] for r in results], 1)
         n_candidates = responses.size(1)
         if n_candidates < num_feats:
             pad = num_feats - n_candidates
-            responses = F.pad(responses, (0, pad), value=torch.finfo(responses.dtype).min / 2)
+            responses = F.pad(responses, (0, pad), value=float("-inf"))
             lafs = F.pad(lafs, (0, 0, 0, 0, 0, pad))
             filled = F.pad(filled, (0, pad))
         responses, idxs = torch.topk(responses, k=num_feats, dim=1)
@@ -730,21 +745,33 @@ class MultiResolutionDetector(nn.Module):
             "For a multi-channel image, convert it to grayscale first or use a response function that "
             "reduces the channels to one map.",
         )
+        # A response index is decoded as a level pixel with no offset or stride, so a map of another
+        # size -- a valid-convolution net -- would put every keypoint off its peak and have the mask
+        # resampled onto the wrong geometry. Nothing can infer the offset from the shape.
+        KORNIA_CHECK(
+            resp_map.shape[-2:] == level_img.shape[-2:],
+            f"model must return a response map with the level's spatial size {tuple(level_img.shape[-2:])}. "
+            f"Got {tuple(resp_map.shape[-2:])}; pad the response function so that its output matches its input.",
+        )
         det_map = self.nms(self.remove_borders(resp_map))
         # The mask is applied to the maxima, not to the response the NMS reads: a hard edge in the
         # response would turn every pixel beside a zeroed neighbour into a "maximum".
         if mask is not None:
             weights = _resize_mask(mask, det_map)
-            # A boolean or integer mask resamples to exactly 0/1: dropping is all it can do.
-            det_map = _weight_scores(det_map, weights) if mask.is_floating_point() else det_map * weights
+            # A boolean or integer mask resamples to exactly 0/1: dropping is all it can do. A float
+            # mask is gated the same way `ScaleSpaceDetector` gates its candidates, `weight > 0`, which
+            # also drops a NaN weight: `s * NaN` sorts first in `topk` and would consume a slot.
+            if mask.is_floating_point():
+                det_map = _weight_scores(det_map, weights).masked_fill(~(weights > 0), 0.0)
+            else:
+                det_map = det_map * weights
         w = det_map.shape[-1]
         det_flat = det_map.view(-1)  # (H*W,)
 
         # Mask out non-maxima (zeroed by NMS) and below-threshold scores, then topk.
         # Using masked_fill + topk instead of nonzero: avoids data-dependent output shapes,
         # supports score_threshold, and is compatible with torch.compile.
-        fill = torch.finfo(det_flat.dtype).min / 2
-        det_masked = det_flat.masked_fill(det_flat <= self.score_threshold, fill)
+        det_masked = det_flat.masked_fill(det_flat <= self.score_threshold, float("-inf"))
         k = min(num_kp, det_flat.numel())
         top_scores, top_flat_idx = torch.topk(det_masked, k=k)
 

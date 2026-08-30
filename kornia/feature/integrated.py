@@ -523,6 +523,11 @@ class LocalFeatureMatcher(nn.Module):
             current_lafs0 = lafs0[batch_idx][valid0]
             current_lafs1 = lafs1[batch_idx][valid1]
 
+            # `matcher` is an arbitrary module with no obligation to accept a `(0, D)` input, and a
+            # textureless or fully masked image leaves nothing to match anyway.
+            if current_descs0.shape[0] == 0 or current_descs1.shape[0] == 0:
+                continue
+
             dists, idxs = self.matcher(current_descs0, current_descs1)
             if len(idxs) == 0:
                 continue

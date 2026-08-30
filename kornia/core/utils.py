@@ -150,13 +150,16 @@ def _l2_normalize(input: torch.Tensor, dim: int = 1) -> torch.Tensor:
         dim: the dimension to normalise along.
 
     Returns:
-        the normalised tensor, in ``input``'s dtype. An all-zero vector normalises to zero; its
-        gradient is that of the ``eps`` clamp, ``1 / eps``, and is not meaningful in any dtype
-        (finite but ~1e12 in float32, overflowing to ``inf`` once cast back to float16).
+        the normalised tensor, in ``input``'s dtype. An all-zero vector normalises to zero with a
+        zero gradient: a zero vector has no direction, and the gradient of the ``eps`` clamp there,
+        ``1 / eps``, is ~1e12 in float32 and overflows to ``inf`` once cast back to float16. A
+        non-zero vector keeps ``normalize``'s value and gradient.
     """
-    if input.dtype == torch.float16:
-        return F.normalize(input.float(), dim=dim, eps=1e-12).to(input.dtype)
-    return F.normalize(input, dim=dim, eps=1e-12)
+    x = input.float() if input.dtype == torch.float16 else input
+    # `amax` rather than a squared norm, so a tiny non-zero vector cannot underflow into the zero branch.
+    nonzero = x.abs().amax(dim=dim, keepdim=True) > 0
+    out = torch.where(nonzero, F.normalize(x, dim=dim, eps=1e-12), torch.zeros_like(x))
+    return out.to(input.dtype)
 
 
 def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:

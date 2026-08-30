@@ -34,10 +34,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   weights the scores, it is resampled conservatively so a thin zero region survives the coarse levels, and it is
   applied to the non-maxima-suppression output, so its edge cannot manufacture maxima (#4102). A mask whose dtype
   differs from the image no longer promotes the response dtype, and a mask that is not `(1 or B, 1, H, W)` for the
-  image is rejected instead of stretched or broadcast onto the wrong axis. `ScaleSpaceDetector` additionally stops
-  returning its own top-K sentinel as a detection for a batch and no longer returns a frame for a candidate its
-  border check rejected; a short result is sorted in both detectors. `detect_features_on_single_level`'s new `mask`
-  parameter is keyword-only. See the entry under **Bug fixes** (#4089, #4090, #4091) for the details and the
+  image is rejected instead of stretched or broadcast onto the wrong axis -- that includes an image-shaped
+  `(1, C, H, W)` mask and a coarse `(N, H/8, W/8)` one, which `LocalFeatureMatcher` used to accept and silently
+  ignore (the old docstring said "same shape as the input image") and now forwards to the detector's check.
+  `ScaleSpaceDetector` additionally stops returning its own top-K sentinel as a detection for a batch, no longer
+  returns a frame for a candidate its border check rejected, and re-checks a sub-pixel-refined centre against the
+  mask; a short result is sorted in both detectors. `detect_features_on_single_level`'s new `mask` parameter is
+  keyword-only, and it now requires the response map to have the level's spatial size: a valid-convolution
+  response net that returned a smaller map had every keypoint decoded one pixel off its peak, since a response
+  index is read as a level pixel with no offset, and is rejected with a message rather than silently misplaced.
+  See the entry under **Bug fixes** (#4089, #4090, #4091) for the details and the
   migration.
 
 * `MKDDescriptor` runs in `float16` and `bfloat16`. Its gradient-embedding and spatial-encoding stages were held in
@@ -45,7 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whitening matmul with `expected m1 and m2 to have the same dtype`. They are now an `nn.ModuleDict`; float32 and
   float64 outputs are byte-identical, and `state_dict()` gains the stages' buffer keys (`feats.<parametrization>.*`).
   A state dict saved by an earlier release still loads with `strict=True`: those buffers are derived from the
-  constructor arguments, and the missing keys are filled in from the module being loaded into.
+  constructor arguments, and when a state dict has no `feats.*` key at all they are filled in from the module being
+  loaded into (one that has some and lost one is reported by `strict=True`, as for any other missing key). The
+  reverse is not covered: a state dict saved by this release carries the `feats.*` keys and fails `strict=True` on
+  an earlier kornia, which does not know them; load it with `strict=False` there.
 
 * `DescriptorMatcherWithSteerer(normalize=True)`, `DiscreteSteerer.steer_descriptions(normalize=True)` and the
   `MKD` descriptors, like `SIFTDescriptor` and `HardNet`, L2-normalise a float16 input in float32 and cast back,
@@ -260,8 +269,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   suppresses. The weights are cast to the image dtype, so a weight a half-precision image cannot hold rounds to
   zero and suppresses, and clamped to one, so a float 0/255 mask (an OpenCV mask through `.astype(np.float32)`)
   means what the integer one means rather than scaling every score by 255. The weighting runs in float32 for
-  half-precision input and is bounded above the padding sentinel, so a negative score divided by a small weight
-  cannot overflow to `-inf` and sort below an unfilled slot. The mask must be `(1 or B, 1, H, W)` with the
+  half-precision input and is bounded at the dtype's most negative finite value, so a negative score divided by a
+  small weight cannot overflow to `-inf`; an unfilled slot is ranked with `-inf` (not a finite sentinel such as
+  `finfo.min / 2`, which a genuine extreme response could sort below, and did: four float32 maxima at `-2e38`
+  were returned for a single image and dropped for a batch), so every finite detection precedes the padding. The
+  mask is checked at the integer maximum and again at the sub-pixel-refined centre, conservatively (every octave
+  pixel the centre touches), so the refinement cannot carry a detection into the zero region. A NaN weight
+  suppresses rather than winning the ranking. The mask must be `(1 or B, 1, H, W)` with the
   image's spatial size. It is resampled onto every pyramid level or octave with a
   min-pool rather than an interpolation, so a zero region suppresses every level pixel it touches and a two-pixel
   zero stripe does not vanish at a factor-four level. And it is applied to the non-maxima-suppression output, not
@@ -339,7 +353,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   match each other at zero distance -- with plain nearest-neighbour matching the padded block became the largest
   consistent set of "correspondences" and captured RANSAC (`SIFTFeature(400)` on two crops of one image: 0.09 px
   mean reprojection error on `main`, 31 px with the zero LAFs matched, 0.09 px with them dropped). The matcher now
-  filters zero LAFs before matching; `match_snn`, `match_mnn` and `match_smnn` reject the block on their own, and
+  filters zero LAFs before matching, and skips a pair when either side has nothing left (`matcher` is an arbitrary
+  module with no obligation to accept a `(0, D)` input); the ratio tests `match_snn` and `match_smnn` reject the
+  block on their own (`match_mnn` and `match_nn` do not: identical zero descriptors are mutual nearest neighbours
+  at distance zero), and
   `LocalFeature.forward` documents the one-line filter for a hand-rolled `match_nn` pipeline. The feature benchmark
   does the same before affine/orientation/description, avoiding meaningless descriptor work and the quadratic
   distance-matrix cost of padded rows; its CUDA timers also synchronize around the measured detector and full
@@ -364,8 +381,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   underflows long before that -- so at every pixel with a zero gradient both sat on their singular point and the
   input gradient came back NaN (9 of 4096 on ordinary random `32x32` patches). The gradient magnitude and
   orientation are now computed in float32 for `float16` input and cast back, and the RootSIFT `sqrt` is computed
-  in float32 for `float16` as well; `bfloat16`, whose exponent range holds both the guard and the squares, and
-  the wider dtypes are byte-identical.
+  in float32 for `float16` as well. An *exactly* flat patch -- what a zero-LAF padding slot samples -- was the
+  remaining case: the guard gave every zero-gradient pixel a magnitude of `sqrt(eps)`, so a flat patch's
+  descriptor was a unit vector built from `eps` (float32) or a subnormal one (float16) whose `1 / norm` gradient,
+  together with `atan2`'s `1 / eps`, overflowed through the float16 cast into an all-NaN input gradient (and was
+  a meaningless ~1e8 in float32). A zero-gradient pixel now contributes a zero magnitude, a zero vector normalises
+  to zero with a zero gradient (the `eps` clamp's `1 / eps` was never meaningful), and
+  `PatchDominantGradientOrientation` skips its parabolic refinement on an empty or uniform histogram instead of
+  dividing `0 / 0`; a flat patch has a zero SIFT descriptor and a zero input gradient in every dtype. `bfloat16`,
+  whose exponent range holds both the guard and the squares, and the wider dtypes are byte-identical at every
+  pixel whose gradient is not exactly zero; a patch with such pixels (a saturated region) loses their `sqrt(eps)`
+  contribution, a change of at most `1e-5` per pixel before normalisation.
 
 ## :rocket: [0.6.11] - 2022-03-28
 ### :new:  New Features

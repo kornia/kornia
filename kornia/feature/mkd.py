@@ -609,8 +609,10 @@ class MKDDescriptor(nn.Module):
         # Compute true output_dims.
         self.output_dims: int = min(output_dims, self.odims)
         # The stages used to live in a plain dict, so a state dict saved by an earlier release has
-        # no `feats.*` keys. Those buffers are derived from the constructor arguments, so a strict
-        # load fills the missing ones in from this instance rather than failing on them.
+        # no `feats.*` keys at all. Those buffers are derived from the constructor arguments, so a
+        # strict load fills them in from this instance rather than failing on them. A state dict
+        # that has *some* `feats.*` keys was saved by this layout and is left alone, so a strict
+        # load still reports one it lost.
         self._register_load_state_dict_pre_hook(self._fill_missing_stage_buffers)
 
         # Load supervised(lw)/unsupervised(pca) model trained on training_set.
@@ -624,8 +626,10 @@ class MKDDescriptor(nn.Module):
         self.eval()
 
     def _fill_missing_stage_buffers(self, state_dict: Dict[str, torch.Tensor], prefix: str, *args: Any) -> None:
+        if any(key.startswith(prefix + "feats.") for key in state_dict):
+            return
         for name, buf in self.named_buffers():
-            if name.startswith("feats.") and prefix + name not in state_dict:
+            if name.startswith("feats."):
                 state_dict[prefix + name] = buf.detach().clone()
 
     def forward(self, patches: torch.Tensor) -> torch.Tensor:

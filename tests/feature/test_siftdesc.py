@@ -143,6 +143,38 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         assert patches.grad is not None and torch.isfinite(patches.grad).all()
 
     @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
+    @pytest.mark.parametrize("rootsift", [False, True])
+    def test_flat_patch_backward_is_finite(self, device, desc_dtype, rootsift):
+        # The flat forward and the random-patch backward were each pinned, never their intersection:
+        # on an exactly flat patch -- what a zero-LAF padding slot samples -- the zero-norm descriptor
+        # had the `eps` clamp's `1 / eps` gradient, `1e12` in float32 and `inf` once cast to float16,
+        # and the orientation's `atan2` a `1 / eps` of its own; the input gradient was NaN in float16
+        # (256 of 256) and ~1e8 in float32. A zero gradient has no orientation and a zero vector no
+        # direction, so both branches now have a zero derivative.
+        if not supports_replicate_padding(device, desc_dtype):
+            pytest.skip(f"no replicate-padding kernel for {desc_dtype} on {device.type}")
+        patches = torch.zeros(2, 1, 16, 16, device=device, dtype=desc_dtype, requires_grad=True)
+        out = SIFTDescriptor(16, rootsift=rootsift).to(device, desc_dtype)(patches)
+        out.sum().backward()
+        assert torch.isfinite(out).all()
+        assert patches.grad is not None and torch.isfinite(patches.grad).all(), patches.grad.abs().max()
+        assert bool((patches.grad == 0).all()), f"flat patch has a gradient of {patches.grad.abs().max().item()}"
+
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64])
+    def test_l2_normalize_zero_vector_has_a_zero_gradient(self, device, desc_dtype):
+        from kornia.core.utils import _l2_normalize
+
+        x = torch.zeros(3, 8, device=device, dtype=desc_dtype, requires_grad=True)
+        _l2_normalize(x, dim=1).sum().backward()
+        assert x.grad is not None and bool((x.grad == 0).all()), x.grad
+        # and a non-zero vector keeps `F.normalize`'s value and gradient
+        y = torch.rand(3, 8, device=device, dtype=desc_dtype, requires_grad=True)
+        y_ref = y.detach().clone().requires_grad_(True)
+        _l2_normalize(y, dim=1).sum().backward()
+        torch.nn.functional.normalize(y_ref.float(), dim=1, eps=1e-12).to(desc_dtype).sum().backward()
+        self.assert_close(y.grad, y_ref.grad)
+
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
     def test_dense_sift(self, device, desc_dtype):
         if not supports_replicate_padding(device, desc_dtype):
             # `spatial_gradient` pads with mode="replicate"; torch 2.5.1 has no float16 CPU kernel.

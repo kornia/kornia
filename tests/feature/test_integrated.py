@@ -165,6 +165,22 @@ class TestLocalFeatureMatcherEmptyPath(BaseTester):
         assert out["lafs0"][0].shape == (0, 2, 3)
         assert out["keypoints0"].shape == (0, 2)
 
+    def test_an_empty_side_never_reaches_the_matcher(self, device, dtype):
+        # Filtering the zero-LAF padding can leave a side with no descriptor at all. `matcher` is an
+        # arbitrary module with no obligation to accept a `(0, D)` input, so a textureless pair called
+        # it with one and could raise; the pair is skipped instead, which is what `no_match_output` is for.
+        class RejectsEmpty(torch.nn.Module):
+            def forward(self, d0: torch.Tensor, d1: torch.Tensor):
+                if d0.shape[0] == 0 or d1.shape[0] == 0:
+                    raise RuntimeError("empty descriptors")
+                return kornia.feature.match_snn(d0, d1, 0.9)
+
+        matcher = kornia.feature.LocalFeatureMatcher(kornia.feature.SIFTFeature(50), RejectsEmpty()).to(device, dtype)
+        img = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        out = matcher({"image0": img, "image1": img})
+        assert out["keypoints0"].shape == (0, 2)
+        assert out["lafs0"].shape == (1, 0, 2, 3)
+
 
 class TestLAFDescriptor(BaseTester):
     def test_same(self, device, dtype):

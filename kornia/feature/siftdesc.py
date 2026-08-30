@@ -50,14 +50,24 @@ def _gradient_magnitude_orientation(
     before that, so a flat pair of pixels -- ordinary with a 10-bit mantissa -- would send NaN
     into the input gradient. The result is cast back. bfloat16 has float32's exponent range, so
     both the guard and the squares are representable there and it takes the same expression as
-    float32 and float64; every dtype but float16 is unchanged.
+    float32 and float64.
+
+    A pixel with an exactly zero gradient has no orientation and contributes nothing: its magnitude
+    is zero rather than the guard's ``sqrt(eps)``, and its orientation is ``2pi`` (what the guarded
+    ``atan2`` returns) with a zero derivative rather than ``atan2``'s ``1 / eps``. Both were guard
+    artefacts: the ``sqrt(eps)`` magnitude made a flat patch's descriptor a unit vector built from
+    ``eps`` in float32 and a subnormal one in float16, whose ``1 / norm`` gradient overflowed through
+    the float16 cast into a NaN input gradient. A flat patch now has a zero descriptor and a zero
+    gradient in every dtype; every other pixel is unchanged.
     """
     dtype = gx.dtype
     if dtype == torch.float16:
         gx = gx.float()
         gy = gy.float()
-    mag = torch.sqrt(gx * gx + gy * gy + eps)
-    ori = torch.atan2(gy, gx + eps) + 2.0 * pi
+    sq = gx * gx + gy * gy
+    nonzero = sq > 0
+    mag = torch.where(nonzero, torch.sqrt(sq + eps), torch.zeros_like(sq))
+    ori = torch.where(nonzero, torch.atan2(gy, gx + eps) + 2.0 * pi, torch.full_like(sq, 2.0 * pi))
     return mag.to(dtype), ori.to(dtype)
 
 
