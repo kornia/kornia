@@ -140,19 +140,36 @@ def supports_2d_border_padding(device: torch.device) -> bool:
 _UNIMPLEMENTED_KERNEL_MSG = "not implemented for"
 
 
+class _UnsupportedProbeDtype(Exception):
+    """The device cannot hold the probe dtype at all -- MPS and float64 -- so it cannot run ``op``."""
+
+
+def _probe_zeros(device_type: str, dtype: torch.dtype, *shape: int) -> Tensor:
+    """Allocate a probe tensor, reporting "this device cannot hold ``dtype``" as a distinct error.
+
+    ``torch.zeros`` raises TypeError for a device/dtype pair it cannot represent (MPS and
+    float64). That is still "unsupported" and must not escape a helper whose whole contract is to
+    return a bool -- but a TypeError raised by the *operator* is a mis-written probe, and silently
+    reading it as "unsupported" would skip the guarded test on every build forever. Translating
+    only the allocation failure keeps the two apart.
+    """
+    try:
+        return torch.zeros(shape, device=device_type, dtype=dtype)
+    except TypeError as e:
+        raise _UnsupportedProbeDtype from e
+
+
 @cache
 def _supports_kernel_probe(op: Callable[[str, torch.dtype], object], device_type: str, dtype: torch.dtype) -> bool:
-    """Run ``op`` on a tiny tensor and report whether this build has a kernel for it.
+    """Run ``op`` on tiny tensors and report whether this build has a kernel for it.
 
-    ``op`` allocates its own probe tensors and then calls the operator, because a device that
-    cannot hold ``dtype`` at all (MPS and float64) raises TypeError while allocating, which is
-    still "unsupported" and must not escape a helper whose whole contract is to return a bool.
+    ``op`` allocates its probe tensors through :func:`_probe_zeros` and then calls the operator.
     Cached per (op, device type, dtype), so every probe below runs once per session and
     auto-enables once PyTorch fills the kernel in.
     """
     try:
         op(device_type, dtype)
-    except TypeError:
+    except _UnsupportedProbeDtype:
         return False
     except RuntimeError as e:
         if _UNIMPLEMENTED_KERNEL_MSG in str(e):
@@ -162,7 +179,7 @@ def _supports_kernel_probe(op: Callable[[str, torch.dtype], object], device_type
 
 
 def _replicate_padding_op(device_type: str, dtype: torch.dtype) -> None:
-    F.pad(torch.zeros(1, 1, 2, 2, device=device_type, dtype=dtype), (1, 1, 1, 1), mode="replicate")
+    F.pad(_probe_zeros(device_type, dtype, 1, 1, 2, 2), (1, 1, 1, 1), mode="replicate")
 
 
 def supports_replicate_padding(device: torch.device, dtype: torch.dtype) -> bool:
@@ -179,8 +196,8 @@ def supports_replicate_padding(device: torch.device, dtype: torch.dtype) -> bool
 
 def _grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
     F.grid_sample(
-        torch.zeros(1, 1, 2, 2, device=device_type, dtype=dtype),
-        torch.zeros(1, 2, 2, 2, device=device_type, dtype=dtype),
+        _probe_zeros(device_type, dtype, 1, 1, 2, 2),
+        _probe_zeros(device_type, dtype, 1, 2, 2, 2),
         align_corners=False,
     )
 
@@ -198,10 +215,7 @@ def supports_grid_sample(device: torch.device, dtype: torch.dtype) -> bool:
 
 
 def _conv2d_op(device_type: str, dtype: torch.dtype) -> None:
-    F.conv2d(
-        torch.zeros(1, 1, 3, 3, device=device_type, dtype=dtype),
-        torch.zeros(1, 1, 2, 2, device=device_type, dtype=dtype),
-    )
+    F.conv2d(_probe_zeros(device_type, dtype, 1, 1, 3, 3), _probe_zeros(device_type, dtype, 1, 1, 2, 2))
 
 
 def supports_conv2d(device: torch.device, dtype: torch.dtype) -> bool:
@@ -217,15 +231,17 @@ def supports_conv2d(device: torch.device, dtype: torch.dtype) -> bool:
 
 
 def _matmul_op(device_type: str, dtype: torch.dtype) -> None:
-    torch.zeros(2, 3, device=device_type, dtype=dtype) @ torch.zeros(3, 2, device=device_type, dtype=dtype)
+    _probe_zeros(device_type, dtype, 2, 3) @ _probe_zeros(device_type, dtype, 3, 2)
 
 
 def supports_matmul(device: torch.device, dtype: torch.dtype) -> bool:
-    """Whether this device has a matrix-multiply kernel for ``dtype``.
+    """Whether this device has a 2D matrix-multiply kernel for ``dtype``.
 
     Descriptor matching multiplies: :func:`kornia.feature.match_mnn` and friends route half
     precision around ``torch.cdist`` into a manual expand-and-multiply distance matrix, and
-    ``kornia.feature.steerers.DiscreteSteerer`` steers through ``F.linear``. torch 2.1.2 has no
+    ``kornia.feature.steerers.DiscreteSteerer`` steers through ``F.linear``. Both are 2D, so this
+    probes ``mm``/``addmm``; batched ``bmm`` is a separate kernel and needs its own probe. torch
+    2.1.2 has no
     float16 CPU ``addmm`` (bfloat16 is fine), so a test that hardcodes a half dtype rather than
     reading the injected one fails there on every job. Probed at runtime and cached per
     (device type, dtype), like :func:`supports_replicate_padding`.
@@ -234,7 +250,7 @@ def supports_matmul(device: torch.device, dtype: torch.dtype) -> bool:
 
 
 def _topk_op(device_type: str, dtype: torch.dtype) -> None:
-    torch.zeros(2, device=device_type, dtype=dtype).topk(k=1)
+    _probe_zeros(device_type, dtype, 2).topk(k=1)
 
 
 def supports_topk(device: torch.device, dtype: torch.dtype) -> bool:
