@@ -699,6 +699,21 @@ class TestYuv420ToRgb(BaseTester):
             imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
+        with pytest.raises(ShapeError):
+            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+            imguv = torch.empty(2, 2, 0, device=device, dtype=dtype)
+            kornia.color.yuv420_to_rgb(imgy, imguv)
+
+        with pytest.raises(ShapeError):
+            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+            imguv = torch.empty(2, 0, 2, device=device, dtype=dtype)
+            kornia.color.yuv420_to_rgb(imgy, imguv)
+
+    def test_empty_input(self, device, dtype):
+        imgy = torch.empty(1, 0, 0, device=device, dtype=dtype)
+        imguv = torch.empty(2, 0, 0, device=device, dtype=dtype)
+        assert kornia.color.yuv420_to_rgb(imgy, imguv).shape == (3, 0, 0)
+
     @pytest.mark.parametrize("name", list(_REFERENCE_COLORS))
     def test_unit(self, device, dtype, name):
         rgb_values, yuv_values = _REFERENCE_COLORS[name]
@@ -826,6 +841,16 @@ class TestYuv422ToRgb(BaseTester):
             imgy = torch.ones(1, 2, 2, device=device, dtype=dtype)
             imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
+
+        with pytest.raises(ShapeError):
+            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+            imguv = torch.empty(2, 4, 0, device=device, dtype=dtype)
+            kornia.color.yuv422_to_rgb(imgy, imguv)
+
+    def test_empty_input(self, device, dtype):
+        imgy = torch.empty(1, 4, 0, device=device, dtype=dtype)
+        imguv = torch.empty(2, 4, 0, device=device, dtype=dtype)
+        assert kornia.color.yuv422_to_rgb(imgy, imguv).shape == (3, 4, 0)
 
     @pytest.mark.parametrize("name", list(_REFERENCE_COLORS))
     def test_unit(self, device, dtype, name):
