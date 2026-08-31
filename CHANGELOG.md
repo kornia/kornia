@@ -84,8 +84,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sample reduced-precision CPU images in `float32` and cast the patches back. Half-precision CPU patches change as a
   result (they are computed with `float32` sampling coordinates, which is also more accurate for large images);
   `float32`, `float64`, CUDA, and MPS results are byte-for-byte unchanged. Both extractors also replace their
-  per-image Python loop with one batched `grid_sample` call over a `(B, N*PS, PS, 2)` grid, so they trace as a
-  single `fullgraph=True` graph; measured throughput is unchanged on CPU and MPS, where `grid_sample` dominates.
+  per-image Python loop with one batched `grid_sample` call over a `(B, N*PS, PS, 2)` grid. Both forms compile
+  under `fullgraph=True`, but the loop was unrolled at trace time into one `grid_sample` per batch element, so the
+  graph grew with the batch and was recompiled for every new batch size: tracing `extract_patches_simple` over
+  batches of 2, 3, 5 and 7 built four graphs of 2/3/5/7 `grid_sample` nodes before and builds two graphs of one
+  node now. Measured eager throughput is unchanged on CPU and MPS, where `grid_sample` dominates.
+
+* Make `load_pointcloud_ply` and `load_pointcloud_ply_binary` parse the PLY header instead of skipping a fixed
   number of lines. Both loaders skipped `header_size=8` lines and read everything after them as `x y z` triples, so a
   minimal PLY file (seven header lines, no `comment`) lost its first point to a header line -- the binary reader
   returned header bytes decoded as doubles -- and any file with extra vertex properties (normals, colours) or a

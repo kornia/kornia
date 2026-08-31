@@ -471,7 +471,9 @@ def extract_patches_simple(
     B, N, _, _ = laf.size()
     # Fold the (B*N, PS, PS, 2) grid to (B, N*PS, PS, 2) so one grid_sample call samples every
     # patch of every image, without a Python loop over B or a (B*N, CH, H, W) input copy.
-    grid = generate_patch_grid_from_normalized_LAF(img, nlaf, PS).view(B, N * PS, PS, 2)
+    # The grid follows the LAF device, so it is moved to the image: this function has always
+    # accepted a LAF on a different device than the image and returned a patch on the image's.
+    grid = generate_patch_grid_from_normalized_LAF(img, nlaf, PS).to(img.device).view(B, N * PS, PS, 2)
     patches = _grid_sample_patches(img, grid, h, w)
     return patches.view(B, ch, N, PS, PS).permute(0, 2, 1, 3, 4).contiguous()
 

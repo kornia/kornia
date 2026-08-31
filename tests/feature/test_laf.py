@@ -15,13 +15,15 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
 import kornia
 import kornia.geometry.transform.imgwarp
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding
 from testing.geometry.create import create_random_homography
 
 
@@ -475,6 +477,20 @@ class TestClampGridToPixelCenters(BaseTester):
         self.assert_close(actual.cpu(), expected)
 
 
+def _corner_border_laf(device, dtype, scale: float = 8.0, angle_deg: float = 15.0, center: float = 255.0):
+    """Build a rotated LAF centered on the last pixel of a 256x256 image.
+
+    Its patch straddles the image corner, so half of the sampling grid falls outside the frame and
+    is served by the border padding. ``scale`` is below the patch size used by the tests (16), so
+    ``extract_patches_from_pyramid`` routes it through pyramid level 0: at a downsampled level the
+    repeated blur turns the patch into a near-constant that hides a bad read.
+    """
+    t = math.radians(angle_deg)
+    cos, sin = scale * math.cos(t), scale * math.sin(t)
+    laf = torch.tensor([[cos, -sin, center], [sin, cos, center]], device=device, dtype=dtype)
+    return laf.view(1, 1, 2, 3).expand(1, 3, 2, 3)
+
+
 class TestExtractPatchesSimple(BaseTester):
     def test_shape(self, device):
         laf = torch.rand(5, 4, 2, 3, device=device)
@@ -524,24 +540,48 @@ class TestExtractPatchesSimple(BaseTester):
         expected = torch.arange(B, device=device, dtype=dtype).view(B, 1, 1, 1, 1).expand(B, N, 1, PS, PS)
         self.assert_close(patches, expected)
 
-    def test_border_patches_stay_in_range(self, device, dtype):
-        # A rotated patch straddling the frame reads border pixels; the values must never leave
-        # the image's value range. The float16/bfloat16 CPU grid_sample kernels in torch <= 2.9
-        # read out of bounds for such coordinates and return NaN or garbage.
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_border_patches_stay_in_range(self, device, half_dtype):
+        # A patch straddling the frame reads border pixels, so every sampled value is a convex
+        # combination of image values and cannot leave the image's range. The float16/bfloat16 CPU
+        # `grid_sample` kernels in torch <= 2.9 read out of bounds for such coordinates and return
+        # zeros, values of order 1e4 or NaN depending on what the heap happens to hold, so the
+        # extractor samples reduced-precision CPU images in float32. Parametrized on the dtype
+        # rather than taking the global `dtype` fixture: CI runs the suite in float32/float64 only,
+        # where the kernel is sound and this test cannot fail.
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
         torch.manual_seed(0)
-        img = torch.rand(1, 1, 256, 256, device=device, dtype=dtype)
-        laf = torch.tensor([[1.76, -90.38, -19.14], [90.38, 1.76, 268.75]], device=device, dtype=dtype)
-        laf = laf.view(1, 1, 2, 3).expand(1, 3, 2, 3)
+        img = torch.rand(1, 1, 256, 256, device=device).to(half_dtype)
+        laf = _corner_border_laf(device, half_dtype)
         patches = kornia.feature.extract_patches_simple(img, laf, 16)
+        assert patches.dtype == half_dtype
         assert bool(patches.isfinite().all())
         assert patches.min() >= img.min()
         assert patches.max() <= img.max()
 
+    def test_laf_on_another_device(self, device, dtype):
+        # The sampling grid follows the LAF, so it has to be moved to the image: this function has
+        # always accepted a LAF on a different device than the image and returned a patch on the
+        # image's device.
+        if device.type == "cpu":
+            pytest.skip("needs a second device besides the CPU")
+        img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        laf = torch.tensor([[4.0, 0.0, 16.0], [0.0, 4.0, 16.0]], dtype=dtype).view(1, 1, 2, 3)
+        patches = kornia.feature.extract_patches_simple(img, laf, 8)
+        assert patches.device == img.device
+        self.assert_close(patches, kornia.feature.extract_patches_simple(img, laf.to(device), 8))
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
         img = torch.rand(2, 1, 40, 30, device=device, dtype=dtype)
+        expected = kornia.feature.extract_patches_simple(img, laf, 10)
         op = torch_optimizer(kornia.feature.extract_patches_simple)
-        self.assert_close(op(img, laf, 10), kornia.feature.extract_patches_simple(img, laf, 10))
+        self.assert_close(op(img, laf, 10), expected)
+        # The fixture compiles without `fullgraph`, so it would pass on a graph break too, and the
+        # extractor is meant to trace as one graph -- assert that directly.
+        torch._dynamo.reset()
+        self.assert_close(torch.compile(kornia.feature.extract_patches_simple, fullgraph=True)(img, laf, 10), expected)
 
 
 class TestExtractPatchesPyr(BaseTester):
@@ -622,24 +662,42 @@ class TestExtractPatchesPyr(BaseTester):
         expected = torch.arange(B, device=device, dtype=dtype).view(B, 1, 1, 1, 1).expand(B, 2, 1, PS, PS)
         self.assert_close(patches, expected)
 
-    def test_border_patches_stay_in_range(self, device, dtype):
-        # A rotated patch straddling the frame reads border pixels; the values must never leave
-        # the image's value range. The float16/bfloat16 CPU grid_sample kernels in torch <= 2.9
-        # read out of bounds for such coordinates and return NaN or garbage.
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_border_patches_stay_in_range(self, device, half_dtype):
+        # Same border read as in `TestExtractPatchesSimple`, at pyramid level 0: `_corner_border_laf`
+        # has a scale below the patch size, so the patch comes from the undownsampled image and the
+        # level-0 result must equal the plain extractor's byte for byte. A larger LAF would be served
+        # by a blurred level whose near-constant patch stays in range even when the read is wrong.
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        if not supports_reflect_padding(device, half_dtype):
+            # `pyrdown` blurs with border_type="reflect"; torch 2.5.1 has no float16 CPU kernel.
+            pytest.skip(f"no reflect-padding kernel for {half_dtype} on {device.type}")
         torch.manual_seed(0)
-        img = torch.rand(1, 1, 256, 256, device=device, dtype=dtype)
-        laf = torch.tensor([[1.76, -90.38, -19.14], [90.38, 1.76, 268.75]], device=device, dtype=dtype)
-        laf = laf.view(1, 1, 2, 3).expand(1, 3, 2, 3)
+        img = torch.rand(1, 1, 256, 256, device=device).to(half_dtype)
+        laf = _corner_border_laf(device, half_dtype)
         patches = kornia.feature.extract_patches_from_pyramid(img, laf, 16)
+        assert patches.dtype == half_dtype
         assert bool(patches.isfinite().all())
         assert patches.min() >= img.min()
         assert patches.max() <= img.max()
+        self.assert_close(patches, kornia.feature.extract_patches_simple(img, laf, 16))
 
-    def test_dynamo(self, device, dtype, torch_optimizer):
+    def test_dynamo(self, device, dtype, torch_optimizer, optimizer_backend):
+        if optimizer_backend == "jit":
+            # `pyrdown` -> `filter2d` closes over a `set` of valid border modes, which TorchScript
+            # cannot compile; unrelated to this extractor and to the compile path CI exercises.
+            pytest.skip("`extract_patches_from_pyramid` reaches a non-scriptable `filter2d`")
         laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
         img = torch.rand(2, 1, 40, 30, device=device, dtype=dtype)
+        expected = kornia.feature.extract_patches_from_pyramid(img, laf, 10)
         op = torch_optimizer(kornia.feature.extract_patches_from_pyramid)
-        self.assert_close(op(img, laf, 10), kornia.feature.extract_patches_from_pyramid(img, laf, 10))
+        self.assert_close(op(img, laf, 10), expected)
+        # The fixture compiles without `fullgraph`, so it would pass on a graph break too, and the
+        # extractor is meant to trace as one graph -- assert that directly.
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.feature.extract_patches_from_pyramid, fullgraph=True)
+        self.assert_close(compiled(img, laf, 10), expected)
 
 
 class TestLAFIsTouchingBoundary(BaseTester):

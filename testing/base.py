@@ -194,6 +194,23 @@ def supports_replicate_padding(device: torch.device, dtype: torch.dtype) -> bool
     return _supports_kernel_probe(_replicate_padding_op, device.type, dtype)
 
 
+def _reflect_padding_op(device_type: str, dtype: torch.dtype) -> None:
+    F.pad(_probe_zeros(device_type, dtype, 1, 1, 2, 2), (1, 1, 1, 1), mode="reflect")
+
+
+def supports_reflect_padding(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a 2D ``mode="reflect"`` pad kernel for ``dtype``.
+
+    :func:`kornia.geometry.transform.pyrdown` blurs with ``border_type="reflect"`` before it
+    downsamples, so every pyramid consumer inherits the gap --
+    :func:`kornia.feature.extract_patches_from_pyramid` and the descriptor pipelines above it.
+    torch 2.5.1 has no float16 CPU ``reflection_pad2d`` (bfloat16 is fine), so a test that
+    hardcodes a half dtype rather than reading the injected one fails there on every job. Probed
+    at runtime and cached per (device type, dtype), like :func:`supports_replicate_padding`.
+    """
+    return _supports_kernel_probe(_reflect_padding_op, device.type, dtype)
+
+
 def _grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
     F.grid_sample(
         _probe_zeros(device_type, dtype, 1, 1, 2, 2),
