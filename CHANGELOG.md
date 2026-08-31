@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+* `extract_patches_from_pyramid` now samples ordinary-sized inputs once from a packed pyramid atlas instead of
+  sampling every LAF at every pyramid level. A statically selected levelwise fallback keeps atlases larger than
+  128 MiB from becoming a memory hazard. LAFs whose nominal level is coarser than the last usable pyramid level now
+  sample that actual coarsest level; they previously returned an all-zero patch. Atlas coordinate arithmetic also
+  runs in `float32` for `float16` and `bfloat16` inputs, avoiding the normalized-coordinate precision loss caused by
+  the wider atlas. Floating-point results are therefore not byte-identical to the former levelwise implementation.
+
 * The shape guards of `normalize_homography` and `denormalize_homography` now reject everything but a
   `(3, 3)`/`(B, 3, 3)` matrix, and `normalize_homography3d`'s everything but a `(4, 4)`/`(B, 4, 4)` one (#3999).
   A rank-4 input used to pass the guard and come back with its rank unchanged —

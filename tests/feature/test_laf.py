@@ -637,6 +637,63 @@ class TestExtractPatchesPyr(BaseTester):
         assert patches.shape == (1, 1, 1, PS, PS)
         assert patches.abs().sum().item() > 0
 
+    def test_giant_laf_uses_actual_coarsest_level(self, device, dtype):
+        # The nominal level for this LAF is beyond the levels that can provide a PS-sized
+        # patch. It must sample the actual coarsest level rather than becoming zero padding.
+        PS = 16
+        img = torch.arange(128 * 128, device=device, dtype=dtype).reshape(1, 1, 128, 128)
+        laf = torch.tensor([[1.0e5, 0.0, 64.0], [0.0, 1.0e5, 64.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
+
+        actual = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
+        nlaf = kornia.feature.normalize_laf(laf, img)
+        coarsest = img
+        for _ in range(3):
+            coarsest = kornia.geometry.transform.pyrdown(coarsest)
+        expected = kornia.feature.extract_patches_simple(coarsest, nlaf, PS, False)
+
+        self.assert_close(actual, expected)
+        assert actual.abs().sum().item() > 0
+
+    def test_oversized_atlas_uses_equivalent_levelwise_fallback(self, device, dtype, monkeypatch):
+        import kornia.feature.laf as laf_module
+
+        PS = 16
+        img = torch.rand(1, 1, 65, 97, device=device, dtype=dtype)
+        laf = torch.tensor(
+            [[[4.0, 0.0, 48.0], [0.0, 4.0, 32.0]], [[24.0, 0.0, 48.0], [0.0, 24.0, 32.0]]],
+            device=device,
+            dtype=dtype,
+        ).view(1, 2, 2, 3)
+
+        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 0)
+        fallback = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
+        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 1 << 60)
+        atlas = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
+
+        self.assert_close(fallback, atlas)
+
+    def test_atlas_guards_preserve_level_border_value_and_gradient(self, monkeypatch):
+        import kornia.feature.laf as laf_module
+
+        def sample(limit, size, patch_size):
+            monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", limit)
+            img = torch.zeros(1, 1, size, size)
+            img[:, :, :, -1] = 1.0
+            center_x = 1.0 - 1.0 / (2.0 * size)
+            nlaf = torch.tensor([[[[0.0, 0.0, center_x], [0.0, 0.0, 0.5]]]], requires_grad=True)
+            patch = kornia.feature.extract_patches_from_pyramid(img, nlaf, patch_size, False)
+            value = patch[0, 0, 0, patch_size // 2, patch_size // 2]
+            grad = torch.autograd.grad(value, nlaf)[0][0, 0, 0, 2]
+            return patch, grad
+
+        # 2495 exposes a forward-coordinate rounding leak without guards; 32 exposes the
+        # non-zero outward center gradient even when the rounded forward value happens to match.
+        for size, patch_size in ((2495, 8), (32, 5)):
+            fallback, fallback_grad = sample(0, size, patch_size)
+            atlas, atlas_grad = sample(1 << 60, size, patch_size)
+            assert torch.equal(atlas, fallback)
+            assert atlas_grad == fallback_grad == 0.0
+
     def test_multi_level_uses_correct_pyramid_level(self, device, dtype):
         # Two LAFs with very different scales should be extracted from different pyramid levels.
         # We verify the output shape and that the function runs without errors.
@@ -709,6 +766,15 @@ class TestExtractPatchesPyr(BaseTester):
         torch._dynamo.reset()
         compiled = torch.compile(kornia.feature.extract_patches_from_pyramid, fullgraph=True)
         self.assert_close(compiled(img, laf, 10), expected)
+
+    def test_dynamo_levelwise_fallback(self, device, dtype, torch_optimizer, monkeypatch):
+        import kornia.feature.laf as laf_module
+
+        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 0)
+        laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
+        img = torch.rand(2, 1, 65, 97, device=device, dtype=dtype)
+        op = torch_optimizer(kornia.feature.extract_patches_from_pyramid)
+        self.assert_close(op(img, laf, 16), kornia.feature.extract_patches_from_pyramid(img, laf, 16))
 
 
 class TestLAFIsTouchingBoundary(BaseTester):

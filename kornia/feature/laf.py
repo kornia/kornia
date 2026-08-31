@@ -26,6 +26,8 @@ from kornia.geometry.conversions import angle_to_rotation_matrix, convert_points
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
 
+_PYRAMID_ATLAS_MAX_BYTES = 128 * 1024 * 1024
+
 
 def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
     """Return a scale of the LAFs.
@@ -438,11 +440,55 @@ def _grid_sample_patches(img: torch.Tensor, grid: torch.Tensor, h: int, w: int) 
     cast back.
     """
     if img.device.type == "mps":
-        return F.grid_sample(img, _clamp_grid_to_pixel_centers(grid, h, w), padding_mode="zeros", align_corners=False)
+        sample_img = img.to(grid.dtype) if img.dtype != grid.dtype else img
+        out = F.grid_sample(
+            sample_img, _clamp_grid_to_pixel_centers(grid, h, w), padding_mode="zeros", align_corners=False
+        )
+        return out.to(img.dtype)
     if img.device.type == "cpu" and img.dtype in (torch.float16, torch.bfloat16):
         out = F.grid_sample(img.float(), grid.float(), padding_mode="border", align_corners=False)
         return out.to(img.dtype)
+    if img.dtype != grid.dtype:
+        out = F.grid_sample(img.to(grid.dtype), grid, padding_mode="border", align_corners=False)
+        return out.to(img.dtype)
     return F.grid_sample(img, grid, padding_mode="border", align_corners=False)
+
+
+def _clamp_grid_to_level_pixel_centers(
+    x: torch.Tensor,
+    y: torch.Tensor,
+    x_lo: torch.Tensor,
+    x_hi: torch.Tensor,
+    y_lo: torch.Tensor,
+    y_hi: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Clamp each patch grid axis to the pixel centers of its selected pyramid level."""
+    return x.maximum(x_lo).minimum(x_hi), y.maximum(y_lo).minimum(y_hi)
+
+
+def _extract_patches_from_pyramid_levelwise(
+    img: torch.Tensor,
+    nlaf: torch.Tensor,
+    pyr_idx: torch.Tensor,
+    heights: List[int],
+    widths: List[int],
+    PS: int,
+) -> torch.Tensor:
+    """Sample each pyramid level separately when a single atlas would be too large."""
+    B, N = nlaf.shape[:2]
+    ch = img.shape[1]
+    out = torch.zeros(B, N, ch, PS, PS, dtype=nlaf.dtype, device=nlaf.device)
+    grid_laf = nlaf.float() if nlaf.dtype in (torch.float16, torch.bfloat16) else nlaf
+    cur_img = img
+    for level_idx, (h_l, w_l) in enumerate(zip(heights, widths)):
+        if level_idx > 0:
+            cur_img = pyrdown(cur_img)
+        grid = generate_patch_grid_from_normalized_LAF(cur_img, grid_laf, PS).view(B, N * PS, PS, 2)
+        grid = _clamp_grid_to_pixel_centers(grid, h_l, w_l)
+        patches = _grid_sample_patches(cur_img, grid, h_l, w_l)
+        patches = patches.view(B, ch, N, PS, PS).permute(0, 2, 1, 3, 4).to(nlaf.dtype)
+        out = torch.where((pyr_idx == level_idx).view(B, N, 1, 1, 1), patches, out)
+    return out
 
 
 def extract_patches_simple(
@@ -483,7 +529,8 @@ def extract_patches_from_pyramid(
 ) -> torch.Tensor:
     """Extract patches defined by LAFs from image torch.Tensor.
 
-    Patches are extracted from appropriate pyramid level.
+    Patches are extracted from the appropriate pyramid level. A LAF whose scale selects a level
+    smaller than ``PS`` is sampled from the coarsest level that can still provide a full patch.
 
     Args:
         img: images, LAFs are detected in  :math:`(B, CH, H, W)`.
@@ -505,25 +552,89 @@ def extract_patches_from_pyramid(
     scale = 2.0 * get_laf_scale(denormalize_laf(nlaf, img)) / float(PS)
     # max_level is a compile-time constant for static image shapes.
     max_level = min(h, w) // PS
-    pyr_idx = scale.log2().clamp(min=0.0, max=max(0, max_level - 1)).long()  # (B, N, 1, 1)
-    out = torch.zeros(B, N, ch, PS, PS, dtype=nlaf.dtype, device=nlaf.device)
+    pyr_idx = scale.log2().clamp(min=0.0, max=max(0, max_level - 1)).long().squeeze(-1).squeeze(-1)
+
+    # Build exactly the pyramid that can provide a PS-sized patch. ``pyrdown`` defines its output
+    # size as floor(side / 2), including for odd inputs, so the atlas can be allocated before the
+    # levels are materialized and each level can be released after it is copied.
+    heights = [h]
+    widths = [w]
+    for _ in range(1, max(1, max_level)):
+        h_l = heights[-1] // 2
+        w_l = widths[-1] // 2
+        if min(h_l, w_l) < PS:
+            break
+        heights.append(h_l)
+        widths.append(w_l)
+
+    # Place every level side-by-side with a one-pixel replicated guard. The guard absorbs
+    # floating-point remapping error at an outer pixel center and preserves both the border value
+    # and its zero outward gradient instead of leaking into the neighbouring level.
+    atlas_h = h + 2
+    packed_widths = [w_l + 2 for w_l in widths]
+    atlas_w = sum(packed_widths)
+    pyr_idx = pyr_idx.clamp(max=len(heights) - 1)
+    grid_dtype = torch.float32 if nlaf.dtype in (torch.float16, torch.bfloat16) else nlaf.dtype
+    # A full-height atlas is counterproductive for very large or heavily batched images. Keep
+    # its storage bounded; the static shape guard disappears under torch.compile, and the
+    # levelwise path preserves the same clamping and reduced-precision grid semantics.
+    atlas_elements = B * ch * atlas_h * atlas_w
+    atlas_bytes = atlas_elements * img.element_size()
+    if img.dtype != grid_dtype:
+        grid_element_size = 8 if grid_dtype == torch.float64 else 4 if grid_dtype == torch.float32 else 2
+        atlas_bytes += atlas_elements * grid_element_size
+    if atlas_bytes > _PYRAMID_ATLAS_MAX_BYTES:
+        return _extract_patches_from_pyramid_levelwise(img, nlaf, pyr_idx, heights, widths, PS)
+    atlas = img.new_zeros(B, ch, atlas_h, atlas_w)
     cur_img = img
-    # Always run at least level 0; max_level is a compile-time constant for static shapes.
-    num_levels = max(1, max_level)
-    for cur_pyr_level in range(num_levels):
-        _, ch_l, h_l, w_l = cur_img.size()
-        # torch.where avoids nonzero/data-dependent shapes → fully compilable; the (B*N, PS, PS, 2)
-        # grid is folded to (B, N*PS, PS, 2) so one grid_sample call covers the whole batch.
-        level_mask = (pyr_idx == cur_pyr_level).view(B, N, 1, 1, 1)
-        grid = generate_patch_grid_from_normalized_LAF(cur_img, nlaf, PS).view(B, N * PS, PS, 2)
-        patches = _grid_sample_patches(cur_img, grid, h_l, w_l).view(B, ch_l, N, PS, PS).permute(0, 2, 1, 3, 4)
-        out = torch.where(level_mask, patches.to(nlaf.dtype), out)
-        if cur_pyr_level < num_levels - 1:
+    xoff = 0
+    for level_idx, (h_l, w_l) in enumerate(zip(heights, widths)):
+        if level_idx > 0:
             cur_img = pyrdown(cur_img)
-            # Stop early if the pyramided image is too small for further levels.
-            if min(cur_img.size(2), cur_img.size(3)) < PS:
-                break
-    return out
+        atlas[:, :, : h_l + 2, xoff : xoff + w_l + 2] = F.pad(cur_img, (1, 1, 1, 1), mode="replicate")
+        xoff += w_l + 2
+
+    # A patch grid's linear part is level-independent. Generate Px/Py once from normalized LAF
+    # A with zero translation; reduced-precision inputs need float32 grid arithmetic because the
+    # atlas is wider than the original image.
+    laf_a = nlaf[..., :2].to(grid_dtype)
+    zeros = torch.zeros(B, N, 2, 1, dtype=grid_dtype, device=nlaf.device)
+    grid = F.affine_grid(
+        torch.cat([laf_a, zeros], dim=-1).view(B * N, 2, 3), [B * N, ch, PS, PS], align_corners=False
+    ).view(B, N, PS, PS, 2)
+
+    # Gather all level-dependent conversion constants per patch. A giant LAF that nominally
+    # selects an unbuilt level is sampled from the actual coarsest pyramid image.
+    xoff = 0
+    constants = []
+    for h_l, w_l in zip(heights, widths):
+        min_l = float(min(h_l - 1, w_l - 1))
+        constants.append(
+            (
+                2.0 * min_l / float(w_l - 1),
+                2.0 * min_l / float(h_l - 1),
+                -1.0 + 1.0 / float(w_l),
+                1.0 - 1.0 / float(w_l),
+                -1.0 + 1.0 / float(h_l),
+                1.0 - 1.0 / float(h_l),
+                float(w_l) / float(atlas_w),
+                (float(w_l) + 2.0 * float(xoff + 1)) / float(atlas_w) - 1.0,
+                float(h_l) / float(atlas_h),
+                (float(h_l) + 2.0) / float(atlas_h) - 1.0,
+            )
+        )
+        xoff += w_l + 2
+    level_constants = torch.tensor(constants, dtype=grid_dtype, device=nlaf.device)
+    gathered = level_constants[pyr_idx].unsqueeze(-2).unsqueeze(-2)
+    kx, ky, x_lo, x_hi, y_lo, y_hi, x_scale, x_offset, y_scale, y_offset = gathered.unbind(dim=-1)
+
+    x = grid[..., 0] * kx + (2.0 * nlaf[..., 0, 2].to(grid_dtype).unsqueeze(-1).unsqueeze(-1) - 1.0)
+    y = grid[..., 1] * ky + (2.0 * nlaf[..., 1, 2].to(grid_dtype).unsqueeze(-1).unsqueeze(-1) - 1.0)
+    x, y = _clamp_grid_to_level_pixel_centers(x, y, x_lo, x_hi, y_lo, y_hi)
+    grid = torch.stack([x * x_scale + x_offset, y * y_scale + y_offset], dim=-1)
+
+    patches = _grid_sample_patches(atlas, grid.view(B, N * PS, PS, 2), atlas_h, atlas_w)
+    return patches.view(B, ch, N, PS, PS).permute(0, 2, 1, 3, 4).contiguous().to(nlaf.dtype)
 
 
 def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0) -> torch.Tensor:
