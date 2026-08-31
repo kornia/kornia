@@ -115,7 +115,11 @@ def _invalid_laf_mask(laf: torch.Tensor) -> torch.Tensor:
 
 
 def _finalize_laf(
-    laf_out: torch.Tensor, laf: torch.Tensor, preserve_orientation: bool, bad: torch.Tensor
+    laf_out: torch.Tensor,
+    laf: torch.Tensor,
+    preserve_orientation: bool,
+    bad: torch.Tensor,
+    make_candidate_upright: bool = False,
 ) -> torch.Tensor:
     fallback = laf if preserve_orientation else make_upright(laf)
     safe_laf_out = torch.where(bad[..., None, None], fallback, laf_out)
@@ -123,6 +127,8 @@ def _finalize_laf(
     if preserve_orientation:
         ori_orig = get_laf_orientation(laf)
     ellipse_scale = get_laf_scale(safe_laf_out)
+    if make_candidate_upright:
+        safe_laf_out = make_upright(safe_laf_out)
     safe_laf_out = scale_laf(safe_laf_out, scale_orig / ellipse_scale)
     if preserve_orientation:
         safe_laf_out = set_laf_orientation(safe_laf_out, ori_orig)
@@ -265,11 +271,5 @@ class LAFAffNetShapeEstimator(nn.Module):
         a2 = torch.cat([xy[:, 1].reshape(-1, 1, 1), 1.0 + xy[:, 2].reshape(-1, 1, 1)], dim=2)
         new_laf_no_center = torch.cat([a1, a2], dim=1).reshape(B, N, 2, 2)
         new_laf = torch.cat([new_laf_no_center, laf[:, :, :, 2:3]], dim=3)
-        scale_orig = get_laf_scale(laf)
-        if self.preserve_orientation:
-            ori_orig = get_laf_orientation(laf)
-        ellipse_scale = get_laf_scale(new_laf)
-        laf_out = scale_laf(make_upright(new_laf), scale_orig / ellipse_scale)
-        if self.preserve_orientation:
-            laf_out = set_laf_orientation(laf_out, ori_orig)
-        return laf_out
+        bad = _invalid_laf_mask(new_laf)
+        return _finalize_laf(new_laf, laf, self.preserve_orientation, bad, make_candidate_upright=True)

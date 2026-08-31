@@ -30,6 +30,12 @@ class DegenerateShape(torch.nn.Module):
         return torch.cat([shape, shape, torch.ones_like(shape)], dim=-1)
 
 
+class SingularAffNetOutput(torch.nn.Module):
+    def forward(self, patches: torch.Tensor) -> torch.Tensor:
+        values = patches.new_tensor([-1.0, 0.0, -1.0]).view(1, 3, 1, 1)
+        return values.expand(patches.shape[0], -1, -1, -1)
+
+
 class TestPatchAffineShapeEstimator(BaseTester):
     def test_zero_patch_uses_circular_shape(self, device, dtype):
         if dtype in (torch.float16, torch.bfloat16) and not (
@@ -210,6 +216,16 @@ class TestLAFAffineShapeEstimator(BaseTester):
 
 
 class TestLAFAffNetShapeEstimator(BaseTester):
+    def test_singular_prediction_falls_back_upright(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16) and not supports_grid_sample(device, dtype):
+            pytest.skip(f"no {dtype} grid_sample kernel on {device.type}")
+        img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        laf = torch.tensor([[[[0.0, 8.0, 16.0], [-8.0, 0.0, 16.0]]]], device=device, dtype=dtype)
+        aff = LAFAffNetShapeEstimator(preserve_orientation=False).to(device, dtype)
+        aff.features = SingularAffNetOutput()
+        out = aff(laf, img)
+        self.assert_close(out, make_upright(laf))
+
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.rand(1, 1, 2, 3, device=device)
