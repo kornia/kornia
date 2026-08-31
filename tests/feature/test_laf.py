@@ -551,6 +551,49 @@ class TestExtractPatchesSimple(BaseTester):
         expected = torch.arange(B, device=device, dtype=dtype).view(B, 1, 1, 1, 1).expand(B, N, 1, PS, PS)
         self.assert_close(patches, expected)
 
+    def test_empty(self, device, dtype):
+        # Degenerate shapes follow the empty-in -> empty-out convention instead of raising from
+        # inside `affine_grid`.
+        PS = 8
+        patches = kornia.feature.extract_patches_simple(
+            torch.rand(0, 2, 32, 32, device=device, dtype=dtype), torch.rand(0, 3, 2, 3, device=device, dtype=dtype), PS
+        )
+        assert patches.shape == (0, 3, 2, PS, PS)
+        assert patches.dtype == dtype
+        patches = kornia.feature.extract_patches_simple(
+            torch.rand(2, 1, 32, 32, device=device, dtype=dtype), torch.rand(2, 0, 2, 3, device=device, dtype=dtype), PS
+        )
+        assert patches.shape == (2, 0, 1, PS, PS)
+
+    def test_chunked_matches_single_call(self, device, dtype, monkeypatch):
+        # Forcing one LAF per chunk must reproduce the single-call result exactly, since
+        # chunking only splits the grid along N.
+        import kornia.feature.laf as laf_module
+
+        torch.manual_seed(0)
+        img = torch.rand(2, 3, 48, 64, device=device, dtype=dtype)
+        laf = torch.rand(2, 5, 2, 3, device=device, dtype=dtype)
+        expected = kornia.feature.extract_patches_simple(img, laf, 8)
+        monkeypatch.setattr(laf_module, "_grid_chunk_lafs", lambda *args: 1)
+        chunked = kornia.feature.extract_patches_simple(img, laf, 8)
+        self.assert_close(chunked, expected)
+        if device.type == "cpu":
+            assert torch.equal(chunked, expected)
+
+    def test_channel_laf_correspondence(self, device, dtype):
+        # The patch at [b, n] must equal the one extracted for that LAF alone. At ch=1 or N=1 a
+        # scrambled unfold is bit-identical to the right one (it permutes a size-1 dim), so this
+        # pins ch>1 together with N>1 and distinct LAFs.
+        B, N, ch, PS = 2, 4, 3, 8
+        torch.manual_seed(0)
+        img = torch.rand(B, ch, 48, 48, device=device, dtype=dtype)
+        laf = torch.rand(B, N, 2, 3, device=device, dtype=dtype)
+        patches = kornia.feature.extract_patches_simple(img, laf, PS)
+        for b in range(B):
+            for n in range(N):
+                single = kornia.feature.extract_patches_simple(img[b : b + 1], laf[b : b + 1, n : n + 1], PS)
+                self.assert_close(patches[b, n], single[0, 0])
+
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_border_patches_stay_in_range(self, device, half_dtype):
         # A patch straddling the frame reads border pixels, so every sampled value is a convex
@@ -717,6 +760,22 @@ class TestExtractPatchesPyr(BaseTester):
             nondet_tol=1e-8,
         )
 
+    def test_gradcheck_chunked(self, device, monkeypatch):
+        # Gradients must survive the chunked sampling loop and its slice writes, on both the
+        # atlas path and the levelwise fallback.
+        import kornia.feature.laf as laf_module
+
+        monkeypatch.setattr(laf_module, "_grid_chunk_lafs", lambda *args: 1)
+        nlaf = torch.tensor(
+            [[[0.1, 0.001, 0.4], [0.0, 0.1, 0.5]], [[0.05, 0.0, 0.6], [0.0, 0.05, 0.4]]],
+            device=device,
+            dtype=torch.float64,
+        ).view(1, 2, 2, 3)
+        img = torch.rand(1, 2, 20, 30, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.feature.extract_patches_from_pyramid, (img, nlaf, 7, False), nondet_tol=1e-8)
+        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 0)
+        self.gradcheck(kornia.feature.extract_patches_from_pyramid, (img, nlaf, 7, False), nondet_tol=1e-8)
+
     def test_batch_independence(self, device, dtype):
         # Each patch must come only from its own batch element, across pyramid levels: the two
         # scales route the patches through level 0 and a downsampled level respectively.
@@ -729,6 +788,62 @@ class TestExtractPatchesPyr(BaseTester):
         assert patches.shape == (B, 2, 1, PS, PS)
         expected = torch.arange(B, device=device, dtype=dtype).view(B, 1, 1, 1, 1).expand(B, 2, 1, PS, PS)
         self.assert_close(patches, expected)
+
+    def test_empty(self, device, dtype):
+        # Degenerate shapes follow the empty-in -> empty-out convention: the batched rewrite must
+        # not call `affine_grid` on an empty batch (main returned an empty result for B=0).
+        PS = 8
+        patches = kornia.feature.extract_patches_from_pyramid(
+            torch.rand(0, 2, 32, 32, device=device, dtype=dtype), torch.rand(0, 3, 2, 3, device=device, dtype=dtype), PS
+        )
+        assert patches.shape == (0, 3, 2, PS, PS)
+        assert patches.dtype == dtype
+        patches = kornia.feature.extract_patches_from_pyramid(
+            torch.rand(2, 1, 32, 32, device=device, dtype=dtype), torch.rand(2, 0, 2, 3, device=device, dtype=dtype), PS
+        )
+        assert patches.shape == (2, 0, 1, PS, PS)
+
+    def test_chunked_matches_single_call(self, device, dtype, monkeypatch):
+        # Forcing one LAF per chunk must reproduce the single-call result on both the atlas path
+        # and the levelwise fallback, since chunking only splits the grid along N.
+        import kornia.feature.laf as laf_module
+
+        torch.manual_seed(0)
+        PS = 8
+        img = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
+        laf = torch.zeros(2, 5, 2, 3, device=device, dtype=dtype)
+        laf[..., 0, 0] = laf[..., 1, 1] = torch.tensor([2.0, 4.0, 9.0, 17.0, 33.0], device=device, dtype=dtype)
+        laf[..., :, 2] = torch.rand(2, 5, 2, device=device, dtype=dtype) * 40 + 12
+        default_chunk = laf_module._grid_chunk_lafs
+        expected = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
+        monkeypatch.setattr(laf_module, "_grid_chunk_lafs", lambda *args: 1)
+        chunked = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
+        self.assert_close(chunked, expected)
+        if device.type == "cpu":
+            assert torch.equal(chunked, expected)
+        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 0)
+        fallback_chunked = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
+        monkeypatch.setattr(laf_module, "_grid_chunk_lafs", default_chunk)
+        fallback_expected = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
+        self.assert_close(fallback_chunked, fallback_expected)
+        if device.type == "cpu":
+            assert torch.equal(fallback_chunked, fallback_expected)
+
+    def test_channel_laf_correspondence(self, device, dtype):
+        # The patch at [b, n] must equal the one extracted for that LAF alone. At ch=1 or N=1 a
+        # scrambled unfold is bit-identical to the right one (it permutes a size-1 dim), so this
+        # pins ch>1 together with N>1, across pyramid levels.
+        B, N, ch, PS = 2, 4, 3, 8
+        torch.manual_seed(0)
+        img = torch.rand(B, ch, 64, 64, device=device, dtype=dtype)
+        laf = torch.zeros(B, N, 2, 3, device=device, dtype=dtype)
+        laf[..., 0, 0] = laf[..., 1, 1] = torch.tensor([3.0, 6.0, 17.0, 33.0], device=device, dtype=dtype)
+        laf[..., :, 2] = torch.rand(B, N, 2, device=device, dtype=dtype) * 40 + 12
+        patches = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
+        for b in range(B):
+            for n in range(N):
+                single = kornia.feature.extract_patches_from_pyramid(img[b : b + 1], laf[b : b + 1, n : n + 1], PS)
+                self.assert_close(patches[b, n], single[0, 0])
 
     @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
     def test_border_patches_stay_in_range(self, device, half_dtype):
@@ -751,6 +866,18 @@ class TestExtractPatchesPyr(BaseTester):
         assert patches.max() <= img.max()
         self.assert_close(patches, kornia.feature.extract_patches_simple(img, laf, 16))
 
+    def test_laf_on_another_device(self, device, dtype):
+        # The sampling grid follows the LAF and is moved to the image inside `_sample_patches`,
+        # so the pyramid extractor accepts a LAF on a different device than the image, matching
+        # `extract_patches_simple`.
+        if device.type == "cpu":
+            pytest.skip("needs a second device besides the CPU")
+        img = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        laf = torch.tensor([[8.0, 0.0, 32.0], [0.0, 8.0, 32.0]], dtype=dtype).view(1, 1, 2, 3)
+        patches = kornia.feature.extract_patches_from_pyramid(img, laf, 8)
+        assert patches.device == img.device
+        self.assert_close(patches, kornia.feature.extract_patches_from_pyramid(img, laf.to(device), 8))
+
     def test_dynamo(self, device, dtype, torch_optimizer, optimizer_backend):
         if optimizer_backend == "jit":
             # `pyrdown` -> `filter2d` closes over a `set` of valid border modes, which TorchScript
@@ -771,6 +898,17 @@ class TestExtractPatchesPyr(BaseTester):
         import kornia.feature.laf as laf_module
 
         monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 0)
+        laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
+        img = torch.rand(2, 1, 65, 97, device=device, dtype=dtype)
+        op = torch_optimizer(kornia.feature.extract_patches_from_pyramid)
+        self.assert_close(op(img, laf, 16), kornia.feature.extract_patches_from_pyramid(img, laf, 16))
+
+    def test_dynamo_chunked(self, device, dtype, torch_optimizer, monkeypatch):
+        # The chunk loop unrolls at trace time for static shapes; forcing one LAF per chunk
+        # exercises it.
+        import kornia.feature.laf as laf_module
+
+        monkeypatch.setattr(laf_module, "_grid_chunk_lafs", lambda *args: 1)
         laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
         img = torch.rand(2, 1, 65, 97, device=device, dtype=dtype)
         op = torch_optimizer(kornia.feature.extract_patches_from_pyramid)

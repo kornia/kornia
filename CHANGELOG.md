@@ -15,7 +15,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   128 MiB from becoming a memory hazard. LAFs whose nominal level is coarser than the last usable pyramid level now
   sample that actual coarsest level; they previously returned an all-zero patch. Atlas coordinate arithmetic also
   runs in `float32` for `float16` and `bfloat16` inputs, avoiding the normalized-coordinate precision loss caused by
-  the wider atlas. Floating-point results are therefore not byte-identical to the former levelwise implementation.
+  the wider atlas, and `extract_patches_simple` computes its sampling grid in `float32` for reduced-precision inputs
+  on every device for the same reason -- its output matches the pyramid extractor's level-0 output again, and
+  half-precision patches therefore change on CUDA and MPS as well as the CPU (superseding the device scope of the
+  reduced-precision entry under **Bug fixes**). Floating-point results are not byte-identical to the former
+  levelwise implementation. Both extractors chunk their sampling along N, in the spirit of `batched_forward`, so
+  the folded `(B, N*PS, PS, 2)` grid and its remap intermediates stay within a fixed 64 MiB budget: batched high-N
+  extraction now peaks below even the pre-batching per-image loop (468 MiB against 495 MiB on `main` for B=8,
+  N=4000, PS=32 on a 512x512 float32 image, where the unchunked atlas peaked at 1.24 GiB), eager throughput stays
+  within ~5% of the unchunked atlas, and float32/float64 patches are bitwise identical to it; a `torch.compile`d
+  call whose grid exceeds the budget splits into several `grid_sample` calls (~1.5x the unbounded atlas latency at
+  B=8, N=2000 on CPU inductor, still ~10x faster than the per-level loop it replaces). Both extractors return an
+  empty `(B, N, CH, PS, PS)` tensor for `B == 0` or `N == 0` instead of raising from inside `affine_grid` --
+  `extract_patches_from_pyramid` with `B == 0` returned the empty result before the batched rewrite below
+  regressed it; every other empty combination raised on all prior releases. `extract_patches_from_pyramid` now
+  also accepts a LAF on a different device than the image, as `extract_patches_simple` always has, and returns
+  patches on the image's device.
 
 * The shape guards of `normalize_homography` and `denormalize_homography` now reject everything but a
   `(3, 3)`/`(B, 3, 3)` matrix, and `normalize_homography3d`'s everything but a `(4, 4)`/`(B, 4, 4)` one (#3999).
