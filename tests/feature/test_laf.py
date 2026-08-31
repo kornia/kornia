@@ -268,8 +268,8 @@ class TestELL2LAF(BaseTester):
         self.gradcheck(kornia.feature.ellipse_to_laf, (img,))
 
     def test_no_overflow_asymmetric_diag(self, device, dtype):
-        # Regression test: the closed-form inverse's off-diagonal must scale b by the smaller
-        # reciprocal first. `a` is the dtype's smallest normal and `c` is picked so that
+        # Regression test: the closed-form inverse's off-diagonal must divide by the root product,
+        # not multiply reciprocals. `a` is the dtype's smallest normal and `c` is picked so that
         # (sqrt(a) + sqrt(c)) * sqrt(a) == 0.5, which makes the intermediate of the fixed order
         # `-a21 * (1 / a11) * (1 / a22)` twice b -- inf for a b above half the dtype's maximum,
         # although the result itself is well inside range. https://github.com/kornia/kornia/pull/4122
@@ -277,13 +277,14 @@ class TestELL2LAF(BaseTester):
         a11 = math.sqrt(finfo.tiny)
         a22 = 0.5 / a11
         inp = torch.tensor([[[0.0, 0.0, finfo.tiny, finfo.max * 0.75, a22 * a22]]], device=device, dtype=dtype)
-        # Reference in float64, from the inputs as the dtype actually rounded them.
-        ref = inp.double()
+        # Reference in float64, from the inputs as the dtype actually rounded them. Via CPU:
+        # MPS tensors cannot be converted to float64 (TESTING.md, "Writing new tests that work on MPS").
+        ref = inp.cpu().double()
         r11, r22 = ref[0, 0, 2].sqrt(), ref[0, 0, 4].sqrt()
         expected = -(ref[0, 0, 3] / (r11 + r22)) / (r11 * r22)
         laf = kornia.feature.ellipse_to_laf(inp)
         assert torch.isfinite(laf).all()
-        self.assert_close(laf[0, 0, 1, 0], expected.to(dtype))
+        self.assert_close(laf[0, 0, 1, 0], expected.to(dtype).to(device))
 
     def test_no_overflow_subnormal_diag(self, device, dtype):
         # The mirror case: a subnormal but nondegenerate diagonal makes 1 / (a11 * a22) overflow, so
@@ -293,7 +294,9 @@ class TestELL2LAF(BaseTester):
         finfo = torch.finfo(dtype)
         a = finfo.tiny / 8  # subnormal, and small enough that 1 / (a11 * a22) == 1 / a overflows
         inp = torch.tensor([[[0.0, 0.0, a, 0.0, a]]], device=device, dtype=dtype)
-        if inp[0, 0, 2] == 0:
+        # Guard on the arithmetic, not just the storage: a backend can store the subnormal
+        # faithfully yet flush it inside sqrt, which makes the diagonal degenerate all the same.
+        if inp[0, 0, 2].sqrt() == 0:
             pytest.skip("backend flushes subnormals to zero, so this diagonal is degenerate here")
         laf = kornia.feature.ellipse_to_laf(inp)
         assert torch.isfinite(laf).all()

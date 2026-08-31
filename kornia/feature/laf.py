@@ -233,8 +233,9 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
         describes an unbounded strip rather than a bounded region, and makes the matrix being inverted
         singular. Its LAF is non-finite: ``inf`` on the diagonal, and ``nan`` where that ``inf`` meets a
         zero off-diagonal, so :func:`get_laf_scale` of such a LAF is ``nan``. The conversion does not
-        raise. Rounding is part of the condition: in ``float16`` any ``a`` below ``6e-8`` arrives as
-        ``0``.
+        raise. Rounding is part of the condition: in ``float16`` an ``a`` below roughly ``3e-8`` (half
+        the smallest subnormal) rounds to ``0``, and a backend that flushes subnormals to zero raises
+        that cutoff to the smallest normal, about ``6e-5``.
 
     Example:
         >>> input = torch.ones(1, 10, 5)  # BxNx5
