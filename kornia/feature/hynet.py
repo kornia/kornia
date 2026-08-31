@@ -278,18 +278,13 @@ class HyNet(nn.Module):
         self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run the HyNet normalization or descriptor layer.
-
-        Patch tensors use `(B, C, H, W)`. For HyNet descriptors the expected input is usually grayscale `(B, 1, 32, 32)`
-        and the final descriptor has shape `(B, D)`.
+        """Compute HyNet descriptors from grayscale image patches.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input grayscale patches with shape ``(B, 1, 32, 32)``.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            HyNet descriptors with shape ``(B, D)``.
         """
         x = self.layer1(x)
         x = self.layer2(x)
