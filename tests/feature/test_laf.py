@@ -521,14 +521,38 @@ class TestExtractPatchesSimple(BaseTester):
         assert patches.shape == (1, 1, 1, PS, PS)
 
     def test_exception(self, device, dtype):
-        # Batch or dtype disagreement between the image and the LAFs is rejected at the boundary
-        # with a clear message instead of an internal `grid_sample` error.
+        # Batch disagreement is rejected at the boundary with a clear message instead of an
+        # internal `grid_sample` error or a silently truncated result.
         img = torch.rand(3, 1, 32, 32, device=device, dtype=dtype)
         with pytest.raises(Exception, match="same batch size"):
             kornia.feature.extract_patches_simple(img, torch.rand(1, 2, 2, 3, device=device, dtype=dtype), 8)
-        other = torch.float16 if dtype != torch.float16 else torch.float32
-        with pytest.raises(Exception, match="same dtype"):
-            kornia.feature.extract_patches_simple(img, torch.rand(3, 2, 2, 3, device=device, dtype=other), 8)
+
+    def test_mixed_dtype_laf_under_autocast(self, device):
+        # Reduced-precision detectors commonly emit a half/bfloat16 LAF while their source image
+        # remains float32. The extractor owns this small conversion instead of rejecting a valid
+        # autocast pipeline or relying on backend-specific grid_sample promotion.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("autocast coverage is provided by CPU and CUDA")
+        laf_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
+        img = torch.rand(1, 1, 32, 32, device=device)
+        laf = torch.tensor([[4.0, 0.0, 16.0], [0.0, 4.0, 16.0]], device=device, dtype=laf_dtype).view(1, 1, 2, 3)
+        with torch.autocast(device_type=device.type, dtype=laf_dtype):
+            actual = kornia.feature.extract_patches_simple(img, laf, 8)
+            expected = kornia.feature.extract_patches_simple(img, laf.float(), 8)
+        assert actual.dtype == img.dtype
+        self.assert_close(actual, expected)
+
+    def test_mixed_dtype_preserves_laf_precision(self, device):
+        # A float32 LAF paired with a half image must not be rounded to half and then upcast: its
+        # subpixel coordinates are the reason grid arithmetic uses a promoted dtype.
+        if device.type != "cpu":
+            pytest.skip("CPU provides deterministic reduced-precision reference coverage")
+        img = torch.rand(1, 1, 32, 32).to(torch.float16)
+        laf = torch.tensor([[4.1234, 0.2712, 15.789], [-0.1923, 3.9876, 16.321]]).view(1, 1, 2, 3)
+        actual = kornia.feature.extract_patches_simple(img, laf, 8)
+        expected = kornia.feature.extract_patches_simple(img.float(), laf, 8).to(img.dtype)
+        assert actual.dtype == img.dtype
+        assert torch.equal(actual, expected)
 
     def test_same_odd(self, device, dtype):
         img = torch.arange(5)[None].repeat(5, 1)[None, None].to(device, dtype)
@@ -589,6 +613,14 @@ class TestExtractPatchesSimple(BaseTester):
         self.assert_close(chunked, expected)
         if device.type == "cpu":
             assert torch.equal(chunked, expected)
+
+    def test_chunk_budget_accounts_for_channels(self):
+        # A high-channel feature map can make the sampled chunk much larger than its 2-coordinate
+        # grid. Both transient tensors must respect the workspace budget.
+        import kornia.feature.laf as laf_module
+
+        assert laf_module._grid_chunk_lafs(1, 1000, 1, 32, 4) == 1000
+        assert laf_module._grid_chunk_lafs(1, 1000, 256, 32, 4) == 64
 
     def test_channel_laf_correspondence(self, device, dtype):
         # The patch at [b, n] must equal the one extracted for that LAF alone. At ch=1 or N=1 a
@@ -682,34 +714,55 @@ class TestExtractPatchesPyr(BaseTester):
 
     def test_small_image_single_level(self, device, dtype):
         # When min(H, W) < 2 * PS, the pyramid cannot descend beyond level 0.
-        # All patches must still have the correct shape and non-zero content.
+        # Sampling that image directly must retain the plain extractor's border behavior without
+        # allocating a one-level atlas.
         PS = 16
         img = torch.rand(1, 1, 24, 24, device=device, dtype=dtype)  # 24 < 2*16=32 → only level 0
-        laf = torch.tensor([[6.0, 0.0, 12.0], [0.0, 6.0, 12.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
+        laf = torch.tensor([[6.0, 0.0, 2.0], [0.0, 6.0, 2.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
         patches = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
         assert patches.shape == (1, 1, 1, PS, PS)
         assert patches.abs().sum().item() > 0
+        self.assert_close(patches, kornia.feature.extract_patches_simple(img, laf, PS))
 
     def test_exception(self, device, dtype):
-        # Batch or dtype disagreement between the image and the LAFs is rejected at the boundary
-        # with a clear message instead of an internal broadcasting error.
+        # Batch disagreement is rejected at the boundary with a clear message instead of an
+        # internal broadcasting error or a silently truncated result.
         img = torch.rand(3, 1, 32, 32, device=device, dtype=dtype)
         with pytest.raises(Exception, match="same batch size"):
             kornia.feature.extract_patches_from_pyramid(img, torch.rand(1, 2, 2, 3, device=device, dtype=dtype), 8)
-        other = torch.float16 if dtype != torch.float16 else torch.float32
-        with pytest.raises(Exception, match="same dtype"):
-            kornia.feature.extract_patches_from_pyramid(img, torch.rand(3, 2, 2, 3, device=device, dtype=other), 8)
+
+    def test_mixed_dtype_laf_under_autocast(self, device):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("autocast coverage is provided by CPU and CUDA")
+        laf_dtype = torch.bfloat16 if device.type == "cpu" else torch.float16
+        img = torch.rand(1, 1, 64, 64, device=device)
+        laf = torch.tensor([[8.0, 0.0, 32.0], [0.0, 8.0, 32.0]], device=device, dtype=laf_dtype).view(1, 1, 2, 3)
+        with torch.autocast(device_type=device.type, dtype=laf_dtype):
+            actual = kornia.feature.extract_patches_from_pyramid(img, laf, 8)
+            expected = kornia.feature.extract_patches_from_pyramid(img, laf.float(), 8)
+        assert actual.dtype == img.dtype
+        self.assert_close(actual, expected)
+
+    def test_mixed_dtype_preserves_laf_precision(self, device):
+        if device.type != "cpu":
+            pytest.skip("CPU provides deterministic reduced-precision reference coverage")
+        img = torch.rand(1, 1, 64, 64).to(torch.float16)
+        laf = torch.tensor([[8.1234, 0.2712, 31.789], [-0.1923, 7.9876, 32.321]]).view(1, 1, 2, 3)
+        actual = kornia.feature.extract_patches_from_pyramid(img, laf, 8)
+        expected = kornia.feature.extract_patches_from_pyramid(img.float(), laf, 8).to(img.dtype)
+        assert actual.dtype == img.dtype
+        assert torch.equal(actual, expected)
 
     def test_one_pixel_axis_does_not_raise(self, device, dtype):
-        # A 1-pixel image axis makes the sampling arithmetic divide by `size - 1 == 0`. The
-        # pre-atlas code degraded to non-finite coordinates through tensor division; the atlas
-        # constants are Python floats, so such images route through the levelwise sampler, whose
-        # divisions are tensor ops, instead of raising ZeroDivisionError.
+        # A 1-pixel image axis has no spatial extent. It routes through the levelwise sampler,
+        # which uses a zero grid scale for that axis so the only real pixel is repeated instead of
+        # leaking a divide-by-zero NaN into the result.
         for shape in ((1, 1, 5, 1), (1, 1, 1, 5)):
             img = torch.rand(shape, device=device, dtype=dtype)
             laf = torch.rand(1, 1, 2, 3, device=device, dtype=dtype)
             patches = kornia.feature.extract_patches_from_pyramid(img, laf, 4, False)
             assert patches.shape == (1, 1, 1, 4, 4)
+            assert bool(patches.isfinite().all())
 
     def test_one_pixel_level_does_not_raise(self, device, dtype):
         # PS=1 lets the pyramid descend to a 1-pixel level (12 -> 6 -> 3 -> 1) even though the
@@ -720,32 +773,41 @@ class TestExtractPatchesPyr(BaseTester):
         patches = kornia.feature.extract_patches_from_pyramid(img, laf, 1)
         assert patches.shape == (1, 1, 1, 1, 1)
 
-    def test_nan_laf_returns_zero_patch(self, device, dtype, monkeypatch):
-        # A training-time detector can emit a NaN LAF frame. `.long()` on a NaN level index is
-        # INT64_MIN, which used to index the atlas level constants out of bounds -- an IndexError
-        # on the CPU and a device-side assert on CUDA. Both sampling paths must instead return an
-        # all-zero patch for the NaN frame, like the pre-atlas implementation, and leave the
-        # finite frames untouched.
+    def test_nonfinite_laf_returns_zero_patch_with_safe_backward(self, device, dtype, monkeypatch):
+        # A training-time detector can emit a non-finite LAF frame. Passing a NaN grid to the CPU
+        # border-padding backward kernel can segfault the process, even when forward output is
+        # zeroed afterwards. Both paths must sanitize the whole frame before sampling, including
+        # when only its center is invalid, and return zero output/gradient without changing finite
+        # frames. Infinity is invalid for the same API-level reason, independent of backend quirks.
         import kornia.feature.laf as laf_module
 
         PS = 8
         img = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
         nan = float("nan")
+        inf = float("inf")
         laf = torch.tensor(
-            [[[8.0, 0.0, 32.0], [0.0, 8.0, 32.0]], [[nan, nan, nan], [nan, nan, nan]]],
+            [
+                [[8.0, 0.0, 32.0], [0.0, 8.0, 32.0]],
+                [[nan, nan, nan], [nan, nan, nan]],
+                [[8.0, 0.0, nan], [0.0, 8.0, nan]],
+                [[8.0, 0.0, inf], [0.0, 8.0, inf]],
+            ],
             device=device,
             dtype=dtype,
-        ).view(1, 2, 2, 3)
+        ).view(1, 4, 2, 3)
 
         expected_finite = kornia.feature.extract_patches_from_pyramid(img, laf[:, :1], PS)
-        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 1 << 60)
-        atlas = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
-        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 0)
-        fallback = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
-
-        for patches in (atlas, fallback):
+        for atlas_fits in (True, False):
+            monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args, fits=atlas_fits: fits)
+            grad_img = img.detach().clone().requires_grad_()
+            grad_laf = laf.detach().clone().requires_grad_()
+            patches = kornia.feature.extract_patches_from_pyramid(grad_img, grad_laf, PS)
             self.assert_close(patches[:, :1], expected_finite)
-            assert patches[:, 1].abs().sum().item() == 0
+            assert patches[:, 1:].abs().sum().item() == 0
+            patches.sum().backward()
+            assert grad_img.grad is not None and bool(grad_img.grad.isfinite().all())
+            assert grad_laf.grad is not None and bool(grad_laf.grad.isfinite().all())
+            assert grad_laf.grad[:, 1:].abs().sum().item() == 0
 
     def test_giant_laf_uses_actual_coarsest_level(self, device, dtype):
         # The nominal level for this LAF is beyond the levels that can provide a PS-sized
@@ -777,9 +839,9 @@ class TestExtractPatchesPyr(BaseTester):
             dtype=dtype,
         ).view(1, 2, 2, 3)
 
-        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 0)
+        monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args: False)
         fallback = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
-        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 1 << 60)
+        monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args: True)
         atlas = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
 
         self.assert_close(fallback, atlas)
@@ -791,7 +853,7 @@ class TestExtractPatchesPyr(BaseTester):
             pytest.skip("the coordinate-rounding leak this test pins is below half-precision resolution")
 
         def sample(limit, size, patch_size):
-            monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", limit)
+            monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args: limit > 0)
             img = torch.zeros(1, 1, size, size, device=device, dtype=dtype)
             img[:, :, :, -1] = 1.0
             # A quarter pixel OUTSIDE the outermost pixel center, so the clamp engages strictly on
@@ -860,7 +922,7 @@ class TestExtractPatchesPyr(BaseTester):
         ).view(1, 2, 2, 3)
         img = torch.rand(1, 2, 20, 30, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.extract_patches_from_pyramid, (img, nlaf, 7, False), nondet_tol=1e-8)
-        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 0)
+        monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args: False)
         self.gradcheck(kornia.feature.extract_patches_from_pyramid, (img, nlaf, 7, False), nondet_tol=1e-8)
 
     def test_batch_independence(self, device, dtype):
@@ -908,7 +970,7 @@ class TestExtractPatchesPyr(BaseTester):
         self.assert_close(chunked, expected)
         if device.type == "cpu":
             assert torch.equal(chunked, expected)
-        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 0)
+        monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args: False)
         fallback_chunked = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
         monkeypatch.setattr(laf_module, "_grid_chunk_lafs", default_chunk)
         fallback_expected = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
@@ -952,11 +1014,27 @@ class TestExtractPatchesPyr(BaseTester):
         assert patches.max() <= img.max()
         self.assert_close(patches, kornia.feature.extract_patches_simple(img, laf, 16))
 
+    def test_reduced_precision_level_zero_matches_float_reference(self, device, dtype):
+        # Unlike the explicit half_dtype regression above, this uses the global dtype fixture so
+        # CUDA half tests run in the suite's per-test subprocess isolation. The float32 grid policy
+        # is universal even though the out-of-bounds kernel bug that motivated it is CPU-specific.
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("reduced-precision sampling policy")
+        img = torch.rand(1, 1, 256, 256, device=device).to(dtype)
+        laf = _corner_border_laf(device, dtype)
+        simple = kornia.feature.extract_patches_simple(img, laf, 16)
+        pyramid = kornia.feature.extract_patches_from_pyramid(img, laf, 16)
+        reference = kornia.feature.extract_patches_simple(img.float(), laf.float(), 16).to(dtype)
+        assert simple.dtype == pyramid.dtype == dtype
+        assert bool(simple.isfinite().all()) and bool(pyramid.isfinite().all())
+        self.assert_close(simple, reference)
+        self.assert_close(pyramid, reference)
+
     def test_laf_on_another_device(self, device, dtype, monkeypatch):
-        # The sampling grid follows the LAF and is moved to the image inside `_sample_patches`,
-        # so the pyramid extractor accepts a LAF on a different device than the image, matching
-        # `extract_patches_simple` -- on the atlas path AND on the levelwise fallback, which a
-        # 64x64 image never reaches on its own (the contract must not flip with the image size).
+        # The small LAF is moved to the image before grid construction, so the pyramid extractor
+        # accepts a cross-device pair like `extract_patches_simple` -- on the atlas path AND on the
+        # levelwise fallback, which a 64x64 image never reaches on its own (the contract must not
+        # flip with the image size).
         import kornia.feature.laf as laf_module
 
         if device.type == "cpu":
@@ -966,7 +1044,7 @@ class TestExtractPatchesPyr(BaseTester):
         patches = kornia.feature.extract_patches_from_pyramid(img, laf, 8)
         assert patches.device == img.device
         self.assert_close(patches, kornia.feature.extract_patches_from_pyramid(img, laf.to(device), 8))
-        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 0)
+        monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args: False)
         fallback = kornia.feature.extract_patches_from_pyramid(img, laf, 8)
         assert fallback.device == img.device
         self.assert_close(fallback, kornia.feature.extract_patches_from_pyramid(img, laf.to(device), 8))
@@ -991,14 +1069,17 @@ class TestExtractPatchesPyr(BaseTester):
         import kornia.feature.laf as laf_module
 
         if optimizer_backend == "jit":
-            # Same TorchScript incompatibility `test_dynamo` skips -- and a scripted function
-            # would not see the monkeypatched module global anyway.
+            # Same TorchScript incompatibility `test_dynamo` skips.
             pytest.skip("`extract_patches_from_pyramid` reaches a non-scriptable `filter2d`")
-        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 0)
+        monkeypatch.setattr(laf_module, "_pyramid_atlas_fits", lambda *args: False)
         laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
         img = torch.rand(2, 1, 65, 97, device=device, dtype=dtype)
+        expected = kornia.feature.extract_patches_from_pyramid(img, laf, 16)
         op = torch_optimizer(kornia.feature.extract_patches_from_pyramid)
-        self.assert_close(op(img, laf, 16), kornia.feature.extract_patches_from_pyramid(img, laf, 16))
+        self.assert_close(op(img, laf, 16), expected)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.feature.extract_patches_from_pyramid, fullgraph=True)
+        self.assert_close(compiled(img, laf, 16), expected)
 
     def test_dynamo_chunked(self, device, dtype, torch_optimizer, optimizer_backend, monkeypatch):
         # The chunk loop unrolls at trace time for static shapes; forcing one LAF per chunk
@@ -1006,14 +1087,17 @@ class TestExtractPatchesPyr(BaseTester):
         import kornia.feature.laf as laf_module
 
         if optimizer_backend == "jit":
-            # Same TorchScript incompatibility `test_dynamo` skips -- and a scripted function
-            # would not see the monkeypatched module global anyway.
+            # Same TorchScript incompatibility `test_dynamo` skips.
             pytest.skip("`extract_patches_from_pyramid` reaches a non-scriptable `filter2d`")
         monkeypatch.setattr(laf_module, "_grid_chunk_lafs", lambda *args: 1)
         laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
         img = torch.rand(2, 1, 65, 97, device=device, dtype=dtype)
+        expected = kornia.feature.extract_patches_from_pyramid(img, laf, 16)
         op = torch_optimizer(kornia.feature.extract_patches_from_pyramid)
-        self.assert_close(op(img, laf, 16), kornia.feature.extract_patches_from_pyramid(img, laf, 16))
+        self.assert_close(op(img, laf, 16), expected)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.feature.extract_patches_from_pyramid, fullgraph=True)
+        self.assert_close(compiled(img, laf, 16), expected)
 
 
 class TestLAFIsTouchingBoundary(BaseTester):

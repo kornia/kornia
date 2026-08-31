@@ -26,8 +26,6 @@ from kornia.geometry.conversions import angle_to_rotation_matrix, convert_points
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
 
-_PYRAMID_ATLAS_MAX_BYTES = 128 * 1024 * 1024
-
 
 def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
     """Return a scale of the LAFs.
@@ -448,27 +446,46 @@ def _grid_sample_patches(img: torch.Tensor, grid: torch.Tensor, h: int, w: int) 
     return F.grid_sample(img, grid, padding_mode="border", align_corners=False)
 
 
+def _grid_dtype(dtype: torch.dtype) -> torch.dtype:
+    """Return the sampling-grid dtype for an image or LAF dtype."""
+    return torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+
+
+def _promoted_grid_dtype(image_dtype: torch.dtype, laf_dtype: torch.dtype) -> torch.dtype:
+    """Return a grid dtype that never discards image or LAF coordinate precision."""
+    return _grid_dtype(torch.promote_types(image_dtype, laf_dtype))
+
+
 def _grid_elem_bytes(dtype: torch.dtype) -> int:
-    """Bytes per element of a sampling-grid dtype (float64, or float32 after the half upcast)."""
-    return 8 if dtype == torch.float64 else 4
+    """Bytes per element after applying the sampling-grid dtype policy."""
+    return 8 if _grid_dtype(dtype) == torch.float64 else 4
 
 
-def _grid_chunk_lafs(B: int, N: int, PS: int, elem_size: int, budget: int = 64 * 1024 * 1024) -> int:
-    r"""Largest LAF count per sampling call whose folded grid stays within the chunk byte budget.
+def _grid_chunk_lafs(B: int, N: int, ch: int, PS: int, elem_size: int, budget: int = 64 * 1024 * 1024) -> int:
+    r"""Largest LAF count whose folded grid and sampled chunk each fit the byte budget.
 
     The sampling grid and its pointwise intermediates scale with :math:`B \cdot N \cdot PS^2`,
     so extraction is chunked along N to bound peak memory, in the spirit of
-    :func:`kornia.core.utils.batched_forward`. The budget counts only the folded grid itself: the
-    remap temporaries and the ``grid_sample`` output (which additionally scales with the channel
-    count) grow with the same chunk size, so the actual per-chunk peak is a small multiple of the
-    budget, not equal to it. At least one LAF per chunk; when every grid fits the budget the loop
-    degenerates to the single-call fast path. The default budget is a
-    defaulted argument rather than a module constant because TorchScript cannot close over
-    module-level ints; tests monkeypatch this function to force multi-chunk sampling on small
+    :func:`kornia.core.utils.batched_forward`. Both the two-coordinate folded grid and the
+    channel-scaled ``grid_sample`` result are individually kept within the budget; pointwise remap
+    temporaries can still make the real peak a multiple of it. At least one LAF per chunk; when
+    everything fits the budget the loop degenerates to the single-call fast path. The default
+    budget is a defaulted argument rather than a module constant because TorchScript cannot close
+    over module-level ints; tests monkeypatch this function to force multi-chunk sampling on small
     inputs.
     """
-    per_laf = B * PS * PS * 2 * elem_size
+    per_laf = B * PS * PS * max(2, ch) * elem_size
     return min(N, max(1, budget // per_laf))
+
+
+def _pyramid_atlas_fits(atlas_bytes: int, budget: int = 128 * 1024 * 1024) -> bool:
+    """Return whether a packed pyramid atlas fits its default memory budget.
+
+    The budget is a defaulted argument because TorchScript cannot close over module-level integer
+    constants. Keeping the policy in a helper also gives tests a narrow seam for forcing either
+    extraction path.
+    """
+    return atlas_bytes <= budget
 
 
 def _sample_patches(img: torch.Tensor, grid: torch.Tensor, h: int, w: int) -> torch.Tensor:
@@ -502,21 +519,51 @@ def _extract_patches_from_pyramid_levelwise(
     Patches accumulate on the image's device and dtype, like the atlas path: the callers move a
     cross-device LAF to the image's device before the level index is derived, and
     reduced-precision levels are upcast once, before the loops, so no full level is re-cast per
-    chunk. Out-of-range level indices (the -1 marking a NaN-scale LAF) match no level and keep
+    chunk. Out-of-range level indices (the -1 marking a non-finite LAF) match no level and keep
     their zero patch.
     """
     B, N = nlaf.shape[:2]
     ch = img.shape[1]
-    grid_laf = nlaf.float() if nlaf.dtype in (torch.float16, torch.bfloat16) else nlaf
+    grid_dtype = _promoted_grid_dtype(img.dtype, nlaf.dtype)
+    grid_laf = nlaf.to(grid_dtype) if nlaf.dtype != grid_dtype else nlaf
     out = torch.zeros(B, N, ch, PS, PS, dtype=img.dtype, device=img.device)
-    chunk = _grid_chunk_lafs(B, N, PS, _grid_elem_bytes(grid_laf.dtype))
+    chunk = _grid_chunk_lafs(B, N, ch, PS, _grid_elem_bytes(grid_dtype))
     cur_img = img.to(grid_laf.dtype) if img.dtype != grid_laf.dtype else img
+    laf_a = grid_laf[..., :2]
+    t = 2.0 * grid_laf[..., :, 2] - 1.0
+
+    # Most calls fit in one bounded chunk, so their level-independent affine grid can be reused
+    # across the streaming pyramid. A multi-chunk call rebuilds each chunk's grid per level rather
+    # than retaining every grid or pyramid level: the fallback exists specifically to keep peak
+    # memory bounded, and either cache would make it scale with all N or another third of the image.
+    base_grid_all = torch.empty(0, dtype=grid_dtype, device=nlaf.device)
+    if chunk == N:
+        theta = torch.cat([laf_a, torch.zeros(B, N, 2, 1, dtype=grid_dtype, device=nlaf.device)], dim=-1)
+        base_grid_all = F.affine_grid(theta.view(B * N, 2, 3), [B * N, ch, PS, PS], align_corners=False).view(
+            B, N, PS, PS, 2
+        )
+
     for level_idx, (h_l, w_l) in enumerate(zip(heights, widths)):
         if level_idx > 0:
             cur_img = pyrdown(cur_img)
         for st in range(0, N, chunk):
             en = min(st + chunk, N)
-            grid = generate_patch_grid_from_normalized_LAF(cur_img, grid_laf[:, st:en], PS).view(B, en - st, PS, PS, 2)
+            nc = en - st
+            if chunk == N:
+                base_grid = base_grid_all
+            else:
+                theta = torch.cat(
+                    [laf_a[:, st:en], torch.zeros(B, nc, 2, 1, dtype=grid_dtype, device=nlaf.device)], dim=-1
+                )
+                base_grid = F.affine_grid(theta.view(B * nc, 2, 3), [B * nc, ch, PS, PS], align_corners=False).view(
+                    B, nc, PS, PS, 2
+                )
+            translation = t[:, st:en].view(B, nc, 1, 1, 2)
+            min_l = float(min(h_l - 1, w_l - 1))
+            # A singleton axis has one valid pixel and therefore no spatial extent. A zero scale
+            # keeps its grid finite and lets border padding return that pixel instead of NaNs.
+            k = base_grid.new_tensor([2.0 * min_l / float(max(w_l - 1, 1)), 2.0 * min_l / float(max(h_l - 1, 1))])
+            grid = base_grid * k + translation
             patches = _sample_patches(cur_img, grid, h_l, w_l).to(img.dtype)
             mask = (pyr_idx[:, st:en] == level_idx).view(B, en - st, 1, 1, 1)
             out[:, st:en] = torch.where(mask, patches, out[:, st:en])
@@ -542,28 +589,25 @@ def extract_patches_simple(
     """
     KORNIA_CHECK_LAF(laf)
     KORNIA_CHECK(img.size(0) == laf.size(0), "img and laf must have the same batch size")
-    KORNIA_CHECK(img.dtype == laf.dtype, "img and laf must have the same dtype")
+    # The image owns the output device and dtype, but the LAF keeps its coordinate precision.
+    # Moving the tiny LAF up front also preserves mixed-precision autocast pipelines whose
+    # detector emits a reduced-precision LAF for a float32 image.
+    laf = laf.to(device=img.device)
+    grid_dtype = _promoted_grid_dtype(img.dtype, laf.dtype)
+    laf = laf.to(grid_dtype) if laf.dtype != grid_dtype else laf
     if normalize_lafs_before_extraction:
         nlaf = normalize_laf(laf, img)
     else:
         nlaf = laf
-    # Both extractors accept a LAF on a different device than the image and return patches on the
-    # image's device. Move the small (B, N, 2, 3) LAF once, so the grid arithmetic and sampling
-    # run on the image's device, instead of building every B*N*PS^2 grid on the LAF's device.
-    nlaf = nlaf.to(img.device)
     _, ch, h, w = img.size()
     B, N, _, _ = laf.size()
     if B == 0 or N == 0:
         return torch.zeros(B, N, ch, PS, PS, device=img.device, dtype=img.dtype)
-    if nlaf.dtype in (torch.float16, torch.bfloat16):
-        # Reduced-precision sampling coordinates quantize to whole pixels on large images (the
-        # float16 ulp near the +-1 frame corners is 2^-11), so the grid is computed in float32.
-        nlaf = nlaf.float()
     # The image is upcast to the grid's dtype once, before the chunk loop: `_grid_sample_patches`
     # samples in one dtype, and re-casting the full image per chunk would defeat the chunk budget.
-    sample_img = img.to(nlaf.dtype) if img.dtype != nlaf.dtype else img
+    sample_img = img.to(grid_dtype) if img.dtype != grid_dtype else img
     out = torch.empty(B, N, ch, PS, PS, device=img.device, dtype=img.dtype)
-    chunk = _grid_chunk_lafs(B, N, PS, _grid_elem_bytes(nlaf.dtype))
+    chunk = _grid_chunk_lafs(B, N, ch, PS, _grid_elem_bytes(grid_dtype))
     for st in range(0, N, chunk):
         en = min(st + chunk, N)
         grid = generate_patch_grid_from_normalized_LAF(img, nlaf[:, st:en], PS).view(B, en - st, PS, PS, 2)
@@ -591,29 +635,21 @@ def extract_patches_from_pyramid(
     """
     KORNIA_CHECK_LAF(laf)
     KORNIA_CHECK(img.size(0) == laf.size(0), "img and laf must have the same batch size")
-    KORNIA_CHECK(img.dtype == laf.dtype, "img and laf must have the same dtype")
+    # See `extract_patches_simple`: the image owns the public output contract, while the much
+    # smaller LAF moves to its device without discarding coordinate precision.
+    laf = laf.to(device=img.device)
+    grid_dtype = _promoted_grid_dtype(img.dtype, laf.dtype)
+    laf = laf.to(grid_dtype) if laf.dtype != grid_dtype else laf
     if normalize_lafs_before_extraction:
         nlaf = normalize_laf(laf, img)
     else:
         nlaf = laf
-    # See `extract_patches_simple`: move the small LAF to the image's device once, instead of
-    # building every sampling grid on the LAF's device and moving those.
-    nlaf = nlaf.to(img.device)
     B, N, _, _ = laf.size()
     _, ch, h, w = img.size()
     if B == 0 or N == 0:
         return torch.zeros(B, N, ch, PS, PS, device=img.device, dtype=img.dtype)
-    scale = 2.0 * get_laf_scale(denormalize_laf(nlaf, img)) / float(PS)
     # max_level is a compile-time constant for static image shapes.
     max_level = min(h, w) // PS
-    # A NaN scale (a training-time detector can emit a degenerate LAF) survives the clamp, and
-    # `.long()` turns it into INT64_MIN, which would index `level_constants` out of bounds -- an
-    # IndexError on the CPU and a device-side assert on CUDA. Mark such LAFs with level -1
-    # instead: both sampling paths return a zero patch for them, as the pre-atlas implementation
-    # always did.
-    pyr_idx = scale.log2().clamp(min=0.0, max=max(0, max_level - 1)).nan_to_num(nan=-1.0).long()
-    pyr_idx = pyr_idx.squeeze(-1).squeeze(-1)
-
     # Build exactly the pyramid that can provide a PS-sized patch. ``pyrdown`` defines its output
     # size as floor(side / 2), including for odd inputs, so the atlas can be allocated before the
     # levels are materialized and each level can be released after it is copied.
@@ -627,14 +663,27 @@ def extract_patches_from_pyramid(
         heights.append(h_l)
         widths.append(w_l)
 
+    # A non-finite value anywhere in a training-time LAF, including only its center, can reach an
+    # invalid sampling grid. The CPU border-padding backward kernel can segfault on a NaN grid.
+    # Mark the whole frame invalid and sanitize it before any grid arithmetic; both paths then
+    # return a zero patch and a zero gradient for that frame without disturbing finite neighbours.
+    invalid_lafs = ~torch.isfinite(nlaf).all(dim=-1).all(dim=-1)
+    nlaf = nlaf.masked_fill(invalid_lafs.view(B, N, 1, 1), 0.0)
+    scale = 2.0 * get_laf_scale(denormalize_laf(nlaf, img)) / float(PS)
+    pyr_idx = scale.log2().clamp(min=0.0, max=float(len(heights) - 1)).long().squeeze(-1).squeeze(-1)
+    pyr_idx = pyr_idx.masked_fill(invalid_lafs, -1)
+
+    # Small images and ROIs commonly have only level 0. Sampling that image directly avoids
+    # allocating and remapping a one-level atlas that cannot provide any pyramid benefit.
+    if len(heights) == 1:
+        return _extract_patches_from_pyramid_levelwise(img, nlaf, pyr_idx, heights, widths, PS)
+
     # Place every level side-by-side with a one-pixel replicated guard. The guard absorbs
     # floating-point remapping error at an outer pixel center and preserves both the border value
     # and its zero outward gradient instead of leaking into the neighbouring level.
     atlas_h = h + 2
     packed_widths = [w_l + 2 for w_l in widths]
     atlas_w = sum(packed_widths)
-    pyr_idx = pyr_idx.clamp(max=len(heights) - 1)
-    grid_dtype = torch.float32 if nlaf.dtype in (torch.float16, torch.bfloat16) else nlaf.dtype
     # A full-height atlas is counterproductive for very large or heavily batched images. Keep
     # its storage bounded; the static shape guard disappears under torch.compile, and the
     # levelwise path preserves the same clamping and reduced-precision grid semantics. The atlas
@@ -642,13 +691,13 @@ def extract_patches_from_pyramid(
     # pad, `pyrdown` and every chunk's `grid_sample` run on kernels every torch build has, and no
     # full-atlas recast is paid per chunk. A 1-pixel axis in any *built level* -- a 1-pixel input
     # image, or a coarse level that `PS == 1` lets the pyramid descend to -- would make the level
-    # constants' Python `size - 1` division below raise; the levelwise sampler's tensor
-    # arithmetic degrades the way the pre-atlas code did instead.
+    # constants' Python `size - 1` division below raise; the levelwise sampler treats that axis
+    # as having zero spatial extent instead.
     atlas_elements = B * ch * atlas_h * atlas_w
     atlas_bytes = atlas_elements * _grid_elem_bytes(grid_dtype)
     if img.dtype != grid_dtype:
         atlas_bytes += B * ch * h * w * _grid_elem_bytes(grid_dtype)  # the one-time upcast copy
-    if min(heights[-1], widths[-1]) < 2 or atlas_bytes > _PYRAMID_ATLAS_MAX_BYTES:
+    if min(heights[-1], widths[-1]) < 2 or not _pyramid_atlas_fits(atlas_bytes):
         return _extract_patches_from_pyramid_levelwise(img, nlaf, pyr_idx, heights, widths, PS)
     sample_img = img.to(grid_dtype) if img.dtype != grid_dtype else img
     atlas = sample_img.new_zeros(B, ch, atlas_h, atlas_w)
@@ -695,8 +744,8 @@ def extract_patches_from_pyramid(
     # along N to bound peak memory; each chunk repeats exactly the single-call arithmetic, and
     # for small workloads the loop is a single iteration.
     out = torch.empty(B, N, ch, PS, PS, device=img.device, dtype=img.dtype)
-    chunk = _grid_chunk_lafs(B, N, PS, _grid_elem_bytes(grid_dtype))
-    # Invalid (NaN-scale) LAFs carry level -1: they index the level-0 constants here and their
+    chunk = _grid_chunk_lafs(B, N, ch, PS, _grid_elem_bytes(grid_dtype))
+    # Invalid (non-finite) LAFs carry level -1: they index the level-0 constants here and their
     # patches are zeroed after the loop, unconditionally -- a data-dependent Python branch would
     # break the fullgraph `torch.compile` path.
     safe_pyr_idx = pyr_idx.clamp(min=0)
@@ -715,7 +764,7 @@ def extract_patches_from_pyramid(
         grid = grid * level_scale
         grid = grid + level_offset
         out[:, st:en] = _sample_patches(atlas, grid, atlas_h, atlas_w)
-    return torch.where((pyr_idx >= 0).view(B, N, 1, 1, 1), out, out.new_zeros(1))
+    return out.masked_fill_((pyr_idx < 0).view(B, N, 1, 1, 1), 0.0)
 
 
 def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0) -> torch.Tensor:

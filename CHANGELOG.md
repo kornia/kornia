@@ -25,12 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The universal `float32` sampling is a real cost where the native half kernels were fine: on CUDA, `float16`
   `extract_patches_simple` is roughly 2x slower at high N, and peak CUDA memory rises at moderate N (the atlas plus
   the one-time upcast copy) even though the high-N peaks drop.
-  Both extractors now also reject an image/LAF batch-size or dtype mismatch at the boundary with a clear error:
-  former releases raised an internal `grid_sample` error for most of these mixes, except a smaller LAF batch, where
-  both extractors silently returned patches for only the first `min(B_img, B_laf)` images. Both extractors chunk their sampling along N, in the spirit of `batched_forward`, so
-  the folded `(B, N*PS, PS, 2)` grid stays within a fixed 64 MiB budget (the remap intermediates and the sampled
-  output scale with the same chunk size, so the per-chunk peak is a small multiple of that): batched high-N
-  extraction now peaks below even the pre-batching per-image loop (468 MiB against 495 MiB on `main` for B=8,
+  Both extractors now reject an image/LAF batch-size mismatch at the boundary with a clear error: former releases
+  raised an internal `grid_sample` error for most batch mixes, except a smaller LAF batch, where both extractors
+  silently returned patches for only the first `min(B_img, B_laf)` images. A LAF on another device is moved once to
+  the image, while a different LAF dtype is promoted with the image dtype for grid arithmetic rather than rejected or
+  rounded down; this preserves mixed-precision autocast pipelines and subpixel LAF coordinates. Patches still return
+  with the image's dtype and device. Both extractors chunk their sampling along N, in the spirit of `batched_forward`, so
+  the folded `(B, N*PS, PS, 2)` grid and channel-scaled sampled chunk each stay within a fixed 64 MiB budget (remap
+  intermediates can still make the total peak a multiple of that). Batched high-N extraction now peaks below even the
+  pre-batching per-image loop (468 MiB
+  against 495 MiB on `main` for B=8,
   N=4000, PS=32 on a 512x512 float32 image, where the unchunked atlas peaked at 1.24 GiB), eager throughput stays
   within ~5% of the unchunked atlas, and float32/float64 patches are bitwise identical to it; a `torch.compile`d
   call whose grid exceeds the budget splits into several `grid_sample` calls (~1.5x the unbounded atlas latency at
