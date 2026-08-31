@@ -78,6 +78,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Compute `PatchAffineShapeEstimator` moments and normalization in float32 for float16 and bfloat16
+  inputs, then cast the result back to the input dtype (#4123). Weighted gradients could underflow
+  when squared in float16, producing NaNs or replacing an anisotropic patch with a circular shape.
+  Float32 and float64 inputs keep their existing computation.
+
 * Make `load_pointcloud_ply` and `load_pointcloud_ply_binary` parse the PLY header instead of skipping a fixed
   number of lines. Both loaders skipped `header_size=8` lines and read everything after them as `x y z` triples, so a
   minimal PLY file (seven header lines, no `comment`) lost its first point to a header line -- the binary reader

@@ -54,6 +54,56 @@ class TestPatchAffineShapeEstimator(BaseTester):
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(ori, (patches,), nondet_tol=1e-4)
 
+    @pytest.mark.parametrize("patch_size", [19, 32])
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_precision(self, device, dtype, patch_size, batch_size):
+        """Flat and anisotropic patches retain their shape and finite input gradients."""
+        patches = torch.zeros(batch_size, 1, patch_size, patch_size, device=device, dtype=dtype)
+        middle = patch_size // 2
+        patches[:, :, middle - 1 : middle + 1, 2:-2] = 1
+        if batch_size == 3:
+            patches[0].zero_()
+            patches[2] = patches[1].transpose(-2, -1)
+
+        expected = PatchAffineShapeEstimator(patch_size).to(device)(patches.float()).to(dtype)
+        module = PatchAffineShapeEstimator(patch_size).to(device, dtype)
+        weighting = module.weighting.clone()
+        patches.requires_grad_()
+
+        actual = module(patches)
+
+        assert actual.shape == (batch_size, 1, 3)
+        assert actual.dtype == dtype
+        assert actual.device == device
+        self.assert_close(actual, expected)
+        self.assert_close(module.weighting, weighting, atol=0, rtol=0)
+        actual.sum().backward()
+        assert patches.grad is not None and torch.isfinite(patches.grad).all()
+        if batch_size == 3:
+            assert (patches.grad[0] == 0).all()
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_cpu(self, device, half_dtype):
+        """Keep the half-precision regression covered in ordinary CPU CI jobs."""
+        if device.type != "cpu":
+            pytest.skip("Explicit half-precision CI guard is CPU-only. Other devices use the dtype fixture.")
+        patches = torch.zeros(2, 1, 32, 32, device=device, dtype=half_dtype)
+        patches[1, :, 15:17, 9:23] = 1
+        actual = PatchAffineShapeEstimator(32).to(device, half_dtype)(patches)
+        # The anisotropic value is the float32 result for the rectangle in #4123.
+        expected = torch.tensor([[[1.0, 0.0, 1.0]], [[0.0883344, 0.0, 1.0]]], device=device, dtype=half_dtype)
+        assert actual.dtype == half_dtype
+        self.assert_close(actual, expected)
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        """Compilation preserves the public result and output dtype."""
+        module = PatchAffineShapeEstimator(32).to(device, dtype)
+        patches = torch.zeros(2, 1, 32, 32, device=device, dtype=dtype)
+        patches[1, :, 15:17, 9:23] = 1
+        actual = torch_optimizer(module)(patches)
+        assert actual.dtype == dtype
+        self.assert_close(actual, module(patches))
+
 
 class TestAffineShapeKernelBuffer(BaseTester):
     """`weighting` must be a real buffer so `.to()` moves it, and `forward` must not rebind it (#4069)."""

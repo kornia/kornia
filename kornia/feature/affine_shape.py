@@ -48,6 +48,9 @@ class PatchAffineShapeEstimator(nn.Module):
 
     The method determines the affine shape of the local feature as in :cite:`baumberg2000`.
 
+    For float16 and bfloat16 inputs, the moments and normalization are computed in float32.
+    The output keeps the input dtype.
+
     Args:
         patch_size: the input image patch size.
         eps: for safe division.
@@ -81,6 +84,10 @@ class PatchAffineShapeEstimator(nn.Module):
 
         """
         KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
+        dtype = patch.dtype
+        # Squared weighted gradients and the degeneracy threshold can underflow in half precision.
+        if dtype in (torch.float16, torch.bfloat16):
+            patch = patch.float()
         # cast into a local; rebinding `self.weighting` would make the module's dtype/device depend
         # on whichever tensor was passed last.
         weighting = self.weighting.to(patch.dtype).to(patch.device)
@@ -105,7 +112,7 @@ class PatchAffineShapeEstimator(nn.Module):
         ellipse_shape = ellipse_shape * (1.0 - bad_mask) + circular_shape * bad_mask
         # normalization
         ellipse_shape = ellipse_shape / ellipse_shape.max(dim=2, keepdim=True)[0]
-        return ellipse_shape
+        return ellipse_shape.to(dtype)
 
 
 class LAFAffineShapeEstimator(nn.Module):
