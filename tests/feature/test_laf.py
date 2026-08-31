@@ -477,6 +477,17 @@ class TestClampGridToPixelCenters(BaseTester):
         self.assert_close(actual.cpu(), expected)
 
 
+# The two half-precision border tests below are CPU-only, for two reasons. The broken kernel and
+# the float32 workaround that routes around it are CPU-specific, so no other device exercises
+# anything the rest of the suite misses; and the half dtype comes from a `half_dtype` parameter,
+# which the CUDA half-precision isolation in `conftest.py` does not see -- both
+# `_is_subprocess_isolated_test` and `skip_half_precision_on_cuda` key on the global `dtype`
+# fixture (`dtype_name`). A `--device=cuda --dtype=float32` job would therefore run half kernels
+# in the shared CUDA context with no subprocess isolation, where a device-side assert poisons
+# every later test in the process. MPS autocast changes the effective dtype as well.
+_HALF_BORDER_SKIP = "the reduced-precision `grid_sample` gap and its float32 workaround are CPU-only"
+
+
 def _corner_border_laf(device, dtype, scale: float = 8.0, angle_deg: float = 15.0, center: float = 255.0):
     """Build a rotated LAF centered on the last pixel of a 256x256 image.
 
@@ -549,8 +560,8 @@ class TestExtractPatchesSimple(BaseTester):
         # extractor samples reduced-precision CPU images in float32. Parametrized on the dtype
         # rather than taking the global `dtype` fixture: CI runs the suite in float32/float64 only,
         # where the kernel is sound and this test cannot fail.
-        if device.type == "mps":
-            pytest.skip("MPS autocast changes the effective dtype")
+        if device.type != "cpu":
+            pytest.skip(_HALF_BORDER_SKIP)
         torch.manual_seed(0)
         img = torch.rand(1, 1, 256, 256, device=device).to(half_dtype)
         laf = _corner_border_laf(device, half_dtype)
@@ -668,8 +679,8 @@ class TestExtractPatchesPyr(BaseTester):
         # has a scale below the patch size, so the patch comes from the undownsampled image and the
         # level-0 result must equal the plain extractor's byte for byte. A larger LAF would be served
         # by a blurred level whose near-constant patch stays in range even when the read is wrong.
-        if device.type == "mps":
-            pytest.skip("MPS autocast changes the effective dtype")
+        if device.type != "cpu":
+            pytest.skip(_HALF_BORDER_SKIP)
         if not supports_reflect_padding(device, half_dtype):
             # `pyrdown` blurs with border_type="reflect"; torch 2.5.1 has no float16 CPU kernel.
             pytest.skip(f"no reflect-padding kernel for {half_dtype} on {device.type}")
