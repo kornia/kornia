@@ -184,17 +184,17 @@ class SIFTDescriptor(nn.Module):
         """Return the spatial pooling kernel used for histogram accumulation.
 
         Returns:
-            Detached convolution kernel tensor from the pooling layer.
+            Detached copy of the convolution kernel tensor from the pooling layer.
         """
-        return self.pk.weight.detach()
+        return self.pk.weight.detach().clone()
 
     def get_weighting_kernel(self) -> torch.Tensor:
         """Return the Gaussian weighting kernel used before orientation pooling.
 
         Returns:
-            Detached Gaussian kernel tensor.
+            Detached copy of the Gaussian kernel tensor.
         """
-        return self.gk.detach()
+        return self.gk.detach().clone()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         r"""Compute SIFT descriptors for square grayscale patches.
@@ -360,17 +360,13 @@ class DenseSIFTDescriptor(nn.Module):
         PoolingConv.weight.data.copy_(self._poolingconv_weight)
         self.PoolingConv = PoolingConv
 
-        # Cache pooling kernel torch.Tensor for fast return in get_pooling_kernel
-        self._pooling_kernel = self._bin_pooling_kernel_weight.detach()
-
     def get_pooling_kernel(self) -> torch.Tensor:
-        """Return the cached pooling kernel for dense SIFT binning.
+        """Return the pooling kernel for dense SIFT binning.
 
         Returns:
-            Detached tensor containing pooling weights.
+            Detached copy of the pooling weights.
         """
-        # Return the cached detached pooling kernel directly for optimal speed
-        return self._pooling_kernel
+        return self.bin_pooling_kernel.weight.detach().clone()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Compute dense SIFT descriptors over a full image grid.

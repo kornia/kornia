@@ -108,6 +108,22 @@ class TestSIFTDescriptorKernelBuffer(BaseTester):
         mod(torch.rand(2, 1, 32, 32, dtype=torch.float64))
         assert (mod.gk.dtype, mod.gk.device) == before
 
+    def test_kernel_accessors_return_copies(self, device):
+        """Accessor writes must not mutate SIFT's pooling parameter or weighting buffer (#4083)."""
+        mod = SIFTDescriptor(32).to(device)
+        pooling = mod.get_pooling_kernel()
+        weighting = mod.get_weighting_kernel()
+        expected_pooling = pooling.clone()
+        expected_weighting = weighting.clone()
+        assert not pooling.requires_grad
+        assert not weighting.requires_grad
+
+        pooling.zero_()
+        weighting.zero_()
+
+        self.assert_close(mod.pk.weight, expected_pooling)
+        self.assert_close(mod.gk, expected_weighting)
+
 
 class TestSIFTConstantPatchIsFinite(BaseTester):
     """A constant patch has a zero-norm descriptor; normalising it must not give NaN.
@@ -238,6 +254,28 @@ class TestDenseSIFTDescriptor(BaseTester):
     def test_print(self, device):
         sift = DenseSIFTDescriptor()
         sift.__repr__()
+
+    def test_pooling_kernel_accessor_is_isolated_and_tracks_to(self, device):
+        """Dense SIFT's accessor must return a copy of the kernel used in forward (#4083)."""
+        mod = DenseSIFTDescriptor()
+        expected = mod.bin_pooling_kernel.weight.detach().clone()
+        mod.get_pooling_kernel().zero_()
+        self.assert_close(mod.bin_pooling_kernel.weight, expected)
+
+        target_dtype = torch.float32 if device.type == "mps" else torch.float64
+        mod.to(device, target_dtype)
+        kernel = mod.get_pooling_kernel()
+        assert not kernel.requires_grad
+        assert kernel.dtype == target_dtype
+        assert kernel.device == device
+
+        if device.type != "mps":
+            mod = DenseSIFTDescriptor()
+            mod(torch.rand(1, 1, 8, 8, device=device, dtype=torch.float64))
+            kernel = mod.get_pooling_kernel()
+            assert kernel.dtype == torch.float64
+            assert kernel.device == device
+            self.assert_close(kernel, mod.bin_pooling_kernel.weight)
 
     def test_instances_do_not_share_buffer_storage(self, device):
         """Instances must not share storage for `_poolingconv_weight` (see #4068).
