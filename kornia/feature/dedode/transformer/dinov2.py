@@ -58,16 +58,11 @@ class BlockChunk(nn.ModuleList):
     def forward(self, x):
         """Run this DeDoDe module forward.
 
-        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
-        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
-
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Token sequence or tensor passed through each transformer block in sequence.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Token sequence with the same shape as input after processing through all blocks.
         """
         for b in self:
             x = b(x)
@@ -214,13 +209,12 @@ class DinoVisionTransformer(nn.Module):
         """Interpolate positional encodings to the current patch grid.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
-            w: Input value used by this method.
-            h: Input value used by this method.
+            x: Token sequence with class token prepended, shape :math:`(B, N+1, D)`.
+            w: Image width in pixels.
+            h: Image height in pixels.
 
         Returns:
-            Positional embedding tensor resized to match the current patch grid.
+            Positional embedding tensor resized to match the current patch grid, shape :math:`(1, N'+1, D)`.
         """
         previous_dtype = x.dtype
         npatch = x.shape[1] - 1
@@ -251,12 +245,11 @@ class DinoVisionTransformer(nn.Module):
         """Prepare image patch tokens before transformer encoding.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
-            masks: Input value used by this method.
+            x: Input image tensor with shape :math:`(B, C, H, W)`.
+            masks: Optional boolean mask tensor with shape :math:`(B, N)` for masked patch tokens.
 
         Returns:
-            Token sequence prepared with class token, positional embeddings, and optional masks.
+            Token sequence with class token, positional embeddings, and optional masks, shape :math:`(B, N+1, D)`.
         """
         _B, _nc, w, h = x.shape
         x = self.patch_embed(x)
@@ -272,8 +265,8 @@ class DinoVisionTransformer(nn.Module):
         """Compute transformer features for a list of image tensors.
 
         Args:
-            x_list: Input value used by this method.
-            masks_list: Input value used by this method.
+            x_list: List of input image tensors, each with shape :math:`(B, C, H, W)`.
+            masks_list: List of optional boolean mask tensors matching each image in ``x_list``.
 
         Returns:
             List of intermediate feature dictionaries, one per input image tensor.
@@ -300,12 +293,11 @@ class DinoVisionTransformer(nn.Module):
         """Compute transformer features for one image tensor.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
-            masks: Input value used by this method.
+            x: Input image tensor with shape :math:`(B, C, H, W)`, or list of tensors.
+            masks: Optional boolean mask tensor with shape :math:`(B, N)` or ``None``.
 
         Returns:
-            Feature dictionary produced by the transformer backbone.
+            Feature dictionary with keys ``x_norm_clstoken``, ``x_norm_patchtokens``, ``x_prenorm``, and ``masks``.
         """
         if isinstance(x, list):
             return self.forward_features_list(x, masks)
@@ -360,15 +352,14 @@ class DinoVisionTransformer(nn.Module):
         """Return selected intermediate transformer layer outputs.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
-            n: Current hourglass recursion depth.
-            reshape: Input value used by this method.
-            return_class_token: Input value used by this method.
-            norm: Input value used by this method.
+            x: Input image tensor with shape :math:`(B, C, H, W)`.
+            n: Number of last transformer blocks to return, or explicit list of block indices.
+            reshape: If ``True``, reshape patch tokens from :math:`(B, N, D)` to :math:`(B, D, H_p, W_p)`.
+            return_class_token: If ``True``, return ``(patch_tokens, class_token)`` tuples.
+            norm: If ``True``, apply layer normalization to each output.
 
         Returns:
-            Tuple or list of intermediate transformer layer outputs.
+            Tuple of intermediate transformer layer outputs, optionally reshaped and with class tokens.
         """
         if self.chunked_blocks:
             outputs = self._get_intermediate_layers_chunked(x, n)
@@ -389,14 +380,11 @@ class DinoVisionTransformer(nn.Module):
         return tuple(outputs)
 
     def forward(self, *args, is_training=False, **kwargs):
-        """Run this DeDoDe module forward.
-
-        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
-        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+        r"""Run this DeDoDe module forward.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            During training: full feature dictionary from ``forward_features``.
+            During inference: class token projection with shape :math:`(B, \text{out_dim})`.
         """
         ret = self.forward_features(*args, **kwargs)
         if is_training:

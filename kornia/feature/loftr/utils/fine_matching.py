@@ -93,11 +93,11 @@ class FineMatching(nn.Module):
         """Extract fine-level correspondences from the refined matching heatmap.
 
         Args:
-            coords_normed: Input value used by this method.
+            coords_normed: Normalized coordinate offsets with shape :math:`(M, 2)`.
             data: Dictionary containing image features, keypoints, descriptors, and image sizes for matching.
 
         Returns:
-            Dictionary updated with refined fine-level correspondences.
+            None. Updates ``data`` in place with fine-level matches.
         """
         W, _, _, scale = self.W, self.WW, self.C, self.scale
 

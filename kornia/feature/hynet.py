@@ -155,12 +155,12 @@ class TLU(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
-        # nn.init.zeros_(self.tau)
         """Reset learnable parameters to their initial values.
 
         Returns:
             None. The module parameters are reset in place.
         """
+        # nn.init.zeros_(self.tau)
         nn.init.constant_(self.tau, -1)
 
     def extra_repr(self) -> str:
