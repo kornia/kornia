@@ -76,7 +76,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   they are subject to its check: a mask that is not at the image's spatial size, which used to be ignored, is
   rejected. A floating-point mask changes meaning in `ScaleSpaceDetector`-based pipelines too, see below.
 
+* `ellipse_to_laf` no longer raises on a degenerate ellipse. One whose `a` or `c` is `0` after rounding to the input
+  dtype makes the matrix being inverted singular; the batched `torch.inverse` it now replaces (see below) failed the
+  whole call with `linalg.LinAlgError`, and the closed form returns non-finite values in that LAF instead, leaving
+  the other rows of the batch usable. Callers that relied on the exception to reject bad input -- reading
+  Oxford-format `.ellipse` files, say -- should test the result with `kornia.feature.laf_is_valid`, since an invalid
+  LAF otherwise propagates silently through `get_laf_scale` and into matching. Detecting the degenerate rows up front
+  would cost a device synchronisation and the `fullgraph=True` capture, so it is left to the caller. The in-repo
+  affine estimators handle invalid candidates before nonlinear LAF operations. `PatchAffineShapeEstimator` computes
+  half-precision gradients, Gaussian weights, moments, and normalization in `float32`, preserving valid anisotropic
+  shapes that would otherwise underflow; `LAFAffineShapeEstimator` sanitizes non-positive-definite ellipse
+  coefficients before conversion; and both it and `LAFAffNetShapeEstimator` use a finite fallback with finite
+  backward. The fallback is the input LAF when `preserve_orientation=True` and its upright form otherwise; a finite
+  zero-scale input keeps its center and zero affine block.
+
 ### Bug fixes
+
+* Replace the batched `torch.inverse` in `ellipse_to_laf` with the closed-form inverse of its lower-triangular
+  2x2 matrix. Results agree with the previous implementation to ~1.6e-7 relative in `float32` (machine epsilon in
+  `float64`). Reproducible numbers via `benchmarks/feature/ellipse_to_laf.py` (float32, N=1e3..1e5, torch 2.9.1,
+  Linux/WSL2, base `2009933e`): throughput improves ~2.4-5.3x eager / ~3-6.5x compiled on CPU (i7-14700K) and
+  ~1.4-1.7x eager / ~4.2-5.5x compiled on CUDA (RTX 4090). The largest win is MPS, where the batched inverse hit a
+  pathological `linalg` path, emitted a deprecated-resize `UserWarning` on every call, and failed to `torch.compile`
+  (~1500x once measured ad hoc at N=20000 on Apple Silicon; rerun the benchmark there for a citable number). The
+  function now compiles with `fullgraph=True` on every backend and accepts `float16`/`bfloat16` on CPU, where the
+  raw `.inverse()` call raised for low-precision dtypes (`_torch_inverse_cast` would have lifted that restriction
+  too; the closed form is for speed). The off-diagonal divides `a21 = b / (a11 + a22)` by the product of the
+  diagonal square roots, which can neither overflow nor round to zero: every ordering of the reciprocal product
+  overflows to `inf` (or flushes a representable value to `0`) on a sufficiently lopsided or subnormal diagonal,
+  and when that product is subnormal the division loses precision but never corrupts a representable result to a
+  zero, `inf`, or `nan`.
 
 * Make `load_pointcloud_ply` and `load_pointcloud_ply_binary` parse the PLY header instead of skipping a fixed
   number of lines. Both loaders skipped `header_size=8` lines and read everything after them as `x y z` triples, so a

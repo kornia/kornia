@@ -173,10 +173,9 @@ def _zero_unfilled(lafs: torch.Tensor, filled: torch.Tensor) -> torch.Tensor:
     r"""Replace the LAFs of the slots no detection filled with the zero LAF.
 
     ``filled`` is a ``(B, N)`` boolean mask of the slots a detection actually filled. The
-    affine-shape and orientation modules normalise a frame, and a zero LAF comes out of
-    :class:`LAFAffineShapeEstimator` as a finite 1e-5-scale frame at the origin, so the mask is
-    re-applied after them. ``where`` rather than a multiply, so a module that returns NaN for a
-    zero frame cannot leak it into the padding.
+    affine-shape and orientation modules may normalise or propagate invalid padding frames
+    differently by dtype, so the mask is re-applied after them. ``where`` rather than a multiply,
+    so a module that returns NaN for a zero frame cannot leak it into the padding.
 
     Both detectors' ``forward`` read the mask off the LAFs that ``detect`` returns: a zero LAF is
     the padding contract, and it is the one signal a subclass overriding ``detect`` also honours.
