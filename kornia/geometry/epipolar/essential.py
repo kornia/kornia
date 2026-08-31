@@ -38,6 +38,7 @@ __all__ = [
     "find_essential",
     "motion_from_essential",
     "motion_from_essential_choose_solution",
+    "project_to_essential",
     "relative_camera_motion",
 ]
 
