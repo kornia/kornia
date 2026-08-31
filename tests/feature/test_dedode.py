@@ -26,7 +26,7 @@ from testing.base import BaseTester
 
 class TestConvRefiner(BaseTester):
     def test_amp_matches_input_device(self, device):
-        refiner = ConvRefiner(in_dim=4, hidden_dim=4, out_dim=4)
+        refiner = ConvRefiner(in_dim=4, hidden_dim=4, out_dim=4).to(device)
         autocast_enabled = []
         refiner.block1.register_forward_pre_hook(
             lambda _module, _inputs: autocast_enabled.append(torch.is_autocast_enabled("cuda"))
