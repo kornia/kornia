@@ -166,7 +166,14 @@ class LAFAffineShapeEstimator(nn.Module):
         laf_out = scale_laf(laf_out, scale_orig / ellipse_scale)
         if self.preserve_orientation:
             laf_out = set_laf_orientation(laf_out, ori_orig)
-        return laf_out
+        # A degenerate ellipse yields a non-finite LAF (`ellipse_to_laf` does not raise). The detector's
+        # `bad_mask` cannot catch every such case: it tests the moments before normalization, in float16
+        # its `eps=1e-10` rounds to `0.0` so exactly-zero moments slip through, and the normalizing
+        # divide can flush a further component to zero after the check. Fall back to the input LAF for
+        # those keypoints, as `bad_mask` falls back to a circular shape -- but with `torch.where` rather
+        # than its mask-multiply idiom, since `nan * 0` is `nan`.
+        bad = ~laf_out.isfinite().all(dim=-1).all(dim=-1)
+        return torch.where(bad[..., None, None], laf, laf_out)
 
 
 class LAFAffNetShapeEstimator(nn.Module):

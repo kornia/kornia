@@ -20,7 +20,7 @@ import torch
 
 from kornia.feature.affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_conv2d, supports_grid_sample
 
 
 class TestPatchAffineShapeEstimator(BaseTester):
@@ -126,6 +126,30 @@ class TestLAFAffineShapeEstimator(BaseTester):
         new_laf = aff(laf, inp)
         expected = torch.tensor([[[[35.078, 0, 16.0], [0, 11.403, 16.0]]]], device=device)
         self.assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
+
+    def test_degenerate_ellipse_falls_back_to_input_laf_float16(self, device):
+        # `ellipse_to_laf` no longer raises on a degenerate ellipse: it returns a non-finite LAF
+        # (https://github.com/kornia/kornia/pull/4122). `PatchAffineShapeEstimator`'s `bad_mask` tests
+        # the moments *before* normalization -- and its `eps=1e-10` itself rounds to `0.0` in float16,
+        # so an exactly-zero moment no longer counts as "close to zero" -- so a near-horizontal edge
+        # patch (|gx| / |gy| ~ 1e-4) slips through as the degenerate ellipse `[0., 0., 1.]`, and the
+        # estimated LAF used to come back all-nan, silently. The estimator must fall back to the
+        # input LAF at such keypoints instead. (If a future torch's numerics let `bad_mask` catch
+        # this patch first, its circular fallback restores the input LAF too, so the pin holds
+        # through either protection layer.)
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        if not (supports_conv2d(device, torch.float16) and supports_grid_sample(device, torch.float16)):
+            # Patch extraction needs `grid_sample`, the moment matrix needs the Sobel convolution;
+            # older torch lacks the float16 CPU kernels (see testing/base.py).
+            pytest.skip(f"no float16 conv2d/grid_sample kernels on {device.type}")
+        y = torch.linspace(0, 1, 32, device=device, dtype=torch.float16).view(32, 1).expand(32, 32)
+        x = torch.linspace(0, 1e-4, 32, device=device, dtype=torch.float16).view(1, 32).expand(32, 32)
+        img = (y + x).view(1, 1, 32, 32).clone()
+        laf = torch.tensor([[[[8.0, 0.0, 16.0], [0.0, 8.0, 16.0]]]], device=device, dtype=torch.float16)
+        out = LAFAffineShapeEstimator(32).to(device, torch.float16)(laf, img)
+        assert torch.isfinite(out).all()
+        self.assert_close(out, laf)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 40, 40

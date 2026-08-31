@@ -68,6 +68,10 @@ def build_ops(
     row: dict[str, Backend] = {"kornia (eager)": lambda: KF.ellipse_to_laf(ells)}
     compile_failures: dict[str, str] = {}
     if do_compile:
+        # Reset dynamo so every sweep size compiles a fresh static-shape graph; without this the
+        # first size is timed on a static graph and later sizes on the automatic-dynamic recompile
+        # (~1.4x one-row bias). Mirrors test_dynamo_fullgraph in tests/feature/test_laf.py.
+        torch._dynamo.reset()
         compiled = torch.compile(KF.ellipse_to_laf, fullgraph=True)
         try:
             compiled(ells)

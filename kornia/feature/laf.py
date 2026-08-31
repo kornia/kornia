@@ -231,11 +231,13 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     Note:
         A degenerate ellipse -- one whose ``a`` or ``c`` is ``0`` after rounding to ``ells.dtype`` --
         describes an unbounded strip rather than a bounded region, and makes the matrix being inverted
-        singular. Its LAF is non-finite: ``inf`` on the diagonal, and ``nan`` where that ``inf`` meets a
-        zero off-diagonal, so :func:`get_laf_scale` of such a LAF is ``nan``. The conversion does not
-        raise. Rounding is part of the condition: in ``float16`` an ``a`` below roughly ``3e-8`` (half
-        the smallest subnormal) rounds to ``0``, and a backend that flushes subnormals to zero raises
-        that cutoff to the smallest normal, about ``6e-5``.
+        singular. Its LAF is non-finite: ``inf`` always appears on the diagonal, while ``nan`` appears
+        only in the sub-case where the off-diagonal ``b`` is exactly ``0`` (``0 * inf``) -- the generic
+        degenerate ellipse is ``inf``-only, so screen results with ``torch.isfinite(laf).all()`` rather
+        than an ``isnan`` test, which misses it. :func:`get_laf_scale` of such a LAF is non-finite as
+        well. The conversion does not raise. Rounding is part of the condition: in ``float16`` an ``a``
+        below roughly ``3e-8`` (half the smallest subnormal) rounds to ``0``, and a backend that
+        flushes subnormals to zero raises that cutoff to the smallest normal, about ``6e-5``.
 
     Example:
         >>> input = torch.ones(1, 10, 5)  # BxNx5
@@ -258,10 +260,12 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     # R = (sqrt(A) 0; C / (sqrt(A)+sqrt(D)) sqrt(D))
     a11 = ells[..., 2:3].abs().sqrt()
     a22 = ells[..., 4:5].abs().sqrt()
-    # a11 and a22 are square roots, so a11 + a22 is either exactly zero or at least the square root of
-    # the dtype's smallest positive value -- 2.4e-4 in float16. The clamp underflows to a no-op there,
-    # which costs nothing: the (0, 1e-9) window it guards is unreachable in float16, and at exactly
-    # zero the diagonal below is inf whatever a21 holds. Guards for unreachable inputs are not widened.
+    # In float16, a11 and a22 are square roots, so a11 + a22 is either exactly zero or at least the
+    # square root of the smallest positive value -- 2.4e-4 -- and the (0, 1e-9) window the clamp guards
+    # is unreachable; at exactly zero the diagonal below is inf whatever a21 holds. In float32/float64
+    # the window IS reachable for sub-denormal-ish inputs (e.g. float32 a = c = 1e-40 gives
+    # a11 + a22 = 2e-20): there the clamp fires and perturbs a21 by orders of magnitude -- finite but
+    # wrong, exactly as the pre-closed-form code behaved. Kept as-is; it is not a correctness guard.
     a21 = ells[..., 3:4] / (a11 + a22).clamp(1e-9)
     # The matrix [[a11, 0], [a21, a22]] is lower-triangular, so its inverse is the closed form
     # [[1/a11, 0], [-a21/(a11*a22), 1/a22]] — no batched torch.inverse, which is orders of

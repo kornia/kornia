@@ -23,7 +23,7 @@ import torch
 import kornia
 import kornia.geometry.transform.imgwarp
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.geometry.create import create_random_homography
 
 
@@ -345,6 +345,7 @@ class TestELL2LAF(BaseTester):
         op = kornia.feature.ellipse_to_laf
         self.assert_close(torch_optimizer(op)(inp), op(inp))
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_dynamo_fullgraph(self, device, dtype):
         # The batched torch.inverse this replaced graph-broke; the closed form must stay capturable.
         inp = self._well_conditioned_ellipses(device, dtype)

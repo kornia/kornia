@@ -80,9 +80,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dtype makes the matrix being inverted singular; the batched `torch.inverse` it now replaces (see below) failed the
   whole call with `linalg.LinAlgError`, and the closed form returns non-finite values in that LAF instead, leaving
   the other rows of the batch usable. Callers that relied on the exception to reject bad input -- reading
-  Oxford-format `.ellipse` files, say -- should test the result with `torch.isfinite`, since a `nan` LAF otherwise
-  propagates silently through `get_laf_scale` and into matching. Detecting the degenerate rows up front would cost a
-  device synchronisation and the `fullgraph=True` capture, so it is left to the caller.
+  Oxford-format `.ellipse` files, say -- should test the result with `torch.isfinite`, since a non-finite LAF
+  otherwise propagates silently through `get_laf_scale` and into matching. Detecting the degenerate rows up front
+  would cost a device synchronisation and the `fullgraph=True` capture, so it is left to the caller. The one in-repo
+  caller, `LAFAffineShapeEstimator`, now does exactly that: it falls back to the input LAF for keypoints whose
+  estimated shape came out non-finite (reachable in `float16`, where the detector's `bad_mask` misses degenerate
+  moment matrices -- its `eps=1e-10` rounds to `0.0`, so an exactly-zero moment no longer tests as "close to zero" --
+  and the moment normalization can flush a further component to zero after the check).
 
 ### Bug fixes
 
