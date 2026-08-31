@@ -229,8 +229,12 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
         LAF :math:`(B, N, 2, 3)`
 
     Note:
-        A degenerate ellipse with ``a == 0`` or ``c == 0`` describes no area, so its LAF
-        contains non-finite values.
+        A degenerate ellipse -- one whose ``a`` or ``c`` is ``0`` after rounding to ``ells.dtype`` --
+        describes an unbounded strip rather than a bounded region, and makes the matrix being inverted
+        singular. Its LAF is non-finite: ``inf`` on the diagonal, and ``nan`` where that ``inf`` meets a
+        zero off-diagonal, so :func:`get_laf_scale` of such a LAF is ``nan``. The conversion does not
+        raise. Rounding is part of the condition: in ``float16`` any ``a`` below ``6e-8`` arrives as
+        ``0``.
 
     Example:
         >>> input = torch.ones(1, 10, 5)  # BxNx5
@@ -253,16 +257,24 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     # R = (sqrt(A) 0; C / (sqrt(A)+sqrt(D)) sqrt(D))
     a11 = ells[..., 2:3].abs().sqrt()
     a22 = ells[..., 4:5].abs().sqrt()
+    # a11 and a22 are square roots, so a11 + a22 is either exactly zero or at least the square root of
+    # the dtype's smallest positive value -- 2.4e-4 in float16. The clamp underflows to a no-op there,
+    # which costs nothing: the (0, 1e-9) window it guards is unreachable in float16, and at exactly
+    # zero the diagonal below is inf whatever a21 holds. Guards for unreachable inputs are not widened.
     a21 = ells[..., 3:4] / (a11 + a22).clamp(1e-9)
     # The matrix [[a11, 0], [a21, a22]] is lower-triangular, so its inverse is the closed form
     # [[1/a11, 0], [-a21/(a11*a22), 1/a22]] — no batched torch.inverse, which is orders of
     # magnitude slower, unsupported in float16/bfloat16 on CPU, and pathological on MPS.
     inv11 = 1.0 / a11
     inv22 = 1.0 / a22
-    # Multiply a21 into one reciprocal before the other: forming inv11 * inv22 first can
-    # overflow to inf even when a21 == 0 (e.g. a subnormal, nondegenerate a11/a22 with b == 0),
-    # turning a mathematically-zero off-diagonal into 0 * inf = nan.
-    inv21 = -a21 * inv11 * inv22
+    # Scale a21 by the smaller reciprocal first, so the intermediate product is the result times
+    # min(a11, a22) rather than times a fixed one of the two. Either fixed order overflows to inf
+    # while the result itself is representable: `-a21 * inv11 * inv22` for a tiny a11 against a large
+    # a22, and `-a21 * (inv11 * inv22)` for a tiny a11 * a22, which also turns a mathematically-zero
+    # off-diagonal into 0 * inf = nan. Because a11 and a22 are square roots, neither reciprocal can
+    # overflow unless its input is exactly zero, so what remains non-finite is exactly the singular
+    # ellipse -- which no multiplication order can rescue, and which we deliberately do not guard.
+    inv21 = -a21 * torch.minimum(inv11, inv22) * torch.maximum(inv11, inv22)
     A = torch.stack([inv11, torch.zeros_like(inv11), inv21, inv22], dim=-1).view(B, N, 2, 2)
     out = torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
     return out

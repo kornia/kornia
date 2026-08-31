@@ -76,16 +76,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   they are subject to its check: a mask that is not at the image's spatial size, which used to be ignored, is
   rejected. A floating-point mask changes meaning in `ScaleSpaceDetector`-based pipelines too, see below.
 
+* `ellipse_to_laf` no longer raises on a degenerate ellipse. One whose `a` or `c` is `0` after rounding to the input
+  dtype makes the matrix being inverted singular; the batched `torch.inverse` it now replaces (see below) failed the
+  whole call with `linalg.LinAlgError`, and the closed form returns non-finite values in that LAF instead, leaving
+  the other rows of the batch usable. Callers that relied on the exception to reject bad input -- reading
+  Oxford-format `.ellipse` files, say -- should test the result with `torch.isfinite`, since a `nan` LAF otherwise
+  propagates silently through `get_laf_scale` and into matching. Detecting the degenerate rows up front would cost a
+  device synchronisation and the `fullgraph=True` capture, so it is left to the caller.
+
 ### Bug fixes
 
 * Replace the batched `torch.inverse` in `ellipse_to_laf` with the closed-form inverse of its lower-triangular
   2x2 matrix. Results agree with the previous implementation to ~1.6e-7 relative in `float32` (machine epsilon in
   `float64`); throughput improves ~12x eager / ~19x compiled on CPU and ~1500x on MPS (measured at B=1, N=20000,
   Apple Silicon, torch 2.9.1), where the batched inverse hit a pathological `linalg` path, emitted a deprecated-resize
-  `UserWarning` on every call, and failed to `torch.compile`. The function now also works in `float16`/`bfloat16` on
-  CPU, where `linalg.inv` raises for low-precision dtypes, and compiles with `fullgraph=True` on every backend. One
-  edge changes: an exactly degenerate ellipse (`a == 0` or `c == 0`) used to raise `linalg.LinAlgError` from the
-  batched inverse and now returns non-finite values in that LAF, as documented.
+  `UserWarning` on every call, and failed to `torch.compile`. The function now compiles with `fullgraph=True` on every
+  backend and accepts `float16`/`bfloat16` on CPU, where the raw `.inverse()` call raised for low-precision dtypes
+  (`_torch_inverse_cast` would have lifted that restriction too; the closed form is for speed). The off-diagonal
+  scales `b` by the smaller of the two reciprocals first, so it stays finite wherever the exact value is
+  representable -- either fixed multiplication order overflows to `inf` on a sufficiently lopsided or subnormal
+  diagonal, which the batched inverse did not.
 
 * Make `load_pointcloud_ply` and `load_pointcloud_ply_binary` parse the PLY header instead of skipping a fixed
   number of lines. Both loaders skipped `header_size=8` lines and read everything after them as `x y z` triples, so a

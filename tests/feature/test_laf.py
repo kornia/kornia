@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -265,23 +267,67 @@ class TestELL2LAF(BaseTester):
         # assure it is positive definite
         self.gradcheck(kornia.feature.ellipse_to_laf, (img,))
 
-    @pytest.mark.parametrize("ell_dtype", [torch.float16, torch.float32])
-    @pytest.mark.parametrize("b", [0.0, 5e-7])
-    def test_no_overflow_small_diag(self, device, ell_dtype, b):
-        # Regression test: the closed-form inverse's off-diagonal must not be computed as
-        # `-b_term * (1 / a11 * 1 / a22)`, since that product can overflow to inf even though
-        # the reciprocals are individually finite -- turning a finite (or exactly zero, when
-        # b == 0) result into nan (0 * inf) or -inf. https://github.com/kornia/kornia/pull/4122
-        inp = torch.tensor([[[0.0, 0.0, 1e-6, b, 1e-6]]], device=device, dtype=ell_dtype)
+    def test_no_overflow_asymmetric_diag(self, device, dtype):
+        # Regression test: the closed-form inverse's off-diagonal must scale b by the smaller
+        # reciprocal first. `a` is the dtype's smallest normal and `c` is picked so that
+        # (sqrt(a) + sqrt(c)) * sqrt(a) == 0.5, which makes the intermediate of the fixed order
+        # `-a21 * (1 / a11) * (1 / a22)` twice b -- inf for a b above half the dtype's maximum,
+        # although the result itself is well inside range. https://github.com/kornia/kornia/pull/4122
+        finfo = torch.finfo(dtype)
+        a11 = math.sqrt(finfo.tiny)
+        a22 = 0.5 / a11
+        inp = torch.tensor([[[0.0, 0.0, finfo.tiny, finfo.max * 0.75, a22 * a22]]], device=device, dtype=dtype)
+        # Reference in float64, from the inputs as the dtype actually rounded them.
+        ref = inp.double()
+        r11, r22 = ref[0, 0, 2].sqrt(), ref[0, 0, 4].sqrt()
+        expected = -(ref[0, 0, 3] / (r11 + r22)) / (r11 * r22)
         laf = kornia.feature.ellipse_to_laf(inp)
         assert torch.isfinite(laf).all()
+        self.assert_close(laf[0, 0, 1, 0], expected.to(dtype))
 
-    def test_no_overflow_subnormal_diag(self, device):
-        # A subnormal but nondegenerate diagonal (a, c != 0) with b == 0 must stay finite:
-        # main's batched torch.inverse returns a fully finite, zero off-diagonal matrix here.
-        inp = torch.tensor([[[0.0, 0.0, 1e-40, 0.0, 1e-40]]], device=device, dtype=torch.float32)
+    def test_no_overflow_subnormal_diag(self, device, dtype):
+        # The mirror case: a subnormal but nondegenerate diagonal makes 1 / (a11 * a22) overflow, so
+        # forming that product first turns a mathematically-zero off-diagonal into 0 * inf = nan.
+        # Subnormal input is unavoidable here -- a11 * a22 >= finfo.tiny > 1 / finfo.max in every IEEE
+        # dtype, so no normal input reaches this regime -- hence the flush-to-zero guard below.
+        finfo = torch.finfo(dtype)
+        a = finfo.tiny / 8  # subnormal, and small enough that 1 / (a11 * a22) == 1 / a overflows
+        inp = torch.tensor([[[0.0, 0.0, a, 0.0, a]]], device=device, dtype=dtype)
+        if inp[0, 0, 2] == 0:
+            pytest.skip("backend flushes subnormals to zero, so this diagonal is degenerate here")
         laf = kornia.feature.ellipse_to_laf(inp)
         assert torch.isfinite(laf).all()
+        self.assert_close(laf[0, 0, 1, 0], torch.zeros_like(laf[0, 0, 1, 0]))
+
+    @pytest.mark.parametrize("degenerate_index", [2, 4])
+    def test_degenerate_ellipse_is_non_finite(self, device, dtype, degenerate_index):
+        # A degenerate ellipse makes the matrix singular. The batched torch.inverse this replaced
+        # raised linalg.LinAlgError; the closed form returns non-finite values and must not raise.
+        inp = torch.tensor([[[1.0, 2.0, 3.0, 0.5, 4.0]]], device=device, dtype=dtype)
+        inp[0, 0, degenerate_index] = 0.0
+        laf = kornia.feature.ellipse_to_laf(inp)
+        assert not torch.isfinite(laf[0, 0, :, :2]).all()
+        self.assert_close(laf[0, 0, :, 2], inp[0, 0, :2])  # the centre is untouched
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        inp = self._well_conditioned_ellipses(device, dtype)
+        op = kornia.feature.ellipse_to_laf
+        self.assert_close(torch_optimizer(op)(inp), op(inp))
+
+    def test_dynamo_fullgraph(self, device, dtype):
+        # The batched torch.inverse this replaced graph-broke; the closed form must stay capturable.
+        inp = self._well_conditioned_ellipses(device, dtype)
+        expected = kornia.feature.ellipse_to_laf(inp)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.feature.ellipse_to_laf, fullgraph=True)
+        self.assert_close(compiled(inp), expected)
+
+    @staticmethod
+    def _well_conditioned_ellipses(device, dtype):
+        inp = torch.rand(1, 2, 5, device=device, dtype=dtype).abs()
+        inp[..., 2] = inp[..., 3].abs() + 0.3
+        inp[..., 4] += 1.0
+        return inp
 
     @pytest.mark.jit()
     def test_jit(self, device, dtype):
