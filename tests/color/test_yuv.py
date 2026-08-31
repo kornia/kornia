@@ -699,6 +699,29 @@ class TestYuv420ToRgb(BaseTester):
             imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
+        # Regression for #4056: a zero-sized chroma dimension is still a shape violation and must
+        # be reported as ShapeError, not the bare ZeroDivisionError the old ratio guard threw.
+        with pytest.raises(ShapeError):
+            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+            imguv = torch.ones(2, 2, 0, device=device, dtype=dtype)
+            kornia.color.yuv420_to_rgb(imgy, imguv)
+
+        with pytest.raises(ShapeError):
+            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+            imguv = torch.ones(2, 0, 2, device=device, dtype=dtype)
+            kornia.color.yuv420_to_rgb(imgy, imguv)
+
+    def test_empty_input(self, device, dtype):
+        # Regression for #4056: a *consistently* zero-sized luma/chroma pair passes the guard
+        # (0 == 2 * 0) and returns an empty RGB plane, matching the 4:4:4 twin, rather than
+        # raising. Pin the empty-in -> empty-out convention instead of special-casing it away.
+        y = torch.rand(1, 0, 0, device=device, dtype=dtype)
+        uv = torch.rand(2, 0, 0, device=device, dtype=dtype)
+        out = kornia.color.yuv420_to_rgb(y, uv)
+        assert out.shape == (3, 0, 0)
+        # agrees with the 4:4:4 converter on the same empty concatenation
+        assert torch.equal(kornia.color.yuv_to_rgb(torch.cat([y, uv], dim=-3)), out)
+
     @pytest.mark.parametrize("name", list(_REFERENCE_COLORS))
     def test_unit(self, device, dtype, name):
         rgb_values, yuv_values = _REFERENCE_COLORS[name]
@@ -826,6 +849,23 @@ class TestYuv422ToRgb(BaseTester):
             imgy = torch.ones(1, 2, 2, device=device, dtype=dtype)
             imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
+
+        # Regression for #4056: a zero-sized chroma width is still a shape violation and must be
+        # reported as ShapeError, not the bare ZeroDivisionError the old ratio guard threw.
+        with pytest.raises(ShapeError):
+            imgy = torch.ones(1, 4, 6, device=device, dtype=dtype)
+            imguv = torch.ones(2, 4, 0, device=device, dtype=dtype)
+            kornia.color.yuv422_to_rgb(imgy, imguv)
+
+    def test_empty_input(self, device, dtype):
+        # Regression for #4056: a *consistently* zero-sized luma/chroma pair passes the guard
+        # (0 == 2 * 0) and returns an empty RGB plane, rather than raising. Pin the empty-in ->
+        # empty-out convention instead of special-casing it away.
+        y = torch.rand(1, 0, 0, device=device, dtype=dtype)
+        uv = torch.rand(2, 0, 0, device=device, dtype=dtype)
+        out = kornia.color.yuv422_to_rgb(y, uv)
+        assert out.shape == (3, 0, 0)
+        assert torch.equal(kornia.color.yuv_to_rgb(torch.cat([y, uv], dim=-3)), out)
 
     @pytest.mark.parametrize("name", list(_REFERENCE_COLORS))
     def test_unit(self, device, dtype, name):
