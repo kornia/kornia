@@ -82,20 +82,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the other rows of the batch usable. Callers that relied on the exception to reject bad input -- reading
   Oxford-format `.ellipse` files, say -- should test the result with `kornia.feature.laf_is_valid`, since an invalid
   LAF otherwise propagates silently through `get_laf_scale` and into matching. Detecting the degenerate rows up front
-  would cost a device synchronisation and the `fullgraph=True` capture, so it is left to the caller. The one in-repo
+  would cost a device synchronisation and the `fullgraph=True` capture, so it is left to the caller. The in-repo
   affine estimators handle invalid candidates before nonlinear LAF operations. `PatchAffineShapeEstimator` computes
   half-precision gradients, Gaussian weights, moments, and normalization in `float32`, preserving valid anisotropic
   shapes that would otherwise underflow; `LAFAffineShapeEstimator` sanitizes non-positive-definite ellipse
   coefficients before conversion; and both it and `LAFAffNetShapeEstimator` use a finite fallback with finite
-  backward. The fallback is the input LAF
-  when `preserve_orientation=True` and its upright form otherwise; a finite zero-scale input keeps its center and
-  zero affine block.
+  backward. The fallback is the input LAF when `preserve_orientation=True` and its upright form otherwise; a finite
+  zero-scale input keeps its center and zero affine block.
 
 ### Bug fixes
 
 * Replace the batched `torch.inverse` in `ellipse_to_laf` with the closed-form inverse of its lower-triangular
   2x2 matrix. Results agree with the previous implementation to ~1.6e-7 relative in `float32` (machine epsilon in
-  `float64`). Reproducible numbers via `benchmarks/feature/ellipse_to_laf.py` (float32, N=1e3..1e5, torch 2.13,
+  `float64`). Reproducible numbers via `benchmarks/feature/ellipse_to_laf.py` (float32, N=1e3..1e5, torch 2.9.1,
   Linux/WSL2, base `2009933e`): throughput improves ~2.4-5.3x eager / ~3-6.5x compiled on CPU (i7-14700K) and
   ~1.4-1.7x eager / ~4.2-5.5x compiled on CUDA (RTX 4090). The largest win is MPS, where the batched inverse hit a
   pathological `linalg` path, emitted a deprecated-resize `UserWarning` on every call, and failed to `torch.compile`
