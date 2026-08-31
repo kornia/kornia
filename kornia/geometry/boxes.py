@@ -25,7 +25,7 @@ from torch import Size
 from kornia.core.ops import eye_like
 from kornia.geometry.linalg import transform_points
 
-__all__ = ["Boxes", "Boxes3D"]
+__all__ = ["Boxes", "Boxes3D", "VideoBoxes"]
 
 
 def _is_floating_point_dtype(dtype: torch.dtype) -> bool:
@@ -835,12 +835,41 @@ class Boxes:
 
 
 class VideoBoxes(Boxes):
+    r"""2D boxes with an explicit temporal channel for video sequences.
+
+    Stores box corners for a batch of videos as :math:`(B, T, N, 4, 2)` in
+    ``vertices_plus`` mode. :class:`~kornia.augmentation.AugmentationSequential`
+    uses this wrapper when the pipeline contains a video sequential so that
+    ``to_tensor`` restores the temporal axis after geometric transforms.
+
+    Attributes:
+        temporal_channel_size: Number of frames :math:`T` stored with the boxes.
+
+    """
+
     temporal_channel_size: int
 
     @classmethod
     def from_tensor(  # type: ignore[override]
         cls, boxes: torch.Tensor | list[torch.Tensor], validate_boxes: bool = True
     ) -> VideoBoxes:
+        r"""Create :class:`VideoBoxes` from a video box tensor.
+
+        Args:
+            boxes: Box corners with shape :math:`(B, T, N, 4, 2)` in
+                ``vertices_plus`` order (top-left, top-right, bottom-right,
+                bottom-left). Lists of tensors are not supported yet.
+            validate_boxes: If ``True``, reject rectangles whose width or height
+                is smaller than the ``vertices_plus`` minimum (2).
+
+        Returns:
+            :class:`VideoBoxes` with :attr:`temporal_channel_size` set to
+            ``boxes.size(1)``.
+
+        Raises:
+            ValueError: If ``boxes`` is a list or does not have shape
+                :math:`(B, T, N, 4, 2)`.
+        """
         if isinstance(boxes, (list,)) or (boxes.dim() != 5 or boxes.shape[-2:] != torch.Size([4, 2])):
             raise ValueError("Input box type is not yet supported. Please input an `BxTxNx4x2` tensor directly.")
 
@@ -856,6 +885,17 @@ class VideoBoxes(Boxes):
         return out
 
     def to_tensor(self, mode: Optional[str] = None) -> torch.Tensor | list[torch.Tensor]:  # type: ignore[override]
+        r"""Cast :class:`VideoBoxes` to a tensor with the temporal axis restored.
+
+        Args:
+            mode: Output box format forwarded to :meth:`Boxes.to_tensor`. When
+                ``None``, uses the stored mode (``vertices_plus`` by default).
+
+        Returns:
+            Tensor shaped :math:`(B, T, \ldots)` where :math:`T` is
+            :attr:`temporal_channel_size`, or a list of such tensors when the
+            container was built from a padded box list.
+        """
         out = super().to_tensor(mode, as_padded_sequence=False)
         if isinstance(out, torch.Tensor):
             return out.view(-1, self.temporal_channel_size, *out.shape[1:])
@@ -863,6 +903,12 @@ class VideoBoxes(Boxes):
         return [_out.view(-1, self.temporal_channel_size, *_out.shape[1:]) for _out in out]
 
     def clone(self) -> VideoBoxes:
+        """Create an independent copy of the video box container.
+
+        Returns:
+            New :class:`VideoBoxes` with cloned tensor storage and the same
+            :attr:`temporal_channel_size`, mode, and batch metadata.
+        """
         obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
         obj._N = self._N
