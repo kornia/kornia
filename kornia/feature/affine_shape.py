@@ -31,6 +31,7 @@ from .laf import (
     extract_patches_from_pyramid,
     get_laf_orientation,
     get_laf_scale,
+    laf_is_valid,
     make_upright,
     scale_laf,
     set_laf_orientation,
@@ -48,7 +49,8 @@ class PatchAffineShapeEstimator(nn.Module):
 
     The method determines the affine shape of the local feature as in :cite:`baumberg2000`.
 
-    For float16 and bfloat16 inputs, the moments and normalization are computed in float32.
+    For float16 and bfloat16 inputs, the gradients, Gaussian weighting, moments, and normalization are computed
+    in float32.
     The output keeps the input dtype.
 
     Args:
@@ -88,9 +90,20 @@ class PatchAffineShapeEstimator(nn.Module):
         # Squared weighted gradients and the degeneracy threshold can underflow in half precision.
         if dtype in (torch.float16, torch.bfloat16):
             patch = patch.float()
-        # cast into a local; rebinding `self.weighting` would make the module's dtype/device depend
-        # on whichever tensor was passed last.
-        weighting = self.weighting.to(patch.dtype).to(patch.device)
+            # `.to(dtype)` also quantizes buffers, so rebuild this derived kernel instead of upcasting
+            # half-precision coefficients that have already lost their float32 precision.
+            sigma = float(self.patch_size) / math.sqrt(2.0)
+            weighting = get_gaussian_kernel2d(
+                (self.patch_size, self.patch_size),
+                (sigma, sigma),
+                True,
+                device=patch.device,
+                dtype=patch.dtype,
+            )
+        else:
+            # Cast into a local; rebinding `self.weighting` would make the module's dtype/device depend
+            # on whichever tensor was passed last.
+            weighting = self.weighting.to(device=patch.device, dtype=patch.dtype)
         grads: torch.Tensor = self.gradient(patch) * weighting
         # unpack the edges
         gx: torch.Tensor = grads[:, :, 0]
@@ -115,9 +128,12 @@ class PatchAffineShapeEstimator(nn.Module):
         return ellipse_shape.to(dtype)
 
 
-def _invalid_laf_mask(laf: torch.Tensor) -> torch.Tensor:
-    det = laf[..., 0, 0] * laf[..., 1, 1] - laf[..., 1, 0] * laf[..., 0, 1]
-    return ~laf.isfinite().all(dim=-1).all(dim=-1) | ~det.isfinite() | (det == 0)
+def _sanitize_laf(laf: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    invalid = ~laf_is_valid(laf)
+    unit = laf.new_tensor([[1.0, 0.0], [0.0, 1.0]]).expand(*laf.shape[:2], -1, -1)
+    center = torch.where(laf[..., 2:3].isfinite(), laf[..., 2:3], torch.zeros_like(laf[..., 2:3]))
+    replacement = torch.cat([unit, center], dim=-1)
+    return torch.where(invalid[..., None, None], replacement, laf), invalid
 
 
 def _finalize_laf(
@@ -127,11 +143,20 @@ def _finalize_laf(
     bad: torch.Tensor,
     make_candidate_upright: bool = False,
 ) -> torch.Tensor:
-    fallback = laf if preserve_orientation else make_upright(laf)
-    safe_laf_out = torch.where(bad[..., None, None], fallback, laf_out)
-    scale_orig = get_laf_scale(laf)
+    safe_input, invalid_input = _sanitize_laf(laf)
+    bad = bad | invalid_input
+    safe_fallback = safe_input if preserve_orientation else make_upright(safe_input)
     if preserve_orientation:
-        ori_orig = get_laf_orientation(laf)
+        fallback = laf
+    else:
+        zero_scale_upright = torch.cat([torch.zeros_like(laf[..., :2]), laf[..., 2:3]], dim=-1)
+        fallback = torch.where(invalid_input[..., None, None], zero_scale_upright, safe_fallback)
+    # This first selection is the backward-safety boundary: scale and orientation operations must only
+    # see nonsingular LAFs. Candidate upright conversion must stay between this selection and the final one.
+    safe_laf_out = torch.where(bad[..., None, None], safe_fallback, laf_out)
+    scale_orig = get_laf_scale(safe_input)
+    if preserve_orientation:
+        ori_orig = get_laf_orientation(safe_input)
     ellipse_scale = get_laf_scale(safe_laf_out)
     if make_candidate_upright:
         safe_laf_out = make_upright(safe_laf_out)
@@ -188,7 +213,10 @@ class LAFAffineShapeEstimator(nn.Module):
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         B, N = laf.shape[:2]
         PS: int = self.patch_size
-        patches: torch.Tensor = extract_patches_from_pyramid(img, make_upright(laf), PS, True).view(-1, 1, PS, PS)
+        safe_input, _ = _sanitize_laf(laf)
+        patches: torch.Tensor = extract_patches_from_pyramid(img, make_upright(safe_input), PS, True).view(
+            -1, 1, PS, PS
+        )
         ellipse_shape: torch.Tensor = self.affine_shape_detector(patches)
         ellipse_det = ellipse_shape[..., 0] * ellipse_shape[..., 2] - ellipse_shape[..., 1].square()
         bad_shape = (
@@ -202,7 +230,7 @@ class LAFAffineShapeEstimator(nn.Module):
         safe_ellipse_shape = torch.where(bad_shape[..., None], circular_shape, ellipse_shape)
         ellipses = torch.cat([laf.view(-1, 2, 3)[..., 2].unsqueeze(1), safe_ellipse_shape], dim=2).view(B, N, 5)
         laf_out = ellipse_to_laf(ellipses)
-        bad = bad_shape.view(B, N) | _invalid_laf_mask(laf_out)
+        bad = bad_shape.view(B, N) | ~laf_is_valid(laf_out)
         return _finalize_laf(laf_out, laf, self.preserve_orientation, bad)
 
 
@@ -279,11 +307,14 @@ class LAFAffNetShapeEstimator(nn.Module):
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         B, N = laf.shape[:2]
         PS: int = self.patch_size
-        patches: torch.Tensor = extract_patches_from_pyramid(img, make_upright(laf), PS, True).view(-1, 1, PS, PS)
+        safe_input, _ = _sanitize_laf(laf)
+        patches: torch.Tensor = extract_patches_from_pyramid(img, make_upright(safe_input), PS, True).view(
+            -1, 1, PS, PS
+        )
         xy = self.features(self._normalize_input(patches)).view(-1, 3)
         a1 = torch.cat([1.0 + xy[:, 0].reshape(-1, 1, 1), 0 * xy[:, 0].reshape(-1, 1, 1)], dim=2)
         a2 = torch.cat([xy[:, 1].reshape(-1, 1, 1), 1.0 + xy[:, 2].reshape(-1, 1, 1)], dim=2)
         new_laf_no_center = torch.cat([a1, a2], dim=1).reshape(B, N, 2, 2)
         new_laf = torch.cat([new_laf_no_center, laf[:, :, :, 2:3]], dim=3)
-        bad = _invalid_laf_mask(new_laf)
+        bad = ~laf_is_valid(new_laf)
         return _finalize_laf(new_laf, laf, self.preserve_orientation, bad, make_candidate_upright=True)

@@ -47,6 +47,26 @@ def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
     return out.abs().sqrt()
 
 
+def laf_is_valid(laf: torch.Tensor) -> torch.Tensor:
+    """Check that each LAF is finite and has a finite, nonzero determinant.
+
+    Args:
+        laf: :math:`(B, N, 2, 3)`.
+
+    Returns:
+        validity mask :math:`(B, N)`.
+
+    Example:
+        >>> laf = torch.eye(2, 3).view(1, 1, 2, 3)
+        >>> laf_is_valid(laf)
+        tensor([[True]])
+
+    """
+    KORNIA_CHECK_LAF(laf)
+    det = laf[..., 0, 0] * laf[..., 1, 1] - laf[..., 1, 0] * laf[..., 0, 1]
+    return laf.isfinite().all(dim=-1).all(dim=-1) & det.isfinite() & (det != 0)
+
+
 def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
     """Return a center (keypoint) of the LAFs.
 
@@ -233,8 +253,8 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
         describes an unbounded strip rather than a bounded region, and makes the matrix being inverted
         singular. Its LAF is non-finite: ``inf`` always appears on the diagonal, while ``nan`` appears
         only in the sub-case where the off-diagonal ``b`` is exactly ``0`` (``0 * inf``) -- the generic
-        degenerate ellipse is ``inf``-only, so screen results with ``torch.isfinite(laf).all()`` rather
-        than an ``isnan`` test, which misses it. :func:`get_laf_scale` of such a LAF is non-finite as
+        degenerate ellipse is ``inf``-only, so screen results with :func:`laf_is_valid` rather than an
+        ``isnan`` test, which misses it. :func:`get_laf_scale` of such a LAF is non-finite as
         well. The conversion does not raise. Rounding is part of the condition: in ``float16`` an ``a``
         below roughly ``3e-8`` (half the smallest subnormal) rounds to ``0``, and a backend that
         flushes subnormals to zero raises that cutoff to the smallest normal, about ``6e-5``.

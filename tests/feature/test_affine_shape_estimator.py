@@ -15,11 +15,14 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
 from kornia.feature.affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from kornia.feature.laf import make_upright
+from kornia.filters import get_gaussian_kernel2d
 
 from testing.base import BaseTester, supports_grid_sample
 
@@ -39,8 +42,8 @@ class OverflowShape(torch.nn.Module):
 
 class SingularAffNetOutput(torch.nn.Module):
     def forward(self, patches: torch.Tensor) -> torch.Tensor:
-        values = patches.new_tensor([-1.0, 0.0, -1.0]).view(1, 3, 1, 1)
-        return values.expand(patches.shape[0], -1, -1, -1)
+        zero = patches.mean(dim=(-3, -2, -1), keepdim=True) * 0
+        return torch.cat([zero - 1, zero, zero - 1], dim=1)
 
 
 class TestPatchAffineShapeEstimator(BaseTester):
@@ -65,6 +68,20 @@ class TestPatchAffineShapeEstimator(BaseTester):
         out.sum().backward()
         assert patch.grad is not None
         assert torch.isfinite(patch.grad).all()
+
+    def test_half_precision_uses_float32_weighting(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision regression test")
+        patch = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
+        patch[:, :, 2:4, 14:16] = 1
+        reference = PatchAffineShapeEstimator(32).to(device)
+        sigma = 32.0 / math.sqrt(2.0)
+        reference.weighting = get_gaussian_kernel2d((32, 32), (sigma, sigma), True, device=device, dtype=torch.float32)
+        expected = reference(patch.float()).to(dtype)
+
+        out = PatchAffineShapeEstimator(32).to(device, dtype)(patch)
+
+        assert torch.equal(out, expected)
 
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
@@ -200,6 +217,30 @@ class TestLAFAffineShapeEstimator(BaseTester):
         assert laf.grad is not None
         assert torch.isfinite(laf.grad).all()
 
+    @pytest.mark.parametrize("preserve_orientation", [False, True])
+    def test_zero_scale_input_has_finite_fallback(self, device, dtype, preserve_orientation):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision regression test")
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        if not supports_grid_sample(device, dtype):
+            pytest.skip(f"no {dtype} grid_sample kernel on {device.type}")
+        img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
+        laf = torch.tensor([[[[0.0, 0.0, 16.0], [0.0, 0.0, 16.0]]]], device=device, dtype=dtype, requires_grad=True)
+        aff = LAFAffineShapeEstimator(32, DegenerateShape(), preserve_orientation=preserve_orientation).to(
+            device, dtype
+        )
+
+        out = aff(laf, img)
+
+        assert torch.isfinite(out).all()
+        self.assert_close(out, laf)
+        out.sum().backward()
+        assert img.grad is not None
+        assert torch.isfinite(img.grad).all()
+        assert laf.grad is not None
+        assert torch.isfinite(laf.grad).all()
+
     def test_degenerate_ellipse_boundary_has_finite_backward(self, device):
         dtype = torch.float32
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
@@ -256,6 +297,29 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         aff.features = SingularAffNetOutput()
         out = aff(laf, img)
         self.assert_close(out, make_upright(laf))
+
+    @pytest.mark.parametrize("preserve_orientation", [False, True])
+    def test_zero_scale_input_has_finite_fallback(self, device, dtype, preserve_orientation):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("half-precision regression test")
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        if not supports_grid_sample(device, dtype):
+            pytest.skip(f"no {dtype} grid_sample kernel on {device.type}")
+        img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
+        laf = torch.tensor([[[[0.0, 0.0, 16.0], [0.0, 0.0, 16.0]]]], device=device, dtype=dtype, requires_grad=True)
+        aff = LAFAffNetShapeEstimator(pretrained=False, preserve_orientation=preserve_orientation).to(device, dtype)
+        aff.features = SingularAffNetOutput()
+
+        out = aff(laf, img)
+
+        assert torch.isfinite(out).all()
+        self.assert_close(out, laf)
+        out.sum().backward()
+        assert img.grad is not None
+        assert torch.isfinite(img.grad).all()
+        assert laf.grad is not None
+        assert torch.isfinite(laf.grad).all()
 
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)

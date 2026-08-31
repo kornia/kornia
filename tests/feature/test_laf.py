@@ -377,6 +377,30 @@ class TestELL2LAF(BaseTester):
         self.assert_close(model(img), model_jit(img))
 
 
+class TestLAFIsValid(BaseTester):
+    def test_finite_nonsingular_laf_is_valid(self, device, dtype):
+        laf = torch.tensor([[[[2.0, 0.0, 1.0], [0.0, 3.0, 2.0]]]], device=device, dtype=dtype)
+        assert kornia.feature.laf_is_valid(laf).all()
+
+    def test_nonfinite_or_singular_laf_is_invalid(self, device, dtype):
+        laf = torch.tensor(
+            [[[[2.0, 0.0, 1.0], [0.0, 3.0, 2.0]], [[1.0, 2.0, 0.0], [2.0, 4.0, 0.0]]]],
+            device=device,
+            dtype=dtype,
+        )
+        laf[0, 0, 0, 0] = torch.inf
+        expected = torch.tensor([[False, False]], device=device)
+        assert torch.equal(kornia.feature.laf_is_valid(laf), expected)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_dynamo_fullgraph(self, device, dtype):
+        laf = torch.tensor([[[[2.0, 0.0, 1.0], [0.0, 3.0, 2.0]]]], device=device, dtype=dtype)
+        expected = kornia.feature.laf_is_valid(laf)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.feature.laf_is_valid, fullgraph=True)
+        assert torch.equal(compiled(laf), expected)
+
+
 class TestNormalizeLAF(BaseTester):
     def test_shape(self, device):
         inp = torch.rand(5, 3, 2, 3)
