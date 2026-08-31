@@ -47,6 +47,26 @@ def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
     return out.abs().sqrt()
 
 
+def laf_is_valid(laf: torch.Tensor) -> torch.Tensor:
+    """Check that each LAF is finite and has a finite, nonzero determinant.
+
+    Args:
+        laf: :math:`(B, N, 2, 3)`.
+
+    Returns:
+        validity mask :math:`(B, N)`.
+
+    Example:
+        >>> laf = torch.eye(2, 3).view(1, 1, 2, 3)
+        >>> laf_is_valid(laf)
+        tensor([[True]])
+
+    """
+    KORNIA_CHECK_LAF(laf)
+    det = laf[..., 0, 0] * laf[..., 1, 1] - laf[..., 1, 0] * laf[..., 0, 1]
+    return laf.isfinite().all(dim=-1).all(dim=-1) & det.isfinite() & (det != 0)
+
+
 def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
     """Return a center (keypoint) of the LAFs.
 
@@ -228,6 +248,17 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     Returns:
         LAF :math:`(B, N, 2, 3)`
 
+    Note:
+        A degenerate ellipse -- one whose ``a`` or ``c`` is ``0`` after rounding to ``ells.dtype`` --
+        describes an unbounded strip rather than a bounded region, and makes the matrix being inverted
+        singular. Its LAF is non-finite: ``inf`` always appears on the diagonal, while ``nan`` appears
+        only in the sub-case where the off-diagonal ``b`` is exactly ``0`` (``0 * inf``) -- the generic
+        degenerate ellipse is ``inf``-only, so screen results with :func:`laf_is_valid` rather than an
+        ``isnan`` test, which misses it. :func:`get_laf_scale` of such a LAF is non-finite as
+        well. The conversion does not raise. Rounding is part of the condition: in ``float16`` an ``a``
+        below roughly ``3e-8`` (half the smallest subnormal) rounds to ``0``, and a backend that
+        flushes subnormals to zero raises that cutoff to the smallest normal, about ``6e-5``.
+
     Example:
         >>> input = torch.ones(1, 10, 5)  # BxNx5
         >>> output = ellipse_to_laf(input)  #  BxNx2x3
@@ -248,10 +279,22 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     # M = (A 0; C D)
     # R = (sqrt(A) 0; C / (sqrt(A)+sqrt(D)) sqrt(D))
     a11 = ells[..., 2:3].abs().sqrt()
-    a12 = torch.zeros_like(a11)
     a22 = ells[..., 4:5].abs().sqrt()
-    a21 = ells[..., 3:4] / (a11 + a22).clamp(1e-9)
-    A = torch.stack([a11, a12, a21, a22], dim=-1).view(B, N, 2, 2).inverse()
+    a21 = ells[..., 3:4] / (a11 + a22)
+    # The matrix [[a11, 0], [a21, a22]] is lower-triangular, so its inverse is the closed form
+    # [[1/a11, 0], [-a21/(a11*a22), 1/a22]] — no batched torch.inverse, which is orders of
+    # magnitude slower, unsupported in float16/bfloat16 on CPU, and pathological on MPS.
+    inv11 = 1.0 / a11
+    inv22 = 1.0 / a22
+    # Divide by the product of the roots instead of multiplying the reciprocals: every ordering of
+    # `-a21 * inv11 * inv22` has an input region where an intermediate overflows to inf (or a
+    # mathematically-zero off-diagonal becomes 0 * inf = nan) or flushes a representable result to
+    # zero. a11 * a22 = sqrt(a) * sqrt(c) can neither overflow nor round to zero, so the single
+    # division is correctly rounded (not exact) wherever the product is a normal number; when the
+    # product is subnormal the result loses precision but is never a corrupted zero, inf, or nan.
+    # What remains non-finite is exactly the singular ellipse, which we deliberately do not guard.
+    inv21 = -a21 / (a11 * a22)
+    A = torch.stack([inv11, torch.zeros_like(inv11), inv21, inv22], dim=-1).view(B, N, 2, 2)
     out = torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
     return out
 

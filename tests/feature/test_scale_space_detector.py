@@ -29,7 +29,22 @@ from kornia.feature.scale_space_detector import (
 )
 from kornia.geometry.subpix import ConvQuadInterp3d
 
-from testing.base import BaseTester, supports_replicate_padding, supports_topk
+from testing.base import BaseTester, supports_conv2d, supports_replicate_padding, supports_topk
+
+
+def _require_affine_orientation_kernels(device: torch.device, dtype: torch.dtype) -> None:
+    if dtype not in (torch.float16, torch.bfloat16):
+        return
+    if device.type == "mps":
+        pytest.skip("MPS autocast changes the effective dtype")
+    probes = (
+        ("replicate-padding", supports_replicate_padding),
+        ("conv2d", supports_conv2d),
+        ("topk", supports_topk),
+    )
+    for name, probe in probes:
+        if not probe(device, dtype):
+            pytest.skip(f"no {name} kernel for {dtype} on {device.type}")
 
 
 class TestScaleSpaceDetector(BaseTester):
@@ -360,9 +375,8 @@ class TestScaleSpaceDetector(BaseTester):
 
     def test_padding_survives_the_affine_and_orientation_modules(self, device, dtype):
         # Same contract as `MultiResolutionDetector.forward`: the shape and orientation modules
-        # normalise a zero frame into a finite one, so the padding is re-applied after them.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("LAFAffineShapeEstimator uses linalg.inv, which has no half-precision kernel")
+        # may transform a zero frame differently by dtype, so the padding is re-applied after them.
+        _require_affine_orientation_kernels(device, dtype)
         det = ScaleSpaceDetector(
             10, aff_module=kornia.feature.LAFAffineShapeEstimator(19), ori_module=kornia.feature.LAFOrienter(19)
         ).to(device, dtype)
@@ -722,10 +736,9 @@ class TestMultiResolutionDetector(BaseTester):
         assert not torch.equal(resps_bool, resps_free)
 
     def test_padding_survives_the_affine_and_orientation_modules(self, device, dtype):
-        # `forward` runs `aff` and `ori` after `detect`; `LAFAffineShapeEstimator` normalises a
-        # zero frame into a finite 1e-5-scale one, so the zero-LAF contract has to be re-applied.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("LAFAffineShapeEstimator uses linalg.inv, which has no half-precision kernel")
+        # `forward` runs `aff` and `ori` after `detect`; they may transform a zero frame differently
+        # by dtype, so the zero-LAF contract has to be re-applied.
+        _require_affine_orientation_kernels(device, dtype)
         det = MultiResolutionDetector(
             kornia.feature.BlobHessian(),
             num_features=10,
