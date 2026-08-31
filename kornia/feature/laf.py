@@ -272,9 +272,9 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     # `-a21 * inv11 * inv22` has an input region where an intermediate overflows to inf (or a
     # mathematically-zero off-diagonal becomes 0 * inf = nan) or flushes a representable result to
     # zero. a11 * a22 = sqrt(a) * sqrt(c) can neither overflow nor round to zero, so the single
-    # division is exact wherever the product is a normal number; when the product is subnormal the
-    # result loses precision but is never a corrupted zero, inf, or nan. What remains non-finite is
-    # exactly the singular ellipse, which we deliberately do not guard.
+    # division is correctly rounded (not exact) wherever the product is a normal number; when the
+    # product is subnormal the result loses precision but is never a corrupted zero, inf, or nan.
+    # What remains non-finite is exactly the singular ellipse, which we deliberately do not guard.
     inv21 = -a21 / (a11 * a22)
     A = torch.stack([inv11, torch.zeros_like(inv11), inv21, inv22], dim=-1).view(B, N, 2, 2)
     out = torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)

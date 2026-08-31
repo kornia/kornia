@@ -95,10 +95,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (~1500x once measured ad hoc at N=20000 on Apple Silicon; rerun the benchmark there for a citable number). The
   function now compiles with `fullgraph=True` on every backend and accepts `float16`/`bfloat16` on CPU, where the
   raw `.inverse()` call raised for low-precision dtypes (`_torch_inverse_cast` would have lifted that restriction
-  too; the closed form is for speed). The off-diagonal divides `b` by the product of the diagonal square roots,
-  which can neither overflow nor round to zero: every ordering of the reciprocal product overflows to `inf` (or
-  flushes a representable value to `0`) on a sufficiently lopsided or subnormal diagonal, and when that product is
-  subnormal the division loses precision but never corrupts a representable result to a zero, `inf`, or `nan`.
+  too; the closed form is for speed). The off-diagonal divides `a21 = b / (a11 + a22)` by the product of the
+  diagonal square roots, which can neither overflow nor round to zero: every ordering of the reciprocal product
+  overflows to `inf` (or flushes a representable value to `0`) on a sufficiently lopsided or subnormal diagonal,
+  and when that product is subnormal the division loses precision but never corrupts a representable result to a
+  zero, `inf`, or `nan`.
 
 * Make `load_pointcloud_ply` and `load_pointcloud_ply_binary` parse the PLY header instead of skipping a fixed
   number of lines. Both loaders skipped `header_size=8` lines and read everything after them as `x y z` triples, so a

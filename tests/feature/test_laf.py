@@ -302,6 +302,34 @@ class TestELL2LAF(BaseTester):
         assert torch.isfinite(laf).all()
         self.assert_close(laf[0, 0, 1, 0], torch.zeros_like(laf[0, 0, 1, 0]))
 
+    def test_no_underflow_asymmetric_diag(self, device, dtype):
+        # Regression test for the ordering the two tests above do not cover: multiplying by the
+        # smaller reciprocal first (f7b573a3, since replaced by the division form) passes both of
+        # them but silently flushes a representable off-diagonal to a false zero. `a` is the
+        # dtype's smallest normal and `c` its reciprocal squared, so a11 * a22 == 1 and
+        # inv22 == a11 is itself tiny; `b` is picked so a21 * inv22 -- the min/max order's first
+        # product -- underflows to zero while the true off-diagonal, a21 / (a11 * a22), stays
+        # representable. https://github.com/kornia/kornia/pull/4122
+        finfo = torch.finfo(dtype)
+        a11 = math.sqrt(finfo.tiny)
+        a22 = 1.0 / a11
+        b = finfo.eps * math.sqrt(a11)
+        inp = torch.tensor([[[0.0, 0.0, finfo.tiny, b, a22 * a22]]], device=device, dtype=dtype)
+        # Guard on the arithmetic, not just the storage: a21 is shared by every ordering, so if a
+        # backend's division already flushes it to zero, no ordering has anything left to get wrong.
+        a11_t, a22_t = inp[..., 2:3].abs().sqrt(), inp[..., 4:5].abs().sqrt()
+        a21_t = inp[..., 3:4] / (a11_t + a22_t).clamp(1e-9)
+        if (a21_t == 0).any():
+            pytest.skip("backend flushes this off-diagonal's shared numerator to zero regardless of ordering")
+        ref = inp.cpu().double()
+        r11, r22 = ref[0, 0, 2].sqrt(), ref[0, 0, 4].sqrt()
+        expected = -(ref[0, 0, 3] / (r11 + r22)) / (r11 * r22)
+        laf = kornia.feature.ellipse_to_laf(inp)
+        assert torch.isfinite(laf).all()
+        # Loose relative tolerance: the point is distinguishing a false zero (100% off) from the
+        # real value, not pinning float16's reduced precision this deep into its subnormal range.
+        self.assert_close(laf[0, 0, 1, 0], expected.to(dtype).to(device), rtol=0.1, atol=0.0)
+
     @pytest.mark.parametrize("degenerate_index", [2, 4])
     def test_degenerate_ellipse_is_non_finite(self, device, dtype, degenerate_index):
         # A degenerate ellipse makes the matrix singular. The batched torch.inverse this replaced

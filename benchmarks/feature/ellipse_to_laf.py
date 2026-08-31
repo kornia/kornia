@@ -18,8 +18,10 @@
 
 No other library exposes this conversion, so there is no cross-library column: the baseline is
 the same script run on another kornia revision (see AGENTS.md, "Comparing a branch against
-another revision" -- run from a worktree root so the worktree shadows the editable install; the
-header prints the kornia module path so a mismeasured revision is visible in the output).
+another revision"). Running this file directly puts its own directory on ``sys.path[0]``, not the
+worktree root, so ``cd``-ing into the worktree does not shadow the editable install by itself --
+run with ``PYTHONPATH="$PWD"`` from the worktree root instead, and check that the header's
+printed module path names the worktree you meant.
 
 Input regime: a batch of well-conditioned Oxford-format ellipses ``(1, N, 5)`` in the given
 dtype, pinned seed. Throughput counts ellipses per second. The compiled column uses
