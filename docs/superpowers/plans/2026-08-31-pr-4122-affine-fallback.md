@@ -4,7 +4,7 @@
 
 **Goal:** Make PR 4122's affine-shape fallback finite in forward and backward, orientation-consistent, shared by both estimators, and covered by the repository's half-precision test machinery.
 
-**Architecture:** Repair the public moment estimator at the source with a dtype-aware threshold, then guard estimator outputs before any singular reciprocal or scale operation. A private helper will centralize safe scale/orientation finalization for the handcrafted and learned affine estimators while preserving their public APIs.
+**Architecture:** Repair the public moment estimator at the source by accumulating half-precision moments in float32, then guard estimator outputs before any singular reciprocal or scale operation. A private helper will centralize safe scale/orientation finalization for the handcrafted and learned affine estimators while preserving their public APIs.
 
 **Tech Stack:** Python, PyTorch autograd and `nn.Module`, pytest, Kornia LAF utilities, Pixi project tasks.
 
@@ -18,13 +18,13 @@
 - `kornia/feature/scale_space_detector.py`: remove the dtype-specific claim from the padding explanation.
 - `CHANGELOG.md`: describe finite-gradient, orientation-consistent internal handling and the repaired float16 source guard.
 
-### Task 1: Repair the patch estimator's float16 degeneracy guard
+### Task 1: Repair half-precision patch-estimator moment accumulation
 
 **Files:**
 - Modify: `tests/feature/test_affine_shape_estimator.py`
 - Modify: `kornia/feature/affine_shape.py:99-108`
 
-- [ ] **Step 1: Write the failing float16 source regression**
+- [ ] **Step 1: Write failing flat-patch and anisotropic-shape regressions**
 
 Add this method to `TestPatchAffineShapeEstimator`:
 
@@ -40,7 +40,8 @@ def test_zero_patch_uses_circular_shape(self, device, dtype):
     self.assert_close(out, expected)
 ```
 
-Import `supports_replicate_padding` from `testing.base` beside the existing kernel probes.
+Add a second half-precision regression using the rectangle from issue #4123. Compare its result with the float32
+reference cast back to the input dtype, preserve the output dtype, and require finite input gradients.
 
 - [ ] **Step 2: Run the test in float16 and verify the regression**
 
@@ -50,20 +51,27 @@ Run:
 pixi run test-module tests/feature/test_affine_shape_estimator.py::TestPatchAffineShapeEstimator::test_zero_patch_uses_circular_shape --dtype=float16
 ```
 
-Expected: FAIL because the current `eps=1e-10` becomes zero and the zero moment matrix normalizes as `0 / 0`.
+Expected: the flat patch FAILS because the current `eps=1e-10` becomes zero and normalizes as `0 / 0`; a
+threshold-only repair makes that test pass but the rectangle regression FAILS because it becomes a circular shape.
 
-- [ ] **Step 3: Use a representable threshold and a boolean fallback**
+- [ ] **Step 3: Accumulate half-precision moments in float32 and use a boolean fallback**
 
-Replace the current `bad_mask` block with:
+Save the input dtype, promote float16 and bfloat16 patches to float32 before gradient evaluation, keep the existing
+`self.eps` threshold, use a boolean `where` fallback, and cast the normalized output back to the input dtype:
 
 ```python
-eps = max(self.eps, torch.finfo(ellipse_shape.dtype).tiny)
-bad_mask = (ellipse_shape < eps).sum(dim=2, keepdim=True) >= 2
+dtype = patch.dtype
+if dtype in (torch.float16, torch.bfloat16):
+    patch = patch.float()
+# compute gradients and moments
+bad_mask = (ellipse_shape < self.eps).sum(dim=2, keepdim=True) >= 2
 circular_shape = ellipse_shape.new_tensor([1.0, 0.0, 1.0]).view(1, 1, 3)
 ellipse_shape = torch.where(bad_mask, circular_shape, ellipse_shape)
+# normalize
+return ellipse_shape.to(dtype)
 ```
 
-Keep the existing normalization immediately after it. The boolean `where` also avoids the `nan * 0` behavior of the old mask multiplication.
+The boolean `where` also avoids the `nan * 0` behavior of the old mask multiplication.
 
 - [ ] **Step 4: Run the source regression and existing patch-estimator checks**
 
@@ -171,7 +179,14 @@ The first `where` is the backward-safety boundary; the second preserves the exac
 In `LAFAffineShapeEstimator.forward`, replace the current conversion/normalization tail with:
 
 ```python
-bad = ~ellipse_shape.isfinite().all(dim=-1) | (ellipse_shape[..., 0] == 0) | (ellipse_shape[..., 2] == 0)
+ellipse_det = ellipse_shape[..., 0] * ellipse_shape[..., 2] - ellipse_shape[..., 1].square()
+bad = (
+    ~ellipse_shape.isfinite().all(dim=-1)
+    | ~ellipse_det.isfinite()
+    | (ellipse_shape[..., 0] <= 0)
+    | (ellipse_shape[..., 2] <= 0)
+    | (ellipse_det <= 0)
+)
 circular_shape = ellipse_shape.new_tensor([1.0, 0.0, 1.0])
 safe_ellipse_shape = torch.where(bad[..., None], circular_shape, ellipse_shape)
 ellipses = torch.cat([laf.view(-1, 2, 3)[..., 2].unsqueeze(1), safe_ellipse_shape], dim=2).view(B, N, 5)

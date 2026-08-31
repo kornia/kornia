@@ -83,10 +83,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Oxford-format `.ellipse` files, say -- should test the result with `torch.isfinite`, since a non-finite LAF
   otherwise propagates silently through `get_laf_scale` and into matching. Detecting the degenerate rows up front
   would cost a device synchronisation and the `fullgraph=True` capture, so it is left to the caller. The one in-repo
-  affine estimators handle invalid candidates before nonlinear LAF operations. `PatchAffineShapeEstimator` uses a
-  dtype-aware threshold that remains representable in `float16`; `LAFAffineShapeEstimator` sanitizes singular ellipse
-  coefficients before conversion; and both it and `LAFAffNetShapeEstimator` use a finite fallback with finite
-  backward. The fallback is the input LAF when `preserve_orientation=True` and `make_upright(laf)` otherwise.
+  affine estimators handle invalid candidates before nonlinear LAF operations. `PatchAffineShapeEstimator` computes
+  half-precision moments and normalization in `float32`, preserving valid anisotropic shapes that would otherwise
+  underflow; `LAFAffineShapeEstimator` sanitizes non-positive-definite ellipse coefficients before conversion; and
+  both it and `LAFAffNetShapeEstimator` use a finite fallback with finite backward. The fallback is the input LAF
+  when `preserve_orientation=True` and `make_upright(laf)` otherwise.
 
 ### Bug fixes
 
