@@ -22,10 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same reason -- its output matches the pyramid extractor's level-0 output again. Half-precision patches
   therefore change on CUDA and MPS as well as the CPU (superseding the device scope of the reduced-precision entry
   under **Bug fixes**), and floating-point results are not byte-identical to the former levelwise implementation.
+  The universal `float32` sampling is a real cost where the native half kernels were fine: on CUDA, `float16`
+  `extract_patches_simple` is roughly 2x slower at high N, and peak CUDA memory rises at moderate N (the atlas plus
+  the one-time upcast copy) even though the high-N peaks drop.
   Both extractors now also reject an image/LAF batch-size or dtype mismatch at the boundary with a clear error:
-  former releases raised an internal `grid_sample` error for most of these mixes, except `extract_patches_simple`
-  with a smaller LAF batch, which silently returned patches for only the first `min(B_img, B_laf)` images. Both extractors chunk their sampling along N, in the spirit of `batched_forward`, so
-  the folded `(B, N*PS, PS, 2)` grid and its remap intermediates stay within a fixed 64 MiB budget: batched high-N
+  former releases raised an internal `grid_sample` error for most of these mixes, except a smaller LAF batch, where
+  both extractors silently returned patches for only the first `min(B_img, B_laf)` images. Both extractors chunk their sampling along N, in the spirit of `batched_forward`, so
+  the folded `(B, N*PS, PS, 2)` grid stays within a fixed 64 MiB budget (the remap intermediates and the sampled
+  output scale with the same chunk size, so the per-chunk peak is a small multiple of that): batched high-N
   extraction now peaks below even the pre-batching per-image loop (468 MiB against 495 MiB on `main` for B=8,
   N=4000, PS=32 on a 512x512 float32 image, where the unchunked atlas peaked at 1.24 GiB), eager throughput stays
   within ~5% of the unchunked atlas, and float32/float64 patches are bitwise identical to it; a `torch.compile`d
@@ -35,7 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `extract_patches_from_pyramid` with `B == 0` returned the empty result before the batched rewrite below
   regressed it; every other empty combination raised on all prior releases. `extract_patches_from_pyramid` now
   also accepts a LAF on a different device than the image, as `extract_patches_simple` always has, and returns
-  patches on the image's device.
+  patches on the image's device; both extractors move the LAF to the image's device up front, so a cross-device
+  call now samples on the image's device and matches the same-device result (`extract_patches_simple` previously
+  built the full sampling grid on the LAF's device).
 
 * The shape guards of `normalize_homography` and `denormalize_homography` now reject everything but a
   `(3, 3)`/`(B, 3, 3)` matrix, and `normalize_homography3d`'s everything but a `(4, 4)`/`(B, 4, 4)` one (#3999).

@@ -711,6 +711,42 @@ class TestExtractPatchesPyr(BaseTester):
             patches = kornia.feature.extract_patches_from_pyramid(img, laf, 4, False)
             assert patches.shape == (1, 1, 1, 4, 4)
 
+    def test_one_pixel_level_does_not_raise(self, device, dtype):
+        # PS=1 lets the pyramid descend to a 1-pixel level (12 -> 6 -> 3 -> 1) even though the
+        # input image is far larger than 2 pixels, so the atlas guard must inspect the *built*
+        # level sizes, not the input image, before the level constants divide by `size - 1`.
+        img = torch.rand(1, 1, 12, 12, device=device, dtype=dtype)
+        laf = torch.tensor([[3.0, 0.0, 6.0], [0.0, 3.0, 6.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
+        patches = kornia.feature.extract_patches_from_pyramid(img, laf, 1)
+        assert patches.shape == (1, 1, 1, 1, 1)
+
+    def test_nan_laf_returns_zero_patch(self, device, dtype, monkeypatch):
+        # A training-time detector can emit a NaN LAF frame. `.long()` on a NaN level index is
+        # INT64_MIN, which used to index the atlas level constants out of bounds -- an IndexError
+        # on the CPU and a device-side assert on CUDA. Both sampling paths must instead return an
+        # all-zero patch for the NaN frame, like the pre-atlas implementation, and leave the
+        # finite frames untouched.
+        import kornia.feature.laf as laf_module
+
+        PS = 8
+        img = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        nan = float("nan")
+        laf = torch.tensor(
+            [[[8.0, 0.0, 32.0], [0.0, 8.0, 32.0]], [[nan, nan, nan], [nan, nan, nan]]],
+            device=device,
+            dtype=dtype,
+        ).view(1, 2, 2, 3)
+
+        expected_finite = kornia.feature.extract_patches_from_pyramid(img, laf[:, :1], PS)
+        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 1 << 60)
+        atlas = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
+        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 0)
+        fallback = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
+
+        for patches in (atlas, fallback):
+            self.assert_close(patches[:, :1], expected_finite)
+            assert patches[:, 1].abs().sum().item() == 0
+
     def test_giant_laf_uses_actual_coarsest_level(self, device, dtype):
         # The nominal level for this LAF is beyond the levels that can provide a PS-sized
         # patch. It must sample the actual coarsest level rather than becoming zero padding.
