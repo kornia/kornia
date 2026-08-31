@@ -21,7 +21,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_points_from_homogeneous
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
@@ -416,13 +416,14 @@ def _clamp_grid_to_pixel_centers(grid: torch.Tensor, h: int, w: int) -> torch.Te
     exactly.
 
     Args:
-        grid: sampling grid :math:`(B, PS, PS, 2)`, last dimension ordered ``(x, y)``. Only the 2-D form is
-            handled; a 3-D grid would need a third bound from the depth of the sampled volume.
+        grid: sampling grid :math:`(..., 2)` with any leading batch dimensions, last dimension ordered
+            ``(x, y)``. Only 2-D sampling is handled; a 3-D grid would need a third bound from the
+            depth of the sampled volume.
         h: height of the sampled image.
         w: width of the sampled image.
 
     Returns:
-        the clamped grid :math:`(B, PS, PS, 2)`.
+        the clamped grid, same shape as ``grid``.
 
     """
     x = grid[..., 0].clamp(-1.0 + 1.0 / float(w), 1.0 - 1.0 / float(w))
@@ -431,40 +432,36 @@ def _clamp_grid_to_pixel_centers(grid: torch.Tensor, h: int, w: int) -> torch.Te
 
 
 def _grid_sample_patches(img: torch.Tensor, grid: torch.Tensor, h: int, w: int) -> torch.Tensor:
-    r"""Run ``grid_sample`` with border padding, robust across devices and dtypes.
+    r"""Run ``grid_sample`` with border padding, robust across devices.
 
     MPS does not implement ``padding_mode="border"``; it is emulated with a clamped grid plus
-    zero padding (see :func:`_clamp_grid_to_pixel_centers`). The float16/bfloat16 CPU kernel in
-    torch <= 2.9 reads out of bounds for coordinates at or beyond the border and returns
-    nondeterministic garbage or NaN, so reduced-precision CPU inputs are sampled in float32 and
-    cast back.
+    zero padding (see :func:`_clamp_grid_to_pixel_centers`). ``img`` and ``grid`` share a dtype:
+    the extractors upcast reduced-precision inputs to float32 once, before their chunk loops.
+    That upcast is deliberate on every torch version, not only the torch <= 2.9 builds whose
+    float16/bfloat16 CPU kernel reads out of bounds at the border — half-precision sampling
+    coordinates also quantize to whole pixels on large images.
     """
     if img.device.type == "mps":
-        sample_img = img.to(grid.dtype) if img.dtype != grid.dtype else img
-        out = F.grid_sample(
-            sample_img, _clamp_grid_to_pixel_centers(grid, h, w), padding_mode="zeros", align_corners=False
-        )
-        return out.to(img.dtype)
-    if img.device.type == "cpu" and img.dtype in (torch.float16, torch.bfloat16):
-        out = F.grid_sample(img.float(), grid.float(), padding_mode="border", align_corners=False)
-        return out.to(img.dtype)
-    if img.dtype != grid.dtype:
-        out = F.grid_sample(img.to(grid.dtype), grid, padding_mode="border", align_corners=False)
-        return out.to(img.dtype)
+        return F.grid_sample(img, _clamp_grid_to_pixel_centers(grid, h, w), padding_mode="zeros", align_corners=False)
     return F.grid_sample(img, grid, padding_mode="border", align_corners=False)
 
 
-def _grid_chunk_lafs(B: int, N: int, PS: int, elem_size: int) -> int:
+def _grid_elem_bytes(dtype: torch.dtype) -> int:
+    """Bytes per element of a sampling-grid dtype (float64, or float32 after the half upcast)."""
+    return 8 if dtype == torch.float64 else 4
+
+
+def _grid_chunk_lafs(B: int, N: int, PS: int, elem_size: int, budget: int = 64 * 1024 * 1024) -> int:
     r"""Largest LAF count per sampling call whose folded grid stays within the chunk byte budget.
 
     The sampling grid and its pointwise intermediates scale with :math:`B \cdot N \cdot PS^2`,
     so extraction is chunked along N to bound peak memory, in the spirit of
     :func:`kornia.core.utils.batched_forward`. At least one LAF per chunk; when every grid fits
-    the budget the loop degenerates to the single-call fast path. The budget is a local literal
-    rather than a module constant because TorchScript cannot close over module-level ints; tests
-    monkeypatch this function to force multi-chunk sampling on small inputs.
+    the budget the loop degenerates to the single-call fast path. The default budget is a
+    defaulted argument rather than a module constant because TorchScript cannot close over
+    module-level ints; tests monkeypatch this function to force multi-chunk sampling on small
+    inputs.
     """
-    budget = 64 * 1024 * 1024
     per_laf = B * PS * PS * 2 * elem_size
     return min(N, max(1, budget // per_laf))
 
@@ -495,13 +492,19 @@ def _extract_patches_from_pyramid_levelwise(
     widths: List[int],
     PS: int,
 ) -> torch.Tensor:
-    """Sample each pyramid level separately when a single atlas would be too large."""
+    """Sample each pyramid level separately when a single atlas would be too large.
+
+    Patches accumulate on the image's device and dtype, like the atlas path: the grid follows the
+    LAF and is moved inside `_sample_patches`, and reduced-precision levels are upcast once,
+    before the loops, so no full level is re-cast per chunk.
+    """
     B, N = nlaf.shape[:2]
     ch = img.shape[1]
-    out = torch.zeros(B, N, ch, PS, PS, dtype=nlaf.dtype, device=nlaf.device)
     grid_laf = nlaf.float() if nlaf.dtype in (torch.float16, torch.bfloat16) else nlaf
-    chunk = _grid_chunk_lafs(B, N, PS, 8 if grid_laf.dtype == torch.float64 else 4)
-    cur_img = img
+    out = torch.zeros(B, N, ch, PS, PS, dtype=img.dtype, device=img.device)
+    level_idx_of_laf = pyr_idx.to(img.device)
+    chunk = _grid_chunk_lafs(B, N, PS, _grid_elem_bytes(grid_laf.dtype))
+    cur_img = img.to(grid_laf.dtype) if img.dtype != grid_laf.dtype else img
     for level_idx, (h_l, w_l) in enumerate(zip(heights, widths)):
         if level_idx > 0:
             cur_img = pyrdown(cur_img)
@@ -509,8 +512,8 @@ def _extract_patches_from_pyramid_levelwise(
             en = min(st + chunk, N)
             grid = generate_patch_grid_from_normalized_LAF(cur_img, grid_laf[:, st:en], PS).view(B, en - st, PS, PS, 2)
             grid = _clamp_grid_to_pixel_centers(grid, h_l, w_l)
-            patches = _sample_patches(cur_img, grid, h_l, w_l).to(nlaf.dtype)
-            mask = (pyr_idx[:, st:en] == level_idx).view(B, en - st, 1, 1, 1)
+            patches = _sample_patches(cur_img, grid, h_l, w_l).to(img.dtype)
+            mask = (level_idx_of_laf[:, st:en] == level_idx).view(B, en - st, 1, 1, 1)
             out[:, st:en] = torch.where(mask, patches, out[:, st:en])
     return out
 
@@ -533,6 +536,8 @@ def extract_patches_simple(
 
     """
     KORNIA_CHECK_LAF(laf)
+    KORNIA_CHECK(img.size(0) == laf.size(0), "img and laf must have the same batch size")
+    KORNIA_CHECK(img.dtype == laf.dtype, "img and laf must have the same dtype")
     if normalize_lafs_before_extraction:
         nlaf = normalize_laf(laf, img)
     else:
@@ -543,15 +548,17 @@ def extract_patches_simple(
         return torch.zeros(B, N, ch, PS, PS, device=img.device, dtype=img.dtype)
     if nlaf.dtype in (torch.float16, torch.bfloat16):
         # Reduced-precision sampling coordinates quantize to whole pixels on large images (the
-        # float16 ulp near the +-1 frame corners is 2^-11), so the grid is computed in float32;
-        # `_grid_sample_patches` keeps the output in the image dtype.
+        # float16 ulp near the +-1 frame corners is 2^-11), so the grid is computed in float32.
         nlaf = nlaf.float()
+    # The image is upcast to the grid's dtype once, before the chunk loop: `_grid_sample_patches`
+    # samples in one dtype, and re-casting the full image per chunk would defeat the chunk budget.
+    sample_img = img.to(nlaf.dtype) if img.dtype != nlaf.dtype else img
     out = torch.empty(B, N, ch, PS, PS, device=img.device, dtype=img.dtype)
-    chunk = _grid_chunk_lafs(B, N, PS, 8 if nlaf.dtype == torch.float64 else 4)
+    chunk = _grid_chunk_lafs(B, N, PS, _grid_elem_bytes(nlaf.dtype))
     for st in range(0, N, chunk):
         en = min(st + chunk, N)
         grid = generate_patch_grid_from_normalized_LAF(img, nlaf[:, st:en], PS).view(B, en - st, PS, PS, 2)
-        out[:, st:en] = _sample_patches(img, grid, h, w)
+        out[:, st:en] = _sample_patches(sample_img, grid, h, w)
     return out
 
 
@@ -574,6 +581,8 @@ def extract_patches_from_pyramid(
 
     """
     KORNIA_CHECK_LAF(laf)
+    KORNIA_CHECK(img.size(0) == laf.size(0), "img and laf must have the same batch size")
+    KORNIA_CHECK(img.dtype == laf.dtype, "img and laf must have the same dtype")
     if normalize_lafs_before_extraction:
         nlaf = normalize_laf(laf, img)
     else:
@@ -581,7 +590,7 @@ def extract_patches_from_pyramid(
     B, N, _, _ = laf.size()
     _, ch, h, w = img.size()
     if B == 0 or N == 0:
-        return torch.zeros(B, N, ch, PS, PS, device=img.device, dtype=laf.dtype)
+        return torch.zeros(B, N, ch, PS, PS, device=img.device, dtype=img.dtype)
     scale = 2.0 * get_laf_scale(denormalize_laf(nlaf, img)) / float(PS)
     # max_level is a compile-time constant for static image shapes.
     max_level = min(h, w) // PS
@@ -610,16 +619,21 @@ def extract_patches_from_pyramid(
     grid_dtype = torch.float32 if nlaf.dtype in (torch.float16, torch.bfloat16) else nlaf.dtype
     # A full-height atlas is counterproductive for very large or heavily batched images. Keep
     # its storage bounded; the static shape guard disappears under torch.compile, and the
-    # levelwise path preserves the same clamping and reduced-precision grid semantics.
+    # levelwise path preserves the same clamping and reduced-precision grid semantics. The atlas
+    # is built in the grid's dtype -- reduced-precision inputs are upcast once, so the replicate
+    # pad, `pyrdown` and every chunk's `grid_sample` run on kernels every torch build has, and no
+    # full-atlas recast is paid per chunk. A 1-pixel image axis would make the level constants'
+    # Python `w_l - 1` division below raise; the levelwise sampler's tensor arithmetic degrades
+    # the way the pre-atlas code did instead.
     atlas_elements = B * ch * atlas_h * atlas_w
-    atlas_bytes = atlas_elements * img.element_size()
+    atlas_bytes = atlas_elements * _grid_elem_bytes(grid_dtype)
     if img.dtype != grid_dtype:
-        grid_element_size = 8 if grid_dtype == torch.float64 else 4 if grid_dtype == torch.float32 else 2
-        atlas_bytes += atlas_elements * grid_element_size
-    if atlas_bytes > _PYRAMID_ATLAS_MAX_BYTES:
+        atlas_bytes += B * ch * h * w * _grid_elem_bytes(grid_dtype)  # the one-time upcast copy
+    if min(h, w) < 2 or atlas_bytes > _PYRAMID_ATLAS_MAX_BYTES:
         return _extract_patches_from_pyramid_levelwise(img, nlaf, pyr_idx, heights, widths, PS)
-    atlas = img.new_zeros(B, ch, atlas_h, atlas_w)
-    cur_img = img
+    sample_img = img.to(grid_dtype) if img.dtype != grid_dtype else img
+    atlas = sample_img.new_zeros(B, ch, atlas_h, atlas_w)
+    cur_img = sample_img
     xoff = 0
     for level_idx, (h_l, w_l) in enumerate(zip(heights, widths)):
         if level_idx > 0:
@@ -661,8 +675,8 @@ def extract_patches_from_pyramid(
     # The folded grid and its remap intermediates scale with B*N*PS^2, so sampling is chunked
     # along N to bound peak memory; each chunk repeats exactly the single-call arithmetic, and
     # for small workloads the loop is a single iteration.
-    out = torch.empty(B, N, ch, PS, PS, device=img.device, dtype=nlaf.dtype)
-    chunk = _grid_chunk_lafs(B, N, PS, 8 if grid_dtype == torch.float64 else 4)
+    out = torch.empty(B, N, ch, PS, PS, device=img.device, dtype=img.dtype)
+    chunk = _grid_chunk_lafs(B, N, PS, _grid_elem_bytes(grid_dtype))
     for st in range(0, N, chunk):
         en = min(st + chunk, N)
         nc = en - st

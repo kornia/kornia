@@ -222,11 +222,13 @@ def _grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
 def supports_grid_sample(device: torch.device, dtype: torch.dtype) -> bool:
     """Whether this device has a 2D ``grid_sample`` kernel for ``dtype``.
 
-    Patch extraction (:func:`kornia.feature.extract_patches_from_pyramid`, and so every LAF
-    orienter, affine-shape estimator and descriptor pipeline built on it) samples that way.
-    torch 2.5.1 has no float16 or bfloat16 CPU ``grid_sampler_2d``, so a test that hardcodes a
-    half dtype rather than reading the injected one fails there on every job. Probed at runtime
-    and cached per (device type, dtype), like :func:`supports_replicate_padding`.
+    For tests that call ``grid_sample`` (or an op built on it) at its native dtype. The LAF patch
+    extractors are NOT such consumers: :func:`kornia.feature.extract_patches_simple` and
+    :func:`kornia.feature.extract_patches_from_pyramid` sample reduced-precision inputs in
+    float32, so a test routed through them must not gate on this probe -- it would skip where the
+    extraction works. torch 2.5.1 has no float16 or bfloat16 CPU ``grid_sampler_2d``, so a test
+    that hardcodes a half dtype rather than reading the injected one fails there on every job.
+    Probed at runtime and cached per (device type, dtype), like :func:`supports_replicate_padding`.
     """
     return _supports_kernel_probe(_grid_sample_op, device.type, dtype)
 

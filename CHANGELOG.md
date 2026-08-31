@@ -13,13 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `extract_patches_from_pyramid` now samples ordinary-sized inputs once from a packed pyramid atlas instead of
   sampling every LAF at every pyramid level. A statically selected levelwise fallback keeps atlases larger than
   128 MiB from becoming a memory hazard. LAFs whose nominal level is coarser than the last usable pyramid level now
-  sample that actual coarsest level; they previously returned an all-zero patch. Atlas coordinate arithmetic also
-  runs in `float32` for `float16` and `bfloat16` inputs, avoiding the normalized-coordinate precision loss caused by
-  the wider atlas, and `extract_patches_simple` computes its sampling grid in `float32` for reduced-precision inputs
-  on every device for the same reason -- its output matches the pyramid extractor's level-0 output again, and
-  half-precision patches therefore change on CUDA and MPS as well as the CPU (superseding the device scope of the
-  reduced-precision entry under **Bug fixes**). Floating-point results are not byte-identical to the former
-  levelwise implementation. Both extractors chunk their sampling along N, in the spirit of `batched_forward`, so
+  sample that actual coarsest level; they previously returned an all-zero patch. For `float16` and `bfloat16` inputs
+  the whole pyramid -- padding, `pyrdown`, coordinate arithmetic and sampling -- runs in `float32` and the patches
+  are cast back, on every device: this avoids the normalized-coordinate precision loss caused by the wider atlas,
+  keeps the extraction off `replication_pad2d`/`grid_sampler_2d` kernels that old torch builds lack for half dtypes
+  on the CPU (torch <= 2.5.1 would otherwise crash), and avoids recasting the full atlas on every sampling chunk.
+  `extract_patches_simple` computes its sampling grid in `float32` for reduced-precision inputs on every device for
+  the same reason -- its output matches the pyramid extractor's level-0 output again. Half-precision patches
+  therefore change on CUDA and MPS as well as the CPU (superseding the device scope of the reduced-precision entry
+  under **Bug fixes**), and floating-point results are not byte-identical to the former levelwise implementation.
+  Both extractors now also reject an image/LAF batch-size or dtype mismatch at the boundary with a clear error:
+  former releases raised an internal `grid_sample` error for most of these mixes, except `extract_patches_simple`
+  with a smaller LAF batch, which silently returned patches for only the first `min(B_img, B_laf)` images. Both extractors chunk their sampling along N, in the spirit of `batched_forward`, so
   the folded `(B, N*PS, PS, 2)` grid and its remap intermediates stay within a fixed 64 MiB budget: batched high-N
   extraction now peaks below even the pre-batching per-image loop (468 MiB against 495 MiB on `main` for B=8,
   N=4000, PS=32 on a 512x512 float32 image, where the unchunked atlas peaked at 1.24 GiB), eager throughput stays

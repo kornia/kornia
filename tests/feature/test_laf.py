@@ -23,7 +23,7 @@ import torch
 import kornia
 import kornia.geometry.transform.imgwarp
 
-from testing.base import BaseTester, supports_reflect_padding
+from testing.base import BaseTester
 from testing.geometry.create import create_random_homography
 
 
@@ -520,6 +520,16 @@ class TestExtractPatchesSimple(BaseTester):
         assert patches.mean().item() > 0.01
         assert patches.shape == (1, 1, 1, PS, PS)
 
+    def test_exception(self, device, dtype):
+        # Batch or dtype disagreement between the image and the LAFs is rejected at the boundary
+        # with a clear message instead of an internal `grid_sample` error.
+        img = torch.rand(3, 1, 32, 32, device=device, dtype=dtype)
+        with pytest.raises(Exception, match="same batch size"):
+            kornia.feature.extract_patches_simple(img, torch.rand(1, 2, 2, 3, device=device, dtype=dtype), 8)
+        other = torch.float16 if dtype != torch.float16 else torch.float32
+        with pytest.raises(Exception, match="same dtype"):
+            kornia.feature.extract_patches_simple(img, torch.rand(3, 2, 2, 3, device=device, dtype=other), 8)
+
     def test_same_odd(self, device, dtype):
         img = torch.arange(5)[None].repeat(5, 1)[None, None].to(device, dtype)
         laf = torch.tensor([[2.0, 0, 2.0], [0, 2.0, 2.0]]).reshape(1, 1, 2, 3).to(device, dtype)
@@ -680,6 +690,27 @@ class TestExtractPatchesPyr(BaseTester):
         assert patches.shape == (1, 1, 1, PS, PS)
         assert patches.abs().sum().item() > 0
 
+    def test_exception(self, device, dtype):
+        # Batch or dtype disagreement between the image and the LAFs is rejected at the boundary
+        # with a clear message instead of an internal broadcasting error.
+        img = torch.rand(3, 1, 32, 32, device=device, dtype=dtype)
+        with pytest.raises(Exception, match="same batch size"):
+            kornia.feature.extract_patches_from_pyramid(img, torch.rand(1, 2, 2, 3, device=device, dtype=dtype), 8)
+        other = torch.float16 if dtype != torch.float16 else torch.float32
+        with pytest.raises(Exception, match="same dtype"):
+            kornia.feature.extract_patches_from_pyramid(img, torch.rand(3, 2, 2, 3, device=device, dtype=other), 8)
+
+    def test_one_pixel_axis_does_not_raise(self, device, dtype):
+        # A 1-pixel image axis makes the sampling arithmetic divide by `size - 1 == 0`. The
+        # pre-atlas code degraded to non-finite coordinates through tensor division; the atlas
+        # constants are Python floats, so such images route through the levelwise sampler, whose
+        # divisions are tensor ops, instead of raising ZeroDivisionError.
+        for shape in ((1, 1, 5, 1), (1, 1, 1, 5)):
+            img = torch.rand(shape, device=device, dtype=dtype)
+            laf = torch.rand(1, 1, 2, 3, device=device, dtype=dtype)
+            patches = kornia.feature.extract_patches_from_pyramid(img, laf, 4, False)
+            assert patches.shape == (1, 1, 1, 4, 4)
+
     def test_giant_laf_uses_actual_coarsest_level(self, device, dtype):
         # The nominal level for this LAF is beyond the levels that can provide a PS-sized
         # patch. It must sample the actual coarsest level rather than becoming zero padding.
@@ -689,10 +720,12 @@ class TestExtractPatchesPyr(BaseTester):
 
         actual = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
         nlaf = kornia.feature.normalize_laf(laf, img)
-        coarsest = img
+        # Build the reference pyramid the way the extractor does for half dtypes -- in float32 --
+        # so the reference itself does not hit the missing half reflect-pad kernel on old torch.
+        coarsest = img.float() if dtype in (torch.float16, torch.bfloat16) else img
         for _ in range(3):
             coarsest = kornia.geometry.transform.pyrdown(coarsest)
-        expected = kornia.feature.extract_patches_simple(coarsest, nlaf, PS, False)
+        expected = kornia.feature.extract_patches_simple(coarsest.to(dtype), nlaf, PS, False)
 
         self.assert_close(actual, expected)
         assert actual.abs().sum().item() > 0
@@ -715,15 +748,23 @@ class TestExtractPatchesPyr(BaseTester):
 
         self.assert_close(fallback, atlas)
 
-    def test_atlas_guards_preserve_level_border_value_and_gradient(self, monkeypatch):
+    def test_atlas_guards_preserve_level_border_value_and_gradient(self, device, dtype, monkeypatch):
         import kornia.feature.laf as laf_module
+
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("the coordinate-rounding leak this test pins is below half-precision resolution")
 
         def sample(limit, size, patch_size):
             monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", limit)
-            img = torch.zeros(1, 1, size, size)
+            img = torch.zeros(1, 1, size, size, device=device, dtype=dtype)
             img[:, :, :, -1] = 1.0
-            center_x = 1.0 - 1.0 / (2.0 * size)
-            nlaf = torch.tensor([[[[0.0, 0.0, center_x], [0.0, 0.0, 0.5]]]], requires_grad=True)
+            # A quarter pixel OUTSIDE the outermost pixel center, so the clamp engages strictly on
+            # every backend: probing exactly at the center can round onto the clamp bound, where
+            # the subgradient convention differs between CPU and MPS.
+            center_x = 1.0 - 1.0 / (4.0 * size)
+            nlaf = torch.tensor(
+                [[[[0.0, 0.0, center_x], [0.0, 0.0, 0.5]]]], device=device, dtype=dtype, requires_grad=True
+            )
             patch = kornia.feature.extract_patches_from_pyramid(img, nlaf, patch_size, False)
             value = patch[0, 0, 0, patch_size // 2, patch_size // 2]
             grad = torch.autograd.grad(value, nlaf)[0][0, 0, 0, 2]
@@ -731,10 +772,20 @@ class TestExtractPatchesPyr(BaseTester):
 
         # 2495 exposes a forward-coordinate rounding leak without guards; 32 exposes the
         # non-zero outward center gradient even when the rounded forward value happens to match.
+        # The discriminating pin is the patch CENTER: its sampling coordinate is clamped to the
+        # border-pixel center, so with the guard both bilinear partners are exactly the border
+        # value and the sample stays within a couple of float32 ulp of 1.0, while a missing guard
+        # blends in the neighbouring level at the coordinate-rounding scale (~5e-5 in float32 at
+        # size 2495, measured). Interior pixels legitimately differ between the atlas and
+        # levelwise paths at that same rounding scale -- and across platforms -- so the
+        # whole-patch comparison uses the standard tolerances instead of `torch.equal`.
         for size, patch_size in ((2495, 8), (32, 5)):
             fallback, fallback_grad = sample(0, size, patch_size)
             atlas, atlas_grad = sample(1 << 60, size, patch_size)
-            assert torch.equal(atlas, fallback)
+            self.assert_close(atlas, fallback)
+            center = patch_size // 2
+            assert abs(atlas[0, 0, 0, center, center].item() - 1.0) < 1e-5
+            assert abs(fallback[0, 0, 0, center, center].item() - 1.0) < 1e-5
             assert atlas_grad == fallback_grad == 0.0
 
     def test_multi_level_uses_correct_pyramid_level(self, device, dtype):
@@ -851,11 +902,10 @@ class TestExtractPatchesPyr(BaseTester):
         # has a scale below the patch size, so the patch comes from the undownsampled image and the
         # level-0 result must equal the plain extractor's byte for byte. A larger LAF would be served
         # by a blurred level whose near-constant patch stays in range even when the read is wrong.
+        # The whole pyramid (pad, `pyrdown`, sampling) runs in float32 for half inputs, so no
+        # reduced-precision pad or `grid_sample` kernel gate is needed on any torch version.
         if device.type != "cpu":
             pytest.skip(_HALF_BORDER_SKIP)
-        if not supports_reflect_padding(device, half_dtype):
-            # `pyrdown` blurs with border_type="reflect"; torch 2.5.1 has no float16 CPU kernel.
-            pytest.skip(f"no reflect-padding kernel for {half_dtype} on {device.type}")
         torch.manual_seed(0)
         img = torch.rand(1, 1, 256, 256, device=device).to(half_dtype)
         laf = _corner_border_laf(device, half_dtype)
@@ -866,10 +916,13 @@ class TestExtractPatchesPyr(BaseTester):
         assert patches.max() <= img.max()
         self.assert_close(patches, kornia.feature.extract_patches_simple(img, laf, 16))
 
-    def test_laf_on_another_device(self, device, dtype):
+    def test_laf_on_another_device(self, device, dtype, monkeypatch):
         # The sampling grid follows the LAF and is moved to the image inside `_sample_patches`,
         # so the pyramid extractor accepts a LAF on a different device than the image, matching
-        # `extract_patches_simple`.
+        # `extract_patches_simple` -- on the atlas path AND on the levelwise fallback, which a
+        # 64x64 image never reaches on its own (the contract must not flip with the image size).
+        import kornia.feature.laf as laf_module
+
         if device.type == "cpu":
             pytest.skip("needs a second device besides the CPU")
         img = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
@@ -877,6 +930,10 @@ class TestExtractPatchesPyr(BaseTester):
         patches = kornia.feature.extract_patches_from_pyramid(img, laf, 8)
         assert patches.device == img.device
         self.assert_close(patches, kornia.feature.extract_patches_from_pyramid(img, laf.to(device), 8))
+        monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 0)
+        fallback = kornia.feature.extract_patches_from_pyramid(img, laf, 8)
+        assert fallback.device == img.device
+        self.assert_close(fallback, kornia.feature.extract_patches_from_pyramid(img, laf.to(device), 8))
 
     def test_dynamo(self, device, dtype, torch_optimizer, optimizer_backend):
         if optimizer_backend == "jit":
@@ -894,20 +951,28 @@ class TestExtractPatchesPyr(BaseTester):
         compiled = torch.compile(kornia.feature.extract_patches_from_pyramid, fullgraph=True)
         self.assert_close(compiled(img, laf, 10), expected)
 
-    def test_dynamo_levelwise_fallback(self, device, dtype, torch_optimizer, monkeypatch):
+    def test_dynamo_levelwise_fallback(self, device, dtype, torch_optimizer, optimizer_backend, monkeypatch):
         import kornia.feature.laf as laf_module
 
+        if optimizer_backend == "jit":
+            # Same TorchScript incompatibility `test_dynamo` skips -- and a scripted function
+            # would not see the monkeypatched module global anyway.
+            pytest.skip("`extract_patches_from_pyramid` reaches a non-scriptable `filter2d`")
         monkeypatch.setattr(laf_module, "_PYRAMID_ATLAS_MAX_BYTES", 0)
         laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
         img = torch.rand(2, 1, 65, 97, device=device, dtype=dtype)
         op = torch_optimizer(kornia.feature.extract_patches_from_pyramid)
         self.assert_close(op(img, laf, 16), kornia.feature.extract_patches_from_pyramid(img, laf, 16))
 
-    def test_dynamo_chunked(self, device, dtype, torch_optimizer, monkeypatch):
+    def test_dynamo_chunked(self, device, dtype, torch_optimizer, optimizer_backend, monkeypatch):
         # The chunk loop unrolls at trace time for static shapes; forcing one LAF per chunk
         # exercises it.
         import kornia.feature.laf as laf_module
 
+        if optimizer_backend == "jit":
+            # Same TorchScript incompatibility `test_dynamo` skips -- and a scripted function
+            # would not see the monkeypatched module global anyway.
+            pytest.skip("`extract_patches_from_pyramid` reaches a non-scriptable `filter2d`")
         monkeypatch.setattr(laf_module, "_grid_chunk_lafs", lambda *args: 1)
         laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
         img = torch.rand(2, 1, 65, 97, device=device, dtype=dtype)
