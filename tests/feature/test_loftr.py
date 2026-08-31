@@ -20,7 +20,6 @@ import sys
 import pytest
 import torch
 
-from kornia.core._compat import torch_version_ge
 from kornia.feature import LoFTR
 from kornia.geometry import resize
 
@@ -40,10 +39,16 @@ class TestLoFTR(BaseTester):
         assert loftr is not None
 
     @pytest.mark.slow
-    @pytest.mark.skipif(torch_version_ge(1, 10), reason="RuntimeError: CUDA out of memory with pytorch>=1.10")
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_pretrained_indoor(self, device, dtype, data):
+        if device.type == "cuda":
+            # The stored expectations were generated on CPU. The CUDA matcher
+            # selects a different set of correspondences (~37% of coordinates
+            # differ, and the match count itself changes), so this comparison
+            # cannot hold on CUDA until the expectations are regenerated
+            # per-device. See https://github.com/kornia/kornia/issues/4092.
+            pytest.skip("stored keypoint expectations are CPU-specific")
         loftr = LoFTR("indoor").to(device, dtype)
         data_dev = dict_to(data, device, dtype)
         with torch.no_grad():
@@ -52,10 +57,16 @@ class TestLoFTR(BaseTester):
         self.assert_close(out["keypoints1"], data_dev["loftr_indoor_tentatives1"])
 
     @pytest.mark.slow
-    @pytest.mark.skipif(torch_version_ge(1, 10), reason="RuntimeError: CUDA out of memory with pytorch>=1.10")
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_pretrained_outdoor(self, device, dtype, data):
+        if device.type == "cuda":
+            # The stored expectations were generated on CPU. The CUDA matcher
+            # selects a different set of correspondences (~37% of coordinates
+            # differ, and the match count itself changes), so this comparison
+            # cannot hold on CUDA until the expectations are regenerated
+            # per-device. See https://github.com/kornia/kornia/issues/4092.
+            pytest.skip("stored keypoint expectations are CPU-specific")
         loftr = LoFTR("outdoor").to(device, dtype)
         data_dev = dict_to(data, device, dtype)
         with torch.no_grad():
