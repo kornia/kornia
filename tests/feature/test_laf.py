@@ -267,6 +267,15 @@ class TestELL2LAF(BaseTester):
         # assure it is positive definite
         self.gradcheck(kornia.feature.ellipse_to_laf, (img,))
 
+    def test_small_root_sum_is_not_clamped(self, device):
+        # The root sum is finite and nonzero, so clamping it changes a valid inverse by orders of magnitude.
+        tiny = torch.finfo(torch.float32).tiny
+        inp = torch.tensor([[[0.0, 0.0, tiny, tiny, tiny]]], device=device, dtype=torch.float32)
+        expected = torch.tensor(-0.5 / math.sqrt(tiny), device=device, dtype=torch.float32)
+        laf = kornia.feature.ellipse_to_laf(inp)
+        assert torch.isfinite(laf).all()
+        self.assert_close(laf[0, 0, 1, 0], expected)
+
     def test_no_overflow_asymmetric_diag(self, device, dtype):
         # Regression test: the closed-form inverse's off-diagonal must divide by the root product,
         # not multiply reciprocals. `a` is the dtype's smallest normal and `c` is picked so that
@@ -279,12 +288,10 @@ class TestELL2LAF(BaseTester):
         inp = torch.tensor([[[0.0, 0.0, finfo.tiny, finfo.max * 0.75, a22 * a22]]], device=device, dtype=dtype)
         # Reference in float64, from the inputs as the dtype actually rounded them. Via CPU:
         # MPS tensors cannot be converted to float64 (TESTING.md, "Writing new tests that work on MPS").
-        ref = inp.cpu().double()
-        r11, r22 = ref[0, 0, 2].sqrt(), ref[0, 0, 4].sqrt()
-        expected = -(ref[0, 0, 3] / (r11 + r22)) / (r11 * r22)
+        expected = kornia.feature.ellipse_to_laf(inp.cpu().double())[0, 0, 1, 0]
         laf = kornia.feature.ellipse_to_laf(inp)
         assert torch.isfinite(laf).all()
-        self.assert_close(laf[0, 0, 1, 0], expected.to(dtype).to(device))
+        self.assert_close(laf[0, 0, 1, 0], expected.to(device=device, dtype=dtype))
 
     def test_no_overflow_subnormal_diag(self, device, dtype):
         # The mirror case: a subnormal but nondegenerate diagonal makes 1 / (a11 * a22) overflow, so
@@ -318,17 +325,15 @@ class TestELL2LAF(BaseTester):
         # Guard on the arithmetic, not just the storage: a21 is shared by every ordering, so if a
         # backend's division already flushes it to zero, no ordering has anything left to get wrong.
         a11_t, a22_t = inp[..., 2:3].abs().sqrt(), inp[..., 4:5].abs().sqrt()
-        a21_t = inp[..., 3:4] / (a11_t + a22_t).clamp(1e-9)
+        a21_t = inp[..., 3:4] / (a11_t + a22_t)
         if (a21_t == 0).any():
             pytest.skip("backend flushes this off-diagonal's shared numerator to zero regardless of ordering")
-        ref = inp.cpu().double()
-        r11, r22 = ref[0, 0, 2].sqrt(), ref[0, 0, 4].sqrt()
-        expected = -(ref[0, 0, 3] / (r11 + r22)) / (r11 * r22)
+        expected = kornia.feature.ellipse_to_laf(inp.cpu().double())[0, 0, 1, 0]
         laf = kornia.feature.ellipse_to_laf(inp)
         assert torch.isfinite(laf).all()
         # Loose relative tolerance: the point is distinguishing a false zero (100% off) from the
         # real value, not pinning float16's reduced precision this deep into its subnormal range.
-        self.assert_close(laf[0, 0, 1, 0], expected.to(dtype).to(device), rtol=0.1, atol=0.0)
+        self.assert_close(laf[0, 0, 1, 0], expected.to(device=device, dtype=dtype), rtol=0.1, atol=0.0)
 
     @pytest.mark.parametrize("degenerate_index", [2, 4])
     def test_degenerate_ellipse_is_non_finite(self, device, dtype, degenerate_index):

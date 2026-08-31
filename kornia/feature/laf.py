@@ -260,13 +260,7 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     # R = (sqrt(A) 0; C / (sqrt(A)+sqrt(D)) sqrt(D))
     a11 = ells[..., 2:3].abs().sqrt()
     a22 = ells[..., 4:5].abs().sqrt()
-    # In float16, a11 and a22 are square roots, so a11 + a22 is either exactly zero or at least the
-    # square root of the smallest positive value -- 2.4e-4 -- and the (0, 1e-9) window the clamp guards
-    # is unreachable; at exactly zero the diagonal below is inf whatever a21 holds. In float32/float64
-    # the window IS reachable for sub-denormal-ish inputs (e.g. float32 a = c = 1e-40 gives
-    # a11 + a22 = 2e-20): there the clamp fires and perturbs a21 by orders of magnitude -- finite but
-    # wrong, exactly as the pre-closed-form code behaved. Kept as-is; it is not a correctness guard.
-    a21 = ells[..., 3:4] / (a11 + a22).clamp(1e-9)
+    a21 = ells[..., 3:4] / (a11 + a22)
     # The matrix [[a11, 0], [a21, a22]] is lower-triangular, so its inverse is the closed form
     # [[1/a11, 0], [-a21/(a11*a22), 1/a22]] — no batched torch.inverse, which is orders of
     # magnitude slower, unsupported in float16/bfloat16 on CPU, and pathological on MPS.
