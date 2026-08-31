@@ -259,7 +259,10 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     # magnitude slower, unsupported in float16/bfloat16 on CPU, and pathological on MPS.
     inv11 = 1.0 / a11
     inv22 = 1.0 / a22
-    inv21 = -a21 * (inv11 * inv22)
+    # Multiply a21 into one reciprocal before the other: forming inv11 * inv22 first can
+    # overflow to inf even when a21 == 0 (e.g. a subnormal, nondegenerate a11/a22 with b == 0),
+    # turning a mathematically-zero off-diagonal into 0 * inf = nan.
+    inv21 = -a21 * inv11 * inv22
     A = torch.stack([inv11, torch.zeros_like(inv11), inv21, inv22], dim=-1).view(B, N, 2, 2)
     out = torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
     return out

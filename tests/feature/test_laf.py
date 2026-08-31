@@ -265,6 +265,24 @@ class TestELL2LAF(BaseTester):
         # assure it is positive definite
         self.gradcheck(kornia.feature.ellipse_to_laf, (img,))
 
+    @pytest.mark.parametrize("ell_dtype", [torch.float16, torch.float32])
+    @pytest.mark.parametrize("b", [0.0, 5e-7])
+    def test_no_overflow_small_diag(self, device, ell_dtype, b):
+        # Regression test: the closed-form inverse's off-diagonal must not be computed as
+        # `-b_term * (1 / a11 * 1 / a22)`, since that product can overflow to inf even though
+        # the reciprocals are individually finite -- turning a finite (or exactly zero, when
+        # b == 0) result into nan (0 * inf) or -inf. https://github.com/kornia/kornia/pull/4122
+        inp = torch.tensor([[[0.0, 0.0, 1e-6, b, 1e-6]]], device=device, dtype=ell_dtype)
+        laf = kornia.feature.ellipse_to_laf(inp)
+        assert torch.isfinite(laf).all()
+
+    def test_no_overflow_subnormal_diag(self, device):
+        # A subnormal but nondegenerate diagonal (a, c != 0) with b == 0 must stay finite:
+        # main's batched torch.inverse returns a fully finite, zero off-diagonal matrix here.
+        inp = torch.tensor([[[0.0, 0.0, 1e-40, 0.0, 1e-40]]], device=device, dtype=torch.float32)
+        laf = kornia.feature.ellipse_to_laf(inp)
+        assert torch.isfinite(laf).all()
+
     @pytest.mark.jit()
     def test_jit(self, device, dtype):
         batch_size, channels, height = 1, 2, 5
