@@ -168,8 +168,16 @@ def _changed_kornia_files(base_ref: str) -> list[str]:
     # between "kornia/" and the filename, so "kornia/foo.py" itself wouldn't
     # match "kornia/**/*.py". Scope to the "kornia/" pathspec instead and
     # filter for ".py" ourselves.
+    #
+    # --no-renames: with rename detection on (the default), a moved module
+    # (`git mv old.py new.py`) shows up as only `new.py` -- the old path never
+    # reaches check_file, so a module deleted by being renamed away is never
+    # diffed against its old __all__. check_file's own FileNotFoundError
+    # fallback (_alternate_path) still tolerates the one legitimate rename
+    # shape, `x.py` <-> `x/__init__.py` packageification, so this doesn't
+    # trade the rename blind spot for a packageification false positive.
     result = subprocess.run(  # noqa: S603
-        ["git", "diff", "--name-only", f"{base_ref}...HEAD", "--", "kornia/"],  # noqa: S607
+        ["git", "diff", "--no-renames", "--name-only", f"{base_ref}...HEAD", "--", "kornia/"],  # noqa: S607
         capture_output=True,
         text=True,
         check=True,
@@ -191,6 +199,14 @@ def _module_name(path: str) -> str:
 
 def _is_experimental(module: str) -> bool:
     return any(module == e or module.startswith(e + ".") for e in EXPERIMENTAL)
+
+
+def _alternate_path(path: str) -> str:
+    """The other file spelling of the same module name (`x.py` <-> `x/__init__.py`)."""
+    stem = path[: -len(".py")]
+    if stem.endswith("/__init__"):
+        return stem[: -len("/__init__")] + ".py"
+    return stem + "/__init__.py"
 
 
 @dataclass
@@ -226,7 +242,14 @@ def check_file(base_ref: str, path: str) -> FileReport | None:
         with open(path, encoding="utf-8") as f:
             new_source: str | None = f.read()
     except FileNotFoundError:
-        new_source = None  # file was deleted -- diff against an empty surface, not "nothing to report"
+        # The path is gone, but the *module* may not be: x.py <-> x/__init__.py is the same
+        # importable name (packageification), not a removal. Only try the one alternate
+        # spelling -- anything else missing here is a real deletion.
+        try:
+            with open(_alternate_path(path), encoding="utf-8") as f:
+                new_source = f.read()
+        except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
+            new_source = None  # module genuinely gone -- diff against an empty surface
 
     try:
         old_surface = parse_module_surface(old_source)
@@ -260,12 +283,16 @@ def main(argv: list[str] | None = None) -> int:
     # _changed_kornia_files diffs against the merge-base (triple-dot); check_file must read old
     # content from that same commit, not the tip of base_ref, or the two can disagree whenever
     # base_ref has moved since the branch point (see review discussion on #4029).
-    base = subprocess.run(  # noqa: S603
+    merge_base = subprocess.run(  # noqa: S603
         ["git", "merge-base", args.base_ref, "HEAD"],  # noqa: S607
         capture_output=True,
         text=True,
-        check=True,
-    ).stdout.strip()
+        check=False,
+    )
+    if merge_base.returncode != 0:
+        print(f"::error::could not resolve merge-base of {args.base_ref!r} and HEAD")
+        return 1
+    base = merge_base.stdout.strip()
 
     files = _changed_kornia_files(base)
     reports = [r for r in (check_file(base, path) for path in files) if r is not None]

@@ -285,7 +285,74 @@ def test_main_uses_merge_base_not_tip_of_base_ref(tmp_path, capsys):
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert "b" not in captured.out
+    assert captured.out == ""
+
+
+def test_main_flags_module_removed_via_rename(tmp_path, capsys):
+    # Rename detection is on by default for `git diff`, so a renamed module shows up as only
+    # its new path -- the old path (and its __all__) never reaches check_file unless the file
+    # list is built with --no-renames. A module removed by being renamed away is exactly how
+    # modules get removed in practice (packageification refactors), so this must still fail.
+    repo = tmp_path / "repo"
+    (repo / "kornia").mkdir(parents=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+    _git("checkout", "-q", "-b", "main", cwd=repo)
+
+    mod = repo / "kornia" / "oldname.py"
+    mod.write_text("__all__ = ['a', 'b']\n\ndef a():\n    pass\n\ndef b():\n    pass\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+
+    _git("checkout", "-q", "-b", "pr", cwd=repo)
+    _git("mv", "kornia/oldname.py", "kornia/newname.py", cwd=repo)
+    _git("commit", "-q", "-m", "rename away, dropping the module", cwd=repo)
+
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(repo)
+        exit_code = main(["--base-ref", "main"])
+    finally:
+        os.chdir(original_cwd)
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "kornia/oldname.py" in captured.out
+    assert "'a'" in captured.out
+    assert "'b'" in captured.out
+
+
+def test_main_ignores_packageification_that_keeps_all_intact(tmp_path, capsys):
+    # x.py -> x/__init__.py is the same importable module name (kornia.mymodule either way);
+    # check_file's alternate-path fallback must recognize that and not treat it as a deletion.
+    repo = tmp_path / "repo"
+    (repo / "kornia").mkdir(parents=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+    _git("checkout", "-q", "-b", "main", cwd=repo)
+
+    mod = repo / "kornia" / "mymodule.py"
+    mod.write_text("__all__ = ['a']\n\ndef a():\n    pass\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+
+    _git("checkout", "-q", "-b", "pr", cwd=repo)
+    (repo / "kornia" / "mymodule").mkdir()
+    _git("mv", "kornia/mymodule.py", "kornia/mymodule/__init__.py", cwd=repo)
+    _git("commit", "-q", "-m", "packageify, __all__ untouched", cwd=repo)
+
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(repo)
+        exit_code = main(["--base-ref", "main"])
+    finally:
+        os.chdir(original_cwd)
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out == ""
 
 
 def test_check_file_reports_and_fails_whole_module_deletion(tmp_path):
