@@ -70,7 +70,7 @@ def build_ops(
         try:
             compiled(ells)
             row["kornia (compiled)"] = lambda: compiled(ells)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             compile_failures["ellipse_to_laf"] = type(e).__name__
     return {"ellipse_to_laf": row}, compile_failures
 
