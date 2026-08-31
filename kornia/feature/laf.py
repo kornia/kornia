@@ -267,14 +267,14 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     # magnitude slower, unsupported in float16/bfloat16 on CPU, and pathological on MPS.
     inv11 = 1.0 / a11
     inv22 = 1.0 / a22
-    # Scale a21 by the smaller reciprocal first, so the intermediate product is the result times
-    # min(a11, a22) rather than times a fixed one of the two. Either fixed order overflows to inf
-    # while the result itself is representable: `-a21 * inv11 * inv22` for a tiny a11 against a large
-    # a22, and `-a21 * (inv11 * inv22)` for a tiny a11 * a22, which also turns a mathematically-zero
-    # off-diagonal into 0 * inf = nan. Because a11 and a22 are square roots, neither reciprocal can
-    # overflow unless its input is exactly zero, so what remains non-finite is exactly the singular
-    # ellipse -- which no multiplication order can rescue, and which we deliberately do not guard.
-    inv21 = -a21 * torch.minimum(inv11, inv22) * torch.maximum(inv11, inv22)
+    # Divide by the product of the roots instead of multiplying the reciprocals: every ordering of
+    # `-a21 * inv11 * inv22` has an input region where an intermediate overflows to inf (or a
+    # mathematically-zero off-diagonal becomes 0 * inf = nan) or flushes a representable result to
+    # zero. a11 * a22 = sqrt(a) * sqrt(c) can neither overflow nor round to zero, so the single
+    # division is exact wherever the product is a normal number; when the product is subnormal the
+    # result loses precision but is never a corrupted zero, inf, or nan. What remains non-finite is
+    # exactly the singular ellipse, which we deliberately do not guard.
+    inv21 = -a21 / (a11 * a22)
     A = torch.stack([inv11, torch.zeros_like(inv11), inv21, inv22], dim=-1).view(B, N, 2, 2)
     out = torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
     return out
