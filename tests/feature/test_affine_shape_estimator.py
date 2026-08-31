@@ -20,10 +20,20 @@ import torch
 
 from kornia.feature.affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 
-from testing.base import BaseTester, supports_conv2d, supports_grid_sample
+from testing.base import BaseTester, supports_conv2d, supports_grid_sample, supports_replicate_padding
 
 
 class TestPatchAffineShapeEstimator(BaseTester):
+    def test_zero_patch_uses_circular_shape(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16) and not (
+            supports_conv2d(device, dtype) and supports_replicate_padding(device, dtype)
+        ):
+            pytest.skip(f"no {dtype} Sobel kernels on {device.type}")
+        patch = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
+        out = PatchAffineShapeEstimator(32).to(device, dtype)(patch)
+        expected = torch.tensor([[[1.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        self.assert_close(out, expected)
+
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         ori = PatchAffineShapeEstimator(32).to(device)
@@ -129,14 +139,10 @@ class TestLAFAffineShapeEstimator(BaseTester):
 
     def test_degenerate_ellipse_falls_back_to_input_laf_float16(self, device):
         # `ellipse_to_laf` no longer raises on a degenerate ellipse: it returns a non-finite LAF
-        # (https://github.com/kornia/kornia/pull/4122). `PatchAffineShapeEstimator`'s `bad_mask` tests
-        # the moments *before* normalization -- and its `eps=1e-10` itself rounds to `0.0` in float16,
-        # so an exactly-zero moment no longer counts as "close to zero" -- so a near-horizontal edge
-        # patch (|gx| / |gy| ~ 1e-4) slips through as the degenerate ellipse `[0., 0., 1.]`, and the
-        # estimated LAF used to come back all-nan, silently. The estimator must fall back to the
-        # input LAF at such keypoints instead. (If a future torch's numerics let `bad_mask` catch
-        # this patch first, its circular fallback restores the input LAF too, so the pin holds
-        # through either protection layer.)
+        # (https://github.com/kornia/kornia/pull/4122). The default `PatchAffineShapeEstimator` now
+        # has a dtype-aware circular fallback, so this near-horizontal float16 patch may be handled
+        # before `ellipse_to_laf`. The user-visible guarantee is a finite LAF equal to the input LAF
+        # for this degenerate case, regardless of which protection layer catches it.
         if device.type == "mps":
             pytest.skip("MPS autocast changes the effective dtype")
         if not (supports_conv2d(device, torch.float16) and supports_grid_sample(device, torch.float16)):

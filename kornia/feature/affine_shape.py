@@ -99,10 +99,11 @@ class PatchAffineShapeEstimator(nn.Module):
         )
 
         # Now lets detect degenerate cases: when 2 or 3 elements are close to zero (e.g. if patch is completely black
-        bad_mask = ((ellipse_shape < self.eps).float().sum(dim=2, keepdim=True) >= 2).to(ellipse_shape.dtype)
+        eps = max(self.eps, torch.finfo(ellipse_shape.dtype).tiny)
+        bad_mask = (ellipse_shape < eps).sum(dim=2, keepdim=True) >= 2
         # We will replace degenerate shape with circular shapes.
-        circular_shape = torch.tensor([1.0, 0.0, 1.0]).to(ellipse_shape.device).to(ellipse_shape.dtype).view(1, 1, 3)
-        ellipse_shape = ellipse_shape * (1.0 - bad_mask) + circular_shape * bad_mask
+        circular_shape = ellipse_shape.new_tensor([1.0, 0.0, 1.0]).view(1, 1, 3)
+        ellipse_shape = torch.where(bad_mask, circular_shape, ellipse_shape)
         # normalization
         ellipse_shape = ellipse_shape / ellipse_shape.max(dim=2, keepdim=True)[0]
         return ellipse_shape
@@ -166,12 +167,11 @@ class LAFAffineShapeEstimator(nn.Module):
         laf_out = scale_laf(laf_out, scale_orig / ellipse_scale)
         if self.preserve_orientation:
             laf_out = set_laf_orientation(laf_out, ori_orig)
-        # A degenerate ellipse yields a non-finite LAF (`ellipse_to_laf` does not raise). The detector's
-        # `bad_mask` cannot catch every such case: it tests the moments before normalization, in float16
-        # its `eps=1e-10` rounds to `0.0` so exactly-zero moments slip through, and the normalizing
-        # divide can flush a further component to zero after the check. Fall back to the input LAF for
-        # those keypoints, as `bad_mask` falls back to a circular shape -- but with `torch.where` rather
-        # than its mask-multiply idiom, since `nan * 0` is `nan`.
+        # A degenerate ellipse yields a non-finite LAF (`ellipse_to_laf` does not raise). The default
+        # `PatchAffineShapeEstimator` has a dtype-aware guard, but custom `affine_shape_detector`
+        # modules or post-normalization underflow/non-finite outputs can still make `ellipse_to_laf`
+        # singular. Keep this post-hoc fallback until Task 2; use `torch.where` rather than mask
+        # multiplication here, since `nan * 0` is `nan`.
         bad = ~laf_out.isfinite().all(dim=-1).all(dim=-1)
         return torch.where(bad[..., None, None], laf, laf_out)
 
