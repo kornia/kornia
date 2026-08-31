@@ -109,6 +109,26 @@ class PatchAffineShapeEstimator(nn.Module):
         return ellipse_shape
 
 
+def _invalid_laf_mask(laf: torch.Tensor) -> torch.Tensor:
+    det = laf[..., 0, 0] * laf[..., 1, 1] - laf[..., 1, 0] * laf[..., 0, 1]
+    return ~laf.isfinite().all(dim=-1).all(dim=-1) | ~det.isfinite() | (det == 0)
+
+
+def _finalize_laf(
+    laf_out: torch.Tensor, laf: torch.Tensor, preserve_orientation: bool, bad: torch.Tensor
+) -> torch.Tensor:
+    fallback = laf if preserve_orientation else make_upright(laf)
+    safe_laf_out = torch.where(bad[..., None, None], fallback, laf_out)
+    scale_orig = get_laf_scale(laf)
+    if preserve_orientation:
+        ori_orig = get_laf_orientation(laf)
+    ellipse_scale = get_laf_scale(safe_laf_out)
+    safe_laf_out = scale_laf(safe_laf_out, scale_orig / ellipse_scale)
+    if preserve_orientation:
+        safe_laf_out = set_laf_orientation(safe_laf_out, ori_orig)
+    return torch.where(bad[..., None, None], fallback, safe_laf_out)
+
+
 class LAFAffineShapeEstimator(nn.Module):
     """Module, which extracts patches using input images and local affine frames (LAFs).
 
@@ -158,22 +178,12 @@ class LAFAffineShapeEstimator(nn.Module):
         PS: int = self.patch_size
         patches: torch.Tensor = extract_patches_from_pyramid(img, make_upright(laf), PS, True).view(-1, 1, PS, PS)
         ellipse_shape: torch.Tensor = self.affine_shape_detector(patches)
-        ellipses = torch.cat([laf.view(-1, 2, 3)[..., 2].unsqueeze(1), ellipse_shape], dim=2).view(B, N, 5)
-        scale_orig = get_laf_scale(laf)
-        if self.preserve_orientation:
-            ori_orig = get_laf_orientation(laf)
+        bad_shape = ~ellipse_shape.isfinite().all(dim=-1) | (ellipse_shape[..., 0] == 0) | (ellipse_shape[..., 2] == 0)
+        circular_shape = ellipse_shape.new_tensor([1.0, 0.0, 1.0])
+        safe_ellipse_shape = torch.where(bad_shape[..., None], circular_shape, ellipse_shape)
+        ellipses = torch.cat([laf.view(-1, 2, 3)[..., 2].unsqueeze(1), safe_ellipse_shape], dim=2).view(B, N, 5)
         laf_out = ellipse_to_laf(ellipses)
-        ellipse_scale = get_laf_scale(laf_out)
-        laf_out = scale_laf(laf_out, scale_orig / ellipse_scale)
-        if self.preserve_orientation:
-            laf_out = set_laf_orientation(laf_out, ori_orig)
-        # A degenerate ellipse yields a non-finite LAF (`ellipse_to_laf` does not raise). The default
-        # `PatchAffineShapeEstimator` has a dtype-aware guard, but custom `affine_shape_detector`
-        # modules or post-normalization underflow/non-finite outputs can still make `ellipse_to_laf`
-        # singular. Keep this post-hoc fallback until Task 2; use `torch.where` rather than mask
-        # multiplication here, since `nan * 0` is `nan`.
-        bad = ~laf_out.isfinite().all(dim=-1).all(dim=-1)
-        return torch.where(bad[..., None, None], laf, laf_out)
+        return _finalize_laf(laf_out, laf, self.preserve_orientation, bad_shape.view(B, N))
 
 
 class LAFAffNetShapeEstimator(nn.Module):
