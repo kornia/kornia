@@ -178,8 +178,10 @@ class TestTransformBoxes2D(BaseTester):
 
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
+        boxes_before = boxes.clone()
         out = transform_bbox(trans_mat, boxes, mode="xywh", restore_coordinates=True)
         self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+        assert torch.equal(boxes, boxes_before)
 
     def test_gradcheck(self, device):
         boxes = torch.tensor(
