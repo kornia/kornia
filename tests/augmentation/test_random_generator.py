@@ -469,8 +469,10 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
 
     def test_random_gen(self, device, dtype):
         # The generator documents that samples are not reproducible across devices or dtypes.
-        if device.type != "cpu" or dtype == torch.float64:
-            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU float32")
+        if device.type != "cpu" or dtype != torch.float32:
+            pytest.skip(
+                "Random parameters are device- and dtype-dependent; expected values were computed on CPU float32"
+            )
         torch.manual_seed(42)
         batch_size = 8
         gen = ColorJitterGenerator(
@@ -548,8 +550,10 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         )
 
     def test_same_on_batch(self, device, dtype):
-        if device.type != "cpu" or dtype == torch.float64:
-            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU float32")
+        if device.type != "cpu" or dtype != torch.float32:
+            pytest.skip(
+                "Random parameters are device- and dtype-dependent; expected values were computed on CPU float32"
+            )
         torch.manual_seed(42)
         batch_size = 8
         gen = ColorJitterGenerator(

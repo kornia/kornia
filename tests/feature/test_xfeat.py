@@ -21,7 +21,7 @@ import torch
 from kornia.feature.lightglue import LightGlue
 from kornia.feature.xfeat import InterpolateSparse2d, XFeat, XFeatModel
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_bicubic_2d_grid_sample
 
 # ---------------------------------------------------------------------------
 # XFeatModel backbone tests
@@ -98,8 +98,8 @@ class TestInterpolateSparse2d(BaseTester):
 
     @pytest.mark.parametrize("mode", ["bilinear", "bicubic"])
     def test_cardinality(self, mode, device, dtype):
-        if device.type == "mps" and mode == "bicubic":
-            pytest.skip("MPS does not support bicubic interpolation for grid_sample")
+        if mode == "bicubic" and not supports_bicubic_2d_grid_sample(device, dtype):
+            pytest.skip("This device does not support bicubic interpolation for 2D grid_sample")
         interp = InterpolateSparse2d(mode).to(device)
         B, C, H, W, N = 2, 16, 32, 48, 20
         x = torch.rand(B, C, H, W, device=device, dtype=dtype)

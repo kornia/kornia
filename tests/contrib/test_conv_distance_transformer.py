@@ -22,7 +22,7 @@ import kornia
 from kornia.core.exceptions import BaseError, TypeCheckError
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_conv2d
 
 
 class TestConvDistanceTransform(BaseTester):
@@ -195,7 +195,7 @@ class TestConvDistanceTransform(BaseTester):
         img = torch.zeros(1, 1, 8, 4, device=device, dtype=dtype)
         img[0, 0, 1, :] = 1.0
         # exp(-1 / 0.01) is a float32 subnormal that MPS flushes to zero. h=0.1 keeps
-        # the regression's expected offset away from backend-specific underflow behavior.
+        # the regression's expected offset away from backend-specific underflow behavior (#4152).
         out = kornia.contrib.distance_transform(img, kernel_size=3, h=0.1)
         expected = torch.tensor(
             [
@@ -214,6 +214,23 @@ class TestConvDistanceTransform(BaseTester):
 
         tolerance = 5e-3 if dtype == torch.bfloat16 else 1e-3
         self.assert_close(out[0, 0], expected, rtol=tolerance, atol=tolerance)
+
+    @pytest.mark.xfail(
+        raises=AssertionError,
+        reason="distance_transform silently collapses to zero when its kernel underflows — kornia#4152",
+        strict=True,
+    )
+    def test_convention_small_h_keeps_nonzero_distances_4152(self, device, dtype):
+        if not (dtype in (torch.float16, torch.bfloat16) or (device.type == "mps" and dtype == torch.float32)):
+            pytest.skip("This device and dtype do not reproduce the small-h underflow in kornia#4152")
+        if not supports_conv2d(device, dtype):
+            pytest.skip("This device does not support convolution for the regression dtype")
+
+        img = torch.zeros(1, 1, 8, 4, device=device, dtype=dtype)
+        img[0, 0, 1, :] = 1.0
+        out = kornia.contrib.distance_transform(img, kernel_size=3, h=0.01)
+
+        assert torch.count_nonzero(out) > 0
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         input2d = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)

@@ -125,7 +125,7 @@ class TestSolveCast:
         torch.manual_seed(0)
         # Exercise a reproducible, well-conditioned system instead of letting a random draw
         # decide whether the fixed residual bound is meaningful on a given backend.
-        A = torch.eye(4, dtype=dtype).expand(2, 3, 1, 4, 4).clone()
+        A = torch.eye(4).to(dtype).expand(2, 3, 1, 4, 4).clone()
         A.add_(torch.randn_like(A), alpha=0.05)
         B = torch.randn(2, 3, 1, 4, 6, dtype=dtype).to(device)
         A = A.to(device)
