@@ -928,6 +928,29 @@ class TestExtractPatchesPyr(BaseTester):
                     assert patches.shape == (1, 1, 1, 4, 4)
                     assert bool(patches.isfinite().all())
 
+    def test_one_pixel_axis_preserves_non_singleton_extent(self, device, dtype):
+        # A singleton axis must collapse only itself. The other axis still has spatial extent, so
+        # a full-image LAF over a 1x5 or 5x1 ramp must retain that ramp instead of degenerating to
+        # the center pixel in both directions.
+        for h, w in ((1, 5), (5, 1)):
+            img = torch.arange(5, device=device, dtype=dtype).reshape(1, 1, h, w)
+            pixel_laf = torch.tensor(
+                [
+                    [float(max(w - 1, 1)) / 2.0, 0.0, float(w - 1) / 2.0],
+                    [0.0, float(max(h - 1, 1)) / 2.0, float(h - 1) / 2.0],
+                ],
+                device=device,
+                dtype=dtype,
+            ).view(1, 1, 2, 3)
+            normalized_laf = kornia.feature.normalize_laf(pixel_laf, img)
+            expected = img.expand(1, 1, 5, 5).unsqueeze(1)
+
+            for laf, normalize_lafs in ((pixel_laf, True), (normalized_laf, False)):
+                simple = kornia.feature.extract_patches_simple(img, laf, 5, normalize_lafs)
+                pyramid = kornia.feature.extract_patches_from_pyramid(img, laf, 5, normalize_lafs)
+                self.assert_close(simple, expected)
+                self.assert_close(pyramid, expected)
+
     def test_one_pixel_level_does_not_raise(self, device, dtype):
         # PS=1 lets the pyramid descend to a 1-pixel level (12 -> 6 -> 3 -> 1) even though the
         # input image is far larger than 2 pixels, so the atlas guard must inspect the *built*

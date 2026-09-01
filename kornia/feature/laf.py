@@ -616,9 +616,10 @@ def _extract_patches_from_pyramid_levelwise(
                     B, nc, PS, PS, 2
                 )
             translation = t[:, st:en].view(B, nc, 1, 1, 2)
-            min_l = float(min(h_l - 1, w_l - 1))
-            # A singleton axis has one valid pixel and therefore no spatial extent. A zero scale
-            # keeps its grid finite and lets border padding return that pixel instead of NaNs.
+            # Match `normalize_laf` / `denormalize_laf`: a singleton axis counts as one pixel of
+            # extent. Border padding still repeats that axis's only pixel, while the other axis
+            # keeps its spatial variation instead of being collapsed by a shared zero `min_l`.
+            min_l = float(min(max(h_l - 1, 1), max(w_l - 1, 1)))
             k = base_grid.new_tensor([2.0 * min_l / float(max(w_l - 1, 1)), 2.0 * min_l / float(max(h_l - 1, 1))])
             grid = base_grid * k + translation
             patches = _sample_patches(cur_img, grid, h_l, w_l).to(img.dtype)
