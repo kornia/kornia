@@ -44,7 +44,8 @@ class TestAddWeighted(BaseTester):
     @pytest.mark.parametrize("size", [2, 3, 4, 5])
     def test_smoke(self, device, dtype, size):
         src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
-        self.assert_close(TestAddWeighted.fcn(src1, alpha, src2, beta, gamma), src1 * alpha + src2 * beta + gamma)
+        expected = src1 * src1.new_tensor(alpha) + src2 * src2.new_tensor(beta) + src1.new_tensor(gamma)
+        self.assert_close(TestAddWeighted.fcn(src1, alpha, src2, beta, gamma), expected)
 
     @pytest.mark.parametrize("size1, size2", [((2, 5, 5), (4, 5, 5)), ((2, 5, 5), (2, 3, 5, 5))])
     def test_shape_mismatch(self, device, dtype, size1, size2):

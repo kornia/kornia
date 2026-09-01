@@ -134,6 +134,25 @@ jobs:
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
 
+  half-precision:
+    needs: [pre-tests]
+    strategy:
+      fail-fast: false
+      matrix:
+        pytorch-dtype: ["float16", "bfloat16"]
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.11"]'
+      pytorch-version: '["2.9.1"]'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      pytest-extra: --xfail-known-half-precision
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
+
   # Runs only the torch.compile / dynamo tests under the inductor backend, which the main
   # `tests` matrix deselects (KORNIA_TEST_OPTIMIZER=""). Keeps the compile-clean core a
   # defended floor at PR time. Scoped to a single config and `-k dynamo or compile` so the
@@ -163,7 +182,7 @@ jobs:
     uses: ./.github/workflows/tutorials.yml
 
   collector:
-    needs: [changes, pre-tests, tests, dynamo, typecheck]
+    needs: [changes, pre-tests, tests, half-precision, dynamo, typecheck]
     if: always()
     runs-on: ubuntu-latest
     steps:

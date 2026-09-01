@@ -34,6 +34,7 @@ except ImportError:  # pragma: no cover
 import kornia
 
 from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
+from testing.half_precision_ci import mark_known_failures
 
 try:
     import torch._dynamo
@@ -173,6 +174,18 @@ def pytest_collection_modifyitems(config, items):
         # Filter out tests with "dynamo" or "compile" in their name
         items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
 
+    if config.getoption("--xfail-known-half-precision"):
+        devices = _parse_test_option(config, "--device", TEST_DEVICES)
+        dtypes = _parse_test_option(config, "--dtype", TEST_DTYPES)
+        if devices != ["cpu"] or not dtypes or not set(dtypes) <= {"float16", "bfloat16"}:
+            raise pytest.UsageError(
+                "--xfail-known-half-precision requires --device=cpu and only --dtype=float16,bfloat16"
+            )
+        try:
+            mark_known_failures(items, dtypes)
+        except ValueError as error:
+            raise pytest.UsageError(str(error)) from error
+
     # gradcheck requires float64. MPS does not support it at all, and XLA lowers a float64 request
     # to float32, where gradcheck's default eps=1e-6 makes the numerical Jacobian invalid — so a
     # float64 gradcheck on the tpu fixture fails for a pure precision reason. Skip on both.
@@ -227,6 +240,7 @@ def pytest_addoption(parser):
         KORNIA_TEST_OPTIMIZER: Optimizer backend (default: inductor)
         KORNIA_TEST_RUNSLOW: Run slow tests (default: false)
         KORNIA_TEST_TF32: Enable TF32 (TensorFloat-32) mode for CUDA matrix multiplications (default: false)
+        KORNIA_TEST_XFAIL_KNOWN_HALF: Strictly xfail the recorded CPU half-precision baseline (default: false)
         KORNIA_DOCTEST_DOWNLOAD: Let doctests download model weights (default: false)
     """
     parser.addoption(
@@ -262,6 +276,15 @@ def pytest_addoption(parser):
             "(torch.set_float32_matmul_precision('high')). "
             "Tests marked @pytest.mark.tf32 are expected to fail under TF32 and are skipped unless this flag is set. "
             "(env: KORNIA_TEST_TF32)"
+        ),
+    )
+    parser.addoption(
+        "--xfail-known-half-precision",
+        action="store_true",
+        default=os.environ.get("KORNIA_TEST_XFAIL_KNOWN_HALF", "false").lower() == "true",
+        help=(
+            "Strictly xfail the complete recorded Linux CPU float16/bfloat16 failure baseline. "
+            "Requires a full CPU half-precision suite. (env: KORNIA_TEST_XFAIL_KNOWN_HALF)"
         ),
     )
     parser.addoption(
