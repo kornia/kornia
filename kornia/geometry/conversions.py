@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Optional
 
 import torch
@@ -25,7 +26,7 @@ import torch.nn.functional as F
 from kornia.constants import pi
 from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast
+from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast, is_compiling
 
 __all__ = [
     "ARKitQTVecs_to_ColmapQTVecs",
@@ -252,33 +253,21 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
           coordinate ``w`` and is dropped from the output
         - requires rank :math:`\geq 2`: a bare :math:`(D,)` point raises
           ``ValueError``
-        - when ``abs(w) > eps`` the remaining components are divided by ``w``
-          with its sign kept (``[[2., 4., -2.]]`` gives ``[[-1., -2.]]``), up to
-          the bias described in the warning below
+        - when ``abs(w) > eps`` the remaining components are divided by exactly
+          ``w``, with its sign kept (``[[2., 4., -2.]]`` gives ``[[-1., -2.]]``)
         - when ``abs(w) <= eps`` (default ``eps = 1e-8``; the test is a strict
           ``>``) the numerator is instead returned **unchanged**, following
           OpenCV: ``[[2., 4., 0.]]`` gives ``[[2., 4.]]``
-
-    .. warning::
-        The division is by ``w + eps`` rather than by ``w``, and ``eps`` is
-        added without regard to the sign of ``w``, so the **signed** relative
-        error of the result is exactly ``-eps / (w + eps)``. At ``w = 2e-8``
-        that is ``-1/3``: the exact result ``[1e8, 2e8]`` comes out as
-        ``[6.67e7, 1.33e8]`` (33 % low). At ``w = -2e-8`` it is ``+1``:
-        ``[-1e8, -2e8]`` comes out as ``[-2e8, -4e8]`` (100 % high). Only for
-        ``abs(w)`` much larger than ``eps`` does it reduce to the familiar
-        ``-eps / w``, and there it is usually below the rounding of the working
-        dtype — at ``w = 2`` the measured error is ``-5.0e-09`` in ``float64``,
-        while in ``float32`` ``2 + eps`` rounds back to ``2`` and the result is
-        exact. The numbers above assume ``eps`` is representable: in
-        ``float16`` both the default ``eps`` and ``w = 2e-8`` underflow to
-        ``0``, so ``[[2., 4., 2e-8]]`` takes the ``abs(w) <= eps`` pass-through
-        branch and returns ``[[2., 4.]]``. Tracked in
-        `#3938 <https://github.com/kornia/kornia/issues/3938>`_.
+        - ``eps`` only picks the branch, it never enters the division, so the
+          result carries no bias from it. Note that ``eps`` is compared against
+          ``w`` in the working dtype: in ``float16`` the default ``eps`` and
+          ``w = 2e-8`` both underflow to ``0``, so ``[[2., 4., 2e-8]]`` takes
+          the pass-through branch there and returns ``[[2., 4.]]``
 
     Args:
         points: the points to be transformed of shape :math:`(*, N, D)`.
-        eps: to avoid division by zero.
+        eps: threshold on ``abs(w)`` below which the point is returned
+            unchanged instead of divided, to avoid division by zero.
 
     Returns:
         the points in Euclidean space :math:`(*, N, D-1)`.
@@ -302,7 +291,8 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
     # follow the convention of opencv:
     # https://github.com/opencv/opencv/pull/14411/files
     mask: torch.Tensor = torch.abs(z_vec) > eps
-    scale = torch.where(mask, 1.0 / (z_vec + eps), torch.ones_like(z_vec))
+    safe_z_vec = torch.where(mask, z_vec, torch.ones_like(z_vec))
+    scale = torch.where(mask, 1.0 / safe_z_vec, torch.ones_like(z_vec))
 
     return scale * points[..., :-1]
 
@@ -416,6 +406,43 @@ def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
 def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
     r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix.
 
+    Convention:
+        - the input is the rotation axis scaled by the angle, in **radians**,
+          and must be batched — a bare ``(3,)`` vector raises (see the shape
+          warning below): ``[[0., 0., pi/2]]`` is a quarter turn about ``+z``,
+          while ``[[0., 0., 90.]]`` is 90 *radians* about ``+z`` and returns a
+          matrix whose leading entry is ``cos(90) = -0.4481``. The 2-D op
+          :func:`~kornia.geometry.conversions.angle_to_rotation_matrix` reads
+          **degrees** instead
+        - applied on the left to a column vector, ``+theta`` about ``+z`` maps
+          ``x_hat`` to ``y_hat`` (right-hand rule): ``[[0., 0., 0.6]]`` sends
+          ``(1., 0., 0.)`` to ``(0.8253, 0.5646, 0.)``. The quaternion route
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
+          turns the same way
+        - ``angle_axis_to_rotation_matrix`` is the deprecated alias of this
+          function since 0.7.0; it emits a ``DeprecationWarning`` and forwards
+          to this function, returning an equal result — see the alias warning
+          below
+
+    .. warning::        Only rank-2 input is accepted, despite the guard's ``(*, 3)`` message:
+        ``(3,)`` raises ``IndexError: Dimension out of range``, ``(2, 5, 3)``
+        raises ``ValueError: too many values to unpack (expected 3)`` and
+        ``(1, 1, 3)`` raises ``ValueError: not enough values to unpack``.
+        Composing with
+        :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`
+        therefore fails for every rotation-matrix rank but 3. Tracked in
+        `#3955 <https://github.com/kornia/kornia/issues/3955>`_.
+
+    .. warning::
+        Calling any of this module's four deprecated aliases
+        (``angle_axis_to_rotation_matrix``, ``rotation_matrix_to_angle_axis``,
+        ``quaternion_to_angle_axis``, ``angle_axis_to_quaternion``) rewrites the
+        process-global ``DeprecationWarning`` filters, so
+        ``-W error::DeprecationWarning`` does not turn the warning into an error
+        and every later ``DeprecationWarning`` raised in the process is affected
+        too. Tracked in
+        `#3956 <https://github.com/kornia/kornia/issues/3956>`_.
+
     Args:
         axis_angle: tensor of 3d vector of axis-angle rotations in radians with shape :math:`(N, 3)`.
 
@@ -442,9 +469,9 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
     if not axis_angle.shape[-1] == 3:
         raise ValueError(f"Input size must be a (*, 3) tensor. Got {axis_angle.shape}")
 
-    def _compute_rotation_matrix(axis_angle: torch.Tensor, theta2: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+    def _compute_rotation_matrix(axis_angle: torch.Tensor, theta2: torch.Tensor) -> torch.Tensor:
         theta = torch.sqrt(theta2.clamp(min=1e-12))  # clamping to ensure no nan gradients
-        wxyz = axis_angle / (theta.unsqueeze(-1) + eps)  # (B, 3)
+        wxyz = axis_angle / theta.unsqueeze(-1)  # (B, 3)
         wx, wy, wz = wxyz.unbind(dim=1)  # (B,)
 
         cos_theta = torch.cos(theta)
@@ -481,18 +508,27 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
     def _compute_rotation_matrix_taylor(axis_angle: torch.Tensor) -> torch.Tensor:
         rx, ry, rz = axis_angle.unbind(-1)
         k_one = torch.ones_like(rx)
+        k_half = 0.5 * k_one
 
+        rx2, ry2, rz2 = rx * rx, ry * ry, rz * rz
+        rxry, rxrz, ryrz = rx * ry, rx * rz, ry * rz
+
+        # second-order Taylor expansion of Rodrigues' formula:
+        #   R = I + [v]x + [v]x^2 / 2
+        # the first-order truncation had det = 1 + theta^2; the second-order
+        # truncation has det = 1 + theta^4 / 4, so the matrix is a rotation to
+        # the working precision across the whole low-angle branch
         rot = torch.stack(
             [
-                k_one,
-                -rz,
-                ry,
-                rz,
-                k_one,
-                -rx,
-                -ry,
-                rx,
-                k_one,
+                k_one - k_half * (ry2 + rz2),
+                -rz + k_half * rxry,
+                ry + k_half * rxrz,
+                rz + k_half * rxry,
+                k_one - k_half * (rx2 + rz2),
+                -rx + k_half * ryrz,
+                -ry + k_half * rxrz,
+                rx + k_half * ryrz,
+                k_one - k_half * (rx2 + ry2),
             ],
             dim=-1,
         ).view(-1, 3, 3)
@@ -519,11 +555,36 @@ def angle_axis_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:  # 
 def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor) -> torch.Tensor:
     r"""Convert 3x3 rotation matrix to Rodrigues vector in radians.
 
+    Convention:
+        - any number of leading batch dimensions is accepted: :math:`(3, 3)`
+          gives :math:`(3,)` and :math:`(2, 5, 3, 3)` gives :math:`(2, 5, 3)`
+        - the output is the rotation axis scaled by the angle in **radians**,
+          the parametrization
+          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
+          consumes — but that function accepts only rank-2 input, so the
+          :math:`(3,)` and :math:`(2, 5, 3)` results above cannot be fed
+          straight back (see its shape warning)
+        - the round trip through
+          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
+          is accurate to about ``5e-09`` in ``float64`` — measured
+          ``2.0e-12`` at ``theta = 1e-3`` and ``4.2e-09`` at ``theta = pi``
+          about ``(1, 2, 3)/sqrt(14)`` — the latter is
+          :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`'s
+          own conditioning near the ``pi`` singularity
+        - the input is **not** checked for being a rotation matrix:
+          ``zeros(3, 3)`` returns ``[0., 0., 3.1416]``, ``2 * eye(3)`` returns
+          ``[0., 0., 0.]``, and the reflection ``diag(-1, 1, 1)``
+          (``det = -1``) also returns ``[0., 0., 0.]``, i.e. is silently
+          reported as no rotation at all
+        - ``rotation_matrix_to_angle_axis`` is the deprecated alias of this
+          function since 0.7.0; see the alias warning on
+          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
+
     Args:
-        rotation_matrix: rotation matrix of shape :math:`(N, 3, 3)`.
+        rotation_matrix: rotation matrix of shape :math:`(*, 3, 3)`.
 
     Returns:
-        Rodrigues vector transformation of shape :math:`(N, 3)`.
+        Rodrigues vector transformation of shape :math:`(*, 3)`.
 
     Example:
         >>> input = torch.tensor([[1., 0., 0.],
@@ -558,9 +619,33 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
 
     The quaternion vector has components in (w, x, y, z) format.
 
+    Convention:
+        - the returned components are ``(w, x, y, z)``, real part first — the
+          layout, and its silent misreading, are spelled out on
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
+        - the sign is **not** canonicalised to ``w >= 0``. For
+          ``trace(R) > 0`` the returned ``w`` is non-negative, but for
+          ``trace(R) <= 0`` it is the dominant of ``x, y, z`` that is forced
+          non-negative and ``w`` may be negative: 170 degrees about
+          ``(1, 2, -3)/sqrt(14)`` (``trace = -0.9696``) returns
+          ``[-0.0872, -0.2662, -0.5325, 0.7987]``
+        - the input is **not** checked for being a rotation matrix; see the
+          degenerate inputs listed on
+          :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`
+
+    .. warning::
+        ``eps`` is added *inside* the square root that produces the dominant
+        component, so with the default the result is not a unit quaternion. In
+        ``float64``, ``rotation_matrix_to_quaternion(torch.eye(3))`` returns
+        ``[1.0000000012499999, 0., 0., 0.]`` (``||q|| - 1`` is ``1.25e-09``),
+        while ``eps=0.0`` returns exactly ``[1., 0., 0., 0.]``. The inflation is
+        below one ulp of 1.0 in ``float32``, ``float16`` and ``bfloat16``, where
+        the identity already comes back exactly unit. Tracked in
+        `#3951 <https://github.com/kornia/kornia/issues/3951>`_.
+
     Args:
         rotation_matrix: the rotation matrix to convert with shape :math:`(*, 3, 3)`.
-        eps: small value to avoid zero division.
+        eps: added inside the square root of the dominant component; see the warning above.
 
     Return:
         the rotation in quaternion with shape :math:`(*, 4)`.
@@ -633,10 +718,33 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
 
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
 
+    Convention:
+        - it is an L2 normalisation of the **last** axis and nothing else, which
+          is why the ``(x, y, z, w)`` or ``(w, x, y, z)`` phrasing above is
+          accurate here: ``[4., 3., 2., 1.]`` normalises to the reversal of what
+          ``[1., 2., 3., 4.]`` gives
+        - the sign is preserved — ``normalize_quaternion(-q)`` is exactly
+          ``-normalize_quaternion(q)``, there is no ``w >= 0``
+          canonicalisation
+
+    .. warning::
+        When ``||q|| < eps`` the output is **not** a unit quaternion and no
+        error is raised: in ``float64`` with the default ``eps = 1e-12``,
+        ``[1e-13, 0., 0., 0.]`` returns ``[0.1, 0., 0., 0.]`` and ``zeros(4)``
+        returns ``zeros(4)``, and with ``eps=0.0`` the zero quaternion returns
+        ``[nan, nan, nan, nan]`` instead. ``float32`` and ``bfloat16`` behave
+        the same up to their rounding (``0.10000000149011612`` and
+        ``0.099609375`` for the first input). In ``float16`` both ``1e-13`` and
+        the default ``eps`` round to ``0``, so the clamp is a no-op and each of
+        those two inputs already returns ``[nan, nan, nan, nan]`` at the
+        default — the same underflow class as
+        `#3966 <https://github.com/kornia/kornia/issues/3966>`_. Tracked in
+        `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
+
     Args:
         quaternion: a tensor containing a quaternion to be normalized.
           The tensor can be of shape :math:`(*, 4)`.
-        eps: small value to avoid division by zero.
+        eps: floor on the norm used as the divisor; see the warning above.
 
     Return:
         the normalized quaternion of shape :math:`(*, 4)`.
@@ -664,6 +772,59 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
     r"""Convert a quaternion to a rotation matrix.
 
     The quaternion should be in (w, x, y, z) format.
+
+    Convention:
+        - the quaternion is ``(w, x, y, z)``, **real part first**, shape
+          :math:`(*, 4)` in and :math:`(*, 3, 3)` out. ``[1., 0., 0., 0.]``
+          gives the identity and ``[0., 0., 0., 1.]`` gives
+          ``[[-1., 0., 0.], [0., -1., 0.], [0., 0., 1.]]``, a half turn about
+          ``+z`` — so a caller passing ``(x, y, z, w)`` gets a valid-looking
+          rotation matrix and no error
+        - ``q`` and ``-q`` are the same rotation (double cover) and return
+          bit-identical matrices
+        - the input is normalised internally:
+          ``quaternion_to_rotation_matrix(2 * q)`` is bitwise
+          ``quaternion_to_rotation_matrix(q)`` (400 000 random unit
+          quaternions, at every dtype; every figure in this protocol was
+          measured on torch 2.9.1, cpu, and passages citing the protocol
+          inherit that tag). Rescaling by random factors between
+          ``1e-6`` and ``1e6`` moves the matrix only by the working dtype's
+          rounding in ``float64`` and ``float32`` (by ``1.3e-15`` and
+          ``6.0e-07`` over 2000 random unit quaternions), but the
+          reduced-precision dtypes do **not** hold to that: ``bfloat16`` moves
+          by ``3.1e-02``, and ``float16`` loses the property altogether — near
+          the top of that range the rescaled matrix bears no relation to the
+          input at all (entries live in ``[-1, 1]``, and the deviation
+          approaches the maximum possible ``2``), while the ``1e6`` end is
+          ``nan`` outright because ``0.5 * 1e6`` overflows the dtype.
+          Once ``||q||`` drops below
+          :func:`~kornia.geometry.conversions.normalize_quaternion`'s
+          ``eps = 1e-12`` the clamp takes over and rescaling changes the matrix
+          outright: in ``float64``, ``q * 1e-13`` and ``q`` can give matrices
+          that differ by order 1
+        - :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` is
+          scale-safe over its own range, given in its Convention block; the two
+          functions that are **not** are
+          :func:`~kornia.geometry.conversions.quaternion_exp_to_log` and
+          :func:`~kornia.geometry.conversions.euler_from_quaternion`, whose
+          warnings give the measured errors
+        - applied on the left to a column vector, ``+theta`` about ``+z`` maps
+          ``x_hat`` to ``y_hat`` (right-hand rule)
+        - the output dtype follows the input at every shape.
+          :func:`~kornia.geometry.conversions.normalize_quaternion`,
+          :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` and
+          :func:`~kornia.geometry.conversions.quaternion_exp_to_log` return the
+          input dtype at every shape
+
+    .. warning::
+        The zero quaternion returns the identity matrix rather than raising:
+        ``quaternion_to_rotation_matrix(torch.zeros(4))`` is ``eye(3)`` in
+        ``float64``, ``float32`` and ``bfloat16``. In ``float16`` the internal
+        ``eps = 1e-12`` normalisation floor rounds to ``0``, the guard it
+        provides disappears and the matrix is all-``nan`` instead — the same
+        underflow class as
+        `#3966 <https://github.com/kornia/kornia/issues/3966>`_. Tracked in
+        `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
@@ -708,7 +869,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
     tyy: torch.Tensor = ty * y
     tyz: torch.Tensor = tz * y
     tzz: torch.Tensor = tz * z
-    one: torch.Tensor = torch.tensor(1.0)
+    one: float = 1.0
 
     matrix_flat: torch.Tensor = torch.stack(
         (
@@ -738,6 +899,46 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
     The quaternion should be in (w, x, y, z) format.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
+
+    Convention:
+        - the input is ``(w, x, y, z)``, real part first (see
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`),
+          and the output is the rotation axis scaled by the angle in
+          **radians**
+        - for ``w != 0`` the double cover is collapsed: ``q`` and ``-q`` return
+          the same vector, the representative with ``|theta| <= pi``, and in
+          ``float64`` the two are bit-identical (400 000 random finite
+          quaternions). At lower precision they agree to the working dtype's
+          rounding
+        - at exactly ``w = 0`` — a half turn, and ``0.`` is exactly
+          representable — the collapse does not happen and the two return exact
+          negations: ``[0., 1., 0., 0.]`` gives ``[pi, 0., 0.]`` while
+          ``[-0., -1., 0., 0.]`` gives ``[-pi, 0., 0.]``, the same rotation
+          written the other way round
+        - the input need not be unit. The measurement protocol is the one
+          described on
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix` —
+          bitwise equality under doubling over 400 000 random unit quaternions
+          at every dtype, then rescaling by random factors between ``1e-6`` and
+          ``1e6`` over 2000 such quaternions — and the figures it gives here
+          are:
+          ``float64`` and ``float32`` move only by their own rounding
+          (``8.9e-16`` and ``4.8e-07``), while the reduced-precision dtypes do
+          **not** hold to that — ``bfloat16`` moves by ``3.1e-02``, ``float16``
+          by over ``3`` radians, and the ``1e6`` end is ``nan`` at ``float16``
+          because ``0.5 * 1e6`` overflows the dtype.
+          At extreme scales the squares of the vector part underflow and the
+          result does change: in ``float32``,
+          ``quaternion_to_axis_angle(q * 1e-25)`` returns exactly
+          ``2 * (q * 1e-25)[..., 1:]``
+        - ``quaternion_to_angle_axis`` is the deprecated alias of this function
+          since 0.7.0; see the alias warning on
+          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
+        - differentiable at the identity quaternion. The ``sqrt`` whose
+          derivative is unbounded there never sees its zero radicand, so the
+          gradient is the analytic limit of the surrounding map rather than
+          ``nan``. The guard is elementwise, and away from the identity it
+          moves no forward bit
 
     Args:
         quaternion: tensor with quaternions.
@@ -769,14 +970,18 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
 
     sin_squared_theta: torch.Tensor = q1 * q1 + q2 * q2 + q3 * q3
 
-    sin_theta: torch.Tensor = torch.sqrt(sin_squared_theta)
+    # the sqrt and the division below are only taken where the radicand is non zero. the inner
+    # `where` keeps the identity rotation away from the sqrt so its backward pass stays finite.
+    pos: torch.Tensor = sin_squared_theta > 0.0
+    safe_sin_squared_theta: torch.Tensor = torch.where(pos, sin_squared_theta, torch.ones_like(sin_squared_theta))
+    sin_theta: torch.Tensor = torch.where(pos, torch.sqrt(safe_sin_squared_theta), torch.zeros_like(sin_squared_theta))
     two_theta: torch.Tensor = 2.0 * torch.where(
         cos_theta < 0.0, torch.atan2(-sin_theta, -cos_theta), torch.atan2(sin_theta, cos_theta)
     )
 
-    k_pos: torch.Tensor = two_theta / sin_theta
+    k_pos: torch.Tensor = two_theta / torch.where(pos, sin_theta, torch.ones_like(sin_theta))
     k_neg: torch.Tensor = 2.0 * torch.ones_like(sin_theta)
-    k: torch.Tensor = torch.where(sin_squared_theta > 0.0, k_pos, k_neg)
+    k: torch.Tensor = torch.where(pos, k_pos, k_neg)
 
     axis_angle: torch.Tensor = torch.zeros_like(quaternion)[..., :3]
     axis_angle[..., 0] += q1 * k
@@ -793,11 +998,49 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:  # noqa:
 def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torch.Tensor:
     r"""Apply exponential map to log quaternion.
 
-    The quaternion should be in (w, x, y, z) format.
+    Convention:
+        - the **input** is a 3-vector of shape :math:`(*, 3)`, not a
+          quaternion; the **output** is the quaternion of shape :math:`(*, 4)`
+          in ``(w, x, y, z)`` order (see
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`)
+        - the map is ``w = cos(||v||)`` with vector part
+          ``sin(||v||) * v / ||v||``, so whenever ``||v||`` is computed finitely
+          the output is a unit quaternion up to the working dtype's rounding.
+          Two inputs escape that: the ``float16`` zero vector, and any ``v``
+          large enough that ``||v||`` overflows — see the two warnings below
+        - ``pi/2 < ||v|| < 3 * pi/2`` lands in the ``w < 0`` half of the double
+          cover — at ``||v|| = 2`` the real part is ``-0.4161468365471424``.
+          ``w`` is ``cos(||v||)``, so the sign turns over again beyond that
+          interval rather than staying negative
+        - ``v`` is therefore **half** the axis-angle vector: the result agrees
+          with ``axis_angle_to_quaternion(2 * v)`` to the rounding of the
+          working dtype, but **not** bit-for-bit: ``[0.15, 0.2, 0.25]`` already
+          disagrees at ``bfloat16``, and in ``float64`` most random vectors do
+          too
+        - for a **unit** ``q``, ``quaternion_log_to_exp(quaternion_exp_to_log(q))``
+          returns ``q`` up to rounding, except that the pure-real
+          ``[-1., 0., 0., 0.]`` comes back as ``[1., 0., 0., 0.]`` — the other
+          half of the same rotation
+
+    .. note::
+        ``float16``/``bfloat16`` inputs are upcast to ``float32`` for the computation, so the
+        default ``eps = 1e-8`` is representable there and the zero vector returns
+        ``[1., 0., 0., 0.]`` at every dtype (the clamp that guards the division is not a no-op).
+        This also removes the historical ``float16`` defect where the default ``eps`` rounded to
+        ``0`` and the zero vector came back ``[1., nan, nan, nan]``. Tracked in
+        `#3966 <https://github.com/kornia/kornia/issues/3966>`_.
+
+    .. note::
+        ``||v||`` is computed as ``scale * ||v / scale||`` with ``scale = max |v_i|`` (a scaling
+        that keeps the squared terms bounded by the number of components), so the norm cannot
+        overflow to ``inf`` from a sum of squares. The exponential map of a large finite vector
+        therefore returns a finite unit quaternion across the whole finite range of every dtype,
+        instead of all-``nan`` past the ``sqrt(finfo.max)`` turnover that ``torch.norm(p=2)``
+        would hit. Tracked in
+        `#3975 <https://github.com/kornia/kornia/issues/3975>`_.
 
     Args:
-        quaternion: a tensor containing a quaternion to be converted.
-          The tensor can be of shape :math:`(*, 3)`.
+        quaternion: the log quaternion, a tensor of shape :math:`(*, 3)`.
         eps: a small number for clamping.
 
     Return:
@@ -815,15 +1058,27 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     if not quaternion.shape[-1] == 3:
         raise ValueError(f"Input must be a tensor of shape (*, 3). Got {quaternion.shape}")
 
-    # compute quaternion norm
-    norm_q: torch.Tensor = torch.norm(quaternion, p=2, dim=-1, keepdim=True).clamp(min=eps)
+    # compute the quaternion norm in a way that cannot overflow (kornia#3975):
+    #  - float16/bfloat16 inputs are upcast to float32, where the default eps = 1e-8 is
+    #    representable, so the clamp below is not a no-op and the float16 zero vector stays the
+    #    identity quaternion (the kornia#3966 underflow class does not bite on this function);
+    #  - the norm is computed as scale * ||v / scale|| with scale = max |v_i|, so the squared
+    #    terms are bounded by the number of components and the whole finite input range of every
+    #    dtype returns a finite unit quaternion.
+    orig_dtype = quaternion.dtype
+    work_dtype = torch.float32 if orig_dtype in (torch.float16, torch.bfloat16) else orig_dtype
+    work = quaternion.to(work_dtype)
+
+    scale: torch.Tensor = work.abs().max(dim=-1, keepdim=True).values
+    norm_q: torch.Tensor = scale * torch.norm(work / scale.clamp(min=eps), p=2, dim=-1, keepdim=True)
+    norm_q = norm_q.clamp(min=eps)
 
     # compute scalar and vector
-    quaternion_vector: torch.Tensor = quaternion * torch.sin(norm_q) / norm_q
+    quaternion_vector: torch.Tensor = work * torch.sin(norm_q) / norm_q
     quaternion_scalar: torch.Tensor = torch.cos(norm_q)
 
     # compose quaternion and return
-    quaternion_exp = torch.cat((quaternion_scalar, quaternion_vector), dim=-1)
+    quaternion_exp = torch.cat((quaternion_scalar, quaternion_vector), dim=-1).to(orig_dtype)
 
     return quaternion_exp
 
@@ -832,6 +1087,41 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     r"""Apply the log map to a quaternion.
 
     The quaternion should be in (w, x, y, z) format.
+
+    Convention:
+        - the input is the quaternion of shape :math:`(*, 4)` in
+          ``(w, x, y, z)`` order and the output is a 3-vector of shape
+          :math:`(*, 3)`, the argument
+          :func:`~kornia.geometry.conversions.quaternion_log_to_exp` takes
+        - for a **unit** ``q`` on the ``w >= 0`` half of the double cover the
+          result is ``quaternion_to_axis_angle(q) / 2``. On the ``w < 0`` half the two
+          part company: this function applies ``acos(w)`` as given, while
+          :func:`~kornia.geometry.conversions.quaternion_to_axis_angle`
+          collapses the double cover. For the ``q`` whose log is ``v``,
+          ``quaternion_exp_to_log(-q)`` is ``-(pi - ||v||) * v / ||v||``
+        - ``quaternion_exp_to_log(quaternion_log_to_exp(v))`` returns ``v`` for
+          ``0 < ||v|| < pi`` and the wrapped ``||v|| - 2 * pi`` above ``pi``
+          (``pi + 0.5`` comes back as ``-2.6415926535897936``). At exactly
+          ``||v|| = pi``, and only in ``float64``, it collapses to ``3.85e-08``
+          — there ``cos(pi)`` rounds to ``-1`` and the vector part falls under
+          the ``eps`` clamp. Both are properties of the map, not defects
+
+    .. warning::
+        The input is **not** normalised, so a non-unit quaternion is silently
+        given a wrong log: ``[0.5, 0.5, 0., 0.]`` returns
+        ``[1.0471975511965976, 0., 0.]``, 33 % larger than the
+        ``[0.7853981633974484, 0., 0.]`` of the same rotation normalised, and
+        ``[2., 0., 0., 0.]`` returns the origin because ``w`` is clamped to
+        ``1``. Tracked in
+        `#3953 <https://github.com/kornia/kornia/issues/3953>`_.
+
+    .. note::
+        ``float16``/``bfloat16`` inputs are upcast to ``float32`` for the computation, so the
+        default ``eps = 1e-8`` is representable there and the identity quaternion returns
+        ``[0., 0., 0.]`` at every dtype (the clamp that guards the division is not a no-op).
+        This also removes the historical ``float16`` defect where the default ``eps`` rounded to
+        ``0`` and the identity came back ``[nan, nan, nan]``. Tracked in
+        `#3966 <https://github.com/kornia/kornia/issues/3966>`_.
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
@@ -853,17 +1143,18 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
 
-    # unpack quaternion vector and scalar
-    quaternion_scalar = quaternion[..., 0:1]
-    quaternion_vector = quaternion[..., 1:4]
+    # use float32 for float16/bfloat16 so the default eps is representable (kornia#3966)
+    orig_dtype = quaternion.dtype
+    work_dtype = torch.float32 if orig_dtype in (torch.float16, torch.bfloat16) else orig_dtype
+    work = quaternion.to(work_dtype)
+    quaternion_scalar = work[..., 0:1]
+    quaternion_vector = work[..., 1:4]
 
-    # compute quaternion norm
     norm_q: torch.Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=eps)
 
-    # apply log map
     quaternion_log: torch.Tensor = (
         quaternion_vector * torch.acos(torch.clamp(quaternion_scalar, min=-1.0, max=1.0)) / norm_q
-    )
+    ).to(orig_dtype)
 
     return quaternion_log
 
@@ -878,6 +1169,31 @@ def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
     The quaternion vector has components in (w, x, y, z) format.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
+
+    Convention:
+        - the input is the rotation axis scaled by the angle in **radians**,
+          shape :math:`(*, 3)`; the output is ``(w, x, y, z)`` with
+          ``w = cos(theta / 2)``, shape :math:`(*, 4)` (see
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
+          for the layout)
+        - nothing is canonicalised, so ``theta > pi`` returns the ``w < 0`` half
+          of the double cover: ``[2 * pi, 0., 0.]`` gives ``[-1., 0., 0., 0.]``
+        - the round trip with
+          :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` is exact
+          in ``float64``: the measured error is ``0`` to ``2.2e-16`` at
+          ``theta = 0``, ``1e-3``, ``0.7``, ``2`` and ``pi`` about
+          ``(1, 2, 3)/sqrt(14)``
+        - ``angle_axis_to_quaternion`` is the deprecated alias of this function
+          since 0.7.0; see the alias warning on
+          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
+        - an integral or boolean input is **promoted**, not rejected: the
+          ``sqrt`` on the way in already produces a floating tensor, and the
+          output is allocated from that rather than from the input, so the
+          result comes back at the ambient default floating dtype
+        - differentiable at the zero rotation. The ``sqrt`` whose derivative is
+          unbounded there never sees its zero radicand, so the gradient is the
+          analytic limit of the surrounding map rather than ``nan``. The guard
+          is elementwise, and away from zero it moves no forward bit
 
     Args:
         axis_angle: tensor with axis angle in radians.
@@ -907,20 +1223,25 @@ def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
     a2: torch.Tensor = axis_angle[..., 2:3]
     theta_squared: torch.Tensor = a0 * a0 + a1 * a1 + a2 * a2
 
-    theta: torch.Tensor = torch.sqrt(theta_squared)
+    mask: torch.Tensor = theta_squared > 0.0
+
+    # the sqrt and the division below are only taken where the radicand is non zero. the inner
+    # `where` keeps the zero rotation away from the sqrt so its backward pass stays finite.
+    safe_theta_squared: torch.Tensor = torch.where(mask, theta_squared, torch.ones_like(theta_squared))
+    theta: torch.Tensor = torch.where(mask, torch.sqrt(safe_theta_squared), torch.zeros_like(theta_squared))
     half_theta: torch.Tensor = theta * 0.5
 
-    mask: torch.Tensor = theta_squared > 0.0
     ones: torch.Tensor = torch.ones_like(half_theta)
 
     k_neg: torch.Tensor = 0.5 * ones
-    k_pos: torch.Tensor = torch.sin(half_theta) / theta
+    k_pos: torch.Tensor = torch.sin(half_theta) / torch.where(mask, theta, ones)
     k: torch.Tensor = torch.where(mask, k_pos, k_neg)
     w: torch.Tensor = torch.where(mask, torch.cos(half_theta), ones)
 
-    quaternion: torch.Tensor = torch.zeros(
-        size=(*axis_angle.shape[:-1], 4), dtype=axis_angle.dtype, device=axis_angle.device
-    )
+    # the output dtype comes from the computed values, not from the input: an integer input is
+    # promoted to floating point by the sqrt above, and writing that back into an integer buffer
+    # would truncate every component to zero.
+    quaternion: torch.Tensor = torch.zeros(size=(*axis_angle.shape[:-1], 4), dtype=w.dtype, device=axis_angle.device)
     quaternion[..., 1:2] = a0 * k
     quaternion[..., 2:3] = a1 * k
     quaternion[..., 3:4] = a2 * k
@@ -941,7 +1262,59 @@ def euler_from_quaternion(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Convert a quaternion coefficients to Euler angles.
 
-    Returned angles are in radians in XYZ convention.
+    Convention:
+        - the four quaternion coefficients are passed as **separate** tensors in
+          ``(w, x, y, z)`` order, not as one :math:`(*, 4)` tensor, and their
+          shapes must be exactly equal: broadcastable shapes such as ``(2,)``
+          and ``(1,)`` raise ``BaseError: Validation condition failed``, and
+          Python floats raise ``AttributeError``
+        - the return is a tuple of three tensors ``(roll, pitch, yaw)`` in
+          **radians**, with ``roll`` about ``x``, ``pitch`` about ``y`` and
+          ``yaw`` about ``z``; the composition they stand for is documented on
+          :func:`~kornia.geometry.conversions.quaternion_from_euler`
+        - away from ``|pitch| = pi/2`` it returns the triple of the input
+          rotation folded into ``roll, yaw`` in ``[-pi, pi]`` — the interval is
+          closed at both ends: they come from ``atan2``, which reaches ``±pi``
+          with the endpoint's sign decided by signed zeros, so ``w = -0.0,
+          x = 1.0, y = 0.0, z = -0.0`` returns roll exactly ``-pi`` while the
+          ``+0.0`` twin returns ``+pi`` — and ``pitch`` in
+          ``[-pi/2, pi/2]``, which inside those ranges is the input itself: the
+          ``float64`` round trip of ``(0.3, 0.7, 1.1)`` through
+          :func:`~kornia.geometry.conversions.quaternion_from_euler` returns to
+          ``2.2e-16``, while ``(0.2, 2.5, 0.3)`` comes back as
+          ``(-2.9416, 0.6416, -2.8416)`` — a different triple for the same
+          rotation, to ``1.1e-16``
+
+    .. warning::
+        At ``pitch = ±pi/2`` the returned triple usually does not represent the
+        input rotation, and no gimbal-lock branch exists to say so. ``roll`` and
+        ``yaw`` come from ``atan2`` of two quantities that cancel to nothing
+        there, so the triple that comes back is decided by rounding: it varies
+        between dtypes, between PyTorch versions, and under a one-ulp change of
+        the input pitch, and no specific triple is quoted here for that reason.
+        What is stable is that ``pitch`` lands within about ``sqrt(eps)`` of
+        ``±pi/2`` — the ``asin`` argument rounds to within an ulp of ``1``, and
+        ``asin(1 - d)`` is ``pi/2 - sqrt(2d)`` — and that the reconstructed
+        rotation is far from the input. Whether ``±pi/2`` is reached exactly
+        depends on dtype and build: at ``float64`` it is exact here, while the
+        ``float32`` round trip of ``(0.1, pi/2, 0.2)`` returns pitch
+        ``1.570451``, ``3.45e-4`` *below* ``float32``'s ``pi/2`` — an exact
+        ``pitch == pi/2`` check never fires there. Random ``(roll, yaw)``
+        at ``pitch = +pi/2`` fail this way, while ``|pitch| < pi/4`` round trips
+        to rounding. The rotation does survive on the diagonal
+        ``roll = yaw`` at ``+pi/2`` (and ``roll = -yaw`` at ``-pi/2``), where
+        random draws round trip to within a few parts in ``1e8``, though
+        ``roll`` and ``yaw`` are still not returned individually. Tracked in
+        `#3950 <https://github.com/kornia/kornia/issues/3950>`_.
+
+    .. warning::
+        The input is **not** normalised, so a non-unit quaternion silently gives
+        a wrong triple: for the ``q`` of ``(0.3, 0.7, 1.1)``, passing ``2 * q``
+        returns ``[1.6560585860248003, 1.5707963267948966,
+        2.1048169977173687]``. The middle value is exactly ``pi/2`` — the
+        over-scaled input saturates the ``asin`` and is reported as
+        gimbal-locked. Tracked in
+        `#3953 <https://github.com/kornia/kornia/issues/3953>`_.
 
     Args:
         w: quaternion :math:`q_w` coefficient.
@@ -979,7 +1352,20 @@ def quaternion_from_euler(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Convert Euler angles to quaternion coefficients.
 
-    Euler angles are assumed to be in radians in XYZ convention.
+    Convention:
+        - ``roll``, ``pitch`` and ``yaw`` are in **radians** and turn about
+          ``x``, ``y`` and ``z`` respectively; the rotation they compose to is
+          ``R = Rz(yaw) @ Ry(pitch) @ Rx(roll)`` — extrinsic X-Y-Z about the
+          fixed axes, equivalently intrinsic Z-Y'-X''. The order matters: at
+          ``(0.3, 0.7, 1.1)`` the returned quaternion's matrix differs from
+          ``Rx @ Ry @ Rz`` by ``0.64``, from ``Ry @ Rz @ Rx`` by ``0.55`` and
+          from ``Rx @ Rz @ Ry`` by ``0.25``
+        - the three arguments must have exactly equal shapes; broadcastable
+          shapes such as ``(2,)`` and ``(1,)`` raise
+          ``BaseError: Validation condition failed``
+        - the return is a tuple of **four separate tensors** ``(w, x, y, z)``,
+          not a :math:`(*, 4)` tensor: ``(0.3, 0.7, 1.1)`` gives
+          ``[0.8186, -0.0575, 0.3624, 0.4418]``
 
     Args:
         roll: the roll euler angle.
@@ -1037,22 +1423,28 @@ def normalize_pixel_coordinates(
           explicitly when feeding this output to it. Note that kornia's own
           :func:`~kornia.geometry.transform.remap` resolves
           ``align_corners=None`` to ``False``
+        - a singleton axis uses scale ``1`` and offset ``0``: its only valid
+          pixel coordinate maps to the normalized centre, and the unit-scale
+          extension keeps this function exactly invertible outside that lone
+          valid coordinate. Zero and negative sizes raise ``ValueError``
         - the output is **not** clamped: coordinates outside the image
           extrapolate linearly past ``[-1, 1]``, as the example below shows
 
-    .. warning::
-        ``height`` and ``width`` are not validated. For a degenerate size (``1``,
-        ``0`` or negative) the denominator ``size - 1`` is clamped up to ``eps``,
-        so
-        ``normalize_pixel_coordinates(torch.tensor([[1., 1.]], dtype=torch.float64), 1, 1)``
-        silently returns ``[[199999999.0, 199999999.0]]`` instead of raising.
-        Tracked in `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
+    .. note::
+        Legacy ``torch.jit.trace`` graphs assume positive runtime sizes because
+        tracing cannot retain the Python ``ValueError`` validation. Eager,
+        TorchScript, and ``torch.compile`` calls validate sizes.
+
+    .. deprecated:: 0.9.0
+        ``eps`` no longer participates in the explicitly defined singleton-axis
+        mapping. Passing a non-default value warns in eager mode; the parameter
+        will be removed in a future breaking release.
 
     Args:
         pixel_coordinates: the grid with pixel coordinates. Shape can be :math:`(*, 2)`.
         height: the maximum height in the y-axis.
         width: the maximum width in the x-axis.
-        eps: safe division by zero.
+        eps: deprecated compatibility parameter. It is ignored.
 
     Return:
         the normalized pixel coordinates with shape :math:`(*, 2)`.
@@ -1065,20 +1457,45 @@ def normalize_pixel_coordinates(
     """
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
+    if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
+        raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-8:
+        warnings.warn("`eps` is deprecated and ignored by `normalize_pixel_coordinates`.", FutureWarning, stacklevel=2)
 
-    # compute normalization factor
-    hw: torch.Tensor = torch.stack(
-        [
-            torch.tensor(width, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype),
-            torch.tensor(height, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype),
-        ]
-    )
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
+        sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
+        sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
+        tx = 0.0 if width == 1 else -1.0
+        ty = 0.0 if height == 1 else -1.0
+        if torch.jit.is_scripting():
+            anchor = torch.ones((), device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
+            factor = torch.stack([anchor * sx, anchor * sy])
+            offset = torch.stack([anchor * tx, anchor * ty])
+        else:
+            work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+            factor = torch.tensor([sx, sy], device=pixel_coordinates.device, dtype=work_dtype)
+            offset = torch.tensor([tx, ty], device=pixel_coordinates.device, dtype=work_dtype)
+    else:
+        out_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        # Low-precision floating types cannot represent every practical image size exactly
+        # (e.g. bfloat16 rounds 257 to 256). Keep the symbolic size arithmetic in at least
+        # float32, then cast the finished factors back to the coordinate dtype.
+        work_dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype
+        width_t = torch.scalar_tensor(width, device=pixel_coordinates.device, dtype=work_dtype)
+        height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
+        one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
+        zero = torch.zeros((), device=pixel_coordinates.device, dtype=work_dtype)
+        factor = torch.stack(
+            [
+                torch.where(width_t == 1, one, 2.0 / (width_t - 1.0)),
+                torch.where(height_t == 1, one, 2.0 / (height_t - 1.0)),
+            ]
+        )
+        offset = torch.stack([torch.where(width_t == 1, zero, -one), torch.where(height_t == 1, zero, -one)])
+        factor = factor.to(out_dtype)
+        offset = offset.to(out_dtype)
 
-    factor: torch.Tensor = torch.tensor(2.0, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype) / (
-        hw - 1
-    ).clamp(eps)
-
-    return factor * pixel_coordinates - 1
+    return factor * pixel_coordinates + offset
 
 
 def denormalize_pixel_coordinates(
@@ -1095,23 +1512,14 @@ def denormalize_pixel_coordinates(
           component order and the same ``(pixel_coordinates, height, width)``
           positional order
 
-    .. warning::
-        For a degenerate ``height``/``width`` (``1``, ``0`` or negative) the
-        clamped denominator collapses that component instead of exploding it:
-        ``denormalize_pixel_coordinates(torch.tensor([[0., 0.]], dtype=torch.float64), 4, 1)``
-        returns ``[[5e-09, 1.5]]``. This clamp is the exact reciprocal of the one
-        in :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`, so a
-        normalize-then-denormalize round trip returns the input as long as the
-        normalized value is finite — in ``float16`` ``eps`` underflows, the
-        normalized component is ``inf`` and the round trip returns ``nan``; it
-        is a single call on its own that is wrong. Tracked in
-        `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
+        - singleton axes, non-positive-size validation, tracing assumptions, and
+          the deprecated ``eps`` parameter follow the normalization function
 
     Args:
         pixel_coordinates: the normalized grid coordinates. Shape can be :math:`(*, 2)`.
         height: the maximum height in the y-axis.
         width: the maximum width in the x-axis.
-        eps: safe division by zero.
+        eps: deprecated compatibility parameter. It is ignored.
 
     Return:
         the denormalized pixel coordinates with shape :math:`(*, 2)`.
@@ -1124,16 +1532,46 @@ def denormalize_pixel_coordinates(
     """
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
-    # compute normalization factor
-    hw: torch.Tensor = (
-        torch.stack([torch.tensor(width), torch.tensor(height)])
-        .to(pixel_coordinates.device)
-        .to(pixel_coordinates.dtype)
-    )
+    if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
+        raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-8:
+        warnings.warn(
+            "`eps` is deprecated and ignored by `denormalize_pixel_coordinates`.",
+            FutureWarning,
+            stacklevel=2,
+        )
 
-    factor: torch.Tensor = torch.tensor(2.0) / (hw - 1).clamp(eps)
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
+        sx = 1.0 if width == 1 else (width - 1.0) / 2.0
+        sy = 1.0 if height == 1 else (height - 1.0) / 2.0
+        tx = 0.0 if width == 1 else sx
+        ty = 0.0 if height == 1 else sy
+        if torch.jit.is_scripting():
+            anchor = torch.ones((), device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
+            factor = torch.stack([anchor * sx, anchor * sy])
+            offset = torch.stack([anchor * tx, anchor * ty])
+        else:
+            work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+            factor = torch.tensor([sx, sy], device=pixel_coordinates.device, dtype=work_dtype)
+            offset = torch.tensor([tx, ty], device=pixel_coordinates.device, dtype=work_dtype)
+    else:
+        out_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        # Low-precision floating types cannot represent every practical image size exactly
+        # (e.g. bfloat16 rounds 257 to 256). Keep the symbolic size arithmetic in at least
+        # float32, then cast the finished factors back to the coordinate dtype.
+        work_dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype
+        width_t = torch.scalar_tensor(width, device=pixel_coordinates.device, dtype=work_dtype)
+        height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
+        one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
+        zero = torch.zeros((), device=pixel_coordinates.device, dtype=work_dtype)
+        sx_t = torch.where(width_t == 1, one, (width_t - 1.0) / 2.0)
+        sy_t = torch.where(height_t == 1, one, (height_t - 1.0) / 2.0)
+        factor = torch.stack([sx_t, sy_t])
+        offset = torch.stack([torch.where(width_t == 1, zero, sx_t), torch.where(height_t == 1, zero, sy_t)])
+        factor = factor.to(out_dtype)
+        offset = offset.to(out_dtype)
 
-    return torch.tensor(1.0) / factor * (pixel_coordinates + 1)
+    return factor * pixel_coordinates + offset
 
 
 def normalize_pixel_coordinates3d(
@@ -1152,20 +1590,15 @@ def normalize_pixel_coordinates3d(
           ``(pixel_coordinates, depth, height, width)``
         - corner-aligned and unclamped in each axis exactly as in
           :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`
-
-    .. warning::
-        ``depth``, ``height`` and ``width`` are not validated; a degenerate size
-        (``1``, ``0`` or negative) clamps that axis' denominator up to ``eps``
-        and blows the corresponding component up by a factor of ``2e8``
-        (``inf`` in ``float16``, where ``eps`` underflows). Tracked
-        in `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
+        - singleton axes, non-positive-size validation, tracing assumptions, and
+          the deprecated ``eps`` parameter likewise follow that function
 
     Args:
         pixel_coordinates: the grid with pixel coordinates. Shape can be :math:`(*, 3)`.
         depth: the maximum depth in the z-axis.
         height: the maximum height in the y-axis.
         width: the maximum width in the x-axis.
-        eps: safe division by zero.
+        eps: deprecated compatibility parameter. It is ignored.
 
     Return:
         the normalized pixel coordinates.
@@ -1173,16 +1606,59 @@ def normalize_pixel_coordinates3d(
     """
     if pixel_coordinates.shape[-1] != 3:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
-    # compute normalization factor
-    dhw: torch.Tensor = (
-        torch.stack([torch.tensor(depth), torch.tensor(width), torch.tensor(height)])
-        .to(pixel_coordinates.device)
-        .to(pixel_coordinates.dtype)
-    )
+    if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
+        raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-8:
+        warnings.warn(
+            "`eps` is deprecated and ignored by `normalize_pixel_coordinates3d`.",
+            FutureWarning,
+            stacklevel=2,
+        )
 
-    factor: torch.Tensor = torch.tensor(2.0) / (dhw - 1).clamp(eps)
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
+        sd = 1.0 if depth == 1 else 2.0 / (depth - 1.0)
+        sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
+        sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
+        td = 0.0 if depth == 1 else -1.0
+        tx = 0.0 if width == 1 else -1.0
+        ty = 0.0 if height == 1 else -1.0
+        if torch.jit.is_scripting():
+            anchor = torch.ones((), device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
+            factor = torch.stack([anchor * sd, anchor * sx, anchor * sy])
+            offset = torch.stack([anchor * td, anchor * tx, anchor * ty])
+        else:
+            work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+            factor = torch.tensor([sd, sx, sy], device=pixel_coordinates.device, dtype=work_dtype)
+            offset = torch.tensor([td, tx, ty], device=pixel_coordinates.device, dtype=work_dtype)
+    else:
+        out_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        # Low-precision floating types cannot represent every practical image size exactly
+        # (e.g. bfloat16 rounds 257 to 256). Keep the symbolic size arithmetic in at least
+        # float32, then cast the finished factors back to the coordinate dtype.
+        work_dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype
+        depth_t = torch.scalar_tensor(depth, device=pixel_coordinates.device, dtype=work_dtype)
+        width_t = torch.scalar_tensor(width, device=pixel_coordinates.device, dtype=work_dtype)
+        height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
+        one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
+        zero = torch.zeros((), device=pixel_coordinates.device, dtype=work_dtype)
+        factor = torch.stack(
+            [
+                torch.where(depth_t == 1, one, 2.0 / (depth_t - 1.0)),
+                torch.where(width_t == 1, one, 2.0 / (width_t - 1.0)),
+                torch.where(height_t == 1, one, 2.0 / (height_t - 1.0)),
+            ]
+        )
+        offset = torch.stack(
+            [
+                torch.where(depth_t == 1, zero, -one),
+                torch.where(width_t == 1, zero, -one),
+                torch.where(height_t == 1, zero, -one),
+            ]
+        )
+        factor = factor.to(out_dtype)
+        offset = offset.to(out_dtype)
 
-    return factor * pixel_coordinates - 1
+    return factor * pixel_coordinates + offset
 
 
 def denormalize_pixel_coordinates3d(
@@ -1198,21 +1674,15 @@ def denormalize_pixel_coordinates3d(
           ``depth=3, height=5, width=9`` the input ``[0., 0., 0.]`` maps back to
           ``[1., 4., 2.]``
 
-    .. warning::
-        For a degenerate ``depth``/``height``/``width`` (``1``, ``0`` or
-        negative) the clamped denominator scales that component by ``5e-09``
-        (``0`` in ``float16``, where ``eps`` underflows) instead of by
-        ``(size - 1) / 2`` — the same reciprocal-clamp behavior as
-        :func:`~kornia.geometry.conversions.denormalize_pixel_coordinates`,
-        whose warning walks through the round trip. Tracked in
-        `#3940 <https://github.com/kornia/kornia/issues/3940>`_.
+        - singleton axes, non-positive-size validation, tracing assumptions, and
+          the deprecated ``eps`` parameter follow the 2-D counterpart
 
     Args:
         pixel_coordinates: the normalized grid coordinates. Shape can be :math:`(*, 3)`.
         depth: the maximum depth in the z-axis.
         height: the maximum height in the y-axis.
         width: the maximum width in the x-axis.
-        eps: safe division by zero.
+        eps: deprecated compatibility parameter. It is ignored.
 
     Return:
         the denormalized pixel coordinates.
@@ -1220,16 +1690,56 @@ def denormalize_pixel_coordinates3d(
     """
     if pixel_coordinates.shape[-1] != 3:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
-    # compute normalization factor
-    dhw: torch.Tensor = (
-        torch.stack([torch.tensor(depth), torch.tensor(width), torch.tensor(height)])
-        .to(pixel_coordinates.device)
-        .to(pixel_coordinates.dtype)
-    )
+    if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
+        raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-8:
+        warnings.warn(
+            "`eps` is deprecated and ignored by `denormalize_pixel_coordinates3d`.",
+            FutureWarning,
+            stacklevel=2,
+        )
 
-    factor: torch.Tensor = torch.tensor(2.0) / (dhw - 1).clamp(eps)
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
+        sd = 1.0 if depth == 1 else (depth - 1.0) / 2.0
+        sx = 1.0 if width == 1 else (width - 1.0) / 2.0
+        sy = 1.0 if height == 1 else (height - 1.0) / 2.0
+        td = 0.0 if depth == 1 else sd
+        tx = 0.0 if width == 1 else sx
+        ty = 0.0 if height == 1 else sy
+        if torch.jit.is_scripting():
+            anchor = torch.ones((), device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
+            factor = torch.stack([anchor * sd, anchor * sx, anchor * sy])
+            offset = torch.stack([anchor * td, anchor * tx, anchor * ty])
+        else:
+            work_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+            factor = torch.tensor([sd, sx, sy], device=pixel_coordinates.device, dtype=work_dtype)
+            offset = torch.tensor([td, tx, ty], device=pixel_coordinates.device, dtype=work_dtype)
+    else:
+        out_dtype = pixel_coordinates.dtype if pixel_coordinates.is_floating_point() else torch.get_default_dtype()
+        # Low-precision floating types cannot represent every practical image size exactly
+        # (e.g. bfloat16 rounds 257 to 256). Keep the symbolic size arithmetic in at least
+        # float32, then cast the finished factors back to the coordinate dtype.
+        work_dtype = torch.float32 if out_dtype in (torch.float16, torch.bfloat16) else out_dtype
+        depth_t = torch.scalar_tensor(depth, device=pixel_coordinates.device, dtype=work_dtype)
+        width_t = torch.scalar_tensor(width, device=pixel_coordinates.device, dtype=work_dtype)
+        height_t = torch.scalar_tensor(height, device=pixel_coordinates.device, dtype=work_dtype)
+        one = torch.ones((), device=pixel_coordinates.device, dtype=work_dtype)
+        zero = torch.zeros((), device=pixel_coordinates.device, dtype=work_dtype)
+        sd_t = torch.where(depth_t == 1, one, (depth_t - 1.0) / 2.0)
+        sx_t = torch.where(width_t == 1, one, (width_t - 1.0) / 2.0)
+        sy_t = torch.where(height_t == 1, one, (height_t - 1.0) / 2.0)
+        factor = torch.stack([sd_t, sx_t, sy_t])
+        offset = torch.stack(
+            [
+                torch.where(depth_t == 1, zero, sd_t),
+                torch.where(width_t == 1, zero, sx_t),
+                torch.where(height_t == 1, zero, sy_t),
+            ]
+        )
+        factor = factor.to(out_dtype)
+        offset = offset.to(out_dtype)
 
-    return torch.tensor(1.0) / factor * (pixel_coordinates + 1)
+    return factor * pixel_coordinates + offset
 
 
 def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
@@ -1276,9 +1786,118 @@ def normalize_homography(
 ) -> torch.Tensor:
     r"""Normalize a given homography in pixels to [-1, 1].
 
+    Convention:
+        (every measured figure in this docstring — Convention block and
+        warnings alike — is a sample of one build, torch 2.9.1 on cpu unless a
+        sentence names another device; trailing digits may move with the
+        backend's summation order)
+
+        - the input maps **source pixels to destination pixels** and the output
+          maps **normalized source to normalized destination** — the same
+          direction, re-expressed in the two images' :math:`[-1, 1]` frames. A
+          ``+2`` pixel shift in ``x`` on a 5-wide image comes back as a ``+1.0``
+          shift in normalized units, because the destination frame is scaled by
+          ``2 / (width - 1) = 0.5``
+        - the composition is exactly ``N_dst @ H @ inv(N_src)``, where ``N`` is
+          :func:`~kornia.geometry.conversions.normal_transform_pixel`: so
+          ``dsize_src`` drives the **right** (input-side) factor and
+          ``dsize_dst`` the **left** (output-side) one. The reversed pairing
+          ``inv(N_dst) @ H @ N_src`` is a different matrix — it is what
+          :func:`~kornia.geometry.conversions.denormalize_homography` computes
+        - both ``dsize`` arguments are ``(height, width)`` tuples, while the
+          matrix itself acts on ``(x, y, 1)`` column vectors — ``x`` scaled by
+          ``width``, ``y`` by ``height``
+        - batching is per sample: element ``i`` of the output depends only on
+          element ``i`` of the input
+        - the :math:`[-1, 1]` frames are
+          :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
+          **corner-aligned** ones, inherited unconditionally — see the
+          convention warning below
+        - the shape guard accepts a :math:`(3, 3)` or a :math:`(B, 3, 3)`
+          matrix and nothing else. An unbatched ``(3, 3)`` is promoted to
+          ``(1, 3, 3)`` — the returned matrix is batched even though the input
+          was not — while a rank-4 input such as ``(2, 4, 3, 3)`` and a
+          wrong-sized one such as ``(B, 4, 4)`` both raise ``ValueError``
+          naming the argument and the expected shape. Rank-4 inputs and
+          ``(B, 4, 4)`` inputs used to pass this guard, the first returned
+          unchanged in rank and the second dying later inside ``matmul``; fixed
+          in `#3999 <https://github.com/kornia/kornia/pull/3999>`_
+
+    .. warning::
+        In **eager mode** the inverse this function takes is a closed-form 3x3
+        adjugate built from ``torch.linalg.cross`` — chosen to keep ``cusolver``
+        off the path — and a backend that has no ``cross`` kernel for the
+        working dtype therefore makes this function **raise from inside the
+        inverse** rather than return. That is kernel coverage, not a convention:
+        nothing is wrong with the input, and the same call in another dtype on
+        the same backend succeeds — measured on ``mps`` in ``bfloat16``
+        (torch 2.5.1; fixed in 2.9.1) and on cpu in
+        ``torch.bool``/``float8_e4m3fn`` (torch 2.9.1). Under
+        ``torch.jit.trace`` and the legacy ONNX exporter that same closed form
+        switches to a scalar cofactor expansion which calls no ``cross`` at all,
+        so the gap is **eager-only**: with ``torch.linalg.cross`` replaced by a
+        raising stub the eager call raises and the traced call returns (executed,
+        torch 2.9.1, cpu).
+        :func:`~kornia.geometry.conversions.normalize_homography3d` inverts
+        through ``torch.linalg.inv`` in both modes — its matrices are 4x4 and
+        the tracing fallback is 3x3-only — while
+        :func:`~kornia.geometry.conversions.denormalize_homography` does so in
+        eager mode only and takes the same cofactor expansion under tracing, so
+        its traced graph holds no ``aten::linalg_inv`` either. Neither has this
+        ``cross`` gap in either mode, and both carry the ``cusolver`` dependency
+        wherever they do reach ``linalg.inv``.
+
+
+    .. warning::
+        Integer inputs are handled inconsistently and the inconsistency is
+        device-dependent: on cpu (torch 2.9.1) an ``int64`` call raises
+        ``RuntimeError: expected scalar type Long but found Float`` here and a
+        ``torch.linalg.LinAlgError`` about a zero diagonal in
+        :func:`~kornia.geometry.conversions.denormalize_homography`, while on
+        ``mps`` the same ``normalize_homography`` call returns an all-``nan``
+        ``float32`` matrix instead of raising — ``denormalize_homography`` does
+        raise there, with a bare internal assert out of
+        ``BatchLinearAlgebra.cpp``. Only the cpu ``normalize_homography``
+        message names dtypes at all — ``Long`` and ``Float``, without saying
+        which argument — while cpu's ``denormalize_homography`` message is
+        dtype-free and the ``mps`` assert carries no dtype, shape or argument
+        name. What splits the ``normalize_homography`` behaviors is
+        whether the backend rejects a **batched** ``int64``-by-``float32``
+        matmul: the normalization matrices are truncated to ``int64``, the
+        closed-form inverse silently promotes them back to an all-``nan``
+        ``float32``, and the final chain matmul then sees a mixed pair — cpu
+        rejects it, ``mps`` multiplies it. That mechanism, not the device
+        names, is what decides: the behavior recorded here for cpu and ``mps``
+        is the behavior of any backend that makes the same choice, and no CUDA
+        behavior is claimed.
+        Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
+
+    .. warning::
+        The :math:`[-1, 1]` frames are corner-aligned
+        (``align_corners=True``) and there is no way to select the half-pixel
+        convention: :func:`~kornia.geometry.conversions.denormalize_homography`,
+        :func:`~kornia.geometry.conversions.normalize_homography3d` and
+        :func:`~kornia.geometry.transform.warp_perspective` all inherit it. That
+        is a separate fact from why an identity ``warp_perspective`` called with
+        ``align_corners=False`` does not reproduce its input — on a 4x4
+        ``arange`` image the maximum deviation is ``11.25``, against ``1.4e-05``
+        at ``align_corners=True``. This function is not that cause: for equal
+        source and destination sizes, an identity homography normalizes back to
+        the identity to within a single ULP — the
+        deviation is exactly ``0`` at most equal sizes and ``5.96e-08`` at the
+        rest, with the ``4x4`` case above among the latter; which size lands
+        where is a property of the inverse-and-matmul chain and not a rule
+        about the scale, so read the size you care about rather than a pattern
+        off these — and ``warp_perspective``'s
+        ``11.25`` comes from its own ``create_meshgrid``-built, corner-aligned
+        grid being sampled by ``grid_sample`` under the ``align_corners=False``
+        half-pixel convention. Recorded in
+        `#3904 <https://github.com/kornia/kornia/issues/3904>`_.
+
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
-          normalized. :math:`(B, 3, 3)`
+          normalized. :math:`(B, 3, 3)`, or an unbatched :math:`(3, 3)`, which
+          is promoted to :math:`(1, 3, 3)`
         dsize_src: size of the source image (height, width).
         dsize_dst: size of the destination image (height, width).
 
@@ -1289,7 +1908,7 @@ def normalize_homography(
     if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
 
-    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
+    if not (dst_pix_trans_src_pix.ndim in (2, 3) and dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
         raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
 
     # source and destination sizes
@@ -1318,30 +1937,147 @@ def normal_transform_pixel(
 ) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
+    Convention:
+        - the result is a **single** matrix of shape :math:`(1, 3, 3)` — never
+          batched — acting on homogeneous ``(x, y, 1)`` column vectors, with
+          ``x`` indexing columns and scaled by ``width`` and ``y`` indexing rows
+          and scaled by ``height``. The positional argument order is the other
+          way round, ``(height, width)``
+        - the mapping is **corner-aligned**: scale ``2 / (size - 1)``, offset
+          ``-1``, so the pixel *centres* ``0`` and ``size - 1`` map to exactly
+          ``-1`` and ``+1``. ``normal_transform_pixel(4, 5)`` has rows
+          ``[0.5, 0.0, -1.0]`` and ``[0.0, 0.6667, -1.0]``, and sends the pixels
+          ``(0, 0)``, ``(4, 3)`` and ``(2, 1.5)`` to ``(-1, -1)``, ``(1, 1)``
+          and ``(0, 0)``
+        - for sizes ``>= 2`` this is the same convention as
+          :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`, and
+          for a caller that is usually the whole of it: in ``float32`` and
+          ``float64`` the two routes agree to the working dtype's rounding —
+          **exactly**, at every size measured, on cpu, and within one
+          ``float32`` ulp on ``mps`` — while in ``float16``/``bfloat16`` they
+          can and do diverge, and *whether* they diverge is a property of the
+          build's matmul kernel rather than of the convention: swept over
+          every size pair in ``range(2, 60)`` on cpu, ``float16`` disagrees at
+          almost all of them under both torch builds measured, whereas
+          ``bfloat16`` disagrees at almost all of them under one build and at
+          none at all under the other. A reduced-precision pipeline should
+          therefore not mix the two routes and expect a match — and should not
+          read one build's exact agreement as a contract either. It is
+          **not**
+          :func:`torch.nn.functional.grid_sample`'s default half-pixel
+          ``(2 * x + 1) / width - 1``, which would put column ``0`` of a 5-wide
+          image at ``-0.8`` rather than ``-1.0``
+        - *how far apart the two routes get, and why* — a measurement of the
+          build's matmul kernel rather than a statement about the convention;
+          skip it unless a reduced-precision difference is what brought you
+          here. Both routes hold the same rounded ``2 / (size - 1)`` scale; what
+          differs is where the rounding falls, since applying this matrix is a
+          matmul (accumulated at higher precision, rounded once) while the
+          helper multiplies and subtracts elementwise in the working dtype. The
+          two agree in ``float32``/``float64``; whether they agree at
+          ``float16``/``bfloat16`` is a property of the build, as above.
+          The exact per-configuration gaps are a measurement of one build's
+          kernel and are recorded, with the snippet that reproduces them, next
+          to a pin that re-asserts each of them on the configuration it was
+          measured on — and skips visibly elsewhere — rather than quoted here.
+          What holds on any backend whose matmul rounds its inputs at the
+          working dtype, and is a contract rather than a build-specific figure,
+          is a dtype-scaled bound: the two routes stay within
+          ``2 * finfo(dtype).eps`` of each other — *tolerated*, not derived,
+          with roughly ``2x`` headroom over the measured cells. A backend or
+          configuration that rounds a matmul's inputs below the working dtype
+          (``TF32`` on ``cuda``, say) is outside that bound by construction and
+          gets the same bound taken at the coarser format instead —
+          ``2 * 2 ** -10`` rather than ``2 * 2 ** -23`` for ``TF32``
+          ``float32`` — which is what the pin enforces there, so such a
+          configuration widens the bound rather than exceeding it
+        - the convention is applied **unconditionally** — there is no
+          ``align_corners`` parameter — and
+          :func:`~kornia.geometry.conversions.normalize_homography` and its
+          siblings inherit it; see the convention warning there
+        - a singleton axis maps its only pixel to the centre of the normalized
+          range: that axis uses scale ``1`` and offset ``0``. The unit scale is
+          an invertible extension outside the lone valid coordinate, allowing
+          homography composition to handle one-pixel source and destination
+          sizes. Zero and negative sizes raise ``ValueError``
+        - with ``dtype=None`` the matrix is built from Python floats, so it
+          takes ``torch.get_default_dtype()``: ``float32`` by default, and
+          ``float64`` under ``torch.set_default_dtype(torch.float64)``. An
+          explicit ``dtype=`` overrides that
+
+    .. warning::
+        An integer ``dtype`` truncates the scale instead of raising:
+        ``normal_transform_pixel(4, 5, dtype=torch.int64)`` returns
+        ``[[0, 0, -1], [0, 0, -1], [0, 0, 1]]``, which maps every pixel to the
+        constant ``(-1, -1)``. Tracked in
+        `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
+
+    .. note::
+        Legacy ``torch.jit.trace`` graphs assume positive runtime sizes because
+        tracing cannot retain the Python ``ValueError`` validation. Eager,
+        TorchScript, and ``torch.compile`` calls validate sizes.
+
+    .. deprecated:: 0.9.0
+        ``eps`` no longer participates in the explicitly defined singleton-axis
+        mapping. Passing a non-default value warns in eager mode; the parameter
+        will be removed in a future breaking release.
+
     Args:
         height: image height.
         width: image width.
-        eps: epsilon to prevent divide-by-zero errors
+        eps: deprecated compatibility parameter. It is ignored.
         device: device to place the result on.
-        dtype: dtype of the result.
+        dtype: dtype of the result. ``None`` means ``torch.get_default_dtype()``.
 
     Returns:
         normalized transform with shape :math:`(1, 3, 3)`.
 
+    Example:
+        >>> normal_transform_pixel(4, 5)
+        tensor([[[ 0.5000,  0.0000, -1.0000],
+                 [ 0.0000,  0.6667, -1.0000],
+                 [ 0.0000,  0.0000,  1.0000]]])
+
     """
-    # prevent divide by zero bugs
-    width_denom: float = eps if width == 1 else width - 1.0
-    height_denom: float = eps if height == 1 else height - 1.0
+    if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
+        raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-14:
+        warnings.warn("`eps` is deprecated and ignored by `normal_transform_pixel`.", FutureWarning, stacklevel=2)
 
-    sx: float = 2.0 / width_denom
-    sy: float = 2.0 / height_denom
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
+        # Eager and TorchScript take the scalar branch, which is an order of magnitude
+        # cheaper on this hot path. Graph capture takes the tensor form below so symbolic
+        # sizes retain the singleton decision.
+        sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
+        sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
+        tx = 0.0 if width == 1 else -1.0
+        ty = 0.0 if height == 1 else -1.0
+        tr_mat = torch.tensor([[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+    else:
+        # Low-precision floating types cannot represent every practical image size exactly
+        # (e.g. bfloat16 rounds 257 to 256). Keep symbolic size arithmetic in at least
+        # float32, then cast the finished matrix to the requested output dtype. Resolve that
+        # output dtype FIRST: a ``dtype=None`` call inherits the default floating dtype, which
+        # may itself be a half type, so promoting only an *explicit* half ``dtype`` would leave
+        # ``torch.set_default_dtype(torch.float16)`` rounding the size below.
+        out_dtype = dtype if dtype is not None else torch.get_default_dtype()
+        work_dtype = out_dtype if out_dtype in (torch.float32, torch.float64) else torch.float32
+        width_t = torch.scalar_tensor(width, device=device, dtype=work_dtype)
+        height_t = torch.scalar_tensor(height, device=device, dtype=work_dtype)
+        one = torch.ones((), device=device, dtype=work_dtype)
+        zero = torch.zeros((), device=device, dtype=work_dtype)
 
-    # Construct the matrix in one shot (no in-place mutation).
-    tr_mat = torch.tensor(
-        [[sx, 0.0, -1.0], [0.0, sy, -1.0], [0.0, 0.0, 1.0]],
-        device=device,
-        dtype=dtype,
-    )  # 3x3
+        # A singleton axis has no extent. Map its only pixel to the normalized centre
+        # while keeping the homogeneous transform invertible for homography composition.
+        sx_t = torch.where(width_t == 1, one, 2.0 / (width_t - 1.0))
+        sy_t = torch.where(height_t == 1, one, 2.0 / (height_t - 1.0))
+        tx_t = torch.where(width_t == 1, zero, -one)
+        ty_t = torch.where(height_t == 1, zero, -one)
+
+        # Construct the matrix in one shot (no in-place mutation).
+        tr_mat = torch.stack(
+            [torch.stack([sx_t, zero, tx_t]), torch.stack([zero, sy_t, ty_t]), torch.stack([zero, zero, one])]
+        ).to(dtype=out_dtype)  # 3x3
 
     return tr_mat.unsqueeze(0)  # 1x3x3
 
@@ -1356,32 +2092,108 @@ def normal_transform_pixel3d(
 ) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
+    Convention:
+        - the 3-D counterpart of
+          :func:`~kornia.geometry.conversions.normal_transform_pixel`: same
+          corner-aligned ``2 / (size - 1)`` scaling with offset ``-1``, same
+          unconditional application, same ``dtype=None`` /
+          ``torch.get_default_dtype()`` rule, and likewise **never batched**.
+          Singleton axes use the same invertible centre mapping, and zero or
+          negative sizes raise ``ValueError``. Only the lines below differ
+        - the result has shape :math:`(1, 4, 4)` and acts on homogeneous
+          ``(x, y, z, 1)`` column vectors with ``x`` scaled by ``width``, ``y``
+          by ``height`` and ``z`` by ``depth``, while the positional argument
+          order is ``(depth, height, width)``: ``normal_transform_pixel3d(9, 5, 3)``
+          has diagonal ``[1.0, 0.5, 0.25]`` and sends ``(0, 0, 0)`` to
+          ``(-1, -1, -1)`` and the far corner ``(2, 4, 8)`` to ``(1, 1, 1)``
+        - that ``(x, y, z)`` slot order is a **permutation** of
+          :func:`~kornia.geometry.conversions.normalize_pixel_coordinates3d`,
+          which reads its input as ``(d, x, y)``. The two produce the same three
+          numbers in different slots — with ``depth=9, height=5, width=3`` the
+          point ``d=7, x=2, y=1`` gives ``[0.75, 1.0, -0.5]`` through the
+          coordinate helper and ``[1.0, -0.5, 0.75]`` through this matrix — so a
+          grid built for one silently permutes axes when fed to the other
+
+    .. warning::
+        The integer-``dtype`` behaviour of
+        :func:`~kornia.geometry.conversions.normal_transform_pixel` applies
+        here per axis: ``normal_transform_pixel3d(2, 4, 5,
+        dtype=torch.int64)`` returns a matrix with diagonal ``[0, 0, 2]``.
+        Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
+
+    .. note::
+        Legacy ``torch.jit.trace`` graphs assume positive runtime sizes for the
+        same reason as the 2-D counterpart.
+
+    .. deprecated:: 0.9.0
+        ``eps`` is ignored and follows the deprecation policy of the 2-D
+        counterpart.
+
     Args:
         depth: image depth.
         height: image height.
         width: image width.
-        eps: epsilon to prevent divide-by-zero errors
+        eps: deprecated compatibility parameter. It is ignored.
         device: device to place the result on.
-        dtype: dtype of the result.
+        dtype: dtype of the result. ``None`` means ``torch.get_default_dtype()``.
 
     Returns:
         normalized transform with shape :math:`(1, 4, 4)`.
 
+    Example:
+        >>> normal_transform_pixel3d(2, 4, 5)
+        tensor([[[ 0.5000,  0.0000,  0.0000, -1.0000],
+                 [ 0.0000,  0.6667,  0.0000, -1.0000],
+                 [ 0.0000,  0.0000,  2.0000, -1.0000],
+                 [ 0.0000,  0.0000,  0.0000,  1.0000]]])
+
     """
-    tr_mat = torch.tensor(
-        [[1.0, 0.0, 0.0, -1.0], [0.0, 1.0, 0.0, -1.0], [0.0, 0.0, 1.0, -1.0], [0.0, 0.0, 0.0, 1.0]],
-        device=device,
-        dtype=dtype,
-    )  # 4x4
+    if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
+        raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
+    if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-14:
+        warnings.warn("`eps` is deprecated and ignored by `normal_transform_pixel3d`.", FutureWarning, stacklevel=2)
 
-    # prevent divide by zero bugs
-    width_denom: float = eps if width == 1 else width - 1.0
-    height_denom: float = eps if height == 1 else height - 1.0
-    depth_denom: float = eps if depth == 1 else depth - 1.0
+    if torch.jit.is_scripting() or (not torch.jit.is_tracing() and not is_compiling()):
+        # As in 2-D, graph capture uses the tensor form below for symbolic sizes.
+        sx = 1.0 if width == 1 else 2.0 / (width - 1.0)
+        sy = 1.0 if height == 1 else 2.0 / (height - 1.0)
+        sz = 1.0 if depth == 1 else 2.0 / (depth - 1.0)
+        tx = 0.0 if width == 1 else -1.0
+        ty = 0.0 if height == 1 else -1.0
+        tz = 0.0 if depth == 1 else -1.0
+        tr_mat = torch.tensor(
+            [[sx, 0.0, 0.0, tx], [0.0, sy, 0.0, ty], [0.0, 0.0, sz, tz], [0.0, 0.0, 0.0, 1.0]],
+            device=device,
+            dtype=dtype,
+        )
+    else:
+        # As in 2-D: keep the symbolic size arithmetic in at least float32, and resolve the
+        # output dtype first so a ``dtype=None`` call under a half default dtype is promoted too.
+        out_dtype = dtype if dtype is not None else torch.get_default_dtype()
+        work_dtype = out_dtype if out_dtype in (torch.float32, torch.float64) else torch.float32
+        width_t = torch.scalar_tensor(width, device=device, dtype=work_dtype)
+        height_t = torch.scalar_tensor(height, device=device, dtype=work_dtype)
+        depth_t = torch.scalar_tensor(depth, device=device, dtype=work_dtype)
+        one = torch.ones((), device=device, dtype=work_dtype)
+        zero = torch.zeros((), device=device, dtype=work_dtype)
 
-    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / width_denom
-    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / height_denom
-    tr_mat[2, 2] = tr_mat[2, 2] * 2.0 / depth_denom
+        # As in 2-D, a singleton axis maps its only pixel to the normalized centre,
+        # with unit scale so that homography composition can still invert the matrix.
+        sx_t = torch.where(width_t == 1, one, 2.0 / (width_t - 1.0))
+        sy_t = torch.where(height_t == 1, one, 2.0 / (height_t - 1.0))
+        sz_t = torch.where(depth_t == 1, one, 2.0 / (depth_t - 1.0))
+        tx_t = torch.where(width_t == 1, zero, -one)
+        ty_t = torch.where(height_t == 1, zero, -one)
+        tz_t = torch.where(depth_t == 1, zero, -one)
+
+        tr_mat = torch.stack(
+            [
+                torch.stack([sx_t, zero, zero, tx_t]),
+                torch.stack([zero, sy_t, zero, ty_t]),
+                torch.stack([zero, zero, sz_t, tz_t]),
+                torch.stack([zero, zero, zero, one]),
+            ]
+        ).to(dtype=out_dtype)  # 4x4
 
     return tr_mat.unsqueeze(0)  # 1x4x4
 
@@ -1391,9 +2203,61 @@ def denormalize_homography(
 ) -> torch.Tensor:
     r"""De-normalize a given homography in pixels from [-1, 1] to actual height and width.
 
+    Convention:
+        - the mirror of
+          :func:`~kornia.geometry.conversions.normalize_homography`: the
+          composition is ``inv(N_dst) @ H @ N_src``, so the input maps
+          normalized source to normalized destination and the output maps
+          source pixels to destination pixels. Everything else — the
+          ``(height, width)`` ``dsize`` tuples, ``dsize_src`` on the right and
+          ``dsize_dst`` on the left, ``(x, y, 1)`` column vectors, per-sample
+          batching, the corner-aligned frames — is as documented there, and so
+          is the shape guard: this function carries the same one and rejects
+          the same shapes. That function's dtype-pass-through
+          (`#3958 <https://github.com/kornia/kornia/issues/3958>`_), int64-handling
+          (`#3959 <https://github.com/kornia/kornia/issues/3959>`_ — this
+          function's own clause there) and corner-alignment (`#3904
+          <https://github.com/kornia/kornia/issues/3904>`_) warnings apply
+          here too. The exception is the closed-form-inverse warning: in eager
+          mode this function inverts through ``torch.linalg.inv`` rather than
+          through the ``torch.linalg.cross`` adjugate, and under
+          ``torch.jit.trace`` through a cofactor expansion that calls neither,
+          so it does not have that gap in either mode — where it does reach
+          ``linalg.inv`` it carries the ``cusolver`` dependency instead
+        - both round trips hold, but neither is an exact identity in general.
+          Each leg runs four matrix products and **two** inverses — one per
+          function, and by different routines (see the bullet below) — so the
+          deviation is a small multiple of the working dtype's eps times the
+          largest entry, and the tolerance a caller should hold it to is that
+          product rather than a fixed constant. The round trip is **bitwise**
+          only when every intermediate product and sum of the chain is exactly
+          representable in the working dtype — a property of the whole
+          computation, not of ``H``'s entries or of the sizes alone, so dyadic
+          sizes on their own are **neither necessary nor sufficient**: an ``H``
+          with non-dyadic entries at ``2 ** k + 1`` sizes misses in both legs
+          in ``float32``, while the ``float64`` identity comes back bitwise
+          through both legs at the non-dyadic ``(4, 5) -> (8, 9)``. What does
+          hold is the two halves together: in ``float32`` and ``float64`` a
+          dyadic-entried ``H`` at ``2 ** k + 1`` sizes comes back bitwise
+          through **both** legs, and that is what the pin relies on. In
+          ``float16``/``bfloat16`` neither leg is safe once the entries
+          grow, and the two legs miss at different rates — a precision artifact
+          of where the rounding falls, not a structural asymmetry between the
+          two directions
+        - the two functions do **not** invert their normalization matrix the
+          same way, so their errors are not mirror images either: on the
+          identity homography with equal sizes ``(4, 7)``,
+          :func:`~kornia.geometry.conversions.normalize_homography` deviates
+          from the identity by ``5.960464477539063e-08`` while this function
+          returns it exactly (torch 2.9.1, cpu — both figures come out of a
+          matmul chain and an inverse, so which one lands on ``0.0`` is a
+          property of the current linalg path, not a contract). Do not read one
+          function's residual off the other's
+
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
-          denormalized. :math:`(B, 3, 3)`
+          denormalized. :math:`(B, 3, 3)`, or an unbatched :math:`(3, 3)`,
+          which is promoted to :math:`(1, 3, 3)`
         dsize_src: size of the source image (height, width).
         dsize_dst: size of the destination image (height, width).
 
@@ -1404,7 +2268,7 @@ def denormalize_homography(
     if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
 
-    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
+    if not (dst_pix_trans_src_pix.ndim in (2, 3) and dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
         raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
 
     # source and destination sizes
@@ -1426,9 +2290,57 @@ def normalize_homography3d(
 ) -> torch.Tensor:
     r"""Normalize a given homography in pixels to [-1, 1].
 
+    Convention:
+        - the 3-D counterpart of
+          :func:`~kornia.geometry.conversions.normalize_homography`: same
+          composition ``N_dst @ H @ inv(N_src)``, same source-to-destination
+          direction re-expressed in normalized frames, same ``dsize_src`` on the
+          right and ``dsize_dst`` on the left, and the same corner-aligned
+          frames — with
+          :func:`~kornia.geometry.conversions.normal_transform_pixel3d` in place
+          of the 2-D helper. It is **not** the 2-D function with wider matrices,
+          though: the shapes, the missing inverse and — least visibly — the
+          inversion routine all differ, as the bullets below record
+        - **the two do not invert their normalization matrix by the same
+          routine**, and the difference reaches callers. This function inverts
+          with ``torch.linalg.inv``;
+          :func:`~kornia.geometry.conversions.normalize_homography` inverts with
+          a closed-form 3x3 adjugate. Three consequences, none of them
+          cosmetic: it needs ``cusolver`` on ``cuda`` — which is the dependency
+          the 2-D closed form exists to avoid, so a build where
+          ``torch.linalg.inv`` fails to load still runs the 2-D function and not
+          this one; at ``float16``/``bfloat16`` it upcasts to ``float32``,
+          inverts and casts back, where the 2-D route inverts in the working
+          dtype — so at those dtypes the two routes' inverses of the *same*
+          normalization matrix differ, by more than a rounding step, and a
+          reduced-precision pipeline should not expect the 2-D and 3-D paths to
+          agree; and it does **not** inherit the 2-D route's dependence on a
+          ``torch.linalg.cross`` kernel, described in that function's warning.
+          :func:`~kornia.geometry.conversions.denormalize_homography` inverts
+          the same way this one does in eager mode; under ``torch.jit.trace``
+          the 3x3 route falls back to a cofactor expansion and this 4x4 one does
+          not
+        - the matrices are :math:`(B, 4, 4)` and act on ``(x, y, z, 1)`` column
+          vectors, while both ``dsize`` arguments are
+          ``(depth, height, width)`` triples
+        - there is **no** ``denormalize_homography3d``: the 2-D pair is
+          complete, this one is not, so an inverse has to be composed by hand
+          from :func:`~kornia.geometry.conversions.normal_transform_pixel3d`.
+          Tracked in `#3962 <https://github.com/kornia/kornia/issues/3962>`_
+        - the shape guard is the 2-D function's, with the size adapted: a
+          :math:`(4, 4)` or :math:`(B, 4, 4)` matrix and nothing else, an
+          unbatched ``(4, 4)`` promoted to ``(1, 4, 4)``, and anything else —
+          a rank-4 tensor such as ``(2, 4, 4, 4)``, or a ``(B, 3, 3)`` —
+          rejected with
+          ``Input dst_pix_trans_src_pix must be a Bx4x4 tensor``. Both the
+          guard's old ``or``-structure and its message, which used to name
+          ``Bx3x3`` from a function that takes 4x4 matrices, were fixed in
+          `#3999 <https://github.com/kornia/kornia/pull/3999>`_
+
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
-          normalized. :math:`(B, 4, 4)`
+          normalized. :math:`(B, 4, 4)`, or an unbatched :math:`(4, 4)`, which
+          is promoted to :math:`(1, 4, 4)`
         dsize_src: size of the source image (depth, height, width).
         dsize_dst: size of the destination image (depth, height, width).
 
@@ -1442,8 +2354,8 @@ def normalize_homography3d(
     if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
 
-    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
-        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
+    if not (dst_pix_trans_src_pix.ndim in (2, 3) and dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
+        raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx4x4 tensor. Got {dst_pix_trans_src_pix.shape}")
 
     # source and destination sizes
     src_d, src_h, src_w = dsize_src
@@ -1543,7 +2455,59 @@ def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matri
 
 
 def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-    r"""Combine 3x3 rotation matrix R and 1x3 translation vector t into 4x4 extrinsics.
+    r"""Combine 3x3 rotation matrix R and 3x1 translation vector t into 4x4 extrinsics.
+
+    Convention:
+        - ``t`` goes in the **last column** and the appended bottom row is
+          ``[0, 0, 0, 1]``, so the result acts on homogeneous column vectors as
+          ``x_out = R @ x_in + t``: with ``t = (1, 2, 3)``,
+          ``M @ (0, 0, 0, 1)`` returns ``t`` itself and ``M @ (1, 0, 0, 1)``
+          returns ``R[:, 0] + t``
+        - the function is **frame-agnostic** — it packs whatever ``(R, t)`` it
+          is handed and does not check that ``R`` is a rotation. Under the
+          camera-to-world reading the rest of this family uses (see
+          :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt`),
+          ``t`` is the **camera centre in world coordinates**, whereas the
+          world-to-camera form's ``-R^T t`` is a translation and not a centre.
+          Which of the two you are packing is your bookkeeping, not this
+          function's
+        - shapes are strict: exactly :math:`(B, 3, 3)` and :math:`(B, 3, 1)`.
+          An unbatched ``(3, 3)``, a ``(B, 3)`` translation, a ``(B, 1, 3)``
+          translation and extra leading dimensions each raise ``ShapeError``,
+          and the two batch sizes must match — but not through a kornia guard:
+          ``KORNIA_CHECK_SHAPE`` validates each argument on its own, so ``R`` of
+          batch 2 with ``t`` of batch 1 reaches ``torch.cat`` and raises
+          ``RuntimeError: Sizes of tensors must match except in dimension 2``
+          rather than broadcasting, where
+          :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt`
+          silently broadcasts the same pair
+        - :func:`~kornia.geometry.conversions.matrix4x4_to_Rt` is the inverse,
+          and ``Rt -> 4x4 -> Rt`` is bitwise for any ``(R, t)``. The other
+          direction is bitwise only for a **canonical** extrinsics matrix, one
+          whose bottom row is already ``[0, 0, 0, 1]``: any other bottom row is
+          discarded on the way out and rebuilt as ``[0, 0, 0, 1]``, so a matrix
+          carrying ``[9, 9, 9, 9]`` — or a projective ``[0.1, 0.2, 0.3, 1]`` —
+          does not survive the trip. That truncation is
+          :func:`~kornia.geometry.conversions.matrix4x4_to_Rt`'s, and its block
+          documents it
+
+    .. warning::
+        An ``int64`` ``(R, t)`` pair raises ``RuntimeError: result type Float
+        can't be cast to the desired output type Long`` from the appended
+        homogeneous row. The two ``camtoworld_*_to_*_Rt`` frame functions are
+        built on it and so reject integer input, while their ``_4x4``
+        counterparts accept it and return an ``int64`` matrix. The dichotomy is
+        not ``_Rt`` versus ``_4x4`` in general:
+        :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt` and
+        :func:`~kornia.geometry.conversions.worldtocam_to_camtoworld_Rt` do not
+        go through this function — they only transpose, negate and multiply —
+        and accept ``int64`` happily, returning an ``int64`` result. The
+        accepting side is a **cpu/mps** statement (torch 2.9.1, executed) — no
+        accept-and-return-``int64`` behavior is claimed on CUDA, for the
+        source-derived reason carried by
+        :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4`'s
+        warning.
+        Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1568,7 +2532,24 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
 
 
 def matrix4x4_to_Rt(extrinsics: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Convert 4x4 extrinsics into 3x3 rotation matrix R and 1x3 translation vector ts.
+    r"""Convert 4x4 extrinsics into 3x3 rotation matrix R and 3x1 translation vector t.
+
+    Convention:
+        - the inverse of
+          :func:`~kornia.geometry.conversions.Rt_to_matrix4x4`, with the same
+          layout — ``R`` is the top-left 3x3 block and ``t`` the first three
+          rows of the last column — and the same frame-agnosticism. Only the
+          lines below differ
+        - the input shape is strictly :math:`(B, 4, 4)`; an unbatched ``(4, 4)``,
+          a ``(B, 3, 3)`` and extra leading dimensions each raise ``ShapeError``
+        - the **bottom row is ignored**: a projective 4x4 is silently truncated
+          to its rigid part, so replacing the bottom row with ``[9, 9, 9, 9]``
+          leaves ``R`` and ``t`` bit-identical, and re-packing through
+          :func:`~kornia.geometry.conversions.Rt_to_matrix4x4` restores the
+          canonical ``[0, 0, 0, 1]`` rather than what was passed in
+        - the returned ``R`` and ``t`` are **views** of ``extrinsics``, not
+          copies: ``R.mul_(0.)`` zeroes the caller's rotation block in place.
+          Clone before mutating either output
 
     Args:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
@@ -1593,10 +2574,63 @@ def matrix4x4_to_Rt(extrinsics: torch.Tensor) -> tuple[torch.Tensor, torch.Tenso
 
 
 def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torch.Tensor:
-    r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).
+    r"""Convert a camera-to-world pose from the graphics frame (e.g. OpenGL) to the vision frame (e.g. OpenCV).
 
     I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
     Vision convention: [+x, +y, +z] == [right, down, forwards].
+
+    Convention:
+        - the input is a **camera-to-world** pose :math:`(B, 4, 4)`: its 3x3
+          block maps camera axes into the world and its last column is the
+          camera centre in world coordinates
+        - the operation is exactly ``extrinsics @ diag(1, -1, -1, 1)`` — a
+          **right** multiplication, i.e. a change of the **camera-side** basis.
+          The translation column is untouched. Left-multiplying by the same
+          matrix would negate two of its components instead, and feeding a
+          *world-to-camera* matrix in flips the wrong side and leaves the
+          translation in the old frame: a silent error, not an exception
+        - graphics (OpenGL) camera frame: ``+x`` right, ``+y`` up, ``+z``
+          backwards — the camera looks down ``-z``. Vision (OpenCV) camera
+          frame: ``+x`` right, ``+y`` down, ``+z`` forwards — the camera looks
+          down ``+z``. On the identity camera-to-world pose, camera ``+y``
+          maps to world ``+y`` before the conversion and to world ``-y`` after
+          it, and likewise for ``+z``
+        - the flip **preserves the determinant** of the 3x3 block, and with it
+          the handedness: ``diag(1, -1, -1)`` negates two axes and not one, so
+          its own determinant is ``+1`` and the product's is whatever came in.
+          A proper rotation therefore stays proper (``det = +1`` in, ``+1``
+          out) — but this is preservation, not a guarantee: an input block with
+          ``det = 2`` comes back with ``det = 2``, and an improper one with
+          ``det = -1`` stays improper. Nothing here checks that the input is a
+          rotation
+        - the flip is an **involution**, and all four graphics/vision frame
+          functions compute the identical map:
+          :func:`~kornia.geometry.conversions.camtoworld_vision_to_graphics_4x4`
+          returns bitwise the same matrix as this one on the same input, and
+          applying either twice returns the input **value-exactly** — no
+          rounding, every entry compares equal at ``atol = rtol = 0``. Not
+          bitwise on a signed zero: the flip is a matmul, so any ``-0.0``
+          entry — in the flipped columns or not — is summed with ``+0.0`` and
+          comes back ``+0.0``, on the first application already (executed,
+          ``float32`` cpu, torch 2.9.1). The two names
+          document the caller's intent, not different arithmetic
+        - the shape is strictly :math:`(B, 4, 4)`; the ``_Rt`` variants take and
+          return :math:`(B, 3, 3)` and :math:`(B, 3, 1)` and agree with this
+          path bitwise
+
+    .. warning::
+        The ``_4x4`` and ``_Rt`` variants disagree on integer input: this
+        function accepts an ``int64`` matrix and returns an ``int64`` matrix
+        — on **cpu/mps** (torch 2.9.1, executed; its integer path runs
+        through batched matmul, which PyTorch 2.9.1 implements for no integer
+        dtype on CUDA — source-derived from that release's
+        ``aten/src/ATen/native/cuda/Blas.cpp``, not executed here) —
+        while
+        :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt`
+        raises ``RuntimeError: result type Float can't be cast to the desired
+        output type Long`` from
+        :func:`~kornia.geometry.conversions.Rt_to_matrix4x4`. Tracked in
+        `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
     Args:
         extrinsics_graphics: pose matrix :math:`(B, 4, 4)`.
@@ -1623,10 +2657,26 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
 
 
 def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).
+    r"""Convert a camera-to-world pose from the graphics frame (e.g. OpenGL) to the vision frame (e.g. OpenCV).
 
     I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
     Vision convention: [+x, +y, +z] == [right, down, forwards].
+
+    Convention:
+        - the split-argument form of
+          :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4`,
+          which documents the flip, the two camera frames, the involution and
+          the preserved handedness. It packs ``(R, t)`` with
+          :func:`~kornia.geometry.conversions.Rt_to_matrix4x4`, applies that
+          function and splits the result again, so the two paths agree bitwise.
+          Only the lines below differ
+        - the shapes are strictly :math:`(B, 3, 3)` and :math:`(B, 3, 1)` in and
+          out, with no broadcasting between the two batch sizes, as
+          :func:`~kornia.geometry.conversions.Rt_to_matrix4x4` requires
+        - ``t`` is returned unchanged; only ``R`` has its second and third
+          columns negated
+        - unlike the ``_4x4`` form, integer input raises — see that function's
+          warning
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1653,10 +2703,22 @@ def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
 
 
 def camtoworld_vision_to_graphics_4x4(extrinsics_vision: torch.Tensor) -> torch.Tensor:
-    r"""Convert vision coordinate frame (e.g. OpenCV) to graphics coordinate frame (e.g. OpenGK.).
+    r"""Convert a camera-to-world pose from the vision frame (e.g. OpenCV) to the graphics frame (e.g. OpenGL).
 
-    I.e. flips y and z axis Graphics convention: [+x, +y, +z] == [right, up, backwards].
+    I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
     Vision convention: [+x, +y, +z] == [right, down, forwards].
+
+    Convention:
+        - the same map as
+          :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4`,
+          which carries the canonical block: ``diag(1, -1, -1, 1)`` is its own
+          inverse, so vision-to-graphics and graphics-to-vision are the identical
+          function and return bitwise equal matrices on the same input. The name
+          records which direction the caller means
+        - everything else — the right multiplication, the untouched translation
+          column, the two frame definitions, the preserved determinant, the
+          strict :math:`(B, 4, 4)` shape and the integer-dtype warning — is as
+          documented there
 
     Args:
         extrinsics_vision: pose matrix :math:`(B, 4, 4)`.
@@ -1683,10 +2745,22 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: torch.Tensor) -> torch.
 
 
 def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).
+    r"""Convert a camera-to-world pose from the vision frame (e.g. OpenCV) to the graphics frame (e.g. OpenGL).
 
     I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
-    Vision convention: [+x, +y, +z] == [right, down, forwards]
+    Vision convention: [+x, +y, +z] == [right, down, forwards].
+
+    Convention:
+        - the split-argument form of
+          :func:`~kornia.geometry.conversions.camtoworld_vision_to_graphics_4x4`
+          and, because ``diag(1, -1, -1, 1)`` is its own inverse, bitwise the
+          same function as
+          :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt`.
+          The canonical block lives on
+          :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4`
+        - the shapes are strictly :math:`(B, 3, 3)` and :math:`(B, 3, 1)` in and
+          out, ``t`` is returned unchanged, and integer input raises — as in the
+          graphics-to-vision ``_Rt`` form
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1718,6 +2792,59 @@ def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
     See
     long-url: https://colmap.github.io/format.html#output-format
 
+    Convention:
+        - the returned pair is exactly ``(R^T, -R^T @ t)`` — the **rigid**
+          inverse, computed by transposition and never by a matrix inverse. For
+          a proper rotation that is the true inverse as a map, and in floating
+          point it recovers the identity to the working dtype's rounding rather
+          than bitwise: packing both pairs with
+          :func:`~kornia.geometry.conversions.Rt_to_matrix4x4` and multiplying
+          gives ``max|M_inv @ M - I|`` at the ``1e-07`` scale in ``float32``
+          and ``1e-15`` in ``float64``, over 64 unit-normalized random
+          quaternions turned into rotations via
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
+          — an orthogonality-preserving route, as is
+          :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
+          — with matching random translations, both
+          drawn from ``torch.Generator().manual_seed(seed)``, ``seed=0`` — a
+          few ulps of the entries. Read the exponent, not the digits: the
+          maximum moves with the draw (``4.77e-07`` to ``8.34e-07``, and
+          ``6.66e-16`` to ``1.33e-15``, over ``seed`` ``0`` through ``5`` of
+          the same sweep; torch 2.9.1, cpu). ``torch.equal`` against the
+          identity is ``False``
+        - what ``t`` means on each side: the input is a camera-to-world pose, so
+          its ``t`` is the **camera centre in world coordinates** (the 4x4 sends
+          the origin to ``t``); the returned ``-R^T t`` is the **world-to-camera
+          translation** of Colmap's ``images.txt`` (the returned 4x4 sends the
+          camera centre to the origin)
+        - :func:`~kornia.geometry.conversions.worldtocam_to_camtoworld_Rt` is
+          the **same function**, not a separate formula: it returns bitwise
+          identical outputs on the same input. Applying either one twice
+          returns ``R`` **bitwise** — transposing twice moves no bits — but the
+          translation only to rounding, since it costs two matrix products:
+          over the same ``seed=0`` draw of 64 poses ``t`` comes back to
+          ``9.54e-07`` in ``float32`` and ``1.78e-15`` in ``float64``. The two
+          names record which direction the caller means
+        - the shapes are :math:`(B, 3, 3)` and :math:`(B, 3, 1)`, but ``t`` is
+          **broadcast** across the ``R`` batch: ``R`` of batch 2 with ``t`` of
+          batch 1 returns ``(2, 3, 3)`` and ``(2, 3, 1)``, where
+          :func:`~kornia.geometry.conversions.Rt_to_matrix4x4` raises on the
+          same pair
+
+    .. warning::
+        ``R`` is **assumed** to be a rotation and this is never checked, so for
+        a non-orthogonal ``R`` the result is a transpose and not an inverse, and
+        it is wrong silently. With
+        ``R = [[1, 0.5, 0], [0, 1, 0], [0, 0, 2]]`` (``det = 2``) and
+        ``t = (1, 2, 3)``, the composed 4x4 gives
+        ``max|M_inv @ M - I| = 3.0`` — over six orders of magnitude above the
+        ``float32`` figure quoted in the bullet above — and even the round trip
+        through this function and back leaves ``t`` off by ``9.0``, while ``R``
+        still returns bitwise because that leg is only a double transpose. The
+        near-identity of the bullet above holds only because ``R`` was a
+        rotation there. Tracked in
+        `#3961 <https://github.com/kornia/kornia/issues/3961>`_.
+
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
         t: Translation matrix :math:`(B, 3, 1)`.
@@ -1748,6 +2875,20 @@ def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
 def worldtocam_to_camtoworld_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert worldtocam frame used in Colmap to camtoworld.
 
+    Convention:
+        - bitwise the **same function** as
+          :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt`,
+          which carries the canonical block: for a proper rotation
+          ``(R^T, -R^T @ t)`` is its own inverse as a map — to the working
+          dtype's rounding in floating point, measured there — so one name
+          serves both directions and the choice is documentation for the
+          reader
+        - read the other way round here: the input ``t`` is the world-to-camera
+          translation and the returned ``-R^T t`` is the camera centre in world
+          coordinates
+        - the broadcasting behaviour, the shapes and the unchecked-orthogonality
+          warning are as documented there
+
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
         t: Translation matrix :math:`(B, 3, 1)`.
@@ -1776,9 +2917,140 @@ def worldtocam_to_camtoworld_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
 
 
 def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Convert output of Apple ARKit screen pose to the camera-to-world transformation, expected by Colmap.
+    r"""Convert an Apple ARKit camera-to-world screen pose to the world-to-camera pose expected by Colmap.
 
     Both poses in quaternion representation.
+
+    Convention:
+        (every measured figure in this block — the 16-digit "as computed"
+        literals included — is a sample of one build, torch 2.9.1 on cpu, not
+        a bound; trailing digits and turnover points may move with the
+        backend's accumulation order)
+
+        - **input**: ``qvec`` :math:`(B, 4)` is read as ``(w, x, y, z)``, real
+          part first — ``[1., 0., 0., 0.]`` is the identity — and ``tvec`` is
+          :math:`(B, 3, 1)`. The pair is interpreted as a **camera-to-world**
+          pose in the **graphics** frame (``+y`` up, ``-z`` forward), so ``tvec``
+          is the camera centre in world coordinates
+        - **output**: ``(q, t)`` with ``q`` :math:`(B, 4)` again in
+          ``(w, x, y, z)`` and ``t`` :math:`(B, 3, 1)`, forming a
+          **world-to-camera** pose in the **vision** frame (``+y`` down, ``+z``
+          forward) — Colmap's ``images.txt`` ``QW QX QY QZ TX TY TZ``. The
+          composed pipeline is
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`,
+          then
+          :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt`,
+          then :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt`,
+          then
+          :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion` on
+          the resulting matrix — that last step is what turns the ``(R, t)`` of
+          the third function into the documented ``(q, t)``, and it is the
+          source of the sign/branch behavior the bullets below describe
+        - a caller reading ARKit directly must **reorder the quaternion first**:
+          Apple's ``simd_quatf`` exposes ``.vector`` as ``(ix, iy, iz, r)``, i.e.
+          ``xyzw``, which this function would read as ``wxyz`` and silently
+          accept. (Apple's layout is cited from its API documentation, not
+          executed here; the ``wxyz`` reading on kornia's side is executed)
+        - the input quaternion need not be unit, **within a bounded range
+          of** ``||q||``: rescaling it moves the resulting pose only by the working
+          dtype's rounding as long as ``||q||`` stays **above**
+          :func:`~kornia.geometry.conversions.normalize_quaternion`'s
+          ``eps = 1e-12`` and **below** the point at which the norm's
+          sum-of-squares accumulator overflows. Over 64 random unit quaternions
+          rescaled by factors from ``1e-3`` to ``1e5``, the output rotation and
+          translation moved at the ``1e-06`` scale in ``float32`` — a few ulps
+          of their entries, with the maximum moving from draw to draw, so this
+          is an order of magnitude and not a bound. ``q`` and
+          ``-q`` give bitwise the same output at every scale tried, since they
+          are the same rotation
+        - **past either end the pose changes outright, silently.** Below the
+          floor the normalisation clamp takes over, as
+          :func:`~kornia.geometry.conversions.quaternion_to_rotation_matrix`
+          documents. One worked sub-floor input carries all the figures: in
+          ``float64``, scaling ``[0.5, 0.5, 0.5, 0.5]`` by ``1e-13`` moves the
+          output rotation by order ``1`` (``0.9999746262218625``) and, with
+          ``t = (1, 2, 3)``, the translation by ``1.98`` (the worked example's
+          ``t = (1, 1, 1)`` lies on this quaternion's rotation axis and its
+          translation happens to move by exactly ``0``); the same input builds
+          an internal matrix with ``det = 0.9703`` and orthogonality error
+          ``0.0198`` (rounded; ``0.9702999999999999`` and
+          ``0.01980000000000004`` as computed) and returns a quaternion of
+          norm ``0.9962524249343686``, not ``1``. Above the
+          ceiling the norm overflows to ``inf`` and the quaternion normalises to
+          zero, which this function then reads as the identity: in ``float32``
+          the perfectly finite ``[0., 1., 0., 1.] * 1.4e19`` returns
+          ``q = [0., 1., 0., 0.]``, ``t = (-1., 1., 1.)`` — the zero-quaternion
+          answer — instead of the ``[0.7071, 0., 0.7071, 0.]``,
+          ``(-1., -1., 1.)`` of the same rotation at unit scale. The ceiling
+          sits where ``||q||`` overflows the norm's sum-of-squares
+          accumulator: the same ``sqrt(finfo.max)`` turnover, per-dtype
+          figures and ``float16`` wider-accumulation exception that
+          :func:`~kornia.geometry.conversions.quaternion_log_to_exp`'s block
+          quantifies — the figures live there, once
+        - for ``||q||`` above the normalisation floor of the previous bullet,
+          the output rotation is **proper by construction** — it is built from
+          an internally normalised quaternion and then right-multiplied by
+          ``diag(1, -1, -1)``, which negates two axes and not one — so
+          **handedness is preserved** and ``det`` is ``+1`` up to the working
+          dtype's rounding: over 512 random quaternions the largest
+          ``|det - 1|`` sits at the ``1e-06`` scale in ``float32`` and
+          ``1e-15`` in ``float64`` (``7.15e-07`` to ``8.34e-07`` and
+          ``1.78e-15`` to ``2e-15`` over four seeds — again the exponent, not
+          the digits). It is the construction that guarantees
+          properness; the digits are just arithmetic. Below the floor the
+          construction's premise fails — the clamp leaves the internal
+          quaternion non-unit — and the guarantee with it; the previous
+          bullet's sub-floor input carries the measured ``det``, orthogonality
+          and norm figures
+        - the **sign of the output quaternion is not canonical**. It is whichever
+          representative
+          :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`'s
+          branch produces: the
+          unit input ``[0.5, 0.5, 0.5, 0.5]`` with ``t = (1, 2, 3)`` returns
+          ``q = [-0.5, -0.5, -0.5, 0.5]`` (a zero-trace rotation, so the
+          positive-trace branch does not apply) together with
+          ``t = (-2, 3, 1)``. Compare rotations, never raw components
+        - worked literal, hand-computed independently of kornia:
+          ``q = [0., 1., 0., 1.]``, ``t = (1, 1, 1)`` gives
+          ``q = [0.7071, 0., 0.7071, 0.]`` and ``t = (-1, -1, 1)``, which is the
+          example below
+        - there is **no** ``ColmapQTVecs_to_ARKitQTVecs``, so the conversion
+          cannot be round-tripped through the public API; the inverse has to be
+          composed from
+          :func:`~kornia.geometry.conversions.worldtocam_to_camtoworld_Rt` and
+          :func:`~kornia.geometry.conversions.camtoworld_vision_to_graphics_Rt`.
+          Tracked in `#3962 <https://github.com/kornia/kornia/issues/3962>`_
+
+    .. warning::
+        The output quaternion is not exactly unit in ``float64``: the identity
+        input ``[1., 0., 0., 0.]`` with ``t = (1, 1, 1)`` returns
+        ``[0., 1.0000000012499999, 0., 0.]``, so ``|q| - 1`` is
+        ``1.2499998813808588e-09`` (torch 2.9.1, cpu), where ``float32`` returns
+        an exactly unit ``[0., 1., 0., 0.]``. The ``[0, 1, 0, 0]`` shape is
+        correct and not a component shift — for an identity input the composed
+        rotation is ``diag(1, -1, -1)``, a half turn about ``x``. Only the
+        magnitude is wrong; it is inherited from
+        :func:`~kornia.geometry.conversions.rotation_matrix_to_quaternion`.
+        Colmap consumers that validate ``QW QX QY QZ`` as a unit quaternion will
+        see it. Tracked in
+        `#3951 <https://github.com/kornia/kornia/issues/3951>`_.
+
+    .. warning::
+        The all-zero quaternion is never rejected, and what it gives back
+        instead **splits by dtype**. In ``float64``, ``float32`` and
+        ``bfloat16`` the internal normalisation floor absorbs it:
+        ``torch.zeros(1, 4)`` with ``t = (1, 1, 1)`` returns the
+        plausible-looking ``q = [0., 1., 0., 0.]``, ``t = (-1, 1, 1)`` in
+        ``float32`` — the same answer as the identity input, at every one of
+        those three dtypes — rather than raising. In ``float16`` the default
+        ``eps = 1e-12`` underflows to ``0`` (``bfloat16``'s wider exponent
+        keeps it), so the clamp is a no-op, the normalisation divides ``0`` by
+        ``0``, and **both returned tensors are entirely** ``nan``. Neither
+        branch is an error: validate the quaternion before calling if the input
+        may be degenerate. This is the downstream reach of the sub-``eps``
+        clamp in :func:`~kornia.geometry.conversions.normalize_quaternion`,
+        whose own warning carries the same ``float16`` underflow. Tracked in
+        `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
 
     Args:
         qvec: ARKit rotation quaternion :math:`(B, 4)`, [w, x, y, z] format.
