@@ -20,6 +20,7 @@ import torch
 
 import kornia
 from kornia.geometry.bbox import (
+    bbox_generator,
     bbox_generator3d,
     infer_bbox_shape,
     infer_bbox_shape3d,
@@ -51,13 +52,36 @@ class TestBbox2D(BaseTester):
         self.assert_close(height, torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(width, torch.tensor([-3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
-    def test_convention_validate_bbox_returns_bool_and_accepts_batched_boxes(self, device, dtype):
-        boxes = torch.tensor([[[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]]], device=device, dtype=dtype)
-        assert validate_bbox(boxes) is True
+    def test_convention_infer_bbox_shape_preserves_generated_zero_extent(self, device, dtype):
+        # bbox_generator represents a zero width by placing the top-right vertex one
+        # unit left of the top-left vertex. RandomCutMixV2 relies on the fixed-index
+        # reading recovering width 0; a maximum - minimum reduction would return 2.
+        x_start = torch.tensor([3.0], device=device, dtype=dtype)
+        y_start = torch.tensor([4.0], device=device, dtype=dtype)
+        boxes = bbox_generator(x_start, y_start, torch.zeros_like(x_start), torch.full_like(y_start, 5.0))
+        height, width = infer_bbox_shape(boxes)
+        self.assert_close(height, torch.tensor([5.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(width, torch.tensor([0.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
-        non_rectangular = boxes.clone()
-        non_rectangular[..., 2, 0] += 1
-        assert validate_bbox(non_rectangular) is False
+    def test_convention_validate_bbox_checks_parallelograms_and_accepts_batched_boxes(self, device, dtype):
+        # A rotated rectangle is accepted because the validator only compares the
+        # top and bottom edge vectors. The leading dimensions also pin rank-4 input.
+        rotated_rectangle = torch.tensor(
+            [[[[0.0, 0.0], [3.0, 4.0], [-1.0, 7.0], [-4.0, 3.0]]]], device=device, dtype=dtype
+        )
+        assert validate_bbox(rotated_rectangle) is True
+
+        trapezoid = torch.tensor([[[[0.0, 0.0], [10.0, 0.0], [10.0, 5.0], [3.0, 5.0]]]], device=device, dtype=dtype)
+        assert validate_bbox(trapezoid) is False
+
+    def test_convention_validate_bbox_invariance_is_exact_arithmetic_only(self):
+        # In float16 the inclusive +1 rounds distinct sub-unit spans to the same
+        # value, although the exclusive span difference exceeds the 1e-4 threshold.
+        boxes = torch.tensor([[[0.0, 0.0], [0.0005, 0.0], [0.001, 0.001], [0.0, 0.001]]], dtype=torch.float16)
+        assert validate_bbox(boxes) is True
+        top_span = boxes[..., 1, 0] - boxes[..., 0, 0]
+        bottom_span = boxes[..., 2, 0] - boxes[..., 3, 0]
+        assert torch.all(torch.abs(top_span - bottom_span) > 1e-4)
 
     def test_wart_validate_bbox_returns_false_where_validate_bbox3d_raises_4013(self, device, dtype):
         # Wart pin for kornia#4013: the 2D validator reports an invalid shape and a

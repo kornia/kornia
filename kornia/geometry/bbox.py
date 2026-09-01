@@ -38,14 +38,16 @@ __all__ = [
 
 
 def validate_bbox(boxes: torch.Tensor) -> bool:
-    """Validate whether a 2D bounding box is usable. This function checks if the boxes are rectangular or not.
+    """Validate whether a 2D box has matching top and bottom edge vectors.
 
     Convention:
         Vertices use inclusive coordinates in clockwise top-left, top-right, bottom-right, bottom-left order.
-        The function accepts :math:`(B, 4, 2)` and :math:`(B, N, 4, 2)` tensors and returns ``False`` for an
-        invalid shape or a non-rectangular box; it does not raise for those inputs. The inclusive ``+1`` terms
-        cancel inside the width and height comparisons, so the returned value is the same under exclusive
-        arithmetic.
+        The function accepts :math:`(B, 4, 2)` and :math:`(B, N, 4, 2)` tensors. It returns ``False`` for an
+        invalid shape or when the top and bottom edge vectors differ by more than ``1e-4``; it does not raise
+        for those inputs. It does not check right angles, positive area, or vertex order, so any parallelogram
+        passes, including rotated rectangles and zero-area boxes. The inclusive ``+1`` terms cancel in exact
+        arithmetic, but finite-precision rounding can make the result differ from exclusive arithmetic,
+        particularly for low-precision dtypes.
 
     .. warning::
         :func:`validate_bbox3d` raises ``AssertionError`` where this function returns ``False``. That
@@ -131,7 +133,9 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         The two agree for an axis-aligned box in the documented order; for any other vertex order, including
         the rotated quadrilaterals that :func:`transform_bbox` produces, they can diverge and the result can be
         negative. :meth:`kornia.geometry.boxes.Boxes.get_boxes_shape` is reduction based and does not share
-        that behavior.
+        that behavior. The fixed-index reading also lets zero-width boxes emitted by :func:`bbox_generator`
+        report width ``0`` rather than ``2`` under a reduction; :class:`~kornia.augmentation.RandomCutMixV2`
+        relies on that behavior.
 
     .. warning::
         The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked in

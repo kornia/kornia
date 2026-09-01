@@ -54,6 +54,22 @@ class TestBoxes2D(BaseTester):
         output = Boxes.from_tensor(source, mode=mode).to_tensor(mode=mode)
         self.assert_close(output, source, atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize(
+        ("dtype", "source_values", "expected_values"),
+        [
+            (torch.bfloat16, [256.0, 256.0, 258.0, 258.0], [256.0, 256.0, 256.0, 256.0]),
+            (torch.float16, [-385.25, 0.0, 400.0, 2.0], [-385.25, 0.0, 399.75, 2.0]),
+        ],
+    )
+    def test_convention_round_trip_requires_exact_intermediate_arithmetic(self, dtype, source_values, expected_values):
+        # bfloat16 cannot represent the +/-1 intermediate at 256. The float16
+        # case can represent its offsets, but rounds the cross-zero width first.
+        source = torch.tensor([source_values], dtype=dtype)
+        output = Boxes.from_tensor(source, mode="xyxy").to_tensor("xyxy")
+        expected = torch.tensor([expected_values], dtype=dtype)
+        self.assert_close(output, expected, atol=0.0, rtol=0.0)
+        assert not torch.equal(output, source)
+
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
     def test_wart_sub_unit_extent_round_trip_boundary_4061(self, mode, device, dtype):
         # Wart pin for kornia#4061: the three converting modes place the top-right

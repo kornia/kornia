@@ -198,16 +198,17 @@ class Boxes:
         - A box is a quadrilateral of four floating-point ``(x, y)`` vertices, stored as :math:`(N, 4, 2)` or
           :math:`(B, N, 4, 2)` data. Axis-aligned boxes are built in clockwise top-left, top-right,
           bottom-right, bottom-left order, but the vertices stay arbitrary: :meth:`transform_boxes` produces
-          rotated quadrilaterals, and :meth:`compute_area` runs the shoelace formula over any four-gon.
+          rotated quadrilaterals. :meth:`compute_area` sorts vertices by angle about their arithmetic centroid
+          before applying the shoelace formula, so it assumes a convex quadrilateral.
         - The stored form is inclusive (``'vertices_plus'``): ``width = xmax - xmin + 1``. The exclusive
           ``'xyxy'``, ``'xywh'``, and ``'vertices'`` modes convert to this form in :meth:`from_tensor` and back
           in :meth:`to_tensor`. The constructor converts nothing and stores ``mode`` as a label, so
           ``Boxes(data, mode='xyxy').to_tensor()`` applies the export offsets to data that was never imported.
         - An axis-aligned box in the documented vertex order whose extent is at least one unit per axis
-          round-trips exactly in its own mode. A sub-unit extent does not: the inclusive ``- 1`` inverts the
-          stored quadrilateral, so boxes in normalized ``[0, 1]`` coordinates are silently corrupted by the
-          three converting modes. The ``'_plus'`` modes are unaffected because their ``+ 1`` cancels the
-          ``- 1``.
+          round-trips exactly in its own mode when every intermediate conversion result is exactly representable
+          in the tensor dtype. A sub-unit extent does not: the inclusive ``- 1`` inverts the stored quadrilateral,
+          so boxes in normalized ``[0, 1]`` coordinates are silently corrupted by the three converting modes.
+          The ``'_plus'`` modes are unaffected because their ``+ 1`` cancels the ``- 1``.
         - :meth:`to_tensor` reduces the stored vertices with ``amin``/``amax``, so every export is an
           axis-aligned bounding box. It is lossy for rotated boxes, and ``to_tensor('vertices_plus')`` is
           therefore not the identity on :attr:`data`.
@@ -217,7 +218,8 @@ class Boxes:
           :func:`~kornia.geometry.bbox.bbox_to_mask` fills through the bottom-right vertex's row and column, so
           both read their input as inclusive: pass them the ``'vertices_plus'`` export rather than
           ``'vertices'``, which they read as one pixel larger per axis.
-          :func:`~kornia.geometry.bbox.validate_bbox` is invariant, because its ``+1`` terms cancel;
+          :func:`~kornia.geometry.bbox.validate_bbox` is invariant in exact arithmetic, because its ``+1``
+          terms cancel;
           :func:`~kornia.geometry.bbox.nms` computes exclusive areas, and
           :func:`~kornia.geometry.bbox.transform_bbox` converts ``'xywh'`` with the exclusive
           ``xmax = xmin + width``.
@@ -232,9 +234,9 @@ class Boxes:
         The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked as a
         coordinated repair in `#3934 <https://github.com/kornia/kornia/issues/3934>`_. The sub-unit conversion
         corruption is `#4061 <https://github.com/kornia/kornia/issues/4061>`_, the cross-module export trap is
-        `#4009 <https://github.com/kornia/kornia/issues/4009>`_, and the constructor/``from_tensor`` dtype split
-        is `#4012 <https://github.com/kornia/kornia/issues/4012>`_. The current behavior is pinned in
-        ``tests/geometry/test_boxes.py``.
+        `#4009 <https://github.com/kornia/kornia/issues/4009>`_, the exclusive :func:`~kornia.geometry.bbox.nms`
+        area convention is `#4008 <https://github.com/kornia/kornia/issues/4008>`_, and the
+        constructor/``from_tensor`` dtype split is `#4012 <https://github.com/kornia/kornia/issues/4012>`_.
 
     """
 
