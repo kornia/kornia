@@ -219,6 +219,7 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         _l2_normalize(x, dim=1).sum().backward()
         assert x.grad is not None and bool((x.grad == 0).all()), x.grad
         # and a non-zero vector keeps `F.normalize`'s value and gradient
+        torch.manual_seed(0)
         y = torch.rand(3, 8, device=device, dtype=desc_dtype, requires_grad=True)
         y_ref = y.detach().clone().requires_grad_(True)
         _l2_normalize(y, dim=1).sum().backward()

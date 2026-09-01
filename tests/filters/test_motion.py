@@ -170,6 +170,7 @@ class TestMotionBlur3D(BaseTester):
             if not supports_nearest_3d_grid_sample(device, dtype):
                 if not supports_bilinear_3d_grid_sample(device, dtype):
                     pytest.skip("This device does not support a viable interpolation mode for 3D grid_sample")
+                # This test checks only the normalized kernel sum, which is independent of interpolation mode.
                 mode = "bilinear"
             angle = torch.tensor([angle], device=device, dtype=dtype).repeat(batch_size, 1)
             direction = torch.tensor([direction], device=device, dtype=dtype).repeat(batch_size)

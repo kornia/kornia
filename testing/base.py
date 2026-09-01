@@ -173,13 +173,28 @@ def _supports_kernel_probe(op: Callable[[str, torch.dtype], object], device_type
     """
     try:
         op(device_type, dtype)
-    except _UnsupportedProbeDtype:
+    except (_UnsupportedProbeDtype, NotImplementedError):
         return False
     except RuntimeError as e:
         if any(message in str(e) for message in _UNSUPPORTED_KERNEL_MSGS):
             return False
         raise
     return True
+
+
+def _bilinear_2d_grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
+    inp = _probe_zeros(device_type, dtype, 1, 1, 2, 2)
+    grid = _probe_zeros(device_type, dtype, 1, 1, 1, 2)
+    F.grid_sample(inp, grid, mode="bilinear", align_corners=True)
+
+
+def supports_bilinear_2d_grid_sample(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device supports bilinear interpolation in 2D ``grid_sample`` for ``dtype``.
+
+    Probed at runtime and cached per (device type, dtype), so tests guarded by this helper
+    auto-enable once PyTorch adds the missing interpolation kernel.
+    """
+    return _supports_kernel_probe(_bilinear_2d_grid_sample_op, device.type, dtype)
 
 
 def _bicubic_2d_grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
