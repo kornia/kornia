@@ -38,6 +38,7 @@ __all__ = [
     "find_essential",
     "motion_from_essential",
     "motion_from_essential_choose_solution",
+    "project_to_essential",
     "relative_camera_motion",
 ]
 
@@ -437,6 +438,32 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
     KORNIA_CHECK_SHAPE(K1, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(K2, ["*", "3", "3"])
     return K2.transpose(-2, -1) @ F_mat @ K1
+
+
+def project_to_essential(E_mat: torch.Tensor) -> torch.Tensor:
+    r"""Project a matrix onto the essential-matrix manifold.
+
+    An essential matrix must be of the form :math:`U \text{diag}(s, s, 0) V^T`. Matrices estimated
+    by other means (e.g. a fundamental matrix fitted with the 8-point DLT) generally violate this
+    constraint, which silently breaks tools that rely on it, such as
+    :func:`decompose_essential_matrix` and :func:`motion_from_essential`. The projection averages
+    the two largest singular values and zeroes the smallest one.
+
+    Args:
+        E_mat: The matrices to project with shape :math:`(*, 3, 3)`.
+
+    Returns:
+        The closest matrices (in Frobenius norm) satisfying the essential-matrix constraint,
+        with shape :math:`(*, 3, 3)`.
+
+    """
+    KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
+    U, S, V = _torch_svd_cast(E_mat)
+    S_new = torch.zeros_like(S)
+    mean_sv = 0.5 * (S[..., 0] + S[..., 1])
+    S_new[..., 0] = mean_sv
+    S_new[..., 1] = mean_sv
+    return U @ torch.diag_embed(S_new) @ V.mH
 
 
 def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
