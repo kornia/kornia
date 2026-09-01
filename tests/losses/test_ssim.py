@@ -65,7 +65,6 @@ class TestSSIMLoss(BaseTester):
 
         self.assert_close(op(*args), op_module(*args[:2]))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         # input data
         window_size = 3
@@ -117,7 +116,6 @@ class TestMS_SSIMLoss(BaseTester):
 
         self.assert_close(loss.sum().item(), 0.0)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         # input data
         dtype = torch.float64
@@ -196,7 +194,6 @@ class TestSSIM3DLoss(BaseTester):
 
         self.assert_close(op(*args), op_module(*args[:2]))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         # input data
         img = torch.rand(1, 1, 5, 4, 3, device=device)
