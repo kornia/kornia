@@ -194,23 +194,26 @@ class TestConvDistanceTransform(BaseTester):
     def test_offset_parenthesis_fix(self, device, dtype):
         img = torch.zeros(1, 1, 8, 4, device=device, dtype=dtype)
         img[0, 0, 1, :] = 1.0
-        out = kornia.contrib.distance_transform(img, kernel_size=3, h=0.01)
+        # exp(-1 / 0.01) is a float32 subnormal that MPS flushes to zero. h=0.1 keeps
+        # the regression's expected offset away from backend-specific underflow behavior.
+        out = kornia.contrib.distance_transform(img, kernel_size=3, h=0.1)
         expected = torch.tensor(
             [
-                [0.9998, 0.9998, 0.9998, 0.9998],
+                [0.9969, 0.9969, 0.9969, 0.9969],
                 [0.0000, 0.0000, 0.0000, 0.0000],
-                [0.9998, 0.9998, 0.9998, 0.9998],
-                [1.9998, 1.9998, 1.9998, 1.9998],
-                [2.9998, 2.9998, 2.9998, 2.9998],
-                [3.9998, 3.9998, 3.9998, 3.9998],
-                [4.9998, 4.9998, 4.9998, 4.9998],
-                [5.9998, 5.9998, 5.9998, 5.9998],
+                [0.9969, 0.9969, 0.9969, 0.9969],
+                [1.9969, 1.9969, 1.9969, 1.9969],
+                [2.9969, 2.9969, 2.9969, 2.9969],
+                [3.9969, 3.9969, 3.9969, 3.9969],
+                [4.9969, 4.9969, 4.9969, 4.9969],
+                [5.9969, 5.9969, 5.9969, 5.9969],
             ],
             device=device,
             dtype=dtype,
         )
 
-        self.assert_close(out[0, 0], expected, rtol=1e-3, atol=1e-3)
+        tolerance = 5e-3 if dtype == torch.bfloat16 else 1e-3
+        self.assert_close(out[0, 0], expected, rtol=tolerance, atol=tolerance)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         input2d = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)

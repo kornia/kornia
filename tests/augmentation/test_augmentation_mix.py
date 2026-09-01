@@ -40,6 +40,8 @@ class TestRandomMixUpV2(BaseTester):
         assert str(f) == repr, str(f)
 
     def test_random_mixup_p1(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)
         f = RandomMixUpV2(p=1.0, data_keys=["input", "class"])
 
@@ -81,6 +83,8 @@ class TestRandomMixUpV2(BaseTester):
         self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
 
     def test_random_mixup_lam0(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)
         f = RandomMixUpV2(lambda_val=(0.0, 0.0), p=1.0, data_keys=["input", "class"])
 
@@ -100,6 +104,8 @@ class TestRandomMixUpV2(BaseTester):
         self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
 
     def test_random_mixup_same_on_batch(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)
         f = RandomMixUpV2(same_on_batch=True, p=1.0, data_keys=["input", "class"])
 
@@ -145,6 +151,8 @@ class TestRandomCutMixV2(BaseTester):
         assert str(f) == expected_repr
 
     def test_random_mixup_p1(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(76)
         f = RandomCutMixV2(p=1.0, data_keys=["input", "class"], use_correct_lambda=True)
 
@@ -187,6 +195,8 @@ class TestRandomCutMixV2(BaseTester):
         self.assert_close(out_label, exp_label)
 
     def test_random_mixup_beta0(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(76)
         # beta 0 => resample 0.5 area
         # beta cannot be 0 after torch 1.8.0
@@ -220,6 +230,8 @@ class TestRandomCutMixV2(BaseTester):
         )
 
     def test_random_mixup_num2(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(76)
         f = RandomCutMixV2(num_mix=5, p=1.0, data_keys=["input", "class"], use_correct_lambda=True)
 
@@ -257,6 +269,8 @@ class TestRandomCutMixV2(BaseTester):
         )
 
     def test_random_mixup_same_on_batch(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(42)
         f = RandomCutMixV2(same_on_batch=True, p=1.0, data_keys=["input", "class"], use_correct_lambda=True)
 
@@ -310,6 +324,8 @@ class TestRandomMosaic(BaseTester):
         assert str(f) == repr
 
     def test_numerical(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(76)
         f = RandomMosaic(p=1.0, data_keys=["input", "bbox_xyxy"])
 
@@ -420,6 +436,8 @@ class TestRandomJigsaw(BaseTester):
         f(input)
 
     def test_numerical(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(22)
         f = RandomJigsaw(grid=(2, 2), p=1.0, data_keys=["input"])
 

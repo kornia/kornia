@@ -101,6 +101,8 @@ class TestRandomPerspective(BaseTester):
         assert aug.inverse(out_perspective).shape == x_data.shape
 
     def test_transform_module_should_return_expected_transform(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)
         x_data = torch.rand(1, 2, 4, 5).to(device).type(dtype)
 

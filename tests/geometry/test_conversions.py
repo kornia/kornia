@@ -704,6 +704,8 @@ class TestAngleAxisToQuaternion(BaseTester):
         # torch.float32 buffer would silently upcast them, which is exactly the half-precision
         # surface kornia treats as its own. The tolerance is set for float16, the widest of the
         # four; the float32/float64 values are pinned exactly by the numerical tests above.
+        if device.type == "mps" and input_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         axis_angle = torch.tensor((1.0, 0.0, 0.0), device=device, dtype=input_dtype)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert quaternion.dtype == input_dtype
@@ -1597,6 +1599,7 @@ class TestQuaternionToRotationMatrix(BaseTester):
                 "float16 cannot represent either 1e-13 or the default eps=1e-12 -- both round to 0, so both "
                 "cells collapse to NaN (same underflow class as kornia#3966)"
             )
+        _skip_if_mps_clamp_caching(device)
 
         normalize_quaternion = kornia.geometry.conversions.normalize_quaternion
 
@@ -3060,6 +3063,8 @@ class TestConvertPointsFromHomogeneous(BaseTester):
         # tracks the guard rather than the default. float64 only -- at float16 the default eps
         # underflows to 0 (pinned in test_wart_float16_underflowed_default_eps_flips_branches), so
         # w == -eps is not the pole there.
+        if device.type == "mps":
+            pytest.skip("MPS does not support the float64 fixture required by this regression test")
         eps = 1e-8
         points = torch.tensor([[2.0, 4.0, -eps]], device=device, dtype=torch.float64, requires_grad=True)
 

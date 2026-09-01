@@ -213,6 +213,8 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
     def test_l2_normalize_zero_vector_has_a_zero_gradient(self, device, desc_dtype):
         from kornia.core.utils import _l2_normalize
 
+        if device.type == "mps" and desc_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         x = torch.zeros(3, 8, device=device, dtype=desc_dtype, requires_grad=True)
         _l2_normalize(x, dim=1).sum().backward()
         assert x.grad is not None and bool((x.grad == 0).all()), x.grad
@@ -257,7 +259,16 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         assert out.dtype == torch.float16
         self.assert_close(out.float().norm(dim=1), torch.ones(1, device=device), atol=2e-3, rtol=0)
         assert (_l2_normalize(torch.zeros_like(x), dim=1) == 0).all()
-        for dt in (torch.bfloat16, torch.float32, torch.float64):
+        comparison_dtypes = (
+            (torch.bfloat16, torch.float32)
+            if device.type == "mps"
+            else (
+                torch.bfloat16,
+                torch.float32,
+                torch.float64,
+            )
+        )
+        for dt in comparison_dtypes:
             y = torch.rand(3, 8, device=device, dtype=dt)
             assert torch.equal(_l2_normalize(y, dim=1), torch.nn.functional.normalize(y, dim=1, eps=1e-12))
 

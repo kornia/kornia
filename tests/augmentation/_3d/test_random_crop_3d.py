@@ -39,6 +39,8 @@ class TestRandomCrop3D(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_no_padding(self, batch_size, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(42)
         input_tensor = torch.tensor(
             [
@@ -115,6 +117,8 @@ class TestRandomCrop3D(BaseTester):
 
     @pytest.mark.parametrize("padding", [1, (1, 1, 1), (1, 1, 1, 1, 1, 1)])
     def test_padding_batch(self, padding, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(42)
         batch_size = 2
         input_tensor = torch.tensor(
@@ -144,6 +148,8 @@ class TestRandomCrop3D(BaseTester):
         self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_pad_if_needed(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(42)
         input_tensor = torch.tensor([[[0.0, 1.0, 2.0]]], device=device, dtype=dtype)
         expected = torch.tensor(

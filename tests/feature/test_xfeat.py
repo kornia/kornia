@@ -97,6 +97,8 @@ class TestInterpolateSparse2d(BaseTester):
         assert out.shape == (1, 5, 32)
 
     def test_cardinality(self, device, dtype):
+        if device.type == "mps":
+            pytest.skip("MPS does not support bicubic interpolation for grid_sample")
         interp = InterpolateSparse2d("bicubic").to(device)
         B, C, H, W, N = 2, 16, 32, 48, 20
         x = torch.rand(B, C, H, W, device=device, dtype=dtype)

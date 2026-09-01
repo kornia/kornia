@@ -127,6 +127,8 @@ class TestMotionBlur3D(BaseTester):
     @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
     @pytest.mark.parametrize("params_as_tensor", [True, False])
     def test_smoke(self, shape, kernel_size, angle, direction, mode, params_as_tensor, device, dtype):
+        if device.type == "mps" and params_as_tensor and mode == "nearest":
+            pytest.skip("MPS does not support nearest interpolation for 3D grid_sample")
         B, _C, _D, _H, _W = shape
         data = torch.rand(shape, device=device, dtype=dtype)
 
@@ -157,6 +159,8 @@ class TestMotionBlur3D(BaseTester):
     @pytest.mark.parametrize("direction", [-1.0, 1.0])
     @pytest.mark.parametrize("params_as_tensor", [True, False])
     def test_get_motion_kernel3d(self, batch_size, ksize, angle, direction, params_as_tensor, device, dtype):
+        if device.type == "mps" and params_as_tensor:
+            pytest.skip("MPS does not support nearest interpolation for 3D grid_sample")
         if params_as_tensor is True:
             angle = torch.tensor([angle], device=device, dtype=dtype).repeat(batch_size, 1)
             direction = torch.tensor([direction], device=device, dtype=dtype).repeat(batch_size)

@@ -123,8 +123,10 @@ class TestSvdCast:
 class TestSolveCast:
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)
-        A = torch.randn(2, 3, 1, 4, 4, device=device, dtype=dtype)
-        B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)
+        # Keep the seeded system identical across backends; device RNGs produce different
+        # matrices, and the MPS sample can be much more poorly conditioned than the CPU one.
+        A = torch.randn(2, 3, 1, 4, 4, dtype=dtype).to(device)
+        B = torch.randn(2, 3, 1, 4, 6, dtype=dtype).to(device)
 
         X = _torch_solve_cast(A, B)
         error = torch.dist(B, A.matmul(X))

@@ -5045,6 +5045,8 @@ class TestPlanckianJitter(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_planckian_jitter_batch(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)
         input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
 
@@ -5247,6 +5249,8 @@ class TestRandomMedianBlur(BaseTester):
         assert image.shape == aug(image).shape
 
     def test_feature_median_blur(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)
 
         img = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
