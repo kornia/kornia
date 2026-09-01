@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # LICENSE file in the root directory of this source tree.
 from __future__ import annotations
 
@@ -21,9 +38,7 @@ _EXCEPTION_TYPES: dict[str, type[BaseException]] = {
 }
 
 
-def load_known_failures(
-    dtype: str, manifest_dir: Path | None = None
-) -> dict[str, type[BaseException]]:
+def load_known_failures(dtype: str, manifest_dir: Path | None = None) -> dict[str, type[BaseException]]:
     """Load exact test node IDs and their expected exception types for a CPU half dtype."""
     if dtype not in {"float16", "bfloat16"}:
         raise ValueError(f"unsupported half-precision dtype: {dtype}")
@@ -47,9 +62,7 @@ def load_known_failures(
     return failures
 
 
-def mark_known_failures(
-    items: Sequence[Any], dtypes: Sequence[str], manifest_dir: Path | None = None
-) -> None:
+def mark_known_failures(items: Sequence[Any], dtypes: Sequence[str], manifest_dir: Path | None = None) -> None:
     """Strictly xfail the complete known-failure set for selected CPU half dtypes."""
     failures: dict[str, type[BaseException]] = {}
     for dtype in dtypes:

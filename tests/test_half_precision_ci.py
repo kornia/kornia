@@ -49,8 +49,7 @@ class TestLoadKnownFailures:
         _write_manifest(
             tmp_path,
             "float16",
-            "AssertionError\ttests/a.py::test_a[cpu-float16]\n"
-            "RuntimeError\ttests/a.py::test_a[cpu-float16]\n",
+            "AssertionError\ttests/a.py::test_a[cpu-float16]\nRuntimeError\ttests/a.py::test_a[cpu-float16]\n",
         )
 
         with pytest.raises(ValueError, match="duplicate node ID"):
