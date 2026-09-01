@@ -112,6 +112,8 @@ class TestAugmentationSequential:
     def test_mixed_image_bbox_dtypes(self, device, image_dtype):
         # Regression test for https://github.com/kornia/kornia/issues/3705 and #3706:
         # bbox stays in fp32 while the image uses a half/double compute dtype.
+        if device.type == "mps" and image_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         if device.type == "cpu" and image_dtype in (torch.float16, torch.bfloat16) and torch_version_lt(2, 6, 0):
             pytest.skip("PyTorch <2.6 has no CPU Half/BFloat16 grid_sample kernel")
         torch.manual_seed(0)
