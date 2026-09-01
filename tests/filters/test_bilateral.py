@@ -31,15 +31,15 @@ class TestBilateralBlur(BaseTester):
         inp = torch.zeros(shape, device=device, dtype=dtype)
 
         # tensor sigmas -> with batch dim
-        sigma_color = torch.rand(shape[0], device=device, dtype=dtype)
-        sigma_space = torch.rand(shape[0], 2, device=device, dtype=dtype)
+        sigma_color = torch.linspace(0.5, 1.0, shape[0], device=device, dtype=dtype)
+        sigma_space = torch.stack((sigma_color + 0.5, sigma_color + 1.0), dim=-1)
         actual_A = bilateral_blur(inp, kernel_size, sigma_color, sigma_space, "reflect", color_distance_type)
         assert isinstance(actual_A, torch.Tensor)
         assert actual_A.shape == shape
 
         # float and tuple sigmas -> same sigmas across batch
         sigma_color_ = sigma_color[0].item()
-        sigma_space_ = tuple(sigma_space[0].cpu().numpy())
+        sigma_space_ = tuple(sigma_space[0].tolist())
         actual_B = bilateral_blur(inp, kernel_size, sigma_color_, sigma_space_, "reflect", color_distance_type)
         assert isinstance(actual_B, torch.Tensor)
         assert actual_B.shape == shape

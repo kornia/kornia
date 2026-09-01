@@ -1528,20 +1528,54 @@ class TestTransformLAFs(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     @pytest.mark.parametrize("num_points", [2, 3, 5])
     def test_transform_points(self, batch_size, num_points, device, dtype):
-        # generate input data
-        eye_size = 3
-        lafs_src = torch.rand(batch_size, num_points, 2, 3, device=device, dtype=dtype)
+        laf_bank = torch.tensor(
+            [[[0.4, 0.1, 1.0], [-0.2, 0.3, 2.0]], [[-0.3, 0.2, -1.0], [0.1, 0.5, 0.5]]],
+            device=device,
+            dtype=dtype,
+        )
+        homography_bank = torch.tensor(
+            [
+                [[1.2, 0.1, 0.5], [-0.2, 0.9, 0.3], [0.02, -0.01, 1.0]],
+                [[0.8, -0.15, -0.2], [0.05, 1.1, 0.4], [-0.015, 0.025, 1.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        # Closed-form projection of the two LAFs by the two homographies, generated in float64:
+        # p' = (H[:2, :2] @ p + H[:2, 2]) / (H[2, :2] @ p + H[2, 2]).
+        expected_bank = torch.tensor(
+            [
+                [
+                    [[0.4366336634, 0.1520520521, 1.9], [-0.2762376238, 0.2521521522, 1.9]],
+                    [
+                        [-0.3663911846, 0.2970568104, -0.6666666667],
+                        [0.1620046620, 0.4219449271, 0.9743589744],
+                    ],
+                ],
+                [
+                    [
+                        [0.3449105525, 0.0319508833, 0.2898550725],
+                        [-0.1678083484, 0.3070486851, 2.5603864734],
+                    ],
+                    [
+                        [-0.2394165288, 0.0915517577, -1.0462287105],
+                        [0.0859048943, 0.5319950165, 0.8759124088],
+                    ],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        batch_indices = torch.arange(batch_size, device=device) % len(homography_bank)
+        point_indices = torch.arange(num_points, device=device) % len(laf_bank)
+        lafs_src = laf_bank[point_indices].unsqueeze(0).expand(batch_size, -1, -1, -1)
+        dst_homo_src = homography_bank[batch_indices]
+        expected = expected_bank[batch_indices[:, None], point_indices[None, :]]
 
-        dst_homo_src = create_random_homography(lafs_src, eye_size)
-        # transform the points from dst to ref
-        lafs_dst = kornia.feature.perspective_transform_lafs(dst_homo_src, lafs_src)
+        actual = kornia.feature.perspective_transform_lafs(dst_homo_src, lafs_src)
 
-        # transform the points from ref to dst
-        src_homo_dst = torch.inverse(dst_homo_src)
-        lafs_dst_to_src = kornia.feature.perspective_transform_lafs(src_homo_dst, lafs_dst)
-
-        # projected should be equal as initial
-        self.assert_close(lafs_src, lafs_dst_to_src)
+        half_tolerance = 3 * torch.finfo(dtype).eps if dtype in (torch.float16, torch.bfloat16) else None
+        self.assert_close(actual, expected, atol=half_tolerance, rtol=half_tolerance)
 
     def test_gradcheck(self, device):
         # generate input data

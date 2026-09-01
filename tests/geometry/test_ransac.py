@@ -423,9 +423,11 @@ class TestRANSACEssential(BaseTester):
         torch.random.manual_seed(0)
         M = torch.rand(4, 3, 3, device=device, dtype=dtype)
         E = project_to_essential(M)
-        sv = torch.linalg.svdvals(E)
+        svd_input = E.float() if E.dtype in (torch.float16, torch.bfloat16) else E
+        sv = torch.linalg.svdvals(svd_input)
         assert torch.all((sv[..., 0] / sv[..., 1] - 1.0).abs() < 1e-2)
-        assert torch.all((sv[..., 2] / sv[..., 0]).abs() < 1e-4)
+        zero_tolerance = max(1e-4, torch.finfo(E.dtype).eps)
+        assert torch.all((sv[..., 2] / sv[..., 0]).abs() < zero_tolerance)
 
     @pytest.mark.skip(reason="try except block in python version")
     def test_jit(self, device, dtype):

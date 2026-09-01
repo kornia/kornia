@@ -219,13 +219,13 @@ class TestGaussianBlur2d(BaseTester):
     def test_smoke(self, shape, kernel_size, separable, device, dtype):
         B, C, H, W = shape
         data = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        sigma_tensor = torch.rand(B, 2, device=device, dtype=dtype)
+        sigma_tensor = torch.rand(B, 2, device=device, dtype=dtype) + 0.1
 
         actual_A = gaussian_blur2d(data, kernel_size, sigma_tensor, "reflect", separable)
         assert isinstance(actual_A, torch.Tensor)
         assert actual_A.shape == shape
 
-        sigma = tuple(sigma_tensor[0, ...].cpu().numpy().tolist())
+        sigma = tuple(sigma_tensor[0, ...].tolist())
         actual_B = gaussian_blur2d(data, kernel_size, sigma, "reflect", separable)
         assert isinstance(actual_B, torch.Tensor)
         assert actual_B.shape == shape
