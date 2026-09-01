@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-# LICENSE file in the root directory of this source tree.
 from __future__ import annotations
 
 from pathlib import Path
