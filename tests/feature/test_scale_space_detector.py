@@ -29,7 +29,7 @@ from kornia.feature.scale_space_detector import (
 )
 from kornia.geometry.subpix import ConvQuadInterp3d
 
-from testing.base import BaseTester, supports_conv2d, supports_grid_sample, supports_replicate_padding, supports_topk
+from testing.base import BaseTester, supports_conv2d, supports_replicate_padding, supports_topk
 
 
 def _require_affine_orientation_kernels(device: torch.device, dtype: torch.dtype) -> None:
@@ -40,7 +40,6 @@ def _require_affine_orientation_kernels(device: torch.device, dtype: torch.dtype
     probes = (
         ("replicate-padding", supports_replicate_padding),
         ("conv2d", supports_conv2d),
-        ("grid-sample", supports_grid_sample),
         ("topk", supports_topk),
     )
     for name, probe in probes:

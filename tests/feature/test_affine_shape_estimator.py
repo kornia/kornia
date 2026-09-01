@@ -24,7 +24,7 @@ from kornia.feature.affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeE
 from kornia.feature.laf import make_upright
 from kornia.filters import get_gaussian_kernel2d
 
-from testing.base import BaseTester, supports_grid_sample
+from testing.base import BaseTester
 
 
 class DegenerateShape(torch.nn.Module):
@@ -201,9 +201,6 @@ class TestLAFAffineShapeEstimator(BaseTester):
         # Keep the end-to-end assertion to pin the public finite-value and finite-gradient boundary.
         if device.type == "mps":
             pytest.skip("MPS autocast changes the effective dtype")
-        if not supports_grid_sample(device, dtype):
-            # Patch extraction still runs in the input dtype; the moment estimator promotes to float32.
-            pytest.skip(f"no float16 grid_sample kernel on {device.type}")
         y = torch.linspace(0, 1, 32, device=device, dtype=dtype).view(32, 1).expand(32, 32)
         x = torch.linspace(0, 1e-4, 32, device=device, dtype=dtype).view(1, 32).expand(32, 32)
         img = (y + x).view(1, 1, 32, 32).clone().requires_grad_()
@@ -223,8 +220,6 @@ class TestLAFAffineShapeEstimator(BaseTester):
             pytest.skip("half-precision regression test")
         if device.type == "mps":
             pytest.skip("MPS autocast changes the effective dtype")
-        if not supports_grid_sample(device, dtype):
-            pytest.skip(f"no {dtype} grid_sample kernel on {device.type}")
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
         laf = torch.tensor([[[[0.0, 0.0, 16.0], [0.0, 0.0, 16.0]]]], device=device, dtype=dtype, requires_grad=True)
         aff = LAFAffineShapeEstimator(32, DegenerateShape(), preserve_orientation=preserve_orientation).to(
@@ -289,8 +284,6 @@ class TestLAFAffineShapeEstimator(BaseTester):
 
 class TestLAFAffNetShapeEstimator(BaseTester):
     def test_singular_prediction_falls_back_upright(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16) and not supports_grid_sample(device, dtype):
-            pytest.skip(f"no {dtype} grid_sample kernel on {device.type}")
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
         laf = torch.tensor([[[[0.0, 8.0, 16.0], [-8.0, 0.0, 16.0]]]], device=device, dtype=dtype)
         aff = LAFAffNetShapeEstimator(preserve_orientation=False).to(device, dtype)
@@ -304,8 +297,6 @@ class TestLAFAffNetShapeEstimator(BaseTester):
             pytest.skip("half-precision regression test")
         if device.type == "mps":
             pytest.skip("MPS autocast changes the effective dtype")
-        if not supports_grid_sample(device, dtype):
-            pytest.skip(f"no {dtype} grid_sample kernel on {device.type}")
         img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
         laf = torch.tensor([[[[0.0, 0.0, 16.0], [0.0, 0.0, 16.0]]]], device=device, dtype=dtype, requires_grad=True)
         aff = LAFAffNetShapeEstimator(pretrained=False, preserve_orientation=preserve_orientation).to(device, dtype)

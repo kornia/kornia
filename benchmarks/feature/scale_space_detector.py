@@ -281,9 +281,10 @@ class KeyNetExtractor(nn.Module):
             # model and nms run at 6 different image sizes → dynamic=True avoids recompilation
             det.model = torch.compile(det.model, dynamic=True)
             det.nms = torch.compile(det.nms, dynamic=True)
-            # aff/ori/descriptor NOT compiled: extract_patches_from_pyramid (laf.py) contains
-            # an .item() call inside a while-loop that creates graph breaks, causing extra
-            # sub-graphs that need additional warmup and show as a spike on the first eval pair.
+            # aff/ori/descriptor NOT compiled: extract_patches_from_pyramid traces as one graph
+            # now, but each (num-LAF, patch-size) pair it is called with would still specialize
+            # into its own graph, needing additional warmup that shows as a spike on the first
+            # eval pair.
 
     @torch.no_grad()
     def forward(self, img: torch.Tensor):
