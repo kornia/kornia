@@ -105,10 +105,12 @@ class PatchDominantGradientOrientation(nn.Module):
                 f"input shape should be must be [Bx1x{self.patch_size}x{self.patch_size}]. Got {patch.size()}"
             )
         # cast into a local; rebinding `self.weighting` would make the buffer's dtype/device depend on
-        # whichever tensor was passed last, and is a `torch.compile` guard hazard. (The `self.angular_smooth`
-        # line below rebinds a submodule to itself -- `nn.Module.to` is in-place -- which is a different case.)
+        # whichever tensor was passed last, and is a `torch.compile` guard hazard.
         weighting = self.weighting.to(patch.dtype).to(patch.device)
-        self.angular_smooth = self.angular_smooth.to(patch.dtype).to(patch.device)
+        angular_smooth_weight = self.angular_smooth.weight.to(patch.dtype).to(patch.device)
+        angular_smooth_bias = self.angular_smooth.bias
+        if angular_smooth_bias is not None:
+            angular_smooth_bias = angular_smooth_bias.to(patch.dtype).to(patch.device)
         grads: torch.Tensor = self.gradient(patch)
         # unpack the edges
         gx: torch.Tensor = grads[:, :, 0]
@@ -134,7 +136,23 @@ class PatchDominantGradientOrientation(nn.Module):
             )
             ang_bins_list.append(ang_bins_i)
         ang_bins = torch.cat(ang_bins_list, 1).view(-1, 1, self.num_ang_bins)
-        ang_bins = self.angular_smooth(ang_bins).view(-1, self.num_ang_bins)
+        angular_smooth_padding = self.angular_smooth.padding
+        if self.angular_smooth.padding_mode != "zeros":
+            ang_bins = F.pad(
+                ang_bins,
+                (angular_smooth_padding[0], angular_smooth_padding[0]),
+                mode=self.angular_smooth.padding_mode,
+            )
+            angular_smooth_padding = (0,)
+        ang_bins = F.conv1d(
+            ang_bins,
+            angular_smooth_weight,
+            angular_smooth_bias,
+            self.angular_smooth.stride,
+            angular_smooth_padding,
+            self.angular_smooth.dilation,
+            self.angular_smooth.groups,
+        ).view(-1, self.num_ang_bins)
         values, indices = ang_bins.max(1)
         indices_left = (self.num_ang_bins + indices - 1) % self.num_ang_bins
         indices_right = (indices + 1) % self.num_ang_bins

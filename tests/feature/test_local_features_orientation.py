@@ -183,6 +183,39 @@ class TestOrientationKernelBuffer(BaseTester):
         mod(torch.rand(2, 1, 32, 32, dtype=torch.float64))
         assert (mod.weighting.dtype, mod.weighting.device) == before
 
+    def test_forward_uses_input_dtype_without_mutating_angular_smooth(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        torch.manual_seed(0)
+        patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
+        mod = PatchDominantGradientOrientation(32).to(device)
+        ref = PatchDominantGradientOrientation(32).to(device, torch.float64)
+        ref.load_state_dict(mod.state_dict())
+
+        out = mod(patches)
+        with torch.no_grad():
+            expected = ref(patches)
+
+        assert out.dtype == torch.float64
+        assert torch.equal(out, expected)
+        assert mod.angular_smooth.weight.dtype == torch.float32
+        assert mod.angular_smooth.weight.device == device
+        out.sum().backward()
+        assert mod.angular_smooth.weight.grad is not None
+
+    def test_forward_uses_input_device_without_mutating_angular_smooth(self, device):
+        if device.type == "cpu":
+            pytest.skip("device mismatch requires a non-CPU test device")
+        if not supports_replicate_padding(device, torch.float32):
+            pytest.skip(f"no float32 replicate-pad kernel on {device.type}")
+        patches = torch.rand(2, 1, 32, 32, device=device)
+        mod = PatchDominantGradientOrientation(32)
+
+        out = mod(patches)
+
+        assert out.device == device
+        assert mod.angular_smooth.weight.device == torch.device("cpu")
+
 
 class TestOriNet(BaseTester):
     def test_shape(self, device):

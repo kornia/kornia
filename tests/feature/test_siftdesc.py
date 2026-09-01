@@ -25,7 +25,7 @@ from kornia.feature.siftdesc import (
     get_sift_pooling_kernel,
 )
 
-from testing.base import BaseTester, supports_replicate_padding
+from testing.base import BaseTester, supports_conv2d, supports_replicate_padding
 
 
 @pytest.mark.parametrize("ksize", [5, 13, 25])
@@ -123,6 +123,39 @@ class TestSIFTDescriptorKernelBuffer(BaseTester):
 
         self.assert_close(mod.pk.weight, expected_pooling)
         self.assert_close(mod.gk, expected_weighting)
+
+    def test_forward_uses_input_dtype_without_mutating_pooling_layer(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        torch.manual_seed(0)
+        patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
+        mod = SIFTDescriptor(32).to(device)
+        ref = SIFTDescriptor(32).to(device, torch.float64)
+        ref.load_state_dict(mod.state_dict())
+
+        out = mod(patches)
+        with torch.no_grad():
+            expected = ref(patches)
+
+        assert out.dtype == torch.float64
+        assert torch.equal(out, expected)
+        assert mod.pk.weight.dtype == torch.float32
+        assert mod.pk.weight.device == device
+        out.sum().backward()
+        assert mod.pk.weight.grad is not None
+
+    def test_forward_uses_input_device_without_mutating_pooling_layer(self, device):
+        if device.type == "cpu":
+            pytest.skip("device mismatch requires a non-CPU test device")
+        if not (supports_replicate_padding(device, torch.float32) and supports_conv2d(device, torch.float32)):
+            pytest.skip(f"no float32 SIFT kernels on {device.type}")
+        patches = torch.rand(2, 1, 32, 32, device=device)
+        mod = SIFTDescriptor(32)
+
+        out = mod(patches)
+
+        assert out.device == device
+        assert mod.pk.weight.device == torch.device("cpu")
 
 
 class TestSIFTConstantPatchIsFinite(BaseTester):
@@ -271,11 +304,48 @@ class TestDenseSIFTDescriptor(BaseTester):
 
         if device.type != "mps":
             mod = DenseSIFTDescriptor()
+            before = (mod.bin_pooling_kernel.weight.dtype, mod.bin_pooling_kernel.weight.device)
             mod(torch.rand(1, 1, 8, 8, device=device, dtype=torch.float64))
             kernel = mod.get_pooling_kernel()
-            assert kernel.dtype == torch.float64
-            assert kernel.device == device
+            assert (kernel.dtype, kernel.device) == before
             self.assert_close(kernel, mod.bin_pooling_kernel.weight)
+
+    def test_forward_uses_input_dtype_without_mutating_convolution_layers(self, device):
+        if device.type == "mps":
+            pytest.skip("float64 is unavailable on MPS")
+        torch.manual_seed(0)
+        img = torch.rand(1, 1, 8, 8, device=device, dtype=torch.float64)
+        mod = DenseSIFTDescriptor().to(device)
+        ref = DenseSIFTDescriptor().to(device, torch.float64)
+        ref.load_state_dict(mod.state_dict())
+
+        out = mod(img)
+        with torch.no_grad():
+            expected = ref(img)
+
+        assert out.dtype == torch.float64
+        assert torch.equal(out, expected)
+        assert mod.bin_pooling_kernel.weight.dtype == torch.float32
+        assert mod.PoolingConv.weight.dtype == torch.float32
+        assert mod.bin_pooling_kernel.weight.device == device
+        assert mod.PoolingConv.weight.device == device
+        out.sum().backward()
+        assert mod.bin_pooling_kernel.weight.grad is not None
+        assert mod.PoolingConv.weight.grad is not None
+
+    def test_forward_uses_input_device_without_mutating_convolution_layers(self, device):
+        if device.type == "cpu":
+            pytest.skip("device mismatch requires a non-CPU test device")
+        if not (supports_replicate_padding(device, torch.float32) and supports_conv2d(device, torch.float32)):
+            pytest.skip(f"no float32 DenseSIFT kernels on {device.type}")
+        img = torch.rand(1, 1, 8, 8, device=device)
+        mod = DenseSIFTDescriptor()
+
+        out = mod(img)
+
+        assert out.device == device
+        assert mod.bin_pooling_kernel.weight.device == torch.device("cpu")
+        assert mod.PoolingConv.weight.device == torch.device("cpu")
 
     def test_instances_do_not_share_buffer_storage(self, device):
         """Instances must not share storage for `_poolingconv_weight` (see #4068).
