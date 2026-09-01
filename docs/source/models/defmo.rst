@@ -1,5 +1,9 @@
-DeFMO (video)
-.............
+DeFMO
+=====
+
+.. rst-class:: kornia-badges
+
+:bdg-primary:`Enhance` :bdg-primary:`Deblurring` :bdg-secondary:`Apache-2.0`
 
 .. card::
     :link: https://paperswithcode.com/paper/defmo-deblurring-and-shape-recovery-of-fast

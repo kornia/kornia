@@ -2,62 +2,40 @@ kornia.metrics
 ==============
 
 .. meta::
-   :name: description
-   :content: "The kornia.metrics module provides a variety of metrics to evaluate the performance of deep learning models in computer vision tasks. It includes metrics for classification, segmentation, detection, image quality, and optical flow. With functions such as accuracy, mean IoU, PSNR, and AEPE, this module facilitates efficient monitoring and evaluation of models during training, making it a valuable tool for model performance assessment."
+   :description: The kornia.metrics module provides a variety of metrics to evaluate the performance of deep learning models in computer vision tasks. It includes metrics for classification, segmentation, detection, image quality, and optical flow. With functions such as accuracy, mean IoU, PSNR, and AEPE, this module facilitates efficient monitoring and evaluation of models during training, making it a valuable tool for model performance assessment.
 
 .. currentmodule:: kornia.metrics
 
-Module containing metrics for training networks
+Metrics to monitor and evaluate vision models during training and validation.
 
-Classification
---------------
+.. list-table::
+   :widths: 30 70
 
-.. autofunction:: accuracy
+   * - :doc:`metrics.classification`
+     - Top-k accuracy.
+   * - :doc:`metrics.segmentation`
+     - Confusion matrix and mean IoU.
+   * - :doc:`metrics.detection`
+     - Mean average precision and box IoU.
+   * - :doc:`metrics.image_quality`
+     - PSNR and SSIM in 2D and 3D.
+   * - :doc:`metrics.optical_flow`
+     - Average end-point error.
+   * - :doc:`metrics.stereo`
+     - Disparity error metrics.
+   * - :doc:`metrics.pose`
+     - Rotation and translation errors and AUC.
+   * - :doc:`metrics.monitoring`
+     - Running averages for training loops.
 
-Segmentation
-------------
+.. toctree::
+   :hidden:
 
-.. autofunction:: confusion_matrix
-.. autofunction:: mean_iou
-
-Detection
----------
-
-.. autofunction:: mean_average_precision
-.. autofunction:: mean_iou_bbox
-
-Image Quality
--------------
-
-.. autofunction:: psnr
-.. autofunction:: ssim
-.. autofunction:: ssim3d
-.. autoclass:: SSIM
-.. autoclass:: SSIM3D
-
-Optical Flow
--------------
-
-.. autofunction:: aepe
-.. autoclass:: AEPE
-
-Stereo
-------
-
-.. autofunction:: mean_absolute_disparity_error
-.. autofunction:: root_mean_squared_disparity_error
-.. autofunction:: mean_bad_pixel_error
-
-Pose
-----
-
-.. autofunction:: angle_error_mat
-.. autofunction:: angle_error_vec
-.. autofunction:: translation_ate
-.. autofunction:: pose_errors
-.. autofunction:: auc_from_errors
-
-Monitoring
-----------
-
-.. autoclass:: AverageMeter
+   classification <metrics.classification>
+   segmentation & iou <metrics.segmentation>
+   detection <metrics.detection>
+   image quality <metrics.image_quality>
+   optical flow <metrics.optical_flow>
+   stereo <metrics.stereo>
+   pose <metrics.pose>
+   monitoring <metrics.monitoring>

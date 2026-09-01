@@ -1,188 +1,259 @@
-
-.. image:: https://github.com/kornia/data/raw/main/kornia_banner_pixie.png
-   :align: center
-
-State-of-the-art and curated Computer Vision algorithms for AI.
-
-Kornia AI is on the mission to leverage and democratize the next generation of Computer Vision tools and Deep Learning libraries
-within the context of an Open Source community.
-
-.. code:: python
-
-   >>> import kornia.geometry as K
-   >>> registrator = K.ImageRegistrator('similarity')
-   >>> model = registrator.register(img1, img2)
-
-Ready to use with state-of-the art Deep Learning models:
-
-DexiNed edge detection model.
-
-.. code-block:: python
-
-      import kornia
-      from kornia.contrib import EdgeDetectorBuilder
-
-      image = kornia.io.get_sample_images()[0][None]
-      model = EdgeDetectorBuilder.build()
-      model.save(image)
-
-RTDETRDetector for object detection.
-
-.. code-block:: python
-
-      import kornia
-      from kornia.contrib import RTDETRDetectorBuilder
-
-      image = kornia.io.get_sample_images()[0][None]
-      model = RTDETRDetectorBuilder.build()
-      model.save(image)
-
-BoxMotTracker for object tracking.
-
-.. code-block:: python
-
-      import kornia
-      from kornia.contrib import BoxMotTracker
-
-      image = kornia.io.get_sample_images()[0][None]
-      model = BoxMotTracker()
-      for i in range(4):
-         model.update(image)
-      model.save(image)
-
-Vision Transformer for image classification.
-
-.. code:: python
-
-   >>> import torch.nn as nn
-   >>> from kornia.models.vit import VisionTransformer
-   >>> classifier = nn.Sequential(
-   ...   VisionTransformer(image_size=224, patch_size=16),
-   ...   nn.Linear(768, 1000),  # Example: 768 is the default hidden_dim, 1000 is num_classes
-   ... )
-   >>> logits = classifier(img)    # BxN
-   >>> scores = logits.argmax(-1)  # B
-
-Multi-framework support
------------------------
-
-You can now use Kornia with `NumPy <https://numpy.org/>`_, `TensorFlow <https://www.tensorflow.org/>`_, and `JAX <https://jax.readthedocs.io/en/latest/index.html>`_.
-
-.. code:: python
-
-  >>> import kornia
-  >>> tf_kornia = kornia.to_tensorflow()
+.. meta::
+   :description: Kornia is the open-source geometric computer vision library for Spatial AI and robotics, built on PyTorch: batched, GPU-ready and differentiable image transforms, filters, camera geometry, data augmentation and curated models for detection, segmentation and image matching.
 
 .. raw:: html
 
-   <p align="center">
-        Powered by
-        <a href="https://github.com/ivy-llc/ivy" target="_blank">
-            <div class="dark-light" style="display: block;" align="center">
-                <img class="dark-light" width="15%" src="https://raw.githubusercontent.com/ivy-llc/assets/refs/heads/main/assets/logos/ivy-long.svg"/>
-            </div>
-        </a>
-    </p>
+   <style>
+     /* Landing page only: no "On this page" rail, no header toggle for it. */
+     #pst-secondary-sidebar, dialog#pst-secondary-sidebar-modal,
+     button.sidebar-toggle.secondary-toggle { display: none !important; }
+     /* Hairline separator above each section, matching the link board's line. */
+     .bd-article section,
+     .kornia-sponsor-notice,
+     .kornia-gallery {
+       border-top: 1px solid var(--pst-color-border);
+       margin-top: 3rem;
+       padding-top: 1.75rem;
+     }
+   </style>
 
-Join the community
-------------------
+.. container:: kornia-hero
 
-- Join our social network communities with 1.8k+ members:
-   - `Twitter <https://twitter.com/kornia_foss>`_: we share recent research and news with our community.
-   - `Discord <https://discord.gg/HfnywwpBnD>`_: talk with people who use and develop kornia.
-- Subscribe to our `YouTube channel <https://www.youtube.com/channel/UCI1SE1Ij2Fast5BSKxoa7Ag>`_ to get the latest video demos.
+   .. raw:: html
 
-----
+      <h1 class="kornia-hero__title">Computer vision for<br>
+      <span class="kornia-accent">robotics &amp; Spatial AI.</span></h1>
+      <p class="kornia-hero__tagline">The geometric computer vision library for PyTorch —
+      batched, differentiable, GPU-accelerated, with curated pretrained models.</p>
+
+   .. container:: kornia-hero-actions
+
+      .. button-link:: get-started/installation.html
+         :color: primary
+
+         Get started
+
+      .. button-link:: api.html
+         :color: secondary
+         :outline:
+
+         API reference
+
+      .. button-link:: https://github.com/kornia/kornia
+         :color: secondary
+         :outline:
+
+         :octicon:`mark-github` GitHub
+
+      .. button-link:: https://github.com/kornia/kornia-rs
+         :color: secondary
+         :outline:
+
+         :octicon:`cpu` Get kornia-rs for edge computing
+
+Why Kornia?
+-----------
+
+.. tab-set::
+   :class: kornia-why-tabs
+
+   .. tab-item:: :octicon:`zap` GPU-accelerated
+
+      Batched operators run on whatever device the tensor lives on — no flags, no per-image loops.
+
+      .. code-block:: python
+         :emphasize-lines: 1
+
+         images = torch.rand(64, 3, 224, 224, device="cuda")  # the whole batch on the GPU
+         blurred = kornia.filters.gaussian_blur2d(images, (5, 5), (1.5, 1.5))
+         edges = kornia.filters.sobel(blurred)
+
+      .. rst-class:: kornia-proof
+
+      **1,124 → 3,153 images/s** — the same ``RandomGaussianBlur`` at batch 32 on the same Apple M1,
+      CPU vs GPU, from the committed :doc:`benchmark runs <get-started/performance>`.
+
+      :doc:`See details <get-started/gpu-acceleration>` :octicon:`arrow-right`
+
+   .. tab-item:: :octicon:`git-compare` Differentiable
+
+      Gradients flow through every operator, so vision ops can live inside your model or your loss.
+
+      .. code-block:: python
+         :emphasize-lines: 5
+
+         prediction = torch.rand(2, 3, 64, 64, requires_grad=True)
+         target = torch.rand(2, 3, 64, 64)
+
+         loss = kornia.losses.ssim_loss(prediction, target, window_size=5)
+         loss.backward()  # gradients flow through the SSIM graph
+
+      .. figure:: _static/img/registration.gif
+         :width: 360
+         :alt: Two images progressively aligned by gradient descent
+
+         Image registration by pure gradient descent — no labels, no training data.
+
+      :doc:`See details <get-started/differentiability>` :octicon:`arrow-right`
+
+   .. tab-item:: :octicon:`package` Production-ready
+
+      Port any kornia module to ONNX, chain it with pre-exported operators and models, and run the
+      combined graph wherever ONNX Runtime runs — no Python, no PyTorch.
+
+      .. code-block:: python
+         :emphasize-lines: 1,8
+
+         torch.onnx.export(  # port any kornia module to ONNX...
+             kornia.color.RgbToGrayscale(), torch.rand(1, 3, 256, 512), "gray.onnx",
+             input_names=["input"], output_names=["output"],
+             opset_version=17, dynamo=False,
+         )
+
+         pipeline = ONNXSequential(  # ...and chain it with ops from the Hugging Face Hub
+             "gray.onnx",
+             "hf://operators/kornia.geometry.transform.affwarp.Resize_512x512",
+         )
+         outputs = pipeline(np.random.randn(1, 3, 256, 512).astype(np.float32))
+         pipeline.export("combined.onnx")  # one deployable file
+
+      .. rst-class:: kornia-proof
+
+      **0.015 s vs 0.177 s** per inference — the same exported RT-DETR pipeline on CUDA vs CPU,
+      switched with a single ``as_cuda()`` call.
+
+      :doc:`See details <get-started/onnx>` :octicon:`arrow-right`
+
+   .. tab-item:: :octicon:`share-android` Multi-framework
+
+      One API, four frameworks: PyTorch natively, plus TensorFlow, JAX and NumPy through Ivy.
+
+      .. code-block:: python
+         :emphasize-lines: 1
+
+         tf_kornia = kornia.to_tensorflow()  # also: kornia.to_jax(), kornia.to_numpy()
+
+         rgb = tf.random.normal((1, 3, 224, 224))
+         gray = tf_kornia.color.rgb_to_grayscale(rgb)
+
+      .. rst-class:: kornia-proof
+
+      The first call transpiles and caches each function; later calls run at approximately
+      the speed of the native kornia op.
+
+      :doc:`See details <get-started/multi-framework-support>` :octicon:`arrow-right`
+
+.. raw:: html
+
+   <p class="kornia-sponsor-notice">Considering sponsoring? —
+   <a href="community/sponsor.html">Inquire now</a></p>
+
+.. grid:: 1 2 2 3
+   :gutter: 3
+   :class-container: kornia-cards kornia-gallery
+
+   .. grid-item-card:: Warp perspective
+      :img-top: _static/img/warp_affine.png
+      :link: geometry.transform
+      :link-type: doc
+
+      ``kornia.geometry`` — rotate, warp and register images with full transform matrices.
+
+   .. grid-item-card:: Augment everything
+      :img-top: _static/img/AugmentationSequential.png
+      :link: augmentation
+      :link-type: doc
+
+      ``kornia.augmentation`` — one sampled transform, applied to image, mask, boxes and keypoints alike.
+
+   .. grid-item-card:: Detect edges
+      :img-top: _static/img/canny.png
+      :link: filters.edge_detection
+      :link-type: doc
+
+      ``kornia.filters`` — Canny, Sobel and Laplacian, differentiable and batched.
+
+   .. grid-item-card:: Match images
+      :img-top: _static/img/DISK.png
+      :link: feature
+      :link-type: doc
+
+      ``kornia.feature`` — DISK, ALIKED, LoFTR and LightGlue find and match keypoints.
+
+   .. grid-item-card:: Recolor and map
+      :img-top: _static/img/apply_colormap.png
+      :link: color
+      :link-type: doc
+
+      ``kornia.color`` — RGB, HSV, Lab, YUV and friends, plus color maps for heat and depth.
+
+   .. grid-item-card:: Enhance and equalize
+      :img-top: _static/img/equalize_clahe.png
+      :link: enhance
+      :link-type: doc
+
+      ``kornia.enhance`` — CLAHE, histogram equalization, gamma and contrast, all trainable.
+
+The rest lives in the :doc:`API reference <api>` — losses and metrics, morphology, camera geometry, image I/O —
+and :doc:`Conventions & pitfalls <get-started/conventions>` is the one page to read before writing code.
+
+Ready-to-use models
+-------------------
+
+Pretrained models for detection, segmentation and matching — ready in one line:
+
+.. code-block:: python
+
+   import kornia
+   from kornia.contrib import RTDETRDetectorBuilder
+
+   image = kornia.io.get_sample_images()[0][None]
+   detector = RTDETRDetectorBuilder.build()
+   detections = detector(image)  # list of (D, 6) tensors: class id, score, x, y, w, h
+
+.. button-link:: models/index.html
+   :color: primary
+   :outline:
+
+   Browse the model zoo :octicon:`arrow-right`
+
+.. raw:: html
+
+   <div class="kornia-linkboard">
+     <div>
+       <p class="kornia-linkboard__title">Docs</p>
+       <a href="applications/image_augmentations.html">Quick Start</a>
+       <a href="https://kornia.github.io/tutorials/">Tutorial</a>
+       <a href="api.html">API</a>
+     </div>
+     <div>
+       <p class="kornia-linkboard__title">Support</p>
+       <a href="community/sponsor.html">Sponsor</a>
+     </div>
+     <div>
+       <p class="kornia-linkboard__title">About</p>
+       <a href="get-started/governance.html">Team</a>
+       <a href="community/community.html">Community Guide</a>
+       <a href="https://github.com/kornia/kornia/blob/main/CODE_OF_CONDUCT.md">Conduct</a>
+     </div>
+     <div>
+       <p class="kornia-linkboard__title">Official Links</p>
+       <a href="https://twitter.com/kornia_foss">Twitter</a>
+       <a href="https://www.linkedin.com/company/kornia/">LinkedIn</a>
+       <span class="kornia-linkboard__soon">Newsletter <em>(under construction)</em></span>
+     </div>
+     <div>
+       <p class="kornia-linkboard__title">Official libs</p>
+       <a href="https://github.com/kornia/kornia">kornia</a>
+       <a href="https://github.com/kornia/kornia-rs">kornia-rs</a>
+     </div>
+   </div>
 
 .. toctree::
-   :caption: GET STARTED
    :hidden:
 
-   get-started/introduction
-   get-started/highlights
-   get-started/conventions
-   get-started/stability
-   get-started/performance
-   get-started/installation
-   get-started/precision
-   get-started/about
-   Tutorials <https://kornia.github.io/tutorials/>
-   get-started/multi-framework-support
-   OpenCV AI Kit <https://docs.luxonis.com/en/latest/pages/tutorials/creating-custom-nn-models/#kornia>
-   get-started/governance
-
-.. toctree::
-   :caption: API REFERENCE
-   :maxdepth: 2
-   :hidden:
-
-   augmentation
-   color
-   contrib
-   core
-   enhance
-   feature
-   filters
-   geometry
-   sensors
-   io
-   image
-   losses
-   models
-   metrics
-   morphology
-   onnx
-   tracking
-
-.. toctree::
-   :caption: KORNIA APPLICATIONS
-   :hidden:
-
-   applications/intro
-   applications/visual_prompting
-   applications/face_detection
-   applications/image_augmentations
-   applications/image_matching
-   applications/image_stitching
-   applications/image_registration
-   applications/image_denoising
-
-.. toctree::
-   :caption: KORNIA MODELS
-   :hidden:
-
-   models/efficient_vit
-   models/rt_detr
-   models/segment_anything
-   models/mobile_sam
-   models/yunet
-   models/vit
-   models/vit_mobile
-   models/tiny_vit
-   models/loftr
-   models/defmo
-   models/hardnet
-   models/affnet
-   models/sold2
-   models/dexined
-
-.. toctree::
-   :caption: SUPPORT
-   :hidden:
-
-   Issue tracker <https://github.com/kornia/kornia/issues>
-   Discord community <https://discord.gg/HfnywwpBnD>
-   LibreCV community <https://librecv.org>
-   Twitter @kornia_foss <https://twitter.com/kornia_foss>
-   community/chinese
-   Kornia Youtube <https://www.youtube.com/channel/UCI1SE1Ij2Fast5BSKxoa7Ag>
-   Kornia LinkedIn <https://www.linkedin.com/company/kornia/>
-   Kornia AI <https://kornia.org>
-
-.. toctree::
-   :caption: COMMUNITY
-   :hidden:
-
-   community/contribute
-   community/faqs
-   community/bibliography
+   Learn <get-started/index>
+   API <api>
+   Models <models/index>
+   About <about>
+   Support <community/index>

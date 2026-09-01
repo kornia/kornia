@@ -1,13 +1,36 @@
+/* Kornia docs: small overrides on top of the furo theme. */
+
 .sidebar-logo {
     max-width: 30%;
 }
 
-/* TODO: make sure it works for all the browsers */
-body{
-    font-family: 'Montserrat', sans-serif;
+/* Section captions in the sidebar toctree ("GET STARTED", "API REFERENCE", ...). A translucent
+   overlay reads well on both the light (blue) and dark sidebar backgrounds. */
+.sidebar-scroll p.caption {
+    background-color: rgba(0, 0, 0, 0.18);
+    border-radius: 4px;
+    margin: 0.75rem 0.5rem 0.25rem;
+    padding: 0.35rem 0.75rem;
+    letter-spacing: 0.04em;
 }
 
-/* The section headers in the toc tree */
-.sidebar-scroll p.caption{
-    background-color: #4d59ff;
+/* Wide benchmark and support tables scroll inside their own box instead of the whole page. */
+.table-wrapper {
+    overflow-x: auto;
+}
+
+/* Landing-page module cards (sphinx-design). */
+.kornia-cards .sd-card {
+    border-radius: 8px;
+    transition: transform 120ms ease-in-out, box-shadow 120ms ease-in-out;
+}
+
+.kornia-cards .sd-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+.kornia-cards .sd-card-title {
+    font-family: var(--font-stack--monospace);
+    font-size: 0.95rem;
 }

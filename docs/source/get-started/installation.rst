@@ -1,32 +1,55 @@
 Installation
 ============
 
-To install *Kornia*, you can do it in two different ways: using the provided `PyPi
-<https://pypi.org/project/kornia/>`_ wheels or directly from source.
+.. meta::
+   :description: How to install Kornia with pip, conda or from source, and how to verify the installation. Kornia requires PyTorch 2.0 or newer and works on CPU, CUDA and Apple MPS devices.
 
-.. note::
-    *Kornia only has as a dependency Pytorch.*
+*Kornia* is distributed as pure-Python wheels on `PyPI <https://pypi.org/project/kornia/>`_ and on
+`conda-forge <https://anaconda.org/conda-forge/kornia>`_. It requires
+`PyTorch <https://pytorch.org/get-started/locally/>`_ 2.0 or newer; the only other dependencies are
+``numpy``, ``packaging`` and `kornia-rs <https://github.com/kornia/kornia-rs>`_ (the Rust image I/O
+backend used by :mod:`kornia.io`). Install PyTorch first if you need a specific CUDA build.
 
-1. From pip:
+.. tab-set::
 
-.. code:: bash
+   .. tab-item:: pip
 
-   pip install kornia
+      .. code-block:: bash
 
-2. From source:
+         pip install kornia
 
-.. code:: bash
+   .. tab-item:: conda
 
-    python setup.py install
+      .. code-block:: bash
 
-3. From source using pip:
+         conda install -c conda-forge kornia
 
-.. code:: bash
+   .. tab-item:: From source
 
-    pip install git+https://github.com/kornia/kornia
+      .. code-block:: bash
 
-Once you succeeded installing *Kornia* check you can import:
+         pip install git+https://github.com/kornia/kornia
 
-.. code:: bash
+      or, from a local clone, an editable install for development:
+
+      .. code-block:: bash
+
+         git clone https://github.com/kornia/kornia.git
+         cd kornia
+         pip install -e .
+
+Once the installation has finished, check that you can import the package:
+
+.. code-block:: bash
 
     python -c "import kornia; print(kornia.__version__)"
+
+Pretrained models (RT-DETR, LoFTR, DISK, SAM, ...) download their checkpoints on first use, so no
+extra installation step is needed for them.
+
+Next steps
+----------
+
+- :doc:`introduction` -- what Kornia is and what each module contains.
+- :doc:`conventions` -- the tensor layout, coordinate and angle conventions to know before writing code.
+- :doc:`Applications </applications/intro>` -- end-to-end guides, or the :doc:`API reference </api>`.

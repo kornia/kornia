@@ -13,10 +13,10 @@ By leveraging large pre-trained vision transformers, Visual Prompting not only e
 data labeling but also facilitates the "teaching" of smaller AI systems.
 
 
-How Kornia leverages Visual Prompting ?
----------------------------------------
+How Kornia leverages Visual Prompting
+-------------------------------------
 
-Kornia leverages the Visual Prompting task through the :code:`VisualPrompter`` API, which integrates powerful models like
+Kornia leverages the Visual Prompting task through the :code:`VisualPrompter` API, which integrates powerful models like
 the Segment Anything Model (SAM) into its computer vision toolkit. By incorporating SAM and the VisualPrompter API,
 developers can harness the efficiency of Visual Prompting for faster segmentation tasks and improved computer vision workflows. This seamless integration allows users to utilize pre-trained vision transformers, significantly reducing manual data labeling efforts and enabling the "teaching" of smaller AI systems. As a result, Kornia users can take advantage of the versatility and adaptability offered by Visual Prompting, unlocking new possibilities for various computer vision applications.
 
@@ -25,14 +25,18 @@ How to use with Kornia
 
 .. code-block:: python
 
-   from kornia.io import load_image, ImageLoadType
+   import torch
    from kornia.contrib.visual_prompter import VisualPrompter
+   from kornia.geometry.keypoints import Keypoints
+   from kornia.io import load_image, ImageLoadType
+
+   device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
    # load an image
    image = load_image('./example.jpg', ImageLoadType.RGB32, device)
 
-   # Load the prompter
-   prompter = VisualPrompter()
+   # Load the prompter (downloads the default SAM ViT-H checkpoint on first use)
+   prompter = VisualPrompter(device=device)
 
    # set the image: This will preprocess the image and already generate the embeddings of it
    prompter.set_image(image)
@@ -43,14 +47,13 @@ How to use with Kornia
    # For the keypoints label: 1 indicates a foreground point; 0 indicates a background point
    keypoints_labels = torch.tensor([[1]], device=device) # BxN
 
-   # Runs the prediction with the kypoints prompts
+   # Runs the prediction with the keypoint prompts
    prediction = prompter.predict(
       keypoints=keypoints,
       keypoints_labels=keypoints_labels,
       multimask_output=True,
    )
 
-You also can go through or full tutorial using Colab found `here <https://kornia.github.io/tutorials/nbs/image_prompter.html>`_.
+You can also go through our full tutorial using Colab, found `here <https://kornia.github.io/tutorials/nbs/image_prompter.html>`_.
 
-
-Integration with other libraries, fineturning and more examples soon.
+Integration with other libraries, fine-tuning and more examples are coming soon.

@@ -12,7 +12,8 @@ function addGithubButton() {
             </a>
         </div>
     `;
-    document.querySelector(".sidebar-brand").insertAdjacentHTML('afterend', div);
+    const brand = document.querySelector(".sidebar-brand");  // furo only; pydata has its own GitHub link
+    if (brand) brand.insertAdjacentHTML("afterend", div);
 }
 
 /*!
@@ -33,10 +34,170 @@ function onLoad() {
 window.addEventListener("load", onLoad);
 
 
+
+// pydata theme: split "name — note" sidebar entries into a flex row with the note pushed
+// to the right edge in a muted color (name \hfill note).
 document.addEventListener("DOMContentLoaded", function () {
-  if (typeof iFrameResize === "function") {
-    iFrameResize({}, "#augmentation-tester");
-  } else {
-    console.error("iFrameResize function is not available");
+  document.querySelectorAll(".bd-sidebar-primary a.reference.internal").forEach(function (link) {
+    const text = link.textContent;
+    const idx = text.indexOf(" — ");
+    if (idx === -1) return;
+    link.classList.add("has-sidebar-note");
+    link.textContent = text.slice(0, idx);
+    const note = document.createElement("span");
+    note.className = "sidebar-note";
+    note.textContent = text.slice(idx + 3);
+    link.appendChild(note);
+  });
+});
+
+
+// pydata theme: Sphinx already lists the documented objects of a page in the right
+// "On this page" sidebar. Pages that only carry autosummary link tables (e.g. the
+// color-conversion overview) have no objects of their own, so list the table entries there.
+document.addEventListener("DOMContentLoaded", function () {
+  const tocRoot = document.querySelector("#pst-page-toc-nav > ul");
+  if (!tocRoot) return;
+
+  function entriesFor(sectionEl) {
+    if (sectionEl.querySelector("dl[class*='py'] > dt[id]")) return [];  // native TOC covers it
+    const items = [];
+    sectionEl.querySelectorAll(":scope .autosummary tr > td:first-child a.reference.internal").forEach(function (a) {
+      items.push([a.getAttribute("href"), a.textContent.trim()]);
+    });
+    return items;
+  }
+
+  document.querySelectorAll(".bd-article section[id]").forEach(function (sec) {
+    const tocLink = tocRoot.querySelector('a[href="#' + sec.id + '"]');
+    if (!tocLink) return;
+    const items = entriesFor(sec);
+    if (!items.length) return;
+    const ul = document.createElement("ul");
+    ul.className = "nav section-nav flex-column kornia-object-toc";
+    items.forEach(function (pair) {
+      const li = document.createElement("li");
+      li.className = "toc-h3 nav-item toc-entry";
+      const a = document.createElement("a");
+      a.className = "reference internal nav-link";
+      a.href = pair[0];
+      a.textContent = pair[1];
+      li.appendChild(a);
+      ul.appendChild(li);
+    });
+    tocLink.parentElement.appendChild(ul);
+  });
+});
+
+
+// pydata theme: navbar dropdowns. "Support" and "About" become hover/focus
+// dropdowns; an "Ecosystem" item with a grouped panel is inserted before "About".
+document.addEventListener("DOMContentLoaded", function () {
+  // Sphinx stamps the path back to the doc root on every page.
+  const root = document.documentElement.getAttribute("data-content_root") || "";
+  const href = (h) => (h.indexOf("://") !== -1 ? h : root + h);
+
+  function externalIcon() {
+    const i = document.createElement("i");
+    i.className = "fa-solid fa-arrow-up-right-from-square kornia-external-icon";
+    return i;
+  }
+
+  // Hero buttons that leave the site get the same outbound icon.
+  document.querySelectorAll(".kornia-hero-actions a.sd-btn[href^='http']").forEach(function (a) {
+    a.appendChild(externalIcon());
+  });
+
+  function decorate(li, link) {
+    li.classList.add("kornia-navbar-dropdown");
+    const caret = document.createElement("i");
+    caret.className = "fa-solid fa-chevron-down kornia-navbar-dropdown__caret";
+    link.appendChild(caret);
+  }
+
+  function menuFrom(items) {
+    const menu = document.createElement("ul");
+    menu.className = "kornia-navbar-dropdown__menu";
+    items.forEach(function (pair) {
+      const item = document.createElement("li");
+      const a = document.createElement("a");
+      a.className = "nav-link";
+      a.textContent = pair[0];
+      if (pair[1]) {
+        a.href = href(pair[1]);
+        if (pair[1].indexOf("://") !== -1) a.appendChild(externalIcon());
+      } else {
+        // no href: renders like its siblings but never gains :visited/:active styling
+        a.textContent = pair[0] + " (coming soon)";
+        a.classList.add("kornia-navbar-dropdown__inert");
+      }
+      item.appendChild(a);
+      menu.appendChild(item);
+    });
+    return menu;
+  }
+
+  const DROPDOWNS = {
+    Support: [
+      ["Sponsor", "community/sponsor.html"],
+      ["Contribute", "community/contribute.html"],
+    ],
+    About: [
+      ["FAQ", "community/faqs.html"],
+      ["Team", "get-started/governance.html"],
+      ["Community Guide", "community/community.html"],
+      ["Code of Conduct", "https://github.com/kornia/kornia/blob/main/CODE_OF_CONDUCT.md"],
+      ["Citing Kornia", "get-started/about.html"],
+      ["API Stability Policy", "get-started/stability.html"],
+    ],
+  };
+
+  let aboutLi = null;
+  document.querySelectorAll(".bd-header .navbar-nav > li.nav-item > a.nav-link").forEach(function (link) {
+    const name = link.textContent.trim();
+    if (name === "About") aboutLi = link.parentElement;
+    if (!DROPDOWNS[name]) return;
+    const li = link.parentElement;
+    decorate(li, link);
+    li.appendChild(menuFrom(DROPDOWNS[name]));
+  });
+
+  // Ecosystem: a grouped panel, inserted before About.
+  if (aboutLi) {
+    const li = document.createElement("li");
+    li.className = "nav-item";
+    const link = document.createElement("a");
+    link.className = "nav-link";
+    link.href = "#";
+    link.textContent = "Ecosystem";
+    link.addEventListener("click", (e) => e.preventDefault());
+    li.appendChild(link);
+    decorate(li, link);
+    const panel = document.createElement("div");
+    panel.className = "kornia-navbar-dropdown__menu kornia-navbar-dropdown__menu--mega";
+    [["official libs", [
+        ["kornia", "https://github.com/kornia/kornia"],
+        ["kornia-rs", "https://github.com/kornia/kornia-rs"],
+      ]],
+     ["help", [
+        ["Discord chat", "https://discord.gg/HfnywwpBnD"],
+        ["GitHub discussions", "https://github.com/kornia/kornia/discussions"],
+        ["Issue tracker", "https://github.com/kornia/kornia/issues"],
+      ]],
+     ["news", [
+        ["Twitter / X", "https://twitter.com/kornia_foss"],
+        ["LinkedIn", "https://www.linkedin.com/company/kornia/"],
+        ["Newsletter", null],
+      ]]].forEach(function (group) {
+      const col = document.createElement("div");
+      const title = document.createElement("p");
+      title.className = "kornia-navbar-dropdown__group";
+      title.textContent = group[0];
+      col.appendChild(title);
+      col.appendChild(menuFrom(group[1]));
+      panel.appendChild(col);
+    });
+    li.appendChild(panel);
+    aboutLi.parentElement.insertBefore(li, aboutLi);
   }
 });

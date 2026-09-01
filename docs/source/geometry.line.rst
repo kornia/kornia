@@ -2,8 +2,7 @@ kornia.geometry.line
 ====================
 
 .. meta::
-   :name: description
-   :content: "The kornia.geometry.line module provides functionality for working with lines and line segments in geometric space. It includes classes such as ParametrizedLine for line representation, Hyperplane for handling high-dimensional planes, and functions like fit_line for fitting lines to data points. This module is essential for tasks like line segment matching and line fitting in computer vision and geometric analysis."
+   :description: The kornia.geometry.line module provides functionality for working with lines and line segments in geometric space. It includes classes such as ParametrizedLine for line representation, Hyperplane for handling high-dimensional planes, and functions like fit_line for fitting lines to data points. This module is essential for tasks like line segment matching and line fitting in computer vision and geometric analysis.
 
 .. currentmodule:: kornia.geometry.line
 
@@ -14,12 +13,3 @@ kornia.geometry.line
 .. autofunction:: fit_line
 
 .. autoclass:: Hyperplane
-
-
-Interactive Demo
-----------------
-
-.. raw:: html
-
-   <gradio-app src="https://kornia-line-segment-matching.hf.space"></gradio-app>
-   <gradio-app src="https://kornia-line-fitting.hf.space"></gradio-app>

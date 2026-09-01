@@ -2,98 +2,28 @@ kornia.enhance
 ==============
 
 .. meta::
-   :name: description
-   :content: "The Kornia.enhance module provides a suite of image enhancement functions including brightness, contrast, hue, saturation adjustments, as well as normalization and equalization techniques. It also features advanced transformations like ZCA whitening and differentiable JPEG codec. Explore interactive demos on Hugging Face Spaces."
+   :description: The Kornia.enhance module provides a suite of image enhancement functions including brightness, contrast, hue, saturation adjustments, as well as normalization and equalization techniques. It also features advanced transformations like ZCA whitening and differentiable JPEG codec. Explore interactive demos on Hugging Face Spaces.
 
 .. currentmodule:: kornia.enhance
 
-The functions in this section perform normalisations and intensity transformations.
+Intensity transformations and normalization on batched ``(B, C, H, W)`` tensors.
 
-Adjustment
-----------
+.. list-table::
+   :widths: 30 70
 
-.. autofunction:: add_weighted
-.. autofunction:: adjust_brightness
-.. autofunction:: adjust_contrast
-.. autofunction:: adjust_contrast_with_mean_subtraction
-.. autofunction:: adjust_gamma
-.. autofunction:: adjust_hue
-.. autofunction:: adjust_saturation
-.. autofunction:: adjust_sigmoid
-.. autofunction:: adjust_log
-.. autofunction:: invert
-.. autofunction:: posterize
-.. autofunction:: sharpness
-.. autofunction:: solarize
+   * - :doc:`enhance.adjustment`
+     - Brightness, contrast, gamma, hue, saturation, sigmoid and log adjustments; invert, posterize, sharpen and solarize.
+   * - :doc:`enhance.equalization`
+     - Histogram equalization, CLAHE and differentiable histograms.
+   * - :doc:`enhance.normalization`
+     - Mean/std normalization, min-max scaling, ZCA whitening and linear transforms.
+   * - :doc:`enhance.codec`
+     - A differentiable JPEG encoder/decoder.
 
-Interactive Demo
-~~~~~~~~~~~~~~~~
-.. raw:: html
+.. toctree::
+   :hidden:
 
-    <gradio-app src="https://kornia-kornia-image-enhancement.hf.space"></gradio-app>
-
-Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-enhancement>`__.
-
-Equalization
-------------
-
-.. autofunction:: equalize
-.. autofunction:: equalize_clahe
-.. autofunction:: equalize3d
-
-Interactive Demo
-
-.. raw:: html
-
-    <gradio-app src="https://iamabhipandat-kornia-image-equalization.hf.space"></gradio-app>
-
-Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/Iamabhipandat/kornia-image-equalization>`__.
-
-
-.. autofunction:: histogram
-.. autofunction:: histogram2d
-.. autofunction:: image_histogram2d
-
-Normalizations
---------------
-
-.. autofunction:: normalize
-.. autofunction:: normalize_min_max
-.. autofunction:: denormalize
-.. autofunction:: zca_mean
-.. autofunction:: zca_whiten
-.. autofunction:: linear_transform
-
-Codec
------
-
-.. autofunction:: jpeg_codec_differentiable
-
-
-Modules
--------
-
-.. autoclass:: Normalize
-.. autoclass:: Denormalize
-.. autoclass:: ZCAWhitening
-    :members:
-
-.. autoclass:: AdjustBrightness
-.. autoclass:: AdjustContrast
-.. autoclass:: AdjustSaturation
-.. autoclass:: AdjustHue
-.. autoclass:: AdjustGamma
-.. autoclass:: AdjustSigmoid
-.. autoclass:: AdjustLog
-.. autoclass:: AddWeighted
-
-.. autoclass:: Invert
-
-.. autoclass:: JPEGCodecDifferentiable
-
-
-ZCA Whitening Interactive Demo
-------------------------------
-.. raw:: html
-
-  <gradio-app src="https://kornia-zca-whitening.hf.space"></gradio-app>
+   adjustment <enhance.adjustment>
+   equalization <enhance.equalization>
+   normalization <enhance.normalization>
+   codec <enhance.codec>
