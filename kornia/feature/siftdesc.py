@@ -209,7 +209,10 @@ class SIFTDescriptor(nn.Module):
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", f"{self.patch_size}", f"{self.patch_size}"])
         B: int = input.shape[0]
-        self.pk = self.pk.to(input.dtype).to(input.device)
+        pk_weight = self.pk.weight.to(input.dtype).to(input.device)
+        pk_bias = self.pk.bias
+        if pk_bias is not None:
+            pk_bias = pk_bias.to(input.dtype).to(input.device)
 
         grads = spatial_gradient(input, "diff")
         # unpack the edges
@@ -229,7 +232,15 @@ class SIFTDescriptor(nn.Module):
 
         ang_bins = torch.cat(
             [
-                self.pk((bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big)
+                F.conv2d(
+                    (bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big,
+                    pk_weight,
+                    pk_bias,
+                    self.pk.stride,
+                    self.pk.padding,
+                    self.pk.dilation,
+                    self.pk.groups,
+                )
                 for i in range(self.num_ang_bins)
             ],
             1,
@@ -381,8 +392,14 @@ class DenseSIFTDescriptor(nn.Module):
         KORNIA_CHECK_SHAPE(input, ["B", "1", "H", "W"])
 
         _B, _CH, _W, _H = input.size()
-        self.bin_pooling_kernel = self.bin_pooling_kernel.to(input.dtype).to(input.device)
-        self.PoolingConv = self.PoolingConv.to(input.dtype).to(input.device)
+        bin_pooling_weight = self.bin_pooling_kernel.weight.to(input.dtype).to(input.device)
+        bin_pooling_bias = self.bin_pooling_kernel.bias
+        if bin_pooling_bias is not None:
+            bin_pooling_bias = bin_pooling_bias.to(input.dtype).to(input.device)
+        poolingconv_weight = self.PoolingConv.weight.to(input.dtype).to(input.device)
+        poolingconv_bias = self.PoolingConv.bias
+        if poolingconv_bias is not None:
+            poolingconv_bias = poolingconv_bias.to(input.dtype).to(input.device)
         grads = spatial_gradient(input, "diff")
         # unpack the edges
         gx = grads[:, :, 0]
@@ -398,15 +415,29 @@ class DenseSIFTDescriptor(nn.Module):
         wo1_big = wo1_big_ * mag
         ang_bins = torch.cat(
             [
-                self.bin_pooling_kernel(
-                    (bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big
+                F.conv2d(
+                    (bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big,
+                    bin_pooling_weight,
+                    bin_pooling_bias,
+                    self.bin_pooling_kernel.stride,
+                    self.bin_pooling_kernel.padding,
+                    self.bin_pooling_kernel.dilation,
+                    self.bin_pooling_kernel.groups,
                 )
                 for i in range(self.num_ang_bins)
             ],
             1,
         )
 
-        out_no_norm = self.PoolingConv(ang_bins)
+        out_no_norm = F.conv2d(
+            ang_bins,
+            poolingconv_weight,
+            poolingconv_bias,
+            self.PoolingConv.stride,
+            self.PoolingConv.padding,
+            self.PoolingConv.dilation,
+            self.PoolingConv.groups,
+        )
         out = _l2_normalize(out_no_norm, dim=1).clamp_(0, float(self.clipval))
         out = _l2_normalize(out, dim=1)
         if self.rootsift:
