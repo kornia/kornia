@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import warnings
+
 import pytest
 import torch
 
@@ -32,9 +34,12 @@ class TestConvRefiner(BaseTester):
             lambda _module, _inputs: autocast_enabled.append(torch.is_autocast_enabled("cuda"))
         )
 
-        refiner(torch.rand(1, 4, 8, 8, device=device))
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            refiner(torch.rand(1, 4, 8, 8, device=device))
 
         assert autocast_enabled == [device.type == "cuda"]
+        assert not any("device_type of 'cuda'" in str(w.message) for w in caught)
 
 
 @pytest.mark.skip(reason="DeDoDe is ummaintained")

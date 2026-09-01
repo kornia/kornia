@@ -48,7 +48,6 @@ class VGG19(nn.Module):
         self.amp_dtype = amp_dtype
 
     def forward(self, x: torch.Tensor, **kwargs):  # type: ignore[no-untyped-def]
-        # AMP runs only for CUDA tensors.
         """Run this DeDoDe module forward.
 
         Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
@@ -64,6 +63,7 @@ class VGG19(nn.Module):
             Output tensor or dictionary produced by the module while preserving the shape contract documented by the
             surrounding class.
         """
+        # AMP runs only for CUDA tensors.
         with torch.autocast("cuda", enabled=self.amp and x.is_cuda, dtype=self.amp_dtype):
             feats = []
             sizes = []
