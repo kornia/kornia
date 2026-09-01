@@ -12,7 +12,7 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 | [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. |
 | [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL. |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions. |
-| [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics. |
+| [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) op microbenchmark (base-revision A/B, no cross-library baseline exists). |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |
 
 ## Methodology contract

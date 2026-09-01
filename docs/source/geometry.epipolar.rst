@@ -15,6 +15,7 @@ Module with useful functionalities for epipolar geometry used by Structure from 
 Essential
 ---------
 .. autofunction:: find_essential
+.. autofunction:: project_to_essential
 .. autofunction:: essential_from_fundamental
 .. autofunction:: essential_from_Rt
 .. autofunction:: decompose_essential_matrix

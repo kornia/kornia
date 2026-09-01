@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 import kornia
@@ -164,6 +165,7 @@ class TestTransformBoxes2D(BaseTester):
             device=device,
             dtype=dtype,
         )
+        boxes_before = boxes.clone()
 
         expected = torch.tensor(
             [
@@ -180,6 +182,7 @@ class TestTransformBoxes2D(BaseTester):
 
         out = transform_bbox(trans_mat, boxes, mode="xywh", restore_coordinates=True)
         self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+        assert torch.equal(boxes, boxes_before)
 
     def test_gradcheck(self, device):
         boxes = torch.tensor(
@@ -320,3 +323,17 @@ class TestNMS(BaseTester):
         expected = torch.tensor([0, 3, 1], device=device, dtype=torch.long)
         actual = nms(boxes, scores, iou_threshold=0.8)
         self.assert_close(actual, expected)
+
+    @pytest.mark.parametrize(
+        ("boxes_shape", "scores_shape"),
+        [
+            ((3, 5), (3,)),
+            ((2, 3, 4), (2,)),
+        ],
+    )
+    def test_invalid_boxes_shape(self, boxes_shape, scores_shape, device, dtype):
+        boxes = torch.zeros(boxes_shape, device=device, dtype=dtype)
+        scores = torch.zeros(scores_shape, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="boxes expected as Nx4"):
+            nms(boxes, scores, iou_threshold=0.8)

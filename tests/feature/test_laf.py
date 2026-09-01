@@ -15,13 +15,15 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
 import kornia
 import kornia.geometry.transform.imgwarp
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.geometry.create import create_random_homography
 
 
@@ -258,6 +260,106 @@ class TestELL2LAF(BaseTester):
         # assure it is positive definite
         self.gradcheck(kornia.feature.ellipse_to_laf, (img,))
 
+    def test_small_root_sum_is_not_clamped(self, device):
+        # The root sum is finite and nonzero, so clamping it changes a valid inverse by orders of magnitude.
+        tiny = torch.finfo(torch.float32).tiny
+        inp = torch.tensor([[[0.0, 0.0, tiny, tiny, tiny]]], device=device, dtype=torch.float32)
+        expected = torch.tensor(-0.5 / math.sqrt(tiny), device=device, dtype=torch.float32)
+        laf = kornia.feature.ellipse_to_laf(inp)
+        assert torch.isfinite(laf).all()
+        self.assert_close(laf[0, 0, 1, 0], expected)
+
+    def test_no_overflow_asymmetric_diag(self, device, dtype):
+        # Regression test: the closed-form inverse's off-diagonal must divide by the root product,
+        # not multiply reciprocals. `a` is the dtype's smallest normal and `c` is picked so that
+        # (sqrt(a) + sqrt(c)) * sqrt(a) == 0.5, which makes the intermediate of the fixed order
+        # `-a21 * (1 / a11) * (1 / a22)` twice b -- inf for a b above half the dtype's maximum,
+        # although the result itself is well inside range. https://github.com/kornia/kornia/pull/4122
+        finfo = torch.finfo(dtype)
+        a11 = math.sqrt(finfo.tiny)
+        a22 = 0.5 / a11
+        inp = torch.tensor([[[0.0, 0.0, finfo.tiny, finfo.max * 0.75, a22 * a22]]], device=device, dtype=dtype)
+        # Reference in float64, from the inputs as the dtype actually rounded them. Via CPU:
+        # MPS tensors cannot be converted to float64 (TESTING.md, "Writing new tests that work on MPS").
+        expected = kornia.feature.ellipse_to_laf(inp.cpu().double())[0, 0, 1, 0]
+        laf = kornia.feature.ellipse_to_laf(inp)
+        assert torch.isfinite(laf).all()
+        self.assert_close(laf[0, 0, 1, 0], expected.to(device=device, dtype=dtype))
+
+    def test_no_overflow_subnormal_diag(self, device, dtype):
+        # The mirror case: a subnormal but nondegenerate diagonal makes 1 / (a11 * a22) overflow, so
+        # forming that product first turns a mathematically-zero off-diagonal into 0 * inf = nan.
+        # Subnormal input is unavoidable here -- a11 * a22 >= finfo.tiny > 1 / finfo.max in every IEEE
+        # dtype, so no normal input reaches this regime -- hence the flush-to-zero guard below.
+        finfo = torch.finfo(dtype)
+        a = finfo.tiny / 8  # subnormal, and small enough that 1 / (a11 * a22) == 1 / a overflows
+        inp = torch.tensor([[[0.0, 0.0, a, 0.0, a]]], device=device, dtype=dtype)
+        # Guard on the arithmetic, not just the storage: a backend can store the subnormal
+        # faithfully yet flush it inside sqrt, which makes the diagonal degenerate all the same.
+        if inp[0, 0, 2].sqrt() == 0:
+            pytest.skip("backend flushes subnormals to zero, so this diagonal is degenerate here")
+        laf = kornia.feature.ellipse_to_laf(inp)
+        assert torch.isfinite(laf).all()
+        self.assert_close(laf[0, 0, 1, 0], torch.zeros_like(laf[0, 0, 1, 0]))
+
+    def test_no_underflow_asymmetric_diag(self, device, dtype):
+        # Regression test for the ordering the two tests above do not cover: multiplying by the
+        # smaller reciprocal first (f7b573a3, since replaced by the division form) passes both of
+        # them but silently flushes a representable off-diagonal to a false zero. `a` is the
+        # dtype's smallest normal and `c` its reciprocal squared, so a11 * a22 == 1 and
+        # inv22 == a11 is itself tiny; `b` is picked so a21 * inv22 -- the min/max order's first
+        # product -- underflows to zero while the true off-diagonal, a21 / (a11 * a22), stays
+        # representable. https://github.com/kornia/kornia/pull/4122
+        finfo = torch.finfo(dtype)
+        a11 = math.sqrt(finfo.tiny)
+        a22 = 1.0 / a11
+        b = finfo.eps * math.sqrt(a11)
+        inp = torch.tensor([[[0.0, 0.0, finfo.tiny, b, a22 * a22]]], device=device, dtype=dtype)
+        # Guard on the arithmetic, not just the storage: a21 is shared by every ordering, so if a
+        # backend's division already flushes it to zero, no ordering has anything left to get wrong.
+        a11_t, a22_t = inp[..., 2:3].abs().sqrt(), inp[..., 4:5].abs().sqrt()
+        a21_t = inp[..., 3:4] / (a11_t + a22_t)
+        if (a21_t == 0).any():
+            pytest.skip("backend flushes this off-diagonal's shared numerator to zero regardless of ordering")
+        expected = kornia.feature.ellipse_to_laf(inp.cpu().double())[0, 0, 1, 0]
+        laf = kornia.feature.ellipse_to_laf(inp)
+        assert torch.isfinite(laf).all()
+        # Loose relative tolerance: the point is distinguishing a false zero (100% off) from the
+        # real value, not pinning float16's reduced precision this deep into its subnormal range.
+        self.assert_close(laf[0, 0, 1, 0], expected.to(device=device, dtype=dtype), rtol=0.1, atol=0.0)
+
+    @pytest.mark.parametrize("degenerate_index", [2, 4])
+    def test_degenerate_ellipse_is_non_finite(self, device, dtype, degenerate_index):
+        # A degenerate ellipse makes the matrix singular. The batched torch.inverse this replaced
+        # raised linalg.LinAlgError; the closed form returns non-finite values and must not raise.
+        inp = torch.tensor([[[1.0, 2.0, 3.0, 0.5, 4.0]]], device=device, dtype=dtype)
+        inp[0, 0, degenerate_index] = 0.0
+        laf = kornia.feature.ellipse_to_laf(inp)
+        assert not torch.isfinite(laf[0, 0, :, :2]).all()
+        self.assert_close(laf[0, 0, :, 2], inp[0, 0, :2])  # the centre is untouched
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        inp = self._well_conditioned_ellipses(device, dtype)
+        op = kornia.feature.ellipse_to_laf
+        self.assert_close(torch_optimizer(op)(inp), op(inp))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_dynamo_fullgraph(self, device, dtype):
+        # The batched torch.inverse this replaced graph-broke; the closed form must stay capturable.
+        inp = self._well_conditioned_ellipses(device, dtype)
+        expected = kornia.feature.ellipse_to_laf(inp)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.feature.ellipse_to_laf, fullgraph=True)
+        self.assert_close(compiled(inp), expected)
+
+    @staticmethod
+    def _well_conditioned_ellipses(device, dtype):
+        inp = torch.rand(1, 2, 5, device=device, dtype=dtype).abs()
+        inp[..., 2] = inp[..., 3].abs() + 0.3
+        inp[..., 4] += 1.0
+        return inp
+
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         batch_size, channels, height = 1, 2, 5
         img = torch.rand(batch_size, channels, height, device=device).abs()
@@ -266,6 +368,30 @@ class TestELL2LAF(BaseTester):
         model = kornia.feature.ellipse_to_laf
         model_jit = torch.jit.script(kornia.feature.ellipse_to_laf)
         self.assert_close(model(img), model_jit(img))
+
+
+class TestLAFIsValid(BaseTester):
+    def test_finite_nonsingular_laf_is_valid(self, device, dtype):
+        laf = torch.tensor([[[[2.0, 0.0, 1.0], [0.0, 3.0, 2.0]]]], device=device, dtype=dtype)
+        assert kornia.feature.laf_is_valid(laf).all()
+
+    def test_nonfinite_or_singular_laf_is_invalid(self, device, dtype):
+        laf = torch.tensor(
+            [[[[2.0, 0.0, 1.0], [0.0, 3.0, 2.0]], [[1.0, 2.0, 0.0], [2.0, 4.0, 0.0]]]],
+            device=device,
+            dtype=dtype,
+        )
+        laf[0, 0, 0, 0] = torch.inf
+        expected = torch.tensor([[False, False]], device=device)
+        assert torch.equal(kornia.feature.laf_is_valid(laf), expected)
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_dynamo_fullgraph(self, device, dtype):
+        laf = torch.tensor([[[[2.0, 0.0, 1.0], [0.0, 3.0, 2.0]]]], device=device, dtype=dtype)
+        expected = kornia.feature.laf_is_valid(laf)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.feature.laf_is_valid, fullgraph=True)
+        assert torch.equal(compiled(laf), expected)
 
 
 class TestNormalizeLAF(BaseTester):
