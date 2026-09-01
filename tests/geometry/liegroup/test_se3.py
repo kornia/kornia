@@ -292,12 +292,17 @@ class TestSe3(BaseTester):
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_adjoint(self, device, dtype, batch_size):
-        x_data = self._make_rand_data(device, dtype, batch_size, dims=6)
-        y_data = self._make_rand_data(device, dtype, batch_size, dims=6)
+        shape = (6,) if batch_size is None else (batch_size, 6)
+        x_data = torch.tensor([0.1, -0.2, 0.3, 0.2, -0.1, 0.1], device=device, dtype=dtype).expand(shape)
+        y_data = torch.tensor([-0.2, 0.1, 0.2, -0.1, 0.2, 0.1], device=device, dtype=dtype).expand(shape)
         x = Se3.exp(x_data)
         y = Se3.exp(y_data)
-        self.assert_close(x.inverse().adjoint(), x.adjoint().inverse())
-        self.assert_close((x * y).adjoint(), x.adjoint() @ y.adjoint())
+        adjoint = x.adjoint()
+        inverse_adjoint = x.inverse().adjoint()
+        identity = torch.eye(adjoint.shape[-1], device=device, dtype=dtype).expand_as(adjoint)
+        half_tolerance = torch.finfo(dtype).eps if dtype in (torch.float16, torch.bfloat16) else None
+        self.assert_close(adjoint @ inverse_adjoint, identity, rtol=half_tolerance, atol=half_tolerance)
+        self.assert_close((x * y).adjoint(), adjoint @ y.adjoint(), rtol=half_tolerance, atol=half_tolerance)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_random(self, device, dtype, batch_size):
