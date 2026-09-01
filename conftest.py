@@ -182,9 +182,10 @@ def pytest_collection_modifyitems(config, items):
                 "--xfail-known-half-precision requires --device=cpu and only --dtype=float16,bfloat16"
             )
         try:
-            mark_known_failures(items, dtypes)
+            tracker = mark_known_failures(items, dtypes)
         except ValueError as error:
             raise pytest.UsageError(str(error)) from error
+        config.pluginmanager.register(tracker, "known-half-precision-failure-tracker")
 
     # gradcheck requires float64. MPS does not support it at all, and XLA lowers a float64 request
     # to float32, where gradcheck's default eps=1e-6 makes the numerical Jacobian invalid — so a

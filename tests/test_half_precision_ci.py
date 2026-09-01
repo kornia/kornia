@@ -23,6 +23,8 @@ import pytest
 
 from testing.half_precision_ci import ISSUE_URL, load_known_failures, mark_known_failures
 
+pytest_plugins = ["pytester"]
+
 
 def _write_manifest(directory: Path, dtype: str, contents: str) -> None:
     (directory / f"cpu_{dtype}.txt").write_text(contents)
@@ -83,14 +85,15 @@ class TestMarkKnownFailures:
         _write_manifest(tmp_path, "float16", f"AssertionError\t{nodeid}\n")
         item = _Item(nodeid)
 
-        mark_known_failures([item], ["float16"], tmp_path)
+        tracker = mark_known_failures([item], ["float16"], tmp_path)
 
         assert len(item.markers) == 1
         assert item.markers[0].mark.kwargs == {
             "raises": AssertionError,
-            "reason": f"Known Linux CPU half-precision failure tracked in {ISSUE_URL}",
+            "reason": tracker.reason,
             "strict": True,
         }
+        assert tracker.reason.startswith(f"Known Linux CPU half-precision failure tracked in {ISSUE_URL} [tracker=")
 
     def test_rejects_manifest_entries_that_were_not_collected(self, tmp_path: Path) -> None:
         _write_manifest(
@@ -101,6 +104,104 @@ class TestMarkKnownFailures:
 
         with pytest.raises(ValueError, match="1 known half-precision failures were not collected"):
             mark_known_failures([], ["float16"], tmp_path)
+
+
+def _run_manifest_case(pytester: pytest.Pytester, test_body: str, extra_marker: str = "") -> pytest.RunResult:
+    nodeid = "test_sample.py::test_known_failure[cpu-float16]"
+    _write_manifest(pytester.path, "float16", f"AssertionError\t{nodeid}\n")
+    pytester.makeconftest(
+        """
+        from pathlib import Path
+
+        from testing.half_precision_ci import mark_known_failures
+
+
+        def pytest_collection_modifyitems(config, items):
+            tracker = mark_known_failures(items, ["float16"], Path(__file__).parent)
+            config.pluginmanager.register(tracker, "known-half-precision-failure-tracker")
+        """
+    )
+    pytester.makepyfile(
+        test_sample=f"""
+        import pytest
+
+
+        {extra_marker}
+        @pytest.mark.parametrize("unused", [None], ids=["cpu-float16"])
+        def test_known_failure(unused, request):
+            {test_body}
+        """
+    )
+    return pytester.runpytest("-q")
+
+
+class TestKnownFailureOutcomes:
+    def test_accepts_manifest_specific_xfail(self, pytester: pytest.Pytester) -> None:
+        result = _run_manifest_case(pytester, "raise AssertionError('known failure')")
+
+        result.assert_outcomes(xfailed=1)
+        assert result.ret == pytest.ExitCode.OK
+
+    @pytest.mark.parametrize(
+        ("test_body", "extra_marker"),
+        [
+            ("pytest.skip('disabled test')", ""),
+            (
+                "raise AssertionError('known failure')",
+                "@pytest.mark.skip(reason='disabled test')",
+            ),
+            (
+                "raise AssertionError('known failure')",
+                "@pytest.mark.xfail(reason='different xfail marker', strict=False)",
+            ),
+            ("raise ValueError('wrong failure type')", ""),
+            (
+                "raise ValueError('wrong failure type')",
+                f"@pytest.mark.xfail(reason='Known Linux CPU half-precision failure tracked in {ISSUE_URL}')",
+            ),
+            (
+                "request.addfinalizer(lambda: pytest.skip('disabled in teardown')); "
+                "raise AssertionError('known failure')",
+                "",
+            ),
+            (
+                "request.addfinalizer("
+                "lambda: (_ for _ in ()).throw(AssertionError('teardown failure'))"
+                "); raise AssertionError('known failure')",
+                "",
+            ),
+            (
+                "raise AssertionError('known failure')",
+                "@pytest.fixture(autouse=True)\n"
+                "        def fail_setup():\n"
+                "            raise AssertionError('setup failure')",
+            ),
+            (
+                "pytest.xfail(next(request.node.iter_markers('xfail')).kwargs['reason'])",
+                "",
+            ),
+        ],
+        ids=[
+            "runtime-skip",
+            "static-skip",
+            "prior-xfail",
+            "wrong-exception",
+            "same-reason-prior-xfail",
+            "teardown-skip",
+            "teardown-expected-exception",
+            "setup-expected-exception",
+            "dynamic-xfail-with-manifest-reason",
+        ],
+    )
+    def test_rejects_manifest_entry_bypassed_by_other_outcome(
+        self, pytester: pytest.Pytester, test_body: str, extra_marker: str
+    ) -> None:
+        result = _run_manifest_case(pytester, test_body, extra_marker)
+
+        assert result.ret == pytest.ExitCode.TESTS_FAILED
+        output = result.stdout.str()
+        assert "ERROR: 1 known half-precision failure did not finish with the manifest-specific xfail:" in output
+        assert "test_sample.py::test_known_failure[cpu-float16]" in output
 
 
 @pytest.mark.parametrize(("dtype", "expected_count"), [("float16", 605), ("bfloat16", 591)])
