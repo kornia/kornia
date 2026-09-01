@@ -16,6 +16,9 @@
 #
 
 import math
+import subprocess
+import sys
+import textwrap
 
 import pytest
 import torch
@@ -677,6 +680,38 @@ class TestExtractPatchesSimple(BaseTester):
         assert actual.dtype == img.dtype
         assert torch.equal(actual, expected)
 
+    def test_nonfinite_laf_returns_zero_patch_with_safe_backward(self, device, dtype):
+        # Same contract as `TestExtractPatchesPyr`: a training-time detector can emit a non-finite
+        # LAF frame, including one whose only invalid entry is its center. The whole frame is
+        # sanitized before any grid arithmetic, so it returns a zero patch and a zero gradient
+        # rather than handing `grid_sample` an invalid grid -- whose CPU border-padding backward
+        # kernel can segfault the process. Infinity is invalid for the same API-level reason.
+        PS = 8
+        img = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        nan = float("nan")
+        inf = float("inf")
+        laf = torch.tensor(
+            [
+                [[8.0, 0.0, 32.0], [0.0, 8.0, 32.0]],
+                [[nan, nan, nan], [nan, nan, nan]],
+                [[8.0, 0.0, nan], [0.0, 8.0, nan]],
+                [[8.0, 0.0, inf], [0.0, 8.0, inf]],
+            ],
+            device=device,
+            dtype=dtype,
+        ).view(1, 4, 2, 3)
+
+        expected_finite = kornia.feature.extract_patches_simple(img, laf[:, :1], PS)
+        grad_img = img.detach().clone().requires_grad_()
+        grad_laf = laf.detach().clone().requires_grad_()
+        patches = kornia.feature.extract_patches_simple(grad_img, grad_laf, PS)
+        self.assert_close(patches[:, :1], expected_finite)
+        assert patches[:, 1:].abs().sum().item() == 0
+        patches.sum().backward()
+        assert grad_img.grad is not None and bool(grad_img.grad.isfinite().all())
+        assert grad_laf.grad is not None and bool(grad_laf.grad.isfinite().all())
+        assert grad_laf.grad[:, 1:].abs().sum().item() == 0
+
     def test_same_odd(self, device, dtype):
         img = torch.arange(5)[None].repeat(5, 1)[None, None].to(device, dtype)
         laf = torch.tensor([[2.0, 0, 2.0], [0, 2.0, 2.0]]).reshape(1, 1, 2, 3).to(device, dtype)
@@ -877,15 +912,21 @@ class TestExtractPatchesPyr(BaseTester):
         assert torch.equal(actual, expected)
 
     def test_one_pixel_axis_does_not_raise(self, device, dtype):
-        # A 1-pixel image axis has no spatial extent. It routes through the levelwise sampler,
-        # which uses a zero grid scale for that axis so the only real pixel is repeated instead of
-        # leaking a divide-by-zero NaN into the result.
+        # A 1-pixel image axis has no spatial extent. `normalize_laf`/`denormalize_laf` count it as
+        # one pixel instead of dividing by zero, and the levelwise sampler uses a zero grid scale
+        # for that axis, so the only real pixel is repeated instead of leaking a NaN. Both the
+        # default pixel-LAF entry point and the pre-normalized one stay finite, on both extractors.
         for shape in ((1, 1, 5, 1), (1, 1, 1, 5)):
             img = torch.rand(shape, device=device, dtype=dtype)
             laf = torch.rand(1, 1, 2, 3, device=device, dtype=dtype)
-            patches = kornia.feature.extract_patches_from_pyramid(img, laf, 4, False)
-            assert patches.shape == (1, 1, 1, 4, 4)
-            assert bool(patches.isfinite().all())
+            for normalize_lafs in (False, True):
+                for extract in (
+                    kornia.feature.extract_patches_from_pyramid,
+                    kornia.feature.extract_patches_simple,
+                ):
+                    patches = extract(img, laf, 4, normalize_lafs)
+                    assert patches.shape == (1, 1, 1, 4, 4)
+                    assert bool(patches.isfinite().all())
 
     def test_one_pixel_level_does_not_raise(self, device, dtype):
         # PS=1 lets the pyramid descend to a 1-pixel level (12 -> 6 -> 3 -> 1) even though the
@@ -937,7 +978,13 @@ class TestExtractPatchesPyr(BaseTester):
         # patch. It must sample the actual coarsest level rather than becoming zero padding.
         PS = 16
         img = torch.arange(128 * 128, device=device, dtype=dtype).reshape(1, 1, 128, 128)
-        laf = torch.tensor([[1.0e5, 0.0, 64.0], [0.0, 1.0e5, 64.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
+        # The LAF is deliberately float32: 1e5 overflows float16 to infinity, which the non-finite
+        # contract turns into a zero patch, so a half LAF would test the opposite behavior. Paired
+        # with the injected image dtype it keeps the giant *finite* case under test on every dtype
+        # and exercises the mixed-dtype promotion path at the same time.
+        laf = torch.tensor([[1.0e5, 0.0, 64.0], [0.0, 1.0e5, 64.0]], device=device, dtype=torch.float32).view(
+            1, 1, 2, 3
+        )
 
         actual = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
         nlaf = kornia.feature.normalize_laf(laf, img)
@@ -1221,6 +1268,46 @@ class TestExtractPatchesPyr(BaseTester):
         torch._dynamo.reset()
         compiled = torch.compile(kornia.feature.extract_patches_from_pyramid, fullgraph=True)
         self.assert_close(compiled(img, laf, 16), expected)
+
+
+def test_nonfinite_laf_backward_does_not_crash_the_interpreter():
+    """Backward through a non-finite LAF must not take the interpreter down.
+
+    Both extractors advertise zero patches and zero gradients for a non-finite LAF frame. The
+    failure mode of a regression is not a wrong number but a native segfault inside
+    ``grid_sampler_2d_backward`` -- torch's CPU ``padding_mode="border"`` kernel on a NaN grid --
+    which would kill the pytest process itself rather than fail a test. A fresh interpreter turns
+    that into an ordinary assertion on the exit code. CPU-only on purpose: the crashing kernel is
+    the CPU one, and the guard needs no device fixture to be meaningful.
+    """
+    script = textwrap.dedent(
+        """
+        import torch
+
+        import kornia
+
+        img = torch.rand(1, 1, 64, 64, requires_grad=True)
+        # Only the center is invalid: the whole frame must still be treated as invalid.
+        laf = torch.tensor([[[[8.0, 0.0, float("nan")], [0.0, 8.0, 32.0]]]])
+        extractors = (kornia.feature.extract_patches_simple, kornia.feature.extract_patches_from_pyramid)
+        for extract in extractors:
+            patches = extract(img, laf, 8)
+            assert patches.abs().sum().item() == 0.0, extract.__name__
+            patches.sum().backward()
+        assert img.grad is not None and bool(img.grad.isfinite().all())
+        """
+    )
+    # Trusted, fixed command (the current interpreter running a literal script); no external input.
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, (
+        f"non-finite LAF backward exited with {result.returncode}:\n{result.stdout}\n{result.stderr}"
+    )
 
 
 class TestLAFIsTouchingBoundary(BaseTester):

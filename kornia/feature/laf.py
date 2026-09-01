@@ -369,6 +369,9 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
         [a11*MIN_SIZE a12*MIN_SIZE x*(W-1)]
         [a21*MIN_SIZE a22*MIN_SIZE y*(H-1)]
 
+    A singleton axis (``H == 1`` or ``W == 1``) has no spatial extent and counts as one pixel, so
+    the conversion stays finite and round-trips with :func:`normalize_laf`.
+
     Args:
         LAF: :math:`(B, N, 2, 3)`
         images: :math:`(B, CH, H, W)`
@@ -379,8 +382,12 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_LAF(LAF)
     _, _, h, w = images.size()
-    wf = float(w - 1)
-    hf = float(h - 1)
+    # A singleton image axis has a single valid coordinate and therefore no spatial extent.
+    # Treating it as one pixel wide keeps the conversion finite and round-trippable with
+    # `normalize_laf`, instead of collapsing every LAF to zero here and raising a
+    # `ZeroDivisionError` there.
+    wf = float(max(w - 1, 1))
+    hf = float(max(h - 1, 1))
     min_size = min(hf, wf)
     coef = torch.ones(1, 1, 2, 3, dtype=LAF.dtype, device=LAF.device) * min_size
     coef[0, 0, 0, 2] = wf
@@ -400,6 +407,9 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
         [a11/MIN_SIZE a12/MIN_SIZE x/(W-1)]
         [a21/MIN_SIZE a22/MIN_SIZE y/(H-1)]
 
+    A singleton axis (``H == 1`` or ``W == 1``) has no spatial extent and counts as one pixel, so
+    the conversion stays finite instead of dividing by zero.
+
     Args:
         LAF: :math:`(B, N, 2, 3)`
         images: :math:`(B, CH, H, W)`
@@ -410,8 +420,10 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """
     KORNIA_CHECK_LAF(LAF)
     _, _, h, w = images.size()
-    wf = float(w - 1)
-    hf = float(h - 1)
+    # See `denormalize_laf`: a singleton axis counts as one pixel of extent, so a 1-pixel-wide or
+    # 1-pixel-tall image normalizes finitely instead of dividing by zero.
+    wf = float(max(w - 1, 1))
+    hf = float(max(h - 1, 1))
     min_size = min(hf, wf)
     coef = torch.ones(1, 1, 2, 3, dtype=LAF.dtype, device=LAF.device) / min_size
     coef[0, 0, 0, 2] = 1.0 / wf
@@ -440,8 +452,10 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor
     LAF_renorm = denormalize_laf(LAF, img)
 
     grid = F.affine_grid(LAF_renorm.view(B * N, 2, 3), [B * N, ch, PS, PS], align_corners=False)
-    grid[..., :, 0] = 2.0 * grid[..., :, 0].clone() / float(w - 1) - 1.0
-    grid[..., :, 1] = 2.0 * grid[..., :, 1].clone() / float(h - 1) - 1.0
+    # A singleton axis has no spatial extent; one pixel of denominator keeps the grid finite and
+    # lets the border padding return that single pixel (see `denormalize_laf`).
+    grid[..., :, 0] = 2.0 * grid[..., :, 0].clone() / float(max(w - 1, 1)) - 1.0
+    grid[..., :, 1] = 2.0 * grid[..., :, 1].clone() / float(max(h - 1, 1)) - 1.0
     return grid
 
 
@@ -646,6 +660,13 @@ def extract_patches_simple(
     B, N, _, _ = laf.size()
     if B == 0 or N == 0:
         return torch.zeros(B, N, ch, PS, PS, device=img.device, dtype=img.dtype)
+    # See `extract_patches_from_pyramid`: a non-finite value anywhere in a training-time LAF
+    # frame, including only its center, would reach `grid_sample` as an invalid grid, and the CPU
+    # border-padding backward kernel can segfault on it. Mark the whole frame invalid and
+    # sanitize it before any grid arithmetic; the frame then contributes neither output nor
+    # gradient, and its finite neighbours are untouched.
+    invalid_lafs = ~torch.isfinite(nlaf).all(dim=-1).all(dim=-1)
+    nlaf = nlaf.masked_fill(invalid_lafs.view(B, N, 1, 1), 0.0)
     # The image is upcast to the grid's dtype once, before the chunk loop: `_grid_sample_patches`
     # samples in one dtype, and re-casting the full image per chunk would defeat the chunk budget.
     sample_img = img.to(grid_dtype) if img.dtype != grid_dtype else img
@@ -655,7 +676,9 @@ def extract_patches_simple(
         en = min(st + chunk, N)
         grid = generate_patch_grid_from_normalized_LAF(img, nlaf[:, st:en], PS).view(B, en - st, PS, PS, 2)
         out[:, st:en] = _sample_patches(sample_img, grid, h, w)
-    return out
+    # Zeroing after the loop keeps the masking unconditional, so the fullgraph `torch.compile`
+    # path never takes a data-dependent Python branch.
+    return out.masked_fill_(invalid_lafs.view(B, N, 1, 1, 1), 0.0)
 
 
 def extract_patches_from_pyramid(

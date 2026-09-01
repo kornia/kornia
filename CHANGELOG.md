@@ -141,6 +141,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   size: tracing `extract_patches_simple` over batches of 2, 3, 5 and 7 built four graphs of 2/3/5/7 `grid_sample`
   nodes before and builds two graphs with one node each now.
 
+* `extract_patches_simple` and `extract_patches_from_pyramid` return an all-zero patch and a zero LAF gradient for a
+  non-finite LAF frame instead of handing `grid_sample` an invalid grid. A frame holding a NaN or an infinity
+  anywhere -- including only in its center -- is detected and sanitized before any grid arithmetic, and finite frames
+  in the same batch are untouched. Such a frame previously produced a finite-looking border-sampled patch, and its
+  backward pass could terminate the process inside torch's CPU `grid_sampler_2d_backward` kernel with
+  `padding_mode="border"`; a training-time detector that emits a degenerate LAF hits exactly that path through
+  `LAFOrienter`, `LAFAffNetShapeEstimator` and `LAFDescriptor`.
+
+* `normalize_laf`, `denormalize_laf` and `generate_patch_grid_from_normalized_LAF` count a singleton image axis as
+  one pixel of extent instead of dividing by `size - 1 == 0`. `normalize_laf` raised `ZeroDivisionError` for a
+  1-pixel-wide or 1-pixel-tall image -- and with it both patch extractors on their default
+  `normalize_lafs_before_extraction=True` path -- while `denormalize_laf` silently collapsed every LAF to zero.
+  The conversions are now finite and round-trip, and both extractors return finite patches for such an image.
+
 * Replace the batched `torch.inverse` in `ellipse_to_laf` with the closed-form inverse of its lower-triangular
   2x2 matrix. Results agree with the previous implementation to ~1.6e-7 relative in `float32` (machine epsilon in
   `float64`). Reproducible numbers via `benchmarks/feature/ellipse_to_laf.py` (float32, N=1e3..1e5, torch 2.9.1,
