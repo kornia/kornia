@@ -26,7 +26,7 @@ from kornia.config import kornia_config
 
 __all__ = ["CachedDownloader"]
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 class CachedDownloader:
@@ -105,7 +105,7 @@ class CachedDownloader:
 
         """
         if os.path.exists(file_path):
-            logger.info(f"Loading `{url}` from `{file_path}`.")
+            _logger.info(f"Loading `{url}` from `{file_path}`.")
             return
 
         if not download_if_not_exists:
@@ -115,7 +115,7 @@ class CachedDownloader:
 
         if url.startswith(("http:", "https:")):
             try:
-                logger.info(f"Downloading `{url}` to `{file_path}`.")
+                _logger.info(f"Downloading `{url}` to `{file_path}`.")
                 urllib.request.urlretrieve(url, file_path)  # noqa: S310
             except urllib.error.HTTPError as e:
                 raise ValueError(f"Error in resolving `{url}`.") from e

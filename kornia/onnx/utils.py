@@ -31,7 +31,7 @@ from kornia.onnx.download import CachedDownloader
 
 __all__ = ["ONNXLoader", "add_metadata", "io_name_conversion"]
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 class ONNXLoader(CachedDownloader):

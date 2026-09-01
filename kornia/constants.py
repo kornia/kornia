@@ -25,8 +25,8 @@ __all__ = ["BorderType", "DType", "Resample", "SamplePadding", "TKEnum", "pi"]
 pi = torch.tensor(3.14159265358979323846)
 
 
-T = TypeVar("T", bound=Enum)
-TKEnum = Union[str, int, T]
+_T = TypeVar("_T", bound=Enum)
+TKEnum = Union[str, int, _T]
 
 
 class _KORNIA_EnumMeta(EnumMeta):
@@ -48,7 +48,7 @@ class _KORNIA_EnumMeta(EnumMeta):
         return " | ".join(f"{self.__name__}.{val.name}" for val in self)
 
 
-def _get(cls: Type[T], value: TKEnum[T]) -> T:
+def _get(cls: Type[_T], value: TKEnum[_T]) -> _T:
     if isinstance(value, str):
         return cls[value.upper()]
 

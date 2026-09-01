@@ -31,7 +31,7 @@ from kornia.onnx.download import CachedDownloader
 
 __all__ = ["RRDBNetBuilder", "SmallSRBuilder", "SuperResolution"]
 
-URLs = {
+_URLs = {
     "RealESRGAN_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
     "RealESRNet_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.1/RealESRNet_x4plus.pth",
     "RealESRGAN_x4plus_anime_6B": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
@@ -210,7 +210,7 @@ class RRDBNetBuilder:
 
         model_path = None
         if pretrained:
-            url = URLs[model_name]
+            url = _URLs[model_name]
             model_path = CachedDownloader.download_to_cache(
                 url, model_name, download=True, suffix=".pth", cache_dir=kornia_config.hub_onnx_dir
             )
