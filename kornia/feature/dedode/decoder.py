@@ -44,11 +44,11 @@ class Decoder(nn.Module):
 
         Args:
             features: Encoded feature map with shape :math:`(B, C, H, W)`, or concatenated with context.
-            context: Optional context feature map from previous scale, shape :math:`(B, C_ctx, H, W)` or ``None``.
+            context: Optional context feature map from previous scale, shape :math:`(B, C_{\text{ctx}}, H, W)` or ``None``.
             scale: String key selecting the decoder layer for this scale (e.g. ``"8"``, ``"4"``, ``"2"``, ``"1"``).
 
         Returns:
-            Tuple of ``(logits, context)`` tensors, each with shape :math:`(B, C_out, H, W)`.
+            Tuple of ``(logits, context)`` tensors, each with shape :math:`(B, C_{\text{out}}, H, W)`.
         """
         if context is not None:
             features = torch.cat((features, context), dim=1)

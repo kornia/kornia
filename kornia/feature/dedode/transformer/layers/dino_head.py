@@ -70,7 +70,8 @@ class DINOHead(nn.Module):
             x: Input feature tensor with shape :math:`(B, C_{\text{in}})`.
 
         Returns:
-            L2-normalized projection with shape :math:`(B, \text{out_dim})`.
+            Projection logits with shape :math:`(B, \text{out\_dim})`. The bottleneck
+            features are L2-normalized before the final weight-normalized linear layer.
         """
         x = self.mlp(x)
         eps = 1e-6 if x.dtype == torch.float16 else 1e-12

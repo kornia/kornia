@@ -384,7 +384,7 @@ class DinoVisionTransformer(nn.Module):
 
         Returns:
             During training: full feature dictionary from ``forward_features``.
-            During inference: class token projection with shape :math:`(B, \text{out_dim})`.
+            During inference: class token projection with shape :math:`(B, \text{out\_dim})`.
         """
         ret = self.forward_features(*args, **kwargs)
         if is_training:

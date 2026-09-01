@@ -66,7 +66,7 @@ class VGG(nn.Module):
             x: Input image tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
-            Classification logits with shape :math:`(B, \text{num_classes})`.
+            Classification logits with shape :math:`(B, \text{num\_classes})`.
         """
         x = self.features(x)
         x = self.avgpool(x)
