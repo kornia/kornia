@@ -27,20 +27,49 @@ from kornia.filters import filter2d, filter3d
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
 
+def _compute_dtype(dtype: torch.dtype) -> torch.dtype:
+    # The exp(-dist/h) kernel and its -h*log(...) inverse have a working range that float16 and
+    # bfloat16 cannot cover (see _check_h_range): run the cascade in float32 and cast the result
+    # back, the same way half-precision inputs are upcast elsewhere in kornia (e.g.
+    # PatchAffineShapeEstimator, extract_patches_from_pyramid).
+    if dtype in (torch.float16, torch.bfloat16):
+        return torch.float32
+    return dtype
+
+
+def _check_h_range(kernel_size: int, h: float, dims: int, dtype: torch.dtype) -> None:
+    # The farthest kernel tap is exp(-d_max/h); every closer tap is larger since exp(-d/h) is
+    # monotonically decreasing in d, so this tap underflowing to zero is necessary and sufficient
+    # for the kernel to lose taps. Checked against `finfo.tiny` -- the smallest positive *normal*
+    # value -- rather than the true (device-dependent) smallest subnormal: MPS flushes subnormals
+    # to zero while CPU does not, so a subnormal-aware threshold would silently disagree across
+    # devices for the same dtype and h, which is the inconsistency this guard exists to rule out.
+    k_half = kernel_size // 2
+    d_max = math.sqrt(dims) * k_half
+    smallest_tap = math.exp(-d_max / h)
+    KORNIA_CHECK(
+        smallest_tap >= torch.finfo(dtype).tiny,
+        f"h={h} is too small for kernel_size={kernel_size} at working precision {dtype}: the farthest "
+        f"kernel tap exp(-{d_max:.4g}/h) underflows to zero, so the convolution silently drops it and "
+        "distance_transform returns a wrong or all-zero result. Increase h or decrease kernel_size.",
+    )
+
+
 def _distance_transform_2d_impl(image: torch.Tensor, kernel_size: int, h: float) -> torch.Tensor:
     device = image.device
     dtype = image.dtype
+    compute_dtype = _compute_dtype(dtype)
     k_half = kernel_size // 2
 
     n_iters = math.ceil(max(image.shape[2], image.shape[3]) / k_half)
-    grid = create_meshgrid(kernel_size, kernel_size, False, device, dtype)
+    grid = create_meshgrid(kernel_size, kernel_size, False, device, compute_dtype)
     grid = grid - k_half
 
     dist = torch.hypot(grid[0, ..., 0], grid[0, ..., 1])
     kernel = torch.exp(-dist / h).unsqueeze(0)
 
-    out = torch.zeros_like(image)
-    boundary = image.clone()
+    out = torch.zeros_like(image, dtype=compute_dtype)
+    boundary = image.to(compute_dtype)
     signal_ones = torch.ones_like(boundary)
 
     for i in range(n_iters):
@@ -56,22 +85,23 @@ def _distance_transform_2d_impl(image: torch.Tensor, kernel_size: int, h: float)
         out = out + (offset + cdt) * mask.to(dtype=out.dtype)
         boundary = torch.where(mask, signal_ones, boundary)
 
-    return out
+    return out.to(dtype)
 
 
 def _distance_transform_3d_impl(image: torch.Tensor, kernel_size: int, h: float) -> torch.Tensor:
     device = image.device
     dtype = image.dtype
+    compute_dtype = _compute_dtype(dtype)
     k_half = kernel_size // 2
 
     n_iters = math.ceil(max(image.shape[2:]) / k_half)
-    grid = create_meshgrid3d(kernel_size, kernel_size, kernel_size, False, device, dtype)
+    grid = create_meshgrid3d(kernel_size, kernel_size, kernel_size, False, device, compute_dtype)
     grid = grid - k_half
     dist = torch.norm(grid[0], p=2, dim=-1)
     kernel = torch.exp(-dist / h).unsqueeze(0)
 
-    out = torch.zeros_like(image)
-    boundary = image.clone()
+    out = torch.zeros_like(image, dtype=compute_dtype)
+    boundary = image.to(compute_dtype)
     signal_ones = torch.ones_like(boundary)
 
     for i in range(n_iters):
@@ -87,7 +117,7 @@ def _distance_transform_3d_impl(image: torch.Tensor, kernel_size: int, h: float)
         out = out + (offset + cdt) * mask.to(dtype=out.dtype)
         boundary = torch.where(mask, signal_ones, boundary)
 
-    return out
+    return out.to(dtype)
 
 
 def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.35) -> torch.Tensor:
@@ -100,7 +130,12 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
     Args:
         image: Image or volume with shape :math:`(B,C,H,W)` or :math:`(B,C,D,H,W)`.
         kernel_size: size of the convolution kernel. Must be an odd number.
-        h: value that influence the approximation of the min function.
+        h: value that influence the approximation of the min function. The cascade's kernel taps are
+            ``exp(-dist/h)``; too small an ``h`` for the given ``kernel_size`` underflows the farthest
+            taps to exactly zero, which used to return a silently wrong or all-zero result. That
+            combination now raises instead. ``float16`` and ``bfloat16`` inputs run the cascade in
+            ``float32`` and cast the result back, which widens the safe ``h`` range for those dtypes to
+            match ``float32``.
 
     Returns:
         tensor with the same shape as input.
@@ -132,9 +167,12 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
     KORNIA_CHECK(kernel_size % 2 != 0 and kernel_size >= 3, "kernel_size must be an odd integer >= 3")
     KORNIA_CHECK(h > 0, f"h must be a positive float, got {h}")
 
+    compute_dtype = _compute_dtype(image.dtype)
     if image.ndim == 4:
+        _check_h_range(kernel_size, h, 2, compute_dtype)
         return _distance_transform_2d_impl(image, kernel_size, h)
 
+    _check_h_range(kernel_size, h, 3, compute_dtype)
     return _distance_transform_3d_impl(image, kernel_size, h)
 
 
@@ -143,7 +181,8 @@ class DistanceTransform(nn.Module):
 
     Args:
         kernel_size: size of the convolution kernel.
-        h: value that influence the approximation of the min function.
+        h: value that influence the approximation of the min function. See :func:`distance_transform`
+            for the safe range of ``h`` relative to ``kernel_size`` and working precision.
 
     """
 

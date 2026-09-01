@@ -192,25 +192,68 @@ class TestConvDistanceTransform(BaseTester):
         loss_3d.backward()
 
     def test_offset_parenthesis_fix(self, device, dtype):
+        # h=0.01 used to reach into the kernel-underflow regime #4152 fixed: the pinned "expected"
+        # values below were themselves the wrong output of that bug, not a hand-verified reference.
+        # h=0.1 keeps the offset accumulation this test exists to pin (n - 0.00313 per row, strictly
+        # increasing by 1, so a mis-parenthesized `offset + cdt * mask` would fail this) while staying
+        # well clear of the underflow guard; reference values generated at float64 via:
+        #   img = torch.zeros(1, 1, 8, 4, dtype=torch.float64); img[0, 0, 1, :] = 1.0
+        #   kornia.contrib.distance_transform(img, kernel_size=3, h=0.1)[0, 0, :, 0]
         img = torch.zeros(1, 1, 8, 4, device=device, dtype=dtype)
         img[0, 0, 1, :] = 1.0
-        out = kornia.contrib.distance_transform(img, kernel_size=3, h=0.01)
+        out = kornia.contrib.distance_transform(img, kernel_size=3, h=0.1)
         expected = torch.tensor(
             [
-                [0.9998, 0.9998, 0.9998, 0.9998],
-                [0.0000, 0.0000, 0.0000, 0.0000],
-                [0.9998, 0.9998, 0.9998, 0.9998],
-                [1.9998, 1.9998, 1.9998, 1.9998],
-                [2.9998, 2.9998, 2.9998, 2.9998],
-                [3.9998, 3.9998, 3.9998, 3.9998],
-                [4.9998, 4.9998, 4.9998, 4.9998],
-                [5.9998, 5.9998, 5.9998, 5.9998],
+                [0.996872, 0.996872, 0.996872, 0.996872],
+                [0.000000, 0.000000, 0.000000, 0.000000],
+                [0.996872, 0.996872, 0.996872, 0.996872],
+                [1.996872, 1.996872, 1.996872, 1.996872],
+                [2.996872, 2.996872, 2.996872, 2.996872],
+                [3.996872, 3.996872, 3.996872, 3.996872],
+                [4.996872, 4.996872, 4.996872, 4.996872],
+                [5.996872, 5.996872, 5.996872, 5.996872],
             ],
             device=device,
             dtype=dtype,
         )
 
         self.assert_close(out[0, 0], expected, rtol=1e-3, atol=1e-3)
+
+    def test_half_precision_matches_float64_reference(self, device, dtype):
+        # #4152: the exp(-dist/h) kernel's far taps underflow to exactly zero in float16/bfloat16
+        # at the documented default h=0.35 once kernel_size >= 15, and the convolution silently
+        # drops them -- the peak distance below came back as ~15.7 instead of ~13.5 before the fix.
+        # distance_transform now runs the cascade in float32 for half-precision inputs, so the
+        # result should track the float64 reference to about float32 precision regardless of the
+        # input dtype. The reference is built on its own CPU float64 tensor -- MPS has no float64,
+        # so a `.double()` of the fixture's own `img` would fail there.
+        img = torch.zeros(1, 1, 16, 4, device=device, dtype=dtype)
+        img[0, 0, 1, :] = 1.0
+        ref_img = torch.zeros(1, 1, 16, 4, dtype=torch.float64)
+        ref_img[0, 0, 1, :] = 1.0
+        reference = kornia.contrib.distance_transform(ref_img, kernel_size=15).max()
+        out = kornia.contrib.distance_transform(img, kernel_size=15).max()
+        self.assert_close(out.cpu(), reference.to(dtype).cpu(), rtol=1e-2, atol=1e-2)
+
+    def test_h_too_small_raises(self, device, dtype):
+        # #4152: an h too small for kernel_size at the working precision used to underflow the
+        # farthest kernel tap to zero and silently return a wrong or all-zero field. It now raises
+        # instead of guessing. h=1e-30 underflows at any working precision, including float64.
+        img = torch.zeros(1, 1, 8, 4, device=device, dtype=dtype)
+        img[0, 0, 1, :] = 1.0
+        with pytest.raises(BaseError, match="too small for kernel_size"):
+            kornia.contrib.distance_transform(img, kernel_size=3, h=1e-30)
+
+    def test_h_too_small_raises_float32_regression(self, device):
+        # #4152: h=0.01 at kernel_size=3 in float32 (or float16/bfloat16, upcast to float32) used to
+        # return a plausible-looking but wrong monotone result -- the pin `test_offset_parenthesis_fix`
+        # replaced. Fixed at float32 explicitly, independent of the dtype fixture: float64's much
+        # smaller `finfo.tiny` does not underflow at this h, so this combination legitimately only
+        # raises at float32-or-coarser working precision.
+        img = torch.zeros(1, 1, 8, 4, device=device, dtype=torch.float32)
+        img[0, 0, 1, :] = 1.0
+        with pytest.raises(BaseError, match="too small for kernel_size"):
+            kornia.contrib.distance_transform(img, kernel_size=3, h=0.01)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         input2d = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)

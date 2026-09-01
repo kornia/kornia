@@ -129,6 +129,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `distance_transform` no longer silently returns a wrong or all-zero result when its `exp(-dist/h)` kernel
+  underflows (#4152). The farthest kernel tap underflowing to exactly zero -- reachable from the documented
+  default `h=0.35` at `kernel_size >= 15` in `float16` -- used to make the convolution silently drop it, returning
+  a plausible-looking but wrong distance field or, with a smaller `h`, an all-zero one, on every backend. Two
+  changes: `float16`/`bfloat16` inputs now run the cascade in `float32` and cast the result back (the default
+  `h=0.35` case is fixed by this alone, matching `float32`'s own working range); and an `h`/`kernel_size`/dtype
+  combination whose farthest tap still underflows `torch.finfo(dtype).tiny` now raises instead of guessing, so
+  the previously silent failure is caught even where the upcast does not reach (`h=0.01` at `kernel_size=3` in
+  `float32`, which used to return a monotone-looking but wrong result). The check compares against the smallest
+  *normal* value rather than the device-dependent smallest subnormal, since MPS flushes subnormals to zero while
+  CPU does not -- the same `h`/dtype combination silently disagreeing across devices was part of the original
+  bug. `tests/contrib/test_conv_distance_transformer.py::test_offset_parenthesis_fix` moves from `h=0.01` to
+  `h=0.1`: its pinned values were themselves the wrong output of this bug, not a hand-verified reference.
+
 * Keep `extract_patches_simple` and `extract_patches_from_pyramid` off a broken reduced-precision CPU kernel: for a
   `float16`/`bfloat16` CPU image, the `grid_sample` kernels in torch <= 2.9 read out of bounds when a rotated patch
   straddles the image border and return NaN or garbage values far outside the image's range. Both extractors now
