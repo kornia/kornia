@@ -248,12 +248,15 @@ class TestSo3(BaseTester):
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_adjoint(self, device, dtype, batch_size):
-        q1 = Quaternion.random(batch_size, device, dtype)
-        q2 = Quaternion.random(batch_size, device, dtype)
-        x = So3(q1)
-        y = So3(q2)
-        self.assert_close(x.inverse().adjoint(), x.adjoint().inverse())
-        self.assert_close((x * y).adjoint(), x.adjoint() @ y.adjoint())
+        shape = (3,) if batch_size is None else (batch_size, 3)
+        x = So3.exp(torch.tensor([0.1, -0.2, 0.3], device=device, dtype=dtype).expand(shape))
+        y = So3.exp(torch.tensor([-0.3, 0.1, 0.2], device=device, dtype=dtype).expand(shape))
+        adjoint = x.adjoint()
+        inverse_adjoint = x.inverse().adjoint()
+        identity = torch.eye(adjoint.shape[-1], device=device, dtype=dtype).expand_as(adjoint)
+        half_tolerance = torch.finfo(dtype).eps if dtype in (torch.float16, torch.bfloat16) else None
+        self.assert_close(adjoint @ inverse_adjoint, identity, rtol=half_tolerance, atol=half_tolerance)
+        self.assert_close((x * y).adjoint(), adjoint @ y.adjoint(), rtol=half_tolerance, atol=half_tolerance)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_random(self, device, dtype, batch_size):

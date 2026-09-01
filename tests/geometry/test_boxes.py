@@ -20,8 +20,9 @@ from functools import partial
 import pytest
 import torch
 
+from kornia.geometry import boxes as boxes_module
 from kornia.geometry.bbox import infer_bbox_shape
-from kornia.geometry.boxes import Boxes, Boxes3D
+from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
 
 from testing.base import BaseTester
 
@@ -1057,3 +1058,68 @@ class TestTransformBoxes3D(BaseTester):
             return boxes.data
 
         self.gradcheck(_wrapper_transform_boxes, (boxes.data, trans_mat))
+
+
+class TestVideoBoxes(BaseTester):
+    """Public API and round-trip coverage for :class:`VideoBoxes` (#4016)."""
+
+    @staticmethod
+    def _sample_video_boxes(device, dtype, batch: int = 2, time: int = 3, n_boxes: int = 1) -> torch.Tensor:
+        # Clockwise vertices_plus corners for a 3x3 box starting at (1, 1).
+        frame = torch.tensor(
+            [[[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]]],
+            device=device,
+            dtype=dtype,
+        )  # (1, 4, 2)
+        return frame.view(1, 1, 1, 4, 2).expand(batch, time, n_boxes, 4, 2).contiguous().clone()
+
+    def test_smoke(self, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype)
+        video_boxes = VideoBoxes.from_tensor(boxes)
+        assert isinstance(video_boxes, VideoBoxes)
+        assert video_boxes.temporal_channel_size == boxes.size(1)
+
+    def test_exception(self, device, dtype):
+        frame = self._sample_video_boxes(device, dtype, batch=1, time=1)[0]  # (T, N, 4, 2)
+        with pytest.raises(ValueError):
+            VideoBoxes.from_tensor(frame)
+        with pytest.raises(ValueError):
+            VideoBoxes.from_tensor([self._sample_video_boxes(device, dtype)])
+
+    def test_cardinality(self, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=2)
+        video_boxes = VideoBoxes.from_tensor(boxes)
+        assert video_boxes.data.shape == (boxes.size(0) * boxes.size(1), boxes.size(2), 4, 2)
+        out = video_boxes.to_tensor()
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == boxes.shape
+
+    def test_roundtrip_and_clone(self, device, dtype):
+        boxes = self._sample_video_boxes(device, dtype)
+        video_boxes = VideoBoxes.from_tensor(boxes)
+        restored = video_boxes.to_tensor()
+        assert isinstance(restored, torch.Tensor)
+        self.assert_close(restored, boxes)
+
+        cloned = video_boxes.clone()
+        assert isinstance(cloned, VideoBoxes)
+        assert cloned is not video_boxes
+        assert cloned.temporal_channel_size == video_boxes.temporal_channel_size
+        self.assert_close(cloned.data, video_boxes.data)
+        cloned.data[0, 0, 0, 0] = -1
+        assert not torch.equal(cloned.data, video_boxes.data)
+
+    def test_public_api_surface(self):
+        # Pin #4016: VideoBoxes is exported and the overrides are documented.
+        assert "VideoBoxes" in boxes_module.__all__
+        assert VideoBoxes.__doc__ is not None
+        for name in ("from_tensor", "to_tensor", "clone"):
+            assert getattr(VideoBoxes, name).__doc__ is not None
+
+    def test_gradcheck(self, device):
+        boxes = self._sample_video_boxes(device, torch.float64)
+
+        def _wrap(x: torch.Tensor) -> torch.Tensor:
+            return VideoBoxes.from_tensor(x).to_tensor()  # type: ignore[return-value]
+
+        self.gradcheck(_wrap, (boxes,))

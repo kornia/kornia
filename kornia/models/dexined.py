@@ -32,7 +32,7 @@ from kornia.core.mixin.onnx import ONNXExportMixin
 
 __all__ = ["DexiNed"]
 
-url: str | list[str] = [
+_url: str | list[str] = [
     hf_url("dexined", "DexiNed_BIPED_10.pth"),
     "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
 ]
@@ -241,7 +241,7 @@ class DexiNed(ONNXExportMixin, nn.Module):
         # self.block_cat = CoFusion(6,6)# cats fusion method
 
         if pretrained:
-            self.load_from_file(url)
+            self.load_from_file(_url)
         else:
             self.apply(weight_init)
 

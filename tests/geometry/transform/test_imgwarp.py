@@ -140,11 +140,14 @@ def test_empty_destination_blames_an_integral_src_by_name(op_name, device):
     src = torch.zeros(1, 3, 3, 4, device=device, dtype=torch.int64)
     matrix = torch.eye(3, device=device)[:rows].unsqueeze(0)
 
-    with pytest.raises(RuntimeError, match="floating point src"):
-        op(src, matrix, (0, 4))
-    # The non-empty path rejects it too, so the empty guard is not stricter.
-    with pytest.raises((RuntimeError, NotImplementedError)):
+    # Both paths must reject it with the same exception type. ``grid_sample`` raises
+    # ``NotImplementedError`` on newer torch and ``RuntimeError`` on older ones, so pin the
+    # parity rather than a fixed class: catch whatever the full path raises, then require the
+    # empty path to raise something the same ``except`` clause would catch.
+    with pytest.raises(RuntimeError) as full:
         op(src, matrix, (1, 4))
+    with pytest.raises(type(full.value), match="floating point src"):
+        op(src, matrix, (0, 4))
 
 
 @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])

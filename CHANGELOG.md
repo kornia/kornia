@@ -10,6 +10,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+* `extract_patches_from_pyramid` now samples ordinary-sized inputs once from a packed pyramid atlas instead of
+  sampling every LAF at every pyramid level. A statically selected levelwise fallback keeps atlases larger than
+  128 MiB from becoming a memory hazard. LAFs whose nominal level is coarser than the last usable pyramid level now
+  sample that actual coarsest level; they previously returned an all-zero patch. For `float16` and `bfloat16` inputs
+  the whole pyramid -- padding, `pyrdown`, coordinate arithmetic and sampling -- runs in `float32` and the patches
+  are cast back, on every device: this avoids the normalized-coordinate precision loss caused by the wider atlas,
+  keeps the extraction off `replication_pad2d`/`grid_sampler_2d` kernels that old torch builds lack for half dtypes
+  on the CPU (torch <= 2.5.1 would otherwise crash), and avoids recasting the full atlas on every sampling chunk.
+  `extract_patches_simple` computes its sampling grid in `float32` for reduced-precision inputs on every device for
+  the same reason -- its output matches the pyramid extractor's level-0 output again. Half-precision patches
+  therefore change on CUDA and MPS as well as the CPU, and floating-point results are not byte-identical to the
+  former levelwise implementation.
+  The universal `float32` sampling is a real cost where the native half kernels were fine: on CUDA, `float16`
+  `extract_patches_simple` is roughly 2x slower at high N, and peak CUDA memory rises at moderate N (the atlas plus
+  the one-time upcast copy) even though the high-N peaks drop.
+  Both extractors now reject an image/LAF batch-size mismatch at the boundary with a clear error: former releases
+  raised an internal `grid_sample` error for most batch mixes, except a smaller LAF batch, where both extractors
+  silently returned patches for only the first `min(B_img, B_laf)` images. A LAF on another device is moved once to
+  the image, while a different LAF dtype is promoted with the image dtype for grid arithmetic rather than rejected or
+  rounded down; this preserves mixed-precision autocast pipelines and subpixel LAF coordinates. Patches still return
+  with the image's dtype and device. Both extractors chunk their sampling along N, in the spirit of `batched_forward`, so
+  the folded `(B, N*PS, PS, 2)` grid and channel-scaled sampled chunk each stay within a fixed 64 MiB budget (remap
+  intermediates can still make the total peak a multiple of that). Batched high-N extraction now peaks below even the
+  pre-batching per-image loop (468 MiB
+  against 495 MiB on `main` for B=8,
+  N=4000, PS=32 on a 512x512 float32 image, where the unchunked atlas peaked at 1.24 GiB), eager throughput stays
+  within ~5% of the unchunked atlas, and float32/float64 patches are bitwise identical to it; a `torch.compile`d
+  call whose grid exceeds the budget splits into several `grid_sample` calls (~1.5x the unbounded atlas latency at
+  B=8, N=2000 on CPU inductor, still ~10x faster than the per-level loop it replaces). Both extractors return an
+  empty `(B, N, CH, PS, PS)` tensor for `B == 0` or `N == 0` instead of raising from inside `affine_grid` --
+  `extract_patches_from_pyramid` with `B == 0` returned the empty result before the batched rewrite below
+  regressed it; every other empty combination raised on all prior releases. `extract_patches_from_pyramid` now
+  also accepts a LAF on a different device than the image, as `extract_patches_simple` always has, and returns
+  patches on the image's device; both extractors move the LAF to the image's device up front, so a cross-device
+  call now samples on the image's device and matches the same-device result (`extract_patches_simple` previously
+  built the full sampling grid on the LAF's device).
+
 * The shape guards of `normalize_homography` and `denormalize_homography` now reject everything but a
   `(3, 3)`/`(B, 3, 3)` matrix, and `normalize_homography3d`'s everything but a `(4, 4)`/`(B, 4, 4)` one (#3999).
   A rank-4 input used to pass the guard and come back with its rank unchanged —
@@ -23,7 +60,158 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now emits a `TracerWarning` about converting a tensor to a Python boolean that it did not emit before. The guard
   is a static check and the traced graph is unchanged — the warning is noise, not a correctness signal.
 
+* `MultiResolutionDetector` and `KeyNetDetector` change their output: padded slots now read as a zero response and
+  a zero LAF instead of `torch.finfo(dtype).min / 2` and an arbitrary border coordinate; the previously inert `mask`
+  argument now suppresses detections, and must be `(1 or B, 1, H, W)` at the image size -- a `(B, H, W)` mask
+  passed directly to either detector, which was accepted only because it went unread, is rejected; half-precision
+  input yields half-precision LAFs; the returned shape is always `num_features`; a multi-channel response is rejected instead of
+  producing invalid or duplicate LAFs; a negative `score_threshold` is rejected with `ValueError`; and `detect`
+  enforces its documented `(1, C, H, W)` input. The `mask` of both detectors is now "where a detection may be": a
+  boolean or integer mask is binary (a 0/255 mask no longer scales the responses by 255), a floating-point mask
+  weights the scores, it is resampled conservatively so a thin zero region survives the coarse levels, and it is
+  applied to the non-maxima-suppression output, so its edge cannot manufacture maxima (#4102). A mask whose dtype
+  differs from the image no longer promotes the response dtype, and a mask that is not `(1 or B, 1, H, W)` for the
+  image is rejected instead of stretched or broadcast onto the wrong axis -- that includes an image-shaped
+  `(1, C, H, W)` mask and a coarse `(N, H/8, W/8)` one, which `LocalFeatureMatcher` used to accept and silently
+  ignore (the old docstring said "same shape as the input image") and now forwards to the detector's check.
+  `ScaleSpaceDetector` additionally stops returning its own top-K sentinel as a detection for a batch, no longer
+  returns a frame for a candidate its border check rejected, and re-checks a sub-pixel-refined centre against the
+  mask; a short result is sorted in both detectors. `detect_features_on_single_level`'s new `mask` parameter is
+  keyword-only, and it now requires the response map to have the level's spatial size: a valid-convolution
+  response net that returned a smaller map had every keypoint decoded one pixel off its peak, since a response
+  index is read as a level pixel with no offset, and is rejected with a message rather than silently misplaced.
+  See the entry under **Bug fixes** (#4089, #4090, #4091) for the details and the
+  migration.
+
+* `MKDDescriptor` runs in `float16` and `bfloat16`. Its gradient-embedding and spatial-encoding stages were held in
+  a plain `dict`, so `.to(device, dtype)` never reached their buffers and a half-precision input failed at the
+  whitening matmul with `expected m1 and m2 to have the same dtype`. They are now an `nn.ModuleDict`; float32 and
+  float64 outputs are byte-identical, and `state_dict()` gains the stages' buffer keys (`feats.<parametrization>.*`).
+  A state dict saved by an earlier release still loads with `strict=True`: those buffers are derived from the
+  constructor arguments, and when a state dict has no `feats.*` key at all they are filled in from the module being
+  loaded into (one that has some and lost one is reported by `strict=True`, as for any other missing key). The
+  reverse is not covered: a state dict saved by this release carries the `feats.*` keys and fails `strict=True` on
+  an earlier kornia, which does not know them; load it with `strict=False` there.
+
+* `DescriptorMatcherWithSteerer(normalize=True)`, `DiscreteSteerer.steer_descriptions(normalize=True)` and the
+  `MKD` descriptors, like `SIFTDescriptor` and `HardNet`, L2-normalise a float16 input in float32 and cast back,
+  so an all-zero float16 descriptor normalises to zero instead of NaN (the 1e-12 guard underflows in float16) and a
+  descriptor whose norm sits below the smallest float16 normal still normalises to one rather than being clamped.
+  `PatchDominantGradientOrientation`, and with it `LAFOrienter`, take the gradient magnitude and orientation of a
+  float16 patch through the same float32 step `SIFTDescriptor` uses, so a flat patch yields a finite angle instead
+  of a NaN LAF -- which reached a *filled* detection slot in a float16 `SIFTFeature` pipeline and poisoned that
+  descriptor row. `SIFTDescriptor(rootsift=True)` and `DenseSIFTDescriptor(rootsift=True)`
+  compute the RootSIFT square root in float32 for a float16 input: the float16-representable guard would have
+  read every empty bin as `sqrt(6.1e-5)` and biased the descriptor norm to ~1.004. Float32 and float64 outputs are
+  unchanged.
+
+* `LocalFeatureMatcher` no longer matches the zero-LAF slots with which a fixed-shape detector pads an under-filled
+  result, and now forwards its documented `mask0`/`mask1` inputs to feature extraction. `nn` and `mnn` callers can
+  therefore receive fewer correspondences: identical descriptors sampled at padded origin frames are no longer
+  reported as matches. Three-dimensional `(B, H, W)` masks keep working and are promoted to the detectors'
+  `(B, 1, H, W)` form; four-dimensional masks are forwarded unchanged. Because the masks now reach the detector,
+  they are subject to its check: a mask that is not at the image's spatial size, which used to be ignored, is
+  rejected. A floating-point mask changes meaning in `ScaleSpaceDetector`-based pipelines too, see below.
+
+* `ellipse_to_laf` no longer raises on a degenerate ellipse. One whose `a` or `c` is `0` after rounding to the input
+  dtype makes the matrix being inverted singular; the batched `torch.inverse` it now replaces (see below) failed the
+  whole call with `linalg.LinAlgError`, and the closed form returns non-finite values in that LAF instead, leaving
+  the other rows of the batch usable. Callers that relied on the exception to reject bad input -- reading
+  Oxford-format `.ellipse` files, say -- should test the result with `kornia.feature.laf_is_valid`, since an invalid
+  LAF otherwise propagates silently through `get_laf_scale` and into matching. Detecting the degenerate rows up front
+  would cost a device synchronisation and the `fullgraph=True` capture, so it is left to the caller. The in-repo
+  affine estimators handle invalid candidates before nonlinear LAF operations. `PatchAffineShapeEstimator` computes
+  half-precision gradients, Gaussian weights, moments, and normalization in `float32`, preserving valid anisotropic
+  shapes that would otherwise underflow; `LAFAffineShapeEstimator` sanitizes non-positive-definite ellipse
+  coefficients before conversion; and both it and `LAFAffNetShapeEstimator` use a finite fallback with finite
+  backward. The fallback is the input LAF when `preserve_orientation=True` and its upright form otherwise; a finite
+  zero-scale input keeps its center and zero affine block.
+
 ### Bug fixes
+
+* Keep `extract_patches_simple` and `extract_patches_from_pyramid` off a broken reduced-precision CPU kernel: for a
+  `float16`/`bfloat16` CPU image, the `grid_sample` kernels in torch <= 2.9 read out of bounds when a rotated patch
+  straddles the image border and return NaN or garbage values far outside the image's range. Both extractors now
+  sample reduced-precision inputs in `float32` on every device and cast the patches back. This fixes the CPU kernel
+  bug and avoids normalized-coordinate precision loss on large images; half-precision patches change on every
+  backend, with the CUDA cost described under **Breaking changes** above. Both extractors also replace their
+  per-image Python loop with a folded batched `grid_sample` over a `(B, N*PS, PS, 2)` grid, split along `N` when
+  needed to bound its workspace. Both forms compile under `fullgraph=True`, but the loop was unrolled at trace time
+  into one `grid_sample` per batch element, so the graph grew with the batch and was recompiled for every new batch
+  size: tracing `extract_patches_simple` over batches of 2, 3, 5 and 7 built four graphs of 2/3/5/7 `grid_sample`
+  nodes before and builds two graphs with one node each now.
+
+* `extract_patches_simple` and `extract_patches_from_pyramid` return an all-zero patch and a zero LAF gradient for a
+  non-finite LAF frame instead of handing `grid_sample` an invalid grid. A frame holding a NaN or an infinity
+  anywhere -- including only in its center -- is detected and sanitized before any grid arithmetic, and finite frames
+  in the same batch are untouched. Such a frame previously produced a finite-looking border-sampled patch, and its
+  backward pass could terminate the process inside torch's CPU `grid_sampler_2d_backward` kernel with
+  `padding_mode="border"`; a training-time detector that emits a degenerate LAF hits exactly that path through
+  `LAFOrienter`, `LAFAffNetShapeEstimator` and `LAFDescriptor`.
+
+* `normalize_laf`, `denormalize_laf` and `generate_patch_grid_from_normalized_LAF` count a singleton image axis as
+  one pixel of extent instead of dividing by `size - 1 == 0`. `normalize_laf` raised `ZeroDivisionError` for a
+  1-pixel-wide or 1-pixel-tall image -- and with it both patch extractors on their default
+  `normalize_lafs_before_extraction=True` path -- while `denormalize_laf` silently collapsed every LAF to zero.
+  The conversions are now finite and round-trip, and both extractors return finite patches for such an image.
+
+* Replace the batched `torch.inverse` in `ellipse_to_laf` with the closed-form inverse of its lower-triangular
+  2x2 matrix. Results agree with the previous implementation to ~1.6e-7 relative in `float32` (machine epsilon in
+  `float64`). Reproducible numbers via `benchmarks/feature/ellipse_to_laf.py` (float32, N=1e3..1e5, torch 2.9.1,
+  Linux/WSL2, base `2009933e`): throughput improves ~2.4-5.3x eager / ~3-6.5x compiled on CPU (i7-14700K) and
+  ~1.4-1.7x eager / ~4.2-5.5x compiled on CUDA (RTX 4090). The largest win is MPS, where the batched inverse hit a
+  pathological `linalg` path, emitted a deprecated-resize `UserWarning` on every call, and failed to `torch.compile`
+  (~1500x once measured ad hoc at N=20000 on Apple Silicon; rerun the benchmark there for a citable number). The
+  function now compiles with `fullgraph=True` on every backend and accepts `float16`/`bfloat16` on CPU, where the
+  raw `.inverse()` call raised for low-precision dtypes (`_torch_inverse_cast` would have lifted that restriction
+  too; the closed form is for speed). The off-diagonal divides `a21 = b / (a11 + a22)` by the product of the
+  diagonal square roots, which can neither overflow nor round to zero: every ordering of the reciprocal product
+  overflows to `inf` (or flushes a representable value to `0`) on a sufficiently lopsided or subnormal diagonal,
+  and when that product is subnormal the division loses precision but never corrupts a representable result to a
+  zero, `inf`, or `nan`.
+
+* Make `load_pointcloud_ply` and `load_pointcloud_ply_binary` parse the PLY header instead of skipping a fixed
+  number of lines. Both loaders skipped `header_size=8` lines and read everything after them as `x y z` triples, so a
+  minimal PLY file (seven header lines, no `comment`) lost its first point to a header line -- the binary reader
+  returned header bytes decoded as doubles -- and any file with extra vertex properties (normals, colours) or a
+  `face` element after the vertices was rejected or misread. The readers now stop at `end_header`, take the point
+  count from `element vertex N`, select `x`, `y`, `z` by property name whatever their scalar type, skip trailing
+  elements, and read big-endian payloads. `header_size` is deprecated and ignored (a `DeprecationWarning` is
+  emitted when it is passed). Files without a proper PLY header, which the old line-skipping loader could read
+  by accident, are now rejected with a `ValueError`, and so is a file that declares a `list` property among the
+  vertex properties -- a list has no statically known length, so the columns after it cannot be located. The
+  binary reader additionally rejects a `list` property in an element that *precedes* the vertices, whose byte
+  length it would have to know to reach the vertex data; the ASCII reader reads such a file, since every ASCII
+  element instance is one line whatever it contains.
+
+* Make `guided_blur` / `GuidedBlur` work in `float16` and `bfloat16` when the guidance has more than one channel.
+  Multi-channel guidance solves a per-pixel `C x C` system, and `torch.linalg.solve` has no half-precision LU
+  kernel, so every such call failed: on CPU with `NotImplementedError: "lu_cpu" not implemented for 'Half'`, and on
+  MPS with a hard `Only MPSDataTypeFloat32 is supported` assertion that aborted the process rather than raising.
+  The system is now solved in `float32` and cast back. A tensor `eps` also takes part in dtype promotion, so
+  the common `eps=torch.tensor(0.1)` (float32) widened the matrix past the right-hand side and made `solve`
+  reject the pair; both operands are now solved in one dtype. Single-channel guidance never reached the solver
+  and is unaffected. `float32` and `float64` results are bit-identical to before, and the op still compiles with
+  `fullgraph=True` in one graph. This takes `tests/filters/test_guided.py` from 98 failed / 67 passed to
+  169 passed under `--dtype=float16,bfloat16`.
+
+* Raise `NotImplementedError` instead of `RuntimeError` for an integral `src` on the empty-`dsize` paths of
+  `warp_affine`, `warp_perspective`, `remap`, `warp_affine3d` and `warp_perspective3d`, matching what the non-empty
+  path already raises from `grid_sample` (#4031). The degenerate path had its own explicit guard that fired first
+  with a different exception type, so the exception a caller saw for the same invalid input depended on whether
+  `dsize` had a zero dimension. The message is unchanged. `NotImplementedError` derives from `RuntimeError`, so
+  `except RuntimeError` around these functions still catches it; only code matching on the exact type sees a
+  difference.
+
+* Validate the chroma plane height in `yuv422_to_rgb`, so a chroma plane whose height does not match the luma now
+  raises `ShapeError` instead of reaching `torch.cat` and dying there with a bare `RuntimeError` (#4050). 4:2:2
+  subsamples width only, so chroma keeps the full luma height; the guard checked only the width ratio, where the
+  4:2:0 twin `yuv420_to_rgb` checks both axes. This is observable to callers on the error path: `ShapeError` derives
+  from `BaseError`, not `RuntimeError`, so code catching `RuntimeError` around `yuv422_to_rgb` to handle a malformed
+  chroma plane will stop catching it. No previously working input changes behaviour — `torch.cat` already rejected
+  every mismatched height. A zero-width chroma plane whose height *also* differs now reaches the guard, since the new
+  clause short-circuits the width division; the matching-height case still raises
+  `ZeroDivisionError` and remains open as #4056.
 
 * Make `yuv_to_rgb` the exact inverse of `rgb_to_yuv`, so an RGB → YUV → RGB round trip is now limited only by the
   input dtype instead of losing up to `1.36e-3` (in B, at `rgb = (1, 1, 0)`) at every precision, `float64` included
@@ -97,6 +285,241 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the device guard in `BaseTester.gradcheck` for the six callers named something else. No runtime
   behavior changed.
 
+* Fix `SIFTDescriptor.gk`, `PatchDominantGradientOrientation.weighting` and `PatchAffineShapeEstimator.weighting`
+  being plain attributes, so `nn.Module.to()` left them behind on the original device and dtype (#4069). They are
+  now non-persistent buffers: `.to()`, `.cuda()`, `.half()` and friends move them, and because they are fully
+  determined by `patch_size` they stay out of `state_dict()`, so existing checkpoints still load with
+  `strict=True`. The three `forward` methods also cast into a local instead of rebinding the attribute, so a call
+  no longer leaves the module's kernel in whatever dtype and device the last input happened to have. Numerical
+  output is unchanged: the kernels were already cast to the input's dtype and device inside `forward`.
+* Fix patch extraction on MPS returning darkened patches for any LAF that touches an image border (#4063).
+  MPS has no `padding_mode="border"` for `torch.nn.functional.grid_sample`, so `extract_patches_simple` and
+  `extract_patches_from_pyramid` emulate it with zero padding and a clamped grid. The clamp was `grid.clamp(-1, 1)`,
+  but with `align_corners=False` normalized coordinate `±1` is the outer *edge* of the border pixel, not its center,
+  so bilinear sampling blended the border pixel with the zero padding and returned roughly half its value. The grid
+  is now clamped to the outermost pixel centers, `±(1 - 1/size)` per axis, which reproduces `padding_mode="border"`
+  exactly. On a patch overlapping the image corner the maximum deviation from the CPU result drops from `0.395` to
+  `2.5e-6` on a `[0, 1]` image, with 64.7% of the patch's pixels previously off by more than `1e-3`. Every descriptor
+  built on these patches — `get_laf_descriptors`, `LAFDescriptor`, `SIFTFeature`, `KeyNetAffNetHardNet` and the rest —
+  moves with them for keypoints near the border. The CPU and CUDA paths never took this branch and are byte-identical
+  to before.
+* Fix `match_fginn`'s geometric consistency check comparing every query's candidates against **query 0**'s
+  candidates instead of against the query's own 1st nearest neighbor, which changes every `match_fginn` and
+  `GeometryAwareDescriptorMatcher("fginn")` result -- the latter being that class's *default* mode (#4062). The distance
+  `kdist[i, k] = || xy2[idx[i, k]] - xy2[idx[0, k]] ||` was measured from a slice of dim 0 that broadcast query 0's
+  whole candidate list over the batch; it is now `candidates_xy[:, 0:1]`, i.e.
+  `kdist[i, k] = || xy2[idx[i, k]] - xy2[idx[i, 0]] ||`. Three consequences disappear with it. The geometric term
+  was inert -- an unrelated query's candidates are almost always farther apart than `spatial_th`, so nothing was
+  penalized and the raw 2nd nearest neighbor was used, making `match_fginn` behave as `match_snn`: on a 300x300
+  descriptor set with planted near-duplicates, 15 of the 15 matches shared with `match_snn` had an identical ratio
+  before and 14 of 15 after. Query 0 always matched, since `candidates_xy[0] - candidates_xy[0]` is identically zero,
+  so all of its candidates were penalized and its ratio collapsed to ~0. And a query's ratio depended on the other
+  queries in the batch: with only query 0 changed, one query's ratio moved between `0.9005` and `2.8e-08`. The seven
+  existing FGINN tests pass unchanged on both sides, which is how this survived; two tests that discriminate it were
+  added. `match_fginn`'s docstring now also records the saturation corner, where every candidate falls within
+  `spatial_th` of the 1st nearest neighbor, the ratio collapses towards zero and the match is accepted.
+* Fix `DenseSIFTDescriptor` registering a process-global cached tensor as its `_poolingconv_weight` buffer, so that
+  one instance's `load_state_dict` silently corrupted every other instance and every instance constructed later
+  (#4068). `_get_reshape_kernel` memoises `torch.eye(numel)` per `numel` and used to return a *view* of the cached
+  tensor; `.float()` on an already-float tensor returns the same object, so no copy happened between the cache and
+  the buffer, and `load_state_dict` copies into buffers in place. Loading a checkpoint into one `DenseSIFTDescriptor`
+  therefore overwrote the shared identity matrix, with no error raised and every descriptor built from it wrong from
+  then on. The cache is removed rather than made safe: cloning on the way out is what a safe cache requires, and a
+  clone costs more than rebuilding the identity at every size measured (2.6 us against 2.0 us at the default
+  `numel = 8 * 4 * 4`; 3.9 ms against 2.8 ms at the former 4096 bound, which also retained 67 MB for the lifetime of
+  the process). Descriptor output is byte-identical to before.
+* Fix `laf_is_inside_image` treating the image extent as `(w, h)` rather than `(w - 1, h - 1)`, which made its
+  bounds asymmetric: the lower bound rejected anything left of `x = 0`, but the upper bound accepted `x = w`, a
+  full pixel past the last valid column `w - 1` (#4064). Valid pixel coordinates run `0 .. w-1` and `0 .. h-1` --
+  the convention `get_laf_center` documents and the one `normalize_laf`/`denormalize_laf` already use -- so the
+  upper bound is now `w - 1 - border` and `h - 1 - border`. A LAF whose boundary points reach past the last valid
+  pixel coordinate is now reported as outside; anything strictly inside is unchanged. The equivalent inlined check
+  in `ScaleSpaceDetector._process_octave` moved with it, so detections within one pixel of the right or bottom edge
+  that used to survive its `border=5` filter are now discarded. That inlined check also computed its `max |sin|`
+  constant with the wrong angular spacing (`2*pi/11` instead of the `2*pi/10` that `laf_to_boundary_points(n_pts=12)`
+  actually samples), inflating the tested x-extent by 4% and making the inline check stricter than the reference it
+  claims to reproduce; the two now agree exactly. That correction is a loosening in x, so it can change
+  `ScaleSpaceDetector` output on its own: a detection whose x-extent falls between the two constants used to be
+  discarded and is now kept. It is rare -- the detection has to land in a band of width `0.039 * half_s` against the
+  x bound -- but when it fires it can promote the strongest response in the image, so it is not output-neutral.
+* Fix the empty-result paths in `kornia.feature.integrated` disagreeing with the corresponding non-empty ones
+  (#4065). `get_laf_descriptors` returned a hardcoded width of 128 with the *LAF's* dtype and device when it was
+  handed no keypoints, so an empty batch through, say, a 256-d descriptor produced a `(B, 0, 128)` result that could
+  not be concatenated with a real one; it now runs the descriptor once on a zero patch and returns its actual width
+  (the flattened per-patch output, matching the non-empty path's `.view(B, N, -1)`), dtype and device. That is a
+  widening of the empty path's failure surface: a third-party descriptor that raises on a zero input now raises here
+  where it previously returned quietly. `LocalFeatureMatcher.no_match_output` returned `lafs0`/`lafs1` of shape
+  `(0, 0, 2, 3)` where the success path returns `(1, NC, 2, 3)`, so `lafs0[0]` raised `IndexError` exactly when
+  nothing matched; the empty tensors now keep the leading batch of 1. That is a shape change on a public return
+  value -- code using `out["lafs0"].shape[0] == 0` as its no-match signal now sees `1` and should test
+  `out["keypoints0"].shape[0] == 0`, which was already the consistent signal. `LocalFeatureMatcher.forward`'s
+  docstring also stops claiming `confidence` is in `[0, 1]`: it is `1 - distance`, which for the raw-distance
+  matchers `nn` and `mnn` goes at least down to -1 on unit-norm descriptors, and is unbounded below for arbitrary
+  ones.
+
+* Stop `MultiResolutionDetector` (and therefore `KeyNetDetector`) fabricating detections, honour its `mask` argument,
+  and keep its LAFs in the input dtype (#4089, #4090, #4091).
+
+  **Padded slots are zero, and the shape is always `num_features`.** `detect_features_on_single_level` masked every
+  non-candidate position to `torch.finfo(dtype).min / 2` and then ran `topk` with `k` clamped against the *pixel
+  count* rather than the number of surviving candidates. Once a pyramid level ran out of above-threshold maxima,
+  `topk` could no longer rank -- every remaining position carried the same sentinel -- so it returned an arbitrary
+  tie-break subset, in practice the low flat indices, which is exactly the border strip `remove_borders` had just
+  zeroed. `MultiResolutionDetector(BlobHessian(), num_features=100)` on a plain `64x64` image returned 70 of its 100
+  features that way, each with a response of `-1.7e38` and a real-looking coordinate. Those slots are now padded
+  with a zero response and a zero LAF, which is what `ScaleSpaceDetector.detect` already does for a short result,
+  and `forward` re-applies that padding after the affine-shape and orientation modules, which would otherwise
+  normalise a zero frame into a finite one. `detect` also only ever *trimmed* an over-long result, so a level
+  capped at its own pixel count, or a per-level quota rounded down to zero, produced a short one: a one-level `8x8`
+  image asking for 100 features returned 64, and the default configuration asking for 1 feature returned **0**,
+  which made `lafs[0, 0]` raise. The result is now padded up to `num_features` with the same zero response and
+  zero LAF. Callers that tested for the sentinel (`resp < 0`) should test `resp == 0`; callers that consumed the
+  responses as scores no longer need to.
+
+  **`num_features=1` returns a real detection.** The per-level quotas each truncate independently, and at
+  `num_features=1` the six default shares are `0.508 .. 0.016`, so every one of them rounded to zero and no level
+  was asked for a single candidate. The apportionment now hands its one slot to the level with the largest share
+  whenever truncation would otherwise lose every slot, so `num_features=1` returns the same best feature that
+  `num_features=2` returns first. An apportionment that already gives out a slot is untouched, which with the
+  default configuration is every `num_features >= 2` (verified byte-identical with `torch.equal` over 16 size/count
+  combinations).
+
+  **The `mask` argument works, and means "where a detection may be".** `forward(img, mask)` and `detect(img, mask)`
+  accepted a `mask`, documented it as "a mask with weights where to apply the response function", and ignored it --
+  an all-zero mask returned bit-identical output. Anyone who was passing a mask and silently getting unmasked
+  detections now gets masked ones. The semantics are the same in both detectors and are chosen from the caller's
+  side. A boolean or integer mask is binary: any non-zero value keeps a position, so a 0/1 mask, an OpenCV 0/255
+  mask and `img > 0` all mean the same thing (a raw cast would have multiplied the responses by 255 and defeated an
+  absolute `score_threshold`). A floating-point mask is used as weights on the detection scores: a weight in
+  `(0, 1]` scales a score toward the worst -- a non-negative score is multiplied by it, a negative one divided -- so
+  a down-weighted candidate never outranks a full-weight one with an at-least-as-good score (a plain multiply pulled
+  a negative score toward zero, i.e. *up* the ranking of a signed response), and a zero or negative weight
+  suppresses. The weights are cast to the image dtype, so a weight a half-precision image cannot hold rounds to
+  zero and suppresses, and clamped to one, so a float 0/255 mask (an OpenCV mask through `.astype(np.float32)`)
+  means what the integer one means rather than scaling every score by 255. The weighting runs in float32 for
+  half-precision input and is bounded at the dtype's most negative finite value, so a negative score divided by a
+  small weight cannot overflow to `-inf`; an unfilled slot is ranked with `-inf` (not a finite sentinel such as
+  `finfo.min / 2`, which a genuine extreme response could sort below, and did: four float32 maxima at `-2e38`
+  were returned for a single image and dropped for a batch), so every finite detection precedes the padding. The
+  mask is checked at the integer maximum and again at the sub-pixel-refined centre, conservatively (every octave
+  pixel the centre touches), so the refinement cannot carry a detection into the zero region. A NaN weight
+  suppresses rather than winning the ranking. The mask must be `(1 or B, 1, H, W)` with the
+  image's spatial size. It is resampled onto every pyramid level or octave with a
+  min-pool rather than an interpolation, so a zero region suppresses every level pixel it touches and a two-pixel
+  zero stripe does not vanish at a factor-four level. And it is applied to the non-maxima-suppression output, not
+  to the response the suppression reads: multiplying the response first carves an edge into it, and the bilinear
+  ramp of that edge was a "maximum" on the suppressed side, so a blob wholly inside the zero region was still
+  detected (#4102). `ScaleSpaceDetector`, which did multiply its response per octave, takes the same path; its
+  detections inside the region kept by a binary mask are unchanged. A *floating-point* mask used to weight the
+  response before the non-maxima suppression and the sub-pixel refinement, so a graded mask moved maxima and
+  their refined positions; it now weights only the score of a maximum found in the unweighted response, so the
+  set of candidates and their positions are those of the unmasked image and the weight decides their rank.
+
+  `LocalFeatureMatcher` now carries those masks through the full extraction-and-matching path. It documented
+  `mask0`/`mask1` as `(B, H, W)` inputs but never passed either to its local feature module; that historical shape is
+  accepted by adding the singleton channel, and the detectors' `(B, 1, H, W)` form is also accepted directly.
+
+  **A mask no longer changes the response dtype.** It is resampled *and cast* onto the response map, where the
+  multiplication used to promote it, so a `float16` image with a `float32` mask returned `float32` responses beside
+  `float16` LAFs. This also applies to `ScaleSpaceDetector`, which shares the resampling helper: a `float32` image
+  with a `float64` mask used to return `float64` and now returns `float32`, i.e. the image dtype, in both detectors.
+  `ScaleSpaceDetector` gains the same shape check, and accepts a boolean or integer mask through the same helper
+  (it raised on one before). It resampled a mask of any size onto its octaves without complaint, so a stale mask
+  from before a resize, or a transposed one, was silently stretched onto the wrong geometry, and a multi-channel
+  mask was broadcast over the scale levels rather than the channels -- an error when the counts differed, the wrong
+  weighting when they matched. Both detectors now require `(1 or B, 1, H, W)`.
+
+  **`ScaleSpaceDetector` no longer leaks its own top-K sentinel for a batch.** For `B > 1` the per-octave top-K
+  ranks over the whole scale-space volume with non-candidates masked to `torch.finfo(dtype).min / 2`, and an image
+  with fewer maxima than requested got those sentinels back as detections: `ScaleSpaceDetector()` on
+  `torch.zeros(2, 1, 32, 32)` returned 70 slots per image with a response of `-1.7e38` and an arbitrary LAF, where
+  the same input at `B = 1` returned 500 zeros. Which slots a detection filled is now tracked through the top-K
+  rather than inferred from the response, and an unfilled one -- the sentinel, the padding that tops a short
+  result up to `num_features`, or a candidate whose frame reached outside the image -- carries a zero response and
+  a zero LAF, in `detect` and, after the affine-shape and orientation modules have run, in `forward`, and sorts
+  after every real detection, including a negative one. The mask is deliberately *not* `response == 0`: the
+  response function is pluggable and may be signed, so an exact zero can be a genuine maximum and keeps its frame.
+  The border-rejected candidate is the one visible change at `B = 1`: it used to keep its coordinates beside a
+  zero response, i.e. a keypoint that was never detected, and its scale was often the largest in the result. Both
+  detectors' `forward` read occupancy off the zero LAF, so a subclass overriding `detect` is honoured whole.
+
+  **Half-precision input yields half-precision LAFs.** `detect_features_on_single_level` hardcoded `.float()` on the
+  pixel coordinates, so a `float16`/`bfloat16` image came back with `float32` LAFs beside half-precision responses.
+  The index-to-coordinate arithmetic runs in float32 (float64 for a float64 image) and only the finished coordinate
+  is cast to the input dtype; `float32` and `float64` output is unchanged. A half-precision LAF centre carries the
+  dtype's integer resolution: exact up to 256 in `bfloat16` and up to 2048 in `float16`, then on a 2 px grid up to
+  twice that, 4 px up to four times, and so on -- where the old `float32` LAFs were exact.
+
+  **A detector model must return one spatial response map.** `detect_features_on_single_level` flattened the
+  whole response tensor and decoded the flat top-K index with the width alone, so a candidate from channel `c`
+  landed at `y + c * H`; `BlobHessian` on an RGB image put 56 of 100 LAFs outside a `64x64` frame, up to
+  `y = 179.9`. Merely decoding the channel would still spend the budget on duplicate LAFs -- a grayscale image
+  repeated into RGB returned three copies of almost every feature, whose grayscale descriptors are identical.
+  `MultiResolutionDetector` and `ScaleSpaceDetector` now require their detector model to emit one response channel
+  and fail with a named error otherwise. This does not restrict the model input: a learned detector may consume RGB
+  (or any other channel count) and collapse it to one response map itself, which is the intended color-image path.
+  Single-channel input and response output are unchanged.
+
+  **`score_threshold` must be non-negative**, and `MultiResolutionDetector.__init__` raises `ValueError` otherwise:
+  non-maxima suppression writes an exact zero at every suppressed position, so a negative threshold admitted all of
+  them as detections (with `score_threshold=-1.0` on a `64x64` image, 70 of 100 returned features were suppressed
+  border pixels) and would now also be indistinguishable from the zero response that marks an unfilled slot.
+
+  **`detect` enforces its documented `(1, C, H, W)`.** It is public, and a larger batch was flattened across the
+  batch axis and silently returned coordinates for the wrong image. `forward` already had that guard, so only
+  direct `detect` callers see a difference.
+
+  **A short result is sorted.** `MultiResolutionDetector.detect` only ran its final top-K when the levels had
+  produced *more* slots than `num_features`, so a short result came back in level order with each level's own
+  padding left in place: with `pyramid_levels=2, up_levels=0, num_features=6000` on a `48x48` image the three real
+  detections sat at flat indices 0, 1 and 2304. The ranking is now unconditional, as it is in
+  `ScaleSpaceDetector.detect`, and the zero-response padding sorts to the end.
+
+  **Padding is not a correspondence.** `LocalFeatureMatcher` used to describe and match every fixed-shape slot, so
+  `DescriptorMatcher("nn")` returned every padded origin frame and `mnn` returned one false origin match even when
+  neither image contained a detection. Zero LAFs are honest, but they are also identical, and identical descriptors
+  match each other at zero distance -- with plain nearest-neighbour matching the padded block became the largest
+  consistent set of "correspondences" and captured RANSAC (`SIFTFeature(400)` on two crops of one image: 0.09 px
+  mean reprojection error on `main`, 31 px with the zero LAFs matched, 0.09 px with them dropped). The matcher now
+  filters zero LAFs before matching, and skips a pair when either side has nothing left (`matcher` is an arbitrary
+  module with no obligation to accept a `(0, D)` input); the ratio tests `match_snn` and `match_smnn` reject the
+  block on their own (`match_mnn` and `match_nn` do not: identical zero descriptors are mutual nearest neighbours
+  at distance zero), and
+  `LocalFeature.forward` documents the one-line filter for a hand-rolled `match_nn` pipeline. The feature benchmark
+  does the same before affine/orientation/description, avoiding meaningless descriptor work and the quadratic
+  distance-matrix cost of padded rows; its CUDA timers also synchronize around the measured detector and full
+  matching regions.
+
+* `SIFTDescriptor`, `DenseSIFTDescriptor`, `HardNet` and `HardNet8` return NaN for a constant patch in `float16`,
+  and the SIFT descriptors' backward is NaN in `float16` wherever two neighbouring pixels are equal.
+
+  `F.normalize`'s default `eps` of 1e-12 is not representable in `float16` and rounds to zero, so the
+  `norm.clamp_min(eps)` that exists to stop a zero-norm input becoming `0 / 0` was itself zero in exactly that
+  dtype: an all-zero patch normalised to NaN, while `bfloat16`, `float32` and `float64` were fine. A detector that
+  pads a short result hands the descriptor a zero LAF, which samples one image point repeatedly and produces
+  exactly that patch -- `ScaleSpaceDetector(400)` on a random `64x64` `float16` image gave 365 NaN descriptor rows
+  -- and a NaN descriptor is worse than a meaningless one, because it propagates through `torch.cdist` and poisons
+  the whole matching. The nine `F.normalize` calls in those four modules now go through one helper that
+  normalises a `float16` input in float32 and casts back (an `eps` representable in `float16` is safe but not
+  neutral: a norm in the subnormal window came back as 0.5). `bfloat16`, `float32` and `float64` results are
+  unchanged: they keep the 1e-12 default.
+
+  The forward pass was only half of it. `SIFTDescriptor` and `DenseSIFTDescriptor` guard `sqrt(gx^2 + gy^2 + eps)`
+  and `atan2(gy, gx + eps)` with `eps = 1e-10`, which is zero in `float16` -- and a squared `float16` gradient
+  underflows long before that -- so at every pixel with a zero gradient both sat on their singular point and the
+  input gradient came back NaN (9 of 4096 on ordinary random `32x32` patches). The gradient magnitude and
+  orientation are now computed in float32 for `float16` input and cast back, and the RootSIFT `sqrt` is computed
+  in float32 for `float16` as well. An *exactly* flat patch -- what a zero-LAF padding slot samples -- was the
+  remaining case: the guard gave every zero-gradient pixel a magnitude of `sqrt(eps)`, so a flat patch's
+  descriptor was a unit vector built from `eps` (float32) or a subnormal one (float16) whose `1 / norm` gradient,
+  together with `atan2`'s `1 / eps`, overflowed through the float16 cast into an all-NaN input gradient (and was
+  a meaningless ~1e8 in float32). A zero-gradient pixel now contributes a zero magnitude, a zero vector normalises
+  to zero with a zero gradient (the `eps` clamp's `1 / eps` was never meaningful), and
+  `PatchDominantGradientOrientation` skips its parabolic refinement on an empty or uniform histogram instead of
+  dividing `0 / 0`; a flat patch has a zero SIFT descriptor and a zero input gradient in every dtype. `bfloat16`,
+  whose exponent range holds both the guard and the squares, and the wider dtypes are byte-identical at every
+  pixel whose gradient is not exactly zero; a patch with such pixels (a saturated region) loses their `sqrt(eps)`
+  contribution, a change of at most `1e-5` per pixel before normalisation.
 
 ## :rocket: [0.6.11] - 2022-03-28
 ### :new:  New Features

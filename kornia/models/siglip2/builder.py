@@ -27,7 +27,7 @@ import torch
 from .config import SigLip2Config
 from .model import SigLip2Model
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 __all__ = ["SigLip2Builder"]
 
@@ -41,7 +41,7 @@ def _download_weights(model_name: str, cache_dir: Optional[str]) -> dict[str, to
         error_msg = (
             "safetensors library is required for loading model weights. Install it with: pip install safetensors"
         )
-        logger.error(error_msg)
+        _logger.error(error_msg)
         raise ImportError(error_msg) from e
 
     try:
@@ -55,7 +55,7 @@ def _download_weights(model_name: str, cache_dir: Optional[str]) -> dict[str, to
         error_msg = (
             f"Could not find model.safetensors for {model_name}. The model must be available in safetensors format."
         )
-        logger.error(error_msg)
+        _logger.error(error_msg)
         raise FileNotFoundError(error_msg) from e
 
 
