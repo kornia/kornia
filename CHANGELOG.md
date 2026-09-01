@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+* The documentation site was rebuilt on `pydata-sphinx-theme` with a top navigation bar
+  (Learn / API / Models plus Ecosystem, About and Support menus), a redesigned landing page, a
+  restructured API reference with per-topic subpages, and a long list of fixed doc examples and
+  removed dead interactive demos. The previous furo layout remains available with
+  `KORNIA_DOCS_THEME=furo`. (#4155)
+
 ### Breaking changes
 
 * `extract_patches_from_pyramid` now samples ordinary-sized inputs once from a packed pyramid atlas instead of

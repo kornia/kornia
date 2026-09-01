@@ -186,9 +186,10 @@ exclude_patterns = ["_build", ".ipynb_checkpoints"]
 pygments_style = "friendly"
 pygments_dark_style = "monokai"
 
-# Prototype switch between the furo layout and a pydata-sphinx-theme layout with a top navbar
-# (Guide / API / Models / Community); ``KORNIA_DOCS_THEME=pydata`` selects the latter.
-DOCS_THEME = os.environ.get("KORNIA_DOCS_THEME", "furo")
+# The documentation builds on pydata-sphinx-theme (top navbar with Learn / API / Models and the
+# Ecosystem / About / Support dropdowns). ``KORNIA_DOCS_THEME=furo`` selects the previous furo
+# layout, kept as a fallback while the redesign settles.
+DOCS_THEME = os.environ.get("KORNIA_DOCS_THEME", "pydata")
 
 html_theme = "pydata_sphinx_theme" if DOCS_THEME == "pydata" else "furo"
 
