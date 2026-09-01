@@ -464,11 +464,11 @@ def _is_subprocess_isolated_test(item) -> bool:
     if callspec is None:
         return False
     params = callspec.params
-    if params.get("dtype_name") not in ("float16", "bfloat16"):
-        return False
     if params.get("device_name") != "cuda":
         return False
-    return True
+    if params.get("dtype_name") in ("float16", "bfloat16"):
+        return True
+    return any(v in (torch.float16, torch.bfloat16) for v in params.values())
 
 
 def pytest_runtest_protocol(item, nextitem):
@@ -589,11 +589,20 @@ def skip_half_precision_on_cuda(request):
     if os.environ.get("KORNIA_TEST_IN_SUBPROCESS"):
         return
 
-    if "dtype" not in request.fixturenames:
+    half_dtype = None
+    if "dtype" in request.fixturenames:
+        dtype = request.getfixturevalue("dtype")
+        if dtype in (torch.bfloat16, torch.float16):
+            half_dtype = dtype
+    elif hasattr(request.node, "callspec"):
+        half_dtype = next(
+            (v for v in request.node.callspec.params.values() if v in (torch.bfloat16, torch.float16)),
+            None,
+        )
+
+    if half_dtype is None:
         return
-    dtype = request.getfixturevalue("dtype")
-    if dtype not in (torch.bfloat16, torch.float16):
-        return
+
     if "device" not in request.fixturenames:
         return
 
@@ -606,7 +615,7 @@ def skip_half_precision_on_cuda(request):
         return
 
     if not request.config.getoption("--isolate-half-precision"):
-        dtype_name = "bfloat16" if dtype == torch.bfloat16 else "float16"
+        dtype_name = "bfloat16" if half_dtype == torch.bfloat16 else "float16"
         pytest.skip(
             f"{dtype_name} on CUDA: skipped by default to prevent device-side assert contamination. "
             "Run with --isolate-half-precision to execute in isolated subprocesses."
