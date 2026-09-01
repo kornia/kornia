@@ -440,3 +440,101 @@ def test_changed_kornia_files_lists_only_python_files_under_kornia(tmp_path):
         os.chdir(original_cwd)
 
     assert files == ["kornia/a.py"]
+
+
+def test_main_flags_removal_in_a_path_git_would_quote(tmp_path, capsys):
+    # git quotes paths containing non-ASCII bytes ("kornia/f\303\266o.py") unless the diff is
+    # asked for -z output. A quoted name doesn't end in ".py", so the file dropped out of the
+    # file list and its __all__ removal passed silently -- the check's one job, skipped for a
+    # reason invisible in the log.
+    repo = tmp_path / "repo"
+    (repo / "kornia").mkdir(parents=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+
+    mod = repo / "kornia" / "f\u00f6o.py"  # escaped to keep this test file pure ASCII
+    mod.write_text("__all__ = ['a']\n\ndef a():\n    pass\n", encoding="utf-8")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+    _git("branch", "base", cwd=repo)
+
+    mod.write_text("__all__ = []\n", encoding="utf-8")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "drop the export", cwd=repo)
+
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(repo)
+        exit_code = main(["--base-ref", "base"])
+    finally:
+        os.chdir(original_cwd)
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "'a'" in captured.out
+
+
+def test_main_flags_removal_that_is_not_committed_yet(tmp_path, capsys):
+    # check_file reads the *working tree*, so the file list has to be the working tree's diff
+    # against base. Listing a committed range instead (base...HEAD) skips an edit that isn't
+    # committed yet -- silently reporting "clean" for the local `--base-ref origin/main` run
+    # the module docstring tells contributors to make before pushing.
+    repo = tmp_path / "repo"
+    (repo / "kornia").mkdir(parents=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+
+    mod = repo / "kornia" / "mymodule.py"
+    mod.write_text("__all__ = ['a']\n\ndef a():\n    pass\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+    _git("branch", "base", cwd=repo)
+
+    mod.write_text("__all__ = []\n")  # edited, deliberately not committed
+
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(repo)
+        exit_code = main(["--base-ref", "base"])
+    finally:
+        os.chdir(original_cwd)
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "kornia/mymodule.py" in captured.out
+    assert "'a'" in captured.out
+
+
+def test_check_file_honors_a_declared_source_encoding(tmp_path):
+    # PEP 263: a module carrying a coding cookie is valid Python whose bytes aren't UTF-8.
+    # Reading either side of the comparison as UTF-8 *text* raised UnicodeDecodeError out of
+    # check_file and killed the whole run with a traceback; handing ast.parse the bytes lets
+    # it apply the cookie exactly as the interpreter does when importing the same file.
+    repo = tmp_path / "repo"
+    (repo / "kornia").mkdir(parents=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+
+    mod = repo / "kornia" / "mymodule.py"
+    mod.write_bytes(b"# -*- coding: latin-1 -*-\n__all__ = ['a']\n\ndef a():\n    pass\n# a latin-1 byte: \xe9\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+    _git("branch", "base", cwd=repo)
+
+    mod.write_bytes(b"# -*- coding: latin-1 -*-\n__all__ = []\n# a latin-1 byte: \xe9\n")
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "drop the export", cwd=repo)
+
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(repo)
+        report = check_file("base", "kornia/mymodule.py")
+    finally:
+        os.chdir(original_cwd)
+
+    assert report is not None
+    assert report.removed_from_all == {"a"}
+    assert report.fatal is True

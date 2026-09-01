@@ -90,8 +90,12 @@ def _string_literals(node: ast.AST) -> list[str]:
     return [elt.value for elt in node.elts if isinstance(elt, ast.Constant) and isinstance(elt.value, str)]
 
 
-def parse_module_surface(source: str) -> ModuleSurface:
+def parse_module_surface(source: str | bytes) -> ModuleSurface:
     """Parse a module's source and collect the names it binds at module scope.
+
+    Accepts bytes as well as text, and hands them to `ast.parse` undecoded so
+    that a PEP 263 coding cookie is honored exactly as the interpreter honors
+    it -- the same source Python can import is the source this can parse.
 
     Recurses into ``try``/``except``/``else``/``finally`` and plain ``if``
     bodies, since names bound there (e.g. a version-conditional import) are
@@ -146,16 +150,16 @@ def parse_module_surface(source: str) -> ModuleSurface:
     return surface
 
 
-def _git_show(ref: str, path: str) -> str | None:
-    """Return the file's content at `ref`, or None if it didn't exist there."""
-    # git is the trusted tool this script is built around. Force UTF-8 rather
-    # than the platform locale encoding (e.g. cp1252 on Windows), which can
-    # otherwise raise UnicodeDecodeError on non-ASCII source bytes.
+def _git_show(ref: str, path: str) -> bytes | None:
+    """Return the file's bytes at `ref`, or None if it didn't exist there.
+
+    Bytes, not text: decoding is `ast.parse`'s job (see `parse_module_surface`),
+    and decoding here with the platform locale (e.g. cp1252 on Windows) would
+    raise on non-ASCII source bytes that Python itself reads fine.
+    """
     result = subprocess.run(  # noqa: S603
         ["git", "show", f"{ref}:{path}"],  # noqa: S607
         capture_output=True,
-        encoding="utf-8",
-        errors="surrogateescape",
         check=False,
     )
     if result.returncode != 0:
@@ -164,6 +168,7 @@ def _git_show(ref: str, path: str) -> str | None:
 
 
 def _changed_kornia_files(base_ref: str) -> list[str]:
+    """Paths under `kornia/` that differ between `base_ref` and the working tree."""
     # Git's "**" glob pathspec only matches when there's at least one directory
     # between "kornia/" and the filename, so "kornia/foo.py" itself wouldn't
     # match "kornia/**/*.py". Scope to the "kornia/" pathspec instead and
@@ -176,13 +181,25 @@ def _changed_kornia_files(base_ref: str) -> list[str]:
     # fallback (_alternate_path) still tolerates the one legitimate rename
     # shape, `x.py` <-> `x/__init__.py` packageification, so this doesn't
     # trade the rename blind spot for a packageification false positive.
+    #
+    # No `...HEAD`: check_file reads the *working tree*, so the file list has
+    # to be the working tree's diff against base too. Committed-range diffing
+    # would silently skip a removal that is edited but not yet committed --
+    # invisible for the local runs this script documents, identical to
+    # `base...HEAD` on CI's clean checkout (base is already the merge-base).
+    #
+    # -z: without it, git quotes (and octal-escapes) any path holding
+    # non-ASCII or special bytes, so the name arrives wrapped in double
+    # quotes, fails the ".py" filter below, and drops out of the check
+    # entirely. -z also removes the need to un-escape such a name.
     result = subprocess.run(  # noqa: S603
-        ["git", "diff", "--no-renames", "--name-only", f"{base_ref}...HEAD", "--", "kornia/"],  # noqa: S607
+        ["git", "diff", "--no-renames", "--name-only", "-z", base_ref, "--", "kornia/"],  # noqa: S607
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="surrogateescape",
         check=True,
     )
-    return [line for line in result.stdout.splitlines() if line.endswith(".py")]
+    return [name for name in result.stdout.split("\0") if name.endswith(".py")]
 
 
 # docs/source/get-started/stability.rst puts kornia.contrib in the Experimental
@@ -199,6 +216,17 @@ def _module_name(path: str) -> str:
 
 def _is_experimental(module: str) -> bool:
     return any(module == e or module.startswith(e + ".") for e in EXPERIMENTAL)
+
+
+def _read_source(path: str) -> bytes:
+    """Read a working-tree file as bytes, the way `_git_show` reads the base revision.
+
+    Both ends of the comparison must handle the same bytes. Decoding as UTF-8 text
+    here would raise on a module Python imports happily under a PEP 263 cookie, and
+    abort the whole check with a traceback rather than reporting that one file.
+    """
+    with open(path, "rb") as f:
+        return f.read()
 
 
 def _alternate_path(path: str) -> str:
@@ -239,22 +267,23 @@ def check_file(base_ref: str, path: str) -> FileReport | None:
         return None  # new file, nothing to compare against
 
     try:
-        with open(path, encoding="utf-8") as f:
-            new_source: str | None = f.read()
+        new_source: bytes | None = _read_source(path)
     except FileNotFoundError:
         # The path is gone, but the *module* may not be: x.py <-> x/__init__.py is the same
         # importable name (packageification), not a removal. Only try the one alternate
         # spelling -- anything else missing here is a real deletion.
         try:
-            with open(_alternate_path(path), encoding="utf-8") as f:
-                new_source = f.read()
+            new_source = _read_source(_alternate_path(path))
         except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
             new_source = None  # module genuinely gone -- diff against an empty surface
 
     try:
         old_surface = parse_module_surface(old_source)
         new_surface = parse_module_surface(new_source) if new_source is not None else ModuleSurface()
-    except SyntaxError:
+    except (SyntaxError, ValueError):
+        # SyntaxError: not valid Python at one end of the diff (a template file, or
+        # bytes that don't decode under the module's declared encoding).
+        # ValueError: source ast.parse rejects outright, e.g. embedded null bytes.
         return None
 
     removed_from_all, removed_undocumented = diff_surfaces(old_surface, new_surface)
@@ -294,7 +323,14 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     base = merge_base.stdout.strip()
 
-    files = _changed_kornia_files(base)
+    try:
+        files = _changed_kornia_files(base)
+    except subprocess.CalledProcessError as exc:
+        # `base` came from merge-base, so this is close to unreachable -- but a check that
+        # can't list its files must fail loudly and closed, not traceback (or pass empty).
+        print(f"::error::could not list changed files against {base}: {exc.stderr.strip() or exc}")
+        return 1
+
     reports = [r for r in (check_file(base, path) for path in files) if r is not None]
 
     hard_fail = False
