@@ -1,0 +1,30 @@
+name: Import Surface
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'kornia/**/*.py'
+      - '.github/scripts/check_import_surface.py'
+      - '.github/workflows/import-surface.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check for dropped module-level names
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Need the PR's merge-base commit to diff against, not just the tip.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Check import surface
+        run: python3 .github/scripts/check_import_surface.py --base-ref "origin/${{ github.base_ref }}"
