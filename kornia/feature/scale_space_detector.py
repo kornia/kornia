@@ -839,15 +839,19 @@ class MultiResolutionDetector(nn.Module):
             nf = self.num_features * factor_points ** (-1 * (idx_level - self.num_upscale_levels))
             num_features_per_level.append(nf)
         shares: List[float] = [x / tmp for x in num_features_per_level]
+        # Largest-remainder (Hamilton) apportionment: `shares` sums to `self.num_features` (up to
+        # float error), but flooring each one independently discards every fractional part, so the
+        # floors can sum to well under `self.num_features` -- to zero at `num_features=1`, where the
+        # default six shares are 0.508 .. 0.016. The finest level's quota also dominates every other
+        # one's, so a small request degenerates to querying a single scale. Hand the shortfall --
+        # `self.num_features` minus the sum of floors -- to the levels with the largest fractional
+        # remainders, one slot each, so the quotas always sum to exactly `self.num_features` and stay
+        # spread across scales instead of collapsing onto the finest level.
         num_features_per_level = [int(x) for x in shares]
-        # Each quota truncates independently, so a small `num_features` can round the whole
-        # apportionment to zero: with the default configuration that happens at `num_features=1`,
-        # where the six shares are 0.508 .. 0.016. Every level would then be queried for zero
-        # candidates and the result padded with a dummy, on an image full of real maxima. Hand the
-        # one slot to the level with the largest share. This fires only when truncation lost
-        # everything -- an apportionment that already gives out a slot is left exactly as it was.
-        if self.num_features > 0 and sum(num_features_per_level) == 0:
-            num_features_per_level[max(range(len(shares)), key=shares.__getitem__)] = 1
+        shortfall = self.num_features - sum(num_features_per_level)
+        by_remainder = sorted(range(len(shares)), key=lambda i: shares[i] - num_features_per_level[i], reverse=True)
+        for idx_level in by_remainder[:shortfall]:
+            num_features_per_level[idx_level] += 1
 
         _, _, h, w = img.shape
         img_up = img
