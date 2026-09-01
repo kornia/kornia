@@ -723,6 +723,11 @@ def extract_patches_from_pyramid(
     heights = [h]
     widths = [w]
     for _ in range(1, max(1, max_level)):
+        # `pyrdown` applies a 5x5 Gaussian with two pixels of reflect padding, which requires
+        # both source axes to be larger than two. Keep such a source as the actual coarsest
+        # usable level instead of recording a target level that cannot be materialized.
+        if min(heights[-1], widths[-1]) <= 2:
+            break
         h_l = heights[-1] // 2
         w_l = widths[-1] // 2
         if min(h_l, w_l) < PS:

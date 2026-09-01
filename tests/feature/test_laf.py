@@ -951,14 +951,19 @@ class TestExtractPatchesPyr(BaseTester):
                 self.assert_close(simple, expected)
                 self.assert_close(pyramid, expected)
 
-    def test_one_pixel_level_does_not_raise(self, device, dtype):
-        # PS=1 lets the pyramid descend to a 1-pixel level (12 -> 6 -> 3 -> 1) even though the
-        # input image is far larger than 2 pixels, so the atlas guard must inspect the *built*
-        # level sizes, not the input image, before the level constants divide by `size - 1`.
-        img = torch.rand(1, 1, 12, 12, device=device, dtype=dtype)
-        laf = torch.tensor([[3.0, 0.0, 6.0], [0.0, 3.0, 6.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
+    @pytest.mark.parametrize("height,width", [(12, 12), (8, 8), (2, 8), (8, 2)])
+    def test_one_pixel_level_does_not_raise(self, device, dtype, height, width):
+        # PS=1 can make a pyramid descend to a 1-pixel level. A 12-pixel axis reaches it safely
+        # through 12 -> 6 -> 3 -> 1, while a power-of-two or rectangular axis reaches 2 first;
+        # `pyrdown` cannot reflect-pad that 2-pixel source, so it must remain the coarsest usable
+        # level instead of attempting the final downsample.
+        img = torch.rand(1, 1, height, width, device=device, dtype=dtype)
+        laf = torch.tensor([[3.0, 0.0, width / 2.0], [0.0, 3.0, height / 2.0]], device=device, dtype=dtype).view(
+            1, 1, 2, 3
+        )
         patches = kornia.feature.extract_patches_from_pyramid(img, laf, 1)
         assert patches.shape == (1, 1, 1, 1, 1)
+        assert bool(patches.isfinite().all())
 
     def test_nonfinite_laf_returns_zero_patch_with_safe_backward(self, device, dtype, monkeypatch):
         # A training-time detector can emit a non-finite LAF frame. Passing a NaN grid to the CPU
