@@ -259,15 +259,9 @@ class TestSIFTConstantPatchIsFinite(BaseTester):
         assert out.dtype == torch.float16
         self.assert_close(out.float().norm(dim=1), torch.ones(1, device=device), atol=2e-3, rtol=0)
         assert (_l2_normalize(torch.zeros_like(x), dim=1) == 0).all()
-        comparison_dtypes = (
-            (torch.bfloat16, torch.float32)
-            if device.type == "mps"
-            else (
-                torch.bfloat16,
-                torch.float32,
-                torch.float64,
-            )
-        )
+        comparison_dtypes = (torch.bfloat16, torch.float32)
+        if device.type != "mps":
+            comparison_dtypes += (torch.float64,)
         for dt in comparison_dtypes:
             y = torch.rand(3, 8, device=device, dtype=dt)
             assert torch.equal(_l2_normalize(y, dim=1), torch.nn.functional.normalize(y, dim=1, eps=1e-12))

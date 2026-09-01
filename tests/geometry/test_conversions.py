@@ -3060,13 +3060,12 @@ class TestConvertPointsFromHomogeneous(BaseTester):
         # [1., 1., nan]; the double-`where` makes it [1., 1., 0.].
         # w is the exact pole rather than merely a small value: a nearby w only makes the reciprocal
         # large, which no assertion on finiteness would catch. eps is passed explicitly so the input
-        # tracks the guard rather than the default. float64 only -- at float16 the default eps
-        # underflows to 0 (pinned in test_wart_float16_underflowed_default_eps_flips_branches), so
-        # w == -eps is not the pole there.
-        if device.type == "mps":
-            pytest.skip("MPS does not support the float64 fixture required by this regression test")
+        # tracks the guard rather than the default. float32 and float64 both represent -eps and eps
+        # identically enough for their sum to hit exactly zero; float32 keeps the pin active on MPS,
+        # which cannot represent float64.
         eps = 1e-8
-        points = torch.tensor([[2.0, 4.0, -eps]], device=device, dtype=torch.float64, requires_grad=True)
+        regression_dtype = torch.float32 if device.type == "mps" else torch.float64
+        points = torch.tensor([[2.0, 4.0, -eps]], device=device, dtype=regression_dtype, requires_grad=True)
 
         kornia.geometry.conversions.convert_points_from_homogeneous(points, eps=eps).sum().backward()
 

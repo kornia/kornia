@@ -42,8 +42,6 @@ class TestRandomRotation3D(BaseTester):
 
     def test_random_rotation(self, device, dtype):
         # This is included in doctest
-        if device.type != "cpu":
-            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)  # for random reproductibility
 
         f = RandomRotation3D(degrees=45.0)

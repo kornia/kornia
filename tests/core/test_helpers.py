@@ -123,14 +123,16 @@ class TestSvdCast:
 class TestSolveCast:
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)
-        # Keep the seeded system identical across backends; device RNGs produce different
-        # matrices, and the MPS sample can be much more poorly conditioned than the CPU one.
-        A = torch.randn(2, 3, 1, 4, 4, dtype=dtype).to(device)
+        # Exercise a reproducible, well-conditioned system instead of letting a random draw
+        # decide whether the fixed residual bound is meaningful on a given backend.
+        A = torch.eye(4, dtype=dtype).expand(2, 3, 1, 4, 4).clone()
+        A.add_(torch.randn_like(A), alpha=0.05)
         B = torch.randn(2, 3, 1, 4, 6, dtype=dtype).to(device)
+        A = A.to(device)
 
         X = _torch_solve_cast(A, B)
-        error = torch.dist(B, A.matmul(X))
-        tol_val: float = 1e-1 if dtype == torch.float16 else 1e-4
+        error = torch.dist(B, A.matmul(X)) / B.norm().clamp_min(torch.finfo(dtype).eps)
+        tol_val: float = max(1e-4, torch.finfo(dtype).eps)
         assert_close(error, torch.zeros_like(error), atol=tol_val, rtol=tol_val)
 
 
