@@ -636,6 +636,11 @@ def resize(
 
     original_shape = input.shape
     h, w = input.shape[-2:]
+    if h <= 0 or w <= 0:
+        # Reject a degenerate input the way the warping ops do, rather than letting the
+        # aspect-ratio division below fail with a bare ZeroDivisionError.
+        raise ValueError(f"Input image size must be positive. Got height={h}, width={w}.")
+
     if isinstance(size, int):
         aspect_ratio = w / h
         size = _side_to_image_size(size, aspect_ratio, side)
@@ -652,19 +657,26 @@ def resize(
             batch_size *= d
         input = input.reshape(batch_size, *original_shape[-3:])
 
-    factors = (h / size[0], w / size[1])
-    antialias = antialias and (max(factors) > 1)
+    if size[0] == 0 or size[1] == 0:
+        # An output side of zero gives an empty image, matching warp_affine,
+        # warp_perspective and center_crop. The result is built directly: the scale
+        # factors below would divide by zero, and torch.nn.functional.interpolate
+        # rejects a zero-sized output outright.
+        output = input.new_empty((*input.shape[:-2], size[0], size[1]))
+    else:
+        factors = (h / size[0], w / size[1])
+        antialias = antialias and (max(factors) > 1)
 
-    if antialias:
-        sigmas = (max((factors[0] - 1.0) / 2.0, 0.001), max((factors[1] - 1.0) / 2.0, 0.001))
+        if antialias:
+            sigmas = (max((factors[0] - 1.0) / 2.0, 0.001), max((factors[1] - 1.0) / 2.0, 0.001))
 
-        ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
+            ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
 
-        ks = (ks[0] if ks[0] % 2 else ks[0] + 1, ks[1] if ks[1] % 2 else ks[1] + 1)
+            ks = (ks[0] if ks[0] % 2 else ks[0] + 1, ks[1] if ks[1] % 2 else ks[1] + 1)
 
-        input = gaussian_blur2d(input, ks, sigmas)
+            input = gaussian_blur2d(input, ks, sigmas)
 
-    output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
+        output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
 
     if len(original_shape) == 2:
         output = output[0, 0]
