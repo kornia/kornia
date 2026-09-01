@@ -556,7 +556,7 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         tensor([0, 3, 1])
 
     """
-    if len(boxes.shape) != 2 and boxes.shape[-1] != 4:
+    if boxes.ndim != 2 or boxes.shape[-1] != 4:
         raise ValueError(f"boxes expected as Nx4. Got: {boxes.shape}.")
 
     if len(scores.shape) != 1:
