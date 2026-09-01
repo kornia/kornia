@@ -837,10 +837,12 @@ class Boxes:
 class VideoBoxes(Boxes):
     r"""2D boxes with an explicit temporal channel for video sequences.
 
-    Stores box corners for a batch of videos as :math:`(B, T, N, 4, 2)` in
-    ``vertices_plus`` mode. :class:`~kornia.augmentation.AugmentationSequential`
-    uses this wrapper when the pipeline contains a video sequential so that
-    ``to_tensor`` restores the temporal axis after geometric transforms.
+    Accepts and returns box corners for a batch of videos as
+    :math:`(B, T, N, 4, 2)` in ``vertices_plus`` mode. Internally the corners
+    are stored flattened as :math:`(B \cdot T, N, 4, 2)`.
+    :class:`~kornia.augmentation.AugmentationSequential` uses this wrapper when
+    the pipeline contains a video sequential so that ``to_tensor`` restores the
+    temporal axis after geometric transforms.
 
     Attributes:
         temporal_channel_size: Number of frames :math:`T` stored with the boxes.
@@ -859,8 +861,9 @@ class VideoBoxes(Boxes):
             boxes: Box corners with shape :math:`(B, T, N, 4, 2)` in
                 ``vertices_plus`` order (top-left, top-right, bottom-right,
                 bottom-left). Lists of tensors are not supported yet.
-            validate_boxes: If ``True``, reject rectangles whose width or height
-                is smaller than the ``vertices_plus`` minimum (2).
+            validate_boxes: Forwarded to ``_boxes_to_quadrilaterals``. The
+                ``vertices_plus`` path used here builds corners directly and
+                performs no size check, so this flag currently has no effect.
 
         Returns:
             :class:`VideoBoxes` with :attr:`temporal_channel_size` set to
@@ -893,8 +896,7 @@ class VideoBoxes(Boxes):
 
         Returns:
             Tensor shaped :math:`(B, T, \ldots)` where :math:`T` is
-            :attr:`temporal_channel_size`, or a list of such tensors when the
-            container was built from a padded box list.
+            :attr:`temporal_channel_size`.
         """
         out = super().to_tensor(mode, as_padded_sequence=False)
         if isinstance(out, torch.Tensor):
