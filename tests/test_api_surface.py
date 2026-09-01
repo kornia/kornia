@@ -68,6 +68,30 @@ def test_no_public_name_removed(module_name):
     )
 
 
+@pytest.mark.parametrize("module_name", sorted(json.loads(INVENTORY.read_text())))
+def test_public_names_resolve(module_name):
+    """
+    Every name in ``__all__`` has to be bound in its module.
+
+    An unbound name breaks ``from <module> import *`` for everyone, and
+    ``test_no_public_name_removed`` cannot see it: the surface that test compares is
+    ``__all__`` itself, so a name whose binding was dropped still reads as present.
+    """
+    mod = importlib.import_module(module_name)
+    declared = getattr(mod, "__all__", None)
+    if declared is None:
+        pytest.skip(f"{module_name} does not define __all__")
+
+    unbound = sorted(name for name in declared if not hasattr(mod, name))
+
+    assert not unbound, (
+        f"{module_name}.__all__ lists names that are not bound in the module: "
+        f"{unbound}. `from {module_name} import *` raises AttributeError on the "
+        "first of them. Either restore the binding or drop the name from __all__ "
+        "and from tests/api_surface.json in the same PR."
+    )
+
+
 if __name__ == "__main__":
     regenerate()
     print(f"regenerated {INVENTORY}")

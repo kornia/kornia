@@ -88,7 +88,6 @@
     "container"
   ],
   "kornia.color": [
-    "AUTUMN",
     "ApplyColorMap",
     "BgrToGrayscale",
     "BgrToRgb",
