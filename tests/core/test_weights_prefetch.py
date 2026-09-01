@@ -123,13 +123,13 @@ WEIGHT_REGISTRIES: dict[str, tuple[ModuleType, dict[str, Any]]] = {
     "dedode": (dedode, dedode.urls),
     "rt_detr": (rt_detr, rt_detr.URLs),
     "keynet": (keynet, {"keynet": keynet.KeyNet_URL}),
-    "yunet": (yunet, {"yunet": yunet.url}),
+    "yunet": (yunet, {"yunet": yunet._url}),
     # Two independent registries, identical today, both loading the same cache
     # name -- which is what hides the models copy from the coverage check: the
     # filters copy accounts for the name either way. Holding both to MODELS also
     # holds the two copies equal to each other.
     "dexined": (dexined, {"dexined": dexined.url}),
-    "dexined_model": (dexined_model, {"dexined": dexined_model.url}),
+    "dexined_model": (dexined_model, {"dexined": dexined_model._url}),
     "xfeat": (xfeat, {"xfeat": xfeat.XFeat.weights_url}),
     "dedode_encoder": (dedode_encoder, dedode_encoder.urls),
     "tiny_vit": (tiny_vit, tiny_vit.urls),

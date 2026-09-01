@@ -34,7 +34,7 @@ from kornia.io import write_image
 
 __all__ = ["BoxMotTracker"]
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 class BoxMotTracker:
@@ -179,4 +179,4 @@ class BoxMotTracker:
             os.path.join(directory, f"{str(0).zfill(6)}.jpg"),
             output.byte(),
         )
-        logger.info(f"Outputs are saved in {directory}")
+        _logger.info(f"Outputs are saved in {directory}")
