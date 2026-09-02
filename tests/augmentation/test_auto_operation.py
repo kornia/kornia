@@ -133,6 +133,15 @@ class TestTrivialAugment(BaseTester):
         trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
         self.assert_close(trans, aug.transform_matrix)
 
+    def test_transform_mat_repeated_policy(self, device, dtype):
+        torch.manual_seed(0)
+        aug = TrivialAugment(policy=[[("translate_y", -0.5, 0.5)]])
+        in_tensor = torch.rand(2, 3, 10, 10, device=device, dtype=dtype)
+        aug(in_tensor)
+        aug(in_tensor)
+        trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
+        self.assert_close(trans, aug.transform_matrix)
+
     def test_reproduce(self, device, dtype):
         aug = TrivialAugment()
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)

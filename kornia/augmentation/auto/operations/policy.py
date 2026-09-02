@@ -171,6 +171,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         Returns:
             Transformed tensor.
         """
+        self.clear_state()
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
