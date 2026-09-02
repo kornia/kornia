@@ -250,6 +250,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every merge so that ``to_tensor`` counts the merged boxes correctly instead of
   silently truncating them (#4168).
 
+* `normalize_quaternion` floors a positive `eps` at the smallest normal `float16` value, so its default
+  `eps=1e-12` remains an active division guard and a zero quaternion returns finite zeros instead of NaNs. An
+  explicit `eps=0.0` still disables the guard. This also keeps `Quaternion.normalize`,
+  `quaternion_to_rotation_matrix`, and their downstream pose conversions finite for that input, matching the
+  existing `float32`, `float64`, and `bfloat16` behavior (#4021).
 * `Boxes3D.to_tensor` and `Boxes3D.get_boxes_shape` are differentiable again (#1396). Both reduce a box's 8
   vertices to its min/max corner with `amin`/`amax`, which is a genuine kink -- not differentiable in the
   classical sense -- wherever multiple vertices exactly tie for an axis extremum. Every face of an
@@ -304,7 +309,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which backend a caller happens to run on. Concretely, at the documented default `h=0.35` in `float32`,
   `kernel_size >= 63` now raises: CPU used to return a usable-looking answer there while MPS silently returned
   something else for the same call.
-
 * `RandomTransplantation` and `RandomTransplantation3D` transplanted nothing on MPS when no `excluded_labels`
   were given: PyTorch's MPS backend evaluates `all()` over the empty excluded-label axis to an undefined value,
   usually `False`, so every donor label was filtered out and the output equalled the input. The filter is now skipped when there is
@@ -347,7 +351,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mask now moves to the output device at each blend boundary, preserving CPU random-number generation and the
   ONNX/fullgraph-friendly blend. Calling `augmentation(x_accelerator)` therefore works again without first moving the
   augmentation module or its RNG to the accelerator (#4151).
-
 * Keep `extract_patches_simple` and `extract_patches_from_pyramid` off a broken reduced-precision CPU kernel: for a
   `float16`/`bfloat16` CPU image, the `grid_sample` kernels in torch <= 2.9 read out of bounds when a rotated patch
   straddles the image border and return NaN or garbage values far outside the image's range. Both extractors now
