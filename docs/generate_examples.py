@@ -756,19 +756,15 @@ def main():
         detections = face_detector(K.color.bgr_to_rgb(img_crowd) * 255.0)[0]
     faces = [K.contrib.FaceDetectorResult(d) for d in detections]
     confident = [torch.cat([f.top_left, f.bottom_right]) for f in faces if f.score > 0.7]
-    if not confident:
-        # A checkpoint or asset change could leave nothing above the threshold; this is the last
-        # block of main(), so bail out here rather than abort after everything else was written.
-        print("Skipped image example for FaceDetector: no detection above the score threshold")
-    else:
+    out = img_crowd.clone()
+    if confident:
         boxes = torch.stack(confident)[None]
-        out = img_crowd.clone()
         for pad in (0, 1, 2):  # three passes give a 3 px outline
             out = K.image.draw_rectangle(
                 out, boxes + torch.tensor([-pad, -pad, pad, pad]), color=torch.tensor([0.4, 1.0, 0.2])
             )
-        cv2.imwrite(str(OUTPUT_PATH / "face_detection.png"), K.image.tensor_to_image((out[0] * 255.0).byte()))
-        print(f"Generated image example for FaceDetector. {boxes.shape[1]} faces")
+    cv2.imwrite(str(OUTPUT_PATH / "face_detection.png"), K.image.tensor_to_image((out[0] * 255.0).byte()))
+    print(f"Generated image example for FaceDetector. {len(confident)} faces")
 
 
 if __name__ == "__main__":

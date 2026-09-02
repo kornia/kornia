@@ -234,26 +234,50 @@ document.addEventListener("DOMContentLoaded", function () {
     caret.className = "fa-solid fa-chevron-down kornia-navbar-dropdown__caret";
     link.appendChild(caret);
 
-    // The panel opens from CSS (:hover / :focus-within); mirror that state onto the trigger so a
-    // screen reader is told the menu exists and whether it is open. The inline sidebar copy is
-    // always expanded, so it announces as such and needs no listeners.
+    // Keep the panel's explicit open class and the trigger's ARIA state in sync. The inline sidebar
+    // copy is always expanded, so it announces as such and needs no listeners.
     link.setAttribute("aria-haspopup", "true");
     link.setAttribute("aria-expanded", inline ? "true" : "false");
     if (inline) return;
-    const expose = (open) => link.setAttribute("aria-expanded", String(open));
-    li.addEventListener("pointerenter", () => expose(true));
-    li.addEventListener("pointerleave", () => expose(false));
-    li.addEventListener("focusin", () => expose(true));
-    li.addEventListener("focusout", function (e) {
-      if (!li.contains(e.relatedTarget)) expose(false);
+    let hovered = false;
+    let focusWithin = false;
+    let dismissed = false;
+    function syncOpenState() {
+      const open = !dismissed && (hovered || focusWithin);
+      li.classList.toggle("is-open", open);
+      link.setAttribute("aria-expanded", String(open));
+    }
+    li.addEventListener("pointerenter", function () {
+      hovered = true;
+      dismissed = false;
+      syncOpenState();
     });
-    // Escape closes a keyboard-opened menu: dropping focus out of the item ends :focus-within.
+    li.addEventListener("pointerleave", function () {
+      hovered = false;
+      syncOpenState();
+    });
+    li.addEventListener("focusin", function () {
+      focusWithin = true;
+      dismissed = false;
+      syncOpenState();
+    });
+    li.addEventListener("focusout", function (e) {
+      if (li.contains(e.relatedTarget)) return;
+      focusWithin = false;
+      dismissed = false;
+      syncOpenState();
+    });
+    // Escape closes the menu and returns focus to its trigger. ``dismissed`` keeps a hovered item
+    // closed until the pointer re-enters or focus leaves and returns.
     li.addEventListener("keydown", function (e) {
       if (e.key !== "Escape") return;
       const active = document.activeElement;
       if (!li.contains(active)) return;
-      active.blur();
-      expose(false);
+      e.preventDefault();
+      e.stopPropagation();
+      link.focus();
+      dismissed = true;
+      syncOpenState();
     });
   }
 
