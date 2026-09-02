@@ -90,6 +90,7 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 - For focused CPU half-precision coverage, add `--dtype=float16,bfloat16` to a `test-module` run. `pixi run test-half` runs the whole CPU test suite.
 - CUDA `float16`/`bfloat16` tests need per-test subprocess isolation; use `pixi run -e cuda test-cuda-half` or pytest's `--isolate-half-precision` option.
 - MPS does not support float64 gradcheck. MPS autocast can also change the effective dtype; inspect nearby tests before changing tolerances or skips.
+- The blocking MPS job runs `--device=mps --dtype=float32 --xfail-known-failures`. Its exact strict-xfail baseline is `testing/known_failure_xfails/mps_float32.txt` and is tracked in #4159. A fix removes its manifest line; a rename or reparametrization updates the node ID; a new failure is fixed or explicitly documented before being added. The manifest contract requires a full-suite run, without `-k` or a partial path.
 - TF32 matmul is disabled by default; `--tf32` enables it. cuDNN convolutions still use PyTorch's TF32 default. Tests marked `tf32` are xfailed at collection unless `--tf32` is passed, and that marker is non-strict, so a default run reports neither their failure nor their recovery.
 - Preserve device and dtype rather than creating implicit CPU or default-dtype tensors. Use the injected `device` and `dtype` fixtures in tests.
 

@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import types
+from pathlib import Path
 
 import pytest
 import torch
@@ -25,8 +26,45 @@ import torch
 from conftest import _is_subprocess_isolated_test, skip_half_precision_on_cuda
 
 pytest_plugins = ["pytester"]
+# Deliberately *not* marked device_agnostic. These are the runner's own regression tests, and
+# several of them guard accelerator-only entry points -- `test_isolated_skip_is_reported_with_
+# quiet_addopts` exists to protect `pixi run -e cuda test-cuda-half`. Marking the module would
+# deselect exactly the tests that command needs. They take no device fixture, so they run once
+# per session on any device matrix. `test_half_precision_isolation_probe` below is the one
+# exception, and is marked deliberately -- see its docstring.
 
 _skip_fixture_fn = getattr(skip_half_precision_on_cuda, "__wrapped__", skip_half_precision_on_cuda)
+
+
+@pytest.fixture(autouse=True)
+def _neutral_runner_env(monkeypatch):
+    """Keep the ambient run's runner flags out of the pytester subprocesses.
+
+    ``runpytest_subprocess`` inherits the environment, and both options below are
+    ``action="store_true"`` with their default read from an environment variable -- so once the
+    variable is exported there is no command line that turns the option back off. A developer
+    following TESTING.md and exporting ``KORNIA_TEST_RUN_DEVICE_AGNOSTIC=true`` for an
+    accelerator-only run would otherwise fail the very tests that document the escape hatch.
+    Each test below passes the flags it needs explicitly.
+    """
+    for var in ("KORNIA_TEST_ISOLATE_HALF", "KORNIA_TEST_RUN_DEVICE_AGNOSTIC"):
+        monkeypatch.delenv(var, raising=False)
+
+
+@pytest.mark.device_agnostic
+def test_half_precision_isolation_probe(device, dtype):
+    """Skip under half precision so the isolation runner has a child-side skip to report.
+
+    Support test for ``test_isolated_skip_is_reported_with_quiet_addopts`` below, which needs a
+    node that the parent collects and the subprocess skips. It lives here, next to its only
+    caller, rather than borrowing an unrelated suite's internal skip: under that coupling a dtype
+    fix somewhere else would break this file. The ``device_agnostic`` mark is load-bearing for the
+    same runner test -- it is what makes the parent and the child disagree about selection -- and
+    honest on its own terms, since the body never touches the device. Outside that runner test
+    this is a no-op that passes.
+    """
+    if dtype in (torch.float16, torch.bfloat16):
+        pytest.skip("probe: skipped by design under half precision")
 
 
 def _make_mock_item(params: dict | None, isolate: bool = True):
@@ -169,7 +207,7 @@ class TestIntegrationLocalHalfPrecision:
         )
 
         # 1. CUDA + --dtype=float32 without --isolate-half-precision -> Must be SKIPPED
-        result_cuda = pytester.runpytest_inprocess(
+        result_cuda = pytester.runpytest_subprocess(
             "-p",
             "conftest",
             str(test_file),
@@ -181,7 +219,7 @@ class TestIntegrationLocalHalfPrecision:
         result_cuda.assert_outcomes(skipped=1)
 
         # 2. CPU + --dtype=float32 -> Must PASS
-        result_cpu = pytester.runpytest_inprocess(
+        result_cpu = pytester.runpytest_subprocess(
             "-p",
             "conftest",
             str(test_file),
@@ -191,3 +229,97 @@ class TestIntegrationLocalHalfPrecision:
             "--dtype=float32",
         )
         result_cpu.assert_outcomes(passed=1)
+
+    def test_isolated_skip_is_reported_with_quiet_addopts(self, pytester, monkeypatch):
+        """The isolation parent must not turn a child's skip into a pass when addopts is quiet.
+
+        ``-o addopts=-q`` on the parent command line is not inherited by the child, so it cannot
+        reproduce the failure; ``PYTEST_ADDOPTS`` is. pytester clears that variable at fixture
+        setup, so it has to be set here, in the test body.
+
+        ``--device=cpu,cuda`` also pins the second way the child can come back empty. The probe is
+        marked ``device_agnostic``; with CPU in the matrix the parent keeps it, but the child is
+        handed a bare ``--device=cuda``, under which the deselection rule fires unless the parent
+        forwards ``--run-device-agnostic``. Both legs skip here, hence ``skipped=2``.
+        """
+        monkeypatch.setenv("PYTEST_ADDOPTS", "-q")
+        node_id = f"{Path(__file__)}::test_half_precision_isolation_probe"
+        result = pytester.runpytest_subprocess(
+            node_id,
+            "--device=cpu,cuda",
+            "--dtype=float16",
+            "--isolate-half-precision",
+            "-rs",
+        )
+        result.assert_outcomes(skipped=2)
+        # The count on its own does not prove the child ran: `pytest_runtest_protocol` also maps
+        # the child's exit code 5 ("no tests collected") onto a skip, so a node the parent collects
+        # but the child parametrises away would satisfy the count while proving nothing. Deleting
+        # or renaming the node is caught by the count already (the parent reports 0 outcomes), but
+        # a divergence between parent and child collection is not. `-rs` puts the synthetic
+        # report's reason in the summary, so require the skip to be the child's own.
+        result.stdout.no_fnmatch_line("*no tests collected*")
+
+
+class TestDeviceAgnosticSelection:
+    def test_device_agnostic_tests_run_once_in_cpu_containing_matrix(self, pytester):
+        test_file = pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.device_agnostic
+            def test_device_agnostic():
+                assert True
+
+            def test_unmarked():
+                assert True
+            """
+        )
+
+        result_cpu = pytester.runpytest_subprocess(
+            "-p",
+            "conftest",
+            str(test_file),
+            "-o",
+            "testpaths=.",
+            "--device=cpu",
+            "--dtype=float32",
+        )
+        result_cpu.assert_outcomes(passed=2)
+
+        result_cuda = pytester.runpytest_subprocess(
+            "-p",
+            "conftest",
+            str(test_file),
+            "-o",
+            "testpaths=.",
+            "--device=cuda",
+            "--dtype=float32",
+        )
+        result_cuda.assert_outcomes(passed=1, deselected=1)
+
+    def test_run_device_agnostic_overrides_the_deselection(self, pytester):
+        test_file = pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.device_agnostic
+            def test_device_agnostic():
+                assert True
+
+            def test_unmarked():
+                assert True
+            """
+        )
+
+        result = pytester.runpytest_subprocess(
+            "-p",
+            "conftest",
+            str(test_file),
+            "-o",
+            "testpaths=.",
+            "--device=cuda",
+            "--dtype=float32",
+            "--run-device-agnostic",
+        )
+        result.assert_outcomes(passed=2)

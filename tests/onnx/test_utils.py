@@ -20,6 +20,9 @@ import urllib
 
 import pytest
 
+# Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
+pytestmark = pytest.mark.device_agnostic
+
 onnx = pytest.importorskip("onnx")
 
 from kornia.onnx.utils import ONNXLoader  # noqa: E402

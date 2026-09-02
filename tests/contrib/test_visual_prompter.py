@@ -80,6 +80,18 @@ class TestVisualPrompter(BaseTester):
 
         assert results.logits.shape == (batch_size, 3, 256, 256)
 
+    @pytest.mark.slow
+    def test_predict_without_prompts(self, device, dtype):
+        if dtype not in (torch.float32, torch.float16):
+            pytest.skip("VisualPrompter (SAM) primarily supports float32 and float16")
+        prompter = VisualPrompter(SamConfig("mobile_sam"), device=device, dtype=dtype)
+        prompter.set_image(torch.rand(3, 256, 256, device=device, dtype=dtype))
+
+        results = prompter.predict(multimask_output=True)  # no keypoints, boxes or masks
+
+        assert results.logits.shape == (1, 3, 256, 256)
+        assert results.scores.shape == (1, 3)
+
     def test_gradcheck(self, device):
         pytest.skip("Gradcheck is not currently applicable for VisualPrompter inference.")
 

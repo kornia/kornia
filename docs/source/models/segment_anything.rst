@@ -5,34 +5,48 @@ Segment Anything (SAM)
 
 :bdg-primary:`Segmentation` :bdg-primary:`Visual prompting` :bdg-secondary:`Apache-2.0`
 
-The Segment Anything Model (SAM) produces high quality object masks from input prompts such as points or boxes, and it
-can be used to generate masks for all objects in an image.
+The Segment Anything Model (SAM) produces high quality object masks from input prompts such as points or boxes.
+Kornia ships the model as :class:`~kornia.models.sam.Sam` and a high-level
+:class:`~kornia.contrib.visual_prompter.VisualPrompter` that encodes an image once and answers any number of prompt
+queries against it, returning a :class:`~kornia.models.structures.SegmentationResults` with the mask logits, the
+predicted IoU scores and thresholded ``binary_masks``.
 
-.. card::
-    :link: https://segment-anything.com/
+Run it
+------
 
-    **Segment Anything**
-    ^^^
-    **Abstract:** We introduce the Segment Anything (SAM) project: a new task, model, and dataset for image
-    segmentation. Using our efficient model in a data collection loop, we built the largest segmentation
-    dataset to date (by far), with over 1 billion masks on 11M licensed and privacy respecting images. The
-    model is designed and trained to be promptable, so it can transfer zero-shot to new image distributions
-    and tasks. We evaluate its capabilities on numerous tasks and find that its zero-shot performance is impressive
-    -- often competitive with or even superior to prior fully supervised results. We are releasing the Segment Anything
-    Model (SAM) and corresponding dataset (SA-1B) of 1B masks and 11M images at https://segment-anything.com to foster
-    research into foundation models for computer vision.
+.. code-block:: python
 
-    **Tasks:** Segmentation
+    import torch
+    from kornia.io import load_image
+    from kornia.models.sam import SamConfig
+    from kornia.contrib.visual_prompter import VisualPrompter
+    from kornia.geometry.boxes import Boxes
+    from kornia.geometry.keypoints import Keypoints
 
-    **Datasets:** SA-1B
+    image = load_image("simba.png")  # (3, H, W) float in [0, 1]
 
-    **Licence:** Apache
+    prompter = VisualPrompter(SamConfig("vit_b", pretrained=True))  # vit_h, vit_l, vit_b or mobile_sam
+    prompter.set_image(image)  # encode once, query many times
 
-    +++
-    **Authors:** Alexander Kirillov and Eric Mintun and Nikhila Ravi and Hanzi Mao and Chloe Rolland and Laura
-    Gustafson and Alex Berg and Wan-Yen Lo and Piotr Dollar and Ross Girshick
+    # a foreground point (label 1; 0 would be background) -> three candidate masks
+    keypoints = Keypoints(torch.tensor([[[300.0, 90.0]]]))  # (K, N, 2): K prompts of N (x, y) points, in pixels
+    prediction = prompter.predict(keypoints=keypoints, keypoints_labels=torch.tensor([[1]]))
+    best = prediction.binary_masks[0, prediction.scores.argmax()]  # (H, W) bool, highest predicted IoU
 
+    # a box prompt -> a single mask
+    box = Boxes.from_tensor(torch.tensor([[[180.0, 20.0, 380.0, 240.0]]]), mode="xyxy")
+    prediction = prompter.predict(boxes=box, multimask_output=False)
+    mask = prediction.binary_masks[0, 0]  # (H, W) bool
 
+.. figure:: /_static/img/models/segment_anything.jpg
+   :align: center
+   :alt: A cartoon lion cub with a point and a box prompt drawn on it (left), and the SAM masks for the point prompt and the box prompt overlaid in green (centre, right).
+
+   ``vit_b`` masks for the point prompt (best of the three candidates) and the box prompt, with the predicted IoU
+   scores in the titles.
+
+The sections below cover the full prompter API, building :class:`~kornia.models.sam.Sam` from a config or a
+checkpoint, and calling the model without the prompter.
 
 How to use SAM from Kornia
 --------------------------
@@ -157,14 +171,16 @@ can be used to query the SAM model for image masks.
     )
 
     #------------------------------------------------
-    # or run the prediction using the previous logits
+    # or run the prediction using the previous logits as a mask prompt: one (K, 1, 256, 256)
+    # low-resolution mask per query, so pick the candidate with the best predicted IoU
+    best = prediction.scores[0].argmax()
     prediction = prompter.predict(
-        masks=prediction.logits,
+        masks=prediction.logits[:, best : best + 1],
         multimask_output=True,
     )
 
-    # The `prediction` is a SegmentationResults dataclass with the masks, scores and logits
-    print(prediction.masks.shape)
+    # The `prediction` is a SegmentationResults dataclass with the logits, scores and thresholded binary masks
+    print(prediction.binary_masks.shape)
     print(prediction.scores)
     print(prediction.logits.shape)
 
@@ -313,3 +329,31 @@ This is a simple example of how to use the loaded SAM model directly. We recomme
 
     # Binary masks, thresholded from the logits
     masks = prediction.binary_masks
+
+
+Paper
+-----
+
+.. card::
+    :link: https://segment-anything.com/
+
+    **Segment Anything**
+    ^^^
+    **Abstract:** We introduce the Segment Anything (SAM) project: a new task, model, and dataset for image
+    segmentation. Using our efficient model in a data collection loop, we built the largest segmentation
+    dataset to date (by far), with over 1 billion masks on 11M licensed and privacy respecting images. The
+    model is designed and trained to be promptable, so it can transfer zero-shot to new image distributions
+    and tasks. We evaluate its capabilities on numerous tasks and find that its zero-shot performance is impressive
+    -- often competitive with or even superior to prior fully supervised results. We are releasing the Segment Anything
+    Model (SAM) and corresponding dataset (SA-1B) of 1B masks and 11M images at https://segment-anything.com to foster
+    research into foundation models for computer vision.
+
+    **Tasks:** Segmentation
+
+    **Datasets:** SA-1B
+
+    **Licence:** Apache
+
+    +++
+    **Authors:** Alexander Kirillov and Eric Mintun and Nikhila Ravi and Hanzi Mao and Chloe Rolland and Laura
+    Gustafson and Alex Berg and Wan-Yen Lo and Piotr Dollar and Ross Girshick

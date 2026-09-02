@@ -6,9 +6,9 @@ Kornia Models
 
 Kornia ships a curated set of model architectures, each wrapped as a regular ``nn.Module``. Most of them come with
 pretrained weights that are downloaded on first use; MobileViT ships as an architecture only, for training or for
-loading your own checkpoint. The pages below summarize each model's paper, task and licence. The builders that
-construct them are documented on the :doc:`kornia.models </models>` API page, and the local-feature models under
-:doc:`kornia.feature </feature>`.
+loading your own checkpoint. Each page below opens with the shortest script that runs the model, shows what it
+returns on a real input, and ends with the paper. The builders that construct the models are documented on the
+:doc:`kornia.models </models>` API page, and the local-feature models under :doc:`kornia.feature </feature>`.
 
 .. list-table::
    :header-rows: 1

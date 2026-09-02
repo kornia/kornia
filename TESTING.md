@@ -36,6 +36,7 @@ pixi run test-quick
 | `--tf32` | `KORNIA_TEST_TF32` | off | Enable TF32 mode (see below) |
 | `--optimizer` | `KORNIA_TEST_OPTIMIZER` | CLI: `inductor`; env: unset | Select the backend. Only setting the environment variable enables dynamo/compile collection; the CLI option alone does not. |
 | `--isolate-half-precision` | `KORNIA_TEST_ISOLATE_HALF` | off | Run float16/bfloat16 CUDA tests each in a fresh `subprocess.run` process (no shared CUDA state) |
+| `--run-device-agnostic` | `KORNIA_TEST_RUN_DEVICE_AGNOSTIC` | off | Run `@pytest.mark.device_agnostic` tests even when CPU is not in the device matrix |
 
 ## Test Structure
 
@@ -60,6 +61,7 @@ The `device` and `dtype` fixtures are injected automatically from the CLI option
 
 | Marker | Meaning |
 |---|---|
+| `@pytest.mark.device_agnostic` | Test runs once in a CPU-containing matrix because its logic does not use the selected accelerator. An accelerator-only run deselects it and says so on a line of its own at the start of the run, because the deselected set includes the ONNX and `torch.export` suites; `--run-device-agnostic` forces it back on |
 | `@pytest.mark.slow` | Long-running test; skipped unless `--runslow` is passed |
 | `@pytest.mark.tf32` | Known to fail under TF32 (see section below); xfail unless `--tf32` |
 
@@ -250,6 +252,12 @@ Without `--isolate-half-precision`, float16/bfloat16 CUDA tests are **skipped** 
 - `test_autocast[mps*]` — skipped automatically (MPS autocast changes dtype)
 
 The `padding_mode="border"` issue in `F.grid_sample` (2D) is worked around in the implementation (`kornia/feature/laf.py`) by clamping the sampling grid to `[-1, 1]` and using `padding_mode="zeros"`, which is mathematically equivalent.
+
+**CI coverage.** Pull-request CI runs one blocking MPS leg (`tests-mps` in `.github/workflows/pr_test_cpu.yml`): the newest Python and the newest pinned PyTorch, `float32`, on the GitHub-hosted `macos-latest` Apple-silicon image. The exact known-failure baseline from [#4159](https://github.com/kornia/kornia/issues/4159) lives in `testing/known_failure_xfails/mps_float32.txt`. `--xfail-known-failures` applies those entries as strict xfails with their exact exception types. A new failure, a different exception, a skipped recorded test, or a fixed test therefore makes CI red.
+
+Run the identical contract locally with `pixi run test-mps`. `PYTORCH_ENABLE_MPS_FALLBACK=1` silently routes missing MPS kernels to the CPU and invalidates the baseline, so unset it first. The manifest is a full-suite contract and is not intended for `-k` or partial-directory runs; use `pixi run test-module ... --device=mps --dtype=float32` for focused diagnosis without the manifest. "Full suite" means the suite as an `mps`-only run collects it: tests marked `device_agnostic` are deselected there and covered by the CPU jobs, so they never appear in the manifest.
+
+When an MPS failure is fixed, remove its line from `mps_float32.txt`. When a test is renamed or reparametrized, update its node ID. Treat an unlisted failure as a regression to fix; add it only when the new limitation is understood and documented in #4159. After a deliberate Python, PyTorch, or runner-image update, regenerate the full manifest from that CI job's final `short test summary info`, recording one exact exception type and node ID per `FAILED` line.
 
 **Writing new tests that work on MPS.** Follow these rules:
 

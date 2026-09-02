@@ -177,11 +177,12 @@ include = ["kornia/", "LICENSE", "README.md"]
 match = '.*\.py'
 
 [tool.pytest.ini_options]
-addopts = "--color=yes -v"
+addopts = "--color=yes"
 filterwarnings = [
   "ignore::DeprecationWarning:onnxscript.converter",
 ]
 markers = [
+  "device_agnostic: run CPU-only test logic once in a CPU-containing device matrix",
   "slow: mark test as slow to run",
   "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul precision; xfail by default, run with --tf32 to activate",
 ]

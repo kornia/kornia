@@ -36,10 +36,10 @@ class TestHyNet(BaseTester):
         assert out.shape == (1, 128)
 
     def test_shape_batch(self, device):
-        inp = torch.ones(16, 1, 32, 32, device=device)
+        inp = torch.ones(4, 1, 32, 32, device=device)
         hynet = HyNet().to(device)
         out = hynet(inp)
-        assert out.shape == (16, 128)
+        assert out.shape == (4, 128)
 
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)

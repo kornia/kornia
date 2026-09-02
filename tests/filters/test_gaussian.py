@@ -15,11 +15,16 @@
 # limitations under the License.
 #
 
+import io
+import os
+import tempfile
 import warnings
+from typing import Any
 
 import pytest
 import torch
 
+from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.filters import (
     GaussianBlur2d,
     gaussian,
@@ -320,38 +325,56 @@ class TestGaussianBlur2d(BaseTester):
 
         self.assert_close(op(data), op_optimized(data))
 
-    def test_onnx_export(self, device, dtype):
-        """Test that GaussianBlur2d can be exported via torch.onnx.export."""
+    @pytest.mark.device_agnostic
+    def test_onnx_export_legacy(self, dtype):
+        """Test that GaussianBlur2d can be exported through the legacy ONNX exporter."""
+        pytest.importorskip("onnx")
         kernel_size = (3, 3)
         sigma = (1.5, 1.5)
-
-        # Create model and sample input
         model = GaussianBlur2d(kernel_size, sigma)
-        sample_input = torch.ones(1, 3, 8, 8, device=device, dtype=dtype)
+        sample_input = torch.ones(1, 3, 8, 8, dtype=dtype)
+        buf = io.BytesIO()
+        export_kwargs: dict[str, Any] = {
+            "input_names": ["input"],
+            "output_names": ["output"],
+            "opset_version": 17,
+        }
+        if torch_version_ge(2, 5, 0):
+            export_kwargs["dynamo"] = False
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(model, sample_input, buf, **export_kwargs)
+        assert buf.getbuffer().nbytes > 0
 
-        # Test ONNX export - just ensure it doesn't error
-        # TODO: think of an absctraction
-        try:
-            import os
-            import tempfile
+    @pytest.mark.device_agnostic
+    # 2.5 is where `dynamo=` first exists, but there it still routes through the experimental
+    # `_compat.export_compat` shim. This test passes `fallback=False` implicitly, so on the 2.5.1
+    # CI legs any exporter/onnxscript mismatch would be a hard failure rather than a skip; require
+    # the settled 2.6 exporter instead.
+    @pytest.mark.skipif(
+        torch_version_lt(2, 6, 0), reason="the dynamo ONNX exporter is only non-experimental from PyTorch 2.6"
+    )
+    def test_onnx_export_modern(self, dtype):
+        """Test that GaussianBlur2d can be exported through the dynamo ONNX exporter."""
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        model = GaussianBlur2d((3, 3), (1.5, 1.5))
+        sample_input = torch.ones(1, 3, 8, 8, dtype=dtype)
 
-            # Suppress onnxscript deprecation warnings (Python 3.15 compatibility)
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=DeprecationWarning, module="onnxscript.converter")
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    onnx_path = os.path.join(tmpdir, "gaussian_blur2d.onnx")
-                    torch.onnx.export(
-                        model,
-                        sample_input,
-                        onnx_path,
-                        input_names=["input"],
-                        output_names=["output"],
-                        opset_version=17,
-                    )
-                    # Verify the file was created
-                    assert os.path.exists(onnx_path)
-        except Exception as e:
-            pytest.skip(f"ONNX export not supported: {e}")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with tempfile.TemporaryDirectory() as tmpdir:
+                onnx_path = os.path.join(tmpdir, "gaussian_blur2d.onnx")
+                torch.onnx.export(
+                    model,
+                    sample_input,
+                    onnx_path,
+                    input_names=["input"],
+                    output_names=["output"],
+                    opset_version=18,
+                    dynamo=True,
+                )
+                assert os.path.getsize(onnx_path) > 0
 
     def test_sigma_negative_raises_exception(self, device, dtype):
         """Test that negative sigma raises an exception."""
