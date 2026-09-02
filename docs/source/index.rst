@@ -233,7 +233,7 @@ models. Six places to start below; the full map is the :doc:`API reference <api>
       or inside a loss.
 
       +++
-      |count-image-processing| operators · ``kornia.filters`` :octicon:`arrow-right`
+      |count-filters| operators · ``kornia.filters`` :octicon:`arrow-right`
 
    .. grid-item-card:: Augment everything
       :img-top: _static/img/AugmentationSequential.png

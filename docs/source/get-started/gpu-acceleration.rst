@@ -32,7 +32,8 @@ Three habits make GPU pipelines fast:
 Augmentations are the typical win: a :class:`~kornia.augmentation.AugmentationSequential` pipeline samples and
 applies transforms for the entire batch on the GPU, inside the training loop, and most operators also run under
 ``torch.compile`` for kernel fusion. The :doc:`performance page <performance>` shows measured eager-mode
-comparisons against torchvision, albumentations, OpenCV and PIL on CPU, CUDA and Apple silicon, and the
+comparisons against torchvision, albumentations, OpenCV and PIL on the devices the committed benchmark runs
+cover -- CPU and Apple silicon today, with more hardware being added -- and the
 :doc:`precision page <precision>` documents ``float16``/``bfloat16`` support.
 
 Apple silicon (``device="mps"``) is supported as well. PyTorch's MPS backend has no ``float64`` tensors, so keep

@@ -2,7 +2,7 @@ Community
 =========
 
 .. meta::
-   :description: Join the Kornia community: Discord for chat, GitHub for development, Twitter/X, LinkedIn and YouTube for news, the Chinese community on QQ and Zhihu, and the wider LibreCV ecosystem.
+   :description: Join the Kornia community: Discord for chat, GitHub for development, Twitter/X, LinkedIn and YouTube for news, the Chinese community on QQ and Zhihu, and the wider Kornia AI ecosystem.
 
 Kornia is built by people who talk to each other in the open. Pick your channel:
 
@@ -43,8 +43,8 @@ Kornia is built by people who talk to each other in the open. Pick your channel:
 
 A newsletter is under construction — announcements land on the channels above in the meantime.
 
-Kornia is part of a wider open ecosystem: the `LibreCV <https://librecv.org>`_ community,
-`Kornia AI <https://kornia.org>`_ (the non-profit behind the library, see :doc:`the governance page
+Kornia is part of a wider open ecosystem: `Kornia AI <https://kornia.org>`_ (the non-profit behind
+the library, see :doc:`the governance page
 </get-started/governance>`), and integrations such as the `OpenCV AI Kit
 <https://docs.luxonis.com/en/latest/pages/tutorials/creating-custom-nn-models/#kornia>`_ and
 :doc:`kornia-rs </get-started/edge>`.

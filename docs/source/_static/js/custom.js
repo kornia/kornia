@@ -165,6 +165,7 @@ document.addEventListener("DOMContentLoaded", function () {
     let startedAt = 0;
     let remaining = PERIOD_MS;
     let paused = false;
+    let stopped = false;
 
     function advance() {
       if (document.hidden) {
@@ -182,19 +183,24 @@ document.addEventListener("DOMContentLoaded", function () {
       timer = setTimeout(advance, remaining);
     }
     function pause() {
-      if (paused || timer === null) return;
+      if (stopped || paused || timer === null) return;
       paused = true;
       clearTimeout(timer);
       remaining = Math.max(200, remaining - (Date.now() - startedAt));
       tabSet.classList.add("is-paused");
     }
     function resume() {
-      if (!paused) return;
+      if (stopped || !paused) return;
       paused = false;
       tabSet.classList.remove("is-paused");
       schedule();
     }
+    // Choosing a tab ends the cycle for good. A click always arrives as pointerenter -> change ->
+    // pointerleave, so without ``stopped`` the trailing pointerleave would resume the carousel the
+    // visitor just took over; the same holds for focusin -> change -> focusout on the keyboard.
     function stop() {
+      stopped = true;
+      paused = false;
       clearTimeout(timer);
       timer = null;
       tabSet.classList.remove("is-autoplaying", "is-paused");
@@ -227,6 +233,52 @@ document.addEventListener("DOMContentLoaded", function () {
     const caret = document.createElement("i");
     caret.className = "fa-solid fa-chevron-down kornia-navbar-dropdown__caret";
     link.appendChild(caret);
+
+    // Keep the panel's explicit open class and the trigger's ARIA state in sync. The inline sidebar
+    // copy is always expanded, so it announces as such and needs no listeners.
+    link.setAttribute("aria-haspopup", "true");
+    link.setAttribute("aria-expanded", inline ? "true" : "false");
+    if (inline) return;
+    let hovered = false;
+    let focusWithin = false;
+    let dismissed = false;
+    function syncOpenState() {
+      const open = !dismissed && (hovered || focusWithin);
+      li.classList.toggle("is-open", open);
+      link.setAttribute("aria-expanded", String(open));
+    }
+    li.addEventListener("pointerenter", function () {
+      hovered = true;
+      dismissed = false;
+      syncOpenState();
+    });
+    li.addEventListener("pointerleave", function () {
+      hovered = false;
+      syncOpenState();
+    });
+    li.addEventListener("focusin", function () {
+      focusWithin = true;
+      dismissed = false;
+      syncOpenState();
+    });
+    li.addEventListener("focusout", function (e) {
+      if (li.contains(e.relatedTarget)) return;
+      focusWithin = false;
+      dismissed = false;
+      syncOpenState();
+    });
+    // Escape closes the menu and returns focus to its trigger. ``dismissed`` keeps a hovered item
+    // closed until the pointer re-enters or focus leaves and returns.
+    li.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      const active = document.activeElement;
+      if (!li.contains(active)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      link.focus();
+      dismissed = true;
+      syncOpenState();
+    });
   }
 
   function menuFrom(items) {
@@ -286,6 +338,9 @@ document.addEventListener("DOMContentLoaded", function () {
       const link = document.createElement("a");
       link.className = "nav-link";
       link.href = "#";
+      // It opens a menu instead of navigating, so announce it as a button rather than as a link
+      // that goes nowhere; ``href`` stays for keyboard focusability.
+      link.setAttribute("role", "button");
       link.textContent = "Ecosystem";
       link.addEventListener("click", (e) => e.preventDefault());
       li.appendChild(link);

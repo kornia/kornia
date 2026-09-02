@@ -755,14 +755,16 @@ def main():
     with torch.no_grad():
         detections = face_detector(K.color.bgr_to_rgb(img_crowd) * 255.0)[0]
     faces = [K.contrib.FaceDetectorResult(d) for d in detections]
-    boxes = torch.stack([torch.cat([f.top_left, f.bottom_right]) for f in faces if f.score > 0.7])[None]
+    confident = [torch.cat([f.top_left, f.bottom_right]) for f in faces if f.score > 0.7]
     out = img_crowd.clone()
-    for pad in (0, 1, 2):  # three passes give a 3 px outline
-        out = K.image.draw_rectangle(
-            out, boxes + torch.tensor([-pad, -pad, pad, pad]), color=torch.tensor([0.4, 1.0, 0.2])
-        )
+    if confident:
+        boxes = torch.stack(confident)[None]
+        for pad in (0, 1, 2):  # three passes give a 3 px outline
+            out = K.image.draw_rectangle(
+                out, boxes + torch.tensor([-pad, -pad, pad, pad]), color=torch.tensor([0.4, 1.0, 0.2])
+            )
     cv2.imwrite(str(OUTPUT_PATH / "face_detection.png"), K.image.tensor_to_image((out[0] * 255.0).byte()))
-    print(f"Generated image example for FaceDetector. {boxes.shape[1]} faces")
+    print(f"Generated image example for FaceDetector. {len(confident)} faces")
 
 
 if __name__ == "__main__":

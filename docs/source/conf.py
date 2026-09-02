@@ -132,7 +132,7 @@ def _public_operator_count() -> int:
         contextlib.redirect_stderr(io.StringIO()),
     ):
         warnings.simplefilter("ignore")
-        for info in pkgutil.walk_packages(kornia.__path__, "kornia."):
+        for info in pkgutil.walk_packages(kornia.__path__, "kornia.", onerror=lambda name: None):
             if skip.search(info.name) or any(part.startswith("_") for part in info.name.split(".")[1:]):
                 continue
             try:
@@ -158,34 +158,28 @@ def _landing_page_counts() -> dict[str, str]:
 
     The public-name counts read the stable-core inventory that ``tests/test_api_surface.py`` pins;
     ``kornia.feature`` and ``kornia.models`` are outside it, so they are counted from the live
-    package and from the model pages under ``docs/source/models/``. ``operators`` is the
-    library-wide total from :func:`_public_operator_count`, floored to the hundred below it so the
-    page can say "1,000+" and stay true between releases.
+    package and from the model pages under ``docs/source/models/``. Each count names exactly the
+    module the card it appears on links to. ``operators-floor`` is the library-wide total from
+    :func:`_public_operator_count`, floored to the hundred below it so the page can say "1,000+"
+    and stay true between releases.
     """
     with open("../../tests/api_surface.json", encoding="utf-8") as handle:
         surface = {name: len(names) for name, names in json.load(handle).items()}
     import kornia.feature
 
     operators = _public_operator_count()
-    image_processing = sum(
-        surface[name] for name in ("kornia.filters", "kornia.color", "kornia.enhance", "kornia.morphology")
-    )
-    losses_metrics = surface["kornia.losses"] + surface["kornia.metrics"]
     model_pages = [entry for entry in os.listdir("models") if entry.endswith(".rst") and entry != "index.rst"]
+    # Every entry here is quoted by a page; a substitution nothing references is dead weight that
+    # reads as an available figure, so add one when a page needs it rather than ahead of time.
     return {
         "geometry": str(surface["kornia.geometry"]),
         "feature": str(len(kornia.feature.__all__)),
-        "image-processing": str(image_processing),
-        "losses-metrics": str(losses_metrics),
+        "filters": str(surface["kornia.filters"]),
         "augmentation": str(surface["kornia.augmentation"]),
         "models": str(len(model_pages)),
-        "operators": f"{operators:,}",
         "operators-floor": f"{operators // 100 * 100:,}",
         "dependents": f"{_adoption['repositories']:,}",
-        "dependents-listed": f"{_adoption['repositories_listed']:,}",
-        "dependents-rounded": str(_adoption["repositories_rounded"]),
         "dependent-packages": f"{_adoption['packages']:,}",
-        "dependents-date": str(_adoption["generated_at"]),
     }
 
 
