@@ -142,7 +142,7 @@ class TestMutualInformationLoss(BaseTester):
             self.value_ranges_check(device, dtype)
 
     def test_trivial_signal_normalizes_to_zero(self, device, dtype):
-        signal = torch.tensor([[0.25], [0.75]], device=device, dtype=dtype)
+        signal = torch.tensor([[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]], device=device, dtype=dtype)
 
         self.assert_close(_normalize_signal(signal, num_bins=64), torch.zeros_like(signal))
 
