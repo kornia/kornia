@@ -253,7 +253,11 @@ Without `--isolate-half-precision`, float16/bfloat16 CUDA tests are **skipped** 
 
 The `padding_mode="border"` issue in `F.grid_sample` (2D) is worked around in the implementation (`kornia/feature/laf.py`) by clamping the sampling grid to `[-1, 1]` and using `padding_mode="zeros"`, which is mathematically equivalent.
 
-**CI coverage.** Pull-request CI runs one MPS leg (`tests-mps` in `.github/workflows/pr_test_cpu.yml`): the newest Python and the newest pinned PyTorch, `float32`, on the GitHub-hosted `macos-latest` Apple-silicon image. The leg is advisory while the known MPS failure baseline is being pinned (tracked in #4159): test failures show up in the job log but do not fail the job, whereas an install problem or a runner image without a Metal device does. Run the same thing locally with `pixi run test-mps`. Note that `PYTORCH_ENABLE_MPS_FALLBACK=1` in your shell silently routes missing MPS kernels to the CPU and hides the `NotImplementedError` failures CI reports; unset it to reproduce them.
+**CI coverage.** Pull-request CI runs one blocking MPS leg (`tests-mps` in `.github/workflows/pr_test_cpu.yml`): the newest Python and the newest pinned PyTorch, `float32`, on the GitHub-hosted `macos-latest` Apple-silicon image. The exact known-failure baseline from [#4159](https://github.com/kornia/kornia/issues/4159) lives in `testing/known_failure_xfails/mps_float32.txt`. `--xfail-known-failures` applies those entries as strict xfails with their exact exception types. A new failure, a different exception, a skipped recorded test, or a fixed test therefore makes CI red.
+
+Run the identical contract locally with `pixi run test-mps`. `PYTORCH_ENABLE_MPS_FALLBACK=1` silently routes missing MPS kernels to the CPU and invalidates the baseline, so unset it first. The manifest is a full-suite contract and is not intended for `-k` or partial-directory runs; use `pixi run test-module ... --device=mps --dtype=float32` for focused diagnosis without the manifest.
+
+When an MPS failure is fixed, remove its line from `mps_float32.txt`. When a test is renamed or reparametrized, update its node ID. Treat an unlisted failure as a regression to fix; add it only when the new limitation is understood and documented in #4159. After a deliberate Python, PyTorch, or runner-image update, regenerate the full manifest from that CI job's final `short test summary info`, recording one exact exception type and node ID per `FAILED` line.
 
 **Writing new tests that work on MPS.** Follow these rules:
 

@@ -44,7 +44,7 @@ test-f64 = { cmd = "uv run pytest tests/", env = { KORNIA_TEST_DTYPE = "float64"
 test-slow = { cmd = "uv run pytest tests/", env = { KORNIA_TEST_RUNSLOW = "true" } }
 test-quick = { cmd = "uv run pytest tests/" }
 test-half = { cmd = "uv run pytest tests/", env = { KORNIA_TEST_DTYPE = "float16,bfloat16" }, description = "Run CPU half-precision tests" }
-test-mps = { cmd = "uv run pytest tests/", env = { KORNIA_TEST_DEVICE = "mps" }, description = "Run tests on the Apple MPS device (float32; unset PYTORCH_ENABLE_MPS_FALLBACK to see missing-kernel failures)" }
+test-mps = { cmd = "uv run pytest tests/ --xfail-known-failures", env = { KORNIA_TEST_DEVICE = "mps", KORNIA_TEST_DTYPE = "float32" }, description = "Run blocking MPS float32 tests against the strict known-failure baseline (unset PYTORCH_ENABLE_MPS_FALLBACK)" }
 test-module = { cmd = "uv run pytest", description = "Run tests for a specific module (usage: pixi run test-module tests/<module_path>, e.g., pixi run test-module tests/contrib/)" }
 # Quality
 lint = { cmd = "uv run pre-commit run ruff-check --all-files && uv run pre-commit run ruff-format --all-files" }
