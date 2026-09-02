@@ -206,11 +206,13 @@ class Boxes:
           ``'xyxy'``, ``'xywh'``, and ``'vertices'`` modes convert to this form in :meth:`from_tensor` and back
           in :meth:`to_tensor`. The constructor converts nothing and stores ``mode`` as a label. For exclusive
           vertex data ``d``, ``Boxes(d, mode='vertices').to_tensor()`` applies export offsets to unconverted data,
-          while ``Boxes.from_tensor(d, mode='vertices').to_tensor()`` round-trips ``d``.
+          while ``Boxes.from_tensor(d, mode='vertices')`` imports it before export; the round-trip conditions and
+          limitations are described next.
         - An axis-aligned box in the documented vertex order whose extent is at least one unit per axis
           round-trips exactly in its own mode when every intermediate conversion result is exactly representable
           in the tensor dtype. A sub-unit extent does not: the inclusive ``- 1`` inverts the stored quadrilateral,
-          so boxes in normalized ``[0, 1]`` coordinates are silently corrupted by the three converting modes.
+          so normalized ``[0, 1]`` boxes with a sub-unit span on either axis are silently corrupted by the three
+          converting modes.
           The ``'xyxy_plus'`` mode is unaffected because its ``+ 1`` cancels the ``- 1``;
           ``'vertices_plus'`` applies no offset at all.
         - :meth:`to_tensor` reduces the stored vertices with ``amin``/``amax``, so every export is an

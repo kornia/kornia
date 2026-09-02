@@ -43,8 +43,9 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
     Convention:
         Vertices use inclusive coordinates in clockwise top-left, top-right, bottom-right, bottom-left order.
         The function accepts :math:`(B, 4, 2)` tensors and :math:`(B, N, 4, 2)` tensors. It returns ``False`` for an
-        invalid shape or when the top and bottom edge vectors differ by more than ``1e-4``; it does not raise for
-        those inputs. It does not check right angles, positive area, or clockwise direction. A parallelogram whose
+        invalid shape or when corresponding components of the top and bottom edge vectors differ by more than
+        ``1e-4``; it does not raise for those inputs. It does not check right angles, positive area, or clockwise
+        direction. A parallelogram whose
         vertices follow a cyclic order passes, including cyclic rotations, either direction, rotated rectangles,
         and zero-area boxes; other vertex relabelings can fail. The inclusive ``+1`` terms cancel in exact
         arithmetic, but finite-precision rounding can make the result differ from exclusive arithmetic,

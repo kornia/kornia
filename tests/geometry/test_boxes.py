@@ -78,7 +78,8 @@ class TestBoxes2D(BaseTester):
         # Wart pin for kornia#4061: the three converting modes place the top-right
         # vertex at ``xmin + width - 1``, which lands left of the top-left vertex when
         # the extent is below one unit. The stored quadrilateral is inverted on both
-        # axes and to_tensor recovers a larger box. The '_plus' modes cancel the -1.
+        # axes and to_tensor recovers a larger box. 'xyxy_plus' cancels the -1,
+        # while 'vertices_plus' bypasses offset conversion.
         source_by_mode = {
             "xyxy": [0.1, 0.1, 0.6, 0.9],
             "xyxy_plus": [0.1, 0.1, 0.6, 0.9],
