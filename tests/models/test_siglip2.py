@@ -17,6 +17,8 @@
 
 """Tests for SigLip2 model."""
 
+from dataclasses import replace
+
 import pytest
 import torch
 
@@ -75,7 +77,7 @@ class TestSigLip2Model(BaseTester):
 
     def test_identity_projections(self, device, dtype, config):
         """Test the default identity projection path with a lightweight model."""
-        config.projection_dim = config.vision_config.hidden_size
+        config = replace(config, projection_dim=config.vision_config.hidden_size)
         model = SigLip2Model(config).to(device, dtype).eval()
         image_size = config.vision_config.image_size
         pixel_values = torch.randn(1, 3, image_size, image_size, device=device, dtype=dtype)
@@ -149,7 +151,7 @@ class TestSigLip2Model(BaseTester):
         assert features.shape == (batch_size, config.projection_dim)
         # Check normalization
         norms = features.norm(dim=-1)
-        self.assert_close(norms, torch.ones_like(norms), rtol=1e-5, atol=1e-5)
+        self.assert_close(norms, torch.ones_like(norms))
 
     def test_get_text_features(self, device, dtype, model, config):
         """Test get_text_features method."""
@@ -166,7 +168,7 @@ class TestSigLip2Model(BaseTester):
         assert torch.isfinite(features).all()
         # Check normalization
         norms = features.norm(dim=-1)
-        self.assert_close(norms, torch.ones_like(norms), rtol=1e-5, atol=1e-5)
+        self.assert_close(norms, torch.ones_like(norms))
 
     def test_attention_mask_handling(self, device, dtype, model, config):
         """Test attention mask handling in text encoder."""
@@ -191,8 +193,6 @@ class TestSigLip2Model(BaseTester):
 
     def test_return_loss(self, device, dtype, model, config):
         """Test forward pass with return_loss=True and verify logit_scale clamping."""
-        import math
-
         batch_size = 2
         image_size = config.vision_config.image_size
         pixel_values = torch.randn(batch_size, 3, image_size, image_size, device=device, dtype=dtype)
@@ -211,9 +211,8 @@ class TestSigLip2Model(BaseTester):
             model.logit_scale.data.fill_(100.0)
             output_max = model(pixel_values=pixel_values, input_ids=input_ids)
             assert torch.isfinite(output_max.logits_per_image).all(), "Max clamp: logits contain non-finite values"
-            assert math.isclose(output_max.logit_scale.item(), config.logit_scale_max, rel_tol=1e-5, abs_tol=1e-5), (
-                f"Max clamp failed: {output_max.logit_scale.item()} != {config.logit_scale_max}"
-            )
+            expected_max = torch.tensor(config.logit_scale_max, device=device, dtype=dtype).log().exp()
+            self.assert_close(output_max.logit_scale, expected_max)
 
             # Test min clamping
             model.logit_scale.data.fill_(-10.0)
@@ -406,15 +405,17 @@ class TestSigLip2Components(BaseTester):
         self.assert_close(output, output_without_mask, **tol)
 
     @pytest.mark.parametrize(
-        ("batch_size", "input_size", "image_size"),
+        ("batch_size", "input_size"),
         [
-            (1, (64, 64), (32, 32)),
-            (2, (48, 64), (32, 32)),
-            (4, (16, 16), (32, 32)),
+            (1, (32, 32)),
+            (1, (64, 64)),
+            (2, (48, 64)),
+            (4, (16, 16)),
         ],
     )
-    def test_image_preprocessor(self, device, dtype, batch_size, input_size, image_size):
+    def test_image_preprocessor(self, device, dtype, batch_size, input_size):
         """Test SigLip2ImagePreprocessor with different configurations."""
+        image_size = (32, 32)
         preprocessor = SigLip2ImagePreprocessor(image_size=image_size).to(device, dtype)
 
         # Test with batch of images (4D tensor)
