@@ -33,7 +33,7 @@ class TestAddWeighted(BaseTester):
     fcn = kornia.enhance.add_weighted
 
     def get_input(self, device, dtype, size, max_elem=10):
-        shape = random_shape(size, max_elem)
+        shape = random_shape(size, max_elem=max_elem)
         src1 = torch.randn(shape, device=device, dtype=dtype)
         src2 = torch.randn(shape, device=device, dtype=dtype)
         alpha = random.random()
@@ -43,9 +43,27 @@ class TestAddWeighted(BaseTester):
 
     @pytest.mark.parametrize("size", [2, 3, 4, 5])
     def test_smoke(self, device, dtype, size):
-        src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
-        expected = src1 * src1.new_tensor(alpha) + src2 * src2.new_tensor(beta) + src1.new_tensor(gamma)
+        src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=size)
+        expected = src1 * alpha + src2 * beta + gamma
         self.assert_close(TestAddWeighted.fcn(src1, alpha, src2, beta, gamma), expected)
+
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    def test_python_scalars_keep_opmath_precision(self, dtype):
+        src1 = torch.linspace(-2.0, 2.0, 1000, dtype=dtype)
+        src2 = torch.linspace(2.0, -2.0, 1000, dtype=dtype)
+
+        actual = TestAddWeighted.fcn(src1, 0.1, src2, 0.3, 0.2)
+        expected = src1 * 0.1 + src2 * 0.3 + 0.2
+
+        assert torch.equal(actual, expected)
+
+    def test_get_input_respects_size_and_max_elem(self, device, dtype):
+        random.seed(0)
+
+        src1, src2, *_ = self.get_input(device, dtype, size=5, max_elem=2)
+
+        assert src1.ndim == src2.ndim == 5
+        assert max(src1.shape) <= 2
 
     @pytest.mark.parametrize("size1, size2", [((2, 5, 5), (4, 5, 5)), ((2, 5, 5), (2, 3, 5, 5))])
     def test_shape_mismatch(self, device, dtype, size1, size2):

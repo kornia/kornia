@@ -83,6 +83,11 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 ### Precision and device details
 
 - For focused CPU half-precision coverage, add `--dtype=float16,bfloat16` to a `test-module` run. `pixi run test-half` runs the whole CPU test suite.
+- The blocking Linux CPU half jobs run one dtype at a time with `--xfail-known-half-precision`, no optimizer, and
+  no `--runslow`. The option deterministically seeds each node ID and strictly validates the matching manifest in
+  `testing/half_precision_xfails/`; it also supports focused file, node, and `-k` runs. Delete a line after a fix,
+  update it after a rename/reparametrization, and fix or record a new failure. See [TESTING.md](TESTING.md) for the
+  exact strict and full-manifest regeneration commands.
 - CUDA `float16`/`bfloat16` tests need per-test subprocess isolation; use `pixi run -e cuda test-cuda-half` or pytest's `--isolate-half-precision` option.
 - MPS does not support float64 gradcheck. MPS autocast can also change the effective dtype; inspect nearby tests before changing tolerances or skips.
 - TF32 matmul is disabled by default; `--tf32` enables it. cuDNN convolutions still use PyTorch's TF32 default.

@@ -36,6 +36,8 @@ pixi run test-quick
 | `--tf32` | `KORNIA_TEST_TF32` | off | Enable TF32 mode (see below) |
 | `--optimizer` | `KORNIA_TEST_OPTIMIZER` | CLI: `inductor`; env: unset | Select the backend. Only setting the environment variable enables dynamo/compile collection; the CLI option alone does not. |
 | `--isolate-half-precision` | `KORNIA_TEST_ISOLATE_HALF` | off | Run float16/bfloat16 CUDA tests each in a fresh `subprocess.run` process (no shared CUDA state) |
+| `--xfail-known-half-precision` | `KORNIA_TEST_XFAIL_KNOWN_HALF` | off | Strictly validate the recorded Linux CPU half-precision failures; supports full or partial selections |
+| `--record-half-precision-failures=PATH` | `KORNIA_TEST_RECORD_HALF` | unset | Record a complete deterministic Linux CPU half-precision manifest at `PATH` |
 
 ## Test Structure
 
@@ -226,6 +228,38 @@ pixi run -e cuda test-cuda-half   # float16 + bfloat16, CUDA, with isolation
 ```
 
 Without `--isolate-half-precision`, float16/bfloat16 CUDA tests are **skipped** (safe default for combined runs).
+
+**Linux CPU half-precision CI baseline.** Pull requests and scheduled CI run one CPU half dtype at a time on
+Linux, Python 3.11, and the workflow-pinned PyTorch version. `--xfail-known-half-precision` seeds Python, NumPy,
+and PyTorch from each test's node ID, then requires every selected manifest entry to finish as a strict call-phase
+XFAIL with exactly the recorded exception type. A skip, another xfail, a changed exception, a fixed test, or a
+stale node ID fails validation. Compile tests must remain deselected (`KORNIA_TEST_OPTIMIZER=`), and `--runslow`
+must remain disabled, matching CI.
+
+Run a full strict suite or a focused file with:
+
+```bash
+KORNIA_TEST_OPTIMIZER= KORNIA_TEST_DTYPE=float16 \
+  pixi run test-module tests/ --xfail-known-half-precision
+KORNIA_TEST_OPTIMIZER= KORNIA_TEST_DTYPE=float16 \
+  pixi run test-module tests/geometry/liegroup/test_so3.py --xfail-known-half-precision
+```
+
+`-k` and exact node selections are supported for focused strict runs; deselected manifest entries are ignored.
+When a failure is fixed, delete its manifest line. After a rename or reparametrization, update its node ID. For a
+new half failure, fix it or add the exact exception type and node ID. Regenerate a complete manifest with:
+
+```bash
+KORNIA_TEST_OPTIMIZER= KORNIA_TEST_DTYPE=float16 \
+  pixi run test-module tests/ \
+  --record-half-precision-failures=testing/half_precision_xfails/cpu_float16.txt
+KORNIA_TEST_OPTIMIZER= KORNIA_TEST_DTYPE=bfloat16 \
+  pixi run test-module tests/ \
+  --record-half-precision-failures=testing/half_precision_xfails/cpu_bfloat16.txt
+```
+
+Recording intentionally exits nonzero because it observes the un-xfailed failures, but it still writes the sorted
+manifest. Review the diff, then rerun the corresponding strict command.
 
 **See also.** `docs/source/get-started/precision.rst` for the per-module half-precision support table.
 

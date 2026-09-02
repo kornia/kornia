@@ -21,6 +21,7 @@ import sys
 import time
 from functools import partial
 from itertools import product
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -34,7 +35,7 @@ except ImportError:  # pragma: no cover
 import kornia
 
 from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
-from testing.half_precision_ci import mark_known_failures
+from testing.half_precision_ci import FailureRecorder, mark_known_failures, seed_test_rng
 
 try:
     import torch._dynamo
@@ -165,6 +166,48 @@ def pytest_generate_tests(metafunc) -> None:
     metafunc.parametrize(names, combinations)
 
 
+def _configure_half_precision_manifest(config, items):
+    """Validate and install the requested strict or recording manifest plugin."""
+    strict_half = config.getoption("--xfail-known-half-precision")
+    record_half = config.getoption("--record-half-precision-failures")
+    if strict_half and record_half:
+        raise pytest.UsageError(
+            "--xfail-known-half-precision and --record-half-precision-failures are mutually exclusive"
+        )
+
+    if strict_half or record_half:
+        devices = _parse_test_option(config, "--device", TEST_DEVICES)
+        dtypes = _parse_test_option(config, "--dtype", TEST_DTYPES)
+        optimizer_env = os.environ.get("KORNIA_TEST_OPTIMIZER", "").strip()
+        if devices != ["cpu"] or len(dtypes) != 1 or dtypes[0] not in {"float16", "bfloat16"}:
+            raise pytest.UsageError(
+                "half-precision manifest modes require --device=cpu and exactly one of "
+                "--dtype=float16 or --dtype=bfloat16"
+            )
+        if optimizer_env or config.getoption("--runslow"):
+            raise pytest.UsageError(
+                "half-precision manifest modes require KORNIA_TEST_OPTIMIZER to be unset and --runslow disabled"
+            )
+
+    if strict_half:
+        try:
+            tracker = mark_known_failures(items, dtypes, selectors=config.args)
+        except ValueError as error:
+            raise pytest.UsageError(str(error)) from error
+        config.pluginmanager.register(tracker, "known-half-precision-failure-tracker")
+
+    if record_half:
+        normalized_args = {
+            str(Path(arg.split("::", maxsplit=1)[0])).removeprefix("./").rstrip("/") for arg in config.args
+        }
+        if normalized_args != {"tests"} or config.option.keyword:
+            raise pytest.UsageError(
+                "--record-half-precision-failures requires the full tests/ target and does not allow -k"
+            )
+        recorder = FailureRecorder(dtypes[0], Path(record_half))
+        config.pluginmanager.register(recorder, "half-precision-failure-recorder")
+
+
 def pytest_collection_modifyitems(config, items):
     """Collect test options."""
     # Deselect dynamo/compile tests when no optimizer is specified
@@ -174,18 +217,7 @@ def pytest_collection_modifyitems(config, items):
         # Filter out tests with "dynamo" or "compile" in their name
         items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
 
-    if config.getoption("--xfail-known-half-precision"):
-        devices = _parse_test_option(config, "--device", TEST_DEVICES)
-        dtypes = _parse_test_option(config, "--dtype", TEST_DTYPES)
-        if devices != ["cpu"] or not dtypes or not set(dtypes) <= {"float16", "bfloat16"}:
-            raise pytest.UsageError(
-                "--xfail-known-half-precision requires --device=cpu and only --dtype=float16,bfloat16"
-            )
-        try:
-            tracker = mark_known_failures(items, dtypes)
-        except ValueError as error:
-            raise pytest.UsageError(str(error)) from error
-        config.pluginmanager.register(tracker, "known-half-precision-failure-tracker")
+    _configure_half_precision_manifest(config, items)
 
     # gradcheck requires float64. MPS does not support it at all, and XLA lowers a float64 request
     # to float32, where gradcheck's default eps=1e-6 makes the numerical Jacobian invalid — so a
@@ -242,6 +274,7 @@ def pytest_addoption(parser):
         KORNIA_TEST_RUNSLOW: Run slow tests (default: false)
         KORNIA_TEST_TF32: Enable TF32 (TensorFloat-32) mode for CUDA matrix multiplications (default: false)
         KORNIA_TEST_XFAIL_KNOWN_HALF: Strictly xfail the recorded CPU half-precision baseline (default: false)
+        KORNIA_TEST_RECORD_HALF: Write CPU half-precision failures to a manifest path (default: unset)
         KORNIA_DOCTEST_DOWNLOAD: Let doctests download model weights (default: false)
     """
     parser.addoption(
@@ -286,6 +319,17 @@ def pytest_addoption(parser):
         help=(
             "Strictly xfail the complete recorded Linux CPU float16/bfloat16 failure baseline. "
             "Requires a full CPU half-precision suite. (env: KORNIA_TEST_XFAIL_KNOWN_HALF)"
+        ),
+    )
+    parser.addoption(
+        "--record-half-precision-failures",
+        action="store",
+        default=os.environ.get("KORNIA_TEST_RECORD_HALF"),
+        metavar="PATH",
+        help=(
+            "Record a complete deterministic Linux CPU half-precision failure manifest at PATH. "
+            "Requires tests/, one half dtype, no -k, no --runslow, and no optimizer. "
+            "(env: KORNIA_TEST_RECORD_HALF)"
         ),
     )
     parser.addoption(
@@ -585,6 +629,15 @@ def pytest_runtest_protocol(item, nextitem):
 
     item.ihook.pytest_runtest_logfinish(nodeid=item.nodeid, location=item.location)
     return True
+
+
+@pytest.fixture(autouse=True)
+def seed_half_precision_manifest_run(request):
+    """Make strict and recorded half-precision outcomes independent of test order and process entropy."""
+    if request.config.getoption("--xfail-known-half-precision") or request.config.getoption(
+        "--record-half-precision-failures"
+    ):
+        seed_test_rng(request.node.nodeid)
 
 
 @pytest.fixture(autouse=True)

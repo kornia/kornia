@@ -119,10 +119,10 @@ Full test suite (no ``--runslow``). Pass% = passed ÷ (passed + failed);
 skipped and xfailed tests are excluded. CPU rows were measured on commit
 ``4ab79c78`` (2026-08-29); CUDA rows are still from ``6131e98`` (2026-03-21).
 
-The half-precision suite is not run in CI (see `issue #4070
-<https://github.com/kornia/kornia/issues/4070>`_), so these numbers are refreshed by hand: the two CPU half rows
-with ``pixi run test-half``, and the CPU float32 baseline with ``pixi run test-f32``, since ``test-half`` pins
-``KORNIA_TEST_DTYPE`` to ``float16,bfloat16``.
+The CPU half-precision suites run as separate blocking ``float16`` and ``bfloat16`` CI jobs with strict manifests
+for known failures, addressing `issue #4070 <https://github.com/kornia/kornia/issues/4070>`_. The historical table
+counts are still refreshed by hand: the two CPU half rows with ``pixi run test-half``, and the CPU float32 baseline
+with ``pixi run test-f32``, since ``test-half`` pins ``KORNIA_TEST_DTYPE`` to ``float16,bfloat16``.
 
 .. list-table::
    :header-rows: 1

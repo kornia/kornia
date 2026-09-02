@@ -26,6 +26,11 @@ from kornia.models.small_sr import SmallSRNet, SmallSRNetWrapper
 from testing.base import BaseTester
 
 
+def _skip_large_half_cardinality(request, dtype, height):
+    if dtype in (torch.float16, torch.bfloat16) and height > 64 and not request.config.getoption("--runslow"):
+        pytest.skip("large SmallSR cardinality cases are slow on some half-precision CPU runners; use --runslow")
+
+
 class TestSmallSRNet(BaseTester):
     """Test suite for SmallSRNet - the core super-resolution model."""
 
@@ -68,8 +73,9 @@ class TestSmallSRNet(BaseTester):
     @pytest.mark.parametrize("upscale_factor", [2, 3, 4])
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     @pytest.mark.parametrize("height,width", [(64, 64), (128, 128), (224, 224)])
-    def test_cardinality(self, device, dtype, upscale_factor, batch_size, height, width):
+    def test_cardinality(self, request, device, dtype, upscale_factor, batch_size, height, width):
         """Test that output shape matches expected upscaled dimensions."""
+        _skip_large_half_cardinality(request, dtype, height)
         model = SmallSRNet(upscale_factor=upscale_factor, pretrained=False).to(device, dtype)
 
         x = torch.randn(batch_size, 1, height, width, device=device, dtype=dtype)
@@ -180,8 +186,9 @@ class TestSmallSRNetWrapper(BaseTester):
     @pytest.mark.parametrize("upscale_factor", [2, 3, 4])
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     @pytest.mark.parametrize("height,width", [(64, 64), (128, 128), (224, 224)])
-    def test_cardinality(self, device, dtype, upscale_factor, batch_size, height, width):
+    def test_cardinality(self, request, device, dtype, upscale_factor, batch_size, height, width):
         """Test that output shape matches expected upscaled dimensions for RGB images."""
+        _skip_large_half_cardinality(request, dtype, height)
         model = SmallSRNetWrapper(upscale_factor=upscale_factor, pretrained=False).to(device, dtype)
 
         x = torch.randn(batch_size, 3, height, width, device=device, dtype=dtype)
