@@ -1,4 +1,5 @@
-# Exact failure baseline: macos-26-arm64, Python 3.13, PyTorch 2.9.1, MPS float32, no CPU fallback,
+# Exact failure baseline from https://github.com/kornia/kornia/actions/runs/33676811355
+# macos-26-arm64, Python 3.13, PyTorch 2.9.1, MPS float32, no CPU fallback,
 # one pytest process for the full suite (tests marked device_agnostic are deselected on an mps-only run).
 # Remove an entry when it becomes a strict XPASS; fix or explicitly add any new failure. Tracked in #4159.
 # Format: <exact exception type>\t<pytest node ID>
