@@ -48,9 +48,6 @@ runs:
 
     - name: Run CPU tests coverage ${{ inputs.pytorch-dtype }}
       continue-on-error: ${{ inputs.continue-on-error == 'true' }}
-      env:
-        MKL_NUM_THREADS: "1"
-        OMP_NUM_THREADS: "1"
       shell: bash
       run: |
         pixi run -e ${{ steps.pixi-env.outputs.name }} uv run coverage erase

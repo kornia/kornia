@@ -60,6 +60,7 @@ The `device` and `dtype` fixtures are injected automatically from the CLI option
 
 | Marker | Meaning |
 |---|---|
+| `@pytest.mark.device_agnostic` | Test runs once in a CPU-containing matrix because its logic does not use the selected accelerator |
 | `@pytest.mark.slow` | Long-running test; skipped unless `--runslow` is passed |
 | `@pytest.mark.tf32` | Known to fail under TF32 (see section below); xfail unless `--tf32` |
 

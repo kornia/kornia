@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import types
+from pathlib import Path
 
 import pytest
 import torch
@@ -191,6 +192,19 @@ class TestIntegrationLocalHalfPrecision:
             "--dtype=float32",
         )
         result_cpu.assert_outcomes(passed=1)
+
+    def test_isolated_skip_is_reported_with_quiet_addopts(self, pytester):
+        """The isolation parent must not turn a child's skip into a pass when addopts is quiet."""
+        test_file = Path(__file__).parent / "color" / "test_hls.py"
+        result = pytester.runpytest_subprocess(
+            f"{test_file}::TestRgbToHls::test_nan_rgb_to_hls",
+            "-o",
+            "addopts=-q",
+            "--device=cuda",
+            "--dtype=float16",
+            "--isolate-half-precision",
+        )
+        result.assert_outcomes(skipped=1)
 
 
 class TestDeviceAgnosticSelection:

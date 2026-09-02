@@ -46,8 +46,6 @@ from testing.base import DYNAMO_UNAVAILABLE_REASON, dynamo_is_available
 _HAS_TORCH_EXPORT_TRACKING = hasattr(torch, "compiler") and hasattr(torch.compiler, "is_exporting")
 _TORCH_EXPORT_TRACKING_REASON = "torch.export tracking requires torch.compiler.is_exporting (torch>=2.7)"
 
-pytestmark = pytest.mark.device_agnostic
-
 
 def _normalize() -> torch.nn.Module:
     return K.Normalize(mean=torch.zeros(3), std=torch.ones(3))
@@ -82,6 +80,7 @@ TORCH_EXPORT_DETERMINISTIC: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 @pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("name,factory", TORCH_EXPORT_DETERMINISTIC, ids=[n for n, _ in TORCH_EXPORT_DETERMINISTIC])
+@pytest.mark.device_agnostic
 def test_torch_export_deterministic(name: str, factory: Callable[[], torch.nn.Module]) -> None:
     """Deterministic inference transform captures via ``torch.export`` and matches eager."""
     torch.manual_seed(0)
@@ -126,6 +125,7 @@ TORCH_EXPORT_CONTAINERS: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
 @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
 @pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
 @pytest.mark.parametrize("name,factory", TORCH_EXPORT_CONTAINERS, ids=[n for n, _ in TORCH_EXPORT_CONTAINERS])
+@pytest.mark.device_agnostic
 def test_torch_export_container(name: str, factory: Callable[[], torch.nn.Module]) -> None:
     """A deterministic ``AugmentationSequential`` pipeline captures via ``torch.export`` and matches eager."""
     torch.manual_seed(0)

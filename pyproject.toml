@@ -177,7 +177,7 @@ include = ["kornia/", "LICENSE", "README.md"]
 match = '.*\.py'
 
 [tool.pytest.ini_options]
-addopts = "--color=yes -q"
+addopts = "--color=yes"
 filterwarnings = [
   "ignore::DeprecationWarning:onnxscript.converter",
 ]

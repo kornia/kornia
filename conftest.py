@@ -510,6 +510,8 @@ def pytest_runtest_protocol(item, nextitem):
         "-m",
         "pytest",
         item.nodeid,
+        "-o",
+        "addopts=",
         "--no-header",
         "--tb=short",
         "-q",
