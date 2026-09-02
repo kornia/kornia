@@ -270,7 +270,10 @@ class TestGeometricAugmentationBase3D:
 
 
 class TestDeviceAgnosticAugmentationParameters(BaseTester):
-    """Augmentations keep RNG/params on CPU while accepting accelerator inputs."""
+    """Augmentations keep RNG/params on CPU while accepting accelerator inputs.
+
+    CPU cases provide smoke coverage; the cross-device regression is exercised on CUDA and MPS.
+    """
 
     @staticmethod
     def _cpu_partial_batch_params(augmentation: _BasicAugmentationBase, input: torch.Tensor) -> dict[str, torch.Tensor]:
@@ -321,11 +324,16 @@ class TestDeviceAgnosticAugmentationParameters(BaseTester):
         self.assert_close(matrix[1], torch.eye(4, device=device, dtype=dtype))
 
     def test_mix_augmentation_blends_cpu_params_with_accelerator_input(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("RandomMixUpV2 promotes half inputs because mixup_lambdas are float32")
+
         input = torch.arange(24, device=device, dtype=dtype).reshape(2, 3, 2, 2)
-        augmentation = RandomMixUpV2(lambda_val=(0.0, 0.0), p=0.5, data_keys=["input"])
+        augmentation = RandomMixUpV2(lambda_val=(0.25, 0.25), p=1.0, data_keys=["input"])
         params = self._cpu_partial_batch_params(augmentation, input)
+        params["mixup_pairs"] = torch.tensor([1, 0])
 
         output = augmentation(input, params=params)
 
+        expected = torch.stack([input[0] * 0.75 + input[1] * 0.25, input[1]])
         assert output.device == input.device
-        self.assert_close(output, input)
+        self.assert_close(output, expected)
