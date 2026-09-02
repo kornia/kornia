@@ -853,6 +853,28 @@ class TestMultiResolutionDetector(BaseTester):
         self.assert_close(resps_one[0, 0], resps_two[0].max())
         self.assert_close(lafs_one[0, 0], lafs_two[0, int(resps_two[0].argmax())])
 
+    def test_small_request_spreads_across_scales(self, device, dtype):
+        # `detect` used to apportion `num_features` across pyramid levels by flooring each level's
+        # fractional share independently (`int(x) for x in shares`). The shares favor the finest
+        # level so heavily (0.508 .. 0.016 with the default config) that a small `num_features`
+        # truncated every other level's quota to zero: five well-separated, equally strong blobs and
+        # `num_features=3` returned three near-duplicate detections of the single strongest blob
+        # instead of covering several of them. Largest-remainder (Hamilton) apportionment hands the
+        # shortfall to the levels with the largest fractional remainder instead, so a small request
+        # still reaches more than one scale and covers more than one blob.
+        img = torch.zeros(1, 1, 96, 96, device=device, dtype=dtype)
+        centers = [(20, 20), (20, 70), (48, 48), (76, 20), (76, 70)]
+        for y, x in centers:
+            img[:, :, y - 2 : y + 3, x - 2 : x + 3] = 1.0
+
+        det = self._make_detector(num_features=3).to(device, dtype)
+        _, lafs = det.detect(img)
+        laf_centers = lafs[0, :, :, 2]
+        covered = sum(
+            1 for y, x in centers if bool(((laf_centers - laf_centers.new_tensor([x, y])).abs().amax(dim=1) < 4).any())
+        )
+        assert covered >= 2, f"expected the 3-feature request to reach at least 2 of the 5 blobs, got {covered}"
+
     def test_negative_score_threshold_is_rejected(self, device, dtype):
         # NMS writes an exact zero at every suppressed position, so a negative threshold would
         # admit all of them -- and collide with the zero response that marks an unfilled slot.
