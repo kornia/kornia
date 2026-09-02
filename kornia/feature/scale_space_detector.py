@@ -893,9 +893,10 @@ class MultiResolutionDetector(nn.Module):
         responses = torch.cat(all_responses, 1)
         lafs = torch.cat(all_lafs, 1)
         # The levels can produce fewer slots than requested — a level is capped at its own pixel
-        # count, and the per-level quotas round down, to zero for a small `num_features`. Pad up
-        # so the returned shape is always `num_features`, the same way `ScaleSpaceDetector.detect`
-        # does; the padding is the zero response and zero LAF used everywhere else here.
+        # count, so a deep enough pyramid level runs out of positions before it fills its quota.
+        # Pad up so the returned shape is always `num_features`, the same way
+        # `ScaleSpaceDetector.detect` does; the padding is the zero response and zero LAF used
+        # everywhere else here.
         if lafs.shape[1] < self.num_features:
             pad = self.num_features - lafs.shape[1]
             responses = F.pad(responses, (0, pad))
