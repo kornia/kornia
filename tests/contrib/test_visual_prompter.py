@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from types import SimpleNamespace
+
 import pytest
 import torch
 
@@ -29,7 +31,7 @@ class TestVisualPrompter(BaseTester):
         captured_configs = []
 
         class FakeSam:
-            image_encoder = type("ImageEncoder", (), {"img_size": 1024})()
+            image_encoder = SimpleNamespace(img_size=1024)
 
             def to(self, **kwargs):
                 return self
@@ -42,12 +44,11 @@ class TestVisualPrompter(BaseTester):
 
         prompter = VisualPrompter()
 
-        assert prompter is not None
+        assert prompter.model.image_encoder.img_size == 1024
         assert len(captured_configs) == 1
         assert captured_configs[0].model_type == "vit_h"
         assert captured_configs[0].pretrained is True
 
-    @pytest.mark.slow
     def test_smoke(self, device, dtype):
         if dtype not in (torch.float32, torch.float16):
             pytest.skip("VisualPrompter (SAM) primarily supports float32 and float16")
