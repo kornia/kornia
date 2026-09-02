@@ -129,6 +129,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Reset an automatic augmentation sub-policy's cached transformation matrix before applying it again. Consecutive
+  calls that selected the same geometric policy could transform the input with the latest parameters while exposing
+  the previous call's matrix through `transform_matrix` (#4171).
+
 * `MultiResolutionDetector.detect` apportions `num_features` across pyramid levels with largest-remainder
   (Hamilton) apportionment instead of flooring each level's fractional share independently (#4101). The floors
   used to discard every fractional part, so a small `num_features` could round the whole apportionment down: with
