@@ -26,6 +26,7 @@ import torch
 from conftest import _is_subprocess_isolated_test, skip_half_precision_on_cuda
 
 pytest_plugins = ["pytester"]
+# Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
 pytestmark = pytest.mark.device_agnostic
 
 _skip_fixture_fn = getattr(skip_half_precision_on_cuda, "__wrapped__", skip_half_precision_on_cuda)
@@ -194,13 +195,17 @@ class TestIntegrationLocalHalfPrecision:
         )
         result_cpu.assert_outcomes(passed=1)
 
-    def test_isolated_skip_is_reported_with_quiet_addopts(self, pytester):
-        """The isolation parent must not turn a child's skip into a pass when addopts is quiet."""
+    def test_isolated_skip_is_reported_with_quiet_addopts(self, pytester, monkeypatch):
+        """The isolation parent must not turn a child's skip into a pass when addopts is quiet.
+
+        ``-o addopts=-q`` on the parent command line is not inherited by the child, so it cannot
+        reproduce the failure; ``PYTEST_ADDOPTS`` is. pytester clears that variable at fixture
+        setup, so it has to be set here, in the test body.
+        """
+        monkeypatch.setenv("PYTEST_ADDOPTS", "-q")
         test_file = Path(__file__).parent / "color" / "test_hls.py"
         result = pytester.runpytest_subprocess(
             f"{test_file}::TestRgbToHls::test_nan_rgb_to_hls",
-            "-o",
-            "addopts=-q",
             "--device=cuda",
             "--dtype=float16",
             "--isolate-half-precision",

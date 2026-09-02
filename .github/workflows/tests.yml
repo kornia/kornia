@@ -118,6 +118,7 @@ jobs:
           echo "DNNL_MAX_CPU_ISA=AVX2" >> $GITHUB_ENV
 
       - name: Run tests
+        shell: bash
         env:
           KORNIA_TEST_DEVICE: cpu
           KORNIA_TEST_DTYPE: ${{ inputs.pytorch-dtype }}

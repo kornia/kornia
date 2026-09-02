@@ -528,6 +528,9 @@ def pytest_runtest_protocol(item, nextitem):
         cmd.append(f"--optimizer={optimizer_backend}")
 
     env = {**os.environ, "KORNIA_TEST_IN_SUBPROCESS": "1"}
+    # `-o addopts=` above only clears the ini value; the environment form is inherited and would
+    # push the child to -qq, where the summary line the parser relies on is no longer printed.
+    env.pop("PYTEST_ADDOPTS", None)
     t0 = time.monotonic()
     proc = subprocess.run(  # noqa: S603
         cmd, capture_output=True, text=True, cwd=str(item.config.rootdir), env=env, check=False

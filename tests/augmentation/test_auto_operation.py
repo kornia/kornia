@@ -40,12 +40,12 @@ def _find_all_ops() -> List[OperationBase]:
 
 
 def _test_sequential(augment_method, device, dtype):
-    height, width = 100, 50
+    height, width = 50, 100
     inp = torch.rand(1, 3, height, width, device=device, dtype=dtype)
     bbox = torch.tensor([[[35.5, 1], [66, 1], [66, 25], [35.5, 25]]], device=device, dtype=dtype)
     keypoints = torch.tensor([[[46.5, 11.5], [54.5, 11.6]]], device=device, dtype=dtype)
     mask = bbox_to_mask(
-        torch.tensor([[[15.5, 0], [90, 0], [90, 40], [15.5, 40]]], device=device, dtype=dtype), height, width
+        torch.tensor([[[15.5, 0], [90, 0], [90, 40], [15.5, 40]]], device=device, dtype=dtype), width, height
     )[:, None]
     aug = AugmentationSequential(augment_method, data_keys=["input", "mask", "bbox", "keypoints"])
     out = aug(inp, mask, bbox, keypoints)
