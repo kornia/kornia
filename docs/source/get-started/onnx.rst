@@ -15,6 +15,11 @@ runs it with ONNX Runtime. It is useful when you have pre-exported operators or 
 - **Execution providers**: run on CPU, CUDA, TensorRT or OpenVINO through ONNX Runtime, with control over the
   session options.
 
+Most of the library exports: |count-onnx-share| of Kornia's public operators (|count-onnx-exportable| of the
+|count-onnx-operators| surveyed) go through ``torch.onnx.export`` and run under ONNX Runtime. The
+:ref:`ONNX, torch.compile and torch.export support <export-support>` page lists the outcome for every operator,
+model and augmentation, with the cause of each failure.
+
 Quickstart
 ----------
 
@@ -154,6 +159,10 @@ Use the ``io_maps`` argument to say which output feeds which input.
 
 **Can I use custom ONNX Runtime session options?**
 Yes, pass your own session options to the ``create_session`` method.
+
+**Which operators export?**
+The :ref:`ONNX, torch.compile and torch.export support <export-support>` page lists every surveyed operator with
+its ONNX export, ``torch.export`` and ``torch.compile`` outcome, searchable by name and filterable by result.
 
 **Where are the pre-exported Kornia operators?**
 In the `kornia/ONNX_models <https://huggingface.co/kornia/ONNX_models>`_ Hugging Face repository; load them with

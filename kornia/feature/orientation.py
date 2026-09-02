@@ -228,7 +228,9 @@ class OriNet(nn.Module):
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         """Normalize the input by batch."""
-        sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        # `torch.std_mean` decomposes to `prims.sum`, which has no ONNX lowering; the split form is equivalent.
+        mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)
+        sp = torch.std(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
         # training totally unstable.

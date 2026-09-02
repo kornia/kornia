@@ -23,6 +23,7 @@ docs/source/_static/img/*jpg
 docs/source/_static/scripts/*
 docs/source/get-started/performance.rst
 docs/source/community/adoption.rst
+docs/source/get-started/export-support.rst
 docs/source/_generated/
 *DS_Store
 *jpg
@@ -44,3 +45,7 @@ benchmarks/profile/
 
 # Editor / agent metadata
 .omc/
+docs/export_support/results/
+
+# kornia hub download cache (created by ONNXLoader / model downloads in the working directory)
+.kornia_hub/

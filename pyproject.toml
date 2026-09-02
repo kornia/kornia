@@ -316,6 +316,14 @@ max-statements = 64  # Recommended: 50
   "D",
 ]  # allow assert, ignore max branches and statements
 "docs/generate_examples.py" = ["C901"]  # Allow too complex function
+"docs/export_support/*" = [
+  "BLE",
+  "E741",
+  "PLC3002",
+  "PLR0911",
+  "S603",
+  "S607",
+]  # survey harness: subprocess workers, inline lambdas that build case inputs
 "kornia/__init__.py" = ["I001"]  # Allow unsorted imports
 "kornia/feature/dedode/*" = [
   "C408",

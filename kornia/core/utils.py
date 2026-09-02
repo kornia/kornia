@@ -179,7 +179,7 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
         well-conditioned matrices; behavior on singular matrices is undefined
         (no explicit check, same as ``torch.linalg.inv`` itself).
     """
-    if not torch.jit.is_tracing():
+    if not _is_tracing_or_exporting():
         # inv(M) = adj(M) / det, and for a 3x3 the adjugate rows are cross products of the
         # columns: with columns (a, b, c), the inverse rows are (b x c, c x a, a x b) / det,
         # det = a . (b x c). Three fused ``cross`` ops instead of nine scalar cofactor
@@ -193,8 +193,36 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
         det = (col_a * row0).sum(-1)
         return torch.stack([row0, row1, row2], dim=-2) / det[..., None, None]
 
-    # Under tracing (legacy ONNX / jit.trace) stick to the plain scalar adjugate: it lowers to
-    # basic arithmetic that every opset supports, whereas ``cross`` may not.
+    # Under tracing/export (legacy ONNX / jit.trace / dynamo ONNX) stick to the plain scalar
+    # adjugate: it lowers to basic arithmetic that every opset supports, whereas ``cross`` may not.
+    adj, det = _adjugate_3x3(input)
+    return adj / det[..., None, None]
+
+
+def _is_tracing_or_exporting() -> bool:
+    """Whether a graph is being captured by ``torch.jit.trace`` or ``torch.export``/dynamo ONNX export.
+
+    Both capture modes lack ONNX lowerings for the ``linalg`` decompositions (``inv``, ``inv_ex``,
+    ``lu_factor``), so callers switch to closed-form arithmetic. Always ``False`` under TorchScript.
+    """
+    if torch.jit.is_scripting():
+        return False
+    return torch.jit.is_tracing() or is_exporting()
+
+
+def _adjugate_2x2(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return the adjugate and determinant of batched 2x2 matrices, in basic arithmetic only."""
+    a = input[..., 0, 0]
+    b = input[..., 0, 1]
+    c = input[..., 1, 0]
+    d = input[..., 1, 1]
+    det = a * d - b * c
+    adj = torch.stack([torch.stack([d, -b], dim=-1), torch.stack([-c, a], dim=-1)], dim=-2)
+    return adj, det
+
+
+def _adjugate_3x3(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return the adjugate and determinant of batched 3x3 matrices, in basic arithmetic only."""
     a = input[..., 0, 0]
     b = input[..., 0, 1]
     c = input[..., 0, 2]
@@ -224,7 +252,88 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
     row2 = torch.stack([c02, c12, c22], dim=-1)
     adj = torch.stack([row0, row1, row2], dim=-2)
 
-    return adj / det[..., None, None]
+    return adj, det
+
+
+def _adjugate_4x4(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Return the adjugate and determinant of batched 4x4 matrices, in basic arithmetic only.
+
+    Laplace expansion over the 2x2 minors of the top two rows (``s``) and bottom two rows (``c``),
+    the standard 4x4 cofactor scheme (e.g. MESA ``gluInvertMatrix``).
+    """
+    a = input[..., 0, 0]
+    b = input[..., 0, 1]
+    c = input[..., 0, 2]
+    d = input[..., 0, 3]
+    e = input[..., 1, 0]
+    f = input[..., 1, 1]
+    g = input[..., 1, 2]
+    h = input[..., 1, 3]
+    i = input[..., 2, 0]
+    j = input[..., 2, 1]
+    k = input[..., 2, 2]
+    l_ = input[..., 2, 3]
+    m = input[..., 3, 0]
+    n = input[..., 3, 1]
+    o = input[..., 3, 2]
+    p = input[..., 3, 3]
+
+    s0 = a * f - b * e
+    s1 = a * g - c * e
+    s2 = a * h - d * e
+    s3 = b * g - c * f
+    s4 = b * h - d * f
+    s5 = c * h - d * g
+
+    c5 = k * p - l_ * o
+    c4 = j * p - l_ * n
+    c3 = j * o - k * n
+    c2 = i * p - l_ * m
+    c1 = i * o - k * m
+    c0 = i * n - j * m
+
+    det = s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0
+
+    row0 = torch.stack(
+        [f * c5 - g * c4 + h * c3, -b * c5 + c * c4 - d * c3, n * s5 - o * s4 + p * s3, -j * s5 + k * s4 - l_ * s3],
+        dim=-1,
+    )
+    row1 = torch.stack(
+        [-e * c5 + g * c2 - h * c1, a * c5 - c * c2 + d * c1, -m * s5 + o * s2 - p * s1, i * s5 - k * s2 + l_ * s1],
+        dim=-1,
+    )
+    row2 = torch.stack(
+        [e * c4 - f * c2 + h * c0, -a * c4 + b * c2 - d * c0, m * s4 - n * s2 + p * s0, -i * s4 + j * s2 - l_ * s0],
+        dim=-1,
+    )
+    row3 = torch.stack(
+        [-e * c3 + f * c1 - g * c0, a * c3 - b * c1 + c * c0, -m * s3 + n * s1 - o * s0, i * s3 - j * s1 + k * s0],
+        dim=-1,
+    )
+    adj = torch.stack([row0, row1, row2, row3], dim=-2)
+
+    return adj, det
+
+
+def _adjugate_closed_form(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Adjugate and determinant of batched square matrices up to 4x4 in basic arithmetic only.
+
+    Raises:
+        NotImplementedError: for shapes other than ``(..., n, n)`` with ``n`` in 2, 3, 4.
+    """
+    n = input.shape[-1]
+    if input.shape[-2] == n and n == 2:
+        return _adjugate_2x2(input)
+    if input.shape[-2] == n and n == 3:
+        return _adjugate_3x3(input)
+    if input.shape[-2] == n and n == 4:
+        return _adjugate_4x4(input)
+    raise NotImplementedError(f"Closed-form inverse only supports 2x2, 3x3 and 4x4 matrices, got {list(input.shape)}")
+
+
+def _has_closed_form_inverse(input: torch.Tensor) -> bool:
+    n = input.shape[-1]
+    return input.shape[-2] == n and n in (2, 3, 4)
 
 
 def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
@@ -233,16 +342,18 @@ def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     The function torch.inverse is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
     this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
 
-    During tracing (``torch.jit.trace`` and legacy ``torch.onnx.export``) on 3x3
-    matrices, falls back to a closed-form inverse so the resulting graph does not
-    include ``aten::linalg_inv`` (unsupported by the legacy ONNX exporter at
-    opset 20). ``torch.jit.is_tracing()`` is JIT-script-safe (unlike
-    ``torch.onnx.is_in_onnx_export``, which contains an ``import`` statement).
+    Under graph capture (``torch.jit.trace``, legacy ``torch.onnx.export`` and the dynamo
+    ``torch.onnx.export(..., dynamo=True)`` / ``torch.export`` path) on 2x2, 3x3 and 4x4
+    matrices, falls back to a closed-form adjugate inverse so the resulting graph does not
+    include ``aten::linalg_inv``, which neither ONNX exporter lowers. ``torch.jit.is_tracing()``
+    is JIT-script-safe (unlike ``torch.onnx.is_in_onnx_export``, which contains an ``import``
+    statement).
     """
     KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
     dtype = _normalize_to_float32_or_float64(input.dtype)
-    if torch.jit.is_tracing() and input.shape[-2:] == (3, 3):
-        return _inverse_3x3_closed_form(input.to(dtype)).to(input.dtype)
+    if _is_tracing_or_exporting() and _has_closed_form_inverse(input):
+        adj, det = _adjugate_closed_form(input.to(dtype))
+        return (adj / det[..., None, None]).to(input.dtype)
     return torch.linalg.inv(input.to(dtype)).to(input.dtype)
 
 
@@ -355,6 +466,14 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     dtype_original = A.dtype
     dtype = _normalize_to_float32_or_float64(dtype_original)
 
+    if _is_tracing_or_exporting() and _has_closed_form_inverse(A):
+        # ``linalg_inv_ex`` has no ONNX lowering; the adjugate form is basic arithmetic, and a
+        # zero determinant is exactly the singularity ``inv_ex`` flags through ``info``.
+        adj, det = _adjugate_closed_form(A.to(dtype))
+        mask = det != 0
+        safe_det = torch.where(mask, det, torch.ones_like(det))
+        return (adj / safe_det[..., None, None]).to(dtype_original), mask
+
     inverse, info = inv_ex(A.to(dtype))
     mask = info == 0
     return inverse.to(dtype_original), mask
@@ -397,14 +516,39 @@ def is_compiling() -> bool:
     return bool(_torch_is_compiling()) if _torch_is_compiling is not None else False
 
 
+@torch.jit.unused
+def _is_exporting_eager() -> bool:
+    return bool(_torch_is_exporting()) if _torch_is_exporting is not None else False
+
+
 def is_exporting() -> bool:
     """Whether execution is inside a ``torch.export`` capture.
 
     Used to skip in-``forward`` side effects (e.g. stashing per-call state on ``self``) that
     ``torch.export`` on torch <= 2.9 rejects, without changing the captured output. Returns
-    ``False`` on torch versions where ``torch.compiler.is_exporting`` is unavailable.
+    ``False`` on torch versions where ``torch.compiler.is_exporting`` is unavailable and
+    inside TorchScript, so the guard is safe to call from scripted functions.
     """
-    return bool(_torch_is_exporting()) if _torch_is_exporting is not None else False
+    if torch.jit.is_scripting():
+        return False
+    return _is_exporting_eager()
+
+
+def parameter_if_leaf(x: torch.Tensor) -> torch.Tensor:
+    """Wrap ``x`` into an ``nn.Parameter`` when that keeps its autograd history intact.
+
+    ``nn.Parameter(x)`` re-roots ``x`` as a leaf: a tensor that already carries a ``grad_fn``
+    loses its history, so a group built from ``Se3.exp(v)`` would stop propagating gradients
+    to ``v``. Under graph capture (``torch.jit.trace``, ``torch.compile``, ``torch.export`` and
+    the dynamo ONNX exporter) a freshly created parameter is likewise lifted out of the graph
+    as a constant. In both situations the tensor is returned unchanged; otherwise a leaf
+    (a user-provided tensor or an existing parameter) becomes an optimizable ``nn.Parameter``.
+    """
+    if isinstance(x, torch.nn.Parameter):
+        return x
+    if x.grad_fn is not None or torch.jit.is_tracing() or is_compiling() or is_exporting():
+        return x
+    return torch.nn.Parameter(x)
 
 
 def dataclass_to_dict(obj: Any) -> Any:

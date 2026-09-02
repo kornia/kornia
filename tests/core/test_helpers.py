@@ -20,11 +20,14 @@ import torch
 
 from kornia.core.exceptions import DeviceError
 from kornia.core.utils import (
+    _adjugate_closed_form,
     _extract_device_dtype,
     _torch_histc_cast,
     _torch_inverse_cast,
     _torch_solve_cast,
     _torch_svd_cast,
+    is_exporting,
+    parameter_if_leaf,
     safe_inverse_with_mask,
     safe_solve_with_mask,
 )
@@ -99,6 +102,59 @@ class TestInverseCast:
         with pytest.raises(RuntimeError):
             x = torch.tensor([[0.0, 0.0], [0.0, 0.0]], device=device, dtype=dtype)
             _ = _torch_inverse_cast(x)
+
+    @pytest.mark.parametrize("n", [2, 3, 4])
+    def test_closed_form_matches_linalg_inv(self, device, dtype, n):
+        # The adjugate formula is what graph capture (trace / dynamo ONNX export) uses in place of
+        # ``aten::linalg_inv``; it has to agree with the eager path on well-conditioned input.
+        torch.manual_seed(0)
+        x = torch.eye(n, device=device, dtype=dtype).expand(2, 3, n, n).clone()
+        x.add_(torch.rand_like(x), alpha=0.5)
+        adj, det = _adjugate_closed_form(x)
+        assert adj.shape == x.shape
+        assert det.shape == x.shape[:-2]
+        tol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        x_ref = x.to(torch.float32) if dtype in (torch.float16, torch.bfloat16) else x
+        assert_close(adj / det[..., None, None], torch.linalg.inv(x_ref).to(dtype), atol=tol, rtol=tol)
+        assert_close(det, torch.linalg.det(x_ref).to(dtype), atol=tol, rtol=tol)
+
+    @pytest.mark.parametrize("n", [2, 3, 4])
+    def test_trace_has_no_linalg_inv(self, device, dtype, n):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("tracing under half precision is not a supported surface")
+        x = torch.eye(n, device=device, dtype=dtype).expand(2, n, n).clone()
+        x.add_(torch.rand_like(x), alpha=0.5)
+        traced = torch.jit.trace(_torch_inverse_cast, x)
+        assert "linalg_inv" not in str(traced.graph)
+        assert_close(traced(x), _torch_inverse_cast(x))
+
+    def test_closed_form_rejects_other_shapes(self, device, dtype):
+        with pytest.raises(NotImplementedError):
+            _adjugate_closed_form(torch.eye(5, device=device, dtype=dtype))
+
+
+class TestExportHelpers:
+    def test_is_exporting_eager(self):
+        assert is_exporting() is False
+
+    def test_is_exporting_scripted(self):
+        # The guard is called from TorchScript-compiled functions (matching, calibration); it
+        # must compile and evaluate to False there rather than being an unused stub that raises.
+        assert torch.jit.script(is_exporting)() is False
+
+    def test_parameter_if_leaf_wraps_leaf(self, device, dtype):
+        x = torch.rand(3, device=device, dtype=dtype)
+        p = parameter_if_leaf(x)
+        assert isinstance(p, torch.nn.Parameter)
+        assert parameter_if_leaf(p) is p
+
+    def test_parameter_if_leaf_keeps_history(self, device, dtype):
+        # A tensor with a grad_fn must not be re-rooted as a leaf, or gradients stop at it.
+        v = torch.rand(3, device=device, dtype=dtype, requires_grad=True)
+        y = parameter_if_leaf(v * 2)
+        assert not isinstance(y, torch.nn.Parameter)
+        y.sum().backward()
+        assert_close(v.grad, torch.full_like(v, 2.0))
 
 
 class TestHistcCast:

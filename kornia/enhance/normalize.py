@@ -137,6 +137,11 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
     if torch.onnx.is_in_onnx_export():
         if not isinstance(mean, torch.Tensor) or not isinstance(std, torch.Tensor):
             raise ValueError("Only torch.Tensor is accepted when converting to ONNX.")
+        # A per-channel vector broadcasts the same way as its (1, C) view; accept it instead of raising.
+        if mean.dim() == 1:
+            mean = mean.view(1, -1)
+        if std.dim() == 1:
+            std = std.view(1, -1)
         if mean.shape[0] != 1 or std.shape[0] != 1:
             raise ValueError(
                 "Batch dimension must be one for broadcasting when converting to ONNX."
@@ -263,6 +268,11 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
     if torch.onnx.is_in_onnx_export():
         if not isinstance(mean, torch.Tensor) or not isinstance(std, torch.Tensor):
             raise ValueError("Only torch.Tensor is accepted when converting to ONNX.")
+        # A per-channel vector broadcasts the same way as its (1, C) view; accept it instead of raising.
+        if mean.dim() == 1:
+            mean = mean.view(1, -1)
+        if std.dim() == 1:
+            std = std.view(1, -1)
         if mean.shape[0] != 1 or std.shape[0] != 1:
             raise ValueError("Batch dimension must be one for broadcasting when converting to ONNX.")
     else:

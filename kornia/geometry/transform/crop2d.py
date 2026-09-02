@@ -23,6 +23,7 @@ from torch import nn
 
 from kornia.constants import Resample
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_exporting
 from kornia.geometry.bbox import infer_bbox_shape
 
 from .affwarp import resize
@@ -119,7 +120,9 @@ def crop_and_resize(
         dtype=input_tensor.dtype,
     ).expand(points_src.shape[0], -1, -1)
 
-    return crop_by_boxes(input_tensor, points_src, points_dst, mode, padding_mode, align_corners)
+    return _crop_by_boxes_to_size(
+        input_tensor, points_src, points_dst, (dst_h, dst_w), mode, padding_mode, align_corners
+    )
 
 
 def center_crop(
@@ -203,7 +206,9 @@ def center_crop(
         dtype=input_tensor.dtype,
     ).expand(points_src.shape[0], -1, -1)
 
-    return crop_by_boxes(input_tensor, points_src, points_dst, mode, padding_mode, align_corners)
+    return _crop_by_boxes_to_size(
+        input_tensor, points_src, points_dst, (dst_h, dst_w), mode, padding_mode, align_corners
+    )
 
 
 def crop_by_boxes(
@@ -275,13 +280,6 @@ def crop_by_boxes(
         RuntimeError: solve_cpu: For batch 0: U(2,2) is zero, singular U.
 
     """
-    if len(input_tensor.shape) != 4:
-        raise AssertionError(f"Only torch.Tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
-
-    # compute transformation between points and warp
-    # Note: torch.Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
-    dst_trans_src: torch.Tensor = get_perspective_transform(src_box.to(input_tensor), dst_box.to(input_tensor))
-
     bbox: Tuple[torch.Tensor, torch.Tensor] = infer_bbox_shape(dst_box)
     if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all()):
         raise AssertionError(
@@ -291,8 +289,30 @@ def crop_by_boxes(
     h_out: int = int(bbox[0][0].item())
     w_out: int = int(bbox[1][0].item())
 
+    return _crop_by_boxes_to_size(input_tensor, src_box, dst_box, (h_out, w_out), mode, padding_mode, align_corners)
+
+
+def _crop_by_boxes_to_size(
+    input_tensor: torch.Tensor,
+    src_box: torch.Tensor,
+    dst_box: torch.Tensor,
+    out_size: Tuple[int, int],
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
+    align_corners: bool = False,
+) -> torch.Tensor:
+    # ``crop_by_boxes`` with the output size already known as Python ints. ``crop_and_resize`` and
+    # ``center_crop`` build ``dst_box`` from ``size``, so they take this path and never read the box
+    # values back from the device -- which also keeps them capturable by ``torch.onnx.export``.
+    if len(input_tensor.shape) != 4:
+        raise AssertionError(f"Only torch.Tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
+
+    # compute transformation between points and warp
+    # Note: torch.Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
+    dst_trans_src: torch.Tensor = get_perspective_transform(src_box.to(input_tensor), dst_box.to(input_tensor))
+
     return crop_by_transform_mat(
-        input_tensor, dst_trans_src, (h_out, w_out), mode=mode, padding_mode=padding_mode, align_corners=align_corners
+        input_tensor, dst_trans_src, out_size, mode=mode, padding_mode=padding_mode, align_corners=align_corners
     )
 
 
@@ -447,6 +467,15 @@ def crop_by_indices(
         :math:`(h, w)` is ``size`` if given, otherwise the shape inferred
         from ``src_box``.
 
+    .. note::
+        Under graph export (:func:`torch.export.export` / :func:`torch.onnx.export`) the box
+        coordinates cannot be read back to Python, so the crop is captured as the same warp as
+        :func:`crop_and_resize` (``align_corners=True``), which keeps the box coordinates dynamic.
+        ``size`` is then required; a box that is exactly ``size`` pixels (what
+        :class:`~kornia.augmentation.RandomCrop` and :class:`CenterCrop2D` produce) is reproduced
+        exactly, any other box is resampled to ``size`` with ``align_corners=True`` regardless of
+        ``shape_compensation`` and ``align_corners``.
+
     """
     KORNIA_CHECK_SHAPE(input_tensor, ["B", "C", "H", "W"])
     KORNIA_CHECK_SHAPE(src_box, ["B", "4", "2"])
@@ -457,6 +486,11 @@ def crop_by_indices(
     x2 = src[:, 1, 0] + 1
     y1 = src[:, 0, 1]
     y2 = src[:, 3, 1] + 1
+
+    if is_exporting():
+        if size is None:
+            raise ValueError("`size` must be given to export `crop_by_indices`; it cannot be inferred from `src_box`.")
+        return _crop_by_indices_export(input_tensor, src_box, size, interpolation)
 
     # Move the four coordinate columns to Python in a single device sync (one ``tolist`` over a
     # stacked tensor) instead of a ``unique`` per column plus a device-to-host ``int(...)`` inside
@@ -497,6 +531,31 @@ def crop_by_indices(
         else:
             out[i] = _out
     return out
+
+
+def _crop_by_indices_export(
+    input_tensor: torch.Tensor,
+    src_box: torch.Tensor,
+    size: Tuple[int, int],
+    interpolation: str,
+) -> torch.Tensor:
+    # Export path of ``crop_by_indices``: the box is resampled onto a ``size`` grid through the same
+    # warp as :func:`crop_and_resize`, so the box coordinates stay graph inputs instead of being read
+    # back to Python. Sampling at ``align_corners=True`` reproduces the integer slice exactly when the
+    # box is already ``size`` pixels and bilinearly resizes it otherwise.
+    if interpolation not in ("bilinear", "nearest", "bicubic"):
+        raise ValueError(
+            f"`crop_by_indices` can export with bilinear, nearest or bicubic interpolation. Got {interpolation}."
+        )
+    dst_h, dst_w = size
+    points_dst = torch.tensor(
+        [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]],
+        device=input_tensor.device,
+        dtype=input_tensor.dtype,
+    ).expand(src_box.shape[0], -1, -1)
+    return _crop_by_boxes_to_size(
+        input_tensor, src_box.to(input_tensor), points_dst, size, interpolation, "zeros", align_corners=True
+    )
 
 
 class CenterCrop2D(nn.Module):

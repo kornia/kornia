@@ -25,6 +25,8 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.tensor_wrapper import _unwrap
+from kornia.core.utils import is_exporting, parameter_if_leaf
 from kornia.geometry.vector import Vector2
 
 
@@ -71,7 +73,7 @@ class So2(nn.Module):
 
         if not (is_scalar or is_flat or is_column):
             raise ValueError(f"Invalid input size, we expect [], [B], or [B, 1]. Got: {z.shape}")
-        self._z = nn.Parameter(z)
+        self._z = parameter_if_leaf(z)
 
     def __repr__(self) -> str:
         return f"{self.z}"
@@ -105,8 +107,9 @@ class So2(nn.Module):
                 is_single_shape = KORNIA_CHECK_SHAPE(right, ["2"], raises=False)
                 if not (is_batch_shape or is_single_shape):
                     raise ValueError(f"Invalid translation shape, we expect [B, 2], or [2] Got: {right.shape}")
-            x = right.data[..., 0]
-            y = right.data[..., 1]
+            right_data = _unwrap(right)
+            x = right_data[..., 0]
+            y = right_data[..., 1]
             real = z.real
             imag = z.imag
             out = torch.stack((real * x - imag * y, imag * x + real * y), -1)
@@ -242,10 +245,12 @@ class So2(nn.Module):
         KORNIA_CHECK_IS_TENSOR(matrix)
         if len(matrix.shape) < 2 or matrix.shape[-2:] != (2, 2):
             raise ValueError(f"Input size must be (*, 2, 2). Got {matrix.shape}")
-        mask_diag = torch.allclose(matrix[..., 0, 0], matrix[..., 1, 1])
-        mask_off_diag = torch.allclose(matrix[..., 0, 1], -matrix[..., 1, 0])
-        if not (mask_diag and mask_off_diag):
-            raise ValueError("Invalid SO2 rotation matrix: constraints m00==m11 and m01==-m10 not met.")
+        # Value validation reads the data, which graph capture cannot do; skip it under export.
+        if not is_exporting():
+            mask_diag = torch.allclose(matrix[..., 0, 0], matrix[..., 1, 1])
+            mask_off_diag = torch.allclose(matrix[..., 0, 1], -matrix[..., 1, 0])
+            if not (mask_diag and mask_off_diag):
+                raise ValueError("Invalid SO2 rotation matrix: constraints m00==m11 and m01==-m10 not met.")
         z = torch.complex(matrix[..., 0, 0], matrix[..., 1, 0])
         return cls(z)
 
@@ -284,8 +289,7 @@ class So2(nn.Module):
         Example:
             >>> s = So2.identity()
             >>> s.inverse().z
-            Parameter containing:
-            tensor(1.+0.j, requires_grad=True)
+            tensor(1.+0.j, grad_fn=<MulBackward0>)
 
         """
         return So2(1 / self.z)

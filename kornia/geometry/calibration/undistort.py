@@ -23,6 +23,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_exporting
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import remap
@@ -93,8 +94,9 @@ def undistort_points(
     x: torch.Tensor = (points[..., 0] - cx) / fx  # (BxN - Bx1)/Bx1 -> BxN
     y: torch.Tensor = (points[..., 1] - cy) / fy  # (BxN - Bx1)/Bx1 -> BxN
 
-    # Compensate for tilt distortion
-    if torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
+    # Compensate for tilt distortion. The zero test reads the data, which graph capture cannot do, so the
+    # exported graph always applies the tilt (an identity when both tau coefficients are zero).
+    if is_exporting() or torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
         inv_tilt = tilt_projection(dist[..., 12], dist[..., 13], True)
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])

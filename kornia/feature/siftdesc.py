@@ -438,7 +438,7 @@ class DenseSIFTDescriptor(nn.Module):
             self.PoolingConv.dilation,
             self.PoolingConv.groups,
         )
-        out = _l2_normalize(out_no_norm, dim=1).clamp_(0, float(self.clipval))
+        out = _l2_normalize(out_no_norm, dim=1).clamp(0, float(self.clipval))
         out = _l2_normalize(out, dim=1)
         if self.rootsift:
             out = _rootsift(out, self.eps)

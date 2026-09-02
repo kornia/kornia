@@ -31,6 +31,7 @@ from kornia.core.check import (
     KORNIA_CHECK_IS_TENSOR,
     KORNIA_CHECK_SHAPE,
 )
+from kornia.core.utils import is_exporting
 from kornia.geometry.transform.affwarp import rescale
 from kornia.image.utils import perform_keep_shape_image
 
@@ -87,11 +88,15 @@ def _differentiable_clipping(
         Clipped output tensor of the same shape as the input tensor.
 
     """
-    output: torch.Tensor = input.clone()
+    # Branch-free ``torch.where`` selects instead of boolean-mask assignment, so the op traces for
+    # export. The exponent is clamped on the lanes that keep ``output`` so they cannot overflow.
+    output: torch.Tensor = input
     if max_val is not None:
-        output[output > max_val] = -scale * (torch.exp(-output[output > max_val] + max_val) - 1.0) + max_val
+        over = output - max_val
+        output = torch.where(over > 0, -scale * (torch.exp(-over.clamp(min=0)) - 1.0) + max_val, output)
     if min_val is not None:
-        output[output < min_val] = scale * (torch.exp(output[output < min_val] - min_val) - 1.0) + min_val
+        under = output - min_val
+        output = torch.where(under < 0, scale * (torch.exp(under.clamp(max=0)) - 1.0) + min_val, output)
     return output
 
 
@@ -576,12 +581,13 @@ def jpeg_codec_differentiable(
     # Check resulting shape of quantization tables
     KORNIA_CHECK_SHAPE(quantization_table_y, ["B", "8", "8"])
     KORNIA_CHECK_SHAPE(quantization_table_c, ["B", "8", "8"])
-    # Check value range of JPEG quality
-    KORNIA_CHECK(
-        (jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0),
-        f"JPEG quality is out of range. Expected range is [0, 100], "
-        f"got [{jpeg_quality.amin().item()}, {jpeg_quality.amax().item()}]. Consider clipping jpeg_quality.",
-    )
+    # Check value range of JPEG quality. The check reads the data, which graph capture cannot do; skip under export.
+    if not is_exporting():
+        KORNIA_CHECK(
+            (jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0),
+            f"JPEG quality is out of range. Expected range is [0, 100], "
+            f"got [{jpeg_quality.amin().item()}, {jpeg_quality.amax().item()}]. Consider clipping jpeg_quality.",
+        )
     # Pad the image to a shape dividable by 16
     input, h_pad, w_pad = _perform_padding(input)
     # Get height and shape

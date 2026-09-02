@@ -350,3 +350,140 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 });
+
+
+// Support page (get-started/export-support): a search box and a status filter over the generated
+// tables. Rows that match stay visible; a table, its section heading and its package heading are
+// hidden once every row in them is filtered out, so the page collapses to the hits. Everything
+// works without this script -- the tables are plain HTML -- so the controls start hidden and are
+// only revealed once wired up.
+document.addEventListener("DOMContentLoaded", function () {
+  const controls = document.querySelector(".kornia-compat-controls");
+  if (!controls) return;
+  const input = controls.querySelector("input[type='search']");
+  const select = controls.querySelector("select");
+  const status = controls.querySelector(".kornia-compat-status");
+  const tables = Array.from(document.querySelectorAll("table.kornia-compat-table"));
+  if (!input || !select || !tables.length) return;
+
+  // One record per row: searchable text (operator + configuration), per-column outcome.
+  function outcome(cell) {
+    const span = cell.querySelector("[class*='compat-']");
+    if (!span) return "";
+    const cls = Array.from(span.classList).find((c) => c.indexOf("compat-") === 0) || "";
+    return cls.slice("compat-".length);  // ok | ok-breaks | ok-random | mismatch | fail | na
+  }
+  // The operator cell is rendered from its plain text: a <wbr> after every "_" and "." lets a long
+  // name wrap onto a second line instead of widening the table (a <wbr> is not copied with the
+  // text, so a pasted name stays intact), and the search query is wrapped in <mark>.
+  function renderName(span, text, re) {
+    const marks = [];
+    if (re) {
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        if (m[0]) marks.push([m.index, m.index + m[0].length]);
+        else re.lastIndex += 1;
+      }
+      re.lastIndex = 0;
+    }
+    let html = "";
+    let k = 0;
+    for (let i = 0; i < text.length; i += 1) {
+      if (k < marks.length && i === marks[k][0]) html += "<mark>";
+      const ch = text[i];
+      html += ch === "&" ? "&amp;" : ch === "<" ? "&lt;" : ch === ">" ? "&gt;" : ch;
+      if (k < marks.length && i + 1 === marks[k][1]) { html += "</mark>"; k += 1; }
+      if ((ch === "_" || ch === ".") && i + 1 < text.length) html += "<wbr>";
+    }
+    span.innerHTML = html;
+  }
+
+  const rows = [];
+  tables.forEach(function (table) {
+    table.querySelectorAll("tbody tr").forEach(function (tr) {
+      const cells = tr.children;
+      const nameCell = cells[0];
+      const spans = Array.from(nameCell.querySelectorAll("code .pre")).map((el) => ({ el: el, text: el.textContent }));
+      spans.forEach((s) => renderName(s.el, s.text, null));
+      rows.push({
+        tr: tr,
+        table: table,
+        spans: spans,
+        marked: false,
+        text: nameCell.textContent.toLowerCase(),
+        onnx: outcome(cells[1]),
+        exp: outcome(cells[2]),
+        comp: outcome(cells[3]),
+      });
+    });
+  });
+
+  const failing = (o) => o === "fail" || o === "mismatch";
+  const passing = (o) => o === "ok" || o === "ok-breaks" || o === "ok-random";
+  const PREDICATES = {
+    "all": () => true,
+    "any-fail": (r) => failing(r.onnx) || failing(r.exp) || failing(r.comp),
+    "onnx-fail": (r) => failing(r.onnx),
+    "export-fail": (r) => failing(r.exp),
+    "compile-fail": (r) => failing(r.comp),
+    "compile-breaks": (r) => r.comp === "ok-breaks",
+    "all-ok": (r) => passing(r.onnx) && passing(r.exp) && passing(r.comp),
+  };
+
+  function escapeRe(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function apply() {
+    const query = input.value.trim().toLowerCase();
+    const pred = PREDICATES[select.value] || PREDICATES.all;
+    const re = query ? new RegExp(escapeRe(query), "ig") : null;
+    let shown = 0;
+    const liveTables = new Set();
+    rows.forEach(function (r) {
+      const hit = pred(r) && (!query || r.text.indexOf(query) !== -1);
+      r.tr.classList.toggle("kornia-compat-hidden", !hit);
+      // Underline the query inside the operator cell; re-render only rows whose marks change.
+      const wantMarks = hit && !!re;
+      if (wantMarks || r.marked) {
+        r.spans.forEach((s) => renderName(s.el, s.text, wantMarks ? re : null));
+        r.marked = wantMarks;
+      }
+      if (!hit) return;
+      shown += 1;
+      liveTables.add(r.table);
+    });
+
+    // Collapse empty tables, then every section (package or subsection) with no live table left;
+    // a package section contains its subsections, so its own tables include theirs.
+    tables.forEach(function (t) {
+      const box = t.closest(".pst-scrollable-table-container, .table-wrapper") || t;
+      box.classList.toggle("kornia-compat-empty", !liveTables.has(t));
+    });
+    document.querySelectorAll(".bd-article section").forEach(function (s) {
+      const own = s.querySelectorAll("table.kornia-compat-table");
+      // The page's own section holds the controls: it stays even when nothing matches.
+      if (!own.length || s.contains(controls)) return;
+      const live = Array.from(own).some((t) => liveTables.has(t));
+      s.classList.toggle("kornia-compat-empty", !live);
+    });
+
+    const filtered = query || select.value !== "all";
+    status.textContent = !filtered ? rows.length + " rows"
+      : shown ? "Showing " + shown + " of " + rows.length + " rows"
+      : "No operator matches; names are matched as typed (try a shorter fragment)";
+  }
+
+  let timer = null;
+  input.addEventListener("input", function () {
+    clearTimeout(timer);
+    timer = setTimeout(apply, 120);
+  });
+  select.addEventListener("change", apply);
+  // "?q=warp" deep-links a search; the hash still scrolls to a package.
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("q")) input.value = params.get("q");
+  if (params.get("show") && PREDICATES[params.get("show")]) select.value = params.get("show");
+  controls.hidden = false;
+  apply();
+});

@@ -861,7 +861,8 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
     x_max = float(w - 1) - border
     y_max = float(h - 1) - border
     good_lafs_mask = (pts[..., 0] >= border) * (pts[..., 0] <= x_max) * (pts[..., 1] >= border) * (pts[..., 1] <= y_max)
-    good_lafs_mask = good_lafs_mask.min(dim=2)[0]
+    # `.all` rather than `.min` on the bool mask: ONNX ReduceMin has no bool overload.
+    good_lafs_mask = good_lafs_mask.all(dim=2)
     return good_lafs_mask
 
 

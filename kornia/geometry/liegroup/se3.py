@@ -26,6 +26,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
+from kornia.core.tensor_wrapper import _unwrap
+from kornia.core.utils import parameter_if_leaf
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
@@ -79,10 +81,10 @@ class Se3(nn.Module):
             raise TypeError(f"translation type is {type(translation)}")
         _t_data = translation.data if isinstance(translation, Vector3) else translation
         KORNIA_CHECK_SHAPE(_t_data, ["*", "3"])
-        self._translation: Vector3 | nn.Parameter
+        self._translation: Vector3 | torch.Tensor
         self._rotation: So3
         if isinstance(translation, torch.Tensor):
-            self._translation = nn.Parameter(translation)
+            self._translation = parameter_if_leaf(translation)
         else:
             self._translation = translation
         if isinstance(rotation, Quaternion):
@@ -119,7 +121,7 @@ class Se3(nn.Module):
         elif isinstance(right, (Vector3, torch.Tensor)):
             _right_data = right if isinstance(right, torch.Tensor) else right.data
             KORNIA_CHECK_SHAPE(_right_data, ["*", "N"])
-            return so3 * right + t.data
+            return so3 * right + _unwrap(t)
         else:
             raise TypeError(f"Unsupported type: {type(right)}")
 
@@ -192,12 +194,12 @@ class Se3(nn.Module):
             >>> from kornia.geometry.quaternion import Quaternion
             >>> q = Quaternion.identity()
             >>> Se3(q, torch.zeros(3)).log()
-            tensor([0., 0., 0., 0., 0., 0.])
+            tensor([0., 0., 0., 0., 0., 0.], grad_fn=<CatBackward0>)
 
         """
         omega = self.r.log()
         theta = batched_dot_product(omega, omega).clamp_min(1e-12).sqrt()
-        t = self.t.data
+        t = _unwrap(self.t)
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
         V_inv = (
@@ -295,10 +297,10 @@ class Se3(nn.Module):
             tensor([[1., 0., 0., 1.],
                     [0., 1., 0., 1.],
                     [0., 0., 1., 1.],
-                    [0., 0., 0., 1.]])
+                    [0., 0., 0., 1.]], grad_fn=<CopySlices>)
 
         """
-        rt = torch.cat((self.r.matrix(), self.t.data[..., None]), -1)
+        rt = torch.cat((self.r.matrix(), _unwrap(self.t)[..., None]), -1)
         rt_4x4 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_4x4[..., -1, -1] = 1.0
         return rt_4x4
@@ -355,8 +357,7 @@ class Se3(nn.Module):
             >>> s_inv.r
             tensor([1., -0., -0., -0.])
             >>> s_inv.t
-            Parameter containing:
-            tensor([-1., -1., -1.], requires_grad=True)
+            tensor([-1., -1., -1.], grad_fn=<SliceBackward0>)
 
         """
         r_inv = self.r.inverse()
