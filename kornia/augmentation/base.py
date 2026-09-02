@@ -356,7 +356,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         not onnx-exportable.
         """
         if transformed.shape == not_transformed.shape and transformed.shape[0] == to_apply.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (len(transformed.shape) - 1)))
+            to_apply_expanded = to_apply.view(-1, *([1] * (len(transformed.shape) - 1))).to(transformed.device)
             return torch.where(to_apply_expanded, transformed, not_transformed)
         return transformed if bool(to_apply.any()) else not_transformed
 
