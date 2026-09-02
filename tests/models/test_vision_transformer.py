@@ -27,12 +27,12 @@ class TestVisionTransformer(BaseTester):
     @pytest.mark.parametrize(
         ("B", "H", "D", "image_size"),
         [
-            (1, 1, 240, 32),
-            (2, 3, 240, 224),
-            (1, 8, 240, 224),
-            (2, 1, 768, 32),
-            (1, 3, 768, 224),
-            (2, 8, 768, 32),
+            (2, 1, 240, 32),
+            (1, 1, 768, 224),
+            (2, 3, 768, 32),
+            (1, 3, 240, 224),
+            (2, 8, 240, 224),
+            (1, 8, 768, 32),
         ],
     )
     def test_smoke(self, device, dtype, B, H, D, image_size):

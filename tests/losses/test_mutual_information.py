@@ -21,6 +21,7 @@ from kornia.losses.mutual_information import (
     MIKernel,
     MILossFromRef,
     NMILossFromRef,
+    _normalize_signal,
     mutual_information_loss,
     mutual_information_loss_2d,
     normalized_mutual_information_loss,
@@ -140,8 +141,13 @@ class TestMutualInformationLoss(BaseTester):
         for _ in range(10):
             self.value_ranges_check(device, dtype)
 
+    def test_trivial_signal_normalizes_to_zero(self, device, dtype):
+        signal = torch.tensor([[0.25], [0.75]], device=device, dtype=dtype)
+
+        self.assert_close(_normalize_signal(signal, num_bins=64), torch.zeros_like(signal))
+
     @pytest.mark.parametrize("kernel", [MIKernel.xu, MIKernel.rectangular, MIKernel.truncated_gaussian])
-    @pytest.mark.parametrize("dims", [(5,), (2, 4), (2, 1, 4), (2, 1, 2, 4), (2, 1, 2, 1, 4)])
+    @pytest.mark.parametrize("dims", [(5,), (3, 1), (2, 8), (2, 1, 8), (2, 1, 2, 8), (2, 1, 2, 1, 8)])
     def test_batch_consistency(self, device, dtype, kernel, dims):
         torch.manual_seed(0)  # Fix seed for reproducibility
 
@@ -150,7 +156,7 @@ class TestMutualInformationLoss(BaseTester):
 
         # flatten batch dims
         unique_batch_dim_1 = img1.reshape((-1,) + img1.shape[-1:])
-        unique_batch_dim_2 = img2.reshape((-1,) + img1.shape[-1:])
+        unique_batch_dim_2 = img2.reshape((-1,) + img2.shape[-1:])
 
         # Compute batch loss
         loss_batch = mutual_information_loss(img1, img2, num_bins=64, kernel_function=kernel)
@@ -180,12 +186,8 @@ class TestMutualInformationLoss(BaseTester):
             f"The shape of the batched losses for nmi is wrong: {normalized_loss_batch.shape} vs {dims[:-1]}."
         )
 
-        assert torch.allclose(loss_batch.flatten(), loss_iterative, atol=1e-4), (
-            f"Batch mismatch for mi! Batch: {loss_batch}, Iterative: {loss_iterative}"
-        )
-        assert torch.allclose(normalized_loss_batch.flatten(), normalized_loss_iterative, atol=1e-4), (
-            f"Batch mismatch for nmi! Batch: {normalized_loss_batch}, Iterative: {normalized_loss_iterative}"
-        )
+        self.assert_close(loss_batch.flatten(), loss_iterative)
+        self.assert_close(normalized_loss_batch.flatten(), normalized_loss_iterative)
 
     def test_module(self, device, dtype):
         pred = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
