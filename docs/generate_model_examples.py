@@ -25,8 +25,9 @@ the resulting figures under ``docs/source/_static/img/models/``::
     python docs/generate_model_examples.py            # all models
     python docs/generate_model_examples.py loftr sold2  # a subset
 
-Each ``figure_<name>`` function contains the exact snippet shown on the corresponding page, so the
-figures stay in sync with the documented code.
+Each ``figure_<name>`` function runs the model the same way the corresponding page's "Run it" snippet
+does (same builder, weights, inputs and prompts) and then draws the result; keep the two in sync when
+either changes.
 """
 
 from __future__ import annotations
@@ -35,6 +36,9 @@ import sys
 from pathlib import Path
 
 import matplotlib as mpl
+
+mpl.use("Agg")  # select the headless backend before pyplot is imported
+
 import matplotlib.pyplot as plt
 import requests
 import torch
@@ -43,7 +47,6 @@ import kornia as K
 from kornia.image import tensor_to_image
 from kornia.io import get_sample_images
 
-mpl.use("Agg")
 torch.manual_seed(0)
 
 OUT = Path(__file__).absolute().parent / "source/_static/img/models"
@@ -71,7 +74,9 @@ def knchurch() -> tuple[torch.Tensor, torch.Tensor]:
 
 
 def imagenet_classes() -> list[str]:
-    return requests.get(IMAGENET_CLASSES, timeout=60).text.strip().splitlines()
+    response = requests.get(IMAGENET_CLASSES, timeout=60)
+    response.raise_for_status()
+    return response.text.strip().splitlines()
 
 
 def show(ax, img: torch.Tensor, title: str = "") -> None:
@@ -105,7 +110,7 @@ def figure_rt_detr() -> None:
     from kornia.contrib.object_detection import RTDETRDetectorBuilder
 
     image = sample("delorean.png")
-    detector = RTDETRDetectorBuilder.build("rtdetr_r18vd", image_size=640)
+    detector = RTDETRDetectorBuilder.build("rtdetr_r18vd")  # runs at the 640 px the weights were trained for
     detections = detector(image)  # one (D, 6) tensor per image: class id, score, x, y, w, h
 
     fig, axs = plt.subplots(1, 2, figsize=(9, 3.4))
@@ -151,7 +156,7 @@ def _sam_figure(model_type: str, name: str, title: str) -> None:
     prompter = VisualPrompter(SamConfig(model_type, pretrained=True))
     prompter.set_image(image)  # encode once, query many times
 
-    keypoints = Keypoints(torch.tensor([[[300.0, 90.0]]]))  # (K, N, 2) in (x, y): on the eye
+    keypoints = Keypoints(torch.tensor([[[300.0, 90.0]]]))  # (K, N, 2): K prompts of N (x, y) points; on the eye
     labels = torch.tensor([[1]])  # 1 = foreground, 0 = background
     box = Boxes.from_tensor(torch.tensor([[[180.0, 20.0, 380.0, 240.0]]]), mode="xyxy")  # around the head
     point_pred = prompter.predict(keypoints=keypoints, keypoints_labels=labels)  # 3 candidate masks
@@ -225,7 +230,7 @@ def figure_vit() -> None:
     from kornia.models.vit import VisionTransformer
 
     image = sample("panda.jpg", (224, 224))
-    vit = VisionTransformer(image_size=224, patch_size=16).eval()  # random init: no pretrained weights
+    vit = VisionTransformer.from_config("vit_b/16", pretrained=True).eval()  # AugReg ImageNet-21k weights
     with torch.no_grad():
         tokens = vit(image)  # (1, 197, 768): class token + 14x14 patch tokens
 
@@ -241,7 +246,7 @@ def figure_vit() -> None:
     axs[2].set_title("output (1, 197, 768): first 96 dims of each token", fontsize=10)
     axs[2].set_xlabel("token (0 = class token)")
     axs[2].set_ylabel("embedding dim")
-    fig.suptitle("VisionTransformer with random initialisation", fontsize=10)
+    fig.suptitle("VisionTransformer vit_b/16 with the pretrained AugReg ImageNet-21k weights", fontsize=10)
     fig.tight_layout()
     save(fig, "vit")
 
@@ -397,7 +402,7 @@ def figure_dexined() -> None:
     image = sample("girona.png")
     detector = EdgeDetectorBuilder.build("dexined", pretrained=True, image_size=352)  # resize + normalise + sigmoid
     with torch.no_grad():
-        edges = detector(image)[0]  # list of (1, H, W) edge probabilities in [0, 1], one per input image
+        edges = detector(image)[0]  # list of (1, 1, H, W) edge probabilities in [0, 1], one per input image
 
     fig, axs = plt.subplots(1, 2, figsize=(9, 3.2))
     show(axs[0], image, "input")

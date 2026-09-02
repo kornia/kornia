@@ -27,7 +27,7 @@ Run it
     prompter = VisualPrompter(SamConfig("mobile_sam", pretrained=True))  # ~40 MB checkpoint
     prompter.set_image(image)  # encode once, query many times
 
-    keypoints = Keypoints(torch.tensor([[[300.0, 90.0]]]))  # (K, N, 2) in (x, y) pixels
+    keypoints = Keypoints(torch.tensor([[[300.0, 90.0]]]))  # (K, N, 2): K prompts of N (x, y) points, in pixels
     prediction = prompter.predict(keypoints=keypoints, keypoints_labels=torch.tensor([[1]]))  # 1 = foreground
     best = prediction.binary_masks[0, prediction.scores.argmax()]  # (H, W) bool
 

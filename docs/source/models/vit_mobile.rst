@@ -40,7 +40,9 @@ Pool the feature map and add a linear layer for classification; the output chann
 
 .. code-block:: python
 
+    import torch
     import torch.nn as nn
+    from kornia.models.vit_mobile import MobileViT
 
     classifier = nn.Sequential(
         MobileViT(mode="xxs"),

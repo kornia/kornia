@@ -20,7 +20,7 @@ Run it
 
     image = load_image("delorean.png")[None]  # (1, 3, H, W) float in [0, 1]
 
-    detector = RTDETRDetectorBuilder.build("rtdetr_r18vd", image_size=640)  # downloads the COCO weights
+    detector = RTDETRDetectorBuilder.build("rtdetr_r18vd")  # downloads the COCO weights; runs at 640 px
     detections = detector(image)  # list with one (D, 6) tensor per image: class id, score, x, y, w, h
 
     for class_id, score, x, y, w, h in detections[0].tolist():
@@ -30,7 +30,7 @@ Run it
    :align: center
    :alt: A photo of a car (left) and the same photo with two RT-DETR detections drawn as green boxes with class id and score (right).
 
-   Input image and the boxes returned by ``rtdetr_r18vd`` at ``image_size=640``, drawn with the detected class id
+   Input image and the boxes returned by ``rtdetr_r18vd``, drawn with the detected class id
    (COCO id 2 is *car*) and confidence. Figures on these pages are rendered by ``docs/generate_model_examples.py``.
 
 Detections are filtered with ``confidence_threshold=0.3`` by default; pass a different value to ``build`` to keep
@@ -38,8 +38,9 @@ more or fewer boxes. ``detector.visualize(image, detections, output_type="pil")`
 ``detector.to_onnx("rtdetr-640.onnx", image_size=640)`` exports the model together with its pre- and post-processing.
 
 Available variants, from fastest to most accurate: ``rtdetr_r18vd``, ``rtdetr_r34vd``, ``rtdetr_r50vd_m``,
-``rtdetr_r50vd`` and ``rtdetr_r101vd``. Recommended input scales are multiples of 32 between 480 and 800; ``640`` is
-the value the weights were trained for.
+``rtdetr_r50vd`` and ``rtdetr_r101vd``. When ``build`` is given a ``model_name`` it always resizes the input to the
+640 px the weights were trained for and ignores ``image_size=``; that argument only applies together with a
+``config=`` object, where multiples of 32 between 480 and 800 are recommended.
 
 Paper
 -----

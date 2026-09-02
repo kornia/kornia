@@ -22,7 +22,7 @@ Run it
 
     image = load_image("crowd.jpg")[None] * 255.0  # (1, 3, H, W); YuNet expects pixel values in [0, 255]
 
-    detector = FaceDetector()  # downloads the weights on first use
+    detector = FaceDetector()  # downloads the YuNet weights when constructed
     faces = [FaceDetectorResult(f) for f in detector(image)[0]]  # one result per detected face
 
     for face in faces:

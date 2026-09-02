@@ -147,6 +147,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `VisualPrompter.predict()` called without any prompt (the "run the prediction without prompts" example on the
+  Segment Anything page) raised `TypeError: object of type 'NoneType' has no len()` from the prompt augmentation
+  container; it now predicts from the image embedding alone, as documented. (#4178)
 * Follow-up fixes to the documentation revamp (#4155): the landing page's filtering card quoted the combined
   `filters`/`color`/`enhance`/`morphology` count next to a `kornia.filters` label, the "Why Kornia?" hero carousel
   resumed after a visitor picked a tab, the Community page linked to the now-unregistered `librecv.org`, and the

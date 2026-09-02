@@ -9,8 +9,8 @@ DexiNed
 
 DexiNed is a dense inception-style network that predicts thin, well-localised edges and was trained from scratch
 on the BIPED edge dataset. The quickest way to run it is
-:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder`, which wraps ``kornia.filters.DexiNed`` with
-the resize, normalisation and sigmoid it expects and resizes the edge map back to the input size.
+:class:`~kornia.contrib.edge_detection.EdgeDetectorBuilder`, which wraps :class:`~kornia.models.dexined.DexiNed`
+with the resize, normalisation and sigmoid it expects and resizes the edge map back to the input size.
 
 Run it
 ------
@@ -25,7 +25,7 @@ Run it
 
     detector = EdgeDetectorBuilder.build("dexined", pretrained=True, image_size=352)  # runs the net at 352 px
     with torch.no_grad():
-        edges = detector(image)[0]  # (1, H, W) edge probabilities in [0, 1], one per input image
+        edges = detector(image)[0]  # (1, 1, H, W) edge probabilities in [0, 1], one per input image
 
 .. figure:: /_static/img/models/dexined.jpg
    :align: center
@@ -34,7 +34,7 @@ Run it
    The input image and its DexiNed edge probability map (dark = edge).
 
 The detector accepts a batch tensor or a list of ``(3, H, W)`` images of different sizes and returns one edge map
-per image. To use the bare network, ``kornia.filters.DexiNed`` takes a ``(B, 3, H, W)`` input scaled to
+per image. To use the bare network, :class:`~kornia.models.dexined.DexiNed` takes a ``(B, 3, H, W)`` input scaled to
 ``[0, 255]`` and mean-subtracted and returns the fused edge logits; ``EdgeDetectorBuilder`` also exposes
 ``to_onnx()`` for export.
 

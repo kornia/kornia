@@ -29,7 +29,7 @@ Run it
     prompter.set_image(image)  # encode once, query many times
 
     # a foreground point (label 1; 0 would be background) -> three candidate masks
-    keypoints = Keypoints(torch.tensor([[[300.0, 90.0]]]))  # (K, N, 2) in (x, y) pixels
+    keypoints = Keypoints(torch.tensor([[[300.0, 90.0]]]))  # (K, N, 2): K prompts of N (x, y) points, in pixels
     prediction = prompter.predict(keypoints=keypoints, keypoints_labels=torch.tensor([[1]]))
     best = prediction.binary_masks[0, prediction.scores.argmax()]  # (H, W) bool, highest predicted IoU
 
@@ -171,14 +171,16 @@ can be used to query the SAM model for image masks.
     )
 
     #------------------------------------------------
-    # or run the prediction using the previous logits
+    # or run the prediction using the previous logits as a mask prompt: one (K, 1, 256, 256)
+    # low-resolution mask per query, so pick the candidate with the best predicted IoU
+    best = prediction.scores[0].argmax()
     prediction = prompter.predict(
-        masks=prediction.logits,
+        masks=prediction.logits[:, best : best + 1],
         multimask_output=True,
     )
 
-    # The `prediction` is a SegmentationResults dataclass with the masks, scores and logits
-    print(prediction.masks.shape)
+    # The `prediction` is a SegmentationResults dataclass with the logits, scores and thresholded binary masks
+    print(prediction.binary_masks.shape)
     print(prediction.scores)
     print(prediction.logits.shape)
 

@@ -239,7 +239,9 @@ class VisualPrompter:
         if isinstance(masks, torch.Tensor):
             self._valid_masks(masks)
 
-        data = self._transform_prompts(*to_transform, data_keys=data_keys)
+        # No prompt at all is a valid query (SAM then predicts from the image embedding alone); the
+        # augmentation container cannot be called with nothing to transform.
+        data = self._transform_prompts(*to_transform, data_keys=data_keys) if to_transform else {}
 
         if "keypoints" in data and isinstance(data["keypoints"], Keypoints):
             kpts_tensor = data["keypoints"].to_tensor()
