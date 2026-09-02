@@ -7,6 +7,59 @@ Vision Transformer (ViT)
 
 :bdg-primary:`Image classification` :bdg-secondary:`Apache-2.0`
 
+:class:`~kornia.models.vit.VisionTransformer` is a plain ViT encoder: the image is cut into ``patch_size`` squares,
+each patch becomes a token, a class token is prepended and a stack of transformer blocks mixes them. The module
+ships as an **architecture only** (no pretrained weights, no classification head) and returns one embedding per token,
+``(B, 1 + N, embed_dim)``, with the class token first.
+
+Run it
+------
+
+.. code-block:: python
+
+    import torch
+    from kornia.models.vit import VisionTransformer
+
+    vit = VisionTransformer(image_size=224, patch_size=16)  # ViT-B/16 layout, random init
+
+    image = torch.rand(1, 3, 224, 224)
+    tokens = vit(image)  # (1, 197, 768): class token + 14×14 patch tokens
+    cls, patches = tokens[:, 0], tokens[:, 1:]  # (1, 768) and (1, 196, 768)
+
+.. figure:: /_static/img/models/vit.jpg
+   :align: center
+   :alt: A panda photo with the 16-pixel patch grid drawn on it, a 14x14 heatmap of patch-token norms, and a heatmap of the output token embeddings.
+
+   The 14×14 patch grid a 224 px image is split into, the norm of each output patch token on that grid, and the
+   first 96 dimensions of all 197 output tokens. The weights are randomly initialised, so the values are not
+   meaningful until you train the model or load a checkpoint.
+
+Add a head
+----------
+
+A classifier reads the class token and adds a linear layer:
+
+.. code-block:: python
+
+    import torch.nn as nn
+
+
+    class Classifier(nn.Module):
+        def __init__(self, num_classes: int = 1000) -> None:
+            super().__init__()
+            self.backbone = VisionTransformer(image_size=224, patch_size=16)
+            self.head = nn.Linear(768, num_classes)  # 768 is the default embed_dim
+
+        def forward(self, x):
+            return self.head(self.backbone(x)[:, 0])  # (B, num_classes) from the class token
+
+The same pattern gives multi-task or dense heads: keep the class token for image-level outputs, or reshape the
+196 patch tokens back to a ``14 × 14`` map for detection and segmentation necks. The constructor exposes
+``embed_dim``, ``depth``, ``num_heads``, ``dropout_rate`` and ``attention_dropout_rate`` to size the model.
+
+Paper
+-----
+
 .. card::
     :link: https://paperswithcode.com/paper/an-image-is-worth-16x16-words-transformers-1
 
@@ -27,76 +80,3 @@ Vision Transformer (ViT)
 
 .. image:: https://github.com/google-research/vision_transformer/raw/main/vit_figure.png
    :align: center
-
-
-Kornia-ViT
-----------
-
-We provide the operator :py:class:`~kornia.models.vit.VisionTransformer` that is meant to be used across tasks.
-One can use the *ViT* in Kornia as follows:
-
-.. code:: python
-
-    import torch
-    from kornia.models.vit import VisionTransformer
-
-    img = torch.rand(1, 3, 224, 224)
-    vit = VisionTransformer(image_size=224, patch_size=16)
-    out = vit(img)  # (1, 197, 768): the class token followed by 196 patch tokens
-
-Usage
-~~~~~
-
-``kornia-vit`` does not include any classification head. The backbone returns one embedding per token,
-``(B, 1 + N, hidden_dim)``, with the class token first; a classifier reads the class token and adds a linear
-head using standard PyTorch modules:
-
-.. code:: python
-
-    import torch
-    import torch.nn as nn
-    from kornia.models.vit import VisionTransformer
-
-
-    class Classifier(nn.Module):
-        def __init__(self, num_classes: int = 1000) -> None:
-            super().__init__()
-            self.backbone = VisionTransformer(image_size=224, patch_size=16)
-            self.head = nn.Linear(768, num_classes)  # 768 is the default hidden_dim
-
-        def forward(self, x: torch.Tensor) -> torch.Tensor:
-            tokens = self.backbone(x)         # (B, 197, 768)
-            return self.head(tokens[:, 0])    # (B, num_classes), from the class token
-
-
-    img = torch.rand(1, 3, 224, 224)
-    out = Classifier()(img)   # (1, 1000)
-    scores = out.argmax(-1)   # (1,)
-
-Beyond simple image classification, the API is flexible enough to design your own pipelines, e.g.
-for multi-task learning, object detection or segmentation. We show an example of a multi-task
-module with two different classification heads:
-
-.. code:: python
-
-    import torch
-    import torch.nn as nn
-    from kornia.models.vit import VisionTransformer
-
-    class MultiTaskTransformer(nn.Module):
-        def __init__(self) -> None:
-            super().__init__()
-            self.transformer = VisionTransformer(
-                image_size=224, patch_size=16)
-            self.head1 = nn.Linear(768, 10)  # Example: 768 is the default hidden_dim
-            self.head2 = nn.Linear(768, 50)
-
-        def forward(self, x: torch.Tensor):
-            cls_token = self.transformer(x)[:, 0]  # (B, 768)
-            return {
-                "head1": self.head1(cls_token),
-                "head2": self.head2(cls_token),
-            }
-
-.. tip::
-    More heads, examples and a training API are coming soon!

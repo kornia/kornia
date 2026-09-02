@@ -7,6 +7,53 @@ MobileViT
 
 :bdg-primary:`Image classification` :bdg-primary:`Detection` :bdg-primary:`Segmentation`
 
+MobileViT interleaves MobileNetV2 blocks with small transformer blocks that treat patches as tokens, giving a
+light-weight backbone with a global receptive field. :class:`~kornia.models.vit_mobile.MobileViT` implements the
+``xxs``, ``xs`` and ``s`` variants as an **architecture only** (random initialisation, no classification head) and
+returns a stride-32 feature map.
+
+Run it
+------
+
+.. code-block:: python
+
+    import torch
+    from kornia.models.vit_mobile import MobileViT
+
+    mvit = MobileViT(mode="xxs")  # 'xxs', 'xs' or 's'; random init
+
+    image = torch.rand(1, 3, 256, 256)
+    features = mvit(image)  # (1, 320, 8, 8) feature map, stride 32
+
+.. figure:: /_static/img/models/vit_mobile.jpg
+   :align: center
+   :alt: A 256 by 256 panda photo next to an 8 by 8 heatmap of the mean absolute activation of the output feature map.
+
+   The 256×256 input and the mean absolute activation of the ``(320, 8, 8)`` output of MobileViT-XXS. With random
+   weights the map is not meaningful yet; train the model or load your own checkpoint.
+
+Add a head
+----------
+
+Pool the feature map and add a linear layer for classification; the output channel count is 320 for ``xxs``,
+384 for ``xs`` and 640 for ``s``:
+
+.. code-block:: python
+
+    import torch.nn as nn
+
+    classifier = nn.Sequential(
+        MobileViT(mode="xxs"),
+        nn.AdaptiveAvgPool2d(1),
+        nn.Flatten(),
+        nn.Linear(320, 1000),
+    )
+
+    logits = classifier(torch.rand(1, 3, 256, 256))  # (1, 1000)
+
+Paper
+-----
+
 .. card::
     :link: https://arxiv.org/abs/2110.02178
 
@@ -23,41 +70,3 @@ MobileViT
 
 .. image:: https://user-images.githubusercontent.com/67839539/136470152-2573529e-1a24-4494-821d-70eb4647a51d.png
    :align: center
-
-
-Kornia-MobileViT
-----------------
-
-We provide :py:class:`~kornia.models.vit_mobile.MobileViT` which can be used for many downstream tasks, e.g., classification, object detection and semantic segmentation.
-One can use the *MobileViT* in Kornia as follows:
-
-.. code:: python
-
-    import torch
-    from kornia.models.vit_mobile import MobileViT
-
-    img = torch.rand(1, 3, 256, 256)
-    mvit = MobileViT(mode='xxs')
-    out = mvit(img)  # (1, 320, 8, 8) feature map
-
-
-Usage
-~~~~~
-
-Similar to ``Kornia-ViT``, ``Kornia-MobileViT`` does not include any classification head. But you can add it simply by doing:
-
-.. code:: python
-
-    import torch
-    import torch.nn as nn
-    from kornia.models.vit_mobile import MobileViT
-
-    classifier = nn.Sequential(
-        MobileViT(mode='xxs'),
-        nn.AvgPool2d(256 // 32, 1),
-        nn.Flatten(),
-        nn.Linear(320, 1000)
-    )
-
-    img = torch.rand(1, 3, 256, 256)
-    out = classifier(img)     # 1x1000

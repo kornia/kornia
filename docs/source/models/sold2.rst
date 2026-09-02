@@ -5,6 +5,46 @@ SOLD2
 
 :bdg-primary:`Line detection` :bdg-primary:`Line matching` :bdg-secondary:`MIT`
 
+SOLD² detects line segments and describes them in one network, so lines can be matched across views the way
+keypoints are. :class:`~kornia.feature.SOLD2` returns the segments of each image together with a dense descriptor
+map, and its ``match`` method pairs the segments of two images. :class:`~kornia.feature.SOLD2_detector` is the
+detector alone.
+
+Run it
+------
+
+.. code-block:: python
+
+    import torch
+    from kornia.color import rgb_to_grayscale
+    from kornia.feature import SOLD2
+    from kornia.io import load_image
+
+    img1 = load_image("church_1.png")[None]  # (1, 3, H, W) float in [0, 1]
+    img2 = load_image("church_2.png")[None]
+    gray = rgb_to_grayscale(torch.cat([img1, img2]))  # (2, 1, H, W)
+
+    sold2 = SOLD2(pretrained=True).eval()
+    with torch.no_grad():
+        out = sold2(gray)
+        lines1, lines2 = out["line_segments"]  # list of (N, 2, 2) endpoints in (y, x) pixels, one per image
+        desc = out["dense_desc"]  # (2, 128, H/4, W/4)
+        matches = sold2.match(lines1, lines2, desc[0:1], desc[1:2])  # (N1,) index into lines2, -1 = no match
+
+    matched1, matched2 = lines1[matches != -1], lines2[matches[matches != -1]]
+
+.. figure:: /_static/img/models/sold2.jpg
+   :align: center
+   :alt: Two photographs of the same church with the detected line segments drawn in green, and a third panel where matched lines are drawn in the same colour on both images.
+
+   Segments detected in each image (left, centre) and the matched pairs, one colour per pair (right).
+
+The input is a grayscale batch; ``out`` also carries the raw ``junction_heatmap`` and ``line_heatmap`` maps. The
+detection and matching thresholds are set through the ``config`` argument of :class:`~kornia.feature.SOLD2`.
+
+Paper
+-----
+
 .. card::
     :link: https://arxiv.org/abs/2104.03362
 
