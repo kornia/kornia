@@ -146,7 +146,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `filters`/`color`/`enhance`/`morphology` count next to a `kornia.filters` label, the "Why Kornia?" hero carousel
   resumed after a visitor picked a tab, the Community page linked to the now-unregistered `librecv.org`, and the
   GPU page promised CUDA measurements the committed benchmark runs do not yet contain. `pydata-sphinx-theme` is now
-  version-bounded, since the site's CSS and JS target theme internals. (#4172)
+  version-bounded, since the site's CSS and JS target theme internals. (#4173)
 * Reset an automatic augmentation policy's cached transformation matrix before applying it again, both for a
   sub-policy inside `TrivialAugment`, `RandAugment` and `AutoAugment` and for those policies nested inside
   `AugmentationSequential`. Consecutive calls that selected the same geometric policy could transform the input with
