@@ -26,6 +26,8 @@ docs/source/community/adoption.rst
 docs/source/_generated/
 *DS_Store
 *jpg
+# model input/output figures rendered by docs/generate_model_examples.py are committed
+!docs/source/_static/img/models/*.jpg
 
 # onnx tests create temp.onnx file
 *.onnx
