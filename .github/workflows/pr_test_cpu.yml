@@ -154,6 +154,28 @@ jobs:
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
 
+  # Single MPS leg: newest Python, newest pinned torch, float32, on the Apple-silicon
+  # macos-latest image (macos-14 segfaults inside MPS kernels; 15 and 26 verified working).
+  # Advisory for now: the suite has a known MPS failure baseline (see #4159),
+  # so test failures are reported in the log but do not fail the job. Environment problems
+  # -- install, torch version, or a runner image that stops exposing Metal -- still fail it.
+  # Once the baseline is pinned as strict xfails, drop `allow-failure` to make it blocking.
+  tests-mps:
+    needs: [pre-tests]
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: macos-latest
+      python-version: '["3.13"]'
+      pytorch-version: '["2.9.1"]'
+      pytorch-dtype: float32
+      device: mps
+      allow-failure: true
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
+
   typecheck:
     needs: [pre-tests]
     uses: ./.github/workflows/typecheck.yml
@@ -163,7 +185,7 @@ jobs:
     uses: ./.github/workflows/tutorials.yml
 
   collector:
-    needs: [changes, pre-tests, tests, dynamo, typecheck]
+    needs: [changes, pre-tests, tests, tests-mps, dynamo, typecheck]
     if: always()
     runs-on: ubuntu-latest
     steps:

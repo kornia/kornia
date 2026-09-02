@@ -17,6 +17,19 @@ on:
         required: false
         type: string
         default: float32
+      device:
+        # KORNIA_TEST_DEVICE for the run: cpu (default) or mps. An mps leg must run on an
+        # Apple-silicon macOS runner; the "Verify MPS device" step below refuses to let it
+        # pass by skipping every test when the runner does not expose Metal.
+        required: false
+        type: string
+        default: cpu
+      allow-failure:
+        # Advisory leg: test failures are reported but do not fail the job. Environment
+        # problems (install, version, device guard) still fail it.
+        required: false
+        type: boolean
+        default: false
       pytest-extra:
         required: false
         type: string
@@ -117,10 +130,19 @@ jobs:
           echo "ATEN_CPU_CAPABILITY=avx2" >> $GITHUB_ENV
           echo "DNNL_MAX_CPU_ISA=AVX2" >> $GITHUB_ENV
 
+      # The `device` fixture skips every test when the requested device is missing, so an mps
+      # leg on a runner without a Metal device would be green with zero tests run. Fail here
+      # instead. macos-14 images segfault inside MPS kernels; macos-15 and later work.
+      - name: Verify MPS device
+        if: inputs.device == 'mps'
+        run: |
+          pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync python -c 'import torch; assert torch.backends.mps.is_available(), "MPS device not available on this runner"; x = torch.ones(2, device="mps"); assert (x + x).sum().item() == 4.0; print("MPS ok:", torch.mps.recommended_max_memory() // 2**20, "MiB recommended max memory")'
+
       - name: Run tests
         shell: bash
+        continue-on-error: ${{ inputs.allow-failure }}
         env:
-          KORNIA_TEST_DEVICE: cpu
+          KORNIA_TEST_DEVICE: ${{ inputs.device }}
           KORNIA_TEST_DTYPE: ${{ inputs.pytorch-dtype }}
           KORNIA_TEST_RUNSLOW: ${{ inputs.runslow }}
           KORNIA_TEST_OPTIMIZER: ${{ inputs.optimizer }}
@@ -128,4 +150,32 @@ jobs:
           MKL_NUM_THREADS: "1"
           OMP_NUM_THREADS: "1"
           UV_NO_SYNC: "1"
-        run: pixi run -e ${{ steps.pixi-env.outputs.name }} test $KORNIA_CI_PYTEST_VERBOSITY ${{ inputs.pytest-extra }}
+        run: pixi run -e ${{ steps.pixi-env.outputs.name }} test $KORNIA_CI_PYTEST_VERBOSITY ${{ inputs.pytest-extra }} --junitxml=pytest-report.xml
+
+      # `continue-on-error` above also swallows a pytest process that was killed (segfault,
+      # out-of-memory) before it could report. pytest writes the JUnit file only at session
+      # end, so its absence means the run did not complete: fail the advisory leg for that,
+      # and otherwise put the outcome counts in the job summary.
+      - name: Check advisory run completed
+        if: inputs.allow-failure
+        shell: bash
+        run: |
+          pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync python - <<'EOF'
+          import os
+          import sys
+          import xml.etree.ElementTree as ET
+
+          path = "pytest-report.xml"
+          if not os.path.exists(path):
+              sys.exit("pytest did not finish: no JUnit report was written (process killed?)")
+          totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+          for suite in ET.parse(path).getroot().iter("testsuite"):
+              for key in totals:
+                  totals[key] += int(suite.get(key, 0))
+          if totals["tests"] == 0:
+              sys.exit("pytest ran zero tests")
+          line = ", ".join(f"{value} {key}" for key, value in totals.items())
+          print("advisory run completed:", line)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
+              fh.write(f"Advisory test run completed: {line}\n")
+          EOF

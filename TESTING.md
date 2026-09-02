@@ -253,6 +253,8 @@ Without `--isolate-half-precision`, float16/bfloat16 CUDA tests are **skipped** 
 
 The `padding_mode="border"` issue in `F.grid_sample` (2D) is worked around in the implementation (`kornia/feature/laf.py`) by clamping the sampling grid to `[-1, 1]` and using `padding_mode="zeros"`, which is mathematically equivalent.
 
+**CI coverage.** Pull-request CI runs one MPS leg (`tests-mps` in `.github/workflows/pr_test_cpu.yml`): the newest Python and the newest pinned PyTorch, `float32`, on the GitHub-hosted `macos-latest` Apple-silicon image. The leg is advisory while the known MPS failure baseline is being pinned (tracked in #4159): test failures show up in the job log but do not fail the job, whereas an install problem or a runner image without a Metal device does. Run the same thing locally with `pixi run test-mps`. Note that `PYTORCH_ENABLE_MPS_FALLBACK=1` in your shell silently routes missing MPS kernels to the CPU and hides the `NotImplementedError` failures CI reports; unset it to reproduce them.
+
 **Writing new tests that work on MPS.** Follow these rules:
 
 1. **Never create `float64` tensors on the device in non-gradcheck tests.** Use the `dtype` fixture, or if the algorithm requires double precision, skip explicitly:
