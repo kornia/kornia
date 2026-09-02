@@ -27,6 +27,7 @@ from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.augmentation.container.params import ParamItem
 from kornia.augmentation.utils import _transform_input, override_parameters
 from kornia.core.ops import eye_like
+from kornia.core.utils import is_exporting
 
 
 class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
@@ -163,6 +164,10 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
     ) -> torch.Tensor:
         """Apply all operations using a prepared parameter list.
 
+        Leaves the policy in the same state as :meth:`forward` with these ``params``: the cached
+        transformation matrix is rebuilt from this call and ``_params`` records ``params``. This is the
+        entry point used when the policy is nested inside another container.
+
         Args:
             input: Input tensor.
             params: Parameters for each operation in this policy.
@@ -171,8 +176,11 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         Returns:
             Transformed tensor.
         """
+        self._reset_transform_matrix_state()
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
             self._update_transform_matrix_by_module(module)
+        if not is_exporting():
+            self._params = params
         return input

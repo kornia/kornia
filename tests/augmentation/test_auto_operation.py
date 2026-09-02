@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import copy
 import inspect
 from typing import List
 
@@ -107,6 +108,14 @@ class TestRandAugment(BaseTester):
         trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
         self.assert_close(trans, aug.transform_matrix)
 
+    def test_transform_mat_repeated_policy(self, device, dtype):
+        aug = RandAugment(n=2, m=10, policy=[[("translate_y", -0.5, 0.5)], [("translate_x", -0.5, 0.5)]])
+        in_tensor = torch.ones(2, 3, 10, 10, device=device, dtype=dtype)
+        for _ in range(3):
+            aug(in_tensor)
+        expected = aug.get_transformation_matrix(in_tensor, params=aug._params, recompute=True)
+        self.assert_close(aug.transform_matrix, expected)
+
     def test_reproduce(self, device, dtype):
         aug = RandAugment(n=3, m=15)
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
@@ -132,6 +141,41 @@ class TestTrivialAugment(BaseTester):
         aug(in_tensor)
         trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
         self.assert_close(trans, aug.transform_matrix)
+
+    def test_transform_mat_repeated_policy(self, device, dtype):
+        aug = TrivialAugment(policy=[[("translate_y", -0.5, 0.5)]])
+        in_tensor = torch.ones(2, 3, 10, 10, device=device, dtype=dtype)
+        params_1 = aug.forward_parameters(in_tensor.shape)
+        params_2 = copy.deepcopy(params_1)
+        params_2[0].data[0].data["translate_y"] += 1.0
+        aug(in_tensor, params=params_1)
+        aug(in_tensor, params=params_2)
+        stale = aug.get_transformation_matrix(in_tensor, params=params_1, recompute=True)
+        expected = aug.get_transformation_matrix(in_tensor, params=params_2, recompute=True)
+        assert not torch.allclose(aug.transform_matrix, stale)
+        self.assert_close(aug.transform_matrix, expected)
+
+    def test_transform_mat_fresh_instance(self):
+        aug = TrivialAugment(policy=[[("translate_y", -0.5, 0.5)]])
+        assert aug.transform_matrix is None
+
+    def test_transform_mat_nested_sequential(self, device, dtype):
+        aug = TrivialAugment(policy=[[("translate_y", -0.5, 0.5)]])
+        seq = AugmentationSequential(aug, data_keys=["input"])
+        in_tensor = torch.ones(2, 3, 10, 10, device=device, dtype=dtype)
+        seq(in_tensor)
+        seq(in_tensor)
+        nested_params = seq._params[0].data
+        expected = aug.get_transformation_matrix(in_tensor, params=nested_params, recompute=True)
+        self.assert_close(aug.transform_matrix, expected)
+        assert aug._params is nested_params
+
+    def test_subpolicy_params_after_forward(self, device, dtype):
+        aug = TrivialAugment(policy=[[("translate_y", -0.5, 0.5)]])
+        subpolicy = next(iter(aug.children()))
+        in_tensor = torch.ones(2, 3, 10, 10, device=device, dtype=dtype)
+        aug(in_tensor)
+        assert subpolicy._params is aug._params[0].data
 
     def test_reproduce(self, device, dtype):
         aug = TrivialAugment()
