@@ -84,6 +84,10 @@ def render_page(data: dict) -> str:
     repo_items = repos.get("items", [])
     package_items = packages.get("items", [])
     date = counts["generated_at"]
+    description = (
+        f"Who uses Kornia: {counts['repositories']:,} public GitHub repositories and {counts['packages']:,} "
+        "packages depend on it, according to GitHub's dependency graph."
+    )
 
     return f"""\
 .. This page is generated at build time by docs/generate_adoption.py from
@@ -93,7 +97,7 @@ Adoption
 ========
 
 .. meta::
-   :description: Who uses Kornia: {counts["repositories"]:,} public GitHub repositories and {counts["packages"]:,} packages depend on it, according to GitHub's dependency graph.
+   :description: {description}
 
 .. grid:: 1 2 2 2
    :gutter: 3

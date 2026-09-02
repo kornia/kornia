@@ -55,7 +55,7 @@ KEEP_TOP = 300  # entries stored per kind, ranked by stars
 DELAY_S = 1.0  # between requests; GitHub serves this page without auth but rate-limits bursts
 
 _COUNT_RE = {
-    "repositories": re.compile(r">\s*([\d,]+)\s*Repositor(?:y|ies)\s*<"),
+    "repositories": re.compile(r">\s*([\d,]+)\s*Repositor(?:y|ies)\s*<"),  # codespell:ignore repositor
     "packages": re.compile(r">\s*([\d,]+)\s*Packages?\s*<"),
 }
 _ROW_SPLIT_RE = re.compile(r'<div class="Box-row[^"]*"')
@@ -66,11 +66,13 @@ _NEXT_RE = re.compile(r'href="[^"]*dependents_after=([A-Za-z0-9_=-]+)[^"]*"[^>]*
 
 def _get(url: str, retries: int = 5) -> str:
     """Fetch a page, backing off on rate limiting and transient server errors."""
+    if not url.startswith("https://github.com/"):
+        raise ValueError(f"refusing to fetch {url!r}: only GitHub HTTPS pages are crawled")
     delay = 30.0
     for attempt in range(retries):
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})  # noqa: S310 - scheme checked above
         try:
-            with urllib.request.urlopen(request, timeout=60) as response:
+            with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310
                 return response.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as exc:
             if exc.code not in (429, 500, 502, 503, 504) or attempt == retries - 1:
@@ -171,7 +173,8 @@ def main(argv: list[str] | None = None) -> int:
             continue  # nothing new; keep the previous entry untouched
         data[kind] = merge(data, kind, total, rows, complete)
         print(
-            f"  {kind}: {data[kind]['count']:,} total, {len(rows)} rows fetched, complete={complete}", file=sys.stderr
+            f"  {kind}: {data[kind]['count']:,} total, {len(rows)} rows fetched, complete={complete}",
+            file=sys.stderr,
         )
 
     data["generated_at"] = datetime.now(UTC).strftime("%Y-%m-%d")
