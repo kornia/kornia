@@ -57,7 +57,7 @@ dev = [
 ]
 docs = [
   "furo",
-  "pydata-sphinx-theme",
+  "pydata-sphinx-theme>=0.21,<0.22",  # _static/css/pydata.css and js/custom.js target theme internals
   "ivy>=1.0.0.0",
   "kornia_moons",
   "matplotlib",

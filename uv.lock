@@ -1027,7 +1027,7 @@ requires-dist = [
     { name = "packaging" },
     { name = "pillow", marker = "extra == 'dev'" },
     { name = "pre-commit", marker = "extra == 'dev'" },
-    { name = "pydata-sphinx-theme", marker = "extra == 'docs'" },
+    { name = "pydata-sphinx-theme", marker = "extra == 'docs'", specifier = ">=0.21,<0.22" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-cov", marker = "extra == 'dev'" },
     { name = "pytest-timeout", marker = "extra == 'dev'" },

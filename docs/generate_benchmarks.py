@@ -156,7 +156,7 @@ def hero_figures(results_root: Path) -> dict | None:
             continue
         cpu = _throughput(devices["cpu"], HERO["op"], HERO["batch"], HERO["backend"])
         gpu = _throughput(devices[accelerators[0]], HERO["op"], HERO["batch"], HERO["backend"])
-        if cpu is None or gpu is None or cpu <= 0:
+        if cpu is None or gpu is None or cpu <= 0 or gpu <= 0:
             continue
         meta = devices[accelerators[0]]["metadata"]
         return {

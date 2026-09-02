@@ -133,9 +133,9 @@ def crawl(kind: str, max_pages: int) -> tuple[int | None, list[dict], bool]:
         time.sleep(DELAY_S)
 
 
-def load_existing() -> dict:
-    if OUT.exists():
-        return json.loads(OUT.read_text())
+def load_existing(path: Path = OUT) -> dict:
+    if path.exists():
+        return json.loads(path.read_text())
     return {}
 
 
@@ -165,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=OUT)
     args = parser.parse_args(argv)
 
-    data = load_existing()
+    data = load_existing(args.out)
     for kind in args.kind or ["repositories", "packages"]:
         print(f"crawling {kind}...", file=sys.stderr)
         total, rows, complete = crawl(kind, args.max_pages)

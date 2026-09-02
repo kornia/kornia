@@ -61,7 +61,8 @@ def _round_headline(count: int) -> str:
     if count >= 10_000:
         return f"{count // 1000}K"
     if count >= 1_000:
-        return f"{count / 1000:.1f}K".replace(".0K", "K")
+        # Truncate rather than round: 1,290 is "1.2K", and 9,999 must not become "10K".
+        return f"{count // 100 / 10:.1f}K".replace(".0K", "K")
     return str(count)
 
 
