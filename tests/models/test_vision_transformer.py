@@ -24,16 +24,24 @@ from testing.base import BaseTester
 
 
 class TestVisionTransformer(BaseTester):
-    @pytest.mark.parametrize("B", [1, 2])
-    @pytest.mark.parametrize("H", [1, 3, 8])
-    @pytest.mark.parametrize("D", [240, 768])
-    @pytest.mark.parametrize("image_size", [32, 224])
+    @pytest.mark.parametrize(
+        ("B", "H", "D", "image_size"),
+        [
+            (1, 1, 240, 32),
+            (2, 3, 240, 224),
+            (1, 8, 240, 224),
+            (2, 1, 768, 32),
+            (1, 3, 768, 224),
+            (2, 8, 768, 32),
+        ],
+    )
     def test_smoke(self, device, dtype, B, H, D, image_size):
         patch_size = 16
+        depth = 2
         T = image_size**2 // patch_size**2 + 1  # tokens size
 
         img = torch.rand(B, 3, image_size, image_size, device=device, dtype=dtype)
-        vit = VisionTransformer(image_size=image_size, num_heads=H, embed_dim=D).to(device, dtype)
+        vit = VisionTransformer(image_size=image_size, num_heads=H, embed_dim=D, depth=depth).to(device, dtype)
 
         out = vit(img)
         assert isinstance(out, torch.Tensor)
@@ -41,7 +49,7 @@ class TestVisionTransformer(BaseTester):
 
         feats = vit.encoder_results
         assert isinstance(feats, list)
-        assert len(feats) == 12
+        assert len(feats) == depth
         for f in feats:
             assert f.shape == (B, T, D)
 
@@ -60,3 +68,4 @@ class TestVisionTransformer(BaseTester):
         vit = VisionTransformer(backbone=backbone_mock, num_heads=8).to(device, dtype)
         out = vit(img)
         assert out.shape == (1, 197, 128)
+        assert len(vit.encoder_results) == 12

@@ -43,7 +43,7 @@ class TestEqualization(BaseTester):
             img = torch.rand(C, H, W, device=device, dtype=dtype)
         else:
             img = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        res = enhance.equalize_clahe(img)
+        res = enhance.equalize_clahe(img, grid_size=(2, 2))
         assert res.shape == img.shape
 
     @pytest.mark.parametrize("clip, grid", [(0.0, None), (None, (2, 2)), (2.0, (2, 2))])

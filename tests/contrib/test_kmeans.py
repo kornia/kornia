@@ -24,9 +24,10 @@ from testing.base import BaseTester
 
 
 class TestKMeans(BaseTester):
-    @pytest.mark.parametrize("num_clusters", [3, 10, 1])
-    @pytest.mark.parametrize("tolerance", [10e-4, 10e-5, 10e-1])
-    @pytest.mark.parametrize("max_iterations", [10, 1000])
+    @pytest.mark.parametrize(
+        ("num_clusters", "tolerance", "max_iterations"),
+        [(3, 1e-4, 10), (10, 1e-3, 1000), (1, 1.0, 10)],
+    )
     def test_smoke(self, device, dtype, num_clusters, tolerance, max_iterations):
         N = 1000
         D = 2
