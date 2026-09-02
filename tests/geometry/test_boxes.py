@@ -978,7 +978,9 @@ class TestBbox3D(BaseTester):
         # probes the reduction exactly at its one genuine kink, not a representative point. Jittering
         # every vertex breaks the ties without changing which corner is the true min/max, so gradcheck
         # verifies the reduction everywhere else, which is everywhere a real (non-degenerate) box lives.
-        torch.manual_seed(0)
+        # The jitter is a fixed pattern, not RNG-derived: it only needs to be small and distinct per
+        # component to break the exact ties, and a fixed pattern avoids mutating global RNG state that
+        # could leak into other tests.
         t_boxes1 = torch.tensor(
             [
                 [
@@ -995,7 +997,8 @@ class TestBbox3D(BaseTester):
             device=device,
             dtype=torch.float64,
         )
-        t_boxes1 = t_boxes1 + torch.rand_like(t_boxes1) * 1e-3
+        jitter = torch.arange(1, t_boxes1.numel() + 1, dtype=torch.float64, device=device).view_as(t_boxes1) * 1e-4
+        t_boxes1 = t_boxes1 + jitter
 
         t_boxes2 = t_boxes1.detach().clone()
         t_boxes3 = t_boxes1.detach().clone()
