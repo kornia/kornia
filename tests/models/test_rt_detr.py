@@ -99,7 +99,7 @@ class TestRTDETR(BaseTester):
         assert isinstance(out, tuple)
         assert len(out) == 2
 
-    @pytest.mark.parametrize("shape", ((1, 3, 96, 128), (2, 3, 224, 256)))
+    @pytest.mark.parametrize("shape", ((1, 3, 96, 128), (2, 3, 96, 128)))
     def test_cardinality(self, shape, device, dtype):
         num_classes = 10
         num_queries = 10

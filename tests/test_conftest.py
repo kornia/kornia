@@ -26,6 +26,7 @@ import torch
 from conftest import _is_subprocess_isolated_test, skip_half_precision_on_cuda
 
 pytest_plugins = ["pytester"]
+pytestmark = pytest.mark.device_agnostic
 
 _skip_fixture_fn = getattr(skip_half_precision_on_cuda, "__wrapped__", skip_half_precision_on_cuda)
 

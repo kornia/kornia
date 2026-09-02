@@ -131,14 +131,14 @@ class TestAugmentationSequential:
         assert out_bb.shape == bb.shape
 
     def test_random_flips(self, device, dtype):
-        inp = torch.randn(1, 3, 510, 1020, device=device, dtype=dtype)
-        bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
+        inp = torch.randn(1, 3, 255, 510, device=device, dtype=dtype)
+        bbox = torch.tensor([[[177, 5], [330, 5], [330, 125], [177, 125]]], device=device, dtype=dtype)
 
         expected_bbox_vertical_flip = torch.tensor(
-            [[[355, 259], [660, 259], [660, 499], [355, 499]]], device=device, dtype=dtype
+            [[[177, 129], [330, 129], [330, 249], [177, 249]]], device=device, dtype=dtype
         )
         expected_bbox_horizontal_flip = torch.tensor(
-            [[[359, 10], [664, 10], [664, 250], [359, 250]]], device=device, dtype=dtype
+            [[[179, 5], [332, 5], [332, 125], [179, 125]]], device=device, dtype=dtype
         )
 
         aug_ver = K.AugmentationSequential(

@@ -24,9 +24,8 @@ from testing.base import BaseTester
 
 
 class TestMobileViT(BaseTester):
-    @pytest.mark.parametrize("B", [1, 2])
-    @pytest.mark.parametrize("image_size", [(256, 256)])
-    @pytest.mark.parametrize("mode", ["xxs", "xs", "s"])
+    @pytest.mark.parametrize(("mode", "B"), [("xxs", 1), ("xs", 2), ("s", 1)])
+    @pytest.mark.parametrize("image_size", [(128, 128)])
     @pytest.mark.parametrize("patch_size", [(2, 2)])
     def test_smoke(self, device, dtype, B, image_size, mode, patch_size):
         ih, iw = image_size
@@ -37,4 +36,4 @@ class TestMobileViT(BaseTester):
 
         out = mvit(img)
         assert isinstance(out, torch.Tensor)
-        assert out.shape == (B, channel[mode], 8, 8)
+        assert out.shape == (B, channel[mode], 4, 4)

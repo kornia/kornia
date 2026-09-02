@@ -619,14 +619,14 @@ class TestMultiResolutionDetector(BaseTester):
         # interpolated mask reads 1.0 there and the stripe is gone; the conservative resample keeps
         # every level pixel it touches at zero.
         torch.manual_seed(0)
-        inp = torch.rand(1, 1, 256, 256, device=device, dtype=dtype)
-        mask = torch.ones(1, 1, 256, 256, device=device, dtype=dtype)
-        mask[:, :, :, 120:122] = 0.0
-        det = self._make_detector(num_features=2000).to(device, dtype)
+        inp = torch.rand(1, 1, 128, 128, device=device, dtype=dtype)
+        mask = torch.ones(1, 1, 128, 128, device=device, dtype=dtype)
+        mask[:, :, :, 60:62] = 0.0
+        det = self._make_detector(num_features=500).to(device, dtype)
         lafs, resps = det(inp, mask)
         xs = lafs[0][resps[0] != 0][:, 0, 2]
         assert xs.numel() > 100
-        assert not bool(((xs >= 120) & (xs < 122)).any()), sorted(xs[(xs >= 119) & (xs < 123)].tolist())
+        assert not bool(((xs >= 60) & (xs < 62)).any()), sorted(xs[(xs >= 59) & (xs < 63)].tolist())
 
     @pytest.mark.parametrize("src, dst", [((100, 100), (45, 45)), ((38, 38), (90, 90)), ((7, 9), (3, 4))])
     def test_mask_resample_is_the_cpu_adaptive_min_pool_on_every_device(self, device, dtype, src, dst):

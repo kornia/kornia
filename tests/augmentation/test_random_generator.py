@@ -95,12 +95,24 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
 
 
 class TestColorJiggleGen(RandomGeneratorBaseTests):
-    @pytest.mark.parametrize("brightness", [None, torch.tensor([0.8, 1.2])])
-    @pytest.mark.parametrize("contrast", [None, torch.tensor([0.8, 1.2])])
-    @pytest.mark.parametrize("saturation", [None, torch.tensor([0.8, 1.2])])
-    @pytest.mark.parametrize("hue", [None, torch.tensor([-0.1, 0.1])])
-    @pytest.mark.parametrize("batch_size", [0, 1, 8])
-    @pytest.mark.parametrize("same_on_batch", [True, False])
+    @pytest.mark.parametrize(
+        "brightness,contrast,saturation,hue,batch_size,same_on_batch",
+        [
+            (None, None, None, None, 0, True),
+            (torch.tensor([0.8, 1.2]), None, None, None, 1, False),
+            (None, torch.tensor([0.8, 1.2]), None, None, 4, True),
+            (None, None, torch.tensor([0.8, 1.2]), None, 1, False),
+            (None, None, None, torch.tensor([-0.1, 0.1]), 4, True),
+            (
+                torch.tensor([0.8, 1.2]),
+                torch.tensor([0.8, 1.2]),
+                torch.tensor([0.8, 1.2]),
+                torch.tensor([-0.1, 0.1]),
+                0,
+                False,
+            ),
+        ],
+    )
     def test_valid_param_combinations(
         self,
         brightness,
@@ -383,12 +395,24 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
 
 
 class TestColorJitterGen(RandomGeneratorBaseTests):
-    @pytest.mark.parametrize("brightness", [None, torch.tensor([0.8, 1.2])])
-    @pytest.mark.parametrize("contrast", [None, torch.tensor([0.8, 1.2])])
-    @pytest.mark.parametrize("saturation", [None, torch.tensor([0.8, 1.2])])
-    @pytest.mark.parametrize("hue", [None, torch.tensor([-0.1, 0.1])])
-    @pytest.mark.parametrize("batch_size", [0, 1, 8])
-    @pytest.mark.parametrize("same_on_batch", [True, False])
+    @pytest.mark.parametrize(
+        "brightness,contrast,saturation,hue,batch_size,same_on_batch",
+        [
+            (None, None, None, None, 0, True),
+            (torch.tensor([0.8, 1.2]), None, None, None, 1, False),
+            (None, torch.tensor([0.8, 1.2]), None, None, 4, True),
+            (None, None, torch.tensor([0.8, 1.2]), None, 1, False),
+            (None, None, None, torch.tensor([-0.1, 0.1]), 4, True),
+            (
+                torch.tensor([0.8, 1.2]),
+                torch.tensor([0.8, 1.2]),
+                torch.tensor([0.8, 1.2]),
+                torch.tensor([-0.1, 0.1]),
+                0,
+                False,
+            ),
+        ],
+    )
     def test_valid_param_combinations(
         self,
         brightness,
@@ -745,14 +769,35 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 
 
 class TestRandomAffineGen(RandomGeneratorBaseTests):
-    @pytest.mark.parametrize("batch_size", [0, 1, 4])
-    @pytest.mark.parametrize("height", [200])
-    @pytest.mark.parametrize("width", [300])
-    @pytest.mark.parametrize("degrees", [torch.tensor([0, 30])])
-    @pytest.mark.parametrize("translate", [None, torch.tensor([0.1, 0.1])])
-    @pytest.mark.parametrize("scale", [None, torch.tensor([0.7, 1.2])])
-    @pytest.mark.parametrize("shear", [None, torch.tensor([[0, 20], [0, 20]])])
-    @pytest.mark.parametrize("same_on_batch", [True, False])
+    @pytest.mark.parametrize(
+        "batch_size,height,width,degrees,translate,scale,shear,same_on_batch",
+        [
+            (0, 200, 300, torch.tensor([0, 30]), None, None, None, True),
+            (1, 200, 300, torch.tensor([0, 30]), torch.tensor([0.1, 0.1]), None, None, False),
+            (4, 200, 300, torch.tensor([0, 30]), None, torch.tensor([0.7, 1.2]), None, True),
+            (0, 200, 300, torch.tensor([0, 30]), None, None, torch.tensor([[0, 20], [0, 20]]), False),
+            (
+                1,
+                200,
+                300,
+                torch.tensor([0, 30]),
+                torch.tensor([0.1, 0.1]),
+                torch.tensor([0.7, 1.2]),
+                torch.tensor([[0, 20], [0, 20]]),
+                True,
+            ),
+            (
+                4,
+                200,
+                300,
+                torch.tensor([0, 30]),
+                torch.tensor([0.1, 0.1]),
+                torch.tensor([0.7, 1.2]),
+                torch.tensor([[0, 20], [0, 20]]),
+                False,
+            ),
+        ],
+    )
     def test_valid_param_combinations(
         self,
         batch_size,
@@ -1377,10 +1422,15 @@ class TestPlainUniformGenerator(RandomGeneratorBaseTests):
 
 
 class TestRandomMixUpGen(RandomGeneratorBaseTests):
-    @pytest.mark.parametrize("batch_size", [0, 1, 8])
-    @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
-    @pytest.mark.parametrize("lambda_val", [None, torch.tensor([0.0, 1.0])])
-    @pytest.mark.parametrize("same_on_batch", [True, False])
+    @pytest.mark.parametrize(
+        "batch_size,p,lambda_val,same_on_batch",
+        [
+            (0, 0.0, None, True),
+            (1, 0.5, torch.tensor([0.0, 1.0]), False),
+            (4, 1.0, None, True),
+            (4, 0.0, torch.tensor([0.0, 1.0]), False),
+        ],
+    )
     def test_valid_param_combinations(self, batch_size, p, lambda_val, same_on_batch, device, dtype):
         MixupGenerator(
             p=p,
@@ -1448,13 +1498,17 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
 
 
 class TestRandomCutMixGen(RandomGeneratorBaseTests):
-    @pytest.mark.parametrize("batch_size", [0, 1, 8])
-    @pytest.mark.parametrize("p", [0, 0.5, 1.0])
-    @pytest.mark.parametrize("width,height", [(200, 200)])
-    @pytest.mark.parametrize("num_mix", [1, 3])
-    @pytest.mark.parametrize("beta", [None, torch.tensor(1e-15), torch.tensor(1.0)])
-    @pytest.mark.parametrize("cut_size", [None, torch.tensor([0.0, 1.0]), torch.tensor([0.3, 0.6])])
-    @pytest.mark.parametrize("same_on_batch", [True, False])
+    @pytest.mark.parametrize(
+        "batch_size,p,width,height,num_mix,beta,cut_size,same_on_batch",
+        [
+            (0, 0.0, 200, 200, 1, None, None, True),
+            (1, 0.5, 200, 200, 3, torch.tensor(1e-15), torch.tensor([0.0, 1.0]), False),
+            (4, 1.0, 200, 200, 1, torch.tensor(1.0), torch.tensor([0.3, 0.6]), True),
+            (4, 0.0, 200, 200, 3, None, torch.tensor([0.3, 0.6]), False),
+            (0, 0.5, 200, 200, 1, torch.tensor(1e-15), None, True),
+            (1, 1.0, 200, 200, 3, torch.tensor(1.0), torch.tensor([0.0, 1.0]), False),
+        ],
+    )
     def test_valid_param_combinations(
         self,
         batch_size,

@@ -19,6 +19,8 @@ import pytest
 
 from kornia.models.dexined import DexiNed
 
+pytestmark = pytest.mark.device_agnostic
+
 
 @pytest.mark.timeout(120)
 def test_dexined_to_onnx(tmp_path):

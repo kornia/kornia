@@ -17,6 +17,8 @@
 
 import pytest
 
+pytestmark = pytest.mark.device_agnostic
+
 onnx = pytest.importorskip("onnx")
 
 from kornia.onnx.sequential import ONNXSequential  # noqa: E402

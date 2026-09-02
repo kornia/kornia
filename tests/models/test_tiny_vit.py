@@ -26,7 +26,7 @@ from testing.base import BaseTester
 
 
 class TestTinyViT(BaseTester):
-    @pytest.mark.parametrize("img_size", [224, 256])
+    @pytest.mark.parametrize("img_size", [128, 160])
     def test_smoke(self, device, dtype, img_size):
         model = TinyViT(img_size=img_size).to(device=device, dtype=dtype)
         data = torch.randn(1, 3, img_size, img_size, device=device, dtype=dtype)

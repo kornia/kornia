@@ -20,6 +20,8 @@ import urllib
 
 import pytest
 
+pytestmark = pytest.mark.device_agnostic
+
 onnx = pytest.importorskip("onnx")
 
 from kornia.onnx.utils import ONNXLoader  # noqa: E402

@@ -24,6 +24,8 @@ import torch
 
 from kornia.geometry.transform import Resize
 
+pytestmark = pytest.mark.device_agnostic
+
 onnx = pytest.importorskip("onnx")
 ort = pytest.importorskip("onnxruntime")
 

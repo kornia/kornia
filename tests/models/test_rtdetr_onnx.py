@@ -21,6 +21,8 @@ import pytest
 
 from kornia.models.rt_detr.model import RTDETR, RTDETRConfig
 
+pytestmark = pytest.mark.device_agnostic
+
 
 @pytest.mark.timeout(120)
 def test_rtdetr_to_onnx(tmp_path):
