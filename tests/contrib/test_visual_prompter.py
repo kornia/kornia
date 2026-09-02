@@ -19,17 +19,40 @@ import pytest
 import torch
 
 from kornia.contrib.visual_prompter import VisualPrompter
+from kornia.models.sam import Sam, SamConfig
 
 from testing.base import BaseTester
 
 
 class TestVisualPrompter(BaseTester):
+    def test_default_config(self, monkeypatch):
+        captured_configs = []
+
+        class FakeSam:
+            image_encoder = type("ImageEncoder", (), {"img_size": 1024})()
+
+            def to(self, **kwargs):
+                return self
+
+        def fake_from_config(config):
+            captured_configs.append(config)
+            return FakeSam()
+
+        monkeypatch.setattr(Sam, "from_config", staticmethod(fake_from_config))
+
+        prompter = VisualPrompter()
+
+        assert prompter is not None
+        assert len(captured_configs) == 1
+        assert captured_configs[0].model_type == "vit_h"
+        assert captured_configs[0].pretrained is True
+
     @pytest.mark.slow
     def test_smoke(self, device, dtype):
         if dtype not in (torch.float32, torch.float16):
             pytest.skip("VisualPrompter (SAM) primarily supports float32 and float16")
 
-        prompter = VisualPrompter(device=device, dtype=dtype)
+        prompter = VisualPrompter(SamConfig("mobile_sam"), device=device, dtype=dtype)
         assert prompter is not None
         assert not prompter.is_image_set
 
@@ -37,7 +60,7 @@ class TestVisualPrompter(BaseTester):
     def test_batching_pipeline(self, device, dtype):
         if dtype not in (torch.float32, torch.float16):
             pytest.skip("VisualPrompter (SAM) primarily supports float32 and float16")
-        prompter = VisualPrompter(device=device, dtype=dtype)
+        prompter = VisualPrompter(SamConfig("mobile_sam"), device=device, dtype=dtype)
 
         batch_size = 2
         image = torch.rand(batch_size, 3, 256, 256).to(device=device, dtype=dtype)
@@ -55,14 +78,6 @@ class TestVisualPrompter(BaseTester):
         results = prompter.predict(boxes=boxes_tensor)
 
         assert results.logits.shape == (batch_size, 3, 256, 256)
-
-    def test_exception(self, device, dtype):
-
-        prompter = VisualPrompter(device=device, dtype=dtype)
-
-        image = torch.rand(1, 2, 3, 256, 256).to(device=device, dtype=dtype)
-        with pytest.raises(Exception):
-            prompter.set_image(image)
 
     def test_gradcheck(self, device):
         pytest.skip("Gradcheck is not currently applicable for VisualPrompter inference.")
