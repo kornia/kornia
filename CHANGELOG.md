@@ -127,6 +127,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   backward. The fallback is the input LAF when `preserve_orientation=True` and its upright form otherwise; a finite
   zero-scale input keeps its center and zero affine block.
 
+* `kornia.models.smolvlm2.SmolVLM2` is now a complete native PyTorch SmolVLM2 — SigLIP vision tower (reusing
+  `SigLip2VisionModel`), pixel-shuffle connector, and SmolLM2 (Llama-architecture) text decoder — instead of the
+  placeholder scaffold from #3475, whose `forward(image_features, text_features)` returned
+  `vision_proj(image_features) + text_proj(text_features)`. The class is now an alias of the new
+  `SmolVLM2ForConditionalGeneration`: it is configured by `SmolVLM2Config` (defaults follow the
+  `HuggingFaceTB/SmolVLM2-2.2B-Instruct` checkpoint), and its forward takes `input_ids` plus optional
+  `pixel_values`, `attention_mask`, and `position_ids`, returning vocabulary logits with image features spliced in
+  at `<image>` placeholder positions. New public API in `kornia.models.smolvlm2`: `SmolVLM2Config`,
+  `SmolVLM2TextConfig`, `SmolVLM2Model`, `SmolVLM2ForConditionalGeneration`, and `SmolVLM2Connector`. With the same
+  weights, the decoder is bit-identical to `transformers` `LlamaModel` (a Llama state dict loads with
+  `strict=True`) and the connector to the HF `SmolVLMConnector`; weight loading and NaViT variable resolution are
+  follow-ups (#3770).
+
 ### Bug fixes
 
 * Keep `extract_patches_simple` and `extract_patches_from_pyramid` off a broken reduced-precision CPU kernel: for a

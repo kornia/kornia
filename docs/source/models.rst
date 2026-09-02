@@ -161,6 +161,63 @@ The `BoxMotTracker` class is used for multi-object tracking in video streams. It
            model.update(image)  # Update the tracker with new frames
        model.save(image)       # Save the tracking result
 
+.. _SmolVLM2:
+
+SmolVLM2
+--------
+
+The `SmolVLM2` model is a compact vision-language model that pairs a SigLIP vision encoder with a SmolLM2 (Llama-architecture) text decoder. Image features are downsampled by a pixel-shuffle connector, projected into the text embedding space, and spliced into the token sequence at ``<image>`` placeholder positions before decoding.
+
+**Key Components:**
+
+- `SmolVLM2Model`: The base model returning decoder hidden states.
+- `SmolVLM2ForConditionalGeneration`: Adds a language-modeling head producing vocabulary logits.
+- `SmolVLM2Connector`: The pixel-shuffle connector mapping vision tokens to text-space embeddings.
+- `SmolVLM2Config` / `SmolVLM2TextConfig`: Configuration following the ``HuggingFaceTB/SmolVLM2-2.2B-Instruct`` checkpoint.
+
+.. autoclass:: kornia.models.smolvlm2.SmolVLM2Config
+   :members:
+   :undoc-members:
+
+.. autoclass:: kornia.models.smolvlm2.SmolVLM2TextConfig
+   :members:
+   :undoc-members:
+
+.. autoclass:: kornia.models.smolvlm2.SmolVLM2Model
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: kornia.models.smolvlm2.SmolVLM2ForConditionalGeneration
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+   .. rubric:: Example
+
+   The following example runs an interleaved image/text batch through the model:
+
+   .. code-block:: python
+
+       import torch
+       from kornia.models.smolvlm2 import SmolVLM2Config, SmolVLM2ForConditionalGeneration
+
+       config = SmolVLM2Config()
+       model = SmolVLM2ForConditionalGeneration(config).eval()
+
+       # a 384x384 image gives a 27x27 patch grid, so 729 / 3**2 = 81 <image> tokens
+       pixel_values = torch.randn(1, 3, 384, 384)
+       image_block = [config.image_token_id] * 81
+       input_ids = torch.tensor([[1, *image_block, 10, 11, 12]])
+
+       with torch.no_grad():
+           logits = model(input_ids, pixel_values=pixel_values)
+
+.. autoclass:: kornia.models.smolvlm2.SmolVLM2Connector
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 ---
 
 .. note::

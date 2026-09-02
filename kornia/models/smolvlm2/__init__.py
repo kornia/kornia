@@ -15,6 +15,19 @@
 # limitations under the License.
 #
 
-from .smolvlm2 import SmolVLM2
+from .configuration_smolvlm2 import SmolVLM2Config, SmolVLM2TextConfig
+from .modeling_smolvlm2 import (
+    SmolVLM2,
+    SmolVLM2Connector,
+    SmolVLM2ForConditionalGeneration,
+    SmolVLM2Model,
+)
 
-__all__ = ["SmolVLM2"]
+__all__ = [
+    "SmolVLM2",
+    "SmolVLM2Config",
+    "SmolVLM2Connector",
+    "SmolVLM2ForConditionalGeneration",
+    "SmolVLM2Model",
+    "SmolVLM2TextConfig",
+]
