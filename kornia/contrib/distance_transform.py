@@ -130,7 +130,7 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
     Args:
         image: Image or volume with shape :math:`(B,C,H,W)` or :math:`(B,C,D,H,W)`.
         kernel_size: size of the convolution kernel. Must be an odd number.
-        h: value that influence the approximation of the min function. The cascade's kernel taps are
+        h: value that influences the approximation of the min function. The cascade's kernel taps are
             ``exp(-dist/h)``; too small an ``h`` for the given ``kernel_size`` underflows the farthest
             taps to exactly zero, which used to return a silently wrong or all-zero result. That
             combination now raises instead. ``float16`` and ``bfloat16`` inputs run the cascade in
@@ -181,7 +181,7 @@ class DistanceTransform(nn.Module):
 
     Args:
         kernel_size: size of the convolution kernel.
-        h: value that influence the approximation of the min function. See :func:`distance_transform`
+        h: value that influences the approximation of the min function. See :func:`distance_transform`
             for the safe range of ``h`` relative to ``kernel_size`` and working precision.
 
     """
