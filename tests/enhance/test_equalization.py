@@ -36,14 +36,25 @@ class TestEqualization(BaseTester):
         assert res.device == img.device
         assert res.dtype == img.dtype
 
-    @pytest.mark.parametrize("B, C", [(None, 1), (None, 3), (1, 1), (1, 3), (4, 1), (4, 3)])
-    def test_cardinality(self, B, C, device, dtype):
+    @pytest.mark.parametrize(
+        ("B", "C", "grid_size"),
+        [
+            (None, 1, (2, 2)),
+            (None, 3, (2, 2)),
+            (1, 1, (2, 2)),
+            (1, 3, (2, 2)),
+            (4, 1, (2, 2)),
+            (4, 3, (2, 2)),
+            (4, 3, (8, 8)),
+        ],
+    )
+    def test_cardinality(self, B, C, grid_size, device, dtype):
         H, W = 10, 20
         if B is None:
             img = torch.rand(C, H, W, device=device, dtype=dtype)
         else:
             img = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        res = enhance.equalize_clahe(img)
+        res = enhance.equalize_clahe(img, grid_size=grid_size)
         assert res.shape == img.shape
 
     @pytest.mark.parametrize("clip, grid", [(0.0, None), (None, (2, 2)), (2.0, (2, 2))])
