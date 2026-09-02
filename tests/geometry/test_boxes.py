@@ -107,6 +107,22 @@ class TestBoxes2D(BaseTester):
         self.assert_close(heights, torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(widths, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
+    def test_convention_get_boxes_shape_includes_list_padding(self, device, dtype):
+        # get_boxes_shape uses the padded xywh export, so padding entries appear as
+        # 1-by-1 boxes even though an ordinary to_tensor export trims them.
+        first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        second = torch.cat([first, first])
+        boxes = Boxes([first, second])
+        exported = boxes.to_tensor("xywh")
+        assert isinstance(exported, list)
+        assert [item.shape for item in exported] == [(1, 4), (2, 4)]
+
+        heights, widths = boxes.get_boxes_shape()
+        expected_heights = torch.tensor([[2.0, 1.0], [2.0, 2.0]], device=device, dtype=dtype)
+        expected_widths = torch.tensor([[4.0, 1.0], [4.0, 4.0]], device=device, dtype=dtype)
+        self.assert_close(heights, expected_heights, atol=0.0, rtol=0.0)
+        self.assert_close(widths, expected_widths, atol=0.0, rtol=0.0)
+
     def test_wart_vertices_export_is_exclusive_for_inclusive_bbox_consumers_4009(self, device, dtype):
         # Wart pin for kornia#4009: vertices is an exclusive export, while
         # infer_bbox_shape reads vertices as inclusive and therefore adds one per axis.
@@ -152,6 +168,13 @@ class TestBoxes2D(BaseTester):
         assert Boxes([floating, vertices]).dtype == torch.float32
         with pytest.raises(ValueError, match="floating point"):
             Boxes([vertices, floating])
+
+        # from_tensor converts each list element independently before the same
+        # first-element dtype merge, so reversing mixed float16/integer inputs
+        # changes the output dtype.
+        half = vertices.to(torch.float16)
+        assert Boxes.from_tensor([half, vertices], mode="vertices_plus").dtype == torch.float16
+        assert Boxes.from_tensor([vertices, half], mode="vertices_plus").dtype == torch.float32
 
     def test_convention_merge_concatenates_batched_boxes_without_mutating_by_default(self, device, dtype):
         first = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype))

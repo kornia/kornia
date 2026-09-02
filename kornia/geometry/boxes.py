@@ -208,16 +208,22 @@ class Boxes:
           round-trips exactly in its own mode when every intermediate conversion result is exactly representable
           in the tensor dtype. A sub-unit extent does not: the inclusive ``- 1`` inverts the stored quadrilateral,
           so boxes in normalized ``[0, 1]`` coordinates are silently corrupted by the three converting modes.
-          The ``'_plus'`` modes are unaffected because their ``+ 1`` cancels the ``- 1``.
+          The ``'xyxy_plus'`` mode is unaffected because its ``+ 1`` cancels the ``- 1``;
+          ``'vertices_plus'`` applies no offset at all.
         - :meth:`to_tensor` reduces the stored vertices with ``amin``/``amax``, so every export is an
           axis-aligned bounding box. It is lossy for rotated boxes, and ``to_tensor('vertices_plus')`` is
           therefore not the identity on :attr:`data`.
-        - :meth:`get_boxes_shape` returns ``(heights, widths)`` in that order and in inclusive terms.
-        - The free functions in :mod:`kornia.geometry.bbox` have no mode argument, and they do not all share
-          one convention. :func:`~kornia.geometry.bbox.infer_bbox_shape` adds one per axis and
+        - :meth:`get_boxes_shape` returns ``(heights, widths)`` in that order, with exactly the values from
+          ``to_tensor('xywh', as_padded_sequence=True)``. For a list-backed object this includes its padding
+          entries, which report as 1-by-1 boxes even though an ordinary :meth:`to_tensor` export trims them.
+        - :func:`~kornia.geometry.bbox.infer_bbox_shape`, :func:`~kornia.geometry.bbox.bbox_to_mask`,
+          :func:`~kornia.geometry.bbox.validate_bbox`, and :func:`~kornia.geometry.bbox.nms` have no mode argument,
+          but the module does not use one convention throughout. :func:`~kornia.geometry.bbox.infer_bbox_shape`
+          adds one per axis and
           :func:`~kornia.geometry.bbox.bbox_to_mask` fills through the bottom-right vertex's row and column, so
           both read their input as inclusive: pass them the ``'vertices_plus'`` export rather than
-          ``'vertices'``, which they read as one pixel larger per axis.
+          ``'vertices'``, which they read as one pixel larger per axis. Both consumers take unbatched
+          :math:`(N, 4, 2)` input, so index or flatten a batched :math:`(B, N, 4, 2)` export before passing it.
           :func:`~kornia.geometry.bbox.validate_bbox` is invariant in exact arithmetic, because its ``+1``
           terms cancel;
           :func:`~kornia.geometry.bbox.nms` computes exclusive areas, and
@@ -229,8 +235,9 @@ class Boxes:
           of the bottom-right and bottom-left vertices, wherever those vertices actually lie.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False``. A list input is
           padded into a tensor of its *first* element's dtype before that check, so a mixed-dtype list is accepted
-          or rejected by its first box alone and the remaining boxes are cast to that dtype. :meth:`from_tensor`
-          silently casts integer input to ``float32``.
+          or rejected by its first box alone and the remaining boxes are cast to that dtype. For a single tensor,
+          :meth:`from_tensor` silently casts integer input to ``float32``. For a list, it converts each element
+          independently and then pads into the first converted element's dtype, recasting the remaining elements.
 
     .. warning::
         The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked as a

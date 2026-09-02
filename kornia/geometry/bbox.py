@@ -42,12 +42,13 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
 
     Convention:
         Vertices use inclusive coordinates in clockwise top-left, top-right, bottom-right, bottom-left order.
-        The function accepts :math:`(B, 4, 2)` and :math:`(B, N, 4, 2)` tensors. It returns ``False`` for an
-        invalid shape or when the top and bottom edge vectors differ by more than ``1e-4``; it does not raise
-        for those inputs. It does not check right angles, positive area, or vertex order, so any parallelogram
-        passes, including rotated rectangles and zero-area boxes. The inclusive ``+1`` terms cancel in exact
-        arithmetic, but finite-precision rounding can make the result differ from exclusive arithmetic,
-        particularly for low-precision dtypes.
+        The function accepts :math:`(B, 4, 2)` tensors and :math:`(B, N, 4, 2)` tensors whose stride layout is
+        compatible with flattening via ``view``. An incompatible rank-4 layout, such as one produced by
+        transposing its leading dimensions, raises ``RuntimeError``. It returns ``False`` for an invalid shape or
+        when the top and bottom edge vectors differ by more than ``1e-4``; it does not raise for those inputs. It
+        does not check right angles, positive area, or vertex order, so any parallelogram passes, including rotated
+        rectangles and zero-area boxes. The inclusive ``+1`` terms cancel in exact arithmetic, but finite-precision
+        rounding can make the result differ from exclusive arithmetic, particularly for low-precision dtypes.
 
     .. warning::
         :func:`validate_bbox3d` raises ``AssertionError`` where this function returns ``False``. That
@@ -55,8 +56,9 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of :math:`(B, 4, 2)` or :math:`(B, N, 4, 2)`, where each box is defined in the following ``clockwise``
-            order: top-left, top-right, bottom-right, bottom-left. The coordinates must be in the x, y order.
+            of :math:`(B, 4, 2)` or view-compatible :math:`(B, N, 4, 2)`, where each box is defined in the
+            following ``clockwise`` order: top-left, top-right, bottom-right, bottom-left. The coordinates must be in
+            the x, y order.
 
     """
     if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([4, 2])):

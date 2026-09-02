@@ -64,11 +64,11 @@ class TestBbox2D(BaseTester):
         self.assert_close(height, torch.tensor([5.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(width, torch.tensor([0.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
-    def test_convention_validate_bbox_checks_parallelograms_and_accepts_batched_boxes(self, device, dtype):
+    def test_convention_validate_bbox_checks_parallelograms_and_accepts_contiguous_batched_boxes(self, device, dtype):
         # The validator only compares the top and bottom edge vectors, so any
         # parallelogram passes: a sheared (non-rectangular) parallelogram and a
         # rotated rectangle both return True, and only the trapezoid fails. The
-        # leading dimensions also pin rank-4 input.
+        # leading dimensions also pin contiguous rank-4 input.
         sheared_parallelogram = torch.tensor(
             [[[[0.0, 0.0], [2.0, 0.0], [3.0, 1.0], [1.0, 1.0]]]], device=device, dtype=dtype
         )
@@ -81,6 +81,14 @@ class TestBbox2D(BaseTester):
 
         trapezoid = torch.tensor([[[[0.0, 0.0], [10.0, 0.0], [10.0, 5.0], [3.0, 5.0]]]], device=device, dtype=dtype)
         assert validate_bbox(trapezoid) is False
+
+    def test_convention_validate_bbox_transposed_leading_dimensions_raise(self, device, dtype):
+        # Rank-4 input is flattened with view, so transposing its leading dimensions
+        # creates an incompatible stride layout that raises instead of returning a boolean.
+        boxes = torch.zeros(2, 3, 4, 2, device=device, dtype=dtype).transpose(0, 1)
+        assert not boxes.is_contiguous()
+        with pytest.raises(RuntimeError, match="view size is not compatible"):
+            validate_bbox(boxes)
 
     def test_convention_validate_bbox_invariance_is_exact_arithmetic_only(self):
         # In float16 the inclusive +1 rounds distinct sub-unit spans to the same
