@@ -1184,8 +1184,18 @@ class Boxes3D:
                 * Any other value: :math:`(N, 6)` or :math:`(B, N, 6)`.
 
         Note:
-            It is currently non-differentiable due to a bug. See github issue
-            `#1396 <https://github.com/kornia/kornia/issues/1396>`_.
+            The vertex-to-corner reduction below is ``amin``/``amax`` over the 8 vertices, which is
+            differentiable everywhere except where multiple vertices exactly tie for an axis extremum --
+            e.g. every face of an axis-aligned box, where 4 vertices share each min/max coordinate. At an
+            exact tie PyTorch's ``amin``/``amax`` backward splits the gradient evenly among the tied
+            vertices (``1/k`` for ``k`` ties), a valid subgradient usable for optimization, but one that
+            :func:`torch.autograd.gradcheck`'s central-difference estimate will not exactly match at that
+            point -- the same non-uniqueness any reduction has at a kink (compare ``torch.max`` or
+            :class:`~torch.nn.ReLU` at their own kinks). This was previously (see `#1396
+            <https://github.com/kornia/kornia/issues/1396>`_) mistaken for an actual gradient bug and
+            gated behind a ``RuntimeError``; :class:`Boxes` (2D) uses the same reduction and was never
+            gated, because a quadrilateral's ties are always 2-way, where the ``1/2`` split happens to
+            coincide with the central-difference estimate -- gradcheck cannot see the same kink there.
 
         Examples:
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
@@ -1193,14 +1203,6 @@ class Boxes3D:
             >>> assert (boxes.to_tensor(mode='xyzxyz') == boxes_xyzxyz).all()
 
         """
-        if self._data.requires_grad:
-            raise RuntimeError(
-                "Boxes3D.to_tensor doesn't support computing gradients since they aren't accurate. "
-                "Please, create boxes from tensors with `requires_grad=False`. "
-                "This is a known bug. Help is needed to fix it. For more information, "
-                "see https://github.com/kornia/kornia/issues/1396."
-            )
-
         batched_boxes = self._data if self._is_batched else self._data.unsqueeze(0)
 
         # Create boxes in xyzxyz_plus format.
