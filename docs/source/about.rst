@@ -20,6 +20,9 @@ community of contributors.
      - The standards every community space is held to.
    * - :doc:`Citing Kornia <get-started/about>`
      - The papers to cite when Kornia supports your research.
+   * - :doc:`Adoption <community/adoption>`
+     - |count-dependents| public repositories and |count-dependent-packages| packages on GitHub depend on
+       Kornia — and the most-starred of them.
    * - :doc:`API Stability Policy <get-started/stability>`
      - What you can rely on, tier by tier, and how deprecations work.
 
@@ -31,4 +34,5 @@ community of contributors.
    Community Guide <community/community>
    Code of Conduct <https://github.com/kornia/kornia/blob/main/CODE_OF_CONDUCT.md>
    Citing Kornia <get-started/about>
+   Adoption <community/adoption>
    API Stability Policy <get-started/stability>

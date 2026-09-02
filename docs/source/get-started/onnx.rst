@@ -12,8 +12,8 @@ runs it with ONNX Runtime. It is useful when you have pre-exported operators or 
   feed the inputs of the next.
 - **Export**: save the combined model as a single ONNX file.
 - **PyTorch-like interface**: call the sequence directly, like an ``nn.Sequential``.
-- **Execution providers**: run on CPU, CUDA, TensorRT or OpenVINO through ONNX Runtime, and manage several sessions
-  concurrently, including an asyncio-based API.
+- **Execution providers**: run on CPU, CUDA, TensorRT or OpenVINO through ONNX Runtime, with control over the
+  session options.
 
 Quickstart
 ----------
@@ -77,8 +77,8 @@ Quickstart
 
    .. code-block:: python
 
-      io_map = [("model1_output_0", "model2_input_0"), ("model1_output_1", "model2_input_1")]
-      onnx_seq = ONNXSequential("model1.onnx", "model2.onnx", io_map=io_map)
+      io_maps = [("model1_output_0", "model2_input_0"), ("model1_output_1", "model2_input_1")]
+      onnx_seq = ONNXSequential("model1.onnx", "model2.onnx", io_maps=io_maps)
 
 5. **Export the combined model**
 
@@ -150,7 +150,7 @@ Yes. Models can come from ONNX files, ``onnx.ModelProto`` objects or ``hf://`` r
 :class:`~kornia.onnx.sequential.ONNXSequential` merges their graphs.
 
 **What if the input/output names of two models do not match?**
-Use the ``io_map`` argument to say which output feeds which input.
+Use the ``io_maps`` argument to say which output feeds which input.
 
 **Can I use custom ONNX Runtime session options?**
 Yes, pass your own session options to the ``create_session`` method.

@@ -4,8 +4,9 @@ API reference
 .. meta::
    :description: Reference documentation for every public Kornia module: augmentation, color, contrib, core, enhance, feature, filters, geometry, sensors, io, image, losses, models, metrics, morphology, onnx and tracking.
 
-One page per ``kornia`` module, grouped by what you are trying to do. All functions accept batched
-``(B, C, H, W)`` float tensors in ``[0, 1]`` and follow the :doc:`conventions </get-started/conventions>`;
+One page per ``kornia`` module, grouped by what you are trying to do. Image operators take batched
+``(B, C, H, W)`` float tensors in ``[0, 1]`` and follow the :doc:`conventions </get-started/conventions>`
+(points, boxes, local features and camera matrices have their own layouts, documented on their pages);
 most functions also have an ``nn.Module`` counterpart.
 
 Image processing

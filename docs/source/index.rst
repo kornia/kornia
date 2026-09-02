@@ -4,218 +4,274 @@
 .. raw:: html
 
    <style>
-     /* Landing page only: no "On this page" rail, no header toggle for it. */
+     /* Landing page only. conf.py already gives this page no right-rail items, but pydata still
+        renders the (empty) rail column and its header toggle; hide both. */
      #pst-secondary-sidebar, dialog#pst-secondary-sidebar-modal,
      button.sidebar-toggle.secondary-toggle { display: none !important; }
+     /* Room for the two-column hero; the theme caps articles at 960px. */
+     .bd-main .bd-content .bd-article-container { max-width: 1240px; }
      /* Hairline separator above each section, matching the link board's line. */
-     .bd-article section,
-     .kornia-sponsor-notice,
-     .kornia-gallery {
+     .bd-article section {
        border-top: 1px solid var(--pst-color-border);
        margin-top: 3rem;
        padding-top: 1.75rem;
      }
    </style>
 
-.. container:: kornia-hero
+.. grid:: 1 1 1 2
+   :gutter: 4
+   :class-container: kornia-hero
+   :padding: 0
 
-   .. raw:: html
+   .. grid-item::
+      :columns: 12 12 12 5
+      :class: kornia-hero__copy
 
-      <h1 class="kornia-hero__title">Computer vision for<br>
-      <span class="kornia-accent">robotics &amp; Spatial AI.</span></h1>
-      <p class="kornia-hero__tagline">The geometric computer vision library for PyTorch —
-      batched, differentiable, GPU-accelerated, with curated pretrained models.</p>
+      .. raw:: html
 
-   .. container:: kornia-hero-actions
+         <div class="kornia-pip" title="Install from PyPI">
+           <span class="kornia-pip__prompt" aria-hidden="true">&gt;_</span>
+           <code class="kornia-pip__cmd">pip install kornia</code>
+           <button type="button" class="kornia-pip__copy" data-copy="pip install kornia"
+                   aria-label="Copy install command"><i class="fa-regular fa-copy"></i></button>
+         </div>
+         <h1 class="kornia-hero__title">Computer vision for<br>
+         <span class="kornia-accent">robotics &amp; Spatial AI.</span></h1>
 
-      .. button-link:: get-started/installation.html
-         :color: primary
+      .. container:: kornia-hero-actions
 
-         Get started
+         .. button-link:: get-started/installation.html
+            :color: primary
 
-      .. button-link:: api.html
-         :color: secondary
-         :outline:
+            Get started
 
-         API reference
+         .. button-link:: api.html
+            :color: secondary
+            :outline:
 
-      .. button-link:: https://github.com/kornia/kornia
-         :color: secondary
-         :outline:
+            API reference
 
-         :octicon:`mark-github` GitHub
+      .. raw:: html
 
-      .. button-link:: https://github.com/kornia/kornia-rs
-         :color: secondary
-         :outline:
+         <p class="kornia-hero__links">
+           <a href="https://github.com/kornia/kornia-rs"><i class="fa-solid fa-microchip"></i> Also available: kornia-rs for edge devices</a>
+         </p>
 
-         :octicon:`cpu` Get kornia-rs for edge computing
+   .. grid-item::
+      :columns: 12 12 12 7
+      :class: kornia-hero__demo
 
-Why Kornia?
------------
+      .. raw:: html
 
-.. tab-set::
-   :class: kornia-why-tabs
+         <p class="kornia-hero__eyebrow">Why Kornia?</p>
 
-   .. tab-item:: :octicon:`zap` GPU-accelerated
+      .. tab-set::
+         :class: kornia-why-tabs
 
-      Batched operators run on whatever device the tensor lives on — no flags, no per-image loops.
+         .. tab-item:: :octicon:`zap` GPU-accelerated
 
-      .. code-block:: python
-         :emphasize-lines: 1
+            .. Bar chart drawn at build time by docs/generate_benchmarks.py from benchmarks/results/,
+               so the throughput figures track the committed run.
 
-         images = torch.rand(64, 3, 224, 224, device="cuda")  # the whole batch on the GPU
-         blurred = kornia.filters.gaussian_blur2d(images, (5, 5), (1.5, 1.5))
-         edges = kornia.filters.sobel(blurred)
+            .. raw:: html
+               :file: _generated/hero-benchmark.html
 
-      .. rst-class:: kornia-proof
+            .. code-block:: python
 
-      **1,124 → 3,153 images/s** — the same ``RandomGaussianBlur`` at batch 32 on the same Apple M1,
-      CPU vs GPU, from the committed :doc:`benchmark runs <get-started/performance>`.
+               edges = kornia.filters.sobel(images.cuda())  # whole batch, one call
 
-      :doc:`See details <get-started/gpu-acceleration>` :octicon:`arrow-right`
+            **Same code, any device.** Operators run wherever the tensor lives — no flags, no per-image loops.
 
-   .. tab-item:: :octicon:`git-compare` Differentiable
+            :doc:`See details <get-started/gpu-acceleration>` :octicon:`arrow-right`
 
-      Gradients flow through every operator, so vision ops can live inside your model or your loss.
+         .. tab-item:: :octicon:`git-compare` Differentiable
 
-      .. code-block:: python
-         :emphasize-lines: 5
+            .. raw:: html
 
-         prediction = torch.rand(2, 3, 64, 64, requires_grad=True)
-         target = torch.rand(2, 3, 64, 64)
+               <div class="kornia-tab-visual kornia-tab-visual--image">
+                 <img src="_static/img/registration.gif" alt="Two images progressively aligned by gradient descent">
+                 <div class="kornia-tab-visual__aside">
+                   <p class="kornia-tab-visual__eyebrow">gradient descent on a homography</p>
+                   <code>warped = warp_perspective(src, H, size)</code>
+                   <code>loss = (warped - dst).abs().mean()</code>
+                   <code>loss.backward(); optimizer.step()</code>
+                   <p class="kornia-tab-visual__eyebrow">repeat until aligned</p>
+                 </div>
+               </div>
 
-         loss = kornia.losses.ssim_loss(prediction, target, window_size=5)
-         loss.backward()  # gradients flow through the SSIM graph
+            **Registration by pure gradient descent.** Gradients flow through every operator, so vision ops
+            can sit inside your model or your loss — no labels, no training data.
 
-      .. figure:: _static/img/registration.gif
-         :width: 360
-         :alt: Two images progressively aligned by gradient descent
+            :doc:`See details <get-started/differentiability>` :octicon:`arrow-right`
 
-         Image registration by pure gradient descent — no labels, no training data.
+         .. tab-item:: :octicon:`package` Production-ready
 
-      :doc:`See details <get-started/differentiability>` :octicon:`arrow-right`
+            .. raw:: html
 
-   .. tab-item:: :octicon:`package` Production-ready
+               <div class="kornia-tab-visual">
+                 <svg class="kornia-illo" viewBox="0 0 640 220" role="img"
+                      aria-label="A kornia module is exported to ONNX, chained with Hub-hosted operators, and runs on ONNX Runtime">
+                   <defs>
+                     <marker id="kornia-illo-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+                       <path d="M0,0 L10,5 L0,10 z" class="illo-arrowhead"/>
+                     </marker>
+                   </defs>
+                   <text x="24" y="36" class="illo-title">PyTorch module → ONNX graph → one deployable file</text>
+                   <rect x="24" y="66" width="160" height="72" rx="10" class="illo-box"/>
+                   <text x="104" y="96" text-anchor="middle" class="illo-value">kornia module</text>
+                   <text x="104" y="120" text-anchor="middle" class="illo-mono">RgbToGrayscale()</text>
+                   <path d="M188,102 L226,102" class="illo-line" marker-end="url(#kornia-illo-arrow)"/>
+                   <rect x="232" y="66" width="140" height="72" rx="10" class="illo-box"/>
+                   <text x="302" y="96" text-anchor="middle" class="illo-value">torch.onnx</text>
+                   <text x="302" y="120" text-anchor="middle" class="illo-mono">gray.onnx</text>
+                   <path d="M376,102 L414,102" class="illo-line" marker-end="url(#kornia-illo-arrow)"/>
+                   <rect x="420" y="66" width="196" height="72" rx="10" class="illo-primary"/>
+                   <text x="518" y="96" text-anchor="middle" class="illo-value illo-on-primary">ONNXSequential</text>
+                   <text x="518" y="120" text-anchor="middle" class="illo-mono illo-on-primary">+ hf://…/Resize_512x512</text>
+                   <text x="24" y="182" class="illo-label">runs on</text>
+                   <rect x="90" y="164" width="120" height="28" rx="14" class="illo-pill"/>
+                   <text x="150" y="183" text-anchor="middle" class="illo-pill-text">ONNX Runtime</text>
+                   <rect x="220" y="164" width="60" height="28" rx="14" class="illo-pill"/>
+                   <text x="250" y="183" text-anchor="middle" class="illo-pill-text">CPU</text>
+                   <rect x="290" y="164" width="72" height="28" rx="14" class="illo-pill"/>
+                   <text x="326" y="183" text-anchor="middle" class="illo-pill-text">CUDA</text>
+                   <rect x="372" y="164" width="140" height="28" rx="14" class="illo-pill"/>
+                   <text x="442" y="183" text-anchor="middle" class="illo-pill-text">no Python needed</text>
+                 </svg>
+               </div>
 
-      Port any kornia module to ONNX, chain it with pre-exported operators and models, and run the
-      combined graph wherever ONNX Runtime runs — no Python, no PyTorch.
+            .. code-block:: python
 
-      .. code-block:: python
-         :emphasize-lines: 1,8
+               torch.onnx.export(kornia.color.RgbToGrayscale(), x, "gray.onnx", dynamo=False)
 
-         torch.onnx.export(  # port any kornia module to ONNX...
-             kornia.color.RgbToGrayscale(), torch.rand(1, 3, 256, 512), "gray.onnx",
-             input_names=["input"], output_names=["output"],
-             opset_version=17, dynamo=False,
-         )
+            **Export once, run anywhere ONNX Runtime does** — chained with Hub-hosted operators into one graph.
 
-         pipeline = ONNXSequential(  # ...and chain it with ops from the Hugging Face Hub
-             "gray.onnx",
-             "hf://operators/kornia.geometry.transform.affwarp.Resize_512x512",
-         )
-         outputs = pipeline(np.random.randn(1, 3, 256, 512).astype(np.float32))
-         pipeline.export("combined.onnx")  # one deployable file
+            :doc:`See details <get-started/onnx>` :octicon:`arrow-right`
 
-      .. rst-class:: kornia-proof
+         .. tab-item:: :octicon:`share-android` Multi-framework
 
-      **0.015 s vs 0.177 s** per inference — the same exported RT-DETR pipeline on CUDA vs CPU,
-      switched with a single ``as_cuda()`` call.
+            .. raw:: html
 
-      :doc:`See details <get-started/onnx>` :octicon:`arrow-right`
+               <div class="kornia-tab-visual">
+                 <svg class="kornia-illo" viewBox="0 0 640 220" role="img"
+                      aria-label="kornia at the centre, connected to PyTorch natively and to TensorFlow, JAX and NumPy through Ivy">
+                   <path d="M320,110 L150,58" class="illo-line"/>
+                   <path d="M320,110 L490,58" class="illo-line"/>
+                   <path d="M320,110 L150,162" class="illo-line"/>
+                   <path d="M320,110 L490,162" class="illo-line"/>
+                   <rect x="80" y="40" width="140" height="36" rx="18" class="illo-box"/>
+                   <text x="150" y="64" text-anchor="middle" class="illo-value">PyTorch</text>
+                   <text x="150" y="98" text-anchor="middle" class="illo-note">native</text>
+                   <rect x="420" y="40" width="140" height="36" rx="18" class="illo-box"/>
+                   <text x="490" y="64" text-anchor="middle" class="illo-value">TensorFlow</text>
+                   <text x="490" y="98" text-anchor="middle" class="illo-mono">to_tensorflow()</text>
+                   <rect x="80" y="144" width="140" height="36" rx="18" class="illo-box"/>
+                   <text x="150" y="168" text-anchor="middle" class="illo-value">JAX</text>
+                   <text x="150" y="202" text-anchor="middle" class="illo-mono">to_jax()</text>
+                   <rect x="420" y="144" width="140" height="36" rx="18" class="illo-box"/>
+                   <text x="490" y="168" text-anchor="middle" class="illo-value">NumPy</text>
+                   <text x="490" y="202" text-anchor="middle" class="illo-mono">to_numpy()</text>
+                   <circle cx="320" cy="110" r="46" class="illo-primary"/>
+                   <text x="320" y="116" text-anchor="middle" class="illo-value illo-on-primary">kornia</text>
+                 </svg>
+               </div>
 
-   .. tab-item:: :octicon:`share-android` Multi-framework
+            .. code-block:: python
 
-      One API, four frameworks: PyTorch natively, plus TensorFlow, JAX and NumPy through Ivy.
+               tf_kornia = kornia.to_tensorflow()  # also to_jax(), to_numpy()
 
-      .. code-block:: python
-         :emphasize-lines: 1
+            **One API, four frameworks.** PyTorch natively; TensorFlow, JAX and NumPy through Ivy.
 
-         tf_kornia = kornia.to_tensorflow()  # also: kornia.to_jax(), kornia.to_numpy()
-
-         rgb = tf.random.normal((1, 3, 224, 224))
-         gray = tf_kornia.color.rgb_to_grayscale(rgb)
-
-      .. rst-class:: kornia-proof
-
-      The first call transpiles and caches each function; later calls run at approximately
-      the speed of the native kornia op.
-
-      :doc:`See details <get-started/multi-framework-support>` :octicon:`arrow-right`
+            :doc:`See details <get-started/multi-framework-support>` :octicon:`arrow-right`
 
 .. raw:: html
 
    <p class="kornia-sponsor-notice">Considering sponsoring? —
    <a href="community/sponsor.html">Inquire now</a></p>
 
+Features
+--------
+
+.. rst-class:: kornia-section-lead
+
+|count-operators-floor|\ + differentiable operators — functions and ``nn.Module`` layers, batched and
+device-agnostic — across geometry, feature matching, filtering, color, augmentation, losses and pretrained
+models. Six places to start below; the full map is the :doc:`API reference <api>`.
+
 .. grid:: 1 2 2 3
    :gutter: 3
    :class-container: kornia-cards kornia-gallery
 
-   .. grid-item-card:: Warp perspective
+   .. grid-item-card:: Warp, register, reconstruct
       :img-top: _static/img/warp_affine.png
-      :link: geometry.transform
+      :link: geometry
       :link-type: doc
 
-      ``kornia.geometry`` — rotate, warp and register images with full transform matrices.
+      Cameras, homographies, Lie groups, RANSAC, depth-to-3D — every transform differentiable, so a
+      pose is something you optimise.
+
+      +++
+      |count-geometry| functions · ``kornia.geometry`` :octicon:`arrow-right`
+
+   .. grid-item-card:: Match images
+      :img-top: https://raw.githubusercontent.com/kornia/data/main/matching/matching_loftr.jpg
+      :link: feature
+      :link-type: doc
+
+      Detect with KeyNet, DISK or ALIKED, match with LightGlue or LoFTR — classical SIFT and HardNet are
+      there too.
+
+      +++
+      |count-feature| detectors & matchers · ``kornia.feature`` :octicon:`arrow-right`
+
+   .. grid-item-card:: Filter and detect edges
+      :img-top: _static/img/canny.png
+      :link: filters
+      :link-type: doc
+
+      Canny, Sobel, Gaussian, bilateral and morphology, batched and differentiable — usable as a layer
+      or inside a loss.
+
+      +++
+      |count-image-processing| operators · ``kornia.filters`` :octicon:`arrow-right`
 
    .. grid-item-card:: Augment everything
       :img-top: _static/img/AugmentationSequential.png
       :link: augmentation
       :link-type: doc
 
-      ``kornia.augmentation`` — one sampled transform, applied to image, mask, boxes and keypoints alike.
+      One sampled transform applied to image, mask, boxes and keypoints alike — on the GPU, in 2D or 3D.
 
-   .. grid-item-card:: Detect edges
-      :img-top: _static/img/canny.png
-      :link: filters.edge_detection
+      +++
+      |count-augmentation| transforms · ``kornia.augmentation`` :octicon:`arrow-right`
+
+   .. grid-item-card:: Detect and segment with pretrained models
+      :img-top: _static/img/face_detection.png
+      :link: models/index
       :link-type: doc
 
-      ``kornia.filters`` — Canny, Sobel and Laplacian, differentiable and batched.
+      YuNet faces, RT-DETR objects, SAM masks, DexiNed edges — one line to build, weights on first use.
 
-   .. grid-item-card:: Match images
-      :img-top: _static/img/DISK.png
-      :link: feature
-      :link-type: doc
+      +++
+      |count-models| model families · Model zoo :octicon:`arrow-right`
 
-      ``kornia.feature`` — DISK, ALIKED, LoFTR and LightGlue find and match keypoints.
-
-   .. grid-item-card:: Recolor and map
-      :img-top: _static/img/apply_colormap.png
-      :link: color
-      :link-type: doc
-
-      ``kornia.color`` — RGB, HSV, Lab, YUV and friends, plus color maps for heat and depth.
-
-   .. grid-item-card:: Enhance and equalize
+   .. grid-item-card:: Recolor and enhance
       :img-top: _static/img/equalize_clahe.png
       :link: enhance
       :link-type: doc
 
-      ``kornia.enhance`` — CLAHE, histogram equalization, gamma and contrast, all trainable.
+      Lab, HSV, YUV and color maps; CLAHE, histogram equalisation, gamma and contrast — all trainable.
 
-The rest lives in the :doc:`API reference <api>` — losses and metrics, morphology, camera geometry, image I/O —
-and :doc:`Conventions & pitfalls <get-started/conventions>` is the one page to read before writing code.
+      +++
+      ``kornia.color`` · ``kornia.enhance`` :octicon:`arrow-right`
 
-Ready-to-use models
--------------------
+.. rst-class:: kornia-learn-more
 
-Pretrained models for detection, segmentation and matching — ready in one line:
-
-.. code-block:: python
-
-   import kornia
-   from kornia.contrib import RTDETRDetectorBuilder
-
-   image = kornia.io.get_sample_images()[0][None]
-   detector = RTDETRDetectorBuilder.build()
-   detections = detector(image)  # list of (D, 6) tensors: class id, score, x, y, w, h
-
-.. button-link:: models/index.html
-   :color: primary
-   :outline:
-
-   Browse the model zoo :octicon:`arrow-right`
+Prefer to learn by example? :doc:`Image matching <applications/image_matching>`,
+:doc:`registration <applications/image_registration>`, :doc:`stitching <applications/image_stitching>`,
+:doc:`denoising <applications/image_denoising>`, :doc:`face detection <applications/face_detection>` and
+:doc:`visual prompting <applications/visual_prompting>` each walk through one task end to end — and
+:doc:`Conventions & pitfalls <get-started/conventions>` is the one page to read before writing code.
 
 .. raw:: html
 
@@ -234,6 +290,7 @@ Pretrained models for detection, segmentation and matching — ready in one line
        <p class="kornia-linkboard__title">About</p>
        <a href="get-started/governance.html">Team</a>
        <a href="community/community.html">Community Guide</a>
+       <a href="community/adoption.html">Adoption</a>
        <a href="https://github.com/kornia/kornia/blob/main/CODE_OF_CONDUCT.md">Conduct</a>
      </div>
      <div>

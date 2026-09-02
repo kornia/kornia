@@ -20,5 +20,4 @@ optimization with :func:`kornia.losses.total_variation`:
         loss.backward()
         optimizer.step()
 
-Follow the full walk-through in the `total variation denoising tutorial <https://kornia.github.io/tutorials/nbs/total_variation_denoising.html>`_,
-or try the interactive demo below.
+Follow the full walk-through in the `total variation denoising tutorial <https://kornia.github.io/tutorials/nbs/total_variation_denoising.html>`_.

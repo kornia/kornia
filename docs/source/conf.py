@@ -19,6 +19,7 @@ import builtins
 import html
 import importlib.util
 import inspect
+import json
 import os
 import re
 import sys
@@ -27,12 +28,15 @@ from datetime import UTC, datetime
 # Monkey-patch for PyTorch compatibility with sphinx_autodoc_typehints
 # Newer versions of PyTorch removed torch.jit.annotations.compiler_flag
 import torch.jit.annotations
+from sphinx.util import logging as sphinx_logging
 
 if not hasattr(torch.jit.annotations, "compiler_flag"):
     torch.jit.annotations.compiler_flag = None
 
 # Let the library know it is being imported by the Sphinx build.
 builtins.__sphinx_build__ = True
+
+logger = sphinx_logging.getLogger(__name__)
 
 # --- Patch sphinx_autodoc_defaultargs to not crash on torchscript/pybind11 callables ---
 try:
@@ -94,6 +98,99 @@ spec.loader.exec_module(generate_benchmarks)
 
 # Pre-generate the benchmark results page
 generate_benchmarks.main()
+
+spec = importlib.util.spec_from_file_location("generate_adoption", "../generate_adoption.py")
+generate_adoption = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(generate_adoption)
+
+# Pre-generate the adoption page from the committed dependents snapshot
+_adoption = generate_adoption.main()
+
+
+def _public_operator_count() -> int:
+    """Public functions and ``nn.Module`` classes defined across kornia's public modules.
+
+    Walks every ``kornia.*`` module without a private path component and counts the functions and
+    ``torch.nn.Module`` subclasses it defines under a public name. Model architecture internals
+    (``kornia.models.*.architecture``), ``kornia.core`` and the transpiler shim are left out so the
+    figure is about operators rather than plumbing.
+    """
+    import contextlib
+    import io
+    import pkgutil
+    import warnings
+
+    import torch
+
+    import kornia
+
+    skip = re.compile(r"^kornia\.(core|transpiler)(\.|$)|\.architecture(\.|$)")
+    seen: set[tuple[str, str]] = set()
+    with (
+        warnings.catch_warnings(),
+        contextlib.redirect_stdout(io.StringIO()),
+        contextlib.redirect_stderr(io.StringIO()),
+    ):
+        warnings.simplefilter("ignore")
+        for info in pkgutil.walk_packages(kornia.__path__, "kornia."):
+            if skip.search(info.name) or any(part.startswith("_") for part in info.name.split(".")[1:]):
+                continue
+            try:
+                module = importlib.import_module(info.name)
+            except Exception as exc:  # noqa: BLE001 - an optional dependency is missing; nothing to count there
+                logger.debug("skipping %s while counting operators: %r", info.name, exc)
+                continue
+            for name, obj in vars(module).items():
+                # Type checks first: attribute access on a ``kornia.core.external.LazyLoader`` would
+                # try to import (and offer to install) the optional dependency behind it.
+                if not (inspect.isfunction(obj) or (inspect.isclass(obj) and issubclass(obj, torch.nn.Module))):
+                    continue
+                if name.startswith("_") or obj.__name__ != name:
+                    continue
+                defined_in = getattr(obj, "__module__", "") or ""
+                if defined_in.startswith("kornia.") and not skip.search(defined_in):
+                    seen.add((defined_in, obj.__qualname__))
+    return len(seen)
+
+
+def _landing_page_counts() -> dict[str, str]:
+    """Figures the landing page quotes, derived from the library rather than typed in.
+
+    The public-name counts read the stable-core inventory that ``tests/test_api_surface.py`` pins;
+    ``kornia.feature`` and ``kornia.models`` are outside it, so they are counted from the live
+    package and from the model pages under ``docs/source/models/``. ``operators`` is the
+    library-wide total from :func:`_public_operator_count`, floored to the hundred below it so the
+    page can say "1,000+" and stay true between releases.
+    """
+    with open("../../tests/api_surface.json", encoding="utf-8") as handle:
+        surface = {name: len(names) for name, names in json.load(handle).items()}
+    import kornia.feature
+
+    operators = _public_operator_count()
+    image_processing = sum(
+        surface[name] for name in ("kornia.filters", "kornia.color", "kornia.enhance", "kornia.morphology")
+    )
+    losses_metrics = surface["kornia.losses"] + surface["kornia.metrics"]
+    model_pages = [entry for entry in os.listdir("models") if entry.endswith(".rst") and entry != "index.rst"]
+    return {
+        "geometry": str(surface["kornia.geometry"]),
+        "feature": str(len(kornia.feature.__all__)),
+        "image-processing": str(image_processing),
+        "losses-metrics": str(losses_metrics),
+        "augmentation": str(surface["kornia.augmentation"]),
+        "models": str(len(model_pages)),
+        "operators": f"{operators:,}",
+        "operators-floor": f"{operators // 100 * 100:,}",
+        "dependents": f"{_adoption['repositories']:,}",
+        "dependents-listed": f"{_adoption['repositories_listed']:,}",
+        "dependents-rounded": str(_adoption["repositories_rounded"]),
+        "dependent-packages": f"{_adoption['packages']:,}",
+        "dependents-date": str(_adoption["generated_at"]),
+    }
+
+
+# Substitutions such as |count-geometry| and |count-dependents| for the landing page.
+rst_epilog = "\n".join(f".. |count-{key}| replace:: {value}" for key, value in _landing_page_counts().items())
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -305,6 +402,43 @@ _PYDATA_THEME_OPTIONS = {
 
 html_theme_options = _PYDATA_THEME_OPTIONS if DOCS_THEME == "pydata" else _FURO_THEME_OPTIONS
 
+# Navbar dropdown menus, rendered by ``_static/js/custom.js``: "Support" and "About" hang off the
+# toctree entries of the same name in index.rst; "Ecosystem" is a grouped panel inserted before
+# "About". Entries are ``[label, target]`` where the target is a docname (checked against the build,
+# so a renamed page fails ``-W`` instead of 404ing from the menu), an external URL, or ``None`` for
+# a "coming soon" placeholder.
+NAVBAR_MENUS = {
+    "Support": [
+        ["Sponsor", "community/sponsor"],
+        ["Contribute", "community/contribute"],
+    ],
+    "About": [
+        ["FAQ", "community/faqs"],
+        ["Team", "get-started/governance"],
+        ["Community Guide", "community/community"],
+        ["Code of Conduct", "https://github.com/kornia/kornia/blob/main/CODE_OF_CONDUCT.md"],
+        ["Citing Kornia", "get-started/about"],
+        ["Adoption", "community/adoption"],
+        ["API Stability Policy", "get-started/stability"],
+    ],
+    "Ecosystem": {
+        "official libs": [
+            ["kornia", "https://github.com/kornia/kornia"],
+            ["kornia-rs", "https://github.com/kornia/kornia-rs"],
+        ],
+        "help": [
+            ["Discord chat", "https://discord.gg/HfnywwpBnD"],
+            ["GitHub discussions", "https://github.com/kornia/kornia/discussions"],
+            ["Issue tracker", "https://github.com/kornia/kornia/issues"],
+        ],
+        "news": [
+            ["Twitter / X", "https://twitter.com/kornia_foss"],
+            ["LinkedIn", "https://www.linkedin.com/company/kornia/"],
+            ["Newsletter", None],
+        ],
+    },
+}
+
 if DOCS_THEME == "pydata":
     # Feeds the "Edit this page" button and the source links.
     html_context = {
@@ -482,7 +616,8 @@ def _inject_social_metatags(app, pagename, templatename, context, doctree):
     description = " ".join(description.split())
     if len(description) > 300:
         description = description[:297].rsplit(" ", 1)[0] + "..."
-    title = context.get("title") or project
+    # Sphinx hands the title over already HTML-escaped; unescape so ``esc`` below does not double it.
+    title = html.unescape(context.get("title") or project)
     if pagename != master_doc:
         title = f"{title} - {project}"
     url = f"{html_baseurl}{pagename}.html"
@@ -507,5 +642,72 @@ def _inject_social_metatags(app, pagename, templatename, context, doctree):
     context["metatags"] = metatags + "\n" + "\n".join(extra)
 
 
+# -- Deep-link compatibility ------------------------------------------------
+
+# Pages that used to hold a whole module's reference and are now section indexes, with the
+# objects spread over per-topic subpages. Years of external links point at anchors on these
+# pages (``augmentation.module.html#kornia.augmentation.RandomAffine``), and a server-side
+# redirect cannot see the fragment. Each of these pages therefore embeds a JSON map from
+# object name to the page that documents it now, and ``_static/js/custom.js`` redirects when
+# the requested fragment is in the map. Map the page to its old ``kornia.<module>`` prefix.
+_SPLIT_INDEX_PAGES = {
+    "augmentation.module": "kornia.augmentation.",
+    "color": "kornia.color.",
+    "enhance": "kornia.enhance.",
+    "feature": "kornia.feature.",
+    "filters": "kornia.filters.",
+    "image": "kornia.image.",
+    "losses": "kornia.losses.",
+    "metrics": "kornia.metrics.",
+}
+
+
+def _inject_anchor_redirects(app, pagename, templatename, context, doctree):
+    """Embed ``{new docname: [object names]}`` on the pages listed in ``_SPLIT_INDEX_PAGES``."""
+    prefix = _SPLIT_INDEX_PAGES.get(pagename)
+    if prefix is None:
+        return
+    moved: dict[str, list[str]] = {}
+    for fullname, entry in app.env.domaindata["py"]["objects"].items():
+        if fullname.startswith(prefix) and entry.docname != pagename:
+            moved.setdefault(entry.docname, []).append(fullname)
+    if not moved:
+        return
+    context["metatags"] = (context.get("metatags", "") or "") + "\n" + _json_script("kornia-anchor-redirects", moved)
+
+
+def _json_script(element_id, data):
+    payload = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
+    return f'<script type="application/json" id="{element_id}">{payload}</script>'
+
+
+# -- Navbar menus -----------------------------------------------------------
+
+
+def _navbar_menu_entries():
+    for menu in NAVBAR_MENUS.values():
+        groups = menu.values() if isinstance(menu, dict) else [menu]
+        for group in groups:
+            yield from group
+
+
+def _check_navbar_menus(app, env):
+    """Fail the build (under ``-W``) when a menu entry points at a page that no longer exists."""
+    for label, target in _navbar_menu_entries():
+        if target is None or "://" in target:
+            continue
+        if target not in env.found_docs:
+            logger.warning("NAVBAR_MENUS entry %r points at unknown document %r", label, target)
+
+
+def _inject_navbar_menus(app, pagename, templatename, context, doctree):
+    if DOCS_THEME != "pydata":
+        return
+    context["metatags"] = (context.get("metatags", "") or "") + "\n" + _json_script("kornia-navbar-menus", NAVBAR_MENUS)
+
+
 def setup(app):
     app.connect("html-page-context", _inject_social_metatags)
+    app.connect("html-page-context", _inject_anchor_redirects)
+    app.connect("html-page-context", _inject_navbar_menus)
+    app.connect("env-check-consistency", _check_navbar_menus)

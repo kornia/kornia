@@ -2,7 +2,7 @@ kornia.enhance
 ==============
 
 .. meta::
-   :description: The Kornia.enhance module provides a suite of image enhancement functions including brightness, contrast, hue, saturation adjustments, as well as normalization and equalization techniques. It also features advanced transformations like ZCA whitening and differentiable JPEG codec. Explore interactive demos on Hugging Face Spaces.
+   :description: The Kornia.enhance module provides a suite of image enhancement functions including brightness, contrast, hue, saturation adjustments, as well as normalization and equalization techniques. It also features advanced transformations like ZCA whitening and differentiable JPEG codec.
 
 .. currentmodule:: kornia.enhance
 

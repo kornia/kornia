@@ -90,64 +90,489 @@ html[data-theme="dark"] {
 
 /* ---------------- Landing page hero ---------------- */
 
+/* Two-column split: copy + install command on the left, the "Why Kornia?" tabs on the right.
+   sphinx-design renders `.. grid::` as a Bootstrap row; the column classes come from index.rst. */
 .kornia-hero {
-    display: flex;
-    flex-direction: column;
+    margin: 2.5rem 0 0;
+}
+
+.kornia-hero > .sd-row {
     align-items: center;
-    text-align: center;
-    margin: 2.5rem 0 3rem;
+}
+
+.kornia-hero-copy {
+    /* sphinx-design makes grid items flex columns; keep the pill and buttons at their own width. */
+    align-items: flex-start;
+    text-align: left;
+    padding-right: 1.5rem;
+}
+
+.kornia-pip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0 0 2.25rem;
+    padding: 0.35rem 0.5rem 0.35rem 0.9rem;
+    border: 1px solid var(--pst-color-border);
+    border-radius: 999px;
+    background: var(--pst-color-surface);
+    font-family: var(--pst-font-family-monospace);
+    font-size: 0.92rem;
+}
+
+.kornia-pip__prompt {
+    color: var(--pst-color-primary);
+    font-weight: 700;
+    user-select: none;
+}
+
+.kornia-pip__cmd {
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--pst-color-text-base);
+    font-size: inherit;
+}
+
+.kornia-pip__copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--pst-color-text-muted);
+    cursor: pointer;
+}
+
+.kornia-pip__copy:hover,
+.kornia-pip__copy:focus-visible {
+    background: var(--pst-color-background);
+    color: var(--pst-color-primary);
+}
+
+.kornia-pip__copy.is-copied {
+    color: var(--pst-color-success);
 }
 
 .kornia-hero__title {
-    font-size: 3.2rem;
-    line-height: 1.08;
+    font-size: 2.4rem;
+    line-height: 1.1;
     font-weight: 800;
     letter-spacing: -0.02em;
-    margin: 0 0 1rem;
+    margin: 0 0 1.5rem;
 }
 
 .kornia-accent {
-    background: linear-gradient(90deg, #3980f5, #8b5cf6 55%, #e8506d);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-}
-
-.kornia-hero__tagline {
-    font-size: 1.12rem;
-    line-height: 1.55;
-    color: var(--pst-color-text-muted, #5a626b);
-    max-width: 40rem;
-    margin: 0 auto;
+    color: var(--pst-color-primary);
 }
 
 .kornia-hero-actions {
     display: flex;
     flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.6rem;
-    margin: 1.4rem 0 0;
+    gap: 0.75rem;
+    margin: 1.5rem 0 0;
 }
 
 .kornia-hero-actions p {
     margin: 0;
 }
 
-.kornia-stats {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.4rem 1.4rem;
-    margin-top: 1.4rem;
-    font-size: 0.9rem;
-    color: var(--pst-color-text-muted, #5a626b);
+.kornia-hero-actions a.sd-btn {
+    padding: 0.55rem 1.3rem;
+    font-size: 1rem;
 }
 
-/* "What can it do?" gallery: uniform before/after thumbnails. */
+/* Qualified with the grid-item class so it beats sphinx-design's ``.sd-sphinx-override p`` reset. */
+.kornia-hero-copy .kornia-hero__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.5rem;
+    margin: 1.75rem 0 0;
+    font-size: 0.92rem;
+}
+
+.kornia-hero__links a {
+    color: var(--pst-color-text-muted);
+    text-decoration: none;
+}
+
+.kornia-hero__links a:hover {
+    color: var(--pst-color-primary);
+    text-decoration: underline;
+}
+
+.kornia-hero__links i {
+    margin-right: 0.3rem;
+}
+
+/* Small uppercase label over the right panel's tabs. */
+.kornia-hero__eyebrow {
+    margin: 0 0 0.6rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--pst-color-text-muted);
+}
+
+/* "Why Kornia?" tabs as a segmented pill row above one card. The card has a fixed height so
+   switching tabs never moves the page; each tab's content is written to fit inside it. */
+.kornia-hero-demo .sd-tab-set {
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.bd-content .kornia-hero-demo .sd-tab-set > label,
+.bd-content .kornia-hero-demo .sd-tab-set > input:checked + label,
+.bd-content .kornia-hero-demo .sd-tab-set > input:focus-visible + label,
+.bd-content .kornia-hero-demo .sd-tab-set > input:not(:checked, :focus-visible) + label:hover {
+    top: 0;
+    margin: 0;
+    padding: 0.45rem 0.9rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background-color: transparent;
+    color: var(--pst-color-text-muted);
+    font-size: 0.9rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.bd-content .kornia-hero-demo .sd-tab-set > input:not(:checked, :focus-visible) + label:hover {
+    background-color: var(--pst-color-surface);
+    color: var(--pst-color-text-base);
+}
+
+.bd-content .kornia-hero-demo .sd-tab-set > input:focus-visible + label {
+    border-color: var(--pst-color-accent);
+}
+
+.bd-content .kornia-hero-demo .sd-tab-set > input:checked + label {
+    position: relative;
+    overflow: hidden;
+    background-color: var(--pst-color-primary);
+    color: #fff;
+}
+
+/* While custom.js cycles the tabs, the selected pill carries a thin progress line that fills over
+   one period (``--kornia-tab-period`` is set by the script). The pseudo-element is recreated each
+   time the selection moves, so the animation restarts with it. */
+.bd-content .kornia-hero-demo .sd-tab-set.is-autoplaying > input:checked + label::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 3px;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.55);
+    transform-origin: left;
+    animation: kornia-tab-progress var(--kornia-tab-period, 7000ms) linear forwards;
+}
+
+.bd-content .kornia-hero-demo .sd-tab-set.is-autoplaying.is-paused > input:checked + label::after {
+    animation-play-state: paused;
+}
+
+@keyframes kornia-tab-progress {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+}
+
+.bd-content .kornia-hero-demo .sd-tab-set > label .octicon {
+    margin-right: 0.15rem;
+}
+
+/* The card: illustration bleeds to the edges, then a compact footer with the one-liner, the claim
+   on the left and the link on the right. */
+.bd-content .kornia-hero-demo .sd-tab-set .sd-tab-content {
+    width: 100%;
+    height: 24rem;
+    margin-top: 0.85rem;
+    padding: 0;
+    grid-template-columns: 1fr auto;
+    grid-auto-rows: max-content;
+    align-content: start;
+    column-gap: 1.25rem;
+    border: 1px solid var(--pst-color-border);
+    border-radius: 0.9rem;
+    overflow: hidden;
+}
+
+/* Only the selected pane is laid out; sphinx-design hides the others with display: none. */
+.bd-content .kornia-hero-demo .sd-tab-set > input:checked + label + .sd-tab-content {
+    display: grid;
+}
+
+.kornia-hero-demo .sd-tab-content > .kornia-tab-visual,
+.kornia-hero-demo .sd-tab-content > div.highlight-python {
+    grid-column: 1 / -1;
+}
+
+.kornia-hero-demo .sd-tab-content > div.highlight-python {
+    margin: 0 1.25rem;
+}
+
+.kornia-hero-demo .sd-tab-content > p {
+    margin: 0.9rem 0 0 1.25rem;
+}
+
+.kornia-hero-demo .sd-tab-content > p:last-child {
+    margin: 0.9rem 1.25rem 0 0;
+    align-self: start;
+    white-space: nowrap;
+}
+
+/* The differentiable tab has no code line; the claim then follows the visual directly. */
+.kornia-hero-demo .sd-tab-content > .kornia-tab-visual + p {
+    margin-top: 1.1rem;
+}
+
+/* Per-tab illustration: a fixed-height frame, so the four tabs line up. */
+.kornia-tab-visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 15rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--pst-color-border);
+    background: var(--pst-color-surface);
+    overflow: hidden;
+}
+
+.kornia-tab-visual--image {
+    justify-content: flex-start;
+    gap: 1.5rem;
+    padding: 0;
+    background: #000;
+    color: #e6e6e6;
+}
+
+.kornia-tab-visual img {
+    flex: 0 0 auto;
+    max-width: 55%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.kornia-tab-visual__aside {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+    padding-right: 1rem;
+    font-size: 0.78rem;
+}
+
+.kornia-tab-visual__aside code {
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: #e6e6e6;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.kornia-tab-visual__eyebrow {
+    margin: 0;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--pst-color-primary);
+}
+
+/* Inline SVG illustrations pick their colours up from the theme. */
+.kornia-illo {
+    width: 100%;
+    height: 100%;
+    font-family: var(--pst-font-family-base);
+}
+
+.kornia-illo text {
+    fill: var(--pst-color-text-base);
+    font-size: 15px;
+}
+
+.kornia-illo .illo-title {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.kornia-illo .illo-label,
+.kornia-illo .illo-note {
+    fill: var(--pst-color-text-muted);
+    font-size: 13px;
+}
+
+.kornia-illo .illo-mono {
+    font-family: var(--pst-font-family-monospace);
+    font-size: 12.5px;
+}
+
+.kornia-illo .illo-primary {
+    fill: var(--pst-color-primary);
+}
+
+.kornia-illo .illo-muted {
+    fill: var(--pst-color-border);
+}
+
+.kornia-illo .illo-box {
+    fill: var(--pst-color-background);
+    stroke: var(--pst-color-border);
+    stroke-width: 1.5;
+}
+
+.kornia-illo .illo-pill {
+    fill: var(--pst-color-background);
+    stroke: var(--pst-color-border);
+    stroke-width: 1.5;
+}
+
+.kornia-illo .illo-pill-text {
+    font-size: 12.5px;
+    font-weight: 600;
+}
+
+.kornia-illo .illo-line {
+    fill: none;
+    stroke: var(--pst-color-border);
+    stroke-width: 2;
+}
+
+.kornia-illo .illo-arrowhead {
+    fill: var(--pst-color-border);
+}
+
+.kornia-illo .illo-on-primary {
+    fill: #fff;
+    font-weight: 600;
+}
+
+.kornia-hero-demo .highlight pre {
+    padding: 0.55rem 0.8rem;
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+@media (max-width: 991.98px) {
+    .kornia-hero {
+        margin-top: 1.5rem;
+    }
+
+    .kornia-hero-copy {
+        padding-right: 0;
+        margin-bottom: 1.5rem;
+    }
+
+    .kornia-hero__title {
+        font-size: 2.1rem;
+    }
+
+    .bd-content .kornia-hero-demo .sd-tab-set .sd-tab-content {
+        height: auto;
+    }
+
+    .kornia-hero-demo .sd-tab-content > p:last-child {
+        grid-column: 1 / -1;
+        margin: 0.6rem 1.25rem 1rem;
+    }
+}
+
+/* Adoption page: two count cards at the top, each jumping to its table. */
+.kornia-adoption {
+    margin-bottom: 1.75rem;
+}
+
+.kornia-adoption .sd-card-body {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+    padding: 0.8rem 1.25rem;
+}
+
+.kornia-adoption .sd-card-text {
+    margin: 0;
+    font-size: 0.92rem;
+    line-height: 1.4;
+    color: var(--pst-color-text-muted);
+}
+
+.kornia-adoption .sd-card-text strong {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--pst-color-text-base);
+}
+
+.kornia-adoption .kornia-adoption-count {
+    /* Fixed width and right alignment keep the two figures' last digits in one column; wide
+       enough for a five-digit figure with its thousands separator ("17,565"). */
+    flex: 0 0 8rem;
+    text-align: right;
+    font-size: 2.1rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--pst-color-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+/* One-paragraph lead under a section heading. */
+.kornia-section-lead {
+    max-width: 60rem;
+    margin: -0.4rem 0 1.4rem;
+    font-size: 0.98rem;
+    color: var(--pst-color-text-muted);
+}
+
+/* "Features": uniform before/after thumbnails plus a count-and-link footer. */
 .kornia-gallery .sd-card-img-top {
     aspect-ratio: 640 / 234;
     object-fit: cover;
     border-radius: 8px 8px 0 0;
+}
+
+.kornia-gallery .sd-card-title {
+    font-family: var(--pst-font-family-base);
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.kornia-gallery .sd-card-text {
+    font-size: 0.88rem;
+    line-height: 1.5;
+    color: var(--pst-color-text-muted);
+}
+
+.kornia-gallery .sd-card-footer {
+    padding: 0.5rem 1rem 0.75rem;
+    border-top: 0;
+    background: transparent;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--pst-color-primary);
+}
+
+.kornia-gallery .sd-card-footer p {
+    margin: 0;
+}
+
+.kornia-gallery .sd-card-footer code {
+    color: inherit;
+    background: transparent;
+    padding: 0;
+    font-size: 0.95em;
+}
+
+.kornia-learn-more {
+    margin-top: 1.5rem;
+    font-size: 0.92rem;
 }
 
 /* ---------------- Component restyling: tables, tabs ---------------- */
@@ -283,36 +708,6 @@ html[data-theme="dark"] .bd-content .sd-tab-set .sd-tab-content {
     text-decoration: none !important;
 }
 
-/* "Why Kornia?" tabs: light-red marker on the line that matters, and a proof strip.
-   The html[data-theme] prefix outranks the pygments theme rules that otherwise win. */
-html .kornia-why-tabs .highlight span.hll,
-html[data-theme="light"] .kornia-why-tabs .highlight span.hll {
-    background: rgba(232, 80, 109, 0.16);
-    border-radius: 3px;
-}
-
-html[data-theme="dark"] .kornia-why-tabs .highlight span.hll {
-    background: rgba(232, 80, 109, 0.28);
-}
-
-.kornia-why-tabs .kornia-proof {
-    background: var(--pst-color-surface);
-    border-left: 3px solid #3980f5;
-    border-radius: 6px;
-    padding: 0.6rem 0.9rem;
-    font-size: 0.92rem;
-    margin: 1rem 0;
-}
-
-.kornia-why-tabs figure {
-    margin: 1rem 0;
-}
-
-.kornia-why-tabs figcaption p {
-    font-size: 0.85rem;
-    color: var(--pst-color-text-muted);
-}
-
 /* Guide landing: the three steps as full-width horizontal rows (number/title left, text right). */
 .kornia-steps .sd-card {
     border-radius: 10px;
@@ -385,7 +780,9 @@ html[data-theme="dark"] .kornia-why-tabs .highlight span.hll {
     text-align: center;
     font-size: 0.88rem;
     color: var(--pst-color-text-muted);
-    margin: 0.5rem 0 2rem;
+    margin: 2.5rem 0 0;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--pst-color-border);
 }
 
 /* Non-link footer entries (e.g. the newsletter placeholder). */
@@ -501,6 +898,50 @@ html[data-theme="dark"] .kornia-why-tabs .highlight span.hll {
     border: none;
     box-shadow: none;
     background: transparent;
+}
+
+/* Primary-sidebar copy of the nav (narrow viewports). The nav sits in ``navbar_end`` (conf.py), so
+   pydata lays its sidebar copy out in one row with the theme switcher and icon links, squeezing the
+   links into a third of the width; stack the row into a column instead. */
+.bd-sidebar-primary .sidebar-header-items__end {
+    flex-direction: column;
+    align-items: stretch;
+    row-gap: 0.75rem;
+}
+
+.bd-sidebar-primary .sidebar-header-items__end > .navbar-item {
+    width: 100%;
+}
+
+.bd-sidebar-primary .sidebar-header-items__end .navbar-icon-links {
+    padding-left: 0.25rem;
+}
+
+/* Menus are plain nested lists, always open. */
+.kornia-navbar-dropdown--inline .kornia-navbar-dropdown__menu,
+.kornia-navbar-dropdown--inline .kornia-navbar-dropdown__menu--mega {
+    display: block;
+    position: static;
+    min-width: 0;
+    padding: 0 0 0.25rem 0.75rem;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+}
+
+.kornia-navbar-dropdown--inline .kornia-navbar-dropdown__menu a.nav-link {
+    white-space: normal;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.95em;
+}
+
+.kornia-navbar-dropdown--inline .kornia-navbar-dropdown__group {
+    padding-left: 0.6rem;
+}
+
+.kornia-navbar-dropdown--inline .kornia-navbar-dropdown__caret {
+    display: none;
 }
 
 .kornia-navbar-dropdown__group {

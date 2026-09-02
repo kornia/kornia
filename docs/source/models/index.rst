@@ -4,8 +4,9 @@ Kornia Models
 .. meta::
    :description: The deep learning models shipped with Kornia, grouped by task, with their papers, tasks and licences: RT-DETR, YuNet, Segment Anything, MobileSAM, EfficientViT, ViT, MobileViT, TinyViT, LoFTR, HardNet, AffNet, SOLD2, DexiNed and DeFMO.
 
-Kornia ships a curated set of pretrained models, each wrapped as a regular ``nn.Module`` that downloads its
-weights on first use. The pages below summarize each model's paper, task and licence. The builders that
+Kornia ships a curated set of model architectures, each wrapped as a regular ``nn.Module``. Most of them come with
+pretrained weights that are downloaded on first use; MobileViT ships as an architecture only, for training or for
+loading your own checkpoint. The pages below summarize each model's paper, task and licence. The builders that
 construct them are documented on the :doc:`kornia.models </models>` API page, and the local-feature models under
 :doc:`kornia.feature </feature>`.
 
