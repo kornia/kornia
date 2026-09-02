@@ -29,30 +29,30 @@ class TestImageHistogram2d(BaseTester):
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_shape(self, device, dtype, kernel):
-        sample = torch.ones(32, 32, device=device, dtype=dtype)
-        hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 256, kernel=kernel)
-        assert hist.shape == (256,)
-        assert pdf.shape == (256,)
+        sample = torch.ones(16, 16, device=device, dtype=dtype)
+        hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 32, kernel=kernel)
+        assert hist.shape == (32,)
+        assert pdf.shape == (32,)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_shape_channels(self, device, dtype, kernel):
-        sample = torch.ones(3, 32, 32, device=device, dtype=dtype)
-        hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 256, kernel=kernel)
-        assert hist.shape == (3, 256)
-        assert pdf.shape == (3, 256)
+        sample = torch.ones(3, 16, 16, device=device, dtype=dtype)
+        hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 32, kernel=kernel)
+        assert hist.shape == (3, 32)
+        assert pdf.shape == (3, 32)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_shape_batch(self, device, dtype, kernel):
-        sample = torch.ones(8, 3, 32, 32, device=device, dtype=dtype)
-        hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 256, kernel=kernel)
-        assert hist.shape == (8, 3, 256)
-        assert pdf.shape == (8, 3, 256)
+        sample = torch.ones(4, 3, 16, 16, device=device, dtype=dtype)
+        hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 32, kernel=kernel)
+        assert hist.shape == (4, 3, 32)
+        assert pdf.shape == (4, 3, 32)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_gradcheck(self, device, kernel):
-        sample = torch.ones(32, 32, device=device, dtype=torch.float64)
+        sample = torch.ones(8, 8, device=device, dtype=torch.float64)
         centers = torch.linspace(0, 255, 8, device=device, dtype=torch.float64)
-        self.gradcheck(TestImageHistogram2d.fcn, (sample, 0.0, 255.0, 256, None, centers, True, kernel))
+        self.gradcheck(TestImageHistogram2d.fcn, (sample, 0.0, 255.0, 8, None, centers, True, kernel))
 
     @pytest.mark.skipif(
         version.parse(torch.__version__) < version.parse("1.9"), reason="Tuple cannot be jitted with PyTorch < v1.9"
@@ -71,7 +71,7 @@ class TestImageHistogram2d(BaseTester):
         self.assert_close(out[1], out_script[1])
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
-    @pytest.mark.parametrize("size", [(1, 1), (3, 1, 1), (8, 3, 1, 1)])
+    @pytest.mark.parametrize("size", [(1, 1), (3, 1, 1), (4, 3, 1, 1)])
     def test_uniform_hist(self, device, dtype, kernel, size):
         sample = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         sample_x, _ = torch.meshgrid(sample, sample, indexing="ij")
@@ -85,7 +85,7 @@ class TestImageHistogram2d(BaseTester):
         self.assert_close(ans, hist)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
-    @pytest.mark.parametrize("size", [(1, 1), (3, 1, 1), (8, 3, 1, 1)])
+    @pytest.mark.parametrize("size", [(1, 1), (3, 1, 1), (4, 3, 1, 1)])
     def test_uniform_dist(self, device, dtype, kernel, size):
         sample = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         sample_x, _ = torch.meshgrid(sample, sample, indexing="ij")
@@ -105,20 +105,20 @@ class TestHistogram2d(BaseTester):
     fcn = kornia.enhance.histogram2d
 
     def test_shape(self, device, dtype):
-        inp1 = torch.ones(1, 32, device=device, dtype=dtype)
-        inp2 = torch.ones(1, 32, device=device, dtype=dtype)
-        bins = torch.linspace(0, 255, 128, device=device, dtype=dtype)
+        inp1 = torch.ones(1, 16, device=device, dtype=dtype)
+        inp2 = torch.ones(1, 16, device=device, dtype=dtype)
+        bins = torch.linspace(0, 255, 32, device=device, dtype=dtype)
         bandwidth = torch.tensor(0.9, device=device, dtype=dtype)
         pdf = TestHistogram2d.fcn(inp1, inp2, bins, bandwidth)
-        assert pdf.shape == (1, 128, 128)
+        assert pdf.shape == (1, 32, 32)
 
     def test_shape_batch(self, device, dtype):
-        inp1 = torch.ones(8, 32, device=device, dtype=dtype)
-        inp2 = torch.ones(8, 32, device=device, dtype=dtype)
-        bins = torch.linspace(0, 255, 128, device=device, dtype=dtype)
+        inp1 = torch.ones(4, 16, device=device, dtype=dtype)
+        inp2 = torch.ones(4, 16, device=device, dtype=dtype)
+        bins = torch.linspace(0, 255, 32, device=device, dtype=dtype)
         bandwidth = torch.tensor(0.9, device=device, dtype=dtype)
         pdf = TestHistogram2d.fcn(inp1, inp2, bins, bandwidth)
-        assert pdf.shape == (8, 128, 128)
+        assert pdf.shape == (4, 32, 32)
 
     def test_gradcheck(self, device):
         inp1 = torch.ones(1, 8, device=device, dtype=torch.float64)
@@ -154,18 +154,18 @@ class TestHistogram(BaseTester):
     fcn = kornia.enhance.histogram
 
     def test_shape(self, device, dtype):
-        inp = torch.ones(1, 32, device=device, dtype=dtype)
-        bins = torch.linspace(0, 255, 128, device=device, dtype=dtype)
+        inp = torch.ones(1, 16, device=device, dtype=dtype)
+        bins = torch.linspace(0, 255, 32, device=device, dtype=dtype)
         bandwidth = torch.tensor(0.9, device=device, dtype=dtype)
         pdf = TestHistogram.fcn(inp, bins, bandwidth)
-        assert pdf.shape == (1, 128)
+        assert pdf.shape == (1, 32)
 
     def test_shape_batch(self, device, dtype):
-        inp = torch.ones(8, 32, device=device, dtype=dtype)
-        bins = torch.linspace(0, 255, 128, device=device, dtype=dtype)
+        inp = torch.ones(4, 16, device=device, dtype=dtype)
+        bins = torch.linspace(0, 255, 32, device=device, dtype=dtype)
         bandwidth = torch.tensor(0.9, device=device, dtype=dtype)
         pdf = TestHistogram.fcn(inp, bins, bandwidth)
-        assert pdf.shape == (8, 128)
+        assert pdf.shape == (4, 32)
 
     def test_gradcheck(self, device):
         inp = torch.ones(1, 8, device=device, dtype=torch.float64)

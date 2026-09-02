@@ -30,12 +30,15 @@ pixi install -e py313
 pixi run -e py313 install
 pixi run -e cuda install
 pixi run test-module tests/path/to/test_file.py
+pixi run test-module tests/path/to/test_file.py::TestClass::test_method
+pixi run test-module tests/path/to/ -k "expression"
 KORNIA_TEST_OPTIMIZER=inductor pixi run test-module tests/path/to/test_file.py
 pixi run test-quick
 pixi run test-slow
 pixi run lint
 pixi run pre-commit-all
 pixi run typecheck
+pixi run toml-fmt
 pixi run doctest
 pixi run doctest-weights
 pixi run build-docs
@@ -51,6 +54,8 @@ KORNIA_TEST_DEVICE=cuda KORNIA_TEST_DTYPE=float32 pixi run test-module tests/geo
 ```
 
 Supported fixtures include CPU, CUDA, MPS, and TPU when available, and `float16`, `bfloat16`, `float32`, and `float64`. Run focused checks first and expand them in proportion to the change.
+
+`test-module` forwards its arguments to `pytest`, so a node ID or a `-k` expression narrows a run to a single test.
 
 Use `KORNIA_TEST_RUNSLOW=true` to include slow tests. `KORNIA_TEST_OPTIMIZER=inductor` enables the dynamo and compile tests, which are deselected when the variable is unset. `pixi run doctest` skips docstring examples that would download an uncached model checkpoint, so it stays fast and works offline; use `pixi run doctest-weights` (or `KORNIA_DOCTEST_DOWNLOAD=1`) to run those examples for real, which costs ~838 MB on a cold cache. Pull-request CI relies on the restored weights cache and skips whatever it misses; the post-merge run on `main` downloads, so the model examples are always exercised somewhere. Before presenting a code change as finished, run the full pre-commit command above together with focused tests and other relevant checks; `pixi run lint` runs only the Ruff hooks.
 
@@ -90,7 +95,7 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
   exact strict and full-manifest regeneration commands.
 - CUDA `float16`/`bfloat16` tests need per-test subprocess isolation; use `pixi run -e cuda test-cuda-half` or pytest's `--isolate-half-precision` option.
 - MPS does not support float64 gradcheck. MPS autocast can also change the effective dtype; inspect nearby tests before changing tolerances or skips.
-- TF32 matmul is disabled by default; `--tf32` enables it. cuDNN convolutions still use PyTorch's TF32 default.
+- TF32 matmul is disabled by default; `--tf32` enables it. cuDNN convolutions still use PyTorch's TF32 default. Tests marked `tf32` are xfailed at collection unless `--tf32` is passed, and that marker is non-strict, so a default run reports neither their failure nor their recovery.
 - Preserve device and dtype rather than creating implicit CPU or default-dtype tensors. Use the injected `device` and `dtype` fixtures in tests.
 
 ## Library preferences
@@ -102,6 +107,7 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 - Keep numerical correctness tests self-contained. For expected values produced by an optional reference library, prefer a hardcoded literal plus the small generation snippet and source. Optional-dependency integration tests, including ONNX tests, may still use `pytest.importorskip`.
 - For a new algorithm, name the source that defines it, such as a paper or a reference implementation in PyTorch, OpenCV, or scikit-image.
 - Public APIs need type hints, docstrings, and exports.
+- `tests/api_surface.json` is a checked-in inventory of the public names of the stable-core modules, and `tests/test_api_surface.py` fails when one of them disappears — the deliberate review moment the stability policy (`docs/source/get-started/stability.rst`) requires. Removing or renaming a public name means editing that JSON in the same change; additions do not fail the test, and `tests.test_api_surface.regenerate()` rewrites the inventory from the live library once new public API has landed.
 - The codebase keeps a 120-character line length and Apache 2.0 source headers. Ruff and `ty` enforce the current style and types.
 - JIT-compatible modules have stricter typing constraints. Follow nearby annotations and use `torch.Tensor` directly where TorchScript expects it.
 - For non-JIT modules, use `from __future__ import annotations`.
@@ -109,6 +115,7 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 
 ## Documentation and generated examples
 
+- `CHANGELOG.md` is maintained per change, not at release time. A user-visible change adds an entry under `## Unreleased` citing its PR number, under the Keep a Changelog headings the file already uses (`Added`, `Bug fixes`, `Breaking changes`); a breaking change says what used to happen as well as what happens now.
 - Add every new public class or function to the corresponding `docs/source/*.rst` page so it appears in the rendered API reference.
 - Some modules document a known defect inline and link its tracking issue; `grep -rn "github.com/kornia/kornia/issues/" kornia/` finds them. That prose is part of the fix's blast radius: **before merging a change that closes one of those issues, run `grep -rnE "#NNNN|issues/NNNN" kornia/ tests/`.** Match the issue number rather than a name or a phrase — the wording varies across `Tracked in #NNNN`, a lowercase `tracked in` clause, a `Note:` block, a runtime error message, an `xfail` `reason=`, a plain comment and a test-name suffix (`test_wart_*_<issue>` and `test_convention_*_<issue>`, where that convention was followed), and a rendered link label can disagree with the URL beneath it. The `#`/`issues/` anchors keep the pattern off float literals. A surviving hit in `kornia/` means the change is incomplete. Hits in `tests/` are the pins that record the documented behavior; each has to be re-checked in the same change — a now-XPASSing strict `xfail` dropped, a wart assertion inverted — but a pin goes on naming its issue afterwards, so a hit there is not by itself a defect. Not every documented issue has a pin, so an empty `tests/` result is an answer rather than a failed search.
 - When adding a feature detector or descriptor, update the `responses` list in `docs/generate_examples.py` and add the matching branch that renders its heatmap or score visualization. Follow the existing `DISK`, `ALIKED`, and `XFeat` examples and preserve the expected `(B, 3, H, W)` image shapes.

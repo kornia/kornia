@@ -1,7 +1,11 @@
 .. _dexined_model:
 
-Dexined (edge detection)
-------------------------
+DexiNed
+========
+
+.. rst-class:: kornia-badges
+
+:bdg-primary:`Edge detection` :bdg-secondary:`MIT`
 
 .. card::
     :link: https://www.computer.org/csdl/proceedings-article/wacv/2020/09093290/1jPbjFHmwi4

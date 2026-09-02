@@ -101,7 +101,9 @@ class RigidAffineAugmentationBase3D(AugmentationBase3D):
         trans_matrix_identity = self.identity_matrix(in_tensor)
 
         if trans_matrix_applied.shape[0] == to_apply.shape[0] == trans_matrix_identity.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1)))
+            to_apply_expanded = to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1))).to(
+                trans_matrix_applied.device
+            )
             trans_matrix = torch.where(to_apply_expanded, trans_matrix_applied, trans_matrix_identity)
         else:
             trans_matrix = trans_matrix_applied if bool(to_apply.any()) else trans_matrix_identity

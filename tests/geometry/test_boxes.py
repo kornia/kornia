@@ -21,12 +21,205 @@ import pytest
 import torch
 
 from kornia.geometry import boxes as boxes_module
+from kornia.geometry.bbox import infer_bbox_shape
 from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
 
 from testing.base import BaseTester
 
 
 class TestBoxes2D(BaseTester):
+    def test_convention_from_tensor_xyxy_stores_inclusive_vertices_in_tl_tr_br_bl_order(self, device, dtype):
+        # Convention pin: Boxes stores four inclusive (x, y) vertices in clockwise
+        # top-left, top-right, bottom-right, bottom-left order. The asymmetric
+        # exclusive xyxy input makes both the coordinate order and the +1 conversion
+        # observable. The expected data carries the -1 tracked in kornia#3934.
+        boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
+        expected = torch.tensor([[[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]]], device=device, dtype=dtype)
+        self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
+    def test_convention_axis_aligned_box_round_trips_in_each_mode(self, mode, device, dtype):
+        # Convention pin: an axis-aligned rectangle whose extent is at least one unit
+        # per axis round-trips in each mode. The source values describe the same
+        # asymmetric box with exclusive extent (4, 2). Sub-unit extents are the
+        # documented boundary of this guarantee and are pinned separately below.
+        source_by_mode = {
+            "xyxy": [1.0, 2.0, 5.0, 4.0],
+            "xyxy_plus": [1.0, 2.0, 4.0, 3.0],
+            "xywh": [1.0, 2.0, 4.0, 2.0],
+            "vertices": [[1.0, 2.0], [5.0, 2.0], [5.0, 4.0], [1.0, 4.0]],
+            "vertices_plus": [[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]],
+        }
+        source = torch.tensor([source_by_mode[mode]], device=device, dtype=dtype)
+        output = Boxes.from_tensor(source, mode=mode).to_tensor(mode=mode)
+        self.assert_close(output, source, atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize(
+        ("box_dtype", "source_values", "expected_values"),
+        [
+            (torch.bfloat16, [256.0, 256.0, 258.0, 258.0], [256.0, 256.0, 256.0, 256.0]),
+            (torch.float16, [-385.25, 0.0, 400.0, 2.0], [-385.25, 0.0, 399.75, 2.0]),
+        ],
+    )
+    def test_convention_round_trip_requires_exact_intermediate_arithmetic(
+        self, device, box_dtype, source_values, expected_values
+    ):
+        # bfloat16 cannot represent the +/-1 intermediate at 256. The float16
+        # case can represent its offsets, but rounds the cross-zero width first.
+        # Both discrepancies exist only because of the +/-1 offsets tracked in kornia#3934.
+        source = torch.tensor([source_values], device=device, dtype=box_dtype)
+        output = Boxes.from_tensor(source, mode="xyxy").to_tensor("xyxy")
+        expected = torch.tensor([expected_values], device=device, dtype=box_dtype)
+        self.assert_close(output, expected, atol=0.0, rtol=0.0)
+        assert not torch.equal(output, source)
+
+    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
+    def test_wart_sub_unit_extent_round_trip_boundary_4061(self, mode, device, dtype):
+        # Wart pin for kornia#4061: the three converting modes place the top-right
+        # vertex at ``xmin + width - 1``, which lands left of the top-left vertex when
+        # the extent is below one unit. The stored quadrilateral is inverted on both
+        # axes and to_tensor recovers a larger box. 'xyxy_plus' cancels the -1,
+        # while 'vertices_plus' bypasses offset conversion.
+        source_by_mode = {
+            "xyxy": [0.1, 0.1, 0.6, 0.9],
+            "xyxy_plus": [0.1, 0.1, 0.6, 0.9],
+            "xywh": [0.1, 0.1, 0.5, 0.8],
+            "vertices": [[0.1, 0.1], [0.6, 0.1], [0.6, 0.9], [0.1, 0.9]],
+            "vertices_plus": [[0.1, 0.1], [0.6, 0.1], [0.6, 0.9], [0.1, 0.9]],
+        }
+        expected_by_mode = {
+            "xyxy": [-0.4, -0.1, 1.1, 1.1],
+            "xyxy_plus": [0.1, 0.1, 0.6, 0.9],
+            "xywh": [-0.4, -0.1, 1.5, 1.2],
+            "vertices": [[-0.4, -0.1], [1.1, -0.1], [1.1, 1.1], [-0.4, 1.1]],
+            "vertices_plus": [[0.1, 0.1], [0.6, 0.1], [0.6, 0.9], [0.1, 0.9]],
+        }
+        source = torch.tensor([source_by_mode[mode]], device=device, dtype=dtype)
+        expected = torch.tensor([expected_by_mode[mode]], device=device, dtype=dtype)
+        # validate_boxes=True does not reject the input: the extents are positive.
+        # Half-precision converting modes use dtype-aware tolerance because their
+        # expected decimal results are not all exactly representable.
+        output = Boxes.from_tensor(source, mode=mode, validate_boxes=True).to_tensor(mode=mode)
+        self.assert_close(output, expected)
+
+    def test_wart_get_boxes_shape_uses_inclusive_extent_3934(self, device, dtype):
+        # Wart pin for kornia#3934: raw inclusive vertices spanning x=1..4 and
+        # y=2..3 report (height, width) = (2, 4) because both axes add one.
+        vertices = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        heights, widths = Boxes(vertices).get_boxes_shape()
+        self.assert_close(heights, torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(widths, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+    def test_convention_get_boxes_shape_includes_list_padding(self, device, dtype):
+        # get_boxes_shape uses the padded xywh export, so padding entries appear as
+        # 1-by-1 boxes even though an ordinary to_tensor export trims them. The 1-by-1
+        # value depends on the inclusive +1 tracked in kornia#3934.
+        first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        second = torch.cat([first, first])
+        boxes = Boxes([first, second])
+        exported = boxes.to_tensor("xywh")
+        assert isinstance(exported, list)
+        assert [item.shape for item in exported] == [(1, 4), (2, 4)]
+
+        heights, widths = boxes.get_boxes_shape()
+        expected_heights = torch.tensor([[2.0, 1.0], [2.0, 2.0]], device=device, dtype=dtype)
+        expected_widths = torch.tensor([[4.0, 1.0], [4.0, 4.0]], device=device, dtype=dtype)
+        self.assert_close(heights, expected_heights, atol=0.0, rtol=0.0)
+        self.assert_close(widths, expected_widths, atol=0.0, rtol=0.0)
+
+    def test_wart_vertices_export_is_exclusive_for_inclusive_bbox_consumers_4009(self, device, dtype):
+        # Wart pin for kornia#4009: vertices is an exclusive export, while
+        # infer_bbox_shape reads vertices as inclusive and therefore adds one per axis.
+        boxes = Boxes.from_tensor(torch.tensor([[1.0, 2.0, 5.0, 4.0]], device=device, dtype=dtype), mode="xyxy")
+        heights, widths = infer_bbox_shape(boxes.to_tensor("vertices"))
+        self.assert_close(heights, torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(widths, torch.tensor([5.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("mode", ["vertices", "vertices_plus"])
+    def test_wart_vertices_import_is_not_validated_4177(self, mode, device, dtype):
+        # Wart pin for kornia#4177: neither vertex mode is validated. The exclusive
+        # 'vertices' import also subtracts one from fixed positions, so a non-rectangular
+        # quadrilateral is silently reshaped instead of rejected with validate_boxes=True.
+        # The -1 deformation is the inclusive offset tracked in kornia#3934.
+        quadrilateral = torch.tensor([[[0.0, 0.0], [9.0, 0.0], [3.0, 7.0], [0.0, 1.0]]], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(quadrilateral, mode=mode, validate_boxes=True)
+        expected = quadrilateral.clone()
+        if mode == "vertices":
+            expected = torch.tensor([[[0.0, 0.0], [8.0, 0.0], [2.0, 6.0], [0.0, 0.0]]], device=device, dtype=dtype)
+        self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
+
+    def test_convention_constructor_mode_is_only_an_export_label(self, device, dtype):
+        vertices = torch.tensor([[[1.0, 2.0], [5.0, 2.0], [5.0, 4.0], [1.0, 4.0]]], device=device, dtype=dtype)
+        constructed = Boxes(vertices, mode="vertices").to_tensor()
+        imported = Boxes.from_tensor(vertices, mode="vertices").to_tensor()
+        expected_constructed = torch.tensor(
+            [[[1.0, 2.0], [6.0, 2.0], [6.0, 5.0], [1.0, 5.0]]], device=device, dtype=dtype
+        )
+        self.assert_close(constructed, expected_constructed, atol=0.0, rtol=0.0)
+        self.assert_close(imported, vertices, atol=0.0, rtol=0.0)
+
+    def test_convention_to_tensor_exports_axis_aligned_bounds_of_a_rotated_box(self, device, dtype):
+        # Convention pin: to_tensor reduces the stored vertices with amin/amax, so it
+        # exports axis-aligned bounds. After a shear the export is lossy and
+        # to_tensor('vertices_plus') is not the identity on data.
+        boxes = Boxes(torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype))
+        shear = torch.tensor([[[1.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        sheared = boxes.transform_boxes(shear)
+        expected_data = torch.tensor([[[3.0, 2.0], [6.0, 2.0], [7.0, 3.0], [4.0, 3.0]]], device=device, dtype=dtype)
+        self.assert_close(sheared.data, expected_data, atol=0.0, rtol=0.0)
+        expected_export = torch.tensor([[[3.0, 2.0], [7.0, 2.0], [7.0, 3.0], [3.0, 3.0]]], device=device, dtype=dtype)
+        self.assert_close(sheared.to_tensor("vertices_plus"), expected_export, atol=0.0, rtol=0.0)
+
+    def test_wart_constructor_and_from_tensor_have_different_integer_policies_4012(self, device):
+        # Wart pin for kornia#4012: the constructor rejects integer coordinates,
+        # while from_tensor silently casts them to float32.
+        vertices = torch.tensor([[[1, 2], [4, 2], [4, 3], [1, 3]]], device=device)
+        with pytest.raises(ValueError, match="floating point"):
+            Boxes(vertices)
+        coordinates = torch.tensor([[1, 2, 5, 4]], device=device)
+        assert Boxes.from_tensor(coordinates, mode="xyxy").dtype == torch.float32
+
+        # A list is padded into a tensor of its first element's dtype before the
+        # check, so a mixed-dtype list is judged by its first box alone.
+        floating = vertices.to(torch.float32)
+        assert Boxes([floating, vertices]).dtype == torch.float32
+        with pytest.raises(ValueError, match="floating point"):
+            Boxes([vertices, floating])
+
+        # from_tensor converts each list element independently before the same
+        # first-element dtype merge, so reversing mixed float16/integer inputs
+        # changes the output dtype.
+        half = vertices.to(torch.float16)
+        assert Boxes.from_tensor([half, vertices], mode="vertices_plus").dtype == torch.float16
+        assert Boxes.from_tensor([vertices, half], mode="vertices_plus").dtype == torch.float32
+
+    def test_convention_merge_concatenates_batched_boxes_without_mutating_by_default(self, device, dtype):
+        first = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype))
+        second = Boxes.from_tensor(torch.tensor([[[6.0, 3.0, 9.0, 8.0]]], device=device, dtype=dtype))
+        first_before = first.data.clone()
+        second_before = second.data.clone()
+        merged = first.merge(second)
+        assert merged is not first
+        assert merged.data.shape == (1, 2, 4, 2)
+        self.assert_close(merged.data[:, 0], first_before[:, 0], atol=0.0, rtol=0.0)
+        self.assert_close(merged.data[:, 1], second_before[:, 0], atol=0.0, rtol=0.0)
+        self.assert_close(first.data, first_before, atol=0.0, rtol=0.0)
+        self.assert_close(second.data, second_before, atol=0.0, rtol=0.0)
+
+    def test_convention_index_put_replaces_coordinates_without_mutating_by_default(self, device, dtype):
+        boxes = Boxes.from_tensor(
+            torch.tensor([[[1.0, 2.0, 5.0, 4.0], [6.0, 3.0, 9.0, 8.0]]], device=device, dtype=dtype)
+        )
+        replacement = Boxes.from_tensor(torch.tensor([[10.0, 20.0, 14.0, 23.0]], device=device, dtype=dtype))
+        boxes_before = boxes.data.clone()
+        replacement_before = replacement.data.clone()
+        updated = boxes.index_put((torch.tensor([0], device=device), torch.tensor([1], device=device)), replacement)
+        assert updated is not boxes
+        self.assert_close(updated.data[:, 0], boxes_before[:, 0], atol=0.0, rtol=0.0)
+        self.assert_close(updated.data[:, 1], replacement_before, atol=0.0, rtol=0.0)
+        self.assert_close(boxes.data, boxes_before, atol=0.0, rtol=0.0)
+        self.assert_close(replacement.data, replacement_before, atol=0.0, rtol=0.0)
+
     def test_smoke(self, device, dtype):
         def _create_tensor_box():
             # Sample two points of the rectangle
@@ -186,21 +379,18 @@ class TestBoxes2D(BaseTester):
 
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
     def test_boxes_list_to_tensor_list(self, mode, device, dtype):
-        src_1 = [
-            torch.as_tensor([[[1, 2], [1, 3], [2, 2], [2, 3]]], device=device, dtype=dtype),
-            torch.as_tensor(
-                [[[1, 2], [1, 3], [2, 2], [2, 3]], [[1, 2], [1, 3], [2, 2], [2, 3]]], device=device, dtype=dtype
-            ),
-        ]
-        src_2 = [
-            torch.as_tensor([[1, 1, 5, 5]], device=device, dtype=dtype),
-            torch.as_tensor([[1, 1, 5, 5], [1, 1, 5, 5]], device=device, dtype=dtype),
-        ]
-        src = src_1 if mode in ["vertices", "vertices_plus"] else src_2
+        if mode == "vertices":
+            item = torch.as_tensor([[[1, 2], [3, 2], [3, 4], [1, 4]]], device=device, dtype=dtype)
+        elif mode == "vertices_plus":
+            item = torch.as_tensor([[[1, 2], [2, 2], [2, 3], [1, 3]]], device=device, dtype=dtype)
+        else:
+            item = torch.as_tensor([[1, 1, 5, 5]], device=device, dtype=dtype)
+        src = [item, torch.cat([item, item])]
         box = Boxes.from_tensor(src, mode=mode)
         out = box.to_tensor(mode)
-        assert out[0].shape == src[0].shape
-        assert out[1].shape == src[1].shape
+        assert isinstance(out, list)
+        self.assert_close(out[0], src[0], atol=0.0, rtol=0.0)
+        self.assert_close(out[1], src[1], atol=0.0, rtol=0.0)
 
     def test_boxes_to_mask(self, device, dtype):
         t_box1 = torch.tensor(

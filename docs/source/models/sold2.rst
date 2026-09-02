@@ -1,5 +1,9 @@
-SOLD2 (Line detection and matching)
-...................................
+SOLD2
+=====
+
+.. rst-class:: kornia-badges
+
+:bdg-primary:`Line detection` :bdg-primary:`Line matching` :bdg-secondary:`MIT`
 
 .. card::
     :link: https://arxiv.org/abs/2104.03362

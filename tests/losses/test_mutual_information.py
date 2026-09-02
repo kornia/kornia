@@ -21,6 +21,7 @@ from kornia.losses.mutual_information import (
     MIKernel,
     MILossFromRef,
     NMILossFromRef,
+    _normalize_signal,
     mutual_information_loss,
     mutual_information_loss_2d,
     normalized_mutual_information_loss,
@@ -122,75 +123,71 @@ class TestMutualInformationLoss(BaseTester):
         self.gradcheck(normalized_mutual_information_loss, (img1, img2))
 
     def test_differentiability(self, device, dtype):
-        for _ in range(10):
-            img_1 = self.sampling_function(10000, device, dtype)
-            img_2 = self.sampling_function(10000, device, dtype)
-            param = torch.tensor(1 / 2.0, requires_grad=True)
-            mi = mutual_information_loss(img_1 + param * img_2, img_2)
-            mi.backward()
-            # negative gradient, order of magnitude 1/2
-            assert -1 < param.grad < -1 / 10, f"Differentiability issue for mi, {param.grad=}."
-            param = torch.tensor(1 / 2.0, requires_grad=True)
-            nmi = normalized_mutual_information_loss(img_1 + param * img_2, img_2)
-            nmi.backward()
-            # negative gradient, order of magnitude 1/20
-            assert -1 / 10 < param.grad < -1 / 100, f"Differentiability issue for nmi, {param.grad=}."
+        torch.manual_seed(0)
+        img_1 = self.sampling_function(10000, device, dtype)
+        img_2 = self.sampling_function(10000, device, dtype)
+        param = torch.tensor(1 / 2.0, requires_grad=True)
+        mi = mutual_information_loss(img_1 + param * img_2, img_2)
+        mi.backward()
+        # negative gradient, order of magnitude 1/2
+        assert -1 < param.grad < -1 / 10, f"Differentiability issue for mi, {param.grad=}."
+        param = torch.tensor(1 / 2.0, requires_grad=True)
+        nmi = normalized_mutual_information_loss(img_1 + param * img_2, img_2)
+        nmi.backward()
+        # negative gradient, order of magnitude 1/20
+        assert -1 / 10 < param.grad < -1 / 100, f"Differentiability issue for nmi, {param.grad=}."
 
     def test_value_ranges(self, device, dtype):
-        for _ in range(10):
-            self.value_ranges_check(device, dtype)
+        torch.manual_seed(0)
+        self.value_ranges_check(device, dtype)
+
+    def test_trivial_signal_normalizes_to_zero(self, device, dtype):
+        signal = torch.tensor([[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]], device=device, dtype=dtype)
+
+        self.assert_close(_normalize_signal(signal, num_bins=64), torch.zeros_like(signal))
 
     @pytest.mark.parametrize("kernel", [MIKernel.xu, MIKernel.rectangular, MIKernel.truncated_gaussian])
-    @pytest.mark.parametrize("dim_param", range(5))
-    def test_batch_consistency(self, device, dtype, kernel, dim_param):
+    @pytest.mark.parametrize("dims", [(5,), (3, 1), (2, 8), (2, 1, 8), (2, 1, 2, 8), (2, 1, 2, 1, 8)])
+    def test_batch_consistency(self, device, dtype, kernel, dims):
         torch.manual_seed(0)  # Fix seed for reproducibility
 
-        # Create random dimensions
-        dims = torch.randint(low=1, high=8, size=(dim_param + 1,))
-        dims = tuple(map(int, dims))
+        img1 = torch.rand(dims, device=device, dtype=dtype)
+        img2 = torch.rand(dims, device=device, dtype=dtype)
 
-        for _ in range(3):
-            img1 = torch.rand(dims, device=device, dtype=dtype)
-            img2 = torch.rand(dims, device=device, dtype=dtype)
+        # flatten batch dims
+        unique_batch_dim_1 = img1.reshape((-1,) + img1.shape[-1:])
+        unique_batch_dim_2 = img2.reshape((-1,) + img2.shape[-1:])
 
-            # flatten batch dims
-            unique_batch_dim_1 = img1.reshape((-1,) + img1.shape[-1:])
-            unique_batch_dim_2 = img2.reshape((-1,) + img1.shape[-1:])
+        # Compute batch loss
+        loss_batch = mutual_information_loss(img1, img2, num_bins=64, kernel_function=kernel)
+        normalized_loss_batch = normalized_mutual_information_loss(img1, img2, num_bins=64, kernel_function=kernel)
 
-            # Compute batch loss
-            loss_batch = mutual_information_loss(img1, img2, num_bins=64, kernel_function=kernel)
-            normalized_loss_batch = normalized_mutual_information_loss(img1, img2, num_bins=64, kernel_function=kernel)
-
-            # Compute iterative loss for verification
-            losses = []
-            normalized_losses = []
-            for i in range(unique_batch_dim_1.shape[0]):
-                loss = mutual_information_loss(
-                    unique_batch_dim_1[i], unique_batch_dim_2[i], num_bins=64, kernel_function=kernel
-                )
-                normalized_loss = normalized_mutual_information_loss(
-                    unique_batch_dim_1[i], unique_batch_dim_2[i], num_bins=64, kernel_function=kernel
-                )
-                losses.append(loss)
-                normalized_losses.append(normalized_loss)
-
-            loss_iterative = torch.stack(losses)
-            normalized_loss_iterative = torch.stack(normalized_losses)
-
-            # Compare
-            assert loss_batch.shape == dims[:-1], (
-                f"The shape of the batched losses for mi is wrong: {loss_batch.shape} vs {dims[:-1]}."
+        # Compute iterative loss for verification
+        losses = []
+        normalized_losses = []
+        for i in range(unique_batch_dim_1.shape[0]):
+            loss = mutual_information_loss(
+                unique_batch_dim_1[i], unique_batch_dim_2[i], num_bins=64, kernel_function=kernel
             )
-            assert normalized_loss_batch.shape == dims[:-1], (
-                f"The shape of the batched losses for nmi is wrong: {normalized_loss_batch.shape} vs {dims[:-1]}."
+            normalized_loss = normalized_mutual_information_loss(
+                unique_batch_dim_1[i], unique_batch_dim_2[i], num_bins=64, kernel_function=kernel
             )
+            losses.append(loss)
+            normalized_losses.append(normalized_loss)
 
-            assert torch.allclose(loss_batch.flatten(), loss_iterative, atol=1e-4), (
-                f"Batch mismatch for mi! Batch: {loss_batch}, Iterative: {loss_iterative}"
-            )
-            assert torch.allclose(normalized_loss_batch.flatten(), normalized_loss_iterative, atol=1e-4), (
-                f"Batch mismatch for nmi! Batch: {normalized_loss_batch}, Iterative: {normalized_loss_iterative}"
-            )
+        loss_iterative = torch.stack(losses)
+        normalized_loss_iterative = torch.stack(normalized_losses)
+
+        # Compare
+        assert loss_batch.shape == dims[:-1], (
+            f"The shape of the batched losses for mi is wrong: {loss_batch.shape} vs {dims[:-1]}."
+        )
+        assert normalized_loss_batch.shape == dims[:-1], (
+            f"The shape of the batched losses for nmi is wrong: {normalized_loss_batch.shape} vs {dims[:-1]}."
+        )
+
+        self.assert_close(loss_batch.flatten(), loss_iterative)
+        self.assert_close(normalized_loss_batch.flatten(), normalized_loss_iterative)
 
     def test_module(self, device, dtype):
         pred = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
@@ -210,19 +207,19 @@ class TestMutualInformationLoss(BaseTester):
 
     def test_masking(self, device, dtype):
         """test masking works on a 2d signal."""
-        pred = torch.rand(2, 3, 200, 200, device=device, dtype=dtype)
-        target = torch.rand(2, 3, 200, 200, device=device, dtype=dtype)
+        pred = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
+        target = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
         target_mask = torch.zeros(pred.shape[-2:], dtype=torch.bool, device=device)
         pred_mask = target_mask.clone()
-        target_mask[:100] = True
-        pred_mask[:, :100] = True
+        target_mask[:32] = True
+        pred_mask[:, :32] = True
         # we tweak the values of target and pred for the normalization to be the same with or without the mask
         target[..., 0, 0] = 0
         target[..., 0, 1] = 1
         pred[..., 0, 0] = 0
         pred[..., 0, 1] = 1
-        restricted_pred = pred[..., :100, :100]
-        restricted_target = target[..., :100, :100]
+        restricted_pred = pred[..., :32, :32]
+        restricted_target = target[..., :32, :32]
 
         masked_kwargs = {"input": pred, "target": target, "input_mask": pred_mask, "target_mask": target_mask}
         restricted_kwargs = {

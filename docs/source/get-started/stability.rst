@@ -1,6 +1,9 @@
 API Stability Policy
 ====================
 
+.. meta::
+   :description: What Kornia users may rely on: stable, best-effort and experimental module tiers, the deprecation policy, and how breaking changes are announced.
+
 Kornia is depended on by a large installed base (millions of downloads per
 month) and, increasingly, by language models that carry a lagging snapshot of
 the API in their weights. Both are punished by silent churn. This page states

@@ -112,6 +112,8 @@ class TestAugmentationSequential:
     def test_mixed_image_bbox_dtypes(self, device, image_dtype):
         # Regression test for https://github.com/kornia/kornia/issues/3705 and #3706:
         # bbox stays in fp32 while the image uses a half/double compute dtype.
+        if device.type == "mps" and image_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         if device.type == "cpu" and image_dtype in (torch.float16, torch.bfloat16) and torch_version_lt(2, 6, 0):
             pytest.skip("PyTorch <2.6 has no CPU Half/BFloat16 grid_sample kernel")
         torch.manual_seed(0)
@@ -129,14 +131,14 @@ class TestAugmentationSequential:
         assert out_bb.shape == bb.shape
 
     def test_random_flips(self, device, dtype):
-        inp = torch.randn(1, 3, 510, 1020, device=device, dtype=dtype)
-        bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
+        inp = torch.randn(1, 3, 255, 510, device=device, dtype=dtype)
+        bbox = torch.tensor([[[177, 5], [330, 5], [330, 125], [177, 125]]], device=device, dtype=dtype)
 
         expected_bbox_vertical_flip = torch.tensor(
-            [[[355, 259], [660, 259], [660, 499], [355, 499]]], device=device, dtype=dtype
+            [[[177, 129], [330, 129], [330, 249], [177, 249]]], device=device, dtype=dtype
         )
         expected_bbox_horizontal_flip = torch.tensor(
-            [[[359, 10], [664, 10], [664, 250], [359, 250]]], device=device, dtype=dtype
+            [[[179, 5], [332, 5], [332, 125], [179, 125]]], device=device, dtype=dtype
         )
 
         aug_ver = K.AugmentationSequential(

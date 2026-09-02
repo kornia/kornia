@@ -1,5 +1,8 @@
-Half-Precision Support
-======================
+Float16 and bfloat16 support
+============================
+
+.. meta::
+   :description: Which Kornia modules support float16 and bfloat16 on CPU and CUDA, known limitations, and the latest half-precision test results.
 
 This page documents which kornia modules support half-precision floating-point dtypes
 (``torch.float16`` and ``torch.bfloat16``) and what limitations to expect.

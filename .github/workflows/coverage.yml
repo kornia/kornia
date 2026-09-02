@@ -116,6 +116,9 @@ jobs:
           restore-keys: ${{ inputs.cache-restore-keys }}
 
       - uses: ./.github/actions/coverage
+        env:
+          MKL_NUM_THREADS: "1"
+          OMP_NUM_THREADS: "1"
         with:
           python-version: ${{ inputs.python-version }}
           pytorch-dtype: ${{ matrix.pytorch-dtype }}

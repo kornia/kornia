@@ -41,6 +41,7 @@ class TestOnnxLightGlue:
         assert model is not None
 
     @pytest.mark.slow
+    @pytest.mark.device_agnostic
     @pytest.mark.parametrize("weights", ["disk", "superpoint"])
     def test_pretrained_weights_cpu(self, weights):
         model = OnnxLightGlue(weights, "cpu")
@@ -79,6 +80,7 @@ class TestOnnxLightGlue:
             assert outputs["scores"].ndim == 1
             assert outputs["matches"].shape[0] == outputs["scores"].shape[0]
 
+    @pytest.mark.device_agnostic
     def test_normalize_keypoints(self):
         kpts = torch.randint(0, 100, (1, 5, 2))
         size = torch.tensor([[100, 100]])

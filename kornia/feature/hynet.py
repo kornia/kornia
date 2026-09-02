@@ -106,20 +106,15 @@ class FilterResponseNorm2d(nn.Module):
         return "num_features={num_features}, eps={init_eps}".format(**self.__dict__)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Compute the mean norm of activations per channel.
-        """Run the HyNet normalization or descriptor layer.
-
-        Patch tensors use `(B, C, H, W)`. For HyNet descriptors the expected input is usually grayscale `(B, 1, 32, 32)`
-        and the final descriptor has shape `(B, D)`.
+        """Apply filter response normalization to the input tensor.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input tensor with shape ``(B, C, H, W)``.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Normalized tensor with the same shape as the input.
         """
+        # Compute the mean norm of activations per channel.
         nu2 = x.pow(2).mean(dim=[2, 3], keepdim=True)
 
         # Perform FRN.
@@ -160,12 +155,12 @@ class TLU(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
-        # nn.init.zeros_(self.tau)
         """Reset learnable parameters to their initial values.
 
         Returns:
             None. The module parameters are reset in place.
         """
+        # nn.init.zeros_(self.tau)
         nn.init.constant_(self.tau, -1)
 
     def extra_repr(self) -> str:
@@ -177,18 +172,13 @@ class TLU(nn.Module):
         return "num_features={num_features}".format(**self.__dict__)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run the HyNet normalization or descriptor layer.
-
-        Patch tensors use `(B, C, H, W)`. For HyNet descriptors the expected input is usually grayscale `(B, 1, 32, 32)`
-        and the final descriptor has shape `(B, D)`.
+        """Apply the thresholded linear unit to the input tensor.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input tensor.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Tensor with the same shape as the input, thresholded by ``tau``.
         """
         return torch.max(x, self.tau)
 
@@ -288,18 +278,13 @@ class HyNet(nn.Module):
         self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run the HyNet normalization or descriptor layer.
-
-        Patch tensors use `(B, C, H, W)`. For HyNet descriptors the expected input is usually grayscale `(B, 1, 32, 32)`
-        and the final descriptor has shape `(B, D)`.
+        """Compute HyNet descriptors from grayscale image patches.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input grayscale patches with shape ``(B, 1, 32, 32)``.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            HyNet descriptors with shape ``(B, D)``.
         """
         x = self.layer1(x)
         x = self.layer2(x)

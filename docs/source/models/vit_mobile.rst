@@ -1,7 +1,11 @@
 .. _kornia_vit_mobile:
 
 MobileViT
-.........
+=========
+
+.. rst-class:: kornia-badges
+
+:bdg-primary:`Image classification` :bdg-primary:`Detection` :bdg-primary:`Segmentation`
 
 .. card::
     :link: https://arxiv.org/abs/2110.02178
@@ -29,9 +33,12 @@ One can use the *MobileViT* in Kornia as follows:
 
 .. code:: python
 
+    import torch
+    from kornia.models.vit_mobile import MobileViT
+
     img = torch.rand(1, 3, 256, 256)
     mvit = MobileViT(mode='xxs')
-    out = mvit(img)
+    out = mvit(img)  # (1, 320, 8, 8) feature map
 
 
 Usage
@@ -41,6 +48,7 @@ Similar to ``Kornia-ViT``, ``Kornia-MobileViT`` does not include any classificat
 
 .. code:: python
 
+    import torch
     import torch.nn as nn
     from kornia.models.vit_mobile import MobileViT
 

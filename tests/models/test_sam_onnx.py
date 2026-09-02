@@ -21,6 +21,9 @@ import pytest
 
 from kornia.models.sam.model import Sam, SamConfig
 
+# Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
+pytestmark = pytest.mark.device_agnostic
+
 
 def test_sam_has_to_onnx():
     """Sam exposes a to_onnx() method via ONNXExportMixin."""

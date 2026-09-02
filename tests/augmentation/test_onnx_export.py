@@ -186,6 +186,7 @@ def _try_export(module: torch.nn.Module, x: torch.Tensor) -> int:
 
 
 @pytest.mark.parametrize("name,factory", EXPORTABLE_OPS, ids=[n for n, _ in EXPORTABLE_OPS])
+@pytest.mark.device_agnostic
 def test_onnx_export_exportable(name: str, factory: Callable[[], torch.nn.Module]) -> None:
     """Augmentation exports cleanly via ``torch.onnx.export`` (legacy tracer, opset 20)."""
     torch.manual_seed(0)
@@ -195,6 +196,7 @@ def test_onnx_export_exportable(name: str, factory: Callable[[], torch.nn.Module
 
 
 @pytest.mark.parametrize("name,factory,reason", XFAIL_OPS, ids=[n for n, _, _ in XFAIL_OPS])
+@pytest.mark.device_agnostic
 def test_onnx_export_known_blocked(name: str, factory: Callable[[], torch.nn.Module], reason: str) -> None:
     """Augmentation cannot export today; pinned so we notice if it starts working."""
     torch.manual_seed(0)
@@ -308,6 +310,7 @@ def _run_onnx(module: torch.nn.Module, x: torch.Tensor) -> Any:
 
 
 @pytest.mark.parametrize("name,factory", ONNX_NUMERICAL_EQUIVALENT, ids=[n for n, _ in ONNX_NUMERICAL_EQUIVALENT])
+@pytest.mark.device_agnostic
 def test_onnx_export_numerically_matches_eager(name: str, factory: Callable[[], torch.nn.Module]) -> None:
     """Exported graph produces the same numbers as eager for the deterministic configuration."""
     torch.manual_seed(0)

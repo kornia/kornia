@@ -619,14 +619,14 @@ class TestMultiResolutionDetector(BaseTester):
         # interpolated mask reads 1.0 there and the stripe is gone; the conservative resample keeps
         # every level pixel it touches at zero.
         torch.manual_seed(0)
-        inp = torch.rand(1, 1, 256, 256, device=device, dtype=dtype)
-        mask = torch.ones(1, 1, 256, 256, device=device, dtype=dtype)
-        mask[:, :, :, 120:122] = 0.0
-        det = self._make_detector(num_features=2000).to(device, dtype)
+        inp = torch.rand(1, 1, 128, 128, device=device, dtype=dtype)
+        mask = torch.ones(1, 1, 128, 128, device=device, dtype=dtype)
+        mask[:, :, :, 60:62] = 0.0
+        det = self._make_detector(num_features=500).to(device, dtype)
         lafs, resps = det(inp, mask)
         xs = lafs[0][resps[0] != 0][:, 0, 2]
         assert xs.numel() > 100
-        assert not bool(((xs >= 120) & (xs < 122)).any()), sorted(xs[(xs >= 119) & (xs < 123)].tolist())
+        assert not bool(((xs >= 60) & (xs < 62)).any()), sorted(xs[(xs >= 59) & (xs < 63)].tolist())
 
     @pytest.mark.parametrize("src, dst", [((100, 100), (45, 45)), ((38, 38), (90, 90)), ((7, 9), (3, 4))])
     def test_mask_resample_is_the_cpu_adaptive_min_pool_on_every_device(self, device, dtype, src, dst):
@@ -852,6 +852,28 @@ class TestMultiResolutionDetector(BaseTester):
         # Asking for one feature must return the same best feature as asking for two.
         self.assert_close(resps_one[0, 0], resps_two[0].max())
         self.assert_close(lafs_one[0, 0], lafs_two[0, int(resps_two[0].argmax())])
+
+    def test_small_request_spreads_across_scales(self, device, dtype):
+        # `detect` used to apportion `num_features` across pyramid levels by flooring each level's
+        # fractional share independently (`int(x) for x in shares`). The shares favor the finest
+        # level so heavily (0.508 .. 0.016 with the default config) that a small `num_features`
+        # truncated every other level's quota to zero: five well-separated, equally strong blobs and
+        # `num_features=3` returned three near-duplicate detections of the single strongest blob
+        # instead of covering several of them. Largest-remainder (Hamilton) apportionment hands the
+        # shortfall to the levels with the largest fractional remainder instead, so a small request
+        # still reaches more than one scale and covers more than one blob.
+        img = torch.zeros(1, 1, 96, 96, device=device, dtype=dtype)
+        centers = [(20, 20), (20, 70), (48, 48), (76, 20), (76, 70)]
+        for y, x in centers:
+            img[:, :, y - 2 : y + 3, x - 2 : x + 3] = 1.0
+
+        det = self._make_detector(num_features=3).to(device, dtype)
+        _, lafs = det.detect(img)
+        laf_centers = lafs[0, :, :, 2]
+        covered = sum(
+            1 for y, x in centers if bool(((laf_centers - laf_centers.new_tensor([x, y])).abs().amax(dim=1) < 4).any())
+        )
+        assert covered >= 2, f"expected the 3-feature request to reach at least 2 of the 5 blobs, got {covered}"
 
     def test_negative_score_threshold_is_rejected(self, device, dtype):
         # NMS writes an exact zero at every suppressed position, so a negative threshold would

@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+* The documentation site was rebuilt on `pydata-sphinx-theme` with a top navigation bar
+  (Learn / API / Models plus Ecosystem, About and Support menus), a redesigned landing page, a
+  restructured API reference with per-topic subpages, and a long list of fixed doc examples and
+  removed dead interactive demos. Old deep links into the split module pages
+  (e.g. `augmentation.module.html#kornia.augmentation.RandomAffine`) are forwarded to the subpage
+  that now documents the object, so existing links keep resolving. The previous furo layout remains
+  available with `KORNIA_DOCS_THEME=furo`. (#4155)
+* An **Adoption** page (`community/adoption`) listing the most-starred GitHub repositories and
+  packages that depend on kornia, rendered at build time from `docs/source/_data/dependents.json`;
+  `docs/fetch_dependents.py` refreshes that snapshot from GitHub's dependency graph. (#4155)
+
 ### Breaking changes
 
 * `extract_patches_from_pyramid` now samples ordinary-sized inputs once from a packed pyramid atlas instead of
@@ -128,6 +141,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   zero-scale input keeps its center and zero affine block.
 
 ### Bug fixes
+
+* Follow-up fixes to the documentation revamp (#4155): the landing page's filtering card quoted the combined
+  `filters`/`color`/`enhance`/`morphology` count next to a `kornia.filters` label, the "Why Kornia?" hero carousel
+  resumed after a visitor picked a tab, the Community page linked to the now-unregistered `librecv.org`, and the
+  GPU page promised CUDA measurements the committed benchmark runs do not yet contain. `pydata-sphinx-theme` is now
+  version-bounded, since the site's CSS and JS target theme internals. (#4173)
+* Reset an automatic augmentation policy's cached transformation matrix before applying it again, both for a
+  sub-policy inside `TrivialAugment`, `RandAugment` and `AutoAugment` and for those policies nested inside
+  `AugmentationSequential`. Consecutive calls that selected the same geometric policy could transform the input with
+  the latest parameters while exposing the previous call's matrix through `transform_matrix`, the sub-policy
+  accumulated one matrix per call for the lifetime of the module, and a nested policy never recorded its parameters
+  or matrix at all. `transform_matrix` on a policy that has not run yet now returns `None` instead of raising
+  `AttributeError` (#4171).
+
+* `MultiResolutionDetector.detect` apportions `num_features` across pyramid levels with largest-remainder
+  (Hamilton) apportionment instead of flooring each level's fractional share independently (#4101). The floors
+  used to discard every fractional part, so a small `num_features` could round the whole apportionment down: with
+  the default configuration the six shares are `0.508 .. 0.016`, and every level but the finest lost its entire
+  quota to truncation, so the detector effectively searched a single scale. The shortfall -- `num_features` minus
+  the sum of the floors -- is now handed to the levels with the largest fractional remainder, one slot each, so
+  the quotas always sum to exactly `num_features` and stay spread across scales. #4098's narrower `num_features=1`
+  fallback, which handed the request's one slot to the largest-share level when every quota floored to zero, is
+  the special case where the shortfall equals `num_features` and is superseded by the general apportionment.
+
+* Make YUV and XYZ transformations compute integer inputs in `float32` instead of truncating their kernels, and
+  preserve directly constructed `float64` coefficients. This makes `rgb_to_yuv(uint8)` return `float32` on the
+  input's original 0--255 scale, fixes signed-integer YUV results, and removes the existing float32 coefficient loss
+  from float64 XYZ conversions. The two private linear-transformation helpers are now one implementation, whose CPU
+  path uses its dtype/device-aligned compute operands (#4053).
+* Fix 2-D, 3-D, and mix augmentations raising a cross-device `RuntimeError` when their random parameters are generated
+  on the default CPU device and their input is on MPS or CUDA (#4164). Since #3722, four branchless `torch.where`
+  blends used the CPU `batch_prob` mask directly with accelerator outputs or transformation matrices. The selection
+  mask now moves to the output device at each blend boundary, preserving CPU random-number generation and the
+  ONNX/fullgraph-friendly blend. Calling `augmentation(x_accelerator)` therefore works again without first moving the
+  augmentation module or its RNG to the accelerator (#4151).
 
 * Keep `extract_patches_simple` and `extract_patches_from_pyramid` off a broken reduced-precision CPU kernel: for a
   `float16`/`bfloat16` CPU image, the `grid_sample` kernels in torch <= 2.9 read out of bounds when a rotated patch

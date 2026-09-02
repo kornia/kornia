@@ -44,6 +44,16 @@ from testing.base import BaseTester
 _Y_FROM_RGB = (0.299, 0.587, 0.114)
 _U_SCALE = 0.492
 _V_SCALE = 0.877
+_RGB_TO_YUV_KERNEL = (
+    (0.299, 0.587, 0.114),
+    (-0.147, -0.289, 0.436),
+    (0.615, -0.515, -0.100),
+)
+_YUV_TO_RGB_KERNEL = (
+    (1.0, -3.945707070707071e-05, 1.139827967171717),
+    (1.0, -0.39461016414141414, -0.5805003156565657),
+    (1.0, 2.0319996843434343, -0.00048137626262626264),
+)
 
 
 def _rgb_to_yuv_reference(rgb: torch.Tensor) -> torch.Tensor:
@@ -230,6 +240,31 @@ class TestRgbToYuv(BaseTester):
         expected = torch.tensor(yuv_values, device=device, dtype=dtype).view(3, 1, 1)
 
         self.assert_close(kornia.color.rgb_to_yuv(rgb), expected, atol=_unit_atol(_FORWARD_ATOL, dtype), rtol=0.0)
+
+    @pytest.mark.parametrize("integer_dtype", [torch.int32, torch.int64])
+    def test_integer_input_4053(self, device, integer_dtype):
+        rgb = torch.eye(3).to(device=device, dtype=integer_dtype).unsqueeze(-2)
+        expected = torch.tensor(_RGB_TO_YUV_KERNEL, device=device, dtype=torch.float32).unsqueeze(-2)
+
+        actual = kornia.color.rgb_to_yuv(rgb)
+
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0.0 if device.type == "cpu" else 1e-3, rtol=0.0)
+
+    def test_uint8_input_4053(self, device):
+        rgb = (torch.eye(3) * 255).to(device=device, dtype=torch.uint8).unsqueeze(-2)
+        expected = (torch.tensor(_RGB_TO_YUV_KERNEL, device=device, dtype=torch.float32) * 255).unsqueeze(-2)
+
+        actual = kornia.color.rgb_to_yuv(rgb)
+
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0.0 if device.type == "cpu" else 1e-3, rtol=0.0)
+
+    def test_float64_kernel_precision_4053(self):
+        rgb = torch.eye(3, dtype=torch.float64).unsqueeze(-2)
+        expected = torch.tensor(_RGB_TO_YUV_KERNEL, dtype=torch.float64).unsqueeze(-2)
+
+        self.assert_close(kornia.color.rgb_to_yuv(rgb), expected, atol=0.0, rtol=0.0)
 
     def test_unit_invariants(self, device, dtype):
         rgb = torch.tensor(
@@ -563,6 +598,22 @@ class TestYuvToRgb(BaseTester):
             rtol=0.0,
         )
 
+    @pytest.mark.parametrize("integer_dtype", [torch.int32, torch.int64])
+    def test_integer_input_4053(self, device, integer_dtype):
+        yuv = torch.eye(3).to(device=device, dtype=integer_dtype).unsqueeze(-2)
+        expected = torch.tensor(_YUV_TO_RGB_KERNEL, device=device, dtype=torch.float32).unsqueeze(-2)
+
+        actual = kornia.color.yuv_to_rgb(yuv)
+
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0.0 if device.type == "cpu" else 1e-3, rtol=0.0)
+
+    def test_float64_kernel_precision_4053(self):
+        yuv = torch.eye(3, dtype=torch.float64).unsqueeze(-2)
+        expected = torch.tensor(_YUV_TO_RGB_KERNEL, dtype=torch.float64).unsqueeze(-2)
+
+        self.assert_close(kornia.color.yuv_to_rgb(yuv), expected, atol=0.0, rtol=0.0)
+
     def test_convention_yuv_to_rgb_inverts_rgb_to_yuv_4044(self, device):
         # Regression for kornia#4044. Two cells, both in float64 so a failure cannot be a
         # precision artefact:
@@ -585,25 +636,6 @@ class TestYuvToRgb(BaseTester):
         impulse = torch.tensor([0.0, 1.0, 0.0], device=device, dtype=torch.float64).view(3, 1, 1)
         u_to_b = kornia.color.yuv_to_rgb(impulse)[2].item()
         assert abs(u_to_b - 2.0319996843434343) < 1e-12
-
-    def test_wart_integer_input_truncates_the_kernel_4053(self):
-        # NOT a contract that integer input is supported -- kornia#4053 is still deciding whether
-        # it should be rejected outright. This pins the single interaction between #4053 and this
-        # fix: ``yuv_to_rgb`` builds its kernel at the image dtype, and the exact inverse carries
-        # two near-zero *negative* literals (-3.95e-5 in the R row, -4.81e-4 in the B row) where
-        # the old kernel carried exact zeros. Truncation toward zero leaves the integer kernel at
-        # [[1, 0, 1], [1, 0, 0], [1, 2, 0]] -- bit for bit what shipped before this fix -- while
-        # rounding away from zero would make those cells -1 and turn the integer path from
-        # useless (#4053) into actively wrong.
-        #
-        # U and V are both non-zero on purpose: at U = V = 0 the two changed literals are
-        # multiplied by zero and the cell passes whatever they truncate to.
-        # cpu-only and no ``device`` fixture on purpose: #4053 also records that the cpu einsum
-        # branch keeps the integer kernel while the conv2d branch silently upcasts to float32,
-        # so this cell would be asserting a different code path off cpu.
-        yuv = torch.tensor([0, 1, 1], dtype=torch.int64).view(3, 1, 1)
-
-        assert kornia.color.yuv_to_rgb(yuv).flatten().tolist() == [1, 0, 2]
 
     def test_forth_and_back(self, device, dtype):
         rtol, atol = _round_trip_tol(dtype)

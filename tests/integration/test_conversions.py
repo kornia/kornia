@@ -204,9 +204,9 @@ class TestAngleOfRotations(BaseTester):
     @pytest.mark.parametrize("axis_name", ("x", "y", "z"))
     def test_axis_angle_to_rotation_matrix(self, axis_name, device, dtype, atol, rtol):
         # Random angle in [-pi..pi]
-        angle = torch.tensor(
-            (np.random.default_rng().random(size=(2, 1)) * 2.0 * np.pi - np.pi), device=device, dtype=dtype
-        )
+        # Use NumPy's global RNG so half-precision manifest runs can seed this test by node ID.
+        angle_values = np.random.random(size=(2, 1)) * 2.0 * np.pi - np.pi  # noqa: NPY002
+        angle = torch.tensor(angle_values, device=device, dtype=dtype)
         rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
             axis_name=axis_name, angle=angle, device=device, dtype=dtype
         )

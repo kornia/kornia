@@ -16,23 +16,28 @@
 #
 
 import builtins
+import html
 import importlib.util
 import inspect
+import json
 import os
+import re
 import sys
 from datetime import UTC, datetime
 
 # Monkey-patch for PyTorch compatibility with sphinx_autodoc_typehints
 # Newer versions of PyTorch removed torch.jit.annotations.compiler_flag
 import torch.jit.annotations
+from sphinx.util import logging as sphinx_logging
 
 if not hasattr(torch.jit.annotations, "compiler_flag"):
     torch.jit.annotations.compiler_flag = None
 
-# To add an evnironment variable
+# Let the library know it is being imported by the Sphinx build.
 builtins.__sphinx_build__ = True
 
-# --- Patch sphinx_autodoc_defaultargs to not crash on torchscript/pybind11 callables ---
+logger = sphinx_logging.getLogger(__name__)
+
 # --- Patch sphinx_autodoc_defaultargs to not crash on torchscript/pybind11 callables ---
 try:
     import sphinx_autodoc_defaultargs
@@ -93,6 +98,93 @@ spec.loader.exec_module(generate_benchmarks)
 
 # Pre-generate the benchmark results page
 generate_benchmarks.main()
+
+spec = importlib.util.spec_from_file_location("generate_adoption", "../generate_adoption.py")
+generate_adoption = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(generate_adoption)
+
+# Pre-generate the adoption page from the committed dependents snapshot
+_adoption = generate_adoption.main()
+
+
+def _public_operator_count() -> int:
+    """Public functions and ``nn.Module`` classes defined across kornia's public modules.
+
+    Walks every ``kornia.*`` module without a private path component and counts the functions and
+    ``torch.nn.Module`` subclasses it defines under a public name. Model architecture internals
+    (``kornia.models.*.architecture``), ``kornia.core`` and the transpiler shim are left out so the
+    figure is about operators rather than plumbing.
+    """
+    import contextlib
+    import io
+    import pkgutil
+    import warnings
+
+    import torch
+
+    import kornia
+
+    skip = re.compile(r"^kornia\.(core|transpiler)(\.|$)|\.architecture(\.|$)")
+    seen: set[tuple[str, str]] = set()
+    with (
+        warnings.catch_warnings(),
+        contextlib.redirect_stdout(io.StringIO()),
+        contextlib.redirect_stderr(io.StringIO()),
+    ):
+        warnings.simplefilter("ignore")
+        for info in pkgutil.walk_packages(kornia.__path__, "kornia.", onerror=lambda name: None):
+            if skip.search(info.name) or any(part.startswith("_") for part in info.name.split(".")[1:]):
+                continue
+            try:
+                module = importlib.import_module(info.name)
+            except Exception as exc:  # noqa: BLE001 - an optional dependency is missing; nothing to count there
+                logger.debug("skipping %s while counting operators: %r", info.name, exc)
+                continue
+            for name, obj in vars(module).items():
+                # Type checks first: attribute access on a ``kornia.core.external.LazyLoader`` would
+                # try to import (and offer to install) the optional dependency behind it.
+                if not (inspect.isfunction(obj) or (inspect.isclass(obj) and issubclass(obj, torch.nn.Module))):
+                    continue
+                if name.startswith("_") or obj.__name__ != name:
+                    continue
+                defined_in = getattr(obj, "__module__", "") or ""
+                if defined_in.startswith("kornia.") and not skip.search(defined_in):
+                    seen.add((defined_in, obj.__qualname__))
+    return len(seen)
+
+
+def _landing_page_counts() -> dict[str, str]:
+    """Figures the landing page quotes, derived from the library rather than typed in.
+
+    The public-name counts read the stable-core inventory that ``tests/test_api_surface.py`` pins;
+    ``kornia.feature`` and ``kornia.models`` are outside it, so they are counted from the live
+    package and from the model pages under ``docs/source/models/``. Each count names exactly the
+    module the card it appears on links to. ``operators-floor`` is the library-wide total from
+    :func:`_public_operator_count`, floored to the hundred below it so the page can say "1,000+"
+    and stay true between releases.
+    """
+    with open("../../tests/api_surface.json", encoding="utf-8") as handle:
+        surface = {name: len(names) for name, names in json.load(handle).items()}
+    import kornia.feature
+
+    operators = _public_operator_count()
+    model_pages = [entry for entry in os.listdir("models") if entry.endswith(".rst") and entry != "index.rst"]
+    # Every entry here is quoted by a page; a substitution nothing references is dead weight that
+    # reads as an available figure, so add one when a page needs it rather than ahead of time.
+    return {
+        "geometry": str(surface["kornia.geometry"]),
+        "feature": str(len(kornia.feature.__all__)),
+        "filters": str(surface["kornia.filters"]),
+        "augmentation": str(surface["kornia.augmentation"]),
+        "models": str(len(model_pages)),
+        "operators-floor": f"{operators // 100 * 100:,}",
+        "dependents": f"{_adoption['repositories']:,}",
+        "dependent-packages": f"{_adoption['packages']:,}",
+    }
+
+
+# Substitutions such as |count-geometry| and |count-dependents| for the landing page.
+rst_epilog = "\n".join(f".. |count-{key}| replace:: {value}" for key, value in _landing_page_counts().items())
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -185,7 +277,12 @@ exclude_patterns = ["_build", ".ipynb_checkpoints"]
 pygments_style = "friendly"
 pygments_dark_style = "monokai"
 
-html_theme = "furo"
+# The documentation builds on pydata-sphinx-theme (top navbar with Learn / API / Models and the
+# Ecosystem / About / Support dropdowns). ``KORNIA_DOCS_THEME=furo`` selects the previous furo
+# layout, kept as a fallback while the redesign settles.
+DOCS_THEME = os.environ.get("KORNIA_DOCS_THEME", "pydata")
+
+html_theme = "pydata_sphinx_theme" if DOCS_THEME == "pydata" else "furo"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -194,15 +291,47 @@ html_theme = "furo"
 # TODO(jian): make to work with https://docs.kornia.org
 html_baseurl = "https://kornia.readthedocs.io/en/latest/"
 
+# Git ref that the "view/edit source" links and the ``linkcode`` extension point at.
+rtd_version = os.environ.get("READTHEDOCS_VERSION")
+if rtd_version and rtd_version not in {"latest", "stable"}:
+    code_ref = rtd_version
+else:
+    code_ref = "main"
+
 # Changing sidebar title to Kornia
 html_title = "Kornia"
 
-html_theme_options = {
+_GITHUB_ICON_SVG = (
+    '<svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16">'
+    '<path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 '
+    "0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 "
+    "1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 "
+    "0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 "
+    "2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 "
+    "3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 "
+    '8c0-4.42-3.58-8-8-8z"></path></svg>'
+)
+
+_FURO_THEME_OPTIONS = {
     # 'analytics_id': 'G-RKS4WFXVHJ', # Unsupported by furo theme
     "light_logo": "img/kornia_logo_only_light.svg",
     "dark_logo": "img/kornia_logo_only_dark.svg",
     "sidebar_hide_name": True,
     "navigation_with_keys": True,
+    # "View source" / "Edit on GitHub" buttons at the top of every page: the cheapest
+    # way to turn a reader who spotted a typo into a contributor.
+    "source_repository": "https://github.com/kornia/kornia/",
+    "source_branch": code_ref,
+    "source_directory": "docs/source/",
+    "top_of_page_buttons": ["view", "edit"],
+    "footer_icons": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/kornia/kornia",
+            "html": _GITHUB_ICON_SVG,
+            "class": "",
+        },
+    ],
     "light_css_variables": {
         "color-sidebar-background": "#3980F5",
         "color-sidebar-background-border": "#3980F5",
@@ -227,9 +356,107 @@ html_theme_options = {
     # """,
 }
 
+_PYDATA_THEME_OPTIONS = {
+    "logo": {
+        "image_light": "_static/img/kornia_logo_only_light.svg",
+        "image_dark": "_static/img/kornia_logo_only_dark.svg",
+        "text": "Kornia",
+    },
+    # Top navbar: one entry per top-level toctree item of index.rst (Guide / API / Models / Community),
+    # plus the external tutorials site. Each section gets its own left sidebar.
+    # Navbar: logo + search on the left, flexible space, then the nav links,
+    # theme switcher and icon links on the right.
+    "navbar_align": "right",
+    "navbar_start": ["navbar-logo", "search-button-field"],
+    "navbar_center": [],
+    "navbar_end": ["navbar-nav", "theme-switcher", "navbar-icon-links"],
+    "navbar_persistent": [],
+    "header_links_before_dropdown": 6,
+    "icon_links": [
+        {"name": "GitHub", "url": "https://github.com/kornia/kornia", "icon": "fa-brands fa-github"},
+        {"name": "Discord", "url": "https://discord.gg/HfnywwpBnD", "icon": "fa-brands fa-discord"},
+        {"name": "Twitter", "url": "https://twitter.com/kornia_foss", "icon": "fa-brands fa-x-twitter"},
+    ],
+    "use_edit_page_button": True,
+    "show_nav_level": 1,
+    "navigation_depth": 4,
+    "show_toc_level": 2,
+    "collapse_navigation": False,
+    # Right sidebar: page TOC and edit links, with the sponsor box (docs/source/_templates/sponsors.html)
+    # below. The landing page is a designed hero page and carries no right rail at all.
+    "secondary_sidebar_items": {
+        "index": [],
+        "**": ["page-toc", "edit-this-page", "sourcelink", "sponsors"],
+    },
+    "pygments_light_style": "friendly",
+    "pygments_dark_style": "monokai",
+    "footer_start": [],
+    "footer_end": [],
+}
+
+html_theme_options = _PYDATA_THEME_OPTIONS if DOCS_THEME == "pydata" else _FURO_THEME_OPTIONS
+
+# Navbar dropdown menus, rendered by ``_static/js/custom.js``: "Support" and "About" hang off the
+# toctree entries of the same name in index.rst; "Ecosystem" is a grouped panel inserted before
+# "About". Entries are ``[label, target]`` where the target is a docname (checked against the build,
+# so a renamed page fails ``-W`` instead of 404ing from the menu), an external URL, or ``None`` for
+# a "coming soon" placeholder.
+NAVBAR_MENUS = {
+    "Support": [
+        ["Sponsor", "community/sponsor"],
+        ["Contribute", "community/contribute"],
+    ],
+    "About": [
+        ["FAQ", "community/faqs"],
+        ["Team", "get-started/governance"],
+        ["Community Guide", "community/community"],
+        ["Code of Conduct", "https://github.com/kornia/kornia/blob/main/CODE_OF_CONDUCT.md"],
+        ["Citing Kornia", "get-started/about"],
+        ["Adoption", "community/adoption"],
+        ["API Stability Policy", "get-started/stability"],
+    ],
+    "Ecosystem": {
+        "official libs": [
+            ["kornia", "https://github.com/kornia/kornia"],
+            ["kornia-rs", "https://github.com/kornia/kornia-rs"],
+        ],
+        "help": [
+            ["Discord chat", "https://discord.gg/HfnywwpBnD"],
+            ["GitHub discussions", "https://github.com/kornia/kornia/discussions"],
+            ["Issue tracker", "https://github.com/kornia/kornia/issues"],
+        ],
+        "news": [
+            ["Twitter / X", "https://twitter.com/kornia_foss"],
+            ["LinkedIn", "https://www.linkedin.com/company/kornia/"],
+            ["Newsletter", None],
+        ],
+    },
+}
+
+if DOCS_THEME == "pydata":
+    # Feeds the "Edit this page" button and the source links.
+    html_context = {
+        "github_user": "kornia",
+        "github_repo": "kornia",
+        "github_version": code_ref,
+        "doc_path": "docs/source",
+    }
+    # The landing page has its own card grid; a section sidebar next to it would be empty noise.
+    html_sidebars = {"index": []}
+
 # html_logo = '_static/img/kornia_logo.svg'
 # html_logo = '_static/img/kornia_logo_only.png'
 html_favicon = "_static/img/kornia_logo_favicon.png"
+
+# Show the build date in the footer so readers can tell a stale mirror from the live docs.
+html_last_updated_fmt = "%b %d, %Y"
+
+# sphinx-copybutton: strip ``>>>`` / ``...`` / ``$`` prompts and skip output lines, so the
+# clipboard receives runnable code instead of a transcript.
+copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
+copybutton_prompt_is_regexp = True
+copybutton_only_copy_prompt_lines = True
+copybutton_line_continuation_character = "\\"
 
 # Config the `sphinxcontrib.gtagjs` extension
 # NOTE: if this didn't work, we can remove the extension itself
@@ -245,21 +472,11 @@ html_extra_path = ["_extra"]
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = "Kornia"
-html_css_files = ["css/main.css"]
-html_js_files = [
-    "js/custom.js",
-    ("https://gradio.s3-us-west-2.amazonaws.com/4.38.1/gradio.js", {"defer": "defer", "type": "module"}),
-    "https://cdnjs.cloudflare.com/ajax/libs/iframe-resizer/4.3.2/iframeResizer.min.js",
-]
+html_css_files = ["css/pydata.css" if DOCS_THEME == "pydata" else "css/main.css"]
+html_js_files = ["js/custom.js"]
 
 # Configure viewcode extension.
 # based on https://github.com/readthedocs/sphinx-autoapi/issues/202
-rtd_version = os.environ.get("READTHEDOCS_VERSION")
-if rtd_version and rtd_version not in {"latest", "stable"}:
-    code_ref = rtd_version
-else:
-    code_ref = "main"
-
 code_url = f"https://github.com/kornia/kornia/blob/{code_ref}"
 
 
@@ -354,9 +571,137 @@ texinfo_documents = [
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
-    "numpy": ("http://numpy.org/doc/stable/", None),
-    "torch": ("http://pytorch.org/docs/stable/", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "torch": ("https://pytorch.org/docs/stable/", None),
 }
 
 # mock these modules and won't try to actually import them
 autodoc_mock_imports = ["boxmot", "segmentation_models_pytorch"]
+
+
+# -- Social / SEO metadata --------------------------------------------------
+
+# Used when a page does not declare its own ``.. meta:: :name: description``.
+_DEFAULT_DESCRIPTION = (
+    "Kornia is a differentiable computer vision library for PyTorch: batched, GPU-ready, "
+    "autograd-friendly image transforms, filters, color conversions, camera geometry, augmentations "
+    "and curated deep learning models."
+)
+_SOCIAL_IMAGE = "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"
+_META_TAG_RE = re.compile(r"<meta\b[^>]*>", re.IGNORECASE)
+_META_ATTR_RE = re.compile(r'(\w+)="([^"]*)"')
+
+
+def _inject_social_metatags(app, pagename, templatename, context, doctree):
+    """Add Open Graph / Twitter card tags (and a fallback description) to every HTML page.
+
+    Search engines and chat apps render these when a docs link is shared; Sphinx and furo emit
+    none of them by default. The description is taken from the page's own ``.. meta::``
+    directive when it has one, so page authors keep control of the snippet.
+    """
+    metatags = context.get("metatags", "") or ""
+    match = None
+    for tag in _META_TAG_RE.findall(metatags):
+        attrs = dict(_META_ATTR_RE.findall(tag))
+        if attrs.get("name", "").lower() == "description" and attrs.get("content"):
+            match = attrs["content"]
+            break
+    description = html.unescape(match).strip().strip('"') if match else _DEFAULT_DESCRIPTION
+    description = " ".join(description.split())
+    if len(description) > 300:
+        description = description[:297].rsplit(" ", 1)[0] + "..."
+    # Sphinx hands the title over already HTML-escaped; unescape so ``esc`` below does not double it.
+    title = html.unescape(context.get("title") or project)
+    if pagename != master_doc:
+        title = f"{title} - {project}"
+    url = f"{html_baseurl}{pagename}.html"
+    esc = html.escape
+
+    extra = []
+    if not match:
+        extra.append(f'<meta name="description" content="{esc(description)}" />')
+    extra += [
+        '<meta property="og:type" content="website" />',
+        f'<meta property="og:site_name" content="{esc(project)}" />',
+        f'<meta property="og:title" content="{esc(title)}" />',
+        f'<meta property="og:description" content="{esc(description)}" />',
+        f'<meta property="og:url" content="{esc(url)}" />',
+        f'<meta property="og:image" content="{_SOCIAL_IMAGE}" />',
+        '<meta name="twitter:card" content="summary_large_image" />',
+        '<meta name="twitter:site" content="@kornia_foss" />',
+        f'<meta name="twitter:title" content="{esc(title)}" />',
+        f'<meta name="twitter:description" content="{esc(description)}" />',
+        f'<meta name="twitter:image" content="{_SOCIAL_IMAGE}" />',
+    ]
+    context["metatags"] = metatags + "\n" + "\n".join(extra)
+
+
+# -- Deep-link compatibility ------------------------------------------------
+
+# Pages that used to hold a whole module's reference and are now section indexes, with the
+# objects spread over per-topic subpages. Years of external links point at anchors on these
+# pages (``augmentation.module.html#kornia.augmentation.RandomAffine``), and a server-side
+# redirect cannot see the fragment. Each of these pages therefore embeds a JSON map from
+# object name to the page that documents it now, and ``_static/js/custom.js`` redirects when
+# the requested fragment is in the map. Map the page to its old ``kornia.<module>`` prefix.
+_SPLIT_INDEX_PAGES = {
+    "augmentation.module": "kornia.augmentation.",
+    "color": "kornia.color.",
+    "enhance": "kornia.enhance.",
+    "feature": "kornia.feature.",
+    "filters": "kornia.filters.",
+    "image": "kornia.image.",
+    "losses": "kornia.losses.",
+    "metrics": "kornia.metrics.",
+}
+
+
+def _inject_anchor_redirects(app, pagename, templatename, context, doctree):
+    """Embed ``{new docname: [object names]}`` on the pages listed in ``_SPLIT_INDEX_PAGES``."""
+    prefix = _SPLIT_INDEX_PAGES.get(pagename)
+    if prefix is None:
+        return
+    moved: dict[str, list[str]] = {}
+    for fullname, entry in app.env.domaindata["py"]["objects"].items():
+        if fullname.startswith(prefix) and entry.docname != pagename:
+            moved.setdefault(entry.docname, []).append(fullname)
+    if not moved:
+        return
+    context["metatags"] = (context.get("metatags", "") or "") + "\n" + _json_script("kornia-anchor-redirects", moved)
+
+
+def _json_script(element_id, data):
+    payload = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
+    return f'<script type="application/json" id="{element_id}">{payload}</script>'
+
+
+# -- Navbar menus -----------------------------------------------------------
+
+
+def _navbar_menu_entries():
+    for menu in NAVBAR_MENUS.values():
+        groups = menu.values() if isinstance(menu, dict) else [menu]
+        for group in groups:
+            yield from group
+
+
+def _check_navbar_menus(app, env):
+    """Fail the build (under ``-W``) when a menu entry points at a page that no longer exists."""
+    for label, target in _navbar_menu_entries():
+        if target is None or "://" in target:
+            continue
+        if target not in env.found_docs:
+            logger.warning("NAVBAR_MENUS entry %r points at unknown document %r", label, target)
+
+
+def _inject_navbar_menus(app, pagename, templatename, context, doctree):
+    if DOCS_THEME != "pydata":
+        return
+    context["metatags"] = (context.get("metatags", "") or "") + "\n" + _json_script("kornia-navbar-menus", NAVBAR_MENUS)
+
+
+def setup(app):
+    app.connect("html-page-context", _inject_social_metatags)
+    app.connect("html-page-context", _inject_anchor_redirects)
+    app.connect("html-page-context", _inject_navbar_menus)
+    app.connect("env-check-consistency", _check_navbar_menus)

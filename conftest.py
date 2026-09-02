@@ -210,6 +210,29 @@ def _configure_half_precision_manifest(config, items):
 
 def pytest_collection_modifyitems(config, items):
     """Collect test options."""
+    # Device-agnostic tests exercise CPU-only code regardless of the selected test device. Run
+    # them once whenever CPU is part of the matrix instead of repeating the same work in every
+    # accelerator job. --run-device-agnostic forces them back on, so an accelerator-only run can
+    # still cover the whole suite when that is what the caller wants.
+    selected_devices = _parse_test_option(config, "--device", TEST_DEVICES)
+    if "cpu" not in selected_devices and not config.getoption("--run-device-agnostic"):
+        device_agnostic_items = [item for item in items if item.get_closest_marker("device_agnostic") is not None]
+        if device_agnostic_items:
+            config.hook.pytest_deselected(items=device_agnostic_items)
+            device_agnostic_ids = {id(item) for item in device_agnostic_items}
+            items[:] = [item for item in items if id(item) not in device_agnostic_ids]
+            # Say so out loud. The deselected set is not incidental -- it holds the ONNX and
+            # torch.export suites -- and a bare "N deselected" in the status line is easy to read
+            # as noise, so an accelerator-only run should not look like a full-suite run.
+            reporter = config.pluginmanager.get_plugin("terminalreporter")
+            if reporter is not None:
+                reporter.write_line(
+                    f"deselected {len(device_agnostic_items)} device_agnostic test(s): they exercise "
+                    "CPU-only code and CPU is not in --device. Pass --run-device-agnostic "
+                    "(or KORNIA_TEST_RUN_DEVICE_AGNOSTIC=true) to run them here too.",
+                    yellow=True,
+                )
+
     # Deselect dynamo/compile tests when no optimizer is specified
     # Check environment variable directly (not config option which has default "inductor")
     optimizer_env = os.environ.get("KORNIA_TEST_OPTIMIZER", "").strip()
@@ -353,6 +376,17 @@ def pytest_addoption(parser):
             "device-side assert cannot contaminate subsequent tests. "
             "Without this flag, float16/bfloat16 CUDA tests are skipped. "
             "(env: KORNIA_TEST_ISOLATE_HALF)"
+        ),
+    )
+    parser.addoption(
+        "--run-device-agnostic",
+        action="store_true",
+        default=os.environ.get("KORNIA_TEST_RUN_DEVICE_AGNOSTIC", "false").lower() == "true",
+        help=(
+            "Run tests marked device_agnostic even when CPU is not part of the device matrix. "
+            "They exercise CPU-only code, so an accelerator-only run deselects them by default "
+            "to avoid repeating work the CPU job already did; pass this to run the whole suite "
+            "on one device anyway. (env: KORNIA_TEST_RUN_DEVICE_AGNOSTIC)"
         ),
     )
 
@@ -532,11 +566,11 @@ def _is_subprocess_isolated_test(item) -> bool:
     if callspec is None:
         return False
     params = callspec.params
-    if params.get("dtype_name") not in ("float16", "bfloat16"):
-        return False
     if params.get("device_name") != "cuda":
         return False
-    return True
+    if params.get("dtype_name") in ("float16", "bfloat16"):
+        return True
+    return any(v in (torch.float16, torch.bfloat16) for v in params.values())
 
 
 def pytest_runtest_protocol(item, nextitem):
@@ -567,6 +601,8 @@ def pytest_runtest_protocol(item, nextitem):
         "-m",
         "pytest",
         item.nodeid,
+        "-o",
+        "addopts=",
         "--no-header",
         "--tb=short",
         "-q",
@@ -574,6 +610,11 @@ def pytest_runtest_protocol(item, nextitem):
         f"--device={device_name}",
         f"--dtype={dtype_name}",
     ]
+    # The parent already decided this node runs, so the child must not re-apply a selection rule
+    # and collect nothing: it is handed a single --device=cuda, under which the device_agnostic
+    # deselection would fire. Exit code 5 is reported back as an ordinary skip, which would hide
+    # a test that never executed.
+    cmd.append("--run-device-agnostic")
     if item.config.getoption("--runslow"):
         cmd.append("--runslow")
     if item.config.getoption("--tf32"):
@@ -583,6 +624,9 @@ def pytest_runtest_protocol(item, nextitem):
         cmd.append(f"--optimizer={optimizer_backend}")
 
     env = {**os.environ, "KORNIA_TEST_IN_SUBPROCESS": "1"}
+    # `-o addopts=` above only clears the ini value; the environment form is inherited and would
+    # push the child to -qq, where the summary line the parser relies on is no longer printed.
+    env.pop("PYTEST_ADDOPTS", None)
     t0 = time.monotonic()
     proc = subprocess.run(  # noqa: S603
         cmd, capture_output=True, text=True, cwd=str(item.config.rootdir), env=env, check=False
@@ -666,11 +710,20 @@ def skip_half_precision_on_cuda(request):
     if os.environ.get("KORNIA_TEST_IN_SUBPROCESS"):
         return
 
-    if "dtype" not in request.fixturenames:
+    half_dtype = None
+    if "dtype" in request.fixturenames:
+        dtype = request.getfixturevalue("dtype")
+        if dtype in (torch.bfloat16, torch.float16):
+            half_dtype = dtype
+    elif hasattr(request.node, "callspec"):
+        half_dtype = next(
+            (v for v in request.node.callspec.params.values() if v in (torch.bfloat16, torch.float16)),
+            None,
+        )
+
+    if half_dtype is None:
         return
-    dtype = request.getfixturevalue("dtype")
-    if dtype not in (torch.bfloat16, torch.float16):
-        return
+
     if "device" not in request.fixturenames:
         return
 
@@ -683,7 +736,7 @@ def skip_half_precision_on_cuda(request):
         return
 
     if not request.config.getoption("--isolate-half-precision"):
-        dtype_name = "bfloat16" if dtype == torch.bfloat16 else "float16"
+        dtype_name = "bfloat16" if half_dtype == torch.bfloat16 else "float16"
         pytest.skip(
             f"{dtype_name} on CUDA: skipped by default to prevent device-side assert contamination. "
             "Run with --isolate-half-precision to execute in isolated subprocesses."

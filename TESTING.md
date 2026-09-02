@@ -38,6 +38,7 @@ pixi run test-quick
 | `--isolate-half-precision` | `KORNIA_TEST_ISOLATE_HALF` | off | Run float16/bfloat16 CUDA tests each in a fresh `subprocess.run` process (no shared CUDA state) |
 | `--xfail-known-half-precision` | `KORNIA_TEST_XFAIL_KNOWN_HALF` | off | Strictly validate the recorded Linux CPU half-precision failures; supports full or partial selections |
 | `--record-half-precision-failures=PATH` | `KORNIA_TEST_RECORD_HALF` | unset | Record a complete deterministic Linux CPU half-precision manifest at `PATH` |
+| `--run-device-agnostic` | `KORNIA_TEST_RUN_DEVICE_AGNOSTIC` | off | Run `@pytest.mark.device_agnostic` tests even when CPU is not in the device matrix |
 
 ## Test Structure
 
@@ -62,6 +63,7 @@ The `device` and `dtype` fixtures are injected automatically from the CLI option
 
 | Marker | Meaning |
 |---|---|
+| `@pytest.mark.device_agnostic` | Test runs once in a CPU-containing matrix because its logic does not use the selected accelerator. An accelerator-only run deselects it and says so on a line of its own at the start of the run, because the deselected set includes the ONNX and `torch.export` suites; `--run-device-agnostic` forces it back on |
 | `@pytest.mark.slow` | Long-running test; skipped unless `--runslow` is passed |
 | `@pytest.mark.tf32` | Known to fail under TF32 (see section below); xfail unless `--tf32` |
 

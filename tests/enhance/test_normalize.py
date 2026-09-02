@@ -120,7 +120,7 @@ class TestNormalize(BaseTester):
         # prepare input data
         mean = torch.tensor(2, device=device, dtype=dtype)
         std = torch.tensor(3, device=device, dtype=dtype)
-        data = torch.ones(2, 3, 256, 313, device=device, dtype=dtype)
+        data = torch.ones(2, 3, 16, 17, device=device, dtype=dtype)
 
         # expected output
         expected = (data - mean) / std
@@ -143,7 +143,7 @@ class TestNormalize(BaseTester):
     )
     def test_random_normalize_different_parameter_types(self, mean, std):
         f = kornia.enhance.Normalize(mean=mean, std=std)
-        data = torch.ones(2, 3, 256, 313)
+        data = torch.ones(2, 3, 16, 17)
         if isinstance(mean, float):
             expected = (data - torch.as_tensor(mean)) / torch.as_tensor(std)
         else:

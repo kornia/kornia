@@ -1,12 +1,14 @@
-Models Overview
-===============
+kornia.models
+=============
 
 .. meta::
-   :name: description
-   :content: "The Kornia models overview provides detailed information about key built-in models for computer vision tasks, including real-time object detection (RT-DETR), edge detection (DexiNed), segmentation (UNet, DeepLabV3), and multi-object tracking (BoxMotTracker). It offers comprehensive documentation on each model, including methods, parameters, and example usage to streamline the integration of these models into computer vision workflows."
+   :description: The Kornia models overview provides detailed information about key built-in models for computer vision tasks, including real-time object detection (RT-DETR), edge detection (DexiNed), segmentation (UNet, DeepLabV3), and multi-object tracking (BoxMotTracker). It offers comprehensive documentation on each model, including methods, parameters, and example usage to streamline the integration of these models into computer vision workflows.
 
 
-This section covers several of Kornia's built-in models for key computer vision tasks. Each model is documented with its respective API and example usage.
+Builders for Kornia's ready-to-use models (object detection, edge detection, semantic segmentation, multi-object tracking and Kimi-VL).
+Each builder returns a configured model with pretrained weights. For the papers behind the models, see the :doc:`Models </models/index>` section.
+Pretrained weights are downloaded on first use, and the model builders return a regular ``nn.Module`` that accepts a
+batched ``(B, 3, H, W)`` float image in ``[0, 1]`` (the tracker below wraps a detector in a plain Python class instead). :func:`kornia.io.get_sample_images` provides a couple of sample images for quick experiments.
 
 .. _RTDETRDetectorBuilder:
 
@@ -18,7 +20,7 @@ The `RTDETRDetectorBuilder` class is a builder for constructing a detection mode
 **Key Methods:**
 
 - `build`: Constructs and returns an instance of the RTDETR detection model.
-- `save`: Saves the processed image or results after applying the detection model.
+- `visualize`: Draws the detected boxes on the input images.
 
 .. autoclass:: kornia.contrib.object_detection.RTDETRDetectorBuilder
    :members:
@@ -32,9 +34,12 @@ The `RTDETRDetectorBuilder` class is a builder for constructing a detection mode
    .. code-block:: python
 
        import kornia
-       image = kornia.utils.sample.get_sample_images()[0][None]
-       model = kornia.contrib.object_detection.RTDETRDetectorBuilder.build()
-       model.save(image)
+       from kornia.contrib.object_detection import RTDETRDetectorBuilder
+
+       image = kornia.io.get_sample_images()[0][None]
+       model = RTDETRDetectorBuilder.build()
+       detections = model(image)  # list of (D, 6) tensors: class id, score, x, y, w, h
+       drawn = model.visualize(image, detections)  # the boxes drawn on the image
 
 .. _EdgeDetectorBuilder:
 
@@ -46,7 +51,7 @@ The `EdgeDetectorBuilder` class implements a state-of-the-art edge detection mod
 **Key Methods:**
 
 - `build`: Builds and returns an instance of the DexiNed edge detection model.
-- `save`: Saves the detected edges for further processing or visualization.
+- `visualize`: Returns the edge maps as images for further processing or display.
 
 .. autoclass:: kornia.contrib.edge_detection.EdgeDetectorBuilder
    :members:
@@ -60,25 +65,30 @@ The `EdgeDetectorBuilder` class implements a state-of-the-art edge detection mod
    .. code-block:: python
 
        import kornia
-       image = kornia.utils.sample.get_sample_images()[0][None]
-       model = kornia.contrib.edge_detection.EdgeDetectorBuilder.build()
-       model.save(image)
+       from kornia.contrib.edge_detection import EdgeDetectorBuilder
+
+       image = kornia.io.get_sample_images()[0][None]
+       model = EdgeDetectorBuilder.build()
+       edges = model(image)  # list with one (1, 1, H, W) edge map per image
 
 .. _SegmentationModels:
 
 SegmentationModelsBuilder
 -------------------------
 
-The `SegmentationModelsBuilder` class offers a flexible API for implementing and running various segmentation models. It supports a variety of architectures such as UNet, FPN, and others, making it highly adaptable for tasks like semantic segmentation, instance segmentation, and more.
+The `SegmentationModelsBuilder` class offers a flexible API for building and running segmentation models from the
+optional `segmentation_models_pytorch <https://github.com/qubvel-org/segmentation_models.pytorch>`_ package
+(``pip install segmentation_models_pytorch``). It supports a variety of architectures such as UNet, FPN, DeepLabV3 and
+others, with ImageNet-pretrained encoders.
 
 **Key Methods:**
 
-- `__init__`: Initializes a segmentation model based on the chosen architecture (e.g., UNet, DeepLabV3, etc.).
-- `forward`: Runs inference on an input tensor and returns segmented output.
+- `build`: Constructs a segmentation model for the chosen architecture, encoder and number of classes.
 
-**Parameters:**
+**Main parameters of** `build`:
 
 - `model_name`: (str) Name of the segmentation architecture to use, e.g., `"Unet"`, `"DeepLabV3"`.
+- `encoder_name`: (str) Name of the encoder backbone, e.g., `"resnet34"`.
 - `classes`: (int) The number of output classes for segmentation.
 
 .. autoclass:: kornia.models.segmentation.segmentation_models.SegmentationModelsBuilder
@@ -93,8 +103,10 @@ The `SegmentationModelsBuilder` class offers a flexible API for implementing and
    .. code-block:: python
 
        import kornia
-       input_tensor = kornia.utils.sample.get_sample_images()[0][None]
-       model = kornia.models.segmentation.segmentation_models.SegmentationModelsBuilder.build()
+       from kornia.models.segmentation.segmentation_models import SegmentationModelsBuilder
+
+       input_tensor = kornia.io.get_sample_images()[0][None]
+       model = SegmentationModelsBuilder.build(model_name="Unet", encoder_name="resnet34", classes=1)
        segmented_output = model(input_tensor)
        print(segmented_output.shape)
 
@@ -131,17 +143,20 @@ loading currently supports only the converted Kimi-VL-A3B-Instruct vision encode
 BoxMotTracker
 -------------
 
-The `BoxMotTracker` class is used for multi-object tracking in video streams. It is designed to track bounding boxes of objects across multiple frames, supporting various tracking algorithms for object detection and tracking continuity.
+The `BoxMotTracker` class is used for multi-object tracking in video streams. It combines a Kornia object detector with
+a tracker from the optional `boxmot <https://github.com/mikel-brostrom/boxmot>`_ package (``pip install boxmot``) to
+track bounding boxes across frames.
 
 **Key Methods:**
 
-- `__init__`: Initializes the multi-object tracker.
+- `__init__`: Initializes the multi-object tracker from a detector and a tracker model name.
 - `update`: Updates the tracker with a new image frame.
-- `save`: Saves the tracked object data or visualization for post-processing.
+- `visualize`: Draws the tracked boxes (and optionally their trajectories) on a frame.
 
-**Parameters:**
+**Main parameters:**
 
-- `max_lost`: (int) The maximum number of frames where an object can be lost before it is removed from the tracker.
+- `detector`: (ObjectDetector | str) The object detector instance, or the name of an RT-DETR model to build, e.g. `"rtdetr_r18vd"`.
+- `tracker_model_name`: (str) The boxmot tracker to use, e.g. `"DeepOCSORT"`.
 
 .. autoclass:: kornia.contrib.boxmot_tracker.BoxMotTracker
    :members:
@@ -155,13 +170,15 @@ The `BoxMotTracker` class is used for multi-object tracking in video streams. It
    .. code-block:: python
 
        import kornia
-       image = kornia.utils.sample.get_sample_images()[0][None]
-       model = kornia.contrib.boxmot_tracker.BoxMotTracker()
+       from kornia.contrib.boxmot_tracker import BoxMotTracker
+
+       image = kornia.io.get_sample_images()[0][None]
+       model = BoxMotTracker()
        for i in range(4):
            model.update(image)  # Update the tracker with new frames
-       model.save(image)       # Save the tracking result
+       tracked = model.visualize(image)  # Draw the tracked boxes on the frame
 
----
+----
 
 .. note::
 

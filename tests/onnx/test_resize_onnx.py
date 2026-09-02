@@ -24,6 +24,9 @@ import torch
 
 from kornia.geometry.transform import Resize
 
+# Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
+pytestmark = pytest.mark.device_agnostic
+
 onnx = pytest.importorskip("onnx")
 ort = pytest.importorskip("onnxruntime")
 

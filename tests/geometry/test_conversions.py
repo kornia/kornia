@@ -704,6 +704,8 @@ class TestAngleAxisToQuaternion(BaseTester):
         # torch.float32 buffer would silently upcast them, which is exactly the half-precision
         # surface kornia treats as its own. The tolerance is set for float16, the widest of the
         # four; the float32/float64 values are pinned exactly by the numerical tests above.
+        if device.type == "mps" and input_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         axis_angle = torch.tensor((1.0, 0.0, 0.0), device=device, dtype=input_dtype)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert quaternion.dtype == input_dtype
@@ -1597,6 +1599,7 @@ class TestQuaternionToRotationMatrix(BaseTester):
                 "float16 cannot represent either 1e-13 or the default eps=1e-12 -- both round to 0, so both "
                 "cells collapse to NaN (same underflow class as kornia#3966)"
             )
+        _skip_if_mps_clamp_caching(device)
 
         normalize_quaternion = kornia.geometry.conversions.normalize_quaternion
 
@@ -3057,11 +3060,12 @@ class TestConvertPointsFromHomogeneous(BaseTester):
         # [1., 1., nan]; the double-`where` makes it [1., 1., 0.].
         # w is the exact pole rather than merely a small value: a nearby w only makes the reciprocal
         # large, which no assertion on finiteness would catch. eps is passed explicitly so the input
-        # tracks the guard rather than the default. float64 only -- at float16 the default eps
-        # underflows to 0 (pinned in test_wart_float16_underflowed_default_eps_flips_branches), so
-        # w == -eps is not the pole there.
+        # tracks the guard rather than the default. float32 and float64 both represent -eps and eps
+        # identically enough for their sum to hit exactly zero; float32 keeps the pin active on MPS,
+        # which cannot represent float64.
         eps = 1e-8
-        points = torch.tensor([[2.0, 4.0, -eps]], device=device, dtype=torch.float64, requires_grad=True)
+        regression_dtype = torch.float32 if device.type == "mps" else torch.float64
+        points = torch.tensor([[2.0, 4.0, -eps]], device=device, dtype=regression_dtype, requires_grad=True)
 
         kornia.geometry.conversions.convert_points_from_homogeneous(points, eps=eps).sum().backward()
 
@@ -3232,30 +3236,44 @@ class TestNormalizePixelCoordinates(BaseTester):
             with pytest.raises(ValueError, match="must be positive"):
                 op(coords, *bad_sizes)
 
-    def test_trace_crosses_singleton_boundary(self, device, dtype):
-        class Normalize(torch.nn.Module):
+    def test_normalize_and_denormalize_trace_cross_singleton_boundary(self, device, dtype):
+        class Convert(torch.nn.Module):
             def forward(self, image, coords):
-                return kornia.geometry.conversions.normalize_pixel_coordinates(coords, image.shape[-2], image.shape[-1])
+                height, width = image.shape[-2], image.shape[-1]
+                return (
+                    kornia.geometry.conversions.normalize_pixel_coordinates(coords, height, width),
+                    kornia.geometry.conversions.denormalize_pixel_coordinates(coords, height, width),
+                )
 
         coords = torch.tensor([[0.0, 0.0], [0.5, 0.5]], device=device, dtype=dtype)
         for trace_height, runtime_height in ((2, 1), (1, 2)):
             example = torch.zeros(1, 1, trace_height, 4, device=device, dtype=dtype)
             runtime = torch.zeros(1, 1, runtime_height, 4, device=device, dtype=dtype)
-            traced = torch.jit.trace(Normalize(), (example, coords))
-            self.assert_close(traced(runtime, coords), Normalize()(runtime, coords), atol=0.0, rtol=0.0)
+            convert = Convert()
+            traced = torch.jit.trace(convert, (example, coords))
+            actual = traced(runtime, coords)
+            expected = convert(runtime, coords)
+            self.assert_close(actual[0], expected[0], atol=0.0, rtol=0.0)
+            self.assert_close(actual[1], expected[1], atol=0.0, rtol=0.0)
 
-        class Normalize3d(torch.nn.Module):
+        class Convert3d(torch.nn.Module):
             def forward(self, volume, coords):
-                return kornia.geometry.conversions.normalize_pixel_coordinates3d(
-                    coords, volume.shape[-3], volume.shape[-2], volume.shape[-1]
+                depth, height, width = volume.shape[-3], volume.shape[-2], volume.shape[-1]
+                return (
+                    kornia.geometry.conversions.normalize_pixel_coordinates3d(coords, depth, height, width),
+                    kornia.geometry.conversions.denormalize_pixel_coordinates3d(coords, depth, height, width),
                 )
 
         coords3d = torch.tensor([[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]], device=device, dtype=dtype)
         for trace_depth, runtime_depth in ((2, 1), (1, 2)):
             example = torch.zeros(1, 1, trace_depth, 3, 4, device=device, dtype=dtype)
             runtime = torch.zeros(1, 1, runtime_depth, 3, 4, device=device, dtype=dtype)
-            traced = torch.jit.trace(Normalize3d(), (example, coords3d))
-            self.assert_close(traced(runtime, coords3d), Normalize3d()(runtime, coords3d), atol=0.0, rtol=0.0)
+            convert = Convert3d()
+            traced = torch.jit.trace(convert, (example, coords3d))
+            actual = traced(runtime, coords3d)
+            expected = convert(runtime, coords3d)
+            self.assert_close(actual[0], expected[0], atol=0.0, rtol=0.0)
+            self.assert_close(actual[1], expected[1], atol=0.0, rtol=0.0)
 
 
 def test_wart_default_eps_1e_8_backs_the_remaining_quoted_warning_numbers():
@@ -3428,33 +3446,6 @@ class TestDenormalizePixelCoordinates(BaseTester):
         with pytest.warns(FutureWarning, match="deprecated and ignored"):
             actual = op(coords, *sizes, eps=1.0)
         self.assert_close(actual, expected, atol=0.0, rtol=0.0)
-
-    def test_trace_crosses_singleton_boundary(self, device, dtype):
-        class Denormalize(torch.nn.Module):
-            def forward(self, image, coords):
-                return kornia.geometry.conversions.denormalize_pixel_coordinates(
-                    coords, image.shape[-2], image.shape[-1]
-                )
-
-        coords = torch.tensor([[0.0, 0.0], [0.5, 0.5]], device=device, dtype=dtype)
-        for trace_height, runtime_height in ((2, 1), (1, 2)):
-            example = torch.zeros(1, 1, trace_height, 4, device=device, dtype=dtype)
-            runtime = torch.zeros(1, 1, runtime_height, 4, device=device, dtype=dtype)
-            traced = torch.jit.trace(Denormalize(), (example, coords))
-            self.assert_close(traced(runtime, coords), Denormalize()(runtime, coords), atol=0.0, rtol=0.0)
-
-        class Denormalize3d(torch.nn.Module):
-            def forward(self, volume, coords):
-                return kornia.geometry.conversions.denormalize_pixel_coordinates3d(
-                    coords, volume.shape[-3], volume.shape[-2], volume.shape[-1]
-                )
-
-        coords3d = torch.tensor([[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]], device=device, dtype=dtype)
-        for trace_depth, runtime_depth in ((2, 1), (1, 2)):
-            example = torch.zeros(1, 1, trace_depth, 3, 4, device=device, dtype=dtype)
-            runtime = torch.zeros(1, 1, runtime_depth, 3, 4, device=device, dtype=dtype)
-            traced = torch.jit.trace(Denormalize3d(), (example, coords3d))
-            self.assert_close(traced(runtime, coords3d), Denormalize3d()(runtime, coords3d), atol=0.0, rtol=0.0)
 
 
 @pytest.mark.parametrize(
