@@ -249,3 +249,29 @@ class TestDeviceAgnosticSelection:
             "--dtype=float32",
         )
         result_cuda.assert_outcomes(passed=1, deselected=1)
+
+    def test_run_device_agnostic_overrides_the_deselection(self, pytester):
+        test_file = pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.device_agnostic
+            def test_device_agnostic():
+                assert True
+
+            def test_unmarked():
+                assert True
+            """
+        )
+
+        result = pytester.runpytest_subprocess(
+            "-p",
+            "conftest",
+            str(test_file),
+            "-o",
+            "testpaths=.",
+            "--device=cuda",
+            "--dtype=float32",
+            "--run-device-agnostic",
+        )
+        result.assert_outcomes(passed=2)
