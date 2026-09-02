@@ -405,17 +405,21 @@ class TestRANSACEssential(BaseTester):
         forward() must return an essential matrix even when local optimization does not win and
         the best model is the minimal-solver estimate (find_essential), which is not guaranteed
         to be on the essential manifold. The returned model is projected onto the manifold
-        before being returned, so the constraint holds regardless of which path selects the
-        best model.
+        before being returned, so the constraint holds for the model forward() selects.
+
+        ``batch_size``/``max_iter`` are trimmed for speed, but ``max_lo_iters`` keeps its default
+        so the local-optimization loop still runs: on this input it is entered once per draw and
+        never beats the minimal-solver model, exactly as with the default sampler settings.
         """
         torch.random.manual_seed(0)
-        ransac = RANSAC("essential", batch_size=32, max_iter=1, max_lo_iters=0).to(device=device, dtype=dtype)
-        kp1 = torch.rand(20, 2, device=device, dtype=dtype)
-        kp2 = torch.rand(20, 2, device=device, dtype=dtype)
-        E, _ = ransac(kp1, kp2)
-        sv = torch.linalg.svdvals(E)
-        assert (sv[0] / sv[1] - 1.0).abs() < 1e-2
-        assert (sv[2] / sv[0]).abs() < 1e-4
+        ransac = RANSAC("essential", batch_size=32, max_iter=1).to(device=device, dtype=dtype)
+        for _ in range(5):
+            kp1 = torch.rand(20, 2, device=device, dtype=dtype)
+            kp2 = torch.rand(20, 2, device=device, dtype=dtype)
+            E, _ = ransac(kp1, kp2)
+            sv = torch.linalg.svdvals(E)
+            assert (sv[0] / sv[1] - 1.0).abs() < 1e-2
+            assert (sv[2] / sv[0]).abs() < 1e-4
 
     def test_project_to_essential(self, device, dtype):
         """project_to_essential must enforce the essential-matrix constraint."""

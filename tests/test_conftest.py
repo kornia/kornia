@@ -26,8 +26,11 @@ import torch
 from conftest import _is_subprocess_isolated_test, skip_half_precision_on_cuda
 
 pytest_plugins = ["pytester"]
-# Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
-pytestmark = pytest.mark.device_agnostic
+# Deliberately *not* marked device_agnostic. These are the runner's own regression tests, and
+# several of them guard accelerator-only entry points -- `test_isolated_skip_is_reported_with_
+# quiet_addopts` exists to protect `pixi run -e cuda test-cuda-half`. Marking the module would
+# deselect exactly the tests that command needs. They take no device fixture, so they run once
+# per session on any device matrix.
 
 _skip_fixture_fn = getattr(skip_half_precision_on_cuda, "__wrapped__", skip_half_precision_on_cuda)
 
@@ -204,13 +207,22 @@ class TestIntegrationLocalHalfPrecision:
         """
         monkeypatch.setenv("PYTEST_ADDOPTS", "-q")
         test_file = Path(__file__).parent / "color" / "test_hls.py"
+        node_id = f"{test_file}::TestRgbToHls::test_nan_rgb_to_hls"
         result = pytester.runpytest_subprocess(
-            f"{test_file}::TestRgbToHls::test_nan_rgb_to_hls",
+            node_id,
             "--device=cuda",
             "--dtype=float16",
             "--isolate-half-precision",
+            "-rs",
         )
         result.assert_outcomes(skipped=1)
+        # `skipped=1` on its own does not prove the child ran: `pytest_runtest_protocol` also maps
+        # the child's exit code 5 ("no tests collected") onto a skip, so a node the parent collects
+        # but the child parametrises away would satisfy the count while proving nothing. Deleting
+        # or renaming the node is caught by the count already (the parent reports 0 outcomes), but
+        # a divergence between parent and child collection is not. `-rs` puts the synthetic
+        # report's reason in the summary, so require the skip to be the child's own.
+        result.stdout.no_fnmatch_line("*no tests collected*")
 
 
 class TestDeviceAgnosticSelection:
