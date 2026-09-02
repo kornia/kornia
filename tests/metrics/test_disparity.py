@@ -24,6 +24,37 @@ from kornia.core.exceptions import BaseError, ShapeError, TypeCheckError
 from testing.base import BaseTester
 
 
+def _dynamo_inputs(device, dtype):
+    """Build inputs that exercise the masked reduction, the path that must stay compile-friendly."""
+    input = torch.rand(2, 4, 5, device=device, dtype=dtype) * 10.0
+    target = torch.rand(2, 4, 5, device=device, dtype=dtype) * 10.0 + 1.0
+    mask = torch.rand(2, 4, 5, device=device) > 0.3
+    return input, target, mask
+
+
+_LARGE_VALID = 100_000
+_LARGE_INVALID = 20_000
+
+
+def _large_masked_inputs(device, dtype):
+    """Build a masked disparity pair large enough to overflow a half-precision accumulator.
+
+    ``float16`` saturates at 65504, so summing a map this size in the input dtype yields ``inf``.
+    Exactly 3/4 of the 100k valid pixels are off by 100 px on a ground truth disparity of 100, and
+    the masked-out tail is wildly wrong so that it changes the result if it ever leaks into a
+    reduction.
+    """
+    n_outliers = 3 * _LARGE_VALID // 4
+    target = torch.full((_LARGE_VALID + _LARGE_INVALID,), 100.0, device=device, dtype=dtype)
+    input = target.clone()
+    input[:n_outliers] = 200.0
+    input[_LARGE_VALID:] = 10000.0
+
+    mask = torch.zeros_like(target, dtype=torch.bool)
+    mask[:_LARGE_VALID] = True
+    return input, target, mask
+
+
 class TestMeanAbsoluteDisparityError(BaseTester):
     def test_smoke(self, device, dtype):
         input = torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
@@ -115,6 +146,19 @@ class TestMeanAbsoluteDisparityError(BaseTester):
             kornia.metrics.mean_absolute_disparity_error(sample, 2.0 * sample, reduction="foo")
         assert "Invalid reduction option." in str(errinfo.value)
 
+    def test_large_masked_reduction(self, device, dtype):
+        # 3/4 of the valid pixels are off by 100 px, the rest are exact.
+        input, target, mask = _large_masked_inputs(device, dtype)
+        actual = kornia.metrics.mean_absolute_disparity_error(input, target, mask)
+        self.assert_close(actual, torch.tensor(75.0, device=device, dtype=dtype))
+        assert actual.dtype == dtype
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        input, target, mask = _dynamo_inputs(device, dtype)
+        op = kornia.metrics.mean_absolute_disparity_error
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(input, target, mask), op_optimized(input, target, mask))
+
 
 class TestRootMeanSquaredDisparityError(BaseTester):
     def test_smoke(self, device, dtype):
@@ -174,6 +218,30 @@ class TestRootMeanSquaredDisparityError(BaseTester):
         with pytest.raises(NotImplementedError) as errinfo:
             kornia.metrics.root_mean_squared_disparity_error(sample, 2.0 * sample, reduction="foo")
         assert "Invalid reduction option." in str(errinfo.value)
+
+    def test_large_masked_reduction(self, device, dtype):
+        # sqrt(0.75 * 100^2)
+        input, target, mask = _large_masked_inputs(device, dtype)
+        actual = kornia.metrics.root_mean_squared_disparity_error(input, target, mask)
+        self.assert_close(actual, torch.tensor(86.6025403784, device=device, dtype=dtype))
+        assert actual.dtype == dtype
+
+    def test_large_error_does_not_saturate_the_square(self, device, dtype):
+        # 300^2 = 90000 is past the float16 ceiling, so the squared error map must not be
+        # accumulated in the input dtype.
+        target = torch.full((64,), 100.0, device=device, dtype=dtype)
+        input = target + 300.0
+        actual = kornia.metrics.root_mean_squared_disparity_error(input, target)
+        self.assert_close(actual, torch.tensor(300.0, device=device, dtype=dtype))
+
+        actual_none = kornia.metrics.root_mean_squared_disparity_error(input, target, reduction="none")
+        self.assert_close(actual_none, torch.full((64,), 300.0, device=device, dtype=dtype))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        input, target, mask = _dynamo_inputs(device, dtype)
+        op = kornia.metrics.root_mean_squared_disparity_error
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(input, target, mask), op_optimized(input, target, mask))
 
 
 class TestMeanBadPixelError(BaseTester):
@@ -246,3 +314,153 @@ class TestMeanBadPixelError(BaseTester):
         with pytest.raises(NotImplementedError) as errinfo:
             kornia.metrics.mean_bad_pixel_error(sample, 2.0 * sample, reduction="foo")
         assert "Invalid reduction option." in str(errinfo.value)
+
+    def test_large_masked_reduction(self, device, dtype):
+        # 3/4 of the valid pixels are off by 100 px, well past the 3 px threshold.
+        input, target, mask = _large_masked_inputs(device, dtype)
+        actual = kornia.metrics.mean_bad_pixel_error(input, target, valid_mask=mask)
+        self.assert_close(actual, torch.tensor(0.75, device=device, dtype=dtype))
+        assert actual.dtype == dtype
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        input, target, mask = _dynamo_inputs(device, dtype)
+        op = kornia.metrics.mean_bad_pixel_error
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(input, target, 0.5, mask), op_optimized(input, target, 0.5, mask))
+
+
+class TestKittiD1Error(BaseTester):
+    # D1 marks a pixel as an outlier only when BOTH criteria hold:
+    #   |d - d_gt| > abs_threshold  AND  |d - d_gt| / |d_gt| > rel_threshold
+    # errors    = [0.0, 4.0, 4.0,  10.0]
+    # relative  = [0.0, 4.0, 0.04, 1.0]
+    # abs > 3   = [F,   T,   T,    T]
+    # rel > .05 = [F,   T,   F,    T]
+    # outlier   = [0,   1,   0,    1]  -> mean 0.5, sum 2.0
+    INPUT = [1.0, 5.0, 104.0, 20.0]
+    TARGET = [1.0, 1.0, 100.0, 10.0]
+
+    def _sample(self, device, dtype):
+        return (
+            torch.tensor(self.INPUT, device=device, dtype=dtype),
+            torch.tensor(self.TARGET, device=device, dtype=dtype),
+        )
+
+    def test_smoke(self, device, dtype):
+        input = torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
+        target = torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
+        actual = kornia.metrics.kitti_d1_error(input, target)
+        assert actual.shape == torch.Size([])
+
+    def test_metric_mean_reduction(self, device, dtype):
+        input, target = self._sample(device, dtype)
+        expected = torch.tensor(0.5, device=device, dtype=dtype)
+        actual = kornia.metrics.kitti_d1_error(input, target, reduction="mean")
+        self.assert_close(actual, expected)
+
+    def test_metric_sum_reduction(self, device, dtype):
+        input, target = self._sample(device, dtype)
+        expected = torch.tensor(2.0, device=device, dtype=dtype)
+        actual = kornia.metrics.kitti_d1_error(input, target, reduction="sum")
+        self.assert_close(actual, expected)
+
+    def test_metric_no_reduction(self, device, dtype):
+        input, target = self._sample(device, dtype)
+        expected = torch.tensor([0.0, 1.0, 0.0, 1.0], device=device, dtype=dtype)
+        actual = kornia.metrics.kitti_d1_error(input, target, reduction="none")
+        self.assert_close(actual, expected)
+
+    def test_perfect_prediction(self, device, dtype):
+        sample = torch.rand(4, 4, device=device, dtype=dtype) + 1.0
+        expected = torch.tensor(0.0, device=device, dtype=dtype)
+        actual = kornia.metrics.kitti_d1_error(sample, sample)
+        self.assert_close(actual, expected)
+
+    def test_absolute_criterion_alone_is_not_an_outlier(self, device, dtype):
+        # 4 px of error on a disparity of 100 exceeds the 3 px threshold but is only 4% relative
+        # error, so D1 does not count it, while the plain bad-pixel metric does.
+        input = torch.tensor([104.0], device=device, dtype=dtype)
+        target = torch.tensor([100.0], device=device, dtype=dtype)
+        self.assert_close(kornia.metrics.kitti_d1_error(input, target), torch.tensor(0.0, device=device, dtype=dtype))
+        self.assert_close(
+            kornia.metrics.mean_bad_pixel_error(input, target), torch.tensor(1.0, device=device, dtype=dtype)
+        )
+
+    def test_relative_criterion_alone_is_not_an_outlier(self, device, dtype):
+        # 2 px of error on a disparity of 10 is 20% relative error but stays within the 3 px
+        # absolute threshold, so D1 does not count it either.
+        input = torch.tensor([12.0], device=device, dtype=dtype)
+        target = torch.tensor([10.0], device=device, dtype=dtype)
+        expected = torch.tensor(0.0, device=device, dtype=dtype)
+        self.assert_close(kornia.metrics.kitti_d1_error(input, target), expected)
+
+    def test_thresholds(self, device, dtype):
+        input = torch.tensor([104.0], device=device, dtype=dtype)
+        target = torch.tensor([100.0], device=device, dtype=dtype)
+
+        # lowering the relative threshold below the 4% relative error makes the pixel an outlier
+        actual = kornia.metrics.kitti_d1_error(input, target, rel_threshold=0.01)
+        self.assert_close(actual, torch.tensor(1.0, device=device, dtype=dtype))
+
+        # raising the absolute threshold above the 4 px error rules it out again
+        actual = kornia.metrics.kitti_d1_error(input, target, abs_threshold=5.0, rel_threshold=0.01)
+        self.assert_close(actual, torch.tensor(0.0, device=device, dtype=dtype))
+
+    def test_valid_mask(self, device, dtype):
+        input, target = self._sample(device, dtype)
+        mask = torch.tensor([True, True, True, False], device=device)
+
+        actual_mean = kornia.metrics.kitti_d1_error(input, target, valid_mask=mask, reduction="mean")
+        self.assert_close(actual_mean, torch.tensor(1.0 / 3.0, device=device, dtype=dtype))
+
+        actual_sum = kornia.metrics.kitti_d1_error(input, target, valid_mask=mask, reduction="sum")
+        self.assert_close(actual_sum, torch.tensor(1.0, device=device, dtype=dtype))
+
+        actual_none = kornia.metrics.kitti_d1_error(input, target, valid_mask=mask, reduction="none")
+        expected_none = torch.tensor([0.0, 1.0, 0.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(actual_none, expected_none)
+
+    def test_zero_target_disparity(self, device, dtype):
+        # A zero ground truth disparity makes the relative error non-finite. Because both criteria
+        # must hold, such pixels fall back to the absolute threshold and the output stays finite.
+        input = torch.tensor([0.0, 5.0], device=device, dtype=dtype)
+        target = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
+
+        actual = kornia.metrics.kitti_d1_error(input, target, reduction="none")
+        expected = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+        self.assert_close(actual, expected)
+        assert torch.isfinite(actual).all()
+
+    def test_exception(self, device, dtype):
+        sample = torch.ones(4, 4, device=device, dtype=dtype)
+
+        with pytest.raises(TypeCheckError) as errinfo:
+            kornia.metrics.kitti_d1_error(None, sample)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
+
+        with pytest.raises(ShapeError) as errinfo:
+            kornia.metrics.kitti_d1_error(sample, sample[..., :2])
+        assert "Shape mismatch" in str(errinfo.value)
+
+        with pytest.raises(BaseError) as errinfo:
+            mask = torch.ones(3, device=device, dtype=torch.bool)
+            kornia.metrics.kitti_d1_error(sample, sample, valid_mask=mask)
+        assert "broadcastable" in str(errinfo.value)
+
+        with pytest.raises(NotImplementedError) as errinfo:
+            kornia.metrics.kitti_d1_error(sample, 2.0 * sample, reduction="foo")
+        assert "Invalid reduction option." in str(errinfo.value)
+
+    def test_large_masked_reduction(self, device, dtype):
+        # 3/4 of the valid pixels are off by 100 px on a disparity of 100: 100 % relative error,
+        # so both criteria hold and the outlier ratio is exactly 0.75.
+        input, target, mask = _large_masked_inputs(device, dtype)
+        actual = kornia.metrics.kitti_d1_error(input, target, valid_mask=mask)
+        self.assert_close(actual, torch.tensor(0.75, device=device, dtype=dtype))
+        assert actual.dtype == dtype
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        input, target, mask = _dynamo_inputs(device, dtype)
+        op = kornia.metrics.kitti_d1_error
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(input, target, 3.0, 0.05, mask), op_optimized(input, target, 3.0, 0.05, mask))
