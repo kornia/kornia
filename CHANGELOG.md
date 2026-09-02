@@ -238,6 +238,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Constructing `ScaleSpaceDetector` with `compile_modules` no longer permanently mutates the process-global
+  `torch._dynamo.config.capture_dynamic_output_shape_ops` setting. (#4134)
+
 * `Boxes3D.to_tensor` and `Boxes3D.get_boxes_shape` are differentiable again (#1396). Both reduce a box's 8
   vertices to its min/max corner with `amin`/`amax`, which is a genuine kink -- not differentiable in the
   classical sense -- wherever multiple vertices exactly tie for an axis extremum. Every face of an

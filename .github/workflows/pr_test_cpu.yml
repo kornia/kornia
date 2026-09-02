@@ -166,7 +166,7 @@ jobs:
       pytorch-version: '["2.14.0"]'
       pytorch-dtype: float32
       optimizer: inductor
-      pytest-extra: 'tests/augmentation tests/enhance tests/filters tests/color tests/geometry tests/losses tests/morphology -k "dynamo or compile"'
+      pytest-extra: 'tests/augmentation tests/enhance tests/feature tests/filters tests/color tests/geometry tests/losses tests/morphology -k "dynamo or compile"'
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |

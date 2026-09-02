@@ -498,7 +498,7 @@ class TestScaleSpaceDetector(BaseTester):
         assert abs(((pts[..., 1].max() - cy) / half_s).item() - 1.0) < 1e-6
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
-    def test_compile_modules_do_not_mutate_dynamo_config_on_init(self):
+    def test_scale_space_detector_init_preserves_global_config_4095(self):
         torch._dynamo.reset()
         try:
             with torch._dynamo.config.patch(capture_dynamic_output_shape_ops=False):
@@ -509,7 +509,7 @@ class TestScaleSpaceDetector(BaseTester):
             torch._dynamo.reset()
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
-    def test_compile_modules_forward_restores_dynamo_config(self):
+    def test_compile_modules_forward_restores_dynamo_config_4095(self):
         torch._dynamo.reset()
         try:
             with torch._dynamo.config.patch(capture_dynamic_output_shape_ops=False):
@@ -527,7 +527,7 @@ class TestScaleSpaceDetector(BaseTester):
             torch._dynamo.reset()
 
     @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
-    def test_compile_modules_match_eager(self):
+    def test_compile_modules_match_eager_4095(self):
         torch._dynamo.reset()
         try:
             inp = torch.zeros(1, 1, 33, 33)
