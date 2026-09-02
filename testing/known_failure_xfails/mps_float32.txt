@@ -13,8 +13,6 @@
 # Keep the entries sorted by node ID: KnownFailureTracker prints its regeneration output sorted,
 # so an unsorted file turns the next re-record into a whole-file diff.
 # Format: <exact exception type>\t<pytest node ID>
-RuntimeError	tests/color/test_yuv.py::TestYuv420ToRgb::test_empty_input[mps-float32]
-RuntimeError	tests/color/test_yuv.py::TestYuv422ToRgb::test_empty_input[mps-float32]
 NotImplementedError	tests/geometry/epipolar/test_essential.py::TestFindEssential::test_degenerate_case[mps-float32-10-5]
 NotImplementedError	tests/geometry/epipolar/test_essential.py::TestFindEssential::test_degenerate_case[mps-float32-5-5]
 NotImplementedError	tests/geometry/epipolar/test_essential.py::TestFindEssential::test_epipolar_constraint[mps-float32]

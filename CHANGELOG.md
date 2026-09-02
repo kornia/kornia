@@ -301,6 +301,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `VisualPrompter.predict()` called without any prompt (the "run the prediction without prompts" example on the
   Segment Anything page) raised `TypeError: object of type 'NoneType' has no len()` from the prompt augmentation
   container; it now predicts from the image embedding alone, as documented. (#4178)
+
+* Preserve empty color tensors on accelerator backends instead of asking `reshape` to infer an ambiguous batch
+  dimension. This lets the YUV420 and YUV422 empty-input conversions return their documented empty RGB output on
+  MPS, matching CPU behavior (#4185).
+
 * Follow-up fixes to the documentation revamp (#4155): the landing page's filtering card quoted the combined
   `filters`/`color`/`enhance`/`morphology` count next to a `kornia.filters` label, the "Why Kornia?" hero carousel
   resumed after a visitor picked a tab, the Community page linked to the now-unregistered `librecv.org`, and the

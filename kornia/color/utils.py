@@ -60,6 +60,10 @@ def _apply_linear_transformation(
 
     # BRANCH 2: GPU/Accelerators (Conv2d)
     else:
+        # ``reshape(-1, ...)`` cannot infer a batch dimension from an empty tensor.
+        if image_compute.numel() == 0:
+            return image_compute.clone()
+
         # Reshape for conv2d: (B*..., C, H, W)
         input_flat = image_compute.reshape(-1, 3, input_shape[-2], input_shape[-1])
 
