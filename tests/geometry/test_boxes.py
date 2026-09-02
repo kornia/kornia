@@ -62,14 +62,14 @@ class TestBoxes2D(BaseTester):
         ],
     )
     def test_convention_round_trip_requires_exact_intermediate_arithmetic(
-        self, box_dtype, source_values, expected_values
+        self, device, box_dtype, source_values, expected_values
     ):
         # bfloat16 cannot represent the +/-1 intermediate at 256. The float16
         # case can represent its offsets, but rounds the cross-zero width first.
         # Both discrepancies exist only because of the +/-1 offsets tracked in kornia#3934.
-        source = torch.tensor([source_values], dtype=box_dtype)
+        source = torch.tensor([source_values], device=device, dtype=box_dtype)
         output = Boxes.from_tensor(source, mode="xyxy").to_tensor("xyxy")
-        expected = torch.tensor([expected_values], dtype=box_dtype)
+        expected = torch.tensor([expected_values], device=device, dtype=box_dtype)
         self.assert_close(output, expected, atol=0.0, rtol=0.0)
         assert not torch.equal(output, source)
 
@@ -96,6 +96,8 @@ class TestBoxes2D(BaseTester):
         source = torch.tensor([source_by_mode[mode]], device=device, dtype=dtype)
         expected = torch.tensor([expected_by_mode[mode]], device=device, dtype=dtype)
         # validate_boxes=True does not reject the input: the extents are positive.
+        # Half-precision converting modes use dtype-aware tolerance because their
+        # expected decimal results are not all exactly representable.
         output = Boxes.from_tensor(source, mode=mode, validate_boxes=True).to_tensor(mode=mode)
         self.assert_close(output, expected)
 
@@ -109,7 +111,8 @@ class TestBoxes2D(BaseTester):
 
     def test_convention_get_boxes_shape_includes_list_padding(self, device, dtype):
         # get_boxes_shape uses the padded xywh export, so padding entries appear as
-        # 1-by-1 boxes even though an ordinary to_tensor export trims them.
+        # 1-by-1 boxes even though an ordinary to_tensor export trims them. The 1-by-1
+        # value depends on the inclusive +1 tracked in kornia#3934.
         first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
         second = torch.cat([first, first])
         boxes = Boxes([first, second])
@@ -131,15 +134,28 @@ class TestBoxes2D(BaseTester):
         self.assert_close(heights, torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(widths, torch.tensor([5.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
-    def test_convention_vertices_import_deforms_a_non_rectangular_quadrilateral(self, device, dtype):
-        # Convention pin: 'vertices' is not merely unvalidated. Its exclusive import
-        # subtracts one from fixed vertex positions, so a non-rectangular quadrilateral
-        # is silently reshaped instead of rejected, even with validate_boxes=True.
+    @pytest.mark.parametrize("mode", ["vertices", "vertices_plus"])
+    def test_wart_vertices_import_is_not_validated_4177(self, mode, device, dtype):
+        # Wart pin for kornia#4177: neither vertex mode is validated. The exclusive
+        # 'vertices' import also subtracts one from fixed positions, so a non-rectangular
+        # quadrilateral is silently reshaped instead of rejected with validate_boxes=True.
         # The -1 deformation is the inclusive offset tracked in kornia#3934.
         quadrilateral = torch.tensor([[[0.0, 0.0], [9.0, 0.0], [3.0, 7.0], [0.0, 1.0]]], device=device, dtype=dtype)
-        boxes = Boxes.from_tensor(quadrilateral, mode="vertices", validate_boxes=True)
-        expected = torch.tensor([[[0.0, 0.0], [8.0, 0.0], [2.0, 6.0], [0.0, 0.0]]], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(quadrilateral, mode=mode, validate_boxes=True)
+        expected = quadrilateral.clone()
+        if mode == "vertices":
+            expected = torch.tensor([[[0.0, 0.0], [8.0, 0.0], [2.0, 6.0], [0.0, 0.0]]], device=device, dtype=dtype)
         self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
+
+    def test_convention_constructor_mode_is_only_an_export_label(self, device, dtype):
+        vertices = torch.tensor([[[1.0, 2.0], [5.0, 2.0], [5.0, 4.0], [1.0, 4.0]]], device=device, dtype=dtype)
+        constructed = Boxes(vertices, mode="vertices").to_tensor()
+        imported = Boxes.from_tensor(vertices, mode="vertices").to_tensor()
+        expected_constructed = torch.tensor(
+            [[[1.0, 2.0], [6.0, 2.0], [6.0, 5.0], [1.0, 5.0]]], device=device, dtype=dtype
+        )
+        self.assert_close(constructed, expected_constructed, atol=0.0, rtol=0.0)
+        self.assert_close(imported, vertices, atol=0.0, rtol=0.0)
 
     def test_convention_to_tensor_exports_axis_aligned_bounds_of_a_rotated_box(self, device, dtype):
         # Convention pin: to_tensor reduces the stored vertices with amin/amax, so it
@@ -153,13 +169,13 @@ class TestBoxes2D(BaseTester):
         expected_export = torch.tensor([[[3.0, 2.0], [7.0, 2.0], [7.0, 3.0], [3.0, 3.0]]], device=device, dtype=dtype)
         self.assert_close(sheared.to_tensor("vertices_plus"), expected_export, atol=0.0, rtol=0.0)
 
-    def test_wart_constructor_and_from_tensor_have_different_integer_policies_4012(self):
+    def test_wart_constructor_and_from_tensor_have_different_integer_policies_4012(self, device):
         # Wart pin for kornia#4012: the constructor rejects integer coordinates,
         # while from_tensor silently casts them to float32.
-        vertices = torch.tensor([[[1, 2], [4, 2], [4, 3], [1, 3]]])
+        vertices = torch.tensor([[[1, 2], [4, 2], [4, 3], [1, 3]]], device=device)
         with pytest.raises(ValueError, match="floating point"):
             Boxes(vertices)
-        coordinates = torch.tensor([[1, 2, 5, 4]])
+        coordinates = torch.tensor([[1, 2, 5, 4]], device=device)
         assert Boxes.from_tensor(coordinates, mode="xyxy").dtype == torch.float32
 
         # A list is padded into a tensor of its first element's dtype before the
@@ -362,21 +378,18 @@ class TestBoxes2D(BaseTester):
 
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
     def test_boxes_list_to_tensor_list(self, mode, device, dtype):
-        src_1 = [
-            torch.as_tensor([[[1, 2], [1, 3], [2, 2], [2, 3]]], device=device, dtype=dtype),
-            torch.as_tensor(
-                [[[1, 2], [1, 3], [2, 2], [2, 3]], [[1, 2], [1, 3], [2, 2], [2, 3]]], device=device, dtype=dtype
-            ),
-        ]
-        src_2 = [
-            torch.as_tensor([[1, 1, 5, 5]], device=device, dtype=dtype),
-            torch.as_tensor([[1, 1, 5, 5], [1, 1, 5, 5]], device=device, dtype=dtype),
-        ]
-        src = src_1 if mode in ["vertices", "vertices_plus"] else src_2
+        if mode == "vertices":
+            item = torch.as_tensor([[[1, 2], [3, 2], [3, 4], [1, 4]]], device=device, dtype=dtype)
+        elif mode == "vertices_plus":
+            item = torch.as_tensor([[[1, 2], [2, 2], [2, 3], [1, 3]]], device=device, dtype=dtype)
+        else:
+            item = torch.as_tensor([[1, 1, 5, 5]], device=device, dtype=dtype)
+        src = [item, torch.cat([item, item])]
         box = Boxes.from_tensor(src, mode=mode)
         out = box.to_tensor(mode)
-        assert out[0].shape == src[0].shape
-        assert out[1].shape == src[1].shape
+        assert isinstance(out, list)
+        self.assert_close(out[0], src[0], atol=0.0, rtol=0.0)
+        self.assert_close(out[1], src[1], atol=0.0, rtol=0.0)
 
     def test_boxes_to_mask(self, device, dtype):
         t_box1 = torch.tensor(

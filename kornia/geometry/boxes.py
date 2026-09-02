@@ -192,18 +192,21 @@ class Boxes:
         raise_if_not_floating_point: flag to control floating point casting behaviour when `boxes` is not a
             floating point tensor. True to raise an error when `boxes` isn't a floating point tensor, False
             to cast to float.
-        mode: the box format of the input boxes.
+        mode: Representation label reused as the default output mode by :meth:`to_tensor`. The constructor does not
+            convert ``boxes``; use :meth:`from_tensor` to import another representation.
 
     Convention:
         - A box is a quadrilateral of four floating-point ``(x, y)`` vertices, stored as :math:`(N, 4, 2)` or
           :math:`(B, N, 4, 2)` data. Axis-aligned boxes are built in clockwise top-left, top-right,
           bottom-right, bottom-left order, but the vertices stay arbitrary: :meth:`transform_boxes` produces
           rotated quadrilaterals. :meth:`compute_area` sorts vertices by angle about their arithmetic centroid
-          before applying the shoelace formula, so it assumes a convex quadrilateral.
+          before applying the shoelace formula, so it assumes a convex quadrilateral and uses an exclusive area
+          convention that can disagree with :meth:`get_boxes_shape` and :meth:`to_mask`.
         - The stored form is inclusive (``'vertices_plus'``): ``width = xmax - xmin + 1``. The exclusive
           ``'xyxy'``, ``'xywh'``, and ``'vertices'`` modes convert to this form in :meth:`from_tensor` and back
-          in :meth:`to_tensor`. The constructor converts nothing and stores ``mode`` as a label, so
-          ``Boxes(data, mode='xyxy').to_tensor()`` applies the export offsets to data that was never imported.
+          in :meth:`to_tensor`. The constructor converts nothing and stores ``mode`` as a label. For exclusive
+          vertex data ``d``, ``Boxes(d, mode='vertices').to_tensor()`` applies export offsets to unconverted data,
+          while ``Boxes.from_tensor(d, mode='vertices').to_tensor()`` round-trips ``d``.
         - An axis-aligned box in the documented vertex order whose extent is at least one unit per axis
           round-trips exactly in its own mode when every intermediate conversion result is exactly representable
           in the tensor dtype. A sub-unit extent does not: the inclusive ``- 1`` inverts the stored quadrilateral,
@@ -215,7 +218,8 @@ class Boxes:
           therefore not the identity on :attr:`data`.
         - :meth:`get_boxes_shape` returns ``(heights, widths)`` in that order, with exactly the values from
           ``to_tensor('xywh', as_padded_sequence=True)``. For a list-backed object this includes its padding
-          entries, which report as 1-by-1 boxes even though an ordinary :meth:`to_tensor` export trims them.
+          entries, which report as 1-by-1 boxes under the inclusive ``+1`` convention even though an ordinary
+          :meth:`to_tensor` export trims them.
         - :func:`~kornia.geometry.bbox.infer_bbox_shape`, :func:`~kornia.geometry.bbox.bbox_to_mask`,
           :func:`~kornia.geometry.bbox.validate_bbox`, and :func:`~kornia.geometry.bbox.nms` have no mode argument,
           but the module does not use one convention throughout. :func:`~kornia.geometry.bbox.infer_bbox_shape`
@@ -229,23 +233,33 @@ class Boxes:
           :func:`~kornia.geometry.bbox.nms` computes exclusive areas, and
           :func:`~kornia.geometry.bbox.transform_bbox` converts ``'xywh'`` with the exclusive
           ``xmax = xmin + width``.
-        - With ``validate_boxes=True``, the ``'xy*'`` modes reject non-positive extents. Vertex modes are not
-          validated, and ``'vertices'`` additionally deforms a non-rectangular quadrilateral: its exclusive
-          import subtracts one from the ``x`` of the top-right and bottom-right vertices and from the ``y``
-          of the bottom-right and bottom-left vertices, wherever those vertices actually lie.
+        - With ``validate_boxes=True``, the ``'xy*'`` modes reject non-positive extents measured in that mode's
+          convention.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False``. A list input is
           padded into a tensor of its *first* element's dtype before that check, so a mixed-dtype list is accepted
           or rejected by its first box alone and the remaining boxes are cast to that dtype. For a single tensor,
           :meth:`from_tensor` silently casts integer input to ``float32``. For a list, it converts each element
           independently and then pads into the first converted element's dtype, recasting the remaining elements.
+        - :meth:`merge` concatenates batched boxes along the box axis, while :meth:`index_put` replaces selected
+          coordinates. Both methods are non-mutating by default. :meth:`merge` is currently unsafe for unbatched
+          and list-backed objects because it respectively concatenates vertices and preserves stale padding metadata.
 
     .. warning::
         The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked as a
         coordinated repair in `#3934 <https://github.com/kornia/kornia/issues/3934>`_. The sub-unit conversion
         corruption is `#4061 <https://github.com/kornia/kornia/issues/4061>`_, the cross-module export trap is
-        `#4009 <https://github.com/kornia/kornia/issues/4009>`_, the exclusive :func:`~kornia.geometry.bbox.nms`
-        area convention is `#4008 <https://github.com/kornia/kornia/issues/4008>`_, and the
-        constructor/``from_tensor`` dtype split is `#4012 <https://github.com/kornia/kornia/issues/4012>`_.
+        `#4009 <https://github.com/kornia/kornia/issues/4009>`_, the exclusive :meth:`compute_area` convention is
+        `#4010 <https://github.com/kornia/kornia/issues/4010>`_, and the exclusive
+        :func:`~kornia.geometry.bbox.nms` convention is
+        `#4008 <https://github.com/kornia/kornia/issues/4008>`_. The differing ``width``/``height`` argument order
+        of :func:`~kornia.geometry.bbox.bbox_to_mask` and :meth:`to_mask` is tracked in
+        `#4014 <https://github.com/kornia/kornia/issues/4014>`_. Unbatched and list-backed :meth:`merge` are tracked
+        in `#4168 <https://github.com/kornia/kornia/issues/4168>`_ and
+        `#4175 <https://github.com/kornia/kornia/issues/4175>`_, respectively. The integer-input policy split
+        between the constructor and :meth:`from_tensor` is
+        `#4012 <https://github.com/kornia/kornia/issues/4012>`_. With ``validate_boxes=True``, vertex modes remain
+        unvalidated, and ``'vertices'`` also subtracts one from fixed vertex positions, potentially deforming the
+        input rather than rejecting it; this is tracked in `#4177 <https://github.com/kornia/kornia/issues/4177>`_.
 
     """
 
@@ -556,7 +570,8 @@ class Boxes:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
         Args:
-            boxes: 2D boxes, shape of :math:`(N, 4)`, :math:`(B, N, 4)`, :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
+            boxes: 2D boxes, shape of :math:`(N, 4)`, :math:`(B, N, 4)`, :math:`(N, 4, 2)` or
+                :math:`(B, N, 4, 2)`, or a list of :math:`(N, 4)` or :math:`(N, 4, 2)` tensors matching ``mode``.
             mode: The format in which the boxes are provided:
 
                 * 'xyxy': ``xmin, ymin, xmax, ymax`` with exclusive extent. With shape :math:`(N, 4)`,
@@ -571,9 +586,8 @@ class Boxes:
                 * 'vertices_plus': the inclusive stored vertex form. With shape :math:`(N, 4, 2)`,
                   :math:`(B, N, 4, 2)`.
 
-            validate_boxes: Check extents for the ``'xy*'`` modes. Vertex modes are not checked for rectangularity,
-                and the ``'vertices'`` import subtracts one from fixed vertex positions, which deforms a
-                non-rectangular quadrilateral rather than rejecting it.
+            validate_boxes: Check extents for the ``'xy*'`` modes in each mode's convention. This flag has no
+                validation effect for vertex modes; see the warning on :class:`~kornia.geometry.boxes.Boxes`.
 
         Returns:
             :class:`Boxes` containing the converted inclusive vertex representation.
@@ -1164,7 +1178,7 @@ class Boxes3D:
 
         Note:
             It is currently non-differentiable due to a bug. See github issue
-            `#1304 <https://github.com/kornia/kornia/issues/1396>`_.
+            `#1396 <https://github.com/kornia/kornia/issues/1396>`_.
 
         Examples:
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])

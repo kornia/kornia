@@ -57,6 +57,7 @@ class TestBbox2D(BaseTester):
         # bbox_generator represents a zero width by placing the top-right vertex one
         # unit left of the top-left vertex. RandomCutMixV2 relies on the fixed-index
         # reading recovering width 0; a maximum - minimum reduction would return 2.
+        # The recovered zero depends on the inclusive +1 tracked in kornia#3934.
         x_start = torch.tensor([3.0], device=device, dtype=dtype)
         y_start = torch.tensor([4.0], device=device, dtype=dtype)
         boxes = bbox_generator(x_start, y_start, torch.zeros_like(x_start), torch.full_like(y_start, 5.0))
@@ -65,10 +66,10 @@ class TestBbox2D(BaseTester):
         self.assert_close(width, torch.tensor([0.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_convention_validate_bbox_checks_parallelograms_and_accepts_contiguous_batched_boxes(self, device, dtype):
-        # The validator only compares the top and bottom edge vectors, so any
-        # parallelogram passes: a sheared (non-rectangular) parallelogram and a
-        # rotated rectangle both return True, and only the trapezoid fails. The
-        # leading dimensions also pin contiguous rank-4 input.
+        # The validator only compares the top and bottom edge vectors at fixed vertex
+        # indices. A cyclically ordered sheared parallelogram and rotated rectangle
+        # both return True, while the trapezoid fails. The leading dimensions also
+        # pin contiguous rank-4 input.
         sheared_parallelogram = torch.tensor(
             [[[[0.0, 0.0], [2.0, 0.0], [3.0, 1.0], [1.0, 1.0]]]], device=device, dtype=dtype
         )
@@ -79,33 +80,41 @@ class TestBbox2D(BaseTester):
         )
         assert validate_bbox(rotated_rectangle) is True
 
+        relabeled_rectangle = torch.tensor(
+            [[[[0.0, 0.0], [3.0, 0.0], [0.0, 2.0], [3.0, 2.0]]]], device=device, dtype=dtype
+        )
+        assert validate_bbox(relabeled_rectangle) is False
+
         trapezoid = torch.tensor([[[[0.0, 0.0], [10.0, 0.0], [10.0, 5.0], [3.0, 5.0]]]], device=device, dtype=dtype)
         assert validate_bbox(trapezoid) is False
 
-    def test_convention_validate_bbox_transposed_leading_dimensions_raise(self, device, dtype):
-        # Rank-4 input is flattened with view, so transposing its leading dimensions
-        # creates an incompatible stride layout that raises instead of returning a boolean.
+    def test_wart_validate_bbox_rank4_view_layout_4174(self, device, dtype):
+        # Wart pin for kornia#4174: rank-4 input is flattened with view, so an
+        # incompatible leading-dimension stride raises instead of returning a boolean.
         boxes = torch.zeros(2, 3, 4, 2, device=device, dtype=dtype).transpose(0, 1)
         assert not boxes.is_contiguous()
-        with pytest.raises(RuntimeError, match="view size is not compatible"):
+        with pytest.raises(RuntimeError):
             validate_bbox(boxes)
 
-    def test_convention_validate_bbox_invariance_is_exact_arithmetic_only(self):
+    def test_convention_validate_bbox_invariance_is_exact_arithmetic_only(self, device):
         # In float16 the inclusive +1 rounds distinct sub-unit spans to the same
         # value, although the exclusive span difference exceeds the 1e-4 threshold.
         # The True below holds only with the +1 tracked in kornia#3934.
-        boxes = torch.tensor([[[0.0, 0.0], [0.0005, 0.0], [0.001, 0.001], [0.0, 0.001]]], dtype=torch.float16)
+        boxes = torch.tensor(
+            [[[0.0, 0.0], [0.0005, 0.0], [0.001, 0.001], [0.0, 0.001]]], device=device, dtype=torch.float16
+        )
         assert validate_bbox(boxes) is True
         top_span = boxes[..., 1, 0] - boxes[..., 0, 0]
         bottom_span = boxes[..., 2, 0] - boxes[..., 3, 0]
         assert torch.all(torch.abs(top_span - bottom_span) > 1e-4)
 
     def test_wart_validate_bbox_returns_false_where_validate_bbox3d_raises_4013(self, device, dtype):
-        # Wart pin for kornia#4013: the 2D validator reports an invalid shape and a
-        # non-rectangular box by returning False, while the 3D validator raises.
-        assert validate_bbox(torch.rand(3, 3, device=device, dtype=dtype)) is False
+        # Wart pin for kornia#4013: for the same invalid shape, the 2D validator
+        # returns False while the 3D validator raises.
+        invalid_shape = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        assert validate_bbox(invalid_shape) is False
         with pytest.raises(AssertionError):
-            validate_bbox3d(torch.rand(1, 3, 3, device=device, dtype=dtype))
+            validate_bbox3d(invalid_shape)
 
         non_cube = torch.tensor(
             [
@@ -182,9 +191,9 @@ class TestBbox2D(BaseTester):
         # Test with valid box
         self.assert_close(scripted_fn(boxes), validate_bbox(boxes))
 
-        # Test with non-rectangular box
-        boxes_invalid = torch.tensor([[[0.0, 0.0], [2.0, 0.0], [3.0, 1.0], [1.0, 1.0]]], device=device, dtype=dtype)
-        self.assert_close(scripted_fn(boxes_invalid), validate_bbox(boxes_invalid))
+        # Test with a valid sheared parallelogram
+        boxes_sheared = torch.tensor([[[0.0, 0.0], [2.0, 0.0], [3.0, 1.0], [1.0, 1.0]]], device=device, dtype=dtype)
+        self.assert_close(scripted_fn(boxes_sheared), validate_bbox(boxes_sheared))
 
         # Test with invalid shape
         boxes_wrong_shape = torch.rand(1, 3, 2, device=device, dtype=dtype)

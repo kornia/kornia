@@ -42,13 +42,18 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
 
     Convention:
         Vertices use inclusive coordinates in clockwise top-left, top-right, bottom-right, bottom-left order.
-        The function accepts :math:`(B, 4, 2)` tensors and :math:`(B, N, 4, 2)` tensors whose stride layout is
-        compatible with flattening via ``view``. An incompatible rank-4 layout, such as one produced by
-        transposing its leading dimensions, raises ``RuntimeError``. It returns ``False`` for an invalid shape or
-        when the top and bottom edge vectors differ by more than ``1e-4``; it does not raise for those inputs. It
-        does not check right angles, positive area, or vertex order, so any parallelogram passes, including rotated
-        rectangles and zero-area boxes. The inclusive ``+1`` terms cancel in exact arithmetic, but finite-precision
-        rounding can make the result differ from exclusive arithmetic, particularly for low-precision dtypes.
+        The function accepts :math:`(B, 4, 2)` tensors and :math:`(B, N, 4, 2)` tensors. It returns ``False`` for an
+        invalid shape or when the top and bottom edge vectors differ by more than ``1e-4``; it does not raise for
+        those inputs. It does not check right angles, positive area, or clockwise direction. A parallelogram whose
+        vertices follow a cyclic order passes, including cyclic rotations, either direction, rotated rectangles,
+        and zero-area boxes; other vertex relabelings can fail. The inclusive ``+1`` terms cancel in exact
+        arithmetic, but finite-precision rounding can make the result differ from exclusive arithmetic,
+        particularly for low-precision dtypes.
+
+    .. warning::
+        Rank-4 input is flattened with ``view``. A stride layout whose leading dimensions cannot be flattened this
+        way raises ``RuntimeError`` instead of returning a boolean. This wart is tracked in
+        `#4174 <https://github.com/kornia/kornia/issues/4174>`_.
 
     .. warning::
         :func:`validate_bbox3d` raises ``AssertionError`` where this function returns ``False``. That
@@ -132,25 +137,25 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         The returned tuple is ``(heights, widths)``, in that order. Both extents are read from fixed vertex
         indices, as ``width = boxes[:, 1, 0] - boxes[:, 0, 0] + 1`` and
         ``height = boxes[:, 2, 1] - boxes[:, 0, 1] + 1``, rather than from a ``maximum - minimum`` reduction.
-        The two agree for an axis-aligned box in the documented order; for any other vertex order, including
-        the rotated quadrilaterals that :func:`transform_bbox` produces, they can diverge and the result can be
-        negative. :meth:`kornia.geometry.boxes.Boxes.get_boxes_shape` is reduction based and does not share
-        that behavior. The fixed-index reading also lets zero-width boxes emitted by :func:`bbox_generator`
-        report width ``0`` rather than ``2`` under a reduction; :class:`~kornia.augmentation.RandomCutMixV2`
-        relies on that behavior.
+        The two agree for an axis-aligned box in the documented order; for any other vertex order, including the
+        rotated quadrilaterals that :func:`transform_bbox` produces for :math:`(N, 4, 2)` polygon input, they can
+        diverge and the result can be negative. Rank-4 input is not supported.
+        :meth:`kornia.geometry.boxes.Boxes.get_boxes_shape` is reduction based and does not share that behavior.
+        The fixed-index reading also lets zero-width boxes emitted by :func:`bbox_generator` report width ``0``
+        rather than ``2`` under a reduction; :class:`~kornia.augmentation.RandomCutMixV2` relies on that behavior.
 
     .. warning::
         The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked in
         `#3934 <https://github.com/kornia/kornia/issues/3934>`_.
 
     Args:
-        boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of Bx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right, bottom-right,
-            bottom-left. The coordinates must be in the x, y order.
+        boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have shape
+            :math:`(N, 4, 2)`, where each box is defined in the following ``clockwise`` order: top-left, top-right,
+            bottom-right, bottom-left. The coordinates must be in the x, y order.
 
     Returns:
-        - Bounding box heights, shape of :math:`(B,)`.
-        - Boundingbox widths, shape of :math:`(B,)`.
+        - Bounding box heights, shape of :math:`(N,)`.
+        - Bounding box widths, shape of :math:`(N,)`.
 
     Example:
         >>> boxes = torch.tensor([[
