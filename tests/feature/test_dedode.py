@@ -30,8 +30,11 @@ class TestConvRefiner(BaseTester):
     def test_amp_matches_input_device(self, device):
         refiner = ConvRefiner(in_dim=4, hidden_dim=4, out_dim=4).to(device)
         autocast_enabled = []
+        # ``torch.is_autocast_enabled`` only accepts a device type from torch 2.4 onwards; the
+        # no-argument spelling reports the CUDA state on every torch kornia supports, which is
+        # the state the ``torch.autocast("cuda", ...)`` region inside ``ConvRefiner`` controls.
         refiner.block1.register_forward_pre_hook(
-            lambda _module, _inputs: autocast_enabled.append(torch.is_autocast_enabled("cuda"))
+            lambda _module, _inputs: autocast_enabled.append(torch.is_autocast_enabled())
         )
 
         with warnings.catch_warnings(record=True) as caught:

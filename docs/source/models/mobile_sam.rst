@@ -1,5 +1,9 @@
-Faster Segment Anything (MobileSAM)
-===================================
+MobileSAM
+=========
+
+.. rst-class:: kornia-badges
+
+:bdg-primary:`Segmentation` :bdg-primary:`Visual prompting` :bdg-secondary:`Apache-2.0`
 
 .. card::
     :link: https://arxiv.org/abs/2306.14289
@@ -21,20 +25,21 @@ Faster Segment Anything (MobileSAM)
 Usage
 ~~~~~
 
-MobileSAM is integrated directly into our Segment-Anything implementation. Once you have loaded MobileSAM, you can use it just like how you use SAM.
+MobileSAM is integrated directly into our Segment Anything implementation. Once you have loaded MobileSAM, you can use it just like SAM.
 
 .. code:: python
 
     import torch
     from kornia.models.sam import SamConfig
     from kornia.contrib.visual_prompter import VisualPrompter
+    from kornia.geometry.keypoints import Keypoints
 
-    image = torch.randn(3, 512, 512)
+    image = torch.rand(3, 512, 512)  # (3, H, W) float in [0, 1]
     prompter = VisualPrompter(SamConfig("mobile_sam", pretrained=True))
     prompter.set_image(image)
 
-    keypoints = Keypoints(torch.tensor([[[500.0, 375.0]]])) # BxNx2
-    labels = torch.tensor([[1]], device=device) # BxN
+    keypoints = Keypoints(torch.tensor([[[400.0, 375.0]]]))  # (B, N, 2) in (x, y)
+    labels = torch.tensor([[1]])  # (B, N); 1 = foreground point, 0 = background point
 
     prediction = prompter.predict(
         keypoints=keypoints,

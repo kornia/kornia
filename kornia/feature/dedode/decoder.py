@@ -40,19 +40,16 @@ class Decoder(nn.Module):
     def forward(
         self, features: torch.Tensor, context: Optional[torch.Tensor] = None, scale: Optional[int] = None
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        """Run this DeDoDe module forward.
-
-        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
-        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+        r"""Run this DeDoDe module forward.
 
         Args:
-            features: Input value used by this method.
-            context: Input value used by this method.
-            scale: Input value used by this method.
+            features: Encoded feature map with shape :math:`(B, C, H, W)`, or concatenated with context.
+            context: Optional context feature map from previous scale, shape
+                :math:`(B, C_{\text{ctx}}, H, W)`, or ``None``.
+            scale: String key selecting the decoder layer for this scale (e.g. ``"8"``, ``"4"``, ``"2"``, ``"1"``).
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Tuple of ``(logits, context)`` tensors, each with shape :math:`(B, C_{\text{out}}, H, W)`.
         """
         if context is not None:
             features = torch.cat((features, context), dim=1)
@@ -123,15 +120,15 @@ class ConvRefiner(nn.Module):
         """Create one decoder block for the requested scale.
 
         Args:
-            in_dim: Input value used by this method.
-            out_dim: Input value used by this method.
-            dw: Input value used by this method.
-            kernel_size: Input value used by this method.
-            bias: Input value used by this method.
-            norm_type: Input value used by this method.
+            in_dim: Number of input channels.
+            out_dim: Number of output channels. Must be divisible by ``in_dim`` when ``dw=True``.
+            dw: Whether to use depthwise convolution.
+            kernel_size: Convolution kernel size.
+            bias: Whether to include bias in the convolution.
+            norm_type: Normalization layer class to apply after the first conv.
 
         Returns:
-            Decoder block configured for the requested input and output channel counts.
+            Decoder block (``nn.Sequential``) configured for the requested channels.
         """
         num_groups = 1 if not dw else in_dim
         if dw:
@@ -152,17 +149,13 @@ class ConvRefiner(nn.Module):
         return nn.Sequential(conv1, norm, relu, conv2)
 
     def forward(self, feats: torch.Tensor) -> torch.Tensor:
-        """Run this DeDoDe module forward.
-
-        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
-        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+        r"""Run this DeDoDe module forward.
 
         Args:
-            feats: Input value used by this method.
+            feats: Input feature map with shape :math:`(B, C_{\text{in}}, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Refined feature map with shape :math:`(B, C_{\text{out}}, H, W)`.
         """
         _b, _c, _hs, _ws = feats.shape
         # AMP runs only for CUDA tensors.

@@ -792,10 +792,6 @@ class Resize(nn.Module):
         >>> print(out.shape)
         torch.Size([1, 3, 6, 8])
 
-    .. raw:: html
-
-        <gradio-app src="https://kornia-kornia-resize-antialias.hf.space"></gradio-app>
-
     """
 
     def __init__(

@@ -1,6 +1,9 @@
 Conventions & Pitfalls
 ======================
 
+.. meta::
+   :description: The conventions every Kornia function follows: (B, C, H, W) float images in [0, 1], (x, y) points versus (h, w) sizes, degrees versus radians, homography direction, align_corners defaults, box formats and a pitfall checklist.
+
 Every Kornia function follows the conventions below unless its documentation
 explicitly says otherwise. If you are generating code (human or LLM), read
 this page first — nearly every subtle Kornia bug is a convention mismatch,

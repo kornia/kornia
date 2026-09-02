@@ -51,15 +51,10 @@ class LayerScale(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         """Run this DeDoDe module forward.
 
-        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
-        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
-
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input token tensor with shape :math:`(B, N, C)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Tensor with the same shape :math:`(B, N, C)` scaled element-wise by the learnable ``gamma`` parameter.
         """
         return x.mul_(self.gamma) if self.inplace else x * self.gamma

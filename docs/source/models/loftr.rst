@@ -1,5 +1,9 @@
-LoFTR (matching)
-................
+LoFTR
+=====
+
+.. rst-class:: kornia-badges
+
+:bdg-primary:`Image matching` :bdg-secondary:`Apache-2.0`
 
 .. card::
     :link: https://paperswithcode.com/paper/loftr-detector-free-local-feature-matching

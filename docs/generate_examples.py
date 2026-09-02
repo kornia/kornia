@@ -119,6 +119,7 @@ def main():
         "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"
     )
     MASK_IMAGE_URL2: str = "https://raw.githubusercontent.com/kornia/data/main/simba_mask.png"
+    BASE_IMAGE_URL_CROWD: str = "https://raw.githubusercontent.com/kornia/data/main/crowd.jpg"  # face detection
 
     OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static/img"
 
@@ -745,6 +746,25 @@ def main():
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for response function {fn_name}")
+
+    # Face detection with the pretrained YuNet model, for the landing-page "models" card. The
+    # checkpoint is ~400 KB, so this stays cheap in the docs build. ``img_crowd`` is BGR like the
+    # other tensors here; the detector gets RGB and the boxes are drawn onto the BGR copy for cv2.
+    img_crowd = read_img_from_url(BASE_IMAGE_URL_CROWD, (480, 736))
+    face_detector = K.contrib.FaceDetector().eval()
+    with torch.no_grad():
+        detections = face_detector(K.color.bgr_to_rgb(img_crowd) * 255.0)[0]
+    faces = [K.contrib.FaceDetectorResult(d) for d in detections]
+    confident = [torch.cat([f.top_left, f.bottom_right]) for f in faces if f.score > 0.7]
+    out = img_crowd.clone()
+    if confident:
+        boxes = torch.stack(confident)[None]
+        for pad in (0, 1, 2):  # three passes give a 3 px outline
+            out = K.image.draw_rectangle(
+                out, boxes + torch.tensor([-pad, -pad, pad, pad]), color=torch.tensor([0.4, 1.0, 0.2])
+            )
+    cv2.imwrite(str(OUTPUT_PATH / "face_detection.png"), K.image.tensor_to_image((out[0] * 255.0).byte()))
+    print(f"Generated image example for FaceDetector. {len(confident)} faces")
 
 
 if __name__ == "__main__":

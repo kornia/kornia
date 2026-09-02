@@ -1,5 +1,8 @@
-Kornia AI Organization
-======================
+Governance
+==========
+
+.. meta::
+   :description: How the Kornia project is governed: the Kornia AI non-profit organization behind the library, its mission, membership, maintainers and how to contribute or donate.
 
 The Kornia AI organization
 --------------------------
@@ -15,16 +18,16 @@ and is the organization behind the Kornia library and its ecosystem projects.
 3. The organization facilitates discussions on ethical, philosophical, and practical aspects of AI, and organizes various activities to achieve its objectives.
 4. Operating on a non-profit basis, the association prohibits using its name or symbols for profit-making activities, but encourages the use of public AI goods by third parties.
 
-What we do ?
-------------
+What we do
+----------
 
-- We maintain the Kornia library and its ecosystem projects such a Limbus, kornia-rs
+- We maintain the Kornia library and its ecosystem projects, such as Limbus and kornia-rs.
 - We help to organize events such as workshops, meetups related to Computer Vision and robotics.
 - We promote the use of Kornia and its ecosystem projects in the industry and academia.
-- We promote Computer Vision and robotics in the social media and other channels.
+- We promote Computer Vision and robotics on social media and other channels.
 
-How to contribute ?
--------------------
+How to contribute
+-----------------
 
 - Make a donation to the organization via:
     - `Open Collective <https://opencollective.com/kornia>`_
@@ -38,7 +41,7 @@ Membership
 ----------
 
 The membership is open to anyone who is interested in the mission of the organization and is willing to contribute to its activities.
-The membership is free of charge and is granted by the board of directors and can be revoked at any time if the member is not complying with the organization's rules or [Code of Conduct](https://github.com/kornia/kornia/blob/main/CODE_OF_CONDUCT.md).
+The membership is free of charge and is granted by the board of directors and can be revoked at any time if the member is not complying with the organization's rules or `Code of Conduct <https://github.com/kornia/kornia/blob/main/CODE_OF_CONDUCT.md>`_.
 
 Governance
 ----------
@@ -56,10 +59,10 @@ Project Maintainers
 - Edgar Riba (`edgarriba <https://github.com/edgarriba>`__)
 - Jian Shi (`shijianjian <https://github.com/shijianjian>`__)
 
-Project Contributors and alumnis
---------------------------------
+Project Contributors and Alumni
+-------------------------------
 
-**Consider to contribute to the project and become a contributor! and add your name here!**
+**Consider contributing to the project, become a contributor, and add your name here!**
 
 - Christie Jacob (`cjpurackal <https://github.com/cjpurackal>`__)
 - Ceyda Cinarel (`cceyda <https://github.com/cceyda>`__)
@@ -67,4 +70,4 @@ Project Contributors and alumnis
 - Duc Nguyen (`justanhduc <https://github.com/justanhduc>`__)
 - Gonzalo Romero-García (`Manza12 <https://github.com/Manza12>`__)
 
-Check the full list of contributors in the `Github contributors page <https://github.com/kornia/kornia/graphs/contributors>`_.
+Check the full list of contributors in the `GitHub contributors page <https://github.com/kornia/kornia/graphs/contributors>`_.

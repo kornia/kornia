@@ -55,15 +55,12 @@ class DropPath(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run this DeDoDe module forward.
 
-        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
-        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
-
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input tensor of any shape. Channels are retained; only full samples are dropped.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Output tensor with the same shape as ``x``. During training some samples are
+            randomly zeroed with probability ``drop_prob``; at eval time the tensor is
+            returned unchanged.
         """
         return drop_path(x, self.drop_prob, self.training)

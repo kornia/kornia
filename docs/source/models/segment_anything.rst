@@ -1,6 +1,10 @@
 Segment Anything (SAM)
 ======================
 
+.. rst-class:: kornia-badges
+
+:bdg-primary:`Segmentation` :bdg-primary:`Visual prompting` :bdg-secondary:`Apache-2.0`
+
 The Segment Anything Model (SAM) produces high quality object masks from input prompts such as points or boxes, and it
 can be used to generate masks for all objects in an image.
 
@@ -32,59 +36,57 @@ can be used to generate masks for all objects in an image.
 
 How to use SAM from Kornia
 --------------------------
-The Kornia API for SAM try to provide a simple API to access initialize the model and load/download the weights. Also,
-providing it to a high-level API called :code:`VisualPrompter`, which allow the users to set an image and run multiple
-queries multiple times.
+The Kornia API for SAM provides a simple way to initialize the model and load or download its weights, together with a
+high-level API called :code:`VisualPrompter`, which allows users to set an image once and run multiple queries against it.
 
-The :code:`VisualPrompter` works querying on a single image, if you want to explore and query into a batch of images,
-you can use the :code:`Sam` directly. But, for it you will need to write the boilerplate to preprocess and postprocess to
-use it. This boilerplate, is already handle on the high-level API :code:`VisualPrompter`.
+The :code:`VisualPrompter` works on a single image. If you want to query a batch of images, you can use
+:code:`Sam` directly, but then you need to write the pre- and post-processing boilerplate yourself. That boilerplate is
+already handled by the high-level :code:`VisualPrompter` API.
 
 Visual Prompter
 ^^^^^^^^^^^^^^^
 .. _anchor Prompter:
 
-The High level API :code:`VisualPrompter` handle with the image and prompt transformation, preprocessing and prediction for
+The high-level :code:`VisualPrompter` API handles the image and prompt transformations, preprocessing and prediction for
 a given SAM model.
 
 About the :code:`VisualPrompter`:
 
-#. From a `ModelConfig` loads the desired model with the desired checkpoint to be used as the model to receive the query
-   prompts. For know we just support Segment Anything model, where the *SAM-h* is the default option.
+#. From a :class:`~kornia.models.sam.SamConfig` it loads the desired model with the desired checkpoint, which then receives
+   the query prompts. For now only the Segment Anything family is supported, with *SAM ViT-H* as the default option.
 
-#. Based on the model, the :code:`VisualPrompter` will handle with the necessary transformations to be done into the image
-   and prompts before apply it to the model. These transformations are done using PyTorch backed, by our API of
-   augmentations. Where we use the :class:`kornia.geometry.augmentation.AugmentationSequential` to handle with the different
-   data formats (keypoints, boxes, masks, image).
+#. Based on the model, the :code:`VisualPrompter` applies the necessary transformations to the image and prompts before
+   passing them to the model. These transformations are implemented with our augmentation API, using
+   :class:`kornia.augmentation.AugmentationSequential` to handle the different data formats (keypoints, boxes, masks, image).
 
-#. When you use :code:`prompter.set_image(...)`, the prompter will preprocess this image, then pass it to the encoder,
-   and cache the embeddings to query it after. Note that the image should be scaled within the range [0,1].
+#. When you call :code:`prompter.set_image(...)`, the prompter preprocesses the image, passes it to the encoder,
+   and caches the embeddings for later queries. Note that the image should be scaled to the range [0, 1].
 
-    * The preprocess steps are: 1) Resize the image to have its longer side the same size as :code:`image_encoder` image size
-      input. 2) Cache the information of this transformation to apply into the prompts. 3) normalize the image based on the
-      passed mean and standard deviation, or with the values of the SAM dataset. 4) pad on the bottom and right for the image
-      have the encoder expected resolution: :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`.
+    * The preprocessing steps are: 1) resize the image so that its longer side matches the :code:`image_encoder` input size;
+      2) cache this transformation so it can be applied to the prompts; 3) normalize the image with the given mean and
+      standard deviation, or with the SAM dataset statistics; 4) pad the bottom and right so the image has the resolution the
+      encoder expects: :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`.
 
-    * The best image to be used will always have the shape equals to
+    * The best input image will always have shape
       :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`.
 
-#. When you use :code:`prompter.predict(...)`, the prompter will apply the cached transformations on the coordinates of the
-   prompts, and then query this prompts into the cached embeddings.
+#. When you call :code:`prompter.predict(...)`, the prompter applies the cached transformation to the prompt coordinates
+   and then queries the cached embeddings with them.
 
-    * If :code:`output_original_size=True`, the results structure will upsample the logits from it's resolution into the
-      image input original resolution. The output logits has the height and width equals to 256.
+    * If :code:`output_original_size=True`, the result structure upsamples the logits from their native resolution to the
+      original resolution of the input image. The raw logits have a height and width of 256.
 
-#. You can benefit from using the :code:`torch.compile(...)` API (dynamo) for torch >= 2.0.0 version. To compile with dynamo
-   we provide the method :code:`prompter.compile(...)` which will optimize the right parts of the backend model and the
+#. You can benefit from the :code:`torch.compile(...)` API (dynamo) with torch >= 2.0.0. To compile with dynamo
+   we provide the :code:`prompter.compile(...)` method, which optimizes the right parts of the backend model and of the
    prompter itself.
 
 --------------
 
 Example of using the :code:`VisualPrompter`:
 
-Exploring how to simple initialize the :code:`VisualPrompter`, automatically load the weights from a URL,
-read the image and set it to be query, how to write the prompts, and the multiple ways we can use these prompts
-to query the image masks from the SAM model.
+The example shows how to initialize the :code:`VisualPrompter`, automatically load the weights from a URL,
+read an image and set it as the query target, how to write the prompts, and the multiple ways these prompts
+can be used to query the SAM model for image masks.
 
 
 .. code-block:: python
@@ -99,8 +101,8 @@ to query the image masks from the SAM model.
     from kornia.core.utils import get_cuda_or_mps_device_if_available
 
     model_type = 'vit_h'
-    checkpoint = './https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth'
-    device = get_cuda_or_mps_device_if_available
+    checkpoint = 'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth'
+    device = get_cuda_or_mps_device_if_available()
 
     # Load image
     image = load_image('./example.jpg', ImageLoadType.RGB32, device)
@@ -121,8 +123,8 @@ to query the image masks from the SAM model.
     keypoints = Keypoints(torch.tensor([[[500, 375]]], device=device, dtype=torch.float32)) # BxNx2
     # For the keypoints label: 1 indicates a foreground point; 0 indicates a background point
     keypoints_labels = torch.tensor([[1]], device=device) # BxN
-    boxes = Boxes(
-        torch.tensor([[[[425, 600], [425, 875], [700, 600], [700, 875]]]], device=device, dtype=torch.float32), mode='xyxy'
+    boxes = Boxes.from_tensor(
+        torch.tensor([[[425, 600, 700, 875]]], device=device, dtype=torch.float32), mode='xyxy'  # BxNx4
     )
 
     # Runs the prediction with all prompts
@@ -157,7 +159,7 @@ to query the image masks from the SAM model.
     #------------------------------------------------
     # or run the prediction using the previous logits
     prediction = prompter.predict(
-        masks=prediction.logits
+        masks=prediction.logits,
         multimask_output=True,
     )
 
@@ -167,15 +169,15 @@ to query the image masks from the SAM model.
     print(prediction.logits.shape)
 
 
-Read more about the :code:`SegmentationResults` on :ref:`the official docs<anchor SegmentationResults>`
+Read more about :code:`SegmentationResults` in :ref:`the API reference <anchor SegmentationResults>`.
 
 
 
 Load from config
 ^^^^^^^^^^^^^^^^
-You can build a SAM model by specifying the encoder parameters on the :code:`SamConfig`, or from the model type. The
-:code:`from_config` method will first try to build the model based on the model type, otherwise will try from the specified
-parameters. If a checkpoint URL or path for a file is seted, the method will automatically load it.
+You can build a SAM model by specifying the encoder parameters in the :code:`SamConfig`, or just the model type. The
+:code:`from_config` method first tries to build the model from the model type, and otherwise falls back to the specified
+parameters. If a checkpoint URL or file path is set, the method loads it automatically.
 
 .. code-block:: python
 
@@ -204,14 +206,14 @@ parameters. If a checkpoint URL or path for a file is seted, the method will aut
 
 Load checkpoint
 ^^^^^^^^^^^^^^^
-With the load checkpoint method you can load from a file or directly from a URL. The official (by meta) model weights are:
+With the :code:`load_checkpoint` method you can load weights from a file or directly from a URL. The official model weights released by Meta are:
 
 #. `vit_h`: `ViT-H SAM model - https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth <https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth>`_.
 #. `vit_l`: `ViT-L SAM model - https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth <https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth>`_.
 #. `vit_b`: `ViT-B SAM model - https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth <https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth>`_.
 
-If a URL is passed the model will automatically download and cache the weights using
-:code:`torch.hub.load_state_dict_from_url`
+If a URL is passed, the model automatically downloads and caches the weights using
+:code:`torch.hub.load_state_dict_from_url`.
 
 .. code-block:: python
 
@@ -235,26 +237,29 @@ If a URL is passed the model will automatically download and cache the weights u
 .. ^^^^^^^^^^^^^^
 
 
-Example of how to use the SAM model without API
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-This is a simple example, of how to directly use the SAM model loaded. We recommend the use of
-:ref:`Prompter API<anchor Prompter>` to handle/prepare the inputs.
+Example of how to use the SAM model without the prompter API
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+This is a simple example of how to use the loaded SAM model directly. We recommend using the
+:ref:`prompter API <anchor Prompter>` to handle and prepare the inputs.
 
 .. code-block:: python
 
-    from kornia.models.sam import Sam
+    import torch
+    from torch.nn.functional import pad
+
+    from kornia.models.sam import Sam, SamConfig
     from kornia.models.structures import SegmentationResults
     from kornia.io import load_image, ImageLoadType
     from kornia.core.utils import get_cuda_or_mps_device_if_available
     from kornia.geometry import resize
     from kornia.enhance import normalize
 
-    model_type = 'vit_b' # or can be a number `2` or the enum sam.SamModelType.vit_b
+    model_type = 'vit_b'  # or the number `2`, or the enum `SamModelType.vit_b`
     checkpoint_path = './path_for_the_model_checkpoint.pth'
     device = get_cuda_or_mps_device_if_available()
 
     # Load the model
-    sam_model = Sam.from_pretrained(model_type, checkpoint_path, device)
+    sam_model = Sam.from_config(SamConfig(model_type, checkpoint_path)).to(device)
 
     # Load image
     image = load_image('./example.jpg', ImageLoadType.RGB32, device)
@@ -262,20 +267,21 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
     # Transform the image (CxHxW) into a batched input (BxCxHxW)
     image = image[None, ...]
 
-    # Resize the image to have the maximum size 1024 on its largest side
+    # Resize the image to have a maximum size of 1024 on its largest side
     data = resize(image, 1024, side='long')
+    h, w = data.shape[-2:]
 
-    # Embed prompts -- ATTENTION: should match the coordinates after the resize of the image
+    # Embed prompts -- ATTENTION: prompt coordinates must match the image after the resize
     sparse_embeddings, dense_embeddings = sam_model.prompt_encoder(points=None, boxes=None, masks=None)
 
-    # define the info for normalize the input
-    pixel_mean = torch.tensor(...)
-    pixel_std = torch.tensor(...)
+    # SAM dataset statistics used to normalize the input, in the [0, 1] range
+    pixel_mean = torch.tensor([123.675, 116.28, 103.53], device=device) / 255.0
+    pixel_std = torch.tensor([58.395, 57.12, 57.375], device=device) / 255.0
 
     # Preprocess input
     data = normalize(data, pixel_mean, pixel_std)
-    padh = model_sam.image_encoder.img_size - h
-    padw = model_sam.image_encoder.img_size - w
+    padh = sam_model.image_encoder.img_size - h
+    padw = sam_model.image_encoder.img_size - w
     data = pad(data, (0, padw, 0, padh))
 
     #--------------------------------------------------------------------
@@ -294,7 +300,7 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
     #--------------------------------------------------------------------
     # Option B: Calling the model itself
     #--------------------------------------------------------------------
-    prediction = sam_model(data[None, ...], [{}], multimask_output=True)
+    prediction = sam_model(data, [{}], multimask_output=True)[0]  # one SegmentationResults per image
 
     #--------------------------------------------------------------------
     # Post processing
@@ -302,8 +308,8 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
     # Upscale the masks to the original image resolution
     input_size = (data.shape[-2], data.shape[-1])
     original_size = (image.shape[-2], image.shape[-1])
-    image_size_encoder = (model_sam.image_encoder.img_size, model_sam.image_encoder.img_size)
+    image_size_encoder = (sam_model.image_encoder.img_size, sam_model.image_encoder.img_size)
     prediction.original_res_logits(input_size, original_size, image_size_encoder)
 
-    # If wants to check the binary masks
+    # Binary masks, thresholded from the logits
     masks = prediction.binary_masks

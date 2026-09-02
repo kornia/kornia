@@ -7,13 +7,18 @@
    </a>
    <br>
 
-Multi-Framework Support
-=======================
+Working with TensorFlow, JAX and NumPy
+======================================
 
-Kornia can now be used with `TensorFlow <https://www.tensorflow.org/>`_, `JAX <https://jax.readthedocs.io/en/latest/index.html>`_,
-and `Numpy <https://numpy.org/>`_ thanks to an integration with `Ivy <https://github.com/ivy-llc/ivy>`_.
+.. meta::
+   :description: Use Kornia from TensorFlow, JAX or NumPy: kornia.to_tensorflow(), kornia.to_jax() and kornia.to_numpy() transpile the library through Ivy, with examples and current limitations.
 
-This can be accomplished using the following functions, which are now part of the Kornia api:
+Kornia is a PyTorch library, but every function and module can also be called with `TensorFlow <https://www.tensorflow.org/>`_,
+`JAX <https://jax.readthedocs.io/en/latest/index.html>`_ or `NumPy <https://numpy.org/>`_ arrays: ``kornia.to_tensorflow()``,
+``kornia.to_jax()`` and ``kornia.to_numpy()`` return a transpiled copy of the library, powered by
+`Ivy <https://github.com/ivy-llc/ivy>`_.
+
+This can be accomplished using the following functions, which are now part of the Kornia API:
 
 * :code:`kornia.to_tensorflow()`
 
@@ -37,7 +42,7 @@ So what's happening here? Let's break it down.
 
 #. Transpiling kornia to TensorFlow
 
-    This line lazily transpiles everything in the kornia api to TensorFlow, and creates a new module for this transpiled version of kornia.
+    This line lazily transpiles everything in the kornia API to TensorFlow, and creates a new module for this transpiled version of kornia.
     Because the transpilation happens lazily, no function or class will be transpiled until it's actually called.
 
     .. code-block:: python

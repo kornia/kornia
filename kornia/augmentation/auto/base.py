@@ -26,6 +26,7 @@ from kornia.augmentation.container.base import ImageSequentialBase, TransformMat
 from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.augmentation.container.params import ParamItem
 from kornia.core.ops import eye_like
+from kornia.core.utils import is_exporting
 
 NUMBER = Union[float, int]
 OP_CONFIG = Tuple[str, NUMBER, Optional[NUMBER]]
@@ -38,6 +39,9 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
     def __init__(self, policy: List[SUBPOLICY_CONFIG], transformation_matrix_mode: str = "silence") -> None:
         policies = self.compose_policy(policy)
         super().__init__(*policies)
+        # ``TransformMatrixMinIn`` sits after ``nn.Module`` in the MRO, so its ``__init__`` never runs.
+        self._transform_matrix: Optional[torch.Tensor] = None
+        self._transform_matrices: List[Optional[torch.Tensor]] = []
         self._parse_transformation_matrix_mode(transformation_matrix_mode)
         self._valid_ops_for_transform_computation: Tuple[Any, ...] = (PolicySequential,)
 
@@ -140,6 +144,9 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
     ) -> torch.Tensor:
         """Apply a prepared parameter list to the input tensor.
 
+        Resets the cached parameters and transformation matrix first, so a policy nested inside another
+        container ends up in the same state as after :meth:`forward` with these ``params``.
+
         Args:
             input: Input tensor.
             params: Parameters produced by :meth:`forward_parameters`.
@@ -148,9 +155,13 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         Returns:
             Transformed tensor.
         """
+        self.clear_state()
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+            self._update_transform_matrix_by_module(module)
+        if not is_exporting():
+            self._params = params
         return input
 
     def forward(
@@ -167,17 +178,8 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         Returns:
             Augmented tensor.
         """
-        self.clear_state()
-
         if params is None:
-            inp = input
-            _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
+            _, out_shape = self.autofill_dim(input, dim_range=(2, 4))
             params = self.forward_parameters(out_shape)
 
-        for param in params:
-            module = self.get_submodule(param.name)
-            input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
-            self._update_transform_matrix_by_module(module)
-
-        self._params = params
-        return input
+        return self.transform_inputs(input, params=params, extra_args=extra_args)
