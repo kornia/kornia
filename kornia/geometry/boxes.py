@@ -229,7 +229,9 @@ class Boxes:
           :func:`~kornia.geometry.bbox.bbox_to_mask` fills through the bottom-right vertex's row and column, so
           both read their input as inclusive: pass them the ``'vertices_plus'`` export rather than
           ``'vertices'``, which they read as one pixel larger per axis. Both consumers take unbatched
-          :math:`(N, 4, 2)` input, so index or flatten a batched :math:`(B, N, 4, 2)` export before passing it.
+          :math:`(N, 4, 2)` input and neither detects a batched one, so index or flatten a batched
+          :math:`(B, N, 4, 2)` export before passing it; see
+          `#4180 <https://github.com/kornia/kornia/issues/4180>`_.
           :func:`~kornia.geometry.bbox.validate_bbox` is invariant in exact arithmetic, because its ``+1``
           terms cancel;
           :func:`~kornia.geometry.bbox.nms` computes exclusive areas, and
@@ -629,7 +631,8 @@ class Boxes:
         stored vertices, reduced with ``amin``/``amax``, so the export is lossy for rotated boxes:
         ``to_tensor('vertices_plus')`` does not return :attr:`data` unchanged after a :meth:`transform_boxes`
         call that rotates, shears, or otherwise reorders the vertices. A quarter turn keeps the box
-        axis-aligned and still changes the export, because the reduction re-canonicalizes the vertex order.
+        axis-aligned and still yields an export that differs from :attr:`data`, because the reduction
+        re-canonicalizes the vertex order.
 
         Args:
             mode: the output box format, or ``None`` to reuse :attr:`mode`. That attribute depends on the
@@ -645,6 +648,8 @@ class Boxes:
                 * 'vertices_plus': the inclusive stored vertex form.
             as_padded_sequence: If this object was created from a list, return its padded tensor rather than a list
                 of tensors trimmed to their original lengths. The padded values follow the selected output mode.
+                Indexing with ``[]`` drops the list metadata, so a sliced object always returns the padded tensor;
+                see `#4179 <https://github.com/kornia/kornia/issues/4179>`_.
 
         Returns:
             Boxes tensor in the ``mode`` format, or a list of tensors when the object was created from a list and
@@ -1175,7 +1180,7 @@ class Boxes3D:
         Returns:
             3D Boxes tensor in the ``mode`` format. The shape depends with the ``mode`` value:
 
-                * 'vertices' or 'verticies_plus': :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)`.
+                * 'vertices' or 'vertices_plus': :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)`.
                 * Any other value: :math:`(N, 6)` or :math:`(B, N, 6)`.
 
         Note:

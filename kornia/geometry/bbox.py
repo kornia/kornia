@@ -47,9 +47,9 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
         ``1e-4``; it does not raise for those inputs. It does not check right angles, positive area, or clockwise
         direction. A parallelogram whose
         vertices follow a cyclic order passes, including cyclic rotations, either direction, rotated rectangles,
-        and zero-area boxes; other vertex relabelings can fail. The inclusive ``+1`` terms cancel in exact
-        arithmetic, but finite-precision rounding can make the result differ from exclusive arithmetic,
-        particularly for low-precision dtypes.
+        and zero-area boxes; other vertex relabelings can fail. The inclusive ``+1`` terms, tracked in
+        `#3934 <https://github.com/kornia/kornia/issues/3934>`_, cancel in exact arithmetic, but finite-precision
+        rounding can make the result differ from exclusive arithmetic, particularly for low-precision dtypes.
 
     .. warning::
         Rank-4 input is flattened with ``view``. A stride layout whose leading dimensions cannot be flattened this
@@ -139,8 +139,8 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         indices, as ``width = boxes[:, 1, 0] - boxes[:, 0, 0] + 1`` and
         ``height = boxes[:, 2, 1] - boxes[:, 0, 1] + 1``, rather than from a ``maximum - minimum`` reduction.
         The two agree for an axis-aligned box in the documented order; for any other vertex order, including the
-        rotated quadrilaterals that :func:`transform_bbox` produces for :math:`(N, 4, 2)` polygon input, they can
-        diverge and the result can be negative. Rank-4 input is not supported.
+        rotated quadrilaterals that :func:`transform_bbox` produces for polygon input, they can diverge and the
+        result can be negative.
         :meth:`kornia.geometry.boxes.Boxes.get_boxes_shape` is reduction based and does not share that behavior.
         The fixed-index reading also lets zero-width boxes emitted by :func:`bbox_generator` report width ``0``
         rather than ``2`` under a reduction; :class:`~kornia.augmentation.RandomCutMixV2` relies on that behavior.
@@ -148,6 +148,11 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     .. warning::
         The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked in
         `#3934 <https://github.com/kornia/kornia/issues/3934>`_.
+
+    .. warning::
+        Rank-4 input is not validated. The fixed indices then read boxes instead of vertices, so fewer than three
+        boxes per batch raise ``IndexError`` and three or more return wrongly shaped values. This wart is tracked
+        in `#4180 <https://github.com/kornia/kornia/issues/4180>`_.
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have shape

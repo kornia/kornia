@@ -65,6 +65,18 @@ class TestBbox2D(BaseTester):
         self.assert_close(height, torch.tensor([5.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(width, torch.tensor([0.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
+    def test_wart_infer_bbox_shape_rank4_is_not_validated_4180(self, device, dtype):
+        # Wart pin for kornia#4180: rank-4 input is read at fixed box indices instead
+        # of vertex indices. Fewer than three boxes raise, while three or more return
+        # extents of shape (B, 2) built from the wrong vertices.
+        with pytest.raises(IndexError):
+            infer_bbox_shape(torch.zeros(1, 2, 4, 2, device=device, dtype=dtype))
+
+        boxes = torch.arange(24, device=device, dtype=dtype).reshape(1, 3, 4, 2)
+        height, width = infer_bbox_shape(boxes)
+        self.assert_close(height, torch.tensor([[17.0, 17.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(width, torch.tensor([[9.0, 9.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
     def test_convention_validate_bbox_checks_parallelograms_and_accepts_contiguous_batched_boxes(self, device, dtype):
         # The validator only compares the top and bottom edge vectors at fixed vertex
         # indices. A cyclically ordered sheared parallelogram and rotated rectangle
