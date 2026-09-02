@@ -22,8 +22,12 @@ import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation._2d.geometric.affine import RandomAffine
+from kornia.augmentation._2d.geometric.horizontal_flip import RandomHorizontalFlip
 from kornia.augmentation._2d.intensity.gaussian_blur import RandomGaussianBlur
+from kornia.augmentation._2d.intensity.invert import RandomInvert
+from kornia.augmentation._2d.mix.mixup import RandomMixUpV2
 from kornia.augmentation._3d.geometric.affine import RandomAffine3D
+from kornia.augmentation._3d.geometric.horizontal_flip import RandomHorizontalFlip3D
 from kornia.augmentation._3d.intensity.motion_blur import RandomMotionBlur3D
 from kornia.augmentation.base import _BasicAugmentationBase
 from kornia.core._compat import torch_version_lt
@@ -263,3 +267,65 @@ class TestGeometricAugmentationBase3D:
             res = aug(x, params)
 
         assert res.dtype == dtype, "The output dtype should match the input dtype"
+
+
+class TestDeviceAgnosticAugmentationParameters(BaseTester):
+    """Augmentations keep RNG/params on CPU while accepting accelerator inputs."""
+
+    @staticmethod
+    def _cpu_partial_batch_params(augmentation: _BasicAugmentationBase, input: torch.Tensor) -> dict[str, torch.Tensor]:
+        params = augmentation.forward_parameters(input.shape)
+        assert params["batch_prob"].device.type == "cpu"
+        params["batch_prob"] = torch.tensor([True, False])
+        return params
+
+    def test_2d_augmentation_blends_cpu_params_with_accelerator_input(self, device, dtype):
+        input = torch.arange(12, device=device, dtype=dtype).reshape(2, 1, 2, 3) / 12
+        augmentation = RandomInvert(p=0.5)
+        params = self._cpu_partial_batch_params(augmentation, input)
+
+        output = augmentation(input, params=params)
+
+        expected = torch.stack([1 - input[0], input[1]])
+        assert output.device == input.device
+        self.assert_close(output, expected)
+
+    def test_2d_geometric_matrix_blends_cpu_params_with_accelerator_input(self, device, dtype):
+        input = torch.arange(12, device=device, dtype=dtype).reshape(2, 1, 2, 3)
+        augmentation = RandomHorizontalFlip(p=0.5)
+        params = self._cpu_partial_batch_params(augmentation, input)
+
+        output = augmentation(input, params=params)
+        matrix = augmentation.transform_matrix
+
+        expected = torch.stack([input[0].flip(-1), input[1]])
+        assert output.device == input.device
+        assert matrix is not None
+        assert matrix.device == input.device
+        self.assert_close(output, expected)
+        self.assert_close(matrix[1], torch.eye(3, device=device, dtype=dtype))
+
+    def test_3d_geometric_matrix_blends_cpu_params_with_accelerator_input(self, device, dtype):
+        input = torch.arange(24, device=device, dtype=dtype).reshape(2, 1, 2, 2, 3)
+        augmentation = RandomHorizontalFlip3D(p=0.5)
+        params = self._cpu_partial_batch_params(augmentation, input)
+
+        output = augmentation(input, params=params)
+        matrix = augmentation.transform_matrix
+
+        expected = torch.stack([input[0].flip(-1), input[1]])
+        assert output.device == input.device
+        assert matrix is not None
+        assert matrix.device == input.device
+        self.assert_close(output, expected)
+        self.assert_close(matrix[1], torch.eye(4, device=device, dtype=dtype))
+
+    def test_mix_augmentation_blends_cpu_params_with_accelerator_input(self, device, dtype):
+        input = torch.arange(24, device=device, dtype=dtype).reshape(2, 3, 2, 2)
+        augmentation = RandomMixUpV2(lambda_val=(0.0, 0.0), p=0.5, data_keys=["input"])
+        params = self._cpu_partial_batch_params(augmentation, input)
+
+        output = augmentation(input, params=params)
+
+        assert output.device == input.device
+        self.assert_close(output, input)
