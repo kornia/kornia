@@ -29,7 +29,8 @@ from testing.base import BaseTester
 class TestSmallSRNet(BaseTester):
     """Test suite for SmallSRNet - the core super-resolution model."""
 
-    @pytest.mark.parametrize(("upscale_factor", "batch_size"), [(2, 1), (3, 2), (4, 1)])
+    @pytest.mark.parametrize("upscale_factor", [2, 3, 4])
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_smoke(self, device, dtype, upscale_factor, batch_size):
         """Test that SmallSRNet can be instantiated and run with different upscale factors."""
         model = SmallSRNet(upscale_factor=upscale_factor, pretrained=False).to(device, dtype)
@@ -64,10 +65,9 @@ class TestSmallSRNet(BaseTester):
         assert output.shape == x.shape, f"Expected {x.shape}, got {output.shape}"
         assert torch.isfinite(output).all()
 
-    @pytest.mark.parametrize(
-        ("upscale_factor", "batch_size", "height", "width"),
-        [(2, 2, 32, 48), (3, 1, 48, 32), (4, 1, 32, 32)],
-    )
+    @pytest.mark.parametrize("upscale_factor", [2, 3, 4])
+    @pytest.mark.parametrize("batch_size", [1, 2, 4])
+    @pytest.mark.parametrize("height,width", [(32, 32), (32, 48), (48, 32)])
     def test_cardinality(self, device, dtype, upscale_factor, batch_size, height, width):
         """Test that output shape matches expected upscaled dimensions."""
         model = SmallSRNet(upscale_factor=upscale_factor, pretrained=False).to(device, dtype)
@@ -147,7 +147,8 @@ class TestSmallSRNet(BaseTester):
 class TestSmallSRNetWrapper(BaseTester):
     """Test suite for SmallSRNetWrapper - the RGB-input wrapper with color space conversion."""
 
-    @pytest.mark.parametrize(("upscale_factor", "batch_size"), [(2, 1), (3, 2), (4, 1)])
+    @pytest.mark.parametrize("upscale_factor", [2, 3, 4])
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_smoke(self, device, dtype, upscale_factor, batch_size):
         """Test that SmallSRNetWrapper can be instantiated and run."""
         model = SmallSRNetWrapper(upscale_factor=upscale_factor, pretrained=False).to(device, dtype)
@@ -176,10 +177,9 @@ class TestSmallSRNetWrapper(BaseTester):
         # Should not crash, output should be finite
         assert torch.isfinite(output).all()
 
-    @pytest.mark.parametrize(
-        ("upscale_factor", "batch_size", "height", "width"),
-        [(2, 2, 32, 48), (3, 1, 48, 32), (4, 1, 32, 32)],
-    )
+    @pytest.mark.parametrize("upscale_factor", [2, 3, 4])
+    @pytest.mark.parametrize("batch_size", [1, 2, 4])
+    @pytest.mark.parametrize("height,width", [(32, 32), (32, 48), (48, 32)])
     def test_cardinality(self, device, dtype, upscale_factor, batch_size, height, width):
         """Test that output shape matches expected upscaled dimensions for RGB images."""
         model = SmallSRNetWrapper(upscale_factor=upscale_factor, pretrained=False).to(device, dtype)
