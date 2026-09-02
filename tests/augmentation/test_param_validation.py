@@ -84,16 +84,6 @@ class TestParamValidation:
             "tensor-2d",
         ],
     )
-    @pytest.mark.parametrize(
-        "device",
-        [
-            torch.device("cpu"),
-            pytest.param(
-                torch.device("cuda"),
-                marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"),
-            ),
-        ],
-    )
     def test_tuple_range_reader_valid(self, input_param, target_size, expected, device):
         """Supported input formats should expand correctly across devices."""
         res = _tuple_range_reader(input_param, target_size, device=device)

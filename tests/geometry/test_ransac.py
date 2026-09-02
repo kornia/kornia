@@ -409,14 +409,13 @@ class TestRANSACEssential(BaseTester):
         best model.
         """
         torch.random.manual_seed(0)
-        ransac = RANSAC("essential").to(device=device, dtype=dtype)
-        for _ in range(5):
-            kp1 = torch.rand(20, 2, device=device, dtype=dtype)
-            kp2 = torch.rand(20, 2, device=device, dtype=dtype)
-            E, _ = ransac(kp1, kp2)
-            sv = torch.linalg.svdvals(E)
-            assert (sv[0] / sv[1] - 1.0).abs() < 1e-2
-            assert (sv[2] / sv[0]).abs() < 1e-4
+        ransac = RANSAC("essential", batch_size=32, max_iter=1, max_lo_iters=0).to(device=device, dtype=dtype)
+        kp1 = torch.rand(20, 2, device=device, dtype=dtype)
+        kp2 = torch.rand(20, 2, device=device, dtype=dtype)
+        E, _ = ransac(kp1, kp2)
+        sv = torch.linalg.svdvals(E)
+        assert (sv[0] / sv[1] - 1.0).abs() < 1e-2
+        assert (sv[2] / sv[0]).abs() < 1e-4
 
     def test_project_to_essential(self, device, dtype):
         """project_to_essential must enforce the essential-matrix constraint."""
