@@ -37,11 +37,11 @@ def _make_rank3_matrix(null_vec: torch.Tensor, device, dtype) -> torch.Tensor:
     """
     # Build the 4x4 matrix whose columns span the orthogonal complement of null_vec.
     # We use a Gram-Schmidt orthonormalisation relative to null_vec.
-    n = null_vec.to(device=device, dtype=torch.float64)
+    n = null_vec.to(device="cpu", dtype=torch.float64)
     n = n / n.norm()
 
     # Start from the standard basis and remove the component along n.
-    basis = torch.eye(4, device=device, dtype=torch.float64)
+    basis = torch.eye(4, dtype=torch.float64)
     vecs = []
     for i in range(4):
         v = basis[i] - (basis[i] @ n) * n
@@ -54,7 +54,7 @@ def _make_rank3_matrix(null_vec: torch.Tensor, device, dtype) -> torch.Tensor:
         if len(vecs) == 3:
             break
 
-    A = torch.stack(vecs, dim=0).to(dtype)  # (3, 4)
+    A = torch.stack(vecs, dim=0).to(device=device, dtype=dtype)  # (3, 4)
     return A.unsqueeze(0)  # (1, 3, 4)
 
 

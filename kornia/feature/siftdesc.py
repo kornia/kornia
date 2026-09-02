@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import _l2_normalize
 from kornia.filters import get_gaussian_kernel2d, spatial_gradient
 from kornia.geometry.conversions import pi
 
@@ -36,6 +37,38 @@ def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:
     """
     numel: int = kd * ky * kx
     return torch.eye(numel).view(numel, kd, ky, kx)
+
+
+def _gradient_magnitude_orientation(
+    gx: torch.Tensor, gy: torch.Tensor, eps: float
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Per-pixel gradient magnitude and orientation in ``[2pi, 4pi)``.
+
+    ``eps`` keeps ``sqrt`` and ``atan2`` away from their singular point at a zero gradient, where
+    both have an undefined backward. A float16 input is lifted to float32 for this step: the
+    1e-10 guard is not representable in float16, and a squared float16 gradient underflows long
+    before that, so a flat pair of pixels -- ordinary with a 10-bit mantissa -- would send NaN
+    into the input gradient. The result is cast back. bfloat16 has float32's exponent range, so
+    both the guard and the squares are representable there and it takes the same expression as
+    float32 and float64.
+
+    A pixel with an exactly zero gradient has no orientation and contributes nothing: its magnitude
+    is zero rather than the guard's ``sqrt(eps)``, and its orientation is ``2pi`` (what the guarded
+    ``atan2`` returns) with a zero derivative rather than ``atan2``'s ``1 / eps``. Both were guard
+    artefacts: the ``sqrt(eps)`` magnitude made a flat patch's descriptor a unit vector built from
+    ``eps`` in float32 and a subnormal one in float16, whose ``1 / norm`` gradient overflowed through
+    the float16 cast into a NaN input gradient. A flat patch now has a zero descriptor and a zero
+    gradient in every dtype; every other pixel is unchanged.
+    """
+    dtype = gx.dtype
+    if dtype == torch.float16:
+        gx = gx.float()
+        gy = gy.float()
+    sq = gx * gx + gy * gy
+    nonzero = sq > 0
+    mag = torch.where(nonzero, torch.sqrt(sq + eps), torch.zeros_like(sq))
+    ori = torch.where(nonzero, torch.atan2(gy, gx + eps) + 2.0 * pi, torch.full_like(sq, 2.0 * pi))
+    return mag.to(dtype), ori.to(dtype)
 
 
 def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
@@ -151,17 +184,17 @@ class SIFTDescriptor(nn.Module):
         """Return the spatial pooling kernel used for histogram accumulation.
 
         Returns:
-            Detached convolution kernel tensor from the pooling layer.
+            Detached copy of the convolution kernel tensor from the pooling layer.
         """
-        return self.pk.weight.detach()
+        return self.pk.weight.detach().clone()
 
     def get_weighting_kernel(self) -> torch.Tensor:
         """Return the Gaussian weighting kernel used before orientation pooling.
 
         Returns:
-            Detached Gaussian kernel tensor.
+            Detached copy of the Gaussian kernel tensor.
         """
-        return self.gk.detach()
+        return self.gk.detach().clone()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         r"""Compute SIFT descriptors for square grayscale patches.
@@ -176,15 +209,17 @@ class SIFTDescriptor(nn.Module):
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", f"{self.patch_size}", f"{self.patch_size}"])
         B: int = input.shape[0]
-        self.pk = self.pk.to(input.dtype).to(input.device)
+        pk_weight = self.pk.weight.to(input.dtype).to(input.device)
+        pk_bias = self.pk.bias
+        if pk_bias is not None:
+            pk_bias = pk_bias.to(input.dtype).to(input.device)
 
         grads = spatial_gradient(input, "diff")
         # unpack the edges
         gx = grads[:, :, 0]
         gy = grads[:, :, 1]
 
-        mag = torch.sqrt(gx * gx + gy * gy + self.eps)
-        ori = torch.atan2(gy, gx + self.eps) + 2.0 * pi
+        mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
         mag = mag * self.gk.expand_as(mag).type_as(mag).to(mag.device)
         o_big = float(self.num_ang_bins) * ori / (2.0 * pi)
 
@@ -197,18 +232,42 @@ class SIFTDescriptor(nn.Module):
 
         ang_bins = torch.cat(
             [
-                self.pk((bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big)
+                F.conv2d(
+                    (bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big,
+                    pk_weight,
+                    pk_bias,
+                    self.pk.stride,
+                    self.pk.padding,
+                    self.pk.dilation,
+                    self.pk.groups,
+                )
                 for i in range(self.num_ang_bins)
             ],
             1,
         )
         ang_bins = ang_bins.view(B, -1)
-        ang_bins = F.normalize(ang_bins, p=2)
+        # A constant patch has an all-zero gradient and therefore a zero-norm descriptor; the
+        # default `eps` is not representable in float16, where it would come back NaN.
+        ang_bins = _l2_normalize(ang_bins, dim=1)
         ang_bins = torch.clamp(ang_bins, 0.0, float(self.clipval))
-        ang_bins = F.normalize(ang_bins, p=2)
+        ang_bins = _l2_normalize(ang_bins, dim=1)
         if self.rootsift:
-            ang_bins = torch.sqrt(F.normalize(ang_bins, p=1) + self.eps)
+            ang_bins = _rootsift(ang_bins, self.eps)
         return ang_bins
+
+
+def _rootsift(desc: torch.Tensor, eps: float) -> torch.Tensor:
+    r"""L1-normalise and take the square root, the RootSIFT step, with a dtype-safe ``eps``.
+
+    ``sqrt`` has an infinite backward at zero, and most bins of a SIFT histogram are zero, so ``eps`` keeps
+    the gradient finite. A float16 input cannot carry the 1e-10 guard -- it underflows to zero -- and the
+    smallest float16 normal, 6.1e-5, is not neutral: every empty bin would read ``sqrt(6.1e-5) = 0.0078``
+    and push the descriptor norm to ~1.004. The step is therefore computed in float32 for a float16 input
+    and cast back; float32 and float64 inputs take the same expression as before, unchanged.
+    """
+    if desc.dtype == torch.float16:
+        return torch.sqrt(F.normalize(desc.float(), p=1, eps=1e-12) + eps).to(desc.dtype)
+    return torch.sqrt(F.normalize(desc, p=1, eps=1e-12) + eps)
 
 
 def sift_describe(
@@ -312,17 +371,13 @@ class DenseSIFTDescriptor(nn.Module):
         PoolingConv.weight.data.copy_(self._poolingconv_weight)
         self.PoolingConv = PoolingConv
 
-        # Cache pooling kernel torch.Tensor for fast return in get_pooling_kernel
-        self._pooling_kernel = self._bin_pooling_kernel_weight.detach()
-
     def get_pooling_kernel(self) -> torch.Tensor:
-        """Return the cached pooling kernel for dense SIFT binning.
+        """Return the pooling kernel for dense SIFT binning.
 
         Returns:
-            Detached tensor containing pooling weights.
+            Detached copy of the pooling weights.
         """
-        # Return the cached detached pooling kernel directly for optimal speed
-        return self._pooling_kernel
+        return self.bin_pooling_kernel.weight.detach().clone()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Compute dense SIFT descriptors over a full image grid.
@@ -337,14 +392,19 @@ class DenseSIFTDescriptor(nn.Module):
         KORNIA_CHECK_SHAPE(input, ["B", "1", "H", "W"])
 
         _B, _CH, _W, _H = input.size()
-        self.bin_pooling_kernel = self.bin_pooling_kernel.to(input.dtype).to(input.device)
-        self.PoolingConv = self.PoolingConv.to(input.dtype).to(input.device)
+        bin_pooling_weight = self.bin_pooling_kernel.weight.to(input.dtype).to(input.device)
+        bin_pooling_bias = self.bin_pooling_kernel.bias
+        if bin_pooling_bias is not None:
+            bin_pooling_bias = bin_pooling_bias.to(input.dtype).to(input.device)
+        poolingconv_weight = self.PoolingConv.weight.to(input.dtype).to(input.device)
+        poolingconv_bias = self.PoolingConv.bias
+        if poolingconv_bias is not None:
+            poolingconv_bias = poolingconv_bias.to(input.dtype).to(input.device)
         grads = spatial_gradient(input, "diff")
         # unpack the edges
         gx = grads[:, :, 0]
         gy = grads[:, :, 1]
-        mag = torch.sqrt(gx * gx + gy * gy + self.eps)
-        ori = torch.atan2(gy, gx + self.eps) + 2.0 * pi
+        mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
         o_big = float(self.num_ang_bins) * ori / (2.0 * pi)
 
         bo0_big_ = torch.floor(o_big)
@@ -355,17 +415,31 @@ class DenseSIFTDescriptor(nn.Module):
         wo1_big = wo1_big_ * mag
         ang_bins = torch.cat(
             [
-                self.bin_pooling_kernel(
-                    (bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big
+                F.conv2d(
+                    (bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big,
+                    bin_pooling_weight,
+                    bin_pooling_bias,
+                    self.bin_pooling_kernel.stride,
+                    self.bin_pooling_kernel.padding,
+                    self.bin_pooling_kernel.dilation,
+                    self.bin_pooling_kernel.groups,
                 )
                 for i in range(self.num_ang_bins)
             ],
             1,
         )
 
-        out_no_norm = self.PoolingConv(ang_bins)
-        out = F.normalize(out_no_norm, dim=1, p=2).clamp_(0, float(self.clipval))
-        out = F.normalize(out, dim=1, p=2)
+        out_no_norm = F.conv2d(
+            ang_bins,
+            poolingconv_weight,
+            poolingconv_bias,
+            self.PoolingConv.stride,
+            self.PoolingConv.padding,
+            self.PoolingConv.dilation,
+            self.PoolingConv.groups,
+        )
+        out = _l2_normalize(out_no_norm, dim=1).clamp_(0, float(self.clipval))
+        out = _l2_normalize(out, dim=1)
         if self.rootsift:
-            out = torch.sqrt(F.normalize(out, p=1) + self.eps)
+            out = _rootsift(out, self.eps)
         return out

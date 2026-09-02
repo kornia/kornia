@@ -18,8 +18,9 @@
 import math
 
 import torch
-import torch.nn.functional as F
 from torch import nn
+
+from kornia.core.utils import _l2_normalize
 
 
 class DiscreteSteerer(nn.Module):
@@ -74,7 +75,7 @@ class DiscreteSteerer(nn.Module):
         for _ in range(steerer_power):
             descriptions = self.forward(descriptions)
         if normalize:
-            descriptions = F.normalize(descriptions, dim=-1)
+            descriptions = _l2_normalize(descriptions, dim=-1)
         return descriptions
 
     @classmethod

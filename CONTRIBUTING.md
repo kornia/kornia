@@ -116,7 +116,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
     pixi run test-f32         # Run tests with float32
     pixi run test-f64         # Run tests with float64
     pixi run test-slow        # Run slow tests
-    pixi run test-quick       # Run quick tests (excludes jit, grad, nn)
+    pixi run test-quick       # Run quick tests (same as `pixi run test`)
     pixi run test-module tests/<path>  # Run a focused test path
     pixi run test-half        # Run CPU float16/bfloat16 tests
 

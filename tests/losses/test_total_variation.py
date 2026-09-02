@@ -164,7 +164,6 @@ class TestTotalVariation(BaseTester):
 
         self.assert_close(op(image), op_module(image))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         dtype = torch.float64
         image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)

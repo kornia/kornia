@@ -32,7 +32,7 @@ __all__ = [
     "get_sample_images",
 ]
 
-IMAGE_URLS: List[str] = [
+_IMAGE_URLS: List[str] = [
     "https://raw.githubusercontent.com/kornia/data/main/panda.jpg",
     "https://raw.githubusercontent.com/kornia/data/main/simba.png",
     "https://raw.githubusercontent.com/kornia/data/main/girona.png",
@@ -56,7 +56,7 @@ def download_image(url: str, save_to: str) -> None:
 
 def get_sample_images(
     resize: Optional[Tuple[int, int]] = None,
-    paths: List[str] = IMAGE_URLS,
+    paths: List[str] = _IMAGE_URLS,
     download: bool = True,
     cache_dir: Optional[str] = None,
     as_list: Optional[bool] = None,
@@ -72,7 +72,7 @@ def get_sample_images(
 
     Args:
         paths: A list of path or URL from which to load or download images.
-              Defaults to a pre-defined constant `IMAGE_URLS` if not provided.
+              Defaults to the pre-defined sample image URLs if not provided.
         resize: Optional target size for resizing all images as a tuple (height, width).
             If not provided, the images will not be resized, and their original sizes will be retained.
         download: Whether to download the images if they are not already cached. Defaults to True.

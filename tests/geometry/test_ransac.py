@@ -20,7 +20,7 @@ import pytest
 import torch
 
 from kornia.geometry import RANSAC, transform_points
-from kornia.geometry.epipolar import sampson_epipolar_distance
+from kornia.geometry.epipolar import project_to_essential, sampson_epipolar_distance
 
 from testing.base import BaseTester
 from testing.casts import dict_to
@@ -368,3 +368,84 @@ class TestRANSACSeed:
     def test_none_seed_stored(self, device, dtype):
         ransac = RANSAC("homography")
         assert ransac.seed is None
+
+
+class TestRANSACEssential(BaseTester):
+    def test_smoke(self, device, dtype):
+        torch.random.manual_seed(0)
+        points1 = torch.rand(8, 2, device=device, dtype=dtype)
+        points2 = torch.rand(8, 2, device=device, dtype=dtype)
+        ransac = RANSAC("essential").to(device=device, dtype=dtype)
+        E, _ = ransac(points1, points2)
+        assert E.shape == (3, 3)
+
+    def test_polish_enforces_essential_constraint(self, device, dtype):
+        """Regression test for https://github.com/kornia/kornia/issues/3874.
+
+        The polishing (local-optimization) step must return an essential matrix, i.e. its two
+        non-zero singular values must be (approximately) equal and the third must be
+        (approximately) zero. The buggy version fit a fundamental matrix and returned it as-is,
+        violating the constraint and silently breaking decompose_essential_matrix.
+        """
+        torch.random.manual_seed(0)
+        ransac = RANSAC("essential").to(device=device, dtype=dtype)
+        kp1 = torch.rand(20, 2, device=device, dtype=dtype)
+        kp2 = torch.rand(20, 2, device=device, dtype=dtype)
+        inliers = torch.ones(20, dtype=torch.bool, device=device)
+        E = ransac.polish_model(kp1, kp2, inliers)  # (1, 3, 3)
+        sv = torch.linalg.svdvals(E[0])
+        # two non-zero singular values must be equal (essential-matrix constraint)
+        assert (sv[0] / sv[1] - 1.0).abs() < 1e-2
+        # third singular value must be ~0 (relative to the largest singular value)
+        assert (sv[2] / sv[0]).abs() < 1e-4
+
+    def test_forward_enforces_essential_constraint(self, device, dtype):
+        """Regression test for https://github.com/kornia/kornia/issues/3874 (forward path).
+
+        forward() must return an essential matrix even when local optimization does not win and
+        the best model is the minimal-solver estimate (find_essential), which is not guaranteed
+        to be on the essential manifold. The returned model is projected onto the manifold
+        before being returned, so the constraint holds regardless of which path selects the
+        best model.
+        """
+        torch.random.manual_seed(0)
+        ransac = RANSAC("essential").to(device=device, dtype=dtype)
+        for _ in range(5):
+            kp1 = torch.rand(20, 2, device=device, dtype=dtype)
+            kp2 = torch.rand(20, 2, device=device, dtype=dtype)
+            E, _ = ransac(kp1, kp2)
+            sv = torch.linalg.svdvals(E)
+            assert (sv[0] / sv[1] - 1.0).abs() < 1e-2
+            assert (sv[2] / sv[0]).abs() < 1e-4
+
+    def test_project_to_essential(self, device, dtype):
+        """project_to_essential must enforce the essential-matrix constraint."""
+        torch.random.manual_seed(0)
+        M = torch.rand(4, 3, 3, device=device, dtype=dtype)
+        E = project_to_essential(M)
+        svd_input = E.float() if E.dtype in (torch.float16, torch.bfloat16) else E
+        sv = torch.linalg.svdvals(svd_input)
+        assert torch.all((sv[..., 0] / sv[..., 1] - 1.0).abs() < 1e-2)
+        zero_tolerance = max(1e-4, torch.finfo(E.dtype).eps)
+        assert torch.all((sv[..., 2] / sv[..., 0]).abs() < zero_tolerance)
+
+    @pytest.mark.skip(reason="try except block in python version")
+    def test_jit(self, device, dtype):
+        torch.random.manual_seed(0)
+        points1 = torch.rand(8, 2, device=device, dtype=dtype)
+        points2 = torch.rand(8, 2, device=device, dtype=dtype)
+        model = RANSAC("essential").to(device=device, dtype=dtype)
+        model_jit = torch.jit.script(model)
+        self.assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-3, atol=1e-3)
+
+    @pytest.mark.skip(reason="RANSAC is random algorithm, so Jacobian is not defined")
+    def test_gradcheck(self, device):
+        torch.random.manual_seed(0)
+        points1 = torch.rand(8, 2, device=device, dtype=torch.float64, requires_grad=True)
+        points2 = torch.rand(8, 2, device=device, dtype=torch.float64)
+        model = RANSAC("essential").to(device=device, dtype=torch.float64)
+
+        def gradfun(p1, p2):
+            return model(p1, p2)[0]
+
+        self.gradcheck(gradfun, (points1, points2), fast_mode=False, requires_grad=(True, False, False))

@@ -316,12 +316,10 @@ class TestRgbToYuv(BaseTester):
             rtol=rtol,
         )
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_yuv, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
         op = kornia.color.rgb_to_yuv
@@ -427,12 +425,10 @@ class TestRgbToYuv420(BaseTester):
         y, uv = kornia.color.rgb_to_yuv420(data)
         self.assert_close(kornia.color.yuv420_to_rgb(y, uv), data, atol=atol, rtol=rtol)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_yuv420, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
         op = kornia.color.rgb_to_yuv420
@@ -534,12 +530,10 @@ class TestRgbToYuv422(BaseTester):
         y, uv = kornia.color.rgb_to_yuv422(data)
         self.assert_close(kornia.color.yuv422_to_rgb(y, uv), data, atol=atol, rtol=rtol)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_yuv422, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
         op = kornia.color.rgb_to_yuv422
@@ -649,12 +643,10 @@ class TestYuvToRgb(BaseTester):
 
         self.assert_close(kornia.color.rgb_to_yuv(kornia.color.yuv_to_rgb(yuv)), yuv, atol=atol, rtol=rtol)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.yuv_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
         op = kornia.color.yuv_to_rgb
@@ -731,6 +723,29 @@ class TestYuv420ToRgb(BaseTester):
             imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv420_to_rgb(imgy, imguv)
 
+        # Regression for #4056: a zero-sized chroma dimension is still a shape violation and must
+        # be reported as ShapeError, not the bare ZeroDivisionError the old ratio guard threw.
+        with pytest.raises(ShapeError):
+            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+            imguv = torch.ones(2, 2, 0, device=device, dtype=dtype)
+            kornia.color.yuv420_to_rgb(imgy, imguv)
+
+        with pytest.raises(ShapeError):
+            imgy = torch.ones(1, 4, 4, device=device, dtype=dtype)
+            imguv = torch.ones(2, 0, 2, device=device, dtype=dtype)
+            kornia.color.yuv420_to_rgb(imgy, imguv)
+
+    def test_empty_input(self, device, dtype):
+        # Regression for #4056: a *consistently* zero-sized luma/chroma pair passes the guard
+        # (0 == 2 * 0) and returns an empty RGB plane, matching the 4:4:4 twin, rather than
+        # raising. Pin the empty-in -> empty-out convention instead of special-casing it away.
+        y = torch.rand(1, 0, 0, device=device, dtype=dtype)
+        uv = torch.rand(2, 0, 0, device=device, dtype=dtype)
+        out = kornia.color.yuv420_to_rgb(y, uv)
+        assert out.shape == (3, 0, 0)
+        # agrees with the 4:4:4 converter on the same empty concatenation
+        assert torch.equal(kornia.color.yuv_to_rgb(torch.cat([y, uv], dim=-3)), out)
+
     @pytest.mark.parametrize("name", list(_REFERENCE_COLORS))
     def test_unit(self, device, dtype, name):
         rgb_values, yuv_values = _REFERENCE_COLORS[name]
@@ -771,13 +786,11 @@ class TestYuv420ToRgb(BaseTester):
         self.assert_close(out_y, datay, atol=atol, rtol=rtol)
         self.assert_close(out_uv, datauv, atol=atol, rtol=rtol)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         imgy = torch.rand(2, 1, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         imguv = torch.rand(2, 2, 2, 2, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.yuv420_to_rgb, (imgy, imguv), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         imgy = torch.ones(2, 1, 4, 4, device=device, dtype=dtype)
         imguv = torch.ones(2, 2, 2, 2, device=device, dtype=dtype)
@@ -847,23 +860,34 @@ class TestYuv422ToRgb(BaseTester):
 
         # Luma must be single-channel: rejected by the channel slot of the shape spec, which the
         # rank case above does not reach. Note this is *not* a width-relation case -- 2/1 == 2
-        # holds; the height relation it looks like it covers is unchecked, see kornia#4050.
+        # holds.
         with pytest.raises(ShapeError):
             imgy = torch.ones(2, 2, 2, device=device, dtype=dtype)
             imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
 
-    def test_wart_chroma_height_is_unchecked_4050(self, device, dtype):
-        # Wart pin for kornia#4050. yuv422_to_rgb validates only the *width* ratio, so a chroma
-        # plane whose height does not match the luma reaches ``torch.cat`` and dies there with a
-        # bare RuntimeError instead of the ShapeError every other malformed input gets -- the
-        # 4:2:0 twin checks both axes. ShapeError does not derive from RuntimeError, so adding
-        # the missing guard flips this test: delete it then, and move the case up into
-        # test_exception alongside the other ShapeError raise-sites.
-        imgy = torch.ones(1, 2, 2, device=device, dtype=dtype)
-        imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
-        with pytest.raises(RuntimeError, match="Sizes of tensors must match"):
+        # 4:2:2 subsamples width only, so chroma keeps the full luma height.
+        with pytest.raises(ShapeError):
+            imgy = torch.ones(1, 2, 2, device=device, dtype=dtype)
+            imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.yuv422_to_rgb(imgy, imguv)
+
+        # Regression for #4056: a zero-sized chroma width is still a shape violation and must be
+        # reported as ShapeError, not the bare ZeroDivisionError the old ratio guard threw.
+        with pytest.raises(ShapeError):
+            imgy = torch.ones(1, 4, 6, device=device, dtype=dtype)
+            imguv = torch.ones(2, 4, 0, device=device, dtype=dtype)
+            kornia.color.yuv422_to_rgb(imgy, imguv)
+
+    def test_empty_input(self, device, dtype):
+        # Regression for #4056: a *consistently* zero-sized luma/chroma pair passes the guard
+        # (0 == 2 * 0) and returns an empty RGB plane, rather than raising. Pin the empty-in ->
+        # empty-out convention instead of special-casing it away.
+        y = torch.rand(1, 0, 0, device=device, dtype=dtype)
+        uv = torch.rand(2, 0, 0, device=device, dtype=dtype)
+        out = kornia.color.yuv422_to_rgb(y, uv)
+        assert out.shape == (3, 0, 0)
+        assert torch.equal(kornia.color.yuv_to_rgb(torch.cat([y, uv], dim=-3)), out)
 
     @pytest.mark.parametrize("name", list(_REFERENCE_COLORS))
     def test_unit(self, device, dtype, name):
@@ -899,13 +923,11 @@ class TestYuv422ToRgb(BaseTester):
         self.assert_close(out_y, datay, atol=atol, rtol=rtol)
         self.assert_close(out_uv, datauv, atol=atol, rtol=rtol)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         imgy = torch.rand(2, 1, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         imguv = torch.rand(2, 2, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.yuv422_to_rgb, (imgy, imguv), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         imgy = torch.ones(2, 1, 4, 4, device=device, dtype=dtype)
         imguv = torch.ones(2, 2, 4, 2, device=device, dtype=dtype)

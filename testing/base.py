@@ -137,6 +137,178 @@ def supports_2d_border_padding(device: torch.device) -> bool:
     return _supports_2d_border_padding_probe(device.type)
 
 
+_UNSUPPORTED_KERNEL_MSGS = (
+    "not implemented for",
+    "Unsupported Bicubic interpolation",
+    "Unsupported Nearest interpolation",
+)
+
+
+class _UnsupportedProbeDtype(Exception):
+    """The device cannot hold the probe dtype at all -- MPS and float64 -- so it cannot run ``op``."""
+
+
+def _probe_zeros(device_type: str, dtype: torch.dtype, *shape: int) -> Tensor:
+    """Allocate a probe tensor, reporting "this device cannot hold ``dtype``" as a distinct error.
+
+    ``torch.zeros`` raises TypeError for a device/dtype pair it cannot represent (MPS and
+    float64). That is still "unsupported" and must not escape a helper whose whole contract is to
+    return a bool -- but a TypeError raised by the *operator* is a mis-written probe, and silently
+    reading it as "unsupported" would skip the guarded test on every build forever. Translating
+    only the allocation failure keeps the two apart.
+    """
+    try:
+        return torch.zeros(shape, device=device_type, dtype=dtype)
+    except TypeError as e:
+        raise _UnsupportedProbeDtype from e
+
+
+@cache
+def _supports_kernel_probe(op: Callable[[str, torch.dtype], object], device_type: str, dtype: torch.dtype) -> bool:
+    """Run ``op`` on tiny tensors and report whether this build has a kernel for it.
+
+    ``op`` allocates its probe tensors through :func:`_probe_zeros` and then calls the operator.
+    Cached per (op, device type, dtype), so every probe below runs once per session and
+    auto-enables once PyTorch fills the kernel in.
+    """
+    try:
+        op(device_type, dtype)
+    except (_UnsupportedProbeDtype, NotImplementedError):
+        return False
+    except RuntimeError as e:
+        if any(message in str(e) for message in _UNSUPPORTED_KERNEL_MSGS):
+            return False
+        raise
+    return True
+
+
+def _bilinear_2d_grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
+    inp = _probe_zeros(device_type, dtype, 1, 1, 2, 2)
+    grid = _probe_zeros(device_type, dtype, 1, 1, 1, 2)
+    F.grid_sample(inp, grid, mode="bilinear", align_corners=True)
+
+
+def supports_bilinear_2d_grid_sample(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device supports bilinear interpolation in 2D ``grid_sample`` for ``dtype``.
+
+    Probed at runtime and cached per (device type, dtype), so tests guarded by this helper
+    auto-enable once PyTorch adds the missing interpolation kernel.
+    """
+    return _supports_kernel_probe(_bilinear_2d_grid_sample_op, device.type, dtype)
+
+
+def _bicubic_2d_grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
+    inp = _probe_zeros(device_type, dtype, 1, 1, 2, 2)
+    grid = _probe_zeros(device_type, dtype, 1, 1, 1, 2)
+    F.grid_sample(inp, grid, mode="bicubic", align_corners=True)
+
+
+def supports_bicubic_2d_grid_sample(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device supports bicubic interpolation in 2D ``grid_sample`` for ``dtype``.
+
+    Probed at runtime and cached per (device type, dtype), so tests guarded by this helper
+    auto-enable once PyTorch adds the missing interpolation kernel.
+    """
+    return _supports_kernel_probe(_bicubic_2d_grid_sample_op, device.type, dtype)
+
+
+def _bilinear_3d_grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
+    inp = _probe_zeros(device_type, dtype, 1, 1, 2, 2, 2)
+    grid = _probe_zeros(device_type, dtype, 1, 1, 1, 1, 3)
+    F.grid_sample(inp, grid, mode="bilinear", align_corners=True)
+
+
+def supports_bilinear_3d_grid_sample(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device supports bilinear interpolation in 3D ``grid_sample`` for ``dtype``.
+
+    Probed at runtime and cached per (device type, dtype), so tests guarded by this helper
+    auto-enable once PyTorch adds the missing interpolation kernel.
+    """
+    return _supports_kernel_probe(_bilinear_3d_grid_sample_op, device.type, dtype)
+
+
+def _nearest_3d_grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
+    inp = _probe_zeros(device_type, dtype, 1, 1, 2, 2, 2)
+    grid = _probe_zeros(device_type, dtype, 1, 1, 1, 1, 3)
+    F.grid_sample(inp, grid, mode="nearest", align_corners=True)
+
+
+def supports_nearest_3d_grid_sample(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device supports nearest interpolation in 3D ``grid_sample`` for ``dtype``.
+
+    Probed at runtime and cached per (device type, dtype), so tests guarded by this helper
+    auto-enable once PyTorch adds the missing interpolation kernel.
+    """
+    return _supports_kernel_probe(_nearest_3d_grid_sample_op, device.type, dtype)
+
+
+def _replicate_padding_op(device_type: str, dtype: torch.dtype) -> None:
+    F.pad(_probe_zeros(device_type, dtype, 1, 1, 2, 2), (1, 1, 1, 1), mode="replicate")
+
+
+def supports_replicate_padding(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a 2D ``mode="replicate"`` pad kernel for ``dtype``.
+
+    :func:`kornia.filters.spatial_gradient` pads that way, so everything built on it inherits the
+    gap: both SIFT descriptors, and ``BlobHessian`` with the detectors above it. torch 2.5.1 has no
+    float16 CPU ``replication_pad2d`` (bfloat16 is fine), so a test that hardcodes float16 rather
+    than reading the injected dtype fails there on every job. Probed at runtime and cached per
+    (device type, dtype), so it auto-enables once PyTorch fills the kernel in.
+    """
+    return _supports_kernel_probe(_replicate_padding_op, device.type, dtype)
+
+
+def _conv2d_op(device_type: str, dtype: torch.dtype) -> None:
+    F.conv2d(_probe_zeros(device_type, dtype, 1, 1, 3, 3), _probe_zeros(device_type, dtype, 1, 1, 2, 2))
+
+
+def supports_conv2d(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a 2D convolution kernel for ``dtype``.
+
+    Every CNN descriptor -- :class:`kornia.feature.HardNet`, ``HardNet8``, ``SOSNet``, ``TFeat`` --
+    is a stack of convolutions. torch 2.1.2 has no float16 CPU ``slow_conv2d`` (bfloat16 is fine),
+    so a test that hardcodes a half dtype rather than reading the injected one fails there on every
+    job. Probed at runtime and cached per (device type, dtype), like
+    :func:`supports_replicate_padding`.
+    """
+    return _supports_kernel_probe(_conv2d_op, device.type, dtype)
+
+
+def _matmul_op(device_type: str, dtype: torch.dtype) -> None:
+    _probe_zeros(device_type, dtype, 2, 3) @ _probe_zeros(device_type, dtype, 3, 2)
+
+
+def supports_matmul(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a 2D matrix-multiply kernel for ``dtype``.
+
+    Descriptor matching multiplies: :func:`kornia.feature.match_mnn` and friends route half
+    precision around ``torch.cdist`` into a manual expand-and-multiply distance matrix, and
+    ``kornia.feature.steerers.DiscreteSteerer`` steers through ``F.linear``. Both are 2D, so this
+    probes ``mm``/``addmm``; batched ``bmm`` is a separate kernel and needs its own probe. torch
+    2.1.2 has no
+    float16 CPU ``addmm`` (bfloat16 is fine), so a test that hardcodes a half dtype rather than
+    reading the injected one fails there on every job. Probed at runtime and cached per
+    (device type, dtype), like :func:`supports_replicate_padding`.
+    """
+    return _supports_kernel_probe(_matmul_op, device.type, dtype)
+
+
+def _topk_op(device_type: str, dtype: torch.dtype) -> None:
+    _probe_zeros(device_type, dtype, 2).topk(k=1)
+
+
+def supports_topk(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device has a ``topk`` kernel for ``dtype``.
+
+    Every detector ranks its candidates that way, so a response map in a narrower dtype than the
+    image -- what a learned response module under autocast produces -- reaches ``topk`` in that
+    dtype. torch 2.1.2 has no float16 CPU ``topk`` (bfloat16 is fine), so a test that hardcodes a
+    half dtype rather than reading the injected one fails there on every job. Probed at runtime and
+    cached per (device type, dtype), like :func:`supports_replicate_padding`.
+    """
+    return _supports_kernel_probe(_topk_op, device.type, dtype)
+
+
 class BaseTester:
     @staticmethod
     def assert_close(

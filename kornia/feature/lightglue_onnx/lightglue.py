@@ -26,11 +26,11 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CH
 from .utils import download_onnx_from_url, normalize_keypoints
 
 try:
-    import numpy as np
-    import onnxruntime as ort
+    import numpy as _np  # noqa: ICN001
+    import onnxruntime as _ort
 except ImportError:
-    np = None  # type: ignore
-    ort = None
+    _np = None  # type: ignore
+    _ort = None
 
 __all__ = ["OnnxLightGlue"]
 
@@ -62,8 +62,8 @@ class OnnxLightGlue:
     required_data_keys: ClassVar[list[str]] = ["image0", "image1"]
 
     def __init__(self, weights: str | None = None, device: Union[str, torch.device, None] = "cpu") -> None:
-        KORNIA_CHECK(ort is not None, "onnxruntime is not installed.")
-        KORNIA_CHECK(np is not None, "numpy is not installed.")
+        KORNIA_CHECK(_ort is not None, "onnxruntime is not installed.")
+        KORNIA_CHECK(_np is not None, "numpy is not installed.")
 
         device = torch.device(device)  # type: ignore
         self.device = device
@@ -88,7 +88,7 @@ class OnnxLightGlue:
 
             weights = download_onnx_from_url(url)
 
-        self.session = ort.InferenceSession(weights, providers=providers)
+        self.session = _ort.InferenceSession(weights, providers=providers)
 
     def __call__(self, data: dict[str, dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
         """Run the ONNX LightGlue matcher.
@@ -173,7 +173,7 @@ class OnnxLightGlue:
                 name,
                 device_type=self.device.type,
                 device_id=0,
-                element_type=np.float32,
+                element_type=_np.float32,
                 shape=tuple(tensor.shape),
                 buffer_ptr=tensor.data_ptr(),
             )

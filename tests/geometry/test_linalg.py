@@ -32,23 +32,26 @@ class TestTransformPoints(BaseTester):
     @pytest.mark.parametrize("num_points", [2, 3, 5])
     @pytest.mark.parametrize("num_dims", [2, 3])
     def test_transform_points(self, batch_size, num_points, num_dims, device, dtype):
-        # generate input data
-        eye_size = num_dims + 1
-        points_src = torch.rand(batch_size, num_points, num_dims, device=device, dtype=dtype)
+        points_src = (
+            torch.arange(batch_size * num_points * num_dims, device=device)
+            .remainder(5)
+            .to(dtype)
+            .reshape(batch_size, num_points, num_dims)
+            - 2
+        ) / 2
+        scale = torch.arange(2, num_dims + 2, device=device).to(dtype)
+        translation = torch.arange(-1, num_dims - 1, device=device).to(dtype)
+        dst_homo_src = torch.eye(num_dims + 1, device=device, dtype=dtype).expand(batch_size, -1, -1).clone()
+        dst_homo_src[:, :num_dims, :num_dims] = torch.diag(scale)
+        dst_homo_src[:, :num_dims, -1] = translation
+        perspective = torch.arange(1, batch_size + 1, device=device).to(dtype) * 0.1
+        dst_homo_src[:, -1, 0] = perspective
+        denominator = 1 + points_src[..., 0] * perspective[:, None]
+        expected = (points_src * scale + translation) / denominator.unsqueeze(-1)
 
-        dst_homo_src = create_random_homography(points_src, eye_size)
-        dst_homo_src = dst_homo_src.to(device)
+        actual = kgl.transform_points(dst_homo_src, points_src)
 
-        # transform the points from dst to ref
-        points_dst = kgl.transform_points(dst_homo_src, points_src)
-
-        # transform the points from ref to dst
-        src_homo_dst = torch.inverse(dst_homo_src)
-        points_dst_to_src = kgl.transform_points(src_homo_dst, points_dst)
-
-        # projected should be equal as initial
-        atol = 1e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
-        self.assert_close(points_src, points_dst_to_src, atol=atol, rtol=1e-4)
+        self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("num_dims", [2, 3])
     def test_transform_points_empty(self, num_dims, device, dtype):
@@ -82,6 +85,8 @@ class TestTransformPoints(BaseTester):
     @pytest.mark.parametrize("points_dtype", [torch.float16, torch.float32, torch.float64])
     def test_mixed_dtypes(self, device, trans_dtype, points_dtype):
         # Regression test for https://github.com/kornia/kornia/issues/3705
+        if device.type == "mps" and torch.float64 in (trans_dtype, points_dtype):
+            pytest.skip("MPS does not support float64")
         if trans_dtype == torch.float16 and device.type == "cpu" and torch_version_lt(2, 2, 0):
             # transform_points harmonises at the bmm site in the transform's dtype, and CPU
             # float16 bmm ("bmm" not implemented for 'Half') only landed in PyTorch 2.2.

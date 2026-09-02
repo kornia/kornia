@@ -22,7 +22,7 @@ import kornia
 from kornia.core.exceptions import BaseError, TypeCheckError
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_conv2d, supports_replicate_padding
 
 
 class TestConvDistanceTransform(BaseTester):
@@ -192,25 +192,55 @@ class TestConvDistanceTransform(BaseTester):
         loss_3d.backward()
 
     def test_offset_parenthesis_fix(self, device, dtype):
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip("This device does not support replicate padding for the regression dtype")
+        if not supports_conv2d(device, dtype):
+            pytest.skip("This device does not support convolution for the regression dtype")
+
         img = torch.zeros(1, 1, 8, 4, device=device, dtype=dtype)
         img[0, 0, 1, :] = 1.0
-        out = kornia.contrib.distance_transform(img, kernel_size=3, h=0.01)
+        # exp(-1 / 0.01) is a float32 subnormal that MPS flushes to zero. h=0.1 keeps
+        # the regression's expected offset away from backend-specific underflow behavior (#4152).
+        out = kornia.contrib.distance_transform(img, kernel_size=3, h=0.1)
         expected = torch.tensor(
             [
-                [0.9998, 0.9998, 0.9998, 0.9998],
+                [0.9969, 0.9969, 0.9969, 0.9969],
                 [0.0000, 0.0000, 0.0000, 0.0000],
-                [0.9998, 0.9998, 0.9998, 0.9998],
-                [1.9998, 1.9998, 1.9998, 1.9998],
-                [2.9998, 2.9998, 2.9998, 2.9998],
-                [3.9998, 3.9998, 3.9998, 3.9998],
-                [4.9998, 4.9998, 4.9998, 4.9998],
-                [5.9998, 5.9998, 5.9998, 5.9998],
+                [0.9969, 0.9969, 0.9969, 0.9969],
+                [1.9969, 1.9969, 1.9969, 1.9969],
+                [2.9969, 2.9969, 2.9969, 2.9969],
+                [3.9969, 3.9969, 3.9969, 3.9969],
+                [4.9969, 4.9969, 4.9969, 4.9969],
+                [5.9969, 5.9969, 5.9969, 5.9969],
             ],
             device=device,
             dtype=dtype,
         )
 
-        self.assert_close(out[0, 0], expected, rtol=1e-3, atol=1e-3)
+        tolerance = 5e-3 if dtype == torch.bfloat16 else 1e-3
+        self.assert_close(out[0, 0], expected, rtol=tolerance, atol=tolerance)
+
+    @pytest.mark.xfail(
+        raises=AssertionError,
+        reason="distance_transform silently collapses to zero when its kernel underflows — kornia#4152",
+        strict=True,
+    )
+    def test_convention_small_h_keeps_nonzero_distances_4152(self, device, dtype):
+        if not (dtype in (torch.float16, torch.bfloat16) or (device.type == "mps" and dtype == torch.float32)):
+            pytest.skip("This device and dtype do not reproduce the small-h underflow in kornia#4152")
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip("This device does not support replicate padding for the regression dtype")
+        if not supports_conv2d(device, dtype):
+            pytest.skip("This device does not support convolution for the regression dtype")
+
+        img = torch.zeros(1, 1, 8, 4, device=device, dtype=dtype)
+        img[0, 0, 1, :] = 1.0
+        out = kornia.contrib.distance_transform(img, kernel_size=3, h=0.01)
+        expected_column = torch.tensor(
+            [0.9998, 0.0, 0.9998, 1.9998, 2.9998, 3.9998, 4.9998, 5.9998], device=device, dtype=dtype
+        )
+
+        self.assert_close(out[0, 0, :, 0], expected_column)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         input2d = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)

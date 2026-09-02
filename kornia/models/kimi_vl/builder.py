@@ -27,7 +27,7 @@ import torch
 from .config import KimiVLConfig, _kimi_vl_a3b_instruct_config
 from .model import KimiVLModel
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 __all__ = ["KimiVLBuilder"]
 
@@ -44,7 +44,7 @@ def _download_weights(model_name: str, cache_dir: Optional[str]) -> dict[str, to
             "huggingface_hub and safetensors are required for loading model weights. "
             "Install them with: pip install huggingface_hub safetensors"
         )
-        logger.error(error_msg)
+        _logger.error(error_msg)
         raise ImportError(error_msg) from e
 
     weights_path = hf_hub_download(repo_id=model_name, filename="model.safetensors", cache_dir=cache_dir)

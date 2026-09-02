@@ -34,7 +34,7 @@ from kornia.feature.matching import (
 )
 from kornia.feature.steerers import DiscreteSteerer
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_matmul
 from testing.casts import dict_to
 
 
@@ -235,7 +235,6 @@ class TestMatchSMNN(BaseTester):
         self.gradcheck(match_smnn, (desc1, desc2, 0.8), nondet_tol=1e-4)
         self.gradcheck(matcher, (desc1, desc2), nondet_tol=1e-4)
 
-    @pytest.mark.jit()
     @pytest.mark.parametrize("match_type", ["nn", "snn", "mnn", "smnn"])
     def test_jit(self, match_type, device, dtype):
         desc1 = torch.rand(5, 8, device=device, dtype=dtype)
@@ -400,7 +399,6 @@ class TestMatchFGINN(BaseTester):
         lafs2 = laf_from_center_scale_ori(center2)
         self.gradcheck(match_fginn, (desc1, desc2, lafs1, lafs2, 0.8, 0.05), nondet_tol=1e-4)
 
-    @pytest.mark.jit()
     @pytest.mark.skip("keyword-arg expansion is not supported")
     def test_jit(self, device, dtype):
         desc1 = torch.rand(5, 8, device=device, dtype=dtype)
@@ -607,6 +605,27 @@ class TestMatchSteererGlobal(BaseTester):
         assert dists.shape[0] <= num_desc1
         assert idxs.shape[1] == 2
         assert idxs.shape[0] == dists.shape[0]
+
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16, torch.float32])
+    def test_normalize_is_finite_on_a_zero_descriptor(self, device, desc_dtype):
+        if not supports_matmul(device, desc_dtype):
+            # The half-precision `_cdist` fallback multiplies the descriptors, and the steerer
+            # steers through `F.linear`; torch 2.1.2 has no float16 CPU `addmm` kernel.
+            pytest.skip(f"no matmul kernel for {desc_dtype} on {device.type}")
+        # `F.normalize`'s default eps underflows in float16, so a zero row -- the descriptor of a
+        # padded slot -- became NaN, and `cdist` then poisoned its whole row and column.
+        torch.manual_seed(0)
+        desc1 = torch.rand(5, 8, device=device, dtype=desc_dtype)
+        desc2 = torch.rand(6, 8, device=device, dtype=desc_dtype)
+        desc1[1] = 0
+        desc2[4] = 0
+        # torch 2.2.2 and older have no bfloat16 CPU `eye` kernel. 0 and 1 are exact in every
+        # float dtype, so building in float32 and casting gives the identical matrix.
+        steerer = DiscreteSteerer(torch.eye(8, device=device, dtype=torch.float32).to(desc_dtype))
+        matcher = DescriptorMatcherWithSteerer(steerer=steerer, steerer_order=2, steer_mode="global", match_mode="mnn")
+        dists, idxs, _ = matcher(desc1, desc2, normalize=True)
+        assert torch.isfinite(dists).all()
+        assert idxs.shape[0] >= 1
 
     def test_matching(self, device):
         desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)

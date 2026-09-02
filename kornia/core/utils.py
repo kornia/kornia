@@ -23,6 +23,7 @@ from dataclasses import asdict, fields, is_dataclass
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import torch
+import torch.nn.functional as F
 from torch.linalg import inv_ex
 
 from kornia.core._compat import torch_version_ge
@@ -132,6 +133,33 @@ def _normalize_to_float32_or_float64(dtype: torch.dtype) -> torch.dtype:
         torch.float32 if dtype is not float32 or float64, otherwise returns the original dtype.
     """
     return dtype if dtype in (torch.float32, torch.float64) else torch.float32
+
+
+def _l2_normalize(input: torch.Tensor, dim: int = 1) -> torch.Tensor:
+    """L2-normalise ``input`` along ``dim`` with :func:`torch.nn.functional.normalize`'s default ``eps``.
+
+    ``normalize`` divides by ``norm.clamp_min(eps)``, and the 1e-12 default underflows to zero in
+    float16, where an all-zero input therefore normalised to NaN. A float16 input is normalised in
+    float32 and cast back. Clamping the norm at the smallest float16 normal instead is safe but not
+    neutral: a vector whose norm sits in the subnormal window -- representable, and computed exactly
+    because the float16 ``norm`` accumulates in float32 -- came back with a norm of 0.5 rather than
+    1. Every other floating dtype carries the 1e-12 default and is unchanged.
+
+    Args:
+        input: the tensor to normalise.
+        dim: the dimension to normalise along.
+
+    Returns:
+        the normalised tensor, in ``input``'s dtype. An all-zero vector normalises to zero with a
+        zero gradient: a zero vector has no direction, and the gradient of the ``eps`` clamp there,
+        ``1 / eps``, is ~1e12 in float32 and overflows to ``inf`` once cast back to float16. A
+        non-zero vector keeps ``normalize``'s value and gradient.
+    """
+    x = input.float() if input.dtype == torch.float16 else input
+    # `amax` rather than a squared norm, so a tiny non-zero vector cannot underflow into the zero branch.
+    nonzero = x.abs().amax(dim=dim, keepdim=True) > 0
+    out = torch.where(nonzero, F.normalize(x, dim=dim, eps=1e-12), torch.zeros_like(x))
+    return out.to(input.dtype)
 
 
 def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:

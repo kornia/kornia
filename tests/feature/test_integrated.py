@@ -41,7 +41,7 @@ from kornia.feature import (
 from kornia.feature.integrated import LocalFeatureMatcher
 from kornia.geometry import RANSAC, resize, transform_points
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_replicate_padding
 from testing.casts import dict_to
 
 
@@ -165,6 +165,22 @@ class TestLocalFeatureMatcherEmptyPath(BaseTester):
         assert out["lafs0"][0].shape == (0, 2, 3)
         assert out["keypoints0"].shape == (0, 2)
 
+    def test_an_empty_side_never_reaches_the_matcher(self, device, dtype):
+        # Filtering the zero-LAF padding can leave a side with no descriptor at all. `matcher` is an
+        # arbitrary module with no obligation to accept a `(0, D)` input, so a textureless pair called
+        # it with one and could raise; the pair is skipped instead, which is what `no_match_output` is for.
+        class RejectsEmpty(torch.nn.Module):
+            def forward(self, d0: torch.Tensor, d1: torch.Tensor):
+                if d0.shape[0] == 0 or d1.shape[0] == 0:
+                    raise RuntimeError("empty descriptors")
+                return kornia.feature.match_snn(d0, d1, 0.9)
+
+        matcher = kornia.feature.LocalFeatureMatcher(kornia.feature.SIFTFeature(50), RejectsEmpty()).to(device, dtype)
+        img = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        out = matcher({"image0": img, "image1": img})
+        assert out["keypoints0"].shape == (0, 2)
+        assert out["lafs0"].shape == (1, 0, 2, 3)
+
 
 class TestLAFDescriptor(BaseTester):
     def test_same(self, device, dtype):
@@ -274,6 +290,24 @@ class TestSIFTFeature(BaseTester):
         self.gradcheck(local_feature, img, eps=1e-4, atol=1e-4, fast_mode=False)
 
 
+class TestSIFTFeatureHalfPrecision(BaseTester):
+    def test_lafs_and_descriptors_are_finite(self, device):
+        # The orienter's unguarded `sqrt`/`atan2` gave a NaN LAF at a *filled* slot, which the
+        # padding mask cannot cover, and 128 NaN descriptor values in that row with it.
+        if device.type == "mps":
+            pytest.skip("MPS autocast changes the effective dtype")
+        if not supports_replicate_padding(device, torch.float16):
+            pytest.skip("no replicate-padding kernel for float16 on this device")
+        torch.manual_seed(0)
+        img = torch.rand(1, 1, 64, 64, device=device, dtype=torch.float16)
+        with torch.no_grad():
+            lafs, _, descs = SIFTFeature(50).to(device, torch.float16)(img)
+        assert lafs.dtype == torch.float16 and descs.dtype == torch.float16
+        assert int(lafs[0].ne(0).any(dim=-1).any(dim=-1).sum()) > 0
+        assert torch.isfinite(lafs).all()
+        assert torch.isfinite(descs).all()
+
+
 class TestKeyNetHardNetFeature(BaseTester):
     # The real test is in TestLocalFeatureMatcher
     def test_smoke(self, device, dtype):
@@ -309,6 +343,49 @@ class TestLocalFeatureMatcher(BaseTester):
     def test_smoke(self, device):
         matcher = LocalFeatureMatcher(SIFTFeature(5), DescriptorMatcher("snn", 0.8)).to(device)
         assert matcher is not None
+
+    @pytest.mark.parametrize("match_type", ["nn", "mnn"])
+    def test_detector_padding_is_not_matched(self, device, dtype, match_type):
+        # A fixed-shape detector with no maxima returns zero LAFs. Their descriptors are finite,
+        # but NN/MNN would otherwise report them as false correspondences at the image origin.
+        feat = SIFTFeature(8, upright=True, score_threshold=1e6).to(device, dtype)
+        matcher = LocalFeatureMatcher(feat, DescriptorMatcher(match_type, 0.8)).to(device, dtype)
+        image0 = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        image1 = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        with torch.no_grad():
+            out = matcher({"image0": image0, "image1": image1})
+        assert out["keypoints0"].shape == (0, 2)
+        assert out["keypoints1"].shape == (0, 2)
+        assert out["lafs0"].shape == (1, 0, 2, 3)
+        assert out["lafs1"].shape == (1, 0, 2, 3)
+
+    def test_laf_and_descriptor_counts_must_agree(self, device, dtype):
+        # The padding mask is derived from the LAFs and applied to the descriptors, so a count
+        # mismatch used to surface as an opaque boolean-index `IndexError` deep in the loop.
+        matcher = LocalFeatureMatcher(SIFTFeature(5), DescriptorMatcher("nn", 0.8)).to(device, dtype)
+        img = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
+        lafs = torch.rand(1, 3, 2, 3, device=device, dtype=dtype)
+        descs = torch.rand(1, 5, 128, device=device, dtype=dtype)
+        images = {"image0": img, "image1": img}
+        data = {**images, "lafs0": lafs, "descriptors0": descs, "lafs1": lafs, "descriptors1": descs[:, :3]}
+        with pytest.raises(Exception, match=r"lafs0 and descriptors0"):
+            matcher(data)
+        data = {**images, "lafs0": lafs, "descriptors0": descs[:, :3], "lafs1": lafs, "descriptors1": descs}
+        with pytest.raises(Exception, match=r"lafs1 and descriptors1"):
+            matcher(data)
+
+    def test_masks_are_forwarded_to_the_detector(self, device, dtype):
+        feat = SIFTFeature(8, upright=True).to(device, dtype)
+        matcher = LocalFeatureMatcher(feat, DescriptorMatcher("nn", 0.8)).to(device, dtype)
+        image0 = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        image1 = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        # LocalFeatureMatcher historically documents masks without a channel dimension; it adds
+        # that singleton axis before forwarding to the detector's (B, 1, H, W) mask contract.
+        mask = torch.zeros(1, 64, 64, device=device, dtype=torch.bool)
+        with torch.no_grad():
+            out = matcher({"image0": image0, "image1": image1, "mask0": mask, "mask1": mask})
+        assert out["keypoints0"].shape == (0, 2)
+        assert out["keypoints1"].shape == (0, 2)
 
     @pytest.mark.slow
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)

@@ -123,7 +123,7 @@ Detectors
 
 
 .. autoclass:: ScaleSpaceDetector
-  :members: forward
+  :members: forward, detect
 
 .. autoclass:: KeyNetDetector
    :members: forward
@@ -260,6 +260,7 @@ Local Affine Frames (LAF)
 .. autofunction:: set_laf_orientation
 .. autofunction:: laf_from_center_scale_ori
 .. autofunction:: laf_is_inside_image
+.. autofunction:: laf_is_valid
 .. autofunction:: laf_to_three_points
 .. autofunction:: laf_from_three_points
 .. autofunction:: KORNIA_CHECK_LAF
