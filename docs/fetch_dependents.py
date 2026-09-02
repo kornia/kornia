@@ -170,7 +170,9 @@ def main(argv: list[str] | None = None) -> int:
         if total is None and not rows:
             continue  # nothing new; keep the previous entry untouched
         data[kind] = merge(data, kind, total, rows, complete)
-        print(f"  {kind}: {data[kind]['count']:,} total, {len(rows)} rows fetched, complete={complete}", file=sys.stderr)
+        print(
+            f"  {kind}: {data[kind]['count']:,} total, {len(rows)} rows fetched, complete={complete}", file=sys.stderr
+        )
 
     data["generated_at"] = datetime.now(UTC).strftime("%Y-%m-%d")
     data["source"] = DEPENDENTS_URL
