@@ -30,9 +30,9 @@ from testing.base import BaseTester
 
 class TestObjectDetector(BaseTester):
     def test_smoke(self, device, dtype):
-        batch_size = 3
+        batch_size = 2
         confidence = 0.3
-        config = RTDETRConfig("resnet50d", 10, head_num_queries=10)
+        config = RTDETRConfig("resnet18d", 10, head_num_queries=10)
         model = RTDETR.from_config(config).to(device, dtype).eval()
         pre_processor = kornia.models.processors.ResizePreProcessor(32, 32)
         post_processor = DETRPostProcessor(confidence, num_top_queries=3).to(device, dtype).eval()

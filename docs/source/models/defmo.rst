@@ -5,6 +5,45 @@ DeFMO
 
 :bdg-primary:`Enhance` :bdg-primary:`Deblurring` :bdg-secondary:`Apache-2.0`
 
+DeFMO takes a single frame in which a fast-moving object is motion-blurred, plus an estimate of the static
+background, and renders the object sharp at 24 moments of the exposure, as a high-speed camera would have seen it.
+:class:`~kornia.feature.DeFMO` takes the two images stacked along the channel axis and returns RGBA sub-frames.
+
+Run it
+------
+
+.. code-block:: python
+
+    import torch
+    from kornia.feature import DeFMO
+    from kornia.io import load_image
+
+    blurred = load_image("blurred.png")[None]  # (1, 3, 240, 320) frame with a motion-blurred object
+    background = load_image("background.png")[None]  # (1, 3, 240, 320) the same view without the object
+
+    defmo = DeFMO(pretrained=True).eval()
+    with torch.no_grad():
+        subframes = defmo(torch.cat([blurred, background], dim=1))  # (1, 24, 4, 240, 320) RGBA sub-frames
+
+    rgba = subframes[0, 0]  # first sub-frame: rgb = rgba[:3], alpha = rgba[3:]
+    composed = rgba[3:] * rgba[:3] + (1 - rgba[3:]) * background[0]  # paste it back onto the background
+
+.. figure:: /_static/img/models/defmo.jpg
+   :align: center
+   :alt: Top row, the blurred input, the background and two ground-truth sub-frames of a striped ball; bottom row, four DeFMO sub-frames showing the sharp ball at successive positions.
+
+   A striped ball rendered at 24 positions over a street photo and averaged into one blurred frame (top left).
+   DeFMO recovers its shape and trajectory from that frame and the background (bottom, four of the 24 sub-frames,
+   composited onto the background). The direction of motion is ambiguous from a single blur, so the sub-frame
+   order may be reversed.
+
+The network is fully convolutional and the output keeps the input resolution; the pretrained weights were trained
+on ``240×320`` crops around the object, so results are best near that scale. Each sub-frame's alpha channel is the
+object mask, so the trajectory is the sequence of alpha centroids.
+
+Paper
+-----
+
 .. card::
     :link: https://paperswithcode.com/paper/defmo-deblurring-and-shape-recovery-of-fast
 

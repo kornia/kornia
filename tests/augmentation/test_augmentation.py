@@ -4561,7 +4561,7 @@ class TestNormalize(BaseTester):
     )
     def test_random_normalize_different_parameter_types(self, mean, std):
         f = Normalize(mean=mean, std=std, p=1)
-        data = torch.ones(2, 3, 256, 313)
+        data = torch.ones(2, 3, 16, 17)
         if isinstance(mean, float):
             expected = (data - torch.as_tensor(mean)) / torch.as_tensor(std)
         else:

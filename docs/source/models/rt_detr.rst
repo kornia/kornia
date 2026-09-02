@@ -5,27 +5,45 @@ RT-DETR
 
 :bdg-primary:`Object detection` :bdg-secondary:`Apache-2.0`
 
+RT-DETR is a real-time, end-to-end transformer detector trained on MS-COCO. Kornia wraps it in
+:class:`~kornia.contrib.object_detection.RTDETRDetectorBuilder`, which bundles the resize/normalise pre-processing
+and the box post-processing, so a ``(B, 3, H, W)`` float image in ``[0, 1]`` goes in and one ``(D, 6)`` tensor per
+image comes out with ``class_id, score, x, y, w, h`` in the original pixel coordinates.
+
+Run it
+------
+
 .. code-block:: python
 
     from kornia.io import load_image
     from kornia.contrib.object_detection import RTDETRDetectorBuilder
 
-    input_img = load_image("image.jpg")[None]  # (1, 3, H, W) float in [0, 1]
+    image = load_image("delorean.png")[None]  # (1, 3, H, W) float in [0, 1]
 
-    # NOTE: available models: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
-    # NOTE: recommended image scales: [480, 512, 544, 576, 608, 640, 640, 640, 672, 704, 736, 768, 800]
-    detector = RTDETRDetectorBuilder.build("rtdetr_r18vd", image_size=640)
+    detector = RTDETRDetectorBuilder.build("rtdetr_r18vd")  # downloads the COCO weights; runs at 640 px
+    detections = detector(image)  # list with one (D, 6) tensor per image: class id, score, x, y, w, h
 
-    # get the detections: one (D, 6) tensor per image with class id, score, x, y, w, h
-    detections = detector(input_img)
+    for class_id, score, x, y, w, h in detections[0].tolist():
+        print(f"class {int(class_id)}: {score:.2f} at ({x:.0f}, {y:.0f}) size {w:.0f}x{h:.0f}")
 
-    # draw the bounding boxes on the images directly
-    output = detector.visualize(input_img, detections, output_type="pil")
-    output[0].save("Kornia-RTDETR-output.png")
+.. figure:: /_static/img/models/rt_detr.jpg
+   :align: center
+   :alt: A photo of a car (left) and the same photo with two RT-DETR detections drawn as green boxes with class id and score (right).
 
-    # convert the whole model, including pre- and post-processing, to ONNX
-    detector.to_onnx("RTDETR-640.onnx", image_size=640)
+   Input image and the boxes returned by ``rtdetr_r18vd``, drawn with the detected class id
+   (COCO id 2 is *car*) and confidence. Figures on these pages are rendered by ``docs/generate_model_examples.py``.
 
+Detections are filtered with ``confidence_threshold=0.3`` by default; pass a different value to ``build`` to keep
+more or fewer boxes. ``detector.visualize(image, detections, output_type="pil")`` draws the boxes for you, and
+``detector.to_onnx("rtdetr-640.onnx", image_size=640)`` exports the model together with its pre- and post-processing.
+
+Available variants, from fastest to most accurate: ``rtdetr_r18vd``, ``rtdetr_r34vd``, ``rtdetr_r50vd_m``,
+``rtdetr_r50vd`` and ``rtdetr_r101vd``. When ``build`` is given a ``model_name`` it always resizes the input to the
+640 px the weights were trained for and ignores ``image_size=``; that argument only applies together with a
+``config=`` object, where multiples of 32 between 480 and 800 are recommended.
+
+Paper
+-----
 
 .. card::
     :link: https://arxiv.org/abs/2304.08069

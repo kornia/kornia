@@ -5,6 +5,43 @@ AffNet
 
 :bdg-primary:`Affine shape estimation` :bdg-secondary:`MIT`
 
+AffNet predicts the affine shape of a local region so that the same surface patch, seen from two viewpoints, is
+normalised to the same square before it is described. :class:`~kornia.feature.LAFAffNetShapeEstimator` takes the
+local affine frames (LAFs) of any detector and returns frames with the estimated ellipse in place of the circle.
+
+Run it
+------
+
+.. code-block:: python
+
+    import torch
+    from kornia.color import rgb_to_grayscale
+    from kornia.feature import KeyNetDetector, LAFAffNetShapeEstimator, laf_to_boundary_points
+    from kornia.io import load_image
+
+    gray = rgb_to_grayscale(load_image("church_1.png")[None])  # (1, 1, H, W)
+
+    detector = KeyNetDetector(pretrained=True, num_features=32).eval()
+    affnet = LAFAffNetShapeEstimator(pretrained=True).eval()
+    with torch.no_grad():
+        lafs, _ = detector(gray)  # (1, N, 2, 3) isotropic local affine frames
+        lafs_affine = affnet(lafs, gray)  # (1, N, 2, 3) affine-covariant frames
+
+    boundaries = laf_to_boundary_points(lafs_affine)  # (1, N, 50, 2) ellipse outlines in (x, y) pixels, for plotting
+
+.. figure:: /_static/img/models/affnet.jpg
+   :align: center
+   :alt: The same church photograph twice: on the left with circular KeyNet regions, on the right with the elliptical regions AffNet estimated for them.
+
+   The 32 strongest KeyNet regions before (circles) and after AffNet (ellipses that follow the local surface).
+
+The estimated frames feed straight into :func:`~kornia.feature.extract_patches_from_pyramid` and a descriptor such
+as :class:`~kornia.feature.HardNet`; :class:`~kornia.feature.KeyNetAffNetHardNet` wires the three together, and
+:class:`~kornia.feature.PatchAffineShapeEstimator` is the raw patch-to-shape network.
+
+Paper
+-----
+
 .. card::
     :link: https://paperswithcode.com/paper/repeatability-is-not-enough-learning-affine
 
