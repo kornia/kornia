@@ -34,6 +34,7 @@ except ImportError:  # pragma: no cover
 import kornia
 
 from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
+from testing.known_failures import mark_known_failures
 
 try:
     import torch._dynamo
@@ -196,6 +197,17 @@ def pytest_collection_modifyitems(config, items):
         # Filter out tests with "dynamo" or "compile" in their name
         items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
 
+    if config.getoption("--xfail-known-failures"):
+        devices = _parse_test_option(config, "--device", TEST_DEVICES)
+        dtypes = _parse_test_option(config, "--dtype", TEST_DTYPES)
+        if len(devices) != 1 or len(dtypes) != 1:
+            raise pytest.UsageError("--xfail-known-failures requires exactly one --device and one --dtype")
+        try:
+            tracker = mark_known_failures(items, devices[0], dtypes[0])
+        except (OSError, ValueError) as error:
+            raise pytest.UsageError(str(error)) from error
+        config.pluginmanager.register(tracker, "known-failure-tracker")
+
     # gradcheck requires float64. MPS does not support it at all, and XLA lowers a float64 request
     # to float32, where gradcheck's default eps=1e-6 makes the numerical Jacobian invalid — so a
     # float64 gradcheck on the tpu fixture fails for a pure precision reason. Skip on both.
@@ -319,6 +331,14 @@ def pytest_addoption(parser):
             "They exercise CPU-only code, so an accelerator-only run deselects them by default "
             "to avoid repeating work the CPU job already did; pass this to run the whole suite "
             "on one device anyway. (env: KORNIA_TEST_RUN_DEVICE_AGNOSTIC)"
+        ),
+    )
+    parser.addoption(
+        "--xfail-known-failures",
+        action="store_true",
+        help=(
+            "Strictly xfail the complete recorded baseline for the selected device and dtype. "
+            "A new failure, changed exception, skipped pin, or fixed pin fails the run."
         ),
     )
 

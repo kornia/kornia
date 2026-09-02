@@ -162,6 +162,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `kernel_size >= 63` now raises: CPU used to return a usable-looking answer there while MPS silently returned
   something else for the same call.
 
+* `RandomTransplantation` and `RandomTransplantation3D` transplanted nothing on MPS when no `excluded_labels`
+  were given: PyTorch's MPS backend evaluates `all()` over the empty excluded-label axis to an undefined value,
+  usually `False`, so every donor label was filtered out and the output equalled the input. The filter is now skipped when there is
+  nothing to exclude. (#4160)
+
 * `VisualPrompter.predict()` called without any prompt (the "run the prediction without prompts" example on the
   Segment Anything page) raised `TypeError: object of type 'NoneType' has no len()` from the prompt augmentation
   container; it now predicts from the image embedding alone, as documented. (#4178)
