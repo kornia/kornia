@@ -13,29 +13,29 @@ Learn more: `https://paperswithcode.com/task/face-detection <https://paperswithc
 
 ..  youtube:: hzQroGp5FSQ
 
-Using our API you easily detect faces in images as shown below:
+Using our API you can easily detect faces in images as shown below:
 
 .. code-block:: python
 
+    import torch
+    import kornia as K
+    from kornia.contrib import FaceDetector, FaceDetectorResult
+    from kornia.io import ImageLoadType
+
     # select the device
-    device = torch.device('cpu')
-    if args.cuda and torch.cuda.is_available():
-        device = torch.device('cuda:0')
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    # load the image and scale
-    img_raw = cv2.imread(args.image_file, cv2.IMREAD_COLOR)
-    img_raw = scale_image(img_raw, args.image_size)
+    # load the image as a (1, 3, H, W) float tensor in [0, 255], the range YuNet expects
+    img = K.io.load_image("image.jpg", ImageLoadType.RGB32, device=device)[None] * 255.0
 
-    # preprocess
-    img = K.image_to_tensor(img_raw, keepdim=False).to(device)
-    img = K.color.bgr_to_rgb(img.float())
-
-    # create the detector and find the faces !
+    # create the detector and find the faces
     face_detection = FaceDetector().to(device)
 
     with torch.no_grad():
         dets = face_detection(img)
     dets = [FaceDetectorResult(o) for o in dets[0]]
 
+    for det in dets:
+        print(det.score, det.top_left, det.bottom_right)
 
-Play yourself with the detector and generate new images with this `tutorial <https://kornia.github.io/tutorials/nbs/face_detection.html>`_.
+Play with the detector yourself and generate new images with this `tutorial <https://kornia.github.io/tutorials/nbs/face_detection.html>`_.

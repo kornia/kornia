@@ -1,7 +1,11 @@
 .. _kornia_vit:
 
 Vision Transformer (ViT)
-........................
+========================
+
+.. rst-class:: kornia-badges
+
+:bdg-primary:`Image classification` :bdg-secondary:`Apache-2.0`
 
 .. card::
     :link: https://paperswithcode.com/paper/an-image-is-worth-16x16-words-transformers-1
@@ -33,39 +37,53 @@ One can use the *ViT* in Kornia as follows:
 
 .. code:: python
 
+    import torch
+    from kornia.models.vit import VisionTransformer
+
     img = torch.rand(1, 3, 224, 224)
     vit = VisionTransformer(image_size=224, patch_size=16)
-    out = vit(img)
+    out = vit(img)  # (1, 197, 768): the class token followed by 196 patch tokens
 
 Usage
 ~~~~~
 
-``kornia-vit`` does not include any classification head.
-You can easily add your own classification head using standard PyTorch modules.
+``kornia-vit`` does not include any classification head. The backbone returns one embedding per token,
+``(B, 1 + N, hidden_dim)``, with the class token first; a classifier reads the class token and adds a linear
+head using standard PyTorch modules:
 
 .. code:: python
 
+    import torch
     import torch.nn as nn
     from kornia.models.vit import VisionTransformer
 
-    classifier = nn.Sequential(
-        VisionTransformer(image_size=224, patch_size=16),
-        nn.Linear(768, 1000)  # Example: 768 is the default hidden_dim, 1000 is num_classes
-    )
+
+    class Classifier(nn.Module):
+        def __init__(self, num_classes: int = 1000) -> None:
+            super().__init__()
+            self.backbone = VisionTransformer(image_size=224, patch_size=16)
+            self.head = nn.Linear(768, num_classes)  # 768 is the default hidden_dim
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            tokens = self.backbone(x)         # (B, 197, 768)
+            return self.head(tokens[:, 0])    # (B, num_classes), from the class token
+
 
     img = torch.rand(1, 3, 224, 224)
-    out = classifier(img)     # BxN
-    scores = out.argmax(-1)   # B
+    out = Classifier()(img)   # (1, 1000)
+    scores = out.argmax(-1)   # (1,)
 
-In addition to create simple image classification, our API is flexible enough to design your pipelines e.g
-to solve problems for multi-task, object detection, segmentation, etc. We show an example of a multi-task
-class with two different classification heads:
+Beyond simple image classification, the API is flexible enough to design your own pipelines, e.g.
+for multi-task learning, object detection or segmentation. We show an example of a multi-task
+module with two different classification heads:
 
 .. code:: python
 
+    import torch
+    import torch.nn as nn
     from kornia.models.vit import VisionTransformer
 
-    class MultiTaskTransfornmer(nn.Module):
+    class MultiTaskTransformer(nn.Module):
         def __init__(self) -> None:
             super().__init__()
             self.transformer = VisionTransformer(
@@ -74,11 +92,11 @@ class with two different classification heads:
             self.head2 = nn.Linear(768, 50)
 
         def forward(self, x: torch.Tensor):
-            out = self.transformer(x)
+            cls_token = self.transformer(x)[:, 0]  # (B, 768)
             return {
-                "head1": self.head1(out),
-                "head2": self.head2(out),
+                "head1": self.head1(cls_token),
+                "head2": self.head2(cls_token),
             }
 
 .. tip::
-    More heads, examples and a training API soon !!
+    More heads, examples and a training API are coming soon!

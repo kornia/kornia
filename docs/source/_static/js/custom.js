@@ -1,3 +1,29 @@
+// Deep-link compatibility: the module landing pages (color.html, feature.html, ...) used to hold
+// every object of their module and now spread them over per-topic subpages. conf.py embeds a
+// {docname: [object names]} map of the moved objects on those pages; a fragment that names one of
+// them is forwarded to its new page, fragment intact. This runs as soon as the script is parsed so
+// the old page is replaced before it renders; fragments not in the map are left alone.
+(function () {
+  const el = document.getElementById("kornia-anchor-redirects");
+  if (!el || !location.hash) return;
+  let name, moved;
+  try {
+    name = decodeURIComponent(location.hash.slice(1));
+    moved = JSON.parse(el.textContent);
+  } catch (e) {
+    return;
+  }
+  if (document.getElementById(name)) return;  // present on this page after all
+  for (const docname in moved) {
+    if (moved[docname].indexOf(name) !== -1) {
+      const root = document.documentElement.getAttribute("data-content_root") || "";
+      location.replace(root + docname + ".html" + location.hash);
+      return;
+    }
+  }
+})();
+
+
 // Based on https://github.com/huggingface/transformers/blob/master/docs/source/_static/js/custom.js
 // TODO (Jian): probably update this by the latest https://buttons.github.io/, which added dark and light mode to align furo theme.
 
@@ -12,7 +38,8 @@ function addGithubButton() {
             </a>
         </div>
     `;
-    document.querySelector(".sidebar-brand").insertAdjacentHTML('afterend', div);
+    const brand = document.querySelector(".sidebar-brand");  // furo only; pydata has its own GitHub link
+    if (brand) brand.insertAdjacentHTML("afterend", div);
 }
 
 /*!
@@ -33,10 +60,238 @@ function onLoad() {
 window.addEventListener("load", onLoad);
 
 
+
+// pydata theme: split "name — note" sidebar entries into a flex row with the note pushed
+// to the right edge in a muted color (name \hfill note).
 document.addEventListener("DOMContentLoaded", function () {
-  if (typeof iFrameResize === "function") {
-    iFrameResize({}, "#augmentation-tester");
-  } else {
-    console.error("iFrameResize function is not available");
+  document.querySelectorAll(".bd-sidebar-primary a.reference.internal").forEach(function (link) {
+    const text = link.textContent;
+    const idx = text.indexOf(" — ");
+    if (idx === -1) return;
+    link.classList.add("has-sidebar-note");
+    link.textContent = text.slice(0, idx);
+    const note = document.createElement("span");
+    note.className = "sidebar-note";
+    note.textContent = text.slice(idx + 3);
+    link.appendChild(note);
+  });
+});
+
+
+// pydata theme: Sphinx already lists the documented objects of a page in the right
+// "On this page" sidebar. Pages that only carry autosummary link tables (e.g. the
+// color-conversion overview) have no objects of their own, so list the table entries there.
+document.addEventListener("DOMContentLoaded", function () {
+  const tocRoot = document.querySelector("#pst-page-toc-nav > ul");
+  if (!tocRoot) return;
+
+  function entriesFor(sectionEl) {
+    if (sectionEl.querySelector("dl[class*='py'] > dt[id]")) return [];  // native TOC covers it
+    const items = [];
+    sectionEl.querySelectorAll(":scope .autosummary tr > td:first-child a.reference.internal").forEach(function (a) {
+      items.push([a.getAttribute("href"), a.textContent.trim()]);
+    });
+    return items;
   }
+
+  document.querySelectorAll(".bd-article section[id]").forEach(function (sec) {
+    const tocLink = tocRoot.querySelector('a[href="#' + sec.id + '"]');
+    if (!tocLink) return;
+    const items = entriesFor(sec);
+    if (!items.length) return;
+    const ul = document.createElement("ul");
+    ul.className = "nav section-nav flex-column kornia-object-toc";
+    items.forEach(function (pair) {
+      const li = document.createElement("li");
+      li.className = "toc-h3 nav-item toc-entry";
+      const a = document.createElement("a");
+      a.className = "reference internal nav-link";
+      a.href = pair[0];
+      a.textContent = pair[1];
+      li.appendChild(a);
+      ul.appendChild(li);
+    });
+    tocLink.parentElement.appendChild(ul);
+  });
+});
+
+
+// pydata theme: navbar dropdowns, defined by NAVBAR_MENUS in conf.py and embedded in every page
+// as JSON. "Support" and "About" become hover/focus dropdowns; an "Ecosystem" item with a grouped
+// panel is inserted before "About". pydata renders the header nav twice -- in the header and, for
+// narrow viewports, in the primary sidebar -- so both copies are decorated; the sidebar copy shows
+// the menus inline, since there is nothing to hover on a phone.
+document.addEventListener("DOMContentLoaded", function () {
+  // Sphinx stamps the path back to the doc root on every page.
+  const root = document.documentElement.getAttribute("data-content_root") || "";
+  const href = (h) => (h.indexOf("://") !== -1 ? h : root + h + ".html");
+
+  function externalIcon() {
+    const i = document.createElement("i");
+    i.className = "fa-solid fa-arrow-up-right-from-square kornia-external-icon";
+    return i;
+  }
+
+  // Hero buttons that leave the site get the same outbound icon.
+  document.querySelectorAll(".kornia-hero-actions a.sd-btn[href^='http']").forEach(function (a) {
+    a.appendChild(externalIcon());
+  });
+
+  // Landing-page install command: copy on click, flash a check mark for a moment.
+  document.querySelectorAll(".kornia-pip__copy[data-copy]").forEach(function (button) {
+    const icon = button.querySelector("i");
+    button.addEventListener("click", function () {
+      if (!navigator.clipboard) return;
+      navigator.clipboard.writeText(button.getAttribute("data-copy")).then(function () {
+        button.classList.add("is-copied");
+        if (icon) icon.className = "fa-solid fa-check";
+        setTimeout(function () {
+          button.classList.remove("is-copied");
+          if (icon) icon.className = "fa-regular fa-copy";
+        }, 1500);
+      });
+    });
+  });
+
+  // "Why Kornia?" tabs advance on their own like a carousel until the visitor takes over: hovering
+  // or focusing the tab set pauses the cycle, choosing a tab stops it for good. Nothing moves for
+  // visitors who asked for reduced motion, and ticks are skipped while the page is hidden.
+  document.querySelectorAll(".kornia-why-tabs").forEach(function (tabSet) {
+    const inputs = Array.from(tabSet.querySelectorAll(":scope > input[type='radio']"));
+    if (inputs.length < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const PERIOD_MS = 7000;
+    tabSet.style.setProperty("--kornia-tab-period", PERIOD_MS + "ms");
+    let timer = null;
+    let startedAt = 0;
+    let remaining = PERIOD_MS;
+    let paused = false;
+
+    function advance() {
+      if (document.hidden) {
+        remaining = PERIOD_MS;
+        schedule();
+        return;
+      }
+      const current = inputs.findIndex((input) => input.checked);
+      inputs[(current + 1) % inputs.length].checked = true;
+      remaining = PERIOD_MS;
+      schedule();
+    }
+    function schedule() {
+      startedAt = Date.now();
+      timer = setTimeout(advance, remaining);
+    }
+    function pause() {
+      if (paused || timer === null) return;
+      paused = true;
+      clearTimeout(timer);
+      remaining = Math.max(200, remaining - (Date.now() - startedAt));
+      tabSet.classList.add("is-paused");
+    }
+    function resume() {
+      if (!paused) return;
+      paused = false;
+      tabSet.classList.remove("is-paused");
+      schedule();
+    }
+    function stop() {
+      clearTimeout(timer);
+      timer = null;
+      tabSet.classList.remove("is-autoplaying", "is-paused");
+    }
+
+    tabSet.addEventListener("pointerenter", pause);
+    tabSet.addEventListener("pointerleave", resume);
+    tabSet.addEventListener("focusin", pause);
+    tabSet.addEventListener("focusout", function (e) {
+      if (!tabSet.contains(e.relatedTarget)) resume();
+    });
+    // Setting ``checked`` from script fires no ``change``; a real click or arrow key does.
+    inputs.forEach((input) => input.addEventListener("change", stop));
+    tabSet.classList.add("is-autoplaying");
+    schedule();
+  });
+
+  const menusEl = document.getElementById("kornia-navbar-menus");
+  if (!menusEl) return;
+  let MENUS;
+  try {
+    MENUS = JSON.parse(menusEl.textContent);
+  } catch (e) {
+    return;
+  }
+
+  function decorate(li, link, inline) {
+    li.classList.add("kornia-navbar-dropdown");
+    if (inline) li.classList.add("kornia-navbar-dropdown--inline");
+    const caret = document.createElement("i");
+    caret.className = "fa-solid fa-chevron-down kornia-navbar-dropdown__caret";
+    link.appendChild(caret);
+  }
+
+  function menuFrom(items) {
+    const menu = document.createElement("ul");
+    menu.className = "kornia-navbar-dropdown__menu";
+    items.forEach(function (pair) {
+      const item = document.createElement("li");
+      const a = document.createElement("a");
+      a.className = "nav-link";
+      a.textContent = pair[0];
+      if (pair[1]) {
+        a.href = href(pair[1]);
+        if (pair[1].indexOf("://") !== -1) a.appendChild(externalIcon());
+      } else {
+        // no href: renders like its siblings but never gains :visited/:active styling
+        a.textContent = pair[0] + " (coming soon)";
+        a.classList.add("kornia-navbar-dropdown__inert");
+      }
+      item.appendChild(a);
+      menu.appendChild(item);
+    });
+    return menu;
+  }
+
+  function megaPanel(groups) {
+    const panel = document.createElement("div");
+    panel.className = "kornia-navbar-dropdown__menu kornia-navbar-dropdown__menu--mega";
+    Object.keys(groups).forEach(function (name) {
+      const col = document.createElement("div");
+      const title = document.createElement("p");
+      title.className = "kornia-navbar-dropdown__group";
+      title.textContent = name;
+      col.appendChild(title);
+      col.appendChild(menuFrom(groups[name]));
+      panel.appendChild(col);
+    });
+    return panel;
+  }
+
+  document.querySelectorAll("ul.bd-navbar-elements.navbar-nav").forEach(function (nav) {
+    const inline = nav.closest(".bd-sidebar-primary") !== null;
+    let aboutLi = null;
+    nav.querySelectorAll(":scope > li.nav-item > a.nav-link").forEach(function (link) {
+      const name = link.textContent.trim();
+      if (name === "About") aboutLi = link.parentElement;
+      const items = MENUS[name];
+      if (!Array.isArray(items)) return;
+      const li = link.parentElement;
+      decorate(li, link, inline);
+      li.appendChild(menuFrom(items));
+    });
+
+    // Ecosystem has no page of its own: a grouped panel, inserted before About.
+    if (aboutLi && MENUS.Ecosystem) {
+      const li = document.createElement("li");
+      li.className = "nav-item";
+      const link = document.createElement("a");
+      link.className = "nav-link";
+      link.href = "#";
+      link.textContent = "Ecosystem";
+      link.addEventListener("click", (e) => e.preventDefault());
+      li.appendChild(link);
+      decorate(li, link, inline);
+      li.appendChild(megaPanel(MENUS.Ecosystem));
+      aboutLi.parentElement.insertBefore(li, aboutLi);
+    }
+  });
 });

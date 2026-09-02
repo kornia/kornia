@@ -1,6 +1,10 @@
 EfficientViT
 ============
 
+.. rst-class:: kornia-badges
+
+:bdg-primary:`Segmentation` :bdg-primary:`Classification` :bdg-primary:`Detection` :bdg-secondary:`Apache-2.0`
+
 .. card::
     :link: https://arxiv.org/abs/2205.14756
 

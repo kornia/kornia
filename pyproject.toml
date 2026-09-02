@@ -57,6 +57,7 @@ dev = [
 ]
 docs = [
   "furo",
+  "pydata-sphinx-theme",
   "ivy>=1.0.0.0",
   "kornia_moons",
   "matplotlib",
@@ -90,7 +91,7 @@ build-backend = "hatchling.build"
 
 [tool.codespell]
 ignore-words-list = "ans,hist,laf,cofusion"
-skip = "*.bib,*.ipynb"
+skip = "*.bib,*.ipynb,docs/source/_data/dependents.json"
 
 [tool.coverage.run]
 branch = true

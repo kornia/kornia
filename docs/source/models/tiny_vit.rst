@@ -1,10 +1,14 @@
 .. _kornia_tiny_vit:
 
 TinyViT
-.........
+=======
+
+.. rst-class:: kornia-badges
+
+:bdg-primary:`Image classification` :bdg-primary:`Detection`
 
 .. card::
-    :link: https://arxiv.org/abs/2110.02178
+    :link: https://arxiv.org/abs/2207.10666
 
     **TinyViT: Fast Pretraining Distillation for Small Vision Transformers**
     ^^^
@@ -33,4 +37,4 @@ You can use TinyViT models as follows.
     model = TinyViT.from_config("5m", pretrained=True)  # ImageNet-1k pre-trained
 
     img = torch.rand(1, 3, 224, 224)
-    out = classifier(img)     # 1x1000
+    out = model(img)     # (1, 1000) ImageNet logits

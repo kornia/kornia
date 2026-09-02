@@ -2,8 +2,7 @@ kornia.contrib
 ==============
 
 .. meta::
-   :name: description
-   :content: "The Kornia.contrib module provides models and utilities for deep learning applications, including base models and the EfficientViT architecture. The module offers configurable, efficient Vision Transformer (ViT) models and tools to load and utilize pre-trained checkpoints, designed to be integrated into deep learning pipelines with PyTorch."
+   :description: The Kornia.contrib module provides models and utilities for deep learning applications, including base models and the EfficientViT architecture. The module offers configurable, efficient Vision Transformer (ViT) models and tools to load and utilize pre-trained checkpoints, designed to be integrated into deep learning pipelines with PyTorch.
 
 .. currentmodule:: kornia.contrib
 
@@ -23,7 +22,6 @@ EfficientViT
     :members: from_config, forward, load_checkpoint
     :undoc-members:
     :special-members: __init__,
-
 
 .. autoclass:: kornia.models.efficient_vit.EfficientViTConfig
     :members:
@@ -85,15 +83,6 @@ Face Detection
 .. autoclass:: FaceDetectorResult
     :members:
     :undoc-members:
-
-Interactive Demo
-^^^^^^^^^^^^^^^^
-.. raw:: html
-
-    <gradio-app src="https://kornia-face-detection.hf.space"></gradio-app>
-
-Visit the `Kornia face detection demo on the Hugging Face Spaces
-<https://huggingface.co/spaces/kornia/Face-Detection>`_.
 
 Object Detection
 ----------------

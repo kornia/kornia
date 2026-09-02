@@ -1,7 +1,11 @@
 .. _yunet_model:
 
 YuNet
-.....
+=====
+
+.. rst-class:: kornia-badges
+
+:bdg-primary:`Face detection` :bdg-secondary:`Apache-2.0`
 
 .. card::
     :link: https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=9429909

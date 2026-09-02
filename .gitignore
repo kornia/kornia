@@ -22,6 +22,8 @@ docs/source/_static/*jpg
 docs/source/_static/img/*jpg
 docs/source/_static/scripts/*
 docs/source/get-started/performance.rst
+docs/source/community/adoption.rst
+docs/source/_generated/
 *DS_Store
 *jpg
 
