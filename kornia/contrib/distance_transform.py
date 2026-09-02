@@ -37,20 +37,21 @@ def _compute_dtype(dtype: torch.dtype) -> torch.dtype:
     return dtype
 
 
-def _check_h_range(kernel_size: int, h: float, dims: int, dtype: torch.dtype) -> None:
-    # The farthest kernel tap is exp(-d_max/h); every closer tap is larger since exp(-d/h) is
-    # monotonically decreasing in d, so this tap underflowing to zero is necessary and sufficient
-    # for the kernel to lose taps. Checked against `finfo.tiny` -- the smallest positive *normal*
-    # value -- rather than the true (device-dependent) smallest subnormal: MPS flushes subnormals
-    # to zero while CPU does not, so a subnormal-aware threshold would silently disagree across
-    # devices for the same dtype and h, which is the inconsistency this guard exists to rule out.
+def _check_h_range(kernel_size: int, h: float, dtype: torch.dtype) -> None:
+    # The kernel's corner tap (distance sqrt(dims)*k_half) decays fast enough that losing it is
+    # harmless -- its contribution to the soft-min is negligible by construction. It is the
+    # axis-aligned tap, at distance k_half along a single axis, that has to survive: losing it is
+    # what actually corrupts the result, so it -- not the corner -- is the discriminating case.
+    # Checked against `finfo.tiny` -- the smallest positive *normal* value -- rather than the true
+    # (device-dependent) smallest subnormal: MPS flushes subnormals to zero while CPU does not, so
+    # a subnormal-aware threshold would silently disagree across devices for the same dtype and h,
+    # which is the inconsistency this guard exists to rule out.
     k_half = kernel_size // 2
-    d_max = math.sqrt(dims) * k_half
-    smallest_tap = math.exp(-d_max / h)
+    smallest_tap = math.exp(-k_half / h)
     KORNIA_CHECK(
         smallest_tap >= torch.finfo(dtype).tiny,
-        f"h={h} is too small for kernel_size={kernel_size} at working precision {dtype}: the farthest "
-        f"kernel tap exp(-{d_max:.4g}/h) underflows to zero, so the convolution silently drops it and "
+        f"h={h} is too small for kernel_size={kernel_size} at working precision {dtype}: the axis-aligned "
+        f"kernel tap exp(-{k_half}/h) underflows to zero, so the convolution silently drops it and "
         "distance_transform returns a wrong or all-zero result. Increase h or decrease kernel_size.",
     )
 
@@ -131,11 +132,11 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
         image: Image or volume with shape :math:`(B,C,H,W)` or :math:`(B,C,D,H,W)`.
         kernel_size: size of the convolution kernel. Must be an odd number.
         h: value that influences the approximation of the min function. The cascade's kernel taps are
-            ``exp(-dist/h)``; too small an ``h`` for the given ``kernel_size`` underflows the farthest
-            taps to exactly zero, which used to return a silently wrong or all-zero result. That
-            combination now raises instead. ``float16`` and ``bfloat16`` inputs run the cascade in
-            ``float32`` and cast the result back, which widens the safe ``h`` range for those dtypes to
-            match ``float32``.
+            ``exp(-dist/h)``; too small an ``h`` for the given ``kernel_size`` underflows the
+            axis-aligned tap (distance ``kernel_size // 2``) to exactly zero, which used to return a
+            silently wrong or all-zero result. That combination now raises instead. ``float16`` and
+            ``bfloat16`` inputs run the cascade in ``float32`` and cast the result back, which widens
+            the safe ``h`` range for those dtypes to match ``float32``.
 
     Returns:
         tensor with the same shape as input.
@@ -168,11 +169,10 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
     KORNIA_CHECK(h > 0, f"h must be a positive float, got {h}")
 
     compute_dtype = _compute_dtype(image.dtype)
+    _check_h_range(kernel_size, h, compute_dtype)
     if image.ndim == 4:
-        _check_h_range(kernel_size, h, 2, compute_dtype)
         return _distance_transform_2d_impl(image, kernel_size, h)
 
-    _check_h_range(kernel_size, h, 3, compute_dtype)
     return _distance_transform_3d_impl(image, kernel_size, h)
 
 

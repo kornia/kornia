@@ -192,11 +192,13 @@ class TestConvDistanceTransform(BaseTester):
         loss_3d.backward()
 
     def test_offset_parenthesis_fix(self, device, dtype):
-        # h=0.01 used to reach into the kernel-underflow regime #4152 fixed: the pinned "expected"
-        # values below were themselves the wrong output of that bug, not a hand-verified reference.
-        # h=0.1 keeps the offset accumulation this test exists to pin (n - 0.00313 per row, strictly
-        # increasing by 1, so a mis-parenthesized `offset + cdt * mask` would fail this) while staying
-        # well clear of the underflow guard; reference values generated at float64 via:
+        # h=0.01 at kernel_size=3 was not itself numerically wrong on CPU/float32 (it tracked the
+        # analytic reference to ~2e-4, carried through the subnormal range), but #4152's fix now
+        # explicitly rejects that combination -- the same call silently disagreed on MPS, which
+        # flushes subnormals to zero -- so this test can no longer use it regardless. h=0.1 keeps
+        # the offset accumulation this test exists to pin (n - 0.00313 per row, strictly increasing
+        # by 1, so a mis-parenthesized `offset + cdt * mask` would fail this) while staying well
+        # clear of the underflow guard; reference values generated at float64 via:
         #   img = torch.zeros(1, 1, 8, 4, dtype=torch.float64); img[0, 0, 1, :] = 1.0
         #   kornia.contrib.distance_transform(img, kernel_size=3, h=0.1)[0, 0, :, 0]
         if not supports_replicate_padding(device, dtype):
@@ -263,11 +265,15 @@ class TestConvDistanceTransform(BaseTester):
             kornia.contrib.distance_transform(img, kernel_size=3, h=1e-30)
 
     def test_h_too_small_raises_float32_regression(self, device):
-        # #4152: h=0.01 at kernel_size=3 in float32 (or float16/bfloat16, upcast to float32) used to
-        # return a plausible-looking but wrong monotone result -- the pin `test_offset_parenthesis_fix`
-        # replaced. Fixed at float32 explicitly, independent of the dtype fixture: float64's much
-        # smaller `finfo.tiny` does not underflow at this h, so this combination legitimately only
-        # raises at float32-or-coarser working precision.
+        # #4152: h=0.01 at kernel_size=3 in float32 (or float16/bfloat16, upcast to float32) is not
+        # itself numerically wrong on CPU -- it tracks the analytic Euclidean distance to ~2e-4,
+        # carried through the subnormal range -- so the reason to reject it is not accuracy. It is
+        # that MPS flushes subnormals to zero while CPU does not, so the same call would silently
+        # disagree across backends; raising here makes that disagreement impossible rather than
+        # trusting the accident of which backend a caller happens to run on. Checked at float32
+        # explicitly, independent of the dtype fixture: float64's much smaller `finfo.tiny` does not
+        # underflow at this h, so this combination legitimately only raises at float32-or-coarser
+        # working precision.
         img = torch.zeros(1, 1, 8, 4, device=device, dtype=torch.float32)
         img[0, 0, 1, :] = 1.0
         with pytest.raises(BaseError, match="too small for kernel_size"):
