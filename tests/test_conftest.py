@@ -203,7 +203,7 @@ class TestDeviceAgnosticSelection:
             def test_device_agnostic():
                 assert True
 
-            def test_device_specific(device):
+            def test_unmarked():
                 assert True
             """
         )
