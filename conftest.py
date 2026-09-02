@@ -166,6 +166,17 @@ def pytest_generate_tests(metafunc) -> None:
 
 def pytest_collection_modifyitems(config, items):
     """Collect test options."""
+    # Device-agnostic tests exercise CPU-only code regardless of the selected test device. Run
+    # them once whenever CPU is part of the matrix instead of repeating the same work in every
+    # accelerator job.
+    selected_devices = _parse_test_option(config, "--device", TEST_DEVICES)
+    if "cpu" not in selected_devices:
+        device_agnostic_items = [item for item in items if item.get_closest_marker("device_agnostic") is not None]
+        if device_agnostic_items:
+            config.hook.pytest_deselected(items=device_agnostic_items)
+            device_agnostic_ids = {id(item) for item in device_agnostic_items}
+            items[:] = [item for item in items if id(item) not in device_agnostic_ids]
+
     # Deselect dynamo/compile tests when no optimizer is specified
     # Check environment variable directly (not config option which has default "inductor")
     optimizer_env = os.environ.get("KORNIA_TEST_OPTIMIZER", "").strip()

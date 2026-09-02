@@ -48,10 +48,13 @@ runs:
 
     - name: Run CPU tests coverage ${{ inputs.pytorch-dtype }}
       continue-on-error: ${{ inputs.continue-on-error == 'true' }}
+      env:
+        MKL_NUM_THREADS: "1"
+        OMP_NUM_THREADS: "1"
       shell: bash
       run: |
         pixi run -e ${{ steps.pixi-env.outputs.name }} uv run coverage erase
-        pixi run -e ${{ steps.pixi-env.outputs.name }} uv run coverage run --data-file=${{ inputs.coverage-artifact }} -m pytest -v ./tests/ --device=${{ inputs.pytorch-device }} --dtype=${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }}
+        pixi run -e ${{ steps.pixi-env.outputs.name }} uv run coverage run --data-file=${{ inputs.coverage-artifact }} -m pytest ./tests/ --device=${{ inputs.pytorch-device }} --dtype=${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }}
 
     - name: Upload coverage results
       uses: actions/upload-artifact@v4

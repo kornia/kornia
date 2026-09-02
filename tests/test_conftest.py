@@ -169,7 +169,7 @@ class TestIntegrationLocalHalfPrecision:
         )
 
         # 1. CUDA + --dtype=float32 without --isolate-half-precision -> Must be SKIPPED
-        result_cuda = pytester.runpytest_inprocess(
+        result_cuda = pytester.runpytest_subprocess(
             "-p",
             "conftest",
             str(test_file),
@@ -181,7 +181,7 @@ class TestIntegrationLocalHalfPrecision:
         result_cuda.assert_outcomes(skipped=1)
 
         # 2. CPU + --dtype=float32 -> Must PASS
-        result_cpu = pytester.runpytest_inprocess(
+        result_cpu = pytester.runpytest_subprocess(
             "-p",
             "conftest",
             str(test_file),
@@ -191,3 +191,41 @@ class TestIntegrationLocalHalfPrecision:
             "--dtype=float32",
         )
         result_cpu.assert_outcomes(passed=1)
+
+
+class TestDeviceAgnosticSelection:
+    def test_device_agnostic_tests_run_once_in_cpu_containing_matrix(self, pytester):
+        test_file = pytester.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.device_agnostic
+            def test_device_agnostic():
+                assert True
+
+            def test_device_specific(device):
+                assert True
+            """
+        )
+
+        result_cpu = pytester.runpytest_subprocess(
+            "-p",
+            "conftest",
+            str(test_file),
+            "-o",
+            "testpaths=.",
+            "--device=cpu",
+            "--dtype=float32",
+        )
+        result_cpu.assert_outcomes(passed=2)
+
+        result_cuda = pytester.runpytest_subprocess(
+            "-p",
+            "conftest",
+            str(test_file),
+            "-o",
+            "testpaths=.",
+            "--device=cuda",
+            "--dtype=float32",
+        )
+        result_cuda.assert_outcomes(passed=1, deselected=1)

@@ -46,6 +46,8 @@ from testing.base import DYNAMO_UNAVAILABLE_REASON, dynamo_is_available
 _HAS_TORCH_EXPORT_TRACKING = hasattr(torch, "compiler") and hasattr(torch.compiler, "is_exporting")
 _TORCH_EXPORT_TRACKING_REASON = "torch.export tracking requires torch.compiler.is_exporting (torch>=2.7)"
 
+pytestmark = pytest.mark.device_agnostic
+
 
 def _normalize() -> torch.nn.Module:
     return K.Normalize(mean=torch.zeros(3), std=torch.ones(3))
