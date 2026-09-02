@@ -139,6 +139,8 @@ Descriptors
 .. autoclass:: HyNet
 .. autoclass:: TFeat
 .. autoclass:: SOSNet
+.. autoclass:: SANDesc
+   :members: extract_dense_map, forward, from_pretrained
 .. autoclass:: LAFDescriptor
    :members: forward
 

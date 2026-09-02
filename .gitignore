@@ -42,3 +42,4 @@ benchmarks/profile/
 
 # Editor / agent metadata
 .omc/
+pr_body.txt

@@ -66,6 +66,7 @@ from kornia.feature.dedode import encoder as dedode_encoder
 from kornia.feature.disk import disk
 from kornia.feature.lightglue import LightGlue
 from kornia.feature.loftr import loftr
+from kornia.feature.sandesc import sandesc
 from kornia.feature.sold2 import sold2, sold2_detector
 from kornia.filters import dexined
 from kornia.models import dexined as dexined_model
@@ -120,6 +121,8 @@ WEIGHT_REGISTRIES: dict[str, tuple[ModuleType, dict[str, Any]]] = {
     "sold2": (sold2, sold2.urls),
     "sold2_detector": (sold2_detector, sold2_detector.urls),
     "disk": (disk, disk.urls),
+    # SANDesc ships one checkpoint, paired with the ALIKED detector.
+    "sandesc": (sandesc, {"aliked": sandesc.urls}),
     "dedode": (dedode, dedode.urls),
     "rt_detr": (rt_detr, rt_detr.URLs),
     "keynet": (keynet, {"keynet": keynet.KeyNet_URL}),
