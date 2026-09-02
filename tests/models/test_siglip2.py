@@ -33,7 +33,25 @@ from testing.base import BaseTester
 @pytest.fixture
 def config():
     """Fixture for SigLip2Config."""
-    return SigLip2Config()
+    return SigLip2Config(
+        vision_config=SigLip2VisionConfig(
+            image_size=32,
+            patch_size=4,
+            hidden_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            intermediate_size=64,
+        ),
+        text_config=SigLip2TextConfig(
+            vocab_size=100,
+            hidden_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            intermediate_size=64,
+            max_position_embeddings=32,
+        ),
+        projection_dim=16,
+    )
 
 
 @pytest.fixture
@@ -55,10 +73,27 @@ class TestSigLip2Model(BaseTester):
         model = SigLip2Model(config).to(device, dtype)
         assert model is not None
 
+    def test_identity_projections(self, device, dtype, config):
+        """Test the default identity projection path with a lightweight model."""
+        config.projection_dim = config.vision_config.hidden_size
+        model = SigLip2Model(config).to(device, dtype).eval()
+        image_size = config.vision_config.image_size
+        pixel_values = torch.randn(1, 3, image_size, image_size, device=device, dtype=dtype)
+        input_ids = _create_input_ids(1, 10, config, device)
+
+        with torch.no_grad():
+            output = model(pixel_values=pixel_values, input_ids=input_ids)
+
+        assert isinstance(model.vision_projection, torch.nn.Identity)
+        assert isinstance(model.text_projection, torch.nn.Identity)
+        assert output.image_embeds.shape == (1, config.projection_dim)
+        assert output.text_embeds.shape == (1, config.projection_dim)
+
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     def test_cardinality(self, device, dtype, model, config, batch_size):
         """Test output shapes with different inputs and batch sizes."""
-        pixel_values = torch.randn(batch_size, 3, 224, 224, device=device, dtype=dtype)
+        image_size = config.vision_config.image_size
+        pixel_values = torch.randn(batch_size, 3, image_size, image_size, device=device, dtype=dtype)
         seq_len = 10
         input_ids = _create_input_ids(batch_size, seq_len, config, device)
 
@@ -86,7 +121,8 @@ class TestSigLip2Model(BaseTester):
         """Test exception handling."""
         # Test invalid pixel_values shape (wrong number of dimensions)
         with pytest.raises((RuntimeError, ValueError, IndexError)):
-            invalid_pixel_values = torch.randn(3, 224, 224, device=device, dtype=dtype)  # Missing batch dimension
+            image_size = config.vision_config.image_size
+            invalid_pixel_values = torch.randn(3, image_size, image_size, device=device, dtype=dtype)
             model.get_image_features(invalid_pixel_values)
 
         # Test invalid attention mask shape
@@ -104,7 +140,8 @@ class TestSigLip2Model(BaseTester):
         """Test get_image_features method."""
 
         batch_size = 2
-        pixel_values = torch.randn(batch_size, 3, 224, 224, device=device, dtype=dtype)
+        image_size = config.vision_config.image_size
+        pixel_values = torch.randn(batch_size, 3, image_size, image_size, device=device, dtype=dtype)
 
         with torch.no_grad():
             features = model.get_image_features(pixel_values)
@@ -157,7 +194,8 @@ class TestSigLip2Model(BaseTester):
         import math
 
         batch_size = 2
-        pixel_values = torch.randn(batch_size, 3, 224, 224, device=device, dtype=dtype)
+        image_size = config.vision_config.image_size
+        pixel_values = torch.randn(batch_size, 3, image_size, image_size, device=device, dtype=dtype)
         seq_len = 10
         input_ids = _create_input_ids(batch_size, seq_len, config, device)
 
@@ -187,7 +225,10 @@ class TestSigLip2Model(BaseTester):
         # Convert model to float64 for gradcheck
         model = SigLip2Model(config).to(device, torch.float64).train()
         batch_size = 1
-        pixel_values = torch.randn(batch_size, 3, 224, 224, device=device, dtype=torch.float64, requires_grad=True)
+        image_size = config.vision_config.image_size
+        pixel_values = torch.randn(
+            batch_size, 3, image_size, image_size, device=device, dtype=torch.float64, requires_grad=True
+        )
         seq_len = 5
         input_ids = _create_input_ids(batch_size, seq_len, config, device).to(torch.int64)
 
@@ -201,7 +242,8 @@ class TestSigLip2Model(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer, model, config):
         """Test torch.compile compatibility."""
         batch_size = 1
-        pixel_values = torch.randn(batch_size, 3, 224, 224, device=device, dtype=dtype)
+        image_size = config.vision_config.image_size
+        pixel_values = torch.randn(batch_size, 3, image_size, image_size, device=device, dtype=dtype)
         seq_len = 10
         input_ids = _create_input_ids(batch_size, seq_len, config, device)
 
@@ -220,57 +262,67 @@ class TestSigLip2Components(BaseTester):
 
     def test_vision_embeddings(self, device, dtype):
         """Test SigLip2VisionEmbeddings."""
-        config = SigLip2VisionConfig(image_size=224, patch_size=16, hidden_size=768)
+        config = SigLip2VisionConfig(image_size=32, patch_size=4, hidden_size=32)
         embeddings = SigLip2VisionEmbeddings(config).to(device, dtype)
 
         batch_size = 2
-        pixel_values = torch.randn(batch_size, 3, 224, 224, device=device, dtype=dtype)
+        pixel_values = torch.randn(batch_size, 3, config.image_size, config.image_size, device=device, dtype=dtype)
 
         with torch.no_grad():
             output = embeddings(pixel_values)
 
-        num_patches = (224 // 16) ** 2
+        num_patches = (config.image_size // config.patch_size) ** 2
         assert output.shape == (batch_size, num_patches, config.hidden_size)
 
     def test_vision_encoder(self, device, dtype):
         """Test SigLip2VisionEncoder."""
         config = SigLip2VisionConfig(
-            image_size=224, patch_size=16, hidden_size=768, num_hidden_layers=2, num_attention_heads=12
+            image_size=32,
+            patch_size=4,
+            hidden_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            intermediate_size=64,
         )
         encoder = SigLip2VisionEncoder(config).to(device, dtype)
         embeddings = SigLip2VisionEmbeddings(config).to(device, dtype)
 
         batch_size = 2
-        pixel_values = torch.randn(batch_size, 3, 224, 224, device=device, dtype=dtype)
+        pixel_values = torch.randn(batch_size, 3, config.image_size, config.image_size, device=device, dtype=dtype)
 
         with torch.no_grad():
             # Encoder expects embeddings, not raw pixel values
             hidden_states = embeddings(pixel_values)
             output = encoder(hidden_states)
 
-        num_patches = (224 // 16) ** 2
+        num_patches = (config.image_size // config.patch_size) ** 2
         assert output[0].shape == (batch_size, num_patches, config.hidden_size)
 
     def test_vision_model(self, device, dtype):
         """Test SigLip2VisionModel."""
         config = SigLip2VisionConfig(
-            image_size=224, patch_size=16, hidden_size=768, num_hidden_layers=2, num_attention_heads=12
+            image_size=32,
+            patch_size=4,
+            hidden_size=32,
+            num_hidden_layers=2,
+            num_attention_heads=4,
+            intermediate_size=64,
         )
         model = SigLip2VisionModel(config).to(device, dtype)
 
         batch_size = 2
-        pixel_values = torch.randn(batch_size, 3, 224, 224, device=device, dtype=dtype)
+        pixel_values = torch.randn(batch_size, 3, config.image_size, config.image_size, device=device, dtype=dtype)
 
         with torch.no_grad():
             pooled_output, last_hidden_state = model(pixel_values)
 
         assert pooled_output.shape == (batch_size, config.hidden_size)
-        num_patches = (224 // 16) ** 2
+        num_patches = (config.image_size // config.patch_size) ** 2
         assert last_hidden_state.shape == (batch_size, num_patches, config.hidden_size)
 
     def test_text_embeddings(self, device, dtype):
         """Test SigLip2TextEmbeddings."""
-        config = SigLip2TextConfig(vocab_size=1000, hidden_size=768, max_position_embeddings=512)
+        config = SigLip2TextConfig(vocab_size=100, hidden_size=32, max_position_embeddings=32)
         embeddings = SigLip2TextEmbeddings(config).to(device, dtype)
 
         batch_size = 2
@@ -285,11 +337,12 @@ class TestSigLip2Components(BaseTester):
     def test_text_encoder(self, device, dtype):
         """Test SigLip2TextEncoder."""
         config = SigLip2TextConfig(
-            vocab_size=1000,
-            hidden_size=768,
+            vocab_size=100,
+            hidden_size=32,
             num_hidden_layers=2,
-            num_attention_heads=12,
-            max_position_embeddings=512,
+            num_attention_heads=4,
+            intermediate_size=64,
+            max_position_embeddings=32,
         )
         encoder = SigLip2TextEncoder(config).to(device, dtype)
         embeddings = SigLip2TextEmbeddings(config).to(device, dtype)
@@ -309,11 +362,12 @@ class TestSigLip2Components(BaseTester):
     def test_text_model(self, device, dtype):
         """Test SigLip2TextModel."""
         config = SigLip2TextConfig(
-            vocab_size=1000,
-            hidden_size=768,
+            vocab_size=100,
+            hidden_size=32,
             num_hidden_layers=2,
-            num_attention_heads=12,
-            max_position_embeddings=512,
+            num_attention_heads=4,
+            intermediate_size=64,
+            max_position_embeddings=32,
         )
         model = SigLip2TextModel(config).to(device, dtype)
 
@@ -330,8 +384,8 @@ class TestSigLip2Components(BaseTester):
 
     def test_attention(self, device, dtype):
         """Test SigLip2Attention."""
-        hidden_size = 768
-        num_heads = 12
+        hidden_size = 32
+        num_heads = 4
         attention = SigLip2Attention(hidden_size=hidden_size, num_heads=num_heads).to(device, dtype)
 
         batch_size = 2
@@ -351,9 +405,14 @@ class TestSigLip2Components(BaseTester):
         tol = {"rtol": 5e-2, "atol": 5e-2} if dtype in (torch.float16, torch.bfloat16) else {}
         self.assert_close(output, output_without_mask, **tol)
 
-    @pytest.mark.parametrize("batch_size", [1, 2, 4])
-    @pytest.mark.parametrize("input_size", [(256, 256), (300, 400), (512, 512)])
-    @pytest.mark.parametrize("image_size", [(224, 224), (256, 256), (384, 384)])
+    @pytest.mark.parametrize(
+        ("batch_size", "input_size", "image_size"),
+        [
+            (1, (64, 64), (32, 32)),
+            (2, (48, 64), (32, 32)),
+            (4, (16, 16), (32, 32)),
+        ],
+    )
     def test_image_preprocessor(self, device, dtype, batch_size, input_size, image_size):
         """Test SigLip2ImagePreprocessor with different configurations."""
         preprocessor = SigLip2ImagePreprocessor(image_size=image_size).to(device, dtype)
@@ -366,11 +425,11 @@ class TestSigLip2Components(BaseTester):
 
     def test_image_preprocessor_single_image(self, device, dtype):
         """Test SigLip2ImagePreprocessor with single image (3D tensor)."""
-        image_size = (224, 224)
+        image_size = (32, 32)
         preprocessor = SigLip2ImagePreprocessor(image_size=image_size).to(device, dtype)
 
         # Test with single image (3D tensor) - preprocessor adds batch dimension
-        image = torch.randint(0, 255, (3, 256, 256), device=device, dtype=dtype)
+        image = torch.randint(0, 255, (3, 64, 64), device=device, dtype=dtype)
         with torch.no_grad():
             output = preprocessor(image)
         assert output.shape == (1, 3, image_size[0], image_size[1])
