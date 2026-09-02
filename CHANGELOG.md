@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * An **Adoption** page (`community/adoption`) listing the most-starred GitHub repositories and
   packages that depend on kornia, rendered at build time from `docs/source/_data/dependents.json`;
   `docs/fetch_dependents.py` refreshes that snapshot from GitHub's dependency graph. (#4155)
+* Every page in the **Models** section of the docs now opens with the shortest script that runs the
+  model and a figure of its output on a real input, with the paper card moved to the bottom. The
+  figures are rendered by `docs/generate_model_examples.py` and committed under
+  `docs/source/_static/img/models/`, so the docs build needs neither the weights nor the sample
+  images. (#4178)
 
 ### Breaking changes
 
