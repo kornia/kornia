@@ -158,7 +158,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   numerically wrong on CPU (`h=0.01` at `kernel_size=3` in `float32` tracks the analytic reference to ~2e-4,
   carried through the subnormal range) but where MPS flushes subnormals to zero while CPU does not, so the same
   call used to silently disagree across backends; raising there rules out that disagreement rather than trusting
-  which backend a caller happens to run on.
+  which backend a caller happens to run on. Concretely, at the documented default `h=0.35` in `float32`,
+  `kernel_size >= 63` now raises: CPU used to return a usable-looking answer there while MPS silently returned
+  something else for the same call.
 
 * `VisualPrompter.predict()` called without any prompt (the "run the prediction without prompts" example on the
   Segment Anything page) raised `TypeError: object of type 'NoneType' has no len()` from the prompt augmentation
