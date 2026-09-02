@@ -254,7 +254,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `eps=1e-12` remains an active division guard and a zero quaternion returns finite zeros instead of NaNs. An
   explicit `eps=0.0` still disables the guard. This also keeps `Quaternion.normalize`,
   `quaternion_to_rotation_matrix`, and their downstream pose conversions finite for that input, matching the
-  existing `float32`, `float64`, and `bfloat16` behavior (#4021).
+  existing `float32`, `float64`, and `bfloat16` behavior (#4162).
 * `Boxes3D.to_tensor` and `Boxes3D.get_boxes_shape` are differentiable again (#1396). Both reduce a box's 8
   vertices to its min/max corner with `amin`/`amax`, which is a genuine kink -- not differentiable in the
   classical sense -- wherever multiple vertices exactly tie for an axis extremum. Every face of an
@@ -279,7 +279,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mis-provisioned venv fails at setup instead of as a wall of unrelated-looking test failures. The five
   `tests/core/test_small_linalg.py` ONNX cases the import error was masking now export with `external_data=False`,
   which torch 2.6's dynamo exporter requires when the destination is a `BytesIO`. (#4199, #4200)
-
 * `find_homography_dlt(..., solver="lu")` now solves the minimal four-point system with an adaptive
   homogeneous gauge instead of applying LU to its singular normal matrix. This is the estimator
   `RANSAC(model_type="homography")` calls for every minimal sample, so homography RANSAC results
