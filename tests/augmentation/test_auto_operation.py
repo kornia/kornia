@@ -136,7 +136,6 @@ class TestTrivialAugment(BaseTester):
         aug(in_tensor)
 
     def test_transform_mat(self, device, dtype):
-        torch.manual_seed(0)
         aug = TrivialAugment()
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
         aug(in_tensor)
