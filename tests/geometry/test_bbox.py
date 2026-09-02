@@ -47,6 +47,7 @@ class TestBbox2D(BaseTester):
         # Convention pin: the extents come from fixed vertex indices, not from a
         # maximum - minimum reduction. Swapping the top-left and top-right vertices in
         # x therefore yields a negative width, where max - min + 1 would give 5.
+        # The -3 is 1 - 5 + 1; the inclusive offset is tracked in kornia#3934.
         boxes = torch.tensor([[[5.0, 2.0], [1.0, 2.0], [1.0, 3.0], [5.0, 3.0]]], device=device, dtype=dtype)
         height, width = infer_bbox_shape(boxes)
         self.assert_close(height, torch.tensor([2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
@@ -64,8 +65,15 @@ class TestBbox2D(BaseTester):
         self.assert_close(width, torch.tensor([0.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_convention_validate_bbox_checks_parallelograms_and_accepts_batched_boxes(self, device, dtype):
-        # A rotated rectangle is accepted because the validator only compares the
-        # top and bottom edge vectors. The leading dimensions also pin rank-4 input.
+        # The validator only compares the top and bottom edge vectors, so any
+        # parallelogram passes: a sheared (non-rectangular) parallelogram and a
+        # rotated rectangle both return True, and only the trapezoid fails. The
+        # leading dimensions also pin rank-4 input.
+        sheared_parallelogram = torch.tensor(
+            [[[[0.0, 0.0], [2.0, 0.0], [3.0, 1.0], [1.0, 1.0]]]], device=device, dtype=dtype
+        )
+        assert validate_bbox(sheared_parallelogram) is True
+
         rotated_rectangle = torch.tensor(
             [[[[0.0, 0.0], [3.0, 4.0], [-1.0, 7.0], [-4.0, 3.0]]]], device=device, dtype=dtype
         )
@@ -77,6 +85,7 @@ class TestBbox2D(BaseTester):
     def test_convention_validate_bbox_invariance_is_exact_arithmetic_only(self):
         # In float16 the inclusive +1 rounds distinct sub-unit spans to the same
         # value, although the exclusive span difference exceeds the 1e-4 threshold.
+        # The True below holds only with the +1 tracked in kornia#3934.
         boxes = torch.tensor([[[0.0, 0.0], [0.0005, 0.0], [0.001, 0.001], [0.0, 0.001]]], dtype=torch.float16)
         assert validate_bbox(boxes) is True
         top_span = boxes[..., 1, 0] - boxes[..., 0, 0]

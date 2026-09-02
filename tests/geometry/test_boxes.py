@@ -32,7 +32,7 @@ class TestBoxes2D(BaseTester):
         # Convention pin: Boxes stores four inclusive (x, y) vertices in clockwise
         # top-left, top-right, bottom-right, bottom-left order. The asymmetric
         # exclusive xyxy input makes both the coordinate order and the +1 conversion
-        # observable.
+        # observable. The expected data carries the -1 tracked in kornia#3934.
         boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
         expected = torch.tensor([[[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]]], device=device, dtype=dtype)
         self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
@@ -55,18 +55,21 @@ class TestBoxes2D(BaseTester):
         self.assert_close(output, source, atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize(
-        ("dtype", "source_values", "expected_values"),
+        ("box_dtype", "source_values", "expected_values"),
         [
             (torch.bfloat16, [256.0, 256.0, 258.0, 258.0], [256.0, 256.0, 256.0, 256.0]),
             (torch.float16, [-385.25, 0.0, 400.0, 2.0], [-385.25, 0.0, 399.75, 2.0]),
         ],
     )
-    def test_convention_round_trip_requires_exact_intermediate_arithmetic(self, dtype, source_values, expected_values):
+    def test_convention_round_trip_requires_exact_intermediate_arithmetic(
+        self, box_dtype, source_values, expected_values
+    ):
         # bfloat16 cannot represent the +/-1 intermediate at 256. The float16
         # case can represent its offsets, but rounds the cross-zero width first.
-        source = torch.tensor([source_values], dtype=dtype)
+        # Both discrepancies exist only because of the +/-1 offsets tracked in kornia#3934.
+        source = torch.tensor([source_values], dtype=box_dtype)
         output = Boxes.from_tensor(source, mode="xyxy").to_tensor("xyxy")
-        expected = torch.tensor([expected_values], dtype=dtype)
+        expected = torch.tensor([expected_values], dtype=box_dtype)
         self.assert_close(output, expected, atol=0.0, rtol=0.0)
         assert not torch.equal(output, source)
 
@@ -116,6 +119,7 @@ class TestBoxes2D(BaseTester):
         # Convention pin: 'vertices' is not merely unvalidated. Its exclusive import
         # subtracts one from fixed vertex positions, so a non-rectangular quadrilateral
         # is silently reshaped instead of rejected, even with validate_boxes=True.
+        # The -1 deformation is the inclusive offset tracked in kornia#3934.
         quadrilateral = torch.tensor([[[0.0, 0.0], [9.0, 0.0], [3.0, 7.0], [0.0, 1.0]]], device=device, dtype=dtype)
         boxes = Boxes.from_tensor(quadrilateral, mode="vertices", validate_boxes=True)
         expected = torch.tensor([[[0.0, 0.0], [8.0, 0.0], [2.0, 6.0], [0.0, 0.0]]], device=device, dtype=dtype)
@@ -141,6 +145,13 @@ class TestBoxes2D(BaseTester):
             Boxes(vertices)
         coordinates = torch.tensor([[1, 2, 5, 4]])
         assert Boxes.from_tensor(coordinates, mode="xyxy").dtype == torch.float32
+
+        # A list is padded into a tensor of its first element's dtype before the
+        # check, so a mixed-dtype list is judged by its first box alone.
+        floating = vertices.to(torch.float32)
+        assert Boxes([floating, vertices]).dtype == torch.float32
+        with pytest.raises(ValueError, match="floating point"):
+            Boxes([vertices, floating])
 
     def test_convention_merge_concatenates_batched_boxes_without_mutating_by_default(self, device, dtype):
         first = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype))

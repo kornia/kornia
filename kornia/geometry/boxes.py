@@ -227,7 +227,9 @@ class Boxes:
           validated, and ``'vertices'`` additionally deforms a non-rectangular quadrilateral: its exclusive
           import subtracts one from the ``x`` of the top-right and bottom-right vertices and from the ``y``
           of the bottom-right and bottom-left vertices, wherever those vertices actually lie.
-        - The constructor rejects integer input unless ``raise_if_not_floating_point=False``; :meth:`from_tensor`
+        - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False``. A list input is
+          padded into a tensor of its *first* element's dtype before that check, so a mixed-dtype list is accepted
+          or rejected by its first box alone and the remaining boxes are cast to that dtype. :meth:`from_tensor`
           silently casts integer input to ``float32``.
 
     .. warning::
@@ -615,8 +617,8 @@ class Boxes:
                 * 'xyxy_plus': ``xmin, ymin, xmax, ymax`` with inclusive extent.
                 * 'xywh': ``xmin, ymin, width, height`` with exclusive extent.
                 * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
-                  *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. Finally,
-                  this is the exclusive export form.
+                  *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. This is
+                  the exclusive export form.
                 * 'vertices_plus': the inclusive stored vertex form.
             as_padded_sequence: If this object was created from a list, return its padded tensor rather than a list
                 of tensors trimmed to their original lengths. The padded values follow the selected output mode.
