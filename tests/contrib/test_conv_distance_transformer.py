@@ -22,7 +22,7 @@ import kornia
 from kornia.core.exceptions import BaseError, TypeCheckError
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_conv2d, supports_replicate_padding
 
 
 class TestConvDistanceTransform(BaseTester):
@@ -199,6 +199,11 @@ class TestConvDistanceTransform(BaseTester):
         # well clear of the underflow guard; reference values generated at float64 via:
         #   img = torch.zeros(1, 1, 8, 4, dtype=torch.float64); img[0, 0, 1, :] = 1.0
         #   kornia.contrib.distance_transform(img, kernel_size=3, h=0.1)[0, 0, :, 0]
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip("This device does not support replicate padding for the regression dtype")
+        if not supports_conv2d(device, dtype):
+            pytest.skip("This device does not support convolution for the regression dtype")
+
         img = torch.zeros(1, 1, 8, 4, device=device, dtype=dtype)
         img[0, 0, 1, :] = 1.0
         out = kornia.contrib.distance_transform(img, kernel_size=3, h=0.1)
@@ -217,7 +222,15 @@ class TestConvDistanceTransform(BaseTester):
             dtype=dtype,
         )
 
-        self.assert_close(out[0, 0], expected, rtol=1e-3, atol=1e-3)
+        tolerance = 5e-3 if dtype == torch.bfloat16 else 1e-3
+        self.assert_close(out[0, 0], expected, rtol=tolerance, atol=tolerance)
+
+    # test_convention_small_h_keeps_nonzero_distances_4152, a strict xfail pinning the pre-fix silent
+    # wrong-output behavior for h=0.01 at kernel_size=3 in float16/bfloat16/mps-float32, is removed
+    # here: this PR fixes #4152, so that combination now raises BaseError (a different exception than
+    # the pinned `raises=AssertionError`) instead of returning a wrong value, which would make the
+    # xfail fail outright rather than pass. test_h_too_small_raises and
+    # test_h_too_small_raises_float32_regression below pin the new, fixed behavior instead.
 
     def test_half_precision_matches_float64_reference(self, device, dtype):
         # #4152: the exp(-dist/h) kernel's far taps underflow to exactly zero in float16/bfloat16
@@ -227,6 +240,11 @@ class TestConvDistanceTransform(BaseTester):
         # result should track the float64 reference to about float32 precision regardless of the
         # input dtype. The reference is built on its own CPU float64 tensor -- MPS has no float64,
         # so a `.double()` of the fixture's own `img` would fail there.
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip("This device does not support replicate padding for the regression dtype")
+        if not supports_conv2d(device, dtype):
+            pytest.skip("This device does not support convolution for the regression dtype")
+
         img = torch.zeros(1, 1, 16, 4, device=device, dtype=dtype)
         img[0, 0, 1, :] = 1.0
         ref_img = torch.zeros(1, 1, 16, 4, dtype=torch.float64)

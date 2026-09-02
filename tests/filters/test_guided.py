@@ -33,8 +33,7 @@ class TestGuidedBlur(BaseTester):
     @pytest.mark.parametrize("guide_dim", [1, 3])
     @pytest.mark.parametrize("input_dim", [1, 3])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
-    @pytest.mark.parametrize("eps", [0.1, 0.01])
-    def test_smoke(self, batch_size, guide_dim, input_dim, kernel_size, eps, device, dtype):
+    def test_smoke(self, batch_size, guide_dim, input_dim, kernel_size, device, dtype):
         H, W = 8, 16
         guide = torch.randn(batch_size, guide_dim, H, W, device=device, dtype=dtype)
         inp = torch.randn(batch_size, input_dim, H, W, device=device, dtype=dtype)

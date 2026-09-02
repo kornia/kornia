@@ -109,7 +109,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         applied_post = self.apply_non_transform(applied, params, flags)
 
         if applied_post.shape == non_applied.shape and applied_post.shape[0] == to_apply.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (applied_post.dim() - 1)))
+            to_apply_expanded = to_apply.view(-1, *([1] * (applied_post.dim() - 1))).to(applied_post.device)
             output = torch.where(to_apply_expanded, applied_post, non_applied)
         else:
             # Shape-changing mix augmentations (e.g. RandomMosaic when ``output_size``

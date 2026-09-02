@@ -35,7 +35,6 @@ from kornia.augmentation.random_generator import (
     ResizedCropGenerator,
     center_crop_generator,
 )
-from kornia.core._compat import torch_version_ge
 
 from testing.base import assert_close
 
@@ -469,9 +468,11 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             )(torch.Size([8]))
 
     def test_random_gen(self, device, dtype):
-        # TODO(jian): crashes with pytorch 1.10, cuda and fp64
-        if (torch_version_ge(1, 10) and "cuda" in str(device)) or dtype == torch.float64:
-            pytest.skip("AssertionError: cannot reproduce the same result")
+        # The generator documents that samples are not reproducible across devices or dtypes.
+        if device.type != "cpu" or dtype != torch.float32:
+            pytest.skip(
+                "Random parameters are device- and dtype-dependent; expected values were computed on CPU float32"
+            )
         torch.manual_seed(42)
         batch_size = 8
         gen = ColorJitterGenerator(
@@ -549,8 +550,10 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         )
 
     def test_same_on_batch(self, device, dtype):
-        if "cuda" in str(device) or dtype == torch.float64:
-            pytest.skip("AssertionError: cannot reproduce the same result")
+        if device.type != "cpu" or dtype != torch.float32:
+            pytest.skip(
+                "Random parameters are device- and dtype-dependent; expected values were computed on CPU float32"
+            )
         torch.manual_seed(42)
         batch_size = 8
         gen = ColorJitterGenerator(
