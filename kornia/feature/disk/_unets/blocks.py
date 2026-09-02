@@ -31,15 +31,11 @@ class TrivialUpsample(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run this DISK component forward.
 
-        Feature maps use `(B, C, H, W)`, where `B` is batch size, `C` channels, and `H`/`W` are spatial dimensions.
-
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input feature map with shape :math:`(B, C, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Upsampled feature map with shape :math:`(B, C, 2H, 2W)`.
         """
         return F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)
 
@@ -53,15 +49,11 @@ class TrivialDownsample(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run this DISK component forward.
 
-        Feature maps use `(B, C, H, W)`, where `B` is batch size, `C` channels, and `H`/`W` are spatial dimensions.
-
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input feature map with shape :math:`(B, C, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Downsampled feature map with shape :math:`(B, C, H/2, W/2)`.
         """
         return F.avg_pool2d(x, 2)
 
@@ -129,17 +121,15 @@ class ThinUnetUpBlock(nn.Module):
         self.conv = Conv(self.cat_, self.out_, size)
 
     def forward(self, bot: torch.Tensor, hor: torch.Tensor) -> torch.Tensor:
-        """Run this DISK component forward.
-
-        Feature maps use `(B, C, H, W)`, where `B` is batch size, `C` channels, and `H`/`W` are spatial dimensions.
+        r"""Run this DISK component forward.
 
         Args:
-            bot: Input value used by this method.
-            hor: Input value used by this method.
+            bot: Bottom (deeper-level) feature map with shape :math:`(B, C_{\text{bot}}, H', W')`.
+            hor: Horizontal skip-connection feature map with shape :math:`(B, C_{\text{hor}}, 2H', 2W')`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Decoded feature map with shape :math:`(B, C_{\text{out}}, 2H', 2W')` after upsampling and
+            skip-connection fusion.
         """
         bot_big = self.upsample(bot)
         combined = torch.cat([bot_big, hor], dim=1)
