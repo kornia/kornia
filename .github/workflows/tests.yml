@@ -118,10 +118,14 @@ jobs:
           echo "DNNL_MAX_CPU_ISA=AVX2" >> $GITHUB_ENV
 
       - name: Run tests
+        shell: bash
         env:
           KORNIA_TEST_DEVICE: cpu
           KORNIA_TEST_DTYPE: ${{ inputs.pytorch-dtype }}
           KORNIA_TEST_RUNSLOW: ${{ inputs.runslow }}
           KORNIA_TEST_OPTIMIZER: ${{ inputs.optimizer }}
+          KORNIA_CI_PYTEST_VERBOSITY: ${{ runner.os == 'Windows' && '-v' || '' }}
+          MKL_NUM_THREADS: "1"
+          OMP_NUM_THREADS: "1"
           UV_NO_SYNC: "1"
-        run: pixi run -e ${{ steps.pixi-env.outputs.name }} test ${{ inputs.pytest-extra }}
+        run: pixi run -e ${{ steps.pixi-env.outputs.name }} test $KORNIA_CI_PYTEST_VERBOSITY ${{ inputs.pytest-extra }}

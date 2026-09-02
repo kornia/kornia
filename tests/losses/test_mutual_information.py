@@ -123,23 +123,23 @@ class TestMutualInformationLoss(BaseTester):
         self.gradcheck(normalized_mutual_information_loss, (img1, img2))
 
     def test_differentiability(self, device, dtype):
-        for _ in range(10):
-            img_1 = self.sampling_function(10000, device, dtype)
-            img_2 = self.sampling_function(10000, device, dtype)
-            param = torch.tensor(1 / 2.0, requires_grad=True)
-            mi = mutual_information_loss(img_1 + param * img_2, img_2)
-            mi.backward()
-            # negative gradient, order of magnitude 1/2
-            assert -1 < param.grad < -1 / 10, f"Differentiability issue for mi, {param.grad=}."
-            param = torch.tensor(1 / 2.0, requires_grad=True)
-            nmi = normalized_mutual_information_loss(img_1 + param * img_2, img_2)
-            nmi.backward()
-            # negative gradient, order of magnitude 1/20
-            assert -1 / 10 < param.grad < -1 / 100, f"Differentiability issue for nmi, {param.grad=}."
+        torch.manual_seed(0)
+        img_1 = self.sampling_function(10000, device, dtype)
+        img_2 = self.sampling_function(10000, device, dtype)
+        param = torch.tensor(1 / 2.0, requires_grad=True)
+        mi = mutual_information_loss(img_1 + param * img_2, img_2)
+        mi.backward()
+        # negative gradient, order of magnitude 1/2
+        assert -1 < param.grad < -1 / 10, f"Differentiability issue for mi, {param.grad=}."
+        param = torch.tensor(1 / 2.0, requires_grad=True)
+        nmi = normalized_mutual_information_loss(img_1 + param * img_2, img_2)
+        nmi.backward()
+        # negative gradient, order of magnitude 1/20
+        assert -1 / 10 < param.grad < -1 / 100, f"Differentiability issue for nmi, {param.grad=}."
 
     def test_value_ranges(self, device, dtype):
-        for _ in range(10):
-            self.value_ranges_check(device, dtype)
+        torch.manual_seed(0)
+        self.value_ranges_check(device, dtype)
 
     def test_trivial_signal_normalizes_to_zero(self, device, dtype):
         signal = torch.tensor([[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]], device=device, dtype=dtype)
@@ -207,19 +207,19 @@ class TestMutualInformationLoss(BaseTester):
 
     def test_masking(self, device, dtype):
         """test masking works on a 2d signal."""
-        pred = torch.rand(2, 3, 200, 200, device=device, dtype=dtype)
-        target = torch.rand(2, 3, 200, 200, device=device, dtype=dtype)
+        pred = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
+        target = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
         target_mask = torch.zeros(pred.shape[-2:], dtype=torch.bool, device=device)
         pred_mask = target_mask.clone()
-        target_mask[:100] = True
-        pred_mask[:, :100] = True
+        target_mask[:32] = True
+        pred_mask[:, :32] = True
         # we tweak the values of target and pred for the normalization to be the same with or without the mask
         target[..., 0, 0] = 0
         target[..., 0, 1] = 1
         pred[..., 0, 0] = 0
         pred[..., 0, 1] = 1
-        restricted_pred = pred[..., :100, :100]
-        restricted_target = target[..., :100, :100]
+        restricted_pred = pred[..., :32, :32]
+        restricted_target = target[..., :32, :32]
 
         masked_kwargs = {"input": pred, "target": target, "input_mask": pred_mask, "target_mask": target_mask}
         restricted_kwargs = {

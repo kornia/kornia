@@ -36,6 +36,7 @@ pixi run test-quick
 | `--tf32` | `KORNIA_TEST_TF32` | off | Enable TF32 mode (see below) |
 | `--optimizer` | `KORNIA_TEST_OPTIMIZER` | CLI: `inductor`; env: unset | Select the backend. Only setting the environment variable enables dynamo/compile collection; the CLI option alone does not. |
 | `--isolate-half-precision` | `KORNIA_TEST_ISOLATE_HALF` | off | Run float16/bfloat16 CUDA tests each in a fresh `subprocess.run` process (no shared CUDA state) |
+| `--run-device-agnostic` | `KORNIA_TEST_RUN_DEVICE_AGNOSTIC` | off | Run `@pytest.mark.device_agnostic` tests even when CPU is not in the device matrix |
 
 ## Test Structure
 
@@ -60,6 +61,7 @@ The `device` and `dtype` fixtures are injected automatically from the CLI option
 
 | Marker | Meaning |
 |---|---|
+| `@pytest.mark.device_agnostic` | Test runs once in a CPU-containing matrix because its logic does not use the selected accelerator. An accelerator-only run deselects it and says so on a line of its own at the start of the run, because the deselected set includes the ONNX and `torch.export` suites; `--run-device-agnostic` forces it back on |
 | `@pytest.mark.slow` | Long-running test; skipped unless `--runslow` is passed |
 | `@pytest.mark.tf32` | Known to fail under TF32 (see section below); xfail unless `--tf32` |
 

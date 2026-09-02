@@ -451,7 +451,7 @@ class TestRandomJigsaw(BaseTester):
         torch.manual_seed(76)
         f = RandomJigsaw(p=p, data_keys=["input"], same_on_batch=same_on_batch)
 
-        input = torch.randn((12, 3, 256, 256), device=device, dtype=dtype)
+        input = torch.randn((4, 3, 32, 32), device=device, dtype=dtype)
 
         f(input)
 

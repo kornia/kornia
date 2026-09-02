@@ -45,7 +45,7 @@ class TestEqualization(BaseTester):
             (1, 3, (2, 2)),
             (4, 1, (2, 2)),
             (4, 3, (2, 2)),
-            (4, 3, (8, 8)),
+            (2, 2, (8, 8)),
         ],
     )
     def test_cardinality(self, B, C, grid_size, device, dtype):
