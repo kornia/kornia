@@ -22,13 +22,17 @@ Usage (from the repository root, with the docs built once so cross-references re
     python docs/export_support/run.py              # everything: ~2 h on 8 cores, CPU only
     python docs/export_support/run.py aug misc     # only these case groups
     python docs/export_support/run.py --merge-only # re-merge existing results into the JSON
+    python docs/export_support/run.py --force      # merge even if the results are incomplete
 
 Each case group ``cases_<group>.py`` is probed twice, in parallel subprocesses: once for ONNX
 (``harness.run_cases``) and once for torch.export + torch.compile (``probe_compile.py``). Results
 land in ``results/`` next to this file (git-ignored) and are resumable: a rerun skips the cases that
-already have a record, so a crashed worker can simply be started again. The final merge writes
-``docs/source/_data/export_support.json``, which is committed and rendered by
-``docs/generate_export_support.py`` at docs build time.
+already have a record, so a crashed worker can simply be started again. Each probe stamps an
+``inventory_*.json`` with every case name and the kornia revision / torch version it measured;
+records from another revision are not resumed, and the final merge refuses to write the snapshot
+while a worker failed, a case has no record, or the groups disagree about what they measured
+(``--force`` overrides). The merge writes ``docs/source/_data/export_support.json``, which is
+committed and rendered by ``docs/generate_export_support.py`` at docs build time.
 """
 
 from __future__ import annotations
@@ -73,6 +77,7 @@ def _worker(label: str, cmd: list[str]) -> tuple[str, int]:
 
 def main(argv: list[str]) -> int:
     merge_only = "--merge-only" in argv
+    force = "--force" in argv
     groups = [a for a in argv if not a.startswith("--")] or GROUPS
     unknown = sorted(set(groups) - set(GROUPS))
     if unknown:
@@ -84,10 +89,16 @@ def main(argv: list[str]) -> int:
             failed = [label for label, rc in pool.map(lambda job: _worker(*job), _jobs(groups)) if rc != 0]
         if failed:
             print(
-                f"workers exited abnormally: {failed}; rerun to resume the cases they did not record", file=sys.stderr
+                f"workers exited abnormally: {failed}; rerun to resume the cases they did not record"
+                + ("" if force else " (not merging: the snapshot would be incomplete)"),
+                file=sys.stderr,
             )
+            if not force:
+                return 1
 
     cmd = [sys.executable, "merge.py", str(RESULTS / "onnx_*.json"), str(RESULTS / "compile_*.json"), str(SNAPSHOT)]
+    if force:
+        cmd.append("--force")
     return subprocess.run(cmd, cwd=HERE, check=False).returncode
 
 

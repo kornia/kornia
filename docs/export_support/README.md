@@ -42,9 +42,14 @@ pixi run build-docs
 `run.py` writes per-group results and logs to `docs/export_support/results/` (git-ignored) and
 then calls `merge.py`, which produces the snapshot. Rerunning `run.py` only probes cases that have
 no record yet, so a worker that crashed (a segfault leaves a `crashed` marker) can just be started
-again. `run.py aug` restricts the run to one case group; `run.py --merge-only` rebuilds the JSON
-from existing results. Run the probes with the same torch / onnx / onnxruntime / onnxscript
-versions as the snapshot header unless the point of the rerun is to move to new versions.
+again. Each probe also writes an `inventory_*.json` naming every case of its group and the kornia
+revision and torch version it ran with; records left by another revision or torch are discarded
+instead of resumed. The merge refuses to write the snapshot while a worker failed, a case has no
+record, or the groups were measured at different revisions, so a partial run cannot silently
+undercount the coverage; `--force` merges anyway. `run.py aug` restricts the run to one case group;
+`run.py --merge-only` rebuilds the JSON from existing results. Run the probes with the same torch /
+onnx / onnxruntime / onnxscript versions as the snapshot header unless the point of the rerun is
+to move to new versions.
 
 ## Adding a case
 

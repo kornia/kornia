@@ -38,7 +38,7 @@ from typing import Any
 
 import torch
 import torch._dynamo
-from harness import SEED, _kornia_frames, close, err_str, make_wrapper, to_np
+from harness import SEED, _kornia_frames, close, err_str, make_wrapper, prepare_resume, to_np
 from torch import nn
 
 torch.set_num_threads(4)
@@ -62,7 +62,14 @@ def _alarm(signum, frame):
     raise Timeout(f"case exceeded {TIMEOUT}s")
 
 
-signal.signal(signal.SIGALRM, _alarm)
+_HAS_ALARM = hasattr(signal, "SIGALRM")  # POSIX only; on Windows the probes simply run without a timeout
+if _HAS_ALARM:
+    signal.signal(signal.SIGALRM, _alarm)
+
+
+def _set_alarm(seconds: int) -> None:
+    if _HAS_ALARM:
+        signal.alarm(seconds)
 
 
 def qualname(target: Any, method: str | None) -> str | None:
@@ -129,7 +136,7 @@ def run_case(c: dict[str, Any]) -> dict[str, Any]:
         return rec
 
     # ---- torch.export
-    signal.alarm(TIMEOUT)
+    _set_alarm(TIMEOUT)
     try:
         torch.manual_seed(SEED)
         with torch.no_grad():
@@ -140,12 +147,12 @@ def run_case(c: dict[str, Any]) -> dict[str, Any]:
             raise
         rec.update(export="fail", export_error=err_str(e), export_where=_kornia_frames(e))
     finally:
-        signal.alarm(0)
+        _set_alarm(0)
     rec["export_s"] = round(time.time() - t0, 1)
 
     # ---- torch.compile (dynamo capture stats, then inductor run)
     t1 = time.time()
-    signal.alarm(TIMEOUT)
+    _set_alarm(TIMEOUT)
     try:
         torch._dynamo.reset()
         torch.manual_seed(SEED)
@@ -173,7 +180,7 @@ def run_case(c: dict[str, Any]) -> dict[str, Any]:
             raise
         rec.update(compile="fail", compile_error=err_str(e), compile_where=_kornia_frames(e))
     finally:
-        signal.alarm(0)
+        _set_alarm(0)
         torch._dynamo.reset()
     rec["compile_s"] = round(time.time() - t1, 1)
     return rec
@@ -184,10 +191,7 @@ def main() -> None:
     out_json = sys.argv[2]
     only = sys.argv[3:] or None
     cases = mod.CASES
-    try:
-        done = {r["name"]: r for r in json.load(open(out_json))}
-    except Exception:
-        done = {}
+    done = prepare_resume(cases, out_json)
     results: list[dict[str, Any]] = []
     for c in cases:
         if only and not any(o == c["name"] or o == c["group"] or c["name"].startswith(o) for o in only):

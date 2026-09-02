@@ -24,7 +24,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _torch_svd_cast, parameter_if_leaf
+from kornia.core.utils import _torch_svd_cast, register_module_state
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
 
@@ -56,8 +56,8 @@ class ParametrizedLine(nn.Module):
 
         """
         super().__init__()
-        self._origin = parameter_if_leaf(origin)
-        self._direction = parameter_if_leaf(direction)
+        register_module_state(self, "_origin", origin)
+        register_module_state(self, "_direction", direction)
 
     def __str__(self) -> str:
         return f"Origin: {self.origin}\nDirection: {self.direction}"

@@ -27,7 +27,7 @@ from kornia.core.utils import (
     _torch_solve_cast,
     _torch_svd_cast,
     is_exporting,
-    parameter_if_leaf,
+    register_module_state,
     safe_inverse_with_mask,
     safe_solve_with_mask,
 )
@@ -142,18 +142,46 @@ class TestExportHelpers:
         # must compile and evaluate to False there rather than being an unused stub that raises.
         assert torch.jit.script(is_exporting)() is False
 
-    def test_parameter_if_leaf_wraps_leaf(self, device, dtype):
-        x = torch.rand(3, device=device, dtype=dtype)
-        p = parameter_if_leaf(x)
-        assert isinstance(p, torch.nn.Parameter)
-        assert parameter_if_leaf(p) is p
+    def test_is_exporting_falls_back_to_is_compiling(self, monkeypatch):
+        # torch < 2.6 has no ``torch.compiler.is_exporting``; inside a Dynamo trace the guard must
+        # still be true, as it is on newer torch where Dynamo folds the flag to True for
+        # ``torch.compile`` as well.
+        from kornia.core import utils
 
-    def test_parameter_if_leaf_keeps_history(self, device, dtype):
-        # A tensor with a grad_fn must not be re-rooted as a leaf, or gradients stop at it.
+        monkeypatch.setattr(utils, "_torch_is_exporting", None)
+        assert is_exporting() is False
+        seen = []
+
+        def fn(x):
+            seen.append(is_exporting())
+            return x + 1
+
+        torch.compile(fn, backend="eager")(torch.zeros(2))
+        assert seen == [True]
+
+    def test_register_module_state_wraps_leaf(self, device, dtype):
+        m = torch.nn.Module()
+        x = torch.rand(3, device=device, dtype=dtype)
+        register_module_state(m, "x", x)
+        assert isinstance(m.x, torch.nn.Parameter)
+        assert dict(m.named_parameters()).keys() == {"x"}
+        p = torch.nn.Parameter(x.clone())
+        register_module_state(m, "p", p)
+        assert m.p is p
+
+    def test_register_module_state_keeps_history(self, device, dtype):
+        # A tensor with a grad_fn must not be re-rooted as a leaf, or gradients stop at it; it is
+        # a buffer instead so ``.to()`` and ``state_dict()`` still reach it.
+        m = torch.nn.Module()
         v = torch.rand(3, device=device, dtype=dtype, requires_grad=True)
-        y = parameter_if_leaf(v * 2)
-        assert not isinstance(y, torch.nn.Parameter)
-        y.sum().backward()
+        register_module_state(m, "y", v * 2)
+        assert not isinstance(m.y, torch.nn.Parameter)
+        assert dict(m.named_buffers()).keys() == {"y"}
+        assert list(m.state_dict()) == ["y"]
+        other = torch.float64 if dtype != torch.float64 else torch.float32
+        moved = m.to(other)
+        assert moved.y.dtype == other
+        moved.y.sum().backward()
         assert_close(v.grad, torch.full_like(v, 2.0))
 
 

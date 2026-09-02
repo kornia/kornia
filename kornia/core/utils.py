@@ -518,37 +518,49 @@ def is_compiling() -> bool:
 
 @torch.jit.unused
 def _is_exporting_eager() -> bool:
-    return bool(_torch_is_exporting()) if _torch_is_exporting is not None else False
+    if _torch_is_exporting is not None:
+        return bool(_torch_is_exporting())
+    # torch < 2.6 has no export flag. Inside a Dynamo trace the newer releases constant-fold
+    # ``torch.compiler.is_exporting`` to ``True`` for ``torch.compile`` as well as for
+    # ``torch.export``, so ``is_compiling`` is the fallback with the same semantics.
+    return is_compiling()
 
 
 def is_exporting() -> bool:
-    """Whether execution is inside a ``torch.export`` capture.
+    """Whether execution is inside a graph capture by ``torch.export`` or the dynamo ONNX exporter.
 
-    Used to skip in-``forward`` side effects (e.g. stashing per-call state on ``self``) that
-    ``torch.export`` on torch <= 2.9 rejects, without changing the captured output. Returns
-    ``False`` on torch versions where ``torch.compiler.is_exporting`` is unavailable and
-    inside TorchScript, so the guard is safe to call from scripted functions.
+    Used to switch to export-safe arithmetic (closed-form inverses, ``sort``-based medians, ...) and
+    to skip in-``forward`` side effects (e.g. stashing per-call state on ``self``) that
+    ``torch.export`` rejects, without changing the captured output. Inside a Dynamo trace torch
+    folds its own flag to ``True`` for ``torch.compile`` too, so the export-safe paths are also
+    what a compiled graph contains; on torch < 2.6, which has no export flag, ``is_compiling`` is
+    used for the same reason. Always ``False`` inside TorchScript, so the guard is safe to call
+    from scripted functions.
     """
     if torch.jit.is_scripting():
         return False
     return _is_exporting_eager()
 
 
-def parameter_if_leaf(x: torch.Tensor) -> torch.Tensor:
-    """Wrap ``x`` into an ``nn.Parameter`` when that keeps its autograd history intact.
+def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -> None:
+    """Store tensor ``x`` on ``module`` as ``name`` so it is optimizable, movable and serializable.
 
-    ``nn.Parameter(x)`` re-roots ``x`` as a leaf: a tensor that already carries a ``grad_fn``
-    loses its history, so a group built from ``Se3.exp(v)`` would stop propagating gradients
-    to ``v``. Under graph capture (``torch.jit.trace``, ``torch.compile``, ``torch.export`` and
-    the dynamo ONNX exporter) a freshly created parameter is likewise lifted out of the graph
-    as a constant. In both situations the tensor is returned unchanged; otherwise a leaf
-    (a user-provided tensor or an existing parameter) becomes an optimizable ``nn.Parameter``.
+    A leaf tensor (user-provided data or an existing parameter) becomes an ``nn.Parameter``, as
+    before. ``nn.Parameter(x)`` would re-root a tensor that already carries a ``grad_fn`` as a new
+    leaf, so a group built from ``Se3.exp(v)`` would stop propagating gradients to ``v``; such a
+    tensor is registered as a buffer instead, which keeps its history while ``.to()``,
+    ``state_dict()`` and ``load_state_dict()`` still reach it under the same key. Under graph
+    capture (``torch.jit.trace``, ``torch.compile``, ``torch.export`` and the dynamo ONNX
+    exporter) neither a parameter nor a buffer can be created inside the traced region, so the
+    tensor is kept as a plain attribute of the module being built.
     """
-    if isinstance(x, torch.nn.Parameter):
-        return x
-    if x.grad_fn is not None or torch.jit.is_tracing() or is_compiling() or is_exporting():
-        return x
-    return torch.nn.Parameter(x)
+    if isinstance(x, torch.nn.Parameter) or not (torch.jit.is_tracing() or is_compiling() or is_exporting()):
+        if x.grad_fn is None or isinstance(x, torch.nn.Parameter):
+            x = x if isinstance(x, torch.nn.Parameter) else torch.nn.Parameter(x)
+        else:
+            module.register_buffer(name, x)
+            return
+    setattr(module, name, x)
 
 
 def dataclass_to_dict(obj: Any) -> Any:

@@ -471,10 +471,12 @@ def crop_by_indices(
         Under graph export (:func:`torch.export.export` / :func:`torch.onnx.export`) the box
         coordinates cannot be read back to Python, so the crop is captured as the same warp as
         :func:`crop_and_resize` (``align_corners=True``), which keeps the box coordinates dynamic.
-        ``size`` is then required; a box that is exactly ``size`` pixels (what
+        This needs ``size``: a box that is exactly ``size`` pixels (what
         :class:`~kornia.augmentation.RandomCrop` and :class:`CenterCrop2D` produce) is reproduced
         exactly, any other box is resampled to ``size`` with ``align_corners=True`` regardless of
-        ``shape_compensation`` and ``align_corners``.
+        ``shape_compensation`` and ``align_corners``. Without ``size`` the eager path is kept: it
+        reads the box coordinates back to Python, which breaks the graph under
+        :func:`torch.compile` and is rejected by ``torch.export`` as data-dependent.
 
     """
     KORNIA_CHECK_SHAPE(input_tensor, ["B", "C", "H", "W"])
@@ -487,9 +489,7 @@ def crop_by_indices(
     y1 = src[:, 0, 1]
     y2 = src[:, 3, 1] + 1
 
-    if is_exporting():
-        if size is None:
-            raise ValueError("`size` must be given to export `crop_by_indices`; it cannot be inferred from `src_box`.")
+    if size is not None and is_exporting():
         return _crop_by_indices_export(input_tensor, src_box, size, interpolation)
 
     # Move the four coordinate columns to Python in a single device sync (one ``tolist`` over a

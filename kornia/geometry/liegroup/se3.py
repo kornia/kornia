@@ -27,7 +27,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
 from kornia.core.tensor_wrapper import _unwrap
-from kornia.core.utils import parameter_if_leaf
+from kornia.core.utils import register_module_state
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
@@ -84,7 +84,7 @@ class Se3(nn.Module):
         self._translation: Vector3 | torch.Tensor
         self._rotation: So3
         if isinstance(translation, torch.Tensor):
-            self._translation = parameter_if_leaf(translation)
+            register_module_state(self, "_translation", translation)
         else:
             self._translation = translation
         if isinstance(rotation, Quaternion):

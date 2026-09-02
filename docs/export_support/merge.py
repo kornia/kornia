@@ -18,7 +18,12 @@
 """Merge the ONNX survey results and the torch.export / torch.compile probe results into
 docs/source/_data/export_support.json, the committed snapshot the support page is rendered from.
 
-Usage: python merge.py <onnx_results_glob> <compile_results_glob> <out.json>
+Usage: python merge.py <onnx_results_glob> <compile_results_glob> <out.json> [--force]
+
+Every results file is checked against the ``inventory_*.json`` its probe wrote next to it: each
+case named there needs a record that is not a crash marker, and all inventories must name the same
+kornia revision and torch version. A shortfall aborts the merge so a partial run cannot overwrite
+the committed snapshot; ``--force`` merges anyway and stamps the header with what was checked.
 
 Cross-references on the page come from the Sphinx inventory of the last docs build
 (docs/build/html/objects.inv) when it exists; without one every operator is rendered as plain text.
@@ -257,6 +262,39 @@ def _load_results(pattern: str) -> dict[str, dict]:
     return out
 
 
+def _validate(patterns: list[str], force: bool) -> dict[str, str]:
+    """Check every results file against its probe inventory; return the provenance the run agrees on.
+
+    Missing inventories, cases without a record (or with only a crash marker) and groups measured
+    at different revisions or torch versions are reported; they abort the merge unless ``force``.
+    """
+    from harness import inventory_path, load_inventory
+
+    problems: list[str] = []
+    stamps: dict[tuple[str, str], list[str]] = {}
+    files = [f for pattern in patterns for f in sorted(glob.glob(pattern))]
+    if not files:
+        problems.append(f"no results match {patterns}")
+    for f in files:
+        inv = load_inventory(f)
+        if inv is None:
+            problems.append(f"{f}: no {Path(inventory_path(f)).name} next to it (rerun the probe)")
+            continue
+        stamps.setdefault((inv.get("revision", "?"), inv.get("torch", "?")), []).append(Path(f).name)
+        have = {r["name"] for r in json.load(open(f)) if "crashed" not in (r.get("status"), r.get("export"))}
+        missing = [n for n in inv["names"] if n not in have]
+        if missing:
+            problems.append(f"{f}: {len(missing)} of {len(inv['names'])} cases have no record, e.g. {missing[:3]}")
+    if len(stamps) > 1:
+        problems.append("results were measured at different revisions / torch versions: " + str(stamps))
+    if problems:
+        print("\n".join(problems), file=sys.stderr)
+        if not force:
+            sys.exit("incomplete survey: not writing the snapshot (pass --force to merge anyway)")
+    revision, torch_version = next(iter(stamps), ("?", "?"))
+    return {"revision": revision, "torch": torch_version}
+
+
 def _inventory() -> set[str]:
     """Documented object names from the last docs build, used to turn operator names into cross-references."""
     inv = REPO / "docs" / "build" / "html" / "objects.inv"
@@ -270,7 +308,8 @@ def _inventory() -> set[str]:
     return {name for objs in data.values() for name in objs}
 
 
-def main(onnx_glob: str, compile_glob: str, out_path: str) -> None:
+def main(onnx_glob: str, compile_glob: str, out_path: str, force: bool = False) -> None:
+    measured = _validate([onnx_glob, compile_glob], force)
     onnx_rs = _load_results(onnx_glob)
     compile_rs = _load_results(compile_glob)
     inventory = _inventory()
@@ -322,11 +361,15 @@ def main(onnx_glob: str, compile_glob: str, out_path: str) -> None:
     rev = subprocess.run(
         ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=REPO, check=False
     ).stdout.strip()
+    if measured["revision"] not in ("?", rev):
+        print(f"note: results were measured at {measured['revision']}, the checkout is at {rev}", file=sys.stderr)
+    if measured["torch"] not in ("?", torch.__version__):
+        print(f"note: measured with torch {measured['torch']}, running {torch.__version__}", file=sys.stderr)
     data = {
         "generated_at": dt.datetime.now(tz=dt.UTC).date().isoformat(),
-        "revision": rev,
+        "revision": measured["revision"] if measured["revision"] != "?" else rev,
         "kornia": kornia.__version__,
-        "torch": torch.__version__,
+        "torch": measured["torch"] if measured["torch"] != "?" else torch.__version__,
         "onnx": onnx.__version__,
         "onnxruntime": onnxruntime.__version__,
         "onnxscript": onnxscript.__version__,
@@ -353,6 +396,7 @@ def main(onnx_glob: str, compile_glob: str, out_path: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
+    _args = [a for a in sys.argv[1:] if a != "--force"]
+    if len(_args) != 3:
         sys.exit(__doc__)
-    main(*sys.argv[1:4])
+    main(*_args, force="--force" in sys.argv)

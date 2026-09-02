@@ -311,3 +311,18 @@ class TestSe3(BaseTester):
         i = Se3.identity(batch_size=batch_size, device=device, dtype=dtype)
         self.assert_close(s_in_s.so3.q.data, i.so3.q.data)
         self.assert_close(s_in_s.t, i.t)
+
+    def test_derived_state_moves_and_serializes(self, device, dtype):
+        v = torch.rand(2, 6, device=device, dtype=dtype, requires_grad=True)
+        s = Se3.exp(v)
+        assert s.t.grad_fn is not None
+        assert "_translation" in s.state_dict()
+        restored = Se3(So3.identity(2, device, dtype), torch.zeros(2, 3, device=device, dtype=dtype))
+        assert list(restored.state_dict()) == list(s.state_dict()) == ["_translation"]
+        restored.load_state_dict(s.state_dict())
+        self.assert_close(restored.t, s.t.detach())
+        other = torch.float64 if dtype != torch.float64 else torch.float32
+        moved = s.to(other)
+        assert moved.t.dtype == other and moved.t.grad_fn is not None
+        moved.t.sum().backward()
+        assert v.grad is not None

@@ -46,6 +46,7 @@ import io
 import json
 import logging
 import os
+import subprocess
 import time
 import traceback
 import warnings
@@ -369,17 +370,62 @@ def run_case(c: dict[str, Any]) -> dict[str, Any]:
     return rec
 
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(os.path.dirname(HERE))
+
+
+def provenance() -> dict[str, str]:
+    """The kornia revision and torch version a probe run measures, stamped into its inventory."""
+
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True, check=False).stdout.strip()
+
+    dirty = "-dirty" if git("status", "--porcelain", "--", "kornia") else ""
+    return {"revision": git("rev-parse", "--short", "HEAD") + dirty, "torch": torch.__version__}
+
+
+def inventory_path(out_json: str) -> str:
+    """``results/inventory_<name>.json`` next to ``results/<name>.json``."""
+    return os.path.join(os.path.dirname(out_json), "inventory_" + os.path.basename(out_json))
+
+
+def load_inventory(out_json: str) -> dict[str, Any] | None:
+    try:
+        return json.load(open(inventory_path(out_json)))
+    except (OSError, ValueError):
+        return None
+
+
+def prepare_resume(cases: list[dict[str, Any]], out_json: str) -> dict[str, dict[str, Any]]:
+    """Records of ``out_json`` worth reusing, then (re)write the inventory this run is measured against.
+
+    Records left by another kornia revision or torch version are discarded rather than resumed:
+    the inventory that accompanied them names what produced them, and a file without one predates
+    the stamp, so it is not trusted either.
+    """
+    done: dict[str, dict[str, Any]] = {}
+    if os.path.exists(out_json):
+        try:
+            done = {r["name"]: r for r in json.load(open(out_json))}
+        except Exception:
+            done = {}
+    inv = load_inventory(out_json)
+    stamp = provenance()
+    if done and (inv is None or {k: inv.get(k) for k in stamp} != stamp):
+        was = inv and (inv.get("revision"), inv.get("torch"))
+        print(f"{out_json}: records are from {was}, starting over", flush=True)
+        done = {}
+    os.makedirs(os.path.dirname(os.path.abspath(out_json)), exist_ok=True)
+    json.dump({"names": [c["name"] for c in cases], **stamp}, open(inventory_path(out_json), "w"), indent=1)
+    return done
+
+
 def run_cases(cases: list[dict[str, Any]], out_json: str, only: list[str] | None = None, resume: bool = True) -> None:
     names = [c["name"] for c in cases]
     dup = {n for n in names if names.count(n) > 1}
     if dup:
         raise SystemExit(f"duplicate case names: {sorted(dup)}")
-    done: dict[str, dict[str, Any]] = {}
-    if resume and os.path.exists(out_json):
-        try:
-            done = {r["name"]: r for r in json.load(open(out_json))}
-        except Exception:
-            done = {}
+    done = prepare_resume(cases, out_json) if resume else {}
     results: list[dict[str, Any]] = []
     for c in cases:
         if only and not any(o == c["name"] or o == c["group"] or c["name"].startswith(o) for o in only):

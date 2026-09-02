@@ -285,3 +285,20 @@ class TestSe2(BaseTester):
         y = Se2.random(batch_size)
         self.assert_close(x.inverse().adjoint(), x.adjoint().inverse())
         self.assert_close((x * y).adjoint(), x.adjoint() @ y.adjoint())
+
+    def test_derived_state_moves_and_serializes(self, device, dtype):
+        # A group built from a tensor with autograd history keeps that history; its state must
+        # still be registered so ``state_dict`` and ``.to()`` / ``.double()`` reach it.
+        v = torch.rand(2, 3, device=device, dtype=dtype, requires_grad=True)
+        s = Se2.exp(v)
+        assert s.t.grad_fn is not None and s.so2.z.grad_fn is not None
+        assert set(s.state_dict()) == {"_translation", "_rotation._z"}
+        restored = Se2(So2.identity(2, device, dtype), torch.zeros(2, 2, device=device, dtype=dtype))
+        restored.load_state_dict(s.state_dict())
+        self.assert_close(restored.matrix(), s.matrix().detach())
+        # ``.double()`` / ``.float()`` convert the floating buffers in place and keep the graph
+        converted = s.double() if dtype != torch.float64 else s.float()
+        assert converted.t.dtype == (torch.float64 if dtype != torch.float64 else torch.float32)
+        assert converted.t.grad_fn is not None
+        converted.t.sum().backward()
+        assert v.grad is not None

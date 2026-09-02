@@ -27,7 +27,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.core.tensor_wrapper import _unwrap
-from kornia.core.utils import parameter_if_leaf
+from kornia.core.utils import register_module_state
 from kornia.geometry.liegroup.so2 import So2
 from kornia.geometry.vector import Vector2
 
@@ -93,7 +93,7 @@ class Se2(nn.Module):
         self._rotation: So2 = rotation
         if isinstance(translation, torch.Tensor):
             _check_se2_r_t_shape(rotation, translation)  # TODO remove
-            self._translation = parameter_if_leaf(translation)
+            register_module_state(self, "_translation", translation)
         else:
             self._translation = translation
 

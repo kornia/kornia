@@ -36,6 +36,11 @@ from kornia.geometry.epipolar.numeric import matrix_cofactor_tensor
 onnx = pytest.importorskip("onnx")
 ort = pytest.importorskip("onnxruntime")
 
+if not hasattr(torch.onnx, "ONNXProgram"):
+    # ``torch.onnx.export(..., dynamo=True)`` and the ``ONNXProgram`` it returns (with ``.save()``)
+    # arrived together in torch 2.5; older releases only have the TorchScript exporter.
+    pytest.skip("the dynamo ONNX exporter needs torch >= 2.5", allow_module_level=True)
+
 
 class _Fn(nn.Module):
     def __init__(self, fn, **kwargs):

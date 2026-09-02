@@ -26,7 +26,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.tensor_wrapper import _unwrap
-from kornia.core.utils import is_exporting, parameter_if_leaf
+from kornia.core.utils import is_exporting, register_module_state
 from kornia.geometry.vector import Vector2
 
 
@@ -73,7 +73,7 @@ class So2(nn.Module):
 
         if not (is_scalar or is_flat or is_column):
             raise ValueError(f"Invalid input size, we expect [], [B], or [B, 1]. Got: {z.shape}")
-        self._z = parameter_if_leaf(z)
+        register_module_state(self, "_z", z)
 
     def __repr__(self) -> str:
         return f"{self.z}"

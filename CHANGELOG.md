@@ -42,9 +42,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `RandomCrop`, `RandomResizedCrop`, `RandomAffine3D`, `RandomRotation3D`, `RandomMotionBlur3D`,
   `RandomJPEG`, `RandomMedianBlur`, `RandomPlanckianJitter` and `AugmentationSequential` with
   crops or boxes now export, and `LightGlue` exports once `depth_confidence`/`width_confidence`
-  pruning is disabled. Behavior notes: `Se2`/`Se3`/`So2`/`So3`/`ParametrizedLine` built from a
-  tensor that already carries autograd history keep that history instead of being re-rooted as an
-  `nn.Parameter`; under export `crop_by_indices` resamples the crop, `distort_points`/
+  pruning is disabled. Behavior notes: `Se2`/`Se3`/`So2`/`ParametrizedLine` built from a tensor
+  that already carries autograd history (`Se2.exp(v)`, `ParametrizedLine.through(p0, p1)`) keep
+  that history: the tensor is registered as a buffer instead of being re-rooted as an
+  `nn.Parameter`, so `.to()`, `state_dict()` and `load_state_dict()` still reach it under the same
+  key but it no longer appears in `parameters()`; `kornia.core.utils.is_exporting()` falls back to
+  `is_compiling()` on torch < 2.6, which has no export flag (inside a Dynamo trace newer torch
+  folds its flag to `True` for `torch.compile` as well, so the export-safe paths are what a
+  compiled graph contains on every supported version); under export `crop_by_indices` with a
+  `size` resamples the crop and without one keeps the eager path, `distort_points`/
   `undistort_points` always apply the tilt term (a no-op when the coefficients are zero) and
   `normalize`/`denormalize` accept a 1-D `(C,)` mean/std; `matrix_cofactor_tensor` returns exact
   cofactors for singular matrices instead of raising when every matrix in the batch is singular.
