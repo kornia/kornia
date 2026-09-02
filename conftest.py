@@ -177,6 +177,17 @@ def pytest_collection_modifyitems(config, items):
             config.hook.pytest_deselected(items=device_agnostic_items)
             device_agnostic_ids = {id(item) for item in device_agnostic_items}
             items[:] = [item for item in items if id(item) not in device_agnostic_ids]
+            # Say so out loud. The deselected set is not incidental -- it holds the ONNX and
+            # torch.export suites -- and a bare "N deselected" in the status line is easy to read
+            # as noise, so an accelerator-only run should not look like a full-suite run.
+            reporter = config.pluginmanager.get_plugin("terminalreporter")
+            if reporter is not None:
+                reporter.write_line(
+                    f"deselected {len(device_agnostic_items)} device_agnostic test(s): they exercise "
+                    "CPU-only code and CPU is not in --device. Pass --run-device-agnostic "
+                    "(or KORNIA_TEST_RUN_DEVICE_AGNOSTIC=true) to run them here too.",
+                    yellow=True,
+                )
 
     # Deselect dynamo/compile tests when no optimizer is specified
     # Check environment variable directly (not config option which has default "inductor")
@@ -531,6 +542,11 @@ def pytest_runtest_protocol(item, nextitem):
         f"--device={device_name}",
         f"--dtype={dtype_name}",
     ]
+    # The parent already decided this node runs, so the child must not re-apply a selection rule
+    # and collect nothing: it is handed a single --device=cuda, under which the device_agnostic
+    # deselection would fire. Exit code 5 is reported back as an ordinary skip, which would hide
+    # a test that never executed.
+    cmd.append("--run-device-agnostic")
     if item.config.getoption("--runslow"):
         cmd.append("--runslow")
     if item.config.getoption("--tf32"):
