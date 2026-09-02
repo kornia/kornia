@@ -156,7 +156,10 @@ class TestExportHelpers:
             seen.append(is_exporting())
             return x + 1
 
-        torch.compile(fn, backend="eager")(torch.zeros(2))
+        try:
+            torch.compile(fn, backend="eager")(torch.zeros(2))
+        except RuntimeError as e:  # e.g. "Dynamo is not supported on Python 3.13+" on torch 2.5
+            pytest.skip(f"no Dynamo here: {e}")
         assert seen == [True]
 
     def test_register_module_state_wraps_leaf(self, device, dtype):
