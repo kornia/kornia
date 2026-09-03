@@ -20,10 +20,14 @@ from __future__ import annotations
 import builtins
 import hashlib
 import importlib
+import platform
 import random
 import re
+import sys
+import warnings
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence, cast
+from typing import Any, Literal, Sequence, cast
 
 import numpy as np
 import pytest
@@ -46,6 +50,157 @@ _EXCEPTION_TYPES: dict[str, type[BaseException]] = {
     "kornia.core.exceptions.BaseError": BaseError,
     "torch.autograd.gradcheck.GradcheckError": GradcheckError,
 }
+_SCHEMA_VERSION = "1"
+_SEED_SCHEME = "sha256-nodeid-v1"
+_ALLOWED_PHASES = {"setup", "call"}
+
+
+@dataclass(frozen=True)
+class ManifestProfile:
+    """Stable configuration for one Linux CPU half-precision baseline."""
+
+    name: str
+    dtype: str
+    manifest_path: Path
+
+
+@dataclass(frozen=True)
+class ManifestEntry:
+    """One exact failure outcome accepted by a manifest."""
+
+    phase: Literal["setup", "call"]
+    exception: str
+    nodeid: str
+
+
+@dataclass(frozen=True)
+class ManifestEnvironment:
+    """Compatibility and provenance fields recorded in a manifest header."""
+
+    python: str
+    pytorch: str
+    os: str
+    arch: str
+    pytest: str
+    numpy: str
+    pillow: str
+
+
+_PROFILES = {
+    name: ManifestProfile(name, dtype, _MANIFEST_DIR / f"cpu_{dtype}.txt")
+    for name, dtype in (("cpu-float16", "float16"), ("cpu-bfloat16", "bfloat16"))
+}
+
+
+def get_profile(name: str) -> ManifestProfile:
+    """Return a supported CPU-half manifest profile."""
+    try:
+        return _PROFILES[name]
+    except KeyError as error:
+        known = ", ".join(sorted(_PROFILES))
+        raise ValueError(f"unknown profile {name!r}; known profiles are: {known}") from error
+
+
+def current_environment() -> ManifestEnvironment:
+    """Capture enforced compatibility and warning-only provenance metadata."""
+    try:
+        from PIL import __version__ as pillow_version
+    except ImportError:
+        pillow_version = "not-installed"
+    return ManifestEnvironment(
+        python=f"{sys.version_info.major}.{sys.version_info.minor}",
+        pytorch=torch.__version__.partition("+")[0],
+        os=platform.system(),
+        arch=platform.machine(),
+        pytest=pytest.__version__,
+        numpy=np.__version__,
+        pillow=pillow_version,
+    )
+
+
+def serialize_manifest(
+    profile: ManifestProfile,
+    entries: Sequence[ManifestEntry],
+    environment: ManifestEnvironment,
+    generation_command: str,
+) -> str:
+    """Serialize a canonical profile manifest without resolving exception classes."""
+    header = {
+        "known-failure-schema": _SCHEMA_VERSION,
+        "profile": profile.name,
+        "python": environment.python,
+        "pytorch": environment.pytorch,
+        "os": environment.os,
+        "arch": environment.arch,
+        "seed-scheme": _SEED_SCHEME,
+        "pytest": environment.pytest,
+        "numpy": environment.numpy,
+        "pillow": environment.pillow,
+        "generated-by": generation_command,
+    }
+    lines = [*(f"# {key}: {value}" for key, value in header.items()), ""]
+    lines.extend(f"{entry.phase}\t{entry.exception}\t{entry.nodeid}" for entry in sorted(entries, key=lambda x: x.nodeid))
+    return "\n".join([*lines, ""])
+
+
+def parse_manifest(
+    profile: ManifestProfile,
+    text: str,
+    environment: ManifestEnvironment,
+    *,
+    source: Path | None = None,
+) -> dict[str, ManifestEntry]:
+    """Parse and validate one manifest, enforcing compatibility but not importing exception types."""
+    label = str(source) if source is not None else "manifest"
+    header: dict[str, str] = {}
+    entries: dict[str, ManifestEntry] = {}
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if not line:
+            continue
+        if line.startswith("# ") and ": " in line:
+            key, value = line[2:].split(": ", maxsplit=1)
+            header[key] = value
+            continue
+        if line.startswith("#"):
+            continue
+        fields = line.split("\t")
+        if len(fields) != 3:
+            raise ValueError(f"{label}:{line_number}: expected '<phase>\\t<exception>\\t<node ID>'")
+        phase, exception, nodeid = fields
+        if phase not in _ALLOWED_PHASES:
+            raise ValueError(f"{label}:{line_number}: unsupported phase: {phase!r}")
+        if not exception or not nodeid:
+            raise ValueError(f"{label}:{line_number}: exception identity and node ID must be non-empty")
+        if nodeid in entries:
+            raise ValueError(f"{label}:{line_number}: duplicate node ID: {nodeid}")
+        entries[nodeid] = ManifestEntry(cast(Literal["setup", "call"], phase), exception, nodeid)
+
+    required = {
+        "known-failure-schema": _SCHEMA_VERSION,
+        "profile": profile.name,
+        "python": environment.python,
+        "pytorch": environment.pytorch,
+        "os": environment.os,
+        "arch": environment.arch,
+        "seed-scheme": _SEED_SCHEME,
+    }
+    for key, expected in required.items():
+        observed = header.get(key)
+        if observed != expected:
+            display = "Python" if key == "python" else key
+            raise ValueError(f"{label}: {display} mismatch: expected {expected!r}, found {observed!r}")
+
+    for key, expected in {
+        "pytest": environment.pytest,
+        "numpy": environment.numpy,
+        "pillow": environment.pillow,
+    }.items():
+        observed = header.get(key)
+        if observed != expected:
+            warnings.warn(
+                f"{label}: {key} provenance differs: recorded {observed!r}, running {expected!r}", stacklevel=2
+            )
+    return entries
 
 
 def seed_test_rng(nodeid: str) -> int:

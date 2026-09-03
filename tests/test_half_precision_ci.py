@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import random
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -31,12 +32,88 @@ from kornia.core.exceptions import ShapeError
 
 from testing.half_precision_ci import (
     ISSUE_URL,
+    ManifestEntry,
+    ManifestEnvironment,
+    get_profile,
     load_known_failures,
     mark_known_failures,
+    parse_manifest,
     seed_test_rng,
+    serialize_manifest,
 )
 
 pytest_plugins = ["pytester"]
+
+
+def _environment(**overrides: str) -> ManifestEnvironment:
+    values = {
+        "python": "3.11",
+        "pytorch": "2.9.1",
+        "os": "Linux",
+        "arch": "x86_64",
+        "pytest": "9.0.3",
+        "numpy": "2.3.5",
+        "pillow": "12.0.0",
+    }
+    values.update(overrides)
+    return ManifestEnvironment(**values)
+
+
+class TestManifestCodec:
+    def test_round_trips_phase_and_opaque_exception_identity(self) -> None:
+        profile = get_profile("cpu-float16")
+        entries = [
+            ManifestEntry("setup", "_pytest.outcomes.Failed", "tests/a.py::test_pytest_fail"),
+            ManifestEntry("call", "some_test.LocalError", "tests/a.py::test_local[other-bfloat16-text]"),
+        ]
+
+        text = serialize_manifest(profile, entries, _environment(), "pytest tests/")
+        parsed = parse_manifest(profile, text, _environment())
+
+        assert parsed == {entry.nodeid: entry for entry in entries}
+        assert "setup\t_pytest.outcomes.Failed\ttests/a.py::test_pytest_fail" in text
+        assert "call\tsome_test.LocalError\ttests/a.py::test_local[other-bfloat16-text]" in text
+
+    @pytest.mark.parametrize("phase", ["", "collect", "teardown"])
+    def test_rejects_unsupported_phase(self, phase: str) -> None:
+        profile = get_profile("cpu-float16")
+        text = serialize_manifest(
+            profile,
+            [ManifestEntry("call", "builtins.AssertionError", "tests/a.py::test_a")],
+            _environment(),
+            "pytest tests/",
+        ).replace("call\tbuiltins.AssertionError", f"{phase}\tbuiltins.AssertionError")
+
+        with pytest.raises(ValueError, match="unsupported phase"):
+            parse_manifest(profile, text, _environment())
+
+    def test_rejects_duplicate_node_ids(self) -> None:
+        profile = get_profile("cpu-float16")
+        entry = ManifestEntry("call", "builtins.AssertionError", "tests/a.py::test_a")
+        text = serialize_manifest(profile, [entry], _environment(), "pytest tests/")
+        text += "call\tbuiltins.RuntimeError\ttests/a.py::test_a\n"
+
+        with pytest.raises(ValueError, match="duplicate node ID"):
+            parse_manifest(profile, text, _environment())
+
+    def test_rejects_wrong_profile_and_enforced_environment(self) -> None:
+        profile = get_profile("cpu-float16")
+        text = serialize_manifest(profile, [], _environment(), "pytest tests/")
+
+        with pytest.raises(ValueError, match="profile.*cpu-bfloat16"):
+            parse_manifest(get_profile("cpu-bfloat16"), text, _environment())
+        with pytest.raises(ValueError, match="Python.*3.12"):
+            parse_manifest(profile, text, _environment(python="3.12"))
+
+    def test_provenance_difference_warns_without_rejecting(self) -> None:
+        profile = get_profile("cpu-float16")
+        text = serialize_manifest(profile, [], _environment(pytest="8.4.2"), "pytest tests/")
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            assert parse_manifest(profile, text, _environment(pytest="9.0.3")) == {}
+
+        assert any("pytest provenance differs" in str(item.message) for item in caught)
 
 
 def _write_manifest(directory: Path, dtype: str, contents: str) -> None:
