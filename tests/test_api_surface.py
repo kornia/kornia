@@ -32,6 +32,8 @@ Additions are fine and do not fail the test; run this file with
 
 import importlib
 import json
+import pkgutil
+import warnings
 from pathlib import Path
 
 import pytest
@@ -68,7 +70,30 @@ def test_no_public_name_removed(module_name):
     )
 
 
-@pytest.mark.parametrize("module_name", sorted(json.loads(INVENTORY.read_text())))
+def _modules_declaring_all() -> list:
+    """Every importable ``kornia`` submodule that declares ``__all__``.
+
+    The inventory tracks the stable-core modules, but an unbound name is a problem
+    wherever it sits: the breakage that motivated this guard (#4026, the
+    ComfyUI-LTXVideo report in #3986) was in ``kornia.geometry.transform.pyramid``,
+    which the inventory does not cover. Walking the package finds every module that
+    declares a public surface, costs a fraction of a second, and needs no upkeep as
+    modules come and go.
+    """
+    import kornia
+
+    found = []
+    for info in pkgutil.walk_packages(kornia.__path__, "kornia."):
+        try:
+            mod = importlib.import_module(info.name)
+        except Exception:
+            continue  # optional extras and backends are out of scope for this guard
+        if getattr(mod, "__all__", None) is not None:
+            found.append(info.name)
+    return sorted(found)
+
+
+@pytest.mark.parametrize("module_name", _modules_declaring_all())
 def test_public_names_resolve(module_name):
     """
     Every name in ``__all__`` has to be bound in its module.
@@ -78,11 +103,14 @@ def test_public_names_resolve(module_name):
     ``__all__`` itself, so a name whose binding was dropped still reads as present.
     """
     mod = importlib.import_module(module_name)
-    declared = getattr(mod, "__all__", None)
-    if declared is None:
-        pytest.skip(f"{module_name} does not define __all__")
+    declared = mod.__all__
 
-    unbound = sorted(name for name in declared if not hasattr(mod, name))
+    with warnings.catch_warnings():
+        # ``hasattr`` runs module-level ``__getattr__``, which is how the deprecated
+        # ``kornia.utils`` re-exports announce themselves. Keep the probe quiet so it
+        # does not emit a DeprecationWarning per run just by looking.
+        warnings.simplefilter("ignore")
+        unbound = sorted(name for name in declared if not hasattr(mod, name))
 
     assert not unbound, (
         f"{module_name}.__all__ lists names that are not bound in the module: "

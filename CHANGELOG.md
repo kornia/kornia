@@ -106,6 +106,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   call now samples on the image's device and matches the same-device result (`extract_patches_simple` previously
   built the full sampling grid on the LAF's device).
 
+* `AUTUMN` is dropped from `kornia.color.__all__` (#4143). The class was deprecated in 0.7.2 in favour of
+  `ColorMap(base='autumn')` and removed by #3432, which left the `__all__` entry behind. Since that removal
+  `from kornia.color import AUTUMN` has raised `AttributeError` and `from kornia.color import *` has failed on
+  it, so nothing that works today stops working — the entry named a binding that no longer existed. Callers
+  still reaching for the class should use `ColorMap(base='autumn')`.
+
 * The shape guards of `normalize_homography` and `denormalize_homography` now reject everything but a
   `(3, 3)`/`(B, 3, 3)` matrix, and `normalize_homography3d`'s everything but a `(4, 4)`/`(B, 4, 4)` one (#3999).
   A rank-4 input used to pass the guard and come back with its rank unchanged —
