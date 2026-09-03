@@ -31,6 +31,7 @@ import io
 import pytest
 import torch
 
+from kornia.core._compat import torch_version_lt
 from kornia.core._small_linalg import (
     _adjugate_2x2,
     _adjugate_3x3,
@@ -42,6 +43,21 @@ from kornia.core._small_linalg import (
 from testing.base import BaseTester
 
 ADJUGATE = {2: _adjugate_2x2, 3: _adjugate_3x3, 4: _adjugate_4x4}
+
+
+def _require_exporter(use_dynamo_exporter: bool) -> None:
+    """Skip unless this build can actually run the requested ONNX exporter.
+
+    ``dynamo=`` first exists in torch 2.5, but there it still routes through the experimental
+    ``_compat.export_compat`` shim and needs ``onnxscript`` -- which the 2.5.1 CI legs do not
+    install, so an unguarded call is a hard failure rather than a skip there. Same reasoning and
+    same guard as ``tests/filters/test_gaussian.py::test_onnx_export_modern``.
+    """
+    pytest.importorskip("onnx")
+    if use_dynamo_exporter:
+        if torch_version_lt(2, 6, 0):
+            pytest.skip("the dynamo ONNX exporter is only non-experimental from PyTorch 2.6")
+        pytest.importorskip("onnxscript")
 
 
 def _well_conditioned(n, device, dtype, batch=()):
@@ -128,6 +144,7 @@ class TestAdjugateKernels(BaseTester):
     def test_onnx_export_uses_basic_arithmetic(self, device, n, use_dynamo_exporter):
         # Capability matrix: the scalar kernels are the ONNX-safe path, and that is the whole
         # reason they exist. Assert the graph carries no linalg decomposition, on both exporters.
+        _require_exporter(use_dynamo_exporter)
         onnx = pytest.importorskip("onnx")
         x = _well_conditioned(n, device, torch.float32, (2,))
         buffer = io.BytesIO()
@@ -194,6 +211,7 @@ class TestInverse3x3Kernels(BaseTester):
     def test_scalar_kernel_exports_to_onnx(self, device, use_dynamo_exporter):
         # Contractual: the scalar kernel is the path the dispatcher takes under export, so its
         # graph must contain no linalg decomposition. Both exporters.
+        _require_exporter(use_dynamo_exporter)
         onnx = pytest.importorskip("onnx")
         x = _well_conditioned(3, device, torch.float32, (2,))
         buffer = io.BytesIO()
@@ -209,6 +227,7 @@ class TestInverse3x3Kernels(BaseTester):
         # 2.0-2.8 is untested -- no such environment was available. The dispatcher never takes
         # this kernel under export, so a build where it does not lower is a visible skip and not
         # a failure. Promote this to a hard assertion only once every supported torch is checked.
+        _require_exporter(use_dynamo_exporter)
         onnx = pytest.importorskip("onnx")
         x = _well_conditioned(3, device, torch.float32, (2,))
         buffer = io.BytesIO()
