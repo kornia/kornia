@@ -75,7 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   2.0.0; PR-time CI has only ever exercised 2.5.1 and newer, and this same change retires the
   scheduled-CI legs that tested anything older.
   Installing kornia now requires `torch>=2.5.1`; a `torch` install below that version no longer
-  satisfies the dependency, and `pip`/`uv` will refuse to resolve it. (#PR_NUMBER)
+  satisfies the dependency, and `pip`/`uv` will refuse to resolve it. (#4197)
 
 * `extract_patches_from_pyramid` now samples ordinary-sized inputs once from a packed pyramid atlas instead of
   sampling every LAF at every pyramid level. A statically selected levelwise fallback keeps atlases larger than
