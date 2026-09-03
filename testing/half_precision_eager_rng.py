@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-
 _PYTHON_RANDOM_CALLS = {
     "betavariate",
     "choice",
@@ -140,7 +139,9 @@ def _audited(
     node_prefixes: tuple[str, ...],
     classification: Literal["value-independent", "value-dependent", "not-collected"],
 ) -> tuple[AuditedEagerRngCall, ...]:
-    return tuple(AuditedEagerRngCall(EagerRngCall(path, line, name), node_prefixes, classification) for _ in range(count))
+    return tuple(
+        AuditedEagerRngCall(EagerRngCall(path, line, name), node_prefixes, classification) for _ in range(count)
+    )
 
 
 AUDITED_EAGER_RNG_CALLS = tuple(
@@ -151,7 +152,9 @@ AUDITED_EAGER_RNG_CALLS = tuple(
                 47,
                 "torch.randn",
                 2,
-                ("tests/augmentation/container/test_augmentation_sequential.py::TestAugmentationSequential::test_mixup",),
+                (
+                    "tests/augmentation/container/test_augmentation_sequential.py::TestAugmentationSequential::test_mixup",
+                ),
                 "value-dependent",
             ),
             *_audited(

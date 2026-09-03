@@ -38,6 +38,7 @@ import kornia
 
 from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
 from testing.half_precision_ci import (
+    FailureRecorder,
     KnownFailureTracker,
     ManifestProfile,
     get_profile,
@@ -208,7 +209,10 @@ def _validate_complete_known_failure_run(config, option: str) -> None:
         "--lf": config.option.lf,
         "--ff": config.option.failedfirst,
         "--collect-only": config.option.collectonly,
+        "--ignore": getattr(config.option, "ignore", None),
+        "--ignore-glob": getattr(config.option, "ignore_glob", None),
         "xdist": getattr(config.option, "numprocesses", None),
+        "-p": any(argument == "-p" or argument.startswith("-p") for argument in config.invocation_params.args),
     }
     active = [name for name, value in partial_options.items() if value]
     if active:
@@ -232,11 +236,15 @@ def pytest_configure(config) -> None:
         )
     if os.environ.get("KORNIA_TEST_OPTIMIZER", "").strip() or config.getoption("--runslow"):
         raise pytest.UsageError("CPU-half profiles require KORNIA_TEST_OPTIMIZER to be unset and --runslow disabled")
+    if getattr(config.option, "numprocesses", None):
+        raise pytest.UsageError("CPU-half profiles do not support xdist")
 
     if verify or record:
         _validate_complete_known_failure_run(config, "--verify-known-failures" if verify else "--record-known-failures")
+    manifest_override = config.getoption("--known-failure-manifest")
+    if record and manifest_override:
+        raise pytest.UsageError("--known-failure-manifest is a replay override and cannot be used while recording")
     if focus or verify:
-        manifest_override = config.getoption("--known-failure-manifest")
         manifest_path = Path(manifest_override) if manifest_override else profile.manifest_path
         try:
             tracker = KnownFailureTracker(
@@ -249,6 +257,12 @@ def pytest_configure(config) -> None:
         except (OSError, ValueError) as error:
             raise pytest.UsageError(str(error)) from error
         config.pluginmanager.register(tracker, "known-half-precision-failure-tracker")
+    else:
+        try:
+            recorder = FailureRecorder(profile, Path(record), rootpath=config.rootpath)
+        except (OSError, ValueError) as error:
+            raise pytest.UsageError(str(error)) from error
+        config.pluginmanager.register(recorder, "half-precision-failure-recorder")
 
 
 def pytest_generate_tests(metafunc) -> None:

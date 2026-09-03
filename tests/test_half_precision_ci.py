@@ -230,19 +230,30 @@ def test_eager_rng_node_coverage_is_boundary_aware() -> None:
     assert eager_rng_calls_for_node(f"{prefix}_mismatch[cpu-float16]") == ()
 
 
-def test_failure_recorder_writes_setup_and_call_failures_in_nodeid_order(pytester: pytest.Pytester) -> None:
+def _install_candidate_recorder(pytester: pytest.Pytester) -> Path:
+    output = pytester.path / "candidate.txt"
     pytester.makeconftest(
         """
         from pathlib import Path
 
-        from testing.half_precision_ci import FailureRecorder
+        from testing.half_precision_ci import FailureRecorder, get_profile
 
 
         def pytest_configure(config):
-            recorder = FailureRecorder("float16", Path(__file__).with_name("recorded.txt"))
+            recorder = FailureRecorder(
+                get_profile("cpu-float16"),
+                Path(__file__).with_name("candidate.txt"),
+                rootpath=config.rootpath,
+                previous_entries={},
+            )
             config.pluginmanager.register(recorder, "half-precision-failure-recorder")
         """
     )
+    return output
+
+
+def test_failure_recorder_writes_complete_v1_candidate_in_nodeid_order(pytester: pytest.Pytester) -> None:
+    output = _install_candidate_recorder(pytester)
     pytester.makepyfile(
         test_sample="""
         import pytest
@@ -284,17 +295,134 @@ def test_failure_recorder_writes_setup_and_call_failures_in_nodeid_order(pyteste
     result = pytester.runpytest("-q")
 
     assert result.ret == pytest.ExitCode.TESTS_FAILED
-    recorded = (pytester.path / "recorded.txt").read_text(encoding="utf-8")
-    assert "Recorded Linux CPU float16 failures" in recorded
-    lines = [line for line in recorded.splitlines() if line and not line.startswith("#")]
-    assert lines == [
-        "AssertionError\ttest_sample.py::test_a_failure",
-        "kornia.core.exceptions.ShapeError\ttest_sample.py::test_kornia_failure",
-        "RuntimeError\ttest_sample.py::test_setup_failure",
-        "ValueError\ttest_sample.py::test_z_failure",
+    recorded = output.read_text(encoding="utf-8")
+    entries = parse_manifest(get_profile("cpu-float16"), recorded, current_environment(), source=output)
+    assert list(entries.values()) == [
+        ManifestEntry("call", "builtins.AssertionError", "test_sample.py::test_a_failure"),
+        ManifestEntry("call", "kornia.core.exceptions.ShapeError", "test_sample.py::test_kornia_failure"),
+        ManifestEntry("setup", "builtins.RuntimeError", "test_sample.py::test_setup_failure"),
+        ManifestEntry("call", "builtins.ValueError", "test_sample.py::test_z_failure"),
     ]
-    _write_manifest(pytester.path, "float16", recorded)
-    assert load_known_failures("float16", pytester.path)["test_sample.py::test_kornia_failure"] is ShapeError
+    assert "NEW: call\tbuiltins.AssertionError\ttest_sample.py::test_a_failure" in result.stdout.str()
+
+
+@pytest.mark.parametrize(
+    "scenario", ["collection-error", "collect-only", "early-stop", "interrupt", "relevant-teardown"]
+)
+def test_failure_recorder_preserves_existing_candidate_on_incomplete_run(
+    pytester: pytest.Pytester, scenario: str
+) -> None:
+    output = _install_candidate_recorder(pytester)
+    output.write_text("preserve me\n", encoding="utf-8")
+    if scenario == "collection-error":
+        pytester.makepyfile(test_sample="raise RuntimeError('import failure')")
+        args = ("-q",)
+    elif scenario == "collect-only":
+        pytester.makepyfile(test_sample="def test_ok(): pass")
+        args = ("--collect-only", "-q")
+    elif scenario == "early-stop":
+        pytester.makepyfile(test_sample="def test_a(): assert False\ndef test_b(): pass")
+        args = ("-x", "-q")
+    elif scenario == "interrupt":
+        pytester.makepyfile(test_sample="def test_interrupt(): raise KeyboardInterrupt()")
+        args = ("-q",)
+    else:
+        pytester.makepyfile(
+            test_sample="""
+            import pytest
+
+            @pytest.fixture
+            def broken_teardown():
+                yield
+                raise RuntimeError("teardown")
+
+            def test_failure(broken_teardown):
+                raise AssertionError("call")
+            """
+        )
+        args = ("-q",)
+
+    if scenario == "interrupt":
+        pytester.runpytest_subprocess(*args)
+    else:
+        pytester.runpytest(*args)
+
+    assert output.read_text(encoding="utf-8") == "preserve me\n"
+
+
+def test_failure_recorder_allows_unrelated_teardown_as_ordinary_red_noise(pytester: pytest.Pytester) -> None:
+    output = _install_candidate_recorder(pytester)
+    pytester.makepyfile(
+        test_sample="""
+        import pytest
+
+        @pytest.fixture
+        def broken_teardown():
+            yield
+            raise RuntimeError("teardown")
+
+        def test_teardown_only(broken_teardown):
+            pass
+        """
+    )
+
+    result = pytester.runpytest("-q")
+
+    assert result.ret == pytest.ExitCode.TESTS_FAILED
+    assert (
+        parse_manifest(
+            get_profile("cpu-float16"), output.read_text(encoding="utf-8"), current_environment(), source=output
+        )
+        == {}
+    )
+
+
+def test_failure_recorder_refuses_nodes_fed_by_eager_rng(pytester: pytest.Pytester) -> None:
+    output = _install_candidate_recorder(pytester)
+    output.write_text("preserve me\n", encoding="utf-8")
+    test_path = pytester.path / "tests" / "enhance"
+    test_path.mkdir(parents=True)
+    (test_path / "test_core.py").write_text(
+        """
+class TestAddWeighted:
+    def test_shape(self):
+        raise AssertionError("would be non-reproducible")
+""",
+        encoding="utf-8",
+    )
+
+    result = pytester.runpytest("tests", "-q")
+
+    assert output.read_text(encoding="utf-8") == "preserve me\n"
+    assert "eager RNG" in result.stdout.str()
+
+
+def test_record_destination_rejects_checked_in_and_symlink_aliases(tmp_path: Path) -> None:
+    from testing.half_precision_ci import validate_record_destination
+
+    root = Path(project_conftest.__file__).parent
+    checked_in = root / "testing" / "half_precision_xfails" / "cpu_float16.txt"
+    alias = tmp_path / "candidate.txt"
+    alias.symlink_to(checked_in)
+
+    destinations = (
+        checked_in,
+        checked_in.relative_to(root),
+        Path("testing/../testing/half_precision_xfails/cpu_float16.txt"),
+    )
+    for destination in destinations:
+        with pytest.raises(ValueError, match="checked-in manifest"):
+            validate_record_destination(destination, root)
+    with pytest.raises(ValueError, match="checked-in manifest"):
+        validate_record_destination(alias, root)
+
+
+def test_record_destination_rejects_other_git_tracked_files() -> None:
+    from testing.half_precision_ci import validate_record_destination
+
+    root = Path(project_conftest.__file__).parent
+    with pytest.raises(ValueError, match="Git-tracked"):
+        validate_record_destination(root / "TESTING.md", root)
 
 
 class TestLoadKnownFailures:
@@ -751,6 +879,7 @@ class _RecordingConfig:
         self.option = SimpleNamespace(**options)
         self.args = ["tests"]
         self.rootpath = rootpath
+        self.invocation_params = SimpleNamespace(args=())
 
 
 class _ProfileConfig:

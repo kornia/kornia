@@ -20,13 +20,18 @@ from __future__ import annotations
 import builtins
 import hashlib
 import importlib
+import os
 import platform
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import warnings
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Sequence, cast
+from typing import Any, Literal, Mapping, Sequence, cast
 
 import numpy as np
 import pytest
@@ -34,6 +39,8 @@ import torch
 from torch.autograd.gradcheck import GradcheckError
 
 from kornia.core.exceptions import BaseError
+
+from testing.half_precision_eager_rng import AuditedEagerRngCall, eager_rng_calls_for_node
 
 ISSUE_URL = "https://github.com/kornia/kornia/issues/4153"
 _MANIFEST_DIR = Path(__file__).with_name("half_precision_xfails")
@@ -241,39 +248,218 @@ def _resolve_exception_type(exception_name: str) -> type[BaseException] | None:
     return None
 
 
-class FailureRecorder:
-    """Record setup- and call-phase failures as a sorted half-precision manifest."""
+def validate_record_destination(output_path: Path, rootpath: Path) -> Path:
+    """Resolve a candidate destination and reject checked-in or Git-tracked aliases."""
+    root = rootpath.resolve()
+    unresolved = output_path if output_path.is_absolute() else root / output_path
+    destination = unresolved.resolve()
+    manifest_dir = _MANIFEST_DIR.resolve()
+    if destination == manifest_dir or destination.is_relative_to(manifest_dir):
+        raise ValueError(f"record destination resolves inside the checked-in manifest directory: {destination}")
+    if destination.is_relative_to(root):
+        git = shutil.which("git")
+        if git is None:
+            raise OSError("cannot validate the candidate destination because Git is unavailable")
+        repository = subprocess.run(  # noqa: S603 - all arguments are fixed or resolved local paths.
+            [git, "-C", str(root), "rev-parse", "--show-toplevel"],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        if repository.returncode == 0 and Path(repository.stdout.strip()).resolve() == root:
+            relative = destination.relative_to(root)
+            tracked = subprocess.run(  # noqa: S603 - -- terminates options before the resolved relative path.
+                [git, "-C", str(root), "ls-files", "--error-unmatch", "--", relative.as_posix()],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if tracked.returncode == 0:
+                raise ValueError(f"record destination is Git-tracked: {destination}")
+            if tracked.returncode != 1:
+                raise OSError(f"could not determine whether record destination is Git-tracked: {destination}")
+    if not destination.parent.is_dir():
+        raise ValueError(f"record destination parent does not exist: {destination.parent}")
+    return destination
 
-    def __init__(self, dtype: str, output_path: Path) -> None:
-        self.dtype = dtype
-        self.output_path = output_path
-        self.failures: dict[str, type[BaseException]] = {}
+
+def _previous_manifest_entries(profile: ManifestProfile) -> dict[str, ManifestEntry]:
+    """Load v1 entries, with a temporary v0 migration path for the first regeneration."""
+    text = profile.manifest_path.read_text(encoding="utf-8")
+    try:
+        return parse_manifest(profile, text, current_environment(), source=profile.manifest_path)
+    except ValueError:
+        if "# known-failure-schema:" in text:
+            raise
+    return {
+        nodeid: ManifestEntry("call", _canonical_exception_identity(exception_type), nodeid)
+        for nodeid, exception_type in load_known_failures(profile.dtype).items()
+    }
+
+
+class FailureRecorder:
+    """Write a candidate only after proving that the full pytest session completed."""
+
+    def __init__(
+        self,
+        profile: ManifestProfile,
+        output_path: Path,
+        *,
+        rootpath: Path,
+        previous_entries: Mapping[str, ManifestEntry] | None = None,
+    ) -> None:
+        self.profile = profile
+        self.output_path = validate_record_destination(output_path, rootpath)
+        self.previous_entries = (
+            dict(previous_entries) if previous_entries is not None else _previous_manifest_entries(profile)
+        )
+        self.entries: dict[str, ManifestEntry] = {}
+        self.collected: set[str] = set()
+        self.finished: set[str] = set()
+        self.reports: dict[str, list[tuple[str, str, str | None]]] = defaultdict(list)
+        self.collection_finished = False
+        self.collection_failed = False
+        self.interrupted = False
+        self.abort_reasons: list[str] = []
+        self.eager_blockers: dict[str, tuple[AuditedEagerRngCall, ...]] = {}
+        self.categories: dict[str, str] = {}
+        self.written = False
+
+    @pytest.hookimpl(tryfirst=True)
+    def pytest_collectreport(self, report: Any) -> None:
+        if report.failed:
+            self.collection_failed = True
+
+    def pytest_collection_finish(self, session: pytest.Session) -> None:
+        self.collection_finished = True
+        self.collected = {item.nodeid for item in session.items}
+
+    def pytest_runtest_logfinish(self, nodeid: str) -> None:
+        self.finished.add(nodeid)
+
+    def pytest_keyboard_interrupt(self) -> None:
+        self.interrupted = True
 
     @pytest.hookimpl(hookwrapper=True, tryfirst=True)
     def pytest_runtest_makereport(self, item: Any, call: Any) -> Any:
-        """Capture failures that are not already handled by an xfail marker."""
+        """Capture exact unhandled setup/call failures and all lifecycle outcomes."""
         outcome = yield
         report = outcome.get_result()
+        wasxfail = getattr(report, "wasxfail", None)
+        self.reports[report.nodeid].append((report.when, report.outcome, wasxfail))
         if (
-            report.when in {"setup", "call"}
+            report.when in _ALLOWED_PHASES
             and report.outcome == "failed"
-            and getattr(report, "wasxfail", None) is None
+            and wasxfail is None
             and call.excinfo is not None
         ):
-            self.failures.setdefault(report.nodeid, call.excinfo.type)
+            entry = ManifestEntry(report.when, _canonical_exception_identity(call.excinfo.type), report.nodeid)
+            existing = self.entries.setdefault(report.nodeid, entry)
+            if existing != entry:
+                self.abort_reasons.append(f"multiple representable failures for {report.nodeid}")
+            blockers = eager_rng_calls_for_node(report.nodeid)
+            if blockers:
+                self.eager_blockers[report.nodeid] = blockers
+        if report.when == "teardown" and report.outcome != "passed":
+            if report.nodeid in self.entries or report.nodeid in self.previous_entries:
+                self.abort_reasons.append(f"unrepresentable teardown failure for {report.nodeid}")
 
-    def pytest_sessionfinish(self) -> None:
-        """Write the complete sorted manifest even though recorded failures make pytest fail."""
-        lines = [
-            f"# Recorded Linux CPU {self.dtype} failures.",
-            "# Generated by --record-half-precision-failures; do not edit counts by hand.",
-            *(
-                f"{_exception_name(exception_type)}\t{nodeid}"
-                for nodeid, exception_type in sorted(self.failures.items())
-            ),
-            "",
-        ]
-        self.output_path.write_text("\n".join(lines), encoding="utf-8")
+    def _check_completeness(self, session: pytest.Session) -> None:
+        if session.config.option.collectonly:
+            self.abort_reasons.append("collect-only execution cannot produce a candidate")
+        if not self.collection_finished or self.collection_failed:
+            self.abort_reasons.append("collection did not finish successfully")
+        if not self.collected:
+            self.abort_reasons.append("the canonical suite collected no tests")
+        unfinished = self.collected - self.finished
+        if unfinished:
+            self.abort_reasons.append(f"{len(unfinished)} collected test(s) never reached log finish")
+        if self.interrupted:
+            self.abort_reasons.append("execution was interrupted")
+        if session.exitstatus not in {pytest.ExitCode.OK, pytest.ExitCode.TESTS_FAILED}:
+            self.abort_reasons.append(f"pytest stopped with incomplete exit status {session.exitstatus}")
+        for nodeid, blockers in sorted(self.eager_blockers.items()):
+            sites = ", ".join(f"{entry.call.path}:{entry.call.line} ({entry.call.name})" for entry in blockers)
+            self.abort_reasons.append(
+                f"eager RNG feeds candidate node {nodeid}: {sites}; move the draw into the test or a seeded fixture"
+            )
+
+    def _categorize_previous_entries(self) -> None:
+        for nodeid, previous in self.previous_entries.items():
+            candidate = self.entries.get(nodeid)
+            if candidate is not None:
+                self.categories[nodeid] = "reproduced" if candidate == previous else "changed-outcome"
+            elif nodeid not in self.collected:
+                self.categories[nodeid] = "deleted-or-renamed"
+            elif nodeid not in self.finished:
+                self.categories[nodeid] = "incomplete"
+            elif any(wasxfail is not None for _, _, wasxfail in self.reports[nodeid]):
+                self.categories[nodeid] = "competing-xfail"
+            elif any(outcome == "skipped" for _, outcome, _ in self.reports[nodeid]):
+                self.categories[nodeid] = "skipped"
+            else:
+                self.categories[nodeid] = "passed"
+
+    def _write_candidate(self) -> None:
+        generation_command = (
+            f"pytest tests/ --record-known-failures=<candidate> --known-failure-profile={self.profile.name}"
+        )
+        contents = serialize_manifest(
+            self.profile, tuple(self.entries.values()), current_environment(), generation_command
+        )
+        parse_manifest(self.profile, contents, current_environment(), source=self.output_path)
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.output_path.parent,
+                prefix=f".{self.output_path.name}.",
+                delete=False,
+            ) as temporary:
+                temporary.write(contents)
+                temporary.flush()
+                os.fsync(temporary.fileno())
+                temporary_path = Path(temporary.name)
+            os.replace(temporary_path, self.output_path)
+            self.written = True
+        finally:
+            if temporary_path is not None and temporary_path.exists():
+                temporary_path.unlink()
+
+    def pytest_sessionfinish(self, session: pytest.Session) -> None:
+        """Serialize atomically only when completeness and lifecycle checks succeed."""
+        self._check_completeness(session)
+        self._categorize_previous_entries()
+        if self.abort_reasons:
+            return
+        try:
+            self._write_candidate()
+        except Exception as error:  # noqa: BLE001 - every writer failure must preserve the previous candidate.
+            self.abort_reasons.append(f"candidate serialization failed: {error}")
+
+    def pytest_terminal_summary(self, terminalreporter: Any) -> None:
+        """Print a receipt or an actionable abort report independently of pytest's test count."""
+        if self.abort_reasons:
+            terminalreporter.write_line(
+                f"known-failure candidate ABORTED for {self.profile.name}; preserved {self.output_path}", red=True
+            )
+            for reason in dict.fromkeys(self.abort_reasons):
+                terminalreporter.write_line(f"  {reason}")
+            return
+        if not self.written:
+            return
+        terminalreporter.write_line(
+            f"known-failure candidate complete for {self.profile.name}: "
+            f"{len(self.entries)} entries at {self.output_path}"
+        )
+        for nodeid, category in sorted(self.categories.items()):
+            if category != "reproduced":
+                terminalreporter.write_line(f"OLD {category}: {nodeid}")
+        for nodeid in sorted(set(self.entries) - set(self.previous_entries)):
+            entry = self.entries[nodeid]
+            terminalreporter.write_line(f"NEW: {entry.phase}\t{entry.exception}\t{entry.nodeid}")
 
 
 class KnownFailureTracker:
