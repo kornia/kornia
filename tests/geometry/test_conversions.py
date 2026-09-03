@@ -3729,16 +3729,11 @@ class TestNormalTransformPixel(BaseTester):
         # an older release's kernel literal -- a future kernel reassociation could then fail this
         # pin on a release that was never measured, without any kornia regression.
         #   - backend, because the mps matmul rounds once where cpu does not (float32: 2**-24 vs 0)
-        #   - machine, because every figure below was taken on macOS arm64 and nothing here has
-        #     run on x86-64/MKL; an unmeasured platform must not inherit a kernel literal.
-        #     What that costs, stated rather than left to be discovered: of the runners
-        #     pr_test_cpu.yml uses, only macos-latest is arm64, so the ubuntu and windows legs
-        #     skip every cell here, and no CI job sets KORNIA_TEST_DTYPE to float16/bfloat16, so
-        #     the reduced-precision cells -- the only ones with a nonzero literal on cpu -- run
-        #     on none of them. The x86-64 rows need one measurement on such a runner to become
-        #     live; deriving them from the arm64 figures instead is exactly what this key exists
-        #     to prevent. The portable half of the docstring's claim is asserted on every CI leg
-        #     by test_convention_agrees_with_normalize_pixel_coordinates above.
+        #   - machine, because arm64 and x86-64 use different CPU kernels; an unmeasured platform
+        #     must not inherit another machine's literal. The Linux CPU half-precision CI jobs now
+        #     exercise the measured torch 2.9.1 x86-64 rows below. Other x86-64 torch/dtype cells
+        #     still skip until measured. The portable half of the docstring's claim is asserted on
+        #     every CI leg by test_convention_agrees_with_normalize_pixel_coordinates above.
         #   A cuda row, when one is measured, will need the float32 matmul precision mode in its
         #   key as well: --tf32 rounds a matmul's inputs to 10 mantissa bits and the matrix route
         #   is a matmul, while cpu is unaffected by that setting (executed, all four dtypes).
@@ -3754,8 +3749,9 @@ class TestNormalTransformPixel(BaseTester):
         # check that the bullet's "agree in float32/float64; whether they agree at float16/bfloat16
         # is a property of the build" still holds -- the cpu bfloat16 row is the whole reason that
         # clause is build-scoped rather than absolute: 2.5.1 agrees at every size, 2.9.1 does not.
-        # Snippet used to generate expected (torch + kornia, executed on macOS arm64 against both
-        # torch 2.9.1 and torch 2.5.1; max|helper - matrix| over the full (2, 28) pixel grid):
+        # Snippet used to generate expected (torch + kornia; the arm64 values were executed on macOS
+        # against torch 2.9.1 and 2.5.1, and the x86-64 values on Linux against torch 2.9.1;
+        # max|helper - matrix| over the full (2, 28) pixel grid):
         #   cpu 2.9.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.00390625
         #   cpu 2.5.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.0
         #   mps, both: float32 -> 5.960464477539063e-08 (2**-24)   float16 -> 0.0009765625
@@ -3776,6 +3772,10 @@ class TestNormalTransformPixel(BaseTester):
             ("2.5.1", "cpu", "arm64", torch.float16): 0.0009765625,
             ("2.9.1", "cpu", "arm64", torch.bfloat16): 0.00390625,
             ("2.5.1", "cpu", "arm64", torch.bfloat16): 0.0,
+            ("2.9.1", "cpu", "x86_64", torch.float64): 0.0,
+            ("2.9.1", "cpu", "x86_64", torch.float32): 0.0,
+            ("2.9.1", "cpu", "x86_64", torch.float16): 0.0009765625,
+            ("2.9.1", "cpu", "x86_64", torch.bfloat16): 0.00390625,
             ("2.9.1", "mps", "arm64", torch.float32): 2.0**-24,
             ("2.5.1", "mps", "arm64", torch.float32): 2.0**-24,
             ("2.9.1", "mps", "arm64", torch.float16): 0.0009765625,

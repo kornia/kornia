@@ -36,6 +36,11 @@ pixi run test-quick
 | `--tf32` | `KORNIA_TEST_TF32` | off | Enable TF32 mode (see below) |
 | `--optimizer` | `KORNIA_TEST_OPTIMIZER` | CLI: `inductor`; env: unset | Select the backend. Only setting the environment variable enables dynamo/compile collection; the CLI option alone does not. |
 | `--isolate-half-precision` | `KORNIA_TEST_ISOLATE_HALF` | off | Run float16/bfloat16 CUDA tests each in a fresh `subprocess.run` process (no shared CUDA state) |
+| `--known-failure-profile=NAME` | none | unset | Select an explicit reproducible profile such as `cpu-float16` |
+| `--xfail-known-failures` | none | off | Focus mode: validate selected entries from the chosen profile; without a profile, use the device/dtype known-failure manifest |
+| `--verify-known-failures` | none | off | Complete mode: require the full chosen profile and every manifest entry to reproduce exactly |
+| `--record-known-failures=PATH` | none | unset | Record a complete profile to a guarded, untracked candidate path |
+| `--known-failure-manifest=PATH` | none | unset | Replay a candidate manifest instead of the checked-in profile manifest |
 | `--run-device-agnostic` | `KORNIA_TEST_RUN_DEVICE_AGNOSTIC` | off | Run `@pytest.mark.device_agnostic` tests even when CPU is not in the device matrix |
 
 ## Test Structure
@@ -228,6 +233,56 @@ pixi run -e cuda test-cuda-half   # float16 + bfloat16, CUDA, with isolation
 ```
 
 Without `--isolate-half-precision`, float16/bfloat16 CUDA tests are **skipped** (safe default for combined runs).
+
+**Linux CPU half-precision CI baseline.** Pull requests and scheduled CI run the complete `cpu-float16` and
+`cpu-bfloat16` profiles on Linux, Python 3.11, and the workflow-pinned PyTorch release. Selecting a profile sets
+the device and dtype before parametrization, then gives each node an isolated, stable Python/NumPy/PyTorch seed.
+Manifest entries store an exact setup/call phase, opaque fully qualified exception identity, and node ID. The v1
+header enforces the profile, Python major/minor, PyTorch release, OS, architecture, and seed scheme; pytest, NumPy,
+and Pillow versions are recorded as provenance warnings.
+
+Focus mode accepts file, node, and `-k` selections and validates only selected manifest entries:
+
+```bash
+KORNIA_TEST_OPTIMIZER= pixi run test-module tests/geometry/liegroup/test_so3.py \
+  --xfail-known-failures --known-failure-profile=cpu-float16
+```
+
+Complete mode is the blocking CI contract. It requires the canonical full `tests/` collection with no partial
+selector, optimizer, slow suite, xdist, early-stop, last-failed, failed-first, or collect-only option:
+
+```bash
+KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ \
+  --verify-known-failures --known-failure-profile=cpu-float16
+```
+
+A recorded entry must reproduce with the same phase and exception identity. A pass, skip, competing xfail, changed
+exception, teardown failure, or stale node ID makes verification red. Delete a line after a fix, update its node ID
+after a rename/reparametrization, and prefer fixing a new failure. The tracker prints an exact ready-to-paste line
+when a deliberate addition is justified.
+
+Normal pull requests do not regenerate manifests. For an initial profile, supported-environment update, or deliberate
+broad re-baseline, record only to an untracked candidate outside the repository, then replay it in a fresh process:
+
+```bash
+KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ \
+  --record-known-failures=/tmp/kornia-cpu-float16-candidate.txt \
+  --known-failure-profile=cpu-float16
+
+KORNIA_TEST_OPTIMIZER= pixi run test-module tests/ \
+  --verify-known-failures --known-failure-profile=cpu-float16 \
+  --known-failure-manifest=/tmp/kornia-cpu-float16-candidate.txt
+```
+
+The recording run exits nonzero because failures remain un-xfailed, but writes a candidate only after complete
+collection and lifecycle accounting. It refuses checked-in/tracked destinations (including symlink aliases), partial
+runs, unrepresentable candidate failures, and audited nodes that consume eager fixture RNG. Review every candidate
+delta and the replay result before manually replacing the checked-in manifest. The same commands with
+`cpu-bfloat16` and a distinct `/tmp` path handle bfloat16.
+
+`pixi run test-half` remains the ordinary unseeded CPU sweep; it is useful for finding tests that accidentally depend
+on shared RNG state. A failure seen only there is a test-determinism bug to fix, never a reason to edit the seeded
+profile manifest.
 
 **See also.** `docs/source/get-started/precision.rst` for the per-module half-precision support table.
 

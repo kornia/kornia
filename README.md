@@ -112,8 +112,9 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 
 Reproduce the two CPU half rows with `pixi run test-half` and the CPU float32 baseline with `pixi run test-f32`
 (`test-half` pins `KORNIA_TEST_DTYPE` to `float16,bfloat16`, so it cannot produce the baseline). The half-precision
-suite is not run in CI (see [#4070](https://github.com/kornia/kornia/issues/4070)), so these numbers are refreshed
-by hand.
+CPU suites run as separate blocking `float16` and `bfloat16` CI jobs with strict manifests for known failures,
+addressing [#4070](https://github.com/kornia/kornia/issues/4070). The historical support-table counts are still
+refreshed by hand with the commands above.
 
 See the [full precision guide](https://kornia.readthedocs.io/en/stable/get-started/precision.html) for details.
 
