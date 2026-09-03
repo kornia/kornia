@@ -27,8 +27,11 @@ name: Upstream probe (weekly)
 # the registry described above -- it does not yet, so it is deliberately left out of this
 # workflow for now and will be added alongside that profile.
 #
-# Bump PYTORCH_FLOOR below whenever a real torch-pin bump PR lands, so the "stable is >= floor"
-# check in tests.yml keeps comparing against the last deliberately-chosen pin, not a stale one.
+# Whenever a real torch-pin bump PR lands, bump the `pytorch-version` input on all five jobs
+# below, so the "stable is >= floor" check in tests.yml keeps comparing against the last
+# deliberately-chosen pin rather than a stale one. A reusable workflow's `with:` block cannot
+# read a job-level `env:`, so the floor has to be repeated per job; tests/test_half_precision_ci.py
+# pins that the five stay in agreement.
 
 on:
   schedule:

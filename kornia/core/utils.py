@@ -287,7 +287,7 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
         dtype = _normalize_to_float32_or_float64(input.dtype)
 
     out1, out2, out3H = torch.linalg.svd(input.to(dtype))
-    # Since kornia requires torch>=2.0.0, we can always use .mH
+    # Since kornia requires torch>=2.5.1, we can always use .mH
     out3 = out3H.mH
     return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
 
@@ -304,7 +304,7 @@ def _torch_linalg_svdvals(input: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
     dtype = _normalize_to_float32_or_float64(input.dtype)
 
-    # Since kornia requires torch>=2.0.0, we can always use torch.linalg.svdvals
+    # Since kornia requires torch>=2.5.1, we can always use torch.linalg.svdvals
     out = torch.linalg.svdvals(input.to(dtype))
     return out.to(input.dtype)
 
@@ -342,7 +342,7 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    # Since kornia requires torch>=2.0.0, we can always use torch.linalg.lu_factor_ex and torch.linalg.lu_solve
+    # Since kornia requires torch>=2.5.1, we can always use torch.linalg.lu_factor_ex and torch.linalg.lu_solve
     A_LU, pivots, info = torch.linalg.lu_factor_ex(A.to(dtype))
 
     valid_mask: torch.Tensor = info == 0
@@ -392,7 +392,7 @@ def is_autocast_enabled(both: bool = True) -> bool:
         `torch.is_autocast_enabled()`.
 
     """
-    # Since kornia requires torch>=2.0.0, autocast is always available
+    # Since kornia requires torch>=2.5.1, autocast is always available
     if both:
         if torch_version_ge(2, 4):
             return torch.is_autocast_enabled() or torch.is_autocast_enabled("cpu")

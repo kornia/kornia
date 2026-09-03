@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import random
+import re
 import shutil
 import warnings
 from collections import Counter
@@ -811,12 +812,70 @@ def test_reusable_test_workflow_accepts_only_complete_recordings() -> None:
     assert "record mode finished without a complete candidate receipt" in workflow
 
 
-def test_upstream_probe_python314_uses_floating_stable_torch() -> None:
+def _upstream_probe_jobs() -> dict[str, str]:
+    """Split upstream_probe.yml into its top-level job bodies."""
     root = Path(project_conftest.__file__).parent
     workflow = (root / ".github" / "workflows" / "upstream_probe.yml").read_text(encoding="utf-8")
-    python314_job = workflow.partition("\n  python314:")[2]
+    jobs: dict[str, str] = {}
+    name = None
+    for line in workflow.splitlines():
+        match = re.fullmatch(r"  (\w[\w-]*):", line)
+        if match:
+            name = match.group(1)
+            jobs[name] = ""
+        elif name is not None:
+            jobs[name] += line + "\n"
+    return jobs
 
-    assert "\n      torch-channel: stable" in python314_job
+
+def test_upstream_probe_jobs_all_use_floating_stable_torch() -> None:
+    jobs = {name: body for name, body in _upstream_probe_jobs().items() if "workflows/tests.yml" in body}
+
+    assert set(jobs) == {"cpu-float32", "cpu-float64", "cpu-float16", "cpu-bfloat16", "python314"}
+    for name, body in jobs.items():
+        assert "\n      torch-channel: stable\n" in body, name
+
+
+def test_upstream_probe_floor_is_consistent_across_jobs() -> None:
+    # The floor has to be repeated per job because a reusable workflow's `with:` cannot read a
+    # job-level `env:`; a bump that misses one job would silently stop probing that surface.
+    floors = {
+        name: re.search(r"\n      pytorch-version: '\[\"([^\"]+)\"\]'", body).group(1)
+        for name, body in _upstream_probe_jobs().items()
+        if "workflows/tests.yml" in body
+    }
+
+    assert len(set(floors.values())) == 1, floors
+
+
+def test_upstream_probe_record_jobs_match_the_blocking_python() -> None:
+    # A candidate manifest carries the recording Python in its header and the blocking
+    # half-precision job refuses a mismatch, so the record-mode probes must use the same
+    # Python that pr_test_cpu.yml's half-precision job uses.
+    root = Path(project_conftest.__file__).parent
+    blocking = (root / ".github" / "workflows" / "pr_test_cpu.yml").read_text(encoding="utf-8")
+    blocking_python = re.search(
+        r"  half-precision:.*?\n      python-version: '\[\"([^\"]+)\"\]'", blocking, re.DOTALL
+    ).group(1)
+
+    for name, body in _upstream_probe_jobs().items():
+        if "known-failure-mode: record" not in body:
+            continue
+        assert f"\n      python-version: '[\"{blocking_python}\"]'\n" in body, name
+
+
+def test_reusable_test_workflow_names_candidate_by_resolved_torch() -> None:
+    # Under torch-channel: stable the matrix value is only a floor, so naming the artifact after
+    # it would make every future probe upload collide on the same stale name.
+    root = Path(project_conftest.__file__).parent
+    workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+
+    assert 'echo "resolved=$resolved" >> "$GITHUB_OUTPUT"' in workflow
+    assert (
+        "name: candidate-manifest-${{ inputs.known-failure-profile }}-${{ matrix.python-version }}"
+        "-torch${{ steps.torch-version.outputs.resolved }}"
+    ) in workflow
+    assert "-${{ matrix.pytorch-version }}\n" not in workflow.partition("Upload candidate manifest")[2]
 
 
 @pytest.mark.parametrize("workflow_name", ["pr_test_cpu.yml", "scheduled_test_cpu.yml"])

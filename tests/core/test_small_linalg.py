@@ -277,10 +277,10 @@ class TestInverse3x3Kernels(BaseTester):
     @pytest.mark.parametrize("use_dynamo_exporter", [False, True], ids=["torchscript", "torchexport"])
     def test_cross_kernel_onnx_export_is_informational(self, device, use_dynamo_exporter):
         # NOT a gate, deliberately -- but the measurement behind it is now stronger than it was.
-        # ``torch.linalg.cross`` lowers on BOTH torch versions CI runs: 2.9.1 on both exporters,
-        # and 2.5.1 on the legacy one (2.5.1's dynamo path needs onnxscript, which those CI legs
-        # do not install, so it is out of reach rather than broken). Untested: torch 2.0-2.4,
-        # which kornia declares support for and CI does not run.
+        # ``torch.linalg.cross`` lowers on every torch version CI runs: 2.14.0 and 2.9.1 on both
+        # exporters, and 2.5.1 on the legacy one (2.5.1's dynamo path needs onnxscript, which
+        # those CI legs do not install, so it is out of reach rather than broken). Nothing below
+        # 2.5.1 is measured, and nothing below it is supported either.
         # It stays a skip rather than a hard assertion for two reasons: the dispatcher never takes
         # this kernel under export, so nothing in kornia depends on it lowering; and a future torch
         # that stops lowering ``cross`` should surface as a visible skip here rather than as a red

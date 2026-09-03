@@ -8,7 +8,7 @@ on:
       pytorch-version:
         required: false
         type: string
-        default: '["2.9.1"]'
+        default: '["2.14.0"]'
       torch-channel:
         # "pinned" (default) installs exactly the pytorch-version matrix value, byte-identical
         # to prior behavior. "stable" ignores pytorch-version for the install step itself and
@@ -140,11 +140,17 @@ jobs:
           esac
 
       - name: Verify PyTorch version
+        id: torch-version
+        shell: bash
         env:
           EXPECTED_PYTORCH_VERSION: ${{ matrix.pytorch-version }}
           TORCH_CHANNEL: ${{ inputs.torch-channel }}
         run: |
-          pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync python -c 'import os, torch; channel = os.environ["TORCH_CHANNEL"]; expected = os.environ["EXPECTED_PYTORCH_VERSION"]; version = torch.__version__; clean = version.partition("+")[0]; got = tuple(int(p) for p in clean.split(".")[:3]); floor = tuple(int(p) for p in expected.split(".")[:3]); ok = version.startswith(expected) if channel == "pinned" else got >= floor; print(f"torch-channel={channel} expected={expected} got={version} ok={ok}"); assert ok, f"torch {version} does not satisfy channel={channel} expected={expected}"'
+          # Under torch-channel: stable the matrix value is only a floor, so record what actually
+          # got installed; the candidate-manifest artifact is named after it below.
+          resolved=$(pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync python -c 'import os, torch; channel = os.environ["TORCH_CHANNEL"]; expected = os.environ["EXPECTED_PYTORCH_VERSION"]; version = torch.__version__; clean = version.partition("+")[0]; got = tuple(int(p) for p in clean.split(".")[:3]); floor = tuple(int(p) for p in expected.split(".")[:3]); ok = version.startswith(expected) if channel == "pinned" else got >= floor; assert ok, f"torch {version} does not satisfy channel={channel} expected={expected}"; print(clean)' | tr -d '\r' | tail -n 1)
+          echo "torch-channel=$TORCH_CHANNEL expected=$EXPECTED_PYTORCH_VERSION resolved=$resolved"
+          echo "resolved=$resolved" >> "$GITHUB_OUTPUT"
 
       # torch Windows wheels crash with STATUS_ILLEGAL_INSTRUCTION (0xc000001d) inside
       # affine_grid on part of the runner fleet — observed on torch 2.5.1 AND 2.9.1, on both
@@ -237,7 +243,7 @@ jobs:
         shell: bash
         run: |
           {
-            echo "### Known-failure receipt: ${{ inputs.known-failure-profile }}"
+            echo "### Known-failure receipt: ${{ inputs.known-failure-profile }} (torch ${{ steps.torch-version.outputs.resolved }})"
             echo '```'
             if grep -q '^known-failure candidate ABORTED' pytest-output.log 2>/dev/null; then
               grep -A 10 '^known-failure candidate ABORTED' pytest-output.log
@@ -252,6 +258,6 @@ jobs:
         if: always() && inputs.known-failure-mode == 'record' && inputs.known-failure-profile != ''
         uses: actions/upload-artifact@v7
         with:
-          name: candidate-manifest-${{ inputs.known-failure-profile }}-${{ matrix.python-version }}-${{ matrix.pytorch-version }}
+          name: candidate-manifest-${{ inputs.known-failure-profile }}-${{ matrix.python-version }}-torch${{ steps.torch-version.outputs.resolved }}
           path: candidate-manifests/
           if-no-files-found: warn

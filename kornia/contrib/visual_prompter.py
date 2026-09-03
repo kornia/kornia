@@ -371,7 +371,7 @@ class VisualPrompter:
 
         Example:
             >>> # prompter = VisualPrompter()
-            >>> # prompter.compile() # You should have torch >= 2.0.0 installed
+            >>> # prompter.compile()
             >>> # Use the prompter methods ...
 
         """

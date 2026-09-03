@@ -177,7 +177,7 @@ def _inverse_3x3_cross(input: torch.Tensor) -> torch.Tensor:
     versions kornia's CI runs -- 2.5.1 (legacy exporter) and 2.9.1 (legacy and dynamo) -- to
     ``Slice``/``Mul``/``Sub``/``Concat``. What neither exporter lowers on either version is
     ``aten::linalg_inv``, which is what :func:`kornia.core.utils._torch_inverse_cast` avoids by
-    reaching for a closed form in the first place. torch 2.0-2.4 is untested; CI does not run it
+    reaching for a closed form in the first place. torch 2.0-2.4 is below the declared floor; CI does not run it
     either.
     """
     col_a = input[..., :, 0]
