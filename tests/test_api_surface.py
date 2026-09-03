@@ -30,6 +30,7 @@ Additions are fine and do not fail the test; run this file with
 ``regenerate()`` below) whenever new public API lands.
 """
 
+import contextlib
 import importlib
 import json
 import pkgutil
@@ -84,12 +85,12 @@ def _modules_declaring_all() -> list:
 
     found = []
     for info in pkgutil.walk_packages(kornia.__path__, "kornia."):
-        try:
+        # Optional extras and backends are out of scope for this guard, so a module that
+        # cannot be imported here is skipped rather than failing the sweep.
+        with contextlib.suppress(Exception):
             mod = importlib.import_module(info.name)
-        except Exception:
-            continue  # optional extras and backends are out of scope for this guard
-        if getattr(mod, "__all__", None) is not None:
-            found.append(info.name)
+            if getattr(mod, "__all__", None) is not None:
+                found.append(info.name)
     return sorted(found)
 
 
