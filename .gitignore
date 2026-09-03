@@ -51,3 +51,7 @@ docs/export_support/results/
 
 # kornia hub download cache (created by ONNXLoader / model downloads in the working directory)
 .kornia_hub/
+
+# known-failure recording (tests.yml known-failure-mode: record, and local reproductions)
+candidate-manifests/
+pytest-output.log

@@ -304,8 +304,9 @@ def test_skip_probe_re_raises_everything_it_cannot_identify(monkeypatch):
 
     _skip_if_closed_form_inverse_unavailable(cpu, torch.float32)  # A: healthy route, must not skip
 
-    # torch.float8_e4m3fn was added in torch 2.1; kornia declares torch>=2.0.0, so it is probed
-    # through getattr rather than referenced unconditionally.
+    # torch.float8_e4m3fn was added in torch 2.1 and kornia now declares torch>=2.5.1, so the
+    # getattr probe below is redundant; it is left in place with the rest of the sub-floor
+    # version guards rather than cleaned up piecemeal.
     candidate_dtypes = (torch.bool, getattr(torch, "float8_e4m3fn", None))
     unsupported = next(
         (dtype for dtype in candidate_dtypes if dtype is not None and _cross_is_unavailable(cpu, dtype)),
@@ -6040,7 +6041,7 @@ class TestEulerFromQuaternion(BaseTester):
         # cancel is decided by rounding. Perturbing the input pitch by a single ulp on this very
         # build changes the +pi/2 triple to (0.15500, pi/2, 0.35877) at -2 ulp and to
         # (-3.12597, pi/2, -3.07917) at +1 ulp; a review on torch 2.12.0 saw different triples again
-        # on the unperturbed input. Kornia declares torch>=2.0.0, so pinning any one of them makes
+        # on the unperturbed input. Kornia declares torch>=2.5.1, so pinning any one of them makes
         # the suite red on builds the pin was never measured against, for a value that is not the
         # defect being tracked.
         #

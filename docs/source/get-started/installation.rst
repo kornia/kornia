@@ -2,11 +2,11 @@ Installation
 ============
 
 .. meta::
-   :description: How to install Kornia with pip, conda or from source, and how to verify the installation. Kornia requires PyTorch 2.0 or newer and works on CPU, CUDA and Apple MPS devices.
+   :description: How to install Kornia with pip, conda or from source, and how to verify the installation. Kornia requires PyTorch 2.5.1 or newer and works on CPU, CUDA and Apple MPS devices.
 
 *Kornia* is distributed as pure-Python wheels on `PyPI <https://pypi.org/project/kornia/>`_ and on
 `conda-forge <https://anaconda.org/conda-forge/kornia>`_. It requires
-`PyTorch <https://pytorch.org/get-started/locally/>`_ 2.0 or newer; the only other dependencies are
+`PyTorch <https://pytorch.org/get-started/locally/>`_ 2.5.1 or newer; the only other dependencies are
 ``numpy``, ``packaging`` and `kornia-rs <https://github.com/kornia/kornia-rs>`_ (the Rust image I/O
 backend used by :mod:`kornia.io`). Install PyTorch first if you need a specific CUDA build.
 

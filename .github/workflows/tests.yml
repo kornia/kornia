@@ -8,7 +8,16 @@ on:
       pytorch-version:
         required: false
         type: string
-        default: '["2.9.1"]'
+        default: '["2.14.0"]'
+      torch-channel:
+        # "pinned" (default) installs exactly the pytorch-version matrix value, byte-identical
+        # to prior behavior. "stable" ignores pytorch-version for the install step itself and
+        # upgrades to whatever `torch` resolves to today from the stable CPU wheel index;
+        # pytorch-version is still passed through and used only as a floor the resolved
+        # version must be >= to. Used by the weekly upstream-probe workflow.
+        required: false
+        type: string
+        default: pinned
       os:
         required: false
         type: string
@@ -32,6 +41,16 @@ on:
         required: false
         type: string
         default: ""
+      known-failure-mode:
+        # "verify" (default) runs the blocking --verify-known-failures gate against the
+        # checked-in manifest, byte-identical to prior behavior. "record" runs
+        # --record-known-failures instead, writing a candidate manifest under
+        # candidate-manifests/<profile>.txt (untracked) and publishing its regeneration
+        # receipt to the job summary plus a workflow artifact. Only meaningful together
+        # with known-failure-profile; used by the weekly upstream-probe workflow.
+        required: false
+        type: string
+        default: verify
       optimizer:
         required: false
         type: string
@@ -103,18 +122,35 @@ jobs:
         shell: bash
         env:
           PYTORCH_VERSION: ${{ matrix.pytorch-version }}
+          TORCH_CHANNEL: ${{ inputs.torch-channel }}
         run: |
-          if [[ "$PYTORCH_VERSION" =~ ^2\.[1-4]\. ]]; then
-            pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync uv pip install "numpy<2"
-          fi
-          pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync uv pip install \
-            --reinstall-package torch --index-url https://download.pytorch.org/whl/cpu "torch==$PYTORCH_VERSION"
+          case "$TORCH_CHANNEL" in
+            pinned)
+              pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync uv pip install \
+                --reinstall-package torch --index-url https://download.pytorch.org/whl/cpu "torch==$PYTORCH_VERSION"
+              ;;
+            stable)
+              pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync uv pip install \
+                --upgrade --index-url https://download.pytorch.org/whl/cpu torch
+              ;;
+            *)
+              echo "unknown torch-channel: $TORCH_CHANNEL" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Verify PyTorch version
+        id: torch-version
+        shell: bash
         env:
           EXPECTED_PYTORCH_VERSION: ${{ matrix.pytorch-version }}
+          TORCH_CHANNEL: ${{ inputs.torch-channel }}
         run: |
-          pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync python -c 'import os, torch; expected = os.environ["EXPECTED_PYTORCH_VERSION"]; version = torch.__version__; print(f"expected {expected}, got {version}"); assert version.startswith(expected)'
+          # Under torch-channel: stable the matrix value is only a floor, so record what actually
+          # got installed; the candidate-manifest artifact is named after it below.
+          resolved=$(pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync python -c 'import os, torch; channel = os.environ["TORCH_CHANNEL"]; expected = os.environ["EXPECTED_PYTORCH_VERSION"]; version = torch.__version__; clean = version.partition("+")[0]; got = tuple(int(p) for p in clean.split(".")[:3]); floor = tuple(int(p) for p in expected.split(".")[:3]); ok = version.startswith(expected) if channel == "pinned" else got >= floor; assert ok, f"torch {version} does not satisfy channel={channel} expected={expected}"; print(clean)' | tr -d '\r' | tail -n 1)
+          echo "torch-channel=$TORCH_CHANNEL expected=$EXPECTED_PYTORCH_VERSION resolved=$resolved"
+          echo "resolved=$resolved" >> "$GITHUB_OUTPUT"
 
       # torch Windows wheels crash with STATUS_ILLEGAL_INSTRUCTION (0xc000001d) inside
       # affine_grid on part of the runner fleet — observed on torch 2.5.1 AND 2.9.1, on both
@@ -144,14 +180,84 @@ jobs:
           KORNIA_TEST_RUNSLOW: ${{ inputs.runslow }}
           KORNIA_TEST_OPTIMIZER: ${{ inputs.optimizer }}
           KNOWN_FAILURE_PROFILE: ${{ inputs.known-failure-profile }}
+          KNOWN_FAILURE_MODE: ${{ inputs.known-failure-mode }}
           KORNIA_CI_PYTEST_VERBOSITY: ${{ runner.os == 'Windows' && '-v' || '' }}
           MKL_NUM_THREADS: "1"
           OMP_NUM_THREADS: "1"
           UV_NO_SYNC: "1"
         run: |
           known_failure_args=()
-          if [[ -n "$KNOWN_FAILURE_PROFILE" ]]; then
-            known_failure_args+=(--verify-known-failures "--known-failure-profile=$KNOWN_FAILURE_PROFILE")
+          candidate_path=""
+          case "$KNOWN_FAILURE_MODE" in
+            record)
+              if [[ -z "$KNOWN_FAILURE_PROFILE" ]]; then
+                echo "known-failure-mode=record requires known-failure-profile" >&2
+                exit 1
+              fi
+              mkdir -p candidate-manifests
+              candidate_path="candidate-manifests/${KNOWN_FAILURE_PROFILE}.txt"
+              known_failure_args+=(--record-known-failures "$candidate_path" "--known-failure-profile=$KNOWN_FAILURE_PROFILE")
+              ;;
+            verify)
+              if [[ -n "$KNOWN_FAILURE_PROFILE" ]]; then
+                known_failure_args+=(--verify-known-failures "--known-failure-profile=$KNOWN_FAILURE_PROFILE")
+              fi
+              ;;
+            *)
+              echo "unknown known-failure-mode: $KNOWN_FAILURE_MODE" >&2
+              exit 1
+              ;;
+          esac
+          if [[ "$KNOWN_FAILURE_MODE" == "record" ]]; then
+            # A complete recording retains pytest's TESTS_FAILED status when it captured
+            # ordinary failures. Accept only that expected status together with both the
+            # candidate and its completion receipt; recorder aborts and harness failures
+            # must still fail the job. Explicit `shell: bash` enables pipefail, so suspend
+            # errexit around the pipeline long enough to inspect pytest's own status.
+            set +e
+            pixi run -e ${{ steps.pixi-env.outputs.name }} test \
+              $KORNIA_CI_PYTEST_VERBOSITY "${known_failure_args[@]}" ${{ inputs.pytest-extra }} | tee pytest-output.log
+            pipeline_status=("${PIPESTATUS[@]}")
+            test_status=${pipeline_status[0]}
+            tee_status=${pipeline_status[1]}
+            set -e
+            if [[ "$tee_status" -eq 0 && "$test_status" -le 1 && -s "$candidate_path" ]] \
+                && grep -Fq "known-failure candidate complete for $KNOWN_FAILURE_PROFILE:" pytest-output.log; then
+              exit 0
+            fi
+            if [[ "$tee_status" -ne 0 ]]; then
+              exit "$tee_status"
+            fi
+            if [[ "$test_status" -eq 0 ]]; then
+              echo "record mode finished without a complete candidate receipt" >&2
+              exit 1
+            fi
+            exit "$test_status"
+          else
+            pixi run -e ${{ steps.pixi-env.outputs.name }} test \
+              $KORNIA_CI_PYTEST_VERBOSITY "${known_failure_args[@]}" ${{ inputs.pytest-extra }}
           fi
-          pixi run -e ${{ steps.pixi-env.outputs.name }} test \
-            $KORNIA_CI_PYTEST_VERBOSITY "${known_failure_args[@]}" ${{ inputs.pytest-extra }}
+
+      - name: Publish known-failure receipt
+        if: always() && inputs.known-failure-mode == 'record' && inputs.known-failure-profile != ''
+        shell: bash
+        run: |
+          {
+            echo "### Known-failure receipt: ${{ inputs.known-failure-profile }} (torch ${{ steps.torch-version.outputs.resolved }})"
+            echo '```'
+            if grep -q '^known-failure candidate ABORTED' pytest-output.log 2>/dev/null; then
+              grep -A 10 '^known-failure candidate ABORTED' pytest-output.log
+            else
+              grep -E '^(known-failure candidate complete|OLD |NEW: )' pytest-output.log 2>/dev/null \
+                || echo "(no receipt line found; check the Run tests step log)"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload candidate manifest
+        if: always() && inputs.known-failure-mode == 'record' && inputs.known-failure-profile != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: candidate-manifest-${{ inputs.known-failure-profile }}-${{ matrix.python-version }}-torch${{ steps.torch-version.outputs.resolved }}
+          path: candidate-manifests/
+          if-no-files-found: warn

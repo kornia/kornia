@@ -20,7 +20,9 @@
 import sys
 
 import pytest
+import torch
 
+from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.models.sam.model import Sam, SamConfig
 
 # Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.

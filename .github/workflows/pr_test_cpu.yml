@@ -86,7 +86,7 @@ jobs:
         os: ["ubuntu-latest", "windows-latest", "macos-latest"]
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.5.1", "2.9.1"]
+        pytorch-version: ["2.5.1", "2.14.0"]
         exclude:
           # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on Windows
           - os: windows-latest
@@ -163,7 +163,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.9.1"]'
+      pytorch-version: '["2.14.0"]'
       pytorch-dtype: float32
       optimizer: inductor
       pytest-extra: 'tests/augmentation tests/enhance tests/filters tests/color tests/geometry tests/losses tests/morphology -k "dynamo or compile"'
@@ -173,10 +173,12 @@ jobs:
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
 
-  # Single blocking MPS leg: newest Python, newest pinned torch, float32, on the Apple-silicon
+  # Single blocking MPS leg: newest Python, float32, on the Apple-silicon
   # macos-latest image (macos-14 segfaults inside MPS kernels; 15 and 26 verified working).
   # The exact known-failure baseline is pinned as strict xfails (see #4159): a new failure,
-  # changed failure, skipped pin, or fixed pin makes the job red and requires review.
+  # changed failure, skipped pin, or fixed pin makes the job red and requires review. That
+  # baseline was recorded under torch 2.9.1, so this leg deliberately stays there while the
+  # CPU matrix moves to 2.14.0; bumping it means re-recording the manifest in the same change.
   tests-mps:
     needs: [pre-tests]
     uses: ./.github/workflows/tests.yml

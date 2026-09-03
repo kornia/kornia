@@ -462,7 +462,6 @@ call	builtins.AssertionError	tests/geometry/test_depth_warper.py::TestDepthWarpe
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_clean_points_lu[cpu-float16-1]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_clean_points_lu[cpu-float16-5]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_clean_points_svd[cpu-float16-5]
-call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_scaled_fixed_points[cpu-float16]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyDLTIter::test_clean_points[cpu-float16-1]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyDLTIter::test_clean_points[cpu-float16-2]
 call	builtins.AssertionError	tests/geometry/test_homography.py::TestFindHomographyDLTIter::test_dirty_points_and_gradcheck[cpu-float16-1]

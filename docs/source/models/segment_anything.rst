@@ -90,7 +90,7 @@ About the :code:`VisualPrompter`:
     * If :code:`output_original_size=True`, the result structure upsamples the logits from their native resolution to the
       original resolution of the input image. The raw logits have a height and width of 256.
 
-#. You can benefit from the :code:`torch.compile(...)` API (dynamo) with torch >= 2.0.0. To compile with dynamo
+#. You can benefit from the :code:`torch.compile(...)` API (dynamo). To compile with dynamo
    we provide the :code:`prompter.compile(...)` method, which optimizes the right parts of the backend model and of the
    prompter itself.
 

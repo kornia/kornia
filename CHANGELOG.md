@@ -71,6 +71,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+* Kornia's minimum supported PyTorch version rises to 2.5.1. Previously the declared floor was
+  2.0.0; PR-time CI has only ever exercised 2.5.1 and newer, and this same change retires the
+  scheduled-CI legs that tested anything older.
+  Installing kornia now requires `torch>=2.5.1`; a `torch` install below that version no longer
+  satisfies the dependency, and `pip`/`uv` will refuse to resolve it. (#4197)
+
 * Removed `kornia.to_tensorflow()`, `kornia.to_jax()` and `kornia.to_numpy()`, along with the
   multi-framework-support advertising in the README and the docs landing page. These functions used
   to lazily transpile the library to TensorFlow, JAX or NumPy through the third-party `ivy` package
@@ -201,6 +207,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   zero-scale input keeps its center and zero affine block.
 
 ### Bug fixes
+
+* `find_homography_dlt(..., solver="lu")` now solves the minimal four-point system with an adaptive
+  homogeneous gauge instead of applying LU to its singular normal matrix. This is the estimator
+  `RANSAC(model_type="homography")` calls for every minimal sample, so homography RANSAC results
+  change on every platform, not only where the old formulation broke down: over 2048 minimal
+  samples the median transfer residual drops from 2.3e-5 to 1.9e-6 and the worst case from 4.2e+5
+  to 4.5e+2. It also fixes the all-NaN homographies seen for a four-point sample on Windows with
+  PyTorch 2.14, and removes the corresponding CPU half-precision known failures. A four-point
+  sample containing a zero weight now returns a finite homography instead of NaN. Samples of five
+  or more points keep the previous normal-equation formulation and are numerically unchanged.
+  (#4197)
 
 * `add_weighted` now keeps Python scalar weights in operator math precision instead of rounding them to the input
   dtype before arithmetic. This improves `float16` and `bfloat16` accuracy and makes fractional scalar weights on
