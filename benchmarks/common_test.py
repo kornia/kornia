@@ -61,7 +61,31 @@ def test_run_metadata_records_environment():
 
 
 def test_git_commit_is_short_hash():
-    assert len(git_commit()) >= 7
+    assert len(git_commit().removesuffix("-dirty")) >= 7
+
+
+def test_git_commit_marks_a_modified_checkout(monkeypatch):
+    """A run from an edited tree is not reproducible from the hash, so the hash says so."""
+    import common
+
+    calls = []
+
+    def fake(cmd, text=True):
+        calls.append(cmd)
+        return "abc1234\n" if "rev-parse" in cmd else " M kornia/feature/laf.py\n"
+
+    monkeypatch.setattr(common.subprocess, "check_output", fake)
+    assert common.git_commit() == "abc1234-dirty"
+    assert "-uno" in calls[1]  # untracked files (a contributed result file) must not count
+
+
+def test_git_commit_clean_checkout_is_bare_hash(monkeypatch):
+    import common
+
+    monkeypatch.setattr(
+        common.subprocess, "check_output", lambda cmd, text=True: "abc1234\n" if "rev-parse" in cmd else "\n"
+    )
+    assert common.git_commit() == "abc1234"
 
 
 def test_save_json_round_trip_sanitizes_non_finite(tmp_path):
@@ -89,12 +113,39 @@ def test_run_batch_sweep_rows_and_skip_cells(capsys):
         return {"opA": {"fast": lambda: None, "missing": None}}, {}
 
     rows = run_batch_sweep([1, 2], build, ["fast", "missing"], row_fields=lambda b: {"size": 8}, min_run_time=0.05)
-    assert [r["batch"] for r in rows] == [1, 2]  # only 'fast' produces rows
-    assert rows[0]["op"] == "opA" and rows[0]["backend"] == "fast" and rows[0]["size"] == 8
-    assert rows[0]["median_us"] > 0 and rows[0]["throughput_per_s"] > 0
+    measured = [r for r in rows if r.get("error") is None]
+    assert [r["batch"] for r in measured] == [1, 2]
+    assert measured[0]["op"] == "opA" and measured[0]["backend"] == "fast" and measured[0]["size"] == 8
+    assert measured[0]["median_us"] > 0 and measured[0]["throughput_per_s"] > 0
+    # the unavailable backend is recorded, not dropped, so the JSON shows the gap
+    skipped = [r for r in rows if r["backend"] == "missing"]
+    assert len(skipped) == 2
+    assert all(r["median_us"] is None and r["throughput_per_s"] is None for r in skipped)
+    assert all(r["error"] == "unavailable" for r in skipped)
     out = capsys.readouterr().out
     assert "batch=1" in out and "batch=2" in out
     assert "-" in out  # the skip cell
+
+
+def test_run_batch_sweep_accepts_non_batch_configs(capsys):
+    def build(config):
+        return {"opA": {"fast": lambda: None}}, {}
+
+    rows = run_batch_sweep(
+        [(2, 100)],
+        build,
+        ["fast"],
+        row_fields=lambda c: {"batch": c[0], "n": c[1]},
+        label_fn=lambda c: f"B={c[0]} N={c[1]}",
+        items_fn=lambda c: c[0] * c[1],
+        units="LAFs/s",
+        min_run_time=0.05,
+    )
+    assert rows[0]["batch"] == 2 and rows[0]["n"] == 100  # row_fields overrides the config object
+    per_call_s = rows[0]["median_us"] * 1e-6
+    assert math.isclose(rows[0]["throughput_per_s"], 200 / per_call_s)  # items_fn drives it, not the config
+    out = capsys.readouterr().out
+    assert "B=2 N=100" in out and "(LAFs/s)" in out
 
 
 def test_versions_line_reports_stack_and_gaps():
@@ -135,6 +186,18 @@ def test_run_batch_sweep_reports_warmup_failures(capsys):  # 'compile' in a test
 
     run_batch_sweep([1], build, ["fast"], row_fields=lambda b: {}, min_run_time=0.05)
     assert "torch.compile warmup failed" in capsys.readouterr().out
+
+
+def test_run_batch_sweep_records_warmup_failure_in_rows():  # 'compile' in a NAME gets deselected
+    def build(b):
+        return {"opA": {"kornia (eager)": lambda: None, "kornia (compiled)": None}}, {"opA": "InductorError"}
+
+    rows = run_batch_sweep(
+        [1], build, ["kornia (eager)", "kornia (compiled)"], row_fields=lambda b: {}, min_run_time=0.05
+    )
+    failed = next(r for r in rows if r["backend"] == "kornia (compiled)")
+    assert failed["error"] == "InductorError"  # the exception type reaches the JSON, not just stdout
+    assert failed["median_us"] is None and failed["throughput_per_s"] is None
 
 
 def test_collect_load_metrics_aggregate_only() -> None:

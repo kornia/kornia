@@ -52,6 +52,26 @@ def test_valid_file_passes(tmp_path) -> None:
     assert results_schema.validate_result(p) == []
 
 
+def test_absolute_path_in_metadata_flagged(tmp_path) -> None:
+    """A committed file must not disclose a home directory or machine layout (README privacy rule)."""
+    p = tmp_path / "0.9.0rc1" / "filters--test-box--cpu.json"
+    p.parent.mkdir()
+    for leaked in ("/home/someone/dev/kornia/kornia/__init__.py", "C:\\Users\\someone\\kornia", "\\\\host\\share"):
+        payload = _valid_payload()
+        payload["metadata"]["kornia_module"] = leaked
+        p.write_text(json.dumps(payload))
+        assert any("privacy" in e for e in results_schema.validate_result(p)), leaked
+
+
+def test_checkout_relative_module_path_passes(tmp_path) -> None:
+    payload = _valid_payload()
+    payload["metadata"]["kornia_module"] = "kornia/__init__.py"
+    p = tmp_path / "0.9.0rc1" / "filters--test-box--cpu.json"
+    p.parent.mkdir()
+    p.write_text(json.dumps(payload))
+    assert results_schema.validate_result(p) == []
+
+
 def test_device_mismatch_flagged(tmp_path) -> None:
     p = tmp_path / "0.9.0rc1" / "filters--test-box--cuda.json"
     p.parent.mkdir()
