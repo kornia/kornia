@@ -216,6 +216,43 @@ cell. Compare columns within one table, never numbers across machines.
 | extract_patches_simple | 3499935 | **31880283** |
 | extract_patches_from_pyramid | 2979848 | **25969422** |
 
+Apple M1 (MacBook Air, 8 cores, 4 torch threads), macOS 26.5, Python 3.11, torch 2.9.1,
+kornia 0.9.0rc1, same float32 / 256×256 / PS=32 / stratified-scale workload. Committed as
+[`feature-laf-ops--apple-m1--cpu.json`](results/0.9.0rc1/feature-laf-ops--apple-m1--cpu.json)
+and
+[`feature-laf-ops--apple-m1--mps.json`](results/0.9.0rc1/feature-laf-ops--apple-m1--mps.json).
+Every op compiled on both devices here too. This is a different CPU architecture, thread count
+and torch version from the box above, so it answers "does the finding hold?", not "which box is
+faster?".
+
+`--device cpu --compile`, B=1 N=20000:
+
+| op | kornia (eager) | kornia (compiled) |
+| --- | --: | --: |
+| laf_from_center_scale_ori | 25551758 | **84299262** |
+| make_upright | 25171744 | **108229794** |
+| ellipse_to_laf | 75817885 | **177777778** |
+| laf_to_boundary_points | 838245 | **1078421** |
+| laf_is_inside_image | 4880514 | **9227220** |
+| extract_patches_simple | 40806 | **294408** |
+| extract_patches_from_pyramid | 30084 | **200881** |
+
+`--device mps --compile`, B=1 N=20000:
+
+| op | kornia (eager) | kornia (compiled) |
+| --- | --: | --: |
+| laf_from_center_scale_ori | 13318018 | **22368750** |
+| make_upright | 12793187 | **35554228** |
+| ellipse_to_laf | 14233594 | **39990002** |
+| laf_to_boundary_points | 1282786 | **1874608** |
+| laf_is_inside_image | 2194321 | **4115015** |
+| extract_patches_simple | 88430 | **476392** |
+| extract_patches_from_pyramid | 73561 | **689227** |
+
+Run-to-run spread on that laptop, from two independent full runs of each device: CPU cells move
+by a median of 1.0% (worst 19%, on the cheapest op at the smallest config), MPS cells by a median
+of 7.4% (worst 54%). Treat an MPS difference under ~2× on this class of machine as noise.
+
 The honest reading:
 
 - **Patch extraction still dominates, but only on CPU.** `extract_patches_from_pyramid` runs at
@@ -223,11 +260,14 @@ The honest reading:
   descriptor pass pays ~0.53 s in patch sampling before any descriptor math. On CUDA the same op
   is ~3.0M LAFs/s eager and ~26M compiled (0.77 ms for those 20k LAFs), only ~25× below the cheap
   ops. Batched GPU extraction is the regime to be in.
-- **`torch.compile` is a consistent 1.9–2.1× *loss* for `extract_patches_simple` on CPU** — in
-  all three configs, not just the one shown — while it is a ~9.1× win for the same op on CUDA.
-  It is not the N-chunking added in #4128: at B=1 N=2000 the sampling grid is ~16 MiB against a
-  64 MiB budget, so that config takes the single-chunk fast path and still loses. Unexplained,
-  and the next thing to look at on the CPU inductor path.
+- **`torch.compile` loses on `extract_patches_simple` on *that* CPU, not on CPUs.** It is a
+  consistent 1.9–2.1× loss in all three configs on the i7-14700K (torch 2.14, 14 threads) and a
+  ~9.1× win for the same op on CUDA — but on the Apple M1 (torch 2.9.1, 4 threads) it is a
+  **7.2× win** (40806 → 294408 LAFs/s), and 6.7× for the pyramid variant. So the regression is a
+  property of that CPU inductor path, not of the op or of compiling for CPU, and a fix should
+  start by bisecting stack against machine rather than reading the kernel. It is not the
+  N-chunking added in #4128: at B=1 N=2000 the sampling grid is ~16 MiB against a 64 MiB budget,
+  so that config takes the single-chunk fast path and still loses.
 - **`laf_to_boundary_points` is the weakest compiled op on CUDA** — 17.8M LAFs/s, below both
   patch extractors, ~25× below `ellipse_to_laf`, and the least moved by `torch.compile` there
   (1.26×, against up to 9.1× elsewhere). It builds its `linspace`/`ones`/`tensor` basis without a
@@ -247,8 +287,18 @@ The honest reading:
   benchmark originally recorded it as a hot spot (a batched 2×2 `torch.inverse`, pathological on
   MPS); the closed-form inverse in #4122 fixed it, and the dedicated A/B lives in
   [`ellipse_to_laf.py`](feature/ellipse_to_laf.py).
-- **MPS is not re-measured here.** The earlier MPS table for this suite predates #4122 and #4128,
-  both of which rewrote ops it measured, so it is withdrawn rather than carried forward.
+- **On Apple silicon, MPS is the wrong device for the cheap LAF ops.** Every bookkeeping op is
+  faster in M1 *CPU* eager than in MPS eager — `ellipse_to_laf` by 5.3× (75.8M vs 14.2M LAFs/s),
+  `make_upright` and `laf_from_center_scale_ori` by ~2× — and the gap widens under
+  `torch.compile` (4.4× and 3.8×). MPS only wins where there is real work per LAF: patch
+  extraction, by 2.2–2.4× eager and up to 3.4× compiled. A pipeline that moves LAFs to the GPU
+  for the frame math alone pays for the transfer twice.
+- **`laf_to_boundary_points` is the worst op on every machine measured**, and its CPU numbers say
+  why: on the M1 it is 30× below `make_upright` and `torch.compile` recovers only 1.29×, because
+  the cost is not a kernel. It builds its 50-point basis with no `device=`, `.expand()`s it to
+  `(B*N, n_pts, 3)` and only then calls `.to(device)`, so every call materializes — and on a GPU
+  transfers — a tensor that scales with the LAF count: ~12 MiB per call at N=20000 for a basis
+  with 50 distinct rows. Build it on the target device and broadcast in the matmul instead.
 
 ## Sample results — augmentation flagship (class API)
 

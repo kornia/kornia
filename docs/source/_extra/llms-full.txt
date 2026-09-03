@@ -176,6 +176,8 @@ Durable findings from earlier CUDA runs (2026-08-07, see benchmarks/README.md):
 - augmentation on apple-m1/mps (2026-08-08): fastest overall opencv RandomHorizontalFlip@8 at 182381 items/s; slowest kornia op ColorJiggle@1 at 91 items/s.
 - augmentation on apple-m4/cpu (2026-08-18): fastest overall opencv RandomHorizontalFlip@8 at 248255 items/s; slowest kornia op ColorJiggle@32 at 414 items/s.
 - augmentation on apple-m4/mps (2026-08-18): fastest overall opencv RandomHorizontalFlip@8 at 247523 items/s; slowest kornia op ColorJiggle@1 at 271 items/s.
+- feature-laf-ops on apple-m1/cpu (2026-09-03): fastest overall kornia (compiled) ellipse_to_laf@1,n_lafs=20000 at 177777778 LAFs/s; slowest kornia op extract_patches_from_pyramid@8,n_lafs=2000 at 29024 LAFs/s.
+- feature-laf-ops on apple-m1/mps (2026-09-03): fastest overall kornia (compiled) ellipse_to_laf@1,n_lafs=20000 at 39990002 LAFs/s; slowest kornia op extract_patches_from_pyramid@1,n_lafs=2000 at 57587 LAFs/s.
 - feature-laf-ops on i7-14700k-rtx-4090/cpu (2026-09-03): fastest overall kornia (compiled) ellipse_to_laf@1,n_lafs=20000 at 149762253 LAFs/s; slowest kornia op extract_patches_from_pyramid@8,n_lafs=2000 at 26036 LAFs/s.
 - feature-laf-ops on i7-14700k-rtx-4090/cuda (2026-09-03): fastest overall kornia (compiled) ellipse_to_laf@1,n_lafs=20000 at 447807983 LAFs/s; slowest kornia op extract_patches_from_pyramid@1,n_lafs=2000 at 1380403 LAFs/s.
 - filters on apple-m1/cpu (2026-08-08): fastest overall opencv box_blur@1 at 22422 items/s; slowest kornia op median_blur@32 at 11 items/s.
