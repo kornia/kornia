@@ -79,6 +79,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   figures are rendered by `docs/generate_model_examples.py` and committed under
   `docs/source/_static/img/models/`, so the docs build needs neither the weights nor the sample
   images. (#4178)
+* The blocking MPS CI gate now runs on torch 2.14.0 instead of 2.9.1, on the `macos-15` image
+  instead of `macos-latest`, and its recorded failure baseline drops from 200 entries to 14.
+  torch 2.14.0 adds MPS kernels for `grid_sample`'s 2-D and 3-D backward passes, for
+  `padding_mode="border"` and 5-D `mode="nearest"` sampling, and for the eigen/QR/LU/SVD family
+  (`eigh`, `svd`, `svdvals`, `qr`, `lu_solve`, `lstsq`, `cholesky_solve`, `matrix_exp`), so most of
+  what used to fail on Apple silicon now runs there natively. What is still *pinned* in the
+  baseline: `torch.linalg.eigvals`, which has no MPS kernel and keeps the 5-point essential-matrix
+  solver off the device, and the `yuv420`/`yuv422` empty-input reshape defect. Separately,
+  `tests/geometry/test_ransac.py` is *skipped* rather than pinned — it aborts the process on the
+  runners' paravirtualized GPU, and a `SIGABRT` has no exception type to record
+  ([#4204](https://github.com/kornia/kornia/issues/4204)); the skip costs 9 tests that pass on real
+  Apple hardware, and `--run-mps-process-abort` runs them locally. The underlying limit is that a
+  **batched** `torch.linalg.svd`/`svdvals`/`lstsq` fails to build a Metal pipeline once its input
+  holds 8192 elements or more, which keeps `RANSAC`'s batched minimal solvers off the device
+  ([#4201](https://github.com/kornia/kornia/issues/4201)); a single unbatched matrix is unaffected
+  at any size. The image stays on `macos-15`: on `macos-latest` (macOS 26) the runner's *virtual*
+  GPU cannot compile the Metal 4 cooperative-tensor shaders torch 2.14 emits, which fails 664
+  tests — a physical M1 on macOS 26 compiles them fine. kornia still supports torch 2.5.1, so the
+  in-tree MPS workarounds stay. (#4202)
 
 ### Breaking changes
 
