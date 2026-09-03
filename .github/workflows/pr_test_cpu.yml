@@ -86,7 +86,7 @@ jobs:
         os: ["ubuntu-latest", "windows-latest", "macos-latest"]
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.5.1", "2.9.1"]
+        pytorch-version: ["2.5.1", "2.14.0"]
         exclude:
           # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on Windows
           - os: windows-latest
@@ -163,7 +163,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.9.1"]'
+      pytorch-version: '["2.14.0"]'
       pytorch-dtype: float32
       optimizer: inductor
       pytest-extra: 'tests/augmentation tests/enhance tests/filters tests/color tests/geometry tests/losses tests/morphology -k "dynamo or compile"'
