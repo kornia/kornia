@@ -27,6 +27,13 @@ import torch.nn.functional as F
 from torch.linalg import inv_ex
 
 from kornia.core._compat import torch_version_ge
+from kornia.core._small_linalg import (
+    _adjugate_2x2,
+    _adjugate_3x3,
+    _adjugate_4x4,
+    _inverse_3x3_cross,
+    _inverse_3x3_scalar,
+)
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_TYPE
 from kornia.core.exceptions import DeviceError
 
@@ -163,12 +170,15 @@ def _l2_normalize(input: torch.Tensor, dim: int = 1) -> torch.Tensor:
 
 
 def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
-    """Closed-form inverse for batched 3x3 matrices.
+    """Closed-form inverse for batched 3x3 matrices, dispatching on the execution mode.
 
     Used as an ONNX-traceable fallback to ``torch.linalg.inv``: the legacy ONNX
     exporter does not lower ``aten::linalg_inv`` (as of opset 17). Computed via
     the adjugate / determinant formula, which is composed entirely of basic
     arithmetic ops that all standard ONNX opsets support.
+
+    The arithmetic lives in :mod:`kornia.core._small_linalg`; this function owns only the
+    choice between the two kernels, which is execution-mode policy and therefore stays here.
 
     Args:
         input: Tensor of shape ``(..., 3, 3)``.
@@ -180,23 +190,18 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
         (no explicit check, same as ``torch.linalg.inv`` itself).
     """
     if not _is_tracing_or_exporting():
-        # inv(M) = adj(M) / det, and for a 3x3 the adjugate rows are cross products of the
-        # columns: with columns (a, b, c), the inverse rows are (b x c, c x a, a x b) / det,
-        # det = a . (b x c). Three fused ``cross`` ops instead of nine scalar cofactor
-        # expressions and four stacks — far fewer kernel launches (dominant on small matrices).
-        col_a = input[..., :, 0]
-        col_b = input[..., :, 1]
-        col_c = input[..., :, 2]
-        row0 = torch.linalg.cross(col_b, col_c, dim=-1)
-        row1 = torch.linalg.cross(col_c, col_a, dim=-1)
-        row2 = torch.linalg.cross(col_a, col_b, dim=-1)
-        det = (col_a * row0).sum(-1)
-        return torch.stack([row0, row1, row2], dim=-2) / det[..., None, None]
+        # Eager: three fused ``cross`` ops beat nine scalar cofactor expressions and four
+        # stacks, because kernel launches dominate on matrices this small.
+        return _inverse_3x3_cross(input)
 
     # Under tracing/export (legacy ONNX / jit.trace / dynamo ONNX) stick to the plain scalar
-    # adjugate: it lowers to basic arithmetic that every opset supports, whereas ``cross`` may not.
-    adj, det = _adjugate_3x3(input)
-    return adj / det[..., None, None]
+    # adjugate. NOTE the original rationale here -- "whereas ``cross`` may not [lower]" -- does not
+    # hold on the torch versions CI runs: measured, ``torch.linalg.cross`` lowers on 2.5.1 (legacy
+    # exporter) and on 2.9.1 (both exporters). The split is kept because it is still the safer
+    # capture path (scalar arithmetic needs no per-dtype kernel at all, and ``cross`` has real
+    # kernel gaps -- no bfloat16 on MPS in torch 2.5.1), not because ``cross`` fails to export.
+    # Collapsing the two branches is a behavior change and belongs in its own PR.
+    return _inverse_3x3_scalar(input)
 
 
 def _is_tracing_or_exporting() -> bool:
@@ -208,111 +213,6 @@ def _is_tracing_or_exporting() -> bool:
     if torch.jit.is_scripting():
         return False
     return torch.jit.is_tracing() or is_exporting()
-
-
-def _adjugate_2x2(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Return the adjugate and determinant of batched 2x2 matrices, in basic arithmetic only."""
-    a = input[..., 0, 0]
-    b = input[..., 0, 1]
-    c = input[..., 1, 0]
-    d = input[..., 1, 1]
-    det = a * d - b * c
-    adj = torch.stack([torch.stack([d, -b], dim=-1), torch.stack([-c, a], dim=-1)], dim=-2)
-    return adj, det
-
-
-def _adjugate_3x3(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Return the adjugate and determinant of batched 3x3 matrices, in basic arithmetic only."""
-    a = input[..., 0, 0]
-    b = input[..., 0, 1]
-    c = input[..., 0, 2]
-    d = input[..., 1, 0]
-    e = input[..., 1, 1]
-    f = input[..., 1, 2]
-    g = input[..., 2, 0]
-    h = input[..., 2, 1]
-    i = input[..., 2, 2]
-
-    # Cofactors (signed minors).
-    c00 = e * i - f * h
-    c01 = -(d * i - f * g)
-    c02 = d * h - e * g
-    c10 = -(b * i - c * h)
-    c11 = a * i - c * g
-    c12 = -(a * h - b * g)
-    c20 = b * f - c * e
-    c21 = -(a * f - c * d)
-    c22 = a * e - b * d
-
-    det = a * c00 + b * c01 + c * c02
-
-    # Adjugate is the transpose of the cofactor matrix.
-    row0 = torch.stack([c00, c10, c20], dim=-1)
-    row1 = torch.stack([c01, c11, c21], dim=-1)
-    row2 = torch.stack([c02, c12, c22], dim=-1)
-    adj = torch.stack([row0, row1, row2], dim=-2)
-
-    return adj, det
-
-
-def _adjugate_4x4(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Return the adjugate and determinant of batched 4x4 matrices, in basic arithmetic only.
-
-    Laplace expansion over the 2x2 minors of the top two rows (``s``) and bottom two rows (``c``),
-    the standard 4x4 cofactor scheme (e.g. MESA ``gluInvertMatrix``).
-    """
-    a = input[..., 0, 0]
-    b = input[..., 0, 1]
-    c = input[..., 0, 2]
-    d = input[..., 0, 3]
-    e = input[..., 1, 0]
-    f = input[..., 1, 1]
-    g = input[..., 1, 2]
-    h = input[..., 1, 3]
-    i = input[..., 2, 0]
-    j = input[..., 2, 1]
-    k = input[..., 2, 2]
-    l_ = input[..., 2, 3]
-    m = input[..., 3, 0]
-    n = input[..., 3, 1]
-    o = input[..., 3, 2]
-    p = input[..., 3, 3]
-
-    s0 = a * f - b * e
-    s1 = a * g - c * e
-    s2 = a * h - d * e
-    s3 = b * g - c * f
-    s4 = b * h - d * f
-    s5 = c * h - d * g
-
-    c5 = k * p - l_ * o
-    c4 = j * p - l_ * n
-    c3 = j * o - k * n
-    c2 = i * p - l_ * m
-    c1 = i * o - k * m
-    c0 = i * n - j * m
-
-    det = s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0
-
-    row0 = torch.stack(
-        [f * c5 - g * c4 + h * c3, -b * c5 + c * c4 - d * c3, n * s5 - o * s4 + p * s3, -j * s5 + k * s4 - l_ * s3],
-        dim=-1,
-    )
-    row1 = torch.stack(
-        [-e * c5 + g * c2 - h * c1, a * c5 - c * c2 + d * c1, -m * s5 + o * s2 - p * s1, i * s5 - k * s2 + l_ * s1],
-        dim=-1,
-    )
-    row2 = torch.stack(
-        [e * c4 - f * c2 + h * c0, -a * c4 + b * c2 - d * c0, m * s4 - n * s2 + p * s0, -i * s4 + j * s2 - l_ * s0],
-        dim=-1,
-    )
-    row3 = torch.stack(
-        [-e * c3 + f * c1 - g * c0, a * c3 - b * c1 + c * c0, -m * s3 + n * s1 - o * s0, i * s3 - j * s1 + k * s0],
-        dim=-1,
-    )
-    adj = torch.stack([row0, row1, row2, row3], dim=-2)
-
-    return adj, det
 
 
 def _adjugate_closed_form(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:

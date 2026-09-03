@@ -200,8 +200,8 @@ _healthy_closed_form_inverse_routes: set[tuple[torch.device, torch.dtype]] = set
 def _skip_if_closed_form_inverse_unavailable(device: torch.device, dtype: torch.dtype) -> None:
     # Visible skip for the pins that route through normalize_homography, one layer deeper than
     # _skip_if_dtype_unavailable: a backend can REPRESENT a dtype and still have no kernel for an
-    # operation the route needs. kornia's cusolver-free 3x3 inverse
-    # (_inverse_3x3_closed_form in kornia/core/utils.py) is three torch.linalg.cross calls, and
+    # operation the route needs. kornia's cusolver-free 3x3 inverse dispatches to
+    # _inverse_3x3_cross (kornia/core/_small_linalg.py), which is three torch.linalg.cross calls, and
     # MPS lacks a bfloat16 `cross` kernel in SOME builds -- executed: torch 2.5.1 raises
     # `RuntimeError: Failed to create function state object for: cross_bfloat` there while torch
     # 2.9.1 runs it, and torch.zeros in that dtype succeeds on both, so the allocation probe alone
@@ -219,10 +219,12 @@ def _skip_if_closed_form_inverse_unavailable(device: torch.device, dtype: torch.
     # the regression would be invisible exactly where the skip is live. The primitive half is what
     # keeps the skip from outliving the limitation: the day kornia's inverse stops needing `cross`,
     # these pins must run again on backends that lack it instead of skipping forever.
-    # Residual, stated rather than hidden: this identifies the failing ROUTINE, not the individual
-    # `cross` line inside it. _inverse_3x3_closed_form is three `cross` calls, a multiply-sum and a
+    # Residual, stated rather than hidden: this identifies the failing KERNEL, not the individual
+    # `cross` line inside it. _inverse_3x3_cross is three `cross` calls, a multiply-sum and a
     # divide, so a failure at one of the latter two on a backend whose `cross` is also missing
     # would still skip. Narrowing further would mean pinning line numbers in another module.
+    # It reads the cross KERNEL rather than the mode dispatcher that calls it: the dispatcher owns
+    # only the eager/export choice, so its frame is never where a missing `cross` surfaces.
     # Only the HEALTHY verdict is memoized, keyed by (device, dtype): a route that works is a
     # property of the build, and four pins ask this question in every test configuration, each
     # paying a matmul and a 3x3 inverse for the answer. A failing route is deliberately never
@@ -232,7 +234,7 @@ def _skip_if_closed_form_inverse_unavailable(device: torch.device, dtype: torch.
     # module-level import of it would make the WHOLE file uncollectable if it is ever renamed --
     # every test in it erroring over a rename that concerns the four pins routed through here.
     # Inside the probe, the same rename is an ImportError on those four and nothing else.
-    from kornia.core.utils import _inverse_3x3_closed_form
+    from kornia.core._small_linalg import _inverse_3x3_cross
 
     route = (device, dtype)
     if route in _healthy_closed_form_inverse_routes:
@@ -242,7 +244,7 @@ def _skip_if_closed_form_inverse_unavailable(device: torch.device, dtype: torch.
     except (RuntimeError, NotImplementedError) as err:
         innermost = _innermost_frame(err)
         died_in_the_closed_form_inverse = (
-            innermost is not None and innermost.tb_frame.f_code is _inverse_3x3_closed_form.__code__
+            innermost is not None and innermost.tb_frame.f_code is _inverse_3x3_cross.__code__
         )
         if died_in_the_closed_form_inverse and _cross_is_unavailable(device, dtype):
             pytest.skip(f"torch.linalg.cross has no {dtype} kernel on device {device}: {err}")
@@ -277,7 +279,7 @@ def test_skip_probe_re_raises_everything_it_cannot_identify(monkeypatch):
     # function puts that function in the innermost frame, which is precisely what the helper reads,
     # so a patch cannot reproduce the branch it is meant to exercise. torch has no `cross` kernel
     # for bool or float8 on cpu (executed, torch 2.9.1: NotImplementedError, and the route dies
-    # inside _inverse_3x3_closed_form), which is the same shape as the mps bfloat16 gap on torch
+    # inside _inverse_3x3_cross), which is the same shape as the mps bfloat16 gap on torch
     # 2.5.1 that the helper exists for, reachable on the default device without that build. The
     # candidate list is searched rather than asserted: mps DOES have a bool `cross`, so a build
     # that grows the missing kernels must make this case skip visibly, not fail.
