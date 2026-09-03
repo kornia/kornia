@@ -1194,10 +1194,10 @@ class Boxes3D:
             :class:`~torch.nn.ReLU` at their own kinks). This was previously (see `#1396
             <https://github.com/kornia/kornia/issues/1396>`_) mistaken for an actual gradient bug and
             gated behind a ``RuntimeError``; :class:`Boxes` (2D) uses the same reduction and was never
-            gated, because an axis-aligned rectangle -- the case relevant to the original comparison --
-            always ties 2-way per extremum, where the ``1/2`` split happens to coincide with the
-            central-difference estimate -- gradcheck cannot see the same kink there. A rotated 2D box, or
-            a degenerate one with a higher-order tie, is not guaranteed the same coincidence.
+            gated, because an axis-aligned rectangle always ties 2-way per extremum, where the ``1/2``
+            split happens to coincide with the central-difference estimate -- gradcheck cannot see the
+            same kink there. A degenerate 2D box -- zero extent on an axis, so four vertices tie -- reaches
+            the same 4-way split and is not guaranteed that coincidence.
 
         Examples:
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
