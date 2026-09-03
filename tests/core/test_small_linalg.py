@@ -82,6 +82,16 @@ def _export_kwargs(use_dynamo_exporter: bool) -> dict:
     kwargs = {"opset_version": 18}
     if torch_version_ge(2, 5, 0):
         kwargs["dynamo"] = use_dynamo_exporter
+    if use_dynamo_exporter:
+        # These cases export into a ``BytesIO``, and the dynamo exporter's default
+        # ``external_data=True`` hands that destination straight to onnxscript's
+        # ``save_model_with_external_data``, which takes a filesystem path. On torch 2.6 that is
+        # ``TypeError: expected str, bytes or os.PathLike object, not BytesIO`` after a successful
+        # translation -- measured; 2.9.1 and 2.14.0 accept the buffer through a newer onnxscript
+        # framework API. These graphs are a handful of nodes with no initializers, so there is no
+        # external data to write out on any version. Only reached from 2.6 up: ``_require_exporter``
+        # skips the dynamo cases below that.
+        kwargs["external_data"] = False
     return kwargs
 
 
