@@ -391,7 +391,8 @@ class TestAddWeighted:
         encoding="utf-8",
     )
 
-    result = pytester.runpytest("tests", "-q")
+    # Keep the nested collection isolated from modules imported by the outer full-suite run.
+    result = pytester.runpytest_subprocess("tests", "-q")
 
     assert output.read_text(encoding="utf-8") == "preserve me\n"
     assert "eager RNG" in result.stdout.str()
