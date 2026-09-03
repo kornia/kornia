@@ -139,6 +139,30 @@ jobs:
               ;;
           esac
 
+      # `uv sync` installed the lockfile's dependency set for the *locked* torch, and the step
+      # above swapped torch alone for a build from the CPU wheel index -- which declares no
+      # `triton` at all. The lockfile's triton survives as an orphan of a torch that is no longer
+      # installed, and torch guards its inductor triton path on import availability rather than on
+      # version, so it dispatches onto that orphan: torch 2.6 reaches `from triton.backends.compiler
+      # import AttrsDescriptor`, a name triton 3.8 removed, and 37 dynamo/export tests die at
+      # import (#4199). These legs are CPU-only and never need triton, so drop it and let torch take
+      # its non-triton path deliberately instead of tripping over the wrong one.
+      - name: Reconcile the environment with the installed torch
+        shell: bash
+        run: |
+          stale=$(pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync \
+            python .github/scripts/check_torch_env.py --list-undeclared-sidecars \
+            | tr -d '\r' | sed -n 's/^undeclared-sidecars: //p' | tail -n 1)
+          if [[ -n "$stale" ]]; then
+            echo "Removing packages the installed torch does not declare: $stale"
+            pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync uv pip uninstall $stale
+          else
+            echo "No stale torch sidecars to remove"
+          fi
+
+      # Assert the whole environment against the torch that was just installed, not only
+      # torch.__version__: a silently mis-provisioned venv has to fail here, at setup, rather
+      # than run the suite and report a wall of unrelated-looking test failures (#4199).
       - name: Verify PyTorch version
         id: torch-version
         shell: bash
@@ -148,7 +172,14 @@ jobs:
         run: |
           # Under torch-channel: stable the matrix value is only a floor, so record what actually
           # got installed; the candidate-manifest artifact is named after it below.
-          resolved=$(pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync python -c 'import os, torch; channel = os.environ["TORCH_CHANNEL"]; expected = os.environ["EXPECTED_PYTORCH_VERSION"]; version = torch.__version__; clean = version.partition("+")[0]; got = tuple(int(p) for p in clean.split(".")[:3]); floor = tuple(int(p) for p in expected.split(".")[:3]); ok = version.startswith(expected) if channel == "pinned" else got >= floor; assert ok, f"torch {version} does not satisfy channel={channel} expected={expected}"; print(clean)' | tr -d '\r' | tail -n 1)
+          resolved=$(pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync \
+            python .github/scripts/check_torch_env.py \
+            --channel "$TORCH_CHANNEL" --expected "$EXPECTED_PYTORCH_VERSION" \
+            | tr -d '\r' | sed -n 's/^torch-version: //p' | tail -n 1)
+          if [[ -z "$resolved" ]]; then
+            echo "the environment check did not report a torch version" >&2
+            exit 1
+          fi
           echo "torch-channel=$TORCH_CHANNEL expected=$EXPECTED_PYTORCH_VERSION resolved=$resolved"
           echo "resolved=$resolved" >> "$GITHUB_OUTPUT"
 
