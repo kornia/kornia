@@ -71,6 +71,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+* Kornia's minimum supported PyTorch version rises to 2.5.1. Previously the declared floor was
+  2.0.0, but no CI job had exercised anything below 2.5.1 in some time, so this makes the
+  declared floor match what was already the tested reality rather than changing tested behavior.
+  Installing kornia now requires `torch>=2.5.1`; a `torch` install below that version no longer
+  satisfies the dependency, and `pip`/`uv` will refuse to resolve it. (#PR_NUMBER)
+
 * `extract_patches_from_pyramid` now samples ordinary-sized inputs once from a packed pyramid atlas instead of
   sampling every LAF at every pyramid level. A statically selected levelwise fallback keeps atlases larger than
   128 MiB from becoming a memory hazard. LAFs whose nominal level is coarser than the last usable pyramid level now
