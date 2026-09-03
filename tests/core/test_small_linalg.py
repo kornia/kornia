@@ -222,11 +222,15 @@ class TestInverse3x3Kernels(BaseTester):
     @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     @pytest.mark.parametrize("use_dynamo_exporter", [False, True], ids=["torchscript", "torchexport"])
     def test_cross_kernel_onnx_export_is_informational(self, device, use_dynamo_exporter):
-        # NOT a gate, deliberately. ``torch.linalg.cross`` lowers on torch 2.9.1 on both
-        # exporters (measured), but kornia declares torch>=2.0.0 and whether it lowered on
-        # 2.0-2.8 is untested -- no such environment was available. The dispatcher never takes
-        # this kernel under export, so a build where it does not lower is a visible skip and not
-        # a failure. Promote this to a hard assertion only once every supported torch is checked.
+        # NOT a gate, deliberately -- but the measurement behind it is now stronger than it was.
+        # ``torch.linalg.cross`` lowers on BOTH torch versions CI runs: 2.9.1 on both exporters,
+        # and 2.5.1 on the legacy one (2.5.1's dynamo path needs onnxscript, which those CI legs
+        # do not install, so it is out of reach rather than broken). Untested: torch 2.0-2.4,
+        # which kornia declares support for and CI does not run.
+        # It stays a skip rather than a hard assertion for two reasons: the dispatcher never takes
+        # this kernel under export, so nothing in kornia depends on it lowering; and a future torch
+        # that stops lowering ``cross`` should surface as a visible skip here rather than as a red
+        # test for something kornia does not rely on.
         _require_exporter(use_dynamo_exporter)
         onnx = pytest.importorskip("onnx")
         x = _well_conditioned(3, device, torch.float32, (2,))
