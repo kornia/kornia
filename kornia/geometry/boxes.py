@@ -1154,7 +1154,7 @@ class Boxes3D:
             height = boxes[..., 4] - boxes[..., 1] + 1
             depth = boxes[..., 5] - boxes[..., 2] + 1
         elif mode == "xyzwhd":
-            depth, height, width = boxes[..., 4], boxes[..., 3], boxes[..., 5]
+            width, height, depth = boxes[..., 3], boxes[..., 4], boxes[..., 5]
         else:
             raise ValueError(f"Unknown mode {mode}")
 
