@@ -48,9 +48,9 @@ class TestQuadraticSolver(BaseTester):
         roots = solver.solve_quadratic(coeffs)
         self.assert_close(roots[0], expected_solutions[0])
 
-    def gradcheck(self, device):
+    def test_gradcheck(self, device):
         coeffs = torch.rand(1, 3, device=device, dtype=torch.float64, requires_grad=True)
-        assert self.gradcheck(solver.solve_quadratic, (coeffs), raise_exception=True, fast_mode=True)
+        self.gradcheck(solver.solve_quadratic, (coeffs,))
 
 
 class TestCubicSolver(BaseTester):
@@ -80,9 +80,9 @@ class TestCubicSolver(BaseTester):
         roots = solver.solve_cubic(coeffs)
         self.assert_close(roots[0], expected_solutions[0], rtol=1e-3, atol=1e-3)
 
-    def gradcheck(self, device):
+    def test_gradcheck(self, device):
         coeffs = torch.rand(1, 4, device=device, dtype=torch.float64, requires_grad=True)
-        assert self.gradcheck(solver.solve_cubic, (coeffs), raise_exception=True, fast_mode=True)
+        self.gradcheck(solver.solve_cubic, (coeffs,))
 
 
 class TestMultiplyDegOnePoly(BaseTester):
