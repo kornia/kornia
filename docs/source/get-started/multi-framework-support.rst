@@ -1,124 +1,59 @@
-.. raw:: html
-
-   <a href="https://github.com/ivy-llc/ivy" target="_blank">
-       <div style="display: block;" align="center">
-           <img class="dark-light" width="30%" src="https://raw.githubusercontent.com/ivy-llc/assets/refs/heads/main/assets/logos/ivy-long.svg"/>
-       </div>
-   </a>
-   <br>
-
-Working with TensorFlow, JAX and NumPy
-======================================
+Multi-framework support
+========================
 
 .. meta::
-   :description: Use Kornia from TensorFlow, JAX or NumPy: kornia.to_tensorflow(), kornia.to_jax() and kornia.to_numpy() transpile the library through Ivy, with examples and current limitations.
+   :description: Kornia no longer offers kornia.to_tensorflow(), kornia.to_jax() or kornia.to_numpy(). Testing found the Ivy-powered transpiler unreliable, so the feature and its docs were removed.
 
-Kornia is a PyTorch library, but every function and module can also be called with `TensorFlow <https://www.tensorflow.org/>`_,
-`JAX <https://jax.readthedocs.io/en/latest/index.html>`_ or `NumPy <https://numpy.org/>`_ arrays: ``kornia.to_tensorflow()``,
-``kornia.to_jax()`` and ``kornia.to_numpy()`` return a transpiled copy of the library, powered by
-`Ivy <https://github.com/ivy-llc/ivy>`_.
+Removed: this page used to document ``kornia.to_tensorflow()``, ``kornia.to_jax()`` and
+``kornia.to_numpy()`` — functions that lazily transpiled the whole library to another framework,
+powered by the third-party `Ivy <https://github.com/ivy-llc/ivy>`_ project. In September 2026 we
+tested that claim end to end, found it did not hold up, and removed the functions along with the
+advertising in the README and on the landing page. This page now records what was found, for
+anyone who lands here from an old link.
 
-This can be accomplished using the following functions, which are now part of the Kornia API:
+What we found
+--------------
 
-* :code:`kornia.to_tensorflow()`
+Testing used kornia 0.9.0rc1, ivy 1.0.0.5 (its latest release, from June 2025), torch 2.14.0,
+tensorflow 2.21.0, and jax 0.10.2 / jaxlib 0.10.2 — following the exact examples this page used to
+show.
 
-* :code:`kornia.to_jax()`
+* ``kornia.to_tensorflow()``, ``to_jax()`` and ``to_numpy()`` crashed immediately with
+  ``TypeError: unhashable type`` when kornia was checked out into a directory whose path contains
+  the substring ``kornia`` — the default name ``git clone`` gives the repository. Ivy's transpiler
+  decides whether a module belongs to kornia with a plain substring check against each module's
+  file path, so it also recursed into unrelated parts of PyTorch's dependency tree (``ctypes``,
+  ``dill``, ``unittest.mock``, …) and hit an object it could not hash.
+* Even from a differently named checkout, ``to_tensorflow()`` segfaulted during transpilation
+  whenever ``transformers`` was installed in the same environment — which it was by default for
+  kornia contributors, since both packages shipped in the same ``dev`` extra. The crash happened
+  inside Ivy's Hugging Face integration lookup, which imports ``triton`` as a side effect.
+* With ``transformers`` absent and the environment's ``ruff`` executable on ``PATH`` (Ivy shells
+  out to it to format generated code), ``to_tensorflow()`` did transpile and run
+  ``rgb_to_grayscale`` correctly.
+* ``to_numpy()`` transpiled but failed at call time: the generated code checked
+  ``np.bfloat16``, an attribute NumPy does not have.
+* ``to_jax()`` failed outright: Ivy requires ``flax>=0.8.0``, which this page never mentioned;
+  after installing it, the call failed instead with
+  ``module 'jaxlib' has no attribute 'xla_extension'``, an incompatibility between Ivy and current
+  ``jaxlib`` releases.
 
-* :code:`kornia.to_numpy()`
+None of these were bugs in kornia's own code — all five are in Ivy's transpiler or in its
+compatibility with current TensorFlow/JAX/NumPy releases.
 
-Here's an example of using kornia with TensorFlow:
+Is Ivy still maintained?
+--------------------------
 
-.. code:: python
+As of September 2026, `ivy-llc/ivy <https://github.com/ivy-llc/ivy>`_ (which now redirects to
+`unifyai/ivy <https://github.com/unifyai/ivy>`_) had a single commit in the previous twelve
+weeks — a rebrand, not a fix — and its last PyPI release, ``1.0.0.5``, shipped in June 2025. It
+carries close to a thousand open issues, including unmerged fixes for exactly the kind of
+NumPy/JAX version drift this page ran into. The `unifyai <https://github.com/unifyai>`_
+organization itself is active, but its recent development effort is going into an unrelated
+product line, not Ivy.
 
-    import kornia
-    import tensorflow as tf
-
-    tf_kornia = kornia.to_tensorflow()
-
-    rgb_image = tf.random.normal((1, 3, 224, 224))
-    gray_image = tf_kornia.color.rgb_to_grayscale(rgb_image)
-
-So what's happening here? Let's break it down.
-
-#. Transpiling kornia to TensorFlow
-
-    This line lazily transpiles everything in the kornia API to TensorFlow, and creates a new module for this transpiled version of kornia.
-    Because the transpilation happens lazily, no function or class will be transpiled until it's actually called.
-
-    .. code-block:: python
-
-        tf_kornia = kornia.to_tensorflow()
-
-#. Calling a TF kornia function
-
-    We can now call any kornia function (or class) with TF arguments. However, this function will be very slow relative to
-    the original function - as the function is being transpiled during this step.
-
-    .. code-block:: python
-
-        rgb_image = tf.random.normal((1, 3, 224, 224))
-        gray_image = tf_kornia.color.rgb_to_grayscale(rgb_image)  # slow
-
-#. Subsequent function calls
-
-    The good news is any calls of the function after the initial call will be much faster, as it has already been transpiled,
-    and should approximately match the speed of the original kornia function.
-
-    .. code-block:: python
-
-        gray_image = tf_kornia.color.rgb_to_grayscale(rgb_image)  # fast
-
-#. Transpilations in different Python sessions
-
-    You may be wondering if you'll have to wait for these long initial transpilations to take place each time you start a
-    new Python session? The good news is that when a transpilation occurs, Ivy will save the generated source code in the
-    local directory, so if the same transpilation is ever attempted again from within the same directory, it will be
-    immediately retrieved and used.
-
-
-Kornia can be used with JAX and NumPy in the same way:
-
-.. code:: python
-
-    import kornia
-    import numpy as np
-
-    np_kornia = kornia.to_numpy()
-
-    rgb_image = np.random.normal(size=(1, 3, 224, 224))
-    gray_image = np_kornia.color.rgb_to_grayscale(rgb_image)
-
-
-.. code:: python
-
-    import kornia
-    import jax
-
-    jax_kornia = kornia.to_jax()
-
-    rgb_image = jax.random.normal(jax.random.key(42), shape=(1, 3, 224, 224))
-    gray_image = jax_kornia.color.rgb_to_grayscale(rgb_image)
-
-
-Limitations
------------
-
-* Converting Kornia to TensorFlow or JAX works for functions, classes and trainable modules; converting to NumPy supports functions and classes, but not trainable modules.
-
-* Transpilation does not currently work with custom kernels, such as flash attention.
-
-* Certain stateful classes cannot currently be transpiled, such as optimizers (torch.optim.Adam, etc.), trainers, and data loaders.
-
-* Compatibility with native compilers (*jax.jit* and *tf.function*) is somewhat limited with transpiled versions of Kornia,
-  particularly compared with *torch.compile* on standard Kornia. Improving compatibility with these is one of the key areas of
-  focus for the current development of Ivy.
-
-
-From the Ivy Team
------------------
-
-We hope you find using Kornia with TensorFlow, JAX and NumPy useful! Ivy is still very much under development,
-so if you find any issues/bugs, feel free to raise an issue on the `ivy <https://github.com/ivy-llc/ivy>`_ repository.
-We'd also really appreciate a star, if you'd like to show your support!
-
-To learn more about Ivy, we recommend taking a look through our `documentation <https://ivy.dev/docs/>`_.
+If Ivy becomes reliable again, multi-framework support is worth revisiting — but as a fresh
+integration, not a restoration of ``kornia.to_tensorflow()``/``to_jax()``/``to_numpy()`` from this
+page. Their implementation is gone; ``kornia.to_tensorflow()``, ``kornia.to_jax()``,
+``kornia.to_numpy()`` and their ``kornia.transpiler`` counterparts now only raise a clear error
+pointing here if something still calls them.

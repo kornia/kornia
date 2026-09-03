@@ -21,12 +21,11 @@ Stability tiers
 promises below apply in full.
 
 **Best-effort** — pre-trained model wrappers (LoFTR, LightGlue, DISK, DeDoDe,
-SAM, and friends in ``kornia.feature``/``kornia.models``), ``kornia.onnx``,
-and the multi-framework ``kornia.transpiler``. These track external
-checkpoints, upstream repositories, and PyTorch internals; they are kept
-working on currently supported PyTorch versions, but their interfaces and
-weights may change with their upstreams, and they may be frozen or split out
-rather than grown.
+SAM, and friends in ``kornia.feature``/``kornia.models``) and ``kornia.onnx``.
+These track external checkpoints, upstream repositories, and PyTorch
+internals; they are kept working on currently supported PyTorch versions, but
+their interfaces and weights may change with their upstreams, and they may be
+frozen or split out rather than grown.
 
 **Experimental** — ``kornia.contrib`` and anything underscore-prefixed or
 absent from the rendered documentation. No stability promise.
