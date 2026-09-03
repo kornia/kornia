@@ -146,7 +146,7 @@ jobs:
       python-version: '["3.11"]'
       pytorch-version: '["2.9.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
-      pytest-extra: --xfail-known-half-precision
+      known-failure-profile: cpu-${{ matrix.pytorch-dtype }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |

@@ -88,11 +88,13 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 ### Precision and device details
 
 - For focused CPU half-precision coverage, add `--dtype=float16,bfloat16` to a `test-module` run. `pixi run test-half` runs the whole CPU test suite.
-- The blocking Linux CPU half jobs run one dtype at a time with `--xfail-known-half-precision`, no optimizer, and
-  no `--runslow`. The option deterministically seeds each node ID and strictly validates the matching manifest in
-  `testing/half_precision_xfails/`; it also supports focused file, node, and `-k` runs. Delete a line after a fix,
-  update it after a rename/reparametrization, and fix or record a new failure. See [TESTING.md](TESTING.md) for the
-  exact strict and full-manifest regeneration commands.
+- The blocking Linux CPU half jobs run one dtype at a time with `--verify-known-failures` and an explicit
+  `--known-failure-profile=cpu-float16` or `cpu-bfloat16`, with no optimizer or `--runslow`. Focused file, node, and
+  `-k` runs use `--xfail-known-failures` with the same profile. Profile selection happens before parametrization and
+  deterministically isolates each node's RNG. Delete a manifest line after a fix, update it after a rename or
+  reparametrization, and fix or deliberately document a new failure. `pixi run test-half` is unseeded; a failure seen
+  only there is a test-determinism bug, not a manifest update. See [TESTING.md](TESTING.md) for guarded candidate
+  recording, fresh-process replay, and manual installation.
 - CUDA `float16`/`bfloat16` tests need per-test subprocess isolation; use `pixi run -e cuda test-cuda-half` or pytest's `--isolate-half-precision` option.
 - MPS does not support float64 gradcheck. MPS autocast can also change the effective dtype; inspect nearby tests before changing tolerances or skips.
 - The blocking MPS job runs `--device=mps --dtype=float32 --xfail-known-failures`. Its exact strict-xfail baseline is `testing/known_failure_xfails/mps_float32.txt` and is tracked in #4159. A fix removes its manifest line; a rename or reparametrization updates the node ID; a new failure is fixed or explicitly documented before being added. The manifest contract requires a full-suite run, without `-k` or a partial path.

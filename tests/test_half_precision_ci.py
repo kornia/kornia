@@ -682,3 +682,22 @@ def test_recorded_baseline_manifest(dtype: str) -> None:
     assert entries
     assert all(entry.phase in {"setup", "call"} for entry in entries.values())
     assert all("." in entry.exception for entry in entries.values())
+
+
+def test_reusable_test_workflow_exposes_complete_profile_input() -> None:
+    root = Path(project_conftest.__file__).parent
+    workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+
+    assert "known-failure-profile:" in workflow
+    assert "KNOWN_FAILURE_PROFILE: ${{ inputs.known-failure-profile }}" in workflow
+    assert "--verify-known-failures" in workflow
+    assert '"--known-failure-profile=$KNOWN_FAILURE_PROFILE"' in workflow
+
+
+@pytest.mark.parametrize("workflow_name", ["pr_test_cpu.yml", "scheduled_test_cpu.yml"])
+def test_cpu_half_workflow_uses_complete_profile(workflow_name: str) -> None:
+    root = Path(project_conftest.__file__).parent
+    workflow = (root / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+
+    assert "known-failure-profile: cpu-${{ matrix.pytorch-dtype }}" in workflow
+    assert "pytest-extra: --xfail-known-half-precision" not in workflow
