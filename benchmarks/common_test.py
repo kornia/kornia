@@ -89,9 +89,15 @@ def test_run_batch_sweep_rows_and_skip_cells(capsys):
         return {"opA": {"fast": lambda: None, "missing": None}}, {}
 
     rows = run_batch_sweep([1, 2], build, ["fast", "missing"], row_fields=lambda b: {"size": 8}, min_run_time=0.05)
-    assert [r["batch"] for r in rows] == [1, 2]  # only 'fast' produces rows
-    assert rows[0]["op"] == "opA" and rows[0]["backend"] == "fast" and rows[0]["size"] == 8
-    assert rows[0]["median_us"] > 0 and rows[0]["throughput_per_s"] > 0
+    measured = [r for r in rows if r.get("error") is None]
+    assert [r["batch"] for r in measured] == [1, 2]
+    assert measured[0]["op"] == "opA" and measured[0]["backend"] == "fast" and measured[0]["size"] == 8
+    assert measured[0]["median_us"] > 0 and measured[0]["throughput_per_s"] > 0
+    # the unavailable backend is recorded, not dropped, so the JSON shows the gap
+    skipped = [r for r in rows if r["backend"] == "missing"]
+    assert len(skipped) == 2
+    assert all(r["median_us"] is None and r["throughput_per_s"] is None for r in skipped)
+    assert all(r["error"] == "unavailable" for r in skipped)
     out = capsys.readouterr().out
     assert "batch=1" in out and "batch=2" in out
     assert "-" in out  # the skip cell
@@ -156,6 +162,18 @@ def test_run_batch_sweep_reports_warmup_failures(capsys):  # 'compile' in a test
 
     run_batch_sweep([1], build, ["fast"], row_fields=lambda b: {}, min_run_time=0.05)
     assert "torch.compile warmup failed" in capsys.readouterr().out
+
+
+def test_run_batch_sweep_records_warmup_failure_in_rows():  # 'compile' in a NAME gets deselected
+    def build(b):
+        return {"opA": {"kornia (eager)": lambda: None, "kornia (compiled)": None}}, {"opA": "InductorError"}
+
+    rows = run_batch_sweep(
+        [1], build, ["kornia (eager)", "kornia (compiled)"], row_fields=lambda b: {}, min_run_time=0.05
+    )
+    failed = next(r for r in rows if r["backend"] == "kornia (compiled)")
+    assert failed["error"] == "InductorError"  # the exception type reaches the JSON, not just stdout
+    assert failed["median_us"] is None and failed["throughput_per_s"] is None
 
 
 def test_collect_load_metrics_aggregate_only() -> None:

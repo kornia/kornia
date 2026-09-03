@@ -4,16 +4,16 @@
     "cuda_device": "NVIDIA GeForce RTX 4090",
     "cuda_version": "13.0",
     "device": "cuda",
-    "git_commit": "b42b4a90",
+    "git_commit": "9517c982",
     "kornia": "0.9.0rc1",
     "kornia_module": "/tmp/claude-1000/-home-ducha-dev-kornia/64bcb7f8-dfbe-436b-b938-456e7fe6429b/scratchpad/laf-wt/kornia/__init__.py",
     "kornia_rs": "0.1.10",
     "load": {
       "cpu_count": 28,
-      "load_avg_15m": 0.2998046875,
-      "load_avg_1m": 0.86376953125,
-      "load_avg_5m": 0.3583984375,
-      "mem_available_bytes": 30006194176,
+      "load_avg_15m": 0.20361328125,
+      "load_avg_1m": 0.7978515625,
+      "load_avg_5m": 0.36962890625,
+      "mem_available_bytes": 29990760448,
       "mem_total_bytes": 33488023552
     },
     "machine": "x86_64",
@@ -22,7 +22,7 @@
     "pillow": "12.2.0",
     "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
     "python": "3.13.12",
-    "timestamp_utc": "2026-09-03T17:34:39+00:00",
+    "timestamp_utc": "2026-09-03T18:27:24+00:00",
     "torch": "2.14.0+cu130",
     "torch_num_threads": 14,
     "torchvision": "0.29.0+cu130",
@@ -33,463 +33,463 @@
       "backend": "kornia (eager)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 36.360551000370826,
-      "median_us": 155.66192899996167,
+      "iqr_us": 29.168392499741437,
+      "median_us": 150.45598199958476,
       "n_lafs": 2000,
       "op": "laf_from_center_scale_ori",
       "size": 256,
-      "throughput_per_s": 12848356.774510307
+      "throughput_per_s": 13292924.43822885
     },
     {
       "backend": "kornia (compiled)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 52.02100010137656,
-      "median_us": 79.40800014694105,
+      "iqr_us": 47.10350003733765,
+      "median_us": 67.27900017722277,
       "n_lafs": 2000,
       "op": "laf_from_center_scale_ori",
       "size": 256,
-      "throughput_per_s": 25186379.159519028
+      "throughput_per_s": 29726957.81345897
     },
     {
       "backend": "kornia (eager)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 326.49300021603267,
-      "median_us": 255.00949982415477,
+      "iqr_us": 41.97457250029404,
+      "median_us": 244.04734000199824,
       "n_lafs": 2000,
       "op": "make_upright",
       "size": 256,
-      "throughput_per_s": 7842845.075885906
+      "throughput_per_s": 8195131.321585493
     },
     {
       "backend": "kornia (compiled)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 28.312500148786057,
-      "median_us": 65.47600014528143,
+      "iqr_us": 22.979499590292107,
+      "median_us": 55.165500270959456,
       "n_lafs": 2000,
       "op": "make_upright",
       "size": 256,
-      "throughput_per_s": 30545543.337441195
+      "throughput_per_s": 36254542.96936471
     },
     {
       "backend": "kornia (eager)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 3.1790742499424756,
-      "median_us": 174.56013900005016,
+      "iqr_us": 28.24014999964675,
+      "median_us": 141.03223300026002,
       "n_lafs": 2000,
       "op": "ellipse_to_laf",
       "size": 256,
-      "throughput_per_s": 11457369.428420456
+      "throughput_per_s": 14181155.31076015
     },
     {
       "backend": "kornia (compiled)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 28.10224975746678,
-      "median_us": 48.254499915856286,
+      "iqr_us": 3.2879997888812795,
+      "median_us": 39.63600011047674,
       "n_lafs": 2000,
       "op": "ellipse_to_laf",
       "size": 256,
-      "throughput_per_s": 41446911.759265915
+      "throughput_per_s": 50459178.38392962
     },
     {
       "backend": "kornia (eager)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 179.22350014032418,
-      "median_us": 710.5525000952184,
+      "iqr_us": 67.4373400033801,
+      "median_us": 599.7626300086267,
       "n_lafs": 2000,
       "op": "laf_to_boundary_points",
       "size": 256,
-      "throughput_per_s": 2814711.087121624
+      "throughput_per_s": 3334652.5774225593
     },
     {
       "backend": "kornia (compiled)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 145.99300038753427,
-      "median_us": 349.7370003060496,
+      "iqr_us": 142.86424925558094,
+      "median_us": 326.315999700455,
       "n_lafs": 2000,
       "op": "laf_to_boundary_points",
       "size": 256,
-      "throughput_per_s": 5718582.815801102
+      "throughput_per_s": 6129028.30947891
     },
     {
       "backend": "kornia (eager)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 371.70225016325276,
-      "median_us": 386.56800006720005,
+      "iqr_us": 61.66145999486616,
+      "median_us": 477.66871999556315,
       "n_lafs": 2000,
       "op": "laf_is_inside_image",
       "size": 256,
-      "throughput_per_s": 5173733.98639392
+      "throughput_per_s": 4187002.2387452484
     },
     {
       "backend": "kornia (compiled)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 82.61299990408588,
-      "median_us": 203.23649982856296,
+      "iqr_us": 117.69125035243633,
+      "median_us": 170.70949979824945,
       "n_lafs": 2000,
       "op": "laf_is_inside_image",
       "size": 256,
-      "throughput_per_s": 9840752.03857117
+      "throughput_per_s": 11715809.620224247
     },
     {
       "backend": "kornia (eager)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 327.4779996900179,
-      "median_us": 1181.6460000773077,
+      "iqr_us": 473.8889992950135,
+      "median_us": 965.391000136151,
       "n_lafs": 2000,
       "op": "extract_patches_simple",
       "size": 256,
-      "throughput_per_s": 1692554.2843365548
+      "throughput_per_s": 2071699.4458389773
     },
     {
       "backend": "kornia (compiled)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 57.41799986935803,
-      "median_us": 88.90699973562732,
+      "iqr_us": 22.97800006090256,
+      "median_us": 105.25699963181978,
       "n_lafs": 2000,
       "op": "extract_patches_simple",
       "size": 256,
-      "throughput_per_s": 22495416.625768203
+      "throughput_per_s": 19001111.63149086
     },
     {
       "backend": "kornia (eager)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 1106.7169998568716,
-      "median_us": 2007.6000000699423,
+      "iqr_us": 569.3547495866369,
+      "median_us": 1448.852000066836,
       "n_lafs": 2000,
       "op": "extract_patches_from_pyramid",
       "size": 256,
-      "throughput_per_s": 996214.3853010173
+      "throughput_per_s": 1380403.2433317823
     },
     {
       "backend": "kornia (compiled)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 231.05399986889097,
-      "median_us": 252.6450002733327,
+      "iqr_us": 97.11725033412222,
+      "median_us": 248.401499902684,
       "n_lafs": 2000,
       "op": "extract_patches_from_pyramid",
       "size": 256,
-      "throughput_per_s": 7916246.107527286
+      "throughput_per_s": 8051481.173759168
     },
     {
       "backend": "kornia (eager)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 38.176664749698816,
-      "median_us": 185.92093050006042,
+      "iqr_us": 27.608298000131988,
+      "median_us": 135.16426199976195,
       "n_lafs": 20000,
       "op": "laf_from_center_scale_ori",
       "size": 256,
-      "throughput_per_s": 107572611.35799608
+      "throughput_per_s": 147968107.13201118
     },
     {
       "backend": "kornia (compiled)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 50.56199995578936,
-      "median_us": 124.6474998879421,
+      "iqr_us": 23.183750272437464,
+      "median_us": 78.56699994590599,
       "n_lafs": 20000,
       "op": "laf_from_center_scale_ori",
       "size": 256,
-      "throughput_per_s": 160452476.12651652
+      "throughput_per_s": 254559802.63685974
     },
     {
       "backend": "kornia (eager)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 40.64012000071671,
-      "median_us": 270.6429749991912,
+      "iqr_us": 28.917475005982837,
+      "median_us": 267.0048299978589,
       "n_lafs": 20000,
       "op": "make_upright",
       "size": 256,
-      "throughput_per_s": 73898093.97439474
+      "throughput_per_s": 74905012.01854806
     },
     {
       "backend": "kornia (compiled)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 28.780249863302743,
-      "median_us": 51.16849979458493,
+      "iqr_us": 22.105999960331246,
+      "median_us": 52.870499985147035,
       "n_lafs": 20000,
       "op": "make_upright",
       "size": 256,
-      "throughput_per_s": 390865475.44465166
+      "throughput_per_s": 378282785.4024195
     },
     {
       "backend": "kornia (eager)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 7.495150002796421,
-      "median_us": 170.81680000046617,
+      "iqr_us": 23.56798000164418,
+      "median_us": 166.76395000104094,
       "n_lafs": 20000,
       "op": "ellipse_to_laf",
       "size": 256,
-      "throughput_per_s": 117084502.22662771
+      "throughput_per_s": 119929996.86008373
     },
     {
       "backend": "kornia (compiled)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 26.61200005604769,
-      "median_us": 49.20600008517795,
+      "iqr_us": 2.7010005396732595,
+      "median_us": 44.6619997092057,
       "n_lafs": 20000,
       "op": "ellipse_to_laf",
       "size": 256,
-      "throughput_per_s": 406454496.7154217
+      "throughput_per_s": 447807982.85388047
     },
     {
       "backend": "kornia (eager)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 252.6433749949319,
-      "median_us": 1521.9300000126168,
+      "iqr_us": 318.2444999765722,
+      "median_us": 1417.6728000165895,
       "n_lafs": 20000,
       "op": "laf_to_boundary_points",
       "size": 256,
-      "throughput_per_s": 13141208.859694073
+      "throughput_per_s": 14107627.655525282
     },
     {
       "backend": "kornia (compiled)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 236.8492502000663,
-      "median_us": 1230.557499866336,
+      "iqr_us": 88.96450026441016,
+      "median_us": 1121.3459993086872,
       "n_lafs": 20000,
       "op": "laf_to_boundary_points",
       "size": 256,
-      "throughput_per_s": 16252795.99057534
+      "throughput_per_s": 17835708.168870315
     },
     {
       "backend": "kornia (eager)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 99.56092250035914,
-      "median_us": 919.3452699992123,
+      "iqr_us": 88.30624250549585,
+      "median_us": 712.2793200005617,
       "n_lafs": 20000,
       "op": "laf_is_inside_image",
       "size": 256,
-      "throughput_per_s": 21754612.3884633
+      "throughput_per_s": 28078872.20421369
     },
     {
       "backend": "kornia (compiled)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 90.62749984423135,
-      "median_us": 375.2589998384792,
+      "iqr_us": 104.52899914525915,
+      "median_us": 356.9010004866868,
       "n_lafs": 20000,
       "op": "laf_is_inside_image",
       "size": 256,
-      "throughput_per_s": 53296523.22424911
+      "throughput_per_s": 56037948.822578445
     },
     {
       "backend": "kornia (eager)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 259.7127000171888,
-      "median_us": 5999.1508000166505,
+      "iqr_us": 157.67450004204858,
+      "median_us": 5714.391449964751,
       "n_lafs": 20000,
       "op": "extract_patches_simple",
       "size": 256,
-      "throughput_per_s": 3333805.177883592
+      "throughput_per_s": 3499935.238094928
     },
     {
       "backend": "kornia (compiled)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 29.23300007751095,
-      "median_us": 619.6580002324481,
+      "iqr_us": 19.94099966395879,
+      "median_us": 627.3469998632208,
       "n_lafs": 20000,
       "op": "extract_patches_simple",
       "size": 256,
-      "throughput_per_s": 32275868.289439555
+      "throughput_per_s": 31880283.167625826
     },
     {
       "backend": "kornia (eager)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 395.376700043925,
-      "median_us": 7065.2407000125095,
+      "iqr_us": 427.7358500075932,
+      "median_us": 6711.751100010588,
       "n_lafs": 20000,
       "op": "extract_patches_from_pyramid",
       "size": 256,
-      "throughput_per_s": 2830759.8918695846
+      "throughput_per_s": 2979848.2842977373
     },
     {
       "backend": "kornia (compiled)",
       "batch": 1,
       "dtype": "float32",
-      "iqr_us": 163.35100008291192,
-      "median_us": 942.5480002391851,
+      "iqr_us": 192.65399987489218,
+      "median_us": 770.1364997956262,
       "n_lafs": 20000,
       "op": "extract_patches_from_pyramid",
       "size": 256,
-      "throughput_per_s": 21219078.49247435
+      "throughput_per_s": 25969422.310600094
     },
     {
       "backend": "kornia (eager)",
       "batch": 8,
       "dtype": "float32",
-      "iqr_us": 54.70211400006517,
-      "median_us": 222.3994490000223,
+      "iqr_us": 32.0259700004044,
+      "median_us": 127.35541299980468,
       "n_lafs": 2000,
       "op": "laf_from_center_scale_ori",
       "size": 256,
-      "throughput_per_s": 71942624.28230385
+      "throughput_per_s": 125632665.49200024
     },
     {
       "backend": "kornia (compiled)",
       "batch": 8,
       "dtype": "float32",
-      "iqr_us": 51.10349979986495,
-      "median_us": 93.8289999794506,
+      "iqr_us": 53.56800102163106,
+      "median_us": 68.74000064271968,
       "n_lafs": 2000,
       "op": "laf_from_center_scale_ori",
       "size": 256,
-      "throughput_per_s": 170522972.67906666
+      "throughput_per_s": 232761126.7151563
     },
     {
       "backend": "kornia (eager)",
       "batch": 8,
       "dtype": "float32",
-      "iqr_us": 34.48112500109346,
-      "median_us": 252.58941000174676,
+      "iqr_us": 15.982208000423306,
+      "median_us": 231.60480900060065,
       "n_lafs": 2000,
       "op": "make_upright",
       "size": 256,
-      "throughput_per_s": 63343906.61860825
+      "throughput_per_s": 69083194.20931587
     },
     {
       "backend": "kornia (compiled)",
       "batch": 8,
       "dtype": "float32",
-      "iqr_us": 10.274000032950426,
-      "median_us": 51.76700005904422,
+      "iqr_us": 29.701500807277625,
+      "median_us": 49.285499699180946,
       "n_lafs": 2000,
       "op": "make_upright",
       "size": 256,
-      "throughput_per_s": 309077210.9983344
+      "throughput_per_s": 324639094.6152038
     },
     {
       "backend": "kornia (eager)",
       "batch": 8,
       "dtype": "float32",
-      "iqr_us": 15.864045000171268,
-      "median_us": 149.72361799982536,
+      "iqr_us": 25.283565000790993,
+      "median_us": 157.23973500371358,
       "n_lafs": 2000,
       "op": "ellipse_to_laf",
       "size": 256,
-      "throughput_per_s": 106863567.77738743
+      "throughput_per_s": 101755450.0433502
     },
     {
       "backend": "kornia (compiled)",
       "batch": 8,
       "dtype": "float32",
-      "iqr_us": 2.037499825746636,
-      "median_us": 42.87100000510691,
+      "iqr_us": 28.29100048984401,
+      "median_us": 42.23100040690042,
       "n_lafs": 2000,
       "op": "ellipse_to_laf",
       "size": 256,
-      "throughput_per_s": 373212661.19507444
+      "throughput_per_s": 378868599.9819613
     },
     {
       "backend": "kornia (eager)",
       "batch": 8,
       "dtype": "float32",
-      "iqr_us": 228.93380000823518,
-      "median_us": 1218.4359999992012,
+      "iqr_us": 203.3266000125878,
+      "median_us": 1254.9181999929715,
       "n_lafs": 2000,
       "op": "laf_to_boundary_points",
       "size": 256,
-      "throughput_per_s": 13131588.36410816
+      "throughput_per_s": 12749835.009237744
     },
     {
       "backend": "kornia (compiled)",
       "batch": 8,
       "dtype": "float32",
-      "iqr_us": 46.836250248816214,
-      "median_us": 920.7534999404743,
+      "iqr_us": 225.3259999633883,
+      "median_us": 916.8090000457596,
       "n_lafs": 2000,
       "op": "laf_to_boundary_points",
       "size": 256,
-      "throughput_per_s": 17377072.149097867
+      "throughput_per_s": 17451835.65955549
     },
     {
       "backend": "kornia (eager)",
       "batch": 8,
       "dtype": "float32",
-      "iqr_us": 58.04149750019859,
-      "median_us": 665.7697299988287,
+      "iqr_us": 197.03943999957127,
+      "median_us": 817.8678599961131,
       "n_lafs": 2000,
       "op": "laf_is_inside_image",
       "size": 256,
-      "throughput_per_s": 24032333.221319858
+      "throughput_per_s": 19563062.424382392
     },
     {
       "backend": "kornia (compiled)",
       "batch": 8,
       "dtype": "float32",
-      "iqr_us": 67.98224967496935,
-      "median_us": 323.87850001214247,
+      "iqr_us": 79.53600015753182,
+      "median_us": 329.2219998911605,
       "n_lafs": 2000,
       "op": "laf_is_inside_image",
       "size": 256,
-      "throughput_per_s": 49401241.51309873
+      "throughput_per_s": 48599425.327862464
     },
     {
       "backend": "kornia (eager)",
       "batch": 8,
       "dtype": "float32",
-      "iqr_us": 188.8572000098062,
-      "median_us": 4814.055799988637,
+      "iqr_us": 100.36909989139583,
+      "median_us": 4872.742900079174,
       "n_lafs": 2000,
       "op": "extract_patches_simple",
       "size": 256,
-      "throughput_per_s": 3323600.8606376704
+      "throughput_per_s": 3283571.5587908453
     },
     {
       "backend": "kornia (compiled)",
       "batch": 8,
       "dtype": "float32",
-      "iqr_us": 29.071749963804905,
-      "median_us": 396.8785001688957,
+      "iqr_us": 22.81500019307714,
+      "median_us": 481.7099998035701,
       "n_lafs": 2000,
       "op": "extract_patches_simple",
       "size": 256,
-      "throughput_per_s": 40314605.08238929
+      "throughput_per_s": 33215004.89199813
     },
     {
       "backend": "kornia (eager)",
       "batch": 8,
       "dtype": "float32",
-      "iqr_us": 417.7927999535315,
-      "median_us": 6167.114199979551,
+      "iqr_us": 316.7148749298578,
+      "median_us": 6322.908549964267,
       "n_lafs": 2000,
       "op": "extract_patches_from_pyramid",
       "size": 256,
-      "throughput_per_s": 2594406.3108241213
+      "throughput_per_s": 2530481.0078409915
     },
     {
       "backend": "kornia (compiled)",
       "batch": 8,
       "dtype": "float32",
-      "iqr_us": 190.75250008881994,
-      "median_us": 644.1739999445417,
+      "iqr_us": 204.8884996384004,
+      "median_us": 772.3749999968277,
       "n_lafs": 2000,
       "op": "extract_patches_from_pyramid",
       "size": 256,
-      "throughput_per_s": 24838009.60823857
+      "throughput_per_s": 20715326.104632743
     }
   ]
 }

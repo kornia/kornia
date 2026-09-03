@@ -94,7 +94,7 @@ def latest_version(versions: list[str]) -> str:
 
 
 #: Row fields that identify the measurement rather than the configuration it was taken at.
-MEASUREMENT_FIELDS = frozenset({"op", "backend", "median_us", "iqr_us", "throughput_per_s"})
+MEASUREMENT_FIELDS = frozenset({"op", "backend", "median_us", "iqr_us", "throughput_per_s", "error"})
 
 
 def _extra_config_fields(rows: list[dict]) -> list[str]:

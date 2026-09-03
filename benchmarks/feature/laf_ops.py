@@ -21,11 +21,13 @@ These ops are the shared substrate of every kornia local-feature pipeline: each 
 converts, validates, and normalizes LAFs, and each descriptor call extracts patches from them.
 There is no cross-library baseline -- no other library exposes LAFs -- so the columns are kornia
 eager vs ``torch.compile``, and the baseline for a change is the same script run on another
-kornia revision (see AGENTS.md, "Comparing a branch against another revision"). Running this file
-directly puts its own directory on ``sys.path[0]``, not the worktree root, so ``cd``-ing into the
-worktree does not shadow the editable install by itself -- run with ``PYTHONPATH="$PWD"`` from the
-worktree root instead, and check that the header's printed module path names the worktree you
-meant.
+kornia revision (see AGENTS.md, "Comparing a branch against another revision"). Running a file
+under ``benchmarks/`` puts its own directory on ``sys.path[0]``, not the checkout root, so the
+editable finder can resolve ``kornia`` to the primary checkout while ``git_commit()`` reports the
+worktree HEAD -- an A/B that silently measures one revision twice. This script therefore puts its
+own checkout root ahead of everything else on ``sys.path`` before importing kornia, prints the
+resolved module path, records it in the exported metadata as ``kornia_module``, and warns loudly
+if it still resolved outside this checkout. Read that line before trusting a comparison.
 
 Covered ops (all public ``kornia.feature`` API):
 
@@ -60,7 +62,10 @@ from typing import Any, Callable, Optional
 
 import torch
 
+# Order matters: the checkout root ends up at sys.path[0], ahead of any editable install, so the
+# kornia measured is the one this file lives in. `main` verifies that it actually won.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from common import (
     add_contribute_args,
     collect_load_metrics,
@@ -76,13 +81,41 @@ import kornia.feature as KF
 
 Backend = Optional[Callable[[], object]]
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
 PATCH_SIZE = 32
 
 
+def pyramid_levels(size: int, ps: int) -> int:
+    """Levels ``extract_patches_from_pyramid`` builds for a square ``size`` image at patch ``ps``.
+
+    Mirrors its halving loop: the pyramid stops at the last level that can still provide a full
+    ``ps``-sized patch.
+    """
+    levels, side = 1, size
+    while side // 2 >= ps and side > 2:
+        side //= 2
+        levels += 1
+    return levels
+
+
 def make_lafs(b: int, n: int, size: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
-    """Random but realistic LAFs: centers inside the image, scales 4-24 px, any orientation."""
+    """Random LAFs: centers inside the image, any orientation, scales stratified across levels.
+
+    Scale matters here beyond realism. ``extract_patches_from_pyramid`` selects level
+    ``floor(log2(2 * get_laf_scale(laf) / PS))``, and ``get_laf_scale`` of a frame built by
+    ``laf_from_center_scale_ori(scale=s)`` is ``s``, so level ``l`` covers ``s`` in
+    ``[PS/2 * 2**l, PS/2 * 2**(l + 1))``. A plain 4-24 px scale range therefore puts *every* LAF
+    on level 0, and a future optimization that skips unused levels would look free on that
+    workload. LAFs are assigned round-robin to the levels the extractor will actually build, so
+    each level carries a share of the batch. Level 0 also absorbs the small-feature regime (from
+    4 px), which selects level 0 anyway; coarser levels sample uniformly inside their own octave.
+    """
     xy = PATCH_SIZE + torch.rand(b, n, 2, device=device, dtype=dtype) * (size - 2 * PATCH_SIZE)
-    scale = 4.0 + 20.0 * torch.rand(b, n, 1, 1, device=device, dtype=dtype)
+    level = torch.arange(n, device=device).remainder(pyramid_levels(size, PATCH_SIZE))
+    lo = torch.where(level == 0, torch.full_like(level, 4), (PATCH_SIZE // 2) * 2**level).to(dtype)
+    hi = (PATCH_SIZE * 2**level).to(dtype)
+    frac = torch.rand(b, n, device=device, dtype=dtype)
+    scale = (lo + (hi - lo) * frac).view(b, n, 1, 1)
     ori = 360.0 * torch.rand(b, n, 1, device=device, dtype=dtype) - 180.0
     return KF.laf_from_center_scale_ori(xy, scale, ori)
 
@@ -168,6 +201,10 @@ def main() -> None:
     print_preflight(meta["load"])
     print(f"# laf_ops | commit {meta['git_commit']} | {meta['platform']} | {device} | {args.dtype}")
     print(f"# kornia module: {kornia_file}")
+    if kornia_file is None or REPO_ROOT not in Path(kornia_file).resolve().parents:
+        # git_commit() reports this checkout's HEAD, so a kornia from anywhere else means the
+        # numbers and the commit label describe different code.
+        print(f"# WARNING: kornia resolved outside {REPO_ROOT} - these numbers are NOT this checkout's.")
     print(versions_line(meta))
 
     backends = ["kornia (eager)"] + (["kornia (compiled)"] if args.compile else [])

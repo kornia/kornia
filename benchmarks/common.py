@@ -249,10 +249,12 @@ def run_batch_sweep(
     """Sweep configurations, print one throughput table per config, and return JSON-ready rows.
 
     ``build_ops(config)`` returns ``({op: {backend: zero-arg callable | None}}, {op: exc_name})``;
-    the second dict names ops whose ``torch.compile`` warmup failed, reported as a NOTE instead
-    of a silent skip cell. ``sync`` lands inside the timed region only for backends whose name
-    starts with one of ``torch_backends`` — uint8 CPU-loop baselines are timed without it (the
-    default prefix is ``"kornia ("`` so the CPU-only ``"kornia-rs"`` backend never matches).
+    the second dict names ops whose ``torch.compile`` warmup failed, reported as a NOTE and as a
+    result row whose timings are ``null`` and whose ``error`` field names the exception, so a
+    failure is visible in the exported JSON rather than only on the console. ``sync`` lands
+    inside the timed region only for backends whose name starts with one of ``torch_backends``
+    — uint8 CPU-loop baselines are timed without it (the default prefix is ``"kornia ("`` so
+    the CPU-only ``"kornia-rs"`` backend never matches).
 
     A config is a batch size by default: it labels the row ``batch=<b>``, is written to the row's
     ``"batch"`` field, and is the per-call item count the throughput divides by. A suite whose
@@ -280,6 +282,22 @@ def run_batch_sweep(
             for backend in backends:
                 fn = row.get(backend)
                 if fn is None:
+                    # Record the gap instead of dropping the row: a reader of the JSON otherwise
+                    # cannot tell "this backend was never requested" from "it failed", and the
+                    # exception type would survive only in the console NOTE above.
+                    reason = compile_failures.get(op_name) if "compiled" in backend else None
+                    results.append(
+                        {
+                            "op": op_name,
+                            "backend": backend,
+                            "batch": b,
+                            **row_fields(b),
+                            "median_us": None,
+                            "iqr_us": None,
+                            "throughput_per_s": None,
+                            "error": reason or "unavailable",
+                        }
+                    )
                     cells.append(f"{'-':>{col_width + 1}}")
                     continue
                 backend_sync = sync if backend.startswith(torch_backends) else None
