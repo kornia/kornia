@@ -1,0 +1,147 @@
+name: Upstream probe (weekly)
+
+# Rehearses a real torch version bump before anyone proposes one: installs whatever `torch`
+# resolves to today from the stable CPU wheel index (torch-channel: stable, see tests.yml)
+# across the same surfaces PR and scheduled CI cover, and reports what changed instead of
+# gating on it.
+#
+# This runs on its own weekly schedule rather than inside scheduled_test_cpu.yml because
+# that workflow's docs-only skip gate inspects only the latest commit on `main` and would
+# silence a probe whose entire purpose is detecting upstream drift, not local repository
+# changes.
+#
+# Two kinds of surface here:
+#   - CPU float32/float64 have no known-failure manifest (0 failures expected): a plain
+#     pytest run, red on any new failure.
+#   - CPU float16/bfloat16 have a known-failure profile (see #4154): run in
+#     --record-known-failures mode, which only fails the job on a genuine harness problem
+#     (an unrepresentable teardown failure, or similar) -- never merely because the
+#     failing set drifted from the checked-in manifest. Drift shows up in the job summary
+#     and as an uploaded candidate-manifest artifact instead of in the exit code.
+#
+# No nightly channel: PyTorch nightly wheels are volatile enough that a regression there is
+# normal and does not correspond to any action kornia can take before the next stable
+# release ships anyway.
+#
+# An MPS float32 row belongs here too, once an "mps-float32" known-failure profile exists in
+# the registry described above -- it does not yet, so it is deliberately left out of this
+# workflow for now and will be added alongside that profile.
+#
+# Bump PYTORCH_FLOOR below whenever a real torch-pin bump PR lands, so the "stable is >= floor"
+# check in tests.yml keeps comparing against the last deliberately-chosen pin, not a stale one.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pre-tests:
+    runs-on: ubuntu-latest
+    outputs:
+      hash: ${{ steps.hashid.outputs.weights-hash }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.10.2
+        with:
+          pixi-version: v0.40.0
+          cache: true
+
+      - uses: actions/cache@v6
+        id: cache-weights
+        with:
+          path: weights/
+          key: model-weights-${{ hashFiles('.github/download-models-weights.py') }}
+          enableCrossOsArchive: true
+
+      - name: Download models weights...
+        if: steps.cache-weights.outputs.cache-hit != 'true'
+        run: pixi run uv run python .github/download-models-weights.py -t weights/
+
+      - name: write hashid
+        id: hashid
+        run: echo "weights-hash=${{ hashFiles('.github/download-models-weights.py') }}" >> "$GITHUB_OUTPUT"
+
+  cpu-float32:
+    needs: [pre-tests]
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.13"]'
+      pytorch-version: '["2.14.0"]'
+      torch-channel: stable
+      pytorch-dtype: float32
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
+
+  cpu-float64:
+    needs: [pre-tests]
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.13"]'
+      pytorch-version: '["2.14.0"]'
+      torch-channel: stable
+      pytorch-dtype: float64
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
+
+  cpu-float16:
+    needs: [pre-tests]
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.13"]'
+      pytorch-version: '["2.14.0"]'
+      torch-channel: stable
+      pytorch-dtype: float16
+      known-failure-profile: cpu-float16
+      known-failure-mode: record
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
+
+  cpu-bfloat16:
+    needs: [pre-tests]
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.13"]'
+      pytorch-version: '["2.14.0"]'
+      torch-channel: stable
+      pytorch-dtype: bfloat16
+      known-failure-profile: cpu-bfloat16
+      known-failure-mode: record
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
+
+  python314:
+    needs: [pre-tests]
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.14"]'
+      pytorch-version: '["2.14.0"]'
+      pytorch-dtype: float32
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
