@@ -68,7 +68,9 @@ albumentations win the single-image uint8 CPU regime and we publish those losses
 
 Reproduce or contribute a machine with::
 
-   python benchmarks/<suite>/flagship.py --device <cpu|cuda|mps> --contribute benchmarks/results
+   python benchmarks/<dir>/<script>.py --device <cpu|cuda|mps> --contribute benchmarks/results
+
+Most suites are a ``flagship.py``; ``benchmarks/README.md`` maps each suite to its script.
 
 """
 
@@ -250,7 +252,8 @@ def _digest(results_root: Path) -> str:
         return "- No committed benchmark results yet.\n"
     version = latest_version(list(data))
     lines = [f"- Result set: kornia {version}, committed in `benchmarks/results/{version}/` (per-machine"]
-    lines += ["  snapshots; reproduce with `python benchmarks/<suite>/flagship.py --contribute benchmarks/results`)."]
+    lines += ["  snapshots; reproduce with `python benchmarks/<dir>/<script>.py --contribute benchmarks/results`,"]
+    lines += ["  the script each suite maps to in `benchmarks/README.md`)."]
     for fname, payload in sorted(data[version].items()):
         suite, slug, device = fname[:-5].split("--")
         meta = payload["metadata"]

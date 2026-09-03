@@ -94,7 +94,8 @@ One file per run:
 1. Check out the release tag you are measuring.
 2. Quiet the machine: close other applications, mains power, let it cool. Only aggregate load
    numbers (load average, memory) are recorded in the file - never process or app names.
-3. Run each suite with `--contribute`:
+3. Run each suite with `--contribute` (most suites are a `flagship.py`; the directory map above
+   names the script for the ones that are not, such as `feature/laf_ops.py`):
 
        python benchmarks/augmentation/flagship.py --device cuda --contribute benchmarks/results
 
