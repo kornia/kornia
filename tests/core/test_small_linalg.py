@@ -27,11 +27,12 @@ dispatcher ``_adjugate_closed_form`` and is tested in ``test_helpers.py``.
 """
 
 import io
+import re
 
 import pytest
 import torch
 
-from kornia.core._compat import torch_version_lt
+from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.core._small_linalg import (
     _adjugate_2x2,
     _adjugate_3x3,
@@ -55,12 +56,33 @@ ADJUGATE = {2: _adjugate_2x2, 3: _adjugate_3x3, 4: _adjugate_4x4}
 # future decomposition that exports *successfully* through something heavier than arithmetic.
 # Matched as a substring rather than a prefix, because the dynamo exporter names a fallback node
 # ``aten_linalg_inv``, which a ``startswith("linalg")`` test would miss.
-_LINALG_OP_MARKERS = ("linalg", "det", "inverse", "matmul", "gemm", "lu", "svd", "qr", "einsum")
+# Long markers are unambiguous as bare substrings. The short ones are anchored to a name
+# boundary, or they swallow basic arithmetic: "qr" matches ``Sqrt`` and "lu" matches the whole
+# ``Relu``/``Selu``/``Elu``/``Celu``/``PRelu``/``LeakyRelu``/``ThresholdedRelu`` family -- all of
+# them exactly the category this check exists to allow.
+_LINALG_OP_RE = re.compile(
+    r"(?:linalg|inverse|matmul|gemm|einsum)|(?:^|_)(?:det|lu|svd|qr|cholesky|eig)(?:$|_)", re.IGNORECASE
+)
 
 
 def _assert_basic_arithmetic_only(ops):
-    offenders = sorted(op for op in ops if any(m in op.lower() for m in _LINALG_OP_MARKERS))
+    offenders = sorted(op for op in ops if _LINALG_OP_RE.search(op))
     assert not offenders, f"linalg-shaped ops in the exported graph: {offenders} (full set: {sorted(ops)})"
+
+
+def _export_kwargs(use_dynamo_exporter: bool) -> dict:
+    """Export kwargs that are valid on every torch kornia declares support for.
+
+    ``dynamo=`` does not exist before torch 2.4 -- measured: ``TypeError: export() got an
+    unexpected keyword argument 'dynamo'`` on 2.0.1 and 2.2.2, present in 2.4.1. Passing it
+    unconditionally would be a ``TypeError`` on an older pin rather than a skip. Gated at 2.5
+    to match ``tests/filters/test_gaussian.py::test_onnx_export_legacy``, which is conservative
+    by one release and costs nothing.
+    """
+    kwargs = {"opset_version": 18}
+    if torch_version_ge(2, 5, 0):
+        kwargs["dynamo"] = use_dynamo_exporter
+    return kwargs
 
 
 def _require_exporter(use_dynamo_exporter: bool) -> None:
@@ -167,6 +189,7 @@ class TestAdjugateKernels(BaseTester):
         self.assert_close(actual_adj, expected_adj)
         self.assert_close(actual_det, expected_det)
 
+    @pytest.mark.device_agnostic
     @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     @pytest.mark.parametrize("use_dynamo_exporter", [False, True], ids=["torchscript", "torchexport"])
     @pytest.mark.parametrize("n", [2, 3, 4])
@@ -177,7 +200,7 @@ class TestAdjugateKernels(BaseTester):
         onnx = pytest.importorskip("onnx")
         x = _well_conditioned(n, device, torch.float32, (2,))
         buffer = io.BytesIO()
-        torch.onnx.export(_AdjugateModule(n), (x,), buffer, opset_version=18, dynamo=use_dynamo_exporter)
+        torch.onnx.export(_AdjugateModule(n), (x,), buffer, **_export_kwargs(use_dynamo_exporter))
         ops = {node.op_type for node in onnx.load_from_string(buffer.getvalue()).graph.node}
         _assert_basic_arithmetic_only(ops)
 
@@ -235,6 +258,7 @@ class TestInverse3x3Kernels(BaseTester):
         x = _well_conditioned(3, device, dtype, (2,))
         self.assert_close(torch.jit.script(kernel)(x), kernel(x))
 
+    @pytest.mark.device_agnostic
     @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     @pytest.mark.parametrize("use_dynamo_exporter", [False, True], ids=["torchscript", "torchexport"])
     def test_scalar_kernel_exports_to_onnx(self, device, use_dynamo_exporter):
@@ -244,10 +268,11 @@ class TestInverse3x3Kernels(BaseTester):
         onnx = pytest.importorskip("onnx")
         x = _well_conditioned(3, device, torch.float32, (2,))
         buffer = io.BytesIO()
-        torch.onnx.export(_ScalarInverseModule(), (x,), buffer, opset_version=18, dynamo=use_dynamo_exporter)
+        torch.onnx.export(_ScalarInverseModule(), (x,), buffer, **_export_kwargs(use_dynamo_exporter))
         ops = {node.op_type for node in onnx.load_from_string(buffer.getvalue()).graph.node}
         _assert_basic_arithmetic_only(ops)
 
+    @pytest.mark.device_agnostic
     @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     @pytest.mark.parametrize("use_dynamo_exporter", [False, True], ids=["torchscript", "torchexport"])
     def test_cross_kernel_onnx_export_is_informational(self, device, use_dynamo_exporter):
@@ -265,7 +290,11 @@ class TestInverse3x3Kernels(BaseTester):
         x = _well_conditioned(3, device, torch.float32, (2,))
         buffer = io.BytesIO()
         try:
-            torch.onnx.export(_CrossInverseModule(), (x,), buffer, opset_version=18, dynamo=use_dynamo_exporter)
+            torch.onnx.export(_CrossInverseModule(), (x,), buffer, **_export_kwargs(use_dynamo_exporter))
+        except TypeError:
+            # An API misuse is not a lowering failure. Re-raised rather than skipped, or a wrong
+            # kwarg would masquerade forever as "cross does not lower here".
+            raise
         except Exception as err:
             pytest.skip(f"torch.linalg.cross does not lower on torch {torch.__version__}: {err}")
         ops = {node.op_type for node in onnx.load_from_string(buffer.getvalue()).graph.node}
