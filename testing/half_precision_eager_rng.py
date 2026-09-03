@@ -229,5 +229,6 @@ def eager_rng_calls_for_node(nodeid: str) -> tuple[AuditedEagerRngCall, ...]:
     return tuple(
         entry
         for entry in AUDITED_EAGER_RNG_CALLS
-        if any(node_matches_prefix(nodeid, prefix) for prefix in entry.node_prefixes)
+        if entry.classification == "value-dependent"
+        and any(node_matches_prefix(nodeid, prefix) for prefix in entry.node_prefixes)
     )

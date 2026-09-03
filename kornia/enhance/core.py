@@ -66,21 +66,14 @@ def add_weighted(
 
     if isinstance(alpha, torch.Tensor):
         KORNIA_CHECK(src1.shape == alpha.shape, "alpha has a different shape than src.")
-        output = src1 * alpha
-    else:
-        output = src1 * alpha
 
     if isinstance(beta, torch.Tensor):
         KORNIA_CHECK(src1.shape == beta.shape, "beta has a different shape than src.")
-        output = output + src2 * beta
-    else:
-        output = output + src2 * beta
 
     if isinstance(gamma, torch.Tensor):
         KORNIA_CHECK(src1.shape == gamma.shape, "gamma has a different shape than src.")
-        return output + gamma
 
-    return output + gamma
+    return src1 * alpha + src2 * beta + gamma
 
 
 class AddWeighted(nn.Module):

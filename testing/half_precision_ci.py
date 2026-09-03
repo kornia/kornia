@@ -253,7 +253,9 @@ def validate_record_destination(output_path: Path, rootpath: Path) -> Path:
 def _previous_manifest_entries(profile: ManifestProfile) -> dict[str, ManifestEntry]:
     """Load the checked-in v1 entries used to categorize a candidate delta."""
     text = profile.manifest_path.read_text(encoding="utf-8")
-    return parse_manifest(profile, text, current_environment(), source=profile.manifest_path)
+    return parse_manifest(
+        profile, text, current_environment(), source=profile.manifest_path, enforce_compatibility=False
+    )
 
 
 class FailureRecorder:
@@ -390,12 +392,13 @@ class FailureRecorder:
         """Serialize atomically only when completeness and lifecycle checks succeed."""
         self._check_completeness(session)
         self._categorize_previous_entries()
-        if self.abort_reasons:
-            return
-        try:
-            self._write_candidate()
-        except Exception as error:  # noqa: BLE001 - every writer failure must preserve the previous candidate.
-            self.abort_reasons.append(f"candidate serialization failed: {error}")
+        if not self.abort_reasons:
+            try:
+                self._write_candidate()
+            except Exception as error:  # noqa: BLE001 - every writer failure must preserve the previous candidate.
+                self.abort_reasons.append(f"candidate serialization failed: {error}")
+        if self.abort_reasons and session.exitstatus == pytest.ExitCode.OK:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
     def pytest_terminal_summary(self, terminalreporter: Any) -> None:
         """Print a receipt or an actionable abort report independently of pytest's test count."""
@@ -436,6 +439,7 @@ class KnownFailureTracker:
         self.selectors = tuple(selectors or ())
         self.rootpath = rootpath
         self.reason = _XFAIL_REASON_PREFIX
+        self._collect_only = False
         self._collection_failed = False
         self._matched: set[str] = set()
         self._invalid: set[str] = set()
@@ -458,6 +462,10 @@ class KnownFailureTracker:
             }
         self._expected_entries = entries
         self.pending = set(self._expected_entries)
+
+    def pytest_sessionstart(self, session: pytest.Session) -> None:
+        """Disable runtime-outcome validation during collection-only runs."""
+        self._collect_only = session.config.getoption("collectonly")
 
     @pytest.hookimpl(tryfirst=True)
     def pytest_collectreport(self, report: Any) -> None:
@@ -524,12 +532,17 @@ class KnownFailureTracker:
 
     def pytest_sessionfinish(self, session: pytest.Session) -> None:
         """Fail the session when a manifest entry was skipped or handled by another xfail."""
-        if self.pending and not self._collection_failed and session.exitstatus == pytest.ExitCode.OK:
+        if (
+            not self._collect_only
+            and self.pending
+            and not self._collection_failed
+            and session.exitstatus == pytest.ExitCode.OK
+        ):
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
     def pytest_terminal_summary(self, terminalreporter: Any) -> None:
         """Report manifest entries that did not produce their required xfail outcome."""
-        if not self.pending or self._collection_failed:
+        if self._collect_only or not self.pending or self._collection_failed:
             return
         count = len(self.pending)
         noun = "failure" if count == 1 else "failures"

@@ -47,6 +47,7 @@ class TestAddWeighted(BaseTester):
         expected = src1 * alpha + src2 * beta + gamma
         self.assert_close(TestAddWeighted.fcn(src1, alpha, src2, beta, gamma), expected)
 
+    @pytest.mark.device_agnostic
     @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
     def test_python_scalars_keep_opmath_precision(self, dtype):
         src1 = torch.linspace(-2.0, 2.0, 1000, dtype=dtype)
@@ -63,6 +64,7 @@ class TestAddWeighted(BaseTester):
         assert torch.equal(actual, expected)
         assert not torch.equal(expected, downcast)
 
+    @pytest.mark.device_agnostic
     def test_python_scalars_promote_integer_inputs(self):
         src1 = torch.full((2, 2), 2, dtype=torch.uint8)
         src2 = torch.full((2, 2), 4, dtype=torch.uint8)
@@ -72,8 +74,10 @@ class TestAddWeighted(BaseTester):
         assert actual.dtype == torch.float32
         assert torch.equal(actual, torch.full((2, 2), 3.0))
 
-    def test_get_input_respects_size_and_max_elem(self, device, dtype):
-        random.seed(0)
+    def test_get_input_respects_size_and_max_elem(self, device, dtype, monkeypatch):
+        rng = random.Random(0)
+        monkeypatch.setattr(random, "randint", rng.randint)
+        monkeypatch.setattr(random, "random", rng.random)
 
         src1, src2, *_ = self.get_input(device, dtype, size=5, max_elem=2)
 
@@ -114,7 +118,7 @@ class TestAddWeighted(BaseTester):
     @pytest.mark.parametrize("size", [2, 3])
     def test_gradcheck(self, size, device):
         src1, src2, alpha, beta, gamma = self.get_input(
-            device, torch.float64, size=3, max_elem=5
+            device, torch.float64, size=size, max_elem=5
         )  # to shave time on gradcheck
         self.gradcheck(kornia.enhance.AddWeighted(alpha, beta, gamma), (src1, src2))
 

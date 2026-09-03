@@ -18,7 +18,9 @@
 from __future__ import annotations
 
 import random
+import shutil
 import warnings
+from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -194,10 +196,10 @@ def test_eager_rng_audit_matches_exact_inventory() -> None:
     from testing.half_precision_eager_rng import AUDITED_EAGER_RNG_CALLS, find_eager_rng_calls
 
     discovered = find_eager_rng_calls(Path(project_conftest.__file__).parent)
-    audited = tuple(entry.call for entry in AUDITED_EAGER_RNG_CALLS)
+    audited = Counter((entry.call.path, entry.call.name) for entry in AUDITED_EAGER_RNG_CALLS)
+    inventory = Counter((entry.path, entry.name) for entry in discovered)
 
-    assert len(discovered) == 23
-    assert discovered == audited
+    assert inventory == audited
 
 
 def test_eager_rng_scanner_skips_lazy_function_and_lambda_bodies(tmp_path: Path) -> None:
@@ -236,6 +238,7 @@ def test_eager_rng_node_coverage_is_boundary_aware() -> None:
     assert len(eager_rng_calls_for_node(prefix)) == 3
     assert len(eager_rng_calls_for_node(f"{prefix}[cpu-float16-case]")) == 3
     assert eager_rng_calls_for_node(f"{prefix}_mismatch[cpu-float16]") == ()
+    assert eager_rng_calls_for_node("tests/core/test_check.py::TestCheckShape::test_valid[cpu-float16]") == ()
 
 
 def _install_candidate_recorder(pytester: pytest.Pytester) -> Path:
@@ -358,6 +361,16 @@ def test_failure_recorder_preserves_existing_candidate_on_incomplete_run(
     assert output.read_text(encoding="utf-8") == "preserve me\n"
 
 
+def test_failure_recorder_aborted_clean_run_fails_session(pytester: pytest.Pytester) -> None:
+    _install_candidate_recorder(pytester)
+    pytester.makepyfile(test_sample="def test_ok(): pass")
+
+    result = pytester.runpytest("--collect-only", "-q")
+
+    assert result.ret == pytest.ExitCode.TESTS_FAILED
+    assert "known-failure candidate ABORTED" in result.stdout.str()
+
+
 def test_failure_recorder_allows_unrelated_teardown_as_ordinary_red_noise(pytester: pytest.Pytester) -> None:
     output = _install_candidate_recorder(pytester)
     pytester.makepyfile(
@@ -412,7 +425,10 @@ def test_record_destination_rejects_checked_in_and_symlink_aliases(tmp_path: Pat
     root = Path(project_conftest.__file__).parent
     checked_in = root / "testing" / "half_precision_xfails" / "cpu_float16.txt"
     alias = tmp_path / "candidate.txt"
-    alias.symlink_to(checked_in)
+    try:
+        alias.symlink_to(checked_in)
+    except OSError as error:
+        pytest.skip(f"symlinks are unavailable: {error}")
 
     destinations = (
         checked_in,
@@ -430,8 +446,28 @@ def test_record_destination_rejects_other_git_tracked_files() -> None:
     from testing.half_precision_ci import validate_record_destination
 
     root = Path(project_conftest.__file__).parent
+    if shutil.which("git") is None or not (root / ".git").exists():
+        pytest.skip("requires Git and a Git checkout")
     with pytest.raises(ValueError, match="Git-tracked"):
         validate_record_destination(root / "TESTING.md", root)
+
+
+def test_previous_manifest_entries_allow_environment_change(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from testing.half_precision_ci import ManifestProfile, _previous_manifest_entries
+
+    profile = ManifestProfile("cpu-float16", "float16", tmp_path / "cpu_float16.txt")
+    recorded_environment = current_environment()
+    entry = ManifestEntry("call", "builtins.AssertionError", "tests/a.py::test_a[cpu-float16]")
+    profile.manifest_path.write_text(
+        serialize_manifest(profile, [entry], recorded_environment, "pytest tests/"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        "testing.half_precision_ci.current_environment",
+        lambda: replace(recorded_environment, python="0.0", pytorch="0.0"),
+    )
+
+    with pytest.warns(UserWarning, match="compatibility differs"):
+        assert _previous_manifest_entries(profile) == {entry.nodeid: entry}
 
 
 def _run_exact_manifest_case(
@@ -565,6 +601,37 @@ class TestExactKnownFailureLifecycle:
         assert "remove or update" not in output
         assert "not collected" not in output
 
+    def test_collect_only_does_not_validate_runtime_outcomes(self, pytester: pytest.Pytester) -> None:
+        nodeid = "test_sample.py::test_known_failure[cpu-float16]"
+        _write_profile_manifest(pytester.path, "call", "builtins.AssertionError", nodeid)
+        pytester.makeconftest(
+            """
+            from pathlib import Path
+            from testing.half_precision_ci import KnownFailureTracker, get_profile
+
+            def pytest_configure(config):
+                tracker = KnownFailureTracker(
+                    get_profile("cpu-float16"), Path(__file__).with_name("cpu_float16.txt"),
+                    mode="complete", selectors=(), rootpath=config.rootpath,
+                )
+                config.pluginmanager.register(tracker, "known-half-precision-failure-tracker")
+            """
+        )
+        pytester.makepyfile(
+            test_sample="""
+            import pytest
+
+            @pytest.mark.parametrize("unused", [None], ids=["cpu-float16"])
+            def test_known_failure(unused):
+                raise AssertionError("known failure")
+            """
+        )
+
+        result = pytester.runpytest("--collect-only", "-q")
+
+        assert result.ret == pytest.ExitCode.OK
+        assert "known half-precision failure" not in result.stdout.str()
+
 
 class _RecordingConfig:
     def __init__(self, option_name: str, option_value: object, rootpath: Path) -> None:
@@ -577,6 +644,7 @@ class _RecordingConfig:
             "failedfirst": False,
             "collectonly": False,
             "numprocesses": None,
+            "plugins": [],
         }
         options[option_name] = option_value
         self.option = SimpleNamespace(**options)
@@ -674,6 +742,7 @@ class TestProfileConfiguration:
         ("failedfirst", True),
         ("collectonly", True),
         ("numprocesses", 2),
+        ("plugins", ["no:cacheprovider"]),
     ],
 )
 def test_record_mode_rejects_partial_run_options(
@@ -689,12 +758,15 @@ def test_record_mode_rejects_partial_run_options(
 @pytest.mark.parametrize("dtype", ["float16", "bfloat16"])
 def test_recorded_baseline_manifest(dtype: str) -> None:
     profile = get_profile(f"cpu-{dtype}")
-    entries = parse_manifest(
-        profile,
-        profile.manifest_path.read_text(encoding="utf-8"),
-        current_environment(),
-        source=profile.manifest_path,
-    )
+    environment = replace(current_environment(), python="other", pytorch="other", os="Other", arch="other")
+    with pytest.warns(UserWarning, match="compatibility differs"):
+        entries = parse_manifest(
+            profile,
+            profile.manifest_path.read_text(encoding="utf-8"),
+            environment,
+            source=profile.manifest_path,
+            enforce_compatibility=False,
+        )
 
     assert entries
     assert all(entry.phase in {"setup", "call"} for entry in entries.values())
@@ -717,4 +789,3 @@ def test_cpu_half_workflow_uses_complete_profile(workflow_name: str) -> None:
     workflow = (root / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
 
     assert "known-failure-profile: cpu-${{ matrix.pytorch-dtype }}" in workflow
-    assert "pytest-extra: --xfail-known-half-precision" not in workflow

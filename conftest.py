@@ -212,7 +212,7 @@ def _validate_complete_known_failure_run(config, option: str) -> None:
         "--ignore": getattr(config.option, "ignore", None),
         "--ignore-glob": getattr(config.option, "ignore_glob", None),
         "xdist": getattr(config.option, "numprocesses", None),
-        "-p": any(argument == "-p" or argument.startswith("-p") for argument in config.invocation_params.args),
+        "-p": getattr(config.option, "plugins", None),
     }
     active = [name for name, value in partial_options.items() if value]
     if active:
