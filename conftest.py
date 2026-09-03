@@ -293,6 +293,40 @@ def pytest_generate_tests(metafunc) -> None:
     metafunc.parametrize(names, combinations)
 
 
+def _apply_device_skips(items, run_mps_process_abort: bool) -> None:
+    """Skip the test classes a device cannot run at all, before they are executed."""
+    # gradcheck requires float64. MPS does not support it at all, and XLA lowers a float64 request
+    # to float32, where gradcheck's default eps=1e-6 makes the numerical Jacobian invalid — so a
+    # float64 gradcheck on the tpu fixture fails for a pure precision reason. Skip on both.
+    skip_gradcheck = pytest.mark.skip(reason="gradcheck requires float64, which this device does not compute in")
+    # MPS does not support complex128 (cdouble); skip tests parametrized with it
+    skip_mps_cdouble = pytest.mark.skip(reason="MPS does not support complex128 (cdouble)")
+    # MPS autocast uses float16 and does not preserve original dtype — skip autocast tests on MPS
+    skip_mps_autocast = pytest.mark.skip(reason="MPS autocast changes dtype to float16, not supported the same way")
+    # A module marked mps_process_abort takes the Metal shader compiler down on the paravirtualized
+    # GPU of the hosted macOS runners, and the next MPS allocation aborts the pytest process
+    # (SIGABRT). The abort site moves between runs, and SIGABRT has no exception type, so these
+    # cannot be pinned as strict xfails — the process dies and everything after it is lost. Real
+    # Apple hardware does not abort, so --run-mps-process-abort forces them back on for local
+    # diagnosis; note that doing so leaves failures the manifest does not pin. Tracked in #4204,
+    # and the marker lives on the test module so a rename cannot silently disarm this.
+    skip_mps_abort = pytest.mark.skip(
+        reason="aborts the pytest process on MPS on virtualized Apple GPUs (#4204); --run-mps-process-abort runs anyway"
+    )
+
+    for item in items:
+        name = item.name.lower()
+        on_mps = "[mps" in item.nodeid
+        if "gradcheck" in name and (on_mps or "[tpu" in item.nodeid):
+            item.add_marker(skip_gradcheck)
+        if on_mps and "cdtype1" in item.nodeid:
+            item.add_marker(skip_mps_cdouble)
+        if on_mps and "autocast" in name:
+            item.add_marker(skip_mps_autocast)
+        if on_mps and not run_mps_process_abort and item.get_closest_marker("mps_process_abort"):
+            item.add_marker(skip_mps_abort)
+
+
 def pytest_collection_modifyitems(config, items):
     """Collect test options."""
     # Device-agnostic tests exercise CPU-only code regardless of the selected test device. Run
@@ -336,25 +370,7 @@ def pytest_collection_modifyitems(config, items):
             raise pytest.UsageError(str(error)) from error
         config.pluginmanager.register(tracker, "known-failure-tracker")
 
-    # gradcheck requires float64. MPS does not support it at all, and XLA lowers a float64 request
-    # to float32, where gradcheck's default eps=1e-6 makes the numerical Jacobian invalid — so a
-    # float64 gradcheck on the tpu fixture fails for a pure precision reason. Skip on both.
-    skip_gradcheck = pytest.mark.skip(reason="gradcheck requires float64, which this device does not compute in")
-    for item in items:
-        if "gradcheck" in item.name.lower() and ("[mps" in item.nodeid or "[tpu" in item.nodeid):
-            item.add_marker(skip_gradcheck)
-
-    # MPS does not support complex128 (cdouble); skip tests parametrized with it
-    skip_mps_cdouble = pytest.mark.skip(reason="MPS does not support complex128 (cdouble)")
-    for item in items:
-        if "[mps" in item.nodeid and "cdtype1" in item.nodeid:
-            item.add_marker(skip_mps_cdouble)
-
-    # MPS autocast uses float16 and does not preserve original dtype — skip autocast tests on MPS
-    skip_mps_autocast = pytest.mark.skip(reason="MPS autocast changes dtype to float16, not supported the same way")
-    for item in items:
-        if "autocast" in item.name.lower() and "[mps" in item.nodeid:
-            item.add_marker(skip_mps_autocast)
+    _apply_device_skips(items, config.getoption("--run-mps-process-abort"))
 
     tf32_enabled = config.getoption("--tf32")
 
@@ -481,6 +497,18 @@ def pytest_addoption(parser):
             "They exercise CPU-only code, so an accelerator-only run deselects them by default "
             "to avoid repeating work the CPU job already did; pass this to run the whole suite "
             "on one device anyway. (env: KORNIA_TEST_RUN_DEVICE_AGNOSTIC)"
+        ),
+    )
+    parser.addoption(
+        "--run-mps-process-abort",
+        action="store_true",
+        default=os.environ.get("KORNIA_TEST_RUN_MPS_PROCESS_ABORT", "false").lower() == "true",
+        help=(
+            "Run tests marked mps_process_abort on MPS. They take the Metal shader compiler down "
+            "on the paravirtualized GPU of the hosted macOS runners and abort the pytest process, "
+            "so they are skipped by default; real Apple hardware does not abort, and this restores "
+            "them for local diagnosis. Expect failures the known-failure manifest does not pin. "
+            "(env: KORNIA_TEST_RUN_MPS_PROCESS_ABORT)"
         ),
     )
     parser.addoption(

@@ -207,7 +207,10 @@ jobs:
 
       # The `device` fixture skips every test when the requested device is missing, so an mps
       # leg on a runner without a Metal device would be green with zero tests run. Fail here
-      # instead. macos-14 images segfault inside MPS kernels; macos-15 and later work.
+      # instead. Image choice is not free: macos-14 segfaults inside MPS kernels, and on
+      # macos-latest (macOS 26) the runner's virtual GPU cannot compile the Metal 4 shaders
+      # torch 2.14 emits, which fails 664 tests. Use macos-15 -- see the tests-mps comment
+      # in pr_test_cpu.yml before pointing an mps leg at any other image.
       - name: Verify MPS device
         if: inputs.device == 'mps'
         run: |
