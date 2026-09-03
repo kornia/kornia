@@ -99,6 +99,16 @@ class TestResize(BaseTester):
         eye = torch.eye(2, 3, device=device, dtype=dtype)[None]
         assert kornia.geometry.transform.warp_affine(inp, eye, (0, 4)).shape == (1, 3, 0, 4)
 
+        # The empty result stays attached to the graph, as it does for the warping ops:
+        # _empty_warp_output_2d builds a connected tensor precisely so a batch that
+        # degenerates to a zero-sized output still contributes a zero gradient.
+        grad_inp = torch.rand(1, 3, 4, 4, device=device, dtype=dtype, requires_grad=True)
+        empty = kornia.geometry.transform.resize(grad_inp, (0, 4))
+        assert empty.requires_grad
+        assert empty.dtype == grad_inp.dtype
+        empty.sum().backward()
+        assert grad_inp.grad is not None
+
         # 2D
         inp_2d = torch.rand(4, 4, device=device, dtype=dtype)
         assert kornia.geometry.transform.resize(inp_2d, (0, 4)).shape == (0, 4)
@@ -121,6 +131,15 @@ class TestResize(BaseTester):
 
         with pytest.raises(ValueError, match="Input image size must be positive"):
             kornia.geometry.transform.resize(inp, 2)
+
+        # Empty in and empty out is not undefined, so it comes back empty rather than
+        # raising -- the same answer warp_affine and center_crop give.
+        assert kornia.geometry.transform.resize(inp, (0, 4)).shape == (1, 3, 0, 4)
+        assert kornia.geometry.transform.resize(inp, (0, 2)).shape == (1, 3, 0, 2)
+
+        eye = torch.eye(2, 3, device=device, dtype=dtype)[None]
+        assert kornia.geometry.transform.warp_affine(inp, eye, (0, 4)).shape == (1, 3, 0, 4)
+        assert kornia.geometry.transform.center_crop(inp, (0, 4)).shape == (1, 3, 0, 4)
 
     def test_downsizeAA(self, device, dtype):
         inp = torch.rand(1, 3, 10, 8, device=device, dtype=dtype)
