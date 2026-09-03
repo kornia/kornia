@@ -80,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   JAX, and a `jaxlib`/`numpy` API-compatibility break — against Ivy's latest release (1.0.0.5, June
   2025), with the upstream project showing little ongoing maintenance. `kornia.transpiler` now raises
   a clear `AttributeError` pointing here instead of importing successfully and failing later. See
-  `get-started/multi-framework-support` for what was tested and why.
+  `get-started/multi-framework-support` for what was tested and why. (#4196)
 
 * `extract_patches_from_pyramid` now samples ordinary-sized inputs once from a packed pyramid atlas instead of
   sampling every LAF at every pyramid level. A statically selected levelwise fallback keeps atlases larger than
