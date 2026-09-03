@@ -49,7 +49,12 @@ class TestQuadraticSolver(BaseTester):
         self.assert_close(roots[0], expected_solutions[0])
 
     def test_gradcheck(self, device):
-        coeffs = torch.rand(1, 3, device=device, dtype=torch.float64, requires_grad=True)
+        # Deterministic, strictly positive discriminant (b^2 - 4ac = 1): `torch.rand` draws
+        # all-positive coefficients, whose discriminant is usually negative, and the no-real-root
+        # branch returns zeros with an identically zero gradient -- so a random draw checks
+        # nothing roughly three times out of four. The zero-discriminant triple is excluded on
+        # purpose: `sqrt` is not differentiable at 0.
+        coeffs = torch.tensor([[1.0, -5.0, 6.0]], device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(solver.solve_quadratic, (coeffs,))
 
 
@@ -81,7 +86,9 @@ class TestCubicSolver(BaseTester):
         self.assert_close(roots[0], expected_solutions[0], rtol=1e-3, atol=1e-3)
 
     def test_gradcheck(self, device):
-        coeffs = torch.rand(1, 4, device=device, dtype=torch.float64, requires_grad=True)
+        # Deterministic three-distinct-real-roots case (roots 2, -3, -1/2), so the check does not
+        # depend on an unseeded draw. Repeated roots are excluded: they sit on the `sqrt` kink.
+        coeffs = torch.tensor([[2.0, 3.0, -11.0, -6.0]], device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(solver.solve_cubic, (coeffs,))
 
 
