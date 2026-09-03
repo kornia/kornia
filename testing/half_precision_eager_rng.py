@@ -184,7 +184,7 @@ AUDITED_EAGER_RNG_CALLS = tuple(
                     ("tests/enhance/test_core.py::TestAddWeighted::test_shape",),
                     "value-dependent",
                 )[0]
-                for line in range(91, 94)
+                for line in range(95, 98)
             ),
             *_audited(
                 "tests/geometry/subpix/test_dsnt.py",

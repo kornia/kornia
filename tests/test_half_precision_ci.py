@@ -193,13 +193,18 @@ def test_rng_seed_fixture_is_available_without_a_profile(test_rng_seed: int, req
 
 
 def test_eager_rng_audit_matches_exact_inventory() -> None:
+    """Validate audited (path, line, name) triples as a multiset, so a stale line still fails."""
     from testing.half_precision_eager_rng import AUDITED_EAGER_RNG_CALLS, find_eager_rng_calls
 
-    discovered = find_eager_rng_calls(Path(project_conftest.__file__).parent)
-    audited = Counter((entry.call.path, entry.call.name) for entry in AUDITED_EAGER_RNG_CALLS)
-    inventory = Counter((entry.path, entry.name) for entry in discovered)
+    discovered = Counter(
+        (call.path, call.line, call.name) for call in find_eager_rng_calls(Path(project_conftest.__file__).parent)
+    )
+    audited = Counter((entry.call.path, entry.call.line, entry.call.name) for entry in AUDITED_EAGER_RNG_CALLS)
 
-    assert inventory == audited
+    stale = sorted((audited - discovered).elements())
+    missing = sorted((discovered - audited).elements())
+    assert not stale, f"audited entries with no matching call site (stale line?): {stale}"
+    assert not missing, f"eager RNG call sites missing from the audit: {missing}"
 
 
 def test_eager_rng_scanner_skips_lazy_function_and_lambda_bodies(tmp_path: Path) -> None:
@@ -752,6 +757,19 @@ def test_record_mode_rejects_partial_run_options(
     config = _RecordingConfig(option_name, option_value, tmp_path)
 
     with pytest.raises(pytest.UsageError, match="does not allow partial-selection options"):
+        project_conftest._validate_complete_known_failure_run(config, "--record-known-failures")
+
+
+def test_record_mode_rejects_minus_p_when_cacheprovider_is_disabled(tmp_path: Path) -> None:
+    """`-p no:cacheprovider` removes the --lf/--ff options entirely; the guard must not need them."""
+    option = SimpleNamespace(
+        keyword="", markexpr="", deselect=[], maxfail=0, collectonly=False, plugins=["no:cacheprovider"]
+    )
+    config = SimpleNamespace(
+        option=option, args=["tests"], rootpath=tmp_path, invocation_params=SimpleNamespace(args=())
+    )
+
+    with pytest.raises(pytest.UsageError, match="does not allow partial-selection options; remove: -p"):
         project_conftest._validate_complete_known_failure_run(config, "--record-known-failures")
 
 
