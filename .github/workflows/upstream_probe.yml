@@ -139,6 +139,7 @@ jobs:
       os: ubuntu-latest
       python-version: '["3.14"]'
       pytorch-version: '["2.14.0"]'
+      torch-channel: stable
       pytorch-dtype: float32
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}

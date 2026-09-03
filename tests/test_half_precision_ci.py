@@ -801,6 +801,24 @@ def test_reusable_test_workflow_exposes_complete_profile_input() -> None:
     assert '"--known-failure-profile=$KNOWN_FAILURE_PROFILE"' in workflow
 
 
+def test_reusable_test_workflow_accepts_only_complete_recordings() -> None:
+    root = Path(project_conftest.__file__).parent
+    workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+
+    assert 'pipeline_status=("${PIPESTATUS[@]}")' in workflow
+    assert '[[ "$tee_status" -eq 0 && "$test_status" -le 1 && -s "$candidate_path" ]]' in workflow
+    assert 'grep -Fq "known-failure candidate complete for $KNOWN_FAILURE_PROFILE:"' in workflow
+    assert "record mode finished without a complete candidate receipt" in workflow
+
+
+def test_upstream_probe_python314_uses_floating_stable_torch() -> None:
+    root = Path(project_conftest.__file__).parent
+    workflow = (root / ".github" / "workflows" / "upstream_probe.yml").read_text(encoding="utf-8")
+    python314_job = workflow.partition("\n  python314:")[2]
+
+    assert "\n      torch-channel: stable" in python314_job
+
+
 @pytest.mark.parametrize("workflow_name", ["pr_test_cpu.yml", "scheduled_test_cpu.yml"])
 def test_cpu_half_workflow_uses_complete_profile(workflow_name: str) -> None:
     root = Path(project_conftest.__file__).parent

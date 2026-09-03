@@ -181,17 +181,52 @@ jobs:
           UV_NO_SYNC: "1"
         run: |
           known_failure_args=()
-          if [[ -n "$KNOWN_FAILURE_PROFILE" ]]; then
-            if [[ "$KNOWN_FAILURE_MODE" == "record" ]]; then
+          candidate_path=""
+          case "$KNOWN_FAILURE_MODE" in
+            record)
+              if [[ -z "$KNOWN_FAILURE_PROFILE" ]]; then
+                echo "known-failure-mode=record requires known-failure-profile" >&2
+                exit 1
+              fi
               mkdir -p candidate-manifests
-              known_failure_args+=(--record-known-failures "candidate-manifests/${KNOWN_FAILURE_PROFILE}.txt" "--known-failure-profile=$KNOWN_FAILURE_PROFILE")
-            else
-              known_failure_args+=(--verify-known-failures "--known-failure-profile=$KNOWN_FAILURE_PROFILE")
-            fi
-          fi
+              candidate_path="candidate-manifests/${KNOWN_FAILURE_PROFILE}.txt"
+              known_failure_args+=(--record-known-failures "$candidate_path" "--known-failure-profile=$KNOWN_FAILURE_PROFILE")
+              ;;
+            verify)
+              if [[ -n "$KNOWN_FAILURE_PROFILE" ]]; then
+                known_failure_args+=(--verify-known-failures "--known-failure-profile=$KNOWN_FAILURE_PROFILE")
+              fi
+              ;;
+            *)
+              echo "unknown known-failure-mode: $KNOWN_FAILURE_MODE" >&2
+              exit 1
+              ;;
+          esac
           if [[ "$KNOWN_FAILURE_MODE" == "record" ]]; then
+            # A complete recording retains pytest's TESTS_FAILED status when it captured
+            # ordinary failures. Accept only that expected status together with both the
+            # candidate and its completion receipt; recorder aborts and harness failures
+            # must still fail the job. Explicit `shell: bash` enables pipefail, so suspend
+            # errexit around the pipeline long enough to inspect pytest's own status.
+            set +e
             pixi run -e ${{ steps.pixi-env.outputs.name }} test \
               $KORNIA_CI_PYTEST_VERBOSITY "${known_failure_args[@]}" ${{ inputs.pytest-extra }} | tee pytest-output.log
+            pipeline_status=("${PIPESTATUS[@]}")
+            test_status=${pipeline_status[0]}
+            tee_status=${pipeline_status[1]}
+            set -e
+            if [[ "$tee_status" -eq 0 && "$test_status" -le 1 && -s "$candidate_path" ]] \
+                && grep -Fq "known-failure candidate complete for $KNOWN_FAILURE_PROFILE:" pytest-output.log; then
+              exit 0
+            fi
+            if [[ "$tee_status" -ne 0 ]]; then
+              exit "$tee_status"
+            fi
+            if [[ "$test_status" -eq 0 ]]; then
+              echo "record mode finished without a complete candidate receipt" >&2
+              exit 1
+            fi
+            exit "$test_status"
           else
             pixi run -e ${{ steps.pixi-env.outputs.name }} test \
               $KORNIA_CI_PYTEST_VERBOSITY "${known_failure_args[@]}" ${{ inputs.pytest-extra }}

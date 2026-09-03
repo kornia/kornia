@@ -211,8 +211,20 @@ class TestFindHomographyDLT(BaseTester):
     def test_scaled_fixed_points(self, device, dtype):
         points1 = torch.tensor([[[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]]], device=device, dtype=dtype)
         points2 = points1 * 100
+        for weights in (None, torch.ones(1, 4, device=device, dtype=dtype)):
+            H = find_homography_dlt(points1, points2, weights, "lu")
+            assert torch.isfinite(H).all()
+            self.assert_close(kornia.geometry.transform_points(H, points1), points2, rtol=1e-4, atol=1e-4)
+
+    def test_projective_fixed_points(self, device):
+        dtype = torch.float32 if device.type == "mps" else torch.float64
+        points1 = torch.tensor([[[1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0]]], device=device, dtype=dtype)
+        points2 = torch.tensor([[[1.0, 1.0], [1.0, -1.0], [-1.0, -1.0], [-1.0, 1.0]]], device=device, dtype=dtype)
+
         H = find_homography_dlt(points1, points2, None, "lu")
-        assert not torch.isnan(H).any()
+
+        assert torch.isfinite(H).all()
+        self.assert_close(kornia.geometry.transform_points(H, points1), points2, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_clean_points_svd(self, batch_size, device, dtype):
@@ -271,6 +283,19 @@ class TestFindHomographyDLT(BaseTester):
         points_dst = torch.rand_like(points_src)
         weights = torch.ones_like(points_src)[..., 0]
         self.gradcheck(find_homography_dlt, (points_src, points_dst, weights, "lu"), rtol=1e-6, atol=1e-6)
+
+    def test_gradcheck_lu_minimal(self, device):
+        points_src = torch.tensor(
+            [[[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]]],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
+        points_dst = torch.tensor(
+            [[[0.1, 0.2], [0.2, 1.4], [1.3, 0.1], [1.1, 1.2]]], device=device, dtype=torch.float64
+        )
+
+        self.gradcheck(find_homography_dlt, (points_src, points_dst, None, "lu"), rtol=1e-6, atol=1e-6)
 
 
 class TestFindHomographyFromLinesDLT(BaseTester):

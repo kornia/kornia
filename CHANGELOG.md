@@ -196,6 +196,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `find_homography_dlt(..., solver="lu")` now solves the minimal four-point system with an adaptive
+  homogeneous scale instead of applying LU to a singular normal matrix. This prevents all-NaN
+  homographies on Windows with PyTorch 2.14 and removes the corresponding CPU half-precision known
+  failures. (#4197)
+
 * `add_weighted` now keeps Python scalar weights in operator math precision instead of rounding them to the input
   dtype before arithmetic. This improves `float16` and `bfloat16` accuracy and makes fractional scalar weights on
   integer inputs produce the correctly promoted floating-point result instead of being truncated. (#4154)

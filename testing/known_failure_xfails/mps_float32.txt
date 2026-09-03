@@ -139,6 +139,7 @@ NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLT::te
 NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_points_noweights[mps-float32-1-4]
 NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_points_noweights[mps-float32-2-5]
 NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_points_noweights[mps-float32-3-6]
+NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_projective_fixed_points[mps]
 NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_scaled_fixed_points[mps-float32]
 NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_shape[mps-float32-1-4]
 NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_shape[mps-float32-2-5]
