@@ -1,5 +1,5 @@
 Support
-========
+=======
 
 .. meta::
    :description: Support Kornia and get support: sponsor the project through Open Collective, GitHub Sponsors or sponsor@kornia.org, or contribute bug reports, answers and code.

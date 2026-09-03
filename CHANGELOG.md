@@ -20,6 +20,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * An **Adoption** page (`community/adoption`) listing the most-starred GitHub repositories and
   packages that depend on kornia, rendered at build time from `docs/source/_data/dependents.json`;
   `docs/fetch_dependents.py` refreshes that snapshot from GitHub's dependency graph. (#4155)
+* Dynamo ONNX export (`torch.onnx.export(..., dynamo=True)`) now covers a much larger part of the
+  library: about 140 additional operator cases in the export survey capture, pass the ONNX checker
+  and match eager execution under onnxruntime. Operators that failed graph capture or had no ONNX
+  lowering gained an export-time path that returns the same values eagerly: matrix inverses up to
+  4x4 use a closed-form adjugate instead of `aten::linalg_inv` (`warp_perspective3d`,
+  `warp_affine3d`, `rotate3d`, `affine3d`, `get_projective_transform`, `invert_affine_transform`,
+  `denormalize_homography`, `symmetric_transfer_error`, `safe_inverse_with_mask`, `DepthWarper`,
+  `PinholeCamera`, `StereoCamera`, `NamedPose`, `ImageRegistrator`, `ParametrizedLine.intersect`
+  and the `Se2`/`Se3`/`So2` groups); `MedianBlur`/`median_blur` select the median through `sort`;
+  `HausdorffERLoss`/`HausdorffERLoss3D` pool through `amax` (which also makes the 3D loss run on MPS); `distance_transform` avoids `hypot`;
+  `match_nn`/`match_mnn`/`DescriptorMatcher` avoid `cdist`; the mutual-information losses, the
+  Bessel kernels, `solve_quadratic`, `matrix_cofactor_tensor`, `decompose_essential_matrix_no_svd`,
+  `distort_points`/`undistort_points`/`undistort_image`, `Boxes`/`Boxes3D` (`from_tensor`,
+  `to_mask`), `bbox_to_mask3d`, `mean_iou_bbox`, `conv_soft_argmax2d` with a tensor temperature,
+  `JPEGCodecDifferentiable`, `ZCAWhitening` (`transform`/`inverse_transform`), `BoxFiltering`,
+  `MotionBlur3D`, `center_crop`/`crop_and_resize`/`crop_by_transform_mat3d` and the
+  `OriNet`/`LAFOrienter`/`LAFAffNetShapeEstimator`/`HardNet`/`HardNet8`/`SIFTFeature`/
+  `LAFDescriptor`/`DeDoDe` feature stack are branch-free or guard their data-dependent checks with
+  `kornia.core.utils.is_exporting()`. Among augmentations, `LongestMaxSize`, `SmallestMaxSize`,
+  `RandomCrop`, `RandomResizedCrop`, `RandomAffine3D`, `RandomRotation3D`, `RandomMotionBlur3D`,
+  `RandomJPEG`, `RandomMedianBlur`, `RandomPlanckianJitter` and `AugmentationSequential` with
+  crops or boxes now export, and `LightGlue` exports once `depth_confidence`/`width_confidence`
+  pruning is disabled. Behavior notes: `Se2`/`Se3`/`So2`/`ParametrizedLine` built from a tensor
+  that already carries autograd history (`Se2.exp(v)`, `ParametrizedLine.through(p0, p1)`) keep
+  that history: the tensor is registered as a buffer instead of being re-rooted as an
+  `nn.Parameter`, so `.to()`, `state_dict()` and `load_state_dict()` still reach it under the same
+  key but it no longer appears in `parameters()`; `kornia.core.utils.is_exporting()` falls back to
+  `is_compiling()` on torch < 2.6, which has no export flag (inside a Dynamo trace newer torch
+  folds its flag to `True` for `torch.compile` as well, so the export-safe paths are what a
+  compiled graph contains on every supported version); under export `crop_by_indices` with a
+  `size` resamples the crop and without one keeps the eager path, `distort_points`/
+  `undistort_points` always apply the tilt term (a no-op when the coefficients are zero) and
+  `normalize`/`denormalize` accept a 1-D `(C,)` mean/std; `matrix_cofactor_tensor` returns exact
+  cofactors for singular matrices instead of raising when every matrix in the batch is singular.
+  (#4182)
+* An **ONNX, torch.compile and torch.export support** page under Resources (`get-started/export-support`)
+  lists every surveyed public operator, grouped by package and section, with its dynamo ONNX export,
+  `torch.export` and `torch.compile` outcome, the cause of each failure and a search box with result
+  filters. It is rendered at build time from the committed snapshot
+  `docs/source/_data/export_support.json`; `docs/export_support/run.py` reruns the survey to refresh
+  it. (#4182)
+* Every page in the **Models** section of the docs now opens with the shortest script that runs the
+  model and a figure of its output on a real input, with the paper card moved to the bottom. The
+  figures are rendered by `docs/generate_model_examples.py` and committed under
+  `docs/source/_static/img/models/`, so the docs build needs neither the weights nor the sample
+  images. (#4178)
 
 ### Breaking changes
 
@@ -142,6 +188,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `add_weighted` now keeps Python scalar weights in operator math precision instead of rounding them to the input
+  dtype before arithmetic. This improves `float16` and `bfloat16` accuracy and makes fractional scalar weights on
+  integer inputs produce the correctly promoted floating-point result instead of being truncated. (#4154)
+
+* `distance_transform` no longer silently returns a wrong or all-zero result when its `exp(-dist/h)` kernel
+  underflows (#4152). The kernel's axis-aligned tap, at distance `kernel_size // 2` along a single axis,
+  underflowing to exactly zero -- reachable from the documented default `h=0.35` at `kernel_size >= 15` in
+  `float16` -- used to make the convolution silently drop it, returning a plausible-looking but wrong distance
+  field or, with a smaller `h`, an all-zero one. Two changes: `float16`/`bfloat16` inputs now run the cascade in
+  `float32` and cast the result back (the default `h=0.35` case is fixed by this alone, matching `float32`'s own
+  working range); and an `h`/`kernel_size`/dtype combination whose axis-aligned tap still underflows
+  `torch.finfo(dtype).tiny` now raises instead of guessing. This also catches a case that is not itself
+  numerically wrong on CPU (`h=0.01` at `kernel_size=3` in `float32` tracks the analytic reference to ~2e-4,
+  carried through the subnormal range) but where MPS flushes subnormals to zero while CPU does not, so the same
+  call used to silently disagree across backends; raising there rules out that disagreement rather than trusting
+  which backend a caller happens to run on. Concretely, at the documented default `h=0.35` in `float32`,
+  `kernel_size >= 63` now raises: CPU used to return a usable-looking answer there while MPS silently returned
+  something else for the same call.
+
+* `RandomTransplantation` and `RandomTransplantation3D` transplanted nothing on MPS when no `excluded_labels`
+  were given: PyTorch's MPS backend evaluates `all()` over the empty excluded-label axis to an undefined value,
+  usually `False`, so every donor label was filtered out and the output equalled the input. The filter is now skipped when there is
+  nothing to exclude. (#4160)
+
+* `VisualPrompter.predict()` called without any prompt (the "run the prediction without prompts" example on the
+  Segment Anything page) raised `TypeError: object of type 'NoneType' has no len()` from the prompt augmentation
+  container; it now predicts from the image embedding alone, as documented. (#4178)
 * Follow-up fixes to the documentation revamp (#4155): the landing page's filtering card quoted the combined
   `filters`/`color`/`enhance`/`morphology` count next to a `kornia.filters` label, the "Why Kornia?" hero carousel
   resumed after a visitor picked a tab, the Community page linked to the now-unregistered `librecv.org`, and the

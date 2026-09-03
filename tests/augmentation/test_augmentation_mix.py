@@ -493,6 +493,24 @@ class TestRandomTransplantation(BaseTester):
         self.assert_close(mask_out, mask_out_expected)
         self.assert_close(image_out, mask_out_expected.unsqueeze(dim=1))
 
+    def test_no_excluded_labels_transplants(self, device, dtype):
+        # With nothing excluded every donor label stays eligible, so with p=1 some pixels change. On MPS the
+        # ``all`` reduction over the empty excluded-label axis is undefined (usually False, and it varies between
+        # processes) and used to drop every label, which made this class flaky there.
+        torch.manual_seed(22)
+        mask = torch.zeros(2, 4, 4, device=device, dtype=dtype)
+        mask[0, :2, :2] = 1
+        mask[1, 2:, 2:] = 2
+        image = mask.clone().unsqueeze(dim=1)
+
+        f = RandomTransplantation(p=1)
+        image_out, mask_out = f(image, mask)
+
+        assert len(f._params["selected_labels"]) == 2
+        assert f._params["selection"].any()
+        assert not torch.equal(mask_out, mask)
+        self.assert_close(image_out.squeeze(dim=1), mask_out)
+
     def test_mask_only(self, device, dtype):
         torch.manual_seed(22)
 

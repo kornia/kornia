@@ -19,6 +19,7 @@ from typing import Any
 
 import torch
 
+from kornia.core.utils import is_exporting
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
 
@@ -123,7 +124,10 @@ class StereoCamera:
             )
 
         # Ensure all intrinsics parameters (fx, fy, cx, cy) are the same in both cameras.
-        if not torch.all(torch.eq(rectified_left_camera[..., :, :3], rectified_right_camera[..., :, :3])):
+        # The check reads the data, which graph capture cannot do; skip it under export.
+        if not is_exporting() and not torch.all(
+            torch.eq(rectified_left_camera[..., :, :3], rectified_right_camera[..., :, :3])
+        ):
             raise StereoException(
                 "Expected 'left_rectified_camera' and 'rectified_right_camera' to have"
                 "same parameters except for the last column."
@@ -132,7 +136,7 @@ class StereoCamera:
 
         # Ensure that tx * fx is negative and exists.
         tx_fx = rectified_right_camera[..., 0, 3]
-        if torch.all(torch.gt(tx_fx, 0)):
+        if not is_exporting() and torch.all(torch.gt(tx_fx, 0)):
             raise StereoException(f"Expected :math:`T_x * f_x` to be negative. Got {tx_fx}.")
 
     @property

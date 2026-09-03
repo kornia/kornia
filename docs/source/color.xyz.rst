@@ -1,5 +1,5 @@
 CIE XYZ
-========
+=======
 
 .. currentmodule:: kornia.color
 

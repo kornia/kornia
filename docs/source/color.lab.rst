@@ -1,5 +1,5 @@
 CIE Lab
-========
+=======
 
 .. currentmodule:: kornia.color
 

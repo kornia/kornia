@@ -19,11 +19,15 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 import torch
 from torch.autograd.gradcheck import GradcheckError
+
+import conftest as project_conftest
+from kornia.core.exceptions import ShapeError
 
 from testing.half_precision_ci import (
     ISSUE_URL,
@@ -52,7 +56,7 @@ def test_seed_test_rng_is_stable_and_node_specific() -> None:
     assert other != first
 
 
-def test_failure_recorder_writes_only_call_failures_in_nodeid_order(pytester: pytest.Pytester) -> None:
+def test_failure_recorder_writes_setup_and_call_failures_in_nodeid_order(pytester: pytest.Pytester) -> None:
     pytester.makeconftest(
         """
         from pathlib import Path
@@ -78,6 +82,21 @@ def test_failure_recorder_writes_only_call_failures_in_nodeid_order(pytester: py
             raise AssertionError("first after sorting")
 
 
+        @pytest.fixture
+        def failed_setup():
+            raise RuntimeError("fixture setup failure")
+
+
+        def test_setup_failure(failed_setup):
+            pass
+
+
+        def test_kornia_failure():
+            from kornia.core.exceptions import ShapeError
+
+            raise ShapeError("kornia validation failure")
+
+
         def test_skip():
             pytest.skip("not a failure")
 
@@ -96,8 +115,12 @@ def test_failure_recorder_writes_only_call_failures_in_nodeid_order(pytester: py
     lines = [line for line in recorded.splitlines() if line and not line.startswith("#")]
     assert lines == [
         "AssertionError\ttest_sample.py::test_a_failure",
+        "kornia.core.exceptions.ShapeError\ttest_sample.py::test_kornia_failure",
+        "RuntimeError\ttest_sample.py::test_setup_failure",
         "ValueError\ttest_sample.py::test_z_failure",
     ]
+    _write_manifest(pytester.path, "float16", recorded)
+    assert load_known_failures("float16", pytester.path)["test_sample.py::test_kornia_failure"] is ShapeError
 
 
 class TestLoadKnownFailures:
@@ -147,6 +170,22 @@ class TestLoadKnownFailures:
         failures = load_known_failures("float16", tmp_path)
 
         assert failures == {nodeid: GradcheckError}
+
+    def test_loads_kornia_exception_recorded_by_the_recorder(self, tmp_path: Path) -> None:
+        nodeid = "tests/a.py::test_a[cpu-float16]"
+        _write_manifest(tmp_path, "float16", f"kornia.core.exceptions.ShapeError\t{nodeid}\n")
+
+        failures = load_known_failures("float16", tmp_path)
+
+        assert failures == {nodeid: ShapeError}
+
+    def test_loads_nodeid_without_dtype_parameter(self, tmp_path: Path) -> None:
+        nodeid = "tests/a.py::test_a"
+        _write_manifest(tmp_path, "float16", f"AssertionError\t{nodeid}\n")
+
+        failures = load_known_failures("float16", tmp_path)
+
+        assert failures == {nodeid: AssertionError}
 
     def test_rejects_entries_for_the_wrong_dtype(self, tmp_path: Path) -> None:
         _write_manifest(tmp_path, "float16", "AssertionError\ttests/a.py::test_a[cpu-bfloat16]\n")
@@ -226,6 +265,18 @@ class TestMarkKnownFailures:
         with pytest.raises(ValueError, match="1 known half-precision failure was not collected"):
             mark_known_failures([_Item(selected)], ["float16"], tmp_path, selectors=["tests/a.py"])
 
+    def test_absolute_selector_is_normalized_against_rootpath(self, tmp_path: Path) -> None:
+        selected = "tests/a.py::test_a[cpu-float16]"
+        _write_manifest(tmp_path, "float16", f"AssertionError\t{selected}\n")
+        item = _Item(selected)
+
+        tracker = mark_known_failures(
+            [item], ["float16"], tmp_path, selectors=[str(tmp_path / "tests/a.py")], rootpath=tmp_path
+        )
+
+        assert tracker.pending == {selected}
+        assert len(item.markers) == 1
+
 
 def _run_manifest_case(
     pytester: pytest.Pytester, test_body: str, extra_marker: str = "", manifest_exception: str = "AssertionError"
@@ -303,6 +354,18 @@ class TestKnownFailureOutcomes:
         result.assert_outcomes(xfailed=1)
         assert result.ret == pytest.ExitCode.OK
 
+    def test_accepts_manifest_specific_setup_xfail(self, pytester: pytest.Pytester) -> None:
+        result = _run_manifest_case(
+            pytester,
+            "pass",
+            "@pytest.fixture(autouse=True)\n"
+            "        def fail_setup():\n"
+            "            raise AssertionError('setup failure')",
+        )
+
+        result.assert_outcomes(xfailed=1)
+        assert result.ret == pytest.ExitCode.OK
+
     @pytest.mark.parametrize(
         ("test_body", "extra_marker"),
         [
@@ -332,12 +395,6 @@ class TestKnownFailureOutcomes:
                 "",
             ),
             (
-                "raise AssertionError('known failure')",
-                "@pytest.fixture(autouse=True)\n"
-                "        def fail_setup():\n"
-                "            raise AssertionError('setup failure')",
-            ),
-            (
                 "pytest.xfail(next(request.node.iter_markers('xfail')).kwargs['reason'])",
                 "",
             ),
@@ -351,7 +408,6 @@ class TestKnownFailureOutcomes:
             "same-reason-prior-xfail",
             "teardown-skip",
             "teardown-expected-exception",
-            "setup-expected-exception",
             "dynamic-xfail-with-manifest-reason",
             "exception-subclass",
         ],
@@ -368,6 +424,52 @@ class TestKnownFailureOutcomes:
         assert "cpu_float16.txt" in output
         assert "Ran with an unexpected outcome; remove or update the manifest line:" in output
         assert "test_sample.py::test_known_failure[cpu-float16]" in output
+
+
+class _RecordingConfig:
+    def __init__(self, option_name: str, option_value: object, rootpath: Path) -> None:
+        options = {
+            "keyword": "",
+            "markexpr": "",
+            "deselect": [],
+            "maxfail": 0,
+            "lf": False,
+            "failedfirst": False,
+        }
+        options[option_name] = option_value
+        self.option = SimpleNamespace(**options)
+        self.args = ["tests"]
+        self.rootpath = rootpath
+
+    def getoption(self, option: str) -> object:
+        return {
+            "--xfail-known-half-precision": False,
+            "--record-half-precision-failures": "recorded.txt",
+            "--device": "cpu",
+            "--dtype": "float16",
+            "--runslow": False,
+        }[option]
+
+
+@pytest.mark.parametrize(
+    ("option_name", "option_value"),
+    [
+        ("keyword", "selected"),
+        ("markexpr", "unit"),
+        ("deselect", ["tests/a.py::test_a"]),
+        ("maxfail", 1),
+        ("lf", True),
+        ("failedfirst", True),
+    ],
+)
+def test_record_mode_rejects_partial_run_options(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, option_name: str, option_value: object
+) -> None:
+    monkeypatch.delenv("KORNIA_TEST_OPTIMIZER", raising=False)
+    config = _RecordingConfig(option_name, option_value, tmp_path)
+
+    with pytest.raises(pytest.UsageError, match="does not allow partial-selection options"):
+        project_conftest._configure_half_precision_manifest(config, [])
 
 
 @pytest.mark.parametrize("dtype", ["float16", "bfloat16"])

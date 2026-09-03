@@ -1,5 +1,5 @@
 CIE Luv
-========
+=======
 
 .. currentmodule:: kornia.color
 

@@ -21,6 +21,8 @@ from functools import partial
 
 import torch
 
+from kornia.core.utils import is_exporting
+
 
 def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
     """Implementation of a 2nd-order polynomial kernel for Kernel density estimate (Xu et al., 2008).
@@ -102,6 +104,19 @@ def _flatten_mask(mask: torch.Tensor | None) -> torch.Tensor:
         return mask.view(-1)
 
 
+def _mask_is_full(mask: torch.Tensor | None) -> bool:
+    """Whether ``mask`` selects everything: ``None`` or a single ``True`` broadcast over the signal.
+
+    A one-element mask is decided structurally under graph capture (a single ``False`` would mask
+    the whole signal, which is never meaningful), so exported graphs carry no data-dependent gather.
+    """
+    if mask is None:
+        return True
+    if mask.numel() != 1:
+        return False
+    return True if is_exporting() else bool(mask.reshape(()))
+
+
 def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> torch.Tensor:
     min_val, _ = data.min(dim=-1)
     max_val, _ = data.max(dim=-1)
@@ -166,6 +181,7 @@ class EntropyBasedLossBase(torch.nn.Module):
             ValueError: If kernel_function is not a valid MIKernel member.
         """
         super().__init__()
+        self._ref_mask_is_full = _mask_is_full(mask)
         mask = self.fix_mask(mask, reference_signal)
         self.eps = torch.finfo(reference_signal.dtype).eps
         self.initial_shape = reference_signal.shape
@@ -252,15 +268,23 @@ class EntropyBasedLossBase(torch.nn.Module):
             raise ValueError(
                 f"The two signals have incompatible shapes: {other_signal.shape} and {self.initial_shape}."
             )
-        # normalize in restriction to mask and recast in self.signal coords
-        other_mask = self.fix_mask(other_mask, other_signal)
-        other_signal = other_signal[..., other_mask]
-        other_signal = _normalize_signal(other_signal, num_bins=self.num_bins, eps=eps)
-        other_signal = self.trace_in_ref_mask(other_signal, other_mask)
-        common_mask = other_mask[self.mask]
+        if self._ref_mask_is_full and _mask_is_full(other_mask):
+            # No roi on either side: skip the boolean-mask gathers, whose output sizes depend on the
+            # mask values and therefore cannot be captured by ``torch.export``/ONNX.
+            ref_signal = self.signal
+            other_signal = _normalize_signal(other_signal, num_bins=self.num_bins, eps=eps)
+        else:
+            # normalize in restriction to mask and recast in self.signal coords
+            other_mask = self.fix_mask(other_mask, other_signal)
+            other_signal = other_signal[..., other_mask]
+            other_signal = _normalize_signal(other_signal, num_bins=self.num_bins, eps=eps)
+            other_signal = self.trace_in_ref_mask(other_signal, other_mask)
+            common_mask = other_mask[self.mask]
+            ref_signal = self.signal[..., common_mask]
+            other_signal = other_signal[..., common_mask]
 
-        diff_1 = self.bin_centers.unsqueeze(-1) - self.signal[..., common_mask].unsqueeze(-2)
-        diff_2 = self.bin_centers.unsqueeze(-1) - other_signal[..., common_mask].unsqueeze(-2)
+        diff_1 = self.bin_centers.unsqueeze(-1) - ref_signal.unsqueeze(-2)
+        diff_2 = self.bin_centers.unsqueeze(-1) - other_signal.unsqueeze(-2)
 
         vals_1 = self.kernel_function(diff_1)
         vals_2 = self.kernel_function(diff_2)

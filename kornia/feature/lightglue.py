@@ -27,6 +27,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.core.utils import is_exporting
 from kornia.feature.laf import laf_to_three_points, scale_laf
 
 try:
@@ -477,6 +478,12 @@ def filter_matches(scores: torch.Tensor, th: float) -> Tuple[torch.Tensor, torch
     return m0, m1, mscores0, mscores1
 
 
+def _check_keypoints_normalized(kpts: torch.Tensor) -> None:
+    """Check that keypoints lie in [-1, 1]; skipped under export, where reading the data is not possible."""
+    if not is_exporting():
+        KORNIA_CHECK(torch.all(kpts >= -1).item() and torch.all(kpts <= 1).item(), "")  # type: ignore
+
+
 class LightGlue(nn.Module):
     """Implement the LightGlue matcher for sparse local features.
 
@@ -732,8 +739,8 @@ class LightGlue(nn.Module):
 
         kpts0 = normalize_keypoints(kpts0, size0).clone()
         kpts1 = normalize_keypoints(kpts1, size1).clone()
-        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), "")  # type: ignore
-        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), "")  # type: ignore
+        _check_keypoints_normalized(kpts0)
+        _check_keypoints_normalized(kpts1)
         if self.conf.add_scale_ori:
             kpts0 = torch.cat([kpts0] + [data0[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
             if self.conf.scale_coef != 1.0:

@@ -3747,8 +3747,9 @@ class TestNormalTransformPixel(BaseTester):
         # check that the bullet's "agree in float32/float64; whether they agree at float16/bfloat16
         # is a property of the build" still holds -- the cpu bfloat16 row is the whole reason that
         # clause is build-scoped rather than absolute: 2.5.1 agrees at every size, 2.9.1 does not.
-        # Snippet used to generate expected (torch + kornia, executed on macOS arm64 against both
-        # torch 2.9.1 and torch 2.5.1; max|helper - matrix| over the full (2, 28) pixel grid):
+        # Snippet used to generate expected (torch + kornia; the arm64 values were executed on macOS
+        # against torch 2.9.1 and 2.5.1, and the x86-64 values on Linux against torch 2.9.1;
+        # max|helper - matrix| over the full (2, 28) pixel grid):
         #   cpu 2.9.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.00390625
         #   cpu 2.5.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.0
         #   mps, both: float32 -> 5.960464477539063e-08 (2**-24)   float16 -> 0.0009765625

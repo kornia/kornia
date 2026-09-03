@@ -35,7 +35,14 @@ except ImportError:  # pragma: no cover
 import kornia
 
 from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
-from testing.half_precision_ci import FailureRecorder, mark_known_failures, seed_test_rng
+from testing.half_precision_ci import (
+    FailureRecorder,
+    seed_test_rng,
+)
+from testing.half_precision_ci import (
+    mark_known_failures as mark_known_half_precision_failures,
+)
+from testing.known_failures import mark_known_failures
 
 try:
     import torch._dynamo
@@ -191,18 +198,36 @@ def _configure_half_precision_manifest(config, items):
 
     if strict_half:
         try:
-            tracker = mark_known_failures(items, dtypes, selectors=config.args)
+            tracker = mark_known_half_precision_failures(items, dtypes, selectors=config.args, rootpath=config.rootpath)
         except ValueError as error:
             raise pytest.UsageError(str(error)) from error
         config.pluginmanager.register(tracker, "known-half-precision-failure-tracker")
 
     if record_half:
-        normalized_args = {
-            str(Path(arg.split("::", maxsplit=1)[0])).removeprefix("./").rstrip("/") for arg in config.args
+        normalized_args = set()
+        for arg in config.args:
+            target = Path(arg.split("::", maxsplit=1)[0])
+            if target.is_absolute():
+                try:
+                    target = target.relative_to(config.rootpath)
+                except ValueError:
+                    pass
+            normalized_args.add(target.as_posix().removeprefix("./").rstrip("/"))
+        if normalized_args != {"tests"}:
+            raise pytest.UsageError("--record-half-precision-failures requires exactly the full tests/ target")
+        partial_options = {
+            "-k": config.option.keyword,
+            "-m": config.option.markexpr,
+            "--deselect": config.option.deselect,
+            "--maxfail/-x": config.option.maxfail,
+            "--lf": config.option.lf,
+            "--ff": config.option.failedfirst,
         }
-        if normalized_args != {"tests"} or config.option.keyword:
+        active_partial_options = [name for name, value in partial_options.items() if value]
+        if active_partial_options:
+            options = ", ".join(active_partial_options)
             raise pytest.UsageError(
-                "--record-half-precision-failures requires the full tests/ target and does not allow -k"
+                f"--record-half-precision-failures does not allow partial-selection options; remove: {options}"
             )
         recorder = FailureRecorder(dtypes[0], Path(record_half))
         config.pluginmanager.register(recorder, "half-precision-failure-recorder")
@@ -240,7 +265,20 @@ def pytest_collection_modifyitems(config, items):
         # Filter out tests with "dynamo" or "compile" in their name
         items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
 
+    # Install the strict half-precision marker before any other xfail markers. Pytest uses the
+    # first applicable xfail reason, and the tracker validates that its own marker handled the test.
     _configure_half_precision_manifest(config, items)
+
+    if config.getoption("--xfail-known-failures"):
+        devices = _parse_test_option(config, "--device", TEST_DEVICES)
+        dtypes = _parse_test_option(config, "--dtype", TEST_DTYPES)
+        if len(devices) != 1 or len(dtypes) != 1:
+            raise pytest.UsageError("--xfail-known-failures requires exactly one --device and one --dtype")
+        try:
+            tracker = mark_known_failures(items, devices[0], dtypes[0])
+        except (OSError, ValueError) as error:
+            raise pytest.UsageError(str(error)) from error
+        config.pluginmanager.register(tracker, "known-failure-tracker")
 
     # gradcheck requires float64. MPS does not support it at all, and XLA lowers a float64 request
     # to float32, where gradcheck's default eps=1e-6 makes the numerical Jacobian invalid — so a
@@ -341,7 +379,8 @@ def pytest_addoption(parser):
         default=os.environ.get("KORNIA_TEST_XFAIL_KNOWN_HALF", "false").lower() == "true",
         help=(
             "Strictly xfail the complete recorded Linux CPU float16/bfloat16 failure baseline. "
-            "Requires a full CPU half-precision suite. (env: KORNIA_TEST_XFAIL_KNOWN_HALF)"
+            "Requires CPU and exactly one half dtype; focused selectors are supported. "
+            "(env: KORNIA_TEST_XFAIL_KNOWN_HALF)"
         ),
     )
     parser.addoption(
@@ -351,7 +390,7 @@ def pytest_addoption(parser):
         metavar="PATH",
         help=(
             "Record a complete deterministic Linux CPU half-precision failure manifest at PATH. "
-            "Requires tests/, one half dtype, no -k, no --runslow, and no optimizer. "
+            "Requires an unfiltered tests/ run, one half dtype, no --runslow, and no optimizer. "
             "(env: KORNIA_TEST_RECORD_HALF)"
         ),
     )
@@ -387,6 +426,14 @@ def pytest_addoption(parser):
             "They exercise CPU-only code, so an accelerator-only run deselects them by default "
             "to avoid repeating work the CPU job already did; pass this to run the whole suite "
             "on one device anyway. (env: KORNIA_TEST_RUN_DEVICE_AGNOSTIC)"
+        ),
+    )
+    parser.addoption(
+        "--xfail-known-failures",
+        action="store_true",
+        help=(
+            "Strictly xfail the complete recorded baseline for the selected device and dtype. "
+            "A new failure, changed exception, skipped pin, or fixed pin fails the run."
         ),
     )
 
@@ -675,13 +722,19 @@ def pytest_runtest_protocol(item, nextitem):
     return True
 
 
-@pytest.fixture(autouse=True)
-def seed_half_precision_manifest_run(request):
-    """Make strict and recorded half-precision outcomes independent of test order and process entropy."""
+@pytest.fixture()
+def test_rng_seed(request) -> int | None:
+    """Return the per-node seed used by strict and recorded half-precision runs."""
     if request.config.getoption("--xfail-known-half-precision") or request.config.getoption(
         "--record-half-precision-failures"
     ):
-        seed_test_rng(request.node.nodeid)
+        return seed_test_rng(request.node.nodeid)
+    return None
+
+
+@pytest.fixture(autouse=True)
+def seed_half_precision_manifest_run(test_rng_seed: int | None) -> None:
+    """Make strict and recorded half-precision outcomes independent of test order and process entropy."""
 
 
 @pytest.fixture(autouse=True)

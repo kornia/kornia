@@ -239,3 +239,15 @@ class TestSo2(BaseTester):
     def test_adjoint(self, device, dtype, batch_size):
         s = So2.identity(batch_size, device=device, dtype=dtype)
         self.assert_close(s.matrix(), s.adjoint())
+
+    def test_derived_state_moves_and_serializes(self, device, dtype):
+        theta = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
+        s = So2.exp(theta)
+        assert s.z.grad_fn is not None
+        assert list(s.state_dict()) == ["_z"] == list(So2.identity(2, device, dtype).state_dict())
+        assert dict(s.named_buffers()).keys() == {"_z"}  # registered, so ``.to(device)`` reaches it
+        restored = So2.identity(2, device, dtype)
+        restored.load_state_dict(s.state_dict())
+        self.assert_close(restored.matrix(), s.matrix().detach())
+        s.to(device).matrix().sum().backward()
+        assert theta.grad is not None

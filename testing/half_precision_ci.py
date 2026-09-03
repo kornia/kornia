@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import builtins
 import hashlib
+import importlib
 import random
 import re
 from pathlib import Path
@@ -34,6 +35,7 @@ from kornia.core.exceptions import BaseError
 ISSUE_URL = "https://github.com/kornia/kornia/issues/4153"
 _MANIFEST_DIR = Path(__file__).with_name("half_precision_xfails")
 _XFAIL_REASON_PREFIX = f"Known Linux CPU half-precision failure tracked in {ISSUE_URL}"
+_ALLOWED_EXCEPTION_MODULE_PREFIXES = ("kornia.", "torch.")
 _EXCEPTION_TYPES: dict[str, type[BaseException]] = {
     "AssertionError": AssertionError,
     "KeyError": KeyError,
@@ -61,8 +63,30 @@ def _exception_name(exception_type: type[BaseException]) -> str:
     return f"{exception_type.__module__}.{exception_type.__qualname__}"
 
 
+def _resolve_exception_type(exception_name: str) -> type[BaseException] | None:
+    exception_type = _EXCEPTION_TYPES.get(exception_name, getattr(builtins, exception_name, None))
+    if isinstance(exception_type, type) and issubclass(exception_type, BaseException):
+        return cast(type[BaseException], exception_type)
+    if not exception_name.startswith(_ALLOWED_EXCEPTION_MODULE_PREFIXES):
+        return None
+
+    parts = exception_name.split(".")
+    for split_at in range(len(parts) - 1, 0, -1):
+        try:
+            value: Any = importlib.import_module(".".join(parts[:split_at]))
+        except ModuleNotFoundError:
+            continue
+        for attribute in parts[split_at:]:
+            value = getattr(value, attribute, None)
+            if value is None:
+                break
+        if isinstance(value, type) and issubclass(value, BaseException):
+            return cast(type[BaseException], value)
+    return None
+
+
 class FailureRecorder:
-    """Record call-phase test failures as a sorted half-precision manifest."""
+    """Record setup- and call-phase failures as a sorted half-precision manifest."""
 
     def __init__(self, dtype: str, output_path: Path) -> None:
         self.dtype = dtype
@@ -75,12 +99,12 @@ class FailureRecorder:
         outcome = yield
         report = outcome.get_result()
         if (
-            report.when == "call"
+            report.when in {"setup", "call"}
             and report.outcome == "failed"
             and getattr(report, "wasxfail", None) is None
             and call.excinfo is not None
         ):
-            self.failures[report.nodeid] = call.excinfo.type
+            self.failures.setdefault(report.nodeid, call.excinfo.type)
 
     def pytest_sessionfinish(self) -> None:
         """Write the complete sorted manifest even though recorded failures make pytest fail."""
@@ -110,14 +134,14 @@ class KnownFailureTracker:
 
     @pytest.hookimpl(hookwrapper=True, tryfirst=True)
     def pytest_runtest_makereport(self, item: Any, call: Any) -> Any:
-        """Record only call-phase xfails caused by the manifest's expected exception."""
+        """Record only xfails caused by the manifest's expected exception."""
         outcome = yield
         report = outcome.get_result()
         if report.nodeid not in self.pending:
             return
         wasxfail = getattr(report, "wasxfail", None)
         if (
-            report.when == "call"
+            report.when in {"setup", "call"}
             and report.outcome == "skipped"
             and wasxfail == self.reason
             and call.excinfo is not None
@@ -181,10 +205,11 @@ def load_known_failures(dtype: str, manifest_dir: Path | None = None) -> dict[st
             exception_name, nodeid = line.split("\t", maxsplit=1)
         except ValueError as error:
             raise ValueError(f"{path}:{line_number}: expected '<exception>\\t<node ID>'") from error
-        exception_type = _EXCEPTION_TYPES.get(exception_name, getattr(builtins, exception_name, None))
-        if not isinstance(exception_type, type) or not issubclass(exception_type, BaseException):
+        exception_type = _resolve_exception_type(exception_name)
+        if exception_type is None:
             raise ValueError(f"{path}:{line_number}: unknown exception type: {exception_name}")
-        if re.search(rf"(?<![A-Za-z]){dtype}(?![A-Za-z0-9])", nodeid) is None:
+        other_dtype = "bfloat16" if dtype == "float16" else "float16"
+        if re.search(rf"(?<![A-Za-z]){other_dtype}(?![A-Za-z0-9])", nodeid) is not None:
             raise ValueError(f"{path}:{line_number}: node ID does not select {dtype}: {nodeid}")
         if nodeid in failures:
             raise ValueError(f"{path}:{line_number}: duplicate node ID: {nodeid}")
@@ -192,14 +217,20 @@ def load_known_failures(dtype: str, manifest_dir: Path | None = None) -> dict[st
     return failures
 
 
-def _normalize_selector(selector: str) -> str:
+def _normalize_selector(selector: str, rootpath: Path | None = None) -> str:
     path, separator, node = selector.partition("::")
-    normalized_path = Path(path).as_posix().removeprefix("./").rstrip("/")
+    selector_path = Path(path)
+    if selector_path.is_absolute() and rootpath is not None:
+        try:
+            selector_path = selector_path.relative_to(rootpath)
+        except ValueError:
+            pass
+    normalized_path = selector_path.as_posix().removeprefix("./").rstrip("/")
     return f"{normalized_path}::{node}" if separator else normalized_path
 
 
-def _matches_selector(nodeid: str, selector: str) -> bool:
-    selector = _normalize_selector(selector)
+def _matches_selector(nodeid: str, selector: str, rootpath: Path | None = None) -> bool:
+    selector = _normalize_selector(selector, rootpath)
     node_path = nodeid.partition("::")[0]
     if "::" in selector:
         return nodeid == selector or nodeid.startswith((f"{selector}[", f"{selector}::"))
@@ -212,6 +243,7 @@ def mark_known_failures(
     manifest_dir: Path | None = None,
     *,
     selectors: Sequence[str] | None = None,
+    rootpath: Path | None = None,
 ) -> KnownFailureTracker:
     """Strictly xfail the complete known-failure set for selected CPU half dtypes."""
     failures: dict[str, type[BaseException]] = {}
@@ -228,7 +260,7 @@ def mark_known_failures(
         failures = {
             nodeid: exception_type
             for nodeid, exception_type in failures.items()
-            if any(_matches_selector(nodeid, selector) for selector in selectors)
+            if any(_matches_selector(nodeid, selector, rootpath) for selector in selectors)
         }
 
     collected = {item.nodeid for item in items}

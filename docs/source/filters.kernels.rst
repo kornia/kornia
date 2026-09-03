@@ -1,5 +1,5 @@
 Kernels
-========
+=======
 
 .. currentmodule:: kornia.filters
 

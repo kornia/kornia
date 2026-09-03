@@ -1,5 +1,5 @@
 Drawing
-========
+=======
 
 .. currentmodule:: kornia.image
 

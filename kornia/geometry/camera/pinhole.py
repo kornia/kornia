@@ -267,7 +267,7 @@ class PinholeCamera:
             torch.Tensor of shape :math:`(B, 4, 4)`.
 
         """
-        return self.intrinsics.inverse()
+        return _torch_inverse_cast(self.intrinsics)
 
     def scale(self, scale_factor: torch.Tensor) -> "PinholeCamera":
         r"""Scale the pinhole model.

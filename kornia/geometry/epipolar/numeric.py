@@ -19,8 +19,6 @@
 
 import torch
 
-from kornia.core.utils import _torch_inverse_cast
-
 
 def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
     r"""Return the cross_product_matrix symmetric matrix of a vector.
@@ -53,14 +51,8 @@ def matrix_cofactor_tensor(matrix: torch.Tensor) -> torch.Tensor:
         matrix: The input matrix in the shape :math:`(*, 3, 3)`.
 
     """
-    det = torch.det(matrix)
-    singular_mask = det != 0
-    if singular_mask.sum() != 0:
-        # B, 3, 3
-        cofactor = _torch_inverse_cast(matrix[singular_mask]).transpose(-2, -1) * det[singular_mask][:, None, None]
-        # return cofactor matrix of the given matrix
-        returned_cofactor = torch.zeros_like(matrix)
-        returned_cofactor[singular_mask] = cofactor
-        return returned_cofactor
-    else:
-        raise Exception("all singular matrices")
+    # Closed form: the rows of the cofactor matrix are the cross products of the other two rows. Unlike the
+    # ``det * inv(M)^T`` identity it is exact for singular input (essential matrices are rank 2 by construction),
+    # needs no inverse, and traces under graph capture.
+    r0, r1, r2 = matrix[..., 0, :], matrix[..., 1, :], matrix[..., 2, :]
+    return torch.stack([torch.cross(r1, r2, dim=-1), torch.cross(r2, r0, dim=-1), torch.cross(r0, r1, dim=-1)], dim=-2)

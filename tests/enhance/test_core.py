@@ -54,8 +54,23 @@ class TestAddWeighted(BaseTester):
 
         actual = TestAddWeighted.fcn(src1, 0.1, src2, 0.3, 0.2)
         expected = src1 * 0.1 + src2 * 0.3 + 0.2
+        downcast = (
+            src1 * torch.tensor(0.1, dtype=dtype)
+            + src2 * torch.tensor(0.3, dtype=dtype)
+            + torch.tensor(0.2, dtype=dtype)
+        )
 
         assert torch.equal(actual, expected)
+        assert not torch.equal(expected, downcast)
+
+    def test_python_scalars_promote_integer_inputs(self):
+        src1 = torch.full((2, 2), 2, dtype=torch.uint8)
+        src2 = torch.full((2, 2), 4, dtype=torch.uint8)
+
+        actual = TestAddWeighted.fcn(src1, 0.5, src2, 0.5, 0.0)
+
+        assert actual.dtype == torch.float32
+        assert torch.equal(actual, torch.full((2, 2), 3.0))
 
     def test_get_input_respects_size_and_max_elem(self, device, dtype):
         random.seed(0)

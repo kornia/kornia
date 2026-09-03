@@ -5,6 +5,43 @@ EfficientViT
 
 :bdg-primary:`Segmentation` :bdg-primary:`Classification` :bdg-primary:`Detection` :bdg-secondary:`Apache-2.0`
 
+EfficientViT is a high-resolution vision backbone built on multi-scale linear attention. Kornia ships the ImageNet
+pretrained backbones (``b1``, ``b2``, ``b3`` at 224/256/288 px) as :class:`~kornia.models.efficient_vit.EfficientViT`.
+The model returns a dictionary with the input and the feature map after each stage, so it plugs into any dense
+prediction or classification head.
+
+Run it
+------
+
+.. code-block:: python
+
+    import torch
+    from kornia.io import load_image
+    from kornia.geometry import resize
+    from kornia.models.efficient_vit import EfficientViT, EfficientViTConfig
+
+    image = resize(load_image("panda.jpg")[None], (224, 224))  # (1, 3, 224, 224) float in [0, 1]
+
+    model = EfficientViT.from_config(EfficientViTConfig.from_pretrained("b1", 224)).eval()
+    with torch.no_grad():
+        features = model(image)  # dict: "input", "stage0" ... "stage4", "stage_final"
+
+    for name, feat in features.items():
+        print(name, tuple(feat.shape))  # stage0 (1, 16, 112, 112) ... stage_final (1, 256, 7, 7)
+
+.. figure:: /_static/img/models/efficient_vit.jpg
+   :align: center
+   :alt: The input image followed by six feature-map heatmaps of decreasing resolution, from 112x112 down to 7x7.
+
+   Mean absolute activation of every stage of ``b1`` at 224 px: the resolution halves and the channel count doubles
+   from ``stage0`` (16 × 112 × 112) to ``stage_final`` (256 × 7 × 7).
+
+The backbone carries no classification head; global-average-pool ``stage_final`` and add an ``nn.Linear`` for
+classification, or feed the pyramid to a segmentation or detection neck.
+
+Paper
+-----
+
 .. card::
     :link: https://arxiv.org/abs/2205.14756
 
