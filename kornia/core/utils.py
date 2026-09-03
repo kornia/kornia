@@ -27,6 +27,13 @@ import torch.nn.functional as F
 from torch.linalg import inv_ex
 
 from kornia.core._compat import torch_version_ge
+from kornia.core._small_linalg import (
+    _adjugate_2x2,
+    _adjugate_3x3,
+    _adjugate_4x4,
+    _inverse_3x3_cross,
+    _inverse_3x3_scalar,
+)
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_TYPE
 from kornia.core.exceptions import DeviceError
 
@@ -163,12 +170,15 @@ def _l2_normalize(input: torch.Tensor, dim: int = 1) -> torch.Tensor:
 
 
 def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
-    """Closed-form inverse for batched 3x3 matrices.
+    """Closed-form inverse for batched 3x3 matrices, dispatching on the execution mode.
 
     Used as an ONNX-traceable fallback to ``torch.linalg.inv``: the legacy ONNX
     exporter does not lower ``aten::linalg_inv`` (as of opset 17). Computed via
     the adjugate / determinant formula, which is composed entirely of basic
     arithmetic ops that all standard ONNX opsets support.
+
+    The arithmetic lives in :mod:`kornia.core._small_linalg`; this function owns only the
+    choice between the two kernels, which is execution-mode policy and therefore stays here.
 
     Args:
         input: Tensor of shape ``(..., 3, 3)``.
@@ -179,52 +189,51 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
         well-conditioned matrices; behavior on singular matrices is undefined
         (no explicit check, same as ``torch.linalg.inv`` itself).
     """
-    if not torch.jit.is_tracing():
-        # inv(M) = adj(M) / det, and for a 3x3 the adjugate rows are cross products of the
-        # columns: with columns (a, b, c), the inverse rows are (b x c, c x a, a x b) / det,
-        # det = a . (b x c). Three fused ``cross`` ops instead of nine scalar cofactor
-        # expressions and four stacks — far fewer kernel launches (dominant on small matrices).
-        col_a = input[..., :, 0]
-        col_b = input[..., :, 1]
-        col_c = input[..., :, 2]
-        row0 = torch.linalg.cross(col_b, col_c, dim=-1)
-        row1 = torch.linalg.cross(col_c, col_a, dim=-1)
-        row2 = torch.linalg.cross(col_a, col_b, dim=-1)
-        det = (col_a * row0).sum(-1)
-        return torch.stack([row0, row1, row2], dim=-2) / det[..., None, None]
+    if not _is_tracing_or_exporting():
+        # Eager: three fused ``cross`` ops beat nine scalar cofactor expressions and four
+        # stacks, because kernel launches dominate on matrices this small.
+        return _inverse_3x3_cross(input)
 
-    # Under tracing (legacy ONNX / jit.trace) stick to the plain scalar adjugate: it lowers to
-    # basic arithmetic that every opset supports, whereas ``cross`` may not.
-    a = input[..., 0, 0]
-    b = input[..., 0, 1]
-    c = input[..., 0, 2]
-    d = input[..., 1, 0]
-    e = input[..., 1, 1]
-    f = input[..., 1, 2]
-    g = input[..., 2, 0]
-    h = input[..., 2, 1]
-    i = input[..., 2, 2]
+    # Under tracing/export (legacy ONNX / jit.trace / dynamo ONNX) stick to the plain scalar
+    # adjugate. NOTE the original rationale here -- "whereas ``cross`` may not [lower]" -- does not
+    # hold on the torch versions CI runs: measured, ``torch.linalg.cross`` lowers on 2.5.1 (legacy
+    # exporter) and on 2.9.1 (both exporters). The split is kept because it is still the safer
+    # capture path (scalar arithmetic needs no per-dtype kernel at all, and ``cross`` has real
+    # kernel gaps -- no bfloat16 on MPS in torch 2.5.1), not because ``cross`` fails to export.
+    # Collapsing the two branches is a behavior change and belongs in its own PR.
+    return _inverse_3x3_scalar(input)
 
-    # Cofactors (signed minors).
-    c00 = e * i - f * h
-    c01 = -(d * i - f * g)
-    c02 = d * h - e * g
-    c10 = -(b * i - c * h)
-    c11 = a * i - c * g
-    c12 = -(a * h - b * g)
-    c20 = b * f - c * e
-    c21 = -(a * f - c * d)
-    c22 = a * e - b * d
 
-    det = a * c00 + b * c01 + c * c02
+def _is_tracing_or_exporting() -> bool:
+    """Whether a graph is being captured by ``torch.jit.trace`` or ``torch.export``/dynamo ONNX export.
 
-    # Adjugate is the transpose of the cofactor matrix.
-    row0 = torch.stack([c00, c10, c20], dim=-1)
-    row1 = torch.stack([c01, c11, c21], dim=-1)
-    row2 = torch.stack([c02, c12, c22], dim=-1)
-    adj = torch.stack([row0, row1, row2], dim=-2)
+    Both capture modes lack ONNX lowerings for the ``linalg`` decompositions (``inv``, ``inv_ex``,
+    ``lu_factor``), so callers switch to closed-form arithmetic. Always ``False`` under TorchScript.
+    """
+    if torch.jit.is_scripting():
+        return False
+    return torch.jit.is_tracing() or is_exporting()
 
-    return adj / det[..., None, None]
+
+def _adjugate_closed_form(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Adjugate and determinant of batched square matrices up to 4x4 in basic arithmetic only.
+
+    Raises:
+        NotImplementedError: for shapes other than ``(..., n, n)`` with ``n`` in 2, 3, 4.
+    """
+    n = input.shape[-1]
+    if input.shape[-2] == n and n == 2:
+        return _adjugate_2x2(input)
+    if input.shape[-2] == n and n == 3:
+        return _adjugate_3x3(input)
+    if input.shape[-2] == n and n == 4:
+        return _adjugate_4x4(input)
+    raise NotImplementedError(f"Closed-form inverse only supports 2x2, 3x3 and 4x4 matrices, got {list(input.shape)}")
+
+
+def _has_closed_form_inverse(input: torch.Tensor) -> bool:
+    n = input.shape[-1]
+    return input.shape[-2] == n and n in (2, 3, 4)
 
 
 def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
@@ -233,16 +242,18 @@ def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     The function torch.inverse is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
     this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
 
-    During tracing (``torch.jit.trace`` and legacy ``torch.onnx.export``) on 3x3
-    matrices, falls back to a closed-form inverse so the resulting graph does not
-    include ``aten::linalg_inv`` (unsupported by the legacy ONNX exporter at
-    opset 20). ``torch.jit.is_tracing()`` is JIT-script-safe (unlike
-    ``torch.onnx.is_in_onnx_export``, which contains an ``import`` statement).
+    Under graph capture (``torch.jit.trace``, legacy ``torch.onnx.export`` and the dynamo
+    ``torch.onnx.export(..., dynamo=True)`` / ``torch.export`` path) on 2x2, 3x3 and 4x4
+    matrices, falls back to a closed-form adjugate inverse so the resulting graph does not
+    include ``aten::linalg_inv``, which neither ONNX exporter lowers. ``torch.jit.is_tracing()``
+    is JIT-script-safe (unlike ``torch.onnx.is_in_onnx_export``, which contains an ``import``
+    statement).
     """
     KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
     dtype = _normalize_to_float32_or_float64(input.dtype)
-    if torch.jit.is_tracing() and input.shape[-2:] == (3, 3):
-        return _inverse_3x3_closed_form(input.to(dtype)).to(input.dtype)
+    if _is_tracing_or_exporting() and _has_closed_form_inverse(input):
+        adj, det = _adjugate_closed_form(input.to(dtype))
+        return (adj / det[..., None, None]).to(input.dtype)
     return torch.linalg.inv(input.to(dtype)).to(input.dtype)
 
 
@@ -355,6 +366,14 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     dtype_original = A.dtype
     dtype = _normalize_to_float32_or_float64(dtype_original)
 
+    if _is_tracing_or_exporting() and _has_closed_form_inverse(A):
+        # ``linalg_inv_ex`` has no ONNX lowering; the adjugate form is basic arithmetic, and a
+        # zero determinant is exactly the singularity ``inv_ex`` flags through ``info``.
+        adj, det = _adjugate_closed_form(A.to(dtype))
+        mask = det != 0
+        safe_det = torch.where(mask, det, torch.ones_like(det))
+        return (adj / safe_det[..., None, None]).to(dtype_original), mask
+
     inverse, info = inv_ex(A.to(dtype))
     mask = info == 0
     return inverse.to(dtype_original), mask
@@ -397,14 +416,51 @@ def is_compiling() -> bool:
     return bool(_torch_is_compiling()) if _torch_is_compiling is not None else False
 
 
-def is_exporting() -> bool:
-    """Whether execution is inside a ``torch.export`` capture.
+@torch.jit.unused
+def _is_exporting_eager() -> bool:
+    if _torch_is_exporting is not None:
+        return bool(_torch_is_exporting())
+    # torch < 2.6 has no export flag. Inside a Dynamo trace the newer releases constant-fold
+    # ``torch.compiler.is_exporting`` to ``True`` for ``torch.compile`` as well as for
+    # ``torch.export``, so ``is_compiling`` is the fallback with the same semantics.
+    return is_compiling()
 
-    Used to skip in-``forward`` side effects (e.g. stashing per-call state on ``self``) that
-    ``torch.export`` on torch <= 2.9 rejects, without changing the captured output. Returns
-    ``False`` on torch versions where ``torch.compiler.is_exporting`` is unavailable.
+
+def is_exporting() -> bool:
+    """Whether execution is inside a graph capture by ``torch.export`` or the dynamo ONNX exporter.
+
+    Used to switch to export-safe arithmetic (closed-form inverses, ``sort``-based medians, ...) and
+    to skip in-``forward`` side effects (e.g. stashing per-call state on ``self``) that
+    ``torch.export`` rejects, without changing the captured output. Inside a Dynamo trace torch
+    folds its own flag to ``True`` for ``torch.compile`` too, so the export-safe paths are also
+    what a compiled graph contains; on torch < 2.6, which has no export flag, ``is_compiling`` is
+    used for the same reason. Always ``False`` inside TorchScript, so the guard is safe to call
+    from scripted functions.
     """
-    return bool(_torch_is_exporting()) if _torch_is_exporting is not None else False
+    if torch.jit.is_scripting():
+        return False
+    return _is_exporting_eager()
+
+
+def register_module_state(module: torch.nn.Module, name: str, x: torch.Tensor) -> None:
+    """Store tensor ``x`` on ``module`` as ``name`` so it is optimizable, movable and serializable.
+
+    A leaf tensor (user-provided data or an existing parameter) becomes an ``nn.Parameter``, as
+    before. ``nn.Parameter(x)`` would re-root a tensor that already carries a ``grad_fn`` as a new
+    leaf, so a group built from ``Se3.exp(v)`` would stop propagating gradients to ``v``; such a
+    tensor is registered as a buffer instead, which keeps its history while ``.to()``,
+    ``state_dict()`` and ``load_state_dict()`` still reach it under the same key. Under graph
+    capture (``torch.jit.trace``, ``torch.compile``, ``torch.export`` and the dynamo ONNX
+    exporter) neither a parameter nor a buffer can be created inside the traced region, so the
+    tensor is kept as a plain attribute of the module being built.
+    """
+    if isinstance(x, torch.nn.Parameter) or not (torch.jit.is_tracing() or is_compiling() or is_exporting()):
+        if x.grad_fn is None or isinstance(x, torch.nn.Parameter):
+            x = x if isinstance(x, torch.nn.Parameter) else torch.nn.Parameter(x)
+        else:
+            module.register_buffer(name, x)
+            return
+    setattr(module, name, x)
 
 
 def dataclass_to_dict(obj: Any) -> Any:

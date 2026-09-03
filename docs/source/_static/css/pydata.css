@@ -68,9 +68,10 @@ html[data-theme="dark"] {
    rows reserve the same width — the notes line up in one column either way. */
 .bd-sidebar-primary a.has-sidebar-note {
     display: flex;
+    flex-wrap: wrap;  /* a note that no longer fits beside its name drops whole to the next line */
     align-items: baseline;
     justify-content: space-between;
-    gap: 0.75rem;
+    gap: 0 0.75rem;
 }
 
 .bd-sidebar-primary li:not(.has-children) > a.has-sidebar-note {
@@ -78,9 +79,20 @@ html[data-theme="dark"] {
 }
 
 .bd-sidebar-primary .sidebar-note {
+    margin-left: auto;  /* stays right-aligned after wrapping */
     color: var(--pst-color-text-muted);
     font-size: 0.78em;
     text-align: right;
+}
+
+/* The theme gives the primary sidebar a quarter of the viewport, which on a laptop screen leaves
+   the article narrower than its own 60em cap while the sidebar shows mostly whitespace. Match the
+   right sidebar's width (17rem) instead; the few long entries wrap to two lines. Desktop layout
+   only -- below 960px the sidebar is off-canvas and sized by the theme -- and not while collapsed. */
+@media (min-width: 960px) {
+    .bd-sidebar-primary:not(.pst-squeeze) {
+        width: min(17rem, 25%);
+    }
 }
 
 /* The theme's "Section Navigation" heading adds nothing; the navbar already names the section. */
@@ -973,4 +985,254 @@ footer.bd-footer {
 
 .kornia-navbar-dropdown__inert {
     cursor: default;
+}
+
+/* ONNX / torch.compile / torch.export support page (get-started/export-support, generated). */
+.kornia-compat-cards .sd-card-title {
+    font-family: var(--pst-font-family-base);
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.kornia-compat-cards .sd-card-text {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    color: var(--pst-color-text-muted);
+}
+
+.kornia-compat-cards .sd-card-text code,
+.kornia-compat-cards .sd-card-text code .pre {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.kornia-compat-cards .kornia-compat-count {
+    font-size: 1.6rem;
+    white-space: nowrap;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin-bottom: 0.4rem;
+    color: var(--pst-color-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Status pills; the role names are declared at the top of the generated page. */
+.compat-ok,
+.compat-ok-breaks,
+.compat-ok-random,
+.compat-mismatch,
+.compat-fail,
+.compat-na {
+    display: inline-block;
+    padding: 0.05rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.5;
+    white-space: nowrap;
+    border: 1px solid transparent;
+}
+
+.compat-ok {
+    color: #166534;
+    background: #dcfce7;
+    border-color: #bbf7d0;
+}
+
+.compat-ok-breaks,
+.compat-ok-random {
+    color: #3f6212;
+    background: #ecfccb;
+    border-color: #d9f99d;
+}
+
+.compat-mismatch {
+    color: #92400e;
+    background: #fef3c7;
+    border-color: #fde68a;
+}
+
+.compat-fail {
+    color: #991b1b;
+    background: #fee2e2;
+    border-color: #fecaca;
+}
+
+.compat-na {
+    color: var(--pst-color-text-muted);
+    background: var(--pst-color-surface);
+    border-color: var(--pst-color-border);
+}
+
+html[data-theme="dark"] .compat-ok {
+    color: #bbf7d0;
+    background: rgba(22, 101, 52, 0.35);
+    border-color: rgba(74, 222, 128, 0.35);
+}
+
+html[data-theme="dark"] .compat-ok-breaks,
+html[data-theme="dark"] .compat-ok-random {
+    color: #d9f99d;
+    background: rgba(63, 98, 18, 0.4);
+    border-color: rgba(163, 230, 53, 0.35);
+}
+
+html[data-theme="dark"] .compat-mismatch {
+    color: #fde68a;
+    background: rgba(146, 64, 14, 0.4);
+    border-color: rgba(251, 191, 36, 0.35);
+}
+
+html[data-theme="dark"] .compat-fail {
+    color: #fecaca;
+    background: rgba(153, 27, 27, 0.4);
+    border-color: rgba(248, 113, 113, 0.35);
+}
+
+/* Search box and status filter; ``hidden`` until custom.js wires them up. */
+.kornia-compat-controls {
+    position: sticky;
+    top: var(--pst-header-height, 4rem);
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.25rem;
+    margin: 1.25rem 0 1.5rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--pst-color-border);
+    border-radius: 8px;
+    background: var(--pst-color-background);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.kornia-compat-search {
+    flex: 1 1 18rem;
+    margin: 0;
+}
+
+.kornia-compat-search input {
+    width: 100%;
+    padding: 0.45rem 0.7rem;
+    font: inherit;
+    font-size: 0.92rem;
+    color: var(--pst-color-text-base);
+    background: var(--pst-color-surface);
+    border: 1px solid var(--pst-color-border);
+    border-radius: 6px;
+}
+
+.kornia-compat-search input:focus {
+    outline: 2px solid var(--pst-color-primary);
+    outline-offset: 1px;
+}
+
+.kornia-compat-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--pst-color-text-muted);
+}
+
+.kornia-compat-filter select {
+    padding: 0.4rem 0.5rem;
+    font: inherit;
+    font-size: 0.9rem;
+    color: var(--pst-color-text-base);
+    background: var(--pst-color-surface);
+    border: 1px solid var(--pst-color-border);
+    border-radius: 6px;
+}
+
+.kornia-compat-status {
+    font-size: 0.85rem;
+    color: var(--pst-color-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Dense tables: the operator name is the anchor of every row, the rest can wrap. */
+.kornia-compat-table,
+.kornia-compat-summary,
+.kornia-compat-legend {
+    font-size: 0.88rem;
+}
+
+.kornia-compat-table td:nth-child(2),
+.kornia-compat-table td:nth-child(3),
+.kornia-compat-table td:nth-child(4),
+.kornia-compat-summary td {
+    white-space: nowrap;
+}
+
+/* Five columns in the article width: tighter cell padding than the default 1rem (same selector
+   weight as the general table rule above; this one comes later). */
+.bd-article table.kornia-compat-table th,
+.bd-article table.kornia-compat-table td {
+    padding: 0.55rem 0.6rem;
+}
+
+/* Long operator names wrap onto a second line rather than widening the table: custom.js adds a
+   break opportunity (<wbr>) after every "_" and "."; overflow-wrap is the fallback without it.
+   basic.css sets span.pre to nowrap, so the span is addressed as well as the code element. */
+.kornia-compat-table td:first-child {
+    min-width: 9rem;
+}
+
+.kornia-compat-table td:first-child code,
+.kornia-compat-table td:first-child code span.pre,
+.kornia-compat-table td:nth-child(5) code,
+.kornia-compat-table td:nth-child(5) code span.pre {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.kornia-compat-summary td,
+.kornia-compat-summary th {
+    font-variant-numeric: tabular-nums;
+}
+
+.kornia-compat-table td:first-child code,
+.kornia-compat-table td:first-child a {
+    font-weight: 600;
+}
+
+/* The probed-variant chip goes under the operator name so the column stays as narrow as the longest name. */
+.kornia-compat-table td:first-child > p > code + code,
+.kornia-compat-table td:first-child > p > a + code {
+    display: block;
+    width: fit-content;
+    margin-top: 0.2rem;
+    font-weight: 400;
+    color: var(--pst-color-text-muted);
+}
+
+.kornia-compat-table td:nth-child(5) {
+    overflow-wrap: anywhere;
+    min-width: 12rem;
+    color: var(--pst-color-text-muted);
+    font-size: 0.82rem;
+}
+
+.kornia-compat-table td:nth-child(5) strong {
+    color: var(--pst-color-text-base);
+    font-weight: 600;
+}
+
+.kornia-compat-table tr.kornia-compat-hidden,
+.kornia-compat-empty {
+    display: none;
+}
+
+/* Search hit: the query is wrapped in <mark> inside the operator cell. */
+.kornia-compat-table mark {
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: var(--pst-color-primary);
+    text-decoration-thickness: 2px;
 }

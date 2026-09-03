@@ -23,6 +23,7 @@ import torch
 from torch import Size
 
 from kornia.core.ops import eye_like
+from kornia.core.utils import is_exporting
 from kornia.geometry.linalg import transform_points
 
 __all__ = ["Boxes", "Boxes3D", "VideoBoxes"]
@@ -136,7 +137,8 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        if validate_boxes:
+        # Value validation reads the data, which graph capture cannot do; skip it under export.
+        if validate_boxes and not is_exporting():
             if (width <= 0).any():
                 raise ValueError("Some boxes have negative widths or 0.")
             if (height <= 0).any():
@@ -741,7 +743,8 @@ class Boxes:
         # -----------------
         # CPU Hotpath (loop)
         # -----------------
-        if device.type != "cuda":
+        # The loop slices with data-dependent bounds, which graph capture cannot do; export takes the vectorized path.
+        if device.type != "cuda" and not is_exporting():
             if self._is_batched:  # (B, N, 4, 2)
                 mask = torch.zeros(
                     (self._data.shape[0], self._data.shape[1], height, width), dtype=self.dtype, device=self.device
@@ -1143,7 +1146,8 @@ class Boxes3D:
         else:
             raise ValueError(f"Unknown mode {mode}")
 
-        if validate_boxes:
+        # Value validation reads the data, which graph capture cannot do; skip it under export.
+        if validate_boxes and not is_exporting():
             if (width <= 0).any():
                 raise ValueError("Some boxes have negative widths or 0.")
             if (height <= 0).any():
@@ -1312,11 +1316,24 @@ class Boxes3D:
         clipped_boxes_xyzxyz[..., 1::3].clamp_(0, height)
         clipped_boxes_xyzxyz[..., 2::3].clamp_(0, depth)
 
+        # Cast boxes coordinates to be integer to use them as bounds. Use round to handle decimal values.
+        xyzxyz = clipped_boxes_xyzxyz.view(-1, 6).round().long()
+
+        if is_exporting():
+            # The loop below slices with data-dependent bounds, which graph capture cannot do; compare a
+            # coordinate grid against the bounds instead.
+            device = self._data.device
+            zs = torch.arange(depth, device=device)
+            ys = torch.arange(height, device=device)
+            xs = torch.arange(width, device=device)
+            z_mask = (zs[None, :] >= xyzxyz[:, 2:3]) & (zs[None, :] < xyzxyz[:, 5:6])
+            y_mask = (ys[None, :] >= xyzxyz[:, 1:2]) & (ys[None, :] < xyzxyz[:, 4:5])
+            x_mask = (xs[None, :] >= xyzxyz[:, 0:1]) & (xs[None, :] < xyzxyz[:, 3:4])
+            masks = z_mask[:, :, None, None] & y_mask[:, None, :, None] & x_mask[:, None, None, :]
+            return masks.to(mask.dtype).view(mask.shape)
+
         # Reshape mask to (BxN, D, H, W) and boxes to (BxN, 6) to iterate over all of them.
-        # Cast boxes coordinates to be integer to use them as indexes. Use round to handle decimal values.
-        for mask_channel, box_xyzxyz in zip(
-            mask.view(-1, depth, height, width), clipped_boxes_xyzxyz.view(-1, 6).round().int()
-        ):
+        for mask_channel, box_xyzxyz in zip(mask.view(-1, depth, height, width), xyzxyz):
             # Mask channel dimensions: (depth, height, width)
             mask_channel[
                 box_xyzxyz[2] : box_xyzxyz[5], box_xyzxyz[1] : box_xyzxyz[4], box_xyzxyz[0] : box_xyzxyz[3]

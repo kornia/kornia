@@ -24,6 +24,7 @@ from torch import nn
 from kornia.color import rgb_to_grayscale
 from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF
+from kornia.core.utils import is_exporting
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
 
@@ -66,7 +67,9 @@ def get_laf_descriptors(
 
     """
     KORNIA_CHECK_LAF(lafs)
-    patch_descriptor = patch_descriptor.to(img)
+    # Moving a module swaps its parameters, which graph capture forbids; the module is already placed under export.
+    if not is_exporting():
+        patch_descriptor = patch_descriptor.to(img)
     patch_descriptor.eval()
 
     timg: torch.Tensor = img

@@ -25,6 +25,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.tensor_wrapper import _unwrap
 from kornia.geometry.conversions import vector_to_skew_symmetric_matrix
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
@@ -88,10 +89,10 @@ class So3(nn.Module):
         if isinstance(right, So3):
             return So3(self.q * right.q)
         elif isinstance(right, (torch.Tensor, Vector3)):
-            _right_data = right if isinstance(right, torch.Tensor) else right.data
+            _right_data = _unwrap(right)
             KORNIA_CHECK_SHAPE(_right_data, ["*", "3"])
             w = torch.zeros(*right.shape[:-1], 1, device=right.device, dtype=right.dtype)
-            quat = Quaternion(torch.cat((w, right.data), -1))
+            quat = Quaternion(torch.cat((w, _right_data), -1))
             out = (self.q * quat * self.q.conj()).vec
             if isinstance(right, torch.Tensor):
                 return out

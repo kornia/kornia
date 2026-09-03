@@ -22,6 +22,8 @@ from typing import Callable
 import torch
 from torch import nn
 
+from kornia.core.utils import is_exporting
+
 
 class _HausdorffERLossBase(nn.Module):
     """Base class for binary Hausdorff loss based on morphological erosion.
@@ -76,15 +78,16 @@ class _HausdorffERLossBase(nn.Module):
             # image-wise differences for 2D images
             erosion_max = self.max_pool(erosion)
             erosion_min = -self.max_pool(-erosion)
-            # No normalization needed if `max - min = 0`
-            _to_norm = (erosion_max - erosion_min) != 0
-            to_norm = _to_norm.squeeze()
-            if to_norm.any():
-                # NOTE: avoid in-place ops like below, which will not pass gradcheck:
-                #       erosion[to_norm] = (erosion[to_norm] - erosion_min[to_norm]) / (
-                #           erosion_max[to_norm] - erosion_min[to_norm])
-                _erosion_to_fill = (erosion - erosion_min) / (erosion_max - erosion_min)
-                erosion = torch.where(mask * _to_norm, _erosion_to_fill, erosion)
+            # No normalization needed if `max - min = 0`: those lanes keep ``erosion`` through the
+            # ``where`` below and divide by a safe 1 so they stay finite (a NaN in the unselected
+            # branch would still poison the gradient). Branch-free, so the loss also traces for export.
+            # NOTE: avoid in-place ops like below, which will not pass gradcheck:
+            #       erosion[to_norm] = (erosion[to_norm] - erosion_min[to_norm]) / (
+            #           erosion_max[to_norm] - erosion_min[to_norm])
+            _range = erosion_max - erosion_min
+            _to_norm = _range != 0
+            _erosion_to_fill = (erosion - erosion_min) / torch.where(_to_norm, _range, torch.ones_like(_range))
+            erosion = torch.where(mask * _to_norm, _erosion_to_fill, erosion)
 
             # save erosion and add to loss
             eroded = eroded + erosion * (k + 1) ** self.alpha
@@ -110,7 +113,8 @@ class _HausdorffERLossBase(nn.Module):
                 f"Got {pred.shape} and {target.shape}."
             )
 
-        if pred.size(1) < target.max().item():
+        # The range check reads the data, which graph capture cannot do; skip it under export.
+        if not is_exporting() and pred.size(1) < target.max().item():
             raise ValueError("Invalid target value.")
 
         out = torch.stack(
@@ -177,7 +181,11 @@ class HausdorffERLoss(_HausdorffERLossBase):
     """
 
     conv = torch.conv2d
-    max_pool = nn.AdaptiveMaxPool2d(1)
+
+    @staticmethod
+    def max_pool(x: torch.Tensor) -> torch.Tensor:
+        # Global max over the spatial dims; equals ``nn.AdaptiveMaxPool2d(1)`` but has an ONNX lowering.
+        return x.amax(dim=(-2, -1), keepdim=True)
 
     def get_kernel(self) -> torch.Tensor:
         """Get kernel for image morphology convolution."""
@@ -200,7 +208,10 @@ class HausdorffERLoss(_HausdorffERLossBase):
         if pred.dim() != 4:
             raise ValueError(f"Only 2D images supported. Got {pred.dim()}.")
 
-        if not (target.max() < pred.size(1) and target.min() >= 0 and target.dtype == torch.long):
+        if target.dtype != torch.long:
+            raise ValueError(f"Expect long type target value in range (0, {pred.size(1)}). Got {target.dtype}.")
+        # The range check reads the data, which graph capture cannot do; skip it under export.
+        if not is_exporting() and not (target.max() < pred.size(1) and target.min() >= 0):
             raise ValueError(
                 f"Expect long type target value in range (0, {pred.size(1)}). ({target.min()}, {target.max()})"
             )
@@ -245,7 +256,11 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
     """
 
     conv = torch.conv3d
-    max_pool = nn.AdaptiveMaxPool3d(1)
+
+    @staticmethod
+    def max_pool(x: torch.Tensor) -> torch.Tensor:
+        # Global max over the volume dims; equals ``nn.AdaptiveMaxPool3d(1)`` but has an ONNX lowering.
+        return x.amax(dim=(-3, -2, -1), keepdim=True)
 
     def get_kernel(self) -> torch.Tensor:
         """Get kernel for image morphology convolution."""

@@ -70,3 +70,4 @@ Looking for a specific function instead? The :doc:`API reference </api>` documen
    :hidden:
 
    Tutorials <https://kornia.github.io/tutorials/>
+   ONNX, torch.compile & torch.export support <export-support>

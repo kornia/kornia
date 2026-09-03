@@ -22,7 +22,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
-from kornia.core.utils import _l2_normalize, is_mps_tensor_safe
+from kornia.core.utils import _is_tracing_or_exporting, _l2_normalize, is_mps_tensor_safe
 
 urls: Dict[str, str | list[str]] = {}
 urls["hardnet++"] = [
@@ -99,11 +99,12 @@ class HardNet(nn.Module):
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         """Normalize the input by batch."""
-        if not is_mps_tensor_safe(x):
-            sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
-        else:
+        if is_mps_tensor_safe(x) or _is_tracing_or_exporting():
+            # `torch.std_mean` is unsupported on MPS and decomposes to `prims.sum`, which has no ONNX lowering.
             mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)
             sp = torch.std(x, dim=(-3, -2, -1), keepdim=True)
+        else:
+            sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
         # training totally unstable.
@@ -205,11 +206,12 @@ class HardNet8(nn.Module):
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
         """Normalize the input by batch."""
-        if not is_mps_tensor_safe(x):
-            sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
-        else:
+        if is_mps_tensor_safe(x) or _is_tracing_or_exporting():
+            # `torch.std_mean` is unsupported on MPS and decomposes to `prims.sum`, which has no ONNX lowering.
             mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)
             sp = torch.std(x, dim=(-3, -2, -1), keepdim=True)
+        else:
+            sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
         # training totally unstable.

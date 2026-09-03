@@ -200,8 +200,8 @@ _healthy_closed_form_inverse_routes: set[tuple[torch.device, torch.dtype]] = set
 def _skip_if_closed_form_inverse_unavailable(device: torch.device, dtype: torch.dtype) -> None:
     # Visible skip for the pins that route through normalize_homography, one layer deeper than
     # _skip_if_dtype_unavailable: a backend can REPRESENT a dtype and still have no kernel for an
-    # operation the route needs. kornia's cusolver-free 3x3 inverse
-    # (_inverse_3x3_closed_form in kornia/core/utils.py) is three torch.linalg.cross calls, and
+    # operation the route needs. kornia's cusolver-free 3x3 inverse dispatches to
+    # _inverse_3x3_cross (kornia/core/_small_linalg.py), which is three torch.linalg.cross calls, and
     # MPS lacks a bfloat16 `cross` kernel in SOME builds -- executed: torch 2.5.1 raises
     # `RuntimeError: Failed to create function state object for: cross_bfloat` there while torch
     # 2.9.1 runs it, and torch.zeros in that dtype succeeds on both, so the allocation probe alone
@@ -219,10 +219,12 @@ def _skip_if_closed_form_inverse_unavailable(device: torch.device, dtype: torch.
     # the regression would be invisible exactly where the skip is live. The primitive half is what
     # keeps the skip from outliving the limitation: the day kornia's inverse stops needing `cross`,
     # these pins must run again on backends that lack it instead of skipping forever.
-    # Residual, stated rather than hidden: this identifies the failing ROUTINE, not the individual
-    # `cross` line inside it. _inverse_3x3_closed_form is three `cross` calls, a multiply-sum and a
+    # Residual, stated rather than hidden: this identifies the failing KERNEL, not the individual
+    # `cross` line inside it. _inverse_3x3_cross is three `cross` calls, a multiply-sum and a
     # divide, so a failure at one of the latter two on a backend whose `cross` is also missing
     # would still skip. Narrowing further would mean pinning line numbers in another module.
+    # It reads the cross KERNEL rather than the mode dispatcher that calls it: the dispatcher owns
+    # only the eager/export choice, so its frame is never where a missing `cross` surfaces.
     # Only the HEALTHY verdict is memoized, keyed by (device, dtype): a route that works is a
     # property of the build, and four pins ask this question in every test configuration, each
     # paying a matmul and a 3x3 inverse for the answer. A failing route is deliberately never
@@ -232,7 +234,7 @@ def _skip_if_closed_form_inverse_unavailable(device: torch.device, dtype: torch.
     # module-level import of it would make the WHOLE file uncollectable if it is ever renamed --
     # every test in it erroring over a rename that concerns the four pins routed through here.
     # Inside the probe, the same rename is an ImportError on those four and nothing else.
-    from kornia.core.utils import _inverse_3x3_closed_form
+    from kornia.core._small_linalg import _inverse_3x3_cross
 
     route = (device, dtype)
     if route in _healthy_closed_form_inverse_routes:
@@ -242,7 +244,7 @@ def _skip_if_closed_form_inverse_unavailable(device: torch.device, dtype: torch.
     except (RuntimeError, NotImplementedError) as err:
         innermost = _innermost_frame(err)
         died_in_the_closed_form_inverse = (
-            innermost is not None and innermost.tb_frame.f_code is _inverse_3x3_closed_form.__code__
+            innermost is not None and innermost.tb_frame.f_code is _inverse_3x3_cross.__code__
         )
         if died_in_the_closed_form_inverse and _cross_is_unavailable(device, dtype):
             pytest.skip(f"torch.linalg.cross has no {dtype} kernel on device {device}: {err}")
@@ -277,7 +279,7 @@ def test_skip_probe_re_raises_everything_it_cannot_identify(monkeypatch):
     # function puts that function in the innermost frame, which is precisely what the helper reads,
     # so a patch cannot reproduce the branch it is meant to exercise. torch has no `cross` kernel
     # for bool or float8 on cpu (executed, torch 2.9.1: NotImplementedError, and the route dies
-    # inside _inverse_3x3_closed_form), which is the same shape as the mps bfloat16 gap on torch
+    # inside _inverse_3x3_cross), which is the same shape as the mps bfloat16 gap on torch
     # 2.5.1 that the helper exists for, reachable on the default device without that build. The
     # candidate list is searched rather than asserted: mps DOES have a bool `cross`, so a build
     # that grows the missing kernels must make this case skip visibly, not fail.
@@ -3727,16 +3729,11 @@ class TestNormalTransformPixel(BaseTester):
         # an older release's kernel literal -- a future kernel reassociation could then fail this
         # pin on a release that was never measured, without any kornia regression.
         #   - backend, because the mps matmul rounds once where cpu does not (float32: 2**-24 vs 0)
-        #   - machine, because every figure below was taken on macOS arm64 and nothing here has
-        #     run on x86-64/MKL; an unmeasured platform must not inherit a kernel literal.
-        #     What that costs, stated rather than left to be discovered: of the runners
-        #     pr_test_cpu.yml uses, only macos-latest is arm64, so the ubuntu and windows legs
-        #     skip every cell here, and no CI job sets KORNIA_TEST_DTYPE to float16/bfloat16, so
-        #     the reduced-precision cells -- the only ones with a nonzero literal on cpu -- run
-        #     on none of them. The x86-64 rows need one measurement on such a runner to become
-        #     live; deriving them from the arm64 figures instead is exactly what this key exists
-        #     to prevent. The portable half of the docstring's claim is asserted on every CI leg
-        #     by test_convention_agrees_with_normalize_pixel_coordinates above.
+        #   - machine, because arm64 and x86-64 use different CPU kernels; an unmeasured platform
+        #     must not inherit another machine's literal. The Linux CPU half-precision CI jobs now
+        #     exercise the measured torch 2.9.1 x86-64 rows below. Other x86-64 torch/dtype cells
+        #     still skip until measured. The portable half of the docstring's claim is asserted on
+        #     every CI leg by test_convention_agrees_with_normalize_pixel_coordinates above.
         #   A cuda row, when one is measured, will need the float32 matmul precision mode in its
         #   key as well: --tf32 rounds a matmul's inputs to 10 mantissa bits and the matrix route
         #   is a matmul, while cpu is unaffected by that setting (executed, all four dtypes).
@@ -3752,8 +3749,9 @@ class TestNormalTransformPixel(BaseTester):
         # check that the bullet's "agree in float32/float64; whether they agree at float16/bfloat16
         # is a property of the build" still holds -- the cpu bfloat16 row is the whole reason that
         # clause is build-scoped rather than absolute: 2.5.1 agrees at every size, 2.9.1 does not.
-        # Snippet used to generate expected (torch + kornia, executed on macOS arm64 against both
-        # torch 2.9.1 and torch 2.5.1; max|helper - matrix| over the full (2, 28) pixel grid):
+        # Snippet used to generate expected (torch + kornia; the arm64 values were executed on macOS
+        # against torch 2.9.1 and 2.5.1, and the x86-64 values on Linux against torch 2.9.1;
+        # max|helper - matrix| over the full (2, 28) pixel grid):
         #   cpu 2.9.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.00390625
         #   cpu 2.5.1: float64 -> 0.0   float32 -> 0.0   float16 -> 0.0009765625  bfloat16 -> 0.0
         #   mps, both: float32 -> 5.960464477539063e-08 (2**-24)   float16 -> 0.0009765625
@@ -3774,6 +3772,10 @@ class TestNormalTransformPixel(BaseTester):
             ("2.5.1", "cpu", "arm64", torch.float16): 0.0009765625,
             ("2.9.1", "cpu", "arm64", torch.bfloat16): 0.00390625,
             ("2.5.1", "cpu", "arm64", torch.bfloat16): 0.0,
+            ("2.9.1", "cpu", "x86_64", torch.float64): 0.0,
+            ("2.9.1", "cpu", "x86_64", torch.float32): 0.0,
+            ("2.9.1", "cpu", "x86_64", torch.float16): 0.0009765625,
+            ("2.9.1", "cpu", "x86_64", torch.bfloat16): 0.00390625,
             ("2.9.1", "mps", "arm64", torch.float32): 2.0**-24,
             ("2.5.1", "mps", "arm64", torch.float32): 2.0**-24,
             ("2.9.1", "mps", "arm64", torch.float16): 0.0009765625,

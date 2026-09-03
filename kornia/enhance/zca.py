@@ -237,15 +237,17 @@ def zca_mean(
     if dim < 0:
         dim = len(inp_size) + dim
 
-    feat_dims = torch.cat([torch.arange(0, dim), torch.arange(dim + 1, len(inp_size))])
-
-    new_order: List[int] = torch.cat([torch.tensor([dim]), feat_dims]).tolist()
+    # Plain Python index arithmetic: tensor round-trips here would read data under graph capture.
+    new_order: List[int] = [dim]
+    num_features: int = 1
+    for i in range(len(inp_size)):
+        if i != dim:
+            new_order.append(i)
+            num_features *= inp_size[i]
 
     inp_permute = inp.permute(new_order)
 
     N = inp_size[dim]
-    feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1 : :])
-    num_features: int = int(torch.prod(feature_sizes).item())
 
     mean: torch.Tensor = torch.mean(inp_permute, dim=0, keepdim=True)
 
@@ -372,16 +374,16 @@ def linear_transform(
     if dim < 0:
         dim = len(inp_size) + dim
 
-    feat_dims = torch.cat([torch.arange(0, dim), torch.arange(dim + 1, len(inp_size))])
-
-    perm = torch.cat([torch.tensor([dim]), feat_dims])
-    perm_inv = torch.argsort(perm)
-
-    new_order: List[int] = perm.tolist()
-    inv_order: List[int] = perm_inv.tolist()
-
-    feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1 : :])
-    num_features: int = int(torch.prod(feature_sizes).item())
+    # Plain Python index arithmetic: tensor round-trips here would read data under graph capture.
+    new_order: List[int] = [dim]
+    num_features: int = 1
+    for i in range(len(inp_size)):
+        if i != dim:
+            new_order.append(i)
+            num_features *= inp_size[i]
+    inv_order: List[int] = [0 for _ in new_order]
+    for i in range(len(new_order)):
+        inv_order[new_order[i]] = i
 
     inp_permute = inp.permute(new_order)
     inp_flat = inp_permute.reshape((-1, num_features))

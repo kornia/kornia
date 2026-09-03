@@ -349,14 +349,16 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
 
         """
         # Apply confidence filtering
-        zero_tensor = torch.tensor(0.0, device=boxes.device, dtype=boxes.dtype)
-        confidence_threshold = (
-            confidence_threshold or self.confidence_threshold or zero_tensor
-        )  # If None, use 0 as threshold
+        # Explicit `None` tests: `x or y` would read a tensor's truth value, which graph capture cannot do.
+        if confidence_threshold is None:
+            confidence_threshold = self.confidence_threshold
+        if confidence_threshold is None:
+            confidence_threshold = torch.tensor(0.0, device=boxes.device, dtype=boxes.dtype)  # use 0 as threshold
         confidence_mask = boxes[:, :, 1] > confidence_threshold  # [B, D]
 
         # Apply class filtering
-        classes_to_keep = classes_to_keep or self.classes_to_keep
+        if classes_to_keep is None:
+            classes_to_keep = self.classes_to_keep
         if classes_to_keep is not None:
             class_ids = boxes[:, :, 0:1]  # [B, D, 1]
             classes_to_keep = classes_to_keep.view(1, 1, -1)  # [1, 1, C] for broadcasting

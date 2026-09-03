@@ -112,6 +112,7 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = {"border_type": BorderType.get(border_type), "resample": Resample.get(resample)}
         self._param_generator = rg.MotionBlurGenerator3D(kernel_size, angle, direction)
+        self._fixed_kernel_size: Optional[int] = kernel_size if isinstance(kernel_size, int) else None
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
@@ -125,7 +126,12 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        kernel_size = int(params["ksize_factor"].unique().item())
+        kernel_size: int
+        if self._fixed_kernel_size is not None:
+            # Fixed kernel size: static value, no device-to-host read -> stays capturable by graph export.
+            kernel_size = self._fixed_kernel_size
+        else:
+            kernel_size = int(params["ksize_factor"].unique().item())
         angle = params["angle_factor"]
         direction = params["direction_factor"]
         return motion_blur3d(

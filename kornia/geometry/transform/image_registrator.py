@@ -22,6 +22,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 
+from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_affinematrix_to_homography
 
 from .homography_warper import BaseWarper, HomographyWarper
@@ -90,7 +91,7 @@ class Homography(BaseModel):
             Homography martix with shape :math:`(1, 3, 3)`.
 
         """
-        return torch.unsqueeze(torch.inverse(self.model), dim=0)
+        return torch.unsqueeze(_torch_inverse_cast(self.model), dim=0)
 
 
 class Similarity(BaseModel):
@@ -148,7 +149,7 @@ class Similarity(BaseModel):
             Similarity with shape :math:`(1, 3, 3)`
 
         """
-        return torch.inverse(self.forward())
+        return _torch_inverse_cast(self.forward())
 
 
 class ImageRegistrator(nn.Module):

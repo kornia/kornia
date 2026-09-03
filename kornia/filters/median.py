@@ -22,6 +22,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_exporting
 
 from .kernels import _unpack_2d_ks, get_binary_kernel2d
 
@@ -69,6 +70,9 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torc
     features = features.view(b, c, ky * kx, h, w)  # BxCx(K_h * K_w)xHxW
 
     # compute the median along the feature axis
+    if is_exporting():
+        # ``median.dim`` has no ONNX lowering; a sort picks the same (lower-middle) element.
+        return features.sort(dim=2)[0][:, :, (ky * kx - 1) // 2]
     return features.median(dim=2)[0]
 
 

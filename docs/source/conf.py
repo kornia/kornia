@@ -106,13 +106,20 @@ spec.loader.exec_module(generate_adoption)
 # Pre-generate the adoption page from the committed dependents snapshot
 _adoption = generate_adoption.main()
 
+spec = importlib.util.spec_from_file_location("generate_export_support", "../generate_export_support.py")
+generate_export_support = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(generate_export_support)
+
+# Pre-generate the ONNX / torch.compile / torch.export support page from the committed survey snapshot
+_export_support = generate_export_support.main()
+
 
 def _public_operator_count() -> int:
     """Public functions and ``nn.Module`` classes defined across kornia's public modules.
 
     Walks every ``kornia.*`` module without a private path component and counts the functions and
     ``torch.nn.Module`` subclasses it defines under a public name. Model architecture internals
-    (``kornia.models.*.architecture``), ``kornia.core`` and the transpiler shim are left out so the
+    (``kornia.models.*.architecture``) and ``kornia.core`` are left out so the
     figure is about operators rather than plumbing.
     """
     import contextlib
@@ -124,7 +131,7 @@ def _public_operator_count() -> int:
 
     import kornia
 
-    skip = re.compile(r"^kornia\.(core|transpiler)(\.|$)|\.architecture(\.|$)")
+    skip = re.compile(r"^kornia\.core(\.|$)|\.architecture(\.|$)")
     seen: set[tuple[str, str]] = set()
     with (
         warnings.catch_warnings(),
@@ -154,14 +161,15 @@ def _public_operator_count() -> int:
 
 
 def _landing_page_counts() -> dict[str, str]:
-    """Figures the landing page quotes, derived from the library rather than typed in.
+    """Figures the landing and ONNX pages quote, derived from the library rather than typed in.
 
     The public-name counts read the stable-core inventory that ``tests/test_api_surface.py`` pins;
     ``kornia.feature`` and ``kornia.models`` are outside it, so they are counted from the live
     package and from the model pages under ``docs/source/models/``. Each count names exactly the
     module the card it appears on links to. ``operators-floor`` is the library-wide total from
     :func:`_public_operator_count`, floored to the hundred below it so the page can say "1,000+"
-    and stay true between releases.
+    and stay true between releases. The ``onnx-*`` entries come from the export-support survey
+    snapshot, counted per operator (supported when at least one probed configuration exports).
     """
     with open("../../tests/api_surface.json", encoding="utf-8") as handle:
         surface = {name: len(names) for name, names in json.load(handle).items()}
@@ -180,10 +188,13 @@ def _landing_page_counts() -> dict[str, str]:
         "operators-floor": f"{operators // 100 * 100:,}",
         "dependents": f"{_adoption['repositories']:,}",
         "dependent-packages": f"{_adoption['packages']:,}",
+        "onnx-operators": str(_export_support["operators"]),
+        "onnx-exportable": str(_export_support["onnx_operators"]),
+        "onnx-share": f"{round(100 * _export_support['onnx_operators'] / _export_support['operators'])}%",
     }
 
 
-# Substitutions such as |count-geometry| and |count-dependents| for the landing page.
+# Substitutions such as |count-geometry| and |count-onnx-share| for the landing and ONNX pages.
 rst_epilog = "\n".join(f".. |count-{key}| replace:: {value}" for key, value in _landing_page_counts().items())
 
 # If extensions (or modules to document with autodoc) are in another directory,

@@ -21,7 +21,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _l2_normalize, is_mps_tensor_safe
+from kornia.core.utils import _l2_normalize, is_exporting, is_mps_tensor_safe
 from kornia.feature.laf import get_laf_center
 from kornia.feature.steerers import DiscreteSteerer
 
@@ -37,7 +37,13 @@ def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
     on CUDA and may be unavailable for these dtypes elsewhere.
     """
     half = (torch.float16, torch.bfloat16)
-    if (not is_mps_tensor_safe(d1)) and (not is_mps_tensor_safe(d2)) and d1.dtype not in half and d2.dtype not in half:
+    if (
+        not is_exporting()  # `torch.cdist` has no ONNX lowering
+        and (not is_mps_tensor_safe(d1))
+        and (not is_mps_tensor_safe(d2))
+        and d1.dtype not in half
+        and d2.dtype not in half
+    ):
         return torch.cdist(d1, d2)
     d1_sq = (d1**2).sum(dim=1, keepdim=True)
     d2_sq = (d2**2).sum(dim=1, keepdim=True)

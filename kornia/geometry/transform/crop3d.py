@@ -135,7 +135,7 @@ def crop_and_resize3d(
         device=tensor.device,
     ).expand(points_src.shape[0], -1, -1)
 
-    return crop_by_boxes3d(tensor, points_src, points_dst, interpolation, align_corners)
+    return _crop_by_boxes3d_to_size(tensor, points_src, points_dst, (dst_d, dst_h, dst_w), interpolation, align_corners)
 
 
 def center_crop3d(
@@ -253,8 +253,13 @@ def center_crop3d(
         device=tensor.device,
     ).expand(points_src.shape[0], -1, -1)
 
-    return crop_by_boxes3d(
-        tensor, points_src.to(tensor.dtype), points_dst.to(tensor.dtype), interpolation, align_corners
+    return _crop_by_boxes3d_to_size(
+        tensor,
+        points_src.to(tensor.dtype),
+        points_dst.to(tensor.dtype),
+        (dst_d, dst_h, dst_w),
+        interpolation,
+        align_corners,
     )
 
 
@@ -340,6 +345,28 @@ def crop_by_boxes3d(
                    [45., 46., 47.]]]]])
 
     """
+    bbox = infer_bbox_shape3d(dst_box)
+    if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all() and (bbox[2] == bbox[2][0]).all()):
+        raise AssertionError(
+            "Cropping height, width and depth must be exact same in a batch."
+            f"Got height {bbox[0]}, width {bbox[1]} and depth {bbox[2]}."
+        )
+
+    out_size = (int(bbox[0][0].item()), int(bbox[1][0].item()), int(bbox[2][0].item()))
+    return _crop_by_boxes3d_to_size(tensor, src_box, dst_box, out_size, interpolation, align_corners)
+
+
+def _crop_by_boxes3d_to_size(
+    tensor: torch.Tensor,
+    src_box: torch.Tensor,
+    dst_box: torch.Tensor,
+    out_size: Tuple[int, int, int],
+    interpolation: str = "bilinear",
+    align_corners: bool = False,
+) -> torch.Tensor:
+    # ``crop_by_boxes3d`` with the output size already known as Python ints. ``crop_and_resize3d`` and
+    # ``center_crop3d`` build ``dst_box`` from ``size``, so they take this path and never read the box
+    # values back from the device -- which also keeps them capturable by ``torch.onnx.export``.
     validate_bbox3d(src_box)
     validate_bbox3d(dst_box)
 
@@ -352,19 +379,8 @@ def crop_by_boxes3d(
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
-    bbox = infer_bbox_shape3d(dst_box)
-    if not ((bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all() and (bbox[2] == bbox[2][0]).all()):
-        raise AssertionError(
-            "Cropping height, width and depth must be exact same in a batch."
-            f"Got height {bbox[0]}, width {bbox[1]} and depth {bbox[2]}."
-        )
-
     patches: torch.Tensor = crop_by_transform_mat3d(
-        tensor,
-        dst_trans_src,
-        (int(bbox[0][0].item()), int(bbox[1][0].item()), int(bbox[2][0].item())),
-        mode=interpolation,
-        align_corners=align_corners,
+        tensor, dst_trans_src, out_size, mode=interpolation, align_corners=align_corners
     )
 
     return patches
