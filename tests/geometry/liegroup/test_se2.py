@@ -296,9 +296,10 @@ class TestSe2(BaseTester):
         restored = Se2(So2.identity(2, device, dtype), torch.zeros(2, 2, device=device, dtype=dtype))
         restored.load_state_dict(s.state_dict())
         self.assert_close(restored.matrix(), s.matrix().detach())
-        # ``.double()`` / ``.float()`` convert the floating buffers in place and keep the graph
-        converted = s.double() if dtype != torch.float64 else s.float()
-        assert converted.t.dtype == (torch.float64 if dtype != torch.float64 else torch.float32)
+        # ``.half()`` / ``.float()`` convert the floating buffers in place and keep the graph
+        # (float64 is unavailable on MPS, so convert towards float16 from float32)
+        converted = s.half() if dtype == torch.float32 else s.float()
+        assert converted.t.dtype == (torch.float16 if dtype == torch.float32 else torch.float32)
         assert converted.t.grad_fn is not None
         converted.t.sum().backward()
         assert v.grad is not None

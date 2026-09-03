@@ -156,7 +156,7 @@ class TestParametrizedLine(BaseTester):
         restored = ParametrizedLine(origin, torch.ones(2, device=device, dtype=dtype))
         restored.load_state_dict(line.state_dict())
         self.assert_close(restored.direction, line.direction.detach())
-        other = torch.float64 if dtype != torch.float64 else torch.float32
+        other = torch.float16 if dtype == torch.float32 else torch.float32  # float64 is unavailable on MPS
         moved = line.to(other)
         assert moved.origin.dtype == other and moved.direction.dtype == other
         assert moved.direction.grad_fn is not None

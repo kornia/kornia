@@ -181,7 +181,7 @@ class TestExportHelpers:
         assert not isinstance(m.y, torch.nn.Parameter)
         assert dict(m.named_buffers()).keys() == {"y"}
         assert list(m.state_dict()) == ["y"]
-        other = torch.float64 if dtype != torch.float64 else torch.float32
+        other = torch.float16 if dtype == torch.float32 else torch.float32  # float64 is unavailable on MPS
         moved = m.to(other)
         assert moved.y.dtype == other
         moved.y.sum().backward()

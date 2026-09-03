@@ -321,7 +321,7 @@ class TestSe3(BaseTester):
         assert list(restored.state_dict()) == list(s.state_dict()) == ["_translation"]
         restored.load_state_dict(s.state_dict())
         self.assert_close(restored.t, s.t.detach())
-        other = torch.float64 if dtype != torch.float64 else torch.float32
+        other = torch.float16 if dtype == torch.float32 else torch.float32  # float64 is unavailable on MPS
         moved = s.to(other)
         assert moved.t.dtype == other and moved.t.grad_fn is not None
         moved.t.sum().backward()

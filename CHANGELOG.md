@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `denormalize_homography`, `symmetric_transfer_error`, `safe_inverse_with_mask`, `DepthWarper`,
   `PinholeCamera`, `StereoCamera`, `NamedPose`, `ImageRegistrator`, `ParametrizedLine.intersect`
   and the `Se2`/`Se3`/`So2` groups); `MedianBlur`/`median_blur` select the median through `sort`;
-  `HausdorffERLoss`/`HausdorffERLoss3D` pool through `amax`; `distance_transform` avoids `hypot`;
+  `HausdorffERLoss`/`HausdorffERLoss3D` pool through `amax` (which also makes the 3D loss run on MPS); `distance_transform` avoids `hypot`;
   `match_nn`/`match_mnn`/`DescriptorMatcher` avoid `cdist`; the mutual-information losses, the
   Bessel kernels, `solve_quadratic`, `matrix_cofactor_tensor`, `decompose_essential_matrix_no_svd`,
   `distort_points`/`undistort_points`/`undistort_image`, `Boxes`/`Boxes3D` (`from_tensor`,
