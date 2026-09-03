@@ -103,7 +103,7 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: ubuntu-latest
-      python-version: '["3.13"]'
+      python-version: '["3.11"]'
       pytorch-version: '["2.14.0"]'
       torch-channel: stable
       pytorch-dtype: float16
@@ -120,7 +120,7 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: ubuntu-latest
-      python-version: '["3.13"]'
+      python-version: '["3.11"]'
       pytorch-version: '["2.14.0"]'
       torch-channel: stable
       pytorch-dtype: bfloat16

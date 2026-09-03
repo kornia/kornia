@@ -72,8 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Breaking changes
 
 * Kornia's minimum supported PyTorch version rises to 2.5.1. Previously the declared floor was
-  2.0.0, but no CI job had exercised anything below 2.5.1 in some time, so this makes the
-  declared floor match what was already the tested reality rather than changing tested behavior.
+  2.0.0; PR-time CI has only ever exercised 2.5.1 and newer, and this same change retires the
+  scheduled-CI legs that tested anything older.
   Installing kornia now requires `torch>=2.5.1`; a `torch` install below that version no longer
   satisfies the dependency, and `pip`/`uv` will refuse to resolve it. (#PR_NUMBER)
 
