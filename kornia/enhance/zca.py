@@ -292,11 +292,11 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
        blob/master/source/zca_whitening.ipynb>`__.
 
     Examples:
-        >>> x = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
-        >>> zca_whiten(x)
-        tensor([[ 0.0000,  1.1547],
-                [ 1.0000, -0.5773],
-                [-1.0000, -0.5773]])
+    >>> x = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
+    >>> zca_whiten(x).round(decimals=3)
+    tensor([[ 0.0000,  1.1550],
+            [ 1.0000, -0.5770],
+            [-1.0000, -0.5770]])
 
     """
     if not isinstance(inp, torch.Tensor):
