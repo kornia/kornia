@@ -26,8 +26,9 @@ under ``benchmarks/`` puts its own directory on ``sys.path[0]``, not the checkou
 editable finder can resolve ``kornia`` to the primary checkout while ``git_commit()`` reports the
 worktree HEAD -- an A/B that silently measures one revision twice. This script therefore puts its
 own checkout root ahead of everything else on ``sys.path`` before importing kornia, prints the
-resolved module path, records it in the exported metadata as ``kornia_module``, and warns loudly
-if it still resolved outside this checkout. Read that line before trusting a comparison.
+resolved module path, records its checkout-relative form in the exported metadata as
+``kornia_module``, and warns loudly if it still resolved outside this checkout. Read that line
+before trusting a comparison.
 
 Covered ops (all public ``kornia.feature`` API):
 
@@ -198,10 +199,12 @@ def main() -> None:
     meta = run_metadata(device)
     meta["load"] = collect_load_metrics()
     kornia_file = sys.modules["kornia"].__file__
+    resolved = Path(kornia_file).resolve() if kornia_file is not None else None
+    inside = resolved is not None and REPO_ROOT in resolved.parents
     print_preflight(meta["load"])
     print(f"# laf_ops | commit {meta['git_commit']} | {meta['platform']} | {device} | {args.dtype}")
     print(f"# kornia module: {kornia_file}")
-    if kornia_file is None or REPO_ROOT not in Path(kornia_file).resolve().parents:
+    if not inside:
         # git_commit() reports this checkout's HEAD, so a kornia from anywhere else means the
         # numbers and the commit label describe different code.
         print(f"# WARNING: kornia resolved outside {REPO_ROOT} - these numbers are NOT this checkout's.")
@@ -227,9 +230,14 @@ def main() -> None:
         min_run_time=args.min_run_time,
     )
 
+    # The exported form is checkout-relative. The absolute path above answers "which tree?" on
+    # the console, where it is needed; a contributed file is public, and README's privacy rule
+    # keeps home directories and machine layout out of it. Relative or "outside-checkout" still
+    # carries the only bit a reader of the file needs: did kornia resolve to the measured tree?
+    module_field = resolved.relative_to(REPO_ROOT).as_posix() if inside else "outside-checkout"
     # The docs page and the llms digest label the throughput column from this key; without it a
     # committed run reads as "items/s", and the item here is a LAF, not an image.
-    export_meta = {**meta, "kornia_module": kornia_file, "units": "LAFs/s"}
+    export_meta = {**meta, "kornia_module": module_field, "units": "LAFs/s"}
     if args.json:
         out = save_json(args.json, export_meta, results)
         print(f"# wrote {out}")

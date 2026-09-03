@@ -61,7 +61,31 @@ def test_run_metadata_records_environment():
 
 
 def test_git_commit_is_short_hash():
-    assert len(git_commit()) >= 7
+    assert len(git_commit().removesuffix("-dirty")) >= 7
+
+
+def test_git_commit_marks_a_modified_checkout(monkeypatch):
+    """A run from an edited tree is not reproducible from the hash, so the hash says so."""
+    import common
+
+    calls = []
+
+    def fake(cmd, text=True):
+        calls.append(cmd)
+        return "abc1234\n" if "rev-parse" in cmd else " M kornia/feature/laf.py\n"
+
+    monkeypatch.setattr(common.subprocess, "check_output", fake)
+    assert common.git_commit() == "abc1234-dirty"
+    assert "-uno" in calls[1]  # untracked files (a contributed result file) must not count
+
+
+def test_git_commit_clean_checkout_is_bare_hash(monkeypatch):
+    import common
+
+    monkeypatch.setattr(
+        common.subprocess, "check_output", lambda cmd, text=True: "abc1234\n" if "rev-parse" in cmd else "\n"
+    )
+    assert common.git_commit() == "abc1234"
 
 
 def test_save_json_round_trip_sanitizes_non_finite(tmp_path):

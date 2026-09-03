@@ -4,7 +4,7 @@
     "device": "cpu",
     "git_commit": "9517c982",
     "kornia": "0.9.0rc1",
-    "kornia_module": "/tmp/claude-1000/-home-ducha-dev-kornia/64bcb7f8-dfbe-436b-b938-456e7fe6429b/scratchpad/laf-wt/kornia/__init__.py",
+    "kornia_module": "kornia/__init__.py",
     "kornia_rs": "0.1.10",
     "load": {
       "cpu_count": 28,

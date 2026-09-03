@@ -87,8 +87,15 @@ def _seed_two_axis(tmp_path: Path) -> Path:
 
 def test_render_page_keeps_configs_that_share_a_batch(tmp_path: Path) -> None:
     rst = generate_benchmarks.render_page(_seed_two_axis(tmp_path))
-    # all three configs survive: keying rows on (op, batch) alone would drop the N=2000 row
-    assert "20" in rst and "33" in rst and "31" in rst
+    # One cell per config, in order. Keying rows on (op, batch) alone collapses the two B=1
+    # configs and drops a value outright; a bare `"20" in rst` would not catch that, because the
+    # 2026-09-03 timestamp above the table contains "20" whatever the table renders.
+    assert [ln.strip()[2:] for ln in rst.splitlines() if ln.startswith("     - ")] == [
+        "kornia (eager)",
+        "20",
+        "33",
+        "31",
+    ]
     assert "n_lafs=2000" in rst and "n_lafs=20000" in rst
     assert "throughput in LAFs/s" in rst  # the item is a LAF, not an image
 

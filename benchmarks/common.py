@@ -61,11 +61,24 @@ def time_us(
 
 
 def git_commit() -> str:
-    """Short hash of HEAD, or 'unknown' outside a git checkout."""
+    """Short hash of HEAD, ``-dirty`` when tracked files differ from it, or 'unknown' outside git.
+
+    A run measured from a modified checkout is not reproducible from the hash alone. The LAF-ops
+    result files were first committed with the hash of a commit that predated the harness edits
+    they were measured with, so the recorded commit named a tree whose LAF generator differed
+    from the one that actually ran. Untracked files are ignored: ``--contribute`` writes an
+    untracked result file into the checkout, so counting those would mark every contributed run
+    dirty and train readers to ignore the marker.
+    """
     try:
-        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()  # noqa: S607
+        head = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()  # noqa: S607
     except Exception:
         return "unknown"
+    try:
+        modified = subprocess.check_output(["git", "status", "--porcelain", "-uno"], text=True).strip()  # noqa: S607
+    except Exception:
+        return head
+    return f"{head}-dirty" if modified else head
 
 
 def _optional_version(module: str) -> Optional[str]:
@@ -227,6 +240,8 @@ def contribute_result(
     version = str(metadata.get("kornia", "unknown"))
     out = Path(results_dir) / version / canonical_result_name(metadata, suite, slug_override)
     save_json(out, metadata, results)
+    if str(metadata.get("git_commit", "")).endswith("-dirty"):
+        print("# WARNING: measured from a modified checkout - the recorded commit does not describe this tree.")
     print(f"# contributed: {out}")
     print(f"# commit it with: git add {out}")
     return out
