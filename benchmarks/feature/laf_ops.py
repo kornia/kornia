@@ -19,25 +19,29 @@
 
 These ops are the shared substrate of every kornia local-feature pipeline: each detector call
 converts, validates, and normalizes LAFs, and each descriptor call extracts patches from them.
-There is no cross-library baseline — no other library exposes LAFs — so the columns are kornia
-eager vs ``torch.compile`` only, and the numbers exist to rank kornia's own hot spots and to
-hold before/after evidence for optimization PRs.
+There is no cross-library baseline -- no other library exposes LAFs -- so the columns are kornia
+eager vs ``torch.compile``, and the baseline for a change is the same script run on another
+kornia revision (see AGENTS.md, "Comparing a branch against another revision"). Running this file
+directly puts its own directory on ``sys.path[0]``, not the worktree root, so ``cd``-ing into the
+worktree does not shadow the editable install by itself -- run with ``PYTHONPATH="$PWD"`` from the
+worktree root instead, and check that the header's printed module path names the worktree you
+meant.
 
 Covered ops (all public ``kornia.feature`` API):
 
-=============================   =============================================================
-op                              why it is here
-=============================   =============================================================
-``laf_from_center_scale_ori``   LAF construction, runs once per detector forward
-``make_upright``                orientation reset, per detector forward
-``ellipse_to_laf``              Oxford-format import; known hot spot (batched 2x2 ``inverse``)
-``laf_to_boundary_points``      visualization export; builds its basis on CPU every call
-``laf_is_inside_image``         border filtering, per detector forward
-``extract_patches_simple``      patch sampling; Python loop over the batch dimension
-``extract_patches_from_pyramid``  patch sampling; batch loop x full grid_sample per level
-=============================   =============================================================
+===============================  =============================================================
+op                               why it is here
+===============================  =============================================================
+``laf_from_center_scale_ori``    LAF construction, runs once per detector forward
+``make_upright``                 orientation reset, per detector forward
+``ellipse_to_laf``               Oxford-format import; :mod:`ellipse_to_laf` drills into it
+``laf_to_boundary_points``       visualization export; builds its basis on CPU every call
+``laf_is_inside_image``          border filtering, per detector forward
+``extract_patches_simple``       patch sampling; Python loop over the batch dimension
+``extract_patches_from_pyramid`` patch sampling; batch loop x full grid_sample per level
+===============================  =============================================================
 
-Throughput counts **LAFs per second** (``B*N`` per call) — the README's "items" for LAF ops.
+Throughput counts **LAFs per second** (``B*N`` per call) -- the README's "items" for LAF ops.
 Patch extraction samples a ``(B, 1, size, size)`` float image; the pyramid variant's cost also
 scales with ``min(size) // PS`` pyramid levels, so ``--size`` is part of the config, not noise.
 
@@ -50,10 +54,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import math
 import sys
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import torch
 
@@ -63,9 +66,9 @@ from common import (
     collect_load_metrics,
     contribute_result,
     print_preflight,
+    run_batch_sweep,
     run_metadata,
     save_json,
-    time_us,
     versions_line,
 )
 
@@ -97,9 +100,10 @@ def make_ellipses(b: int, n: int, size: int, device: torch.device, dtype: torch.
 
 
 def build_ops(
-    b: int, n: int, size: int, device: torch.device, dtype: torch.dtype, do_compile: bool
+    config: tuple[int, int], size: int, device: torch.device, dtype: torch.dtype, do_compile: bool
 ) -> tuple[dict[str, dict[str, Backend]], dict[str, str]]:
     """Zero-arg callables per (op, backend) for one config, plus the compile-warmup failures."""
+    b, n = config
     torch.manual_seed(0)
     lafs = make_lafs(b, n, size, device, dtype)
     ells = make_ellipses(b, n, size, device, dtype)
@@ -120,6 +124,13 @@ def build_ops(
 
     ops: dict[str, dict[str, Backend]] = {}
     compile_failures: dict[str, str] = {}
+    if do_compile:
+        # Reset dynamo once per config so every op compiles a fresh static-shape graph here;
+        # without it the first config is timed on a static graph and later ones on the
+        # automatic-dynamic recompile. Mirrors ellipse_to_laf.py. The reset belongs outside the
+        # op loop: it invalidates every compiled callable, so resetting per op would push the
+        # earlier ops' recompiles into the timed region instead of this warmup.
+        torch._dynamo.reset()
     for name, fn, args in cases:
         row: dict[str, Backend] = {"kornia (eager)": (lambda fn=fn, args=args: fn(*args))}
         if do_compile:
@@ -134,60 +145,10 @@ def build_ops(
     return ops, compile_failures
 
 
-def run_sweep(
-    configs: list[tuple[int, int]],
-    size: int,
-    device: torch.device,
-    dtype: torch.dtype,
-    do_compile: bool,
-    min_run_time: float,
-) -> list[dict[str, object]]:
-    backends = ["kornia (eager)"] + (["kornia (compiled)"] if do_compile else [])
-    sync = torch.mps.synchronize if device.type == "mps" else None
-    label_width, col_width = 30, 16
-    results: list[dict[str, object]] = []
-    header = ""
-    for b, n in configs:
-        ops, compile_failures = build_ops(b, n, size, device, dtype, do_compile)
-        if compile_failures:
-            exc_names = sorted(set(compile_failures.values()))
-            print(f"# NOTE: torch.compile warmup failed ({', '.join(exc_names)}) for: {', '.join(compile_failures)}")
-        header = f"{f'B={b} N={n}':<{label_width}}" + "".join(f"{be[:col_width]:>{col_width + 1}}" for be in backends)
-        print("-" * len(header))
-        print(header + "   (LAFs/s)")
-        print("-" * len(header))
-        for op_name, row in ops.items():
-            cells = []
-            for backend in backends:
-                fn = row.get(backend)
-                if fn is None:
-                    cells.append(f"{'-':>{col_width + 1}}")
-                    continue
-                median, iqr = time_us(fn, min_run_time=min_run_time, sync=sync)
-                thr = (b * n) / (median * 1e-6) if not math.isnan(median) else float("nan")
-                results.append(
-                    {
-                        "op": op_name,
-                        "backend": backend,
-                        "batch": b,
-                        "n_lafs": n,
-                        "size": size,
-                        "dtype": str(dtype).replace("torch.", ""),
-                        "median_us": median,
-                        "iqr_us": iqr,
-                        "throughput_per_s": thr,
-                    }
-                )
-                cells.append(f"{thr:>{col_width + 1}.0f}")
-            print(f"{op_name:<{label_width}}" + "".join(cells))
-    if header:
-        print("-" * len(header))
-    return results
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--device", default="cpu", help="cpu, cuda, or mps")
+    parser.add_argument("--dtype", default="float32", choices=["float16", "bfloat16", "float32", "float64"])
     parser.add_argument("--configs", default="1x2000,1x20000,8x2000", help="comma-separated BxN pairs")
     parser.add_argument("--size", type=int, default=256, help="square image side for the patch-extraction ops")
     parser.add_argument("--compile", action="store_true", help="add a torch.compile column")
@@ -197,21 +158,45 @@ def main() -> None:
     args = parser.parse_args()
 
     device = torch.device(args.device)
+    dtype = getattr(torch, args.dtype)
     configs = [(int(b), int(n)) for b, n in (c.split("x") for c in args.configs.split(","))]
+    sync = torch.mps.synchronize if device.type == "mps" else None  # blocked_autorange syncs CUDA itself
 
     meta = run_metadata(device)
     meta["load"] = collect_load_metrics()
+    kornia_file = sys.modules["kornia"].__file__
     print_preflight(meta["load"])
-    print(f"# laf_ops | commit {meta['git_commit']} | {meta['platform']} | device {device}")
+    print(f"# laf_ops | commit {meta['git_commit']} | {meta['platform']} | {device} | {args.dtype}")
+    print(f"# kornia module: {kornia_file}")
     print(versions_line(meta))
 
-    results = run_sweep(configs, args.size, device, torch.float32, args.compile, args.min_run_time)
+    backends = ["kornia (eager)"] + (["kornia (compiled)"] if args.compile else [])
+
+    def row_fields(config: tuple[int, int]) -> dict[str, Any]:
+        b, n = config
+        return {"batch": b, "n_lafs": n, "size": args.size, "dtype": args.dtype}
+
+    results = run_batch_sweep(
+        configs,
+        lambda config: build_ops(config, args.size, device, dtype, args.compile),
+        backends,
+        row_fields=row_fields,
+        sync=sync,
+        label_fn=lambda c: f"B={c[0]} N={c[1]}",
+        items_fn=lambda c: c[0] * c[1],
+        units="LAFs/s",
+        label_width=30,
+        col_width=16,
+        min_run_time=args.min_run_time,
+    )
 
     if args.json:
-        save_json(args.json, meta, results)
-        print(f"# wrote {args.json}")
+        out = save_json(args.json, {**meta, "kornia_module": kornia_file}, results)
+        print(f"# wrote {out}")
     if args.contribute:
-        contribute_result(args.contribute, "feature-laf-ops", meta, results, args.machine_slug)
+        contribute_result(
+            args.contribute, "feature-laf-ops", {**meta, "kornia_module": kornia_file}, results, args.machine_slug
+        )
 
 
 if __name__ == "__main__":

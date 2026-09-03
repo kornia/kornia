@@ -97,6 +97,27 @@ def test_run_batch_sweep_rows_and_skip_cells(capsys):
     assert "-" in out  # the skip cell
 
 
+def test_run_batch_sweep_accepts_non_batch_configs(capsys):
+    def build(config):
+        return {"opA": {"fast": lambda: None}}, {}
+
+    rows = run_batch_sweep(
+        [(2, 100)],
+        build,
+        ["fast"],
+        row_fields=lambda c: {"batch": c[0], "n": c[1]},
+        label_fn=lambda c: f"B={c[0]} N={c[1]}",
+        items_fn=lambda c: c[0] * c[1],
+        units="LAFs/s",
+        min_run_time=0.05,
+    )
+    assert rows[0]["batch"] == 2 and rows[0]["n"] == 100  # row_fields overrides the config object
+    per_call_s = rows[0]["median_us"] * 1e-6
+    assert math.isclose(rows[0]["throughput_per_s"], 200 / per_call_s)  # items_fn drives it, not the config
+    out = capsys.readouterr().out
+    assert "B=2 N=100" in out and "(LAFs/s)" in out
+
+
 def test_versions_line_reports_stack_and_gaps():
     line = versions_line({"torch": "2.9.1", "kornia": "0.9.0", "torchvision": None})
     assert line.startswith("#")

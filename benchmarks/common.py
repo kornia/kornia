@@ -34,6 +34,7 @@ import platform
 import re
 import subprocess
 import sys
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -232,24 +233,36 @@ def contribute_result(
 
 
 def run_batch_sweep(
-    batches: list[int],
-    build_ops: Callable[[int], tuple[dict[str, dict[str, Optional[Callable[[], object]]]], dict[str, str]]],
+    batches: Sequence[Any],
+    build_ops: Callable[[Any], tuple[dict[str, dict[str, Optional[Callable[[], object]]]], dict[str, str]]],
     backends: list[str],
-    row_fields: Callable[[int], dict[str, Any]],
+    row_fields: Callable[[Any], dict[str, Any]],
     sync: Optional[Callable[[], None]] = None,
     torch_backends: tuple[str, ...] = ("kornia (", "torchvision"),
+    label_fn: Optional[Callable[[Any], str]] = None,
+    items_fn: Optional[Callable[[Any], float]] = None,
+    units: str = "",
     label_width: int = 26,
     col_width: int = 14,
     min_run_time: float = 1.0,
 ) -> list[dict[str, Any]]:
-    """Sweep batch sizes, print one throughput table per batch, and return JSON-ready rows.
+    """Sweep configurations, print one throughput table per config, and return JSON-ready rows.
 
-    ``build_ops(batch)`` returns ``({op: {backend: zero-arg callable | None}}, {op: exc_name})``;
+    ``build_ops(config)`` returns ``({op: {backend: zero-arg callable | None}}, {op: exc_name})``;
     the second dict names ops whose ``torch.compile`` warmup failed, reported as a NOTE instead
     of a silent skip cell. ``sync`` lands inside the timed region only for backends whose name
     starts with one of ``torch_backends`` — uint8 CPU-loop baselines are timed without it (the
     default prefix is ``"kornia ("`` so the CPU-only ``"kornia-rs"`` backend never matches).
+
+    A config is a batch size by default: it labels the row ``batch=<b>``, is written to the row's
+    ``"batch"`` field, and is the per-call item count the throughput divides by. A suite whose
+    config is not a single batch size (a ``(batch, n)`` pair, say) passes ``label_fn`` for the
+    printed label, ``items_fn`` for the item count, and a ``"batch"`` key in ``row_fields`` — the
+    committed-result schema requires that field to stay an ``int``. ``units`` names what the
+    throughput counts in the printed header; the JSON never abbreviates it away.
     """
+    label_of = label_fn if label_fn is not None else (lambda b: f"batch={b}")
+    items_of = items_fn if items_fn is not None else (lambda b: b)
     results: list[dict[str, Any]] = []
     header = ""
     for b in batches:
@@ -257,10 +270,11 @@ def run_batch_sweep(
         if compile_failures:
             exc_names = sorted(set(compile_failures.values()))
             print(f"# NOTE: torch.compile warmup failed ({', '.join(exc_names)}) for: {', '.join(compile_failures)}")
-        header = f"{'batch=' + str(b):<{label_width}}" + "".join(f"{n[:col_width]:>{col_width + 1}}" for n in backends)
+        header = f"{label_of(b):<{label_width}}" + "".join(f"{n[:col_width]:>{col_width + 1}}" for n in backends)
         print("-" * len(header))
-        print(header)
+        print(header + (f"   ({units})" if units else ""))
         print("-" * len(header))
+        items = items_of(b)
         for op_name, row in ops.items():
             cells = []
             for backend in backends:
@@ -270,7 +284,7 @@ def run_batch_sweep(
                     continue
                 backend_sync = sync if backend.startswith(torch_backends) else None
                 median, iqr = time_us(fn, min_run_time=min_run_time, sync=backend_sync)
-                thr = b / (median * 1e-6) if not math.isnan(median) else float("nan")
+                thr = items / (median * 1e-6) if not math.isnan(median) else float("nan")
                 results.append(
                     {
                         "op": op_name,
