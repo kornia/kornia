@@ -218,6 +218,10 @@ def _exception_name(exception_type: type[BaseException]) -> str:
     return f"{exception_type.__module__}.{exception_type.__qualname__}"
 
 
+def _canonical_exception_identity(exception_type: type[BaseException]) -> str:
+    return f"{exception_type.__module__}.{exception_type.__qualname__}"
+
+
 def _resolve_exception_type(exception_name: str) -> type[BaseException] | None:
     exception_type = _EXCEPTION_TYPES.get(exception_name, getattr(builtins, exception_name, None))
     if isinstance(exception_type, type) and issubclass(exception_type, BaseException):
@@ -276,34 +280,104 @@ class FailureRecorder:
 
 
 class KnownFailureTracker:
-    """Require every manifest entry to finish under the manifest-specific xfail marker."""
+    """Require every manifest entry to reproduce its exact phase and exception identity."""
 
-    def __init__(self, failures: dict[str, type[BaseException]], manifest_paths: Sequence[Path]) -> None:
-        self.pending = set(failures)
-        self._expected_exceptions = failures.copy()
-        self.manifest_paths = tuple(manifest_paths)
+    def __init__(
+        self,
+        profile_or_failures: ManifestProfile | dict[str, type[BaseException]],
+        manifest_path_or_paths: Path | Sequence[Path],
+        *,
+        mode: Literal["focus", "complete"] = "focus",
+        selectors: Sequence[str] | None = None,
+        rootpath: Path | None = None,
+    ) -> None:
+        self.mode = mode
+        self.selectors = tuple(selectors or ())
+        self.rootpath = rootpath
         self.reason = _XFAIL_REASON_PREFIX
+        self._collection_failed = False
         self._matched: set[str] = set()
         self._invalid: set[str] = set()
         self._finished_with_unexpected_outcome: set[str] = set()
+        self._observed: dict[str, list[str]] = {}
+        self._legacy_exception_types: dict[str, type[BaseException]] = {}
+
+        if isinstance(profile_or_failures, ManifestProfile):
+            self.profile = profile_or_failures
+            manifest_path = cast(Path, manifest_path_or_paths)
+            self.manifest_paths = (manifest_path,)
+            entries = parse_manifest(
+                self.profile,
+                manifest_path.read_text(encoding="utf-8"),
+                current_environment(),
+                source=manifest_path,
+            )
+            if self.mode == "focus" and self.selectors:
+                entries = {
+                    nodeid: entry
+                    for nodeid, entry in entries.items()
+                    if any(_matches_selector(nodeid, selector, self.rootpath) for selector in self.selectors)
+                }
+            self._expected_entries = entries
+        else:
+            self.profile = None
+            self._legacy_exception_types = profile_or_failures.copy()
+            self._expected_entries = {
+                nodeid: ManifestEntry("call", _canonical_exception_identity(exception_type), nodeid)
+                for nodeid, exception_type in profile_or_failures.items()
+            }
+            self.manifest_paths = tuple(cast(Sequence[Path], manifest_path_or_paths))
+        self.pending = set(self._expected_entries)
+
+    @pytest.hookimpl(tryfirst=True)
+    def pytest_collectreport(self, report: Any) -> None:
+        """Remember collection failure so stale-manifest advice cannot mask it."""
+        if report.failed:
+            self._collection_failed = True
+
+    @pytest.hookimpl(tryfirst=True)
+    def pytest_collection_modifyitems(self, items: Sequence[Any]) -> None:
+        """Apply the manifest marker after collection without inferring configuration from node IDs."""
+        if self.profile is None:
+            return
+        for item in items:
+            if item.nodeid in self._expected_entries:
+                item.add_marker(pytest.mark.xfail(reason=self.reason, strict=True))
 
     @pytest.hookimpl(hookwrapper=True, tryfirst=True)
     def pytest_runtest_makereport(self, item: Any, call: Any) -> Any:
-        """Record only xfails caused by the manifest's expected exception."""
+        """Observe all phases; pytest's xfail result alone is not the exact-outcome authority."""
         outcome = yield
         report = outcome.get_result()
         if report.nodeid not in self.pending:
             return
         wasxfail = getattr(report, "wasxfail", None)
-        if (
-            report.when in {"setup", "call"}
-            and report.outcome == "skipped"
-            and wasxfail == self.reason
-            and call.excinfo is not None
-            and call.excinfo.type is self._expected_exceptions[report.nodeid]
-        ):
-            self._matched.add(report.nodeid)
-        elif report.outcome in {"skipped", "failed"} or wasxfail is not None:
+        expected = self._expected_entries[report.nodeid]
+        exception_type = call.excinfo.type if call.excinfo is not None else None
+
+        if report.when in {"setup", "call"} and report.outcome == "skipped" and wasxfail == self.reason:
+            if exception_type is None:
+                observed = f"{report.when} xfail without an exception"
+            else:
+                identity = _canonical_exception_identity(exception_type)
+                observed = f"{report.when} {identity}"
+                legacy_match = self.profile is None and exception_type is self._legacy_exception_types[report.nodeid]
+                exact_match = report.when == expected.phase and identity == expected.exception
+                if legacy_match or exact_match:
+                    self._matched.add(report.nodeid)
+                    return
+            self._observed.setdefault(report.nodeid, []).append(observed)
+            self._invalid.add(report.nodeid)
+        elif report.when == "teardown" and report.outcome != "passed":
+            self._observed.setdefault(report.nodeid, []).append(f"teardown {report.outcome}")
+            self._invalid.add(report.nodeid)
+        elif report.outcome == "skipped":
+            category = "competing xfail" if wasxfail is not None else "skip"
+            self._observed.setdefault(report.nodeid, []).append(f"{report.when} {category}")
+            self._invalid.add(report.nodeid)
+        elif report.outcome == "failed" or (wasxfail is not None and report.outcome != "passed"):
+            identity = _canonical_exception_identity(exception_type) if exception_type is not None else "strict XPASS"
+            self._observed.setdefault(report.nodeid, []).append(f"{report.when} {identity}")
             self._invalid.add(report.nodeid)
 
     def pytest_runtest_logfinish(self, nodeid: str) -> None:
@@ -317,17 +391,18 @@ class KnownFailureTracker:
 
     def pytest_deselected(self, items: Sequence[Any]) -> None:
         """Exclude locally deselected entries from outcome validation."""
-        for item in items:
-            self.pending.discard(item.nodeid)
+        if self.mode == "focus":
+            for item in items:
+                self.pending.discard(item.nodeid)
 
     def pytest_sessionfinish(self, session: pytest.Session) -> None:
         """Fail the session when a manifest entry was skipped or handled by another xfail."""
-        if self.pending and session.exitstatus == pytest.ExitCode.OK:
+        if self.pending and not self._collection_failed and session.exitstatus == pytest.ExitCode.OK:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
     def pytest_terminal_summary(self, terminalreporter: Any) -> None:
         """Report manifest entries that did not produce their required xfail outcome."""
-        if not self.pending:
+        if not self.pending or self._collection_failed:
             return
         count = len(self.pending)
         noun = "failure" if count == 1 else "failures"
@@ -337,9 +412,15 @@ class KnownFailureTracker:
         unexpected = self.pending & self._finished_with_unexpected_outcome
         not_run = self.pending - unexpected
         if unexpected:
-            terminalreporter.write_line("Ran with an unexpected outcome; remove or update the manifest line:")
+            terminalreporter.write_line("Ran with an unexpected outcome:")
             for nodeid in sorted(unexpected):
-                terminalreporter.write_line(nodeid)
+                expected = self._expected_entries[nodeid]
+                terminalreporter.write_line(f"{nodeid}: expected {expected.phase} {expected.exception}")
+                for observed in self._observed.get(nodeid, ["pass or incomplete lifecycle"]):
+                    terminalreporter.write_line(f"  observed {observed}")
+                terminalreporter.write_line(
+                    f"  remove or update: {expected.phase}\t{expected.exception}\t{expected.nodeid}"
+                )
         if not_run:
             terminalreporter.write_line("Did not run; rerun without selection or remove/update a stale manifest line:")
             for nodeid in sorted(not_run):

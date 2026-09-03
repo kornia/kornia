@@ -34,6 +34,7 @@ from testing.half_precision_ci import (
     ISSUE_URL,
     ManifestEntry,
     ManifestEnvironment,
+    current_environment,
     get_profile,
     load_known_failures,
     mark_known_failures,
@@ -118,6 +119,21 @@ class TestManifestCodec:
 
 def _write_manifest(directory: Path, dtype: str, contents: str) -> None:
     (directory / f"cpu_{dtype}.txt").write_text(contents)
+
+
+def _write_profile_manifest(directory: Path, phase: str, exception: str, nodeid: str) -> Path:
+    profile = get_profile("cpu-float16")
+    path = directory / "cpu_float16.txt"
+    path.write_text(
+        serialize_manifest(
+            profile,
+            [ManifestEntry(phase, exception, nodeid)],  # type: ignore[arg-type]
+            current_environment(),
+            "pytest tests/",
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def test_seed_test_rng_is_stable_and_node_specific() -> None:
@@ -499,8 +515,143 @@ class TestKnownFailureOutcomes:
         output = result.stdout.str()
         assert "ERROR: 1 known half-precision failure needs updates in" in output
         assert "cpu_float16.txt" in output
-        assert "Ran with an unexpected outcome; remove or update the manifest line:" in output
+        assert "Ran with an unexpected outcome:" in output
+        assert "expected call" in output
+        assert "observed" in output
+        assert "remove or update:" in output
         assert "test_sample.py::test_known_failure[cpu-float16]" in output
+
+
+def _run_exact_manifest_case(
+    pytester: pytest.Pytester,
+    *,
+    expected_phase: str = "call",
+    expected_exception: str = "builtins.AssertionError",
+    test_body: str = "raise AssertionError('known failure')",
+    setup_body: str = "pass",
+    teardown_body: str = "pass",
+    complete: bool = False,
+) -> pytest.RunResult:
+    nodeid = "test_sample.py::test_known_failure[cpu-float16]"
+    _write_profile_manifest(pytester.path, expected_phase, expected_exception, nodeid)
+    pytester.makeconftest(
+        f"""
+        from pathlib import Path
+
+        from testing.half_precision_ci import KnownFailureTracker, get_profile
+
+
+        def pytest_configure(config):
+            tracker = KnownFailureTracker(
+                get_profile("cpu-float16"),
+                Path(__file__).with_name("cpu_float16.txt"),
+                mode={"complete" if complete else "focus"!r},
+                selectors=(),
+                rootpath=config.rootpath,
+            )
+            config.pluginmanager.register(tracker, "known-half-precision-failure-tracker")
+        """
+    )
+    pytester.makepyfile(
+        test_sample=f"""
+        import pytest
+
+
+        @pytest.fixture(autouse=True)
+        def lifecycle_fixture():
+            {setup_body}
+            yield
+            {teardown_body}
+
+
+        @pytest.mark.parametrize("unused", [None], ids=["cpu-float16"])
+        def test_known_failure(unused):
+            {test_body}
+        """
+    )
+    return pytester.runpytest("-q")
+
+
+class TestExactKnownFailureLifecycle:
+    @pytest.mark.parametrize("phase", ["setup", "call"])
+    def test_accepts_exact_phase_and_identity(self, pytester: pytest.Pytester, phase: str) -> None:
+        kwargs = {"setup_body": "raise AssertionError('setup')"} if phase == "setup" else {}
+
+        result = _run_exact_manifest_case(pytester, expected_phase=phase, **kwargs)
+
+        result.assert_outcomes(xfailed=1)
+        assert result.ret == pytest.ExitCode.OK
+
+    @pytest.mark.parametrize(
+        ("expected_phase", "expected_exception", "test_body", "setup_body", "observed"),
+        [
+            ("call", "builtins.RuntimeError", "raise NotImplementedError('subclass')", "pass", "NotImplementedError"),
+            ("setup", "builtins.AssertionError", "raise AssertionError('call')", "pass", "call"),
+            ("call", "builtins.AssertionError", "pytest.skip('runtime skip')", "pass", "skip"),
+        ],
+    )
+    def test_rejects_wrong_exact_outcome_with_diagnostic(
+        self,
+        pytester: pytest.Pytester,
+        expected_phase: str,
+        expected_exception: str,
+        test_body: str,
+        setup_body: str,
+        observed: str,
+    ) -> None:
+        result = _run_exact_manifest_case(
+            pytester,
+            expected_phase=expected_phase,
+            expected_exception=expected_exception,
+            test_body=test_body,
+            setup_body=setup_body,
+        )
+
+        assert result.ret == pytest.ExitCode.TESTS_FAILED
+        output = result.stdout.str()
+        assert "expected" in output
+        assert expected_phase in output
+        assert expected_exception in output
+        assert observed in output
+        assert "test_sample.py::test_known_failure[cpu-float16]" in output
+
+    def test_rejects_teardown_after_matching_call(self, pytester: pytest.Pytester) -> None:
+        result = _run_exact_manifest_case(
+            pytester, teardown_body="raise RuntimeError('teardown after expected call failure')"
+        )
+
+        assert result.ret == pytest.ExitCode.TESTS_FAILED
+        assert "teardown" in result.stdout.str()
+
+    def test_collection_error_has_no_stale_manifest_advice(self, pytester: pytest.Pytester) -> None:
+        _write_profile_manifest(
+            pytester.path,
+            "call",
+            "builtins.AssertionError",
+            "test_sample.py::test_known_failure[cpu-float16]",
+        )
+        pytester.makeconftest(
+            """
+            from pathlib import Path
+            from testing.half_precision_ci import KnownFailureTracker, get_profile
+
+            def pytest_configure(config):
+                tracker = KnownFailureTracker(
+                    get_profile("cpu-float16"), Path(__file__).with_name("cpu_float16.txt"),
+                    mode="complete", selectors=(), rootpath=config.rootpath,
+                )
+                config.pluginmanager.register(tracker, "known-half-precision-failure-tracker")
+            """
+        )
+        pytester.makepyfile(test_sample="raise RuntimeError('import exploded')")
+
+        result = pytester.runpytest("-q")
+
+        assert result.ret == pytest.ExitCode.INTERRUPTED
+        output = result.stdout.str()
+        assert "import exploded" in output
+        assert "remove or update" not in output
+        assert "not collected" not in output
 
 
 class _RecordingConfig:
