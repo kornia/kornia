@@ -220,6 +220,18 @@ class TestBoxes2D(BaseTester):
         self.assert_close(boxes.data, boxes_before, atol=0.0, rtol=0.0)
         self.assert_close(replacement.data, replacement_before, atol=0.0, rtol=0.0)
 
+    def test_getitem_preserves_list_padding_metadata(self, device, dtype):
+        # #4179: slicing a list-backed Boxes must keep _N so pad rows stay trimmed.
+        first = torch.tensor([[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        lb = Boxes([first, torch.cat([first, first])])
+        assert lb._N == [1, 0]
+        sliced = lb[0:1]
+        assert sliced._N == [1]
+        exported = sliced.to_tensor("xyxy")
+        assert isinstance(exported, list)
+        assert len(exported) == 1
+        assert exported[0].shape == (1, 4)
+
     def test_smoke(self, device, dtype):
         def _create_tensor_box():
             # Sample two points of the rectangle
