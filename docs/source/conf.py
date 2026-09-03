@@ -119,7 +119,7 @@ def _public_operator_count() -> int:
 
     Walks every ``kornia.*`` module without a private path component and counts the functions and
     ``torch.nn.Module`` subclasses it defines under a public name. Model architecture internals
-    (``kornia.models.*.architecture``), ``kornia.core`` and the transpiler shim are left out so the
+    (``kornia.models.*.architecture``) and ``kornia.core`` are left out so the
     figure is about operators rather than plumbing.
     """
     import contextlib
@@ -131,7 +131,7 @@ def _public_operator_count() -> int:
 
     import kornia
 
-    skip = re.compile(r"^kornia\.(core|transpiler)(\.|$)|\.architecture(\.|$)")
+    skip = re.compile(r"^kornia\.core(\.|$)|\.architecture(\.|$)")
     seen: set[tuple[str, str]] = set()
     with (
         warnings.catch_warnings(),

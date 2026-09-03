@@ -238,25 +238,6 @@ onnx_seq.export("chained_model.onnx")
 ```
 </details>
 
-## Multi-framework support
-
-You can now use Kornia with [TensorFlow](https://www.tensorflow.org/), [JAX](https://jax.readthedocs.io/en/latest/index.html), and [NumPy](https://numpy.org/). See [Multi-Framework Support](docs/source/get-started/multi-framework-support.rst) for more details.
-
-```python
-import kornia
-
-tf_kornia = kornia.to_tensorflow()
-```
-
-<p align="center">
-  Powered by
-  <a href="https://github.com/ivy-llc/ivy" target="_blank">
-    <div class="dark-light" style="display: block;" align="center">
-      <img class="dark-light" width="15%" src="https://raw.githubusercontent.com/ivy-llc/assets/refs/heads/main/assets/logos/ivy-long.svg"/>
-    </div>
-  </a>
-</p>
-
 ## Call For Contributors
 
 If kornia is useful to you and you would like to help, contributions of many kinds are welcome: code, bug reports, benchmarks, documentation, questions, answers, and examples. The maintainers have limited time, so we cannot promise that every proposal or pull request will be reviewed or merged.
