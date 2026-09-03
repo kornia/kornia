@@ -59,6 +59,55 @@ def test_render_page_contains_table_and_metadata(tmp_path: Path) -> None:
     assert "close other applications" in rst  # hygiene box present
 
 
+def _seed_two_axis(tmp_path: Path) -> Path:
+    """A suite that sweeps a second axis at a fixed batch, like ``feature-laf-ops``."""
+    payload = {
+        "metadata": {
+            "timestamp_utc": "2026-09-03T12:00:00+00:00",
+            "git_commit": "d415faa0",
+            "platform": "Linux-6.18-x86_64",
+            "python": "3.13.0",
+            "torch": "2.14.0",
+            "kornia": "0.9.0rc1",
+            "device": "cpu",
+            "load": {"load_avg_1m": 1.0},
+            "units": "LAFs/s",
+        },
+        "results": [
+            {"op": "make_upright", "backend": "kornia (eager)", "batch": 1, "n_lafs": 2000, "throughput_per_s": 20.0},
+            {"op": "make_upright", "backend": "kornia (eager)", "batch": 1, "n_lafs": 20000, "throughput_per_s": 33.0},
+            {"op": "make_upright", "backend": "kornia (eager)", "batch": 8, "n_lafs": 2000, "throughput_per_s": 31.0},
+        ],
+    }
+    d = tmp_path / "0.9.0rc1"
+    d.mkdir(exist_ok=True)
+    (d / "feature-laf-ops--box--cpu.json").write_text(json.dumps(payload))
+    return tmp_path
+
+
+def test_render_page_keeps_configs_that_share_a_batch(tmp_path: Path) -> None:
+    rst = generate_benchmarks.render_page(_seed_two_axis(tmp_path))
+    # all three configs survive: keying rows on (op, batch) alone would drop the N=2000 row
+    assert "20" in rst and "33" in rst and "31" in rst
+    assert "n_lafs=2000" in rst and "n_lafs=20000" in rst
+    assert "throughput in LAFs/s" in rst  # the item is a LAF, not an image
+
+
+def test_render_page_omits_constant_config_fields(tmp_path: Path) -> None:
+    rst = generate_benchmarks.render_page(_seed(tmp_path))
+    assert "ColorJiggle @ 32" in rst  # batch-only suites keep the short label
+    assert "throughput in items/s" in rst  # no units key -> the existing default
+
+
+def test_digest_disambiguates_configs_that_share_a_batch(tmp_path: Path) -> None:
+    llms = tmp_path / "llms-full.txt"
+    llms.write_text("a\n<!-- BENCH:BEGIN -->\n<!-- BENCH:END -->\nb\n")
+    generate_benchmarks.refresh_llms(llms, _seed_two_axis(tmp_path))
+    line = next(ln for ln in llms.read_text().splitlines() if ln.startswith("- feature-laf-ops"))
+    assert "make_upright@1,n_lafs=20000" in line  # fastest row named by its full config
+    assert "LAFs/s" in line
+
+
 def test_latest_version_orders_rc_before_final() -> None:
     assert generate_benchmarks.latest_version(["0.9.0rc1", "0.9.0", "0.8.3"]) == "0.9.0"
 

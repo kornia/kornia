@@ -179,61 +179,65 @@ NVIDIA RTX PRO 6000 Blackwell (AMD Turin host):
 
 ## Sample results — feature LAF ops
 
-Directional numbers only — reproduce on your own hardware for anything you cite; no result file
-is committed from this run. Measured 2026-09-03 against the library at `d415faa0` (`main`),
-Linux/WSL2 (kernel 6.18, x86_64), Intel i7-14700K + NVIDIA RTX 4090, Python 3.13,
-torch 2.14.0+cu130, CUDA 13.0, kornia 0.9.0rc1, float32, image 256×256, patch size 32,
-14 threads. Throughput in LAFs/s
-(higher is better); no cross-library column exists — no other library exposes LAFs. Every op
-compiled on both devices on this stack, so there is no `-` cell.
+The full run is committed as
+[`feature-laf-ops--i7-14700k-rtx-4090--cpu.json`](results/0.9.0rc1/feature-laf-ops--i7-14700k-rtx-4090--cpu.json)
+and
+[`feature-laf-ops--i7-14700k-rtx-4090--cuda.json`](results/0.9.0rc1/feature-laf-ops--i7-14700k-rtx-4090--cuda.json),
+so the docs performance page renders it; the tables below are the B=1 N=20000 slice of those
+files. Measured 2026-09-03 on commit `b42b4a90` (this branch; its `kornia/` tree is identical to
+`d415faa0` on `main`), Linux/WSL2 (kernel 6.18, x86_64), Intel i7-14700K + NVIDIA RTX 4090,
+Python 3.13, torch 2.14.0+cu130, CUDA 13.0, kornia 0.9.0rc1, float32, image 256×256, patch size
+32, 14 threads. Throughput in LAFs/s (higher is better); no cross-library column exists — no
+other library exposes LAFs. Every op compiled on both devices on this stack, so there is no `-`
+cell. Compare columns within one table, never numbers across machines.
 
 `--device cpu --compile`, B=1 N=20000:
 
 | op | kornia (eager) | kornia (compiled) |
 | --- | --: | --: |
-| laf_from_center_scale_ori | 36866566 | **103367720** |
-| make_upright | 33541403 | **121712248** |
-| ellipse_to_laf | 98528031 | **134651119** |
-| laf_to_boundary_points | 3197646 | **11041683** |
-| laf_is_inside_image | 6586474 | **11838544** |
-| extract_patches_simple | **47944** | 26292 |
-| extract_patches_from_pyramid | 34510 | 38479 |
+| laf_from_center_scale_ori | 39310995 | **102707894** |
+| make_upright | 34025559 | **121939323** |
+| ellipse_to_laf | 107641937 | **144134795** |
+| laf_to_boundary_points | 3516790 | **10429320** |
+| laf_is_inside_image | 6317532 | **11400757** |
+| extract_patches_simple | **52720** | 28441 |
+| extract_patches_from_pyramid | 36550 | **37591** |
 
 `--device cuda --compile`, B=1 N=20000:
 
 | op | kornia (eager) | kornia (compiled) |
 | --- | --: | --: |
-| laf_from_center_scale_ori | 119126345 | **257056192** |
-| make_upright | 75306303 | **286448823** |
-| ellipse_to_laf | 119959504 | **457765418** |
-| laf_to_boundary_points | 12700568 | 16175929 |
-| laf_is_inside_image | 24954460 | **50845109** |
-| extract_patches_simple | 3598064 | **33001503** |
-| extract_patches_from_pyramid | 2951999 | **25082018** |
+| laf_from_center_scale_ori | 107572611 | **160452476** |
+| make_upright | 73898094 | **390865475** |
+| ellipse_to_laf | 117084502 | **406454497** |
+| laf_to_boundary_points | 13141209 | **16252796** |
+| laf_is_inside_image | 21754612 | **53296523** |
+| extract_patches_simple | 3333805 | **32275868** |
+| extract_patches_from_pyramid | 2830760 | **21219078** |
 
 The honest reading:
 
 - **Patch extraction still dominates, but only on CPU.** `extract_patches_from_pyramid` runs at
-  ~35k LAFs/s eager on CPU — ~970× below `make_upright` on the same box, so a 20k-keypoint
-  descriptor pass pays ~0.6 s in patch sampling before any descriptor math. On CUDA the same op
-  is ~2.95M LAFs/s eager and ~25M compiled (0.8 ms for those 20k LAFs), only ~25× below the
-  cheap ops. Batched GPU extraction is the regime to be in.
-- **`torch.compile` is a consistent ~2× *loss* for `extract_patches_simple` on CPU** (26.3k vs
-  47.9k LAFs/s here, and 1.8–2.0× in all three configs), while it is a ~9× win for the same
-  op on CUDA. It is not the N-chunking added in #4128: at B=1 N=2000 the sampling grid is ~16 MiB
-  against a 64 MiB budget, so that config takes the single-chunk fast path and still loses ~2×.
-  Unexplained, and the next thing to look at on the CPU inductor path.
-- **`laf_to_boundary_points` is the weakest compiled op on CUDA** — 16.2M LAFs/s, below both
-  patch extractors and ~28× below `ellipse_to_laf`, and the only op `torch.compile` barely moves
-  there (1.27× vs 2–9× elsewhere). It builds its `linspace`/`ones`/`tensor` basis without a
-  `device=` argument and `.to()`s the result on every call (`kornia/feature/laf.py`), so each
-  call pays a host→device transfer. On CPU it is ~10× slower than the similar-sized
-  `make_upright`. First optimization target in this file.
+  ~37k LAFs/s eager on CPU — ~930× below `make_upright` on the same box, so a 20k-keypoint
+  descriptor pass pays ~0.55 s in patch sampling before any descriptor math. On CUDA the same op
+  is ~2.8M LAFs/s eager and ~21M compiled (0.9 ms for those 20k LAFs), only ~26× below the cheap
+  ops. Batched GPU extraction is the regime to be in.
+- **`torch.compile` is a consistent 1.9–2.2× *loss* for `extract_patches_simple` on CPU** — in
+  all three configs, not just the one shown — while it is a ~9.7× win for the same op on CUDA.
+  It is not the N-chunking added in #4128: at B=1 N=2000 the sampling grid is ~16 MiB against a
+  64 MiB budget, so that config takes the single-chunk fast path and still loses. Unexplained,
+  and the next thing to look at on the CPU inductor path.
+- **`laf_to_boundary_points` is the weakest compiled op on CUDA** — 16.3M LAFs/s, below both
+  patch extractors, ~25× below `ellipse_to_laf`, and among the least moved by `torch.compile`
+  there (1.24×, against up to 9.7× for the ops it beats in eager). It builds its
+  `linspace`/`ones`/`tensor` basis without a `device=` argument and `.to()`s the result on every
+  call (`kornia/feature/laf.py`), so each call pays a host→device transfer. On CPU it is ~10×
+  slower than the similar-sized `make_upright`. First optimization target in this file.
 - **Small N on CUDA is launch-latency bound, not work bound:** at B=1 N=2000 the three cheapest
-  ops all land within 7.8–12.2M LAFs/s regardless of what they compute, ~10× below their own
+  ops all land within 7.8–12.8M LAFs/s regardless of what they compute, ~8–10× below their own
   B=1 N=20000 figures. Read the N=20000 rows for kernel cost and the N=2000 rows for per-call
   overhead.
-- **`ellipse_to_laf` is now the fastest LAF op measured**, at 98.5M LAFs/s eager on CPU. This
+- **`ellipse_to_laf` is now the fastest LAF op measured**, at 107.6M LAFs/s eager on CPU. This
   benchmark originally recorded it as a hot spot (a batched 2×2 `torch.inverse`, pathological on
   MPS); the closed-form inverse in #4122 fixed it, and the dedicated A/B lives in
   [`ellipse_to_laf.py`](feature/ellipse_to_laf.py).

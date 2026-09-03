@@ -190,13 +190,14 @@ def main() -> None:
         min_run_time=args.min_run_time,
     )
 
+    # The docs page and the llms digest label the throughput column from this key; without it a
+    # committed run reads as "items/s", and the item here is a LAF, not an image.
+    export_meta = {**meta, "kornia_module": kornia_file, "units": "LAFs/s"}
     if args.json:
-        out = save_json(args.json, {**meta, "kornia_module": kornia_file}, results)
+        out = save_json(args.json, export_meta, results)
         print(f"# wrote {out}")
     if args.contribute:
-        contribute_result(
-            args.contribute, "feature-laf-ops", {**meta, "kornia_module": kornia_file}, results, args.machine_slug
-        )
+        contribute_result(args.contribute, "feature-laf-ops", export_meta, results, args.machine_slug)
 
 
 if __name__ == "__main__":
