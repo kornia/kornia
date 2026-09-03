@@ -101,9 +101,9 @@ class TestManifestCodec:
         profile = get_profile("cpu-float16")
         text = serialize_manifest(profile, [], _environment(), "pytest tests/")
 
-        with pytest.raises(ValueError, match="profile.*cpu-bfloat16"):
+        with pytest.raises(ValueError, match=r"profile.*cpu-bfloat16"):
             parse_manifest(get_profile("cpu-bfloat16"), text, _environment())
-        with pytest.raises(ValueError, match="Python.*3.12"):
+        with pytest.raises(ValueError, match=r"Python.*3.12"):
             parse_manifest(profile, text, _environment(python="3.12"))
 
     def test_provenance_difference_warns_without_rejecting(self) -> None:
@@ -137,10 +137,16 @@ def _write_profile_manifest(directory: Path, phase: str, exception: str, nodeid:
 
 
 def _rng_states() -> tuple[object, tuple, torch.Tensor]:
-    return random.getstate(), np.random.get_state(), torch.random.get_rng_state()
+    return (
+        random.getstate(),
+        np.random.get_state(),  # noqa: NPY002 - verify the process-global state is unchanged.
+        torch.random.get_rng_state(),
+    )
 
 
-def _assert_rng_states_equal(first: tuple[object, tuple, torch.Tensor], second: tuple[object, tuple, torch.Tensor]) -> None:
+def _assert_rng_states_equal(
+    first: tuple[object, tuple, torch.Tensor], second: tuple[object, tuple, torch.Tensor]
+) -> None:
     assert first[0] == second[0]
     assert first[1][0] == second[1][0]
     assert np.array_equal(first[1][1], second[1][1])
@@ -174,6 +180,54 @@ def test_profile_rng_isolation_restores_all_global_states() -> None:
 
 def test_rng_seed_fixture_is_available_without_a_profile(test_rng_seed: int, request: pytest.FixtureRequest) -> None:
     assert test_rng_seed == seed_test_rng(request.node.nodeid)
+
+
+def test_eager_rng_audit_matches_exact_inventory() -> None:
+    from testing.half_precision_eager_rng import AUDITED_EAGER_RNG_CALLS, find_eager_rng_calls
+
+    discovered = find_eager_rng_calls(Path(project_conftest.__file__).parent)
+    audited = tuple(entry.call for entry in AUDITED_EAGER_RNG_CALLS)
+
+    assert len(discovered) == 23
+    assert discovered == audited
+
+
+def test_eager_rng_scanner_skips_lazy_function_and_lambda_bodies(tmp_path: Path) -> None:
+    from testing.half_precision_eager_rng import EagerRngCall, find_eager_rng_calls
+
+    (tmp_path / "test_sample.py").write_text(
+        """
+import torch
+
+module_value = torch.rand(1)
+
+class TestSample:
+    class_value = torch.randn(1)
+
+    @pytest.mark.parametrize("value", [torch.randint(0, 2, (1,))])
+    def test_case(self, value=torch.randperm(2)):
+        torch.rand(1)
+
+lazy = lambda: torch.randn(1)
+""",
+        encoding="utf-8",
+    )
+
+    assert find_eager_rng_calls(tmp_path) == (
+        EagerRngCall("test_sample.py", 4, "torch.rand"),
+        EagerRngCall("test_sample.py", 7, "torch.randn"),
+        EagerRngCall("test_sample.py", 9, "torch.randint"),
+        EagerRngCall("test_sample.py", 10, "torch.randperm"),
+    )
+
+
+def test_eager_rng_node_coverage_is_boundary_aware() -> None:
+    from testing.half_precision_eager_rng import eager_rng_calls_for_node
+
+    prefix = "tests/enhance/test_core.py::TestAddWeighted::test_shape"
+    assert len(eager_rng_calls_for_node(prefix)) == 3
+    assert len(eager_rng_calls_for_node(f"{prefix}[cpu-float16-case]")) == 3
+    assert eager_rng_calls_for_node(f"{prefix}_mismatch[cpu-float16]") == ()
 
 
 def test_failure_recorder_writes_setup_and_call_failures_in_nodeid_order(pytester: pytest.Pytester) -> None:

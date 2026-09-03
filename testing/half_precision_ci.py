@@ -138,7 +138,9 @@ def serialize_manifest(
         "generated-by": generation_command,
     }
     lines = [*(f"# {key}: {value}" for key, value in header.items()), ""]
-    lines.extend(f"{entry.phase}\t{entry.exception}\t{entry.nodeid}" for entry in sorted(entries, key=lambda x: x.nodeid))
+    lines.extend(
+        f"{entry.phase}\t{entry.exception}\t{entry.nodeid}" for entry in sorted(entries, key=lambda x: x.nodeid)
+    )
     return "\n".join([*lines, ""])
 
 

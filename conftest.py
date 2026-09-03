@@ -38,7 +38,6 @@ import kornia
 
 from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
 from testing.half_precision_ci import (
-    FailureRecorder,
     KnownFailureTracker,
     ManifestProfile,
     get_profile,
@@ -768,7 +767,7 @@ def pytest_runtest_protocol(item, nextitem):
 def _isolated_test_rng(seed: int):
     """Temporarily seed the process-global CPU RNGs and restore their exact states."""
     python_state = random.getstate()
-    numpy_state = np.random.get_state()
+    numpy_state = np.random.get_state()  # noqa: NPY002 - snapshot the process-global RNG used by existing tests.
     torch_state = torch.random.get_rng_state()
     try:
         random.seed(seed)
@@ -777,7 +776,7 @@ def _isolated_test_rng(seed: int):
         yield
     finally:
         random.setstate(python_state)
-        np.random.set_state(numpy_state)
+        np.random.set_state(numpy_state)  # noqa: NPY002 - restore the process-global RNG exactly.
         torch.random.set_rng_state(torch_state)
 
 
