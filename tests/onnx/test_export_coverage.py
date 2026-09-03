@@ -30,15 +30,29 @@ import torch
 from torch import nn
 
 import kornia
+from kornia.core._compat import torch_version_lt
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry.epipolar.numeric import matrix_cofactor_tensor
 
+# Every tensor here is created device-free and fed to onnxruntime as numpy: the work is CPU-bound
+# whatever ``--device`` says, so the accelerator legs must not repeat it.
+pytestmark = pytest.mark.device_agnostic
+
 onnx = pytest.importorskip("onnx")
 ort = pytest.importorskip("onnxruntime")
+pytest.importorskip("onnxscript")  # the dynamo exporter hard-requires it; the ``docs`` extra lacks it
 
-if not hasattr(torch.onnx, "ONNXProgram"):
-    # ``torch.onnx.export(..., dynamo=True)`` and the ``ONNXProgram`` it returns (with ``.save()``)
-    # arrived together in torch 2.5; older releases only have the TorchScript exporter.
+if torch_version_lt(2, 5, 0):
+    # ``torch.onnx.export(..., dynamo=True)`` only reaches the current exporter -- and returns the
+    # ``ONNXProgram`` with ``.save()`` this file needs -- from torch 2.5. On 2.1-2.3 the ``dynamo=``
+    # keyword does not exist at all (TypeError); 2.4 accepts it but routes to the retired
+    # ``dynamo_export``, which the onnxscript releases we resolve no longer serve.
+    # ``hasattr(torch.onnx, "ONNXProgram")`` is not a usable probe: that class has existed since 2.2
+    # as ``dynamo_export``'s return type, which is why the previous guard did not skip.
+    # The floor is deliberately 2.5 rather than the 2.6 that ``tests/filters/test_gaussian.py``
+    # requires for its smoke test: these cases pin the export-time code paths on the oldest
+    # exporter-capable release, and torch 2.5.1 is a blocking PR leg, so a regression there must
+    # fail rather than skip.
     pytest.skip("the dynamo ONNX exporter needs torch >= 2.5", allow_module_level=True)
 
 
@@ -66,7 +80,10 @@ def _export_and_run(module: nn.Module, inputs: tuple[torch.Tensor, ...]) -> tupl
     onnx.checker.check_model(model)
 
     session = ort.InferenceSession(buf.getvalue(), providers=["CPUExecutionProvider"])
-    feeds = {inp.name: x.numpy() for inp, x in zip(session.get_inputs(), inputs)}
+    # An input the exporter folded into the graph would shorten ``get_inputs()`` and shift the rest
+    # into the wrong slots; the feed must match one to one.
+    assert len(session.get_inputs()) == len(inputs), [i.name for i in session.get_inputs()]
+    feeds = {inp.name: x.numpy() for inp, x in zip(session.get_inputs(), inputs, strict=True)}
     return eager, session.run(None, feeds)
 
 
