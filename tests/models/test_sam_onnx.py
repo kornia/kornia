@@ -17,6 +17,8 @@
 
 """ONNX export tests for SAM (image encoder subgraph)."""
 
+import sys
+
 import pytest
 
 from kornia.models.sam.model import Sam, SamConfig
@@ -31,6 +33,10 @@ def test_sam_has_to_onnx():
 
 
 @pytest.mark.timeout(120)
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="TorchScript tracing of the SAM encoder exceeds the 120s timeout on macOS CI runners",
+)
 def test_sam_encoder_to_onnx(tmp_path):
     """Sam.to_onnx() exports the image encoder subgraph with correct output name."""
     onnx = pytest.importorskip("onnx")
