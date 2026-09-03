@@ -214,16 +214,21 @@ def find_homography_dlt(
 
     if weights is None:
         # All points are equally important
-        Aw = A
+        w_full = None
     else:
         # We should use provided weights
         if not (len(weights.shape) == 2 and weights.shape == points1.shape[:2]):
             raise AssertionError(weights.shape)
-        w_full = weights.repeat_interleave(2, dim=1)
-        Aw = torch.einsum("...ij,...i->...ij", A, w_full)
+        w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
+
+    # Only the minimal four-point LU path works from the design matrix itself (see below).
+    # Every other case forms the normal equations in the exact operand order the pre-gauge
+    # implementation used, so weighted results stay bit-identical to it.
+    minimal_lu = solver == "lu" and points1.shape[1] == 4
+    if not minimal_lu:
+        A = A.transpose(-2, -1) @ A if w_full is None else (A.transpose(-2, -1) * w_full) @ A
 
     if solver == "svd":
-        A = A.transpose(-2, -1) @ Aw
         try:
             _, _, V = _torch_svd_cast(A)
         except RuntimeError:
@@ -231,24 +236,32 @@ def find_homography_dlt(
             return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
         H = V[..., -1].view(-1, 3, 3)
     elif solver == "lu":
-        if points1.shape[1] > 4:
-            A = A.transpose(-2, -1) @ Aw
+        if not minimal_lu:
             B = torch.ones(A.shape[0], A.shape[1], device=device, dtype=dtype)
             sol, _, _ = safe_solve_with_mask(B, A)
         else:
-            # The four-point DLT system has eight independent equations. Use QR
-            # to find its null vector and choose the largest component as the
-            # homogeneous gauge, then solve the retained 8x8 system. A fixed
-            # h33=1 gauge is invalid when the bottom-right entry is zero.
+            # A four-point sample gives eight equations for nine unknowns, so the normal matrix
+            # is singular and LU-factoring it is what produced all-NaN homographies. Work from
+            # the design matrix instead: its null vector comes from a complete QR, the largest
+            # component of that vector fixes the homogeneous gauge, and the retained 8x8 system
+            # is solved for the rest. A fixed h33=1 gauge is invalid whenever the bottom-right
+            # entry is zero. Five or more points keep the normal-equation formulation above.
+            Aw = A if w_full is None else A * w_full.transpose(-2, -1)
             gauge_dtype = torch.float64 if dtype == torch.float64 else torch.float32
             Q, _ = torch.linalg.qr(Aw.detach().to(gauge_dtype).transpose(-2, -1), mode="complete")
-            gauge = Q[..., -1].abs().argmax(dim=-1)
+            null = Q[..., -1]
+            gauge = null.abs().argmax(dim=-1)
             retained = torch.arange(8, device=device).expand(A.shape[0], -1)
             retained = retained + (retained >= gauge[:, None]).to(retained.dtype)
             selected = Aw.gather(-1, retained[:, None].expand(-1, 8, -1))
             B = -Aw.gather(-1, gauge[:, None, None].expand(-1, 8, 1)).squeeze(-1)
-            sol, _, _ = safe_solve_with_mask(B, selected)
+            sol, _, valid = safe_solve_with_mask(B, selected)
             sol = sol.squeeze(-1)
+            # A fully de-weighted correspondence zeroes two rows and leaves the retained system
+            # singular. The null vector is finite and still satisfies the surviving equations,
+            # so fall back to it rather than handing the caller a NaN homography.
+            null = (null / null.gather(-1, gauge[:, None])).to(sol.dtype)
+            sol = torch.where(valid[:, None], sol, null.gather(-1, retained))
             positions = torch.arange(9, device=device).expand(A.shape[0], -1)
             source = (positions - (positions > gauge[:, None]).to(positions.dtype)).clamp(0, 7)
             sol = torch.where(
