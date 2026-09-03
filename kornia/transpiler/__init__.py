@@ -15,11 +15,23 @@
 # limitations under the License.
 #
 
-"""Transpiler submodule for Kornia.
+"""Removed: ``kornia.to_tensorflow()``, ``kornia.to_jax()`` and ``kornia.to_numpy()``.
 
-This package provides utilities to transpile Kornia operations to other frameworks such as JAX, NumPy, and TensorFlow.
+Testing in September 2026 found the Ivy-powered transpiler these functions used unreliable
+across all three target frameworks, so it was removed. See
+``docs/source/get-started/multi-framework-support.rst`` for what was tested and why.
 """
 
-from .transpiler import to_jax, to_numpy, to_tensorflow
+from typing import Any
 
-__all__ = ["to_jax", "to_numpy", "to_tensorflow"]
+_REMOVED = ("to_jax", "to_numpy", "to_tensorflow")
+
+
+def __getattr__(name: str) -> Any:
+    if name in _REMOVED:
+        raise AttributeError(
+            f"kornia.transpiler.{name}() was removed: testing found the Ivy-powered multi-framework "
+            "transpiler unreliable, so it is no longer part of kornia. See "
+            "https://kornia.readthedocs.io/en/latest/get-started/multi-framework-support.html"
+        )
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

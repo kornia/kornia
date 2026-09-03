@@ -71,6 +71,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+* Removed `kornia.to_tensorflow()`, `kornia.to_jax()` and `kornia.to_numpy()`, along with the
+  multi-framework-support advertising in the README and the docs landing page. These functions used
+  to lazily transpile the library to TensorFlow, JAX or NumPy through the third-party `ivy` package
+  (an optional `dev`/`docs` dependency, now also removed). Testing in September 2026 found the
+  integration unreliable across all three targets — a checkout-path crash in Ivy's module walker, a
+  torch/triton segfault when `transformers` is also installed, an undocumented `flax` requirement for
+  JAX, and a `jaxlib`/`numpy` API-compatibility break — against Ivy's latest release (1.0.0.5, June
+  2025), with the upstream project showing little ongoing maintenance. `kornia.transpiler` now raises
+  a clear `AttributeError` pointing here instead of importing successfully and failing later. See
+  `get-started/multi-framework-support` for what was tested and why.
+
 * `extract_patches_from_pyramid` now samples ordinary-sized inputs once from a packed pyramid atlas instead of
   sampling every LAF at every pyramid level. A statically selected levelwise fallback keeps atlases larger than
   128 MiB from becoming a memory hazard. LAFs whose nominal level is coarser than the last usable pyramid level now

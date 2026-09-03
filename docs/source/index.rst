@@ -148,42 +148,6 @@
 
             :doc:`See details <get-started/onnx>` :octicon:`arrow-right`
 
-         .. tab-item:: :octicon:`share-android` Multi-framework
-
-            .. raw:: html
-
-               <div class="kornia-tab-visual">
-                 <svg class="kornia-illo" viewBox="0 0 640 220" role="img"
-                      aria-label="kornia at the centre, connected to PyTorch natively and to TensorFlow, JAX and NumPy through Ivy">
-                   <path d="M320,110 L150,58" class="illo-line"/>
-                   <path d="M320,110 L490,58" class="illo-line"/>
-                   <path d="M320,110 L150,162" class="illo-line"/>
-                   <path d="M320,110 L490,162" class="illo-line"/>
-                   <rect x="80" y="40" width="140" height="36" rx="18" class="illo-box"/>
-                   <text x="150" y="64" text-anchor="middle" class="illo-value">PyTorch</text>
-                   <text x="150" y="98" text-anchor="middle" class="illo-note">native</text>
-                   <rect x="420" y="40" width="140" height="36" rx="18" class="illo-box"/>
-                   <text x="490" y="64" text-anchor="middle" class="illo-value">TensorFlow</text>
-                   <text x="490" y="98" text-anchor="middle" class="illo-mono">to_tensorflow()</text>
-                   <rect x="80" y="144" width="140" height="36" rx="18" class="illo-box"/>
-                   <text x="150" y="168" text-anchor="middle" class="illo-value">JAX</text>
-                   <text x="150" y="202" text-anchor="middle" class="illo-mono">to_jax()</text>
-                   <rect x="420" y="144" width="140" height="36" rx="18" class="illo-box"/>
-                   <text x="490" y="168" text-anchor="middle" class="illo-value">NumPy</text>
-                   <text x="490" y="202" text-anchor="middle" class="illo-mono">to_numpy()</text>
-                   <circle cx="320" cy="110" r="46" class="illo-primary"/>
-                   <text x="320" y="116" text-anchor="middle" class="illo-value illo-on-primary">kornia</text>
-                 </svg>
-               </div>
-
-            .. code-block:: python
-
-               tf_kornia = kornia.to_tensorflow()  # also to_jax(), to_numpy()
-
-            **One API, four frameworks.** PyTorch natively; TensorFlow, JAX and NumPy through Ivy.
-
-            :doc:`See details <get-started/multi-framework-support>` :octicon:`arrow-right`
-
 .. raw:: html
 
    <p class="kornia-sponsor-notice">Considering sponsoring? —
