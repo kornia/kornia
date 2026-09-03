@@ -21,6 +21,8 @@ from typing import Optional
 
 import torch
 
+from kornia.core.utils import is_exporting
+
 from .linalg import transform_points
 
 __all__ = [
@@ -110,6 +112,10 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
 
     if len(boxes.shape) == 4:
         boxes = boxes.view(-1, 8, 3)
+
+    # The cube checks below read the data, which graph capture cannot do; skip them under export.
+    if is_exporting():
+        return True
 
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
     right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]

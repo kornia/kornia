@@ -26,6 +26,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.tensor_wrapper import _unwrap
+from kornia.core.utils import register_module_state
 from kornia.geometry.liegroup.so2 import So2
 from kornia.geometry.vector import Vector2
 
@@ -87,11 +89,11 @@ class Se2(nn.Module):
         KORNIA_CHECK_TYPE(rotation, So2)
         if not isinstance(translation, (Vector2, torch.Tensor)):
             raise TypeError(f"translation type is {type(translation)}")
-        self._translation: Vector2 | nn.Parameter
+        self._translation: Vector2 | torch.Tensor
         self._rotation: So2 = rotation
         if isinstance(translation, torch.Tensor):
             _check_se2_r_t_shape(rotation, translation)  # TODO remove
-            self._translation = nn.Parameter(translation)
+            register_module_state(self, "_translation", translation)
         else:
             self._translation = translation
 
@@ -146,7 +148,7 @@ class Se2(nn.Module):
         return self._rotation
 
     @property
-    def t(self) -> Vector2 | nn.Parameter:
+    def t(self) -> Vector2 | torch.Tensor:
         """Return the underlying translation vector of shape :math:`(B,2)`."""
         return self._translation
 
@@ -156,7 +158,7 @@ class Se2(nn.Module):
         return self._rotation
 
     @property
-    def translation(self) -> Vector2 | nn.Parameter:
+    def translation(self) -> Vector2 | torch.Tensor:
         """Return the underlying translation vector of shape :math:`(B,2)`."""
         return self._translation
 
@@ -174,8 +176,7 @@ class Se2(nn.Module):
             Parameter containing:
             tensor([0.5403+0.8415j], requires_grad=True)
             >>> s.t
-            Parameter containing:
-            tensor([[0.3818, 1.3012]], requires_grad=True)
+            tensor([[0.3818, 1.3012]], grad_fn=<StackBackward0>)
 
         """
         # check_v_shape
@@ -219,7 +220,7 @@ class Se2(nn.Module):
         row0 = torch.stack((a, half_theta), -1)
         row1 = torch.stack((-half_theta, a), -1)
         V_inv = torch.stack((row0, row1), -2)
-        upsilon = V_inv @ self.t.data[..., None]
+        upsilon = V_inv @ _unwrap(self.t)[..., None]
         return torch.stack((upsilon[..., 0, 0], upsilon[..., 1, 0], theta), -1)
 
     @staticmethod
@@ -313,7 +314,7 @@ class Se2(nn.Module):
                      [0., 0., 1.]]], grad_fn=<CopySlices>)
 
         """
-        rt = torch.cat((self.r.matrix(), self.t.data[..., None]), -1)
+        rt = torch.cat((self.r.matrix(), _unwrap(self.t)[..., None]), -1)
         rt_3x3 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_3x3[..., -1, -1] = 1.0
         return rt_3x3
@@ -348,11 +349,9 @@ class Se2(nn.Module):
             >>> s = Se2(So2.identity(1), torch.ones(1,2))
             >>> s_inv = s.inverse()
             >>> s_inv.r
-            Parameter containing:
-            tensor([1.+0.j], requires_grad=True)
+            tensor([1.+0.j], grad_fn=<MulBackward0>)
             >>> s_inv.t
-            Parameter containing:
-            tensor([[-1., -1.]], requires_grad=True)
+            tensor([[-1., -1.]], grad_fn=<StackBackward0>)
 
         """
         r_inv: So2 = self.r.inverse()
@@ -439,5 +438,6 @@ class Se2(nn.Module):
 
         """
         rt = self.matrix()
-        rt[..., 0:2, 2] = torch.stack((self.t.data[..., 1], -self.t.data[..., 0]), -1)
+        t = _unwrap(self.t)
+        rt[..., 0:2, 2] = torch.stack((t[..., 1], -t[..., 0]), -1)
         return rt

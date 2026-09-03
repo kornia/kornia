@@ -36,7 +36,8 @@ def _distance_transform_2d_impl(image: torch.Tensor, kernel_size: int, h: float)
     grid = create_meshgrid(kernel_size, kernel_size, False, device, dtype)
     grid = grid - k_half
 
-    dist = torch.hypot(grid[0, ..., 0], grid[0, ..., 1])
+    # `torch.hypot` has no ONNX lowering; the grid offsets are small integers, so the plain form is exact enough.
+    dist = torch.sqrt(grid[0, ..., 0] ** 2 + grid[0, ..., 1] ** 2)
     kernel = torch.exp(-dist / h).unsqueeze(0)
 
     out = torch.zeros_like(image)

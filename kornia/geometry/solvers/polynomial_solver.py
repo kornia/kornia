@@ -65,23 +65,20 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     # Calculate 1/(2*a) for efficient computation
     inv_2a = 0.5 / a
 
-    # Initialize solutions torch.Tensor
-    solutions = torch.zeros((coeffs.shape[0], 2), device=coeffs.device, dtype=coeffs.dtype)
+    # Branch-free selection so the function traces under graph capture. The square root is only taken
+    # where delta > 0: a zero discriminant yields the double root -b/(2a) with sqrt_delta = 0, and a
+    # negative one yields zeros; feeding those lanes a safe placeholder keeps their gradients finite.
+    zero = torch.zeros_like(delta)
+    mask_nonpositive = mask_negative | mask_zero
+    sqrt_delta = torch.where(
+        mask_nonpositive, zero, torch.sqrt(torch.where(mask_nonpositive, torch.ones_like(delta), delta))
+    )
 
-    # Handle cases with zero discriminant
-    if torch.any(mask_zero):
-        solutions[mask_zero, 0] = -b[mask_zero] * inv_2a[mask_zero]
-        solutions[mask_zero, 1] = solutions[mask_zero, 0]
-
-    # Negative discriminant cases are automatically handled since solutions is initialized with torch.zeros.
-
-    sqrt_delta = torch.sqrt(delta)
-
-    # Handle cases with non-negative discriminant
-    mask = torch.bitwise_and(~mask_negative, ~mask_zero)
-    if torch.any(mask):
-        solutions[mask, 0] = (-b[mask] + sqrt_delta[mask]) * inv_2a[mask]
-        solutions[mask, 1] = (-b[mask] - sqrt_delta[mask]) * inv_2a[mask]
+    root_plus = (-b + sqrt_delta) * inv_2a
+    root_minus = (-b - sqrt_delta) * inv_2a
+    solutions = torch.stack(
+        [torch.where(mask_negative, zero, root_plus), torch.where(mask_negative, zero, root_minus)], dim=-1
+    )
 
     return solutions
 

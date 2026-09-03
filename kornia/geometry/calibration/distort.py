@@ -20,6 +20,8 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
+from kornia.core.utils import is_exporting
+
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
 def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool = False) -> torch.Tensor:
@@ -154,8 +156,9 @@ def distort_points(
         + dist[..., 11:12] * r4
     )
 
-    # Compensate for tilt distortion
-    if torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
+    # Compensate for tilt distortion. The zero test reads the data, which graph capture cannot do, so the
+    # exported graph always applies the tilt (an identity when both tau coefficients are zero).
+    if is_exporting() or torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
         tilt = tilt_projection(dist[..., 12], dist[..., 13])
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
