@@ -735,9 +735,10 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
         ``[nan, nan, nan, nan]`` instead. ``float32`` and ``bfloat16`` behave
         the same up to their rounding (``0.10000000149011612`` and
         ``0.099609375`` for the first input). For ``float16``, a positive
-        ``eps`` is floored at the dtype's smallest normal value, so the default
-        guard remains active and a zero quaternion also returns ``zeros(4)``.
-        An explicit ``eps=0.0`` still disables that guard. The remaining
+        ``eps`` is floored at the dtype's smallest positive subnormal value, so
+        the default guard remains active and a zero quaternion also returns
+        ``zeros(4)`` without clamping non-zero representable magnitudes. An
+        explicit ``eps=0.0`` still disables that guard. The remaining
         sub-``eps`` behavior is tracked in
         `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
 
@@ -761,8 +762,8 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
 
-    # Exact value of torch.finfo(torch.float16).tiny, kept literal for TorchScript support.
-    safe_eps = max(eps, 6.103515625e-05) if quaternion.dtype == torch.float16 and eps > 0.0 else eps
+    # Exact smallest positive float16 subnormal, kept literal for TorchScript support.
+    safe_eps = max(eps, 5.960464477539063e-08) if quaternion.dtype == torch.float16 and eps > 0.0 else eps
     return F.normalize(quaternion, p=2.0, dim=-1, eps=safe_eps)
 
 
@@ -802,7 +803,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
           ``nan`` outright because ``0.5 * 1e6`` overflows the dtype.
           Once ``||q||`` drops below
           :func:`~kornia.geometry.conversions.normalize_quaternion`'s effective
-          floor (``eps = 1e-12``, raised to the smallest normal value in
+          floor (``eps = 1e-12``, raised to the smallest positive subnormal in
           ``float16``), the clamp takes over and rescaling changes the matrix
           outright: in ``float64``, ``q * 1e-13`` and ``q`` can give matrices
           that differ by order 1
@@ -2982,8 +2983,8 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           of** ``||q||``: rescaling it moves the resulting pose only by the working
           dtype's rounding as long as ``||q||`` stays **above**
           :func:`~kornia.geometry.conversions.normalize_quaternion`'s
-          effective floor (``eps = 1e-12``, raised to the smallest normal value
-          in ``float16``) and **below** the point at which the norm's
+          effective floor (``eps = 1e-12``, raised to the smallest positive
+          subnormal in ``float16``) and **below** the point at which the norm's
           sum-of-squares accumulator overflows. Over 64 random unit
           quaternions rescaled by factors from ``1e-3`` to ``1e5``, the output
           rotation and translation moved at the ``1e-06`` scale in ``float32``

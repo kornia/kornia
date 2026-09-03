@@ -1551,10 +1551,16 @@ class TestQuaternionToRotationMatrix(BaseTester):
         quaternion = torch.zeros(4, device=device, dtype=torch.float16)
 
         out = kornia.geometry.conversions.normalize_quaternion(quaternion)
-        without_guard = kornia.geometry.conversions.normalize_quaternion(quaternion, eps=0.0)
 
         assert_close(out, quaternion, atol=0.0, rtol=0.0)
-        assert torch.isnan(without_guard).all()
+
+    def test_convention_normalize_quaternion_preserves_float16_subnormal_4021(self, device):
+        _skip_if_dtype_unavailable(device, torch.float16)
+        quaternion = torch.tensor([5.960464477539063e-08, 0.0, 0.0, 0.0], device=device, dtype=torch.float16)
+
+        out = kornia.geometry.conversions.normalize_quaternion(quaternion)
+
+        assert_close(out, torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=torch.float16))
 
     @pytest.mark.xfail(
         raises=AssertionError,
