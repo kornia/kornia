@@ -2,6 +2,8 @@
 # macos-26-arm64, Python 3.13, PyTorch 2.9.1, MPS float32, no CPU fallback,
 # one pytest process for the full suite (tests marked device_agnostic are deselected on an mps-only run).
 # Remove an entry when it becomes a strict XPASS; fix or explicitly add any new failure. Tracked in #4159.
+# test_zero_weight_minimal_lu was added after recording and reaches the same unsupported
+# aten::linalg_qr.out as nearby pins.
 # Format: <exact exception type>\t<pytest node ID>
 AssertionError	tests/augmentation/_3d/test_random_affine_3d.py::TestRandomAffine3D::test_batch_random_affine_3d[mps-float32]
 NotImplementedError	tests/augmentation/test_backward_3d.py::TestRandomMotionBlur3DBackward::test_param[mps-float32-False-bilinear-circular-direction0-angle1]
@@ -148,6 +150,7 @@ NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLT::te
 NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_shape_noweights[mps-float32-2-5]
 NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_shape_noweights[mps-float32-3-6]
 NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_smoke[mps-float32]
+NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLT::test_zero_weight_minimal_lu[mps-float32]
 NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLTIter::test_clean_points[mps-float32-1]
 NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLTIter::test_clean_points[mps-float32-2]
 NotImplementedError	tests/geometry/test_homography.py::TestFindHomographyDLTIter::test_shape[mps-float32-1-4]
