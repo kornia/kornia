@@ -140,8 +140,9 @@ def parse_manifest(
     environment: ManifestEnvironment,
     *,
     source: Path | None = None,
+    enforce_compatibility: bool = True,
 ) -> dict[str, ManifestEntry]:
-    """Parse and validate one manifest, enforcing compatibility but not importing exception types."""
+    """Parse one manifest without importing exceptions, optionally warning on environment drift."""
     label = str(source) if source is not None else "manifest"
     header: dict[str, str] = {}
     entries: dict[str, ManifestEntry] = {}
@@ -166,20 +167,30 @@ def parse_manifest(
             raise ValueError(f"{label}:{line_number}: duplicate node ID: {nodeid}")
         entries[nodeid] = ManifestEntry(cast(Literal["setup", "call"], phase), exception, nodeid)
 
-    required = {
+    identity = {
         "known-failure-schema": _SCHEMA_VERSION,
         "profile": profile.name,
+        "seed-scheme": _SEED_SCHEME,
+    }
+    for key, expected in identity.items():
+        observed = header.get(key)
+        if observed != expected:
+            raise ValueError(f"{label}: {key} mismatch: expected {expected!r}, found {observed!r}")
+
+    for key, expected in {
         "python": environment.python,
         "pytorch": environment.pytorch,
         "os": environment.os,
         "arch": environment.arch,
-        "seed-scheme": _SEED_SCHEME,
-    }
-    for key, expected in required.items():
+    }.items():
         observed = header.get(key)
-        if observed != expected:
-            display = "Python" if key == "python" else key
-            raise ValueError(f"{label}: {display} mismatch: expected {expected!r}, found {observed!r}")
+        if observed == expected:
+            continue
+        display = "Python" if key == "python" else key
+        message = f"{label}: {display} mismatch: expected {expected!r}, found {observed!r}"
+        if enforce_compatibility:
+            raise ValueError(message)
+        warnings.warn(f"{display} compatibility differs; {message}", stacklevel=2)
 
     for key, expected in {
         "pytest": environment.pytest,
@@ -437,6 +448,7 @@ class KnownFailureTracker:
             manifest_path.read_text(encoding="utf-8"),
             current_environment(),
             source=manifest_path,
+            enforce_compatibility=self.mode == "complete",
         )
         if self.mode == "focus" and self.selectors:
             entries = {

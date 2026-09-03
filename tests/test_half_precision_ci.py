@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import random
 import warnings
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -110,6 +111,22 @@ class TestManifestCodec:
             assert parse_manifest(profile, text, _environment(pytest="9.0.3")) == {}
 
         assert any("pytest provenance differs" in str(item.message) for item in caught)
+
+    def test_focus_warns_but_complete_rejects_compatibility_difference(self, tmp_path: Path) -> None:
+        from testing.half_precision_ci import KnownFailureTracker
+
+        profile = get_profile("cpu-float16")
+        environment = current_environment()
+        path = tmp_path / "cpu_float16.txt"
+        path.write_text(
+            serialize_manifest(profile, [], replace(environment, python="0.0"), "pytest tests/"),
+            encoding="utf-8",
+        )
+
+        with pytest.warns(UserWarning, match="Python compatibility differs"):
+            KnownFailureTracker(profile, path, mode="focus")
+        with pytest.raises(ValueError, match="Python mismatch"):
+            KnownFailureTracker(profile, path, mode="complete")
 
 
 def _write_profile_manifest(directory: Path, phase: str, exception: str, nodeid: str) -> Path:
