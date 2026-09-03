@@ -968,18 +968,22 @@ class VideoBoxes(Boxes):
         out.temporal_channel_size = temporal_channel_size
         return out
 
-    def to_tensor(self, mode: Optional[str] = None) -> torch.Tensor | list[torch.Tensor]:  # type: ignore[override]
+    def to_tensor(
+        self, mode: Optional[str] = None, as_padded_sequence: bool = False
+    ) -> torch.Tensor | list[torch.Tensor]:  # type: ignore[override]
         r"""Cast :class:`VideoBoxes` to a tensor with the temporal axis restored.
 
         Args:
             mode: Output box format forwarded to :meth:`Boxes.to_tensor`. When
                 ``None``, uses the stored mode (``vertices_plus`` by default).
+            as_padded_sequence: Forwarded to :meth:`Boxes.to_tensor`. Inherited
+                helpers such as :meth:`get_boxes_shape` pass ``True``.
 
         Returns:
             Tensor shaped :math:`(B, T, \ldots)` where :math:`T` is
             :attr:`temporal_channel_size`.
         """
-        out = super().to_tensor(mode, as_padded_sequence=False)
+        out = super().to_tensor(mode, as_padded_sequence=as_padded_sequence)
         if isinstance(out, torch.Tensor):
             return out.view(-1, self.temporal_channel_size, *out.shape[1:])
         # If returns a list of boxes.

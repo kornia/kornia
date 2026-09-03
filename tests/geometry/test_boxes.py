@@ -1173,6 +1173,16 @@ class TestVideoBoxes(BaseTester):
         cloned.data[0, 0, 0, 0] = -1
         assert not torch.equal(cloned.data, video_boxes.data)
 
+    def test_get_boxes_shape_accepts_as_padded_sequence(self, device, dtype):
+        # #4176: inherited get_boxes_shape passes as_padded_sequence=True to to_tensor.
+        boxes = self._sample_video_boxes(device, dtype, batch=1, time=1, n_boxes=1)
+        video_boxes = VideoBoxes.from_tensor(boxes)
+        heights, widths = video_boxes.get_boxes_shape()
+        assert heights.shape == (1, 1, 1)
+        assert widths.shape == (1, 1, 1)
+        self.assert_close(heights, torch.tensor([[[3.0]]], device=device, dtype=dtype))
+        self.assert_close(widths, torch.tensor([[[3.0]]], device=device, dtype=dtype))
+
     def test_public_api_surface(self):
         # Pin #4016: VideoBoxes is exported and the overrides are documented.
         assert "VideoBoxes" in boxes_module.__all__
