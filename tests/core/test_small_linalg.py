@@ -44,6 +44,24 @@ from testing.base import BaseTester
 
 ADJUGATE = {2: _adjugate_2x2, 3: _adjugate_3x3, 4: _adjugate_4x4}
 
+# Op-type substrings that mean a linalg decomposition reached the graph. The point of these
+# kernels is that an exported graph is basic arithmetic and nothing else, so this is what a
+# regression would look like.
+#
+# Note what does the real work in the ONNX tests below: a MISSING lowering raises rather than
+# emitting a node -- measured on torch 2.9.1, ``torch.linalg.inv`` gives
+# ``UnsupportedOperatorError`` from the legacy exporter and ``ConversionError`` from the dynamo
+# one -- so the export call succeeding is itself the gate. This check covers the other case: a
+# future decomposition that exports *successfully* through something heavier than arithmetic.
+# Matched as a substring rather than a prefix, because the dynamo exporter names a fallback node
+# ``aten_linalg_inv``, which a ``startswith("linalg")`` test would miss.
+_LINALG_OP_MARKERS = ("linalg", "det", "inverse", "matmul", "gemm", "lu", "svd", "qr", "einsum")
+
+
+def _assert_basic_arithmetic_only(ops):
+    offenders = sorted(op for op in ops if any(m in op.lower() for m in _LINALG_OP_MARKERS))
+    assert not offenders, f"linalg-shaped ops in the exported graph: {offenders} (full set: {sorted(ops)})"
+
 
 def _require_exporter(use_dynamo_exporter: bool) -> None:
     """Skip unless this build can actually run the requested ONNX exporter.
@@ -65,10 +83,18 @@ def _well_conditioned(n, device, dtype, batch=()):
 
     Built without touching the global RNG: a seeded ``torch.rand`` would still mutate it, and
     a fresh draw per run turns a tolerance assertion into a coin flip.
+
+    Each batch entry gets a distinct scale. A bare ``expand`` would make every slice identical,
+    and then a kernel that broadcast element 0 across the batch -- an indexing slip in the
+    trailing-dim arithmetic -- would pass the batched cases. Scaling leaves the condition number
+    untouched, so the tolerance argument above still holds.
     """
     ramp = torch.arange(1, n * n + 1, device=device, dtype=dtype).reshape(n, n) * 0.1
-    x = torch.eye(n, device=device, dtype=dtype) + ramp
-    return x.expand(*batch, n, n).clone()
+    x = (torch.eye(n, device=device, dtype=dtype) + ramp).expand(*batch, n, n).clone()
+    if batch:
+        idx = torch.arange(x.numel() // (n * n), device=device, dtype=dtype).reshape(*batch, 1, 1)
+        x = x * (1 + idx * 0.05)
+    return x
 
 
 class TestAdjugateKernels(BaseTester):
@@ -136,7 +162,10 @@ class TestAdjugateKernels(BaseTester):
     def test_scripts(self, device, dtype, n):
         x = _well_conditioned(n, device, dtype, (2,))
         scripted = torch.jit.script(ADJUGATE[n])
-        self.assert_close(scripted(x)[0], ADJUGATE[n](x)[0])
+        expected_adj, expected_det = ADJUGATE[n](x)
+        actual_adj, actual_det = scripted(x)
+        self.assert_close(actual_adj, expected_adj)
+        self.assert_close(actual_det, expected_det)
 
     @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     @pytest.mark.parametrize("use_dynamo_exporter", [False, True], ids=["torchscript", "torchexport"])
@@ -150,7 +179,7 @@ class TestAdjugateKernels(BaseTester):
         buffer = io.BytesIO()
         torch.onnx.export(_AdjugateModule(n), (x,), buffer, opset_version=18, dynamo=use_dynamo_exporter)
         ops = {node.op_type for node in onnx.load_from_string(buffer.getvalue()).graph.node}
-        assert not any(name.lower().startswith("linalg") for name in ops), ops
+        _assert_basic_arithmetic_only(ops)
 
 
 class _AdjugateModule(torch.nn.Module):
@@ -217,7 +246,7 @@ class TestInverse3x3Kernels(BaseTester):
         buffer = io.BytesIO()
         torch.onnx.export(_ScalarInverseModule(), (x,), buffer, opset_version=18, dynamo=use_dynamo_exporter)
         ops = {node.op_type for node in onnx.load_from_string(buffer.getvalue()).graph.node}
-        assert not any(name.lower().startswith("linalg") for name in ops), ops
+        _assert_basic_arithmetic_only(ops)
 
     @pytest.mark.filterwarnings("ignore::DeprecationWarning")
     @pytest.mark.parametrize("use_dynamo_exporter", [False, True], ids=["torchscript", "torchexport"])
@@ -240,7 +269,7 @@ class TestInverse3x3Kernels(BaseTester):
         except Exception as err:
             pytest.skip(f"torch.linalg.cross does not lower on torch {torch.__version__}: {err}")
         ops = {node.op_type for node in onnx.load_from_string(buffer.getvalue()).graph.node}
-        assert not any(name.lower().startswith("linalg") for name in ops), ops
+        _assert_basic_arithmetic_only(ops)
 
 
 class _ScalarInverseModule(torch.nn.Module):

@@ -21,8 +21,9 @@ Private. These are **kernels**, not an API: every one of them is basic arithmeti
 fixed-size matrix, with no LAPACK, cuSOLVER or backend ``linalg`` call. That is what makes
 them usable where ``torch.linalg`` is not -- neither ONNX exporter lowers
 ``aten::linalg_inv``, the Jetson wheel fails to ``dlopen`` its LAPACK backend, MPS has no
-kernel for several decompositions, and none of the ``linalg`` family has a half-precision
-CPU kernel.
+kernel for several decompositions, and the ``linalg`` family has no half-precision kernel on
+any backend -- on CUDA ``linalg.inv`` gives ``Low precision dtypes not supported. Got Half``
+and ``linalg.det`` gives ``"lu_factor_cusolver" not implemented for 'Half'``.
 
 The contract is deliberately minimal, because the callers own the policy:
 
