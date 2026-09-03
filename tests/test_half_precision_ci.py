@@ -25,19 +25,14 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 import torch
-from torch.autograd.gradcheck import GradcheckError
 
 import conftest as project_conftest
-from kornia.core.exceptions import ShapeError
 
 from testing.half_precision_ci import (
-    ISSUE_URL,
     ManifestEntry,
     ManifestEnvironment,
     current_environment,
     get_profile,
-    load_known_failures,
-    mark_known_failures,
     parse_manifest,
     seed_test_rng,
     serialize_manifest,
@@ -115,10 +110,6 @@ class TestManifestCodec:
             assert parse_manifest(profile, text, _environment(pytest="9.0.3")) == {}
 
         assert any("pytest provenance differs" in str(item.message) for item in caught)
-
-
-def _write_manifest(directory: Path, dtype: str, contents: str) -> None:
-    (directory / f"cpu_{dtype}.txt").write_text(contents)
 
 
 def _write_profile_manifest(directory: Path, phase: str, exception: str, nodeid: str) -> Path:
@@ -426,312 +417,6 @@ def test_record_destination_rejects_other_git_tracked_files() -> None:
         validate_record_destination(root / "TESTING.md", root)
 
 
-class TestLoadKnownFailures:
-    def test_loads_nodeids_and_exception_types(self, tmp_path: Path) -> None:
-        _write_manifest(
-            tmp_path,
-            "float16",
-            "# tracked in kornia#4153\n"
-            "AssertionError\ttests/a.py::test_a[cpu-float16]\n"
-            "RuntimeError\ttests/b.py::TestB::test_b[cpu-float16]\n",
-        )
-
-        failures = load_known_failures("float16", tmp_path)
-
-        assert failures == {
-            "tests/a.py::test_a[cpu-float16]": AssertionError,
-            "tests/b.py::TestB::test_b[cpu-float16]": RuntimeError,
-        }
-
-    def test_rejects_duplicate_nodeids(self, tmp_path: Path) -> None:
-        _write_manifest(
-            tmp_path,
-            "float16",
-            "AssertionError\ttests/a.py::test_a[cpu-float16]\nRuntimeError\ttests/a.py::test_a[cpu-float16]\n",
-        )
-
-        with pytest.raises(ValueError, match="duplicate node ID"):
-            load_known_failures("float16", tmp_path)
-
-    def test_rejects_unknown_exception_types(self, tmp_path: Path) -> None:
-        _write_manifest(tmp_path, "float16", "UnknownError\ttests/a.py::test_a[cpu-float16]\n")
-
-        with pytest.raises(ValueError, match="unknown exception type"):
-            load_known_failures("float16", tmp_path)
-
-    def test_loads_any_builtin_exception_type(self, tmp_path: Path) -> None:
-        _write_manifest(tmp_path, "float16", "IndexError\ttests/a.py::test_a[cpu-float16]\n")
-
-        failures = load_known_failures("float16", tmp_path)
-
-        assert failures == {"tests/a.py::test_a[cpu-float16]": IndexError}
-
-    def test_loads_gradcheck_error_recorded_by_the_recorder(self, tmp_path: Path) -> None:
-        nodeid = "tests/a.py::test_a[cpu-float16]"
-        _write_manifest(tmp_path, "float16", f"torch.autograd.gradcheck.GradcheckError\t{nodeid}\n")
-
-        failures = load_known_failures("float16", tmp_path)
-
-        assert failures == {nodeid: GradcheckError}
-
-    def test_loads_kornia_exception_recorded_by_the_recorder(self, tmp_path: Path) -> None:
-        nodeid = "tests/a.py::test_a[cpu-float16]"
-        _write_manifest(tmp_path, "float16", f"kornia.core.exceptions.ShapeError\t{nodeid}\n")
-
-        failures = load_known_failures("float16", tmp_path)
-
-        assert failures == {nodeid: ShapeError}
-
-    def test_loads_nodeid_without_dtype_parameter(self, tmp_path: Path) -> None:
-        nodeid = "tests/a.py::test_a"
-        _write_manifest(tmp_path, "float16", f"AssertionError\t{nodeid}\n")
-
-        failures = load_known_failures("float16", tmp_path)
-
-        assert failures == {nodeid: AssertionError}
-
-    def test_rejects_entries_for_the_wrong_dtype(self, tmp_path: Path) -> None:
-        _write_manifest(tmp_path, "float16", "AssertionError\ttests/a.py::test_a[cpu-bfloat16]\n")
-
-        with pytest.raises(ValueError, match="does not select float16"):
-            load_known_failures("float16", tmp_path)
-
-    def test_loads_dtype_only_nodeids_for_cpu_runs(self, tmp_path: Path) -> None:
-        nodeid = "tests/a.py::test_a[float16-case]"
-        _write_manifest(tmp_path, "float16", f"AssertionError\t{nodeid}\n")
-
-        failures = load_known_failures("float16", tmp_path)
-
-        assert failures == {nodeid: AssertionError}
-
-
-class _Item:
-    def __init__(self, nodeid: str) -> None:
-        self.nodeid = nodeid
-        self.markers: list[pytest.MarkDecorator] = []
-
-    def add_marker(self, marker: pytest.MarkDecorator) -> None:
-        self.markers.append(marker)
-
-
-class TestMarkKnownFailures:
-    def test_marks_exact_nodeid_strictly_with_expected_exception(self, tmp_path: Path) -> None:
-        nodeid = "tests/a.py::test_a[cpu-float16]"
-        _write_manifest(tmp_path, "float16", f"AssertionError\t{nodeid}\n")
-        item = _Item(nodeid)
-
-        tracker = mark_known_failures([item], ["float16"], tmp_path)
-
-        assert len(item.markers) == 1
-        assert item.markers[0].mark.kwargs == {
-            "raises": AssertionError,
-            "reason": tracker.reason,
-            "strict": True,
-        }
-        assert tracker.reason == f"Known Linux CPU half-precision failure tracked in {ISSUE_URL}"
-
-    def test_rejects_manifest_entries_that_were_not_collected(self, tmp_path: Path) -> None:
-        _write_manifest(
-            tmp_path,
-            "float16",
-            "AssertionError\ttests/missing.py::test_missing[cpu-float16]\n",
-        )
-
-        with pytest.raises(ValueError, match="1 known half-precision failure was not collected") as error:
-            mark_known_failures([], ["float16"], tmp_path)
-
-        assert str(tmp_path / "cpu_float16.txt") in str(error.value)
-        assert "remove or update" in str(error.value)
-
-    def test_scopes_manifest_to_an_explicit_node_selector(self, tmp_path: Path) -> None:
-        selected = "tests/a.py::test_a[cpu-float16]"
-        _write_manifest(
-            tmp_path,
-            "float16",
-            f"AssertionError\t{selected}\nAssertionError\ttests/a.py::test_b[cpu-float16]\n",
-        )
-        item = _Item(selected)
-
-        tracker = mark_known_failures([item], ["float16"], tmp_path, selectors=[selected])
-
-        assert tracker.pending == {selected}
-        assert len(item.markers) == 1
-
-    def test_selected_file_still_rejects_missing_entries(self, tmp_path: Path) -> None:
-        selected = "tests/a.py::test_a[cpu-float16]"
-        _write_manifest(
-            tmp_path,
-            "float16",
-            f"AssertionError\t{selected}\nAssertionError\ttests/a.py::test_renamed[cpu-float16]\n",
-        )
-
-        with pytest.raises(ValueError, match="1 known half-precision failure was not collected"):
-            mark_known_failures([_Item(selected)], ["float16"], tmp_path, selectors=["tests/a.py"])
-
-    def test_absolute_selector_is_normalized_against_rootpath(self, tmp_path: Path) -> None:
-        selected = "tests/a.py::test_a[cpu-float16]"
-        _write_manifest(tmp_path, "float16", f"AssertionError\t{selected}\n")
-        item = _Item(selected)
-
-        tracker = mark_known_failures(
-            [item], ["float16"], tmp_path, selectors=[str(tmp_path / "tests/a.py")], rootpath=tmp_path
-        )
-
-        assert tracker.pending == {selected}
-        assert len(item.markers) == 1
-
-
-def _run_manifest_case(
-    pytester: pytest.Pytester, test_body: str, extra_marker: str = "", manifest_exception: str = "AssertionError"
-) -> pytest.RunResult:
-    nodeid = "test_sample.py::test_known_failure[cpu-float16]"
-    _write_manifest(pytester.path, "float16", f"{manifest_exception}\t{nodeid}\n")
-    pytester.makeconftest(
-        """
-        from pathlib import Path
-
-        from testing.half_precision_ci import mark_known_failures
-
-
-        def pytest_collection_modifyitems(config, items):
-            tracker = mark_known_failures(items, ["float16"], Path(__file__).parent)
-            config.pluginmanager.register(tracker, "known-half-precision-failure-tracker")
-        """
-    )
-    pytester.makepyfile(
-        test_sample=f"""
-        import pytest
-
-
-        {extra_marker}
-        @pytest.mark.parametrize("unused", [None], ids=["cpu-float16"])
-        def test_known_failure(unused, request):
-            {test_body}
-        """
-    )
-    return pytester.runpytest("-q")
-
-
-def test_deselected_manifest_entries_do_not_fail_partial_runs(pytester: pytest.Pytester) -> None:
-    nodeid = "test_sample.py::test_known_failure[cpu-float16]"
-    _write_manifest(pytester.path, "float16", f"AssertionError\t{nodeid}\n")
-    pytester.makeconftest(
-        """
-        from pathlib import Path
-
-        from testing.half_precision_ci import mark_known_failures
-
-
-        def pytest_collection_modifyitems(config, items):
-            tracker = mark_known_failures(
-                items, ["float16"], Path(__file__).parent, selectors=config.args
-            )
-            config.pluginmanager.register(tracker, "known-half-precision-failure-tracker")
-        """
-    )
-    pytester.makepyfile(
-        test_sample="""
-        import pytest
-
-
-        @pytest.mark.parametrize("unused", [None], ids=["cpu-float16"])
-        def test_known_failure(unused):
-            raise AssertionError("known failure")
-
-
-        def test_other():
-            pass
-        """
-    )
-
-    result = pytester.runpytest("test_sample.py", "-k", "other", "-q")
-
-    result.assert_outcomes(passed=1, deselected=1)
-    assert result.ret == pytest.ExitCode.OK
-
-
-class TestKnownFailureOutcomes:
-    def test_accepts_manifest_specific_xfail(self, pytester: pytest.Pytester) -> None:
-        result = _run_manifest_case(pytester, "raise AssertionError('known failure')")
-
-        result.assert_outcomes(xfailed=1)
-        assert result.ret == pytest.ExitCode.OK
-
-    def test_accepts_manifest_specific_setup_xfail(self, pytester: pytest.Pytester) -> None:
-        result = _run_manifest_case(
-            pytester,
-            "pass",
-            "@pytest.fixture(autouse=True)\n"
-            "        def fail_setup():\n"
-            "            raise AssertionError('setup failure')",
-        )
-
-        result.assert_outcomes(xfailed=1)
-        assert result.ret == pytest.ExitCode.OK
-
-    @pytest.mark.parametrize(
-        ("test_body", "extra_marker"),
-        [
-            ("pytest.skip('disabled test')", ""),
-            (
-                "raise AssertionError('known failure')",
-                "@pytest.mark.skip(reason='disabled test')",
-            ),
-            (
-                "raise AssertionError('known failure')",
-                "@pytest.mark.xfail(reason='different xfail marker', strict=False)",
-            ),
-            ("raise ValueError('wrong failure type')", ""),
-            (
-                "raise ValueError('wrong failure type')",
-                f"@pytest.mark.xfail(reason='Known Linux CPU half-precision failure tracked in {ISSUE_URL}')",
-            ),
-            (
-                "request.addfinalizer(lambda: pytest.skip('disabled in teardown')); "
-                "raise AssertionError('known failure')",
-                "",
-            ),
-            (
-                "request.addfinalizer("
-                "lambda: (_ for _ in ()).throw(AssertionError('teardown failure'))"
-                "); raise AssertionError('known failure')",
-                "",
-            ),
-            (
-                "pytest.xfail(next(request.node.iter_markers('xfail')).kwargs['reason'])",
-                "",
-            ),
-            ("raise NotImplementedError('narrower runtime error')", ""),
-        ],
-        ids=[
-            "runtime-skip",
-            "static-skip",
-            "prior-xfail",
-            "wrong-exception",
-            "same-reason-prior-xfail",
-            "teardown-skip",
-            "teardown-expected-exception",
-            "dynamic-xfail-with-manifest-reason",
-            "exception-subclass",
-        ],
-    )
-    def test_rejects_manifest_entry_bypassed_by_other_outcome(
-        self, pytester: pytest.Pytester, test_body: str, extra_marker: str
-    ) -> None:
-        manifest_exception = "RuntimeError" if test_body.startswith("raise NotImplementedError") else "AssertionError"
-        result = _run_manifest_case(pytester, test_body, extra_marker, manifest_exception)
-
-        assert result.ret == pytest.ExitCode.TESTS_FAILED
-        output = result.stdout.str()
-        assert "ERROR: 1 known half-precision failure needs updates in" in output
-        assert "cpu_float16.txt" in output
-        assert "Ran with an unexpected outcome:" in output
-        assert "expected call" in output
-        assert "observed" in output
-        assert "remove or update:" in output
-        assert "test_sample.py::test_known_failure[cpu-float16]" in output
-
-
 def _run_exact_manifest_case(
     pytester: pytest.Pytester,
     *,
@@ -986,7 +671,14 @@ def test_record_mode_rejects_partial_run_options(
 
 @pytest.mark.parametrize("dtype", ["float16", "bfloat16"])
 def test_recorded_baseline_manifest(dtype: str) -> None:
-    failures = load_known_failures(dtype)
+    profile = get_profile(f"cpu-{dtype}")
+    entries = parse_manifest(
+        profile,
+        profile.manifest_path.read_text(encoding="utf-8"),
+        current_environment(),
+        source=profile.manifest_path,
+    )
 
-    assert failures
-    assert all(issubclass(exception, BaseException) for exception in failures.values())
+    assert entries
+    assert all(entry.phase in {"setup", "call"} for entry in entries.values())
+    assert all("." in entry.exception for entry in entries.values())

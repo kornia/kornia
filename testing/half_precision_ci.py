@@ -17,12 +17,9 @@
 
 from __future__ import annotations
 
-import builtins
 import hashlib
-import importlib
 import os
 import platform
-import re
 import shutil
 import subprocess
 import sys
@@ -36,26 +33,12 @@ from typing import Any, Literal, Mapping, Sequence, cast
 import numpy as np
 import pytest
 import torch
-from torch.autograd.gradcheck import GradcheckError
-
-from kornia.core.exceptions import BaseError
 
 from testing.half_precision_eager_rng import AuditedEagerRngCall, eager_rng_calls_for_node
 
 ISSUE_URL = "https://github.com/kornia/kornia/issues/4153"
 _MANIFEST_DIR = Path(__file__).with_name("half_precision_xfails")
 _XFAIL_REASON_PREFIX = f"Known Linux CPU half-precision failure tracked in {ISSUE_URL}"
-_ALLOWED_EXCEPTION_MODULE_PREFIXES = ("kornia.", "torch.")
-_EXCEPTION_TYPES: dict[str, type[BaseException]] = {
-    "AssertionError": AssertionError,
-    "KeyError": KeyError,
-    "NotImplementedError": NotImplementedError,
-    "RuntimeError": RuntimeError,
-    "TypeError": TypeError,
-    "ValueError": ValueError,
-    "kornia.core.exceptions.BaseError": BaseError,
-    "torch.autograd.gradcheck.GradcheckError": GradcheckError,
-}
 _SCHEMA_VERSION = "1"
 _SEED_SCHEME = "sha256-nodeid-v1"
 _ALLOWED_PHASES = {"setup", "call"}
@@ -216,36 +199,8 @@ def seed_test_rng(nodeid: str) -> int:
     return int.from_bytes(hashlib.sha256(f"v1\0{nodeid}".encode()).digest()[:4], "big")
 
 
-def _exception_name(exception_type: type[BaseException]) -> str:
-    if exception_type.__module__ == "builtins":
-        return exception_type.__name__
-    return f"{exception_type.__module__}.{exception_type.__qualname__}"
-
-
 def _canonical_exception_identity(exception_type: type[BaseException]) -> str:
     return f"{exception_type.__module__}.{exception_type.__qualname__}"
-
-
-def _resolve_exception_type(exception_name: str) -> type[BaseException] | None:
-    exception_type = _EXCEPTION_TYPES.get(exception_name, getattr(builtins, exception_name, None))
-    if isinstance(exception_type, type) and issubclass(exception_type, BaseException):
-        return cast(type[BaseException], exception_type)
-    if not exception_name.startswith(_ALLOWED_EXCEPTION_MODULE_PREFIXES):
-        return None
-
-    parts = exception_name.split(".")
-    for split_at in range(len(parts) - 1, 0, -1):
-        try:
-            value: Any = importlib.import_module(".".join(parts[:split_at]))
-        except ModuleNotFoundError:
-            continue
-        for attribute in parts[split_at:]:
-            value = getattr(value, attribute, None)
-            if value is None:
-                break
-        if isinstance(value, type) and issubclass(value, BaseException):
-            return cast(type[BaseException], value)
-    return None
 
 
 def validate_record_destination(output_path: Path, rootpath: Path) -> Path:
@@ -285,17 +240,9 @@ def validate_record_destination(output_path: Path, rootpath: Path) -> Path:
 
 
 def _previous_manifest_entries(profile: ManifestProfile) -> dict[str, ManifestEntry]:
-    """Load v1 entries, with a temporary v0 migration path for the first regeneration."""
+    """Load the checked-in v1 entries used to categorize a candidate delta."""
     text = profile.manifest_path.read_text(encoding="utf-8")
-    try:
-        return parse_manifest(profile, text, current_environment(), source=profile.manifest_path)
-    except ValueError:
-        if "# known-failure-schema:" in text:
-            raise
-    return {
-        nodeid: ManifestEntry("call", _canonical_exception_identity(exception_type), nodeid)
-        for nodeid, exception_type in load_known_failures(profile.dtype).items()
-    }
+    return parse_manifest(profile, text, current_environment(), source=profile.manifest_path)
 
 
 class FailureRecorder:
@@ -467,8 +414,8 @@ class KnownFailureTracker:
 
     def __init__(
         self,
-        profile_or_failures: ManifestProfile | dict[str, type[BaseException]],
-        manifest_path_or_paths: Path | Sequence[Path],
+        profile: ManifestProfile,
+        manifest_path: Path,
         *,
         mode: Literal["focus", "complete"] = "focus",
         selectors: Sequence[str] | None = None,
@@ -483,33 +430,21 @@ class KnownFailureTracker:
         self._invalid: set[str] = set()
         self._finished_with_unexpected_outcome: set[str] = set()
         self._observed: dict[str, list[str]] = {}
-        self._legacy_exception_types: dict[str, type[BaseException]] = {}
-
-        if isinstance(profile_or_failures, ManifestProfile):
-            self.profile = profile_or_failures
-            manifest_path = cast(Path, manifest_path_or_paths)
-            self.manifest_paths = (manifest_path,)
-            entries = parse_manifest(
-                self.profile,
-                manifest_path.read_text(encoding="utf-8"),
-                current_environment(),
-                source=manifest_path,
-            )
-            if self.mode == "focus" and self.selectors:
-                entries = {
-                    nodeid: entry
-                    for nodeid, entry in entries.items()
-                    if any(_matches_selector(nodeid, selector, self.rootpath) for selector in self.selectors)
-                }
-            self._expected_entries = entries
-        else:
-            self.profile = None
-            self._legacy_exception_types = profile_or_failures.copy()
-            self._expected_entries = {
-                nodeid: ManifestEntry("call", _canonical_exception_identity(exception_type), nodeid)
-                for nodeid, exception_type in profile_or_failures.items()
+        self.profile = profile
+        self.manifest_paths = (manifest_path,)
+        entries = parse_manifest(
+            profile,
+            manifest_path.read_text(encoding="utf-8"),
+            current_environment(),
+            source=manifest_path,
+        )
+        if self.mode == "focus" and self.selectors:
+            entries = {
+                nodeid: entry
+                for nodeid, entry in entries.items()
+                if any(_matches_selector(nodeid, selector, self.rootpath) for selector in self.selectors)
             }
-            self.manifest_paths = tuple(cast(Sequence[Path], manifest_path_or_paths))
+        self._expected_entries = entries
         self.pending = set(self._expected_entries)
 
     @pytest.hookimpl(tryfirst=True)
@@ -521,8 +456,6 @@ class KnownFailureTracker:
     @pytest.hookimpl(tryfirst=True)
     def pytest_collection_modifyitems(self, items: Sequence[Any]) -> None:
         """Apply the manifest marker after collection without inferring configuration from node IDs."""
-        if self.profile is None:
-            return
         for item in items:
             if item.nodeid in self._expected_entries:
                 item.add_marker(pytest.mark.xfail(reason=self.reason, strict=True))
@@ -544,9 +477,8 @@ class KnownFailureTracker:
             else:
                 identity = _canonical_exception_identity(exception_type)
                 observed = f"{report.when} {identity}"
-                legacy_match = self.profile is None and exception_type is self._legacy_exception_types[report.nodeid]
                 exact_match = report.when == expected.phase and identity == expected.exception
-                if legacy_match or exact_match:
+                if exact_match:
                     self._matched.add(report.nodeid)
                     return
             self._observed.setdefault(report.nodeid, []).append(observed)
@@ -610,32 +542,6 @@ class KnownFailureTracker:
                 terminalreporter.write_line(nodeid)
 
 
-def load_known_failures(dtype: str, manifest_dir: Path | None = None) -> dict[str, type[BaseException]]:
-    """Load exact test node IDs and their expected exception types for a CPU half dtype."""
-    if dtype not in {"float16", "bfloat16"}:
-        raise ValueError(f"unsupported half-precision dtype: {dtype}")
-
-    path = (manifest_dir or _MANIFEST_DIR) / f"cpu_{dtype}.txt"
-    failures: dict[str, type[BaseException]] = {}
-    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line or line.startswith("#"):
-            continue
-        try:
-            exception_name, nodeid = line.split("\t", maxsplit=1)
-        except ValueError as error:
-            raise ValueError(f"{path}:{line_number}: expected '<exception>\\t<node ID>'") from error
-        exception_type = _resolve_exception_type(exception_name)
-        if exception_type is None:
-            raise ValueError(f"{path}:{line_number}: unknown exception type: {exception_name}")
-        other_dtype = "bfloat16" if dtype == "float16" else "float16"
-        if re.search(rf"(?<![A-Za-z]){other_dtype}(?![A-Za-z0-9])", nodeid) is not None:
-            raise ValueError(f"{path}:{line_number}: node ID does not select {dtype}: {nodeid}")
-        if nodeid in failures:
-            raise ValueError(f"{path}:{line_number}: duplicate node ID: {nodeid}")
-        failures[nodeid] = cast(type[BaseException], exception_type)
-    return failures
-
-
 def _normalize_selector(selector: str, rootpath: Path | None = None) -> str:
     path, separator, node = selector.partition("::")
     selector_path = Path(path)
@@ -654,48 +560,3 @@ def _matches_selector(nodeid: str, selector: str, rootpath: Path | None = None) 
     if "::" in selector:
         return nodeid == selector or nodeid.startswith((f"{selector}[", f"{selector}::"))
     return node_path == selector or node_path.startswith(f"{selector}/")
-
-
-def mark_known_failures(
-    items: Sequence[Any],
-    dtypes: Sequence[str],
-    manifest_dir: Path | None = None,
-    *,
-    selectors: Sequence[str] | None = None,
-    rootpath: Path | None = None,
-) -> KnownFailureTracker:
-    """Strictly xfail the complete known-failure set for selected CPU half dtypes."""
-    failures: dict[str, type[BaseException]] = {}
-    manifest_paths: list[Path] = []
-    for dtype in dtypes:
-        dtype_failures = load_known_failures(dtype, manifest_dir)
-        manifest_paths.append((manifest_dir or _MANIFEST_DIR) / f"cpu_{dtype}.txt")
-        overlap = failures.keys() & dtype_failures.keys()
-        if overlap:
-            raise ValueError(f"duplicate node IDs across manifests: {sorted(overlap)!r}")
-        failures.update(dtype_failures)
-
-    if selectors:
-        failures = {
-            nodeid: exception_type
-            for nodeid, exception_type in failures.items()
-            if any(_matches_selector(nodeid, selector, rootpath) for selector in selectors)
-        }
-
-    collected = {item.nodeid for item in items}
-    missing = failures.keys() - collected
-    if missing:
-        preview = "\n".join(sorted(missing)[:10])
-        count = len(missing)
-        noun = "failure was" if count == 1 else "failures were"
-        manifests = ", ".join(str(path) for path in manifest_paths)
-        raise ValueError(
-            f"{count} known half-precision {noun} not collected from {manifests}; "
-            f"remove or update stale manifest lines:\n{preview}"
-        )
-
-    tracker = KnownFailureTracker(failures, manifest_paths)
-    for item in items:
-        if exception_type := failures.get(item.nodeid):
-            item.add_marker(pytest.mark.xfail(reason=tracker.reason, raises=exception_type, strict=True))
-    return tracker
