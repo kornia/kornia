@@ -26,12 +26,23 @@ from typing import Any
 
 _REMOVED = ("to_jax", "to_numpy", "to_tensorflow")
 
+_DOCS_URL = "https://kornia.readthedocs.io/en/latest/get-started/multi-framework-support.html"
+
+
+def _removed_message(qualified_name: str) -> str:
+    """Explain the removal of one entry point, named as the caller reached for it.
+
+    ``qualified_name`` is the full dotted path the user wrote -- ``kornia.to_jax`` from the
+    top level, ``kornia.transpiler.to_jax`` from this module -- so the error quotes back the
+    call that failed rather than a canonical spelling the user never used.
+    """
+    return (
+        f"{qualified_name}() was removed: testing found the Ivy-powered multi-framework "
+        f"transpiler unreliable, so it is no longer part of kornia. See {_DOCS_URL}"
+    )
+
 
 def __getattr__(name: str) -> Any:
     if name in _REMOVED:
-        raise AttributeError(
-            f"kornia.transpiler.{name}() was removed: testing found the Ivy-powered multi-framework "
-            "transpiler unreliable, so it is no longer part of kornia. See "
-            "https://kornia.readthedocs.io/en/latest/get-started/multi-framework-support.html"
-        )
+        raise AttributeError(_removed_message(f"kornia.transpiler.{name}"))
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

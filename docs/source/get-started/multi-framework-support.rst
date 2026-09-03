@@ -54,5 +54,6 @@ product line, not Ivy.
 
 If Ivy becomes reliable again, multi-framework support is worth revisiting — but as a fresh
 integration, not a restoration of ``kornia.to_tensorflow()``/``to_jax()``/``to_numpy()`` from this
-page. Their implementation is gone; ``kornia.transpiler`` now only raises a clear error pointing
-here if something still calls it.
+page. Their implementation is gone; ``kornia.to_tensorflow()``, ``kornia.to_jax()``,
+``kornia.to_numpy()`` and their ``kornia.transpiler`` counterparts now only raise a clear error
+pointing here if something still calls them.

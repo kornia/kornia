@@ -46,6 +46,12 @@ from . import (
     tracking,
 )
 
+# The Ivy-powered multi-framework entry points were removed, but the module stays bound so that
+# `kornia.transpiler` still resolves after a plain `import kornia` and explains the removal
+# instead of raising a bare AttributeError. See the `__getattr__` at the bottom of this file.
+from . import transpiler
+from .transpiler import _REMOVED as _REMOVED_TRANSPILER_NAMES, _removed_message
+
 # NOTE: we are going to expose to top level very few things
 from kornia.constants import pi
 
@@ -238,6 +244,18 @@ def print_image(*args: Any, **kwargs: Any) -> Any:
 def one_hot(*args: Any, **kwargs: Any) -> Any:
     """Deprecated: Use `kornia.losses.one_hot` instead (previously `kornia.utils.one_hot`)."""
     return _one_hot(*args, **kwargs)
+
+
+def __getattr__(name: str) -> Any:
+    """Explain the removed multi-framework entry points instead of a bare AttributeError.
+
+    ``kornia.to_tensorflow()``, ``kornia.to_jax()`` and ``kornia.to_numpy()`` were the documented
+    way to reach the Ivy transpiler, so that is where the removal has to be explained; the message
+    under `kornia.transpiler` is only reached by code that imported the submodule directly.
+    """
+    if name in _REMOVED_TRANSPILER_NAMES:
+        raise AttributeError(_removed_message(f"kornia.{name}"))
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # Version variable

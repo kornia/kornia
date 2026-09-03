@@ -78,8 +78,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   integration unreliable across all three targets — a checkout-path crash in Ivy's module walker, a
   torch/triton segfault when `transformers` is also installed, an undocumented `flax` requirement for
   JAX, and a `jaxlib`/`numpy` API-compatibility break — against Ivy's latest release (1.0.0.5, June
-  2025), with the upstream project showing little ongoing maintenance. `kornia.transpiler` now raises
-  a clear `AttributeError` pointing here instead of importing successfully and failing later. See
+  2025), with the upstream project showing little ongoing maintenance. Reaching for any of the three
+  functions, at the top level or under `kornia.transpiler`, now raises an `AttributeError` that says
+  what was removed and links the page below, rather than a bare "has no attribute". See
   `get-started/multi-framework-support` for what was tested and why. (#4196)
 
 * `extract_patches_from_pyramid` now samples ordinary-sized inputs once from a packed pyramid atlas instead of
