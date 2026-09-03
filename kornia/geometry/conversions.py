@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import math
 import warnings
 from typing import Optional
 
@@ -1286,28 +1287,6 @@ def euler_from_quaternion(
           rotation, to ``1.1e-16``
 
     .. warning::
-        At ``pitch = ±pi/2`` the returned triple usually does not represent the
-        input rotation, and no gimbal-lock branch exists to say so. ``roll`` and
-        ``yaw`` come from ``atan2`` of two quantities that cancel to nothing
-        there, so the triple that comes back is decided by rounding: it varies
-        between dtypes, between PyTorch versions, and under a one-ulp change of
-        the input pitch, and no specific triple is quoted here for that reason.
-        What is stable is that ``pitch`` lands within about ``sqrt(eps)`` of
-        ``±pi/2`` — the ``asin`` argument rounds to within an ulp of ``1``, and
-        ``asin(1 - d)`` is ``pi/2 - sqrt(2d)`` — and that the reconstructed
-        rotation is far from the input. Whether ``±pi/2`` is reached exactly
-        depends on dtype and build: at ``float64`` it is exact here, while the
-        ``float32`` round trip of ``(0.1, pi/2, 0.2)`` returns pitch
-        ``1.570451``, ``3.45e-4`` *below* ``float32``'s ``pi/2`` — an exact
-        ``pitch == pi/2`` check never fires there. Random ``(roll, yaw)``
-        at ``pitch = +pi/2`` fail this way, while ``|pitch| < pi/4`` round trips
-        to rounding. The rotation does survive on the diagonal
-        ``roll = yaw`` at ``+pi/2`` (and ``roll = -yaw`` at ``-pi/2``), where
-        random draws round trip to within a few parts in ``1e8``, though
-        ``roll`` and ``yaw`` are still not returned individually. Tracked in
-        `#3950 <https://github.com/kornia/kornia/issues/3950>`_.
-
-    .. warning::
         The input is **not** normalised, so a non-unit quaternion silently gives
         a wrong triple: for the ``q`` of ``(0.3, 0.7, 1.1)``, passing ``2 * q``
         returns ``[1.6560585860248003, 1.5707963267948966,
@@ -1343,6 +1322,31 @@ def euler_from_quaternion(
     siny_cosp = 2.0 * (w * z + x * y)
     cosy_cosp = 1.0 - 2.0 * (yy + z * z)
     yaw = siny_cosp.atan2(cosy_cosp)
+
+    # Gimbal lock: at pitch = ±pi/2 the cos(pitch) factor shared by the roll and
+    # yaw atan2 arguments collapses to ~0, so each becomes atan2(0, 0) and the
+    # returned triple no longer represents the rotation (#3950). Only one combined
+    # angle survives there -- roll - yaw at +pi/2 and roll + yaw at -pi/2 -- so pin
+    # roll to 0 and fold that degree of freedom into yaw, which reconstructs the
+    # input rotation. The threshold scales with sqrt(eps): once the asin argument
+    # has rounded to within a few ulps of 1, cos(pitch) is a small multiple of
+    # sqrt(eps) (asin(1 - d) = pi/2 - sqrt(2 d)), so a modest factor above sqrt(eps)
+    # clears that rounding band while staying far from any genuinely resolvable
+    # pitch. Measured sweep: factor 1.0 misses float32 gimbal (asin argument
+    # rounds below 1); 2.0 catches both dtypes with no regression at any sampled
+    # offset from pi/2; 8.0+ creates a band where resolvable pitches are snapped
+    # and the error is worse than main. 2.0 is the tightest margin that works.
+    cos_pitch = (1.0 - sinp * sinp).clamp(min=0.0).sqrt()
+    gimbal = cos_pitch < 2.0 * torch.finfo(w.dtype).eps ** 0.5
+    up = sinp > 0.0
+    # Snap pitch to exactly ±pi/2 there (asin returns pi/2 - O(sqrt(eps)) once its
+    # argument rounds below 1, which alone would leave the round trip off by ~1e-8),
+    # pin roll to 0 and put the resolved degree of freedom into yaw.
+    pitch_locked = torch.where(up, torch.full_like(pitch, math.pi / 2), torch.full_like(pitch, -math.pi / 2))
+    yaw_locked = torch.where(up, -2.0 * x.atan2(w), 2.0 * x.atan2(w))
+    pitch = torch.where(gimbal, pitch_locked, pitch)
+    roll = torch.where(gimbal, torch.zeros_like(roll), roll)
+    yaw = torch.where(gimbal, yaw_locked, yaw)
 
     return roll, pitch, yaw
 
