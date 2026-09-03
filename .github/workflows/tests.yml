@@ -118,7 +118,7 @@ jobs:
       - name: Install dependencies
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} install
 
-      - name: Install PyTorch matrix version
+      - name: Install the matrix torch and reconcile the environment
         shell: bash
         env:
           PYTORCH_VERSION: ${{ matrix.pytorch-version }}
@@ -139,20 +139,27 @@ jobs:
               ;;
           esac
 
-      # `uv sync` installed the lockfile's dependency set for the *locked* torch, and the step
-      # above swapped torch alone for a build from the CPU wheel index -- which declares no
-      # `triton` at all. The lockfile's triton survives as an orphan of a torch that is no longer
-      # installed, and torch guards its inductor triton path on import availability rather than on
-      # version, so it dispatches onto that orphan: torch 2.6 reaches `from triton.backends.compiler
-      # import AttrsDescriptor`, a name triton 3.8 removed, and 37 dynamo/export tests die at
-      # import (#4199). These legs are CPU-only and never need triton, so drop it and let torch take
-      # its non-triton path deliberately instead of tripping over the wrong one.
-      - name: Reconcile the environment with the installed torch
-        shell: bash
-        run: |
-          stale=$(pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync \
-            python .github/scripts/check_torch_env.py --list-undeclared-sidecars \
-            | tr -d '\r' | sed -n 's/^undeclared-sidecars: //p' | tail -n 1)
+          # `uv sync` installed the lockfile's dependency set for the *locked* torch, and the swap
+          # above replaced torch alone with a `+cpu` build that declares no `triton` at all, so the
+          # lockfile's triton survives as an orphan of a torch that is no longer installed and torch
+          # dispatches onto it by import availability rather than by version (#4199).
+          # `.github/scripts/check_torch_env.py` carries the full mechanism. These legs are CPU-only
+          # and never need triton, so dropping it lets torch take its non-triton path deliberately
+          # instead of tripping over the wrong one.
+          #
+          # This runs inside the swap's own step rather than a step of its own so it cannot be
+          # reordered ahead of it: against the *locked* torch -- which does declare triton -- the
+          # check finds nothing stale, and #4199 would survive a green run.
+          report=$(pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync \
+            python .github/scripts/check_torch_env.py --list-undeclared-sidecars | tr -d '\r')
+          # An empty capture would mean the parse broke, not that the venv is clean, so the
+          # result line has to be there before its content is believed.
+          if ! printf '%s\n' "$report" | grep -q '^undeclared-sidecars:'; then
+            echo "the sidecar check reported no result; refusing to assume the venv is clean" >&2
+            printf '%s\n' "$report" >&2
+            exit 1
+          fi
+          stale=$(printf '%s\n' "$report" | sed -n 's/^undeclared-sidecars:[[:space:]]*//p' | tail -n 1)
           if [[ -n "$stale" ]]; then
             echo "Removing packages the installed torch does not declare: $stale"
             pixi run -e ${{ steps.pixi-env.outputs.name }} uv run --no-sync uv pip uninstall $stale
@@ -176,6 +183,9 @@ jobs:
             python .github/scripts/check_torch_env.py \
             --channel "$TORCH_CHANNEL" --expected "$EXPECTED_PYTORCH_VERSION" \
             | tr -d '\r' | sed -n 's/^torch-version: //p' | tail -n 1)
+          # The check prints `torch-version:` only when the environment is coherent, so an
+          # empty capture is a real failure signal here and not merely a broken parse. It is
+          # what makes this gate blocking regardless of the shell's pipefail setting.
           if [[ -z "$resolved" ]]; then
             echo "the environment check did not report a torch version" >&2
             exit 1

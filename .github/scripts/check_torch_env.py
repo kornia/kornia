@@ -27,7 +27,9 @@ therefore survives the swap as an orphan belonging to a torch that is no longer
 installed, and torch dispatches onto it: ``_is_triton_available()`` tests whether
 ``import triton`` succeeds, not whether that triton matches. torch 2.6 then runs
 ``from triton.backends.compiler import AttrsDescriptor``, a name triton 3.8 removed, and
-37 dynamo/export tests die at import. See #4199.
+32 dynamo and export tests die at import. See #4199.
+
+This module is the single home of that explanation; the workflow comments point here.
 
 Two modes:
 
@@ -43,6 +45,8 @@ Two modes:
     later as a wall of unrelated-looking test failures.
 
 Machine-readable results go to stdout as ``key: value`` lines; diagnostics go to stderr.
+A ``torch-version:`` line is printed only by a *passing* check, so the workflow can treat
+its absence as failure rather than depending on the shell's pipefail setting.
 
 Usage::
 
@@ -64,7 +68,20 @@ from packaging.version import InvalidVersion, Version
 # Packages torch selects at runtime by import availability rather than by version, so an
 # orphan left over from a different torch is silently picked up instead of ignored. Both
 # names install the same ``triton`` import; ``pytorch-triton`` is the nightly channel's.
+#
+# Deliberately an allowlist rather than a general "installed but outside the installed
+# torch's closure" diff: most of the venv is legitimately outside that closure -- kornia's
+# own dependencies, the test tooling -- and installed metadata records no provenance, so a
+# diff cannot tell an orphan from a root. The swap's other survivors, the lockfile's
+# ``nvidia-*`` and ``cuda-*`` wheels, cost runner disk but are inert on these legs because
+# a ``+cpu`` torch never loads them. Add a name here when a new sidecar turns out to be
+# dispatched on availability.
 SIDECAR_PACKAGES = ("triton", "pytorch-triton")
+
+# The stdout contract the workflow greps. Renaming either of these without updating
+# ``tests.yml`` silently turns its steps into no-ops, so ``tests/scripts`` pins both.
+SIDECAR_PREFIX = "undeclared-sidecars:"
+VERSION_PREFIX = "torch-version:"
 
 
 def runtime_requirements(
@@ -91,14 +108,35 @@ def runtime_requirements(
     return kept
 
 
-def installed_versions() -> dict[str, str]:
-    """Map the canonical name of every installed distribution to its version."""
+def scan_installed() -> tuple[dict[str, str], dict[str, list[str]]]:
+    """Return every installed distribution's version, and the names that resolve ambiguously.
+
+    ``distributions()`` walks ``sys.path`` in order and the first match wins, which is what
+    ``importlib.metadata.version`` and a plain ``import`` resolve to, so first-wins is the
+    honest answer across path entries. Two ``.dist-info`` directories for one name *inside a
+    single* path entry have no such order -- that is a half-written venv, exactly what an
+    interrupted ``uv pip install --reinstall-package torch`` leaves behind -- so those are
+    reported rather than settled by whichever the filesystem happened to yield first.
+
+    Returns:
+        The canonical-name-to-version map, and the names seen with disagreeing versions.
+
+    """
     found: dict[str, str] = {}
+    seen: dict[str, set[str]] = {}
     for dist in distributions():
         name = dist.metadata["Name"]
-        if name:
-            found.setdefault(canonicalize_name(name), dist.version)
-    return found
+        if not name:
+            continue
+        canonical = canonicalize_name(name)
+        found.setdefault(canonical, dist.version)
+        seen.setdefault(canonical, set()).add(dist.version)
+    return found, {name: sorted(versions) for name, versions in seen.items() if len(versions) > 1}
+
+
+def installed_versions() -> dict[str, str]:
+    """Map the canonical name of every installed distribution to its version."""
+    return scan_installed()[0]
 
 
 def undeclared_sidecars(
@@ -137,6 +175,7 @@ def check_environment(
     channel: str,
     expected: str,
     environment: Mapping[str, str] | None = None,
+    duplicates: Mapping[str, Sequence[str]] | None = None,
 ) -> list[str]:
     """Return every way the environment disagrees with the torch that is installed.
 
@@ -147,6 +186,7 @@ def check_environment(
         channel: ``pinned`` or ``stable``.
         expected: The matrix version -- exact under ``pinned``, a floor under ``stable``.
         environment: Marker variables overriding the running interpreter's, for tests.
+        duplicates: Names visible with disagreeing versions, as ``scan_installed``.
 
     Returns:
         Human-readable problem descriptions; empty when the environment is coherent.
@@ -169,6 +209,12 @@ def check_environment(
         problems.append(
             f"{name} {installed[name]} is installed, but torch {torch_version} declares no dependency on it: "
             "torch dispatches onto an importable sidecar without checking its version (#4199)"
+        )
+
+    for name, versions in sorted((duplicates or {}).items()):
+        problems.append(
+            f"{name} is installed more than once, as {' and '.join(versions)}: the venv is half-written, "
+            "and which one importlib.metadata reports is filesystem order rather than a decision"
         )
     return problems
 
@@ -200,28 +246,38 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    # Validated before any environment work: enumerating every distribution and importing
+    # torch takes seconds and tells a caller who forgot a flag nothing they need.
+    if not args.list_undeclared_sidecars and (args.channel is None or args.expected is None):
+        parser.error("--channel and --expected are required unless --list-undeclared-sidecars is given")
+
     try:
-        installed = installed_versions()
+        installed, duplicates = scan_installed()
         if args.list_undeclared_sidecars:
             stale = undeclared_sidecars(distribution("torch").requires, installed)
-            print("undeclared-sidecars: " + " ".join(stale))
+            print(f"{SIDECAR_PREFIX} {' '.join(stale)}".rstrip())
             return 0
         torch_version, requires = _torch_distribution()
     except PackageNotFoundError:
         print("torch is not installed in this environment", file=sys.stderr)
         return 1
 
-    if args.channel is None or args.expected is None:
-        parser.error("--channel and --expected are required unless --list-undeclared-sidecars is given")
+    problems = check_environment(torch_version, requires, installed, args.channel, args.expected, duplicates=duplicates)
+    if problems:
+        # The requirement table is diagnostic, so it is printed where it diagnoses something
+        # rather than as ~15 lines of noise on every healthy leg.
+        for requirement in runtime_requirements(requires):
+            name = canonicalize_name(requirement.name)
+            print(f"  {name} {installed.get(name, '(missing)')}", file=sys.stderr)
+        for problem in problems:
+            print(f"error: {problem}", file=sys.stderr)
+        return 1
 
-    problems = check_environment(torch_version, requires, installed, args.channel, args.expected)
-    print(f"torch-version: {torch_version.partition('+')[0]}")
-    for requirement in runtime_requirements(requires):
-        name = canonicalize_name(requirement.name)
-        print(f"  {name} {installed.get(name, '(missing)')}", file=sys.stderr)
-    for problem in problems:
-        print(f"error: {problem}", file=sys.stderr)
-    return 1 if problems else 0
+    # Only a passing check reports a version. Printing it on the failure path too would hand
+    # the workflow a valid-looking answer from a mis-provisioned venv and leave its
+    # "did the check report a version?" guard unable to ever fire.
+    print(f"{VERSION_PREFIX} {torch_version.partition('+')[0]}")
+    return 0
 
 
 if __name__ == "__main__":

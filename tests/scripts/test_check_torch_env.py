@@ -19,14 +19,28 @@ from pathlib import Path
 
 import pytest
 
+# `.github/scripts/` is neither a package nor on the path. This deliberately stays a per-module
+# insert rather than moving to a `tests/scripts/conftest.py`: `tests/` has no `__init__.py`, so a
+# second bare `conftest` module shadows the repository-root one, and `tests/test_half_precision_ci.py`
+# locates the repository through `Path(conftest.__file__).parent`. Measured: adding that conftest
+# makes `import conftest` resolve here and sends five of its workflow assertions looking for
+# `tests/scripts/.github/workflows/`.
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / ".github" / "scripts"))
+
+import check_torch_env
 from check_torch_env import (
+    SIDECAR_PREFIX,
+    VERSION_PREFIX,
     check_environment,
     check_torch_version,
     installed_versions,
+    main,
     runtime_requirements,
+    scan_installed,
     undeclared_sidecars,
 )
+
+INSTALL_STEP = "Install the matrix torch and reconcile the environment"
 
 # Verbatim Requires-Dist of torch-2.6.0+cpu-cp311-cp311-linux_x86_64.whl, the leg that #4199
 # broke. The CPU wheel index declares no triton; the PyPI wheel of the same version does.
@@ -144,6 +158,22 @@ class TestCheckEnvironment:
         assert len(problems) == 2
         assert "is not the pinned 2.6.0" in problems[0]
 
+    def test_flags_a_distribution_visible_twice(self):
+        # What an interrupted `uv pip install --reinstall-package torch` leaves behind: two
+        # dist-info directories in one path entry, where first-wins is filesystem order.
+        problems = check_environment(
+            "2.6.0+cpu",
+            CPU_WHEEL_REQUIRES,
+            HEALTHY,
+            "pinned",
+            "2.6.0",
+            LINUX_PY311,
+            duplicates={"sympy": ["1.13.1", "1.14.0"]},
+        )
+
+        assert len(problems) == 1
+        assert "sympy is installed more than once" in problems[0]
+
 
 def test_installed_versions_reports_this_environment():
     installed = installed_versions()
@@ -151,6 +181,75 @@ def test_installed_versions_reports_this_environment():
     # Canonical names, so a `typing_extensions`/`typing-extensions` spelling cannot hide a dist.
     assert installed["torch"]
     assert "typing-extensions" in installed
+
+
+def test_scan_installed_finds_no_duplicates_in_a_coherent_venv():
+    installed, duplicates = scan_installed()
+
+    assert installed["torch"]
+    assert duplicates == {}
+
+
+class TestMain:
+    """`main` is the surface the workflow greps and gates on; the helpers above are not.
+
+    Both contracts are load-bearing and neither is visible from the functions themselves:
+    the stdout prefixes `tests.yml` parses, and the rule that only a *passing* check prints
+    a version. Break either and the workflow steps degrade to no-ops that stay green.
+    """
+
+    def test_listing_mode_prints_the_prefix_the_workflow_greps(self, capsys):
+        assert main(["--list-undeclared-sidecars"]) == 0
+
+        printed = capsys.readouterr().out.splitlines()
+        assert [line for line in printed if line.startswith(SIDECAR_PREFIX)]
+
+    def test_a_passing_check_reports_the_version(self, monkeypatch, capsys):
+        monkeypatch.setattr(check_torch_env, "check_environment", lambda *args, **kwargs: [])
+
+        assert main(["--channel", "stable", "--expected", "0.0.1"]) == 0
+
+        printed = capsys.readouterr().out
+        assert printed.startswith(f"{VERSION_PREFIX} ")
+
+    def test_a_failing_check_reports_no_version(self, monkeypatch, capsys):
+        # The regression that made the workflow's own `-z "$resolved"` guard dead code: with
+        # the version printed unconditionally, a mis-provisioned venv still handed the step a
+        # valid-looking answer, and only the shell's pipefail default failed the leg.
+        monkeypatch.setattr(check_torch_env, "check_environment", lambda *args, **kwargs: ["boom"])
+
+        assert main(["--channel", "pinned", "--expected", "2.6.0"]) == 1
+
+        captured = capsys.readouterr()
+        assert VERSION_PREFIX not in captured.out
+        assert "error: boom" in captured.err
+
+    def test_a_real_version_mismatch_fails_without_a_version_line(self, capsys):
+        # The same contract without a monkeypatch: no installed torch is ever 0.0.1.
+        assert main(["--channel", "pinned", "--expected", "0.0.1"]) == 1
+
+        assert VERSION_PREFIX not in capsys.readouterr().out
+
+    def test_a_healthy_run_keeps_the_requirement_table_off_the_log(self, monkeypatch, capsys):
+        monkeypatch.setattr(check_torch_env, "check_environment", lambda *args, **kwargs: [])
+
+        main(["--channel", "stable", "--expected", "0.0.1"])
+
+        # The table diagnoses nothing when there is nothing wrong, and every leg pays for it.
+        # Matched by its indent rather than by an empty stderr, so an unrelated import warning
+        # cannot make this pass or fail for the wrong reason.
+        assert [line for line in capsys.readouterr().err.splitlines() if line.startswith("  ")] == []
+
+    def test_missing_arguments_error_before_the_environment_is_scanned(self, monkeypatch):
+        def fail(*args, **kwargs):
+            raise AssertionError("the environment was scanned before the arguments were validated")
+
+        monkeypatch.setattr(check_torch_env, "scan_installed", fail)
+
+        with pytest.raises(SystemExit) as excinfo:
+            main([])
+
+        assert excinfo.value.code == 2
 
 
 class TestWorkflowWiring:
@@ -161,19 +260,53 @@ class TestWorkflowWiring:
         root = Path(__file__).parent.parent.parent
         return (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
 
-    def test_reconcile_step_runs_before_the_tests(self):
-        workflow = self._workflow()
+    @staticmethod
+    def _step(workflow, name):
+        """Return one step's body, bounded at the next step rather than running to end of file.
 
-        assert "--list-undeclared-sidecars" in workflow
-        assert "uv pip uninstall $stale" in workflow
-        assert workflow.index("--list-undeclared-sidecars") < workflow.index("- name: Run tests")
+        An unbounded slice is satisfied by any *later* step, so it would keep passing after the
+        step it names had been gutted.
+        """
+        start = workflow.index(f"- name: {name}")
+        end = workflow.find("\n      - name:", start + 1)
+        return workflow[start : end if end != -1 else len(workflow)]
+
+    def test_the_reconcile_runs_inside_the_step_that_swaps_torch(self):
+        # Ordering is the whole fix. Run the check against the *locked* torch -- which does
+        # declare triton -- and it finds nothing stale, so the leg swaps in `+cpu` torch
+        # afterwards and #4199 survives under a green run. Keeping the reconcile in the swap's
+        # own step makes that ordering unreorderable rather than merely conventional.
+        workflow = self._workflow()
+        install = self._step(workflow, INSTALL_STEP)
+
+        assert "--reinstall-package torch" in install
+        assert "--list-undeclared-sidecars" in install
+        assert "uv pip uninstall $stale" in install
+        assert install.index("--reinstall-package torch") < install.index("--list-undeclared-sidecars")
+        assert workflow.index(f"- name: {INSTALL_STEP}") < workflow.index("- name: Run tests")
+
+    def test_the_reconcile_refuses_an_absent_result_line(self):
+        # An empty capture means the parse broke, not that the venv is clean: the script always
+        # prints the prefix. Without this guard the step reports success while doing nothing.
+        install = self._step(self._workflow(), INSTALL_STEP)
+
+        assert f"grep -q '^{SIDECAR_PREFIX}'" in install
+        assert "refusing to assume the venv is clean" in install
 
     def test_verification_step_checks_the_whole_environment(self):
         # Guards the regression #4199 describes: a verify step that only reads torch.__version__
         # passes a venv whose remaining packages belong to a different torch.
-        workflow = self._workflow()
+        verify = self._step(self._workflow(), "Verify PyTorch version")
 
-        verify = workflow.partition("- name: Verify PyTorch version")[2]
         assert "check_torch_env.py" in verify
         assert '--channel "$TORCH_CHANNEL" --expected "$EXPECTED_PYTORCH_VERSION"' in verify
         assert 'echo "resolved=$resolved" >> "$GITHUB_OUTPUT"' in verify
+        assert 'if [[ -z "$resolved" ]]; then' in verify
+
+    def test_the_workflow_parses_the_prefixes_the_script_prints(self):
+        # The two ends of the stdout contract. Rename a prefix on one side only and both the
+        # uninstall and the version gate degrade to silent no-ops.
+        workflow = self._workflow()
+
+        assert f"s/^{SIDECAR_PREFIX}" in workflow
+        assert f"s/^{VERSION_PREFIX} //p" in workflow
