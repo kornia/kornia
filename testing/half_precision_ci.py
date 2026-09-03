@@ -21,7 +21,6 @@ import builtins
 import hashlib
 import importlib
 import platform
-import random
 import re
 import sys
 import warnings
@@ -204,12 +203,8 @@ def parse_manifest(
 
 
 def seed_test_rng(nodeid: str) -> int:
-    """Seed Python, NumPy, and PyTorch reproducibly from a pytest node ID."""
-    seed = int.from_bytes(hashlib.sha256(nodeid.encode("utf-8")).digest()[:4], "big")
-    random.seed(seed)
-    np.random.seed(seed)  # noqa: NPY002 - existing tests use NumPy's process-global random state.
-    torch.manual_seed(seed)
-    return seed
+    """Derive a stable per-node seed without mutating any process-global RNG."""
+    return int.from_bytes(hashlib.sha256(f"v1\0{nodeid}".encode()).digest()[:4], "big")
 
 
 def _exception_name(exception_type: type[BaseException]) -> str:

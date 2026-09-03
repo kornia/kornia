@@ -136,17 +136,44 @@ def _write_profile_manifest(directory: Path, phase: str, exception: str, nodeid:
     return path
 
 
-def test_seed_test_rng_is_stable_and_node_specific() -> None:
-    seed_test_rng("tests/a.py::test_a[cpu-float16]")
-    first = (random.random(), np.random.random(), torch.rand(()).item())  # noqa: NPY002
+def _rng_states() -> tuple[object, tuple, torch.Tensor]:
+    return random.getstate(), np.random.get_state(), torch.random.get_rng_state()
 
-    seed_test_rng("tests/a.py::test_b[cpu-float16]")
-    other = (random.random(), np.random.random(), torch.rand(()).item())  # noqa: NPY002
-    seed_test_rng("tests/a.py::test_a[cpu-float16]")
-    repeated = (random.random(), np.random.random(), torch.rand(()).item())  # noqa: NPY002
+
+def _assert_rng_states_equal(first: tuple[object, tuple, torch.Tensor], second: tuple[object, tuple, torch.Tensor]) -> None:
+    assert first[0] == second[0]
+    assert first[1][0] == second[1][0]
+    assert np.array_equal(first[1][1], second[1][1])
+    assert first[1][2:] == second[1][2:]
+    assert torch.equal(first[2], second[2])
+
+
+def test_seed_test_rng_is_pure_stable_and_node_specific() -> None:
+    before = _rng_states()
+
+    first = seed_test_rng("tests/a.py::test_a[cpu-float16]")
+    other = seed_test_rng("tests/a.py::test_b[cpu-float16]")
+    repeated = seed_test_rng("tests/a.py::test_a[cpu-float16]")
 
     assert repeated == first
     assert other != first
+    assert first == 495_473_945
+    _assert_rng_states_equal(before, _rng_states())
+
+
+def test_profile_rng_isolation_restores_all_global_states() -> None:
+    before = _rng_states()
+
+    with project_conftest._isolated_test_rng(seed_test_rng("tests/a.py::test_a[cpu-float16]")):
+        random.random()
+        np.random.random()  # noqa: NPY002
+        torch.rand(())
+
+    _assert_rng_states_equal(before, _rng_states())
+
+
+def test_rng_seed_fixture_is_available_without_a_profile(test_rng_seed: int, request: pytest.FixtureRequest) -> None:
+    assert test_rng_seed == seed_test_rng(request.node.nodeid)
 
 
 def test_failure_recorder_writes_setup_and_call_failures_in_nodeid_order(pytester: pytest.Pytester) -> None:
@@ -663,20 +690,91 @@ class _RecordingConfig:
             "maxfail": 0,
             "lf": False,
             "failedfirst": False,
+            "collectonly": False,
+            "numprocesses": None,
         }
         options[option_name] = option_value
         self.option = SimpleNamespace(**options)
         self.args = ["tests"]
         self.rootpath = rootpath
 
+
+class _ProfileConfig:
+    def __init__(
+        self,
+        *,
+        profile: str | None = "cpu-float16",
+        xfail: bool = True,
+        verify: bool = False,
+        record: str | None = None,
+        device: str = "cpu",
+        dtype: str = "float32",
+        args: tuple[str, ...] = (),
+    ) -> None:
+        self.option = SimpleNamespace(device=device, dtype=dtype)
+        self.invocation_params = SimpleNamespace(args=args)
+        self._options = {
+            "--known-failure-profile": profile,
+            "--xfail-known-failures": xfail,
+            "--verify-known-failures": verify,
+            "--record-known-failures": record,
+        }
+
     def getoption(self, option: str) -> object:
-        return {
-            "--xfail-known-half-precision": False,
-            "--record-half-precision-failures": "recorded.txt",
-            "--device": "cpu",
-            "--dtype": "float16",
-            "--runslow": False,
-        }[option]
+        return self._options[option]
+
+
+class TestProfileConfiguration:
+    def test_applies_profile_before_parametrization(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("KORNIA_TEST_DEVICE", raising=False)
+        monkeypatch.delenv("KORNIA_TEST_DTYPE", raising=False)
+        config = _ProfileConfig()
+
+        profile = project_conftest._configure_known_failure_profile(config)
+
+        assert profile == get_profile("cpu-float16")
+        assert config.option.device == "cpu"
+        assert config.option.dtype == "float16"
+
+    @pytest.mark.parametrize(
+        ("args", "environment", "match"),
+        [
+            (("--device=cuda",), {}, "device.*cuda.*cpu"),
+            (("--dtype", "float64"), {}, "dtype.*float64.*float16"),
+            ((), {"KORNIA_TEST_DTYPE": "bfloat16"}, "dtype.*bfloat16.*float16"),
+        ],
+    )
+    def test_rejects_explicit_profile_conflicts(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        args: tuple[str, ...],
+        environment: dict[str, str],
+        match: str,
+    ) -> None:
+        monkeypatch.delenv("KORNIA_TEST_DEVICE", raising=False)
+        monkeypatch.delenv("KORNIA_TEST_DTYPE", raising=False)
+        for key, value in environment.items():
+            monkeypatch.setenv(key, value)
+        config = _ProfileConfig(args=args, device="cuda" if "device" in match else "cpu", dtype="float64")
+        if environment:
+            config.option.dtype = environment["KORNIA_TEST_DTYPE"]
+
+        with pytest.raises(pytest.UsageError, match=match):
+            project_conftest._configure_known_failure_profile(config)
+
+    @pytest.mark.parametrize(("verify", "record"), [(True, None), (False, "candidate.txt")])
+    def test_complete_modes_require_explicit_profile(self, verify: bool, record: str | None) -> None:
+        config = _ProfileConfig(profile=None, xfail=False, verify=verify, record=record)
+
+        with pytest.raises(pytest.UsageError, match="requires --known-failure-profile"):
+            project_conftest._configure_known_failure_profile(config)
+
+    def test_unprofiled_xfail_keeps_legacy_mps_configuration(self) -> None:
+        config = _ProfileConfig(profile=None, xfail=True, dtype="float32")
+
+        assert project_conftest._configure_known_failure_profile(config) is None
+        assert config.option.device == "cpu"
+        assert config.option.dtype == "float32"
 
 
 @pytest.mark.parametrize(
@@ -688,6 +786,8 @@ class _RecordingConfig:
         ("maxfail", 1),
         ("lf", True),
         ("failedfirst", True),
+        ("collectonly", True),
+        ("numprocesses", 2),
     ],
 )
 def test_record_mode_rejects_partial_run_options(
@@ -697,7 +797,7 @@ def test_record_mode_rejects_partial_run_options(
     config = _RecordingConfig(option_name, option_value, tmp_path)
 
     with pytest.raises(pytest.UsageError, match="does not allow partial-selection options"):
-        project_conftest._configure_half_precision_manifest(config, [])
+        project_conftest._validate_complete_known_failure_run(config, "--record-known-failures")
 
 
 @pytest.mark.parametrize("dtype", ["float16", "bfloat16"])

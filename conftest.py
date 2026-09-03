@@ -16,9 +16,11 @@
 #
 
 import os
+import random
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from functools import partial
 from itertools import product
 from pathlib import Path
@@ -37,10 +39,10 @@ import kornia
 from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
 from testing.half_precision_ci import (
     FailureRecorder,
+    KnownFailureTracker,
+    ManifestProfile,
+    get_profile,
     seed_test_rng,
-)
-from testing.half_precision_ci import (
-    mark_known_failures as mark_known_half_precision_failures,
 )
 from testing.known_failures import mark_known_failures
 
@@ -145,6 +147,111 @@ def _parse_test_option(config, option: str, all_values: dict | set) -> list[str]
     return raw_value.split(",")
 
 
+def _explicit_option_value(args: tuple[str, ...], option: str) -> str | None:
+    """Return an explicitly supplied pytest option value, if present."""
+    for index, argument in enumerate(args):
+        if argument.startswith(f"{option}="):
+            return argument.partition("=")[2]
+        if argument == option and index + 1 < len(args):
+            return args[index + 1]
+    return None
+
+
+def _configure_known_failure_profile(config) -> ManifestProfile | None:
+    """Resolve and apply a CPU-half profile before pytest generates parameter IDs."""
+    profile_name = config.getoption("--known-failure-profile")
+    verify = config.getoption("--verify-known-failures")
+    record = config.getoption("--record-known-failures")
+    if profile_name is None:
+        if verify or record:
+            raise pytest.UsageError("selected complete mode requires --known-failure-profile")
+        return None
+
+    try:
+        profile = get_profile(profile_name)
+    except ValueError as error:
+        raise pytest.UsageError(str(error)) from error
+
+    args = tuple(config.invocation_params.args)
+    required = {"device": "cpu", "dtype": profile.dtype}
+    for name, expected in required.items():
+        option = f"--{name}"
+        environment_name = f"KORNIA_TEST_{name.upper()}"
+        explicit = _explicit_option_value(args, option)
+        if explicit is None:
+            explicit = os.environ.get(environment_name)
+        if explicit is not None and explicit != expected:
+            raise pytest.UsageError(
+                f"explicit {name}={explicit} conflicts with profile {profile.name}, which requires {name}={expected}"
+            )
+        setattr(config.option, name, expected)
+    return profile
+
+
+def _validate_complete_known_failure_run(config, option: str) -> None:
+    normalized_args = set()
+    for arg in config.args:
+        target = Path(arg.split("::", maxsplit=1)[0])
+        if target.is_absolute():
+            try:
+                target = target.relative_to(config.rootpath)
+            except ValueError:
+                pass
+        normalized_args.add(target.as_posix().removeprefix("./").rstrip("/"))
+    if normalized_args != {"tests"}:
+        raise pytest.UsageError(f"{option} requires exactly the full tests/ target")
+
+    partial_options = {
+        "-k": config.option.keyword,
+        "-m": config.option.markexpr,
+        "--deselect": config.option.deselect,
+        "--maxfail/-x": config.option.maxfail,
+        "--lf": config.option.lf,
+        "--ff": config.option.failedfirst,
+        "--collect-only": config.option.collectonly,
+        "xdist": getattr(config.option, "numprocesses", None),
+    }
+    active = [name for name, value in partial_options.items() if value]
+    if active:
+        raise pytest.UsageError(f"{option} does not allow partial-selection options; remove: {', '.join(active)}")
+
+
+def pytest_configure(config) -> None:
+    """Apply known-failure profiles before pytest_generate_tests reads device and dtype."""
+    profile = _configure_known_failure_profile(config)
+    config._known_failure_profile = profile
+    if profile is None:
+        return
+
+    focus = config.getoption("--xfail-known-failures")
+    verify = config.getoption("--verify-known-failures")
+    record = config.getoption("--record-known-failures")
+    if sum((bool(focus), bool(verify), bool(record))) != 1:
+        raise pytest.UsageError(
+            "a CPU-half profile requires exactly one of --xfail-known-failures, "
+            "--verify-known-failures, or --record-known-failures"
+        )
+    if os.environ.get("KORNIA_TEST_OPTIMIZER", "").strip() or config.getoption("--runslow"):
+        raise pytest.UsageError("CPU-half profiles require KORNIA_TEST_OPTIMIZER to be unset and --runslow disabled")
+
+    if verify or record:
+        _validate_complete_known_failure_run(config, "--verify-known-failures" if verify else "--record-known-failures")
+    if focus or verify:
+        manifest_override = config.getoption("--known-failure-manifest")
+        manifest_path = Path(manifest_override) if manifest_override else profile.manifest_path
+        try:
+            tracker = KnownFailureTracker(
+                profile,
+                manifest_path,
+                mode="complete" if verify else "focus",
+                selectors=() if verify else config.args,
+                rootpath=config.rootpath,
+            )
+        except (OSError, ValueError) as error:
+            raise pytest.UsageError(str(error)) from error
+        config.pluginmanager.register(tracker, "known-half-precision-failure-tracker")
+
+
 def pytest_generate_tests(metafunc) -> None:
     """Generate test parametrization based on fixtures and CLI options."""
     # Build list of (fixture_name, values) for fixtures that are used
@@ -171,66 +278,6 @@ def pytest_generate_tests(metafunc) -> None:
     values = [v for _, v in params]
     combinations = [combo for combo in product(*values) if combo[:2] not in DEVICE_DTYPE_BLACKLIST]
     metafunc.parametrize(names, combinations)
-
-
-def _configure_half_precision_manifest(config, items):
-    """Validate and install the requested strict or recording manifest plugin."""
-    strict_half = config.getoption("--xfail-known-half-precision")
-    record_half = config.getoption("--record-half-precision-failures")
-    if strict_half and record_half:
-        raise pytest.UsageError(
-            "--xfail-known-half-precision and --record-half-precision-failures are mutually exclusive"
-        )
-
-    if strict_half or record_half:
-        devices = _parse_test_option(config, "--device", TEST_DEVICES)
-        dtypes = _parse_test_option(config, "--dtype", TEST_DTYPES)
-        optimizer_env = os.environ.get("KORNIA_TEST_OPTIMIZER", "").strip()
-        if devices != ["cpu"] or len(dtypes) != 1 or dtypes[0] not in {"float16", "bfloat16"}:
-            raise pytest.UsageError(
-                "half-precision manifest modes require --device=cpu and exactly one of "
-                "--dtype=float16 or --dtype=bfloat16"
-            )
-        if optimizer_env or config.getoption("--runslow"):
-            raise pytest.UsageError(
-                "half-precision manifest modes require KORNIA_TEST_OPTIMIZER to be unset and --runslow disabled"
-            )
-
-    if strict_half:
-        try:
-            tracker = mark_known_half_precision_failures(items, dtypes, selectors=config.args, rootpath=config.rootpath)
-        except ValueError as error:
-            raise pytest.UsageError(str(error)) from error
-        config.pluginmanager.register(tracker, "known-half-precision-failure-tracker")
-
-    if record_half:
-        normalized_args = set()
-        for arg in config.args:
-            target = Path(arg.split("::", maxsplit=1)[0])
-            if target.is_absolute():
-                try:
-                    target = target.relative_to(config.rootpath)
-                except ValueError:
-                    pass
-            normalized_args.add(target.as_posix().removeprefix("./").rstrip("/"))
-        if normalized_args != {"tests"}:
-            raise pytest.UsageError("--record-half-precision-failures requires exactly the full tests/ target")
-        partial_options = {
-            "-k": config.option.keyword,
-            "-m": config.option.markexpr,
-            "--deselect": config.option.deselect,
-            "--maxfail/-x": config.option.maxfail,
-            "--lf": config.option.lf,
-            "--ff": config.option.failedfirst,
-        }
-        active_partial_options = [name for name, value in partial_options.items() if value]
-        if active_partial_options:
-            options = ", ".join(active_partial_options)
-            raise pytest.UsageError(
-                f"--record-half-precision-failures does not allow partial-selection options; remove: {options}"
-            )
-        recorder = FailureRecorder(dtypes[0], Path(record_half))
-        config.pluginmanager.register(recorder, "half-precision-failure-recorder")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -265,11 +312,7 @@ def pytest_collection_modifyitems(config, items):
         # Filter out tests with "dynamo" or "compile" in their name
         items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
 
-    # Install the strict half-precision marker before any other xfail markers. Pytest uses the
-    # first applicable xfail reason, and the tracker validates that its own marker handled the test.
-    _configure_half_precision_manifest(config, items)
-
-    if config.getoption("--xfail-known-failures"):
+    if config.getoption("--xfail-known-failures") and getattr(config, "_known_failure_profile", None) is None:
         devices = _parse_test_option(config, "--device", TEST_DEVICES)
         dtypes = _parse_test_option(config, "--dtype", TEST_DTYPES)
         if len(devices) != 1 or len(dtypes) != 1:
@@ -334,10 +377,30 @@ def pytest_addoption(parser):
         KORNIA_TEST_OPTIMIZER: Optimizer backend (default: inductor)
         KORNIA_TEST_RUNSLOW: Run slow tests (default: false)
         KORNIA_TEST_TF32: Enable TF32 (TensorFloat-32) mode for CUDA matrix multiplications (default: false)
-        KORNIA_TEST_XFAIL_KNOWN_HALF: Strictly xfail the recorded CPU half-precision baseline (default: false)
-        KORNIA_TEST_RECORD_HALF: Write CPU half-precision failures to a manifest path (default: unset)
         KORNIA_DOCTEST_DOWNLOAD: Let doctests download model weights (default: false)
     """
+    parser.addoption(
+        "--known-failure-profile",
+        action="store",
+        help="Select an explicit known-failure profile such as cpu-float16.",
+    )
+    parser.addoption(
+        "--verify-known-failures",
+        action="store_true",
+        help="Run the complete blocking known-failure verification for the selected profile.",
+    )
+    parser.addoption(
+        "--record-known-failures",
+        action="store",
+        metavar="PATH",
+        help="Record a complete known-failure candidate at a guarded, untracked PATH.",
+    )
+    parser.addoption(
+        "--known-failure-manifest",
+        action="store",
+        metavar="PATH",
+        help="Override the selected profile manifest for candidate replay.",
+    )
     parser.addoption(
         "--device",
         action="store",
@@ -371,27 +434,6 @@ def pytest_addoption(parser):
             "(torch.set_float32_matmul_precision('high')). "
             "Tests marked @pytest.mark.tf32 are expected to fail under TF32 and are skipped unless this flag is set. "
             "(env: KORNIA_TEST_TF32)"
-        ),
-    )
-    parser.addoption(
-        "--xfail-known-half-precision",
-        action="store_true",
-        default=os.environ.get("KORNIA_TEST_XFAIL_KNOWN_HALF", "false").lower() == "true",
-        help=(
-            "Strictly xfail the complete recorded Linux CPU float16/bfloat16 failure baseline. "
-            "Requires CPU and exactly one half dtype; focused selectors are supported. "
-            "(env: KORNIA_TEST_XFAIL_KNOWN_HALF)"
-        ),
-    )
-    parser.addoption(
-        "--record-half-precision-failures",
-        action="store",
-        default=os.environ.get("KORNIA_TEST_RECORD_HALF"),
-        metavar="PATH",
-        help=(
-            "Record a complete deterministic Linux CPU half-precision failure manifest at PATH. "
-            "Requires an unfiltered tests/ run, one half dtype, no --runslow, and no optimizer. "
-            "(env: KORNIA_TEST_RECORD_HALF)"
         ),
     )
     parser.addoption(
@@ -722,19 +764,37 @@ def pytest_runtest_protocol(item, nextitem):
     return True
 
 
+@contextmanager
+def _isolated_test_rng(seed: int):
+    """Temporarily seed the process-global CPU RNGs and restore their exact states."""
+    python_state = random.getstate()
+    numpy_state = np.random.get_state()
+    torch_state = torch.random.get_rng_state()
+    try:
+        random.seed(seed)
+        np.random.seed(seed)  # noqa: NPY002 - the test suite uses NumPy's process-global RNG.
+        torch.random.default_generator.manual_seed(seed)
+        yield
+    finally:
+        random.setstate(python_state)
+        np.random.set_state(numpy_state)
+        torch.random.set_rng_state(torch_state)
+
+
 @pytest.fixture()
-def test_rng_seed(request) -> int | None:
-    """Return the per-node seed used by strict and recorded half-precision runs."""
-    if request.config.getoption("--xfail-known-half-precision") or request.config.getoption(
-        "--record-half-precision-failures"
-    ):
-        return seed_test_rng(request.node.nodeid)
-    return None
+def test_rng_seed(request) -> int:
+    """Return the stable seed for this pytest node without changing global RNG state."""
+    return seed_test_rng(request.node.nodeid)
 
 
 @pytest.fixture(autouse=True)
-def seed_half_precision_manifest_run(test_rng_seed: int | None) -> None:
-    """Make strict and recorded half-precision outcomes independent of test order and process entropy."""
+def seed_half_precision_manifest_run(request, test_rng_seed: int):
+    """Isolate RNG state for explicit CPU-half known-failure profile runs."""
+    if getattr(request.config, "_known_failure_profile", None) is None:
+        yield
+        return
+    with _isolated_test_rng(test_rng_seed):
+        yield
 
 
 @pytest.fixture(autouse=True)
