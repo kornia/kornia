@@ -12,7 +12,7 @@ English | [简体中文](README_zh-CN.md)
 <a href="https://colab.sandbox.google.com/github/kornia/tutorials/blob/master/nbs/hello_world_tutorial.ipynb">Try it Now</a> •
 <a href="https://www.kornia.org/tutorials/">Tutorials</a> •
 <a href="https://github.com/kornia/kornia-examples">Examples</a> •
-<a href="https://kornia.github.io//kornia-blog">Blog</a> •
+<a href="https://www.kornia.org/kornia-blog/">Blog</a> •
 <a href="https://discord.gg/HfnywwpBnD">Community</a>
 
 [![PyPI version](https://badge.fury.io/py/kornia.svg)](https://pypi.org/project/kornia)

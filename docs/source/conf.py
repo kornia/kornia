@@ -600,6 +600,7 @@ _DEFAULT_DESCRIPTION = (
 )
 _SOCIAL_IMAGE = "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"
 _PAGE_REDIRECTS = {"get-started/highlights": "get-started/introduction"}
+_NOINDEX_PAGES = {"404", "genindex", "py-modindex", "search"}
 _META_TAG_RE = re.compile(r"<meta\b[^>]*>", re.IGNORECASE)
 _META_ATTR_RE = re.compile(r'(\w+)="([^"]*)"')
 
@@ -618,38 +619,42 @@ def _inject_social_metatags(app, pagename, templatename, context, doctree):
         if attrs.get("name", "").lower() == "description" and attrs.get("content"):
             match = attrs["content"]
             break
-    # Sphinx hands the title over already HTML-escaped; unescape so ``esc`` below does not double it.
-    page_title = html.unescape(context.get("title") or project)
-    if match:
+    # Sphinx hands the title over already HTML-escaped and it can contain theme markup.
+    page_title = re.sub(r"<[^>]+>", "", html.unescape(context.get("title") or project))
+    page_title = " ".join(page_title.split())
+    redirect_target = _PAGE_REDIRECTS.get(pagename)
+    if match and not redirect_target:
         description = html.unescape(match).strip().strip('"')
-    elif pagename == master_doc:
-        description = _DEFAULT_DESCRIPTION
+    elif context.get("title") and pagename not in _NOINDEX_PAGES and not redirect_target:
+        description = f"{page_title}: documentation for Kornia, the differentiable computer vision library for PyTorch."
     else:
-        description = (
-            f"Learn about {page_title} in Kornia, the differentiable computer vision library for PyTorch, "
-            "including its APIs, behavior and usage."
-        )
+        description = _DEFAULT_DESCRIPTION
     description = " ".join(description.split())
     if len(description) > 300:
         description = description[:297].rsplit(" ", 1)[0] + "..."
-    title = page_title
-    if pagename != master_doc:
-        title = f"{title} - {project}"
-    redirect_target = _PAGE_REDIRECTS.get(pagename)
+    title = f"{page_title} - {project}"
+    if pagename == master_doc:
+        title = f"{project} — Differentiable Computer Vision for PyTorch"
     url = context.get("pageurl") or f"{html_baseurl}{app.builder.get_target_uri(pagename)}"
+    if pagename == master_doc:
+        url = html_baseurl
+        context["pageurl"] = url
+    refresh_url = None
     if redirect_target:
         # Keep obsolete docs URLs out of results while sending users and canonical signals to their replacement.
         url = f"{html_baseurl}{app.builder.get_target_uri(redirect_target)}"
         context["pageurl"] = url
+        refresh_url = app.builder.get_relative_uri(pagename, redirect_target)
     esc = html.escape
 
     extra = []
     if not match:
         extra.append(f'<meta name="description" content="{esc(description)}" />')
+    if pagename in _NOINDEX_PAGES:
+        extra.append('<meta name="robots" content="noindex, follow" />')
     if redirect_target:
         extra += [
-            '<meta name="robots" content="noindex, follow" />',
-            f'<meta http-equiv="refresh" content="0; url={esc(url)}" />',
+            f'<meta http-equiv="refresh" content="0; url={esc(refresh_url)}" />',
         ]
     extra += [
         '<meta property="og:type" content="website" />',
@@ -664,7 +669,7 @@ def _inject_social_metatags(app, pagename, templatename, context, doctree):
         f'<meta name="twitter:description" content="{esc(description)}" />',
         f'<meta name="twitter:image" content="{_SOCIAL_IMAGE}" />',
     ]
-    context["metatags"] = metatags + "\n" + "\n".join(extra)
+    context["metatags"] = "\n".join(extra) + "\n" + metatags
 
 
 # -- Deep-link compatibility ------------------------------------------------

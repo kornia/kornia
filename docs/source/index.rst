@@ -3,6 +3,8 @@
 
 .. title:: Differentiable Computer Vision for PyTorch
 
+.. _kornia-docs-home:
+
 Kornia: Differentiable Computer Vision for PyTorch
 ==================================================
 
@@ -16,12 +18,12 @@ Kornia: Differentiable Computer Vision for PyTorch
      /* Room for the two-column hero; the theme caps articles at 960px. */
      .bd-main .bd-content .bd-article-container { max-width: 1240px; }
      /* The document title provides the semantic H1 and browser title; the hero is its visible presentation. */
-     section#kornia-differentiable-computer-vision-for-pytorch > h1:first-child {
+     span#kornia-docs-home + h1 {
        border: 0; clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden;
        padding: 0; position: absolute; white-space: nowrap; width: 1px;
      }
      /* Hairline separator above each section, matching the link board's line. */
-     section#kornia-differentiable-computer-vision-for-pytorch > section {
+     span#kornia-docs-home ~ section {
        border-top: 1px solid var(--pst-color-border);
        margin-top: 3rem;
        padding-top: 1.75rem;
