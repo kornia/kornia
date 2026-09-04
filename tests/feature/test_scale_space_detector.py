@@ -905,9 +905,13 @@ class TestMultiResolutionDetector(BaseTester):
         assert torch.equal(resps[0], torch.sort(resps[0], descending=True).values)
 
     def test_single_feature_request_returns_a_real_detection(self, device, dtype):
-        # With the default configuration and `num_features=1` every proportional quota truncates
-        # to zero (the shares are 0.508 .. 0.016), so every level was queried for zero candidates
-        # and the result was a padded dummy on an image full of maxima.
+        # Contract: asking for one feature returns a real detection, and the same one that asking
+        # for two would rank first. The original defect was an apportionment that gave every level
+        # a share of `num_features`: at `num_features=1` the default configuration's six shares are
+        # 0.508 .. 0.016, all of which truncate to zero, so every level was queried for zero
+        # candidates and the result was a padded dummy on an image full of maxima. The
+        # apportionment is gone -- every level is now asked for `num_features` -- so this pins the
+        # contract rather than that mechanism, and it holds under both.
         torch.manual_seed(11)
         inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
         lafs_one, resps_one = self._make_detector(num_features=1).to(device, dtype)(inp)
@@ -920,14 +924,16 @@ class TestMultiResolutionDetector(BaseTester):
         self.assert_close(lafs_one[0, 0], lafs_two[0, int(resps_two[0].argmax())])
 
     def test_small_request_spreads_across_scales(self, device, dtype):
-        # `detect` used to apportion `num_features` across pyramid levels by flooring each level's
-        # fractional share independently (`int(x) for x in shares`). The shares favor the finest
-        # level so heavily (0.508 .. 0.016 with the default config) that a small `num_features`
-        # truncated every other level's quota to zero: five well-separated, equally strong blobs and
-        # `num_features=3` returned three near-duplicate detections of the single strongest blob
-        # instead of covering several of them. Largest-remainder (Hamilton) apportionment hands the
-        # shortfall to the levels with the largest fractional remainder instead, so a small request
-        # still reaches more than one scale and covers more than one blob.
+        # Contract: a small request still covers more than one of several equally strong features
+        # rather than returning near-duplicates of the single strongest one. `detect` used to
+        # apportion `num_features` across pyramid levels by flooring each level's fractional share
+        # independently (`int(x) for x in shares`); the shares favor the finest level so heavily
+        # (0.508 .. 0.016 with the default config) that a small `num_features` truncated every other
+        # level's quota to zero, and `num_features=3` on five well-separated equal blobs returned
+        # three near-duplicate detections of one blob. Largest-remainder apportionment fixed that,
+        # and asking every level for `num_features` supersedes it: with no cap the three slots go to
+        # the three strongest maxima anywhere, which are on different blobs. The pin is on the
+        # coverage, so it holds under all three.
         img = torch.zeros(1, 1, 96, 96, device=device, dtype=dtype)
         centers = [(20, 20), (20, 70), (48, 48), (76, 20), (76, 70)]
         for y, x in centers:
@@ -940,6 +946,32 @@ class TestMultiResolutionDetector(BaseTester):
             1 for y, x in centers if bool(((laf_centers - laf_centers.new_tensor([x, y])).abs().amax(dim=1) < 4).any())
         )
         assert covered >= 2, f"expected the 3-feature request to reach at least 2 of the 5 blobs, got {covered}"
+
+    def test_result_for_k_is_a_prefix_of_the_result_for_a_larger_k(self, device, dtype):
+        # `detect` used to ask each pyramid level only for its own share of the budget, so a level
+        # could contribute at most `quotas[0]` (the upscaled level) or `sum(quotas[: i + 1 + up])`
+        # (pyramid level i) -- both well under `num_features` for the finer levels. When an image's
+        # strongest maxima concentrate on one level, which is the normal case rather than a corner
+        # case, the excess was never requested and so could not be ranked in by the final global
+        # `topk`: the result was silently not the top-k, with no signal to the caller. Asking every
+        # level for `num_features` makes the union a superset of the true top-k, since the m
+        # detections a level contributes to the global top-k are necessarily that level's own top-m.
+        #
+        # The pin is on the sorted response vector rather than on keypoint identities: `detect`
+        # already returns responses in descending order, and comparing values sidesteps both the
+        # `topk` tie-break and the fact that one blob can be detected at several scales with the
+        # same rounded centre.
+        img = torch.zeros(1, 1, 240, 240, device=device, dtype=dtype)
+        strength = 0
+        for y in range(20, 220, 40):  # 25 well-separated blobs, all resolved at the same scale
+            for x in range(20, 220, 40):
+                img[:, :, y - 1 : y + 2, x - 1 : x + 2] = 1.0 + 0.05 * strength
+                strength += 1
+
+        reference, _ = self._make_detector(num_features=32).to(device, dtype).detect(img)
+        for k in (4, 8, 16):
+            responses, _ = self._make_detector(num_features=k).to(device, dtype).detect(img)
+            self.assert_close(responses[0], reference[0, :k])
 
     def test_negative_score_threshold_is_rejected(self, device, dtype):
         # NMS writes an exact zero at every suppressed position, so a negative threshold would

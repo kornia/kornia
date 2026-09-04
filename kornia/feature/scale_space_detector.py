@@ -657,7 +657,10 @@ class MultiResolutionDetector(nn.Module):
 
     Args:
         model: response function, such as KeyNet or BlobHessian
-        num_features: Number of features to detect.
+        num_features: Number of features to detect. Every pyramid level is searched for this many
+            candidates and the whole set is ranked together, so the result is the ``num_features``
+            highest responses in the image and the result for one value is a prefix of the result
+            for any larger one.
         conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
         ori_module: for local feature orientation estimation. Default: :class:`~kornia.feature.PassLAF`,
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
@@ -833,7 +836,8 @@ class MultiResolutionDetector(nn.Module):
 
         Returns:
             Tuple containing detection scores and local affine frames, shaped `(1, num_features)` and
-            `(1, num_features, 2, 3)`. The shape holds even when the image yields fewer above-threshold maxima
+            `(1, num_features, 2, 3)`, holding the `num_features` highest responses in the image and sorted by
+            response, descending. The shape holds even when the image yields fewer above-threshold maxima
             than requested: those slots carry a zero response and a zero LAF, and sort after every real detection.
             LAF centres are pixel coordinates cast to the image dtype, so a half-precision image gives centres at
             that dtype's integer resolution: exact up to 256 in bfloat16 and up to 2048 in float16, and coarser
@@ -842,30 +846,16 @@ class MultiResolutionDetector(nn.Module):
         KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])
         if mask is not None:
             _check_mask(mask, img)
-        # Compute points per level
-        num_features_per_level: List[float] = []
-        tmp = 0.0
-        factor_points = self.scale_factor_levels**2
-        levels = self.num_pyramid_levels + self.num_upscale_levels + 1
-        for idx_level in range(levels):
-            tmp += factor_points ** (-1 * (idx_level - self.num_upscale_levels))
-            nf = self.num_features * factor_points ** (-1 * (idx_level - self.num_upscale_levels))
-            num_features_per_level.append(nf)
-        shares: List[float] = [x / tmp for x in num_features_per_level]
-        # Largest-remainder (Hamilton) apportionment: `shares` sums to `self.num_features` (up to
-        # float error), but flooring each one independently discards every fractional part, so the
-        # floors can sum to well under `self.num_features` -- to zero at `num_features=1`, where the
-        # default six shares are 0.508 .. 0.016. The finest level's quota also dominates every other
-        # one's, so a small request degenerates to querying a single scale. Hand the shortfall --
-        # `self.num_features` minus the sum of floors -- to the levels with the largest fractional
-        # remainders, one slot each, so the quotas always sum to exactly `self.num_features` and stay
-        # spread across scales instead of collapsing onto the finest level.
-        num_features_per_level = [int(x) for x in shares]
-        shortfall = self.num_features - sum(num_features_per_level)
-        by_remainder = sorted(range(len(shares)), key=lambda i: shares[i] - num_features_per_level[i], reverse=True)
-        for idx_level in by_remainder[:shortfall]:
-            num_features_per_level[idx_level] += 1
-
+        # Every level is asked for the whole budget, not for a per-level share of it. A share is a
+        # cap on what the level may contribute, and the final global `topk` cannot rank in a
+        # detection that was never requested, so a per-level quota silently returns something other
+        # than the top `num_features` whenever an image's strongest maxima concentrate on one level.
+        # Asking each level for `num_features` is exactly sufficient rather than merely generous:
+        # the m detections a level contributes to the global top-k are necessarily that level's own
+        # top-m, so a request of `num_features` always reaches them. It costs ~1.2x the candidates
+        # the old apportionment carried -- the coarse levels were already asked for a cumulative
+        # prefix of the quotas, close to `num_features` -- which is not measurable next to the
+        # response function and the non-maxima suppression.
         _, _, h, w = img.shape
         img_up = img
         cur_img = img
@@ -873,16 +863,13 @@ class MultiResolutionDetector(nn.Module):
         all_lafs: List[torch.Tensor] = []
         # Extract features from the upper levels
         for idx_level in range(self.num_upscale_levels):
-            nf = num_features_per_level[len(num_features_per_level) - self.num_pyramid_levels - 1 - (idx_level + 1)]
-            num_points_level = int(nf)
-
             # Resize input image
             up_factor = self.scale_factor_levels ** (1 + idx_level)
             nh, nw = int(h * up_factor), int(w * up_factor)
             up_factor_kpts = (float(w) / float(nw), float(h) / float(nh))
             img_up = resize(img_up, (nh, nw), interpolation="bilinear", align_corners=False)
 
-            cur_scores, cur_lafs = self._detect_level(img_up, num_points_level, up_factor_kpts, mask)
+            cur_scores, cur_lafs = self._detect_level(img_up, self.num_features, up_factor_kpts, mask)
 
             all_responses.append(cur_scores.view(1, -1))
             all_lafs.append(cur_lafs)
@@ -896,11 +883,7 @@ class MultiResolutionDetector(nn.Module):
             else:
                 factor = (1.0, 1.0)
 
-            num_points_level = int(num_features_per_level[idx_level])
-            if idx_level > 0 or (self.num_upscale_levels > 0):
-                num_points_level = sum(num_features_per_level[: idx_level + 1 + self.num_upscale_levels])
-
-            cur_scores, cur_lafs = self._detect_level(cur_img, num_points_level, factor, mask)
+            cur_scores, cur_lafs = self._detect_level(cur_img, self.num_features, factor, mask)
             all_responses.append(cur_scores.view(1, -1))
             all_lafs.append(cur_lafs)
         responses = torch.cat(all_responses, 1)
