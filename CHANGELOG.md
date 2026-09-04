@@ -260,7 +260,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   representable in `float16` and flushes to `0.0`, leaving `0/0`. `HyNet` reached this only with
   `is_bias=False`. Both models now take that one normalisation step in `float32` for a half-precision input
   and cast the result back, the treatment `kornia.feature.siftdesc` already gives its own `1e-10` guards.
-  `float32` and `float64` take the original expression and are bitwise unchanged on every device. (#4225)
+  `float32` and `float64` take the original expression and are bitwise unchanged on CPU, CUDA and MPS.
+  Half-precision output does change, by 0.25-2.25 eps, and gets closer to the `float64` reference rather
+  than merely finite: `SOSNet` `float16` moves from 2.15e-03 to 2.28e-04 of maximum absolute error against
+  a `float64` model carrying the same weights, and no configuration gets worse. Half-precision descriptors
+  are therefore not comparable bit-for-bit across this release. (#4225)
 
 * `validate_bbox` and `validate_bbox3d` flatten rank-4 `(B, N, 4, 2)` / `(B, N, 8, 3)` input with `reshape`
   instead of `view`, so a non-contiguous leading-dimension stride (a transpose, a slice that drops boxes, an

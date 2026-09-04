@@ -68,7 +68,16 @@ class TestHyNet(BaseTester):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=dtype)
         model = HyNet().to(device, dtype).eval()
         op = torch_optimizer(model)
-        self.assert_close(op(patches), model(patches))
+        if device.type == "cuda" and dtype == torch.float32:
+            # cuDNN convolutions keep PyTorch's TF32 default -- `conftest.py` only sets
+            # `set_float32_matmul_precision`, never `torch.backends.cudnn.allow_tf32` -- so eager and
+            # inductor pick different convolution algorithms and this comparison would measure TF32
+            # conv reproducibility across seven convolutions rather than the branch surviving capture.
+            # TF32 carries a 10-bit mantissa, so ~1e-3 at the activations' unit scale; the worst
+            # observed over five seeds on an RTX 4090 is 2.8e-4.
+            self.assert_close(op(patches), model(patches), atol=1e-3, rtol=1e-3)
+        else:
+            self.assert_close(op(patches), model(patches))
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
