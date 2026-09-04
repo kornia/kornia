@@ -486,7 +486,66 @@ class TestBoxes2D(BaseTester):
         self.gradcheck(lambda x: Boxes.from_tensor(x, mode="xyxy_plus").data, (t_boxes_xyxy,))
         self.gradcheck(lambda x: Boxes.from_tensor(x, mode="xywh").data, (t_boxes_xyxy1,))
 
+    def test_merge(self, device, dtype):
+        # --- Unbatched: (N, 4, 2) + (M, 4, 2) -> (N+M, 4, 2) ---
+        # On base (dim=1) this produced shape (1, 8, 2) and to_tensor("xyxy")
+        # returned the single union row [[1, 2, 9, 8]] instead of two rows.
+        a = Boxes.from_tensor(torch.tensor([[1.0, 2.0, 5.0, 4.0]], device=device, dtype=dtype), mode="xyxy")
+        b = Boxes.from_tensor(torch.tensor([[6.0, 3.0, 9.0, 8.0]], device=device, dtype=dtype), mode="xyxy")
+        m = a.merge(b)
+
+        assert m.data.shape == (2, 4, 2), f"Unbatched merge shape: expected (2, 4, 2), got {m.data.shape}"
+        expected_unbatched = torch.tensor([[1.0, 2.0, 5.0, 4.0], [6.0, 3.0, 9.0, 8.0]], device=device, dtype=dtype)
+        self.assert_close(m.to_tensor("xyxy"), expected_unbatched)
+
+        # --- Batched: (B, N, 4, 2) + (B, M, 4, 2) -> (B, N+M, 4, 2) ---
+        # Verify that dim=-3 leaves the batched axis unchanged.
+        a_b = Boxes.from_tensor(
+            torch.tensor([[[1.0, 2.0, 5.0, 4.0]], [[0.0, 0.0, 3.0, 3.0]]], device=device, dtype=dtype), mode="xyxy"
+        )
+        b_b = Boxes.from_tensor(
+            torch.tensor([[[6.0, 3.0, 9.0, 8.0]], [[4.0, 4.0, 7.0, 7.0]]], device=device, dtype=dtype), mode="xyxy"
+        )
+        m_b = a_b.merge(b_b)
+
+        assert m_b.data.shape == (2, 2, 4, 2), f"Batched merge shape: expected (2, 2, 4, 2), got {m_b.data.shape}"
+        expected_batched = torch.tensor(
+            [[[1.0, 2.0, 5.0, 4.0], [6.0, 3.0, 9.0, 8.0]], [[0.0, 0.0, 3.0, 3.0], [4.0, 4.0, 7.0, 7.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(m_b.to_tensor("xyxy"), expected_batched)
+
+        # --- Inplace path returns self and updates data ---
+        a2 = Boxes.from_tensor(torch.tensor([[1.0, 2.0, 5.0, 4.0]], device=device, dtype=dtype), mode="xyxy")
+        b2 = Boxes.from_tensor(torch.tensor([[6.0, 3.0, 9.0, 8.0]], device=device, dtype=dtype), mode="xyxy")
+        result = a2.merge(b2, inplace=True)
+        assert result is a2, "inplace=True must return self"
+        assert a2.data.shape == (2, 4, 2)
+        self.assert_close(a2.to_tensor("xyxy"), expected_unbatched)
+
+        # --- _N is cleared: to_tensor must not drop merged boxes ---
+        # Build from a list so that _N is set (variable-length list padding).
+        # from_tensor with a list of (N, 4) tensors of different lengths produces a
+        # batched (B, max_N, 4, 2) tensor with _N recording per-batch padding.
+        src1 = torch.tensor([[1.0, 2.0, 5.0, 4.0]], device=device, dtype=dtype)  # (1, 4) — 1 box
+        src2 = torch.tensor(
+            [[1.0, 2.0, 5.0, 4.0], [6.0, 3.0, 9.0, 8.0]], device=device, dtype=dtype
+        )  # (2, 4) — 2 boxes
+        list_boxes = Boxes.from_tensor([src1, src2], mode="xyxy")
+        assert list_boxes._N is not None, "Prerequisite: _N must be set for list-constructed Boxes"
+        # list_boxes is batched (B=2, max_N=2, 4, 2); extra must match batch dim B=2.
+        extra_batched = Boxes.from_tensor(
+            torch.tensor([[[6.0, 3.0, 9.0, 8.0]], [[0.0, 0.0, 3.0, 3.0]]], device=device, dtype=dtype),
+            mode="xyxy",
+        )
+        merged_list = list_boxes.merge(extra_batched)
+        assert merged_list._N is None, "_N must be None after merge"
+
+
+
     def test_compute_area(self):
+
         # Rectangle
         box_1 = [[0.0, 0.0], [100.0, 0.0], [100.0, 50.0], [0.0, 50.0]]
         # Trapezoid
