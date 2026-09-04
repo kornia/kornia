@@ -154,6 +154,30 @@ class TestSymmetricTransferError(BaseTester):
         expected = torch.tensor([0.0, 2.0, 10.0], device=device, dtype=dtype)[None]
         self.assert_close(symmetric_transfer_error(pts1, pts2, H), expected, atol=1e-4, rtol=1e-4)
 
+    def test_singular(self, device, dtype):
+        max_num = torch.finfo(dtype).max
+        pts1 = torch.rand(2, 5, 2, device=device, dtype=dtype, requires_grad=True)
+        pts2 = torch.rand(2, 5, 2, device=device, dtype=dtype)
+        H = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).repeat(2, 1, 1)
+        # Make second homography in the batch singular
+        H[1] = 0.0
+        H[1, 0, 0] = 1.0
+
+        for squared in (True, False):
+            err = symmetric_transfer_error(pts1, pts2, H, squared=squared)
+            assert not torch.isnan(err).any()
+            assert torch.isfinite(err[0]).all()
+            expected_singular = torch.full_like(err[1], max_num)
+            self.assert_close(err[1], expected_singular)
+
+        # Check gradient finiteness across mixed batch
+        err = symmetric_transfer_error(pts1, pts2, H)
+        err[0].sum().backward()
+        assert pts1.grad is not None
+        assert not torch.isnan(pts1.grad).any()
+        assert torch.isfinite(pts1.grad[0]).all()
+        assert (pts1.grad[1] == 0.0).all()
+
 
 class TestFindHomographyDLT(BaseTester):
     def test_smoke(self, device, dtype):

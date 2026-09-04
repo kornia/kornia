@@ -365,6 +365,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `N < 3` raised an incidental `IndexError`, while `N >= 3` silently returned `(B, 2)` extents computed from the
   wrong vertices. (#4218)
 
+* Fix `symmetric_transfer_error` returning `NaN` instead of `max_num` for singular homographies.
+  When `safe_inverse_with_mask` flags an input as non-invertible, the unshielded inverse matrix containing
+  non-finite values propagated `NaN` through `oneway_transfer_error` and the arithmetic mask
+  `(there + back) * mask + max_num * (~mask)`, poisoning both the forward error and autograd gradients.
+  Invalid inverse matrices are now guarded with an identity fallback before transfer error calculation,
+  and the final masking uses `torch.where` to cleanly assign `max_num`. (#4203)
+
 * Constructing `ScaleSpaceDetector` with `compile_modules` no longer permanently mutates the process-global
   `torch._dynamo.config.capture_dynamic_output_shape_ops` setting. (#4134)
 

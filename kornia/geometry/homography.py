@@ -123,14 +123,18 @@ def symmetric_transfer_error(
     # From Hartley and Zisserman, Symmetric transfer error (4.7)
     # dist = \sum_{i} (d(x, H^-1 x')**2 + d(x', Hx)**2)
     H_inv, good_H = safe_inverse_with_mask(H)
+    eye = torch.eye(3, device=H.device, dtype=H.dtype).expand_as(H_inv)
+    H_inv_safe = torch.where(good_H.view(-1, 1, 1), H_inv, eye)
 
     there: torch.Tensor = oneway_transfer_error(pts1, pts2, H, True, eps)
-    back: torch.Tensor = oneway_transfer_error(pts2, pts1, H_inv, True, eps)
+    back: torch.Tensor = oneway_transfer_error(pts2, pts1, H_inv_safe, True, eps)
     good_H_reshape: torch.Tensor = good_H.view(-1, 1).expand_as(there)
-    out = (there + back) * good_H_reshape.to(there.dtype) + max_num * (~good_H_reshape).to(there.dtype)
-    if squared:
-        return out
-    return (out + eps).sqrt()
+
+    out = there + back
+    if not squared:
+        out = (out + eps).sqrt()
+    max_tensor = torch.full_like(out, max_num)
+    return torch.where(good_H_reshape, out, max_tensor)
 
 
 def line_segment_transfer_error_one_way(
