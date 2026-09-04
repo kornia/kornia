@@ -247,9 +247,12 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
         if model_name not in URLs:
             raise ValueError(f"No pretrained model for '{model_name}'. Please select from {list(URLs.keys())}.")
 
-        state_dict = load_state_dict_from_url(
-            URLs[model_name], map_location="cuda:0" if torch.cuda.is_available() else "cpu"
-        )
+        # Load weights on the current accelerator (CUDA, MPS, XPU, NPU, ...), falling
+        # back to CPU when none is available. Hard-coding "cuda:0" here would force the
+        # state dict onto CUDA even on machines that expose a different accelerator
+        # (e.g. Ascend NPU or Intel XPU) whose torch build reports no CUDA.
+        device = str(torch.accelerator.current_accelerator()) if torch.accelerator.is_available() else "cpu"
+        state_dict = load_state_dict_from_url(URLs[model_name], map_location=device)
 
         def map_name(old_name: str) -> str:
             new_name = old_name
