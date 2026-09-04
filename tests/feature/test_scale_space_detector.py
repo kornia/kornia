@@ -55,6 +55,26 @@ def _require_affine_orientation_kernels(device: torch.device, dtype: torch.dtype
             pytest.skip(f"no {name} kernel for {dtype} on {device.type}")
 
 
+def _canonical_order(lafs: torch.Tensor, responses: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Sort one image's detections into a batch-size-independent order.
+
+    `topk` breaks equal responses by position, and the positions it ranks over differ between a
+    batched and a single-image call, so comparing two calls row by row compares an ordering that is
+    not defined. Half precision makes those ties the norm rather than the exception: bfloat16
+    quantises this module's candidate responses to a handful of distinct values.
+
+    Sorting on the centre first turns the comparison into a set comparison. The remaining keys only
+    decide between rows that share a centre, and those agree to a ULP anyway, so the order does not
+    depend on last-bit differences the way a response-first sort would.
+    """
+    rows = [
+        (float(lafs[i, 0, 2]), float(lafs[i, 1, 2]), *(float(v) for v in lafs[i].flatten()), float(responses[i]))
+        for i in range(lafs.shape[0])
+    ]
+    order = torch.tensor(sorted(range(len(rows)), key=rows.__getitem__), device=lafs.device)
+    return lafs[order], responses[order]
+
+
 class TestScaleSpaceDetector(BaseTester):
     def test_shape(self, device, dtype):
         inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
@@ -374,12 +394,16 @@ class TestScaleSpaceDetector(BaseTester):
         assert 0 < int(filled[0].sum()) < det.num_features, "expected a partially filled result"
         assert bool((resps[~filled] == 0).all()), f"sentinel leaked: min response {resps.min().item()}"
         assert (resps > torch.finfo(dtype).min / 4).all()
-        # and the single-image path agrees, which it did not before. Up to tolerance, not bit-for-bit:
-        # the response convolutions pick batch-size-dependent kernels on some CPUs (ubuntu CI), so the
-        # same candidates carry last-ULP-different scores.
+        # and the single-image path agrees, which it did not before. As a set, not row by row: the
+        # two calls rank over differently shaped volumes, so `topk` orders equal responses
+        # differently, and in bfloat16 this input's responses tie constantly (#4219). Up to
+        # tolerance, not bit-for-bit either: the response convolutions pick batch-size-dependent
+        # kernels on some CPUs (ubuntu CI), so the same candidates carry last-ULP-different scores.
         lafs1, resps1 = det(inp[:1])
-        self.assert_close(resps1[0], resps[0])
-        self.assert_close(lafs1[0], lafs[0])
+        batched_lafs, batched_resps = _canonical_order(lafs[0], resps[0])
+        single_lafs, single_resps = _canonical_order(lafs1[0], resps1[0])
+        self.assert_close(single_resps, batched_resps)
+        self.assert_close(single_lafs, batched_lafs)
 
     def test_padding_survives_the_affine_and_orientation_modules(self, device, dtype):
         # Same contract as `MultiResolutionDetector.forward`: the shape and orientation modules
