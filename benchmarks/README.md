@@ -268,12 +268,11 @@ The honest reading:
   start by bisecting stack against machine rather than reading the kernel. It is not the
   N-chunking added in #4128: at B=1 N=2000 the sampling grid is ~16 MiB against a 64 MiB budget,
   so that config takes the single-chunk fast path and still loses.
-- **`laf_to_boundary_points` is the weakest compiled op on CUDA** — 17.8M LAFs/s, below both
+- **`laf_to_boundary_points` was the weakest compiled op on CUDA** — 17.8M LAFs/s, below both
   patch extractors, ~25× below `ellipse_to_laf`, and the least moved by `torch.compile` there
-  (1.26×, against up to 9.1× elsewhere). It builds its `linspace`/`ones`/`tensor` basis without a
-  `device=` argument and `.to()`s the result on every call (`kornia/feature/laf.py`), so each
-  call pays a host→device transfer. On CPU it is ~9× slower than the similar-sized
-  `make_upright`. First optimization target in this file.
+  (1.26×, against up to 9.1× elsewhere). On CPU it was ~9× slower than the similar-sized
+  `make_upright`. #4217 removed the cause; see the last bullet for what it actually was. The
+  tables above predate that change, as do their `laf_is_inside_image` rows, which share it.
 - **Small N on CUDA is launch-latency bound, not work bound:** at B=1 N=2000 the three cheapest
   ops all land within 8.2–14.2M LAFs/s regardless of what they compute, ~8.5–11× below their own
   B=1 N=20000 figures. Read the N=20000 rows for kernel cost and the N=2000 rows for per-call
@@ -293,12 +292,22 @@ The honest reading:
   `torch.compile` (4.4× and 3.8×). MPS only wins where there is real work per LAF: patch
   extraction, by 2.2–2.4× eager and up to 3.4× compiled. A pipeline that moves LAFs to the GPU
   for the frame math alone pays for the transfer twice.
-- **`laf_to_boundary_points` is the worst op on every machine measured**, and its CPU numbers say
-  why: on the M1 it is 30× below `make_upright` and `torch.compile` recovers only 1.29×, because
-  the cost is not a kernel. It builds its 50-point basis with no `device=`, `.expand()`s it to
-  `(B*N, n_pts, 3)` and only then calls `.to(device)`, so every call materializes — and on a GPU
-  transfers — a tensor that scales with the LAF count: ~12 MiB per call at N=20000 for a basis
-  with 50 distinct rows. Build it on the target device and broadcast in the matmul instead.
+- **`laf_to_boundary_points` was the worst op on every machine measured, and the obvious
+  diagnosis was the wrong one.** It built its 50-point basis with no `device=`, `.expand()`ed it
+  to `(B*N, n_pts, 3)` and only then called `.to(device)`, so every call materialized — and on a
+  GPU transferred — a tensor scaling with the LAF count: ~12 MiB per call at N=20000 for a basis
+  with 50 distinct rows. That is real, and it is a memory problem, not the speed problem: fixing
+  only it measures **1.00× on CPU**. The cost was one gemm-shape cliff. The op appended a constant
+  `[0, 0, 1]` row to every LAF so that it could divide the result by a homogeneous coordinate that
+  is always exactly 1, and torch's CPU batched gemm falls off a fast path at that third row — at
+  B=1 N=20000, `bmm` on a `(B, 3, 3)` operand takes 14.9 ms where `(B, 2, 3)` takes 0.65 ms, 23×
+  for 1.5× the arithmetic, identically at 1, 4 and 8 threads (M=1 0.33 ms, M=2 0.65, M=3 14.87,
+  M=4 16.26). #4217 multiplies by the `(2, 3)` LAF directly. Quiet back-to-back A/B on the M1
+  (torch 2.14.0, 4 threads, B=1 N=20000): `laf_to_boundary_points` 1.07M → 29.6M LAFs/s eager on
+  CPU and 1.77M → 4.27M on MPS; `laf_is_inside_image`, which calls it with `n_pts=12` on every
+  detector forward, 9.75M → 29.0M on CPU and 2.70M → 8.53M on MPS. **The lesson is the method:**
+  the transfer was visible by reading the source and the cliff was only visible by timing the
+  components, so the readable diagnosis got written up first and would have shipped a 1.00× fix.
 
 ## Sample results — augmentation flagship (class API)
 
