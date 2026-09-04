@@ -1123,6 +1123,15 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
         ``0`` and the identity came back ``[nan, nan, nan]``. Tracked in
         `#3966 <https://github.com/kornia/kornia/issues/3966>`_.
 
+    .. note::
+        The backward pass is finite at ``w = +-1`` (``w = 1`` is the identity quaternion, the
+        standard initialisation for pose optimisation), where the forward already returns a
+        correct value: ``acos``'s own derivative is unbounded there, but is guarded before it is
+        differentiated so the gradient no longer depends on it becoming a real infinity there on
+        a given torch version or backend. This used to return ``nan`` for the gradient at the
+        identity, since it multiplied that unbounded derivative by the identity's exactly-zero
+        vector part. Tracked in `#4007 <https://github.com/kornia/kornia/issues/4007>`_.
+
     Args:
         quaternion: a tensor containing a quaternion to be converted.
           The tensor can be of shape :math:`(*, 4)`.
@@ -1152,9 +1161,21 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
 
     norm_q: torch.Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=eps)
 
-    quaternion_log: torch.Tensor = (
-        quaternion_vector * torch.acos(torch.clamp(quaternion_scalar, min=-1.0, max=1.0)) / norm_q
-    ).to(orig_dtype)
+    # d(acos)/dw = -1/sqrt(1-w^2) is unbounded at w = +-1 (on some torch/backend builds it is
+    # exactly +-inf; PyTorch >= 2.10-ish already zeros it, but nothing here may depend on that).
+    # At w = +-1 the vector part need not be zero (a non-unit quaternion), so this is not always
+    # multiplied away -- w = 1 at the identity quaternion is the common case where it is, and
+    # 0 * inf = nan there, killing every gradient through this function from its most ordinary
+    # input. Route the boundary through .acos() on a *detached* copy for the value (identical to
+    # the unguarded call: acos is continuous at +-1, only its derivative diverges) and through
+    # .acos() on a substituted safe argument for the gradient, so autograd never differentiates
+    # acos at +-1 at all.
+    w_clamped = torch.clamp(quaternion_scalar, min=-1.0, max=1.0)
+    at_boundary = w_clamped.abs() >= 1.0
+    safe_w = torch.where(at_boundary, torch.zeros_like(w_clamped), w_clamped)
+    acos_w = torch.where(at_boundary, w_clamped.detach().acos(), safe_w.acos())
+
+    quaternion_log: torch.Tensor = (quaternion_vector * acos_w / norm_q).to(orig_dtype)
 
     return quaternion_log
 
@@ -1316,6 +1337,14 @@ def euler_from_quaternion(
         gimbal-locked. Tracked in
         `#3953 <https://github.com/kornia/kornia/issues/3953>`_.
 
+    .. note::
+        ``pitch``'s gradient is finite at gimbal lock, including exactly at ``pitch = +-pi/2``.
+        This is a separate concern from the two warnings above, which are about the *value*:
+        ``asin``'s own derivative is unbounded at its domain boundary, and used to return ``nan``
+        or ``inf`` there for every quaternion coefficient once anything downstream differentiated
+        through ``pitch``, independent of whether the returned triple itself represented the
+        input rotation. Tracked in `#4007 <https://github.com/kornia/kornia/issues/4007>`_.
+
     Args:
         w: quaternion :math:`q_w` coefficient.
         x: quaternion :math:`q_x` coefficient.
@@ -1338,7 +1367,13 @@ def euler_from_quaternion(
 
     sinp = 2.0 * (w * y - z * x)
     sinp = sinp.clamp(min=-1.0, max=1.0)
-    pitch = sinp.asin()
+    # d(asin)/dx = 1/sqrt(1-x^2) is unbounded at x = +-1 (gimbal lock); guard the gradient the
+    # same way quaternion_exp_to_log guards its own acos boundary (kornia#4007) -- differentiate
+    # asin on a substituted safe argument, but take the value from a detached copy at the real
+    # (possibly +-1) argument, so the returned pitch is unchanged and only the gradient is finite.
+    at_boundary = sinp.abs() >= 1.0
+    safe_sinp = torch.where(at_boundary, torch.zeros_like(sinp), sinp)
+    pitch = torch.where(at_boundary, sinp.detach().asin(), safe_sinp.asin())
 
     siny_cosp = 2.0 * (w * z + x * y)
     cosy_cosp = 1.0 - 2.0 * (yy + z * z)
