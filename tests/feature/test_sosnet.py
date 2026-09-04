@@ -55,6 +55,17 @@ class TestSOSNet(BaseTester):
         descriptors = sosnet(patches)
         assert torch.isfinite(descriptors).all(), f"{int(descriptors.isnan().sum())} non-finite descriptor entries"
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # The normalisation branches on `dtype` to lift half precision into float32. dtype is static
+        # metadata, so dynamo resolves that branch at trace time; `torch_optimizer` does not pass
+        # `fullgraph=True`, so what this pins is that the compiled result still matches eager on every
+        # dtype -- including the lifted half path, which returns NaN if the branch is dropped. The
+        # graph-break count is checked separately: `torch._dynamo.explain` reports 1 graph and 0 breaks.
+        patches = torch.rand(2, 1, 32, 32, device=device, dtype=dtype)
+        model = SOSNet().to(device, dtype).eval()
+        op = torch_optimizer(model)
+        self.assert_close(op(patches), model(patches))
+
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         # `torch.ones` drives a randomly initialised SOSNet to exactly zero (a ReLU collapse), which made
