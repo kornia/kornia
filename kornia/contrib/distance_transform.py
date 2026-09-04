@@ -76,7 +76,9 @@ def _distance_transform_2d_impl(image: torch.Tensor, kernel_size: int, h: float)
 
     for i in range(n_iters):
         cdt = filter2d(boundary, kernel, border_type="replicate")
-        cdt = -h * torch.log(cdt)
+        positive = cdt > 0
+        cdt = -h * torch.log(torch.where(positive, cdt, torch.ones_like(cdt)))
+        cdt = torch.where(positive, cdt, torch.zeros_like(cdt))
         cdt = torch.nan_to_num(cdt, nan=0.0, posinf=0.0, neginf=0.0)
 
         mask = cdt > 0
@@ -108,7 +110,9 @@ def _distance_transform_3d_impl(image: torch.Tensor, kernel_size: int, h: float)
 
     for i in range(n_iters):
         cdt = filter3d(boundary, kernel, border_type="replicate")
-        cdt = -h * torch.log(cdt)
+        positive = cdt > 0
+        cdt = -h * torch.log(torch.where(positive, cdt, torch.ones_like(cdt)))
+        cdt = torch.where(positive, cdt, torch.zeros_like(cdt))
         cdt = torch.nan_to_num(cdt, nan=0.0, posinf=0.0, neginf=0.0)
 
         mask = cdt > 0
