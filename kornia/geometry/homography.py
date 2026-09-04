@@ -123,10 +123,11 @@ def symmetric_transfer_error(
     # From Hartley and Zisserman, Symmetric transfer error (4.7)
     # dist = \sum_{i} (d(x, H^-1 x')**2 + d(x', Hx)**2)
     H_inv, good_H = safe_inverse_with_mask(H)
-    eye = torch.eye(3, device=H.device, dtype=H.dtype).expand_as(H_inv)
+    eye = torch.eye(3, device=H.device, dtype=H.dtype).expand_as(H)
+    H_safe = torch.where(good_H.view(-1, 1, 1), H, eye)
     H_inv_safe = torch.where(good_H.view(-1, 1, 1), H_inv, eye)
 
-    there: torch.Tensor = oneway_transfer_error(pts1, pts2, H, True, eps)
+    there: torch.Tensor = oneway_transfer_error(pts1, pts2, H_safe, True, eps)
     back: torch.Tensor = oneway_transfer_error(pts2, pts1, H_inv_safe, True, eps)
     good_H_reshape: torch.Tensor = good_H.view(-1, 1).expand_as(there)
 
