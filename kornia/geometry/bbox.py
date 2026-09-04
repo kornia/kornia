@@ -61,7 +61,7 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of :math:`(B, 4, 2)` or view-compatible :math:`(B, N, 4, 2)`, where each box is defined in the
+            of :math:`(B, 4, 2)` or :math:`(B, N, 4, 2)`, where each box is defined in the
             following ``clockwise`` order: top-left, top-right, bottom-right, bottom-left. The coordinates must be in
             the x, y order.
 

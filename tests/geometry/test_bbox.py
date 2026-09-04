@@ -112,6 +112,10 @@ class TestBbox2D(BaseTester):
         assert not sliced.is_contiguous()
         assert validate_bbox(sliced) is True
 
+        expanded = torch.zeros(1, 3, 4, 2, device=device, dtype=dtype).expand(2, -1, -1, -1)
+        assert expanded.stride(0) == 0
+        assert validate_bbox(expanded) is True
+
     def test_convention_validate_bbox_invariance_is_exact_arithmetic_only(self, device):
         # In float16 the inclusive +1 rounds distinct sub-unit spans to the same
         # value, although the exclusive span difference exceeds the 1e-4 threshold.
