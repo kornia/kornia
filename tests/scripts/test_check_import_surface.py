@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import json
 import os
 import subprocess
 import sys
@@ -21,11 +22,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / ".github" / "scripts"))
 from check_import_surface import (
+    INVENTORY_PATH,
     _changed_kornia_files,
     _is_experimental,
     _module_name,
+    acknowledged_names,
     check_file,
     diff_surfaces,
+    inventory_removals,
     main,
     parse_module_surface,
 )
@@ -538,3 +542,199 @@ def test_check_file_honors_a_declared_source_encoding(tmp_path):
     assert report is not None
     assert report.removed_from_all == {"a"}
     assert report.fatal is True
+
+
+def _repo_with_inventory(tmp_path, *, module="kornia/mymodule.py", exports=("a", "b"), inventory=None):
+    """A throwaway repo whose base commit has `exports` in __all__ and in the inventory.
+
+    Returns the repo path with the base commit made and a `base` branch pointing at it.
+    The caller edits the working tree and runs the check against `base`.
+    """
+    repo = tmp_path / "repo"
+    (repo / module).parent.mkdir(parents=True, exist_ok=True)
+    (repo / INVENTORY_PATH).parent.mkdir(parents=True, exist_ok=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+
+    body = "".join(f"def {name}():\n    pass\n\n" for name in exports)
+    (repo / module).write_text(f"__all__ = {list(exports)!r}\n\n{body}")
+    recorded = inventory if inventory is not None else {_module_name(module): sorted(exports)}
+    (repo / INVENTORY_PATH).write_text(json.dumps(recorded, indent=2, sort_keys=True) + "\n")
+
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+    _git("branch", "base", cwd=repo)
+    return repo
+
+
+def _in_repo(repo, fn):
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(repo)
+        return fn()
+    finally:
+        os.chdir(original_cwd)
+
+
+def _write_inventory(repo, mapping):
+    (repo / INVENTORY_PATH).write_text(json.dumps(mapping, indent=2, sort_keys=True) + "\n")
+
+
+def test_acknowledged_names_reads_the_modules_own_entry():
+    removals = {"kornia.color": {"AUTUMN"}}
+    assert acknowledged_names("kornia.color", removals) == {"AUTUMN"}
+
+
+def test_acknowledged_names_walks_ancestor_packages():
+    # The inventory records the stable-core top-level packages, so a name dropped from a
+    # submodule's __all__ is recorded under its package -- the ancestor walk is the
+    # only thing that connects the two.
+    removals = {"kornia.geometry": {"thing"}}
+    assert acknowledged_names("kornia.geometry.bbox", removals) == {"thing"}
+
+
+def test_acknowledged_names_ignores_an_unrelated_modules_entry():
+    # Both the name and the module path have to line up, or dropping any name anywhere
+    # in the inventory would launder every removal with that name elsewhere.
+    removals = {"kornia.color": {"thing"}}
+    assert acknowledged_names("kornia.geometry", removals) == set()
+
+
+def test_check_file_inventory_removal_is_not_fatal(tmp_path):
+    # #4190's live case (#4143 dropping AUTUMN): the contributor follows the procedure
+    # test_no_public_name_removed's own assertion message spells out, and the check has
+    # to see that edit rather than hard-failing on a policy-compliant removal.
+    repo = _repo_with_inventory(tmp_path)
+    (repo / "kornia" / "mymodule.py").write_text("__all__ = ['b']\n\ndef b():\n    pass\n")
+    _write_inventory(repo, {"kornia.mymodule": ["b"]})
+
+    report = _in_repo(repo, lambda: check_file("base", "kornia/mymodule.py", inventory_removals("base")))
+
+    assert report is not None
+    assert report.removed_from_all == {"a"}
+    assert report.acknowledged == {"a"}
+    assert report.fatal is False
+
+
+def test_check_file_unrecorded_removal_is_still_fatal(tmp_path):
+    repo = _repo_with_inventory(tmp_path)
+    (repo / "kornia" / "mymodule.py").write_text("__all__ = ['b']\n\ndef b():\n    pass\n")
+    # inventory untouched: the removal is not recorded anywhere
+
+    report = _in_repo(repo, lambda: check_file("base", "kornia/mymodule.py", inventory_removals("base")))
+
+    assert report is not None
+    assert report.removed_from_all == {"a"}
+    assert report.acknowledged == set()
+    assert report.fatal is True
+
+
+def test_check_file_recording_a_different_name_does_not_excuse_this_one(tmp_path):
+    repo = _repo_with_inventory(tmp_path)
+    (repo / "kornia" / "mymodule.py").write_text("__all__ = ['b']\n\ndef b():\n    pass\n")
+    _write_inventory(repo, {"kornia.mymodule": ["a"]})  # records 'b' leaving, not 'a'
+
+    report = _in_repo(repo, lambda: check_file("base", "kornia/mymodule.py", inventory_removals("base")))
+
+    assert report is not None
+    assert report.removed_from_all == {"a"}
+    assert report.acknowledged == set()
+    assert report.fatal is True
+
+
+def test_check_file_partially_recorded_removal_is_fatal_for_the_rest(tmp_path):
+    repo = _repo_with_inventory(tmp_path)
+    (repo / "kornia" / "mymodule.py").write_text("__all__ = []\n")
+    _write_inventory(repo, {"kornia.mymodule": ["b"]})  # records 'a' only
+
+    report = _in_repo(repo, lambda: check_file("base", "kornia/mymodule.py", inventory_removals("base")))
+
+    assert report is not None
+    assert report.removed_from_all == {"a", "b"}
+    assert report.acknowledged == {"a"}
+    assert report.fatal is True
+
+
+def test_inventory_removals_ignores_a_corrupt_inventory(tmp_path):
+    # Fail closed. An unparsable inventory at the new revision makes every recorded name
+    # look removed, which would acknowledge the entire public surface at once.
+    repo = _repo_with_inventory(tmp_path)
+    (repo / INVENTORY_PATH).write_text("{ this is not json\n")
+
+    assert _in_repo(repo, lambda: inventory_removals("base")) == {}
+
+
+def test_inventory_removals_ignores_a_deleted_inventory(tmp_path):
+    repo = _repo_with_inventory(tmp_path)
+    (repo / INVENTORY_PATH).unlink()
+
+    assert _in_repo(repo, lambda: inventory_removals("base")) == {}
+
+
+def test_inventory_removals_ignores_an_inventory_of_the_wrong_shape(tmp_path):
+    repo = _repo_with_inventory(tmp_path)
+    (repo / INVENTORY_PATH).write_text('["a", "b"]\n')  # a list, not {module: names}
+
+    assert _in_repo(repo, lambda: inventory_removals("base")) == {}
+
+
+def test_main_exits_zero_and_reports_a_recorded_removal(tmp_path, capsys):
+    repo = _repo_with_inventory(tmp_path)
+    (repo / "kornia" / "mymodule.py").write_text("__all__ = ['b']\n\ndef b():\n    pass\n")
+    _write_inventory(repo, {"kornia.mymodule": ["b"]})
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "::notice" in captured.out
+    assert INVENTORY_PATH in captured.out
+    assert "'a'" in captured.out
+    assert "::error" not in captured.out
+
+
+def test_main_error_message_names_the_escape_hatch(tmp_path, capsys):
+    # #4190: the pytest assertion tells contributors the procedure and this check did not,
+    # so a contributor could satisfy the test that names it and still be blocked here with
+    # no idea what to do about it.
+    repo = _repo_with_inventory(tmp_path)
+    (repo / "kornia" / "mymodule.py").write_text("__all__ = ['b']\n\ndef b():\n    pass\n")
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "::error" in captured.out
+    assert INVENTORY_PATH in captured.out
+    assert "regenerate()" in captured.out
+
+
+def test_main_still_reports_an_undocumented_removal_alongside_a_recorded_one(tmp_path, capsys):
+    # An undocumented removal (the pyramid.py/#3986 case) was never fatal and is reported
+    # for visibility. The inventory hatch must not swallow that line: it speaks only for
+    # names that were in __all__, and the two reports are independent.
+    repo = tmp_path / "repo"
+    (repo / "kornia").mkdir(parents=True)
+    (repo / "tests").mkdir(parents=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+
+    mod = repo / "kornia" / "mymodule.py"
+    mod.write_text("from torch.nn.functional import pad\n\n__all__ = ['a']\n\ndef a():\n    pass\n")
+    _write_inventory(repo, {"kornia.mymodule": ["a"]})
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+    _git("branch", "base", cwd=repo)
+
+    mod.write_text("__all__ = []\n")  # drops the documented 'a' AND the undocumented 'pad'
+    _write_inventory(repo, {"kornia.mymodule": []})  # records only 'a'
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "::error" not in captured.out
+    assert "'pad'" in captured.out
+    assert "No longer bound at module scope" in captured.out

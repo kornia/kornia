@@ -249,6 +249,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* The `Import Surface` CI check no longer hard-fails a public-name removal that the same change records in
+  `tests/api_surface.json`. That inventory edit is the deliberate review moment the stability policy
+  (`docs/source/get-started/stability.rst`) requires, and `tests/test_api_surface.py::test_no_public_name_removed`
+  already instructs contributors to make it for a removal whose deprecation window has passed — so a
+  policy-compliant removal could satisfy the test that names the procedure and still be blocked by a check with
+  no notion of it. The removal is now reported as a `::notice` instead, and the check's error message names the
+  escape hatch. A removal the inventory does not record still fails, an unrelated inventory entry does not excuse
+  it, and a deleted or unparsable inventory acknowledges nothing. (#4190)
+
 * `validate_bbox` and `validate_bbox3d` flatten rank-4 `(B, N, 4, 2)` / `(B, N, 8, 3)` input with `reshape`
   instead of `view`, so a non-contiguous leading-dimension stride (a transpose, a slice that drops boxes, an
   `expand`) returns a boolean as documented instead of raising `RuntimeError`. (#4174)

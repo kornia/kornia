@@ -38,7 +38,7 @@ Exit status is 1 only when a name is removed from ``__all__`` (a break of
 documented public API, per the stability policy). Names that disappear from
 module scope but were never in ``__all__`` are reported for visibility but do
 not fail the check -- hard-failing on those would make every incidental
-third-party re-export permanent API. Two exemptions from the hard-fail path:
+third-party re-export permanent API. Three exemptions from the hard-fail path:
 
 - A module with a module-level ``__getattr__`` in the new revision is
   presumed to be using it as a deprecation shim (the pattern
@@ -46,12 +46,20 @@ third-party re-export permanent API. Two exemptions from the hard-fail path:
 - ``kornia.contrib`` is the Experimental tier per
   ``docs/source/get-started/stability.rst`` ("No stability promise") --
   its removals are reported, not fatal.
+- A removal the same change *records* by dropping the name from
+  ``tests/api_surface.json`` is reported, not fatal. That inventory is the
+  deliberate review moment the stability policy requires, and
+  ``tests/test_api_surface.py::test_no_public_name_removed`` already tells
+  contributors to edit it for a removal whose deprecation window has passed
+  -- so a policy-compliant removal could otherwise satisfy the test that
+  names the procedure and still be hard-blocked here. See #4190.
 """
 
 from __future__ import annotations
 
 import argparse
 import ast
+import json
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -237,6 +245,80 @@ def _alternate_path(path: str) -> str:
     return stem + "/__init__.py"
 
 
+# tests/api_surface.json is the checked-in inventory of the stable-core modules'
+# public names, and tests/test_api_surface.py::test_no_public_name_removed tells a
+# contributor to edit it when a deprecation window has passed. Dropping a name from
+# it in the same change is therefore the acknowledgement this check honors (#4190).
+INVENTORY_PATH = "tests/api_surface.json"
+
+
+def _parse_inventory(source: bytes | None) -> dict[str, set[str]] | None:
+    """Parse the api_surface.json inventory into {module: names}.
+
+    Returns ``None`` -- distinct from an empty mapping -- for anything it cannot read
+    as that shape: absent, invalid JSON, or a different structure. The distinction is
+    the whole safety property. An unreadable inventory at the new revision makes every
+    recorded name look *removed*, which would open the escape hatch for the entire
+    surface; the caller turns ``None`` into "acknowledge nothing" instead.
+    """
+    if source is None:
+        return None
+    try:
+        data = json.loads(source)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return {
+        module: {name for name in names if isinstance(name, str)}
+        for module, names in data.items()
+        if isinstance(module, str) and isinstance(names, list)
+    }
+
+
+def inventory_removals(base_ref: str, inventory_path: str = INVENTORY_PATH) -> dict[str, set[str]]:
+    """Names each inventory module lost between `base_ref` and the working tree.
+
+    Working tree, not `HEAD`, for the same reason `_changed_kornia_files` diffs the
+    working tree: an uncommitted inventory edit has to count during a local run, and
+    on CI's clean checkout the two are identical.
+    """
+    old = _parse_inventory(_git_show(base_ref, inventory_path))
+    try:
+        new_source: bytes | None = _read_source(inventory_path)
+    except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
+        new_source = None
+    new = _parse_inventory(new_source)
+
+    if old is None or new is None:
+        # Deleting or corrupting the inventory is not a way to acknowledge a removal:
+        # without a readable file at *both* ends there is no recorded intent to read.
+        return {}
+
+    removals: dict[str, set[str]] = {}
+    for module, names in old.items():
+        gone = names - new.get(module, set())
+        if gone:
+            removals[module] = gone
+    return removals
+
+
+def acknowledged_names(module: str, removals: dict[str, set[str]]) -> set[str]:
+    """Inventory removals that speak for `module`: its own entry, or an ancestor package's.
+
+    The inventory records the stable-core top-level packages, so a name dropped from
+    ``kornia/geometry/bbox.py`` is recorded under ``kornia.geometry`` -- the ancestor
+    walk is what lets a submodule's removal be acknowledged by the entry that actually
+    tracks it. An unrelated module's entry never counts, so the name *and* the module
+    path both have to line up.
+    """
+    parts = module.split(".")
+    acknowledged: set[str] = set()
+    for depth in range(1, len(parts) + 1):
+        acknowledged |= removals.get(".".join(parts[:depth]), set())
+    return acknowledged
+
+
 @dataclass
 class FileReport:
     path: str
@@ -244,6 +326,9 @@ class FileReport:
     removed_undocumented: set[str]
     fatal: bool
     """Whether removed_from_all should actually fail the check for this file."""
+
+    acknowledged: set[str] = field(default_factory=set)
+    """Subset of removed_from_all that this change records in `INVENTORY_PATH`."""
 
 
 def diff_surfaces(old: ModuleSurface, new: ModuleSurface) -> tuple[set[str], set[str]]:
@@ -253,11 +338,14 @@ def diff_surfaces(old: ModuleSurface, new: ModuleSurface) -> tuple[set[str], set
     return removed_from_all, removed_undocumented
 
 
-def check_file(base_ref: str, path: str) -> FileReport | None:
+def check_file(base_ref: str, path: str, removals: dict[str, set[str]] | None = None) -> FileReport | None:
     """Compare `path`'s module surface between `base_ref` and the working tree.
 
     A deleted file is diffed against an empty surface, so removing a whole
     module is reported (and can be fatal) just like emptying its `__all__`.
+
+    `removals` is `inventory_removals`' mapping for the same diff; a name it
+    records for this module (or an ancestor) is reported rather than fatal.
 
     Returns None if there's nothing to report (new file, unparsable source,
     or no names removed).
@@ -291,15 +379,20 @@ def check_file(base_ref: str, path: str) -> FileReport | None:
     if not removed_from_all and not removed_undocumented:
         return None
 
+    module = _module_name(path)
+    acknowledged = removed_from_all & acknowledged_names(module, removals or {})
+
     # A module-level __getattr__ in the new revision is presumed to be
     # serving these names as a deprecation shim (kornia.utils's pattern) --
-    # don't punish the one thing done right.
-    fatal = bool(removed_from_all) and not new_surface.has_getattr and not _is_experimental(_module_name(path))
+    # don't punish the one thing done right. Same for a removal this change
+    # already recorded in the inventory: only the *unrecorded* ones are fatal.
+    fatal = bool(removed_from_all - acknowledged) and not new_surface.has_getattr and not _is_experimental(module)
     return FileReport(
         path=path,
         removed_from_all=removed_from_all,
         removed_undocumented=removed_undocumented,
         fatal=fatal,
+        acknowledged=acknowledged,
     )
 
 
@@ -331,17 +424,31 @@ def main(argv: list[str] | None = None) -> int:
         print(f"::error::could not list changed files against {base}: {exc.stderr.strip() or exc}")
         return 1
 
-    reports = [r for r in (check_file(base, path) for path in files) if r is not None]
+    removals = inventory_removals(base)
+    reports = [r for r in (check_file(base, path, removals) for path in files) if r is not None]
 
     hard_fail = False
     for report in reports:
-        if report.removed_from_all:
-            names = sorted(report.removed_from_all)
+        if report.acknowledged:
+            print(
+                f"::notice file={report.path}::Removed from __all__ and recorded in "
+                f"{INVENTORY_PATH} in this same change, which is the review moment the "
+                f"stability policy asks for: {sorted(report.acknowledged)}"
+            )
+        unrecorded = sorted(report.removed_from_all - report.acknowledged)
+        if unrecorded:
             if report.fatal:
                 hard_fail = True
-                print(f"::error file={report.path}::Removed from __all__: {names}")
+                print(
+                    f"::error file={report.path}::Removed from __all__: {unrecorded}. If this "
+                    f"removal is deliberate and the deprecation window has passed (see "
+                    f"docs/source/get-started/stability.rst), record it by dropping the same "
+                    f"name(s) from {INVENTORY_PATH} in this PR -- run "
+                    f"tests.test_api_surface.regenerate() -- and list the removal in CHANGELOG.md. "
+                    f"That inventory edit is the acknowledgement this check looks for."
+                )
             else:
-                print(f"::notice file={report.path}::Removed from __all__ (exempt, see comment above): {names}")
+                print(f"::notice file={report.path}::Removed from __all__ (exempt, see comment above): {unrecorded}")
         if report.removed_undocumented:
             names = sorted(report.removed_undocumented)
             print(
