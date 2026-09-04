@@ -973,6 +973,30 @@ class TestMultiResolutionDetector(BaseTester):
             responses, _ = self._make_detector(num_features=k).to(device, dtype).detect(img)
             self.assert_close(responses[0], reference[0, :k])
 
+    def test_the_response_prefix_survives_tied_responses(self, device, dtype):
+        # The prefix the docstring promises is on the sorted responses, not on which detection carries
+        # a given response. `topk` breaks a tie by position and the positions it ranks over depend on
+        # `num_features`, so exactly equal maxima can come back in a different order for a different
+        # request: with this input `detect(1)` returns the centre that `detect(2)` ranks *second*.
+        # That permutation is `topk`'s to choose and is deliberately not pinned here -- pinning it
+        # would codify undefined behaviour that already differs across devices. The response vector
+        # staying a prefix is the part that is promised, and it holds under ties too.
+        class Identity(torch.nn.Module):
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                return x
+
+        cfg = get_default_detector_config()
+        cfg.update({"nms_size": 5, "pyramid_levels": 1, "up_levels": 0})
+        img = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        for y, x in ((20, 20), (20, 30), (40, 40)):
+            img[:, :, y, x] = 1.0  # three isolated maxima with byte-identical responses
+
+        reference, _ = MultiResolutionDetector(Identity(), num_features=3, config=cfg).to(device, dtype).detect(img)
+        assert int((reference[0] != 0).sum()) == 3, "expected all three tied maxima to be detected"
+        for k in (1, 2):
+            responses, _ = MultiResolutionDetector(Identity(), num_features=k, config=cfg).to(device, dtype).detect(img)
+            self.assert_close(responses[0], reference[0, :k])
+
     def test_negative_score_threshold_is_rejected(self, device, dtype):
         # NMS writes an exact zero at every suppressed position, so a negative threshold would
         # admit all of them -- and collide with the zero response that marks an unfilled slot.

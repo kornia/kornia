@@ -659,8 +659,10 @@ class MultiResolutionDetector(nn.Module):
         model: response function, such as KeyNet or BlobHessian
         num_features: Number of features to detect. Every pyramid level is searched for this many
             candidates and the whole set is ranked together, so the result is the ``num_features``
-            highest responses in the image and the result for one value is a prefix of the result
-            for any larger one.
+            highest responses in the image, and the sorted response vector for one value is a prefix
+            of the vector for any larger one. Which detection carries a given response is not pinned
+            when responses tie: ``topk`` breaks a tie by position, and the positions it ranks over
+            depend on ``num_features``.
         conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
         ori_module: for local feature orientation estimation. Default: :class:`~kornia.feature.PassLAF`,
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
