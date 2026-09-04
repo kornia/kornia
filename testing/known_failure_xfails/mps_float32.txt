@@ -1,6 +1,6 @@
 # Exact failure baseline recorded from
 # https://github.com/kornia/kornia/actions/runs/33808269822/job/100824208527 -- that job ran
-# without --xfail-known-failures, so it reports these 14 as failures: it is the run the baseline
+# without --xfail-known-failures, so it reports these 12 as failures: it is the run the baseline
 # was recorded from, not a replay of this file.
 # macos-15-arm64, Python 3.13, PyTorch 2.14.0, MPS float32, no CPU fallback,
 # one pytest process for the full suite (tests marked device_agnostic are deselected on an mps-only run).
