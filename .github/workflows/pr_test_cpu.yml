@@ -86,7 +86,7 @@ jobs:
         os: ["ubuntu-latest", "windows-latest", "macos-latest"]
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.5.1", "2.9.1"]
+        pytorch-version: ["2.5.1", "2.14.0"]
         exclude:
           # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on Windows
           - os: windows-latest
@@ -163,7 +163,7 @@ jobs:
     with:
       os: ubuntu-latest
       python-version: '["3.11"]'
-      pytorch-version: '["2.9.1"]'
+      pytorch-version: '["2.14.0"]'
       pytorch-dtype: float32
       optimizer: inductor
       pytest-extra: 'tests/augmentation tests/enhance tests/filters tests/color tests/geometry tests/losses tests/morphology -k "dynamo or compile"'
@@ -173,17 +173,35 @@ jobs:
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
 
-  # Single blocking MPS leg: newest Python, newest pinned torch, float32, on the Apple-silicon
-  # macos-latest image (macos-14 segfaults inside MPS kernels; 15 and 26 verified working).
+  # Single blocking MPS leg: newest Python, float32, on an Apple-silicon image.
   # The exact known-failure baseline is pinned as strict xfails (see #4159): a new failure,
-  # changed failure, skipped pin, or fixed pin makes the job red and requires review.
+  # changed failure, skipped pin, or fixed pin makes the job red and requires review. The
+  # torch pin tracks the newest pin of the CPU matrix so the leg resolves the locked
+  # dependency set; changing it means re-recording the manifest in the same change, because
+  # a release that adds MPS kernels turns recorded failures into strict XPASSes.
+  #
+  # The image is pinned to macos-15 rather than macos-latest, and that is not cosmetic.
+  # macos-latest is macos-26-arm64, whose GPU is paravirtualized; on macOS 26 torch 2.14
+  # emits Metal 4 `mpp::tensor_ops::matmul2d` cooperative-tensor shaders, and that virtual
+  # GPU cannot compile them. One shader specialization (matmul2d_descriptor<64,64,-1>) took
+  # 664 tests down across every subpackage -- `linalg.inv`, `linalg.solve`, `inv_ex`,
+  # `lu_factor_ex` and `F.conv3d` all route through it -- where the same runner on torch
+  # 2.9.1 had 200 failures. The blocker is the *virtual* GPU and not macOS 26: a physical M1
+  # on macOS 26.5 compiles those shaders and produces the same 14 failures this leg records.
+  # The macOS 15 image is Metal 3 and takes the older kernel path, which is the path that
+  # works on the runner fleet. Two consequences: no job here exercises the Metal 4 path that
+  # users on current macOS run, and when GitHub retires macos-15 this leg stops scheduling
+  # and `collector` goes red with no fallback -- so re-test macos-latest once upstream guards
+  # those kernels by device capability, rather than waiting for the image to be retired.
+  # Measured in https://github.com/kornia/kornia/issues/4159#issuecomment-5532655834.
+  # macos-14 segfaults inside MPS kernels and must not be used.
   tests-mps:
     needs: [pre-tests]
     uses: ./.github/workflows/tests.yml
     with:
-      os: macos-latest
+      os: macos-15
       python-version: '["3.13"]'
-      pytorch-version: '["2.9.1"]'
+      pytorch-version: '["2.14.0"]'
       pytorch-dtype: float32
       device: mps
       pytest-extra: --xfail-known-failures

@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* `benchmarks/feature/laf_ops.py` microbenchmarks seven public LAF operations
+  (`laf_from_center_scale_ori`, `make_upright`, `ellipse_to_laf`, `laf_to_boundary_points`,
+  `laf_is_inside_image`, `extract_patches_simple`, `extract_patches_from_pyramid`) as kornia eager vs
+  `torch.compile`, and its CPU and CUDA runs are the first committed non-Apple result set, so the docs
+  performance page now shows CUDA numbers. The page labels its throughput column from a new optional
+  `units` metadata key (`LAFs/s` here, `items/s` when absent) and identifies a row by every config field
+  that varies within a result file rather than by `(op, batch)` alone, which a suite sweeping a second
+  axis at a fixed batch would otherwise collapse onto one row. `run_batch_sweep` gained `label_fn`,
+  `items_fn` and `units` so such a suite can use the shared sweep; the existing callers are unchanged.
+  (#4119)
+
 * Linux CPU half-precision CI now uses explicit reproducible profiles, exact phase/exception manifests, complete
   lifecycle verification, and guarded candidate-only baseline regeneration. (#4154)
 * The documentation site was rebuilt on `pydata-sphinx-theme` with a top navigation bar
@@ -68,8 +79,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   figures are rendered by `docs/generate_model_examples.py` and committed under
   `docs/source/_static/img/models/`, so the docs build needs neither the weights nor the sample
   images. (#4178)
+* The blocking MPS CI gate now runs on torch 2.14.0 instead of 2.9.1, on the `macos-15` image
+  instead of `macos-latest`, and its recorded failure baseline drops from 200 entries to 14.
+  torch 2.14.0 adds MPS kernels for `grid_sample`'s 2-D and 3-D backward passes, for
+  `padding_mode="border"` and 5-D `mode="nearest"` sampling, and for the eigen/QR/LU/SVD family
+  (`eigh`, `svd`, `svdvals`, `qr`, `lu_solve`, `lstsq`, `cholesky_solve`, `matrix_exp`), so most of
+  what used to fail on Apple silicon now runs there natively. What is still *pinned* in the
+  baseline: `torch.linalg.eigvals`, which has no MPS kernel and keeps the 5-point essential-matrix
+  solver off the device, and the `yuv420`/`yuv422` empty-input reshape defect. Separately,
+  `tests/geometry/test_ransac.py` is *skipped* rather than pinned — it aborts the process on the
+  runners' paravirtualized GPU, and a `SIGABRT` has no exception type to record
+  ([#4204](https://github.com/kornia/kornia/issues/4204)); the skip costs 9 tests that pass on real
+  Apple hardware, and `--run-mps-process-abort` runs them locally. The underlying limit is that a
+  **batched** `torch.linalg.svd`/`svdvals`/`lstsq` fails to build a Metal pipeline once its input
+  holds 8192 elements or more, which keeps `RANSAC`'s batched minimal solvers off the device
+  ([#4201](https://github.com/kornia/kornia/issues/4201)); a single unbatched matrix is unaffected
+  at any size. The image stays on `macos-15`: on `macos-latest` (macOS 26) the runner's *virtual*
+  GPU cannot compile the Metal 4 cooperative-tensor shaders torch 2.14 emits, which fails 664
+  tests — a physical M1 on macOS 26 compiles them fine. kornia still supports torch 2.5.1, so the
+  in-tree MPS workarounds stay. (#4202)
 
 ### Breaking changes
+
+* Kornia's minimum supported PyTorch version rises to 2.5.1. Previously the declared floor was
+  2.0.0; PR-time CI has only ever exercised 2.5.1 and newer, and this same change retires the
+  scheduled-CI legs that tested anything older.
+  Installing kornia now requires `torch>=2.5.1`; a `torch` install below that version no longer
+  satisfies the dependency, and `pip`/`uv` will refuse to resolve it. (#4197)
 
 * Removed `kornia.to_tensorflow()`, `kornia.to_jax()` and `kornia.to_numpy()`, along with the
   multi-framework-support advertising in the README and the docs landing page. These functions used
@@ -216,6 +252,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reduction and was never guarded, because an axis-aligned rectangle's ties are always 2-way, where the
   `1/2` split happens to numerically coincide with the central-difference estimate -- the same kink, just
   invisible to `gradcheck` there.
+* The pinned-torch CI legs no longer run against the lockfile's `triton`. `uv sync` installs the locked torch's
+  dependency set, and each matrix leg then swaps torch alone for a `+cpu` build -- whose wheels declare no `triton` at
+  all -- so the lockfile's triton survived as an orphan of a torch that was no longer installed. torch guards its
+  inductor triton path on import availability rather than on version, so it dispatched onto that orphan and the
+  `2.6.0` leg died in `from triton.backends.compiler import AttrsDescriptor` on 32 dynamo and export tests, having
+  never been green. The install step now drops sidecar packages the installed torch does not declare, and the
+  verification step asserts the whole environment against that torch (`.github/scripts/check_torch_env.py`) so a
+  mis-provisioned venv fails at setup instead of as a wall of unrelated-looking test failures. The five
+  `tests/core/test_small_linalg.py` ONNX cases the import error was masking now export with `external_data=False`,
+  which torch 2.6's dynamo exporter requires when the destination is a `BytesIO`. (#4199, #4200)
+
+* `find_homography_dlt(..., solver="lu")` now solves the minimal four-point system with an adaptive
+  homogeneous gauge instead of applying LU to its singular normal matrix. This is the estimator
+  `RANSAC(model_type="homography")` calls for every minimal sample, so homography RANSAC results
+  change on every platform, not only where the old formulation broke down: over 2048 minimal
+  samples the median transfer residual drops from 2.3e-5 to 1.9e-6 and the worst case from 4.2e+5
+  to 4.5e+2. It also fixes the all-NaN homographies seen for a four-point sample on Windows with
+  PyTorch 2.14, and removes the corresponding CPU half-precision known failures. A four-point
+  sample containing a zero weight now returns a finite homography instead of NaN. Samples of five
+  or more points keep the previous normal-equation formulation and are numerically unchanged.
+  (#4197)
 
 * `add_weighted` now keeps Python scalar weights in operator math precision instead of rounding them to the input
   dtype before arithmetic. This improves `float16` and `bfloat16` accuracy and makes fractional scalar weights on

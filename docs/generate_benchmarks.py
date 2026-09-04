@@ -68,7 +68,9 @@ albumentations win the single-image uint8 CPU regime and we publish those losses
 
 Reproduce or contribute a machine with::
 
-   python benchmarks/<suite>/flagship.py --device <cpu|cuda|mps> --contribute benchmarks/results
+   python benchmarks/<dir>/<script>.py --device <cpu|cuda|mps> --contribute benchmarks/results
+
+Most suites are a ``flagship.py``; ``benchmarks/README.md`` maps each suite to its script.
 
 """
 
@@ -91,16 +93,46 @@ def latest_version(versions: list[str]) -> str:
     return max(versions, key=_version_key)
 
 
+#: Row fields that identify the measurement rather than the configuration it was taken at.
+MEASUREMENT_FIELDS = frozenset({"op", "backend", "median_us", "iqr_us", "throughput_per_s", "error"})
+
+
+def _extra_config_fields(rows: list[dict]) -> list[str]:
+    """Config fields besides ``batch`` that differ between rows of one result file.
+
+    ``op`` plus ``batch`` identifies a row in a suite that sweeps batch size alone, which is what
+    the flagship suites do; a suite sweeping a second axis (``feature-laf-ops`` varies ``n_lafs``
+    at a fixed batch) would otherwise collapse two configs onto one row and render whichever came
+    last. Fields that are constant across the file -- image size, dtype -- stay out of the label
+    and are already disclosed in the metadata line above the table.
+    """
+    keys = [k for k in dict.fromkeys(k for r in rows for k in r) if k not in MEASUREMENT_FIELDS and k != "batch"]
+    return [k for k in keys if len({repr(r.get(k)) for r in rows}) > 1]
+
+
+def _config_key(row: dict, extra: list[str]) -> tuple:
+    return (row["op"], row["batch"], *(repr(row.get(k)) for k in extra))
+
+
+def _config_label(row: dict, extra: list[str]) -> str:
+    label = f"{row['op']} @ {row['batch']}"
+    if extra:
+        label += " (" + ", ".join(f"{k}={row.get(k)}" for k in extra) + ")"
+    return label
+
+
 def _table(payload: dict) -> str:
     rows = payload["results"]
     backends = list(dict.fromkeys(r["backend"] for r in rows))
+    extra = _extra_config_fields(rows)
     lines = [".. list-table::", "   :header-rows: 1", "", "   * - op @ batch"]
     lines += [f"     - {b}" for b in backends]
-    cells = {(r["op"], r["batch"], r["backend"]): r.get("throughput_per_s") for r in rows}
-    for op, batch in dict.fromkeys((r["op"], r["batch"]) for r in rows):
-        lines.append(f"   * - {op} @ {batch}")
+    cells = {(_config_key(r, extra), r["backend"]): r.get("throughput_per_s") for r in rows}
+    labels = {_config_key(r, extra): _config_label(r, extra) for r in rows}
+    for key in dict.fromkeys(_config_key(r, extra) for r in rows):
+        lines.append(f"   * - {labels[key]}")
         for b in backends:
-            v = cells.get((op, batch, b))
+            v = cells.get((key, b))
             lines.append(f"     - {v:.0f}" if isinstance(v, (int, float)) else "     - —")
     return "\n".join(lines) + "\n"
 
@@ -117,7 +149,8 @@ def render_page(results_root: Path) -> str:
         parts.append(f"\n{suite} — {slug} ({device})\n{'^' * (len(suite) + len(slug) + len(device) + 6)}\n")
         parts.append(
             f"``{meta['platform']}`` — torch {meta['torch']}, kornia {meta['kornia']}, "
-            f"commit ``{meta['git_commit']}``, {meta['timestamp_utc'][:10]}, throughput in items/s\n\n"
+            f"commit ``{meta['git_commit']}``, {meta['timestamp_utc'][:10]}, "
+            f"throughput in {meta.get('units') or 'items/s'}\n\n"
         )
         parts.append(_table(payload))
     older = sorted(set(data) - {version})
@@ -219,7 +252,8 @@ def _digest(results_root: Path) -> str:
         return "- No committed benchmark results yet.\n"
     version = latest_version(list(data))
     lines = [f"- Result set: kornia {version}, committed in `benchmarks/results/{version}/` (per-machine"]
-    lines += ["  snapshots; reproduce with `python benchmarks/<suite>/flagship.py --contribute benchmarks/results`)."]
+    lines += ["  snapshots; reproduce with `python benchmarks/<dir>/<script>.py --contribute benchmarks/results`,"]
+    lines += ["  the script each suite maps to in `benchmarks/README.md`)."]
     for fname, payload in sorted(data[version].items()):
         suite, slug, device = fname[:-5].split("--")
         meta = payload["metadata"]
@@ -229,12 +263,19 @@ def _digest(results_root: Path) -> str:
         best = max(rows, key=lambda r: r["throughput_per_s"])
         kornia_rows = [r for r in rows if r["backend"].startswith("kornia")]
         worst = min(kornia_rows, key=lambda r: r["throughput_per_s"]) if kornia_rows else None
+        extra = _extra_config_fields(rows)
+        units = meta.get("units") or "items/s"
+
+        def _at(row: dict, extra: list[str] = extra) -> str:
+            tail = "".join(f",{k}={row.get(k)}" for k in extra)
+            return f"{row['op']}@{row['batch']}{tail}"
+
         line = (
             f"- {suite} on {slug}/{device} ({meta['timestamp_utc'][:10]}): fastest overall "
-            f"{best['backend']} {best['op']}@{best['batch']} at {best['throughput_per_s']:.0f} items/s"
+            f"{best['backend']} {_at(best)} at {best['throughput_per_s']:.0f} {units}"
         )
         if worst is not None:
-            line += f"; slowest kornia op {worst['op']}@{worst['batch']} at {worst['throughput_per_s']:.0f} items/s"
+            line += f"; slowest kornia op {_at(worst)} at {worst['throughput_per_s']:.0f} {units}"
         lines.append(line + ".")
     return "\n".join(lines) + "\n"
 

@@ -10,7 +10,7 @@ platforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64", "win-64"]
 # ------------------------------------------------------------------------------
 
 [dependencies]
-python = ">=3.11,<3.14"
+python = ">=3.11,<3.15"
 uv = "*"
 tombi = "*"
 ty = ">=0.0.9,<0.0.10"
@@ -28,6 +28,7 @@ cuda = { features = ["cuda", "py311"], solve-group = "cuda" }
 py311 = { features = ["py311"], solve-group = "py311" }
 py312 = { features = ["py312"], solve-group = "py312" }
 py313 = { features = ["py313"], solve-group = "py313" }
+py314 = { features = ["py314"], solve-group = "py314" }
 
 # ------------------------------------------------------------------------------
 # Tasks (shared across environments)
@@ -60,7 +61,7 @@ build-docs = { cmd = "uv run python -m sphinx -W -b html docs/source docs/build/
   "install-docs"
 ] }
 # Utility
-clean = { cmd = "find . -type f -name '*.pyc' -delete && find . -type d -name '__pycache__' -delete && rm -rf .venv .venv-py312 .venv-py313" }
+clean = { cmd = "find . -type f -name '*.pyc' -delete && find . -type d -name '__pycache__' -delete && rm -rf .venv .venv-py312 .venv-py313 .venv-py314" }
 
 # ------------------------------------------------------------------------------
 # Restrict CUDA feature to supported platforms only
@@ -100,3 +101,9 @@ python = "3.13.*"
 
 [feature.py313.activation.env]
 UV_PROJECT_ENVIRONMENT = ".venv-py313"
+
+[feature.py314.dependencies]
+python = "3.14.*"
+
+[feature.py314.activation.env]
+UV_PROJECT_ENVIRONMENT = ".venv-py314"

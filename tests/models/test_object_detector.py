@@ -22,7 +22,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.core._compat import torch_version_lt
+from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.models.rt_detr import RTDETR, DETRPostProcessor, RTDETRConfig
 
 from testing.base import BaseTester
@@ -54,6 +54,18 @@ class TestObjectDetector(BaseTester):
     @pytest.mark.slow
     @pytest.mark.timeout(120)
     @pytest.mark.skipif(torch_version_lt(2, 0, 0), reason="Unsupported ONNX opset version: 16")
+    @pytest.mark.xfail(
+        torch_version_ge(2, 14) and torch_version_lt(2, 15, 0),
+        reason=(
+            "torch 2.14's dynamo ONNX exporter cannot translate aten.mul.Scalar for this graph: "
+            "DispatchError 'No ONNX function found for aten.mul.Scalar'. Same exporter gap as "
+            "test_sam_onnx.py::test_sam_encoder_to_onnx; not yet reported upstream"
+        ),
+        raises=torch.onnx.OnnxExporterError,
+        # Strict, as in test_sam_onnx.py: an upstream fix inside 2.14.x must announce itself as
+        # an XPASS rather than sit silent until the 2.15 bound expires. Both variants fail today.
+        strict=True,
+    )
     @pytest.mark.parametrize("variant", ("resnet50d", "hgnetv2_l"))
     def test_onnx(self, device, dtype, tmp_path: Path, variant: str):
         config = RTDETRConfig(variant, 1)

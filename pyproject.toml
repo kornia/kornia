@@ -25,7 +25,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Image Processing",
   "Topic :: Software Development :: Libraries",
 ]
-dependencies = ["kornia_rs>=0.1.9", "numpy>=1.21", "packaging", "torch>=2.0.0"]
+dependencies = ["kornia_rs>=0.1.9", "numpy>=1.21", "packaging", "torch>=2.5.1"]
 dynamic = ["version"]
 
 [project.urls]
@@ -181,6 +181,7 @@ filterwarnings = [
 ]
 markers = [
   "device_agnostic: run CPU-only test logic once in a CPU-containing device matrix",
+  "mps_process_abort: aborts the pytest process on MPS on virtualized Apple GPUs (#4204); skipped there unless --run-mps-process-abort",
   "slow: mark test as slow to run",
   "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul precision; xfail by default, run with --tf32 to activate",
 ]

@@ -20,9 +20,15 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 REQUIRED_METADATA = ("timestamp_utc", "git_commit", "platform", "python", "torch", "kornia", "device", "load")
+
+#: An absolute path in a committed file discloses a home directory or machine layout. The README
+#: promises contributors that only aggregate numbers are recorded, so enforce it for every string
+#: metadata value rather than only for the keys that exist today.
+_ABSOLUTE_PATH = re.compile(r"^(/|\\\\|[A-Za-z]:[\\/])")
 
 
 def validate_result(path: Path) -> list[str]:
@@ -43,6 +49,9 @@ def validate_result(path: Path) -> list[str]:
     load = meta.get("load", {})
     if not isinstance(load, dict) or not all(v is None or isinstance(v, (int, float)) for v in load.values()):
         errors.append("metadata.load must contain only numeric aggregates or null (privacy rule)")
+    for key, value in meta.items():
+        if isinstance(value, str) and _ABSOLUTE_PATH.match(value):
+            errors.append(f"metadata.{key} must not be an absolute filesystem path (privacy rule)")
     if not isinstance(results, list) or not results:
         errors.append("results must be a non-empty list")
     else:

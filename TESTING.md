@@ -290,25 +290,55 @@ profile manifest.
 
 **What MPS is.** The `mps` device uses Apple's Metal Performance Shaders backend. Run tests against it with `--device=mps`.
 
-**Known unsupported operations.** Several operations are not implemented in the MPS backend and raise a `RuntimeError` at runtime:
+**Known unsupported operations.** Several operations are not implemented in the MPS backend and raise at runtime:
 
-| Operation | Error |
-|---|---|
-| `float64` (double precision) | `TypeError: Cannot convert a MPS Tensor to float64 dtype` |
-| `complex128` (cdouble) | `NotImplementedError: … not implemented for 'ComplexDouble'` |
-| `F.grid_sample` with `padding_mode="border"` on 2D | `RuntimeError: MPS: Unsupported Border padding mode` |
-| `F.grid_sample` with `mode="nearest"` on 5-D (3D volumes) | `RuntimeError: grid_sampler_3d: Unsupported Nearest interpolation` |
-| `torch.autocast("mps")` | Converts output to float16 instead of preserving original dtype |
+| Operation | Error | Torch versions |
+|---|---|---|
+| `float64` (double precision) | `TypeError: Cannot convert a MPS Tensor to float64 dtype` | all |
+| `complex128` (cdouble) | `TypeError: Cannot convert a MPS Tensor to float64 dtype` (`NotImplementedError: … not implemented for 'ComplexDouble'` before 2.14) | all |
+| `torch.autocast("mps")` | Converts output to float16 instead of preserving original dtype | all |
+| `torch.linalg.eigvals` (non-symmetric) | `NotImplementedError: The operator 'aten::_linalg_eigvals' is not currently implemented for the MPS device` | all, 2.14.0 included |
+| **batched** `torch.linalg.svd` / `svdvals` / `lstsq` whose input holds 8192 elements or more | `RuntimeError: Failed to created pipeline state object … XPC_ERROR_CONNECTION_INTERRUPTED` | 2.14.0 |
+| `F.grid_sample` with `padding_mode="border"` on 2D | `RuntimeError: MPS: Unsupported Border padding mode` | <= 2.9.1 |
+| `F.grid_sample` with `mode="nearest"` on 5-D (3D volumes) | `RuntimeError: grid_sampler_3d: Unsupported Nearest interpolation` | <= 2.9.1 |
+| `grid_sample` backward (2D and 3D) | `NotImplementedError: The operator 'aten::grid_sampler_2d_backward' …` | <= 2.9.1 |
+| `torch.linalg` `eigh`, `svd`, `qr`, `lu_solve`, `lstsq`, `cholesky_solve`, `matrix_exp` | `NotImplementedError: … is not currently implemented for the MPS device` | <= 2.9.1 |
+
+The last four rows moved between the two releases kornia's CI pins: torch 2.14.0 added MPS
+kernels for the whole eigen/QR/LU/SVD family except `_linalg_eigvals`, for both `grid_sample`
+backward passes, and for the two `grid_sample` forward modes above. That took the recorded MPS
+baseline from 200 entries to 14. The intermediate 2.10-2.13 releases were not checked, and
+kornia still supports torch 2.5.1, so the workarounds for those rows stay.
+
+The new native SVD path carries its own ceiling: a **batched** `svd`, `svdvals` or `lstsq` fails
+to build a Metal pipeline once its input holds 8192 elements or more (batch x rows x cols). The
+threshold is inclusive and it is the first failing size, not the last working one -- measured
+`(511, 4, 4)` = 8176 passes, `(512, 4, 4)` = 8192 raises. A single unbatched matrix is unaffected
+at any size: `(1, 128, 128)` holds 16384 elements and succeeds, because torch stages a lone large
+matrix on the CPU (`matrix too large to stage in MPS threadgroup memory ... falling back to CPU`).
+That ceiling is why `RANSAC`'s batched minimal solvers still raise on MPS
+([#4201](https://github.com/kornia/kornia/issues/4201)). It is *not* why they are absent from the
+baseline below -- see the next section: they are skipped, because they abort the process before
+they can raise.
 
 **How Kornia handles these automatically.** The test infrastructure in `conftest.py` and `testing/base.py` skips known-unsupported test classes at collection time so you don't need per-test guards for the common cases:
 
 - `test_gradcheck[mps*]` — skipped automatically (`gradcheck` requires float64)
 - `*[mps*cdtype1*]` — skipped automatically (parametrized `torch.cdouble` tests)
 - `test_autocast[mps*]` — skipped automatically (MPS autocast changes dtype)
+- any module marked `mps_process_abort` on MPS — skipped automatically; today that is
+  `tests/geometry/test_ransac.py`. RANSAC's batched minimal solvers abort the process (SIGABRT) on
+  the paravirtualized GPU of the hosted macOS runners, at a site that moves between runs, and
+  SIGABRT carries no exception type, so these **cannot be pinned** as strict xfails — the process
+  dies and every test after it is lost ([#4204](https://github.com/kornia/kornia/issues/4204)).
+  The marker lives on the test module, so a rename cannot silently disarm the skip. Real Apple
+  hardware does not abort: `--run-mps-process-abort` (env `KORNIA_TEST_RUN_MPS_PROCESS_ABORT`)
+  runs them anyway for local diagnosis, at the cost of failures the manifest does not pin — on an
+  M1 with torch 2.14.0 that is 3 failed / 10 passed, so the skip costs 9 real-hardware passes.
 
-The `padding_mode="border"` issue in `F.grid_sample` (2D) is worked around in the implementation (`kornia/feature/laf.py`) by clamping the sampling grid to `[-1, 1]` and using `padding_mode="zeros"`, which is mathematically equivalent.
+The `padding_mode="border"` issue in `F.grid_sample` (2D) is worked around in the implementation (`kornia/feature/laf.py`) by clamping the sampling grid to the outermost pixel *centers*, at `±(1 - 1/size)`, and using `padding_mode="zeros"`, which is exactly equivalent. Clamping to `[-1, 1]` is not: with `align_corners=False` that is the outer edge of the border pixel, where bilinear sampling blends it with the zero padding.
 
-**CI coverage.** Pull-request CI runs one blocking MPS leg (`tests-mps` in `.github/workflows/pr_test_cpu.yml`): the newest Python and the newest pinned PyTorch, `float32`, on the GitHub-hosted `macos-latest` Apple-silicon image. The exact known-failure baseline from [#4159](https://github.com/kornia/kornia/issues/4159) lives in `testing/known_failure_xfails/mps_float32.txt`. `--xfail-known-failures` applies those entries as strict xfails with their exact exception types. A new failure, a different exception, a skipped recorded test, or a fixed test therefore makes CI red.
+**CI coverage.** Pull-request CI runs one blocking MPS leg (`tests-mps` in `.github/workflows/pr_test_cpu.yml`): the newest Python and the newest pinned PyTorch, `float32`, on the GitHub-hosted **`macos-15`** Apple-silicon image. The image is pinned deliberately. `macos-latest` is `macos-26-arm64`, whose GPU is paravirtualized, and on macOS 26 torch 2.14 emits Metal 4 `mpp::tensor_ops::matmul2d` cooperative-tensor shaders that this virtual GPU cannot compile — one specialization failed 664 tests across every subpackage, since `linalg.inv`, `linalg.solve`, `inv_ex`, `lu_factor_ex` and `F.conv3d` all route through it. The defect is the *virtual* GPU, not macOS 26: a physical M1 on macOS 26.5 compiles those shaders and produces the same 14 failures as this leg. macOS 15 is Metal 3 and takes the older kernel path, which is the path that happens to work on the runner fleet. Two consequences worth knowing: no job in this repository now exercises the Metal 4 path that users on current macOS actually run, and when GitHub retires the `macos-15` image this leg stops scheduling and `collector` goes red with no fallback. Re-test `macos-latest` once upstream guards those kernels by device capability; `macos-14` segfaults inside MPS kernels and must never be used. The comparison is recorded in [#4159](https://github.com/kornia/kornia/issues/4159#issuecomment-5532655834). The exact known-failure baseline from [#4159](https://github.com/kornia/kornia/issues/4159) lives in `testing/known_failure_xfails/mps_float32.txt`. `--xfail-known-failures` applies those entries as strict xfails with their exact exception types. A new failure, a different exception, a skipped recorded test, or a fixed test therefore makes CI red.
 
 Run the identical contract locally with `pixi run test-mps`. `PYTORCH_ENABLE_MPS_FALLBACK=1` silently routes missing MPS kernels to the CPU and invalidates the baseline, so unset it first. The manifest is a full-suite contract and is not intended for `-k` or partial-directory runs; use `pixi run test-module ... --device=mps --dtype=float32` for focused diagnosis without the manifest. "Full suite" means the suite as an `mps`-only run collects it: tests marked `device_agnostic` are deselected there and covered by the CPU jobs, so they never appear in the manifest.
 

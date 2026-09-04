@@ -17,8 +17,12 @@
 
 """ONNX export tests for SAM (image encoder subgraph)."""
 
-import pytest
+import sys
 
+import pytest
+import torch
+
+from kornia.core._compat import torch_version_ge, torch_version_lt
 from kornia.models.sam.model import Sam, SamConfig
 
 # Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
@@ -31,6 +35,22 @@ def test_sam_has_to_onnx():
 
 
 @pytest.mark.timeout(120)
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="TorchScript tracing of the SAM encoder exceeds the 120s timeout on macOS CI runners",
+)
+@pytest.mark.xfail(
+    torch_version_ge(2, 14) and torch_version_lt(2, 15, 0),
+    reason=(
+        "torch 2.14's dynamo ONNX exporter cannot translate aten.mul.Scalar for this graph: "
+        "DispatchError 'No decompositions registered for the real-valued input'; not yet "
+        "reported upstream"
+    ),
+    raises=torch.onnx.OnnxExporterError,
+    # Strict: an upstream fix inside 2.14.x must announce itself as an XPASS failure rather
+    # than sit silently until the 2.15 bound expires.
+    strict=True,
+)
 def test_sam_encoder_to_onnx(tmp_path):
     """Sam.to_onnx() exports the image encoder subgraph with correct output name."""
     onnx = pytest.importorskip("onnx")
