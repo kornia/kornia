@@ -1,6 +1,9 @@
 EfficientViT
 ============
 
+.. meta::
+   :description: Use EfficientViT pretrained PyTorch vision backbones for image classification, detection and segmentation with Kornia.
+
 .. rst-class:: kornia-badges
 
 :bdg-primary:`Segmentation` :bdg-primary:`Classification` :bdg-primary:`Detection` :bdg-secondary:`Apache-2.0`

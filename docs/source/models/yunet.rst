@@ -3,6 +3,9 @@
 YuNet
 =====
 
+.. meta::
+   :description: Detect faces and facial landmarks with YuNet, Kornia's real-time pretrained PyTorch face detector.
+
 .. rst-class:: kornia-badges
 
 :bdg-primary:`Face detection` :bdg-secondary:`Apache-2.0`

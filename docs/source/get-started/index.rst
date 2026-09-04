@@ -69,5 +69,5 @@ Looking for a specific function instead? The :doc:`API reference </api>` documen
    :caption: Resources
    :hidden:
 
-   Tutorials <https://kornia.github.io/tutorials/>
+   Tutorials <https://www.kornia.org/tutorials/>
    ONNX, torch.compile & torch.export support <export-support>

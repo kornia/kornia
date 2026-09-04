@@ -25,6 +25,7 @@ import torch
 
 import kornia
 import kornia.geometry.transform.imgwarp
+from kornia.core.check import ShapeError
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.geometry.create import create_random_homography
@@ -397,6 +398,66 @@ class TestLAFIsValid(BaseTester):
         assert torch.equal(compiled(laf), expected)
 
 
+class TestLAFIsFilled(BaseTester):
+    def _mixed(self, device, dtype):
+        # Slot 0 is a real detection, slot 1 is the all-zero padding a detector writes for a slot
+        # no detection filled, slot 2 is a real detection at the image origin.
+        laf = torch.tensor(
+            [
+                [
+                    [[2.0, 0.0, 5.0], [0.0, 3.0, 7.0]],
+                    [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                    [[2.0, 0.0, 0.0], [0.0, 3.0, 0.0]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        return laf, torch.tensor([[True, False, True]], device=device)
+
+    def test_zero_laf_is_the_only_padding(self, device, dtype):
+        laf, expected = self._mixed(device, dtype)
+        assert torch.equal(kornia.feature.laf_is_filled(laf), expected)
+
+    def test_detection_at_the_origin_is_filled(self, device, dtype):
+        # The discriminating case: a keypoint at (0, 0) has a zero centre but a nonzero shape, so
+        # testing the centre alone -- or the response, which a signed response may peak at zero --
+        # would call a real detection padding.
+        laf = torch.tensor([[[[2.0, 0.0, 0.0], [0.0, 3.0, 0.0]]]], device=device, dtype=dtype)
+        assert bool(kornia.feature.laf_is_filled(laf).all())
+
+    def test_matches_the_documented_idiom(self, device, dtype):
+        # The expression this replaces, written out in `LocalFeature`'s docstring and previously
+        # at four sites in `kornia.feature`.
+        laf, _ = self._mixed(device, dtype)
+        assert torch.equal(kornia.feature.laf_is_filled(laf), laf.ne(0).any(dim=-1).any(dim=-1))
+
+    def test_shape_and_dtype(self, device, dtype):
+        laf = torch.rand(3, 7, 2, 3, device=device, dtype=dtype)
+        filled = kornia.feature.laf_is_filled(laf)
+        assert filled.shape == torch.Size([3, 7])
+        assert filled.dtype == torch.bool
+        assert filled.device == laf.device
+
+    def test_rejects_a_non_laf_shape(self, device, dtype):
+        # `ShapeError` specifically, not `Exception`: a bare `Exception` here would also swallow an
+        # `AttributeError` and pass without the function existing at all.
+        with pytest.raises(ShapeError):
+            kornia.feature.laf_is_filled(torch.rand(7, 2, 3, device=device, dtype=dtype))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_dynamo_fullgraph(self, device, dtype):
+        laf, expected = self._mixed(device, dtype)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.feature.laf_is_filled, fullgraph=True)
+        assert torch.equal(compiled(laf), expected)
+
+    def test_jit(self, device, dtype):
+        laf, _ = self._mixed(device, dtype)
+        model_jit = torch.jit.script(kornia.feature.laf_is_filled)
+        assert torch.equal(kornia.feature.laf_is_filled(laf), model_jit(laf))
+
+
 class TestNormalizeLAF(BaseTester):
     def test_shape(self, device):
         inp = torch.rand(5, 3, 2, 3)
@@ -464,6 +525,52 @@ class TestLAF2pts(BaseTester):
         batch_size, channels, height, width = 3, 2, 2, 3
         laf = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.laf_to_boundary_points, (laf))
+
+    def test_matches_explicit_affine_reference(self, device, dtype):
+        """The boundary points are the LAF affine map applied to the origin + unit-circle basis.
+
+        `test_conversion` uses a symmetric 2x2 block, so it passes even if the LAF and the basis are
+        multiplied in the wrong order. This uses random anisotropic LAFs, where they disagree, and
+        pins the equality that lets the implementation multiply by the (2, 3) LAF directly instead
+        of appending a constant `[0, 0, 1]` row and dividing the result by its homogeneous
+        coordinate, which is then always exactly 1.
+        """
+        if dtype in (torch.float16, torch.bfloat16):
+            # `einsum` and `bmm` accumulate the length-3 dot in a different order, which in half
+            # precision costs more than the equality being pinned here (4.4e-3 in float16 against a
+            # float64 reference, i.e. this dtype's own resolution). `test_dtype_device_preserved`
+            # carries the half coverage.
+            pytest.skip("reference accumulates differently from bmm in half precision")
+        torch.manual_seed(0)
+        laf = torch.randn(2, 5, 2, 3, device=device, dtype=dtype)
+        n_pts = 9
+        # The implementation builds its angles in float32 and casts, so the reference does too.
+        angles = torch.linspace(0, 2 * math.pi, n_pts - 1, device=device).to(dtype)
+        origin = torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        basis = torch.cat([origin, torch.stack([angles.sin(), angles.cos(), torch.ones_like(angles)], dim=-1)])
+        expected = torch.einsum("bnij,pj->bnpi", laf, basis)
+        self.assert_close(kornia.feature.laf_to_boundary_points(laf, n_pts), expected)
+
+    def test_dtype_device_preserved(self, device, dtype):
+        """Boundary points keep the LAF's dtype and device, in every dtype.
+
+        Nothing else covered this op in half precision. Note this cannot see *where* the basis is
+        cast -- casting it before or after the broadcast gives the same dtype, device and values,
+        so that ordering is a memory property, not an observable one.
+        """
+        laf = torch.tensor([[[[1.0, 0.0, 1.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype)
+        n_pts = 6
+        expected = torch.tensor([[[[1, 1], [1, 2], [2, 1], [1, 0], [0, 1], [1, 2]]]], device=device, dtype=dtype)
+        pts = kornia.feature.laf_to_boundary_points(laf, n_pts)
+        assert pts.dtype == dtype
+        assert pts.device == laf.device
+        self.assert_close(pts, expected)
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        laf = torch.rand(2, 4, 2, 3, device=device, dtype=dtype)
+        expected = kornia.feature.laf_to_boundary_points(laf)
+        op = torch_optimizer(kornia.feature.laf_to_boundary_points)
+        self.assert_close(op(laf), expected)
 
     def test_jit(self, device, dtype):
         batch_size, channels, height, width = 3, 2, 2, 3

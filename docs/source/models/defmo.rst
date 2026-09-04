@@ -1,6 +1,9 @@
 DeFMO
 =====
 
+.. meta::
+   :description: Deblur fast-moving objects into high-speed RGBA subframes with Kornia's pretrained DeFMO model.
+
 .. rst-class:: kornia-badges
 
 :bdg-primary:`Enhance` :bdg-primary:`Deblurring` :bdg-secondary:`Apache-2.0`

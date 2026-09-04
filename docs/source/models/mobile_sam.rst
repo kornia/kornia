@@ -1,6 +1,9 @@
 MobileSAM
 =========
 
+.. meta::
+   :description: Generate prompt-based image masks with MobileSAM and Kornia's lightweight PyTorch visual-prompting API.
+
 .. rst-class:: kornia-badges
 
 :bdg-primary:`Segmentation` :bdg-primary:`Visual prompting` :bdg-secondary:`Apache-2.0`

@@ -55,6 +55,28 @@ def _require_affine_orientation_kernels(device: torch.device, dtype: torch.dtype
             pytest.skip(f"no {name} kernel for {dtype} on {device.type}")
 
 
+def _canonical_order(lafs: torch.Tensor, responses: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Sort one image's detections into a batch-size-independent order.
+
+    `topk` breaks equal responses by position, and the positions it ranks over differ between a
+    batched and a single-image call, so comparing two calls row by row compares an ordering that is
+    not defined. Half precision makes those ties the norm rather than the exception: bfloat16
+    quantises this module's candidate responses to a handful of distinct values.
+
+    Sorting on the centre first turns the comparison into a set comparison. The remaining keys only
+    decide between rows that share a centre, and those agree to a ULP anyway, so the order does not
+    depend on last-bit differences the way a response-first sort would.
+    """
+    # One transfer each, not one per scalar: reading the keys straight off the device tensors costs a
+    # separate synchronization per element, which is 4500 of them for the default 500 detections and
+    # measured 1215 ms against 1.81 ms on MPS for an identical result.
+    laf_rows = lafs.detach().cpu().tolist()
+    resp_rows = responses.detach().cpu().tolist()
+    rows = [(laf[0][2], laf[1][2], *laf[0], *laf[1], resp) for laf, resp in zip(laf_rows, resp_rows)]
+    order = torch.tensor(sorted(range(len(rows)), key=rows.__getitem__), device=lafs.device)
+    return lafs[order], responses[order]
+
+
 class TestScaleSpaceDetector(BaseTester):
     def test_shape(self, device, dtype):
         inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
@@ -374,12 +396,16 @@ class TestScaleSpaceDetector(BaseTester):
         assert 0 < int(filled[0].sum()) < det.num_features, "expected a partially filled result"
         assert bool((resps[~filled] == 0).all()), f"sentinel leaked: min response {resps.min().item()}"
         assert (resps > torch.finfo(dtype).min / 4).all()
-        # and the single-image path agrees, which it did not before. Up to tolerance, not bit-for-bit:
-        # the response convolutions pick batch-size-dependent kernels on some CPUs (ubuntu CI), so the
-        # same candidates carry last-ULP-different scores.
+        # and the single-image path agrees, which it did not before. As a set, not row by row: the
+        # two calls rank over differently shaped volumes, so `topk` orders equal responses
+        # differently, and in bfloat16 this input's responses tie constantly (#4219). Up to
+        # tolerance, not bit-for-bit either: the response convolutions pick batch-size-dependent
+        # kernels on some CPUs (ubuntu CI), so the same candidates carry last-ULP-different scores.
         lafs1, resps1 = det(inp[:1])
-        self.assert_close(resps1[0], resps[0])
-        self.assert_close(lafs1[0], lafs[0])
+        batched_lafs, batched_resps = _canonical_order(lafs[0], resps[0])
+        single_lafs, single_resps = _canonical_order(lafs1[0], resps1[0])
+        self.assert_close(single_resps, batched_resps)
+        self.assert_close(single_lafs, batched_lafs)
 
     def test_padding_survives_the_affine_and_orientation_modules(self, device, dtype):
         # Same contract as `MultiResolutionDetector.forward`: the shape and orientation modules
@@ -905,9 +931,13 @@ class TestMultiResolutionDetector(BaseTester):
         assert torch.equal(resps[0], torch.sort(resps[0], descending=True).values)
 
     def test_single_feature_request_returns_a_real_detection(self, device, dtype):
-        # With the default configuration and `num_features=1` every proportional quota truncates
-        # to zero (the shares are 0.508 .. 0.016), so every level was queried for zero candidates
-        # and the result was a padded dummy on an image full of maxima.
+        # Contract: asking for one feature returns a real detection, and the same one that asking
+        # for two would rank first. The original defect was an apportionment that gave every level
+        # a share of `num_features`: at `num_features=1` the default configuration's six shares are
+        # 0.508 .. 0.016, all of which truncate to zero, so every level was queried for zero
+        # candidates and the result was a padded dummy on an image full of maxima. The
+        # apportionment is gone -- every level is now asked for `num_features` -- so this pins the
+        # contract rather than that mechanism, and it holds under both.
         torch.manual_seed(11)
         inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
         lafs_one, resps_one = self._make_detector(num_features=1).to(device, dtype)(inp)
@@ -920,14 +950,16 @@ class TestMultiResolutionDetector(BaseTester):
         self.assert_close(lafs_one[0, 0], lafs_two[0, int(resps_two[0].argmax())])
 
     def test_small_request_spreads_across_scales(self, device, dtype):
-        # `detect` used to apportion `num_features` across pyramid levels by flooring each level's
-        # fractional share independently (`int(x) for x in shares`). The shares favor the finest
-        # level so heavily (0.508 .. 0.016 with the default config) that a small `num_features`
-        # truncated every other level's quota to zero: five well-separated, equally strong blobs and
-        # `num_features=3` returned three near-duplicate detections of the single strongest blob
-        # instead of covering several of them. Largest-remainder (Hamilton) apportionment hands the
-        # shortfall to the levels with the largest fractional remainder instead, so a small request
-        # still reaches more than one scale and covers more than one blob.
+        # Contract: a small request still covers more than one of several equally strong features
+        # rather than returning near-duplicates of the single strongest one. `detect` used to
+        # apportion `num_features` across pyramid levels by flooring each level's fractional share
+        # independently (`int(x) for x in shares`); the shares favor the finest level so heavily
+        # (0.508 .. 0.016 with the default config) that a small `num_features` truncated every other
+        # level's quota to zero, and `num_features=3` on five well-separated equal blobs returned
+        # three near-duplicate detections of one blob. Largest-remainder apportionment fixed that,
+        # and asking every level for `num_features` supersedes it: with no cap the three slots go to
+        # the three strongest maxima anywhere, which are on different blobs. The pin is on the
+        # coverage, so it holds under all three.
         img = torch.zeros(1, 1, 96, 96, device=device, dtype=dtype)
         centers = [(20, 20), (20, 70), (48, 48), (76, 20), (76, 70)]
         for y, x in centers:
@@ -940,6 +972,56 @@ class TestMultiResolutionDetector(BaseTester):
             1 for y, x in centers if bool(((laf_centers - laf_centers.new_tensor([x, y])).abs().amax(dim=1) < 4).any())
         )
         assert covered >= 2, f"expected the 3-feature request to reach at least 2 of the 5 blobs, got {covered}"
+
+    def test_result_for_k_is_a_prefix_of_the_result_for_a_larger_k(self, device, dtype):
+        # `detect` used to ask each pyramid level only for its own share of the budget, so a level
+        # could contribute at most `quotas[0]` (the upscaled level) or `sum(quotas[: i + 1 + up])`
+        # (pyramid level i) -- both well under `num_features` for the finer levels. When an image's
+        # strongest maxima concentrate on one level, which is the normal case rather than a corner
+        # case, the excess was never requested and so could not be ranked in by the final global
+        # `topk`: the result was silently not the top-k, with no signal to the caller. Asking every
+        # level for `num_features` makes the union a superset of the true top-k, since the m
+        # detections a level contributes to the global top-k are necessarily that level's own top-m.
+        #
+        # The pin is on the sorted response vector rather than on keypoint identities: `detect`
+        # already returns responses in descending order, and comparing values sidesteps both the
+        # `topk` tie-break and the fact that one blob can be detected at several scales with the
+        # same rounded centre.
+        img = torch.zeros(1, 1, 240, 240, device=device, dtype=dtype)
+        strength = 0
+        for y in range(20, 220, 40):  # 25 well-separated blobs, all resolved at the same scale
+            for x in range(20, 220, 40):
+                img[:, :, y - 1 : y + 2, x - 1 : x + 2] = 1.0 + 0.05 * strength
+                strength += 1
+
+        reference, _ = self._make_detector(num_features=32).to(device, dtype).detect(img)
+        for k in (4, 8, 16):
+            responses, _ = self._make_detector(num_features=k).to(device, dtype).detect(img)
+            self.assert_close(responses[0], reference[0, :k])
+
+    def test_the_response_prefix_survives_tied_responses(self, device, dtype):
+        # The prefix the docstring promises is on the sorted responses, not on which detection carries
+        # a given response. `topk` breaks a tie by position and the positions it ranks over depend on
+        # `num_features`, so exactly equal maxima can come back in a different order for a different
+        # request: with this input `detect(1)` returns the centre that `detect(2)` ranks *second*.
+        # That permutation is `topk`'s to choose and is deliberately not pinned here -- pinning it
+        # would codify undefined behaviour that already differs across devices. The response vector
+        # staying a prefix is the part that is promised, and it holds under ties too.
+        class Identity(torch.nn.Module):
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                return x
+
+        cfg = get_default_detector_config()
+        cfg.update({"nms_size": 5, "pyramid_levels": 1, "up_levels": 0})
+        img = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype)
+        for y, x in ((20, 20), (20, 30), (40, 40)):
+            img[:, :, y, x] = 1.0  # three isolated maxima with byte-identical responses
+
+        reference, _ = MultiResolutionDetector(Identity(), num_features=3, config=cfg).to(device, dtype).detect(img)
+        assert int((reference[0] != 0).sum()) == 3, "expected all three tied maxima to be detected"
+        for k in (1, 2):
+            responses, _ = MultiResolutionDetector(Identity(), num_features=k, config=cfg).to(device, dtype).detect(img)
+            self.assert_close(responses[0], reference[0, :k])
 
     def test_negative_score_threshold_is_rejected(self, device, dtype):
         # NMS writes an exact zero at every suppressed position, so a negative threshold would

@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Documentation pages now provide search-specific titles and descriptions, canonical tutorial links, and a
+  canonicalized redirect from the retired highlighted-features page. (#4226)
+
+* `kornia.feature.laf_is_filled(laf)` returns the `(B, N)` mask of the slots a detection filled, the complement
+  of a detector's zero-LAF padding. Fixed-shape detectors pad the slots no detection filled with an all-zero LAF,
+  and those slots must be dropped before matching -- their descriptors are identical to one another, so they match
+  each other at zero distance and a mutual nearest-neighbour test does not reject them. `LocalFeature.forward`'s
+  docstring already required callers of a hand-rolled pipeline to do this and gave them the expression to copy;
+  they can now call the function instead. It replaces the same expression at four internal sites in
+  `kornia/feature`. (#4223)
+
 * `benchmarks/feature/laf_ops.py` microbenchmarks seven public LAF operations
   (`laf_from_center_scale_ori`, `make_upright`, `ellipse_to_laf`, `laf_to_boundary_points`,
   `laf_is_inside_image`, `extract_patches_simple`, `extract_patches_from_pyramid`) as kornia eager vs
@@ -249,6 +260,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entries, nine of the ten `cpu_float16`), which are removed from `testing/half_precision_xfails/`. The
   tenth `float16` line is kept: `TestAutoAugment::test_reproduce[cpu-float16]` still fails, now on an
   `AssertionError` rather than a `RuntimeError` — a smaller residual, not a fix. (#4210)
+* `validate_bbox` and `validate_bbox3d` flatten rank-4 `(B, N, 4, 2)` / `(B, N, 8, 3)` input with `reshape`
+  instead of `view`, so a non-contiguous leading-dimension stride (a transpose, a slice that drops boxes, an
+  `expand`) returns a boolean as documented instead of raising `RuntimeError`. (#4174)
+
 * Constructing `ScaleSpaceDetector` with `compile_modules` no longer permanently mutates the process-global
   `torch._dynamo.config.capture_dynamic_output_shape_ops` setting. (#4134)
 
@@ -346,6 +361,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the quotas always sum to exactly `num_features` and stay spread across scales. #4098's narrower `num_features=1`
   fallback, which handed the request's one slot to the largest-share level when every quota floored to zero, is
   the special case where the shortfall equals `num_features` and is superseded by the general apportionment.
+  The apportionment was then removed again by #4222 below, inside this same unreleased window, so no release
+  ever carries it; the `num_features=1` behaviour it fixed still holds.
+
+* `MultiResolutionDetector.detect` now returns the `num_features` highest responses in the image (#4222). Each
+  pyramid level used to be asked only for its own share of the budget, so a level could contribute at most
+  `quotas[0]` (the upscaled level) or `sum(quotas[: i + 1 + up_levels])` (pyramid level `i`) -- both well under
+  `num_features` for the finer levels. When an image's strongest maxima concentrated on one level, which is the
+  common case rather than a corner case, the excess was never requested and so could not be ranked in by the
+  final global `topk`: the detector silently returned something other than the top-k, and the sorted responses of
+  `detect(k)` were not a prefix of those of `detect(k')`. Every level is now searched for `num_features` candidates, which is exactly sufficient
+  because the detections a level contributes to the global top-k are that level's own strongest. The per-level
+  apportionment, including #4101's largest-remainder rounding, is removed with it. This changes which keypoints
+  are returned for a given image: callers get strictly better-ranked detections, and any result that depended on
+  the old per-level spread will differ. The prefix is on the sorted responses, not on which detection carries a
+  given response: `topk` breaks a tie by position, so exactly equal maxima can come back in a different order for
+  a different `num_features`. It carries about 1.2x the candidates through the concatenation, which is not
+  measurable next to the response function and the non-maxima suppression.
 
 * Make YUV and XYZ transformations compute integer inputs in `float32` instead of truncating their kernels, and
   preserve directly constructed `float64` coefficients. This makes `rgb_to_yuv(uint8)` return `float32` on the
@@ -399,6 +431,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   overflows to `inf` (or flushes a representable value to `0`) on a sufficiently lopsided or subnormal diagonal,
   and when that product is subnormal the division loses precision but never corrupts a representable result to a
   zero, `inf`, or `nan`.
+
+* Drop the constant homogeneous row from `laf_to_boundary_points`. The function appended a `[0, 0, 1]` row to every
+  LAF so that it could divide the result by a homogeneous coordinate that is always exactly `1`; it now multiplies
+  by the `(2, 3)` LAF directly, and moves its 3-column basis to the LAF's device and dtype before broadcasting it
+  instead of after (the previous order materialized, and on an accelerator transferred, one copy per LAF -- ~12 MiB
+  per call at `N = 20000` for a tensor with `n_pts` distinct rows). The win is not the transfer: torch's CPU
+  batched gemm falls off a fast path at the third row, so `bmm` on a `(B, 3, 3)` operand costs 23x a `(B, 2, 3)` one
+  for 1.5x the arithmetic. Quiet back-to-back A/B against base `8db1499a` via `benchmarks/feature/laf_ops.py`
+  (Apple M1, torch 2.14.0, 4 threads, B=1 N=20000): `laf_to_boundary_points` 1.07M -> 29.6M LAFs/s eager on CPU and
+  1.77M -> 4.27M on MPS; `laf_is_inside_image`, which calls it with `n_pts=12` on every detector forward,
+  9.75M -> 29.0M on CPU and 2.70M -> 8.53M on MPS. Results are bitwise identical on CPU `float16` and `bfloat16`
+  and shift by at most 1.42 machine epsilon elsewhere, relative to the largest coordinate of the call -- the two
+  gemm shapes round differently. Mean error against a `float64` reference is slightly lower than before, and
+  `laf_is_inside_image`'s boolean masks were bitwise identical across a 126-case device/dtype/shape sweep. (#4217)
 
 * Make `load_pointcloud_ply` and `load_pointcloud_ply_binary` parse the PLY header instead of skipping a fixed
   number of lines. Both loaders skipped `header_size=8` lines and read everything after them as `x y z` triples, so a

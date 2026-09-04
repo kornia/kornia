@@ -1,6 +1,9 @@
 RT-DETR
 =======
 
+.. meta::
+   :description: Detect objects in real time with RT-DETR, Kornia's pretrained end-to-end PyTorch transformer detector.
+
 .. rst-class:: kornia-badges
 
 :bdg-primary:`Object detection` :bdg-secondary:`Apache-2.0`

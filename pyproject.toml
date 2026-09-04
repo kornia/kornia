@@ -32,7 +32,7 @@ dynamic = ["version"]
 "Bug Tracker" = "https://github.com/kornia/kornia/issues"
 Documentation = "https://kornia.readthedocs.io/en/latest"
 Download = "https://github.com/kornia/kornia"
-Homepage = "https://kornia.github.io/"
+Homepage = "https://www.kornia.org/"
 Issues = "https://github.com/kornia/kornia/issues"
 "Source Code" = "https://github.com/kornia/kornia"
 

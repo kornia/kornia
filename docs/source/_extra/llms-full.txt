@@ -195,4 +195,4 @@ Durable findings from earlier CUDA runs (2026-08-07, see benchmarks/README.md):
 - Docs: <https://kornia.readthedocs.io/en/latest/>
 - Machine-readable index: <https://kornia.readthedocs.io/en/latest/llms.txt>
 - Source: <https://github.com/kornia/kornia>
-- Tutorials: <https://kornia.github.io/tutorials/>
+- Tutorials: <https://www.kornia.org/tutorials/>

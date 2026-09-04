@@ -345,8 +345,17 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device, dtype=dtype)
         new_laf = aff(laf, inp)
         expected = torch.tensor([[[[33.2073, 0.0, 16.0], [-1.3766, 12.0456, 16.0]]]], device=device, dtype=dtype)
-        atol = 5e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
-        self.assert_close(new_laf, expected, atol=atol, rtol=1e-4)
+        if dtype in (torch.float16, torch.bfloat16):
+            # AffNet's convolutions carry reduced-precision noise proportional to the LAF's own scale
+            # (~33 px), not to each entry's magnitude, so the small a21 entry (-1.38) cannot be held to a
+            # relative bound: it misses by 0.024 (float16) and 0.031 (bfloat16), bitwise identical on
+            # torch 2.9.1 and 2.14.0. The 1e-1 bound is ~3 float16 ULP at that scale, so it is set by the
+            # dtype rather than by the observed miss and does not need re-tuning per platform. It still
+            # discriminates: a genuine shape regression moves these entries by O(1).
+            self.assert_close(new_laf, expected, atol=1e-1, rtol=1e-3 if dtype == torch.float16 else 7.8e-3)
+        else:
+            atol = 5e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
+            self.assert_close(new_laf, expected, atol=atol, rtol=1e-4)
 
     @pytest.mark.slow
     def test_gradcheck(self, device):

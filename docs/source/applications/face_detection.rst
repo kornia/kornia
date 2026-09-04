@@ -1,6 +1,9 @@
 Face Detection
 ==============
 
+.. meta::
+   :description: Detect multiple faces in images and video with Kornia's real-time PyTorch FaceDetector and YuNet model.
+
 .. image:: https://github.com/ShiqiYu/libfacedetection/raw/master/images/cnnresult.png
    :align: right
    :width: 20%
@@ -38,4 +41,4 @@ Using our API you can easily detect faces in images as shown below:
     for det in dets:
         print(det.score, det.top_left, det.bottom_right)
 
-Play with the detector yourself and generate new images with this `tutorial <https://kornia.github.io/tutorials/nbs/face_detection.html>`_.
+Play with the detector yourself and generate new images with this `tutorial <https://www.kornia.org/tutorials/nbs/face_detection.html>`_.

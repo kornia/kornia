@@ -1,5 +1,12 @@
 .. meta::
-   :description: Kornia is the open-source geometric computer vision library for Spatial AI and robotics, built on PyTorch: batched, GPU-ready and differentiable image transforms, filters, camera geometry, data augmentation and curated models for detection, segmentation and image matching.
+   :description: Kornia is the open-source differentiable computer vision library for PyTorch, with GPU-accelerated image processing, geometry, augmentation and vision models.
+
+.. title:: Differentiable Computer Vision for PyTorch
+
+.. _kornia-docs-home:
+
+Kornia: Differentiable Computer Vision for PyTorch
+==================================================
 
 .. raw:: html
 
@@ -10,8 +17,13 @@
      button.sidebar-toggle.secondary-toggle { display: none !important; }
      /* Room for the two-column hero; the theme caps articles at 960px. */
      .bd-main .bd-content .bd-article-container { max-width: 1240px; }
+     /* The document title provides the semantic H1 and browser title; the hero is its visible presentation. */
+     span#kornia-docs-home + h1 {
+       border: 0; clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden;
+       padding: 0; position: absolute; white-space: nowrap; width: 1px;
+     }
      /* Hairline separator above each section, matching the link board's line. */
-     .bd-article section {
+     span#kornia-docs-home ~ section {
        border-top: 1px solid var(--pst-color-border);
        margin-top: 3rem;
        padding-top: 1.75rem;
@@ -35,8 +47,8 @@
            <button type="button" class="kornia-pip__copy" data-copy="pip install kornia"
                    aria-label="Copy install command"><i class="fa-regular fa-copy"></i></button>
          </div>
-         <h1 class="kornia-hero__title">Computer vision for<br>
-         <span class="kornia-accent">robotics &amp; Spatial AI.</span></h1>
+         <p class="kornia-hero__title">Computer vision for<br>
+         <span class="kornia-accent">robotics &amp; Spatial AI.</span></p>
 
       .. container:: kornia-hero-actions
 
@@ -243,7 +255,7 @@ Prefer to learn by example? :doc:`Image matching <applications/image_matching>`,
      <div>
        <p class="kornia-linkboard__title">Docs</p>
        <a href="applications/image_augmentations.html">Quick Start</a>
-       <a href="https://kornia.github.io/tutorials/">Tutorial</a>
+       <a href="https://www.kornia.org/tutorials/">Tutorial</a>
        <a href="api.html">API</a>
      </div>
      <div>

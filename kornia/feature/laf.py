@@ -22,7 +22,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
-from kornia.geometry.conversions import angle_to_rotation_matrix, convert_points_from_homogeneous
+from kornia.geometry.conversions import angle_to_rotation_matrix
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
 
@@ -65,6 +65,34 @@ def laf_is_valid(laf: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_LAF(laf)
     det = laf[..., 0, 0] * laf[..., 1, 1] - laf[..., 1, 0] * laf[..., 0, 1]
     return laf.isfinite().all(dim=-1).all(dim=-1) & det.isfinite() & (det != 0)
+
+
+def laf_is_filled(laf: torch.Tensor) -> torch.Tensor:
+    """Check which slots hold a detection rather than the zero-LAF padding.
+
+    Detectors return a fixed number of slots and pad the ones no detection filled with an all-zero
+    LAF and a zero response, so that the output shape does not depend on the image. Drop those
+    slots before matching: the padding frames are identical to one another, so a mutual
+    nearest-neighbour test does not reject them and they match each other at zero distance.
+
+    Occupancy cannot be read off the response instead, because a pluggable signed response may have
+    a genuine maximum at exactly zero. Only an all-zero frame is padding: a detection at the image
+    origin has a zero centre but a nonzero shape, so it is filled.
+
+    Args:
+        laf: :math:`(B, N, 2, 3)`.
+
+    Returns:
+        mask of the slots a detection filled :math:`(B, N)`.
+
+    Example:
+        >>> laf = torch.tensor([[[[2., 0., 5.], [0., 3., 7.]], [[0., 0., 0.], [0., 0., 0.]]]])
+        >>> laf_is_filled(laf)
+        tensor([[ True, False]])
+
+    """
+    KORNIA_CHECK_LAF(laf)
+    return laf.ne(0).any(dim=-1).any(dim=-1)
 
 
 def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
@@ -323,12 +351,17 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
         dim=1,
     )
     # Add origin to draw also the orientation
-    pts = torch.cat([torch.tensor([0.0, 0.0, 1.0]).view(1, 3), pts], dim=0).unsqueeze(0).expand(B * N, n_pts, 3)
-    pts = pts.to(LAF.device).to(LAF.dtype)
-    aux = torch.tensor([0.0, 0.0, 1.0]).view(1, 1, 3).expand(B * N, 1, 3)
-    HLAF = torch.cat([LAF.view(-1, 2, 3), aux.to(LAF.device).to(LAF.dtype)], dim=1)
-    pts_h = torch.bmm(HLAF, pts.permute(0, 2, 1)).permute(0, 2, 1)
-    return convert_points_from_homogeneous(pts_h.view(B, N, n_pts, 3))
+    pts = torch.cat([torch.tensor([0.0, 0.0, 1.0]).view(1, 3), pts], dim=0)
+    # Move the 3-column basis before broadcasting it: expanding first and casting afterwards
+    # materialized -- and on an accelerator transferred -- one copy per LAF (~12 MiB at N = 20000)
+    # of a tensor with `n_pts` distinct rows.
+    pts = pts.to(device=LAF.device, dtype=LAF.dtype).t().unsqueeze(0).expand(B * N, 3, n_pts)
+    # The LAF's implied homogeneous row is the constant [0, 0, 1], so every output point has
+    # homogeneous coordinate exactly 1 and `convert_points_from_homogeneous` would divide by 1.0.
+    # Multiplying by the (2, 3) LAF directly skips both the appended row and that division, and it
+    # keeps `bmm`'s M dimension at 2: measured on torch 2.14 / Apple M1, a `(B, 3, 3)` operand
+    # costs 23x a `(B, 2, 3)` one for 1.5x the arithmetic. See benchmarks/README.md.
+    return torch.bmm(LAF.view(-1, 2, 3), pts).permute(0, 2, 1).reshape(B, N, n_pts, 2)
 
 
 def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0) -> Tuple[List[int], List[int]]:
