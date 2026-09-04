@@ -44,7 +44,8 @@ def oneway_transfer_error(
         eps: Small constant for safe sqrt.
 
     Returns:
-        the computed distance with shape :math:`(B, N)`.
+        the computed distance with shape :math:`(B, N)`. Rows whose homography is not invertible
+        score ``max_num``, i.e. ``torch.finfo(pts1.dtype).max``, for both values of ``squared``.
 
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
@@ -109,7 +110,8 @@ def symmetric_transfer_error(
         eps: Small constant for safe sqrt.
 
     Returns:
-        the computed distance with shape :math:`(B, N)`.
+        the computed distance with shape :math:`(B, N)`. Rows whose homography is not invertible
+        score ``max_num``, i.e. ``torch.finfo(pts1.dtype).max``, for both values of ``squared``.
 
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
@@ -122,10 +124,14 @@ def symmetric_transfer_error(
     max_num = torch.finfo(pts1.dtype).max
     # From Hartley and Zisserman, Symmetric transfer error (4.7)
     # dist = \sum_{i} (d(x, H^-1 x')**2 + d(x', Hx)**2)
-    H_inv, good_H = safe_inverse_with_mask(H)
+    # Shield the *input* of the inverse, not its output: ``inv_ex`` backward is
+    # ``-H_inv^T @ grad @ H_inv^T`` over a saved ``H_inv`` full of non-finite values, so masking the
+    # result afterwards still leaves ``0 * nan = nan`` in ``H.grad``. The mask is taken on a detached
+    # copy so it carries no graph, and the differentiable inverse then only ever sees a valid matrix.
+    _, good_H = safe_inverse_with_mask(H.detach())
     eye = torch.eye(3, device=H.device, dtype=H.dtype).expand_as(H)
     H_safe = torch.where(good_H.view(-1, 1, 1), H, eye)
-    H_inv_safe = torch.where(good_H.view(-1, 1, 1), H_inv, eye)
+    H_inv_safe, _ = safe_inverse_with_mask(H_safe)
 
     there: torch.Tensor = oneway_transfer_error(pts1, pts2, H_safe, True, eps)
     back: torch.Tensor = oneway_transfer_error(pts2, pts1, H_inv_safe, True, eps)
@@ -155,7 +161,8 @@ def line_segment_transfer_error_one_way(
         squared: if True (default is False), the squared distance is returned.
 
     Returns:
-        the computed distance with shape :math:`(B, N)`.
+        the computed distance with shape :math:`(B, N)`. Rows whose homography is not invertible
+        score ``max_num``, i.e. ``torch.finfo(pts1.dtype).max``, for both values of ``squared``.
 
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
