@@ -197,7 +197,7 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
     # Under tracing/export (legacy ONNX / jit.trace / dynamo ONNX) stick to the plain scalar
     # adjugate. NOTE the original rationale here -- "whereas ``cross`` may not [lower]" -- does not
     # hold on the torch versions CI runs: measured, ``torch.linalg.cross`` lowers on 2.5.1 (legacy
-    # exporter) and on 2.9.1 (both exporters). The split is kept because it is still the safer
+    # exporter) and on 2.14.0 (both exporters). The split is kept because it is still the safer
     # capture path (scalar arithmetic needs no per-dtype kernel at all, and ``cross`` has real
     # kernel gaps -- no bfloat16 on MPS in torch 2.5.1), not because ``cross`` fails to export.
     # Collapsing the two branches is a behavior change and belongs in its own PR.
