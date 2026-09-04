@@ -542,8 +542,6 @@ class TestBoxes2D(BaseTester):
         merged_list = list_boxes.merge(extra_batched)
         assert merged_list._N is None, "_N must be None after merge"
 
-
-
     def test_compute_area(self):
 
         # Rectangle
