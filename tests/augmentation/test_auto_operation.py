@@ -196,8 +196,18 @@ def test_operation_preserves_input_dtype(device, low_dtype):
     # input to float32. float32 / float64 inputs are unaffected (promotion goes
     # up), which is why this only shows below float32. Covers RandAugment /
     # AutoAugment / TrivialAugment / AugMix, which all route through this method.
+    checked = 0
     for op in _find_all_ops():
         op = op.to(device)
         x = torch.rand(2, 3, 16, 16, device=device, dtype=low_dtype)
-        out = op(x)
+        try:
+            out = op(x)
+        except RuntimeError as e:
+            # some kernels (e.g. grid_sample on older torch) have no half/bfloat16
+            # CPU path -- that is a torch capability gap, not a kornia contract.
+            if "not implemented for" in str(e):
+                continue
+            raise
         assert out.dtype == low_dtype, f"{type(op).__name__}: {out.dtype} != {low_dtype}"
+        checked += 1
+    assert checked, f"no op could run in {low_dtype} on this build"
