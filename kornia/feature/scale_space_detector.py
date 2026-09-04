@@ -34,7 +34,7 @@ from kornia.geometry.subpix import (
 )
 from kornia.geometry.transform import ScalePyramid, pyrdown, resize
 
-from .laf import laf_from_center_scale_ori
+from .laf import laf_from_center_scale_ori, laf_is_filled
 from .orientation import PassLAF
 from .responses import BlobHessian
 
@@ -619,7 +619,7 @@ class ScaleSpaceDetector(nn.Module):
         # `detect` is the public extension point used by subclasses. Infer occupancy from its
         # zero-LAF padding contract rather than bypassing an override through `_detect`.
         responses, lafs = self.detect(img, self.num_features, mask)
-        filled = lafs.ne(0).any(dim=-1).any(dim=-1)
+        filled = laf_is_filled(lafs)
         with self._dynamo_config_patch(("aff",)):
             lafs = self.aff(lafs, img)
         with self._dynamo_config_patch(("ori",)):
@@ -946,7 +946,7 @@ class MultiResolutionDetector(nn.Module):
         responses, lafs = self.detect(img, mask)
         # Occupancy comes from `detect`'s zero-LAF padding contract, the same way as in
         # `ScaleSpaceDetector.forward`, so an override of `detect` is honoured as well.
-        filled = lafs.ne(0).any(dim=-1).any(dim=-1)
+        filled = laf_is_filled(lafs)
         lafs = self.aff(lafs, img)
         lafs = self.ori(lafs, img)
         return _zero_unfilled(lafs, filled), responses

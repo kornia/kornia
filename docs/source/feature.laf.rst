@@ -23,6 +23,7 @@ Functions
 .. autofunction:: get_laf_orientation
 .. autofunction:: set_laf_orientation
 .. autofunction:: laf_from_center_scale_ori
+.. autofunction:: laf_is_filled
 .. autofunction:: laf_is_inside_image
 .. autofunction:: laf_is_valid
 .. autofunction:: laf_to_three_points

@@ -31,7 +31,14 @@ from kornia.geometry.transform import ScalePyramid
 from .affine_shape import LAFAffNetShapeEstimator
 from .hardnet import HardNet
 from .keynet import KeyNetDetector
-from .laf import extract_patches_from_pyramid, get_laf_center, get_laf_orientation, get_laf_scale, scale_laf
+from .laf import (
+    extract_patches_from_pyramid,
+    get_laf_center,
+    get_laf_orientation,
+    get_laf_scale,
+    laf_is_filled,
+    scale_laf,
+)
 from .lightglue import LightGlue
 from .matching import GeometryAwareDescriptorMatcher, _no_match
 from .orientation import LAFOrienter, OriNet, PassLAF
@@ -186,9 +193,12 @@ class LocalFeature(nn.Module):
         before matching; a hand-rolled pipeline must do the same before any other matcher, including
         :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_mnn`, :func:`~kornia.feature.match_fginn`,
         :func:`~kornia.feature.match_adalam` and :class:`~kornia.feature.LightGlueMatcher`, since identical
-        descriptors match each other at zero distance and a mutual test does not reject a pair of them::
+        descriptors match each other at zero distance and a mutual test does not reject a pair of them, with
+        :func:`~kornia.feature.laf_is_filled`::
 
-            valid = lafs.ne(0).any(-1).any(-1)  # (B, N); the zero LAF marks a padded slot
+            from kornia.feature import laf_is_filled
+
+            valid = laf_is_filled(lafs)  # (B, N); the zero LAF marks a padded slot
             descs, lafs = descs[0][valid[0]], lafs[:, valid[0]]
 
         Test the LAF, not the response: a signed response can legitimately peak at exactly zero. Only the ratio
@@ -512,13 +522,17 @@ class LocalFeatureMatcher(nn.Module):
         out_lafs0: List[torch.Tensor] = []
         out_lafs1: List[torch.Tensor] = []
 
+        # Fixed-shape detectors represent an unfilled slot with a zero LAF. Do not let the
+        # descriptor sampled at that dummy frame become a correspondence (NN/MNN would match
+        # identical padding at the origin). Occupancy cannot be inferred from the response:
+        # a pluggable signed scale-space response may have a genuine maximum at exactly zero.
+        # Computed for the whole batch once, rather than per pair inside the loop.
+        filled0 = laf_is_filled(lafs0)
+        filled1 = laf_is_filled(lafs1)
+
         for batch_idx in range(num_image_pairs):
-            # Fixed-shape detectors represent an unfilled slot with a zero LAF. Do not let the
-            # descriptor sampled at that dummy frame become a correspondence (NN/MNN would match
-            # identical padding at the origin). Occupancy cannot be inferred from the response:
-            # a pluggable signed scale-space response may have a genuine maximum at exactly zero.
-            valid0 = lafs0[batch_idx].ne(0).any(dim=-1).any(dim=-1)
-            valid1 = lafs1[batch_idx].ne(0).any(dim=-1).any(dim=-1)
+            valid0 = filled0[batch_idx]
+            valid1 = filled1[batch_idx]
             current_descs0 = descs0[batch_idx][valid0]
             current_descs1 = descs1[batch_idx][valid1]
             current_keypoints0 = keypoints0[batch_idx][valid0]
