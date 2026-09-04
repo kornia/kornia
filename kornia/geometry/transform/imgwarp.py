@@ -229,7 +229,7 @@ def warp_perspective(
         This function is often used in conjunction with :func:`get_perspective_transform`.
 
     .. note::
-        See a working example `here <https://kornia.github.io/tutorials/nbs/warp_perspective.html>`_.
+        See a working example `here <https://www.kornia.org/tutorials/nbs/warp_perspective.html>`_.
 
     """
     if not isinstance(src, torch.Tensor):
@@ -340,7 +340,7 @@ def warp_affine(
         :func:`get_shear_matrix2d`, :func:`get_affine_matrix2d`, :func:`invert_affine_transform`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/rotate_affine.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/rotate_affine.html>`__.
 
     Example:
        >>> img = torch.rand(1, 4, 5, 6)

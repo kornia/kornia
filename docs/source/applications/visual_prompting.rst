@@ -1,6 +1,9 @@
 Visual Prompting
 ================
 
+.. meta::
+   :description: Segment images from points and boxes with Kornia VisualPrompter and the Segment Anything Model in PyTorch.
+
 .. image:: https://raw.githubusercontent.com/kornia/tutorials/master/tutorials/assets/visual_prompter.png
    :alt: SAM masks predicted by VisualPrompter from box prompts, with their confidence scores
    :width: 100%
@@ -55,6 +58,6 @@ How to use with Kornia
       multimask_output=True,
    )
 
-You can also go through our full tutorial using Colab, found `here <https://kornia.github.io/tutorials/nbs/visual_prompter.html>`_.
+You can also go through our full tutorial using Colab, found `here <https://www.kornia.org/tutorials/nbs/visual_prompter.html>`_.
 
 Integration with other libraries, fine-tuning and more examples are coming soon.

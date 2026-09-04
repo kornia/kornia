@@ -1,6 +1,9 @@
 SOLD2
 =====
 
+.. meta::
+   :description: Detect and match line segments with SOLD², Kornia's pretrained PyTorch line-feature model.
+
 .. rst-class:: kornia-badges
 
 :bdg-primary:`Line detection` :bdg-primary:`Line matching` :bdg-secondary:`MIT`

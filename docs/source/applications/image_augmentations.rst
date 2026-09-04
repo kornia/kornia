@@ -1,6 +1,9 @@
 Image Augmentation
 ==================
 
+.. meta::
+   :description: Build differentiable, GPU-accelerated image augmentation pipelines for PyTorch with Kornia.
+
 Image Augmentation is a data augmentation method that generates more training data
 from the existing training samples. Image Augmentation is especially useful in domains
 where training data is limited or expensive to obtain like in biomedical applications.

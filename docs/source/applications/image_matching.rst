@@ -1,6 +1,9 @@
 Image Matching
 ==============
 
+.. meta::
+   :description: Match images with Kornia's PyTorch local features, LoFTR, geometric estimation and RANSAC tools.
+
 Image matching is a process of finding pixel and region correspondences between two images of the same scene.
 Such correspondences are useful for 3D reconstruction of the scene and relative camera pose estimation.
 It is also known as "wide baseline stereo"; you can read more about it on the `Wide Baseline Stereo Blog <https://ducha-aiki.github.io/wide-baseline-stereo-blog/2021/01/09/wxbs-in-simple-terms.html>`_.
@@ -31,7 +34,7 @@ correspondences between two grayscale images in a single call:
 .. image:: https://raw.githubusercontent.com/kornia/data/main/matching/matching_loftr.jpg
    :alt: LoFTR correspondences between two images
 
-You can also go through our full tutorial using Colab, found `here <https://kornia.github.io/tutorials/nbs/image_matching.html>`_.
+You can also go through our full tutorial using Colab, found `here <https://www.kornia.org/tutorials/nbs/image_matching.html>`_.
 
 Which model should I use?
 -------------------------

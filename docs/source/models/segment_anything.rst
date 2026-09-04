@@ -1,6 +1,9 @@
 Segment Anything (SAM)
 ======================
 
+.. meta::
+   :description: Segment objects from point and box prompts with the Segment Anything Model and Kornia's PyTorch VisualPrompter.
+
 .. rst-class:: kornia-badges
 
 :bdg-primary:`Segmentation` :bdg-primary:`Visual prompting` :bdg-secondary:`Apache-2.0`

@@ -1,6 +1,9 @@
 LoFTR
 =====
 
+.. meta::
+   :description: Match image correspondences without keypoints using LoFTR, Kornia's pretrained PyTorch transformer matcher.
+
 .. rst-class:: kornia-badges
 
 :bdg-primary:`Image matching` :bdg-secondary:`Apache-2.0`

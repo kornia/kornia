@@ -1,6 +1,9 @@
 AffNet
 ======
 
+.. meta::
+   :description: Estimate affine-covariant local feature shapes with AffNet, Kornia's pretrained PyTorch model.
+
 .. rst-class:: kornia-badges
 
 :bdg-primary:`Affine shape estimation` :bdg-secondary:`MIT`

@@ -71,7 +71,7 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
         grayscale version of the image with shape :math:`(*,1,H,W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/color_conversions.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/color_conversions.html>`__.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)

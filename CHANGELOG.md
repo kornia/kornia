@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Documentation pages now provide search-specific titles and descriptions, canonical tutorial links, and a
+  canonicalized redirect from the retired highlighted-features page. (#4226)
+
 * `kornia.feature.laf_is_filled(laf)` returns the `(B, N)` mask of the slots a detection filled, the complement
   of a detector's zero-LAF padding. Fixed-shape detectors pad the slots no detection filled with an all-zero LAF,
   and those slots must be dropped before matching -- their descriptors are identical to one another, so they match

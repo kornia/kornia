@@ -1,6 +1,9 @@
 Image Registration
 ==================
 
+.. meta::
+   :description: Align images with differentiable registration and PyTorch autograd using Kornia's ImageRegistrator.
+
 Image registration is the process of transforming different sets of data into one coordinate system. Data may be multiple photographs, data from different sensors, times, depths, or viewpoints. It is used in computer vision, medical imaging, and compiling and analyzing images and data from satellites. Registration is necessary in order to be able to compare or integrate the data obtained from these different measurements.
 
 Learn more: `https://paperswithcode.com/task/image-registration <https://paperswithcode.com/task/image-registration>`_
@@ -24,4 +27,4 @@ Then, if you want to perform a more sophisticated process:
 
 .. literalinclude:: ../_static/image_registration.py
 
-To reproduce the same results as in the video shown above, you can go through our full tutorial using Colab, found `here <https://kornia.github.io/tutorials/nbs/image_registration.html>`_.
+To reproduce the same results as in the video shown above, you can go through our full tutorial using Colab, found `here <https://www.kornia.org/tutorials/nbs/image_registration.html>`_.

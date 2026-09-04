@@ -599,6 +599,8 @@ _DEFAULT_DESCRIPTION = (
     "and curated deep learning models."
 )
 _SOCIAL_IMAGE = "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"
+_PAGE_REDIRECTS = {"get-started/highlights": "get-started/introduction"}
+_NOINDEX_PAGES = {"404", "genindex", "py-modindex", "search"}
 _META_TAG_RE = re.compile(r"<meta\b[^>]*>", re.IGNORECASE)
 _META_ATTR_RE = re.compile(r'(\w+)="([^"]*)"')
 
@@ -617,20 +619,43 @@ def _inject_social_metatags(app, pagename, templatename, context, doctree):
         if attrs.get("name", "").lower() == "description" and attrs.get("content"):
             match = attrs["content"]
             break
-    description = html.unescape(match).strip().strip('"') if match else _DEFAULT_DESCRIPTION
+    # Sphinx hands the title over already HTML-escaped and it can contain theme markup.
+    page_title = re.sub(r"<[^>]+>", "", html.unescape(context.get("title") or project))
+    page_title = " ".join(page_title.split())
+    redirect_target = _PAGE_REDIRECTS.get(pagename)
+    if match and not redirect_target:
+        description = html.unescape(match).strip().strip('"')
+    elif context.get("title") and pagename not in _NOINDEX_PAGES and not redirect_target:
+        description = f"{page_title}: documentation for Kornia, the differentiable computer vision library for PyTorch."
+    else:
+        description = _DEFAULT_DESCRIPTION
     description = " ".join(description.split())
     if len(description) > 300:
         description = description[:297].rsplit(" ", 1)[0] + "..."
-    # Sphinx hands the title over already HTML-escaped; unescape so ``esc`` below does not double it.
-    title = html.unescape(context.get("title") or project)
-    if pagename != master_doc:
-        title = f"{title} - {project}"
-    url = f"{html_baseurl}{pagename}.html"
+    title = f"{page_title} - {project}"
+    if pagename == master_doc:
+        title = f"{project} — Differentiable Computer Vision for PyTorch"
+    url = context.get("pageurl") or f"{html_baseurl}{app.builder.get_target_uri(pagename)}"
+    if pagename == master_doc:
+        url = html_baseurl
+        context["pageurl"] = url
+    refresh_url = None
+    if redirect_target:
+        # Keep obsolete docs URLs out of results while sending users and canonical signals to their replacement.
+        url = f"{html_baseurl}{app.builder.get_target_uri(redirect_target)}"
+        context["pageurl"] = url
+        refresh_url = app.builder.get_relative_uri(pagename, redirect_target)
     esc = html.escape
 
     extra = []
     if not match:
         extra.append(f'<meta name="description" content="{esc(description)}" />')
+    if pagename in _NOINDEX_PAGES:
+        extra.append('<meta name="robots" content="noindex, follow" />')
+    if redirect_target:
+        extra += [
+            f'<meta http-equiv="refresh" content="0; url={esc(refresh_url)}" />',
+        ]
     extra += [
         '<meta property="og:type" content="website" />',
         f'<meta property="og:site_name" content="{esc(project)}" />',
@@ -644,7 +669,7 @@ def _inject_social_metatags(app, pagename, templatename, context, doctree):
         f'<meta name="twitter:description" content="{esc(description)}" />',
         f'<meta name="twitter:image" content="{_SOCIAL_IMAGE}" />',
     ]
-    context["metatags"] = metatags + "\n" + "\n".join(extra)
+    context["metatags"] = "\n".join(extra) + "\n" + metatags
 
 
 # -- Deep-link compatibility ------------------------------------------------
@@ -712,7 +737,8 @@ def _inject_navbar_menus(app, pagename, templatename, context, doctree):
 
 
 def setup(app):
-    app.connect("html-page-context", _inject_social_metatags)
+    # Run after the theme's canonical URL normalizer so redirects can replace ``pageurl``.
+    app.connect("html-page-context", _inject_social_metatags, priority=900)
     app.connect("html-page-context", _inject_anchor_redirects)
     app.connect("html-page-context", _inject_navbar_menus)
     app.connect("env-check-consistency", _check_navbar_menus)

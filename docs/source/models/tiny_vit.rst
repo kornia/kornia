@@ -3,6 +3,9 @@
 TinyViT
 =======
 
+.. meta::
+   :description: Use TinyViT pretrained PyTorch vision transformers for image classification and as Kornia's MobileSAM encoder.
+
 .. rst-class:: kornia-badges
 
 :bdg-primary:`Image classification` :bdg-primary:`Detection`

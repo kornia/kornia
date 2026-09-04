@@ -1,6 +1,9 @@
 Image Denoising
 ===============
 
+.. meta::
+   :description: Remove image noise with differentiable total-variation denoising and Kornia's PyTorch vision operators.
+
 Image denoising removes noise from an image while preserving its structure. Because every Kornia operator is
 differentiable, a classic variational approach such as total-variation denoising can be written as a few lines of
 optimization with :func:`kornia.losses.total_variation`:
@@ -20,4 +23,4 @@ optimization with :func:`kornia.losses.total_variation`:
         loss.backward()
         optimizer.step()
 
-Follow the full walk-through in the `total variation denoising tutorial <https://kornia.github.io/tutorials/nbs/total_variation_denoising.html>`_.
+Follow the full walk-through in the `total variation denoising tutorial <https://www.kornia.org/tutorials/nbs/total_variation_denoising.html>`_.

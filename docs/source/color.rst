@@ -10,7 +10,7 @@ Color space conversions on float image tensors of shape :math:`(*, C, H, W)` wit
 plus color maps and sepia. Every operation exists as a function and as an ``nn.Module``.
 
 .. note::
-   Check a tutorial for color space conversions `here <https://kornia.github.io/tutorials/nbs/hello_world_tutorial.html>`__.
+   Check a tutorial for color space conversions `here <https://www.kornia.org/tutorials/nbs/hello_world_tutorial.html>`__.
 
 .. list-table::
    :widths: 30 70
