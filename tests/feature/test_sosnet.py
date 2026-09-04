@@ -43,6 +43,18 @@ class TestSOSNet(BaseTester):
         sosnet = SOSNet(pretrained=False).to(patches.device, patches.dtype)
         self.gradcheck(sosnet, (patches,), eps=1e-4, atol=1e-4)
 
+    @pytest.mark.parametrize("patch_value", [0.0, 0.5])
+    def test_degenerate_patch_gives_finite_descriptors(self, device, dtype, patch_value):
+        # `forward`'s `eps` is what keeps `desc_norm`'s division defined for a patch the network maps
+        # to exactly zero -- every `Conv2d` here has `bias=False` and every `BatchNorm2d` is
+        # `affine=False` with `running_mean == 0`, so a constant patch reaches the normalisation as
+        # exactly zero. 1e-10 flushes to 0.0 in float16, so the guard used to be inert there and every
+        # descriptor came back NaN (kornia#4224).
+        patches = torch.full((2, 1, 32, 32), patch_value, device=device, dtype=dtype)
+        sosnet = SOSNet().to(device, dtype).eval()
+        descriptors = sosnet(patches)
+        assert torch.isfinite(descriptors).all(), f"{int(descriptors.isnan().sum())} non-finite descriptor entries"
+
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         # `torch.ones` drives a randomly initialised SOSNet to exactly zero (a ReLU collapse), which made

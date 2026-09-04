@@ -292,10 +292,17 @@ class HyNet(nn.Module):
         x = self.layer4(x)
         x = self.layer5(x)
         x = self.layer6(x)
-        x = self.layer7(x) + self.eps_l2_norm
-        # `desc_norm` normalises across channels only, so the trailing spatial dims are inert. Feeding
-        # it a 3-D view routes torch through `avg_pool2d` instead of `avg_pool3d`, which has no CPU
-        # half-precision kernel; the pooling window and its accumulation order are unchanged.
-        x = self.desc_norm(x.flatten(2)).view_as(x)
+        x = self.layer7(x)
+        # The normalisation divides by the descriptor's own L2 norm, and `eps_l2_norm` is what keeps that
+        # division defined for a patch the network maps to exactly zero. 1e-10 is not representable in
+        # float16 -- it flushes to 0.0 -- so the guard is inert there and the division returns NaN
+        # (kornia#4224). Half precision therefore takes this step in float32 and casts back, the same
+        # treatment `siftdesc.py` gives its own 1e-10 guard. float32 and float64 take the original
+        # expression unchanged, bit for bit. It also sidesteps `avg_pool3d`, which
+        # `F.local_response_norm` uses for a 4-D input and which has no CPU half-precision kernel.
+        if x.dtype in (torch.float16, torch.bfloat16):
+            x = self.desc_norm(x.float() + self.eps_l2_norm).to(x.dtype)
+        else:
+            x = self.desc_norm(x + self.eps_l2_norm)
         x = x.view(x.size(0), -1)
         return x

@@ -100,10 +100,17 @@ class SOSNet(nn.Module):
             Descriptor tensor with shape :math:`(B, 128)`.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
-        descr = self.layers(input) + eps
-        # `desc_norm` normalises across channels only, so the trailing spatial dims are inert. Feeding
-        # it a 3-D view routes torch through `avg_pool2d` instead of `avg_pool3d`, which has no CPU
-        # half-precision kernel; the pooling window and its accumulation order are unchanged.
-        descr = self.desc_norm(descr.flatten(2)).view_as(descr)
+        descr = self.layers(input)
+        # The normalisation divides by the descriptor's own L2 norm, and `eps` is what keeps that
+        # division defined for a patch the network maps to exactly zero. 1e-10 is not representable in
+        # float16 -- it flushes to 0.0 -- so the guard is inert there and the division returns NaN
+        # (kornia#4224). Half precision therefore takes this step in float32 and casts back, the same
+        # treatment `siftdesc.py` gives its own 1e-10 guard. float32 and float64 take the original
+        # expression unchanged, bit for bit. It also sidesteps `avg_pool3d`, which
+        # `F.local_response_norm` uses for a 4-D input and which has no CPU half-precision kernel.
+        if descr.dtype in (torch.float16, torch.bfloat16):
+            descr = self.desc_norm(descr.float() + eps).to(descr.dtype)
+        else:
+            descr = self.desc_norm(descr + eps)
         descr = descr.view(descr.size(0), -1)
         return descr

@@ -249,12 +249,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
-* `HyNet` and `SOSNet` now run in CPU half precision. Their final `LocalResponseNorm` was handed a 4-D
-  `(B, C, 1, 1)` tensor, which routes `torch.nn.functional.local_response_norm` through `avg_pool3d`; that
-  kernel has no CPU `float16`/`bfloat16` implementation, so both descriptors raised
-  `NotImplementedError: "avg_pool3d_out_frame" not implemented for 'Half'`. The normalisation runs over the
-  channel axis only, so it is now given the equivalent 3-D view and goes through `avg_pool2d`, which does have
-  those kernels. Output is bitwise unchanged on CPU in `float32` and `float64`. (#4225)
+* `HyNet` and `SOSNet` now run in half precision, on CPU and on GPU, and no longer return NaN for a
+  degenerate patch (#4225, closes #4224). Two defects sat on the same line. On CPU both raised
+  `NotImplementedError: "avg_pool3d_out_frame" not implemented for 'Half'`: their final `LocalResponseNorm`
+  is handed a 4-D `(B, C, 1, 1)` tensor, which routes `torch.nn.functional.local_response_norm` through
+  `avg_pool3d`, and that kernel has no CPU `float16`/`bfloat16` implementation. Where the kernel does exist
+  (MPS, CUDA) the descriptors came back all-NaN for any patch the network maps to exactly zero -- a zero or
+  constant patch, since every `Conv2d` in these models has `bias=False` -- because the `eps` that keeps the
+  normalisation's division defined (`SOSNet.forward`'s `eps`, `HyNet`'s `eps_l2_norm`, both `1e-10`) is not
+  representable in `float16` and flushes to `0.0`, leaving `0/0`. `HyNet` reached this only with
+  `is_bias=False`. Both models now take that one normalisation step in `float32` for a half-precision input
+  and cast the result back, the treatment `kornia.feature.siftdesc` already gives its own `1e-10` guards.
+  `float32` and `float64` take the original expression and are bitwise unchanged on every device. (#4225)
 
 * `validate_bbox` and `validate_bbox3d` flatten rank-4 `(B, N, 4, 2)` / `(B, N, 8, 3)` input with `reshape`
   instead of `view`, so a non-contiguous leading-dimension stride (a transpose, a slice that drops boxes, an

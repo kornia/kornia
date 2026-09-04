@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 from kornia.feature import FilterResponseNorm2d, HyNet
@@ -45,6 +46,18 @@ class TestHyNet(BaseTester):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
         hynet = HyNet().to(patches.device, patches.dtype)
         self.gradcheck(hynet, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8)
+
+    @pytest.mark.parametrize("patch_value", [0.0, 0.5])
+    @pytest.mark.parametrize("is_bias", [True, False])
+    def test_degenerate_patch_gives_finite_descriptors(self, device, dtype, patch_value, is_bias):
+        # `eps_l2_norm` is what keeps `desc_norm`'s division defined for a patch the network maps to
+        # exactly zero, and 1e-10 flushes to 0.0 in float16, so the guard used to be inert there and
+        # every descriptor came back NaN (kornia#4224). `is_bias=False` is the configuration that
+        # reaches it: with the TLU bias on, the pre-normalisation tensor never lands exactly on zero.
+        patches = torch.full((2, 1, 32, 32), patch_value, device=device, dtype=dtype)
+        hynet = HyNet(is_bias=is_bias).to(device, dtype).eval()
+        descriptors = hynet(patches)
+        assert torch.isfinite(descriptors).all(), f"{int(descriptors.isnan().sum())} non-finite descriptor entries"
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
