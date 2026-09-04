@@ -42,7 +42,7 @@ from .responses import BlobHessian
 #   angles = linspace(0, 2π, n_pts - 1) = linspace(0, 2π, 11) → k * 2π/10 for k=0..10
 #   max|sin| at k=2 and k=3: sin(2π/5) ≈ 0.9511;  max|cos| at k=0: cos(0) = 1.0
 # Used to inline the boundary check in _process_octave for isotropic LAFs (rotmat=eye(2)),
-# avoiding CPU→GPU allocation + bmm every octave.
+# avoiding the basis allocations and the bmm every octave.
 _MAX_ABS_SIN_12: float = math.sin(2 * 2 * math.pi / 10)  # ≈ 0.9511
 
 
@@ -464,7 +464,9 @@ class ScaleSpaceDetector(nn.Module):
 
         # Inline equivalent of laf_is_inside_image(scale_laf(current_lafs, 0.5), octave[:, 0], 5)
         # for isotropic LAFs (rotmat = eye(2)).  Avoids: scale_laf (torch.cat), and
-        # laf_to_boundary_points (linspace/sin/cos allocations + CPU→GPU transfer + bmm).
+        # laf_to_boundary_points (linspace/sin/cos allocations and their launches, plus a small
+        # host->device copy of the basis).  Since #4217 that op no longer transfers a tensor that
+        # scales with the LAF count, so what is saved here is per-call overhead, not bandwidth.
         # For the axis-aligned isotropic case the 12-pt boundary check reduces to:
         #   max x-extent = max|sin| * half_s;  max y-extent = max|cos| * half_s = half_s
         half_s = current_lafs[:, :, 0, 0] * 0.5

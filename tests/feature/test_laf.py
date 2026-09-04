@@ -491,13 +491,18 @@ class TestLAF2pts(BaseTester):
         self.assert_close(kornia.feature.laf_to_boundary_points(laf, n_pts), expected)
 
     def test_dtype_device_preserved(self, device, dtype):
-        """The basis is cast to the LAF's dtype and device before it is broadcast, not after."""
+        """Boundary points keep the LAF's dtype and device, in every dtype.
+
+        Nothing else covered this op in half precision. Note this cannot see *where* the basis is
+        cast -- casting it before or after the broadcast gives the same dtype, device and values,
+        so that ordering is a memory property, not an observable one.
+        """
         laf = torch.tensor([[[[1.0, 0.0, 1.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype)
         n_pts = 6
         expected = torch.tensor([[[[1, 1], [1, 2], [2, 1], [1, 0], [0, 1], [1, 2]]]], device=device, dtype=dtype)
         pts = kornia.feature.laf_to_boundary_points(laf, n_pts)
         assert pts.dtype == dtype
-        assert pts.device.type == laf.device.type
+        assert pts.device == laf.device
         self.assert_close(pts, expected)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
