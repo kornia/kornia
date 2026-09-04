@@ -67,6 +67,34 @@ def laf_is_valid(laf: torch.Tensor) -> torch.Tensor:
     return laf.isfinite().all(dim=-1).all(dim=-1) & det.isfinite() & (det != 0)
 
 
+def laf_is_filled(laf: torch.Tensor) -> torch.Tensor:
+    """Check which slots hold a detection rather than the zero-LAF padding.
+
+    Detectors return a fixed number of slots and pad the ones no detection filled with an all-zero
+    LAF and a zero response, so that the output shape does not depend on the image. Drop those
+    slots before matching: the padding frames are identical to one another, so a mutual
+    nearest-neighbour test does not reject them and they match each other at zero distance.
+
+    Occupancy cannot be read off the response instead, because a pluggable signed response may have
+    a genuine maximum at exactly zero. Only an all-zero frame is padding: a detection at the image
+    origin has a zero centre but a nonzero shape, so it is filled.
+
+    Args:
+        laf: :math:`(B, N, 2, 3)`.
+
+    Returns:
+        mask of the slots a detection filled :math:`(B, N)`.
+
+    Example:
+        >>> laf = torch.tensor([[[[2., 0., 5.], [0., 3., 7.]], [[0., 0., 0.], [0., 0., 0.]]]])
+        >>> laf_is_filled(laf)
+        tensor([[ True, False]])
+
+    """
+    KORNIA_CHECK_LAF(laf)
+    return laf.ne(0).any(dim=-1).any(dim=-1)
+
+
 def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
     """Return a center (keypoint) of the LAFs.
 

@@ -25,6 +25,7 @@ import torch
 
 import kornia
 import kornia.geometry.transform.imgwarp
+from kornia.core.check import ShapeError
 
 from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 from testing.geometry.create import create_random_homography
@@ -395,6 +396,66 @@ class TestLAFIsValid(BaseTester):
         torch._dynamo.reset()
         compiled = torch.compile(kornia.feature.laf_is_valid, fullgraph=True)
         assert torch.equal(compiled(laf), expected)
+
+
+class TestLAFIsFilled(BaseTester):
+    def _mixed(self, device, dtype):
+        # Slot 0 is a real detection, slot 1 is the all-zero padding a detector writes for a slot
+        # no detection filled, slot 2 is a real detection at the image origin.
+        laf = torch.tensor(
+            [
+                [
+                    [[2.0, 0.0, 5.0], [0.0, 3.0, 7.0]],
+                    [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                    [[2.0, 0.0, 0.0], [0.0, 3.0, 0.0]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        return laf, torch.tensor([[True, False, True]], device=device)
+
+    def test_zero_laf_is_the_only_padding(self, device, dtype):
+        laf, expected = self._mixed(device, dtype)
+        assert torch.equal(kornia.feature.laf_is_filled(laf), expected)
+
+    def test_detection_at_the_origin_is_filled(self, device, dtype):
+        # The discriminating case: a keypoint at (0, 0) has a zero centre but a nonzero shape, so
+        # testing the centre alone -- or the response, which a signed response may peak at zero --
+        # would call a real detection padding.
+        laf = torch.tensor([[[[2.0, 0.0, 0.0], [0.0, 3.0, 0.0]]]], device=device, dtype=dtype)
+        assert bool(kornia.feature.laf_is_filled(laf).all())
+
+    def test_matches_the_documented_idiom(self, device, dtype):
+        # The expression this replaces, written out in `LocalFeature`'s docstring and previously
+        # at four sites in `kornia.feature`.
+        laf, _ = self._mixed(device, dtype)
+        assert torch.equal(kornia.feature.laf_is_filled(laf), laf.ne(0).any(dim=-1).any(dim=-1))
+
+    def test_shape_and_dtype(self, device, dtype):
+        laf = torch.rand(3, 7, 2, 3, device=device, dtype=dtype)
+        filled = kornia.feature.laf_is_filled(laf)
+        assert filled.shape == torch.Size([3, 7])
+        assert filled.dtype == torch.bool
+        assert filled.device == laf.device
+
+    def test_rejects_a_non_laf_shape(self, device, dtype):
+        # `ShapeError` specifically, not `Exception`: a bare `Exception` here would also swallow an
+        # `AttributeError` and pass without the function existing at all.
+        with pytest.raises(ShapeError):
+            kornia.feature.laf_is_filled(torch.rand(7, 2, 3, device=device, dtype=dtype))
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_dynamo_fullgraph(self, device, dtype):
+        laf, expected = self._mixed(device, dtype)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.feature.laf_is_filled, fullgraph=True)
+        assert torch.equal(compiled(laf), expected)
+
+    def test_jit(self, device, dtype):
+        laf, _ = self._mixed(device, dtype)
+        model_jit = torch.jit.script(kornia.feature.laf_is_filled)
+        assert torch.equal(kornia.feature.laf_is_filled(laf), model_jit(laf))
 
 
 class TestNormalizeLAF(BaseTester):
