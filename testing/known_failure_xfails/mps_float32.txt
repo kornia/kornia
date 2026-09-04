@@ -6,9 +6,8 @@
 # one pytest process for the full suite (tests marked device_agnostic are deselected on an mps-only run).
 # Remove an entry when it becomes a strict XPASS; fix or explicitly add any new failure. Tracked in #4159.
 # torch 2.14.0 added MPS kernels for the eigen/QR/LU/SVD family and for both grid_sample backward
-# passes, which took this baseline from 200 entries to 14. Two causes remain:
+# passes, which took this baseline from 200 entries to 12. One cause remains:
 #   NotImplementedError  aten::_linalg_eigvals has no MPS kernel (the 5-point essential solver).
-#   RuntimeError         yuv420/yuv422 empty-input reshape, a kornia degenerate-shape defect.
 # tests/geometry/test_ransac.py is skipped on MPS, not pinned: it aborts the process (#4204).
 # Keep the entries sorted by node ID: KnownFailureTracker prints its regeneration output sorted,
 # so an unsorted file turns the next re-record into a whole-file diff.
