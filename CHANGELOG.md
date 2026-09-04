@@ -249,6 +249,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entries, nine of the ten `cpu_float16`), which are removed from `testing/half_precision_xfails/`. The
   tenth `float16` line is kept: `TestAutoAugment::test_reproduce[cpu-float16]` still fails, now on an
   `AssertionError` rather than a `RuntimeError` — a smaller residual, not a fix. (#4210)
+* Constructing `ScaleSpaceDetector` with `compile_modules` no longer permanently mutates the process-global
+  `torch._dynamo.config.capture_dynamic_output_shape_ops` setting. (#4134)
+
+* Fix `Boxes.merge` concatenating along the vertex axis instead of the box axis
+  for unbatched `(N, 4, 2)` input. The old `dim=1` was correct for batched
+  `(B, N, 4, 2)` data (where dim 1 is the box axis) but wrong for 3-D tensors
+  (where dim 1 is the vertex dimension); `dim=-3` is correct in both cases and
+  the behaviour of the batched path is byte-identical. Also clear the stale
+  ``_N`` list-padding metadata on both the inplace and non-inplace paths after
+  every merge so that ``to_tensor`` counts the merged boxes correctly instead of
+  silently truncating them (#4168).
 
 * `Boxes3D.to_tensor` and `Boxes3D.get_boxes_shape` are differentiable again (#1396). Both reduce a box's 8
   vertices to its min/max corner with `amin`/`amax`, which is a genuine kink -- not differentiable in the

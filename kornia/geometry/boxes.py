@@ -347,21 +347,33 @@ class Boxes:
 
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
-        Say, current instance holds :math:`(B, N, 4, 2)` and the incoming boxes holds :math:`(B, M, 4, 2)`,
-        the merge results in :math:`(B, N + M, 4, 2)`.
+        For batched boxes, if the current instance holds :math:`(B, N, 4, 2)` and
+        the incoming boxes holds :math:`(B, M, 4, 2)`, the merge results in
+        :math:`(B, N + M, 4, 2)`.
+
+        For unbatched boxes, if the current instance holds :math:`(N, 4, 2)` and
+        the incoming boxes holds :math:`(M, 4, 2)`, the merge results in
+        :math:`(N + M, 4, 2)`.
 
         Args:
             boxes: 2D boxes.
             inplace: do transform in-place and return self.
 
+        Note:
+            Any list-padding metadata (``_N``) is cleared after the merge because
+            the merged tensor has a new total box count that is incompatible with
+            the original per-image lengths recorded before the merge.
+
         """
-        data = torch.cat([self._data, boxes.data], dim=1)
+        data = torch.cat([self._data, boxes.data], dim=-3)
         if inplace:
             self._data = data
+            self._N = None
             return self
 
         obj = self.clone()
         obj._data = data
+        obj._N = None
         return obj
 
     def index_put(
