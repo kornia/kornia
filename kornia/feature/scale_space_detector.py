@@ -16,7 +16,8 @@
 #
 
 import math
-from typing import List, Optional, Tuple, Union
+from contextlib import nullcontext
+from typing import ContextManager, List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -249,15 +250,10 @@ class ScaleSpaceDetector(nn.Module):
             if unknown:
                 raise ValueError(f"Unknown module names in compile_modules: {unknown}. Valid: {_all_names}")
 
-        if _compile_set:
-            # Allow torch.compile to keep data-dependent shape ops (torch.where / nonzero)
-            # inside the compiled graph as unbacked symbols, avoiding graph breaks and the
-            # 0/1-specialization recompilations that would otherwise fire whenever an octave
-            # first encounters zero NMS maxima (blurry/extreme-viewpoint images).
-            torch._dynamo.config.capture_dynamic_output_shape_ops = True
+        self._compile_set: frozenset[str] = frozenset(_compile_set)
 
         def _maybe_compile(mod: nn.Module, name: str) -> nn.Module:
-            return torch.compile(mod, dynamic=True) if name in _compile_set else mod
+            return torch.compile(mod, dynamic=True) if name in self._compile_set else mod
 
         if scale_pyr_module is None:
             extra_levels = 3 if scale_space_response else 2
@@ -283,6 +279,15 @@ class ScaleSpaceDetector(nn.Module):
         # scale_space_response should be True if the response function works on scale space
         # like Difference-of-Gaussians
         self.scale_space_response = scale_space_response
+
+    def _dynamo_config_patch(self, modules: Tuple[str, ...]) -> ContextManager[None]:
+        if self._compile_set.intersection(modules):
+            # Allow torch.compile to keep data-dependent shape ops (torch.where / nonzero)
+            # inside the compiled graph as unbacked symbols, avoiding graph breaks and the
+            # 0/1-specialization recompilations that would otherwise fire whenever an octave
+            # first encounters zero NMS maxima (blurry/extreme-viewpoint images).
+            return torch._dynamo.config.patch(capture_dynamic_output_shape_ops=True)
+        return nullcontext()
 
     def __repr__(self) -> str:
         return (
@@ -320,9 +325,11 @@ class ScaleSpaceDetector(nn.Module):
 
         # Run response function
         if self.scale_space_response:
-            oct_resp = self.resp(octave, sigmas_oct.view(-1))  # (B, 1, Ldog, H, W)
+            with self._dynamo_config_patch(("resp",)):
+                oct_resp = self.resp(octave, sigmas_oct.view(-1))  # (B, 1, Ldog, H, W)
         else:
-            level_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W), sigmas_oct.view(-1))
+            with self._dynamo_config_patch(("resp",)):
+                level_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W), sigmas_oct.view(-1))
             KORNIA_CHECK(
                 level_resp.dim() == 4
                 and level_resp.shape[0] == B * L
@@ -371,17 +378,18 @@ class ScaleSpaceDetector(nn.Module):
             if mask.is_floating_point():
                 oct_mask = resampled
 
-        if self.minima_are_also_good:
-            if is_iterative_subpix:
+        with self._dynamo_config_patch(("subpix",)):
+            if self.minima_are_also_good:
+                if is_iterative_subpix:
+                    coord_max, response_max = self.subpix(oct_resp, precomputed_nms_mask=max_nms_mask)
+                    coord_min, response_min = self.subpix(-oct_resp, precomputed_nms_mask=min_nms_mask)
+                else:
+                    coord_max, response_max = self.subpix(oct_resp)
+                    coord_min, response_min = self.subpix(-oct_resp)
+            elif is_iterative_subpix:
                 coord_max, response_max = self.subpix(oct_resp, precomputed_nms_mask=max_nms_mask)
-                coord_min, response_min = self.subpix(-oct_resp, precomputed_nms_mask=min_nms_mask)
             else:
                 coord_max, response_max = self.subpix(oct_resp)
-                coord_min, response_min = self.subpix(-oct_resp)
-        elif is_iterative_subpix:
-            coord_max, response_max = self.subpix(oct_resp, precomputed_nms_mask=max_nms_mask)
-        else:
-            coord_max, response_max = self.subpix(oct_resp)
 
         # Zero responses at scale border levels so they never reach top-K.
         # (nms3d_minmax already sets the masks False at these positions.)
@@ -509,7 +517,8 @@ class ScaleSpaceDetector(nn.Module):
             _check_mask(mask, img)
         dev = img.device
         dtype: torch.dtype = img.dtype
-        sp, sigmas, _ = self.scale_pyr(img)
+        with self._dynamo_config_patch(("scale_pyr",)):
+            sp, sigmas, _ = self.scale_pyr(img)
 
         # ── Hoist loop invariants ────────────────────────────────────────────
         if isinstance(self.scale_pyr.n_levels, torch.Tensor):
@@ -609,8 +618,10 @@ class ScaleSpaceDetector(nn.Module):
         # zero-LAF padding contract rather than bypassing an override through `_detect`.
         responses, lafs = self.detect(img, self.num_features, mask)
         filled = lafs.ne(0).any(dim=-1).any(dim=-1)
-        lafs = self.aff(lafs, img)
-        lafs = self.ori(lafs, img)
+        with self._dynamo_config_patch(("aff",)):
+            lafs = self.aff(lafs, img)
+        with self._dynamo_config_patch(("ori",)):
+            lafs = self.ori(lafs, img)
         return _zero_unfilled(lafs, filled), responses
 
 

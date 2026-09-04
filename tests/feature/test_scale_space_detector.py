@@ -28,8 +28,16 @@ from kornia.feature.scale_space_detector import (
     get_default_detector_config,
 )
 from kornia.geometry.subpix import ConvQuadInterp3d
+from kornia.geometry.transform import ScalePyramid
 
-from testing.base import BaseTester, supports_conv2d, supports_replicate_padding, supports_topk
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    dynamo_is_available,
+    supports_conv2d,
+    supports_replicate_padding,
+    supports_topk,
+)
 
 
 def _require_affine_orientation_kernels(device: torch.device, dtype: torch.dtype) -> None:
@@ -488,6 +496,64 @@ class TestScaleSpaceDetector(BaseTester):
         assert abs(((pts[..., 0].max() - cx) / half_s).item() - _MAX_ABS_SIN_12) < 1e-6
         # ... and the y-extent the same block hardcodes as `half_s` (max|cos| = 1).
         assert abs(((pts[..., 1].max() - cy) / half_s).item() - 1.0) < 1e-6
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_scale_space_detector_init_preserves_global_config_4095(self):
+        torch._dynamo.reset()
+        try:
+            with torch._dynamo.config.patch(capture_dynamic_output_shape_ops=False):
+                assert not torch._dynamo.config.capture_dynamic_output_shape_ops
+                _ = ScaleSpaceDetector(num_features=5, compile_modules=["resp"])
+                assert not torch._dynamo.config.capture_dynamic_output_shape_ops
+        finally:
+            torch._dynamo.reset()
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_compile_modules_forward_restores_dynamo_config_4095(self):
+        torch._dynamo.reset()
+        try:
+            with torch._dynamo.config.patch(capture_dynamic_output_shape_ops=False):
+                det = ScaleSpaceDetector(
+                    num_features=2,
+                    scale_pyr_module=ScalePyramid(1, 1.6, 15, extra_levels=2),
+                    compile_modules=["subpix"],
+                )
+                img = torch.zeros(1, 1, 16, 16)
+                lafs, resps = det(img)
+                assert lafs.shape == torch.Size([1, 2, 2, 3])
+                assert resps.shape == torch.Size([1, 2])
+                assert not torch._dynamo.config.capture_dynamic_output_shape_ops
+        finally:
+            torch._dynamo.reset()
+
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    def test_compile_modules_match_eager_4095(self):
+        torch._dynamo.reset()
+        try:
+            inp = torch.zeros(1, 1, 33, 33)
+            inp[:, :, 13:-13, 13:-13] = 1.0
+            with torch._dynamo.config.patch(capture_dynamic_output_shape_ops=False):
+                eager = ScaleSpaceDetector(
+                    1,
+                    resp_module=kornia.feature.BlobHessian(),
+                    subpix_module=ConvQuadInterp3d(10),
+                    mr_size=3.0,
+                )
+                compiled = ScaleSpaceDetector(
+                    1,
+                    resp_module=kornia.feature.BlobHessian(),
+                    subpix_module=ConvQuadInterp3d(10),
+                    mr_size=3.0,
+                    compile_modules=["resp", "subpix"],
+                )
+                lafs_eager, resps_eager = eager(inp)
+                lafs_compiled, resps_compiled = compiled(inp)
+                assert not torch._dynamo.config.capture_dynamic_output_shape_ops
+            assert bool((resps_compiled != 0).any())
+            self.assert_close(lafs_compiled, lafs_eager)
+            self.assert_close(resps_compiled, resps_eager)
+        finally:
+            torch._dynamo.reset()
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 7, 7
