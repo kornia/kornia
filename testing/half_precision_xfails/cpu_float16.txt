@@ -226,7 +226,6 @@ call	builtins.AssertionError	tests/augmentation/test_random_generator_3d.py::Tes
 call	builtins.AssertionError	tests/color/test_hls.py::TestRgbToHls::test_jit[cpu-float16]
 call	builtins.AssertionError	tests/color/test_hls.py::TestRgbToHls::test_module[cpu-float16]
 call	builtins.AssertionError	tests/color/test_rgb.py::TestRgb255Normals::test_back_and_forth[cpu-float16]
-call	builtins.AssertionError	tests/feature/test_affine_shape_estimator.py::TestLAFAffNetShapeEstimator::test_toy[cpu-float16]
 call	builtins.AssertionError	tests/feature/test_aliked.py::TestALIKED::test_descriptor_normalized[cpu-float16]
 call	builtins.NotImplementedError	tests/feature/test_hynet.py::TestHyNet::test_jit[cpu-float16]
 call	builtins.AssertionError	tests/feature/test_responces_local_features.py::TestBlobDoGSingle::test_blobs_batch[cpu-float16]
