@@ -786,6 +786,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pixel whose gradient is not exactly zero; a patch with such pixels (a saturated region) loses their `sqrt(eps)`
   contribution, a change of at most `1e-5` per pixel before normalisation.
 
+### Fixed
+
+* `infer_bbox_shape` and `bbox_to_mask` now reject rank-4 `(B, N, 4, 2)` inputs with `ShapeError` instead of
+  raising an incidental `IndexError` or silently returning incorrectly shaped results. (#4218)
+
 ## :rocket: [0.6.11] - 2022-03-28
 ### :new:  New Features
 
