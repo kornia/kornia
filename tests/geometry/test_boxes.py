@@ -966,48 +966,88 @@ class TestBbox3D(BaseTester):
         assert boxes_moved.data.device == device, boxes_moved.data.dtype == dtype
 
     def test_gradcheck(self, device):
-        # Uncomment when enabling gradient checks
-        # def apply_boxes_method(tensor: torch.Tensor, method: str, **kwargs):
-        #     boxes = Boxes3D(tensor)
-        #     result = getattr(boxes, method)(**kwargs)
-        #     return result.data if isinstance(result, Boxes3D) else result
+        def apply_boxes_method(tensor: torch.Tensor, method: str, **kwargs):
+            boxes = Boxes3D(tensor)
+            result = getattr(boxes, method)(**kwargs)
+            return result.data if isinstance(result, Boxes3D) else result
 
-        # t_boxes1 = torch.tensor(
-        #     [
-        #         [
-        #             [0.0, 1.0, 2.0],
-        #             [10, 1, 2],
-        #             [10, 21, 2],
-        #             [0, 21, 2],
-        #             [0, 1, 32],
-        #             [10, 1, 32],
-        #             [10, 21, 32],
-        #             [0, 21, 32],
-        #         ]
-        #     ],
-        #     device=device,
-        #     dtype=torch.float64,
-        # )
+        # to_tensor (and get_boxes_shape, which calls it) reduce the 8 vertices with amin/amax, whose
+        # backward is exact everywhere except where multiple vertices exactly tie for an axis extremum
+        # -- see the Note on Boxes3D.to_tensor. An axis-aligned box has a 4-way tie on every face by
+        # construction, so it is the wrong input for gradcheck's central-difference comparison: it
+        # probes the reduction exactly at its one genuine kink, not a representative point. Jittering
+        # every vertex breaks the ties without changing which corner is the true min/max, so gradcheck
+        # verifies the reduction everywhere else, which is everywhere a real (non-degenerate) box lives.
+        # The jitter is a fixed pattern, not RNG-derived: it only needs to be small and distinct per
+        # component to break the exact ties, and a fixed pattern avoids mutating global RNG state that
+        # could leak into other tests.
+        t_boxes1 = torch.tensor(
+            [
+                [
+                    [0.0, 1.0, 2.0],
+                    [10, 1, 2],
+                    [10, 21, 2],
+                    [0, 21, 2],
+                    [0, 1, 32],
+                    [10, 1, 32],
+                    [10, 21, 32],
+                    [0, 21, 32],
+                ]
+            ],
+            device=device,
+            dtype=torch.float64,
+        )
+        jitter = torch.arange(1, t_boxes1.numel() + 1, dtype=torch.float64, device=device).view_as(t_boxes1) * 1e-4
+        t_boxes1 = t_boxes1 + jitter
 
-        # Uncomment when enabling gradient checks
-        # t_boxes2 = tensor_to_gradcheck_var(t_boxes1.detach().clone())
-        # t_boxes3 = tensor_to_gradcheck_var(t_boxes1.detach().clone())
-        # t_boxes4 = tensor_to_gradcheck_var(t_boxes1.detach().clone())
+        t_boxes2 = t_boxes1.detach().clone()
+        t_boxes3 = t_boxes1.detach().clone()
+        t_boxes4 = t_boxes1.detach().clone()
+
+        self.gradcheck(partial(apply_boxes_method, method="to_tensor"), (t_boxes2,))
+        self.gradcheck(partial(apply_boxes_method, method="to_tensor", mode="xyzxyz_plus"), (t_boxes3,))
+        self.gradcheck(partial(apply_boxes_method, method="to_tensor", mode="vertices_plus"), (t_boxes4,))
+        self.gradcheck(partial(apply_boxes_method, method="get_boxes_shape"), (t_boxes1.detach().clone(),))
+
         t_boxes_xyzxyz = torch.tensor([[1.0, 3.0, 8.0, 5.0, 6.0, 12.0]], device=device, dtype=torch.float64)
         t_boxes_xyzxyz1 = t_boxes_xyzxyz.detach().clone()
-
-        # Gradient checks for Boxes3D.to_tensor (and Boxes3D.get_boxes_shape) are disable since the is a bug
-        # in their gradient. See https://github.com/kornia/kornia/issues/1396.
-        # assert gradcheck(partial(apply_boxes_method, method='to_tensor'), (t_boxes2,), raise_exception=True)
-        # assert gradcheck(
-        #     partial(apply_boxes_method, method='to_tensor', mode='xyzxyz_plus'), (t_boxes3,), raise_exception=True
-        # )
-        # assert gradcheck(
-        #     partial(apply_boxes_method, method='to_tensor', mode='vertices_plus'), (t_boxes4,), raise_exception=True
-        # )
-        # assert gradcheck(partial(apply_boxes_method, method='get_boxes_shape'), (t_boxes1,), raise_exception=True)
         self.gradcheck(lambda x: Boxes3D.from_tensor(x, mode="xyzxyz_plus").data, (t_boxes_xyzxyz,))
         self.gradcheck(lambda x: Boxes3D.from_tensor(x, mode="xyzwhd").data, (t_boxes_xyzxyz1,))
+
+    def test_convention_to_tensor_tie_gradient_is_an_even_subgradient_1396(self, device):
+        # #1396: to_tensor used to raise RuntimeError whenever its input required grad, because
+        # gradcheck disagreed with the analytical gradient on an axis-aligned box -- every face of
+        # such a box has a 4-way vertex tie, and PyTorch's amin/amax backward splits the gradient
+        # evenly across tied vertices (1/4 each here) rather than picking one, which is a valid
+        # subgradient but not what central-difference gradcheck expects at a kink (it does not probe
+        # a genuine derivative there, since none exists in the classical sense). This pins that even
+        # split as the actual, correct, and now-unguarded behavior, so a future change that alters it
+        # (e.g. reverting to computing to_tensor without amin/amax) has to touch this test.
+        vertices = torch.tensor(
+            [
+                [
+                    [0.0, 1.0, 2.0],
+                    [10.0, 1.0, 2.0],
+                    [10.0, 21.0, 2.0],
+                    [0.0, 21.0, 2.0],
+                    [0.0, 1.0, 32.0],
+                    [10.0, 1.0, 32.0],
+                    [10.0, 21.0, 32.0],
+                    [0.0, 21.0, 32.0],
+                ]
+            ],
+            device=device,
+            dtype=torch.float32,
+            requires_grad=True,
+        )
+        boxes = Boxes3D(vertices)
+        out = boxes.to_tensor(mode="xyzxyz")  # (N=1, 6): not batched, so to_tensor squeezes the batch dim
+        out[0, 0].backward()  # d(xmin)/d(vertices): xmin ties across vertices 0, 3, 4, 7
+
+        expected_grad = torch.zeros_like(vertices)
+        for tied_vertex in (0, 3, 4, 7):
+            expected_grad[0, tied_vertex, 0] = 0.25
+        self.assert_close(vertices.grad, expected_grad)
 
 
 class TestTransformBoxes3D(BaseTester):
