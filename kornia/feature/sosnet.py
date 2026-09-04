@@ -100,6 +100,10 @@ class SOSNet(nn.Module):
             Descriptor tensor with shape :math:`(B, 128)`.
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
-        descr = self.desc_norm(self.layers(input) + eps)
+        descr = self.layers(input) + eps
+        # `desc_norm` normalises across channels only, so the trailing spatial dims are inert. Feeding
+        # it a 3-D view routes torch through `avg_pool2d` instead of `avg_pool3d`, which has no CPU
+        # half-precision kernel; the pooling window and its accumulation order are unchanged.
+        descr = self.desc_norm(descr.flatten(2)).view_as(descr)
         descr = descr.view(descr.size(0), -1)
         return descr

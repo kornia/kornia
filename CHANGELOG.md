@@ -249,6 +249,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `HyNet` and `SOSNet` now run in CPU half precision. Their final `LocalResponseNorm` was handed a 4-D
+  `(B, C, 1, 1)` tensor, which routes `torch.nn.functional.local_response_norm` through `avg_pool3d`; that
+  kernel has no CPU `float16`/`bfloat16` implementation, so both descriptors raised
+  `NotImplementedError: "avg_pool3d_out_frame" not implemented for 'Half'`. The normalisation runs over the
+  channel axis only, so it is now given the equivalent 3-D view and goes through `avg_pool2d`, which does have
+  those kernels. Output is bitwise unchanged on CPU in `float32` and `float64`. (#PR)
+
 * `validate_bbox` and `validate_bbox3d` flatten rank-4 `(B, N, 4, 2)` / `(B, N, 8, 3)` input with `reshape`
   instead of `view`, so a non-contiguous leading-dimension stride (a transpose, a slice that drops boxes, an
   `expand`) returns a boolean as documented instead of raising `RuntimeError`. (#4174)

@@ -45,7 +45,12 @@ class TestSOSNet(BaseTester):
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
-        patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        # `torch.ones` drives a randomly initialised SOSNet to exactly zero (a ReLU collapse), which made
+        # this comparison vacuous: both descriptors came out as the constant 1/sqrt(128) and the test
+        # scripted a *second*, independently initialised model without noticing. `torch.rand` keeps the
+        # network's output non-degenerate; scripting the same instance is what makes the two sides
+        # comparable at all. See TestHyNet::test_jit for the pattern.
+        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
         model = SOSNet().to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(SOSNet().to(patches.device, patches.dtype).eval())
+        model_jit = torch.jit.script(model)
         self.assert_close(model(patches), model_jit(patches))

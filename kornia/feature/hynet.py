@@ -292,7 +292,10 @@ class HyNet(nn.Module):
         x = self.layer4(x)
         x = self.layer5(x)
         x = self.layer6(x)
-        x = self.layer7(x)
-        x = self.desc_norm(x + self.eps_l2_norm)
+        x = self.layer7(x) + self.eps_l2_norm
+        # `desc_norm` normalises across channels only, so the trailing spatial dims are inert. Feeding
+        # it a 3-D view routes torch through `avg_pool2d` instead of `avg_pool3d`, which has no CPU
+        # half-precision kernel; the pooling window and its accumulation order are unchanged.
+        x = self.desc_norm(x.flatten(2)).view_as(x)
         x = x.view(x.size(0), -1)
         return x
