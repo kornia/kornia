@@ -249,6 +249,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `validate_bbox` and `validate_bbox3d` flatten rank-4 `(B, N, 4, 2)` / `(B, N, 8, 3)` input with `reshape`
+  instead of `view`, so a non-contiguous leading-dimension stride (a transpose, a slice that drops boxes, an
+  `expand`) returns a boolean as documented instead of raising `RuntimeError`. (#4174)
+
 * Constructing `ScaleSpaceDetector` with `compile_modules` no longer permanently mutates the process-global
   `torch._dynamo.config.capture_dynamic_output_shape_ops` setting. (#4134)
 

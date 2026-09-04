@@ -52,11 +52,8 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
         and zero-area boxes; other vertex relabelings can fail. The inclusive ``+1`` terms, tracked in
         `#3934 <https://github.com/kornia/kornia/issues/3934>`_, cancel in exact arithmetic, but finite-precision
         rounding can make the result differ from exclusive arithmetic, particularly for low-precision dtypes.
-
-    .. warning::
-        Rank-4 input is flattened with ``view``. A stride layout whose leading dimensions cannot be flattened this
-        way raises ``RuntimeError`` instead of returning a boolean. This wart is tracked in
-        `#4174 <https://github.com/kornia/kornia/issues/4174>`_.
+        Rank-4 input is flattened with ``reshape``, so any stride layout is accepted, matching the shape the
+        docstring documents.
 
     .. warning::
         :func:`validate_bbox3d` raises ``AssertionError`` where this function returns ``False``. That
@@ -64,7 +61,7 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of :math:`(B, 4, 2)` or view-compatible :math:`(B, N, 4, 2)`, where each box is defined in the
+            of :math:`(B, 4, 2)` or :math:`(B, N, 4, 2)`, where each box is defined in the
             following ``clockwise`` order: top-left, top-right, bottom-right, bottom-left. The coordinates must be in
             the x, y order.
 
@@ -73,7 +70,7 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
         return False
 
     if len(boxes.shape) == 4:
-        boxes = boxes.view(-1, 4, 2)
+        boxes = boxes.reshape(-1, 4, 2)
 
     x_tl, y_tl = boxes[..., 0, 0], boxes[..., 0, 1]
     x_tr, y_tr = boxes[..., 1, 0], boxes[..., 1, 1]
@@ -111,7 +108,7 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
         raise AssertionError(f"Box shape must be (B, 8, 3) or (B, N, 8, 3). Got {boxes.shape}.")
 
     if len(boxes.shape) == 4:
-        boxes = boxes.view(-1, 8, 3)
+        boxes = boxes.reshape(-1, 8, 3)
 
     # The cube checks below read the data, which graph capture cannot do; skip them under export.
     if is_exporting():

@@ -100,13 +100,21 @@ class TestBbox2D(BaseTester):
         trapezoid = torch.tensor([[[[0.0, 0.0], [10.0, 0.0], [10.0, 5.0], [3.0, 5.0]]]], device=device, dtype=dtype)
         assert validate_bbox(trapezoid) is False
 
-    def test_wart_validate_bbox_rank4_view_layout_4174(self, device, dtype):
-        # Wart pin for kornia#4174: rank-4 input is flattened with view, so an
-        # incompatible leading-dimension stride raises instead of returning a boolean.
+    def test_convention_validate_bbox_accepts_noncontiguous_rank4_layout_4174(self, device, dtype):
+        # Fix pin for kornia#4174: rank-4 input is flattened with reshape, so a stride
+        # layout whose leading dimensions cannot be merged by view now returns a
+        # boolean instead of raising RuntimeError.
         boxes = torch.zeros(2, 3, 4, 2, device=device, dtype=dtype).transpose(0, 1)
         assert not boxes.is_contiguous()
-        with pytest.raises(RuntimeError):
-            validate_bbox(boxes)
+        assert validate_bbox(boxes) is True
+
+        sliced = torch.zeros(2, 4, 4, 2, device=device, dtype=dtype)[:, 1:]
+        assert not sliced.is_contiguous()
+        assert validate_bbox(sliced) is True
+
+        expanded = torch.zeros(1, 3, 4, 2, device=device, dtype=dtype).expand(2, -1, -1, -1)
+        assert expanded.stride(0) == 0
+        assert validate_bbox(expanded) is True
 
     def test_convention_validate_bbox_invariance_is_exact_arithmetic_only(self, device):
         # In float16 the inclusive +1 rounds distinct sub-unit spans to the same
@@ -362,6 +370,14 @@ class TestBbox3D(BaseTester):
 
         # Validate
         assert validate_bbox3d(bbox)
+
+    def test_convention_validate_bbox3d_accepts_noncontiguous_rank4_layout_4174(self, device, dtype):
+        # Fix pin for kornia#4174: rank-4 input is flattened with reshape, so a stride
+        # layout whose leading dimensions cannot be merged by view now returns a
+        # boolean instead of raising RuntimeError.
+        boxes = torch.zeros(2, 3, 8, 3, device=device, dtype=dtype).transpose(0, 1)
+        assert not boxes.is_contiguous()
+        assert validate_bbox3d(boxes) is True
 
     def test_bounding_boxes_dim_inferring(self, device, dtype):
         boxes = torch.tensor(
