@@ -74,7 +74,7 @@ class PatchSequential(ImageSequential):
         Those transformations in ``kornia.geometry`` will not be taken into account.
 
     .. note::
-        See a working example `here <https://kornia.github.io/tutorials/nbs/data_patch_sequential.html>`__.
+        See a working example `here <https://www.kornia.org/tutorials/nbs/data_patch_sequential.html>`__.
 
     Examples:
         >>> import kornia.augmentation as K

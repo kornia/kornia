@@ -1,6 +1,9 @@
 HardNet
 =======
 
+.. meta::
+   :description: Describe local image patches with HardNet, Kornia's pretrained 128-dimensional PyTorch feature descriptor.
+
 .. rst-class:: kornia-badges
 
 :bdg-primary:`Local feature descriptor` :bdg-secondary:`MIT`

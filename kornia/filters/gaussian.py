@@ -63,7 +63,7 @@ def gaussian_blur2d(
         RuntimeError: if kernel_size is not a positive odd integer.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/gaussian_blur.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/gaussian_blur.html>`__.
 
     Examples:
         >>> import torch

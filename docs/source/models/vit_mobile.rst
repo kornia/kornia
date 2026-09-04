@@ -3,6 +3,9 @@
 MobileViT
 =========
 
+.. meta::
+   :description: Build lightweight MobileViT PyTorch backbones for classification, detection and segmentation with Kornia.
+
 .. rst-class:: kornia-badges
 
 :bdg-primary:`Image classification` :bdg-primary:`Detection` :bdg-primary:`Segmentation`

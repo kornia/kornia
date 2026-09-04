@@ -150,7 +150,7 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
         Adjusted image in the shape of :math:`(*, 3, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/image_enhancement.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
@@ -226,7 +226,7 @@ def adjust_hue(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch
         Adjusted image in the shape of :math:`(*, 3, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/image_enhancement.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
 
     Example:
         >>> x = torch.ones(1, 3, 2, 2)
@@ -271,7 +271,7 @@ def adjust_gamma(
         Adjusted image in the shape of :math:`(*, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/image_enhancement.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
 
     .. note::
        The non-negativity check on ``gamma``/``gain`` runs on CPU and CUDA (via ``torch._assert_async``).
@@ -361,7 +361,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
         Adjusted image in the shape of :math:`(*, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/image_enhancement.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
 
     .. note::
        The non-negativity check on ``factor`` runs on CPU and CUDA (via ``torch._assert_async``).
@@ -500,7 +500,7 @@ def adjust_brightness(
         Adjusted torch.Tensor in the shape of :math:`(*, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/image_enhancement.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/image_enhancement.html>`__.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)

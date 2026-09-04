@@ -1,6 +1,9 @@
 Image Stitching
 ===============
 
+.. meta::
+   :description: Create image panoramas with Kornia's PyTorch ImageStitcher, LoFTR matching and RANSAC estimation.
+
 Image stitching is the process of combining multiple images with overlapping fields of view to produce a panorama. Here, we provide :py:class:`~kornia.contrib.image_stitching.ImageStitcher` to easily stitch a number of images.
 
 .. image:: https://raw.githubusercontent.com/kornia/data/main/matching/stitch_before.png

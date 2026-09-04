@@ -3,6 +3,9 @@
 DexiNed
 =======
 
+.. meta::
+   :description: Detect thin image edges with DexiNed, Kornia's pretrained PyTorch edge-detection model.
+
 .. rst-class:: kornia-badges
 
 :bdg-primary:`Edge detection` :bdg-secondary:`MIT`

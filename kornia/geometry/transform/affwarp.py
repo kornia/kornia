@@ -289,7 +289,7 @@ def rotate(
         The rotated tensor with shape as input.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/rotate_affine.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/rotate_affine.html>`__.
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)

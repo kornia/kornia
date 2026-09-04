@@ -3,6 +3,9 @@
 Vision Transformer (ViT)
 ========================
 
+.. meta::
+   :description: Build or load pretrained Vision Transformer encoders with Kornia's PyTorch ViT implementation.
+
 .. rst-class:: kornia-badges
 
 :bdg-primary:`Image classification` :bdg-secondary:`Apache-2.0`
