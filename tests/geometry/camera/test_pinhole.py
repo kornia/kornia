@@ -192,6 +192,21 @@ class TestCam2Pixel(BaseTester):
         uv = kornia.geometry.camera.cam2pixel(cam_coords, _k44(device, torch.float16))
         assert bool(torch.isinf(uv).all())
 
+    def test_wart_cam2pixel_guard_admits_a_3x3_projection_4266(self, device, dtype):
+        # Wart pin for kornia#4266 (audit labels 5a-pc2-11, 5a-pc2-12): cam2pixel's second guard is written
+        # ``if not len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4)``, so the shape clause is
+        # dead and only the rank is tested. A (B, 3, 3) projection -- the shape the functional API takes -- has
+        # the accepted rank, passes the guard whose message promises Bx4x4, and fails much later inside
+        # transform_points with a message about homogeneous dimensions rather than at the guard.
+        # Snippet used to generate expected: cam2pixel([[[[1., 2., 4.]]]], _k44(...)[:, :3, :3]) executed
+        # 2026-09-05 (torch 2.14.0, cpu and mps, every dtype)
+        # -> ValueError("Last input dimensions must differ by one unit Got...").
+        # Pins the CURRENT behavior; NOT a contract; delete when #4266 is repaired.
+        cam_coords = torch.tensor([[[[1.0, 2.0, 4.0]]]], device=device, dtype=dtype)
+        proj_3x3 = _k44(device, dtype)[:, :3, :3].contiguous()
+        with pytest.raises(ValueError, match="Last input dimensions must differ by one unit"):
+            kornia.geometry.camera.cam2pixel(cam_coords, proj_3x3)
+
 
 class TestPixel2Cam(BaseTester):
     def _create_intrinsics(self, batch_size, fx, fy, cx, cy, device, dtype):
@@ -302,10 +317,10 @@ class TestPixel2Cam(BaseTester):
         self.gradcheck(kornia.geometry.camera.pixel2cam, (depth, intrinsics_inv, pixel_coords_input), fast_mode=False)
 
     def test_wart_pixel2cam_guard_admits_a_3x3_inverse_4266(self, device, dtype):
-        # Wart pin for kornia#4266 (audit label 5a-pc2-03): pixel2cam's guard is written
-        # ``if not len(depth.shape) == 4 and depth.shape[1] == 1``, so the second clause is dead and the guard
-        # never inspects ``intrinsics_inv`` at all. A (B, 3, 3) inverse -- the shape every free function on this
-        # surface takes -- passes it, and the failure surfaces much later, from transform_points.
+        # Wart pin for kornia#4266 (audit label 5a-pc2-03): pixel2cam's ``intrinsics_inv`` guard is written
+        # ``if not len(intrinsics_inv.shape) == 3``, so it checks the RANK alone and never inspects the trailing
+        # 4x4 its own message promises. A (B, 3, 3) inverse -- the shape every free function on this surface
+        # takes -- has rank 3, passes the guard, and the failure surfaces much later, from transform_points.
         # Snippet used to generate expected: pixel2cam(ones(1,1,2,3), (1,3,3) inverse, zeros(1,2,3,3)) executed
         # 2026-09-05 (torch 2.14.0) -> ValueError("Last input dimensions must differ by one unit Got...").
         # Pins the CURRENT behavior; NOT a contract; delete when #4266 is repaired.
@@ -316,6 +331,53 @@ class TestPixel2Cam(BaseTester):
         )
         with pytest.raises(ValueError, match="Last input dimensions must differ by one unit"):
             kornia.geometry.camera.pixel2cam(depth, intrinsics_inv_3x3, pixel_coords)
+
+    def test_wart_pixel2cam_returns_silently_for_a_three_channel_depth_4266(self, device, dtype):
+        # Wart pin for kornia#4266 (audit label 5a-pc2-02): the depth guard is written
+        # ``if not len(depth.shape) == 4 and depth.shape[1] == 1``, so it raises exactly when depth is NOT rank 4
+        # AND its second dimension is 1 -- the complement of the documented Bx1xHxW -- and every multi-channel
+        # depth reaches the body. Three channels then line up with the (x, y, z) axis after the internal
+        # ``depth.permute(0, 2, 3, 1)`` and RETURN SILENTLY: each channel scales a different coordinate, so a
+        # (2, 3, 5) per-channel depth turns the camera point (1, 2, 1) into (2, 6, 5) instead of the (2, 4, 2)
+        # the documented single-channel depth 2 gives. Two channels fail inside the multiplication instead.
+        # Snippet used to generate expected: pixel2cam(depth, intrinsics_inv, pixel_coords) with the tensors
+        # below executed 2026-09-05 (torch 2.14.0, cpu and mps, every dtype) -> shape (1, 3, 4, 3),
+        # out[0, 0, 0] = [2., 6., 5.], out[0, 2, 3] = [8., 12., 5.]; the two-channel call ->
+        # RuntimeError("The size of tensor a (3) must match the size of tensor b (2) at non-singleton...").
+        # Pins the CURRENT behavior; NOT a contract; delete when #4266 is repaired.
+        # An exact inverse of fx = fy = 1, cx = 4, cy = 3, so every literal below is exact in every dtype.
+        intrinsics_inv = torch.tensor(
+            [[[1.0, 0.0, -4.0, 0.0], [0.0, 1.0, -3.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        # (1, H = 3, W = 4, 3) grid of (u, v, 1): u = 5 + col, v = 5 + row, so the camera point is
+        # (1 + col, 2 + row, 1).
+        pixel_coords = torch.tensor(
+            [
+                [
+                    [[5.0, 5.0, 1.0], [6.0, 5.0, 1.0], [7.0, 5.0, 1.0], [8.0, 5.0, 1.0]],
+                    [[5.0, 6.0, 1.0], [6.0, 6.0, 1.0], [7.0, 6.0, 1.0], [8.0, 6.0, 1.0]],
+                    [[5.0, 7.0, 1.0], [6.0, 7.0, 1.0], [7.0, 7.0, 1.0], [8.0, 7.0, 1.0]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        depth_3ch = torch.tensor([2.0, 3.0, 5.0], device=device, dtype=dtype).reshape(1, 3, 1, 1).expand(1, 3, 3, 4)
+        out = kornia.geometry.camera.pixel2cam(depth_3ch.contiguous(), intrinsics_inv, pixel_coords)
+        assert out.shape == (1, 3, 4, 3)
+        self.assert_close(out[0, 0, 0], torch.tensor([2.0, 6.0, 5.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(out[0, 2, 3], torch.tensor([8.0, 12.0, 5.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        # The documented Bx1xHxW depth scales all three coordinates by the same number, which is the contrast.
+        depth_1ch = torch.full((1, 1, 3, 4), 2.0, device=device, dtype=dtype)
+        out_1ch = kornia.geometry.camera.pixel2cam(depth_1ch, intrinsics_inv, pixel_coords)
+        self.assert_close(
+            out_1ch[0, 2, 3], torch.tensor([8.0, 8.0, 2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        )
+        depth_2ch = torch.tensor([2.0, 3.0], device=device, dtype=dtype).reshape(1, 2, 1, 1).expand(1, 2, 3, 4)
+        with pytest.raises(RuntimeError, match="must match the size of tensor"):
+            kornia.geometry.camera.pixel2cam(depth_2ch.contiguous(), intrinsics_inv, pixel_coords)
 
 
 class TestPinholeCamera(BaseTester):
@@ -654,11 +716,18 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(scaled.fx, torch.tensor([50.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_wart_scale_shares_extrinsics_with_the_source_4264(self, device, dtype):
-        # Wart pin for kornia#4264 (audit label 5a-al-01): scale() clones the intrinsics but passes
-        # ``self.extrinsics`` straight through, so the returned camera aliases the source's pose -- writing
-        # ``scaled.tx = 7`` (the tx setter writes into extrinsics) changes the SOURCE camera too.
+        # Wart pin for kornia#4264 (audit label 5a-al-01): the class stores the tensors it is constructed from
+        # instead of copying them, so every mutating accessor writes into the CALLER's tensors, and scale()
+        # clones the intrinsics but passes ``self.extrinsics`` straight through, so the returned camera aliases
+        # the source's pose -- writing ``scaled.tx = 7`` (the tx setter writes into extrinsics) changes the
+        # SOURCE camera too. The second half below pins the three other legs of the same sentence: the
+        # constructor keeps the caller's ``intrinsics`` / ``extrinsics`` objects, the ``tx`` setter writes into
+        # the caller's extrinsics, and the in-place ``scale_`` rewrites the caller's intrinsics and image size.
         # Snippet used to generate expected: scaled.extrinsics is cam.extrinsics -> True; after scaled.tx = 7 the
-        # source tx reads [7.0]; executed 2026-09-05 (torch 2.14.0, every dtype).
+        # source tx reads [7.0]; cam.intrinsics is K and cam.extrinsics is E -> True; after ``cam.tx = 5.0``
+        # E[0, 0, 3] reads 5.0; after ``cam.scale_(0.5)`` K[0, 0, 2] reads 2.0 (from 4.0), K[0, 0, 0] reads 50.0
+        # and the caller's height/width read [3.0] / [4.0] (from [6.0] / [8.0]); executed 2026-09-05
+        # (torch 2.14.0, cpu and mps, every dtype).
         # Pins the CURRENT behavior; NOT a contract; delete when #4264 is repaired.
         cam = kornia.geometry.camera.PinholeCamera(
             _k44(device, dtype),
@@ -671,6 +740,23 @@ class TestPinholeCamera(BaseTester):
         assert scaled.intrinsics is not cam.intrinsics
         scaled.tx = torch.tensor([7.0], device=device, dtype=dtype)
         self.assert_close(cam.tx, torch.tensor([7.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        # The constructor stores, rather than copies, all four arguments.
+        K = _k44(device, dtype)
+        E = _e44(device, dtype, tx=1.0)
+        height = torch.tensor([6.0], device=device, dtype=dtype)
+        width = torch.tensor([8.0], device=device, dtype=dtype)
+        source = kornia.geometry.camera.PinholeCamera(K, E, height, width)
+        assert source.intrinsics is K
+        assert source.extrinsics is E
+        # The tx setter writes into the caller's extrinsics tensor.
+        source.tx = 5.0
+        self.assert_close(E[0, 0, 3], torch.tensor(5.0, device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        # scale_ rewrites the caller's intrinsics and image-size tensors in place.
+        source.scale_(torch.tensor([0.5], device=device, dtype=dtype))
+        self.assert_close(K[0, 0, 2], torch.tensor(2.0, device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(K[0, 0, 0], torch.tensor(50.0, device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(height, torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(width, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_wart_scale_inplace_rejects_integer_image_size_4265(self, device, dtype):
         # Wart pin for kornia#4265 (audit labels 5a-al-02, 5a-al-03): the constructor accepts int64 height/width --
@@ -724,13 +810,15 @@ class TestPinholeCamera(BaseTester):
             kornia.geometry.camera.project_points(point, _k44(device, dtype)[:, :3, :3].contiguous())
 
     def test_wart_constructor_rejects_an_empty_batch_4281(self, device, dtype):
-        # Wart pin for kornia#4281 (audit label 5a-pc-09): _check_valid is ``all(data.shape[0] for ...)``, which
-        # tests that each batch size is non-zero rather than that they are EQUAL, so a perfectly consistent B = 0
-        # camera is rejected with a message about mismatched shapes. The free functions on the same surface follow
-        # kornia's empty-in/empty-out convention: project_points(B = 0) returns a (0, 2) tensor.
+        # Mixed pin. The FIRST assertion is a wart pin for kornia#4281 (audit label 5a-pc-09): _check_valid is
+        # ``all(data.shape[0] for ...)``, which tests that each batch size is non-zero rather than that they are
+        # EQUAL, so a perfectly consistent B = 0 camera is rejected with a message about mismatched shapes. It
+        # pins the CURRENT behavior, is NOT a contract, and is the only assertion here that is deleted when
+        # #4281 is repaired. The SECOND assertion is the CONVENTION the repair has to converge on and SURVIVES
+        # it: the free functions on the same surface already follow kornia's empty-in/empty-out rule, so
+        # project_points on a (0, 1, 3) input returns a (0, 1, 2) tensor rather than raising.
         # Snippet used to generate expected: both calls executed 2026-09-05 (torch 2.14.0, every dtype)
         # -> ValueError("Arguments shapes must match") and shape (0, 1, 2).
-        # Pins the CURRENT behavior; NOT a contract; delete when #4281 is repaired.
         with pytest.raises(ValueError, match="Arguments shapes must match"):
             kornia.geometry.camera.PinholeCamera(
                 torch.zeros(0, 4, 4, device=device, dtype=dtype),
@@ -850,7 +938,7 @@ class TestPinholeMatrix(BaseTester):
         assert exact[0, 3, 3].item() == 1.0
         residual = (inverse_pinhole_matrix(vec) @ matrix - torch.eye(4, device=device, dtype=dtype)).abs().max()
         assert residual.item() > 0.0
-        with pytest.raises(AssertionError):
+        with pytest.raises(AssertionError, match=r"torch\.Size\(\[1, 4, 4\]\)"):
             inverse_pinhole_matrix(torch.eye(4, device=device, dtype=dtype)[None])
 
     def test_wart_dead_legacy_functions_always_raise_4283(self, device, dtype):

@@ -86,6 +86,44 @@ class TestProjectPoints(BaseTester):
         )
         self.assert_close(behind, torch.tensor([[-21.0, -47.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
+    def test_convention_integer_pixel_centres_put_the_principal_point_at_w_minus_one_half(self, device, dtype):
+        # Convention pin for the anchor block on PinholeCamera (audit labels 5a-al-04, 5a-pp-02): pixel
+        # coordinates are (u, v) = (column, row) with INTEGER pixel centres -- create_meshgrid enumerates
+        # [0, 0] for the first pixel and [W - 1, H - 1] for the last -- so a centred image has its principal
+        # point at cx = (W - 1) / 2, cy = (H - 1) / 2, and NOT at (W / 2, H / 2), the half-pixel/COLMAP value.
+        # The pin uses H = 2 != W = 3 so a transposed reading of the convention changes every literal, and
+        # checks the definition of "centred" directly: under cx = 1, cy = 0.5 the first and the last pixel
+        # unproject to exact negatives of each other, and the principal point itself is where the optical axis
+        # (0, 0, 1) lands. A half-pixel cx = 1.5, cy = 1.0 would put neither of those where they are here.
+        # Snippet used to generate expected: create_meshgrid(2, 3, normalized_coordinates=False) and the three
+        # calls below executed 2026-09-05 (torch 2.14.0, cpu and mps, every dtype)
+        # -> grid [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]], unproject [[-1, -0.5, 1]] and [[1, 0.5, 1]],
+        # project [[1.0, 0.5]]. Every literal is a dyadic rational, so the comparisons are exact.
+        grid = kornia.geometry.create_meshgrid(2, 3, normalized_coordinates=False, device=device, dtype=dtype)
+        assert grid.shape == (1, 2, 3, 2)
+        flat = grid.reshape(-1, 2)
+        first, last = flat[0][None], flat[-1][None]
+        self.assert_close(first, torch.tensor([[0.0, 0.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(last, torch.tensor([[2.0, 1.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        # cx = (3 - 1) / 2 = 1, cy = (2 - 1) / 2 = 0.5, fx = fy = 1.
+        camera_matrix = torch.tensor([[[1.0, 0.0, 1.0], [0.0, 1.0, 0.5], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        depth = torch.tensor([[1.0]], device=device, dtype=dtype)
+        unprojected_first = kornia.geometry.camera.unproject_points(first, depth, camera_matrix)
+        unprojected_last = kornia.geometry.camera.unproject_points(last, depth, camera_matrix)
+        self.assert_close(
+            unprojected_first, torch.tensor([[-1.0, -0.5, 1.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        )
+        self.assert_close(
+            unprojected_last, torch.tensor([[1.0, 0.5, 1.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        )
+        # The two are exact negatives in x and y, which is what "centred" means under integer pixel centres.
+        self.assert_close(unprojected_first[..., :2], -unprojected_last[..., :2], atol=0.0, rtol=0.0)
+        # The optical axis lands exactly on the principal point.
+        on_axis = kornia.geometry.camera.project_points(
+            torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=dtype), camera_matrix
+        )
+        self.assert_close(on_axis, torch.tensor([[1.0, 0.5]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
 
 class TestUnprojectPoints(BaseTester):
     def test_smoke(self, device, dtype):

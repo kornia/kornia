@@ -257,6 +257,41 @@ class TestProjectionOrthographic(BaseTester):
         with pytest.raises(ShapeError):
             unproject_points_orthographic(points, extension)
 
+    def test_convention_dx_orthographic_is_the_scalar_du_dx_not_the_full_jacobian(self, device, dtype):
+        # Convention pin (audit labels 5a-or-06, 5a-or-07): dx_project_points_orthographic returns the single
+        # partial derivative its docstring math states, du/dx = 1, with shape (..., 1) -- NOT the (2, 3)
+        # Jacobian of project_points_orthographic, and NOT the shape its same-named z1 sibling returns. The two
+        # ``dx_*`` functions on this surface therefore mean different things, so the pin asserts the shapes
+        # apart and checks each against torch.autograd.functional.jacobian of the projection it differentiates.
+        # An off-axis point (x != y != z, one negative) is used so a transposed or wrongly indexed Jacobian
+        # changes a literal. Snippet used to generate expected: the four calls below on [1., -2., 4.] executed
+        # 2026-09-05 (torch 2.14.0, cpu and mps, float16/bfloat16/float32/float64) ->
+        # dx_orthographic [1.] shape (1,); jacobian(project_points_orthographic) [[1, 0, 0], [0, 1, 0]] shape
+        # (2, 3); dx_z1 == jacobian(project_points_z1) == [[0.25, 0, -0.0625], [0, 0.25, 0.125]] shape (2, 3).
+        # Every literal is a dyadic rational and matched exactly in every dtype and device tested.
+        points = torch.tensor([1.0, -2.0, 4.0], device=device, dtype=dtype)
+        dx_ortho = dx_project_points_orthographic(points)
+        assert dx_ortho.shape == (1,)
+        self.assert_close(dx_ortho, torch.tensor([1.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        jacobian_ortho = torch.autograd.functional.jacobian(project_points_orthographic, points)
+        assert jacobian_ortho.shape == (2, 3)
+        self.assert_close(
+            jacobian_ortho,
+            torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype),
+            atol=0.0,
+            rtol=0.0,
+        )
+        # dx_project_points_z1, by contrast, IS the full Jacobian of its projection.
+        dx_z1 = dx_project_points_z1(points)
+        assert dx_z1.shape == (2, 3)
+        self.assert_close(dx_z1, torch.autograd.functional.jacobian(project_points_z1, points), atol=0.0, rtol=0.0)
+        self.assert_close(
+            dx_z1,
+            torch.tensor([[0.25, 0.0, -0.0625], [0.0, 0.25, 0.125]], device=device, dtype=dtype),
+            atol=0.0,
+            rtol=0.0,
+        )
+
     def _test_gradcheck_project(self, device):
         points = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float64)
         self.gradcheck(project_points_orthographic, (points,))

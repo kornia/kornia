@@ -31,8 +31,9 @@ class PinholeCamera:
     Convention:
         - ``intrinsics`` is the :math:`(B, 4, 4)` calibration matrix whose top-left :math:`3 \times 3` block is
           ``[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]``, and ``extrinsics`` the :math:`(B, 4, 4)` **world-to-camera**
-          transform ``[R | t]`` (OpenCV / COLMAP semantics): :meth:`project` computes ``K (R X + t)`` and
-          :meth:`unproject` inverts it, so both take and return **world** coordinates. The functional API
+          transform ``[R | t]`` (OpenCV / COLMAP semantics): :meth:`project` takes **world** points, computes
+          ``K (R X + t)`` and returns pixels, while :meth:`unproject` inverts that step -- it takes pixels and a
+          camera-frame depth and returns **world** points. The functional API
           (:func:`~kornia.geometry.camera.perspective.project_points`,
           :func:`~kornia.geometry.camera.perspective.unproject_points`,
           :func:`~kornia.geometry.depth.depth_to_3d`, :func:`~kornia.geometry.depth.depth_to_3d_v2`,
