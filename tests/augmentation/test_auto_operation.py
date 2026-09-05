@@ -187,3 +187,31 @@ class TestTrivialAugment(BaseTester):
 
     def test_sequential(augment_method, device, dtype):
         _test_sequential(TrivialAugment(), device=device, dtype=dtype)
+
+
+@pytest.mark.parametrize("low_dtype", [torch.float16, torch.bfloat16])
+def test_operation_preserves_input_dtype(device, low_dtype):
+    # OperationBase.forward gated the op output with a float32 ``batch_prob``
+    # mask, so ``mask * op(x) + (1 - mask) * x`` promoted a float16 / bfloat16
+    # input to float32. float32 / float64 inputs are unaffected (promotion goes
+    # up), which is why this only shows below float32. Covers RandAugment /
+    # AutoAugment / TrivialAugment / AugMix, which all route through this method.
+    # dtype preservation is device-independent; check it on CPU (the auto-augment
+    # RNG state of a freshly built ``_find_all_ops()`` op does not fully follow a
+    # post-hoc ``.to(non-cpu)``).
+    if torch.device(device).type != "cpu":
+        pytest.skip("dtype-preservation check runs on CPU")
+    checked = 0
+    for op in _find_all_ops():
+        x = torch.rand(2, 3, 16, 16, dtype=low_dtype)
+        try:
+            out = op(x)
+        except RuntimeError as e:
+            # some kernels (e.g. grid_sample on older torch) have no half/bfloat16
+            # CPU path -- that is a torch capability gap, not a kornia contract.
+            if "not implemented for" in str(e):
+                continue
+            raise
+        assert out.dtype == low_dtype, f"{type(op).__name__}: {out.dtype} != {low_dtype}"
+        checked += 1
+    assert checked, f"no op could run in {low_dtype} on this build"

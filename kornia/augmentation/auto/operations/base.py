@@ -192,7 +192,9 @@ class OperationBase(nn.Module):
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        batch_prob = params["batch_prob"][(...,) + ((None,) * (len(input.shape) - 1))].to(device=input.device)
+        batch_prob = params["batch_prob"][(...,) + ((None,) * (len(input.shape) - 1))].to(
+            device=input.device, dtype=input.dtype
+        )
 
         return batch_prob * self.op(input, params=params) + (1 - batch_prob) * input
 
