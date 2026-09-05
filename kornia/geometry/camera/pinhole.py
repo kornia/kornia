@@ -424,11 +424,9 @@ class PinholeCamera:
         extrinsics[..., 0, -1] += tx
         extrinsics[..., 1, -1] += ty
         extrinsics[..., 2, -1] += tz
-        # create image hegith and width
-        height_tmp = torch.zeros(batch_size, device=device, dtype=dtype)
-        height_tmp[..., 0] += height
-        width_tmp = torch.zeros(batch_size, device=device, dtype=dtype)
-        width_tmp[..., 0] += width
+        # create image height and width, one entry per batch element
+        height_tmp = torch.full((batch_size,), height, device=device, dtype=dtype)
+        width_tmp = torch.full((batch_size,), width, device=device, dtype=dtype)
         return self(intrinsics, extrinsics, height_tmp, width_tmp)
 
 

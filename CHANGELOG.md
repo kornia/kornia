@@ -292,6 +292,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `PinholeCamera.from_parameters` now fills `height` and `width` for the whole batch. It built them with
+  `height_tmp[..., 0] += height` on a `(B,)` zero tensor, so every batch element after the first kept `0`
+  while `fx`, `fy`, `cx`, `cy`, `tx`, `ty` and `tz` were broadcast correctly, and the camera looked healthy
+  until something read its image size. `batch_size=1`, the only case that worked, is unchanged. (#4279)
+
 * `RandAugment`, `AutoAugment`, `TrivialAugment` and `AugMix` no longer silently upcast half-precision
   batches to `float32`. `OperationBase.forward` — the shared gate every auto-augment op routes through —
   moved its `batch_prob` mask to `input.device` but not `input.dtype`, and since `batch_prob` is `float32`

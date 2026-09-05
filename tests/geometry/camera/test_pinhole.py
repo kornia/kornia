@@ -388,6 +388,32 @@ class TestPinholeCamera(BaseTester):
         assert pinhole.rotation_matrix.shape == (batch_size, 3, 3)
         assert pinhole.translation_vector.shape == (batch_size, 3, 1)
 
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_from_parameters(self, batch_size, device, dtype):
+        height, width = 6, 8
+        fx = torch.arange(1, batch_size + 1, device=device, dtype=dtype) * 100.0
+        fy = fx / 2.0
+        cx = torch.full((batch_size,), width / 2, device=device, dtype=dtype)
+        cy = torch.full((batch_size,), height / 2, device=device, dtype=dtype)
+        tx = torch.arange(batch_size, device=device, dtype=dtype)
+        ty, tz = tx + 1.0, tx + 2.0
+
+        pinhole = kornia.geometry.camera.PinholeCamera.from_parameters(
+            fx, fy, cx, cy, height, width, tx, ty, tz, batch_size, device=device, dtype=dtype
+        )
+
+        assert pinhole.batch_size == batch_size
+        # ``height`` and ``width`` are broadcast over the whole batch, like every other parameter
+        self.assert_close(pinhole.height, torch.full((batch_size,), float(height), device=device, dtype=dtype))
+        self.assert_close(pinhole.width, torch.full((batch_size,), float(width), device=device, dtype=dtype))
+        self.assert_close(pinhole.fx, fx)
+        self.assert_close(pinhole.fy, fy)
+        self.assert_close(pinhole.cx, cx)
+        self.assert_close(pinhole.cy, cy)
+        self.assert_close(pinhole.tx, tx)
+        self.assert_close(pinhole.ty, ty)
+        self.assert_close(pinhole.tz, tz)
+
     def test_pinhole_camera_scale(self, device, dtype):
         batch_size = 2
         height, width = 4, 6
