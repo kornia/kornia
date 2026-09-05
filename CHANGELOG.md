@@ -259,7 +259,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   correctly rounded side, which is the numeric change. `float32`, `float64` and integer grids and
   the pixel ramp are bit-for-bit unchanged, since none of them widen. On CUDA at `float16` up to
   one ulp of the coordinate dtype can still differ, because ATen's and triton's `float32` division
-  are not bit-identical; `bfloat16` absorbs it and the CPU kernels agree exactly. Refs #4030. (#4231)
+  are not bit-identical; `bfloat16` absorbs it and the CPU kernels agree exactly. The Linux CPU
+  half-precision baselines move with it. `HomographyWarper` builds its precomputed grid in `float32`
+  and its on-the-fly grid in the input dtype, and the two now agree, which fixes
+  `test_homography_warper` at both dtypes and `test_translation[shape1]` at `float16`. At `bfloat16`
+  `test_translation[shape0]` and `[shape2]` join the `shape1` and `shape3` entries already recorded:
+  that test's `atol=1e-4` is out of reach for all four of its shapes there, and the two that passed
+  did so only because the old grid's larger error round-tripped through `grid_sample`'s `bfloat16`
+  unnormalize as an exact pixel index. Refs #4030. (#4231)
 
 ### Bug fixes
 
