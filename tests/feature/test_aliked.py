@@ -23,22 +23,12 @@ from kornia.feature.aliked.deform_conv2d import deform_conv2d
 
 from testing.base import BaseTester
 
-
-def _has_torchvision() -> bool:
-    try:
-        import torchvision.ops  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
-
-
 # ---------------------------------------------------------------------------
 # deform_conv2d tests
 # ---------------------------------------------------------------------------
 
 
-class TestDeformConv2d:
+class TestDeformConv2d(BaseTester):
     """Tests for the pure-PyTorch deform_conv2d implementation."""
 
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
@@ -78,32 +68,146 @@ class TestDeformConv2d:
         out = deform_conv2d(x, offset, weight, padding=padding, stride=stride)
         assert out.shape == (B, C_out, H_out, W_out)
 
-    @pytest.mark.skipif(not _has_torchvision(), reason="torchvision not installed")
-    @pytest.mark.parametrize("dtype", [torch.float32])
+    @staticmethod
+    def _torchvision_reference_inputs():
+        """Deterministic float64 CPU inputs shared by the hardcoded literals below.
+
+        B=1, C_in=2, H=W=4, C_out=2, kH=kW=3, padding=1, stride=1 -- small enough that the
+        (1, 2, 4, 4) = 32-element output fits in a hardcoded literal, per AGENTS.md's guidance to
+        prefer a literal plus its generation snippet over a live optional-dependency comparison.
+        """
+        B, C_in, H, W = 1, 2, 4, 4
+        C_out, kH, kW = 2, 3, 3
+        x = torch.linspace(-1, 1, B * C_in * H * W, dtype=torch.float64).reshape(B, C_in, H, W)
+        weight = torch.linspace(-0.5, 0.5, C_out * C_in * kH * kW, dtype=torch.float64).reshape(C_out, C_in, kH, kW)
+        bias = torch.tensor([0.1, -0.2], dtype=torch.float64)
+        offset = 0.3 * torch.sin(torch.arange(B * 2 * kH * kW * H * W, dtype=torch.float64)).reshape(B, 18, H, W)
+        mask = torch.sigmoid(torch.cos(torch.arange(B * kH * kW * H * W, dtype=torch.float64))).reshape(B, 9, H, W)
+        return x, weight, bias, offset, mask
+
+    # Generated once with torchvision (not a kornia dependency, so unavailable in CI -- this is
+    # why the test this replaces, `test_matches_torchvision`, never ran there) in a throwaway venv:
+    #   uv venv /tmp/tv && uv pip install --python /tmp/tv/bin/python torch torchvision
+    #   -> torch==2.14.0, torchvision==0.29.0 (CPU wheels, Python 3.11.0)
+    # Snippet (inputs built exactly as `_torchvision_reference_inputs` above):
+    #   import torch, torchvision.ops as tvops
+    #   torch.set_printoptions(precision=10)
+    #   x, weight, bias, offset, mask = _torchvision_reference_inputs()
+    #   for use_mask in (False, True):
+    #       out = tvops.deform_conv2d(
+    #           x, offset, weight, bias=bias, padding=1, stride=1, mask=mask if use_mask else None
+    #       )
+    #       print(use_mask, out)
+    _EXPECTED_NO_MASK = torch.tensor(
+        [
+            1.3524878443,
+            1.9642850189,
+            1.4678019606,
+            0.8534719288,
+            1.4020842470,
+            1.9136044871,
+            1.8863619178,
+            1.2793386143,
+            0.8920304159,
+            1.2077669486,
+            0.9345327788,
+            0.4964185813,
+            0.2459445647,
+            0.0819180146,
+            -0.1149317217,
+            -0.0837964278,
+            -0.4751185738,
+            -0.4331255309,
+            -0.1060449678,
+            0.0392646305,
+            0.2247573785,
+            0.6240284088,
+            0.7780789016,
+            0.4968604144,
+            0.9902952558,
+            1.4242185698,
+            1.5622926375,
+            1.1953252054,
+            0.6699741701,
+            1.4466645925,
+            1.5290271874,
+            0.7818486934,
+        ],
+        dtype=torch.float64,
+    ).reshape(1, 2, 4, 4)
+    _EXPECTED_WITH_MASK = torch.tensor(
+        [
+            0.7464577357,
+            1.0163278244,
+            0.7994783630,
+            0.4874494644,
+            0.7544586797,
+            1.0291377431,
+            1.0361463498,
+            0.7093859204,
+            0.4840123409,
+            0.6248190328,
+            0.4886002027,
+            0.2803572404,
+            0.1663333364,
+            0.0952250511,
+            -0.0103768928,
+            -0.0005014362,
+            -0.3440748865,
+            -0.3220334021,
+            -0.1632313152,
+            -0.0853091101,
+            0.0239935903,
+            0.2204502075,
+            0.2789350116,
+            0.1407094840,
+            0.3924910576,
+            0.6243384778,
+            0.7212428510,
+            0.4743984538,
+            0.2333181531,
+            0.6454519918,
+            0.6817443629,
+            0.3121810405,
+        ],
+        dtype=torch.float64,
+    ).reshape(1, 2, 4, 4)
+
     @pytest.mark.parametrize("use_mask", [False, True])
-    def test_matches_torchvision(self, device, dtype, use_mask):
-        """Pure-PyTorch implementation should match torchvision reference."""
-        import torchvision.ops as tvops
+    def test_matches_torchvision_reference(self, device, dtype, use_mask):
+        """Pure-PyTorch implementation should match a hardcoded torchvision-generated literal.
 
-        B, C_in, H, W = 2, 4, 10, 10
-        C_out, kH, kW = 8, 3, 3
-        K = kH * kW
-        padding = 1
+        Replaces a live comparison against ``torchvision.ops.deform_conv2d`` (skipif-guarded on
+        torchvision, which no CI environment installs, so it never ran there) with a literal
+        generated once offline -- see the comment above ``_EXPECTED_NO_MASK``.
+        """
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
 
-        H_out = H  # padding=1, stride=1, 3x3 kernel
-        W_out = W
+        x64, weight64, bias64, offset64, mask64 = self._torchvision_reference_inputs()
+        expected64 = self._EXPECTED_WITH_MASK if use_mask else self._EXPECTED_NO_MASK
 
-        torch.manual_seed(0)
-        x = torch.randn(B, C_in, H, W, device=device, dtype=dtype)
-        weight = torch.randn(C_out, C_in, kH, kW, device=device, dtype=dtype)
-        bias = torch.randn(C_out, device=device, dtype=dtype)
-        offset = torch.randn(B, 2 * K, H_out, W_out, device=device, dtype=dtype) * 0.5
-        mask = torch.rand(B, K, H_out, W_out, device=device, dtype=dtype) if use_mask else None
+        x = x64.to(device=device, dtype=dtype)
+        weight = weight64.to(device=device, dtype=dtype)
+        bias = bias64.to(device=device, dtype=dtype)
+        offset = offset64.to(device=device, dtype=dtype)
+        mask = mask64.to(device=device, dtype=dtype) if use_mask else None
 
-        out_ours = deform_conv2d(x, offset, weight, bias=bias, padding=padding, mask=mask)
-        out_tv = tvops.deform_conv2d(x, offset, weight, bias=bias, padding=padding, mask=mask)
+        out = deform_conv2d(x, offset, weight, bias=bias, padding=1, stride=1, mask=mask)
+        expected = expected64.to(device=device, dtype=dtype)
 
-        assert torch.allclose(out_ours, out_tv, atol=1e-4), f"Max diff: {(out_ours - out_tv).abs().max():.2e}"
+        if dtype == torch.float64 and device.type == "cpu":
+            self.assert_close(out, expected, rtol=1e-6, atol=1e-6)
+        else:
+            self.assert_close(out, expected)
+
+        # Guard a float32 precision regression against the float64 reference, regardless of the
+        # dtype this test instance is parametrized over.
+        mask32 = mask64.float() if use_mask else None
+        out_f32 = deform_conv2d(
+            x64.float(), offset64.float(), weight64.float(), bias=bias64.float(), padding=1, stride=1, mask=mask32
+        )
+        assert torch.allclose(out_f32.double(), expected64, atol=1e-5)
 
     def test_gradients(self, device):
         """Gradients should flow through the pure-PyTorch implementation."""
