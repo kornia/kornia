@@ -192,9 +192,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         ratio_D_zero = torch.clamp(ratio_D_zero, min=-1.0, max=1.0)
         at_boundary_D_zero = ratio_D_zero.abs() >= 1.0
         safe_ratio_D_zero = torch.where(at_boundary_D_zero, torch.zeros_like(ratio_D_zero), ratio_D_zero)
-        theta_D_zero = torch.where(
-            at_boundary_D_zero, ratio_D_zero.detach().acos(), safe_ratio_D_zero.acos()
-        )
+        theta_D_zero = torch.where(at_boundary_D_zero, ratio_D_zero.detach().acos(), safe_ratio_D_zero.acos())
         sqrt_Q_D_zero = torch.sqrt(-Q[mask_D_zero])
         x0_D_zero = 2 * sqrt_Q_D_zero * torch.cos(theta_D_zero / 3.0) - b_a_3[mask_D_zero]
         x1_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 2 * _PI) / 3.0) - b_a_3[mask_D_zero]
