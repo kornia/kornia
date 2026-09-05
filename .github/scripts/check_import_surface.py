@@ -506,61 +506,90 @@ class _ExportResolver:
             return result
         return self._bound_exports(tree, module, is_package)
 
+    def _import_bindings(self, node: ast.Import | ast.ImportFrom, module: str, is_package: bool) -> set[str] | None:
+        bindings: set[str] = set()
+
+        def bind_child(target: str) -> None:
+            # Importing a descendant attaches its first component to this
+            # package, independently of the import's explicit alias or __all__.
+            if is_package and target.startswith(module + "."):
+                bindings.add(target[len(module) + 1 :].split(".", maxsplit=1)[0])
+
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                bind_child(alias.name)
+                bindings.add(alias.asname or alias.name.split(".")[0])
+            return bindings
+        target = self._relative(module, is_package, node)
+        if target is None:
+            return None
+        bind_child(target)
+        for alias in node.names:
+            if alias.name == "*":
+                imported = self.resolve(target) if target == "kornia" or target.startswith("kornia.") else None
+                if imported is None:
+                    return None
+                bindings.update(imported)
+            else:
+                child = f"{target}.{alias.name}"
+                if target == module and self._source(child) is not None:
+                    bind_child(child)
+                # Explicit imports bind their alias regardless of the source's
+                # __all__. Third-party imports are terminal bindings too.
+                bindings.add(alias.asname or alias.name)
+        return bindings
+
+    @staticmethod
+    def _has_dynamic_bindings(node: ast.AST) -> bool:
+        """Reject executable expressions whose effects on globals are unknown.
+
+        Function bodies run later, but defaults, annotations and decorators run
+        while defining them. Class bodies execute immediately as well.
+        """
+        if isinstance(node, (ast.Call, ast.NamedExpr)):
+            return True
+        children = (
+            child
+            for field, value in ast.iter_fields(node)
+            if not (field == "body" and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)))
+            for child in (value if isinstance(value, list) else [value])
+            if isinstance(child, ast.AST)
+        )
+        return any(_ExportResolver._has_dynamic_bindings(child) for child in children)
+
     def _bound_exports(self, tree: ast.Module, module: str, is_package: bool) -> set[str] | None:
         bindings: set[str] = set()
-        result = bindings
         for node in tree.body:
-            if isinstance(node, ast.If):
-                if _is_type_checking(node.test) and not node.orelse:
-                    continue
-                result = None
-                break
-            if isinstance(node, (ast.Try, ast.With, ast.For, ast.While, ast.Match)):
-                result = None
-                break
+            if isinstance(node, ast.If) and _is_type_checking(node.test) and not node.orelse:
+                continue
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if self._has_dynamic_bindings(node):
+                    return None
                 bindings.add(node.name)
-            elif isinstance(node, ast.Import):
-                for alias in node.names:
-                    bound = alias.asname or alias.name.split(".")[0]
-                    bindings.add(bound)
-            elif isinstance(node, ast.ImportFrom):
-                target = self._relative(module, is_package, node)
-                if target is None:
-                    result = None
-                    break
-                # Third-party imports are terminal bindings.  Following
-                # torch/typing/__future__ would make ordinary Kornia
-                # modules unknowable for reasons unrelated to their own
-                # re-export provenance.
-                for alias in node.names:
-                    if alias.name == "*":
-                        imported = self.resolve(target) if target == "kornia" or target.startswith("kornia.") else None
-                        if imported is None:
-                            result = None
-                            break
-                        bindings.update(imported)
-                    else:
-                        bound = alias.asname or alias.name
-                        # Explicit imports bind their alias regardless of
-                        # the source module's __all__ or implementation.
-                        bindings.add(bound)
-                if result is None:
-                    break
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                imported = self._import_bindings(node, module, is_package)
+                if imported is None:
+                    return None
+                bindings.update(imported)
             elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                if self._has_dynamic_bindings(node):
+                    return None
                 targets = node.targets if isinstance(node, ast.Assign) else [node.target]
                 for target in targets:
-                    if isinstance(target, ast.Name):
-                        bindings.add(target.id)
-                    else:
-                        result = None
-                        break
-            elif isinstance(node, (ast.Delete, ast.Global, ast.Nonlocal, ast.AugAssign)):
-                result = None
-                break
-        if result is not None:
-            result = {name for name in bindings if not name.startswith("_")}
-        return result
+                    if not isinstance(target, ast.Name):
+                        return None
+                    bindings.add(target.id)
+            elif isinstance(node, ast.Pass):
+                continue
+            elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+                # Docstrings and literal expressions cannot create bindings.
+                continue
+            else:
+                # Calls and assignment expressions can populate globals without
+                # an ordinary assignment (globals().update(...)). Unsupported
+                # statements, including control flow, cannot prove names absent.
+                return None
+        return {name for name in bindings if not name.startswith("_")}
 
 
 def export_removals(base_ref: str, paths: list[str]) -> dict[str, set[str]]:

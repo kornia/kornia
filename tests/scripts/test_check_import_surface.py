@@ -20,6 +20,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / ".github" / "scripts"))
 from check_import_surface import (
     INVENTORY_PATH,
@@ -1162,3 +1164,79 @@ def test_dynamic_all_cannot_prove_an_inventory_removal(tmp_path, capsys):
     _write_inventory(repo, {"kornia.mymodule": ["b"]})
     assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 1
     assert "exact resolved export delta" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "import_line",
+    [
+        "from .a import *",
+        "from .a import thing",
+        "from .a import thing as alias",
+        "import kornia.pkg.a as alias",
+        "from . import a as alias",
+    ],
+)
+def test_inventory_acknowledges_implicit_submodule_removal(tmp_path, capsys, import_line):
+    alias = "alias" if "as alias" in import_line else "thing"
+    repo = _repo_with_package(
+        tmp_path,
+        init_body=import_line + "\n",
+        submodules={"a": _exports("thing")},
+        inventory={"kornia.pkg": ["a", alias]},
+    )
+    (repo / "kornia/pkg/__init__.py").write_text('"""An empty package."""\npass\n')
+    (repo / "kornia/pkg/a.py").unlink()
+    _write_inventory(repo, {"kornia.pkg": []})
+    _write_removals(repo, {"kornia.pkg.a": ["thing"]})
+    assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 0
+    assert "::error" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "globals().update(thing=1)",
+        "(thing := 1)",
+        "sentinel = (thing := 1)",
+        "sentinel = globals().update(thing=1)",
+        "def f(value=(thing := 1)): pass",
+        "@(globals().update(thing=1) or (lambda f: f))\ndef f(): pass",
+        "class C:\n    globals().update(thing=1)",
+    ],
+)
+def test_dynamic_binding_cannot_stage_inventory_removal(tmp_path, capsys, expression):
+    repo = _repo_with_package(
+        tmp_path,
+        init_body="thing = 1\n",
+        submodules={},
+        inventory={"kornia.pkg": ["thing"]},
+    )
+    (repo / "kornia/pkg/__init__.py").write_text(expression + "\n")
+    _write_inventory(repo, {"kornia.pkg": []})
+    assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 1
+    assert "exact resolved export delta" in capsys.readouterr().out
+
+
+def test_retained_submodule_binding_cannot_stage_inventory_removal(tmp_path, capsys):
+    repo = _repo_with_package(
+        tmp_path,
+        init_body="from .a import *\n",
+        submodules={"a": _exports("thing")},
+        inventory={"kornia.pkg": ["a", "thing"]},
+    )
+    (repo / "kornia/pkg/__init__.py").write_text("from .a import thing\n")
+    _write_inventory(repo, {"kornia.pkg": ["thing"]})
+    assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 1
+    assert "exact resolved export delta" in capsys.readouterr().out
+
+
+def test_function_body_does_not_make_package_exports_unknown(tmp_path):
+    repo = _repo_with_package(
+        tmp_path,
+        init_body="thing = 1\n",
+        submodules={},
+        inventory={"kornia.pkg": ["thing"]},
+    )
+    (repo / "kornia/pkg/__init__.py").write_text("def f():\n    globals().update(thing=1)\n")
+    _write_inventory(repo, {"kornia.pkg": []})
+    assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 0
