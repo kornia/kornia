@@ -1848,32 +1848,6 @@ def normalize_homography(
         wherever they do reach ``linalg.inv``.
 
     .. warning::
-        The two normalization matrices are built without a ``dtype=``
-        pass-through and cast to the input afterwards, so their precision is
-        decided by the **ambient default dtype** and not by the argument's. At
-        the ``float32`` default — the usual case — a ``float64`` caller gets
-        ``float32``-rounded constants: ``normalize_homography`` of the
-        ``float64`` identity from ``(4, 4)`` to ``(6, 6)`` returns
-        ``0.5999999910593036`` where the ``float64``-native composition gives
-        ``0.6000000000000001`` — a deviation of ``8.94069651646845e-09``, about
-        eight significant digits instead of sixteen. Under
-        ``torch.set_default_dtype(torch.float64)`` that same ``float64`` call
-        returns the native ``0.6000000000000001`` instead, which is what
-        identifies the missing pass-through as the cause rather than an epsilon
-        or a rounding choice: it is
-        :func:`~kornia.geometry.conversions.normal_transform_pixel`'s
-        documented ``dtype=None`` behaviour reaching through, so setting the
-        ambient default is also the workaround. Same mechanism in
-        :func:`~kornia.geometry.conversions.denormalize_homography`
-        (``2.483526828633842e-08`` on the same input, at the ``float32``
-        default) and in
-        :func:`~kornia.geometry.conversions.normalize_homography3d`. These
-        deviations run through ``matmul`` and an inverse, so their trailing
-        digits are backend-dependent; the magnitude — half the mantissa gone —
-        is the point, not the digits. Tracked in
-        `#3958 <https://github.com/kornia/kornia/issues/3958>`_.
-
-    .. warning::
         Integer inputs are handled inconsistently and the inconsistency is
         device-dependent: on cpu (torch 2.9.1) an ``int64`` call raises
         ``RuntimeError: expected scalar type Long but found Float`` here and a
@@ -1941,12 +1915,16 @@ def normalize_homography(
     dst_h, dst_w = dsize_dst
 
     # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(
+        src_h, src_w, device=dst_pix_trans_src_pix.device, dtype=dst_pix_trans_src_pix.dtype
+    )
 
     # Closed-form 3x3 inverse of the (well-conditioned) pixel-normalization matrix: cusolver-free,
     # so homography normalization runs on the Jetson wheel where ``torch.linalg.inv`` dlopen-fails.
     src_pix_trans_src_norm = _inverse_3x3_closed_form(src_norm_trans_src_pix)
-    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(
+        dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=dst_pix_trans_src_pix.dtype
+    )
 
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
@@ -2238,8 +2216,7 @@ def denormalize_homography(
           ``dsize_dst`` on the left, ``(x, y, 1)`` column vectors, per-sample
           batching, the corner-aligned frames — is as documented there, and so
           is the shape guard: this function carries the same one and rejects
-          the same shapes. That function's dtype-pass-through
-          (`#3958 <https://github.com/kornia/kornia/issues/3958>`_), int64-handling
+          the same shapes. That function's int64-handling
           (`#3959 <https://github.com/kornia/kornia/issues/3959>`_ — this
           function's own clause there) and corner-alignment (`#3904
           <https://github.com/kornia/kornia/issues/3904>`_) warnings apply
@@ -2301,9 +2278,13 @@ def denormalize_homography(
     dst_h, dst_w = dsize_dst
 
     # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(
+        src_h, src_w, device=dst_pix_trans_src_pix.device, dtype=dst_pix_trans_src_pix.dtype
+    )
 
-    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(
+        dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=dst_pix_trans_src_pix.dtype
+    )
     dst_denorm_trans_dst_pix = _torch_inverse_cast(dst_norm_trans_dst_pix)
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_denorm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
@@ -2386,10 +2367,14 @@ def normalize_homography3d(
     src_d, src_h, src_w = dsize_src
     dst_d, dst_h, dst_w = dsize_dst
     # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(src_d, src_h, src_w).to(dst_pix_trans_src_pix)
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(
+        src_d, src_h, src_w, device=dst_pix_trans_src_pix.device, dtype=dst_pix_trans_src_pix.dtype
+    )
 
     src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
-    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(dst_d, dst_h, dst_w).to(dst_pix_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(
+        dst_d, dst_h, dst_w, device=dst_pix_trans_src_pix.device, dtype=dst_pix_trans_src_pix.dtype
+    )
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
     return dst_norm_trans_src_norm
