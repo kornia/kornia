@@ -27,7 +27,7 @@ from kornia.feature.scale_space_detector import (
     _resize_mask,
     get_default_detector_config,
 )
-from kornia.geometry.subpix import ConvQuadInterp3d
+from kornia.geometry.subpix import AdaptiveQuadInterp3d, ConvQuadInterp3d, IterativeQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
 
 from testing.base import (
@@ -78,6 +78,49 @@ def _canonical_order(lafs: torch.Tensor, responses: torch.Tensor) -> tuple[torch
 
 
 class TestScaleSpaceDetector(BaseTester):
+    @pytest.mark.parametrize("subpix_type", [AdaptiveQuadInterp3d, ConvQuadInterp3d, IterativeQuadInterp3d])
+    @pytest.mark.parametrize("batch", [1, 2])
+    @pytest.mark.parametrize("bonus", [0.0, 10.0])
+    @pytest.mark.parametrize("max_candidates", [None, 3])
+    def test_joint_extrema_matches_separate_refinement(self, device, subpix_type, batch, bonus, max_candidates):
+        # A subclass remains on the general extension path, which refines each sign
+        # independently. Pin the batched built-in path to that reference, including
+        # signed/weighted responses and gradients through the selected features.
+        class SeparateSubpix(subpix_type):
+            pass
+
+        if device.type == "mps":
+            pytest.skip("Reference requires float64")
+        if subpix_type is ConvQuadInterp3d and max_candidates is not None:
+            pytest.skip("ConvQuadInterp3d has no candidate cap")
+        torch.manual_seed(17)
+        img = torch.rand(batch, 1, 96, 99, device=device, dtype=torch.float64, requires_grad=True)
+        mask = torch.rand(batch, 1, 96, 99, device=device, dtype=torch.float64)
+        mask[..., :8, :] = 0
+
+        def detector(subpix):
+            return ScaleSpaceDetector(
+                12,
+                mr_size=1.0,
+                scale_pyr_module=ScalePyramid(3, 1.6, 16, extra_levels=3),
+                resp_module=kornia.feature.BlobDoG(),
+                subpix_module=subpix,
+                minima_are_also_good=True,
+                scale_space_response=True,
+            ).to(device, torch.float64)
+
+        kwargs = {"strict_maxima_bonus": bonus}
+        if subpix_type is not ConvQuadInterp3d:
+            kwargs["max_candidates"] = max_candidates
+        actual = detector(subpix_type(**kwargs))(img, mask)
+        expected = detector(SeparateSubpix(**kwargs))(img, mask)
+        assert actual[0].ne(0).any()
+        for a, e in zip(actual, expected):
+            self.assert_close(a, e)
+        actual_grad = torch.autograd.grad(sum(x.sum() for x in actual), img, retain_graph=True)[0]
+        expected_grad = torch.autograd.grad(sum(x.sum() for x in expected), img)[0]
+        self.assert_close(actual_grad, expected_grad)
+
     def test_shape(self, device, dtype):
         inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
         n_feats = 10

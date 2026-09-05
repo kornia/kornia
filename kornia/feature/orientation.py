@@ -129,13 +129,20 @@ class PatchDominantGradientOrientation(nn.Module):
         bo1_big = (bo0_big + 1) % self.num_ang_bins
         wo0_big = (1.0 - wo1_big) * mag
         wo1_big = wo1_big * mag
-        ang_bins_list = []
-        for i in range(self.num_ang_bins):
-            ang_bins_i = F.adaptive_avg_pool2d(
-                (bo0_big == i).to(patch.dtype) * wo0_big + (bo1_big == i).to(patch.dtype) * wo1_big, (1, 1)
-            )
-            ang_bins_list.append(ang_bins_i)
-        ang_bins = torch.cat(ang_bins_list, 1).view(-1, 1, self.num_ang_bins)
+        # Each pixel votes into just two bins. Accumulate those votes directly instead
+        # of scanning the entire patch once per angular bin. Like average pooling,
+        # accumulate half-precision inputs in float32, then divide before casting back.
+        accumulation_dtype = torch.float64 if patch.dtype == torch.float64 else torch.float32
+        ang_bins = torch.zeros(patch.shape[0], self.num_ang_bins, device=patch.device, dtype=accumulation_dtype)
+        # Remainder after the integer conversion also keeps non-finite orientations
+        # in bounds; their non-finite weights still propagate through the histogram.
+        ang_bins.scatter_add_(
+            1, bo0_big.flatten(1).long() % self.num_ang_bins, wo0_big.flatten(1).to(accumulation_dtype)
+        )
+        ang_bins.scatter_add_(
+            1, bo1_big.flatten(1).long() % self.num_ang_bins, wo1_big.flatten(1).to(accumulation_dtype)
+        )
+        ang_bins = (ang_bins / (W * H)).to(patch.dtype).view(-1, 1, self.num_ang_bins)
         angular_smooth_padding = self.angular_smooth.padding
         if self.angular_smooth.padding_mode != "zeros":
             ang_bins = F.pad(

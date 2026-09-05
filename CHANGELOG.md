@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
+  KeyNet-HardNet, with median/IQR speed, homography corner error, and JSON output.
+
 * Documentation pages now provide search-specific titles and descriptions, canonical tutorial links, and a
   canonicalized redirect from the retired highlighted-features page. (#4226)
 
@@ -263,6 +266,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   zero-scale input keeps its center and zero affine block.
 
 ### Bug fixes
+
+* Reduce local-feature extraction overhead by accumulating orientation histograms directly,
+  batching built-in DoG extrema refinement, selecting coordinates before combining response signs,
+  and using faster activation layouts in KeyNet and CPU HardNet. Detector settings and pretrained
+  checkpoint formats are preserved.
 
 * Non-maxima suppression with a window larger than `(7, 7)` no longer builds a `(k*k, 1, k, k)` one-hot
   convolution to gather each neighbour into its own channel. On CPU in half precision that convolution

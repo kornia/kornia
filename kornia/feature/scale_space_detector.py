@@ -301,6 +301,36 @@ class ScaleSpaceDetector(nn.Module):
             f"aff={self.aff.__repr__()})"
         )
 
+    def _refine_minmax(
+        self,
+        response: torch.Tensor,
+        max_mask: torch.Tensor,
+        min_mask: torch.Tensor,
+        is_iterative_subpix: bool,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Refine both response signs, batching only independent built-in refiners."""
+        # Inspect the current module so replacing a built-in with a custom refiner
+        # after construction preserves the extension path, including compiled modules.
+        subpix = getattr(self.subpix, "_orig_mod", self.subpix)
+        batchable = type(subpix) in (ConvQuadInterp3d, AdaptiveQuadInterp3d, IterativeQuadInterp3d)
+        if batchable and getattr(subpix, "max_candidates", None) is None:
+            # Keep NMS neighbourhoods separate: merging masks would let extrema
+            # move into the other sign's dilation neighbourhood. A candidate cap
+            # also needs separate calls, since it applies across the whole batch.
+            batch = response.shape[0]
+            coords, values = self.subpix(
+                torch.cat((response, -response), dim=0),
+                precomputed_nms_mask=torch.cat((max_mask, min_mask), dim=0),
+            )
+            return coords[:batch], values[:batch], coords[batch:], values[batch:]
+        if is_iterative_subpix:
+            coord_max, response_max = self.subpix(response, precomputed_nms_mask=max_mask)
+            coord_min, response_min = self.subpix(-response, precomputed_nms_mask=min_mask)
+        else:
+            coord_max, response_max = self.subpix(response)
+            coord_min, response_min = self.subpix(-response)
+        return coord_max, response_max, coord_min, response_min
+
     def _process_octave(
         self,
         octave: torch.Tensor,
@@ -380,12 +410,9 @@ class ScaleSpaceDetector(nn.Module):
 
         with self._dynamo_config_patch(("subpix",)):
             if self.minima_are_also_good:
-                if is_iterative_subpix:
-                    coord_max, response_max = self.subpix(oct_resp, precomputed_nms_mask=max_nms_mask)
-                    coord_min, response_min = self.subpix(-oct_resp, precomputed_nms_mask=min_nms_mask)
-                else:
-                    coord_max, response_max = self.subpix(oct_resp)
-                    coord_min, response_min = self.subpix(-oct_resp)
+                coord_max, response_max, coord_min, response_min = self._refine_minmax(
+                    oct_resp, max_nms_mask, min_nms_mask, is_iterative_subpix
+                )
             elif is_iterative_subpix:
                 coord_max, response_max = self.subpix(oct_resp, precomputed_nms_mask=max_nms_mask)
             else:
@@ -405,7 +432,6 @@ class ScaleSpaceDetector(nn.Module):
                 response_min = _weight_scores(response_min, oct_mask)
             take_min_mask = (response_min > response_max) & min_nms_mask
             response_max = torch.where(take_min_mask, response_min, response_max)
-            coord_max = torch.where(take_min_mask.unsqueeze(2), coord_min, coord_max)
             # Candidate positions: original max-NMS plus swapped min-NMS positions.
             cand_mask = max_nms_mask | take_min_mask
         else:
@@ -426,17 +452,16 @@ class ScaleSpaceDetector(nn.Module):
         if B == 1:
             nms_idx = mask_flat[0].nonzero(as_tuple=True)[0]  # (M,)
             resp_cands = resp_flat[0][nms_idx]  # (M,)
-            coord_cands = coord_flat[0][nms_idx]  # (M, 3)
             k_eff = min(num_feats, nms_idx.shape[0])
             # Only NMS candidates are gathered here, so every returned slot is one.
             is_cand = torch.ones(1, k_eff, dtype=torch.bool, device=dev)
             if k_eff > 0:
                 resp_flat_best, local_idx = torch.topk(resp_cands, k=k_eff)
-                max_coords_best = coord_cands[local_idx].unsqueeze(0)  # (1, k_eff, 3)
+                idxs = nms_idx[local_idx].unsqueeze(0)
                 resp_flat_best = resp_flat_best.unsqueeze(0)  # (1, k_eff)
             else:
                 resp_flat_best = resp_flat.new_zeros(1, 0)
-                max_coords_best = coord_flat.new_zeros(1, 0, 3)
+                idxs = nms_idx.new_empty(1, 0)
         else:
             # Batched fallback: mask non-candidates to -inf so they lose top-K to every finite
             # response. (A finite sentinel such as `finfo.min / 2` is not below every finite
@@ -444,11 +469,20 @@ class ScaleSpaceDetector(nn.Module):
             resp_masked = resp_flat.masked_fill(~mask_flat, float("-inf"))
             k_eff = min(num_feats, resp_masked.size(1))
             resp_flat_best, idxs = torch.topk(resp_masked, k=k_eff, dim=1)
-            max_coords_best = torch.gather(coord_flat, 1, idxs.unsqueeze(-1).expand(-1, -1, 3))
             # `topk` cannot rank among the masked-out positions -- they all carry the same
             # `fill` -- so an image with fewer than `num_feats` maxima gets an arbitrary subset
             # of non-candidates back. Carry the candidacy of each selected slot forward.
             is_cand = torch.gather(mask_flat, 1, idxs)
+
+        coord_idxs = idxs.unsqueeze(-1).expand(-1, -1, 3)
+        max_coords_best = torch.gather(coord_flat, 1, coord_idxs)
+        if self.minima_are_also_good:
+            # Merge coordinates only for the selected features, not for every voxel
+            # in the octave (three full image volumes per scale level).
+            coord_min_flat = coord_min.movedim(2, -1).reshape(B, -1, 3)
+            min_coords_best = torch.gather(coord_min_flat, 1, coord_idxs)
+            take_min_best = torch.gather(take_min_mask.reshape(B, -1), 1, idxs)
+            max_coords_best = torch.where(take_min_best.unsqueeze(-1), min_coords_best, max_coords_best)
 
         B, N = resp_flat_best.size()
 
