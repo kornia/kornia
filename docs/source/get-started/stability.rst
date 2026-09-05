@@ -103,7 +103,7 @@ the documented one) or a security issue may ship without a deprecation
 window. When that happens the release notes say so explicitly.
 
 Recording a completed deprecation
---------------------------------
+---------------------------------
 
 Once the deprecation window has passed, remove the API and describe the removal
 in ``CHANGELOG.md``. Update any existing entries in ``tests/api_surface.json``
