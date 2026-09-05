@@ -249,6 +249,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Eager bbox validation now rejects NaN and infinite coordinates instead of accepting them as valid geometry. (#4243)
+
 * `HyNet` and `SOSNet` now run in half precision, on CPU and on GPU, and no longer return NaN for a
   degenerate patch (closes #4224). Two defects sat on the same line. On CPU both raised
   `NotImplementedError: "avg_pool3d_out_frame" not implemented for 'Half'` (and the `'BFloat16'` spelling):

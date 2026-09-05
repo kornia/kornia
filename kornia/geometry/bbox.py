@@ -70,6 +70,9 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
     if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([4, 2])):
         return False
 
+    if not torch.isfinite(boxes).all():
+        return False
+
     if len(boxes.shape) == 4:
         boxes = boxes.reshape(-1, 4, 2)
 
