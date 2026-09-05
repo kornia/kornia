@@ -538,21 +538,26 @@ def transform_bbox(
 ) -> torch.Tensor:
     r"""Apply a transformation matrix to a box or batch of boxes.
 
+    Convention:
+        ``xyxy`` and ``xywh`` inputs are transformed through endpoint pairs. Coordinate
+        restoration sorts their endpoints after a flip; polygon vertices retain their
+        transformed cyclic order.
+
     Args:
-        trans_mat: The transformation matrix to be applied with a shape of :math:`(3, 3)`
-            or batched as :math:`(B, 3, 3)`.
+        trans_mat: The transformation matrix to be applied, with supported shape :math:`(B, 3, 3)`.
+            For boxes shaped :math:`(N, 4)`, ``B`` is one or ``N``. For boxes shaped
+            :math:`(B, N, 4)` or :math:`(B, N, 4, 2)`, it is one or the boxes' ``B``.
         boxes: The boxes to be transformed with a common shape of :math:`(N, 4)` or batched as :math:`(B, N, 4)`, the
             polygon shape of :math:`(B, N, 4, 2)` is also supported.
         mode: The format in which the boxes are provided. If set to 'xyxy' the boxes are assumed to be in the format
             ``xmin, ymin, xmax, ymax``. If set to 'xywh' the boxes are assumed to be in the format
             ``xmin, ymin, width, height``
-        restore_coordinates: In case the boxes are flipped, adding a post processing step to restore the
-            coordinates to a valid bounding box. Enabled by default (``None`` behaves as ``True``); pass
-            ``False`` to keep the raw transformed corners (the pre-2022 behavior, which yields invalid
-            boxes under flips).
+        restore_coordinates: Reorder endpoints after a flipped ``xyxy`` or ``xywh`` transform.
+            Enabled by default (``None`` behaves as ``True``); pass ``False`` to preserve raw
+            transformed endpoints. Polygon vertices retain their transformed order.
 
     Returns:
-        The set of transformed points in the specified mode
+        The transformed boxes in the specified mode.
 
     """
     if not isinstance(mode, str):
@@ -589,13 +594,24 @@ def transform_bbox(
 def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torch.Tensor:
     """Perform non-maxima suppression (NMS) on tensor of bounding boxes according to the intersection-over-union (IoU).
 
-    Args:
-        boxes: tensor containing the encoded bounding boxes with the shape :math:`(N, (x_1, y_1, x_2, y_2))`.
-        scores: tensor containing the scores associated to each bounding box with shape :math:`(N,)`.
-        iou_threshold: the throshold to discard the overlapping boxes.
+    Convention:
+        Boxes use exclusive ``xyxy`` coordinates. IoU area is
+        ``(x_2 - x_1) * (y_2 - y_1)`` and the result contains kept indices rather
+        than a boolean mask.
 
-    Return:
-        A tensor mask with the indices to keep from the input set of boxes and scores.
+    Args:
+        boxes: tensor containing exclusive ``xyxy`` bounding boxes with shape
+            :math:`(N, 4)`, ordered as ``(x_1, y_1, x_2, y_2)``.
+        scores: tensor containing the scores associated to each bounding box with shape :math:`(N,)`.
+        iou_threshold: the threshold to discard the overlapping boxes.
+
+    Returns:
+        Indices of the boxes kept from the input set, ordered by descending score.
+
+    .. warning::
+        This differs from the inclusive coordinate arithmetic used by several other
+        :mod:`kornia.geometry.bbox` operations and is documented in
+        `#4008 <https://github.com/kornia/kornia/issues/4008>`_.
 
     Example:
         >>> boxes = torch.tensor([

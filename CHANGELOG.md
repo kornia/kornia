@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with median/IQR speed, homography corner error, and JSON output.
 
+* Documented bbox/Boxes geometry-operation conventions and added executable pins for transforms,
+  NMS, padding, clipping, and area filtering, including known unbatched-input limitations. (#4245)
+
 * Documentation pages now provide search-specific titles and descriptions, canonical tutorial links, and a
   canonicalized redirect from the retired highlighted-features page. (#4226)
 
