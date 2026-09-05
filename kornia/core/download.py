@@ -32,25 +32,61 @@ from urllib.parse import urlparse
 
 import torch
 
-_HF_KORNIA_BASE = "https://huggingface.co/kornia"
+_HF_BASE = "https://huggingface.co"
+
+_HF_KORNIA_ORG = "kornia"
 
 
 def hf_url(repo: str, filename: str) -> str:
-    """Return the HuggingFace URL for a file in a kornia model repo.
+    """Return the HuggingFace URL for a file in a model repo.
 
     Args:
-        repo: repository name under the ``kornia`` HF org (e.g. ``"hardnet"``).
+        repo: repository name under the ``kornia`` HF org (e.g. ``"hardnet"``),
+            or a full ``owner/name`` repository id for a repo owned by anyone
+            else (e.g. ``"google/siglip2-base-patch16-224"``). The two are told
+            apart by the ``/``, which a repository *name* cannot contain.
         filename: file at the root of that repo (e.g. ``"HardNetPP.pth"``).
 
     Returns:
         A ``resolve/main`` URL that can be passed directly to
-        :func:`load_state_dict_from_url`.
+        :func:`load_state_dict_from_url` or :func:`download_file_from_url`.
 
     Example:
         >>> hf_url("hardnet", "HardNetPP.pth")
         'https://huggingface.co/kornia/hardnet/resolve/main/HardNetPP.pth'
+        >>> hf_url("google/siglip2-base-patch16-224", "model.safetensors")
+        'https://huggingface.co/google/siglip2-base-patch16-224/resolve/main/model.safetensors'
     """
-    return f"{_HF_KORNIA_BASE}/{repo}/resolve/main/{filename}"
+    repo_id = repo if "/" in repo else f"{_HF_KORNIA_ORG}/{repo}"
+    return f"{_HF_BASE}/{repo_id}/resolve/main/{filename}"
+
+
+def _hf_cache_file_name(repo_id: str, filename: str) -> str:
+    """Return a cache filename that cannot collide with another repo's.
+
+    The download cache is one flat directory keyed by filename, which is fine
+    while every checkpoint has a name of its own -- and wrong the moment two
+    repositories publish the same one. Every safetensors repository on the Hub
+    calls its single-shard checkpoint ``model.safetensors``, so caching by the
+    URL basename would hand the second model whichever one was fetched first,
+    silently and forever.
+
+    The repository id is folded into the name with ``--`` for the same reason
+    the Hub's own cache layout does: it is not a path separator, so the result
+    stays one filename in one directory.
+
+    Args:
+        repo_id: the full ``owner/name`` repository id.
+        filename: the file's name within that repository.
+
+    Returns:
+        The cache filename to pass as ``file_name``.
+
+    Example:
+        >>> _hf_cache_file_name("kornia/kimi-vl-a3b-instruct-vision", "model.safetensors")
+        'kornia--kimi-vl-a3b-instruct-vision--model.safetensors'
+    """
+    return f"{repo_id.replace('/', '--')}--{filename}"
 
 
 _TRANSIENT_HTTP_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
@@ -721,6 +757,97 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
         f"Failed to load weights from all {len(urls)} source(s). "
         f"Last URL tried: {last_url!r}. "
         f"Last error: {type(last_exc).__name__}: {last_exc}{refetch_note}. "
+        # Unquoted: the point of naming the path is that it can be pasted into
+        # ``rm``/``del``, and ``repr`` doubles every backslash of a Windows path.
+        f"Cache path: {cache_path} -- delete it if it is corrupt and this repeats."
+    ) from last_exc
+
+
+def download_file_from_url(
+    url: str | list[str],
+    *,
+    file_name: str | None = None,
+    model_dir: str | None = None,
+    progress: bool = True,
+) -> str:
+    """Download a file into the torch hub cache and return its path, without loading it.
+
+    The sibling of :func:`load_state_dict_from_url` for a checkpoint torch
+    cannot unpickle -- a ``.safetensors`` file, read afterwards with
+    :func:`kornia.core.load_safetensors`. It shares that function's cache, its
+    fallback-URL handling, its retry-with-backoff on transient failures and rate
+    limits (see :data:`_MAX_ATTEMPTS` and :func:`_retry_delay`), and its habit of
+    announcing a transfer on :data:`sys.stderr` rather than stdout. A file
+    already in the cache is returned as it is, with no request made.
+
+    It does *not* quarantine an existing cache entry the way
+    :func:`load_state_dict_from_url` does, because it never reads the file: a
+    corrupt entry is only discovered by the caller, one step later, and nothing
+    here can tell it apart from an intact one. The path is returned to the caller
+    and named in the failure message so that a file which turns out to be
+    unreadable can be deleted; :func:`kornia.core.load_safetensors` names it in
+    every error it raises for the same reason.
+
+    Args:
+        url: a URL string, or a list of URL strings tried left-to-right.
+        file_name: name to cache the file under. Defaults to the basename of the
+            URL -- of the *first* URL when several are given, so that every
+            source shares one cache slot. Pass it explicitly whenever that
+            basename is not unique to this file: two repositories publishing a
+            ``model.safetensors`` each would otherwise share one cache entry, and
+            the second model would silently load the first one's weights (see
+            :func:`_hf_cache_file_name`).
+        model_dir: directory to cache the file in. Defaults to torch's
+            ``<hub dir>/checkpoints``, which is the cache CI restores.
+        progress: whether to display a progress bar during a transfer.
+
+    Returns:
+        The path of the cached file.
+
+    Raises:
+        RuntimeError: if every URL fails. The message carries the last failure's
+            type and text, the source it came from and the cache path in play,
+            and the exception itself is chained.
+
+    Example:
+        >>> path = download_file_from_url(                      # doctest: +SKIP
+        ...     hf_url("kimi-vl-a3b-instruct-vision", "model.safetensors"),
+        ...     file_name="kornia--kimi-vl-a3b-instruct-vision--model.safetensors",
+        ... )
+    """
+    urls = [url] if isinstance(url, str) else list(url)
+
+    # Pin the cache filename to the primary URL's basename so that all attempts
+    # share one cache slot, exactly as :func:`load_state_dict_from_url` does.
+    if len(urls) > 1 and file_name is None:
+        file_name = Path(urlparse(urls[0]).path).name
+    kwargs: dict[str, Any] = {"model_dir": model_dir, "file_name": file_name, "progress": progress}
+
+    cache_path = _cached_file_path(urls[0], kwargs)
+    budget = _SleepBudget(_MAX_CALL_SLEEP_SECONDS)
+    last_exc: Exception | None = None
+    last_url: str | None = None
+    for i, u in enumerate(urls):
+        more_sources = i < len(urls) - 1
+        try:
+            _prefetch_with_retry(u, kwargs, budget)
+        except Exception as e:  # noqa: BLE001
+            last_exc, last_url = e, u
+            if more_sources:
+                # Anything at the cache path was written by this failed attempt:
+                # a cache hit returns without transferring and without raising,
+                # so reaching here means the path was empty when the attempt
+                # started. Clearing it is what lets the next source transfer into
+                # it rather than be handed a partial file as a cache hit.
+                _drop_failed_download(cache_path)
+                warnings.warn(f"Failed to download {u!r}: {e}. Trying next source.", stacklevel=2)
+            continue
+        return cache_path
+
+    raise RuntimeError(
+        f"Failed to download the file from all {len(urls)} source(s). "
+        f"Last URL tried: {last_url!r}. "
+        f"Last error: {type(last_exc).__name__}: {last_exc}. "
         # Unquoted: the point of naming the path is that it can be pasted into
         # ``rm``/``del``, and ``repr`` doubles every backslash of a Windows path.
         f"Cache path: {cache_path} -- delete it if it is corrupt and this repeats."
