@@ -23,7 +23,7 @@ from typing import Optional
 
 import torch
 
-from kornia.core.download import _hf_cache_file_name, download_file_from_url, hf_url
+from kornia.core.download import download_hf_file
 from kornia.core.safetensors import load_safetensors
 
 from .config import KimiVLConfig, _kimi_vl_a3b_instruct_config
@@ -47,14 +47,7 @@ def _download_weights(model_name: str, cache_dir: Optional[str]) -> dict[str, to
     Returns:
         The checkpoint's state dict, on the CPU.
     """
-    path = download_file_from_url(
-        hf_url(model_name, _WEIGHTS_FILE),
-        # Every repo calls its checkpoint ``model.safetensors``; the cache is one
-        # flat directory, so the repo id has to be part of the name.
-        file_name=_hf_cache_file_name(model_name, _WEIGHTS_FILE),
-        model_dir=cache_dir,
-    )
-    return load_safetensors(path)
+    return load_safetensors(download_hf_file(model_name, _WEIGHTS_FILE, model_dir=cache_dir))
 
 
 class KimiVLBuilder:

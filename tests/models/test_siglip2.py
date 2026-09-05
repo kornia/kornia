@@ -75,37 +75,35 @@ class TestSigLip2Builder:
     def test_download_weights_uses_kornias_downloader(self, tmp_path):
         expected = {"weight": torch.zeros(1)}
         with (
-            patch.object(siglip2_builder, "download_file_from_url", return_value="cached.safetensors") as download,
+            patch.object(siglip2_builder, "download_hf_file", return_value="cached.safetensors") as download,
             patch.object(siglip2_builder, "load_safetensors", return_value=expected) as read,
         ):
             state_dict = siglip2_builder._download_weights("google/siglip2-base-patch16-224", str(tmp_path))
 
         assert state_dict is expected
         read.assert_called_once_with("cached.safetensors")
+        # The repository reaches the downloader whole, so its cache name carries
+        # the owner; every HF repo publishes a ``model.safetensors``.
         download.assert_called_once_with(
-            "https://huggingface.co/google/siglip2-base-patch16-224/resolve/main/model.safetensors",
-            # Not ``model.safetensors``: the cache is flat and every HF repo
-            # publishes that same name, so one variant would be served for
-            # another -- or for Kimi-VL's checkpoint.
-            file_name="google--siglip2-base-patch16-224--model.safetensors",
-            model_dir=str(tmp_path),
+            "google/siglip2-base-patch16-224", "model.safetensors", model_dir=str(tmp_path)
         )
 
-    def test_two_variants_do_not_share_a_cache_entry(self, tmp_path):
-        names = []
+    def test_the_variant_reaches_the_downloader(self, tmp_path):
+        """Two variants must not resolve to one download, and so to one cache entry."""
+        repos = []
         with (
-            patch.object(siglip2_builder, "download_file_from_url", return_value="cached.safetensors") as download,
+            patch.object(siglip2_builder, "download_hf_file", return_value="cached.safetensors") as download,
             patch.object(siglip2_builder, "load_safetensors", return_value={}),
         ):
             for model_name in ("google/siglip2-base-patch16-224", "google/siglip2-base-patch16-256"):
                 siglip2_builder._download_weights(model_name, None)
-                names.append(download.call_args.kwargs["file_name"])
+                repos.append(download.call_args.args[0])
 
-        assert names[0] != names[1]
+        assert repos == ["google/siglip2-base-patch16-224", "google/siglip2-base-patch16-256"]
 
     def test_a_missing_checkpoint_is_reported_with_the_model_name(self, tmp_path):
         with (
-            patch.object(siglip2_builder, "download_file_from_url", return_value="cached.safetensors"),
+            patch.object(siglip2_builder, "download_hf_file", return_value="cached.safetensors"),
             patch.object(siglip2_builder, "load_safetensors", side_effect=FileNotFoundError("gone")),
         ):
             with pytest.raises(FileNotFoundError, match=r"Could not find model\.safetensors for google/nope"):

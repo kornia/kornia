@@ -33,7 +33,13 @@ import pytest
 import torch
 
 from kornia.core import download as download_mod
-from kornia.core.download import _hf_cache_file_name, download_file_from_url, hf_url, load_state_dict_from_url
+from kornia.core.download import (
+    _hf_cache_file_name,
+    download_file_from_url,
+    download_hf_file,
+    hf_url,
+    load_state_dict_from_url,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -68,6 +74,11 @@ class TestHfCacheFileName:
         assert _hf_cache_file_name("kornia/kimi-vl-a3b-instruct-vision", "model.safetensors") == (
             "kornia--kimi-vl-a3b-instruct-vision--model.safetensors"
         )
+
+    def test_both_spellings_of_a_kornia_repo_agree(self) -> None:
+        """They resolve to one URL, so they must resolve to one cache entry."""
+        assert _hf_cache_file_name("hardnet", "HardNetPP.pth") == _hf_cache_file_name("kornia/hardnet", "HardNetPP.pth")
+        assert _hf_cache_file_name("hardnet", "HardNetPP.pth") == "kornia--hardnet--HardNetPP.pth"
 
     def test_two_repos_do_not_collide(self) -> None:
         first = _hf_cache_file_name("google/siglip2-base-patch16-224", "model.safetensors")
@@ -1299,3 +1310,57 @@ class TestDownloadFileFromUrl:
         captured = capsys.readouterr()
         assert captured.out == ""
         assert f'Downloading: "{url}"' in captured.err
+
+
+class TestDownloadHfFile:
+    """The Hub wrapper: the ``resolve/main`` URL and the collision-free cache name in one call."""
+
+    @staticmethod
+    def _capture(monkeypatch) -> list[tuple]:
+        """Record what reaches ``download_file_from_url`` instead of downloading."""
+        calls: list[tuple] = []
+
+        def fake(url, **kwargs):
+            calls.append((url, kwargs))
+            return "cached"
+
+        monkeypatch.setattr(download_mod, "download_file_from_url", fake)
+        return calls
+
+    def test_full_repo_id(self, monkeypatch) -> None:
+        calls = self._capture(monkeypatch)
+
+        assert download_hf_file("google/siglip2-base-patch16-224", "model.safetensors") == "cached"
+
+        url, kwargs = calls[0]
+        assert url == "https://huggingface.co/google/siglip2-base-patch16-224/resolve/main/model.safetensors"
+        assert kwargs["file_name"] == "google--siglip2-base-patch16-224--model.safetensors"
+        assert kwargs["model_dir"] is None
+
+    def test_bare_repo_name_resolves_under_the_kornia_org(self, monkeypatch, tmp_path) -> None:
+        calls = self._capture(monkeypatch)
+
+        download_hf_file("kimi-vl-a3b-instruct-vision", "model.safetensors", model_dir=str(tmp_path), progress=False)
+
+        url, kwargs = calls[0]
+        assert url == "https://huggingface.co/kornia/kimi-vl-a3b-instruct-vision/resolve/main/model.safetensors"
+        # The org is in the cache name too, so the bare and full spellings of the
+        # same repo cannot end up in two cache entries.
+        assert kwargs["file_name"] == "kornia--kimi-vl-a3b-instruct-vision--model.safetensors"
+        assert kwargs["model_dir"] == str(tmp_path)
+        assert kwargs["progress"] is False
+
+    def test_two_repos_publishing_the_same_filename_do_not_collide(self, tmp_path) -> None:
+        """End to end, through a real transfer: one cache directory, two entries."""
+        model_dir = tmp_path / "cache"
+        paths = []
+        for owner in ("kornia", "google"):
+            source = tmp_path / owner / "model.safetensors"
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_bytes(owner.encode())
+            with patch.object(download_mod, "hf_url", return_value=source.as_uri()):
+                paths.append(download_hf_file(f"{owner}/a-model", "model.safetensors", model_dir=str(model_dir)))
+
+        assert paths[0] != paths[1]
+        assert Path(paths[0]).read_bytes() == b"kornia"
+        assert Path(paths[1]).read_bytes() == b"google"

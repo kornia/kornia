@@ -28,11 +28,22 @@ from __future__ import annotations
 import json
 import mmap
 import os
-from typing import Any
+from typing import Any, NamedTuple
 
 import torch
 
 __all__ = ["load_safetensors"]
+
+
+class _TensorEntry(NamedTuple):
+    """One header entry, validated: what to read, from where, and how much."""
+
+    dtype: torch.dtype
+    shape: list[int]
+    start: int
+    end: int
+    numel: int
+
 
 _DTYPES: dict[str, torch.dtype] = {
     "F64": torch.float64,
@@ -70,8 +81,8 @@ below would be asked for that many bytes.
 """
 
 
-def _parse_entry(path: str, name: str, entry: Any, data_len: int) -> tuple[torch.dtype, list[int], int, int]:
-    """Validate one header entry and return its dtype, shape, offset and element count.
+def _parse_entry(path: str, name: str, entry: Any, data_len: int) -> _TensorEntry:
+    """Validate one header entry and return what is needed to read it.
 
     Args:
         path: the file the entry came from, named in every error message so the
@@ -82,8 +93,8 @@ def _parse_entry(path: str, name: str, entry: Any, data_len: int) -> tuple[torch
         data_len: the size of the byte buffer the offsets index into.
 
     Returns:
-        The torch dtype, the shape, the offset of the tensor's first byte
-        relative to the start of the byte buffer, and its number of elements.
+        The entry's dtype, shape, byte range relative to the start of the byte
+        buffer, and number of elements.
 
     Raises:
         ValueError: if the entry is malformed, names a dtype this reader does not
@@ -129,7 +140,50 @@ def _parse_entry(path: str, name: str, entry: Any, data_len: int) -> tuple[torch
             f"{path}: tensor {name!r} is {dtype_name}{shape}, which is {expected} bytes, "
             f"but its data_offsets span {end - start}."
         )
-    return dtype, shape, start, numel
+    return _TensorEntry(dtype, shape, start, end, numel)
+
+
+def _check_the_buffer_is_covered_once(path: str, parsed: dict[str, _TensorEntry], data_len: int) -> None:
+    """Reject a byte buffer the entries do not tile exactly.
+
+    The format requires the buffer to be entirely indexed and free of holes,
+    which the per-entry checks do not give: each one only asks whether its own
+    range fits. Two entries claiming ``[0, 8]`` and ``[4, 8]`` both fit, and
+    would be read as two tensors sharing four bytes -- a file that no writer
+    produces and that no reader should quietly accept, since the values one of
+    them returns are not the values it was given. A gap is the same defect seen
+    from the other side: bytes nothing accounts for mean the header does not
+    describe this file.
+
+    Entries are ordered by ``(start, end)`` rather than by name, so an empty
+    tensor -- zero bytes at the position the next one starts at -- sorts before
+    its neighbour instead of appearing to overlap it.
+
+    Args:
+        path: the file being read, named in the error.
+        parsed: the validated entries, keyed by tensor name.
+        data_len: the size of the byte buffer they must cover.
+
+    Raises:
+        ValueError: if the ranges overlap, leave a gap, or stop short of the end
+            of the buffer.
+    """
+    offset = 0
+    for name, entry in sorted(parsed.items(), key=lambda item: (item[1].start, item[1].end)):
+        if entry.start != offset:
+            problem = (
+                "overlaps the entry before it" if entry.start < offset else "leaves a gap after the entry before it"
+            )
+            raise ValueError(
+                f"{path}: tensor {name!r} starts at byte {entry.start} where the buffer is covered "
+                f"up to {offset}, so it {problem}."
+            )
+        offset = entry.end
+    if offset != data_len:
+        raise ValueError(
+            f"{path}: the entries cover {offset} bytes of a {data_len}-byte buffer, "
+            f"so {data_len - offset} bytes belong to no tensor."
+        )
 
 
 def load_safetensors(path: str | os.PathLike[str], device: str | torch.device = "cpu") -> dict[str, torch.Tensor]:
@@ -160,8 +214,9 @@ def load_safetensors(path: str | os.PathLike[str], device: str | torch.device = 
     Raises:
         ValueError: if the file is not a readable safetensors checkpoint --
             truncated, a header that is not JSON, an entry naming a dtype this
-            reader does not accept, or a byte range that does not match the
-            tensor it belongs to. Every message names the file.
+            reader does not accept, a byte range that does not match the tensor
+            it belongs to, or entries that overlap or leave part of the buffer
+            unaccounted for. Every message names the file.
         OSError: if the file cannot be opened or mapped.
 
     Example:
@@ -191,12 +246,13 @@ def load_safetensors(path: str | os.PathLike[str], device: str | torch.device = 
         entries = {name: entry for name, entry in header.items() if name != "__metadata__"}
         data_len = size - data_start
         parsed = {name: _parse_entry(path, name, entry, data_len) for name, entry in entries.items()}
+        _check_the_buffer_is_covered_once(path, parsed, data_len)
 
         state_dict: dict[str, torch.Tensor] = {}
         # ``ACCESS_COPY`` maps the whole file, so the offsets below are file
         # offsets: the byte buffer starts at ``data_start``.
         with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_COPY) as buf:
-            for name, (dtype, shape, start, numel) in parsed.items():
+            for name, (dtype, shape, start, _, numel) in parsed.items():
                 if numel == 0:
                     # ``torch.frombuffer`` rejects a count of 0, and an empty
                     # tensor stores no bytes to point at anyway.

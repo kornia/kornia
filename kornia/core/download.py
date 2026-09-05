@@ -37,6 +37,21 @@ _HF_BASE = "https://huggingface.co"
 _HF_KORNIA_ORG = "kornia"
 
 
+def _hf_repo_id(repo: str) -> str:
+    """Return the full ``owner/name`` id *repo* names.
+
+    A repository *name* cannot contain a ``/``, so one marks a spelling that
+    already carries its owner; anything else is a repository in the ``kornia``
+    org. Both spellings of the same kornia repo must resolve identically, or the
+    URL and the cache name derived from them could disagree.
+
+    Example:
+        >>> _hf_repo_id("hardnet"), _hf_repo_id("kornia/hardnet")
+        ('kornia/hardnet', 'kornia/hardnet')
+    """
+    return repo if "/" in repo else f"{_HF_KORNIA_ORG}/{repo}"
+
+
 def hf_url(repo: str, filename: str) -> str:
     """Return the HuggingFace URL for a file in a model repo.
 
@@ -57,11 +72,10 @@ def hf_url(repo: str, filename: str) -> str:
         >>> hf_url("google/siglip2-base-patch16-224", "model.safetensors")
         'https://huggingface.co/google/siglip2-base-patch16-224/resolve/main/model.safetensors'
     """
-    repo_id = repo if "/" in repo else f"{_HF_KORNIA_ORG}/{repo}"
-    return f"{_HF_BASE}/{repo_id}/resolve/main/{filename}"
+    return f"{_HF_BASE}/{_hf_repo_id(repo)}/resolve/main/{filename}"
 
 
-def _hf_cache_file_name(repo_id: str, filename: str) -> str:
+def _hf_cache_file_name(repo: str, filename: str) -> str:
     """Return a cache filename that cannot collide with another repo's.
 
     The download cache is one flat directory keyed by filename, which is fine
@@ -76,7 +90,8 @@ def _hf_cache_file_name(repo_id: str, filename: str) -> str:
     stays one filename in one directory.
 
     Args:
-        repo_id: the full ``owner/name`` repository id.
+        repo: the repository, in either spelling :func:`hf_url` accepts. Both
+            resolve to the same cache name, because they resolve to the same URL.
         filename: the file's name within that repository.
 
     Returns:
@@ -85,8 +100,10 @@ def _hf_cache_file_name(repo_id: str, filename: str) -> str:
     Example:
         >>> _hf_cache_file_name("kornia/kimi-vl-a3b-instruct-vision", "model.safetensors")
         'kornia--kimi-vl-a3b-instruct-vision--model.safetensors'
+        >>> _hf_cache_file_name("hardnet", "HardNetPP.pth")
+        'kornia--hardnet--HardNetPP.pth'
     """
-    return f"{repo_id.replace('/', '--')}--{filename}"
+    return f"{_hf_repo_id(repo).replace('/', '--')}--{filename}"
 
 
 _TRANSIENT_HTTP_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
@@ -852,3 +869,41 @@ def download_file_from_url(
         # ``rm``/``del``, and ``repr`` doubles every backslash of a Windows path.
         f"Cache path: {cache_path} -- delete it if it is corrupt and this repeats."
     ) from last_exc
+
+
+def download_hf_file(repo: str, filename: str, *, model_dir: str | None = None, progress: bool = True) -> str:
+    """Download one file from a HuggingFace repo and return the path it is cached at.
+
+    :func:`download_file_from_url` with the two decisions a Hub file needs
+    already made: the ``resolve/main`` URL, and a cache name that carries the
+    repository id. The second one is not optional -- every repository publishing
+    a single-shard checkpoint calls it ``model.safetensors``, and the cache is
+    one flat directory, so caching under the URL basename would serve one
+    repository's weights for another's, silently and on every later call.
+
+    Args:
+        repo: repository name under the ``kornia`` HF org, or a full
+            ``owner/name`` id; see :func:`hf_url`.
+        filename: file at the root of that repo.
+        model_dir: directory to cache the file in. Defaults to torch's
+            ``<hub dir>/checkpoints``, which is the cache CI restores.
+        progress: whether to display a progress bar during a transfer.
+
+    Returns:
+        The path of the cached file. Read a ``.safetensors`` one with
+        :func:`kornia.core.load_safetensors`.
+
+    Raises:
+        RuntimeError: if the download fails; see :func:`download_file_from_url`.
+
+    Example:
+        >>> path = download_hf_file(                        # doctest: +SKIP
+        ...     "kimi-vl-a3b-instruct-vision", "model.safetensors"
+        ... )
+    """
+    return download_file_from_url(
+        hf_url(repo, filename),
+        file_name=_hf_cache_file_name(repo, filename),
+        model_dir=model_dir,
+        progress=progress,
+    )

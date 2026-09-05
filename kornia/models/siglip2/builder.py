@@ -24,7 +24,7 @@ from typing import Optional
 
 import torch
 
-from kornia.core.download import _hf_cache_file_name, download_file_from_url, hf_url
+from kornia.core.download import download_hf_file
 from kornia.core.safetensors import load_safetensors
 
 from .config import SigLip2Config
@@ -53,13 +53,7 @@ def _download_weights(model_name: str, cache_dir: Optional[str]) -> dict[str, to
             read.
         RuntimeError: if the checkpoint cannot be downloaded.
     """
-    path = download_file_from_url(
-        hf_url(model_name, _WEIGHTS_FILE),
-        # Every repo calls its checkpoint ``model.safetensors``; the cache is one
-        # flat directory, so the repo id has to be part of the name.
-        file_name=_hf_cache_file_name(model_name, _WEIGHTS_FILE),
-        model_dir=cache_dir,
-    )
+    path = download_hf_file(model_name, _WEIGHTS_FILE, model_dir=cache_dir)
     try:
         return load_safetensors(path)
     except FileNotFoundError as e:

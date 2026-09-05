@@ -75,7 +75,7 @@ class TestKimiVLBuilder(BaseTester):
         """No optional package: kornia's own downloader, then its own safetensors reader."""
         expected = {"weight": torch.zeros(1)}
         with (
-            patch.object(kimi_vl_builder, "download_file_from_url", return_value="cached.safetensors") as download,
+            patch.object(kimi_vl_builder, "download_hf_file", return_value="cached.safetensors") as download,
             patch.object(kimi_vl_builder, "load_safetensors", return_value=expected) as read,
         ):
             state_dict = kimi_vl_builder._download_weights(kimi_vl_builder._KIMI_VL_A3B_INSTRUCT_REPO_ID, str(tmp_path))
@@ -83,12 +83,7 @@ class TestKimiVLBuilder(BaseTester):
         assert state_dict is expected
         read.assert_called_once_with("cached.safetensors")
         download.assert_called_once_with(
-            "https://huggingface.co/kornia/kimi-vl-a3b-instruct-vision/resolve/main/model.safetensors",
-            # Not ``model.safetensors``: the cache is flat and every HF repo
-            # publishes that same name, so SigLIP2's checkpoint would be served
-            # for this one.
-            file_name="kornia--kimi-vl-a3b-instruct-vision--model.safetensors",
-            model_dir=str(tmp_path),
+            "kornia/kimi-vl-a3b-instruct-vision", "model.safetensors", model_dir=str(tmp_path)
         )
 
     def test_pretrained_config_matches_checkpoint_grid(self):

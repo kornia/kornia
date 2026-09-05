@@ -21,7 +21,7 @@ This subpackage provides core functionality, device management, and backend supp
 """
 
 from . import external
-from .download import download_file_from_url, hf_url, load_state_dict_from_url
+from .download import download_file_from_url, download_hf_file, hf_url, load_state_dict_from_url
 from .mixin import (
     ImageModuleMixIn,
     ONNXExportMixin,
@@ -41,6 +41,7 @@ __all__ = [
     "ONNXRuntimeMixin",
     "TensorWrapper",
     "download_file_from_url",
+    "download_hf_file",
     "external",
     "eye_like",
     "hf_url",

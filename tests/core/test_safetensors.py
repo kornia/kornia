@@ -208,6 +208,34 @@ class TestRejectsCorruptFiles:
         with pytest.raises(ValueError, match="not a range inside it"):
             load_safetensors(path)
 
+    def test_overlapping_ranges(self, tmp_path) -> None:
+        """Two tensors sharing bytes: both ranges fit, and the file is still nonsense."""
+        header = {
+            "a": {"dtype": "F32", "shape": [2], "data_offsets": [0, 8]},
+            "b": {"dtype": "F32", "shape": [2], "data_offsets": [4, 12]},
+        }
+        path = _write(tmp_path, _pack(header, b"\x00" * 12))
+
+        with pytest.raises(ValueError, match="overlaps the entry before it"):
+            load_safetensors(path)
+
+    def test_a_gap_between_ranges(self, tmp_path) -> None:
+        """The spec forbids holes: bytes nothing indexes mean the header is not this file's."""
+        header = {
+            "a": {"dtype": "F32", "shape": [2], "data_offsets": [0, 8]},
+            "b": {"dtype": "F32", "shape": [2], "data_offsets": [12, 20]},
+        }
+        path = _write(tmp_path, _pack(header, b"\x00" * 20))
+
+        with pytest.raises(ValueError, match="leaves a gap after the entry before it"):
+            load_safetensors(path)
+
+    def test_trailing_bytes_belong_to_no_tensor(self, tmp_path, tensors) -> None:
+        path = _write(tmp_path, _build(tensors) + b"\x00" * 16)
+
+        with pytest.raises(ValueError, match="belong to no tensor"):
+            load_safetensors(path)
+
     def test_unknown_dtype(self, tmp_path) -> None:
         header = {"weight": {"dtype": "F8_E4M3", "shape": [2], "data_offsets": [0, 2]}}
         path = _write(tmp_path, _pack(header, b"\x00\x00"))
