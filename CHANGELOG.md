@@ -259,8 +259,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   correctly rounded side, which is the numeric change. `float32`, `float64` and integer grids and
   the pixel ramp are bit-for-bit unchanged, since none of them widen. On CUDA at `float16` up to
   one ulp of the coordinate dtype can still differ, because ATen's and triton's `float32` division
-  are not bit-identical; `bfloat16` absorbs it and the CPU kernels agree exactly. Refs #4030.
-  (#PR_NUMBER)
+  are not bit-identical; `bfloat16` absorbs it and the CPU kernels agree exactly. Refs #4030. (#4231)
 
 ### Bug fixes
 
