@@ -864,8 +864,8 @@ class TestBoxes2D(BaseTester):
         with pytest.raises(RuntimeError, match="differentiable"):
             Boxes(boxes.clone().requires_grad_()).to_mask(5, 6)
 
-    def test_wart_to_mask_fills_the_origin_pixel_for_list_padding_rows(self, device, dtype):
-        # Wart pin: a list-backed object exports its zero padding rows as the exclusive xyxy box
+    def test_wart_to_mask_fills_the_origin_pixel_for_list_padding_rows_4252(self, device, dtype):
+        # Wart pin for kornia#4252: a list-backed object exports its zero padding rows as the exclusive xyxy box
         # [0, 0, 1, 1] (see the padding note on the class), so to_mask marks pixel (0, 0) in the
         # mask channel of every padding entry instead of leaving it empty.
         box = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
@@ -1508,8 +1508,8 @@ class TestBbox3D(BaseTester):
         assert Boxes3D.from_tensor(integer, mode="xyzxyz").dtype == torch.float32
         assert Boxes3D.from_tensor(integer.to(torch.float16), mode="xyzxyz").dtype == torch.float16
 
-    def test_wart_to_tensor_default_mode_ignores_the_stored_label(self, device, dtype):
-        # Wart pin: Boxes3D.to_tensor() defaults to 'xyzxyz' whatever mode the object was built in,
+    def test_wart_to_tensor_default_mode_ignores_the_stored_label_4251(self, device, dtype):
+        # Wart pin for kornia#4251: Boxes3D.to_tensor() defaults to 'xyzxyz' whatever mode the object was built in,
         # while Boxes.to_tensor() defaults to the stored mode. The copy path of transform_boxes
         # also resets the label to 'xyzxyz_plus' where the in-place path keeps it.
         xyzwhd = torch.tensor([[1.0, 2.0, 3.0, 4.0, 3.0, 5.0]], device=device, dtype=dtype)
@@ -1523,8 +1523,10 @@ class TestBbox3D(BaseTester):
         assert boxes.transform_boxes(identity).mode == "xyzxyz_plus"
         assert boxes.transform_boxes_(identity).mode == "xyzwhd"
 
-    @pytest.mark.xfail(strict=True, raises=AssertionError, reason="Boxes3D.to_tensor() ignores the stored mode label")
-    def test_convention_to_tensor_default_mode_is_the_stored_label(self, device, dtype):
+    @pytest.mark.xfail(
+        strict=True, raises=AssertionError, reason="kornia#4251: Boxes3D.to_tensor() ignores the stored mode label"
+    )
+    def test_convention_to_tensor_default_mode_is_the_stored_label_4251(self, device, dtype):
         xyzwhd = torch.tensor([[1.0, 2.0, 3.0, 4.0, 3.0, 5.0]], device=device, dtype=dtype)
         self.assert_close(Boxes3D.from_tensor(xyzwhd, mode="xyzwhd").to_tensor(), xyzwhd, atol=0.0, rtol=0.0)
 
@@ -1821,9 +1823,9 @@ class TestVideoBoxes(BaseTester):
         assert transformed.temporal_channel_size == 3
         self.assert_close(transformed.to_tensor(), boxes, atol=0.0, rtol=0.0)
 
-    def test_wart_inherited_methods_break_on_the_temporal_wrapper(self, device, dtype):
-        # Wart pin: the to_tensor override drops the as_padded_sequence keyword that the inherited
-        # get_boxes_shape and to_mask pass, and indexing builds a wrapper without the temporal size,
+    def test_wart_inherited_methods_break_on_the_temporal_wrapper_4249(self, device, dtype):
+        # Wart pin for kornia#4249: the to_tensor override drops the as_padded_sequence keyword that
+        # the inherited get_boxes_shape and to_mask pass, and indexing builds a wrapper without the temporal size,
         # so its to_tensor fails. Methods that copy through clone keep the temporal size.
         video_boxes = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1))
         with pytest.raises(TypeError, match="as_padded_sequence"):
@@ -1843,9 +1845,9 @@ class TestVideoBoxes(BaseTester):
         assert video_boxes.to(dtype=torch.float32).temporal_channel_size == 3
 
     @pytest.mark.xfail(
-        strict=True, raises=AssertionError, reason="VideoBoxes.get_boxes_shape and to_mask raise TypeError"
+        strict=True, raises=AssertionError, reason="kornia#4249: VideoBoxes.get_boxes_shape and to_mask raise TypeError"
     )
-    def test_convention_inherited_shape_and_mask_work_on_the_temporal_wrapper(self, device, dtype):
+    def test_convention_inherited_shape_and_mask_work_on_the_temporal_wrapper_4249(self, device, dtype):
         video_boxes = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1))
         try:
             heights, widths = video_boxes.get_boxes_shape()

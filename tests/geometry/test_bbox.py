@@ -579,8 +579,8 @@ class TestBbox3D(BaseTester):
         self.assert_close(widths, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("num_boxes", [1, 8])
-    def test_wart_rank4_input_passes_validate_bbox3d_then_breaks_the_3d_helpers(self, device, dtype, num_boxes):
-        # Wart pin: validate_bbox3d accepts (B, N, 8, 3), but infer_bbox_shape3d and bbox_to_mask3d
+    def test_wart_rank4_input_passes_validate_bbox3d_then_breaks_the_3d_helpers_4248(self, device, dtype, num_boxes):
+        # Wart pin for kornia#4248: validate_bbox3d accepts (B, N, 8, 3), but infer_bbox_shape3d and bbox_to_mask3d
         # then index the box axis as the vertex axis. With one box that raises out-of-bounds errors;
         # with eight boxes infer_bbox_shape3d instead returns three (1, 3) tensors, one value per
         # coordinate rather than per box. The 2D helpers had the same defect until kornia#4180.
@@ -601,9 +601,9 @@ class TestBbox3D(BaseTester):
     @pytest.mark.xfail(
         strict=True,
         raises=AssertionError,
-        reason="rank-4 3D input is not rejected with ShapeError as the 2D helpers do since kornia#4218",
+        reason="kornia#4248: rank-4 3D input is not rejected with ShapeError as the 2D helpers do since kornia#4218",
     )
-    def test_convention_rank4_input_is_rejected_by_the_3d_helpers(self, device, dtype, num_boxes):
+    def test_convention_rank4_input_is_rejected_by_the_3d_helpers_4248(self, device, dtype, num_boxes):
         boxes = self._unit_cuboid(device, dtype).expand(num_boxes, 8, 3)[None].contiguous()
         for call in (lambda: infer_bbox_shape3d(boxes), lambda: bbox_to_mask3d(boxes, (4, 5, 5))):
             try:
@@ -658,8 +658,8 @@ class TestBbox3D(BaseTester):
         expected[0, 0, 1:3, 1:3, 1:4] = 1.0
         self.assert_close(bbox_to_mask3d(boxes, (5, 5, 6)), expected, atol=0.0, rtol=0.0)
 
-    def test_wart_bbox_to_mask3d_returns_float32_with_a_channel_axis(self, device, dtype):
-        # Wart pin: the 3D free function returns float32 (B, 1, D, H, W) whatever the input dtype,
+    def test_wart_bbox_to_mask3d_returns_float32_with_a_channel_axis_4250(self, device, dtype):
+        # Wart pin for kornia#4250: the 3D free function returns float32 (B, 1, D, H, W) whatever the input dtype,
         # while bbox_to_mask keeps the input dtype and returns (B, H, W). Neither carries a gradient.
         cuboid = self._unit_cuboid(device, dtype)
         mask = bbox_to_mask3d(cuboid, (4, 5, 6))

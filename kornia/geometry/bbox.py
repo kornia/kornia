@@ -111,7 +111,8 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
     .. warning::
         :func:`validate_bbox` returns ``False`` where this function raises; that inconsistency is tracked in
         `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Rank-4 input passes this check but breaks
-        :func:`infer_bbox_shape3d` and :func:`bbox_to_mask3d`; see their warnings.
+        :func:`infer_bbox_shape3d` and :func:`bbox_to_mask3d`, tracked in
+        `#4248 <https://github.com/kornia/kornia/issues/4248>`_.
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
@@ -224,7 +225,7 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
         returning ``False``, see `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Batched :math:`(B, N, 8, 3)`
         input passes validation but is then indexed as if the box axis were the vertex axis, which raises an
         indexing error or returns wrong-shaped values depending on ``N``; flatten to :math:`(B \cdot N, 8, 3)`
-        first.
+        first. Tracked in `#4248 <https://github.com/kornia/kornia/issues/4248>`_.
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
@@ -362,10 +363,10 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         The truncation differs from the inclusive raw-float comparison of :func:`bbox_to_mask` and the rounding
         of :meth:`~kornia.geometry.boxes.Boxes3D.to_mask` for fractional coordinates and is tracked in
         `#4015 <https://github.com/kornia/kornia/issues/4015>`_. The ``float32`` output with a channel axis is
-        documented as it is; it is pinned by ``test_wart_bbox_to_mask3d_returns_float32_with_a_channel_axis`` in
-        ``tests/geometry/test_bbox.py``. Validation raises rather than returning ``False``,
-        `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Batched :math:`(B, N, 8, 3)` input passes validation
-        and then raises an indexing or broadcasting error; flatten it first.
+        tracked in `#4250 <https://github.com/kornia/kornia/issues/4250>`_. Validation raises rather than returning
+        ``False``, `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Batched :math:`(B, N, 8, 3)` input passes
+        validation and then raises an indexing or broadcasting error; flatten it first. Tracked in
+        `#4248 <https://github.com/kornia/kornia/issues/4248>`_.
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape

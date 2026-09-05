@@ -794,9 +794,8 @@ class Boxes:
         .. warning::
             The argument-order split with :func:`~kornia.geometry.bbox.bbox_to_mask` is tracked in
             `#4014 <https://github.com/kornia/kornia/issues/4014>`_ and the rounding split in
-            `#4015 <https://github.com/kornia/kornia/issues/4015>`_. The padding-entry pixel is documented as it is and
-            pinned by ``test_wart_to_mask_fills_the_origin_pixel_for_list_padding_rows`` in
-            ``tests/geometry/test_boxes.py``.
+            `#4015 <https://github.com/kornia/kornia/issues/4015>`_. The padding-entry pixel is tracked in
+            `#4252 <https://github.com/kornia/kornia/issues/4252>`_.
 
         Args:
             height: height of the masked image/images.
@@ -1057,9 +1056,8 @@ class VideoBoxes(Boxes):
     .. warning::
         :meth:`get_boxes_shape` and :meth:`to_mask` raise ``TypeError`` because the :meth:`to_tensor` override
         does not accept the ``as_padded_sequence`` keyword they pass, and indexing returns a wrapper without
-        :attr:`temporal_channel_size`, so its :meth:`to_tensor` raises ``AttributeError``. Both are documented as
-        they are and pinned by ``test_wart_inherited_methods_break_on_the_temporal_wrapper`` in
-        ``tests/geometry/test_boxes.py``. The inert ``validate_boxes`` flag is part of
+        :attr:`temporal_channel_size`, so its :meth:`to_tensor` raises ``AttributeError``. Both are tracked in
+        `#4249 <https://github.com/kornia/kornia/issues/4249>`_. The inert ``validate_boxes`` flag is part of
         `#4177 <https://github.com/kornia/kornia/issues/4177>`_.
 
     Attributes:
@@ -1186,10 +1184,10 @@ class Boxes3D:
         :func:`~kornia.geometry.bbox.validate_bbox` is `#4013 <https://github.com/kornia/kornia/issues/4013>`_, and
         boxes built by :func:`~kornia.geometry.bbox.bbox_generator3d` measure one larger than requested,
         `#4018 <https://github.com/kornia/kornia/issues/4018>`_. The :meth:`to_tensor` default-mode split with
-        :class:`Boxes` is documented as it is and pinned by
-        ``test_wart_to_tensor_default_mode_ignores_the_stored_label`` in
-        ``tests/geometry/test_boxes.py``. :meth:`to_mask` rejects boxes that require grad even though
-        :meth:`to_tensor` is differentiable; see the note on :meth:`to_tensor`.
+        :class:`Boxes` is tracked in `#4251 <https://github.com/kornia/kornia/issues/4251>`_, and the rank-4 breakage
+        of the free functions in `#4248 <https://github.com/kornia/kornia/issues/4248>`_. :meth:`to_mask` rejects
+        boxes that require grad even though :meth:`to_tensor` is differentiable; see the note on
+        :meth:`to_tensor`.
 
     """
 
@@ -1346,7 +1344,8 @@ class Boxes3D:
 
         Convention:
             ``mode`` selects the export format and defaults to ``'xyzxyz'`` regardless of the label stored by
-            :meth:`from_tensor` or the constructor; :meth:`Boxes.to_tensor` defaults to its stored mode instead.
+            :meth:`from_tensor` or the constructor; :meth:`Boxes.to_tensor` defaults to its stored mode instead
+            (`#4251 <https://github.com/kornia/kornia/issues/4251>`_).
             Every export starts from the ``amin``/``amax`` bounds of the stored vertices, so it is the
             axis-aligned bounding box of a rotated hexahedron.
 
