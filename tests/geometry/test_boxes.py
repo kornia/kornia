@@ -37,6 +37,24 @@ class TestBoxes2D(BaseTester):
         expected = torch.tensor([[[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]]], device=device, dtype=dtype)
         self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh"])
+    def test_convention_from_tensor_rejects_non_finite_coordinates_4238(self, mode, device, dtype):
+        # Pin kornia#4238: eager validation rejects non-finite values in both
+        # unbatched and batched inputs, even when valid rows are present too.
+        source = torch.tensor([[0.0, 0.0, 4.0, 4.0], [1.0, 1.0, 5.0, 5.0]], device=device, dtype=dtype)
+        for source_layout in [source, source.unsqueeze(0)]:
+            for coordinate_index in range(4):
+                for non_finite in [float("nan"), float("inf"), float("-inf")]:
+                    invalid_source = source_layout.clone()
+                    invalid_source.reshape(-1, 4)[1, coordinate_index] = non_finite
+                    with pytest.raises(ValueError, match="non-finite coordinates"):
+                        Boxes.from_tensor(invalid_source, mode=mode, validate_boxes=True)
+
+    def test_convention_from_tensor_opt_out_preserves_non_finite_input_4238(self, device, dtype):
+        source = torch.tensor([[0.0, 0.0, float("nan"), 4.0]], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(source, mode="xyxy", validate_boxes=False)
+        assert torch.isnan(boxes.data).any()
+
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
     def test_convention_axis_aligned_box_round_trips_in_each_mode(self, mode, device, dtype):
         # Convention pin: an axis-aligned rectangle whose extent is at least one unit
@@ -584,7 +602,6 @@ class TestBoxes2D(BaseTester):
             self.assert_close(actual, expected)
 
     def test_compute_area(self):
-
         # Rectangle
         box_1 = [[0.0, 0.0], [100.0, 0.0], [100.0, 50.0], [0.0, 50.0]]
         # Trapezoid

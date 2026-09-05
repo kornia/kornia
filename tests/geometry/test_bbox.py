@@ -120,6 +120,23 @@ class TestBbox2D(BaseTester):
         assert expanded.stride(0) == 0
         assert validate_bbox(expanded) is True
 
+    def test_convention_validate_bbox_rejects_non_finite_coordinates_4238(self, device, dtype):
+        # Pin kornia#4238: NaN and infinite coordinates must not pass validation,
+        # including when an invalid row is mixed with a valid row.
+        boxes = torch.tensor(
+            [
+                [[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]],
+                [[1.0, 1.0], [5.0, 1.0], [5.0, 5.0], [1.0, 5.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        for coordinate_index in range(8):
+            for non_finite in [float("nan"), float("inf"), float("-inf")]:
+                invalid_boxes = boxes.clone()
+                invalid_boxes[1].reshape(-1)[coordinate_index] = non_finite
+                assert validate_bbox(invalid_boxes) is False
+
     def test_convention_validate_bbox_invariance_is_exact_arithmetic_only(self, device):
         # In float16 the inclusive +1 rounds distinct sub-unit spans to the same
         # value, although the exclusive span difference exceeds the 1e-4 threshold.
