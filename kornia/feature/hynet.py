@@ -293,13 +293,16 @@ class HyNet(nn.Module):
         x = self.layer5(x)
         x = self.layer6(x)
         x = self.layer7(x)
-        # The normalisation divides by the descriptor's own L2 norm, and `eps_l2_norm` is what keeps that
-        # division defined for a patch the network maps to exactly zero. 1e-10 is not representable in
-        # float16 -- it flushes to 0.0 -- so the guard is inert there and the division returns NaN
-        # (kornia#4224). Half precision therefore takes this step in float32 and casts back, the same
-        # treatment `siftdesc.py` gives its own 1e-10 guard. float32 and float64 take the original
-        # expression unchanged, bit for bit. It also sidesteps `avg_pool3d`, which
-        # `F.local_response_norm` uses for a 4-D input and which has no CPU half-precision kernel.
+        # Half precision takes this step in float32 and casts back, for two reasons that between them
+        # cover both half dtypes. (1) `desc_norm` divides by the descriptor's own L2 norm, and
+        # `eps_l2_norm` is what keeps that division defined for a patch the network maps to exactly
+        # zero -- which HyNet does with `is_bias=False`. 1e-10 is not representable in float16, where
+        # it would flush to 0.0 and leave 0/0; bfloat16 keeps float32's exponent range, so the guard
+        # survives there and this half of the argument does not apply to it. (2) `F.local_response_norm`
+        # routes a 4-D input through `avg_pool3d`, which has no CPU kernel for *either* half dtype, so
+        # the lift is what makes CPU half work at all. Note the lift is therefore wider than the one
+        # `siftdesc.py` gives its own 1e-10 guards, which is float16-only for reason (1) alone.
+        # float32 and float64 take the original expression unchanged, bit for bit.
         if x.dtype in (torch.float16, torch.bfloat16):
             x = self.desc_norm(x.float() + self.eps_l2_norm).to(x.dtype)
         else:
