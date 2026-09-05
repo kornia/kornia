@@ -152,6 +152,49 @@ class TestProjectionZ1(BaseTester):
         self._test_jit_project(device, dtype)
         self._test_jit_unproject(device, dtype)
 
+    def test_wart_unproject_points_z1_rejects_the_documented_extension_shape_4282(self, device, dtype):
+        # Wart pin for kornia#4282 (audit labels 5a-z1-11, 5a-z1-12, Y5-18): the guard is written
+        # ``elif extension.shape[0] > 1: extension = extension[..., None]``, which unsqueezes on the BATCH size
+        # rather than comparing ranks, so it is exactly backwards -- the documented ``(..., 1)`` extension raises
+        # for N > 1 while an undocumented ``(N,)`` extension works. The sibling unproject_points_orthographic
+        # compares ranks and accepts both (pinned in TestProjectionOrthographic below).
+        # Snippet used to generate expected: points [[1, 2], [3, 4]] with extension [3, 5] executed 2026-09-05
+        # (torch 2.14.0, cpu and mps, every dtype) -> [[3., 6., 3.], [15., 20., 5.]]; the (2, 1) extension raises
+        # RuntimeError("Sizes of tensors must match except in dimension 2").
+        # Pins the CURRENT behavior; NOT a contract; delete when #4282 is repaired.
+        points = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
+        undocumented = unproject_points_z1(points, torch.tensor([3.0, 5.0], device=device, dtype=dtype))
+        expected = torch.tensor([[3.0, 6.0, 3.0], [15.0, 20.0, 5.0]], device=device, dtype=dtype)
+        self.assert_close(undocumented, expected, atol=0.0, rtol=0.0)
+        with pytest.raises(RuntimeError, match="Sizes of tensors must match"):
+            unproject_points_z1(points, torch.tensor([[3.0], [5.0]], device=device, dtype=dtype))
+
+    def test_wart_project_points_z1_returns_inf_at_z_zero_4267(self, device, dtype):
+        # Wart pin for kornia#4267 (audit labels 5a-z1-02, 5a-z1-07, Y4-05): project_points_z1 divides plainly, so
+        # the camera-plane point (1, 2, 0) returns inf in every dtype. Its docstring states a ``z > 0``
+        # precondition that is never validated. This is one of four different answers the namespace gives at the
+        # same singular input -- project_points returns [[104, 203]], PinholeCamera.project [[100, 200]] and
+        # cam2pixel a finite 1e14.
+        # Snippet used to generate expected: project_points_z1([[1., 2., 0.]]) executed 2026-09-05 (torch 2.14.0,
+        # cpu and mps, every dtype) -> [[inf, inf]]. NOT a contract; delete when #4267 is repaired.
+        out = project_points_z1(torch.tensor([[1.0, 2.0, 0.0]], device=device, dtype=dtype))
+        assert bool(torch.isinf(out).all())
+        assert bool((out > 0).all())
+
+    def test_convention_dx_project_points_z1_matches_autograd(self, device, dtype):
+        # Convention pin (audit labels 5a-z1-15, 5a-z1-16): dx_project_points_z1 returns the (..., 2, 3) Jacobian
+        # of project_points_z1, laid out d(u, v) / d(x, y, z) -- row-major in the OUTPUT index. Checked against
+        # torch.autograd.functional.jacobian at an off-axis point (1, 2, 3) where all six entries differ, so a
+        # transposed layout or a swapped (u, v) row fails.
+        # Snippet used to generate expected: autograd.functional.jacobian(project_points_z1, [1., 2., 3.])
+        # executed 2026-09-05 (torch 2.14.0, cpu and mps) -> max abs difference 1.49e-08 in float32, 0.0 in
+        # float64/float16/bfloat16.
+        points = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
+        analytic = dx_project_points_z1(points)
+        numeric = torch.autograd.functional.jacobian(project_points_z1, points)
+        assert analytic.shape == (2, 3)
+        self.assert_close(analytic, numeric)
+
 
 class TestProjectionOrthographic(BaseTester):
     def test_smoke(self, device, dtype):
@@ -245,3 +288,30 @@ class TestProjectionOrthographic(BaseTester):
     def test_jit(self, device, dtype) -> None:
         self._test_jit_project(device, dtype)
         self._test_jit_unproject(device, dtype)
+
+    def test_convention_orthographic_drops_and_restores_the_z_axis(self, device, dtype):
+        # Convention pin (audit labels 5a-or-01, 5a-or-03): the orthographic projection drops z and keeps (x, y)
+        # in order -- (1, 2, 3) -> (1, 2), never (1, 3) or (2, 1) -- and the unprojection appends the extension as
+        # the z component, so (1, 2) with extension 3 restores (1, 2, 3) exactly. Distinct x, y and z so every
+        # axis permutation changes the literal.
+        # Snippet used to generate expected: both calls executed 2026-09-05 (torch 2.14.0, cpu and mps, every
+        # dtype) -> [1., 2.] and [1., 2., 3.]; exact, no divide is involved.
+        points_3d = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
+        projected = project_points_orthographic(points_3d)
+        self.assert_close(projected, torch.tensor([1.0, 2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        restored = unproject_points_orthographic(projected, torch.tensor([3.0], device=device, dtype=dtype))
+        self.assert_close(restored, points_3d, atol=0.0, rtol=0.0)
+
+    def test_convention_unproject_points_orthographic_accepts_both_extension_shapes(self, device, dtype):
+        # Convention pin (audit labels 5a-or-04, 5a-or-05, Y5-19): unproject_points_orthographic compares the
+        # extension's RANK with the points' rank -- the right predicate -- so a (N,) and a (N, 1) extension are
+        # both accepted for N > 1 and give the same answer. Its sibling unproject_points_z1 uses the batch size
+        # instead and rejects the documented (N, 1) shape for N > 1 (kornia#4282, pinned in TestProjectionZ1).
+        # Snippet used to generate expected: points [[1, 2], [3, 4]] with extensions [5, 6] and [[5], [6]]
+        # executed 2026-09-05 (torch 2.14.0, cpu and mps, every dtype) -> [[1., 2., 5.], [3., 4., 6.]] for both.
+        points = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[1.0, 2.0, 5.0], [3.0, 4.0, 6.0]], device=device, dtype=dtype)
+        flat = unproject_points_orthographic(points, torch.tensor([5.0, 6.0], device=device, dtype=dtype))
+        column = unproject_points_orthographic(points, torch.tensor([[5.0], [6.0]], device=device, dtype=dtype))
+        self.assert_close(flat, expected, atol=0.0, rtol=0.0)
+        self.assert_close(column, expected, atol=0.0, rtol=0.0)
