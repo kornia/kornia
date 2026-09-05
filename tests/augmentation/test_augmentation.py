@@ -4774,6 +4774,32 @@ class TestPadTo(BaseTester):
         assert out.shape == (1, 1, 4, 5)
         self.assert_close(aug.inverse(out), img)
 
+    def test_crop_if_exceeds_true_crops_larger_input(self, device, dtype):
+        img = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=True)
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 5)
+        self.assert_close(out, img[..., :4, :5])
+
+    def test_crop_if_exceeds_false_keeps_larger_input_unchanged(self, device, dtype):
+        img = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=False)
+        out = aug(img)
+        assert out.shape == (1, 1, 6, 6)
+        self.assert_close(out, img)
+        self.assert_close(aug.inverse(out), img)
+
+    def test_crop_if_exceeds_false_mixed_dims(self, device, dtype):
+        # height (6) exceeds target (4); width (2) is below target (5)
+        img = torch.rand(1, 1, 6, 2, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=False)
+        out = aug(img)
+        assert out.shape == (1, 1, 6, 5)
+        # the exceeding height dimension is left untouched, and the original
+        # content is preserved with zeros padded onto the short width dimension
+        self.assert_close(out[..., :2], img)
+        self.assert_close(out[..., 2:], torch.zeros(1, 1, 6, 3, device=device, dtype=dtype))
+
 
 class TestResize:
     def test_smoke(self, device, dtype):
