@@ -31,7 +31,7 @@ import torch
 
 import kornia
 from kornia.core._compat import torch_version, torch_version_lt
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, are_checks_enabled, disable_checks, enable_checks
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.core.ops import eye_like
 from kornia.geometry.conversions import (
@@ -682,10 +682,11 @@ class TestAngleAxisToQuaternion(BaseTester):
         # one, with no error and no warning. The buffer now takes its dtype from the computed
         # values (sqrt already promotes them), so the result is the float quaternion below.
         # The wart this replaces said the intended behavior was undecided -- promote, or raise a
-        # TypeError the way a dtype guard would. Promotion is the choice; the sibling wart
-        # TestNormalTransformPixel.test_wart_integer_dtype_truncates_the_scale_to_zero_3959 pins
-        # the same family of defect and is still open, so this pin is also the precedent it should
-        # follow.
+        # TypeError the way a dtype guard would. Promotion is the choice here. The same family of
+        # defect in normal_transform_pixel went the OTHER way and now REJECTS the dtype -- see
+        # TestNormalTransformPixel.test_convention_integer_dtype_is_rejected_3959, which records
+        # why the precedent was not followed there -- so kornia#3959 is deliberately no longer
+        # uniform, and neither cell is the precedent for the rest of it.
         # Four cells because the promotion happens through torch's own type rules rather than an
         # explicit .float(): a signed/unsigned or narrow/wide difference would show up here.
         # The dtype fixture is dropped because the claim is about the input dtype itself.
@@ -3953,39 +3954,59 @@ class TestNormalTransformPixel(BaseTester):
         finally:
             torch.set_default_dtype(previous)
 
-    def test_wart_integer_dtype_truncates_the_scale_to_zero_3959(self, device):
-        # Wart pin for kornia#3959: the matrix is built by torch.tensor([...], dtype=dtype) from
-        # Python floats, so an integer dtype truncates every scale below 1 to 0 and the function
-        # returns a rank-deficient matrix -- no error, no warning. The 2-D result maps EVERY pixel
-        # to the constant (-1, -1) -- recorded in the snippet as pure arithmetic on the
-        # bitwise-pinned integer matrix, so it is not asserted separately (and no integer matmul
-        # runs, which CUDA would not implement). The 3-D cell keeps depth = 2 so that its z scale, 2/1 = 2,
-        # survives the truncation: a partial fix that only promotes float scales would still have
-        # to flip the two zeroed axes.
-        # There is deliberately NO companion strict xfail: the intended behavior is undecided
-        # (promote to float, or raise), and an assertion-shaped xfail can express only the first.
-        # kornia#3948, the same defect in axis_angle_to_quaternion, was settled by PROMOTING --
-        # see TestAngleAxisToQuaternion.test_convention_integer_input_is_promoted_to_float_3948 --
-        # so that is the precedent a fix here should follow, but it is precedent and not a decision
-        # taken for this function, which is why the pin stays a wart rather than becoming an xfail.
-        # If either cell fails, #3959 was (partly) fixed -- remove this pin. NOT a contract that an
-        # integer dtype must keep returning a degenerate matrix.
+    @pytest.mark.parametrize("rejected_dtype", [torch.int64, torch.int32, torch.uint8, torch.bool])
+    def test_convention_integer_dtype_is_rejected_3959(self, device, rejected_dtype):
+        # Replaces the wart pin test_wart_integer_dtype_truncates_the_scale_to_zero_3959, which
+        # recorded the truncation as undecided behavior. It is decided: the dtype is rejected.
+        # The matrix scales by 2/(size - 1), fractional for every dimension larger than 3 pixels,
+        # so an integer dtype truncated every scale below 1 to 0 and the function returned a
+        # rank-deficient matrix -- [[0, 0, -1], [0, 0, -1], [0, 0, 1]] in 2-D, mapping EVERY pixel
+        # to the constant (-1, -1), and diagonal [0, 0, 2] in 3-D, where depth = 2 keeps 2/1 = 2
+        # alive through the truncation. No error, no warning.
+        # kornia#3948 (axis_angle_to_quaternion) settled the sibling defect by PROMOTING, and the
+        # wart named that as the precedent a fix here should follow. It is not followed, for a
+        # reason specific to this function: promotion would silently change the dtype a caller
+        # explicitly asked for, on a function whose whole contract is "give me this dtype", and the
+        # matrix feeds torch.jit-scripted warp_affine where a surprise dtype propagates. Rejecting
+        # is the narrower change; #3948's own float output is not a dtype the caller named.
+        # Four cells because the guard is a membership test over floating and complex dtypes rather
+        # than a dtype.is_floating_point call (TorchScript cannot reach dtype attributes): a
+        # signed/unsigned, narrow/wide, or bool difference would show up here.
         # The dtype fixture is dropped because the claim is about the dtype argument itself.
-        # Snippet used to generate expected (torch only, executed on cpu):
-        #   normal_transform_pixel(4, 5, dtype=torch.int64)
-        #     -> [[0, 0, -1], [0, 0, -1], [0, 0, 1]]
-        #   normal_transform_pixel3d(2, 4, 5, dtype=torch.int64)
-        #     -> diag [0, 0, 2]   (2/(5-1) and 2/(4-1) truncate, 2/(2-1) does not)
-        #   matrix @ (x, y, 1) -> (-1, -1, 1) for every pixel -- e.g. (0, 0), (4, 3), (2, 1)
-        matrix = kornia.geometry.conversions.normal_transform_pixel(4, 5, device=device, dtype=torch.int64)
-        matrix3d = kornia.geometry.conversions.normal_transform_pixel3d(2, 4, 5, device=device, dtype=torch.int64)
+        with pytest.raises(ValueError, match="floating point or complex"):
+            kornia.geometry.conversions.normal_transform_pixel(4, 5, device=device, dtype=rejected_dtype)
+        with pytest.raises(ValueError, match="floating point or complex"):
+            kornia.geometry.conversions.normal_transform_pixel3d(2, 4, 5, device=device, dtype=rejected_dtype)
 
-        assert matrix[0].tolist() == [[0, 0, -1], [0, 0, -1], [0, 0, 1]], (
-            "kornia#3959: an integer dtype no longer truncates the 2-D normalization scales to 0"
-        )
-        assert [matrix3d[0, i, i].item() for i in range(3)] == [0, 0, 2], (
-            "kornia#3959: an integer dtype no longer truncates the 3-D normalization scales to 0"
-        )
+    @pytest.mark.parametrize("accepted_dtype", [torch.float16, torch.bfloat16, torch.complex64])
+    def test_convention_non_default_float_and_complex_dtypes_are_accepted_3959(self, device, accepted_dtype):
+        # The guard must reject integers WITHOUT narrowing the accepted set to the three common
+        # floats. Complex is accepted because a complex scale is a well-defined answer -- the
+        # 2-D matrix comes back as [(0.5+0j), 0j, (-1+0j)] -- and because narrowing here would
+        # break a caller that never hit the defect.
+        matrix = kornia.geometry.conversions.normal_transform_pixel(4, 5, device=device, dtype=accepted_dtype)
+        assert matrix.dtype == accepted_dtype
+        assert matrix.shape == (1, 3, 3)
+
+    def test_convention_integer_dtype_rejection_is_unconditional_3959(self, device):
+        # The guard is deliberately NOT a KORNIA_CHECK. KORNIA_CHECK is gated on
+        # _KORNIA_CHECKS_ENABLED, which disable_checks(), python -O and KORNIA_CHECKS=0 all clear,
+        # and the module documents that as the production path -- so a KORNIA_CHECK here would
+        # leave the rank-deficient matrix reachable in exactly the configuration a deployment
+        # runs. This pin is the difference between the two tiers; if it fails, the guard has been
+        # demoted to an optional assertion and kornia#3959 is unfixed under -O.
+        # python -O cannot be entered from inside a test (the flag is read at import), so this
+        # covers the runtime switch; the -O and KORNIA_CHECKS=0 legs are covered by construction,
+        # the guard being a plain if/raise that reads no flag at all.
+        checks_were_enabled = are_checks_enabled()
+        disable_checks()
+        try:
+            assert not are_checks_enabled()
+            with pytest.raises(ValueError, match="floating point or complex"):
+                kornia.geometry.conversions.normal_transform_pixel(4, 5, device=device, dtype=torch.int64)
+        finally:
+            if checks_were_enabled:
+                enable_checks()
 
 
 class TestNormalizeHomography(BaseTester):
@@ -4470,8 +4491,10 @@ class TestNormalizeHomography(BaseTester):
     def test_wart_integer_input_raises_or_nans_by_backend_3959(self, device):
         # Wart pin for kornia#3959's homography reach, companion to normalize_homography's
         # integer-input warning: the normalization matrices are cast to the input's int64 by
-        # .to(input), truncating their scales to zero (the truncation itself is pinned in
-        # test_wart_integer_dtype_truncates_the_scale_to_zero_3959 above), and the downstream
+        # .to(input), truncating their scales to zero (the CALLER does the truncating here: both
+        # functions call normal_transform_pixel WITHOUT a dtype and cast the float result with
+        # .to(input), so normal_transform_pixel's own dtype guard never sees the int64 and this
+        # leg of kornia#3959 is untouched by it), and the downstream
         # failure differs by backend. normalize_homography dies in the FINAL CHAIN MATMUL with a
         # RuntimeError -- the closed-form inverse does not raise, it silently promotes the
         # truncated int64 matrix to an all-nan float32 one, and the int64-vs-float32 matmul then
