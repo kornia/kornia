@@ -20,3 +20,7 @@
 This package provides model architectures and utilities for state-of-the-art models for Visual Language
 Models and Vision Language Action Models.
 """
+
+from kornia.models.rrdbnet import RRDBNet
+
+__all__ = ["RRDBNet"]

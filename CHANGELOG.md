@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* `kornia.models.RRDBNet`, a vendored Real-ESRGAN generator; `RRDBNetBuilder` no longer needs `basicsr`. (#XXXX)
+
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
   historical scale-space SIFT CPU/CUDA batch-runtime comparisons and plotting. (#4254)

@@ -22,10 +22,11 @@ from torch import nn
 
 from kornia.config import kornia_config
 from kornia.core.external import PILImage as Image
-from kornia.core.external import basicsr, onnx
+from kornia.core.external import onnx
 from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.models.base import ModelBase
 from kornia.models.processors import OutputRangePostProcessor, ResizePreProcessor
+from kornia.models.rrdbnet import RRDBNet
 from kornia.models.small_sr import SmallSRNetWrapper
 from kornia.onnx.download import CachedDownloader
 
@@ -187,21 +188,13 @@ class RRDBNetBuilder:
             ValueError: If ``model_name`` is not one of the supported variants.
         """
         if model_name == "RealESRGAN_x4plus":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
-                num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4
-            )
+            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
         elif model_name == "RealESRNet_x4plus":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
-                num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4
-            )
+            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
         elif model_name == "RealESRGAN_x4plus_anime_6B":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
-                num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4
-            )
+            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4)
         elif model_name == "RealESRGAN_x2plus":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
-                num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=2
-            )
+            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=2)
         else:
             raise ValueError(
                 f"Model {model_name} not found. Please choose from "
