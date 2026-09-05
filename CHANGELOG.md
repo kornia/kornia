@@ -112,6 +112,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+* Non-maxima suppression applies one border rule at every window size. `NonMaximaSuppression2d` /
+  `nms2d` with a window larger than `(7, 7)`, and `NonMaximaSuppression3d` / `nms3d`, no longer report
+  maxima inside the `(k - 1) // 2` border strip. Previously the general path replicate-padded its input,
+  so a position whose window ran off an edge was judged against duplicated copies of the edge values,
+  which both fabricated plateaus that suppressed genuine maxima and hid genuine neighbours that should
+  have suppressed spurious ones; the `(3, 3)`, `(5, 5)` and `(7, 7)` paths meanwhile rejected the strip
+  outright, so the two disagreed about the same pixel. The explicit paths' rule is now the rule
+  everywhere. Every kornia detector already rejects that strip -- ALIKED by hand after calling `nms2d`,
+  DISK and XFeat by using `k = 5`, `MultiResolutionDetector` by zeroing 15 px before the call -- so no
+  detector output changes. (#4239, #4242)
+
+* `NonMaximaSuppression2d` no longer registers a `kernel` buffer, and neither suppression module keeps a
+  `padding` attribute; both belonged to the convolution that the max-pool implementation replaces. A
+  state dict saved from a module that contains one of them, such as `MultiResolutionDetector`, carries a
+  now-unexpected `nms.kernel` key and needs `load_state_dict(..., strict=False)`. No pretrained kornia
+  checkpoint contains that key. (#4242)
+
+* `nms2d(x, (1, 1))` returns `x` unchanged instead of `x` thresholded at zero. A 1x1 window has no
+  neighbours, so nothing can be suppressed; the old result was an artifact of the zeroed centre tap of
+  the convolution kernel summing to `0.0`. (#4242)
+
 * Kornia's minimum supported PyTorch version rises to 2.5.1. Previously the declared floor was
   2.0.0; PR-time CI has only ever exercised 2.5.1 and newer, and this same change retires the
   scheduled-CI legs that tested anything older.
@@ -248,6 +269,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   zero-scale input keeps its center and zero affine block.
 
 ### Bug fixes
+
+* Non-maxima suppression with a window larger than `(7, 7)` no longer builds a `(k*k, 1, k, k)` one-hot
+  convolution to gather each neighbour into its own channel. On CPU in half precision that convolution
+  has no vectorized kernel and falls back to `_slow_conv2d_forward`, where it accounted for 99% of a
+  `MultiResolutionDetector.detect` call. The window minus its centre is now covered by rectangular
+  `max_pool2d` regions whose full-width slabs share one column pass, costing `O(ky + kx)` taps per
+  position rather than `ky * kx - 1`, with the centre excluded by construction so the suppression stays
+  strict. `detect` on a 240x240 image drops from 5757 ms to 27 ms in float16 and from 73.8 ms to 13.8 ms
+  in float32; a 353x353 `k = 15` suppression drops from 3150 ms to 10.5 ms in float16 and from 42.6 ms to
+  8.7 ms in float32, and from 12.1 ms to 0.15 ms for 1024x1024 `k = 21` on CUDA. (#4242)
+
+* `nms2d` accepts a non-square `kernel_size`. It used to raise `RuntimeError: shape '[1, 1, -1, H, W]' is
+  invalid for input of size ...`, because the neighbourhood kernel was built with its two extents swapped
+  and the padding was applied to the wrong pair of edges. (#4240, #4242)
+
+* `nms3d` accepts any `kernel_size`. Every size other than `(3, 3, 3)`, the one served by a hand-written
+  branch, used to raise: `_compute_zero_padding3d` defined a `(k - 1) // 2` helper and then returned the
+  full kernel sizes, so the padded volume did not match the kernel it was convolved with. (#4241, #4242)
 
 * The `Import Surface` CI check accepts deliberate public-name removals recorded in the same change.
   Edits to `tests/api_surface.json` must correspond to actual export removals and acknowledge only the exact
