@@ -72,6 +72,45 @@ backends and numerical kernels differ; compare each device against its own basel
 | 1–5 | 507.037 | 1.792 | 3.658 |
 | 1–6 | 605.427 | 11.658 | 8.828 |
 
+## Apple Silicon (MPS) speed and quality
+
+Apple M1 (8 GB), macOS 26.5.1, PyTorch 2.14.0, Python 3.11.14, Kornia 0.9.0rc1. Base `1eea5835` versus optimized `f61ea9e4`, measured back to
+back on a quiet machine with the same inputs as the CPU/CUDA runs (identical `input_sha256`).
+Every pair is timed; each table entry is the mean of the five pair-specific medians, as in
+the GPU table. The MPS harness synchronizes with `torch.mps.synchronize` inside the timed
+region and evaluates RANSAC on CPU (its batched SVD aborts the process on MPS, #4201/#4204);
+RANSAC is outside the timed region, so the timings are unaffected. `peak_extra_cuda_bytes`
+is `null` on MPS.
+
+| Pipeline | Base ms/pair | Optimized ms/pair | Speedup | Mean corner error, base → optimized |
+| --- | ---: | ---: | ---: | ---: |
+| SIFT | 1787.8 | 1068.8 | 1.67× | 223.546 → 223.546 |
+| SIFT–AffNet–HardNet | 3066.7 | 2342.2 | 1.31× | 3.741 → 3.741 |
+| KeyNet–HardNet | 2109.5 | 2118.6 | 1.00× | 3.452 → 3.452 |
+
+Match counts, RANSAC inlier counts, and corner errors are identical between the two runs
+for every pair and pipeline. KeyNet–HardNet is unchanged within noise: the channels-last
+conversion is gated to CPU and CUDA, and KeyNet uses OriNet rather than the gradient
+histogram, so on MPS that pipeline sees none of the optimized code paths.
+
+| Pair | SIFT ms, base → optimized | SIFT–AffNet–HardNet ms, base → optimized | KeyNet–HardNet ms, base → optimized |
+| --- | ---: | ---: | ---: |
+| 1–2 | 1770 ± 23 → 1059 ± 10 | 3115 ± 43 → 2353 ± 31 | 2118 ± 33 → 2120 ± 17 |
+| 1–3 | 1789 ± 10 → 1062 ± 18 | 3069 ± 20 → 2344 ± 23 | 2107 ± 6 → 2122 ± 24 |
+| 1–4 | 1778 ± 6 → 1068 ± 6 | 3067 ± 4 → 2338 ± 4 | 2107 ± 6 → 2121 ± 10 |
+| 1–5 | 1791 ± 12 → 1078 ± 2 | 3046 ± 4 → 2343 ± 2 | 2107 ± 17 → 2110 ± 9 |
+| 1–6 | 1812 ± 48 → 1076 ± 10 | 3037 ± 16 → 2334 ± 10 | 2108 ± 18 → 2120 ± 9 |
+
+Median ± IQR. Corner errors per pair:
+
+| Pair | SIFT error px | SIFT–AffNet–HardNet error px | KeyNet–HardNet error px |
+| --- | ---: | ---: | ---: |
+| 1–2 | 1.247 | 1.927 | 1.263 |
+| 1–3 | 1.435 | 1.365 | 1.679 |
+| 1–4 | 2.586 | 1.961 | 1.833 |
+| 1–5 | 507.037 | 1.792 | 3.657 |
+| 1–6 | 605.427 | 11.658 | 8.828 |
+
 ## Selective compilation: CUDA
 
 Base `601b5a4a` versus `fb66de1d` (the same optimized library implementation, with a
@@ -136,6 +175,7 @@ Every input image and homography hash is also recorded in the JSON metadata.
 ```bash
 .venv/bin/python -m benchmarks.feature.local_features --seq /data/graf --device cuda --json graf-cuda.json
 .venv/bin/python -m benchmarks.feature.local_features --seq /data/graf --device cpu --timing-pairs 2 --json graf-cpu.json
+.venv/bin/python -m benchmarks.feature.local_features --seq /data/graf --device mps --json graf-mps.json
 ```
 
 For the base comparison, run the same harness using `runpy.run_path` from the base
@@ -183,5 +223,7 @@ between precisions). No tolerance or known-failure manifest was changed.
 - [Optimized CPU](graf_results/optimized-cpu.json)
 - [Base selectively compiled CUDA](graf_results/base-compiled-cuda.json)
 - [Optimized selectively compiled CUDA](graf_results/optimized-compiled-cuda.json)
+- [Base MPS](graf_results/base-mps.json)
+- [Optimized MPS](graf_results/optimized-mps.json)
 
 These are local benchmark results rather than release-wide performance guarantees.
