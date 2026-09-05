@@ -264,6 +264,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `quaternion_to_axis_angle` returns the correct gradient at every identity-like quaternion, not only the
+  positive unit identity `(1, 0, 0, 0)` (#4237). Its zero-vector-part branch used the constant `k = 2.0`,
+  which is only the `w = 1` case of the true analytic limit `k = 2 / w` (`w` = the real component); every
+  other identity-like input got a wrong gradient. That included the negative unit identity `(-1, 0, 0, 0)`
+  -- the same physical rotation as `(1, 0, 0, 0)` under the double cover -- which got the **wrong sign**
+  (`+2` instead of `-2`), and any non-unit "identity" such as `(2, 0, 0, 0)` (a scale this function
+  explicitly permits), which got the **wrong magnitude** (`+2` instead of `+1`). This was a genuine
+  backward-correctness defect, not a missing edge case: a valid unit quaternion could produce the opposite
+  gradient direction in pose optimization depending purely on which sign of the identity it started from.
+  The prior regression test for the `#3949` NaN-gradient fix only exercised `w = 1`, the one point where
+  the wrong constant and the correct formula happen to agree, and so could not have caught this. The
+  division needed for `2 / w` is guarded at `w = 0` the same way the function's existing `sin_theta`
+  division already is, so the fully degenerate all-zero quaternion `(0, 0, 0, 0)` -- not a valid rotation
+  -- keeps its previous harmless `(0, 0, 0)` value with a finite gradient rather than picking up a new
+  `inf`/`nan`; its gradient value itself changes (from the old constant `(0, 2, 2, 2)` to `(0, 0, 0, 0)`),
+  which is not a regression since no gradient is analytically correct at a point with no well-defined
+  limit. The forward value is unaffected everywhere -- verified byte-identical against the previous
+  implementation over 500 random inputs, including several forced onto unit, negative-unit, and scaled
+  identities.
+
 * Non-maxima suppression with a window larger than `(7, 7)` no longer builds a `(k*k, 1, k, k)` one-hot
   convolution to gather each neighbour into its own channel. On CPU in half precision that convolution
   has no vectorized kernel and falls back to `_slow_conv2d_forward`, where it accounted for 99% of a

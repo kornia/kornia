@@ -980,7 +980,18 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
     )
 
     k_pos: torch.Tensor = two_theta / torch.where(pos, sin_theta, torch.ones_like(sin_theta))
-    k_neg: torch.Tensor = 2.0 * torch.ones_like(sin_theta)
+    # The zero-vector-part branch's analytic limit is 2/w (w = cos_theta), not the constant 2.0
+    # that implicitly assumed w=1 -- see #4237. That constant gave the wrong sign at the negative
+    # unit identity (-1,0,0,0), which is the same rotation as (1,0,0,0), and the wrong magnitude
+    # at any non-unit "identity" (e.g. w=2), which this function explicitly allows. w=0 only
+    # reaches this branch for the exact-zero quaternion (0,0,0,0), not a valid rotation -- a
+    # genuine half-turn has w=0 with a nonzero vector part, which takes the k_pos branch instead
+    # -- so guard that division the same way `pos` already guards the sin_theta one above, and
+    # keep that degenerate input's previous harmless (0, zero-gradient) behavior rather than
+    # picking up a new inf/nan.
+    w_nonzero: torch.Tensor = cos_theta != 0.0
+    safe_cos_theta: torch.Tensor = torch.where(w_nonzero, cos_theta, torch.ones_like(cos_theta))
+    k_neg: torch.Tensor = torch.where(w_nonzero, 2.0 / safe_cos_theta, torch.zeros_like(cos_theta))
     k: torch.Tensor = torch.where(pos, k_pos, k_neg)
 
     axis_angle: torch.Tensor = torch.zeros_like(quaternion)[..., :3]
