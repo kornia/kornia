@@ -31,13 +31,23 @@ prefetched or listed in :data:`NOT_PREFETCHED` with a reason.
 Scope: this guards the checkpoints that go through
 :func:`kornia.core.download.load_state_dict_from_url`, which is what the
 ``weights/`` cache holds. Two other download paths live in ``kornia/`` and are
-invisible to both -- ``huggingface_hub.hf_hub_download``
-(``kornia/models/{kimi_vl,siglip2}/builder.py``) and ``CachedDownloader`` into
+invisible to the prefetch list -- its sibling
+:func:`kornia.core.download.download_file_from_url`, which the vision-language
+builders (``kornia/models/{kimi_vl,siglip2}/builder.py``) fetch a
+``model.safetensors`` with, and ``CachedDownloader`` into
 ``.kornia_hub/`` (``kornia/models/small_sr.py``, ``kornia/contrib/super_resolution.py``,
 ``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``,
 ``kornia/feature/lightglue_onnx/utils/download.py``). Nothing in the PR matrix
 downloads through either today; a test that did would fetch live from every
 matrix cell with this file still green.
+
+``download_file_from_url`` does share the ``weights/`` cache, so its callers
+could in principle be prefetched -- they are not, for a reason the checkpoints
+above do not have: SigLIP2 takes the repository as an *argument*, so there is no
+fixed set of variants to enumerate, and the two checkpoints in play are hundreds
+of megabytes for a pair of integration tests. The call-site scan below covers
+both functions, so a model that starts downloading through either is caught here
+either way.
 
 ``docs/generate_examples.py`` also fetches one non-checkpoint tensor
 (``knchurch_disk.pt``, the image pair the matching examples are drawn on)
@@ -170,10 +180,15 @@ _ENUMERATED_MODULES = (
 # Modules that call ``load_state_dict_from_url`` without being a registry of
 # their own, with the reason they need no entry above.
 _DOWNLOAD_CALL_ALLOWLIST = {
-    "kornia/core/download.py": "defines the function",
-    "kornia/core/__init__.py": "re-exports it",
+    # ``kornia/core/__init__.py`` is deliberately absent: it re-exports the
+    # names without ever calling one, so the scan below never matches it and an
+    # entry for it would be exactly the dead exemption
+    # ``test_no_allowlisted_module_has_stopped_downloading`` exists to catch.
+    "kornia/core/download.py": "defines the functions",
     "kornia/feature/lightglue.py": "builds its URLs in __init__; captured by _lightglue_sources",
     "kornia/models/base.py": "loads whatever checkpoint the config it is handed carries",
+    "kornia/models/kimi_vl/builder.py": "one safetensors checkpoint, hundreds of MB, integration tests only",
+    "kornia/models/siglip2/builder.py": "safetensors checkpoint of a caller-named repo; no fixed variant list",
 }
 
 # Checkpoints deliberately left out of the CI cache, with the reason. A variant
@@ -264,6 +279,22 @@ NOT_PREFETCHED: dict[str, str] = {
     "vit_b-32.pth": "no test or doctest selects this ViT variant",
     "vit_s-32.pth": "no test or doctest selects this ViT variant",
 }
+
+
+# ``download_file_from_url`` and its Hub wrapper ``download_hf_file`` fetch into
+# the same cache without loading what they fetched, so a checkpoint pulled
+# through either is as invisible to the prefetch list as one pulled through
+# ``load_state_dict_from_url``.
+_DOWNLOAD_CALL = re.compile(r"\b(?:load_state_dict_from_url|download_file_from_url|download_hf_file)\s*\(")
+
+
+def _download_call_sites() -> set[str]:
+    """Return the repository-relative modules in ``kornia/`` that call a download function."""
+    return {
+        path.relative_to(_REPO_ROOT).as_posix()
+        for path in sorted((_REPO_ROOT / "kornia").rglob("*.py"))
+        if _DOWNLOAD_CALL.search(path.read_text(encoding="utf-8"))
+    }
 
 
 def _as_list(url: str | list[str]) -> list[str]:
@@ -411,6 +442,22 @@ class TestWeightsPrefetchCoverage:
             f"weight source to WEIGHT_REGISTRIES so the entry is guarded in both directions."
         )
 
+    def test_no_allowlisted_module_has_stopped_downloading(self) -> None:
+        """A dead allowlist entry reads as coverage for a module that no longer downloads.
+
+        The scan below subtracts this allowlist, so an entry that matches nothing
+        is invisible: rename or delete a builder and its exemption survives,
+        ready to excuse a *new* module that lands under the old path. The
+        stale-exemption check :data:`NOT_PREFETCHED` gets is this one.
+        """
+        if not _KORNIA_IS_THE_CHECKOUT:
+            pytest.skip("kornia is imported from outside this checkout; the call-site scan cannot match it")
+        stale = sorted(set(_DOWNLOAD_CALL_ALLOWLIST) - _download_call_sites())
+        assert not stale, (
+            f"_DOWNLOAD_CALL_ALLOWLIST exempts modules that no longer call a download "
+            f"function: {stale}. Drop the entry, or fix the path it was renamed to."
+        )
+
     def test_every_download_call_site_is_enumerated(self) -> None:
         """Nothing else holds :data:`WEIGHT_REGISTRIES` to "every weight source in the library".
 
@@ -424,13 +471,7 @@ class TestWeightsPrefetchCoverage:
         """
         if not _KORNIA_IS_THE_CHECKOUT:
             pytest.skip("kornia is imported from outside this checkout; the call-site scan cannot match it")
-        call = re.compile(r"\bload_state_dict_from_url\s*\(")
-        callers = {
-            path.relative_to(_REPO_ROOT).as_posix()
-            for path in sorted((_REPO_ROOT / "kornia").rglob("*.py"))
-            if call.search(path.read_text(encoding="utf-8"))
-        }
-        unaccounted = sorted(callers - _ENUMERATED_MODULES - set(_DOWNLOAD_CALL_ALLOWLIST))
+        unaccounted = sorted(_download_call_sites() - _ENUMERATED_MODULES - set(_DOWNLOAD_CALL_ALLOWLIST))
         assert not unaccounted, (
             f"these modules download weights but no entry in WEIGHT_REGISTRIES reads their "
             f"URLs, so their checkpoints are invisible to every check in this file: "

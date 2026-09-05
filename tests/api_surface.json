@@ -179,8 +179,11 @@
     "ONNXMixin",
     "ONNXRuntimeMixin",
     "TensorWrapper",
+    "download_file_from_url",
+    "download_hf_file",
     "external",
     "eye_like",
+    "load_safetensors",
     "vec_like"
   ],
   "kornia.enhance": [
