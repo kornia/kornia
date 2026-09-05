@@ -19,40 +19,42 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Optional
 
 import torch
 
+from kornia.core.download import _hf_cache_file_name, download_file_from_url, hf_url
+from kornia.core.safetensors import load_safetensors
+
 from .config import KimiVLConfig, _kimi_vl_a3b_instruct_config
 from .model import KimiVLModel
-
-_logger = logging.getLogger(__name__)
 
 __all__ = ["KimiVLBuilder"]
 
 _KIMI_VL_A3B_INSTRUCT_REPO_ID = "kornia/kimi-vl-a3b-instruct-vision"
 
+_WEIGHTS_FILE = "model.safetensors"
+
 
 def _download_weights(model_name: str, cache_dir: Optional[str]) -> dict[str, torch.Tensor]:
-    """Download model weights from HuggingFace Hub."""
-    try:
-        from huggingface_hub import hf_hub_download
-        from safetensors import safe_open
-    except ImportError as e:
-        error_msg = (
-            "huggingface_hub and safetensors are required for loading model weights. "
-            "Install them with: pip install huggingface_hub safetensors"
-        )
-        _logger.error(error_msg)
-        raise ImportError(error_msg) from e
+    """Download the checkpoint of a HuggingFace repo and read it into a state dict.
 
-    weights_path = hf_hub_download(repo_id=model_name, filename="model.safetensors", cache_dir=cache_dir)
-    state_dict = {}
-    with safe_open(weights_path, framework="pt", device="cpu") as f:
-        for key in f.keys():
-            state_dict[key] = f.get_tensor(key)
-    return state_dict
+    Args:
+        model_name: full ``owner/name`` repository id on the HuggingFace Hub.
+        cache_dir: directory to cache the checkpoint in, or ``None`` for torch's
+            hub cache -- the same cache every other kornia checkpoint uses.
+
+    Returns:
+        The checkpoint's state dict, on the CPU.
+    """
+    path = download_file_from_url(
+        hf_url(model_name, _WEIGHTS_FILE),
+        # Every repo calls its checkpoint ``model.safetensors``; the cache is one
+        # flat directory, so the repo id has to be part of the name.
+        file_name=_hf_cache_file_name(model_name, _WEIGHTS_FILE),
+        model_dir=cache_dir,
+    )
+    return load_safetensors(path)
 
 
 class KimiVLBuilder:
@@ -86,15 +88,15 @@ class KimiVLBuilder:
         model interpolates at runtime for other input resolutions.
 
         Args:
-            cache_dir: Optional cache directory for downloaded files.
+            cache_dir: Optional cache directory for downloaded files. Defaults
+                to torch's hub cache, which is where every other kornia
+                checkpoint is cached.
 
         Returns:
             KimiVLModel instance with pretrained weights.
 
         .. note::
-            Only Kimi-VL-A3B-Instruct is currently supported. This method
-            requires the `huggingface_hub` and `safetensors` libraries:
-            ``pip install huggingface_hub safetensors``
+            Only Kimi-VL-A3B-Instruct is currently supported.
         """
         state_dict = _download_weights(_KIMI_VL_A3B_INSTRUCT_REPO_ID, cache_dir)
         model = KimiVLBuilder.from_config(_kimi_vl_a3b_instruct_config())

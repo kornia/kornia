@@ -31,13 +31,23 @@ prefetched or listed in :data:`NOT_PREFETCHED` with a reason.
 Scope: this guards the checkpoints that go through
 :func:`kornia.core.download.load_state_dict_from_url`, which is what the
 ``weights/`` cache holds. Two other download paths live in ``kornia/`` and are
-invisible to both -- ``huggingface_hub.hf_hub_download``
-(``kornia/models/{kimi_vl,siglip2}/builder.py``) and ``CachedDownloader`` into
+invisible to the prefetch list -- its sibling
+:func:`kornia.core.download.download_file_from_url`, which the vision-language
+builders (``kornia/models/{kimi_vl,siglip2}/builder.py``) fetch a
+``model.safetensors`` with, and ``CachedDownloader`` into
 ``.kornia_hub/`` (``kornia/models/small_sr.py``, ``kornia/contrib/super_resolution.py``,
 ``kornia/onnx/utils.py``, ``kornia/models/_hf_models/hf_onnx_community.py``,
 ``kornia/feature/lightglue_onnx/utils/download.py``). Nothing in the PR matrix
 downloads through either today; a test that did would fetch live from every
 matrix cell with this file still green.
+
+``download_file_from_url`` does share the ``weights/`` cache, so its callers
+could in principle be prefetched -- they are not, for a reason the checkpoints
+above do not have: SigLIP2 takes the repository as an *argument*, so there is no
+fixed set of variants to enumerate, and the two checkpoints in play are hundreds
+of megabytes for a pair of integration tests. The call-site scan below covers
+both functions, so a model that starts downloading through either is caught here
+either way.
 
 ``docs/generate_examples.py`` also fetches one non-checkpoint tensor
 (``knchurch_disk.pt``, the image pair the matching examples are drawn on)
@@ -170,10 +180,12 @@ _ENUMERATED_MODULES = (
 # Modules that call ``load_state_dict_from_url`` without being a registry of
 # their own, with the reason they need no entry above.
 _DOWNLOAD_CALL_ALLOWLIST = {
-    "kornia/core/download.py": "defines the function",
-    "kornia/core/__init__.py": "re-exports it",
+    "kornia/core/download.py": "defines the functions",
+    "kornia/core/__init__.py": "re-exports them",
     "kornia/feature/lightglue.py": "builds its URLs in __init__; captured by _lightglue_sources",
     "kornia/models/base.py": "loads whatever checkpoint the config it is handed carries",
+    "kornia/models/kimi_vl/builder.py": "one safetensors checkpoint, hundreds of MB, integration tests only",
+    "kornia/models/siglip2/builder.py": "safetensors checkpoint of a caller-named repo; no fixed variant list",
 }
 
 # Checkpoints deliberately left out of the CI cache, with the reason. A variant
@@ -424,7 +436,10 @@ class TestWeightsPrefetchCoverage:
         """
         if not _KORNIA_IS_THE_CHECKOUT:
             pytest.skip("kornia is imported from outside this checkout; the call-site scan cannot match it")
-        call = re.compile(r"\bload_state_dict_from_url\s*\(")
+        # ``download_file_from_url`` fetches into the same cache without loading
+        # what it fetched, so a checkpoint pulled through it is as invisible to
+        # the prefetch list as one pulled through its sibling.
+        call = re.compile(r"\b(?:load_state_dict_from_url|download_file_from_url)\s*\(")
         callers = {
             path.relative_to(_REPO_ROOT).as_posix()
             for path in sorted((_REPO_ROOT / "kornia").rglob("*.py"))

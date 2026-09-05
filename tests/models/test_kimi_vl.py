@@ -71,6 +71,26 @@ class TestKimiVLBuilder(BaseTester):
         assert actual.config is config
         mock_download.assert_called_once_with(kimi_vl_builder._KIMI_VL_A3B_INSTRUCT_REPO_ID, "cache")
 
+    def test_download_weights_uses_kornias_downloader(self, tmp_path):
+        """No optional package: kornia's own downloader, then its own safetensors reader."""
+        expected = {"weight": torch.zeros(1)}
+        with (
+            patch.object(kimi_vl_builder, "download_file_from_url", return_value="cached.safetensors") as download,
+            patch.object(kimi_vl_builder, "load_safetensors", return_value=expected) as read,
+        ):
+            state_dict = kimi_vl_builder._download_weights(kimi_vl_builder._KIMI_VL_A3B_INSTRUCT_REPO_ID, str(tmp_path))
+
+        assert state_dict is expected
+        read.assert_called_once_with("cached.safetensors")
+        download.assert_called_once_with(
+            "https://huggingface.co/kornia/kimi-vl-a3b-instruct-vision/resolve/main/model.safetensors",
+            # Not ``model.safetensors``: the cache is flat and every HF repo
+            # publishes that same name, so SigLIP2's checkpoint would be served
+            # for this one.
+            file_name="kornia--kimi-vl-a3b-instruct-vision--model.safetensors",
+            model_dir=str(tmp_path),
+        )
+
     def test_pretrained_config_matches_checkpoint_grid(self):
         config = kimi_vl_builder._kimi_vl_a3b_instruct_config()
         # The published checkpoint stores the original 64x64 pos-embed grid.
