@@ -66,6 +66,64 @@ class TestProjectPoints(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(points_3d, camera_matrix), op_jit(points_3d, camera_matrix))
 
+    def test_wart_project_points_skips_the_divide_at_z_zero_4267(self, device, dtype):
+        # Wart pin for kornia#4267 (audit labels 5a-pp-13, 5a-pp-15, Y4-05): convert_points_from_homogeneous masks
+        # |z| <= 1e-8 to a divisor of 1 and project_points applies K AFTER that divide, so a point on the camera
+        # plane projects to fx*x + cx = 104, fy*y + cy = 203 instead of raising or returning inf. Four other
+        # entry points answer differently at the same input: PinholeCamera.project gives [[100, 200]],
+        # project_points_z1 and Z1Projection.project give inf, cam2pixel gives a finite 1e14.
+        # A point BEHIND the camera is projected just as silently: z = -4 gives [[-21, -47]].
+        # Snippet used to generate expected: project_points([[1., 2., 0.]], K3) executed 2026-09-05 (torch 2.14.0,
+        # cpu and mps, every dtype). Pins the CURRENT value; NOT a contract; delete when #4267 is repaired.
+        camera_matrix = torch.tensor(
+            [[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
+        singular = torch.tensor([[1.0, 2.0, 0.0]], device=device, dtype=dtype)
+        out = kornia.geometry.camera.project_points(singular, camera_matrix)
+        self.assert_close(out, torch.tensor([[104.0, 203.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        behind = kornia.geometry.camera.project_points(
+            torch.tensor([[1.0, 2.0, -4.0]], device=device, dtype=dtype), camera_matrix
+        )
+        self.assert_close(behind, torch.tensor([[-21.0, -47.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+    def test_convention_integer_pixel_centres_put_the_principal_point_at_w_minus_one_half(self, device, dtype):
+        # Convention pin for the anchor block on PinholeCamera (audit labels 5a-al-04, 5a-pp-02): pixel
+        # coordinates are (u, v) = (column, row) with INTEGER pixel centres -- create_meshgrid enumerates
+        # [0, 0] for the first pixel and [W - 1, H - 1] for the last -- so a centred image has its principal
+        # point at cx = (W - 1) / 2, cy = (H - 1) / 2, and NOT at (W / 2, H / 2), the half-pixel/COLMAP value.
+        # The pin uses H = 2 != W = 3 so a transposed reading of the convention changes every literal, and
+        # checks the definition of "centred" directly: under cx = 1, cy = 0.5 the first and the last pixel
+        # unproject to exact negatives of each other, and the principal point itself is where the optical axis
+        # (0, 0, 1) lands. A half-pixel cx = 1.5, cy = 1.0 would put neither of those where they are here.
+        # Snippet used to generate expected: create_meshgrid(2, 3, normalized_coordinates=False) and the three
+        # calls below executed 2026-09-05 (torch 2.14.0, cpu and mps, every dtype)
+        # -> grid [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]], unproject [[-1, -0.5, 1]] and [[1, 0.5, 1]],
+        # project [[1.0, 0.5]]. Every literal is a dyadic rational, so the comparisons are exact.
+        grid = kornia.geometry.create_meshgrid(2, 3, normalized_coordinates=False, device=device, dtype=dtype)
+        assert grid.shape == (1, 2, 3, 2)
+        flat = grid.reshape(-1, 2)
+        first, last = flat[0][None], flat[-1][None]
+        self.assert_close(first, torch.tensor([[0.0, 0.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(last, torch.tensor([[2.0, 1.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        # cx = (3 - 1) / 2 = 1, cy = (2 - 1) / 2 = 0.5, fx = fy = 1.
+        camera_matrix = torch.tensor([[[1.0, 0.0, 1.0], [0.0, 1.0, 0.5], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        depth = torch.tensor([[1.0]], device=device, dtype=dtype)
+        unprojected_first = kornia.geometry.camera.unproject_points(first, depth, camera_matrix)
+        unprojected_last = kornia.geometry.camera.unproject_points(last, depth, camera_matrix)
+        self.assert_close(
+            unprojected_first, torch.tensor([[-1.0, -0.5, 1.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        )
+        self.assert_close(
+            unprojected_last, torch.tensor([[1.0, 0.5, 1.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        )
+        # The two are exact negatives in x and y, which is what "centred" means under integer pixel centres.
+        self.assert_close(unprojected_first[..., :2], -unprojected_last[..., :2], atol=0.0, rtol=0.0)
+        # The optical axis lands exactly on the principal point.
+        on_axis = kornia.geometry.camera.project_points(
+            torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=dtype), camera_matrix
+        )
+        self.assert_close(on_axis, torch.tensor([[1.0, 0.5]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
 
 class TestUnprojectPoints(BaseTester):
     def test_smoke(self, device, dtype):
@@ -129,3 +187,21 @@ class TestUnprojectPoints(BaseTester):
         op = kornia.geometry.camera.unproject_points
         op_jit = torch.jit.script(op)
         self.assert_close(op(*args), op_jit(*args))
+
+    def test_convention_normalize_makes_depth_the_ray_length(self, device, dtype):
+        # Convention pin (audit labels 5a-up-01, 5a-up-02): ``depth`` is the CAMERA-frame z by default, so pixel
+        # (29, 53) at depth 2 unprojects to (0.5, 1, 2); with ``normalize=True`` the same depth is the length of
+        # the ray instead, so the result has norm 2 and its z component is strictly below 2. The pixel is off the
+        # principal point (cx = 4 != cy = 3) so the two readings differ; a centred pixel would not discriminate.
+        # Snippet used to generate expected: hand arithmetic ((29-4)/100*2, (53-3)/100*2, 2), re-executed
+        # 2026-09-05 (torch 2.14.0, cpu and mps) -> [[0.5, 1.0, 2.0]] and [[0.43643576, 0.87287152, 1.74574304]].
+        camera_matrix = torch.tensor(
+            [[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
+        points_2d = torch.tensor([[29.0, 53.0]], device=device, dtype=dtype)
+        depth = torch.tensor([[2.0]], device=device, dtype=dtype)
+        z_depth = kornia.geometry.camera.unproject_points(points_2d, depth, camera_matrix)
+        ray_depth = kornia.geometry.camera.unproject_points(points_2d, depth, camera_matrix, normalize=True)
+        self.assert_close(z_depth, torch.tensor([[0.5, 1.0, 2.0]], device=device, dtype=dtype))
+        self.assert_close(ray_depth.norm(dim=-1), torch.tensor([2.0], device=device, dtype=dtype))
+        assert bool(ray_depth[0, 2] < 2.0)

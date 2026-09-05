@@ -54,6 +54,10 @@ def unproject_points_orthographic(points_in_camera: torch.Tensor, extension: tor
         \begin{bmatrix} x \\ y \\ z \end{bmatrix} =
         \begin{bmatrix} u \\ v \\ w \end{bmatrix}
 
+    Convention:
+        - ``extension`` becomes the ``z`` component of the result, and the guard compares its rank with the
+          rank of the points, so both a ``(N,)`` and a ``(N, 1)`` extension are accepted.
+
     Args:
         points_in_camera: torch.Tensor representing the points to unproject with shape (..., 2).
         extension: torch.Tensor representing the extension of the points to unproject with shape (..., 1).
