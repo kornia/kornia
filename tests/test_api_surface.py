@@ -54,6 +54,24 @@ def regenerate() -> None:
     INVENTORY.write_text(json.dumps(surface, indent=2, sort_keys=True) + "\n")
 
 
+def test_inventory_is_a_mapping_of_module_to_public_names():
+    """Guard the inventory's shape, so the removal test below cannot pass vacuously.
+
+    ``set(recorded) - current`` is empty for an entry mangled into ``{}``, so that entry
+    silently stops guarding its module while still parametrizing this file. A list
+    holding non-strings fails the removal test instead, but with a message about
+    "removed" names that names nothing a reader can act on. Asserting the shape here
+    reports the real problem in both cases -- and the ``Import Surface`` check reads the
+    same file, where a wrong-shaped entry acknowledges nothing at all.
+    """
+    inventory = json.loads(INVENTORY.read_text())
+    assert isinstance(inventory, dict)
+    for module_name, names in inventory.items():
+        assert isinstance(module_name, str), f"non-string inventory key: {module_name!r}"
+        assert isinstance(names, list), f"{module_name} must record a list of names, got {type(names).__name__}"
+        assert all(isinstance(name, str) for name in names), f"{module_name} records a non-string name"
+
+
 @pytest.mark.parametrize("module_name", sorted(json.loads(INVENTORY.read_text())))
 def test_no_public_name_removed(module_name):
     recorded = set(json.loads(INVENTORY.read_text())[module_name])

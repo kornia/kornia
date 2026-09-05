@@ -94,9 +94,12 @@ This page documents which kornia modules support half-precision floating-point d
    * - ``kornia.feature``
      - ⚠️ Partial
      - ⚠️ Partial
-     - Local feature detectors and descriptors (SIFT, HardNet, DISK, DeDoDe)
-       work for inference. Feature *matching* uses a manual ``cdist`` fallback
-       for both half-precision dtypes on CUDA.
+     - Local feature detectors and descriptors (SIFT, HardNet, HyNet, SOSNet,
+       DISK, DeDoDe) work for inference. ``HyNet`` and ``SOSNet`` take their final
+       L2 normalization in float32 for a half-precision input, since
+       ``local_response_norm`` has no CPU half kernel for a 4-D tensor and its
+       ``1e-10`` guard flushes to zero in float16. Feature *matching* uses a manual
+       ``cdist`` fallback for both half-precision dtypes on CUDA.
    * - ``kornia.metrics``
      - ⚠️ Partial
      - ⚠️ Partial

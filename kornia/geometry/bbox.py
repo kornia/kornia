@@ -21,6 +21,7 @@ from typing import Optional
 
 import torch
 
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_exporting
 
 from .linalg import transform_points
@@ -95,13 +96,32 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
 
 
 def validate_bbox3d(boxes: torch.Tensor) -> bool:
-    """Validate if a 3D bounding box usable or not. This function checks if the boxes are cube or not.
+    """Validate that a 3D box has equal inclusive edge extents along each axis, raising when it does not.
+
+    Convention:
+        Vertices use inclusive coordinates in the order front-top-left, front-top-right, front-bottom-right,
+        front-bottom-left, then the same four back vertices. The function accepts :math:`(B, 8, 3)` and
+        :math:`(B, N, 8, 3)` tensors and raises ``AssertionError`` for any other shape. It compares the inclusive
+        ``+1`` extents of the four edges parallel to each axis and raises ``AssertionError`` when they differ, so a
+        sheared parallelepiped with equal edge lengths and a zero-extent box both pass; it does not check right
+        angles or positive extent. Under graph capture the extent checks are skipped and the shape check alone
+        returns ``True``. The ``+1`` terms cancel in exact arithmetic and are tracked in
+        `#3934 <https://github.com/kornia/kornia/issues/3934>`_.
+
+    .. warning::
+        :func:`validate_bbox` returns ``False`` where this function raises; that inconsistency is tracked in
+        `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Rank-4 input passes this check but breaks
+        :func:`infer_bbox_shape3d` and :func:`bbox_to_mask3d`, tracked in
+        `#4248 <https://github.com/kornia/kornia/issues/4248>`_.
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of Bx8x3, where each box is defined in the following ``clockwise`` order: front-top-left, front-top-right,
-            front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right, back-bottom-left.
-            The coordinates must be in the x, y, z order.
+            of :math:`(B, 8, 3)` or :math:`(B, N, 8, 3)`, where each box is defined in the following ``clockwise``
+            order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
+            back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
+
+    Returns:
+        ``True``. Invalid input raises instead of returning ``False``.
 
     """
     if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([8, 3])):
@@ -152,15 +172,13 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked in
         `#3934 <https://github.com/kornia/kornia/issues/3934>`_.
 
-    .. warning::
-        Rank-4 input is not validated. The fixed indices then read boxes instead of vertices, so fewer than three
-        boxes per batch raise ``IndexError`` and three or more return wrongly shaped values. This wart is tracked
-        in `#4180 <https://github.com/kornia/kornia/issues/4180>`_.
-
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have shape
             :math:`(N, 4, 2)`, where each box is defined in the following ``clockwise`` order: top-left, top-right,
             bottom-right, bottom-left. The coordinates must be in the x, y order.
+
+    Raises:
+        ShapeError: if ``boxes`` does not have shape :math:`(N, 4, 2)`.
 
     Returns:
         - Bounding box heights, shape of :math:`(N,)`.
@@ -182,6 +200,8 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         (tensor([2., 2.]), tensor([2., 3.]))
 
     """
+    KORNIA_CHECK_SHAPE(boxes, ["N", "4", "2"])
+
     width: torch.Tensor = boxes[:, 1, 0] - boxes[:, 0, 0] + 1
     height: torch.Tensor = boxes[:, 2, 1] - boxes[:, 0, 1] + 1
     return height, width
@@ -190,11 +210,28 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Auto-infer the output sizes for the given 3D bounding boxes.
 
+    Convention:
+        Vertices use inclusive coordinates in the order front-top-left, front-top-right, front-bottom-right,
+        front-bottom-left, then the same four back vertices. The returned tuple is ``(depths, heights, widths)``,
+        in that order, each read as ``max - min + 1`` along one edge of the box after :func:`validate_bbox3d`
+        has established that the edges parallel to each axis have equal extent. Like :func:`infer_bbox_shape`,
+        the function adds one per axis, so pass the ``'vertices_plus'`` export of
+        :class:`~kornia.geometry.boxes.Boxes3D` rather than ``'vertices'``, which it reads as one larger per axis.
+
+    .. warning::
+        The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked in
+        `#3934 <https://github.com/kornia/kornia/issues/3934>`_; the exclusive-export trap is
+        `#4009 <https://github.com/kornia/kornia/issues/4009>`_. Validation raises ``AssertionError`` rather than
+        returning ``False``, see `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Batched :math:`(B, N, 8, 3)`
+        input passes validation but is then indexed as if the box axis were the vertex axis, which raises an
+        indexing error or returns wrong-shaped values depending on ``N``; flatten to :math:`(B \cdot N, 8, 3)`
+        first. Tracked in `#4248 <https://github.com/kornia/kornia/issues/4248>`_.
+
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of Bx8x3, where each box is defined in the following ``clockwise`` order: front-top-left, front-top-right,
-            front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right, back-bottom-left.
-            The coordinates must be in the x, y, z order.
+            of :math:`(B, 8, 3)`, where each box is defined in the following ``clockwise`` order: front-top-left,
+            front-top-right, front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right,
+            back-bottom-left. The coordinates must be in the x, y, z order.
 
     Returns:
         - Bounding box depths, shape of :math:`(B,)`.
@@ -239,15 +276,36 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
 def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     """Convert 2D bounding boxes to masks. Covered area is 1. and the remaining is 0.
 
+    Convention:
+        The image size is given as ``(width, height)`` while the mask comes back as :math:`(B, height, width)`;
+        :meth:`kornia.geometry.boxes.Boxes.to_mask` takes ``(height, width)`` for the same result. Only the top-left
+        (index 0) and bottom-right (index 2) vertices are read and the other two are ignored, so a non-rectangular
+        quadrilateral is masked by the axis-aligned box those two vertices span. A pixel is covered when its integer
+        coordinates satisfy ``xmin <= x <= xmax`` and ``ymin <= y <= ymax`` on the raw, unrounded values, which
+        reads the vertices as inclusive: pass the ``'vertices_plus'`` export of
+        :class:`~kornia.geometry.boxes.Boxes`, not ``'vertices'``. The mask has the input dtype, including integer
+        dtypes, and no gradient path. Input must be unbatched :math:`(B, 4, 2)`; :math:`(B, N, 4, 2)` raises
+        :class:`~kornia.core.exceptions.ShapeError`.
+
+    .. warning::
+        The ``(width, height)`` argument order is tracked in `#4014 <https://github.com/kornia/kornia/issues/4014>`_.
+        The inclusive raw-float comparison differs from the rounding in
+        :meth:`~kornia.geometry.boxes.Boxes.to_mask` and the truncation in :func:`bbox_to_mask3d` for fractional
+        coordinates and is tracked in `#4015 <https://github.com/kornia/kornia/issues/4015>`_; the exclusive-export
+        trap is `#4009 <https://github.com/kornia/kornia/issues/4009>`_.
+
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of Bx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right, bottom-right
-            and bottom-left. The coordinates must be in the x, y order.
+            of :math:`(B, 4, 2)`, where each box is defined in the following ``clockwise`` order: top-left, top-right,
+            bottom-right and bottom-left. The coordinates must be in the x, y order.
         width: width of the masked image.
         height: height of the masked image.
 
     Returns:
-        the output mask tensor.
+        the output mask tensor, shape of :math:`(B, height, width)` and dtype of ``boxes``.
+
+    Raises:
+        ShapeError: if ``boxes`` does not have shape :math:`(B, 4, 2)`.
 
     Note:
         It is currently non-differentiable.
@@ -267,6 +325,8 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
                  [0., 0., 0., 0., 0.]]])
 
     """
+    KORNIA_CHECK_SHAPE(boxes, ["B", "4", "2"])
+
     # NOTE: `validate_bbox`'s boolean result was previously computed here and discarded — it
     # never raised, so it performed no validation while adding a data-dependent graph break
     # (`torch.any(...)` -> Python `if`) that blocked torch.compile fullgraph (e.g. RandomErasing,
@@ -290,15 +350,38 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
 def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Tensor:
     """Convert 3D bounding boxes to masks. Covered area is 1. and the remaining is 0.
 
+    Convention:
+        ``size`` is ``(depth, height, width)`` and the mask comes back as :math:`(B, 1, depth, height, width)` in
+        ``float32`` whatever the input dtype, unlike :func:`bbox_to_mask`, which keeps the input dtype and has no
+        channel axis, and :meth:`kornia.geometry.boxes.Boxes3D.to_mask`, which keeps the box dtype and returns
+        :math:`(N, depth, height, width)`. After :func:`validate_bbox3d`, which raises ``AssertionError`` for an
+        invalid box, the bounds are read from fixed vertex positions, truncated toward zero with ``.long()``, and
+        compared inclusively, which reads the vertices as inclusive: pass the ``'vertices_plus'`` export. The
+        intersection of the three axis ranges is recovered only when the box leaves at least one index uncovered
+        on every axis; see the warning. There is no gradient path.
+
+    .. warning::
+        A box that covers or overhangs a whole output axis fills the entire volume instead of the intersection:
+        the union-of-planes intermediate becomes all true and its reductions lose the other two bounds, where
+        :meth:`~kornia.geometry.boxes.Boxes3D.to_mask` fills the clamped region. Tracked in
+        `#4255 <https://github.com/kornia/kornia/issues/4255>`_. The truncation differs from the inclusive
+        raw-float comparison of :func:`bbox_to_mask` and the rounding of
+        :meth:`~kornia.geometry.boxes.Boxes3D.to_mask` for fractional coordinates and is tracked in
+        `#4015 <https://github.com/kornia/kornia/issues/4015>`_. The ``float32`` output with a channel axis is
+        tracked in `#4250 <https://github.com/kornia/kornia/issues/4250>`_. Validation raises rather than returning
+        ``False``, `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Batched :math:`(B, N, 8, 3)` input passes
+        validation and then raises an indexing or broadcasting error; flatten it first. Tracked in
+        `#4248 <https://github.com/kornia/kornia/issues/4248>`_.
+
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
-            of Bx8x3, where each box is defined in the following ``clockwise`` order: front-top-left, front-top-right,
-            front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right, back-bottom-left.
-            The coordinates must be in the x, y, z order.
+            of :math:`(B, 8, 3)`, where each box is defined in the following ``clockwise`` order: front-top-left,
+            front-top-right, front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right,
+            back-bottom-left. The coordinates must be in the x, y, z order.
         size: depth, height and width of the masked image.
 
     Returns:
-        the output mask tensor.
+        the output mask tensor, shape of :math:`(B, 1, depth, height, width)` and dtype ``float32``.
 
     Examples:
         >>> boxes = torch.tensor([[
@@ -372,16 +455,28 @@ def bbox_generator(
 ) -> torch.Tensor:
     """Generate 2D bounding boxes according to the provided start coords, width and height.
 
+    Convention:
+        The far corner is placed at ``start + size - 1`` on each axis, so the generated box is inclusive:
+        :func:`infer_bbox_shape` reads back exactly ``width`` and ``height``, and a zero size places the far
+        corner one before the start. The vertex order is top-left, top-right, bottom-right, bottom-left. A scalar
+        input produces a batch of one. All four tensors must share dtype and device, otherwise ``AssertionError``
+        is raised; the output has that dtype and device and keeps a gradient path to the inputs.
+
+    .. warning::
+        The inclusive arithmetic is tracked in `#3934 <https://github.com/kornia/kornia/issues/3934>`_.
+        :func:`bbox_generator3d` places its far corner at ``start + size`` instead, see
+        `#4018 <https://github.com/kornia/kornia/issues/4018>`_.
+
     Args:
         x_start: a tensor containing the x coordinates of the bounding boxes to be extracted. Shape must be a scalar
             tensor or :math:`(B,)`.
         y_start: a tensor containing the y coordinates of the bounding boxes to be extracted. Shape must be a scalar
             tensor or :math:`(B,)`.
-        width: widths of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
-        height: heights of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
+        width: widths of the bounding boxes. Shape must be a scalar tensor or :math:`(B,)`.
+        height: heights of the bounding boxes. Shape must be a scalar tensor or :math:`(B,)`.
 
     Returns:
-        the bounding box tensor.
+        the bounding box tensor, shape of :math:`(B, 4, 2)`.
 
     Examples:
         >>> x_start = torch.tensor([0, 1])
@@ -446,6 +541,18 @@ def bbox_generator3d(
 ) -> torch.Tensor:
     """Generate 3D bounding boxes according to the provided start coords, width, height and depth.
 
+    Convention:
+        The far corner is placed at ``start + size`` on each axis, one further than :func:`bbox_generator`, so
+        :func:`infer_bbox_shape3d` reads back ``size + 1`` on every axis; the example below shows it. The four
+        front vertices precede the four back vertices. A scalar input produces a batch of one. All six tensors
+        must share dtype and device, otherwise ``AssertionError`` is raised; the output has that dtype and device
+        and keeps a gradient path to the inputs.
+
+    .. warning::
+        The extra unit of extent relative to :func:`bbox_generator` and to the inclusive
+        :func:`infer_bbox_shape3d` is tracked as a coordinated repair in
+        `#4018 <https://github.com/kornia/kornia/issues/4018>`_ and is documented as it is.
+
     Args:
         x_start: a tensor containing the x coordinates of the bounding boxes to be extracted. Shape must be a scalar
             tensor or :math:`(B,)`.
@@ -453,9 +560,9 @@ def bbox_generator3d(
             tensor or :math:`(B,)`.
         z_start: a tensor containing the z coordinates of the bounding boxes to be extracted. Shape must be a scalar
             tensor or :math:`(B,)`.
-        width: widths of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
-        height: heights of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
-        depth: depths of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
+        width: widths of the bounding boxes. Shape must be a scalar tensor or :math:`(B,)`.
+        height: heights of the bounding boxes. Shape must be a scalar tensor or :math:`(B,)`.
+        depth: depths of the bounding boxes. Shape must be a scalar tensor or :math:`(B,)`.
 
     Returns:
         the 3d bounding box tensor :math:`(B, 8, 3)`.
@@ -532,21 +639,26 @@ def transform_bbox(
 ) -> torch.Tensor:
     r"""Apply a transformation matrix to a box or batch of boxes.
 
+    Convention:
+        ``xyxy`` and ``xywh`` inputs are transformed through endpoint pairs. Coordinate
+        restoration sorts their endpoints after a flip; polygon vertices retain their
+        transformed cyclic order.
+
     Args:
-        trans_mat: The transformation matrix to be applied with a shape of :math:`(3, 3)`
-            or batched as :math:`(B, 3, 3)`.
+        trans_mat: The transformation matrix to be applied, with supported shape :math:`(B, 3, 3)`.
+            For boxes shaped :math:`(N, 4)`, ``B`` is one or ``N``. For boxes shaped
+            :math:`(B, N, 4)` or :math:`(B, N, 4, 2)`, it is one or the boxes' ``B``.
         boxes: The boxes to be transformed with a common shape of :math:`(N, 4)` or batched as :math:`(B, N, 4)`, the
             polygon shape of :math:`(B, N, 4, 2)` is also supported.
         mode: The format in which the boxes are provided. If set to 'xyxy' the boxes are assumed to be in the format
             ``xmin, ymin, xmax, ymax``. If set to 'xywh' the boxes are assumed to be in the format
             ``xmin, ymin, width, height``
-        restore_coordinates: In case the boxes are flipped, adding a post processing step to restore the
-            coordinates to a valid bounding box. Enabled by default (``None`` behaves as ``True``); pass
-            ``False`` to keep the raw transformed corners (the pre-2022 behavior, which yields invalid
-            boxes under flips).
+        restore_coordinates: Reorder endpoints after a flipped ``xyxy`` or ``xywh`` transform.
+            Enabled by default (``None`` behaves as ``True``); pass ``False`` to preserve raw
+            transformed endpoints. Polygon vertices retain their transformed order.
 
     Returns:
-        The set of transformed points in the specified mode
+        The transformed boxes in the specified mode.
 
     """
     if not isinstance(mode, str):
@@ -583,13 +695,24 @@ def transform_bbox(
 def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torch.Tensor:
     """Perform non-maxima suppression (NMS) on tensor of bounding boxes according to the intersection-over-union (IoU).
 
-    Args:
-        boxes: tensor containing the encoded bounding boxes with the shape :math:`(N, (x_1, y_1, x_2, y_2))`.
-        scores: tensor containing the scores associated to each bounding box with shape :math:`(N,)`.
-        iou_threshold: the throshold to discard the overlapping boxes.
+    Convention:
+        Boxes use exclusive ``xyxy`` coordinates. IoU area is
+        ``(x_2 - x_1) * (y_2 - y_1)`` and the result contains kept indices rather
+        than a boolean mask.
 
-    Return:
-        A tensor mask with the indices to keep from the input set of boxes and scores.
+    Args:
+        boxes: tensor containing exclusive ``xyxy`` bounding boxes with shape
+            :math:`(N, 4)`, ordered as ``(x_1, y_1, x_2, y_2)``.
+        scores: tensor containing the scores associated to each bounding box with shape :math:`(N,)`.
+        iou_threshold: the threshold to discard the overlapping boxes.
+
+    Returns:
+        Indices of the boxes kept from the input set, ordered by descending score.
+
+    .. warning::
+        This differs from the inclusive coordinate arithmetic used by several other
+        :mod:`kornia.geometry.bbox` operations and is documented in
+        `#4008 <https://github.com/kornia/kornia/issues/4008>`_.
 
     Example:
         >>> boxes = torch.tensor([

@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
+  KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
+  historical scale-space SIFT CPU/CUDA batch-runtime comparisons and plotting. (#4254)
+
+* Documented bbox/Boxes geometry-operation conventions and added executable pins for transforms,
+  NMS, padding, clipping, and area filtering, including known unbatched-input limitations. (#4245)
+
 * Documentation pages now provide search-specific titles and descriptions, canonical tutorial links, and a
   canonicalized redirect from the retired highlighted-features page. (#4226)
 
@@ -111,6 +118,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-tree MPS workarounds stay. (#4202)
 
 ### Breaking changes
+
+* Non-maxima suppression applies one border rule at every window size. `NonMaximaSuppression2d` /
+  `nms2d` with a window larger than `(7, 7)`, and `NonMaximaSuppression3d` / `nms3d`, no longer report
+  maxima inside the `(k - 1) // 2` border strip. Previously the general path replicate-padded its input,
+  so a position whose window ran off an edge was judged against duplicated copies of the edge values,
+  which both fabricated plateaus that suppressed genuine maxima and hid genuine neighbours that should
+  have suppressed spurious ones; the `(3, 3)`, `(5, 5)` and `(7, 7)` paths meanwhile rejected the strip
+  outright, so the two disagreed about the same pixel. The explicit paths' rule is now the rule
+  everywhere. Every kornia detector already rejects that strip -- ALIKED by hand after calling `nms2d`,
+  DISK and XFeat by using `k = 5`, `MultiResolutionDetector` by zeroing 15 px before the call -- so no
+  detector output changes. (#4239, #4242)
+
+* `nms2d(x, (1, 1))` and `nms3d(x, (1, 1, 1))` return `x` unchanged. A unit window has no neighbours,
+  so nothing can be suppressed; the old 2-D result was an artifact of the zeroed centre tap of the
+  convolution kernel summing to `0.0`, while the old 3-D path raised because of #4241. (#4242)
 
 * Kornia's minimum supported PyTorch version rises to 2.5.1. Previously the declared floor was
   2.0.0; PR-time CI has only ever exercised 2.5.1 and newer, and this same change retires the
@@ -260,9 +282,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entries, nine of the ten `cpu_float16`), which are removed from `testing/half_precision_xfails/`. The
   tenth `float16` line is kept: `TestAutoAugment::test_reproduce[cpu-float16]` still fails, now on an
   `AssertionError` rather than a `RuntimeError` — a smaller residual, not a fix. (#4210)
+* Reduce local-feature extraction overhead by accumulating orientation histograms directly,
+  batching built-in DoG extrema refinement, selecting coordinates before combining response signs,
+  and using faster activation layouts in KeyNet and CPU HardNet. Detector settings and pretrained
+  checkpoint formats are preserved. On CUDA the orientation histogram now accumulates with atomics,
+  so identical inputs can differ at the ulp level between calls unless
+  `torch.use_deterministic_algorithms(True)` is set. (#4254)
+
+* Non-maxima suppression with a window larger than `(7, 7)` no longer builds a `(k*k, 1, k, k)` one-hot
+  convolution to gather each neighbour into its own channel. On CPU in half precision that convolution
+  has no vectorized kernel and falls back to `_slow_conv2d_forward`, where it accounted for 99% of a
+  `MultiResolutionDetector.detect` call. The window minus its centre is now covered by rectangular
+  `max_pool2d` regions whose full-width slabs share one column pass, costing `O(ky + kx)` taps per
+  position rather than `ky * kx - 1`, with the centre excluded by construction so the suppression stays
+  strict. `detect` on a 240x240 image drops from 5757 ms to 27 ms in float16 and from 73.8 ms to 13.8 ms
+  in float32; a 353x353 `k = 15` suppression drops from 3150 ms to 10.5 ms in float16 and from 42.6 ms to
+  8.7 ms in float32, and from 12.1 ms to 0.15 ms for 1024x1024 `k = 21` on CUDA. (#4242)
+
+* `nms2d` accepts a non-square `kernel_size`. It used to raise `RuntimeError: shape '[1, 1, -1, H, W]' is
+  invalid for input of size ...`, because the neighbourhood kernel was built with its two extents swapped
+  and the padding was applied to the wrong pair of edges. (#4240, #4242)
+
+* `nms3d` accepts any `kernel_size`. Every size other than `(3, 3, 3)`, the one served by a hand-written
+  branch, used to raise: `_compute_zero_padding3d` defined a `(k - 1) // 2` helper and then returned the
+  full kernel sizes, so the padded volume did not match the kernel it was convolved with. (#4241, #4242)
+
+* `HyNet` and `SOSNet` now run in half precision, on CPU and on GPU, and no longer return NaN for a
+  degenerate patch (closes #4224). Two defects sat on the same line. On CPU both raised
+  `NotImplementedError: "avg_pool3d_out_frame" not implemented for 'Half'` (and the `'BFloat16'` spelling):
+  their final `LocalResponseNorm` is handed a 4-D `(B, C, 1, 1)` tensor, which routes
+  `torch.nn.functional.local_response_norm` through `avg_pool3d`, and that kernel has no CPU
+  `float16`/`bfloat16` implementation. Separately, in `float16` on a device where the kernel does exist
+  (MPS, CUDA), the descriptors came back all-NaN for any patch the network maps to exactly zero: the `eps`
+  that keeps the normalisation's division defined (`SOSNet.forward`'s `eps`, `HyNet`'s `eps_l2_norm`, both
+  `1e-10`) is not representable in `float16` and flushes to `0.0`, leaving `0/0`. Every `Conv2d` in `SOSNet`
+  has `bias=False` and every `BatchNorm2d` is `affine=False`, so any constant patch reaches the
+  normalisation as exactly zero; `HyNet` reaches it only with `is_bias=False`. `bfloat16` keeps `float32`'s
+  exponent range, so the guard survives there and only the CPU kernel gap applied to it. Both models now
+  take that one normalisation step in `float32` for either half-precision input and cast the result back --
+  a wider lift than the `float16`-only one `kornia.feature.siftdesc` gives its own `1e-10` guards, because
+  the CPU kernel gap covers both dtypes. `float32` and `float64` take the original expression and are
+  bitwise unchanged on CPU, CUDA and MPS. Half-precision output does change, by 0.25-2.25 eps, and where it
+  moves most it moves towards the `float64` reference rather than merely away from NaN: `SOSNet` `float16`
+  goes from 2.15e-03 to 2.28e-04 of maximum absolute error against a `float64` model carrying the same
+  weights, and the configurations that do not improve stay within one eps of where they were.
+  Half-precision descriptors are therefore not comparable bit-for-bit across this release. (#4225)
+* The `Import Surface` CI check accepts deliberate public-name removals recorded in the same change.
+  Edits to `tests/api_surface.json` must correspond to actual export removals and acknowledge only the exact
+  recorded module/name. Submodule APIs recorded only under an ancestor, and APIs outside the inventory, use
+  exact module/name entries in `tests/api_surface_removals.json`; only new entries matching a current
+  `__all__` removal count. Malformed records, deleted inventory module keys, unrelated Python edits, and
+  acknowledgements staged in earlier changes cannot authorize removals. Both record files trigger the workflow.
+  The export resolver includes implicit submodule bindings and rejects unsupported dynamic binding expressions
+  as evidence of removal. Deprecation windows and release notes still apply. (#4190, #4230)
+
 * `validate_bbox` and `validate_bbox3d` flatten rank-4 `(B, N, 4, 2)` / `(B, N, 8, 3)` input with `reshape`
   instead of `view`, so a non-contiguous leading-dimension stride (a transpose, a slice that drops boxes, an
   `expand`) returns a boolean as documented instead of raising `RuntimeError`. (#4174)
+
+* `infer_bbox_shape` and `bbox_to_mask` now reject rank-4 `(B, N, 4, 2)` inputs with `ShapeError`. Previously,
+  `N < 3` raised an incidental `IndexError`, while `N >= 3` silently returned `(B, 2)` extents computed from the
+  wrong vertices. (#4218)
 
 * Constructing `ScaleSpaceDetector` with `compile_modules` no longer permanently mutates the process-global
   `torch._dynamo.config.capture_dynamic_output_shape_ops` setting. (#4134)
@@ -271,10 +351,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for unbatched `(N, 4, 2)` input. The old `dim=1` was correct for batched
   `(B, N, 4, 2)` data (where dim 1 is the box axis) but wrong for 3-D tensors
   (where dim 1 is the vertex dimension); `dim=-3` is correct in both cases and
-  the behaviour of the batched path is byte-identical. Also clear the stale
-  ``_N`` list-padding metadata on both the inplace and non-inplace paths after
-  every merge so that ``to_tensor`` counts the merged boxes correctly instead of
-  silently truncating them (#4168).
+  the behaviour of the batched path is byte-identical. For list-backed inputs,
+  each batch row is now repacked with its real boxes before all trailing padding,
+  and the combined per-image padding counts are retained. This makes ``to_tensor``
+  trim only padding instead of dropping merged boxes or exposing old padding as
+  real boxes (#4168, #4175).
 
 * `Boxes3D.to_tensor` and `Boxes3D.get_boxes_shape` are differentiable again (#1396). Both reduce a box's 8
   vertices to its min/max corner with `amin`/`amax`, which is a genuine kink -- not differentiable in the
@@ -331,6 +412,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `kernel_size >= 63` now raises: CPU used to return a usable-looking answer there while MPS silently returned
   something else for the same call.
 
+* Fix `Boxes3D.from_tensor(..., mode="xyzwhd")` to preserve width, height, and depth field order for asymmetric
+  boxes. (#4189)
+
 * `RandomTransplantation` and `RandomTransplantation3D` transplanted nothing on MPS when no `excluded_labels`
   were given: PyTorch's MPS backend evaluates `all()` over the empty excluded-label axis to an undefined value,
   usually `False`, so every donor label was filtered out and the output equalled the input. The filter is now skipped when there is
@@ -339,6 +423,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `VisualPrompter.predict()` called without any prompt (the "run the prediction without prompts" example on the
   Segment Anything page) raised `TypeError: object of type 'NoneType' has no len()` from the prompt augmentation
   container; it now predicts from the image embedding alone, as documented. (#4178)
+
+* Preserve empty color tensors on accelerator backends instead of asking `reshape` to infer an ambiguous batch
+  dimension. This lets the YUV420 and YUV422 empty-input conversions return their documented empty RGB output on
+  MPS, matching CPU behavior (#4185).
+
 * Follow-up fixes to the documentation revamp (#4155): the landing page's filtering card quoted the combined
   `filters`/`color`/`enhance`/`morphology` count next to a `kornia.filters` label, the "Why Kornia?" hero carousel
   resumed after a visitor picked a tab, the Community page linked to the now-unregistered `librecv.org`, and the

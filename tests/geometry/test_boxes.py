@@ -21,10 +21,21 @@ import pytest
 import torch
 
 from kornia.geometry import boxes as boxes_module
-from kornia.geometry.bbox import infer_bbox_shape
+from kornia.geometry.bbox import bbox_to_mask, bbox_to_mask3d, infer_bbox_shape, infer_bbox_shape3d
 from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
 
 from testing.base import BaseTester
+
+
+def _unbatched_geometry_data(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    return torch.tensor(
+        [
+            [[1.0, 2.0], [4.0, 2.0], [4.0, 5.0], [1.0, 5.0]],
+            [[8.0, 0.0], [10.0, 0.0], [10.0, 1.0], [8.0, 1.0]],
+        ],
+        device=device,
+        dtype=dtype,
+    )
 
 
 class TestBoxes2D(BaseTester):
@@ -524,7 +535,7 @@ class TestBoxes2D(BaseTester):
         assert a2.data.shape == (2, 4, 2)
         self.assert_close(a2.to_tensor("xyxy"), expected_unbatched)
 
-        # --- _N is cleared: to_tensor must not drop merged boxes ---
+        # --- List padding is moved behind merged boxes and remains metadata ---
         # Build from a list so that _N is set (variable-length list padding).
         # from_tensor with a list of (N, 4) tensors of different lengths produces a
         # batched (B, max_N, 4, 2) tensor with _N recording per-batch padding.
@@ -540,10 +551,50 @@ class TestBoxes2D(BaseTester):
             mode="xyxy",
         )
         merged_list = list_boxes.merge(extra_batched)
-        assert merged_list._N is None, "_N must be None after merge"
+        assert merged_list._N == [1, 0]
+        merged_tensors = merged_list.to_tensor("xyxy")
+        assert isinstance(merged_tensors, list)
+        extra_tensors = extra_batched.to_tensor("xyxy")
+        assert isinstance(extra_tensors, torch.Tensor)
+        self.assert_close(merged_tensors[0], torch.cat([src1, extra_tensors[0]]))
+        self.assert_close(merged_tensors[1], torch.cat([src2, extra_tensors[1]]))
+
+        # Both operands may be list-backed, so their per-row padding counts must be combined.
+        other_list = Boxes.from_tensor(
+            [
+                torch.tensor([[6.0, 3.0, 9.0, 8.0], [0.0, 0.0, 3.0, 3.0]], device=device, dtype=dtype),
+                torch.tensor([[4.0, 4.0, 7.0, 7.0]], device=device, dtype=dtype),
+            ],
+            mode="xyxy",
+        )
+        other_tensors = other_list.to_tensor("xyxy")
+        assert isinstance(other_tensors, list)
+        expected_list = [torch.cat([src1, other_tensors[0]]), torch.cat([src2, other_tensors[1]])]
+
+        merged_lists = list_boxes.merge(other_list)
+        assert merged_lists._N == [1, 1]
+        actual_list = merged_lists.to_tensor("xyxy")
+        assert isinstance(actual_list, list)
+        for actual, expected in zip(actual_list, expected_list):
+            self.assert_close(actual, expected)
+
+        # The dense operand may also be on the left of a list-backed operand.
+        dense_first = extra_batched.merge(other_list)
+        assert dense_first._N == [0, 1]
+        actual_dense_first = dense_first.to_tensor("xyxy")
+        assert isinstance(actual_dense_first, list)
+        for dense_row, other_row, actual in zip(extra_tensors, other_tensors, actual_dense_first):
+            self.assert_close(actual, torch.cat([dense_row, other_row]))
+
+        result = list_boxes.merge(other_list, inplace=True)
+        assert result is list_boxes
+        assert list_boxes._N == [1, 1]
+        actual_inplace = list_boxes.to_tensor("xyxy")
+        assert isinstance(actual_inplace, list)
+        for actual, expected in zip(actual_inplace, expected_list):
+            self.assert_close(actual, expected)
 
     def test_compute_area(self):
-
         # Rectangle
         box_1 = [[0.0, 0.0], [100.0, 0.0], [100.0, 50.0], [0.0, 50.0]]
         # Trapezoid
@@ -579,6 +630,271 @@ class TestBoxes2D(BaseTester):
             computed_area == expected_area
             for computed_area, expected_area in zip(flattened_computed_areas_w_batch, expected_values)
         )
+
+    def test_wart_compute_area_is_shoelace_of_inclusive_vertices_4010(self, device, dtype):
+        # Wart pin for kornia#4010: compute_area applies shoelace to the stored
+        # inclusive vertices. A valid exclusive 2-by-1 box collapses to a line,
+        # and a raw four-by-three rectangle has area six rather than the twelve
+        # reported by get_boxes_shape. These are current values, not a contract.
+        two_by_one = Boxes.from_tensor(torch.tensor([[[1.0, 1.0, 3.0, 2.0]]], device=device, dtype=dtype), mode="xyxy")
+        four_by_three = Boxes(
+            torch.tensor([[[1.0, 1.0], [4.0, 1.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        )
+        self.assert_close(
+            two_by_one.compute_area(), torch.tensor([[0.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        )
+        self.assert_close(
+            four_by_three.compute_area(), torch.tensor([6.0], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        )
+
+    @pytest.mark.xfail(strict=True, reason="kornia#4010: compute_area disagrees with get_boxes_shape")
+    def test_convention_compute_area_matches_get_boxes_shape_product_4010(self, device, dtype):
+        # The intended contract is that area agrees with the container's own
+        # height and width terms. A repair must XPASS this strict xfail.
+        boxes = Boxes.from_tensor(torch.tensor([[[1.0, 1.0, 3.0, 2.0]]], device=device, dtype=dtype), mode="xyxy")
+        heights, widths = boxes.get_boxes_shape()
+        self.assert_close(boxes.compute_area(), heights * widths)
+
+    def test_convention_pad_and_unpad_use_left_right_top_bottom_in_place(self, device, dtype):
+        boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
+        original = boxes.data.clone()
+        padding = torch.tensor([[10.0, 99.0, 20.0, 88.0]], device=device, dtype=dtype)
+        result = boxes.pad(padding)
+        assert result is boxes
+        expected = original + torch.tensor([10.0, 20.0], device=device, dtype=dtype)
+        self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
+        assert boxes.unpad(padding) is boxes
+        self.assert_close(boxes.data, original, atol=0.0, rtol=0.0)
+
+    def test_wart_clamp_tuple_bounds_and_outside_box_behavior_4017(self, device, dtype):
+        # Wart pin for kornia#4017: tuple bounds are advertised but unsupported;
+        # tensor bounds clamp every vertex, collapsing a wholly outside box.
+        boxes = Boxes.from_tensor(
+            torch.tensor([[[8.0, 9.0, 10.0, 11.0]]], device=device, dtype=dtype),
+            mode="xyxy",
+        )
+        with pytest.raises(NotImplementedError):
+            boxes.clamp((0, 0), (5, 5))
+        clamped = boxes.clamp(
+            torch.tensor([[0.0, 0.0]], device=device, dtype=dtype),
+            torch.tensor([[5.0, 5.0]], device=device, dtype=dtype),
+        )
+        expected = torch.full((1, 1, 4, 2), 5.0, device=device, dtype=dtype)
+        self.assert_close(clamped.data, expected, atol=0.0, rtol=0.0)
+        self.assert_close(
+            boxes.data,
+            Boxes.from_tensor(torch.tensor([[[8.0, 9.0, 10.0, 11.0]]], device=device, dtype=dtype), mode="xyxy").data,
+            atol=0.0,
+            rtol=0.0,
+        )
+
+    def test_wart_trim_and_fast_translate_are_unimplemented_4017(self, device, dtype):
+        # Wart pin for kornia#4017: both documented entry points raise instead
+        # of implementing their advertised operations.
+        boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
+        with pytest.raises(NotImplementedError):
+            boxes.trim()
+        with pytest.raises(NotImplementedError):
+            boxes.translate(torch.tensor([[1.0, 2.0]], device=device, dtype=dtype), method="fast")
+
+    def test_convention_transform_boxes_in_place_rebinds_data(self, device, dtype):
+        # transform_boxes leaves its input unchanged by default. Its in-place
+        # twin returns self but rebinds storage, leaving prior data references stale.
+        boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
+        original = boxes.data
+        matrix = torch.tensor([[[1.0, 0.0, 10.0], [0.0, 1.0, 20.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        transformed = boxes.transform_boxes(matrix)
+        assert transformed is not boxes
+        self.assert_close(transformed.data, original + torch.tensor([10.0, 20.0], device=device, dtype=dtype))
+        self.assert_close(boxes.data, original, atol=0.0, rtol=0.0)
+        assert boxes.transform_boxes_(matrix) is boxes
+        assert boxes.data.data_ptr() != original.data_ptr()
+        self.assert_close(
+            original,
+            Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy").data,
+            atol=0.0,
+            rtol=0.0,
+        )
+
+    def test_convention_translate_warp_uses_batched_xy_displacements(self, device, dtype):
+        # Convention pin: each row of size supplies an (x, y) displacement for
+        # its batch item. Asymmetric values catch an accidental axis swap.
+        boxes = Boxes.from_tensor(
+            torch.tensor([[[1.0, 2.0, 5.0, 4.0]], [[10.0, 20.0, 14.0, 23.0]]], device=device, dtype=dtype),
+            mode="xyxy",
+        )
+        translated = boxes.translate(torch.tensor([[3.0, -7.0], [-5.0, 11.0]], device=device, dtype=dtype))
+        expected = torch.tensor(
+            [
+                [[[4.0, -5.0], [7.0, -5.0], [7.0, -4.0], [4.0, -4.0]]],
+                [[[5.0, 31.0], [8.0, 31.0], [8.0, 33.0], [5.0, 33.0]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(translated.data, expected, atol=0.0, rtol=0.0)
+        assert translated is not boxes
+
+    def test_wart_filter_boxes_by_area_zeroes_small_boxes_4010(self, device, dtype):
+        # Wart pin for kornia#4010: filtering acts on compute_area, so the
+        # valid two-by-one box with shoelace area zero is zeroed, not removed.
+        boxes = Boxes.from_tensor(torch.tensor([[[1.0, 1.0, 3.0, 2.0]]], device=device, dtype=dtype), mode="xyxy")
+        filtered = boxes.filter_boxes_by_area(min_area=1.0)
+        assert filtered is not boxes
+        self.assert_close(filtered.data, torch.zeros_like(boxes.data), atol=0.0, rtol=0.0)
+        assert filtered.data.shape == boxes.data.shape
+        assert not torch.equal(boxes.data, torch.zeros_like(boxes.data))
+
+    def test_convention_filter_boxes_by_area_maximum_zeroes_in_place(self, device, dtype):
+        # The shoelace areas are 2 and 8. Equal lower/upper bounds retain the
+        # first box, pinning both inclusive endpoints; the larger box is zeroed.
+        # In-place filtering returns the original wrapper and keeps its shape.
+        boxes = Boxes(
+            torch.tensor(
+                [
+                    [
+                        [[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]],
+                        [[1.0, 1.0], [5.0, 1.0], [5.0, 3.0], [1.0, 3.0]],
+                    ]
+                ],
+                device=device,
+                dtype=dtype,
+            )
+        )
+        first = boxes.data[:, :1].clone()
+        assert boxes.filter_boxes_by_area(min_area=2.0, max_area=2.0, inplace=True) is boxes
+        self.assert_close(boxes.data[:, :1], first, atol=0.0, rtol=0.0)
+        self.assert_close(boxes.data[:, 1:], torch.zeros_like(boxes.data[:, 1:]), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("operation, inplace", [("pad", None), ("unpad", None), ("clamp", False), ("clamp", True)])
+    @pytest.mark.parametrize("num_boxes", [1, 2])
+    def test_wart_unbatched_geometry_operations_raise_4244(self, operation, inplace, num_boxes, device, dtype):
+        # Wart pin for kornia#4244: the documented unbatched (N, 4, 2) form
+        # fails although its singleton-batched counterpart works. Clamp reaches
+        # indexing failure for one box and broadcasting failure for two boxes.
+        boxes = Boxes(_unbatched_geometry_data(device, dtype)[:num_boxes])
+        if operation == "clamp":
+            with pytest.raises((RuntimeError, IndexError)):
+                boxes.clamp(
+                    torch.tensor([[2.0, 3.0]], device=device, dtype=dtype),
+                    torch.tensor([[6.0, 7.0]], device=device, dtype=dtype),
+                    inplace=inplace,
+                )
+        else:
+            with pytest.raises((RuntimeError, IndexError)):
+                getattr(boxes, operation)(torch.tensor([[10.0, 99.0, 20.0, 88.0]], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("operation, inplace", [("pad", None), ("unpad", None), ("clamp", False), ("clamp", True)])
+    @pytest.mark.parametrize("num_boxes", [1, 2])
+    @pytest.mark.xfail(
+        strict=True,
+        raises=(RuntimeError, IndexError),
+        reason="kornia#4244: unbatched geometry operations do not match singleton batches",
+    )
+    def test_convention_unbatched_geometry_operations_match_singleton_batch_4244(
+        self, operation, inplace, num_boxes, device, dtype
+    ):
+        data = _unbatched_geometry_data(device, dtype)[:num_boxes]
+        batched = Boxes(data[None].clone())
+        unbatched = Boxes(data.clone())
+        if operation == "clamp":
+            limits = (
+                torch.tensor([[2.0, 3.0]], device=device, dtype=dtype),
+                torch.tensor([[6.0, 7.0]], device=device, dtype=dtype),
+            )
+            try:
+                expected = batched.clamp(*limits, inplace=inplace)
+            except (RuntimeError, IndexError) as error:
+                raise AssertionError("The supported singleton-batch reference must succeed") from error
+            assert (expected is batched) is inplace
+            actual = unbatched.clamp(*limits, inplace=inplace)
+            assert (actual is unbatched) is inplace
+            if not inplace:
+                self.assert_close(unbatched.data, data, atol=0.0, rtol=0.0)
+        else:
+            padding = torch.tensor([[10.0, 99.0, 20.0, 88.0]], device=device, dtype=dtype)
+            try:
+                expected = getattr(batched, operation)(padding)
+            except (RuntimeError, IndexError) as error:
+                raise AssertionError("The supported singleton-batch reference must succeed") from error
+            assert expected is batched
+            actual = getattr(unbatched, operation)(padding)
+            assert actual is unbatched
+        self.assert_close(actual.data, expected.data.squeeze(0), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("batched", [False, True])
+    @pytest.mark.parametrize("inplace", [False, True])
+    def test_wart_transform_boxes_empty_copy_aliases_input_4020(self, batched, inplace, device, dtype):
+        # Wart pin for tracking issue #4020: transforming an empty container
+        # preserves its tensor storage. The non-inplace wrapper is new but
+        # aliases the input data; the in-place wrapper remains self.
+        data = torch.empty((1, 0, 4, 2) if batched else (0, 4, 2), device=device, dtype=dtype)
+        boxes = Boxes(data)
+        original = boxes.data
+        matrix = torch.eye(3, device=device, dtype=dtype)
+        transformed = boxes.transform_boxes_(matrix) if inplace else boxes.transform_boxes(matrix)
+        assert (transformed is boxes) is inplace
+        assert transformed.data is original
+        assert transformed.data.shape == original.shape
+
+    def test_wart_to_mask_and_bbox_to_mask_take_opposite_size_orders_4014(self, device, dtype):
+        # Wart pin for kornia#4014: Boxes.to_mask(height, width) and bbox_to_mask(boxes, width, height)
+        # are the same call, and both return (N, height, width) in the box dtype.
+        vertices = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        method = Boxes(vertices).to_mask(3, 5)
+        assert method.shape == (1, 3, 5)
+        assert method.dtype == dtype
+        self.assert_close(method, bbox_to_mask(vertices, 5, 3), atol=0.0, rtol=0.0)
+        assert Boxes(vertices).to_mask(5, 3).shape == (1, 5, 3)
+        assert Boxes(vertices[None]).to_mask(3, 5).shape == (1, 1, 3, 5)
+
+    def test_wart_to_mask_rounds_the_exclusive_export_half_open_4015(self, device, dtype):
+        # Wart pin for kornia#4015: the fractional box [1.4, 3.6] x [1.4, 2.6] exports as xyxy
+        # [1.4, 1.4, 4.6, 3.6], rounds to [1, 1, 5, 4], and fills the half-open ranges: twelve pixels,
+        # where bbox_to_mask fills two (test_bbox.py). A box entirely outside the image is clamped
+        # onto the border and fills nothing, and a box that requires grad is rejected.
+        boxes = torch.tensor([[[1.4, 1.4], [3.6, 1.4], [3.6, 2.6], [1.4, 2.6]]], device=device, dtype=dtype)
+        expected = torch.zeros(1, 5, 6, device=device, dtype=dtype)
+        expected[0, 1:4, 1:5] = 1.0
+        self.assert_close(Boxes(boxes).to_mask(5, 6), expected, atol=0.0, rtol=0.0)
+        assert bbox_to_mask(boxes, 6, 5).sum().item() == 2.0
+
+        outside = torch.tensor([[[6.0, 6.0], [9.0, 6.0], [9.0, 9.0], [6.0, 9.0]]], device=device, dtype=dtype)
+        assert Boxes(outside).to_mask(5, 5).sum().item() == 0.0
+        with pytest.raises(RuntimeError, match="differentiable"):
+            Boxes(boxes.clone().requires_grad_()).to_mask(5, 6)
+
+    def test_wart_to_mask_fills_the_origin_pixel_for_list_padding_rows_4252(self, device, dtype):
+        # Wart pin for kornia#4252: a list-backed object exports its zero padding rows as the exclusive xyxy box
+        # [0, 0, 1, 1] (see the padding note on the class), so to_mask marks pixel (0, 0) in the
+        # mask channel of every padding entry instead of leaving it empty.
+        box = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+        boxes = Boxes([box, torch.cat([box, box + 2.0])])
+        mask = boxes.to_mask(5, 5)
+        assert mask.shape == (2, 2, 5, 5)
+        expected_padding = torch.zeros(5, 5, device=device, dtype=dtype)
+        expected_padding[0, 0] = 1.0
+        self.assert_close(mask[0, 1], expected_padding, atol=0.0, rtol=0.0)
+        self.assert_close(mask[0, 0], mask[1, 0], atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("case", ["fractional", "outside", "negative", "rotated", "batched"])
+    def test_convention_to_mask_export_path_matches_loop_path(self, case, device, dtype, monkeypatch):
+        # Convention pin: the CPU/MPS loop path and the vectorized path taken on CUDA and under
+        # export produce the same mask. The vectorized branch is selected by patching the module's
+        # is_exporting predicate; on CUDA both calls already take it.
+        fractional = torch.tensor([[[1.4, 1.4], [3.6, 1.4], [3.6, 2.6], [1.4, 2.6]]], device=device, dtype=dtype)
+        data = {
+            "fractional": fractional,
+            "outside": torch.tensor([[[3.0, 3.0], [9.0, 3.0], [9.0, 9.0], [3.0, 9.0]]], device=device, dtype=dtype),
+            "negative": fractional - 3.0,
+            "rotated": torch.tensor([[[2.0, 0.0], [4.0, 2.0], [2.0, 4.0], [0.0, 2.0]]], device=device, dtype=dtype),
+            "batched": fractional.expand(2, 3, 4, 2).contiguous(),
+        }[case]
+        loop = Boxes(data).to_mask(5, 6)
+        monkeypatch.setattr(boxes_module, "is_exporting", lambda: True)
+        vectorized = Boxes(data).to_mask(5, 6)
+        assert loop.shape == vectorized.shape
+        self.assert_close(loop, vectorized, atol=0.0, rtol=0.0)
 
 
 class TestTransformBoxes2D(BaseTester):
@@ -796,12 +1112,12 @@ class TestBbox3D(BaseTester):
 
     @pytest.mark.parametrize("shape", [(1, 6), (1, 1, 6)])
     def test_from_tensor(self, shape, device, dtype):
-        box_xyzxyz = torch.as_tensor([[1, 2, 3, 4, 5, 6]], device=device, dtype=dtype).view(*shape)
-        box_xyzxyz_plus = torch.as_tensor([[1, 2, 3, 3, 4, 5]], device=device, dtype=dtype).view(*shape)
-        box_xyzwhd = torch.as_tensor([[1, 2, 3, 3, 3, 3]], device=device, dtype=dtype).view(*shape)
+        box_xyzxyz = torch.as_tensor([[1, 2, 3, 3, 5, 7]], device=device, dtype=dtype).view(*shape)
+        box_xyzxyz_plus = torch.as_tensor([[1, 2, 3, 2, 4, 6]], device=device, dtype=dtype).view(*shape)
+        box_xyzwhd = torch.as_tensor([[1, 2, 3, 2, 3, 4]], device=device, dtype=dtype).view(*shape)
 
         expected_box = torch.as_tensor(
-            [[[1, 2, 3], [3, 2, 3], [3, 4, 3], [1, 4, 3], [1, 2, 5], [3, 2, 5], [3, 4, 5], [1, 4, 5]]],  # Front  # Back
+            [[[1, 2, 3], [2, 2, 3], [2, 4, 3], [1, 4, 3], [1, 2, 6], [2, 2, 6], [2, 4, 6], [1, 4, 6]]],  # Front  # Back
             device=device,
             dtype=dtype,
         ).view(*shape[:-1], 8, 3)
@@ -1106,6 +1422,201 @@ class TestBbox3D(BaseTester):
             expected_grad[0, tied_vertex, 0] = 0.25
         self.assert_close(vertices.grad, expected_grad)
 
+    @staticmethod
+    def _asymmetric_xyzxyz(device, dtype) -> torch.Tensor:
+        # Exclusive corners: x in 1..5, y in 2..5, z in 3..8, so width 4, height 3, depth 5.
+        return torch.tensor([[1.0, 2.0, 3.0, 5.0, 5.0, 8.0]], device=device, dtype=dtype)
+
+    def test_convention_from_tensor_xyzxyz_stores_inclusive_front_then_back_vertices(self, device, dtype):
+        # Convention pin: the stored form is inclusive (each max corner is one less than the
+        # exclusive input) in front top-left, top-right, bottom-right, bottom-left order followed by
+        # the same four back vertices; get_boxes_shape returns (depths, heights, widths); every
+        # export mode derives from that stored form, and the mode string is lowercased.
+        xyzxyz = self._asymmetric_xyzxyz(device, dtype)
+        boxes = Boxes3D.from_tensor(xyzxyz, mode="XYZXYZ")
+        assert boxes.mode == "xyzxyz"
+        expected_data = torch.tensor(
+            [
+                [
+                    [1.0, 2.0, 3.0],
+                    [4.0, 2.0, 3.0],
+                    [4.0, 4.0, 3.0],
+                    [1.0, 4.0, 3.0],
+                    [1.0, 2.0, 7.0],
+                    [4.0, 2.0, 7.0],
+                    [4.0, 4.0, 7.0],
+                    [1.0, 4.0, 7.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(boxes.data, expected_data, atol=0.0, rtol=0.0)
+        for extent, expected in zip(boxes.get_boxes_shape(), (5.0, 3.0, 4.0)):
+            self.assert_close(extent, torch.tensor([expected], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+        self.assert_close(boxes.to_tensor("xyzxyz"), xyzxyz, atol=0.0, rtol=0.0)
+        expected_plus = torch.tensor([[1.0, 2.0, 3.0, 4.0, 4.0, 7.0]], device=device, dtype=dtype)
+        self.assert_close(boxes.to_tensor("xyzxyz_plus"), expected_plus, atol=0.0, rtol=0.0)
+        expected_whd = torch.tensor([[1.0, 2.0, 3.0, 4.0, 3.0, 5.0]], device=device, dtype=dtype)
+        self.assert_close(boxes.to_tensor("xyzwhd"), expected_whd, atol=0.0, rtol=0.0)
+        self.assert_close(boxes.to_tensor("vertices_plus"), expected_data, atol=0.0, rtol=0.0)
+        offsets = torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]], device=device)
+        offsets = torch.cat([offsets, offsets + torch.tensor([0.0, 0.0, 1.0], device=device)]).to(dtype)
+        self.assert_close(boxes.to_tensor("vertices"), expected_data + offsets, atol=0.0, rtol=0.0)
+        with pytest.raises(ValueError, match="shape"):
+            Boxes3D.from_tensor(expected_data, mode="vertices")
+
+    def test_wart_vertices_export_is_exclusive_for_inclusive_bbox3d_consumers_4009(self, device, dtype):
+        # Wart pin for kornia#4009 (its 3D form): 'vertices' is an exclusive export, while
+        # infer_bbox_shape3d reads vertices as inclusive and therefore adds one per axis.
+        boxes = Boxes3D.from_tensor(self._asymmetric_xyzxyz(device, dtype), mode="xyzxyz")
+        for extent, expected in zip(infer_bbox_shape3d(boxes.to_tensor("vertices")), (6.0, 4.0, 5.0)):
+            self.assert_close(extent, torch.tensor([expected], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        for extent, expected in zip(infer_bbox_shape3d(boxes.to_tensor("vertices_plus")), (5.0, 3.0, 4.0)):
+            self.assert_close(extent, torch.tensor([expected], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+    def test_convention_from_tensor_rejects_non_positive_extents_in_mode_convention(self, device, dtype):
+        # Convention pin: validate_boxes=True rejects extents <= 0 measured in the given mode, so a
+        # zero-span 'xyzxyz_plus' box (inclusive extent one) passes where the same corners in
+        # 'xyzxyz' fail; each axis is checked; validate_boxes=False accepts everything.
+        def build(values, mode, validate_boxes=True):
+            return Boxes3D.from_tensor(torch.tensor([values], device=device, dtype=dtype), mode, validate_boxes)
+
+        with pytest.raises(ValueError, match="widths"):
+            build([1.0, 2.0, 3.0, 1.0, 6.0, 8.0], "xyzxyz")
+        assert build([1.0, 2.0, 3.0, 1.0, 6.0, 8.0], "xyzxyz_plus").data.shape == (1, 8, 3)
+        with pytest.raises(ValueError, match="widths"):
+            build([1.0, 2.0, 3.0, 0.0, 6.0, 8.0], "xyzxyz_plus")
+        with pytest.raises(ValueError, match="heights"):
+            build([1.0, 2.0, 3.0, 5.0, 2.0, 8.0], "xyzxyz")
+        with pytest.raises(ValueError, match="depths"):
+            build([1.0, 2.0, 3.0, 5.0, 6.0, 3.0], "xyzxyz")
+        with pytest.raises(ValueError, match="widths"):
+            build([1.0, 2.0, 3.0, 0.0, 4.0, 5.0], "xyzwhd")
+        assert build([1.0, 2.0, 3.0, 0.5, 4.0, 5.0], "xyzwhd").data.shape == (1, 8, 3)
+        assert build([1.0, 2.0, 3.0, 1.0, 6.0, 8.0], "xyzxyz", validate_boxes=False).data.shape == (1, 8, 3)
+
+    def test_wart_constructor_and_from_tensor_have_different_integer_policies_4012(self, device):
+        # Wart pin for kornia#4012 (its 3D form): the constructor rejects integer coordinates
+        # unless told to cast, while from_tensor silently casts them to float32.
+        vertices = torch.tensor([[[1, 2, 3]] * 8], device=device)
+        with pytest.raises(ValueError, match="floating point"):
+            Boxes3D(vertices)
+        assert Boxes3D(vertices, raise_if_not_floating_point=False).dtype == torch.float32
+        integer = torch.tensor([[1, 2, 3, 5, 5, 8]], device=device)
+        assert Boxes3D.from_tensor(integer, mode="xyzxyz").dtype == torch.float32
+        assert Boxes3D.from_tensor(integer.to(torch.float16), mode="xyzxyz").dtype == torch.float16
+
+    def test_wart_to_tensor_default_mode_ignores_the_stored_label_4251(self, device, dtype):
+        # Wart pin for kornia#4251: Boxes3D.to_tensor() defaults to 'xyzxyz' whatever mode the object was built in,
+        # while Boxes.to_tensor() defaults to the stored mode. The copy path of transform_boxes
+        # also resets the label to 'xyzxyz_plus' where the in-place path keeps it.
+        xyzwhd = torch.tensor([[1.0, 2.0, 3.0, 4.0, 3.0, 5.0]], device=device, dtype=dtype)
+        boxes = Boxes3D.from_tensor(xyzwhd, mode="xyzwhd")
+        assert boxes.mode == "xyzwhd"
+        self.assert_close(boxes.to_tensor(), self._asymmetric_xyzxyz(device, dtype), atol=0.0, rtol=0.0)
+        xywh = torch.tensor([[1.0, 2.0, 4.0, 3.0]], device=device, dtype=dtype)
+        self.assert_close(Boxes.from_tensor(xywh, mode="xywh").to_tensor(), xywh, atol=0.0, rtol=0.0)
+
+        identity = torch.eye(4, device=device, dtype=dtype)
+        assert boxes.transform_boxes(identity).mode == "xyzxyz_plus"
+        assert boxes.transform_boxes_(identity).mode == "xyzwhd"
+
+    @pytest.mark.xfail(
+        strict=True, raises=AssertionError, reason="kornia#4251: Boxes3D.to_tensor() ignores the stored mode label"
+    )
+    def test_convention_to_tensor_default_mode_is_the_stored_label_4251(self, device, dtype):
+        xyzwhd = torch.tensor([[1.0, 2.0, 3.0, 4.0, 3.0, 5.0]], device=device, dtype=dtype)
+        self.assert_close(Boxes3D.from_tensor(xyzwhd, mode="xyzwhd").to_tensor(), xyzwhd, atol=0.0, rtol=0.0)
+
+    @staticmethod
+    def _fractional_cuboid(device, dtype) -> torch.Tensor:
+        # x in [1.6, 3.4], y and z in [1.6, 2.4].
+        return torch.tensor(
+            [
+                [
+                    [1.6, 1.6, 1.6],
+                    [3.4, 1.6, 1.6],
+                    [3.4, 2.4, 1.6],
+                    [1.6, 2.4, 1.6],
+                    [1.6, 1.6, 2.4],
+                    [3.4, 1.6, 2.4],
+                    [3.4, 2.4, 2.4],
+                    [1.6, 2.4, 2.4],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_convention_to_mask_takes_depth_height_width_and_matches_the_free_function(self, device, dtype):
+        # Convention pin: to_mask(depth, height, width) returns (N, depth, height, width) in the box
+        # dtype, equal to bbox_to_mask3d's channel on integer vertices; a box entirely outside the
+        # volume fills nothing, and a box that requires grad is rejected.
+        cuboid = Boxes3D.from_tensor(
+            torch.tensor([[1.0, 1.0, 1.0, 3.0, 3.0, 2.0]], device=device, dtype=dtype), mode="xyzxyz_plus"
+        )
+        mask = cuboid.to_mask(4, 5, 6)
+        assert mask.shape == (1, 4, 5, 6)
+        assert mask.dtype == dtype
+        self.assert_close(mask, bbox_to_mask3d(cuboid.data, (4, 5, 6))[:, 0].to(dtype), atol=0.0, rtol=0.0)
+        assert mask.sum().item() == 18.0
+        assert Boxes3D(cuboid.data[None]).to_mask(4, 5, 6).shape == (1, 1, 4, 5, 6)
+        assert Boxes3D(cuboid.data + 10.0).to_mask(4, 5, 6).sum().item() == 0.0
+        with pytest.raises(RuntimeError, match="differentiable"):
+            Boxes3D(cuboid.data.clone().requires_grad_()).to_mask(4, 5, 6)
+
+    def test_wart_to_mask_rounds_the_exclusive_export_half_open_4015(self, device, dtype):
+        # Wart pin for kornia#4015 (3D): the fractional cuboid exports as xyzxyz
+        # [1.6, 1.6, 1.6, 4.4, 3.4, 3.4], rounds to [2, 2, 2, 4, 3, 3], and fills the half-open
+        # ranges: two voxels, where bbox_to_mask3d truncates and fills twelve (test_bbox.py).
+        boxes = self._fractional_cuboid(device, dtype)
+        expected = torch.zeros(1, 5, 5, 6, device=device, dtype=dtype)
+        expected[0, 2, 2, 2:4] = 1.0
+        self.assert_close(Boxes3D(boxes).to_mask(5, 5, 6), expected, atol=0.0, rtol=0.0)
+        assert bbox_to_mask3d(boxes, (5, 5, 6)).sum().item() == 12.0
+
+    @pytest.mark.parametrize("case", ["fractional", "outside", "negative", "batched"])
+    def test_convention_to_mask_export_path_matches_loop_path(self, case, device, dtype, monkeypatch):
+        # Convention pin: the loop path and the grid-comparison path taken under export produce
+        # the same mask. The export branch is selected by patching the module's is_exporting predicate.
+        fractional = self._fractional_cuboid(device, dtype)
+        data = {
+            "fractional": fractional,
+            "outside": fractional + 10.0,
+            "negative": fractional - 2.0,
+            "batched": fractional.expand(2, 2, 8, 3).contiguous(),
+        }[case]
+        loop = Boxes3D(data).to_mask(5, 5, 6)
+        monkeypatch.setattr(boxes_module, "is_exporting", lambda: True)
+        vectorized = Boxes3D(data).to_mask(5, 5, 6)
+        assert loop.shape == vectorized.shape
+        self.assert_close(loop, vectorized, atol=0.0, rtol=0.0)
+
+    def test_convention_transform_boxes_in_place_rebinds_data(self, device, dtype):
+        # Convention pin: the copy path leaves the source untouched and returns a new object; the
+        # in-place path returns self but rebinds the internal tensor, so an earlier data reference
+        # is stale. A (3, 3) matrix is rejected and a (1, 4, 4) matrix applies to unbatched boxes.
+        source = Boxes3D.from_tensor(self._asymmetric_xyzxyz(device, dtype), mode="xyzxyz")
+        original = source.data
+        scale = torch.diag(torch.tensor([2.0, 3.0, 4.0, 1.0], device=device, dtype=dtype))
+        copied = source.transform_boxes(scale)
+        assert copied is not source
+        assert source.data is original
+        expected = torch.tensor([[2.0, 6.0, 12.0, 8.0, 12.0, 28.0]], device=device, dtype=dtype)
+        self.assert_close(copied.to_tensor("xyzxyz_plus"), expected, atol=0.0, rtol=0.0)
+        self.assert_close(source.transform_boxes(scale[None]).data, copied.data, atol=0.0, rtol=0.0)
+
+        result = source.transform_boxes_(scale)
+        assert result is source
+        assert source.data is not original
+        self.assert_close(source.data, copied.data, atol=0.0, rtol=0.0)
+        untouched = Boxes3D.from_tensor(self._asymmetric_xyzxyz(device, dtype)).data
+        self.assert_close(original, untouched, atol=0.0, rtol=0.0)
+        with pytest.raises(ValueError, match="4, 4"):
+            source.transform_boxes(torch.eye(3, device=device, dtype=dtype))
+
 
 class TestTransformBoxes3D(BaseTester):
     def test_transform_boxes(self, device, dtype):
@@ -1284,3 +1795,98 @@ class TestVideoBoxes(BaseTester):
             return VideoBoxes.from_tensor(x).to_tensor()  # type: ignore[return-value]
 
         self.gradcheck(_wrap, (boxes,))
+
+    def test_convention_from_tensor_stores_vertices_plus_and_restores_the_temporal_axis(self, device, dtype):
+        # Convention pin: the (B, T, N, 4, 2) input is stored unchanged as (B * T, N, 4, 2) batched
+        # 'vertices_plus' data; every Boxes export mode is available and comes back with the
+        # temporal axis restored; integer input is cast to float32; a transformation matrix must
+        # carry the flattened batch of B * T matrices.
+        boxes = self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1)
+        video_boxes = VideoBoxes.from_tensor(boxes)
+        assert video_boxes.mode == "vertices_plus"
+        assert video_boxes.temporal_channel_size == 3
+        self.assert_close(video_boxes.data, boxes.reshape(6, 1, 4, 2), atol=0.0, rtol=0.0)
+
+        xyxy = video_boxes.to_tensor("xyxy")
+        assert isinstance(xyxy, torch.Tensor)
+        assert xyxy.shape == (2, 3, 1, 4)
+        expected_xyxy = torch.tensor([1.0, 1.0, 4.0, 4.0], device=device, dtype=dtype).expand(2, 3, 1, 4)
+        self.assert_close(xyxy, expected_xyxy, atol=0.0, rtol=0.0)
+        assert VideoBoxes.from_tensor(boxes.to(torch.int64)).dtype == torch.float32
+        with pytest.raises(ValueError, match="BxTxNx4x2"):
+            VideoBoxes.from_tensor(torch.zeros(2, 3, 1, 4, 3, device=device, dtype=dtype))
+
+        with pytest.raises(ValueError, match="Batch size mismatch"):
+            video_boxes.transform_boxes(torch.eye(3, device=device, dtype=dtype))
+        transformed = video_boxes.transform_boxes(torch.eye(3, device=device, dtype=dtype).expand(6, 3, 3))
+        assert isinstance(transformed, VideoBoxes)
+        assert transformed.temporal_channel_size == 3
+        self.assert_close(transformed.to_tensor(), boxes, atol=0.0, rtol=0.0)
+
+    def test_wart_inherited_methods_break_on_the_temporal_wrapper_4249(self, device, dtype):
+        # Wart pin for kornia#4249: the to_tensor override drops the as_padded_sequence keyword that
+        # the inherited get_boxes_shape and to_mask pass, and indexing builds a wrapper without the temporal size,
+        # so its to_tensor fails. The inherited methods keep the temporal size whether they copy or update in
+        # place; test_convention_inherited_methods_split_copies_from_in_place_updates pins which is which.
+        video_boxes = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1))
+        with pytest.raises(TypeError, match="as_padded_sequence"):
+            video_boxes.get_boxes_shape()
+        with pytest.raises(TypeError, match="as_padded_sequence"):
+            video_boxes.to_mask(4, 5)
+        frame = video_boxes[0]
+        assert isinstance(frame, VideoBoxes)
+        with pytest.raises(AttributeError, match="temporal_channel_size"):
+            frame.to_tensor()
+        bounds = torch.zeros(6, 2, device=device, dtype=dtype)
+        assert video_boxes.clamp(bounds, bounds + 2.0).temporal_channel_size == 3
+        assert video_boxes.filter_boxes_by_area(1.0).temporal_channel_size == 3
+        assert video_boxes.translate(bounds + 1.0).temporal_channel_size == 3
+        assert video_boxes.pad(torch.ones(6, 4, device=device, dtype=dtype)).temporal_channel_size == 3
+        assert video_boxes.merge(video_boxes).temporal_channel_size == 3
+        assert video_boxes.to(dtype=torch.float32).temporal_channel_size == 3
+
+    def test_convention_inherited_methods_split_copies_from_in_place_updates(self, device, dtype):
+        # Convention pin: transform_boxes, translate, clamp, filter_boxes_by_area and merge copy through
+        # clone, so they return a new VideoBoxes carrying the temporal size and leave the source
+        # untouched; pad, unpad, to and type update self in place and return it.
+        video_boxes = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1))
+        original = video_boxes.data.clone()
+        bounds = torch.zeros(6, 2, device=device, dtype=dtype)
+        copies = [
+            video_boxes.transform_boxes(torch.eye(3, device=device, dtype=dtype).expand(6, 3, 3)),
+            video_boxes.translate(bounds + 1.0),
+            video_boxes.clamp(bounds, bounds + 2.0),
+            video_boxes.filter_boxes_by_area(1.0),
+            video_boxes.merge(video_boxes),
+        ]
+        for copy in copies:
+            assert copy is not video_boxes
+            assert isinstance(copy, VideoBoxes)
+            assert copy.temporal_channel_size == 3
+        self.assert_close(video_boxes.data, original, atol=0.0, rtol=0.0)
+
+        padding = torch.ones(6, 4, device=device, dtype=dtype)
+        assert video_boxes.pad(padding) is video_boxes
+        self.assert_close(video_boxes.data, original + 1.0, atol=0.0, rtol=0.0)
+        assert video_boxes.unpad(padding) is video_boxes
+        self.assert_close(video_boxes.data, original, atol=0.0, rtol=0.0)
+        other = torch.float16 if dtype == torch.float32 else torch.float32
+        assert video_boxes.to(dtype=other) is video_boxes
+        assert video_boxes.dtype == other
+        assert video_boxes.type(dtype) is video_boxes
+        assert video_boxes.dtype == dtype
+        assert video_boxes.temporal_channel_size == 3
+
+    @pytest.mark.xfail(
+        strict=True, raises=AssertionError, reason="kornia#4249: VideoBoxes.get_boxes_shape and to_mask raise TypeError"
+    )
+    def test_convention_inherited_shape_and_mask_work_on_the_temporal_wrapper_4249(self, device, dtype):
+        video_boxes = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1))
+        try:
+            heights, widths = video_boxes.get_boxes_shape()
+            mask = video_boxes.to_mask(4, 5)
+        except TypeError as error:
+            raise AssertionError(str(error)) from error
+        # One extent per box and one (4, 5) mask per box, whichever way the temporal axis is laid out.
+        assert heights.numel() == widths.numel() == 6
+        assert mask.shape[-2:] == (4, 5) and mask.numel() == 6 * 4 * 5
