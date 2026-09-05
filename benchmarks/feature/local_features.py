@@ -32,8 +32,12 @@ extracting BOTH images and SNN matching (ratio 0.85), excluding I/O and RANSAC.
 Image 1 is deliberately re-extracted for every pair. Quality is the existing
 mean L1 corner reprojection error against the supplied H1toKp homography, with
 fixed-seed Kornia RANSAC. PNG and original Oxford PPM images are supported.
-CPU timings use one thread, as does common.time_us's Timer. No compilation,
-autocast, reduced feature counts, or modified pyramid settings are used.
+CPU timings use one thread, as does common.time_us's Timer. Optional --compile uses
+the existing factory's selective compilation: scale-space pyramid/response/subpixel
+modules, or KeyNet response/NMS, with dynamic=True and the default Inductor mode.
+Descriptors, orientation, affine adaptation, matching, and RANSAC remain eager.
+Initial calls (including any compilation/cache loading) are recorded separately,
+outside warmup and steady-state timing. No autocast or pipeline settings change.
 """
 
 from __future__ import annotations
@@ -90,6 +94,9 @@ def evaluate(args: argparse.Namespace) -> None:
         min_run_time=args.min_run_time,
         cudnn_allow_tf32=torch.backends.cudnn.allow_tf32,
         cudnn_benchmark=torch.backends.cudnn.benchmark,
+        compile=args.compile,
+        compile_scope="scale-space pyramid/response/subpixel; KeyNet response/NMS" if args.compile else None,
+        compile_dynamic=True if args.compile else None,
         input_sha256={
             p.name: hashlib.sha256(p.read_bytes()).hexdigest()
             for p in [image_path(args.seq, i) for i in range(1, 7)] + [args.seq / f"H1to{i}p" for i in range(2, 7)]
@@ -107,7 +114,9 @@ def evaluate(args: argparse.Namespace) -> None:
             "sift_affnet_hardnet": ("scalespace", "hardnet", "lap", "affnet"),
             "keynet_hardnet": ("keynet", "hardnet", "orinet", "none"),
         }[name]
-        extractor = build_extractor(method, "dog", "adaptive", desc, ori, aff, device, args.nf).eval()
+        extractor = build_extractor(
+            method, "dog", "adaptive", desc, ori, aff, device, args.nf, compile_modules=args.compile
+        ).eval()
         print(f"\n# {name}\n# pair   median ms   IQR ms   corner L1 px   inliers   matches", flush=True)
 
         def extract_match(
@@ -119,6 +128,18 @@ def evaluate(args: argparse.Namespace) -> None:
             return kp1, kp2, indices
 
         for k, img2 in enumerate(images[1:], 2):
+            # Never use a potentially minutes-long compilation call to size the
+            # steady-state timing budget. Warm every pair before measuring it.
+            initial_call_seconds = None
+            if args.compile:
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                start = time.perf_counter()
+                extract_match(img2)
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                initial_call_seconds = time.perf_counter() - start
+                print(f"# 1-{k} initial compiled call: {initial_call_seconds:.3f} s", flush=True)
             if device.type == "cuda":
                 torch.cuda.synchronize()
                 torch.cuda.reset_peak_memory_stats(device)
@@ -149,7 +170,7 @@ def evaluate(args: argparse.Namespace) -> None:
                     )
             row = {
                 "op": name,
-                "backend": "kornia (eager)",
+                "backend": "kornia (selectively compiled)" if args.compile else "kornia (eager)",
                 "batch": 1,
                 "height": img2.shape[-2],
                 "width": img2.shape[-1],
@@ -164,6 +185,7 @@ def evaluate(args: argparse.Namespace) -> None:
                 "features1": len(kp1),
                 "features2": len(kp2),
                 "peak_extra_cuda_bytes": peak_bytes,
+                "initial_call_seconds": initial_call_seconds,
             }
             rows.append(row)
             print(
@@ -191,6 +213,7 @@ def main() -> None:
     parser.add_argument("--timing-pairs", nargs="+", type=int, choices=range(2, 7), default=[2, 3, 4, 5, 6])
     parser.add_argument("--json", type=Path)
     parser.add_argument("--profile", action="store_true")
+    parser.add_argument("--compile", action="store_true", help="Selectively compile detector modules (see above)")
     parser.add_argument(
         "--methods",
         nargs="+",
