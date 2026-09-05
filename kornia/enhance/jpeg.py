@@ -228,17 +228,26 @@ def _jpeg_quality_to_scale(
 
     Args:
         compression_strength (torch.Tensor): Compression strength ranging from 0 to 100. Any shape is supported.
+            A strength of 0 is treated as 1, matching libjpeg, which clamps the quality to a minimum of 1
+            before this same division.
 
     Returns:
         scale (torch.Tensor): Scaling factor to be applied to quantization matrix. Same shape as input.
 
     """
+    # ``5000 / 0`` is ``inf`` and the polynomial floor of ``inf`` is ``NaN``, which poisons the whole codec
+    # for a documented input. libjpeg clamps the quality to a minimum of 1 before this division, so do the
+    # same. ``torch.where`` rather than ``clamp`` keeps the gradient at exactly 1 well defined and
+    # independent of the torch version (see #4229).
+    strength: torch.Tensor = torch.where(
+        compression_strength < 1.0, torch.ones_like(compression_strength), compression_strength
+    )
     # Get scale
     scale: torch.Tensor = _differentiable_polynomial_floor(
         torch.where(
-            compression_strength < 50,
-            5000.0 / compression_strength,
-            200.0 - 2.0 * compression_strength,
+            strength < 50,
+            5000.0 / strength,
+            200.0 - 2.0 * strength,
         )
     )
     return scale
@@ -517,6 +526,7 @@ def jpeg_codec_differentiable(
     Args:
         input: the RGB image to be coded.
         jpeg_quality: JPEG quality in the range :math:`[0, 100]` controlling the compression strength.
+          A quality of 0 is treated as 1, the strongest compression, matching libjpeg.
         quantization_table_y: quantization table for Y channel. Default: `None`, which will load the standard
           quantization table.
         quantization_table_c: quantization table for C channels. Default: `None`, which will load the standard
