@@ -44,8 +44,7 @@ def oneway_transfer_error(
         eps: Small constant for safe sqrt.
 
     Returns:
-        the computed distance with shape :math:`(B, N)`. Rows whose homography is not invertible
-        score ``max_num``, i.e. ``torch.finfo(pts1.dtype).max``, for both values of ``squared``.
+        the computed distance with shape :math:`(B, N)`.
 
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
@@ -161,8 +160,7 @@ def line_segment_transfer_error_one_way(
         squared: if True (default is False), the squared distance is returned.
 
     Returns:
-        the computed distance with shape :math:`(B, N)`. Rows whose homography is not invertible
-        score ``max_num``, i.e. ``torch.finfo(pts1.dtype).max``, for both values of ``squared``.
+        the computed distance with shape :math:`(B, N)`.
 
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
