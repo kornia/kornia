@@ -878,6 +878,35 @@ def test_reusable_test_workflow_names_candidate_by_resolved_torch() -> None:
     assert "-${{ matrix.pytorch-version }}\n" not in workflow.partition("Upload candidate manifest")[2]
 
 
+def test_pinned_runner_images_have_availability_guards() -> None:
+    root = Path(project_conftest.__file__).parent
+    pr_workflow = (root / ".github" / "workflows" / "pr_test_cpu.yml").read_text(encoding="utf-8")
+    scheduled_workflow = (root / ".github" / "workflows" / "scheduled_test_cpu.yml").read_text(encoding="utf-8")
+
+    _, separator, tests_mps_tail = pr_workflow.partition("  tests-mps:\n")
+    assert separator, "missing tests-mps job"
+    tests_mps = re.split(r"\n(?=  [\w-]+:\n)", tests_mps_tail, maxsplit=1)[0]
+    assert "\n      os: macos-15\n" in tests_mps
+    assert "          - os: windows-2022\n" in pr_workflow
+    assert "          - os: windows-2022\n" in scheduled_workflow
+
+    for label in ("macos-15", "windows-2022"):
+        _, separator, tail = scheduled_workflow.partition(f"  pinned-runner-{label}:\n")
+        assert separator, f"missing scheduled availability guard for {label}"
+        guard = re.split(r"\n(?=  [\w-]+:\n)", tail, maxsplit=1)[0]
+
+        assert f"    name: Pinned runner availability ({label})\n" in guard
+        assert (
+            "    if: >-\n"
+            "      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&\n"
+            "      github.repository == 'kornia/kornia' &&\n"
+            "      startsWith(github.workflow_ref, 'kornia/kornia/.github/workflows/scheduled_test_cpu.yml@')\n"
+        ) in guard
+        assert f"    runs-on: {label}\n" in guard
+        assert "    timeout-minutes: 5\n" in guard
+        assert "    needs:" not in guard
+
+
 @pytest.mark.parametrize("workflow_name", ["pr_test_cpu.yml", "scheduled_test_cpu.yml"])
 def test_cpu_half_workflow_uses_complete_profile(workflow_name: str) -> None:
     root = Path(project_conftest.__file__).parent
