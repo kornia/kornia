@@ -16,7 +16,6 @@ repos:
         args: ['--maxkb=1000']
       - id: mixed-line-ending
         args: ['--fix=lf']
-      - id: requirements-txt-fixer
       - id: pretty-format-json
         exclude: ^$|.devcontainer
 

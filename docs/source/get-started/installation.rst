@@ -7,7 +7,7 @@ Installation
 *Kornia* is distributed as pure-Python wheels on `PyPI <https://pypi.org/project/kornia/>`_ and on
 `conda-forge <https://anaconda.org/conda-forge/kornia>`_. It requires
 `PyTorch <https://pytorch.org/get-started/locally/>`_ 2.5.1 or newer; the only other dependencies are
-``numpy``, ``packaging`` and `kornia-rs <https://github.com/kornia/kornia-rs>`_ (the Rust image I/O
+``numpy`` and `kornia-rs <https://github.com/kornia/kornia-rs>`_ (the Rust image I/O
 backend used by :mod:`kornia.io`). Install PyTorch first if you need a specific CUDA build.
 
 .. tab-set::
