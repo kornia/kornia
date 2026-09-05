@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import torch
 from torch import nn
 
@@ -78,15 +80,17 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
           natural ``(points_src, points_dst)`` order, while :func:`warp_image_tps`
           is typically composed **reversed** — ``get_tps_transform(points_dst,
           points_src)`` — since image warping samples from output space back
-          into input space; the recipe for warping an image end-to-end (when
-          targeting :func:`warp_image_tps`, ``points_dst`` here is the always
-          corner-aligned output lattice and ``points_src`` here is the input-side
-          frame selected by :func:`warp_image_tps`'s ``align_corners`` — see that
-          function's Convention block for both formulas)::
+          into input space; the coordinate frames for that composition depend on
+          :func:`warp_image_tps`'s grid mode. Its legacy default uses a
+          corner-aligned ``points_dst`` output lattice and the ``align_corners``
+          frame for ``points_src``. With ``use_correct_grid=True``, both point sets
+          use the frame selected by ``align_corners`` — see that function's
+          Convention block for both formulas::
 
               kernel_weights, affine_weights = get_tps_transform(points_dst, points_src)
               warped = warp_image_tps(image, kernel_centers=points_src,
-                                      kernel_weights=kernel_weights, affine_weights=affine_weights)
+                                      kernel_weights=kernel_weights, affine_weights=affine_weights,
+                                      use_correct_grid=True)
 
     Args:
         points_src: batch of source points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
@@ -230,6 +234,7 @@ def warp_image_tps(
     affine_weights: torch.Tensor,
     align_corners: bool = False,
     padding_mode: str = "zeros",
+    use_correct_grid: bool = False,
 ) -> torch.Tensor:
     r"""Warp an image torch.Tensor according to the thin plate spline transform defined by arguments.
 
@@ -250,42 +255,29 @@ def warp_image_tps(
           argument to that reversed :func:`get_tps_transform` call (i.e.
           ``points_src``); see :func:`get_tps_transform`'s Convention block for the
           full binding rule and recipe
-        - control points span two different normalized grid_sample coordinate
-          frames, where ``[-1, 1]`` is the in-bounds extent (values outside are
-          allowed, subject to ``padding_mode``) rather than a validity bound:
-
-          - ``get_tps_transform``'s reversed **first** argument (the
-            destination/output lattice) is always corner-aligned,
-            :math:`x_{norm} = 2x/(W-1) - 1`, because this function's internal
-            sampling grid is always built via
-            ``create_meshgrid(h, w, normalized_coordinates=True)`` regardless of
-            ``align_corners`` below (see the warning)
-          - ``kernel_centers`` and ``get_tps_transform``'s reversed **second**
-            argument (the source/input side) must instead match this
-            function's own ``align_corners``: at the default
-            ``align_corners=False`` that is the half-pixel mapping
-            :math:`x_{norm} = (2x+1)/W - 1`; passing ``align_corners=True``
-            switches it to the same corner-aligned formula as the output
-            lattice, so both sides can then share one normalization — the
-            simplest usage
+        - control points use normalized ``grid_sample`` coordinates, where
+          ``[-1, 1]`` is the in-bounds extent (values outside are allowed, subject
+          to ``padding_mode``) rather than a validity bound
+        - with ``use_correct_grid=True``, both arguments to the reversed
+          :func:`get_tps_transform` call use the frame selected by
+          ``align_corners``: at ``False`` this is the half-pixel mapping
+          :math:`x_{norm} = (2x+1)/W - 1`; at ``True`` this is the corner-aligned
+          mapping :math:`x_{norm} = 2x/(W-1) - 1`
+        - the legacy ``use_correct_grid=False`` mode always uses a corner-aligned
+          destination/output lattice, while the source/input side follows
+          ``align_corners``; this mismatch is preserved temporarily for backward
+          compatibility and emits a deprecation warning when ``align_corners=False``
           - pixel-space (unnormalized) control points on either side silently
             produce a wrong warp of the correct shape, with no error raised
         - align_corners: ``False`` by default
         - padding_mode: ``'zeros'`` by default
+        - use_correct_grid: ``False`` during the deprecation window; opt in with
+          ``True`` so the output grid honors ``align_corners``
 
     .. warning::
-        This function's own sampling grid (the destination/output lattice) is
-        always corner-aligned regardless of the ``align_corners`` argument below,
-        while the source-side control points must match ``align_corners`` (see
-        the Convention block above). So the common idiom of normalizing both
-        sides the same corner-aligned way and calling this function at the
-        default ``align_corners=False`` does **not** reproduce even a
-        mathematically-identity TPS transform exactly — this is likely
-        unintended and tracked in
-        `#3928 <https://github.com/kornia/kornia/issues/3928>`_. Passing
-        ``align_corners=True`` explicitly (keeping both sides corner-aligned)
-        removes the mismatch, leaving an identity round-trip up to ordinary
-        floating-point precision.
+        The legacy output grid used by ``use_correct_grid=False`` is deprecated
+        when ``align_corners=False``. Set ``use_correct_grid=True`` to adopt the
+        corrected convention before the default changes in a future minor release.
 
     Args:
         image: input image torch.Tensor :math:`(B, C, H, W)`.
@@ -294,6 +286,7 @@ def warp_image_tps(
         affine_weights: torch.Tensor of affine weights :math:`(B, 3, 2)`.
         align_corners: interpolation flag used by `grid_sample`.
         padding_mode: padding flag used by `grid_sample`.
+        use_correct_grid: whether the output grid should honor ``align_corners``.
 
     Returns:
         warped image torch.Tensor :math:`(B, C, H, W)`.
@@ -304,7 +297,9 @@ def warp_image_tps(
         >>> image = torch.rand(1, 3, 32, 32)
         >>> # note that we are getting the reverse transform: dst -> src
         >>> kernel_weights, affine_weights = get_tps_transform(points_dst, points_src)
-        >>> warped_image = warp_image_tps(image, points_src, kernel_weights, affine_weights)
+        >>> warped_image = warp_image_tps(
+        ...     image, points_src, kernel_weights, affine_weights, use_correct_grid=True
+        ... )
 
     .. note::
         This function is often used in conjunction with :func:`get_tps_transform`.
@@ -335,7 +330,23 @@ def warp_image_tps(
         raise ValueError(f"Invalid shape for affine_weights, expected BxNx2. Got {affine_weights.shape}")
 
     batch_size, _, h, w = image.shape
-    coords: torch.Tensor = create_meshgrid(h, w, device=image.device, dtype=image.dtype, normalized_coordinates=True)
+    if not align_corners and not use_correct_grid and not torch.jit.is_scripting():
+        # Python warnings cannot be captured in a compiled graph. Eager callers
+        # receive the migration warning; compiled calls keep the legacy math.
+        if not torch.compiler.is_compiling():
+            warnings.warn(
+                "warp_image_tps currently preserves its legacy corner-aligned output grid when "
+                "align_corners=False. Set use_correct_grid=True to make the output grid honor "
+                "align_corners. The default will change after the documented deprecation window.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+    if use_correct_grid:
+        identity = torch.eye(2, 3, device=image.device, dtype=image.dtype).unsqueeze(0)
+        coords: torch.Tensor = nn.functional.affine_grid(identity, (1, 1, h, w), align_corners=align_corners)
+    else:
+        coords = create_meshgrid(h, w, device=image.device, dtype=image.dtype, normalized_coordinates=True)
     coords = coords.reshape(-1, 2).expand(batch_size, -1, -1)
     warped: torch.Tensor = warp_points_tps(coords, kernel_centers, kernel_weights, affine_weights)
     warped = warped.view(-1, h, w, 2)
