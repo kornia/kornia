@@ -263,6 +263,10 @@ class Boxes:
         `#4012 <https://github.com/kornia/kornia/issues/4012>`_. With ``validate_boxes=True``, vertex modes remain
         unvalidated, and ``'vertices'`` also subtracts one from fixed vertex positions, potentially deforming the
         input rather than rejecting it; this is tracked in `#4177 <https://github.com/kornia/kornia/issues/4177>`_.
+        The unimplemented ``trim``, ``translate(method='fast')``, and tuple-bound ``clamp`` paths are tracked in
+        `#4017 <https://github.com/kornia/kornia/issues/4017>`_. The pad, unpad, and clamp operations fail for
+        unbatched containers even though the class accepts :math:`(N, 4, 2)` data; this is tracked in
+        `#4244 <https://github.com/kornia/kornia/issues/4244>`_.
 
     """
 
@@ -452,9 +456,9 @@ class Boxes:
         ``self`` after adding those two values to every vertex. This operation
         supports only batched :math:`(B, N, 4, 2)` containers.
 
-        .. warning::
-            Unbatched containers raise a broadcasting error; this limitation is
-            tracked in `#4244 <https://github.com/kornia/kornia/issues/4244>`_.
+        Note:
+            Padded :class:`~kornia.augmentation.RandomCrop` uses this method
+            and therefore requires batched boxes.
 
         Args:
             padding_size: Per-batch padding in ``(left, right, top, bottom)``
@@ -476,10 +480,6 @@ class Boxes:
         ``left`` and ``top`` change the coordinate origin; this method returns
         ``self`` after subtracting those two values from every vertex. This
         operation supports only batched :math:`(B, N, 4, 2)` containers.
-
-        .. warning::
-            Unbatched containers raise a broadcasting error; this limitation is
-            tracked in `#4244 <https://github.com/kornia/kornia/issues/4244>`_.
 
         Args:
             padding_size: Per-batch padding in ``(left, right, top, bottom)``
@@ -512,13 +512,6 @@ class Boxes:
         coordinates above ``botright`` are lowered to the upper bound. The
         implementation accepts only tensor bounds with one ``(x, y)`` pair per
         batch element.
-
-        .. warning::
-            Tuple bounds shown in the type annotation are not implemented and
-            raise :class:`NotImplementedError`; this API-completeness gap is
-            tracked in `#4017 <https://github.com/kornia/kornia/issues/4017>`_.
-            Unbatched containers fail even with tensor bounds,
-            tracked in `#4244 <https://github.com/kornia/kornia/issues/4244>`_.
 
         Args:
             topleft: Tensor of shape :math:`(B, 2)` containing the minimum
@@ -568,9 +561,6 @@ class Boxes:
         Raises:
             NotImplementedError: Always.
 
-        .. warning::
-            This API-completeness gap is tracked in
-            `#4017 <https://github.com/kornia/kornia/issues/4017>`_.
         """
         raise NotImplementedError
 
@@ -621,9 +611,11 @@ class Boxes:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
         Convention:
-            The shoelace result uses stored inclusive vertices and can differ
-            from the product returned by :meth:`get_boxes_shape`, whose
-            extents use inclusive arithmetic.
+            For axis-aligned boxes, the shoelace result over stored inclusive
+            vertices is ``(width - 1) * (height - 1)``, while the inclusive
+            terms from :meth:`get_boxes_shape` multiply to ``width * height``.
+            Rotated or otherwise non-axis-aligned quadrilaterals use their
+            polygon area instead.
 
         .. warning::
             The differing area conventions are tracked in
@@ -908,9 +900,13 @@ class Boxes:
 
         Convention:
             The in-place operation rebinds this object's internal tensor to a
-            transformed result. A tensor reference obtained from :attr:`data`
-            before this call therefore remains unchanged and no longer aliases
-            the container's data.
+            transformed result for nonempty containers. A tensor reference
+            obtained from :attr:`data` before that call therefore remains
+            unchanged and no longer aliases the container's data. Empty
+            containers retain their original tensor reference.
+
+        Returns:
+            This :class:`Boxes` object after the transformation.
         """
         return self.transform_boxes(M, inplace=True)
 

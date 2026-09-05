@@ -544,7 +544,7 @@ def transform_bbox(
         transformed cyclic order.
 
     Args:
-        trans_mat: The transformation matrix to be applied, with shape :math:`(B, 3, 3)`.
+        trans_mat: The transformation matrix to be applied, with supported shape :math:`(B, 3, 3)`.
             For boxes shaped :math:`(N, 4)`, ``B`` is one or ``N``. For boxes shaped
             :math:`(B, N, 4)` or :math:`(B, N, 4, 2)`, it is one or the boxes' ``B``.
         boxes: The boxes to be transformed with a common shape of :math:`(N, 4)` or batched as :math:`(B, N, 4)`, the
@@ -610,7 +610,7 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
 
     .. warning::
         This differs from the inclusive coordinate arithmetic used by several other
-        :mod:`kornia.geometry.bbox` operations and is tracked in
+        :mod:`kornia.geometry.bbox` operations and is documented in
         `#4008 <https://github.com/kornia/kornia/issues/4008>`_.
 
     Example:

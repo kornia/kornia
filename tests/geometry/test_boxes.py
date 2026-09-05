@@ -27,6 +27,17 @@ from kornia.geometry.boxes import Boxes, Boxes3D, VideoBoxes
 from testing.base import BaseTester
 
 
+def _unbatched_geometry_data(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    return torch.tensor(
+        [
+            [[1.0, 2.0], [4.0, 2.0], [4.0, 5.0], [1.0, 5.0]],
+            [[8.0, 0.0], [10.0, 0.0], [10.0, 1.0], [8.0, 1.0]],
+        ],
+        device=device,
+        dtype=dtype,
+    )
+
+
 class TestBoxes2D(BaseTester):
     def test_convention_from_tensor_xyxy_stores_inclusive_vertices_in_tl_tr_br_bl_order(self, device, dtype):
         # Convention pin: Boxes stores four inclusive (x, y) vertices in clockwise
@@ -661,7 +672,6 @@ class TestBoxes2D(BaseTester):
         boxes = Boxes.from_tensor(
             torch.tensor([[[8.0, 9.0, 10.0, 11.0]]], device=device, dtype=dtype),
             mode="xyxy",
-            validate_boxes=False,
         )
         with pytest.raises(NotImplementedError):
             boxes.clamp((0, 0), (5, 5))
@@ -673,9 +683,7 @@ class TestBoxes2D(BaseTester):
         self.assert_close(clamped.data, expected, atol=0.0, rtol=0.0)
         self.assert_close(
             boxes.data,
-            Boxes.from_tensor(
-                torch.tensor([[[8.0, 9.0, 10.0, 11.0]]], device=device, dtype=dtype), mode="xyxy", validate_boxes=False
-            ).data,
+            Boxes.from_tensor(torch.tensor([[[8.0, 9.0, 10.0, 11.0]]], device=device, dtype=dtype), mode="xyxy").data,
             atol=0.0,
             rtol=0.0,
         )
@@ -759,51 +767,36 @@ class TestBoxes2D(BaseTester):
         self.assert_close(boxes.data[:, 1:], torch.zeros_like(boxes.data[:, 1:]), atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("operation, inplace", [("pad", None), ("unpad", None), ("clamp", False), ("clamp", True)])
-    def test_wart_unbatched_geometry_operations_raise_4244(self, operation, inplace, device, dtype):
+    @pytest.mark.parametrize("num_boxes", [1, 2])
+    def test_wart_unbatched_geometry_operations_raise_4244(self, operation, inplace, num_boxes, device, dtype):
         # Wart pin for kornia#4244: the documented unbatched (N, 4, 2) form
-        # fails although its singleton-batched counterpart works. Two asymmetric
-        # boxes exercise the broadcast path rather than a singleton accident.
-        boxes = Boxes(
-            torch.tensor(
-                [
-                    [[1.0, 2.0], [4.0, 2.0], [4.0, 5.0], [1.0, 5.0]],
-                    [[8.0, 0.0], [10.0, 0.0], [10.0, 1.0], [8.0, 1.0]],
-                ],
-                device=device,
-                dtype=dtype,
-            )
-        )
+        # fails although its singleton-batched counterpart works. Clamp reaches
+        # indexing failure for one box and broadcasting failure for two boxes.
+        boxes = Boxes(_unbatched_geometry_data(device, dtype)[:num_boxes])
         if operation == "clamp":
-            with pytest.raises(RuntimeError):
+            with pytest.raises((RuntimeError, IndexError)):
                 boxes.clamp(
                     torch.tensor([[2.0, 3.0]], device=device, dtype=dtype),
                     torch.tensor([[6.0, 7.0]], device=device, dtype=dtype),
                     inplace=inplace,
                 )
         else:
-            with pytest.raises(RuntimeError):
+            with pytest.raises((RuntimeError, IndexError)):
                 getattr(boxes, operation)(torch.tensor([[10.0, 99.0, 20.0, 88.0]], device=device, dtype=dtype))
 
     @pytest.mark.parametrize("operation, inplace", [("pad", None), ("unpad", None), ("clamp", False), ("clamp", True)])
+    @pytest.mark.parametrize("num_boxes", [1, 2])
     @pytest.mark.xfail(
         strict=True,
-        raises=RuntimeError,
+        raises=(RuntimeError, IndexError),
         reason="kornia#4244: unbatched geometry operations do not match singleton batches",
     )
     def test_convention_unbatched_geometry_operations_match_singleton_batch_4244(
-        self, operation, inplace, device, dtype
+        self, operation, inplace, num_boxes, device, dtype
     ):
-        data = torch.tensor(
-            [
-                [[1.0, 2.0], [4.0, 2.0], [4.0, 5.0], [1.0, 5.0]],
-                [[8.0, 0.0], [10.0, 0.0], [10.0, 1.0], [8.0, 1.0]],
-            ],
-            device=device,
-            dtype=dtype,
-        )
+        data = _unbatched_geometry_data(device, dtype)[:num_boxes]
         batched = Boxes(data[None].clone())
         unbatched = Boxes(data.clone())
-        unbatched_before = unbatched.data.clone()
         if operation == "clamp":
             limits = (
                 torch.tensor([[2.0, 3.0]], device=device, dtype=dtype),
@@ -811,23 +804,38 @@ class TestBoxes2D(BaseTester):
             )
             try:
                 expected = batched.clamp(*limits, inplace=inplace)
-            except RuntimeError as error:
+            except (RuntimeError, IndexError) as error:
                 raise AssertionError("The supported singleton-batch reference must succeed") from error
             assert (expected is batched) is inplace
             actual = unbatched.clamp(*limits, inplace=inplace)
             assert (actual is unbatched) is inplace
             if not inplace:
-                self.assert_close(unbatched.data, unbatched_before, atol=0.0, rtol=0.0)
+                self.assert_close(unbatched.data, data, atol=0.0, rtol=0.0)
         else:
             padding = torch.tensor([[10.0, 99.0, 20.0, 88.0]], device=device, dtype=dtype)
             try:
                 expected = getattr(batched, operation)(padding)
-            except RuntimeError as error:
+            except (RuntimeError, IndexError) as error:
                 raise AssertionError("The supported singleton-batch reference must succeed") from error
             assert expected is batched
             actual = getattr(unbatched, operation)(padding)
             assert actual is unbatched
         self.assert_close(actual.data, expected.data.squeeze(0), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("batched", [False, True])
+    @pytest.mark.parametrize("inplace", [False, True])
+    def test_wart_transform_boxes_empty_copy_aliases_input_4020(self, batched, inplace, device, dtype):
+        # Wart pin for tracking issue #4020: transforming an empty container
+        # preserves its tensor storage. The non-inplace wrapper is new but
+        # aliases the input data; the in-place wrapper remains self.
+        data = torch.empty((1, 0, 4, 2) if batched else (0, 4, 2), device=device, dtype=dtype)
+        boxes = Boxes(data)
+        original = boxes.data
+        matrix = torch.eye(3, device=device, dtype=dtype)
+        transformed = boxes.transform_boxes_(matrix) if inplace else boxes.transform_boxes(matrix)
+        assert (transformed is boxes) is inplace
+        assert transformed.data is original
+        assert transformed.data.shape == original.shape
 
 
 class TestTransformBoxes2D(BaseTester):
