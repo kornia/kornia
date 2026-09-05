@@ -230,10 +230,9 @@ class Boxes:
           adds one per axis and
           :func:`~kornia.geometry.bbox.bbox_to_mask` fills through the bottom-right vertex's row and column, so
           both read their input as inclusive: pass them the ``'vertices_plus'`` export rather than
-          ``'vertices'``, which they read as one pixel larger per axis. Both consumers take unbatched
-          :math:`(N, 4, 2)` input and neither detects a batched one, so index or flatten a batched
-          :math:`(B, N, 4, 2)` export before passing it; see
-          `#4180 <https://github.com/kornia/kornia/issues/4180>`_.
+          ``'vertices'``, which they read as one pixel larger per axis. Both consumers require unbatched
+          :math:`(N, 4, 2)` input and raise :class:`~kornia.core.exceptions.ShapeError` for a batched
+          :math:`(B, N, 4, 2)` export, so index or flatten it before passing it.
           :func:`~kornia.geometry.bbox.validate_bbox` is invariant in exact arithmetic, because its ``+1``
           terms cancel;
           :func:`~kornia.geometry.bbox.nms` computes exclusive areas, and
@@ -246,9 +245,9 @@ class Boxes:
           or rejected by its first box alone and the remaining boxes are cast to that dtype. For a single tensor,
           :meth:`from_tensor` silently casts integer input to ``float32``. For a list, it converts each element
           independently and then pads into the first converted element's dtype, recasting the remaining elements.
-        - :meth:`merge` concatenates batched boxes along the box axis, while :meth:`index_put` replaces selected
-          coordinates. Both methods are non-mutating by default. :meth:`merge` is currently unsafe for unbatched
-          and list-backed objects because it respectively concatenates vertices and preserves stale padding metadata.
+        - :meth:`merge` concatenates boxes along the box axis and repacks list-backed batch rows so their padding
+          remains at the end, while :meth:`index_put` replaces selected coordinates. Both methods are non-mutating
+          by default.
 
     .. warning::
         The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked as a
@@ -259,10 +258,8 @@ class Boxes:
         :func:`~kornia.geometry.bbox.nms` convention is
         `#4008 <https://github.com/kornia/kornia/issues/4008>`_. The differing ``width``/``height`` argument order
         of :func:`~kornia.geometry.bbox.bbox_to_mask` and :meth:`to_mask` is tracked in
-        `#4014 <https://github.com/kornia/kornia/issues/4014>`_. Unbatched and list-backed :meth:`merge` are tracked
-        in `#4168 <https://github.com/kornia/kornia/issues/4168>`_ and
-        `#4175 <https://github.com/kornia/kornia/issues/4175>`_, respectively. The integer-input policy split
-        between the constructor and :meth:`from_tensor` is
+        `#4014 <https://github.com/kornia/kornia/issues/4014>`_. The integer-input policy split between the
+        constructor and :meth:`from_tensor` is
         `#4012 <https://github.com/kornia/kornia/issues/4012>`_. With ``validate_boxes=True``, vertex modes remain
         unvalidated, and ``'vertices'`` also subtracts one from fixed vertex positions, potentially deforming the
         input rather than rejecting it; this is tracked in `#4177 <https://github.com/kornia/kornia/issues/4177>`_.
@@ -360,20 +357,45 @@ class Boxes:
             inplace: do transform in-place and return self.
 
         Note:
-            Any list-padding metadata (``_N``) is cleared after the merge because
-            the merged tensor has a new total box count that is incompatible with
-            the original per-image lengths recorded before the merge.
+            When either input was created from a list, each batch row is repacked
+            so that its real boxes precede all trailing padding. The merged object
+            keeps the combined per-image padding counts in ``_N``.
 
         """
-        data = torch.cat([self._data, boxes.data], dim=-3)
+        padding: Optional[list[int]] = None
+        if self._N is not None or boxes._N is not None:
+            if self._data.shape[0] != boxes.data.shape[0]:
+                raise ValueError(
+                    f"Batch size mismatch. Got {self._data.shape[0]} for self and {boxes.data.shape[0]} for boxes."
+                )
+
+            self_padding = self._N if self._N is not None else [0] * self._data.shape[0]
+            boxes_padding = boxes._N if boxes._N is not None else [0] * boxes.data.shape[0]
+            data = torch.stack(
+                [
+                    torch.cat(
+                        [
+                            self._data[i, : self._data.shape[-3] - self_pad],
+                            boxes.data[i, : boxes.data.shape[-3] - boxes_pad],
+                            self._data[i, self._data.shape[-3] - self_pad :],
+                            boxes.data[i, boxes.data.shape[-3] - boxes_pad :],
+                        ]
+                    )
+                    for i, (self_pad, boxes_pad) in enumerate(zip(self_padding, boxes_padding))
+                ]
+            )
+            padding = [self_pad + boxes_pad for self_pad, boxes_pad in zip(self_padding, boxes_padding)]
+        else:
+            data = torch.cat([self._data, boxes.data], dim=-3)
+
         if inplace:
             self._data = data
-            self._N = None
+            self._N = padding
             return self
 
         obj = self.clone()
         obj._data = data
-        obj._N = None
+        obj._N = padding
         return obj
 
     def index_put(
@@ -1154,7 +1176,7 @@ class Boxes3D:
             height = boxes[..., 4] - boxes[..., 1] + 1
             depth = boxes[..., 5] - boxes[..., 2] + 1
         elif mode == "xyzwhd":
-            depth, height, width = boxes[..., 4], boxes[..., 3], boxes[..., 5]
+            width, height, depth = boxes[..., 3], boxes[..., 4], boxes[..., 5]
         else:
             raise ValueError(f"Unknown mode {mode}")
 

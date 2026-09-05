@@ -21,6 +21,7 @@ from typing import Optional
 
 import torch
 
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_exporting
 
 from .linalg import transform_points
@@ -152,15 +153,13 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked in
         `#3934 <https://github.com/kornia/kornia/issues/3934>`_.
 
-    .. warning::
-        Rank-4 input is not validated. The fixed indices then read boxes instead of vertices, so fewer than three
-        boxes per batch raise ``IndexError`` and three or more return wrongly shaped values. This wart is tracked
-        in `#4180 <https://github.com/kornia/kornia/issues/4180>`_.
-
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have shape
             :math:`(N, 4, 2)`, where each box is defined in the following ``clockwise`` order: top-left, top-right,
             bottom-right, bottom-left. The coordinates must be in the x, y order.
+
+    Raises:
+        ShapeError: if ``boxes`` does not have shape :math:`(N, 4, 2)`.
 
     Returns:
         - Bounding box heights, shape of :math:`(N,)`.
@@ -182,6 +181,8 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         (tensor([2., 2.]), tensor([2., 3.]))
 
     """
+    KORNIA_CHECK_SHAPE(boxes, ["N", "4", "2"])
+
     width: torch.Tensor = boxes[:, 1, 0] - boxes[:, 0, 0] + 1
     height: torch.Tensor = boxes[:, 2, 1] - boxes[:, 0, 1] + 1
     return height, width
@@ -249,6 +250,9 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     Returns:
         the output mask tensor.
 
+    Raises:
+        ShapeError: if ``boxes`` does not have shape :math:`(B, 4, 2)`.
+
     Note:
         It is currently non-differentiable.
 
@@ -267,6 +271,8 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
                  [0., 0., 0., 0., 0.]]])
 
     """
+    KORNIA_CHECK_SHAPE(boxes, ["B", "4", "2"])
+
     # NOTE: `validate_bbox`'s boolean result was previously computed here and discarded — it
     # never raised, so it performed no validation while adding a data-dependent graph break
     # (`torch.any(...)` -> Python `if`) that blocked torch.compile fullgraph (e.g. RandomErasing,
