@@ -1826,7 +1826,8 @@ class TestVideoBoxes(BaseTester):
     def test_wart_inherited_methods_break_on_the_temporal_wrapper_4249(self, device, dtype):
         # Wart pin for kornia#4249: the to_tensor override drops the as_padded_sequence keyword that
         # the inherited get_boxes_shape and to_mask pass, and indexing builds a wrapper without the temporal size,
-        # so its to_tensor fails. Methods that copy through clone keep the temporal size.
+        # so its to_tensor fails. The inherited methods keep the temporal size whether they copy or update in
+        # place; test_convention_inherited_methods_split_copies_from_in_place_updates pins which is which.
         video_boxes = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1))
         with pytest.raises(TypeError, match="as_padded_sequence"):
             video_boxes.get_boxes_shape()
@@ -1843,6 +1844,38 @@ class TestVideoBoxes(BaseTester):
         assert video_boxes.pad(torch.ones(6, 4, device=device, dtype=dtype)).temporal_channel_size == 3
         assert video_boxes.merge(video_boxes).temporal_channel_size == 3
         assert video_boxes.to(dtype=torch.float32).temporal_channel_size == 3
+
+    def test_convention_inherited_methods_split_copies_from_in_place_updates(self, device, dtype):
+        # Convention pin: transform_boxes, translate, clamp, filter_boxes_by_area and merge copy through
+        # clone, so they return a new VideoBoxes carrying the temporal size and leave the source
+        # untouched; pad, unpad, to and type update self in place and return it.
+        video_boxes = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1))
+        original = video_boxes.data.clone()
+        bounds = torch.zeros(6, 2, device=device, dtype=dtype)
+        copies = [
+            video_boxes.transform_boxes(torch.eye(3, device=device, dtype=dtype).expand(6, 3, 3)),
+            video_boxes.translate(bounds + 1.0),
+            video_boxes.clamp(bounds, bounds + 2.0),
+            video_boxes.filter_boxes_by_area(1.0),
+            video_boxes.merge(video_boxes),
+        ]
+        for copy in copies:
+            assert copy is not video_boxes
+            assert isinstance(copy, VideoBoxes)
+            assert copy.temporal_channel_size == 3
+        self.assert_close(video_boxes.data, original, atol=0.0, rtol=0.0)
+
+        padding = torch.ones(6, 4, device=device, dtype=dtype)
+        assert video_boxes.pad(padding) is video_boxes
+        self.assert_close(video_boxes.data, original + 1.0, atol=0.0, rtol=0.0)
+        assert video_boxes.unpad(padding) is video_boxes
+        self.assert_close(video_boxes.data, original, atol=0.0, rtol=0.0)
+        other = torch.float16 if dtype == torch.float32 else torch.float32
+        assert video_boxes.to(dtype=other) is video_boxes
+        assert video_boxes.dtype == other
+        assert video_boxes.type(dtype) is video_boxes
+        assert video_boxes.dtype == dtype
+        assert video_boxes.temporal_channel_size == 3
 
     @pytest.mark.xfail(
         strict=True, raises=AssertionError, reason="kornia#4249: VideoBoxes.get_boxes_shape and to_mask raise TypeError"

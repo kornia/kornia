@@ -1048,10 +1048,12 @@ class VideoBoxes(Boxes):
         - :meth:`to_tensor` accepts every :class:`Boxes` export mode and restores the temporal axis, so
           ``to_tensor('xyxy')`` is :math:`(B, T, N, 4)`. Its default is the stored ``'vertices_plus'`` mode.
         - A transformation matrix must carry one entry per flattened frame, :math:`(B \cdot T, 3, 3)`; a
-          :math:`(3, 3)` matrix raises ``ValueError``. Methods that copy through :meth:`clone`, among them
-          :meth:`transform_boxes`, :meth:`translate`, :meth:`clamp`, :meth:`filter_boxes_by_area`, :meth:`pad`,
-          :meth:`merge` and :meth:`to`, return a :class:`VideoBoxes` with the same
-          :attr:`temporal_channel_size`.
+          :math:`(3, 3)` matrix raises ``ValueError``.
+        - Methods that copy through :meth:`clone`, among them :meth:`transform_boxes`, :meth:`translate`,
+          :meth:`clamp`, :meth:`filter_boxes_by_area` and :meth:`merge`, return a new :class:`VideoBoxes` with the
+          same :attr:`temporal_channel_size` and leave the source untouched. :meth:`pad`, :meth:`unpad`, :meth:`to`
+          and :meth:`type` update ``self`` in place and return it, so they keep the temporal size but change the
+          original coordinates or dtype.
 
     .. warning::
         :meth:`get_boxes_shape` and :meth:`to_mask` raise ``TypeError`` because the :meth:`to_tensor` override
@@ -1168,7 +1170,8 @@ class Boxes3D:
         - :func:`~kornia.geometry.bbox.validate_bbox3d`, :func:`~kornia.geometry.bbox.infer_bbox_shape3d` and
           :func:`~kornia.geometry.bbox.bbox_to_mask3d` have no mode argument and read their input as inclusive:
           pass them the ``'vertices_plus'`` export, never ``'vertices'``, which they read as one larger per axis.
-          They also require unbatched :math:`(N, 8, 3)` input; see their warnings.
+          The validator also accepts batched :math:`(B, N, 8, 3)` input, but the shape and mask helpers require
+          unbatched :math:`(N, 8, 3)` input; see their warnings.
         - With ``validate_boxes=True``, :meth:`from_tensor` rejects extents that are not positive in the given
           mode's convention, so ``xmax == xmin`` is rejected in ``'xyzxyz'`` and accepted in ``'xyzxyz_plus'``.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False``;
@@ -1445,7 +1448,9 @@ class Boxes3D:
 
         .. warning::
             The rounding split with :func:`~kornia.geometry.bbox.bbox_to_mask3d` is tracked in
-            `#4015 <https://github.com/kornia/kornia/issues/4015>`_.
+            `#4015 <https://github.com/kornia/kornia/issues/4015>`_. That function also fills the whole volume for
+            a box that covers or overhangs a full axis, where this method fills the clamped region; tracked in
+            `#4255 <https://github.com/kornia/kornia/issues/4255>`_.
 
         Args:
             depth: depth of the masked image/images.

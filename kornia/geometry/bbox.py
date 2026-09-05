@@ -356,12 +356,17 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         channel axis, and :meth:`kornia.geometry.boxes.Boxes3D.to_mask`, which keeps the box dtype and returns
         :math:`(N, depth, height, width)`. After :func:`validate_bbox3d`, which raises ``AssertionError`` for an
         invalid box, the bounds are read from fixed vertex positions, truncated toward zero with ``.long()``, and
-        compared inclusively, which reads the vertices as inclusive: pass the ``'vertices_plus'`` export. There
-        is no gradient path.
+        compared inclusively, which reads the vertices as inclusive: pass the ``'vertices_plus'`` export. The
+        intersection of the three axis ranges is recovered only when the box leaves at least one index uncovered
+        on every axis; see the warning. There is no gradient path.
 
     .. warning::
-        The truncation differs from the inclusive raw-float comparison of :func:`bbox_to_mask` and the rounding
-        of :meth:`~kornia.geometry.boxes.Boxes3D.to_mask` for fractional coordinates and is tracked in
+        A box that covers or overhangs a whole output axis fills the entire volume instead of the intersection:
+        the union-of-planes intermediate becomes all true and its reductions lose the other two bounds, where
+        :meth:`~kornia.geometry.boxes.Boxes3D.to_mask` fills the clamped region. Tracked in
+        `#4255 <https://github.com/kornia/kornia/issues/4255>`_. The truncation differs from the inclusive
+        raw-float comparison of :func:`bbox_to_mask` and the rounding of
+        :meth:`~kornia.geometry.boxes.Boxes3D.to_mask` for fractional coordinates and is tracked in
         `#4015 <https://github.com/kornia/kornia/issues/4015>`_. The ``float32`` output with a channel axis is
         tracked in `#4250 <https://github.com/kornia/kornia/issues/4250>`_. Validation raises rather than returning
         ``False``, `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Batched :math:`(B, N, 8, 3)` input passes
