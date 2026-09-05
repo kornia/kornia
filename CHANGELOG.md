@@ -258,7 +258,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   escape hatch. The hatch fails closed everywhere else: a removal the inventory does not record still fails, an
   unrelated inventory entry does not excuse it, and an inventory that is deleted, unparsable, wrong-shaped in any
   entry, or missing a tracked module's key acknowledges nothing — each of those makes recorded names look removed
-  without anyone recording them. (#4190)
+  without anyone recording them. Dropping a module's key from the inventory now fails the check outright rather
+  than merely acknowledging nothing: that key is what puts the module in
+  `test_no_public_name_removed`'s parametrization, so deleting it ended that guard silently, and a package whose
+  public names arrive through `from .sub import *` has no static `__all__` for this check to compare instead. The
+  workflow's path filter covers `tests/api_surface.json` so an inventory-only change still runs it. (#4190)
 
 * `validate_bbox` and `validate_bbox3d` flatten rank-4 `(B, N, 4, 2)` / `(B, N, 8, 3)` input with `reshape`
   instead of `view`, so a non-contiguous leading-dimension stride (a transpose, a slice that drops boxes, an

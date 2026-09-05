@@ -34,11 +34,12 @@ Usage::
 
     python3 .github/scripts/check_import_surface.py --base-ref origin/main
 
-Exit status is 1 only when a name is removed from ``__all__`` (a break of
-documented public API, per the stability policy). Names that disappear from
-module scope but were never in ``__all__`` are reported for visibility but do
-not fail the check -- hard-failing on those would make every incidental
-third-party re-export permanent API. Three exemptions from the hard-fail path:
+Exit status is 1 when a name is removed from ``__all__`` (a break of documented
+public API, per the stability policy), and when the change drops a module that
+``tests/api_surface.json`` tracks. Names that disappear from module scope but
+were never in ``__all__`` are reported for visibility but do not fail the check
+-- hard-failing on those would make every incidental third-party re-export
+permanent API. Three exemptions from the hard-fail path:
 
 - A module with a module-level ``__getattr__`` in the new revision is
   presumed to be using it as a deprecation shim (the pattern
@@ -53,6 +54,13 @@ third-party re-export permanent API. Three exemptions from the hard-fail path:
   contributors to edit it for a removal whose deprecation window has passed
   -- so a policy-compliant removal could otherwise satisfy the test that
   names the procedure and still be hard-blocked here. See #4190.
+
+Dropping a *module* from that inventory is the mirror image and is always
+fatal: its key is what puts the module in
+``test_no_public_name_removed``'s parametrization, so deleting the key ends
+that guard silently, and this check cannot stand in for it -- a package whose
+public names arrive through ``from .sub import *`` has no static ``__all__``
+here to compare.
 """
 
 from __future__ import annotations
@@ -286,24 +294,58 @@ def _parse_inventory(source: bytes | None) -> dict[str, set[str]] | None:
     return inventory
 
 
-def inventory_removals(base_ref: str, inventory_path: str = INVENTORY_PATH) -> dict[str, set[str]]:
-    """Names each inventory module lost between `base_ref` and the working tree.
+def _inventory_ends(
+    base_ref: str, inventory_path: str
+) -> tuple[dict[str, set[str]] | None, dict[str, set[str]] | None]:
+    """The parsed inventory at `base_ref` and in the working tree (`None` = unusable).
 
     Working tree, not `HEAD`, for the same reason `_changed_kornia_files` diffs the
     working tree: an uncommitted inventory edit has to count during a local run, and
     on CI's clean checkout the two are identical.
-
-    Only a name dropped from an entry that is well-shaped at *both* ends counts; every
-    other way the inventory can change -- unreadable, wrong-shaped, or a tracked module
-    key deleted -- acknowledges nothing, because each of those makes recorded names look
-    removed without anyone recording them.
     """
     old = _parse_inventory(_git_show(base_ref, inventory_path))
     try:
         new_source: bytes | None = _read_source(inventory_path)
     except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
         new_source = None
-    new = _parse_inventory(new_source)
+    return old, _parse_inventory(new_source)
+
+
+def untracked_modules(base_ref: str, inventory_path: str = INVENTORY_PATH) -> set[str]:
+    """Modules the base inventory tracks that the working tree's inventory no longer does.
+
+    Every key in the inventory is a stable-core module that
+    ``tests/test_api_surface.py::test_no_public_name_removed`` imports and compares against
+    the live library. Deleting a key does not fail that test -- it removes the module from
+    its parametrization, so the module simply stops being guarded, quietly and permanently.
+    This check cannot stand in for it either: a package that re-exports through
+    ``from .sub import *`` (``kornia.geometry``, ``kornia.morphology``) has no ``__all__``
+    for `diff_surfaces` to compare, so dropping such a re-export produces no report at all.
+    The two holes line up, which is why the key deletion itself has to be fatal.
+
+    An inventory that is unreadable at the working tree -- absent, unparsable, or
+    wrong-shaped anywhere -- stops tracking *every* module, so it returns all of them.
+    An inventory unreadable at `base_ref` tracks nothing to begin with, so nothing is lost.
+    """
+    old, new = _inventory_ends(base_ref, inventory_path)
+    if old is None:
+        return set()
+    if new is None:
+        return set(old)
+    return set(old) - set(new)
+
+
+def inventory_removals(base_ref: str, inventory_path: str = INVENTORY_PATH) -> dict[str, set[str]]:
+    """Names each inventory module lost between `base_ref` and the working tree.
+
+    Only a name dropped from an entry that is well-shaped at *both* ends counts; every
+    other way the inventory can change -- unreadable, wrong-shaped, or a tracked module
+    key deleted -- acknowledges nothing, because each of those makes recorded names look
+    removed without anyone recording them. The last two are also fatal in their own right
+    (`untracked_modules`, and `_parse_inventory` for the shape); acknowledging nothing is
+    what keeps them from laundering an `__all__` removal on the way out.
+    """
+    old, new = _inventory_ends(base_ref, inventory_path)
 
     if old is None or new is None:
         # Deleting or corrupting the inventory is not a way to acknowledge a removal:
@@ -313,15 +355,13 @@ def inventory_removals(base_ref: str, inventory_path: str = INVENTORY_PATH) -> d
     removals: dict[str, set[str]] = {}
     for module, names in old.items():
         if module not in new:
-            # Deleting a tracked module's entry is not an acknowledgement either. It would
-            # make every name recorded for that module look removed at once, and it also
-            # drops the module from test_no_public_name_removed's parametrization, so
-            # nothing guards it afterwards. A change that really removes every public name
-            # of a module records that with an empty list, which keeps the module tracked.
-            # Deleting a whole tracked module (rather than emptying it) is the one case with
-            # no acknowledgement path: test_no_public_name_removed imports every key, so the
-            # key has to go too, and this check keeps failing. That is deliberate -- dropping
-            # a stable-core package is a policy decision, not a routine recorded removal.
+            # Deleting a tracked module's entry is not an acknowledgement either: it would
+            # make every name recorded for that module look removed at once. `main` fails
+            # the check on the deletion itself (see `untracked_modules`); refusing to
+            # acknowledge here is what stops the same edit from excusing an `__all__`
+            # removal in passing. A change that really removes every public name of a module
+            # records that with an empty list, which keeps the module tracked by both this
+            # check and test_no_public_name_removed.
             continue
         gone = names - new[module]
         if gone:
@@ -454,6 +494,31 @@ def main(argv: list[str] | None = None) -> int:
     reports = [r for r in (check_file(base, path, removals) for path in files) if r is not None]
 
     hard_fail = False
+
+    dropped = untracked_modules(base)
+    if dropped:
+        hard_fail = True
+        if _inventory_ends(base, INVENTORY_PATH)[1] is None:
+            # Absent, unparsable, or wrong-shaped anywhere: it records nothing for anyone now.
+            print(
+                f"::error file={INVENTORY_PATH}::{INVENTORY_PATH} is missing, unparsable, or "
+                f"wrong-shaped, so it tracks nothing and every module it recorded "
+                f"({sorted(dropped)}) stops being guarded. It has to stay a JSON object mapping "
+                f"each stable-core module to a list of its public names."
+            )
+        else:
+            print(
+                f"::error file={INVENTORY_PATH}::No longer tracked in {INVENTORY_PATH}: "
+                f"{sorted(dropped)}. Each key there is a stable-core module that "
+                f"tests/test_api_surface.py::test_no_public_name_removed imports and guards, so "
+                f"dropping the key ends that guard instead of failing it -- and this check cannot "
+                f"replace it, because a package that re-exports through `from .sub import *` has "
+                f"no __all__ here to compare. To record removing every public name of a module, "
+                f"set its list to [] -- that keeps the module tracked. Removing a stable-core "
+                f"module itself is a policy decision (docs/source/get-started/stability.rst), not "
+                f"a routine recorded removal."
+            )
+
     for report in reports:
         if report.acknowledged:
             print(

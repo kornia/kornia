@@ -32,6 +32,7 @@ from check_import_surface import (
     inventory_removals,
     main,
     parse_module_surface,
+    untracked_modules,
 )
 
 
@@ -717,6 +718,57 @@ def test_inventory_removals_ignores_a_deleted_module_entry(tmp_path):
     assert _in_repo(repo, lambda: inventory_removals("base")) == {}
 
 
+def test_untracked_modules_reports_a_deleted_key(tmp_path):
+    # Refusing to *acknowledge* a deleted key is only half the guard. The deletion itself has
+    # to fail, because it drops the module from test_no_public_name_removed's parametrization
+    # and nothing else notices.
+    repo = _repo_with_inventory(tmp_path, inventory={"kornia.mymodule": ["a", "b"], "kornia.other": ["z"]})
+    _write_inventory(repo, {"kornia.other": ["z"]})
+
+    assert _in_repo(repo, lambda: untracked_modules("base")) == {"kornia.mymodule"}
+
+
+def test_untracked_modules_ignores_an_emptied_entry(tmp_path):
+    # `[]` is the recorded-removal-of-everything spelling and keeps the module tracked, so it
+    # must not read as a dropped key -- the two are exactly the cases the error message
+    # contrasts.
+    repo = _repo_with_inventory(tmp_path)
+    _write_inventory(repo, {"kornia.mymodule": []})
+
+    assert _in_repo(repo, lambda: untracked_modules("base")) == set()
+
+
+def test_untracked_modules_reports_every_module_for_an_emptied_inventory(tmp_path):
+    # `{}` parses and is well-shaped, so nothing else rejects it -- and it parametrizes
+    # test_no_public_name_removed with zero modules, which passes.
+    repo = _repo_with_inventory(tmp_path, inventory={"kornia.mymodule": ["a", "b"], "kornia.other": ["z"]})
+    _write_inventory(repo, {})
+
+    assert _in_repo(repo, lambda: untracked_modules("base")) == {"kornia.mymodule", "kornia.other"}
+
+
+def test_untracked_modules_reports_every_module_for_an_unreadable_inventory(tmp_path):
+    # Absent, unparsable or wrong-shaped: the working tree tracks nothing, so nothing is
+    # guarded any more.
+    repo = _repo_with_inventory(tmp_path, inventory={"kornia.mymodule": ["a", "b"], "kornia.other": ["z"]})
+    (repo / INVENTORY_PATH).unlink()
+
+    assert _in_repo(repo, lambda: untracked_modules("base")) == {"kornia.mymodule", "kornia.other"}
+
+    _write_inventory(repo, {"kornia.mymodule": ["a", "b"], "kornia.other": {}})
+
+    assert _in_repo(repo, lambda: untracked_modules("base")) == {"kornia.mymodule", "kornia.other"}
+
+
+def test_untracked_modules_ignores_an_inventory_absent_from_the_base(tmp_path):
+    # A base revision that predates the inventory tracks nothing, so the working tree cannot
+    # have dropped anything -- an inventory that is simply not there yet must not read as
+    # every module being removed.
+    repo = _repo_with_inventory(tmp_path)
+
+    assert _in_repo(repo, lambda: untracked_modules("base", "tests/not_yet_added.json")) == set()
+
+
 def test_inventory_removals_reads_an_emptied_entry_as_removing_every_name(tmp_path):
     # The remedy the deleted-key rule points at: an empty list records losing every public
     # name while keeping the module tracked by both this check and the pytest inventory.
@@ -752,6 +804,71 @@ def test_main_deleted_module_entry_does_not_acknowledge_a_removal(tmp_path, caps
     assert exit_code == 1
     assert "::error" in captured.out
     assert "'a'" in captured.out
+
+
+def test_main_fails_on_a_deleted_inventory_key_with_no_kornia_change(tmp_path, capsys):
+    # The workflow's path filter lists tests/api_surface.json for this: an inventory-only
+    # change reaches no kornia file, so the deletion has to fail on its own rather than only
+    # as a side effect of some file report.
+    repo = _repo_with_inventory(tmp_path, inventory={"kornia.mymodule": ["a", "b"], "kornia.other": ["z"]})
+    _write_inventory(repo, {"kornia.other": ["z"]})
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "::error" in captured.out
+    assert "'kornia.mymodule'" in captured.out
+    assert INVENTORY_PATH in captured.out
+
+
+def test_main_fails_when_a_wildcard_reexport_and_its_inventory_key_go_together(tmp_path, capsys):
+    # The bypass the deleted-key rule exists for. `from .bbox import *` is deliberately
+    # invisible to parse_module_surface, so dropping it from a package __init__ produces no
+    # report at all; deleting the package's inventory key in the same change used to remove
+    # the runtime guard too, and the pair exited 0 in silence. kornia.geometry and
+    # kornia.morphology are shaped exactly like this.
+    repo = tmp_path / "repo"
+    (repo / "kornia" / "geometry").mkdir(parents=True)
+    (repo / "tests").mkdir(parents=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+
+    pkg = repo / "kornia" / "geometry" / "__init__.py"
+    pkg.write_text("from .bbox import *\nfrom .linalg import *\n")
+    (repo / "kornia" / "geometry" / "bbox.py").write_text("__all__ = ['bbox_thing']\n\ndef bbox_thing():\n    pass\n")
+    (repo / "kornia" / "geometry" / "linalg.py").write_text(
+        "__all__ = ['linalg_thing']\n\ndef linalg_thing():\n    pass\n"
+    )
+    _write_inventory(repo, {"kornia.geometry": ["bbox_thing", "linalg_thing"]})
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+    _git("branch", "base", cwd=repo)
+
+    pkg.write_text("from .linalg import *\n")  # kornia.geometry stops exporting bbox_thing
+    _write_inventory(repo, {})
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "::error" in captured.out
+    assert "'kornia.geometry'" in captured.out
+
+
+def test_main_fails_on_an_unreadable_inventory_and_says_so(tmp_path, capsys):
+    # Same fatal path, different cause, so the message has to name the real one rather than
+    # reading as "somebody deleted all twelve keys".
+    repo = _repo_with_inventory(tmp_path)
+    (repo / INVENTORY_PATH).write_text("{ this is not json\n")
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "unparsable" in captured.out
+    assert "'kornia.mymodule'" in captured.out
 
 
 def test_main_exits_zero_and_reports_a_recorded_removal(tmp_path, capsys):

@@ -6,6 +6,10 @@ on:
       - main
     paths:
       - 'kornia/**/*.py'
+      # The check reads this inventory both ways: a recorded removal is the escape hatch,
+      # and dropping a module's key from it is fatal on its own -- so a change that touches
+      # only the inventory still has to run.
+      - 'tests/api_surface.json'
       - '.github/scripts/check_import_surface.py'
       - '.github/workflows/import-surface.yml'
 
