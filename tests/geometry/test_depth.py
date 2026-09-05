@@ -78,6 +78,26 @@ class TestDepthTo3d(BaseTester):
         # test for now that the grid is correct and have homogeneous coords
         self.assert_close(grid[..., 2], torch.ones_like(grid[..., 2]))
 
+    @pytest.mark.parametrize(("height", "width"), [(1, 1), (1, 3), (3, 1), (2, 5)])
+    def test_unproject_meshgrid_degenerate_sizes(self, height, width, device, dtype):
+        # a single-column (W = 1) or single-row (H = 1) grid keeps its own axis
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).repeat(2, 1, 1)
+        grid = kornia.geometry.unproject_meshgrid(height, width, camera_matrix, device=device, dtype=dtype)
+        assert grid.shape == (2, height, width, 3)
+
+    @pytest.mark.parametrize(("height", "width"), [(1, 1), (1, 3), (3, 1), (2, 5)])
+    def test_depth_to_3d_v2_degenerate_sizes(self, height, width, device, dtype):
+        depth = torch.rand(2, 1, height, width, device=device, dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[[100.0, 0.0, 4.0], [0.0, 50.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        ).repeat(2, 1, 1)
+
+        points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix)
+        points3d_v2 = kornia.geometry.depth.depth_to_3d_v2(depth[:, 0], camera_matrix)
+
+        assert points3d_v2.shape == (2, height, width, 3)
+        self.assert_close(points3d.permute(0, 2, 3, 1), points3d_v2)
+
     def test_unproject_denormalized(self, device, dtype):
         # this is for default normalize_points=False
         depth = 2 * torch.tensor(
@@ -276,6 +296,18 @@ class TestWarpFrameDepth(BaseTester):
 
         image_dst = kornia.geometry.depth.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
         assert image_dst.shape == (batch_size, num_features, 3, 4)
+
+    @pytest.mark.parametrize(("height", "width"), [(1, 1), (1, 5), (4, 1)])
+    def test_shape_degenerate_sizes(self, height, width, device, dtype):
+        image_src = torch.rand(1, 2, height, width, device=device, dtype=dtype)
+        depth_dst = torch.rand(1, 1, height, width, device=device, dtype=dtype)
+        src_trans_dst = torch.eye(4, device=device, dtype=dtype)[None]
+        camera_matrix = torch.tensor(
+            [[[100.0, 0.0, 4.0], [0.0, 50.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
+
+        image_dst = kornia.geometry.depth.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
+        assert image_dst.shape == (1, 2, height, width)
 
     def test_translation(self, device, dtype):
         # this is for normalize_points=False
