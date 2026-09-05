@@ -288,6 +288,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   branch, used to raise: `_compute_zero_padding3d` defined a `(k - 1) // 2` helper and then returned the
   full kernel sizes, so the padded volume did not match the kernel it was convolved with. (#4241, #4242)
 
+* `HyNet` and `SOSNet` now run in half precision, on CPU and on GPU, and no longer return NaN for a
+  degenerate patch (closes #4224). Two defects sat on the same line. On CPU both raised
+  `NotImplementedError: "avg_pool3d_out_frame" not implemented for 'Half'` (and the `'BFloat16'` spelling):
+  their final `LocalResponseNorm` is handed a 4-D `(B, C, 1, 1)` tensor, which routes
+  `torch.nn.functional.local_response_norm` through `avg_pool3d`, and that kernel has no CPU
+  `float16`/`bfloat16` implementation. Separately, in `float16` on a device where the kernel does exist
+  (MPS, CUDA), the descriptors came back all-NaN for any patch the network maps to exactly zero: the `eps`
+  that keeps the normalisation's division defined (`SOSNet.forward`'s `eps`, `HyNet`'s `eps_l2_norm`, both
+  `1e-10`) is not representable in `float16` and flushes to `0.0`, leaving `0/0`. Every `Conv2d` in `SOSNet`
+  has `bias=False` and every `BatchNorm2d` is `affine=False`, so any constant patch reaches the
+  normalisation as exactly zero; `HyNet` reaches it only with `is_bias=False`. `bfloat16` keeps `float32`'s
+  exponent range, so the guard survives there and only the CPU kernel gap applied to it. Both models now
+  take that one normalisation step in `float32` for either half-precision input and cast the result back --
+  a wider lift than the `float16`-only one `kornia.feature.siftdesc` gives its own `1e-10` guards, because
+  the CPU kernel gap covers both dtypes. `float32` and `float64` take the original expression and are
+  bitwise unchanged on CPU, CUDA and MPS. Half-precision output does change, by 0.25-2.25 eps, and where it
+  moves most it moves towards the `float64` reference rather than merely away from NaN: `SOSNet` `float16`
+  goes from 2.15e-03 to 2.28e-04 of maximum absolute error against a `float64` model carrying the same
+  weights, and the configurations that do not improve stay within one eps of where they were.
+  Half-precision descriptors are therefore not comparable bit-for-bit across this release. (#4225)
 * The `Import Surface` CI check accepts deliberate public-name removals recorded in the same change.
   Edits to `tests/api_surface.json` must correspond to actual export removals and acknowledge only the exact
   recorded module/name. Submodule APIs recorded only under an ancestor, and APIs outside the inventory, use
@@ -301,6 +321,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of `view`, so a non-contiguous leading-dimension stride (a transpose, a slice that drops boxes, an
   `expand`) returns a boolean as documented instead of raising `RuntimeError`. (#4174)
 
+* `infer_bbox_shape` and `bbox_to_mask` now reject rank-4 `(B, N, 4, 2)` inputs with `ShapeError`. Previously,
+  `N < 3` raised an incidental `IndexError`, while `N >= 3` silently returned `(B, 2)` extents computed from the
+  wrong vertices. (#4218)
+
 * Constructing `ScaleSpaceDetector` with `compile_modules` no longer permanently mutates the process-global
   `torch._dynamo.config.capture_dynamic_output_shape_ops` setting. (#4134)
 
@@ -308,10 +332,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for unbatched `(N, 4, 2)` input. The old `dim=1` was correct for batched
   `(B, N, 4, 2)` data (where dim 1 is the box axis) but wrong for 3-D tensors
   (where dim 1 is the vertex dimension); `dim=-3` is correct in both cases and
-  the behaviour of the batched path is byte-identical. Also clear the stale
-  ``_N`` list-padding metadata on both the inplace and non-inplace paths after
-  every merge so that ``to_tensor`` counts the merged boxes correctly instead of
-  silently truncating them (#4168).
+  the behaviour of the batched path is byte-identical. For list-backed inputs,
+  each batch row is now repacked with its real boxes before all trailing padding,
+  and the combined per-image padding counts are retained. This makes ``to_tensor``
+  trim only padding instead of dropping merged boxes or exposing old padding as
+  real boxes (#4168, #4175).
 
 * `Boxes3D.to_tensor` and `Boxes3D.get_boxes_shape` are differentiable again (#1396). Both reduce a box's 8
   vertices to its min/max corner with `amin`/`amax`, which is a genuine kink -- not differentiable in the
@@ -368,6 +393,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `kernel_size >= 63` now raises: CPU used to return a usable-looking answer there while MPS silently returned
   something else for the same call.
 
+* Fix `Boxes3D.from_tensor(..., mode="xyzwhd")` to preserve width, height, and depth field order for asymmetric
+  boxes. (#4189)
+
 * `RandomTransplantation` and `RandomTransplantation3D` transplanted nothing on MPS when no `excluded_labels`
   were given: PyTorch's MPS backend evaluates `all()` over the empty excluded-label axis to an undefined value,
   usually `False`, so every donor label was filtered out and the output equalled the input. The filter is now skipped when there is
@@ -376,6 +404,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `VisualPrompter.predict()` called without any prompt (the "run the prediction without prompts" example on the
   Segment Anything page) raised `TypeError: object of type 'NoneType' has no len()` from the prompt augmentation
   container; it now predicts from the image embedding alone, as documented. (#4178)
+
+* Preserve empty color tensors on accelerator backends instead of asking `reshape` to infer an ambiguous batch
+  dimension. This lets the YUV420 and YUV422 empty-input conversions return their documented empty RGB output on
+  MPS, matching CPU behavior (#4185).
+
 * Follow-up fixes to the documentation revamp (#4155): the landing page's filtering card quoted the combined
   `filters`/`color`/`enhance`/`morphology` count next to a `kornia.filters` label, the "Why Kornia?" hero carousel
   resumed after a visitor picked a tab, the Community page linked to the now-unregistered `librecv.org`, and the

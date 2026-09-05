@@ -169,7 +169,14 @@ class TestALIKED(BaseTester):
         feat = output[0]
         if feat.n > 0:
             norms = feat.descriptors.norm(dim=-1)
-            assert torch.allclose(norms, torch.ones_like(norms), atol=1e-4)
+            # A unit vector stored in `dtype` cannot have a norm closer to 1 than the grid allows, and
+            # `norm` itself rounds into that same grid, so the deviation saturates at exactly one eps
+            # (measured over 2400+ descriptors on torch 2.9.1 and 2.14.0; taking the norm in float32
+            # instead gives 0.55 eps, i.e. the descriptors really are unit to the storage limit).
+            # atol=1e-4 is unreachable for float16 (eps 9.8e-4) and bfloat16 (eps 7.8e-3); 2 eps keeps
+            # a 2x margin there and leaves float32/float64 on the original bound.
+            atol = max(1e-4, 2 * torch.finfo(dtype).eps)
+            assert torch.allclose(norms, torch.ones_like(norms), atol=atol)
 
     def test_keypoints_in_image(self, dtype, device):
         """Keypoints should lie within the image boundaries."""

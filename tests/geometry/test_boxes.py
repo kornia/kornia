@@ -524,7 +524,7 @@ class TestBoxes2D(BaseTester):
         assert a2.data.shape == (2, 4, 2)
         self.assert_close(a2.to_tensor("xyxy"), expected_unbatched)
 
-        # --- _N is cleared: to_tensor must not drop merged boxes ---
+        # --- List padding is moved behind merged boxes and remains metadata ---
         # Build from a list so that _N is set (variable-length list padding).
         # from_tensor with a list of (N, 4) tensors of different lengths produces a
         # batched (B, max_N, 4, 2) tensor with _N recording per-batch padding.
@@ -540,7 +540,48 @@ class TestBoxes2D(BaseTester):
             mode="xyxy",
         )
         merged_list = list_boxes.merge(extra_batched)
-        assert merged_list._N is None, "_N must be None after merge"
+        assert merged_list._N == [1, 0]
+        merged_tensors = merged_list.to_tensor("xyxy")
+        assert isinstance(merged_tensors, list)
+        extra_tensors = extra_batched.to_tensor("xyxy")
+        assert isinstance(extra_tensors, torch.Tensor)
+        self.assert_close(merged_tensors[0], torch.cat([src1, extra_tensors[0]]))
+        self.assert_close(merged_tensors[1], torch.cat([src2, extra_tensors[1]]))
+
+        # Both operands may be list-backed, so their per-row padding counts must be combined.
+        other_list = Boxes.from_tensor(
+            [
+                torch.tensor([[6.0, 3.0, 9.0, 8.0], [0.0, 0.0, 3.0, 3.0]], device=device, dtype=dtype),
+                torch.tensor([[4.0, 4.0, 7.0, 7.0]], device=device, dtype=dtype),
+            ],
+            mode="xyxy",
+        )
+        other_tensors = other_list.to_tensor("xyxy")
+        assert isinstance(other_tensors, list)
+        expected_list = [torch.cat([src1, other_tensors[0]]), torch.cat([src2, other_tensors[1]])]
+
+        merged_lists = list_boxes.merge(other_list)
+        assert merged_lists._N == [1, 1]
+        actual_list = merged_lists.to_tensor("xyxy")
+        assert isinstance(actual_list, list)
+        for actual, expected in zip(actual_list, expected_list):
+            self.assert_close(actual, expected)
+
+        # The dense operand may also be on the left of a list-backed operand.
+        dense_first = extra_batched.merge(other_list)
+        assert dense_first._N == [0, 1]
+        actual_dense_first = dense_first.to_tensor("xyxy")
+        assert isinstance(actual_dense_first, list)
+        for dense_row, other_row, actual in zip(extra_tensors, other_tensors, actual_dense_first):
+            self.assert_close(actual, torch.cat([dense_row, other_row]))
+
+        result = list_boxes.merge(other_list, inplace=True)
+        assert result is list_boxes
+        assert list_boxes._N == [1, 1]
+        actual_inplace = list_boxes.to_tensor("xyxy")
+        assert isinstance(actual_inplace, list)
+        for actual, expected in zip(actual_inplace, expected_list):
+            self.assert_close(actual, expected)
 
     def test_compute_area(self):
 
@@ -796,12 +837,12 @@ class TestBbox3D(BaseTester):
 
     @pytest.mark.parametrize("shape", [(1, 6), (1, 1, 6)])
     def test_from_tensor(self, shape, device, dtype):
-        box_xyzxyz = torch.as_tensor([[1, 2, 3, 4, 5, 6]], device=device, dtype=dtype).view(*shape)
-        box_xyzxyz_plus = torch.as_tensor([[1, 2, 3, 3, 4, 5]], device=device, dtype=dtype).view(*shape)
-        box_xyzwhd = torch.as_tensor([[1, 2, 3, 3, 3, 3]], device=device, dtype=dtype).view(*shape)
+        box_xyzxyz = torch.as_tensor([[1, 2, 3, 3, 5, 7]], device=device, dtype=dtype).view(*shape)
+        box_xyzxyz_plus = torch.as_tensor([[1, 2, 3, 2, 4, 6]], device=device, dtype=dtype).view(*shape)
+        box_xyzwhd = torch.as_tensor([[1, 2, 3, 2, 3, 4]], device=device, dtype=dtype).view(*shape)
 
         expected_box = torch.as_tensor(
-            [[[1, 2, 3], [3, 2, 3], [3, 4, 3], [1, 4, 3], [1, 2, 5], [3, 2, 5], [3, 4, 5], [1, 4, 5]]],  # Front  # Back
+            [[[1, 2, 3], [2, 2, 3], [2, 4, 3], [1, 4, 3], [1, 2, 6], [2, 2, 6], [2, 4, 6], [1, 4, 6]]],  # Front  # Back
             device=device,
             dtype=dtype,
         ).view(*shape[:-1], 8, 3)
