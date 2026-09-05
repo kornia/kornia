@@ -18,9 +18,37 @@
 import pytest
 import torch
 
-from kornia.geometry.calibration.distort import distort_points
+from kornia.geometry.calibration.distort import distort_points, tilt_projection
+from kornia.geometry.camera.distortion_affine import distort_points_affine
 
 from testing.base import BaseTester
+
+
+def _pz_r(taux, tauy, device, dtype):
+    """Build OpenCV's ``(R, Pz)`` pair for a tilt of ``(taux, tauy)`` radians.
+
+    Mirrors ``computeTiltProjectionMatrix`` in OpenCV's ``modules/calib3d/src/distortion_model.hpp`` exactly as
+    the batch-5 audit's ``Y1`` block does (labels Y1-01 .. Y1-05): ``R = Ry(tauy) @ Rx(taux)`` and ``Pz`` is built
+    from ``R``'s third column. OpenCV's tilt projection is ``Pz @ R``; kornia's forward branch returns
+    ``Pz @ R.T`` (kornia#4276). ``taux != tauy`` at every call site below, so the two forms differ.
+    """
+    taux = torch.tensor([taux], device=device, dtype=dtype)
+    tauy = torch.tensor([tauy], device=device, dtype=dtype)
+    c_x, s_x = torch.cos(taux), torch.sin(taux)
+    c_y, s_y = torch.cos(tauy), torch.sin(tauy)
+    one, zero = torch.ones_like(c_x), torch.zeros_like(c_x)
+    r_x = torch.stack([one, zero, zero, zero, c_x, s_x, zero, -s_x, c_x], -1).reshape(-1, 3, 3)
+    r_y = torch.stack([c_y, zero, -s_y, zero, one, zero, s_y, zero, c_y], -1).reshape(-1, 3, 3)
+    r = r_y @ r_x
+    p_z = torch.stack(
+        [r[..., 2, 2], zero, -r[..., 0, 2], zero, r[..., 2, 2], -r[..., 1, 2], zero, zero, one], -1
+    ).reshape(-1, 3, 3)
+    return r, p_z
+
+
+def _k_asymmetric(device, dtype):
+    """``fx = fy = 100``, ``cx = 4``, ``cy = 3`` -- ``cx != cy`` so a transposed reading changes the literals."""
+    return torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
 
 class TestDistortPoints(BaseTester):
@@ -104,6 +132,153 @@ class TestDistortPoints(BaseTester):
         distCoeff = torch.rand(1, 4, device=device, dtype=torch.float64)
 
         assert self.gradcheck(distort_points, (points, K, distCoeff, new_K), raise_exception=True, fast_mode=True)
+
+    def test_convention_accepts_4_5_8_12_14_coefficients_and_rejects_6(self, device, dtype):
+        # Convention pin (audit labels 5b-dp-01, 5b-dp-02, 5b-dp-03): the distortion vector is OpenCV's
+        # (k1, k2, p1, p2[, k3[, k4, k5, k6[, s1, s2, s3, s4[, taux, tauy]]]]), so only the five prefix lengths
+        # 4, 5, 8, 12 and 14 are meaningful; anything else -- 6 and 3 below -- is a ValueError, not a silent
+        # zero-pad. Shorter accepted vectors ARE zero-padded to 14 internally, which is why 4 and 14 zeros give
+        # the same answer. undistort_points enforces the identical rule (audit label 5b-up-12).
+        # Snippet used to generate expected: distort_points(pts, K, zeros(1, n)) for n in (3, 4, 5, 6, 8, 12, 14)
+        # executed 2026-09-06 on the batch-5b worktree (torch 2.14.0, cpu and mps, every dtype) -> shape (1, 2, 2)
+        # for the five accepted lengths, ValueError("Invalid number of distortion coefficients. Got 6") for 6;
+        # torch.equal between the 4-coefficient answer and its 14-coefficient zero-padding -> True on every cell.
+        points = torch.tensor([[[54.0, 53.0], [-16.0, 23.0]]], device=device, dtype=dtype)
+        K = _k_asymmetric(device, dtype)
+        for n in (4, 5, 8, 12, 14):
+            assert distort_points(points, K, torch.zeros(1, n, device=device, dtype=dtype)).shape == (1, 2, 2)
+        for n in (3, 6):
+            with pytest.raises(ValueError, match="Invalid number of distortion coefficients"):
+                distort_points(points, K, torch.zeros(1, n, device=device, dtype=dtype))
+        short = torch.tensor([[0.1, 0.01, 0.001, 0.001]], device=device, dtype=dtype)
+        padded = torch.cat([short, torch.zeros(1, 10, device=device, dtype=dtype)], -1)
+        assert not torch.allclose(distort_points(points, K, short).float(), points.float())
+        assert torch.equal(distort_points(points, K, short), distort_points(points, K, padded))
+
+    def test_convention_zero_coefficients_are_the_byte_identity(self, device, dtype):
+        # Convention pin (audit labels 5b-dp-04, Y3-04): with every coefficient zero, distort_points normalizes
+        # with new_K (= K here) and denormalizes with K, and the result is the INPUT bit for bit -- torch.equal,
+        # not merely assert_close -- so the function is a true no-op for an undistorted camera. Contrast
+        # undistort_image, which resamples through remap and is only close (pinned in test_undistort.py).
+        # The points sit half a focal length off the principal point on both sides of it, so the normalize /
+        # denormalize round trip through ``/fx`` and ``* fx`` is exercised at a radius where a non-zero
+        # coefficient would move them by 2.775 px -- the identity here is not the identity of a near-axis point.
+        # Snippet used to generate expected: torch.equal(distort_points(pts, K, zeros(1, 4)), pts) executed
+        # 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> True on cpu for float32/float64/float16/bfloat16
+        # and on mps for float32/float16.
+        points = torch.tensor([[[54.0, 53.0], [-16.0, 23.0]]], device=device, dtype=dtype)
+        K = _k_asymmetric(device, dtype)
+        assert torch.equal(distort_points(points, K, torch.zeros(1, 4, device=device, dtype=dtype)), points)
+
+    def test_convention_new_K_normalizes_and_K_denormalizes(self, device, dtype):
+        # Convention pin (audit labels 5b-dp-05, 5b-dp-06): the two intrinsics play OPPOSITE roles -- new_K maps
+        # the incoming pixel to the normalized z = 1 plane, K maps the distorted normalized point back to pixels.
+        # Every intrinsic is distinct here (new_K: fx 5, fy 7, cx 2, cy 4; K: fx 2, fy 3, cx 1, cy 1), so
+        # swapping the two arguments, or fx with fy, changes both literals: (10, 10) normalizes to
+        # ((10-2)/5, (10-4)/7) = (1.6, 6/7) and denormalizes to (2*1.6+1, 3*6/7+1) = (4.2, 3.571428...).
+        # The audit's diag(2, 2, 1) probe (5b-dp-05) is the same claim with the roles reversed: a (1, 2) pixel
+        # under new_K = diag(2, 2, 1) and K = eye(3) comes back as (0.5, 1.0).
+        # Snippet used to generate expected: distort_points([[[10., 10.]]], K, zeros(1, 4), new_K) executed
+        # 2026-09-06 on the batch-5b worktree (torch 2.14.0, cpu float32) -> [[[4.199999809265137,
+        # 3.5714285373687744]]]; the same call on mps float32 gives the same value.
+        K = torch.tensor([[[2.0, 0.0, 1.0], [0.0, 3.0, 1.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        new_K = torch.tensor([[[5.0, 0.0, 2.0], [0.0, 7.0, 4.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        zero_dist = torch.zeros(1, 4, device=device, dtype=dtype)
+        points = torch.tensor([[[10.0, 10.0]]], device=device, dtype=dtype)
+        self.assert_close(
+            distort_points(points, K, zero_dist, new_K),
+            torch.tensor([[[4.2, 3.5714285714285716]]], device=device, dtype=dtype),
+        )
+        self.assert_close(
+            distort_points(
+                torch.tensor([[[1.0, 2.0]]], device=device, dtype=dtype),
+                torch.eye(3, device=device, dtype=dtype)[None],
+                zero_dist,
+                torch.tensor([[[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype),
+            ),
+            torch.tensor([[[0.5, 1.0]]], device=device, dtype=dtype),
+        )
+
+    def test_convention_agrees_with_distort_points_affine_on_the_same_camera(self, device, dtype):
+        # Convention pin (audit label 5b-af-03; duplication-ledger row "distort_points_affine /
+        # calibration.distort_points", KEEP SEPARATE -- intentional variant): the two paths encode the same
+        # pinhole camera through different INPUT DOMAINS and parametrizations. distort_points_affine takes a
+        # normalized z = 1 point and a flat [fx, fy, cx, cy]; calibration.distort_points takes a pixel point, a
+        # (3, 3) K and a coefficient vector. Feeding the normalized point through distort_points with
+        # new_K = eye(3) (so the normalization step is the identity) and K = the same camera reproduces the
+        # affine answer bit for bit, and the audit's own form -- the already-pixel point with zero coefficients --
+        # gives the same [54, 28].
+        # Snippet used to generate expected: torch.equal(distort_points([[[0.5, 0.25]]], K, zeros(1, 4), eye(3)[None])
+        # .reshape(2), distort_points_affine([0.5, 0.25], [100., 100., 4., 3.])) executed 2026-09-06 on the
+        # batch-5b worktree (torch 2.14.0, cpu float32) -> True, value [54., 28.].
+        K = _k_asymmetric(device, dtype)
+        zero_dist = torch.zeros(1, 4, device=device, dtype=dtype)
+        expected = torch.tensor([[[54.0, 28.0]]], device=device, dtype=dtype)
+        affine = distort_points_affine(
+            torch.tensor([0.5, 0.25], device=device, dtype=dtype),
+            torch.tensor([100.0, 100.0, 4.0, 3.0], device=device, dtype=dtype),
+        )
+        self.assert_close(affine.reshape(1, 1, 2), expected, atol=0.0, rtol=0.0)
+        self.assert_close(
+            distort_points(
+                torch.tensor([[[0.5, 0.25]]], device=device, dtype=dtype),
+                K,
+                zero_dist,
+                torch.eye(3, device=device, dtype=dtype)[None],
+            ),
+            expected,
+            atol=0.0,
+            rtol=0.0,
+        )
+        self.assert_close(distort_points(expected, K, zero_dist), expected, atol=0.0, rtol=0.0)
+
+    def test_convention_tilt_projection_zero_angles_are_the_identity(self, device, dtype):
+        # Convention pin (audit labels 5b-tp-01, Y1-07): tilt_projection(0, 0) is exactly eye(3) in BOTH branches,
+        # which is why a caller who leaves the 13th and 14th coefficients at zero never meets kornia#4276 -- and
+        # why the round trip pinned in test_undistort.py closes to 0.0 with tau = 0 and not with tau != 0.
+        # Snippet used to generate expected: torch.equal(tilt_projection(tensor([0.]), tensor([0.])), eye(3)[None])
+        # executed 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> True on cpu for float32/float64/float16/
+        # bfloat16 and on mps for float32/float16; same for return_inverse=True.
+        zero = torch.zeros(1, device=device, dtype=dtype)
+        identity = torch.eye(3, device=device, dtype=dtype)[None]
+        assert torch.equal(tilt_projection(zero, zero), identity)
+        self.assert_close(tilt_projection(zero, zero, True), identity, atol=0.0, rtol=0.0)
+
+    def test_wart_tilt_projection_forward_is_pz_times_r_transpose_4276(self, device, dtype):
+        # Wart pin for kornia#4276 (audit labels Y1-01, Y1-04, Y1-05): the forward branch returns ``Pz @ R.T``
+        # where OpenCV's computeTiltProjectionMatrix returns ``Pz @ R``, while the return_inverse=True branch IS
+        # the OpenCV inverse (audit label Y1-03, inv(Pz @ R) to 1.19e-07). The consequence is that the two
+        # branches of the same function are not inverses of each other: forward @ inverse is visibly not eye(3).
+        # taux = 0.1 != tauy = 0.2, so Pz @ R and Pz @ R.T are different matrices here (they coincide at 0, 0).
+        # Snippet used to generate expected: (tilt_projection([0.1], [0.2]) - Pz @ R.transpose(-1, -2)).abs().max()
+        # executed 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> 0.0 on cpu for float32/float64/float16/
+        # bfloat16 and on mps for float32/float16; forward @ inverse deviates from eye(3) by 0.3963 (cpu float32).
+        # Pins the CURRENT value; NOT a contract; delete when #4276 is repaired.
+        r, p_z = _pz_r(0.1, 0.2, device, dtype)
+        taux = torch.tensor([0.1], device=device, dtype=dtype)
+        tauy = torch.tensor([0.2], device=device, dtype=dtype)
+        forward = tilt_projection(taux, tauy)
+        self.assert_close(forward, p_z @ r.transpose(-1, -2), atol=0.0, rtol=0.0)
+        assert not torch.allclose(forward.float(), (p_z @ r).float())
+        inverse = tilt_projection(taux, tauy, True)
+        identity = torch.eye(3, device=device, dtype=dtype)[None]
+        assert not torch.allclose((forward @ inverse).float(), identity.float())
+
+    @pytest.mark.xfail(
+        strict=True, reason="kornia#4276: the forward tilt branch returns Pz @ R.T, so it is not the inverse's inverse"
+    )
+    def test_convention_tilt_projection_branches_are_inverses_4276(self, device, dtype):
+        # Intended contract, asserted as a strict xfail so the repair makes it XPASS and forces this mark out: the
+        # two branches of tilt_projection document themselves as a matrix and its inverse
+        # (``return_inverse``: "False to obtain the tilt projection matrix. True for the inverse matrix."), so
+        # ``forward @ inverse`` must be the identity. Settled by the function's own signature and by #4276's
+        # Expected section, which fixes the FORWARD branch and leaves the inverse branch -- the one that already
+        # matches OpenCV and the repo's own cv2 pin -- untouched. The pin does not assert any particular OpenCV
+        # form; #4276's ``Pz @ R`` claim comes from reading OpenCV's source, not from executing it here.
+        taux = torch.tensor([0.1], device=device, dtype=dtype)
+        tauy = torch.tensor([0.2], device=device, dtype=dtype)
+        product = tilt_projection(taux, tauy) @ tilt_projection(taux, tauy, True)
+        self.assert_close(product, torch.eye(3, device=device, dtype=dtype)[None])
 
     def test_jit(self, device, dtype):
         points = torch.rand(1, 1, 2, device=device, dtype=dtype)
