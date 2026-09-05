@@ -123,15 +123,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   DISK and XFeat by using `k = 5`, `MultiResolutionDetector` by zeroing 15 px before the call -- so no
   detector output changes. (#4239, #4242)
 
-* `NonMaximaSuppression2d` no longer registers a `kernel` buffer, and neither suppression module keeps a
-  `padding` attribute; both belonged to the convolution that the max-pool implementation replaces. A
-  state dict saved from a module that contains one of them, such as `MultiResolutionDetector`, carries a
-  now-unexpected `nms.kernel` key and needs `load_state_dict(..., strict=False)`. No pretrained kornia
-  checkpoint contains that key. (#4242)
-
-* `nms2d(x, (1, 1))` returns `x` unchanged instead of `x` thresholded at zero. A 1x1 window has no
-  neighbours, so nothing can be suppressed; the old result was an artifact of the zeroed centre tap of
-  the convolution kernel summing to `0.0`. (#4242)
+* `nms2d(x, (1, 1))` and `nms3d(x, (1, 1, 1))` return `x` unchanged. A unit window has no neighbours,
+  so nothing can be suppressed; the old 2-D result was an artifact of the zeroed centre tap of the
+  convolution kernel summing to `0.0`, while the old 3-D path raised because of #4241. (#4242)
 
 * Kornia's minimum supported PyTorch version rises to 2.5.1. Previously the declared floor was
   2.0.0; PR-time CI has only ever exercised 2.5.1 and newer, and this same change retires the

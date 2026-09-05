@@ -246,7 +246,12 @@ class TestNMS2d(BaseTester):
         # A 1x1 window has no neighbours, so every position is vacuously a strict maximum and the
         # input comes back untouched. It used to come back thresholded at zero, an artifact of the
         # zeroed centre tap summing to 0.0 rather than anything NMS means.
-        inp = torch.tensor([[[[-1.0, 0.0, 2.0], [0.5, -0.5, 0.0]]]], device=device, dtype=dtype)
+        inp = torch.tensor([[[[float("-inf"), 0.0, 2.0], [0.5, -0.5, 0.0]]]], device=device, dtype=dtype)
+        assert bool(kornia.geometry.subpix.nms2d(inp, (1, 1), mask_only=True).all())
+        self.assert_close(kornia.geometry.subpix.nms2d(inp, (1, 1)), inp)
+
+    def test_unit_window_suppresses_nothing_integer(self, device):
+        inp = torch.tensor([[[[torch.iinfo(torch.int64).min, 0, 2]]]], device=device, dtype=torch.int64)
         assert bool(kornia.geometry.subpix.nms2d(inp, (1, 1), mask_only=True).all())
         self.assert_close(kornia.geometry.subpix.nms2d(inp, (1, 1)), inp)
 
@@ -259,6 +264,14 @@ class TestNMS2d(BaseTester):
         inp = (torch.rand(1, 2, 21, 23, device=device) * 4).to(dtype)
         module = kornia.geometry.subpix.NonMaximaSuppression2d((9, 9)).to(device)
         self.assert_close(module(inp), kornia.geometry.subpix.nms2d(inp, (9, 9)))
+
+    @pytest.mark.parametrize("prefix", ["", "0."])
+    def test_loads_legacy_kernel_state_dict_strictly(self, prefix):
+        nms = kornia.geometry.subpix.NonMaximaSuppression2d((9, 9))
+        module = nms if prefix == "" else torch.nn.Sequential(nms)
+        incompatible = module.load_state_dict({f"{prefix}kernel": torch.empty(81, 1, 9, 9)})
+        assert incompatible.missing_keys == []
+        assert incompatible.unexpected_keys == []
 
     def test_gradcheck_general_path(self, device):
         img = torch.rand(1, 2, 13, 13, device=device, dtype=torch.float64)
@@ -375,6 +388,16 @@ class TestNMS3d(BaseTester):
     def test_window_larger_than_the_input_finds_no_maxima(self, device, dtype):
         inp = torch.rand(1, 1, 2, 4, 4, device=device, dtype=dtype)
         assert int(kornia.geometry.subpix.nms3d(inp, (5, 5, 5), mask_only=True).sum()) == 0
+
+    def test_unit_window_suppresses_nothing(self, device, dtype):
+        inp = torch.tensor([[[[[float("-inf"), 0.0, 2.0]]]]], device=device, dtype=dtype)
+        assert bool(kornia.geometry.subpix.nms3d(inp, (1, 1, 1), mask_only=True).all())
+        self.assert_close(kornia.geometry.subpix.nms3d(inp, (1, 1, 1)), inp)
+
+    def test_unit_window_suppresses_nothing_integer(self, device):
+        inp = torch.tensor([[[[[torch.iinfo(torch.int64).min, 0, 2]]]]], device=device, dtype=torch.int64)
+        assert bool(kornia.geometry.subpix.nms3d(inp, (1, 1, 1), mask_only=True).all())
+        self.assert_close(kornia.geometry.subpix.nms3d(inp, (1, 1, 1)), inp)
 
     def test_gradcheck_general_path(self, device):
         img = torch.rand(1, 1, 7, 9, 9, device=device, dtype=torch.float64)

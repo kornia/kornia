@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -30,12 +30,8 @@ def _split_window(k: int) -> Tuple[int, int]:
     return before, k - before - 1
 
 
-def _reduce_max(parts: List[torch.Tensor], shape: List[int], like: torch.Tensor) -> torch.Tensor:
-    """Reduce the per-region maxima to one tensor, or ``-inf`` when the window has no neighbours."""
-    if len(parts) == 0:
-        # A 1x1 (or 1x1x1) window: the centre has no neighbours at all, so every position is
-        # vacuously a strict local maximum and the comparison against -inf says so.
-        return torch.full(shape, float("-inf"), dtype=like.dtype, device=like.device)
+def _reduce_max(parts: List[torch.Tensor]) -> torch.Tensor:
+    """Reduce the maxima from the non-empty neighbourhood regions."""
     out = parts[0]
     for i in range(1, len(parts)):
         out = torch.maximum(out, parts[i])
@@ -69,8 +65,7 @@ def _neighbourhood_max2d(x: torch.Tensor, ky: int, kx: int) -> torch.Tensor:
         parts.append(F.max_pool2d(centre_row[..., : W - bx - 1], (1, cx), stride=1))
     if bx > 0:
         parts.append(F.max_pool2d(centre_row[..., cx + 1 :], (1, bx), stride=1))
-    shape = [x.shape[0], x.shape[1], H - ky + 1, W - kx + 1]
-    return _reduce_max(parts, shape, x)
+    return _reduce_max(parts)
 
 
 def _neighbourhood_max3d(x: torch.Tensor, kd: int, ky: int, kx: int) -> torch.Tensor:
@@ -102,8 +97,7 @@ def _neighbourhood_max3d(x: torch.Tensor, kd: int, ky: int, kx: int) -> torch.Te
         parts.append(F.max_pool3d(centre_row[..., : W - bx - 1], (1, 1, cx), stride=1))
     if bx > 0:
         parts.append(F.max_pool3d(centre_row[..., cx + 1 :], (1, 1, bx), stride=1))
-    shape = [x.shape[0], x.shape[1], D - kd + 1, H - ky + 1, W - kx + 1]
-    return _reduce_max(parts, shape, x)
+    return _reduce_max(parts)
 
 
 class NonMaximaSuppression2d(nn.Module):
@@ -119,6 +113,24 @@ class NonMaximaSuppression2d(nn.Module):
         if len(kernel_size) != 2:
             raise AssertionError(kernel_size)
         self.kernel_size: tuple[int, int] = kernel_size
+
+    def _load_from_state_dict(
+        self,
+        state_dict: dict[str, torch.Tensor],
+        prefix: str,
+        local_metadata: dict[str, Any],
+        strict: bool,
+        missing_keys: list[str],
+        unexpected_keys: list[str],
+        error_msgs: list[str],
+    ) -> None:
+        # The convolution implementation registered this derived tensor as a persistent buffer.
+        # It is unused by the pooled implementation, but accepting it preserves strict loading of
+        # checkpoints saved by older Kornia releases, including when NMS is nested in another module.
+        state_dict.pop(prefix + "kernel", None)
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
 
     def forward(self, x: torch.Tensor, mask_only: bool = False) -> torch.Tensor:
         """Keep only strict local maxima in a 2D response map.
@@ -147,7 +159,9 @@ class NonMaximaSuppression2d(nn.Module):
             raise AssertionError(x.shape)
         B, CH, H, W = x.size()
 
-        if self.kernel_size == (3, 3):
+        if self.kernel_size == (1, 1):
+            mask = torch.ones(B, CH, H, W, device=x.device, dtype=torch.bool)
+        elif self.kernel_size == (3, 3):
             # 8-comparison explicit path: no extra memory for conv kernel.
             left = slice(0, -2)
             center = slice(1, -1)
@@ -316,7 +330,9 @@ class NonMaximaSuppression3d(nn.Module):
             raise AssertionError(x.shape)
         # find local maximum values
         B, CH, D, H, W = x.size()
-        if self.kernel_size == (3, 3, 3):
+        if self.kernel_size == (1, 1, 1):
+            mask = torch.ones(B, CH, D, H, W, device=x.device, dtype=torch.bool)
+        elif self.kernel_size == (3, 3, 3):
             # 26-comparison explicit path: strict local maximum, works on CPU and CUDA.
             # Using integer slice literals (not slice objects) makes this torch.jit.script-friendly,
             # which fuses the ops and runs ~13x faster on CUDA than the eager path.
