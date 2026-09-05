@@ -31,8 +31,11 @@ Timings are warmed median/IQR wall times, including device synchronization, for
 extracting BOTH images and SNN matching (ratio 0.85), excluding I/O and RANSAC.
 Image 1 is deliberately re-extracted for every pair. Quality is the existing
 mean L1 corner reprojection error against the supplied H1toKp homography, with
-fixed-seed Kornia RANSAC. PNG and original Oxford PPM images are supported.
-CPU timings use one thread, as does common.time_us's Timer. Optional --compile uses
+fixed-seed Kornia RANSAC. Original Oxford PPM images are preferred; a PNG is used
+only when no PPM exists (converted copies can decode to different pixels).
+CPU timings use one thread, as does common.time_us's Timer. ``--device mps`` times
+with ``torch.mps.synchronize`` inside the timed region and evaluates RANSAC on CPU,
+because its batched SVD aborts the process on MPS; RANSAC is outside the timed region. Optional --compile uses
 the existing factory's selective compilation: scale-space pyramid/response/subpixel
 modules, or KeyNet response/NMS, with dynamic=True and the default Inductor mode.
 Descriptors, orientation, affine adaptation, matching, and RANSAC remain eager.
@@ -67,7 +70,7 @@ from benchmarks.feature.scale_space_detector import build_extractor, get_MAE_img
 
 
 def image_path(seq: Path, index: int) -> Path:
-    for ext in ("png", "ppm"):
+    for ext in ("ppm", "png"):
         path = seq / f"img{index}.{ext}"
         if path.is_file():
             return path
@@ -81,6 +84,11 @@ def evaluate(args: argparse.Namespace) -> None:
     torch.set_num_threads(1)
     torch.backends.cuda.matmul.allow_tf32 = False
     device = torch.device(args.device)
+    # blocked_autorange synchronizes CUDA itself; MPS needs an explicit sync inside the timed region.
+    sync = {"cuda": torch.cuda.synchronize, "mps": torch.mps.synchronize}.get(device.type, lambda: None)
+    # Homography RANSAC batches an SVD that aborts the process on MPS (#4201, #4204); it is
+    # outside the timed region, so evaluating it on CPU leaves the timings untouched.
+    ransac_device = torch.device("cpu") if device.type == "mps" else device
     meta = run_metadata(device)
     meta.update(
         sequence=args.seq.name,
@@ -92,6 +100,7 @@ def evaluate(args: argparse.Namespace) -> None:
         corner_error="mean L1 corner distance in pixels",
         timing_pairs=args.timing_pairs,
         min_run_time=args.min_run_time,
+        ransac_device=str(ransac_device),
         cudnn_allow_tf32=torch.backends.cudnn.allow_tf32,
         cudnn_benchmark=torch.backends.cudnn.benchmark,
         compile=args.compile,
@@ -132,22 +141,19 @@ def evaluate(args: argparse.Namespace) -> None:
             # steady-state timing budget. Warm every pair before measuring it.
             initial_call_seconds = None
             if args.compile:
-                if device.type == "cuda":
-                    torch.cuda.synchronize()
+                sync()
                 start = time.perf_counter()
                 extract_match(img2)
-                if device.type == "cuda":
-                    torch.cuda.synchronize()
+                sync()
                 initial_call_seconds = time.perf_counter() - start
                 print(f"# 1-{k} initial compiled call: {initial_call_seconds:.3f} s", flush=True)
+            sync()
             if device.type == "cuda":
-                torch.cuda.synchronize()
                 torch.cuda.reset_peak_memory_stats(device)
                 memory_before = torch.cuda.memory_allocated(device)
             start = time.perf_counter()
             kp1, kp2, indices = extract_match(img2)
-            if device.type == "cuda":
-                torch.cuda.synchronize()
+            sync()
             peak_bytes = torch.cuda.max_memory_allocated(device) - memory_before if device.type == "cuda" else None
             warmup_seconds = time.perf_counter() - start
             median, iqr = float("nan"), float("nan")
@@ -155,14 +161,16 @@ def evaluate(args: argparse.Namespace) -> None:
                 # A CPU call can take longer than the time budget. Extend it using
                 # the warmup so blocked_autorange collects several samples there too.
                 median, iqr = time_us(
-                    lambda img2=img2: extract_match(img2), min_run_time=max(args.min_run_time, 5 * warmup_seconds)
+                    lambda img2=img2: extract_match(img2),
+                    min_run_time=max(args.min_run_time, 5 * warmup_seconds),
+                    sync=sync if device.type == "mps" else None,
                 )
                 if not math.isfinite(median):
                     raise RuntimeError(f"Timing failed for {name}, pair 1-{k}")
             ransac = RANSAC("homography", inl_th=2.0, max_iter=10, batch_size=8196, confidence=0.9999, seed=3407)
             error, inliers = float("nan"), 0
             if len(indices) >= 4:
-                H, mask = ransac(kp1[indices[:, 0]], kp2[indices[:, 1]])
+                H, mask = ransac(kp1[indices[:, 0]].to(ransac_device), kp2[indices[:, 1]].to(ransac_device))
                 inliers = int(mask.sum())
                 if inliers >= 4:
                     error = get_MAE_imgcorners(
@@ -207,7 +215,7 @@ def evaluate(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--seq", type=Path, required=True)
-    parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    parser.add_argument("--device", choices=("cpu", "cuda", "mps"), default="cpu")
     parser.add_argument("--nf", type=int, default=4096)
     parser.add_argument("--min-run-time", type=float, default=3.0)
     parser.add_argument("--timing-pairs", nargs="+", type=int, choices=range(2, 7), default=[2, 3, 4, 5, 6])

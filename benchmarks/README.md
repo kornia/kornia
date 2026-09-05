@@ -19,7 +19,7 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 
 For Oxford affine graf speed and reprojection error, run
 `python -m benchmarks.feature.local_features --seq /data/graf --device cuda --json graf.json`
-from the checkout root. It compares SIFT, SIFT-AffNet-HardNet, and KeyNet-HardNet with fixed
+from the checkout root (`--device mps` is supported; it evaluates RANSAC on CPU). It compares SIFT, SIFT-AffNet-HardNet, and KeyNet-HardNet with fixed
 pipeline settings; use `--device cpu --timing-pairs 2` to time the representative 1–2 pair
 while still evaluating quality on all five pairs. The module docstring defines the exact
 timed region and corner-error metric.
