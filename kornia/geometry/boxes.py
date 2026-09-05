@@ -230,10 +230,9 @@ class Boxes:
           adds one per axis and
           :func:`~kornia.geometry.bbox.bbox_to_mask` fills through the bottom-right vertex's row and column, so
           both read their input as inclusive: pass them the ``'vertices_plus'`` export rather than
-          ``'vertices'``, which they read as one pixel larger per axis. Both consumers take unbatched
-          :math:`(N, 4, 2)` input and neither detects a batched one, so index or flatten a batched
-          :math:`(B, N, 4, 2)` export before passing it; see
-          `#4180 <https://github.com/kornia/kornia/issues/4180>`_.
+          ``'vertices'``, which they read as one pixel larger per axis. Both consumers require unbatched
+          :math:`(N, 4, 2)` input and raise :class:`~kornia.core.exceptions.ShapeError` for a batched
+          :math:`(B, N, 4, 2)` export, so index or flatten it before passing it.
           :func:`~kornia.geometry.bbox.validate_bbox` is invariant in exact arithmetic, because its ``+1``
           terms cancel;
           :func:`~kornia.geometry.bbox.nms` computes exclusive areas, and

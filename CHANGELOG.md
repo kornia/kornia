@@ -282,6 +282,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of `view`, so a non-contiguous leading-dimension stride (a transpose, a slice that drops boxes, an
   `expand`) returns a boolean as documented instead of raising `RuntimeError`. (#4174)
 
+* `infer_bbox_shape` and `bbox_to_mask` now reject rank-4 `(B, N, 4, 2)` inputs with `ShapeError`. Previously,
+  `N < 3` raised an incidental `IndexError`, while `N >= 3` silently returned `(B, 2)` extents computed from the
+  wrong vertices. (#4218)
+
 * Constructing `ScaleSpaceDetector` with `compile_modules` no longer permanently mutates the process-global
   `torch._dynamo.config.capture_dynamic_output_shape_ops` setting. (#4134)
 
