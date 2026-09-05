@@ -584,7 +584,6 @@ class TestBoxes2D(BaseTester):
             self.assert_close(actual, expected)
 
     def test_compute_area(self):
-
         # Rectangle
         box_1 = [[0.0, 0.0], [100.0, 0.0], [100.0, 50.0], [0.0, 50.0]]
         # Trapezoid
@@ -620,6 +619,215 @@ class TestBoxes2D(BaseTester):
             computed_area == expected_area
             for computed_area, expected_area in zip(flattened_computed_areas_w_batch, expected_values)
         )
+
+    def test_wart_compute_area_is_shoelace_of_inclusive_vertices_4010(self, device, dtype):
+        # Wart pin for kornia#4010: compute_area applies shoelace to the stored
+        # inclusive vertices. A valid exclusive 2-by-1 box collapses to a line,
+        # and a raw four-by-three rectangle has area six rather than the twelve
+        # reported by get_boxes_shape. These are current values, not a contract.
+        two_by_one = Boxes.from_tensor(torch.tensor([[[1.0, 1.0, 3.0, 2.0]]], device=device, dtype=dtype), mode="xyxy")
+        four_by_three = Boxes(
+            torch.tensor([[[1.0, 1.0], [4.0, 1.0], [4.0, 3.0], [1.0, 3.0]]], device=device, dtype=dtype)
+        )
+        self.assert_close(
+            two_by_one.compute_area(), torch.tensor([[0.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        )
+        self.assert_close(
+            four_by_three.compute_area(), torch.tensor([6.0], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        )
+
+    @pytest.mark.xfail(strict=True, reason="kornia#4010: compute_area disagrees with get_boxes_shape")
+    def test_convention_compute_area_matches_get_boxes_shape_product_4010(self, device, dtype):
+        # The intended contract is that area agrees with the container's own
+        # height and width terms. A repair must XPASS this strict xfail.
+        boxes = Boxes.from_tensor(torch.tensor([[[1.0, 1.0, 3.0, 2.0]]], device=device, dtype=dtype), mode="xyxy")
+        heights, widths = boxes.get_boxes_shape()
+        self.assert_close(boxes.compute_area(), heights * widths)
+
+    def test_convention_pad_and_unpad_use_left_right_top_bottom_in_place(self, device, dtype):
+        boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
+        original = boxes.data.clone()
+        padding = torch.tensor([[10.0, 99.0, 20.0, 88.0]], device=device, dtype=dtype)
+        result = boxes.pad(padding)
+        assert result is boxes
+        expected = original + torch.tensor([10.0, 20.0], device=device, dtype=dtype)
+        self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
+        assert boxes.unpad(padding) is boxes
+        self.assert_close(boxes.data, original, atol=0.0, rtol=0.0)
+
+    def test_wart_clamp_tuple_bounds_and_outside_box_behavior_4017(self, device, dtype):
+        # Wart pin for kornia#4017: tuple bounds are advertised but unsupported;
+        # tensor bounds clamp every vertex, collapsing a wholly outside box.
+        boxes = Boxes.from_tensor(
+            torch.tensor([[[8.0, 9.0, 10.0, 11.0]]], device=device, dtype=dtype),
+            mode="xyxy",
+            validate_boxes=False,
+        )
+        with pytest.raises(NotImplementedError):
+            boxes.clamp((0, 0), (5, 5))
+        clamped = boxes.clamp(
+            torch.tensor([[0.0, 0.0]], device=device, dtype=dtype),
+            torch.tensor([[5.0, 5.0]], device=device, dtype=dtype),
+        )
+        expected = torch.full((1, 1, 4, 2), 5.0, device=device, dtype=dtype)
+        self.assert_close(clamped.data, expected, atol=0.0, rtol=0.0)
+        self.assert_close(
+            boxes.data,
+            Boxes.from_tensor(
+                torch.tensor([[[8.0, 9.0, 10.0, 11.0]]], device=device, dtype=dtype), mode="xyxy", validate_boxes=False
+            ).data,
+            atol=0.0,
+            rtol=0.0,
+        )
+
+    def test_wart_trim_and_fast_translate_are_unimplemented_4017(self, device, dtype):
+        # Wart pin for kornia#4017: both documented entry points raise instead
+        # of implementing their advertised operations.
+        boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
+        with pytest.raises(NotImplementedError):
+            boxes.trim()
+        with pytest.raises(NotImplementedError):
+            boxes.translate(torch.tensor([[1.0, 2.0]], device=device, dtype=dtype), method="fast")
+
+    def test_convention_transform_boxes_in_place_rebinds_data(self, device, dtype):
+        # transform_boxes leaves its input unchanged by default. Its in-place
+        # twin returns self but rebinds storage, leaving prior data references stale.
+        boxes = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy")
+        original = boxes.data
+        matrix = torch.tensor([[[1.0, 0.0, 10.0], [0.0, 1.0, 20.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        transformed = boxes.transform_boxes(matrix)
+        assert transformed is not boxes
+        self.assert_close(transformed.data, original + torch.tensor([10.0, 20.0], device=device, dtype=dtype))
+        self.assert_close(boxes.data, original, atol=0.0, rtol=0.0)
+        assert boxes.transform_boxes_(matrix) is boxes
+        assert boxes.data.data_ptr() != original.data_ptr()
+        self.assert_close(
+            original,
+            Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype), mode="xyxy").data,
+            atol=0.0,
+            rtol=0.0,
+        )
+
+    def test_convention_translate_warp_uses_batched_xy_displacements(self, device, dtype):
+        # Convention pin: each row of size supplies an (x, y) displacement for
+        # its batch item. Asymmetric values catch an accidental axis swap.
+        boxes = Boxes.from_tensor(
+            torch.tensor([[[1.0, 2.0, 5.0, 4.0]], [[10.0, 20.0, 14.0, 23.0]]], device=device, dtype=dtype),
+            mode="xyxy",
+        )
+        translated = boxes.translate(torch.tensor([[3.0, -7.0], [-5.0, 11.0]], device=device, dtype=dtype))
+        expected = torch.tensor(
+            [
+                [[[4.0, -5.0], [7.0, -5.0], [7.0, -4.0], [4.0, -4.0]]],
+                [[[5.0, 31.0], [8.0, 31.0], [8.0, 33.0], [5.0, 33.0]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(translated.data, expected, atol=0.0, rtol=0.0)
+        assert translated is not boxes
+
+    def test_wart_filter_boxes_by_area_zeroes_small_boxes_4010(self, device, dtype):
+        # Wart pin for kornia#4010: filtering acts on compute_area, so the
+        # valid two-by-one box with shoelace area zero is zeroed, not removed.
+        boxes = Boxes.from_tensor(torch.tensor([[[1.0, 1.0, 3.0, 2.0]]], device=device, dtype=dtype), mode="xyxy")
+        filtered = boxes.filter_boxes_by_area(min_area=1.0)
+        assert filtered is not boxes
+        self.assert_close(filtered.data, torch.zeros_like(boxes.data), atol=0.0, rtol=0.0)
+        assert filtered.data.shape == boxes.data.shape
+        assert not torch.equal(boxes.data, torch.zeros_like(boxes.data))
+
+    def test_convention_filter_boxes_by_area_maximum_zeroes_in_place(self, device, dtype):
+        # The shoelace areas are 2 and 8. Equal lower/upper bounds retain the
+        # first box, pinning both inclusive endpoints; the larger box is zeroed.
+        # In-place filtering returns the original wrapper and keeps its shape.
+        boxes = Boxes(
+            torch.tensor(
+                [
+                    [
+                        [[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]],
+                        [[1.0, 1.0], [5.0, 1.0], [5.0, 3.0], [1.0, 3.0]],
+                    ]
+                ],
+                device=device,
+                dtype=dtype,
+            )
+        )
+        first = boxes.data[:, :1].clone()
+        assert boxes.filter_boxes_by_area(min_area=2.0, max_area=2.0, inplace=True) is boxes
+        self.assert_close(boxes.data[:, :1], first, atol=0.0, rtol=0.0)
+        self.assert_close(boxes.data[:, 1:], torch.zeros_like(boxes.data[:, 1:]), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("operation, inplace", [("pad", None), ("unpad", None), ("clamp", False), ("clamp", True)])
+    def test_wart_unbatched_geometry_operations_raise_4244(self, operation, inplace, device, dtype):
+        # Wart pin for kornia#4244: the documented unbatched (N, 4, 2) form
+        # fails although its singleton-batched counterpart works. Two asymmetric
+        # boxes exercise the broadcast path rather than a singleton accident.
+        boxes = Boxes(
+            torch.tensor(
+                [
+                    [[1.0, 2.0], [4.0, 2.0], [4.0, 5.0], [1.0, 5.0]],
+                    [[8.0, 0.0], [10.0, 0.0], [10.0, 1.0], [8.0, 1.0]],
+                ],
+                device=device,
+                dtype=dtype,
+            )
+        )
+        if operation == "clamp":
+            with pytest.raises(RuntimeError):
+                boxes.clamp(
+                    torch.tensor([[2.0, 3.0]], device=device, dtype=dtype),
+                    torch.tensor([[6.0, 7.0]], device=device, dtype=dtype),
+                    inplace=inplace,
+                )
+        else:
+            with pytest.raises(RuntimeError):
+                getattr(boxes, operation)(torch.tensor([[10.0, 99.0, 20.0, 88.0]], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("operation, inplace", [("pad", None), ("unpad", None), ("clamp", False), ("clamp", True)])
+    @pytest.mark.xfail(
+        strict=True,
+        raises=RuntimeError,
+        reason="kornia#4244: unbatched geometry operations do not match singleton batches",
+    )
+    def test_convention_unbatched_geometry_operations_match_singleton_batch_4244(
+        self, operation, inplace, device, dtype
+    ):
+        data = torch.tensor(
+            [
+                [[1.0, 2.0], [4.0, 2.0], [4.0, 5.0], [1.0, 5.0]],
+                [[8.0, 0.0], [10.0, 0.0], [10.0, 1.0], [8.0, 1.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        batched = Boxes(data[None].clone())
+        unbatched = Boxes(data.clone())
+        unbatched_before = unbatched.data.clone()
+        if operation == "clamp":
+            limits = (
+                torch.tensor([[2.0, 3.0]], device=device, dtype=dtype),
+                torch.tensor([[6.0, 7.0]], device=device, dtype=dtype),
+            )
+            try:
+                expected = batched.clamp(*limits, inplace=inplace)
+            except RuntimeError as error:
+                raise AssertionError("The supported singleton-batch reference must succeed") from error
+            assert (expected is batched) is inplace
+            actual = unbatched.clamp(*limits, inplace=inplace)
+            assert (actual is unbatched) is inplace
+            if not inplace:
+                self.assert_close(unbatched.data, unbatched_before, atol=0.0, rtol=0.0)
+        else:
+            padding = torch.tensor([[10.0, 99.0, 20.0, 88.0]], device=device, dtype=dtype)
+            try:
+                expected = getattr(batched, operation)(padding)
+            except RuntimeError as error:
+                raise AssertionError("The supported singleton-batch reference must succeed") from error
+            assert expected is batched
+            actual = getattr(unbatched, operation)(padding)
+            assert actual is unbatched
+        self.assert_close(actual.data, expected.data.squeeze(0), atol=0.0, rtol=0.0)
 
 
 class TestTransformBoxes2D(BaseTester):

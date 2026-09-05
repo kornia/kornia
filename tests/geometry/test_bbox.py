@@ -225,6 +225,36 @@ class TestBbox2D(BaseTester):
 
 
 class TestTransformBoxes2D(BaseTester):
+    def test_convention_transform_bbox_requires_a_batched_matrix_and_restores_vector_endpoints(self, device, dtype):
+        # A matrix must carry a batch dimension. Under a horizontal flip, endpoint
+        # restoration sorts xyxy coordinates while polygon vertices retain their
+        # transformed cyclic order.
+        matrix = torch.tensor([[[-1.0, 0.0, 10.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        vector = torch.tensor([[1.0, 1.0, 3.0, 2.0]], device=device, dtype=dtype)
+        polygon = torch.tensor([[[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]]], device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="Input batch size must be the same"):
+            transform_bbox(matrix[0], vector)
+
+        self.assert_close(
+            transform_bbox(matrix, vector), torch.tensor([[7.0, 1.0, 9.0, 2.0]], device=device, dtype=dtype)
+        )
+        self.assert_close(
+            transform_bbox(matrix, polygon),
+            torch.tensor([[[[9.0, 1.0], [7.0, 1.0], [7.0, 2.0], [9.0, 2.0]]]], device=device, dtype=dtype),
+        )
+
+    def test_convention_transform_bbox_xywh_preserves_the_caller_tensor(self, device, dtype):
+        # ``xywh`` is converted internally and then restored on output; the caller's
+        # tensor remains in xywh form.
+        boxes = torch.tensor([[1.0, 1.0, 2.0, 1.0]], device=device, dtype=dtype)
+        original = boxes.clone()
+        matrix = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
+
+        out = transform_bbox(matrix, boxes, mode="xywh")
+        self.assert_close(out, original, atol=0.0, rtol=0.0)
+        self.assert_close(boxes, original, atol=0.0, rtol=0.0)
+
     def test_transform_boxes(self, device, dtype):
         boxes = torch.tensor([[139.2640, 103.0150, 397.3120, 410.5225]], device=device, dtype=dtype)
 
@@ -434,6 +464,16 @@ class TestBbox3D(BaseTester):
 
 
 class TestNMS(BaseTester):
+    def test_convention_nms_uses_exclusive_xyxy_iou_4008(self, device, dtype):
+        # The boxes overlap by 1 / 4 under exclusive xyxy arithmetic. At 0.3, NMS
+        # keeps both; inclusive corner arithmetic would compute 4 / 9 and suppress
+        # the lower-scored box. The literal also pins descending-score index order.
+        boxes = torch.tensor([[0.0, 0.0, 1.0, 1.0], [0.0, 0.0, 2.0, 2.0]], device=device, dtype=dtype)
+        scores = torch.tensor([0.8, 0.9], device=device, dtype=dtype)
+
+        actual = nms(boxes, scores, iou_threshold=0.3)
+        self.assert_close(actual, torch.tensor([1, 0], device=device, dtype=torch.long), atol=0.0, rtol=0.0)
+
     def test_empty(self, device):
         boxes = torch.empty((0, 4), device=device)
         scores = torch.empty((0,), device=device)

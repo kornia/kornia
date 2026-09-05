@@ -443,10 +443,22 @@ class Boxes:
         return obj
 
     def pad(self, padding_size: torch.Tensor) -> Boxes:
-        """Pad a bounding box.
+        """Pad every box in place.
+
+        See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
+
+        ``padding_size`` is ordered as ``(left, right, top, bottom)``. Only
+        ``left`` and ``top`` change the coordinate origin; this method returns
+        ``self`` after adding those two values to every vertex. This operation
+        supports only batched :math:`(B, N, 4, 2)` containers.
+
+        .. warning::
+            Unbatched containers raise a broadcasting error; this limitation is
+            tracked in `#4244 <https://github.com/kornia/kornia/issues/4244>`_.
 
         Args:
-            padding_size: (B, 4)
+            padding_size: Per-batch padding in ``(left, right, top, bottom)``
+                order, shaped :math:`(B, 4)`.
 
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
@@ -456,10 +468,22 @@ class Boxes:
         return self
 
     def unpad(self, padding_size: torch.Tensor) -> Boxes:
-        """Pad a bounding box.
+        """Undo :meth:`pad` in place.
+
+        See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
+
+        ``padding_size`` is ordered as ``(left, right, top, bottom)``. Only
+        ``left`` and ``top`` change the coordinate origin; this method returns
+        ``self`` after subtracting those two values from every vertex. This
+        operation supports only batched :math:`(B, N, 4, 2)` containers.
+
+        .. warning::
+            Unbatched containers raise a broadcasting error; this limitation is
+            tracked in `#4244 <https://github.com/kornia/kornia/issues/4244>`_.
 
         Args:
-            padding_size: (B, 4)
+            padding_size: Per-batch padding in ``(left, right, top, bottom)``
+                order, shaped :math:`(B, 4)`.
 
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
@@ -476,10 +500,25 @@ class Boxes:
     ) -> Boxes:
         """Clamp every box vertex inside per-image coordinate limits.
 
+        See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
+
+        Convention:
+            Bounds must be tensors with one ``(x, y)`` pair per batch element.
+            Every vertex is clamped independently, so a box wholly outside the
+            bounds collapses onto the nearest boundary instead of being removed.
+            This operation supports only batched :math:`(B, N, 4, 2)` containers.
+
         Coordinates below ``topleft`` are raised to the lower bound and
         coordinates above ``botright`` are lowered to the upper bound. The
-        implementation expects tensor bounds with one ``(x, y)`` pair per batch
-        element.
+        implementation accepts only tensor bounds with one ``(x, y)`` pair per
+        batch element.
+
+        .. warning::
+            Tuple bounds shown in the type annotation are not implemented and
+            raise :class:`NotImplementedError`; this API-completeness gap is
+            tracked in `#4017 <https://github.com/kornia/kornia/issues/4017>`_.
+            Unbatched containers fail even with tensor bounds,
+            tracked in `#4244 <https://github.com/kornia/kornia/issues/4244>`_.
 
         Args:
             topleft: Tensor of shape :math:`(B, 2)` containing the minimum
@@ -518,44 +557,35 @@ class Boxes:
         return obj
 
     def trim(self, correspondence_preserve: bool = False, inplace: bool = False) -> Boxes:
-        """Trim out zero padded boxes.
+        """Raise because trimming padded boxes is not implemented.
 
-        Given box arrangements of shape :math:`(4, 4, Box)`:
+        See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
-            == === == === == === == === ==
-            -- Box -- Box -- Box -- Box --
-            --  0  --  0  -- Box -- Box --
-            --  0  -- Box --  0  --  0  --
-            --  0  --  0  --  0  --  0  --
-            == === == === == === == === ==
+        Args:
+            correspondence_preserve: Reserved for a future implementation.
+            inplace: Reserved for a future implementation.
 
-        Nothing will change if correspondence_preserve is True. Only pure zero layers will be removed, resulting in
-        shape :math:`(4, 3, Box)`:
+        Raises:
+            NotImplementedError: Always.
 
-            == === == === == === == === ==
-            -- Box -- Box -- Box -- Box --
-            --  0  --  0  -- Box -- Box --
-            --  0  -- Box --  0  --  0  --
-            == === == === == === == === ==
-
-        Otherwise, you will get :math:`(4, 2, Box)`:
-
-            == === == === == === == === ==
-            -- Box -- Box -- Box -- Box --
-            --  0  -- Box -- Box -- Box --
-            == === == === == === == === ==
+        .. warning::
+            This API-completeness gap is tracked in
+            `#4017 <https://github.com/kornia/kornia/issues/4017>`_.
         """
         raise NotImplementedError
 
     def filter_boxes_by_area(
         self, min_area: Optional[float] = None, max_area: Optional[float] = None, inplace: bool = False
     ) -> Boxes:
-        """Remove boxes whose polygon area is outside the requested range.
+        """Zero boxes whose polygon area is outside the requested range.
+
+        See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
         The box area is computed from its four vertices. Boxes smaller than
         ``min_area`` or larger than ``max_area`` are not dropped from the
         tensor; their coordinates are replaced with zeros so the original batch
-        and box dimensions stay unchanged.
+        and box dimensions stay unchanged. See :meth:`compute_area` for the
+        area convention used by the thresholds.
 
         Args:
             min_area: Optional lower inclusive area threshold. Boxes with area
@@ -586,7 +616,22 @@ class Boxes:
         return obj
 
     def compute_area(self) -> torch.Tensor:
-        """Return :math:`(B, N)`."""
+        """Compute polygon area with the shoelace formula.
+
+        See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
+
+        Convention:
+            The shoelace result uses stored inclusive vertices and can differ
+            from the product returned by :meth:`get_boxes_shape`, whose
+            extents use inclusive arithmetic.
+
+        .. warning::
+            The differing area conventions are tracked in
+            `#4010 <https://github.com/kornia/kornia/issues/4010>`_.
+
+        Returns:
+            Area for each box, shaped :math:`(N,)` or :math:`(B, N)`.
+        """
         coords = self._data.view((-1, 4, 2)) if self._data.ndim == 4 else self._data
         # calculate centroid of the box
         centroid = coords.mean(dim=1, keepdim=True)
@@ -834,6 +879,8 @@ class Boxes:
     def transform_boxes(self, M: torch.Tensor, inplace: bool = False) -> Boxes:
         r"""Apply a transformation matrix to the 2D boxes.
 
+        See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
+
         Args:
             M: The transformation matrix to be applied, shape of :math:`(3, 3)` or :math:`(B, 3, 3)`.
             inplace: do transform in-place and return self.
@@ -855,11 +902,26 @@ class Boxes:
         return obj
 
     def transform_boxes_(self, M: torch.Tensor) -> Boxes:
-        """Inplace version of :func:`Boxes.transform_boxes`."""
+        """Apply :meth:`transform_boxes` in place and return ``self``.
+
+        See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
+
+        Convention:
+            The in-place operation rebinds this object's internal tensor to a
+            transformed result. A tensor reference obtained from :attr:`data`
+            before this call therefore remains unchanged and no longer aliases
+            the container's data.
+        """
         return self.transform_boxes(M, inplace=True)
 
     def translate(self, size: torch.Tensor, method: str = "warp", inplace: bool = False) -> Boxes:
         """Translate boxes by the provided size.
+
+        See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
+
+        ``size`` supplies one ``(x, y)`` translation per batch item. Only the
+        ``"warp"`` method is implemented; ``"fast"`` raises
+        :class:`NotImplementedError`.
 
         Args:
             size: translate size for x, y direction, shape of :math:`(B, 2)`.
