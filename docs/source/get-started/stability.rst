@@ -101,3 +101,28 @@ Escape hatch
 A change that fixes a correctness bug (wrong math, wrong convention versus
 the documented one) or a security issue may ship without a deprecation
 window. When that happens the release notes say so explicitly.
+
+Recording a completed deprecation
+--------------------------------
+
+Once the deprecation window has passed, remove the API and describe the removal
+in ``CHANGELOG.md``. Update any existing entries in ``tests/api_surface.json``
+in the same pull request; keep the module key, using an empty list if necessary.
+The import-surface check verifies that recorded names leave the export surface
+in that change. An inventory edit acknowledges an ``__all__`` removal only for
+the exact same module and name; it does not authorize submodule removals.
+
+For a submodule API recorded only under an ancestor package, or an API absent
+from the inventory, record the exact module and removed ``__all__`` name in
+``tests/api_surface_removals.json``. For example::
+
+    {
+      "kornia.geometry.boxes": ["Boxes"]
+    }
+
+Only module/name pairs newly added relative to the pull request's merge base
+can acknowledge removals, and each must match an actual ``__all__`` removal in
+the same change. Existing entries cannot authorize a later removal. When reintroducing an API,
+remove its obsolete acknowledgement so a future removal requires a fresh entry.
+This file does not replace updates to the inventory or the deprecation and release-note
+requirements above.

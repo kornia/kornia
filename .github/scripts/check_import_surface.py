@@ -36,8 +36,8 @@ Usage::
 
 Exit status is 1 when a name is removed from ``__all__`` (a break of documented
 public API, per the stability policy), when the change drops a module that
-``tests/api_surface.json`` tracks, and when it records a removal there for a
-package it does not otherwise touch. Names that disappear from module scope but
+``tests/api_surface.json`` tracks, or when a removal record does not match an
+actual export delta in this change. Names that disappear from module scope but
 were never in ``__all__`` are reported for visibility but do not fail the check
 -- hard-failing on those would make every incidental third-party re-export
 permanent API. Three exemptions from the hard-fail path:
@@ -48,13 +48,13 @@ permanent API. Three exemptions from the hard-fail path:
 - ``kornia.contrib`` is the Experimental tier per
   ``docs/source/get-started/stability.rst`` ("No stability promise") --
   its removals are reported, not fatal.
-- A removal the same change *records* by dropping the name from
-  ``tests/api_surface.json`` is reported, not fatal. That inventory is the
-  deliberate review moment the stability policy requires, and
-  ``tests/test_api_surface.py::test_no_public_name_removed`` already tells
-  contributors to edit it for a removal whose deprecation window has passed
-  -- so a policy-compliant removal could otherwise satisfy the test that
-  names the procedure and still be hard-blocked here. See #4190.
+- An exact module/name removal recorded in this change is reported, not fatal.
+  Drop the name from that module's ``tests/api_surface.json`` entry, or add an
+  exact pair to ``tests/api_surface_removals.json`` for a submodule or API the
+  inventory does not cover. Ancestor inventory entries never authorize a
+  descendant's removal. Existing inventory coverage still needs updating.
+  Only newly added explicit pairs count, and each must match a direct
+  ``__all__`` removal in this diff. See #4190.
 
 Dropping a *module* from that inventory is the mirror image and is always
 fatal: its key is what puts the module in
@@ -259,6 +259,7 @@ def _alternate_path(path: str) -> str:
 # contributor to edit it when a deprecation window has passed. Dropping a name from
 # it in the same change is therefore the acknowledgement this check honors (#4190).
 INVENTORY_PATH = "tests/api_surface.json"
+REMOVALS_PATH = "tests/api_surface_removals.json"
 
 
 def _parse_inventory(source: bytes | None) -> dict[str, set[str]] | None:
@@ -293,6 +294,34 @@ def _parse_inventory(source: bytes | None) -> dict[str, set[str]] | None:
             return None
         inventory[module] = set(names)
     return inventory
+
+
+def _parse_removals(source: bytes | None, *, missing_is_empty: bool = False) -> dict[str, set[str]] | None:
+    """Parse the explicit removal acknowledgement, rejecting every ambiguous shape."""
+    if source is None:
+        return {} if missing_is_empty else None
+    return _parse_inventory(source)
+
+
+def _removal_ends(base_ref: str) -> tuple[dict[str, set[str]] | None, dict[str, set[str]] | None]:
+    old = _parse_removals(_git_show(base_ref, REMOVALS_PATH), missing_is_empty=True)
+    try:
+        new_source: bytes | None = _read_source(REMOVALS_PATH)
+    except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
+        new_source = None
+    return old, _parse_removals(new_source, missing_is_empty=True)
+
+
+def removal_acknowledgements(base_ref: str) -> dict[str, set[str]] | None:
+    """Return acknowledgement names newly added by this diff, or ``None`` if invalid.
+
+    Only additions grant approval.  Old entries may be removed when an API is
+    restored, so that a later removal receives its own review moment.
+    """
+    old, new = _removal_ends(base_ref)
+    if old is None or new is None:
+        return None
+    return {module: names - old.get(module, set()) for module, names in new.items() if names - old.get(module, set())}
 
 
 def _inventory_ends(
@@ -370,114 +399,194 @@ def inventory_removals(base_ref: str, inventory_path: str = INVENTORY_PATH) -> d
     return removals
 
 
-def _module_source(base_ref: str, module: str) -> bytes | None:
-    """A module's source at `base_ref`, trying both `x/__init__.py` and `x.py` spellings."""
-    stem = module.replace(".", "/")
-    for path in (f"{stem}/__init__.py", f"{stem}.py"):
-        source = _git_show(base_ref, path)
-        if source is not None:
-            return source
-    return None
+class _ExportResolver:
+    """Resolve static export membership without importing the library.
 
-
-def _exported_surface(source: bytes) -> set[str]:
-    """The names `from <module> import *` would bind: `__all__` if defined, else module scope."""
-    surface = parse_module_surface(source)
-    return surface.all_names if surface.has_all else surface.all_names | surface.other_names
-
-
-def reexport_sources(base_ref: str, package: str, name: str) -> set[str] | None:
-    """Submodules that could have supplied `name` to `package`'s surface at `base_ref`.
-
-    The inventory records a package's aggregate surface, so a recorded removal has to be
-    matched against a removal one or more levels down -- but matching on the *spelling*
-    alone lets one recorded name excuse every same-named symbol anywhere under that
-    package. ``kornia.pkg`` re-exporting ``thing`` from ``pkg.a`` says nothing about an
-    unrelated ``pkg.b.thing``, and dropping both while recording one would sneak the
-    second past this check.
-
-    So follow the package's own re-export of that name at the base revision: an explicit
-    ``from .a import thing`` names its source outright; a ``from .a import *`` names it
-    when ``a``'s exported surface holds the name. Callers treat each source as covering
-    the whole subtree below it, which is what carries a nested package's re-export
-    (``kornia.geometry`` -> ``.transform`` -> ``transform/affwarp.py``) without walking it.
-
-    Returns ``None`` when the name traces to nothing -- no readable ``__init__``, a
-    re-export this cannot follow (an alias, a dynamically built ``__all__``) -- and the
-    caller then falls back to the plain ancestor match. Failing open there is deliberate:
-    a wrong "no" would hard-block a policy-compliant removal, which is the exact defect
-    #4190 is about.
+    This is intentionally a small, conservative interpreter.  It follows only
+    ordered module-level imports, assignments, definitions, and literal
+    ``__all__`` declarations.  A conditional, dynamic export, missing module,
+    or wildcard import it cannot resolve makes that module unknown; an unknown
+    surface never proves that an inventory name was removed.
     """
-    source = _module_source(base_ref, package)
-    if source is None:
-        return None
-    try:
-        tree = ast.parse(source)
-    except (SyntaxError, ValueError):
+
+    def __init__(self, base_ref: str | None) -> None:
+        self.base_ref = base_ref
+        self.cache: dict[str, set[str] | None] = {}
+        self.visiting: set[str] = set()
+
+    def _source(self, module: str) -> tuple[bytes, bool] | None:
+        stem = module.replace(".", "/")
+        paths = ((f"{stem}/__init__.py", True), (f"{stem}.py", False))
+        for path, is_package in paths:
+            try:
+                source = _git_show(self.base_ref, path) if self.base_ref is not None else _read_source(path)
+            except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
+                source = None
+            if source is not None:
+                return source, is_package
         return None
 
-    explicit: set[str] = set()
-    wildcard: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ImportFrom):
-            continue
-        if node.level >= 1:
-            # `from .a import thing`, `from . import a`
-            source = f"{package}.{node.module}" if node.module else package
-        elif node.module and (node.module == package or node.module.startswith(package + ".")):
-            # kornia's packages import their own submodules absolutely as often as relatively
-            # (`from kornia.augmentation._2d import CenterCrop`); both bind the same name here.
-            source = node.module
+    @staticmethod
+    def _literal_all(value: ast.expr | None) -> list[str] | None:
+        if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
+            left = _ExportResolver._literal_all(value.left)
+            right = _ExportResolver._literal_all(value.right)
+            return left + right if left is not None and right is not None else None
+        if not isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+            return None
+        names = _string_literals(value)
+        return names if len(names) == len(value.elts) else None
+
+    def _relative(self, module: str, is_package: bool, node: ast.ImportFrom) -> str | None:
+        if node.level == 0:
+            return node.module
+        package = module if is_package else module.rpartition(".")[0]
+        parts = package.split(".") if package else []
+        if node.level - 1 > len(parts):
+            return None
+        base = ".".join(parts[: len(parts) - (node.level - 1)])
+        return f"{base}.{node.module}" if node.module else base
+
+    def resolve(self, module: str) -> set[str] | None:
+        if module in self.cache:
+            return self.cache[module]
+        if module in self.visiting:
+            return None
+        self.visiting.add(module)
+        found = self._source(module)
+        if found is None:
+            result = None
         else:
-            continue
-        for alias in node.names:
-            if alias.name == "*":
-                wildcard.add(source)
-            elif (alias.asname or alias.name) == name:
-                # `from <pkg> import sub` names a submodule, not a symbol inside one.
-                explicit.add(source if source != package else f"{package}.{alias.name}")
+            source, is_package = found
+            try:
+                tree = ast.parse(source)
+            except (SyntaxError, ValueError):
+                result = None
+            else:
+                result = self._resolve_tree(tree, module, is_package)
+        self.visiting.discard(module)
+        self.cache[module] = result
+        return result
 
-    if explicit:
-        return explicit
-    sources = {
-        module
-        for module in wildcard
-        if (source := _module_source(base_ref, module)) is not None and name in _exported_surface(source)
-    }
-    return sources or None
+    def _resolve_tree(self, tree: ast.Module, module: str, is_package: bool) -> set[str] | None:
+        # A literal __all__ is the export contract by itself.  Do this
+        # before resolving imports: package membership must not become
+        # unknowable because an unrelated dependency is dynamic.
+        all_values = [
+            node.value
+            for node in tree.body
+            if isinstance(node, (ast.Assign, ast.AnnAssign))
+            and any(
+                isinstance(target, ast.Name) and target.id == "__all__"
+                for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+            )
+        ]
+
+        def touches_all(node: ast.AST) -> bool:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                return False
+            return any(isinstance(child, ast.Name) and child.id == "__all__" for child in ast.walk(node))
+
+        mutates_all = any(
+            touches_all(node)
+            and not (
+                isinstance(node, (ast.Assign, ast.AnnAssign))
+                and any(
+                    isinstance(target, ast.Name) and target.id == "__all__"
+                    for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+                )
+            )
+            for node in tree.body
+        )
+        if mutates_all:
+            return None
+        if all_values:
+            names = self._literal_all(all_values[-1])
+            result = None if names is None else set(names)
+            return result
+        return self._bound_exports(tree, module, is_package)
+
+    def _bound_exports(self, tree: ast.Module, module: str, is_package: bool) -> set[str] | None:
+        bindings: set[str] = set()
+        result = bindings
+        for node in tree.body:
+            if isinstance(node, ast.If):
+                if _is_type_checking(node.test) and not node.orelse:
+                    continue
+                result = None
+                break
+            if isinstance(node, (ast.Try, ast.With, ast.For, ast.While, ast.Match)):
+                result = None
+                break
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                bindings.add(node.name)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    bound = alias.asname or alias.name.split(".")[0]
+                    bindings.add(bound)
+            elif isinstance(node, ast.ImportFrom):
+                target = self._relative(module, is_package, node)
+                if target is None:
+                    result = None
+                    break
+                # Third-party imports are terminal bindings.  Following
+                # torch/typing/__future__ would make ordinary Kornia
+                # modules unknowable for reasons unrelated to their own
+                # re-export provenance.
+                for alias in node.names:
+                    if alias.name == "*":
+                        imported = self.resolve(target) if target == "kornia" or target.startswith("kornia.") else None
+                        if imported is None:
+                            result = None
+                            break
+                        bindings.update(imported)
+                    else:
+                        bound = alias.asname or alias.name
+                        # Explicit imports bind their alias regardless of
+                        # the source module's __all__ or implementation.
+                        bindings.add(bound)
+                if result is None:
+                    break
+            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        bindings.add(target.id)
+                    else:
+                        result = None
+                        break
+            elif isinstance(node, (ast.Delete, ast.Global, ast.Nonlocal, ast.AugAssign)):
+                result = None
+                break
+        if result is not None:
+            result = {name for name in bindings if not name.startswith("_")}
+        return result
 
 
-def _tracked_names(inventory: dict[str, set[str]], module: str) -> set[str]:
-    """Names the inventory records for `module` or any of its ancestor packages."""
-    parts = module.split(".")
-    return set().union(*(inventory.get(".".join(parts[:d]), set()) for d in range(1, len(parts) + 1)), set())
+def export_removals(base_ref: str, paths: list[str]) -> dict[str, set[str]]:
+    """Exact module/name export deltas caused by this change.
 
-
-def acknowledged_names(module: str, removals: dict[str, set[str]], base_ref: str | None = None) -> set[str]:
-    """Inventory removals that speak for `module`: its own entry, or an ancestor package's.
-
-    The inventory records the stable-core top-level packages, so a name dropped from
-    ``kornia/geometry/bbox.py`` is recorded under ``kornia.geometry`` -- the ancestor
-    walk is what lets a submodule's removal be acknowledged by the entry that actually
-    tracks it. An unrelated module's entry never counts, so the name *and* the module
-    path both have to line up.
-
-    With a `base_ref`, the ancestor's own re-export of that name has to reach `module`
-    too (`reexport_sources`); without one, or when the re-export cannot be followed, the
-    name alone is enough.
+    Include package ancestors of a changed module: removing a leaf from a
+    wildcard re-export changes the package's public surface even if its
+    ``__init__.py`` text is unchanged.
     """
-    parts = module.split(".")
-    acknowledged: set[str] = set()
-    for depth in range(1, len(parts) + 1):
-        ancestor = ".".join(parts[:depth])
-        for name in removals.get(ancestor, set()):
-            if ancestor == module or base_ref is None:
-                acknowledged.add(name)
-                continue
-            sources = reexport_sources(base_ref, ancestor, name)
-            if sources is None or any(module == src or module.startswith(src + ".") for src in sources):
-                acknowledged.add(name)
-    return acknowledged
+    modules: set[str] = set()
+    for path in paths:
+        module = _module_name(path)
+        parts = module.split(".")
+        modules.update(".".join(parts[:depth]) for depth in range(1, len(parts) + 1))
+    old = _ExportResolver(base_ref)
+    new = _ExportResolver(None)
+    removed: dict[str, set[str]] = {}
+    for module in modules:
+        old_exports = old.resolve(module)
+        new_exports = new.resolve(module)
+        if old_exports is None or new_exports is None:
+            continue
+        names = set(old_exports) - set(new_exports)
+        if names:
+            removed[module] = names
+    return removed
 
 
 @dataclass
@@ -489,7 +598,7 @@ class FileReport:
     """Whether removed_from_all should actually fail the check for this file."""
 
     acknowledged: set[str] = field(default_factory=set)
-    """Subset of removed_from_all that this change records in `INVENTORY_PATH`."""
+    """Subset of removed_from_all acknowledged by either record file."""
 
 
 def diff_surfaces(old: ModuleSurface, new: ModuleSurface) -> tuple[set[str], set[str]]:
@@ -499,14 +608,20 @@ def diff_surfaces(old: ModuleSurface, new: ModuleSurface) -> tuple[set[str], set
     return removed_from_all, removed_undocumented
 
 
-def check_file(base_ref: str, path: str, removals: dict[str, set[str]] | None = None) -> FileReport | None:
+def check_file(
+    base_ref: str,
+    path: str,
+    removals: dict[str, set[str]] | None = None,
+    explicit_removals: dict[str, set[str]] | None = None,
+) -> FileReport | None:
     """Compare `path`'s module surface between `base_ref` and the working tree.
 
     A deleted file is diffed against an empty surface, so removing a whole
     module is reported (and can be fatal) just like emptying its `__all__`.
 
     `removals` is `inventory_removals`' mapping for the same diff; a name it
-    records for this module (or an ancestor) is reported rather than fatal.
+    records for this exact module is reported rather than fatal. Explicit records
+    supply the same exact-module acknowledgement for APIs outside the inventory.
 
     Returns None if there's nothing to report (new file, unparsable source,
     or no names removed).
@@ -541,7 +656,11 @@ def check_file(base_ref: str, path: str, removals: dict[str, set[str]] | None = 
         return None
 
     module = _module_name(path)
-    acknowledged = removed_from_all & acknowledged_names(module, removals or {}, base_ref)
+    # Only exact module/name pairs authorize removals. An ancestor's inventory
+    # entry cannot identify which same-named descendant API was removed.
+    acknowledged = removed_from_all & (
+        (removals or {}).get(module, set()) | (explicit_removals or {}).get(module, set())
+    )
 
     # A module-level __getattr__ in the new revision is presumed to be
     # serving these names as a deprecation shim (kornia.utils's pattern) --
@@ -587,7 +706,17 @@ def main(argv: list[str] | None = None) -> int:
 
     removals = inventory_removals(base)
     base_inventory = _inventory_ends(base, INVENTORY_PATH)[0] or {}
-    reports = [r for r in (check_file(base, path, removals) for path in files) if r is not None]
+    explicit_removals = removal_acknowledgements(base)
+    old_explicit = _removal_ends(base)[0] or {}
+    exports_removed = export_removals(base, files)
+    reports = [
+        r
+        for r in (
+            check_file(base, path, removals, explicit_removals if explicit_removals is not None else {})
+            for path in files
+        )
+        if r is not None
+    ]
 
     hard_fail = False
 
@@ -615,58 +744,91 @@ def main(argv: list[str] | None = None) -> int:
                 f"a routine recorded removal."
             )
 
-    unaccompanied = {
-        module: names
+    # An inventory row is aggregate package coverage, so it is only meaningful
+    # when the package's *own* resolved export surface loses that exact name.
+    # A touched sibling is no evidence; unknown static membership is deliberately
+    # not treated as a match.
+    unmatched_inventory = {
+        module: names - exports_removed.get(module, set())
         for module, names in removals.items()
-        if not any(_module_name(path) == module or _module_name(path).startswith(module + ".") for path in files)
+        if names - exports_removed.get(module, set())
     }
-    if unaccompanied:
+    if unmatched_inventory:
         hard_fail = True
-        listed = ", ".join(f"{module}: {sorted(names)}" for module, names in sorted(unaccompanied.items()))
+        listed = ", ".join(f"{module}: {sorted(names)}" for module, names in sorted(unmatched_inventory.items()))
         print(
-            f"::error file={INVENTORY_PATH}::Recorded a removal in {INVENTORY_PATH} that this change "
-            f"does not make ({listed}): no file under that package is touched here. The inventory "
-            f"edit is the acknowledgement for a removal in the *same* change; recorded on its own it "
-            f"moves the review moment off the PR that removes the API, and a later PR dropping a "
-            f"`from .sub import *` re-export leaves nothing for this check to compare. Put the "
-            f"inventory edit in the PR that makes the removal."
+            f"::error file={INVENTORY_PATH}::Recorded removals without an exact resolved export delta in "
+            f"this change ({listed}). A touched file under the package is insufficient. Keep the inventory "
+            f"entry until the package export is statically demonstrably removed; dynamic exports need a "
+            f"maintainer-reviewed guard change rather than this acknowledgement."
+        )
+
+    if explicit_removals is None:
+        hard_fail = True
+        print(
+            f"::error file={REMOVALS_PATH}::{REMOVALS_PATH} must be a JSON object mapping modules to lists "
+            f"of strings. A malformed acknowledgement authorizes nothing."
+        )
+        explicit_removals = {}
+
+    direct_removed: dict[str, set[str]] = {}
+    for report in reports:
+        direct_removed.setdefault(_module_name(report.path), set()).update(report.removed_from_all)
+    for module, names in direct_removed.items():
+        missing_inventory = (names & base_inventory.get(module, set())) - removals.get(module, set())
+        if missing_inventory & explicit_removals.get(module, set()):
+            hard_fail = True
+            print(
+                f"::error file={INVENTORY_PATH}::Explicit acknowledgements do not replace this module's "
+                f"inventory update: remove {sorted(missing_inventory)} from {module}'s entry in the same change."
+            )
+    invalid_explicit = {
+        module: names - direct_removed.get(module, set())
+        for module, names in explicit_removals.items()
+        if names - direct_removed.get(module, set())
+    }
+    if invalid_explicit:
+        hard_fail = True
+        listed = ", ".join(f"{module}: {sorted(names)}" for module, names in sorted(invalid_explicit.items()))
+        print(
+            f"::error file={REMOVALS_PATH}::Explicit acknowledgements must match an exact __all__ removal "
+            f"from the same module in this diff; unmatched entries: {listed}."
         )
 
     for report in reports:
         if report.acknowledged:
+            explicit = report.acknowledged & explicit_removals.get(_module_name(report.path), set())
+            acknowledgement_file = REMOVALS_PATH if explicit else INVENTORY_PATH
             print(
-                f"::notice file={report.path}::Removed from __all__ and recorded in "
-                f"{INVENTORY_PATH} in this same change, which is the review moment the "
-                f"stability policy asks for: {sorted(report.acknowledged)}"
+                f"::notice file={report.path}::Removed from __all__ and acknowledged in "
+                f"{acknowledgement_file} in this same change: {sorted(report.acknowledged)}"
             )
         unrecorded = sorted(report.removed_from_all - report.acknowledged)
         if unrecorded:
             if report.fatal:
                 hard_fail = True
-                if set(unrecorded) & _tracked_names(base_inventory, _module_name(report.path)):
+                tracked = set(unrecorded) & base_inventory.get(_module_name(report.path), set())
+                untracked = set(unrecorded) - tracked
+                if tracked:
                     print(
-                        f"::error file={report.path}::Removed from __all__: {unrecorded}. If this "
-                        f"removal is deliberate and the deprecation window has passed (see "
-                        f"docs/source/get-started/stability.rst), record it by dropping the same "
-                        f"name(s) from {INVENTORY_PATH} in this PR -- run "
-                        f"tests.test_api_surface.regenerate() -- and list the removal in "
-                        f"CHANGELOG.md. That inventory edit is the acknowledgement this check "
-                        f"looks for."
+                        f"::error file={report.path}::Removed from __all__: {sorted(tracked)}. If deliberate, "
+                        f"drop these names from this module's {INVENTORY_PATH} entry in this PR. "
+                        f"Honor the deprecation window and document the removal in CHANGELOG.md."
                     )
-                else:
-                    # The inventory records twelve top-level packages' aggregate surfaces, so a
-                    # name it never held has no entry to drop. Saying "drop it from the inventory"
-                    # here would send a contributor after an edit that cannot be made -- the same
-                    # dead end #4190 is about. Tracked in #4236.
+                stale = untracked & old_explicit.get(_module_name(report.path), set())
+                if stale:
                     print(
-                        f"::error file={report.path}::Removed from __all__: {unrecorded}. "
-                        f"{INVENTORY_PATH} does not record these names under any package it "
-                        f"tracks, so there is no inventory entry to drop and this check has no "
-                        f"recorded-removal path for them. Per the stability policy "
-                        f"(docs/source/get-started/stability.rst) a public symbol spends at least "
-                        f"one minor release as a deprecated shim first; keep one (a module-level "
-                        f"__getattr__ exempts the module here), or raise the removal with a "
-                        f"maintainer. See #4236."
+                        f"::error file={REMOVALS_PATH}::These acknowledgements already existed at the merge base "
+                        f"and cannot be reused: {sorted(stale)}. Clear obsolete records in a separate cleanup "
+                        f"change before recording this removal; restoration of an API should clear its old record."
+                    )
+                untracked -= stale
+                if untracked:
+                    print(
+                        f"::error file={report.path}::Removed from __all__: {sorted(untracked)}. Add these exact "
+                        f"module/name pairs to {REMOVALS_PATH}; they have no exact-module inventory entry. "
+                        f"Update affected package inventory entries too, honor the deprecation window, "
+                        f"and document the removal in CHANGELOG.md."
                     )
             else:
                 print(f"::notice file={report.path}::Removed from __all__ (exempt, see comment above): {unrecorded}")

@@ -23,16 +23,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / ".github" / "scripts"))
 from check_import_surface import (
     INVENTORY_PATH,
+    REMOVALS_PATH,
     _changed_kornia_files,
     _is_experimental,
     _module_name,
-    acknowledged_names,
     check_file,
     diff_surfaces,
+    export_removals,
     inventory_removals,
     main,
     parse_module_surface,
-    reexport_sources,
     untracked_modules,
 )
 
@@ -583,24 +583,8 @@ def _write_inventory(repo, mapping):
     (repo / INVENTORY_PATH).write_text(json.dumps(mapping, indent=2, sort_keys=True) + "\n")
 
 
-def test_acknowledged_names_reads_the_modules_own_entry():
-    removals = {"kornia.color": {"AUTUMN"}}
-    assert acknowledged_names("kornia.color", removals) == {"AUTUMN"}
-
-
-def test_acknowledged_names_walks_ancestor_packages():
-    # The inventory records the stable-core top-level packages, so a name dropped from a
-    # submodule's __all__ is recorded under its package -- the ancestor walk is the
-    # only thing that connects the two.
-    removals = {"kornia.geometry": {"thing"}}
-    assert acknowledged_names("kornia.geometry.bbox", removals) == {"thing"}
-
-
-def test_acknowledged_names_ignores_an_unrelated_modules_entry():
-    # Both the name and the module path have to line up, or dropping any name anywhere
-    # in the inventory would launder every removal with that name elsewhere.
-    removals = {"kornia.color": {"thing"}}
-    assert acknowledged_names("kornia.geometry", removals) == set()
+def _write_removals(repo, mapping):
+    (repo / REMOVALS_PATH).write_text(json.dumps(mapping, indent=2, sort_keys=True) + "\n")
 
 
 def _repo_with_package(tmp_path, *, init_body, submodules, inventory):
@@ -627,56 +611,6 @@ def _exports(*names):
     return f"__all__ = {list(names)!r}\n\n" + "".join(f"def {n}():\n    pass\n\n" for n in names)
 
 
-def test_reexport_sources_follows_an_explicit_import(tmp_path):
-    repo = _repo_with_package(
-        tmp_path,
-        init_body="from .a import thing\nfrom .b import other\n",
-        submodules={"a": _exports("thing"), "b": _exports("thing", "other")},
-        inventory={"kornia.pkg": ["other", "thing"]},
-    )
-
-    assert _in_repo(repo, lambda: reexport_sources("base", "kornia.pkg", "thing")) == {"kornia.pkg.a"}
-
-
-def test_reexport_sources_follows_an_absolute_self_import(tmp_path):
-    # kornia's packages import their own submodules absolutely as often as relatively
-    # (kornia/augmentation/__init__.py is entirely `from kornia.augmentation._2d import ...`),
-    # and 86 of its recorded names resolve through that spelling alone.
-    repo = _repo_with_package(
-        tmp_path,
-        init_body="from kornia.pkg.a import thing\n",
-        submodules={"a": _exports("thing"), "b": _exports("thing")},
-        inventory={"kornia.pkg": ["thing"]},
-    )
-
-    assert _in_repo(repo, lambda: reexport_sources("base", "kornia.pkg", "thing")) == {"kornia.pkg.a"}
-
-
-def test_reexport_sources_resolves_a_wildcard_by_the_sources_own_surface(tmp_path):
-    repo = _repo_with_package(
-        tmp_path,
-        init_body="from .a import *\nfrom .b import *\n",
-        submodules={"a": _exports("thing"), "b": _exports("other")},
-        inventory={"kornia.pkg": ["other", "thing"]},
-    )
-
-    assert _in_repo(repo, lambda: reexport_sources("base", "kornia.pkg", "thing")) == {"kornia.pkg.a"}
-
-
-def test_reexport_sources_returns_none_when_the_name_traces_to_nothing(tmp_path):
-    # kornia.color records AUTUMN, which no import in kornia/color/__init__.py binds. A name
-    # that traces nowhere must fall back to the plain ancestor match, not to a hard block --
-    # a wrong "no" here is exactly the #4190 defect.
-    repo = _repo_with_package(
-        tmp_path,
-        init_body="from .a import thing\n",
-        submodules={"a": _exports("thing")},
-        inventory={"kornia.pkg": ["thing", "untraceable"]},
-    )
-
-    assert _in_repo(repo, lambda: reexport_sources("base", "kornia.pkg", "untraceable")) is None
-
-
 def test_check_file_ancestor_entry_does_not_excuse_a_sibling_of_the_same_name(tmp_path):
     # kornia.pkg re-exports `thing` from pkg.a; pkg.b has an unrelated symbol of the same
     # name. Recording the package losing `thing` says nothing about pkg.b's, and matching on
@@ -691,7 +625,7 @@ def test_check_file_ancestor_entry_does_not_excuse_a_sibling_of_the_same_name(tm
     (repo / "kornia" / "pkg" / "b.py").write_text(_exports("other"))
     _write_inventory(repo, {"kornia.pkg": ["other"]})
 
-    report = _in_repo(repo, lambda: check_file("base", "kornia/pkg/b.py", inventory_removals("base")))
+    report = _in_repo(repo, lambda: check_file("base", "kornia/pkg/b.py", inventory_removals("base"), {}))
 
     assert report is not None
     assert report.removed_from_all == {"thing"}
@@ -699,7 +633,7 @@ def test_check_file_ancestor_entry_does_not_excuse_a_sibling_of_the_same_name(tm
     assert report.fatal is True
 
 
-def test_check_file_ancestor_entry_still_excuses_its_real_source(tmp_path):
+def test_check_file_explicit_entry_excuses_only_its_exact_module(tmp_path):
     # The other half of the same rule: the module the package actually re-exports from is
     # acknowledged, including through a wildcard, or the hatch would not work for
     # kornia.geometry at all.
@@ -712,7 +646,9 @@ def test_check_file_ancestor_entry_still_excuses_its_real_source(tmp_path):
     (repo / "kornia" / "pkg" / "a.py").write_text(_exports("other"))
     _write_inventory(repo, {"kornia.pkg": ["other"]})
 
-    report = _in_repo(repo, lambda: check_file("base", "kornia/pkg/a.py", inventory_removals("base")))
+    report = _in_repo(
+        repo, lambda: check_file("base", "kornia/pkg/a.py", inventory_removals("base"), {"kornia.pkg.a": {"thing"}})
+    )
 
     assert report is not None
     assert report.acknowledged == {"thing"}
@@ -1000,7 +936,7 @@ def test_main_fails_on_an_inventory_removal_this_change_does_not_make(tmp_path, 
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "::error" in captured.out
-    assert "does not make" in captured.out
+    assert "exact resolved export delta" in captured.out
     assert "'a'" in captured.out
 
 
@@ -1015,9 +951,8 @@ def test_main_untracked_name_removal_does_not_prescribe_an_impossible_edit(tmp_p
 
     captured = capsys.readouterr()
     assert exit_code == 1
-    assert "does not record these names" in captured.out
-    assert "#4236" in captured.out
-    assert "regenerate()" not in captured.out
+    assert REMOVALS_PATH in captured.out
+    assert "drop these names" not in captured.out
 
 
 def test_main_exits_zero_and_reports_a_recorded_removal(tmp_path, capsys):
@@ -1048,7 +983,7 @@ def test_main_error_message_names_the_escape_hatch(tmp_path, capsys):
     assert exit_code == 1
     assert "::error" in captured.out
     assert INVENTORY_PATH in captured.out
-    assert "regenerate()" in captured.out
+    assert REMOVALS_PATH not in captured.out
 
 
 def test_main_still_reports_an_undocumented_removal_alongside_a_recorded_one(tmp_path, capsys):
@@ -1071,6 +1006,7 @@ def test_main_still_reports_an_undocumented_removal_alongside_a_recorded_one(tmp
 
     mod.write_text("__all__ = []\n")  # drops the documented 'a' AND the undocumented 'pad'
     _write_inventory(repo, {"kornia.mymodule": []})  # records only 'a'
+    _write_removals(repo, {"kornia.mymodule": ["a"]})
 
     exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
 
@@ -1079,3 +1015,150 @@ def test_main_still_reports_an_undocumented_removal_alongside_a_recorded_one(tmp
     assert "::error" not in captured.out
     assert "'pad'" in captured.out
     assert "No longer bound at module scope" in captured.out
+
+
+def test_main_rejects_inventory_staging_beside_an_unrelated_package_touch(tmp_path, capsys):
+    repo = _repo_with_package(
+        tmp_path,
+        init_body="from .a import *\n",
+        submodules={"a": _exports("thing"), "b": "# unrelated\n"},
+        inventory={"kornia.pkg": ["thing"]},
+    )
+    _write_inventory(repo, {"kornia.pkg": []})
+    (repo / "kornia" / "pkg" / "b.py").write_text("# still unrelated\n")
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    assert exit_code == 1
+    assert "exact resolved export delta" in capsys.readouterr().out
+
+
+def test_export_removals_follows_nested_wildcards_without_authorizing_a_sibling(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "kornia" / "pkg" / "a").mkdir(parents=True)
+    (repo / "tests").mkdir()
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+    (repo / "kornia" / "pkg" / "__init__.py").write_text("from .a import *\n")
+    (repo / "kornia" / "pkg" / "a" / "__init__.py").write_text("from .real import *\n")
+    (repo / "kornia" / "pkg" / "a" / "real.py").write_text(_exports("thing"))
+    (repo / "kornia" / "pkg" / "a" / "unrelated.py").write_text(_exports("thing"))
+    _write_inventory(repo, {"kornia.pkg": ["thing"]})
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+    _git("branch", "base", cwd=repo)
+
+    (repo / "kornia" / "pkg" / "a" / "real.py").write_text(_exports())
+    removed = _in_repo(repo, lambda: export_removals("base", ["kornia/pkg/a/real.py"]))
+
+    assert removed["kornia.pkg"] == {"thing"}
+    assert removed["kornia.pkg.a"] == {"thing"}
+    assert removed["kornia.pkg.a.real"] == {"thing"}
+    assert "kornia.pkg.a.unrelated" not in removed
+    (repo / "kornia/pkg/a/unrelated.py").write_text(_exports())
+    _write_inventory(repo, {"kornia.pkg": []})
+    _write_removals(repo, {"kornia.pkg.a.real": ["thing"]})
+    assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 1
+    _write_removals(repo, {"kornia.pkg.a.real": ["thing"], "kornia.pkg.a.unrelated": ["thing"]})
+    assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 0
+
+
+def test_explicit_acknowledgement_requires_an_exact_same_module_removal(tmp_path, capsys):
+    repo = _repo_with_inventory(tmp_path, inventory={"kornia.other": ["z"]})
+    _write_removals(repo, {"kornia.mymodule": ["a"]})
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    assert exit_code == 1
+    assert "exact __all__ removal" in capsys.readouterr().out
+
+
+def test_explicit_acknowledgement_opens_a_route_for_uninventoried_api(tmp_path, capsys):
+    repo = _repo_with_inventory(tmp_path, inventory={"kornia.other": ["z"]})
+    (repo / "kornia" / "mymodule.py").write_text("__all__ = ['b']\n\ndef b():\n    pass\n")
+    _write_removals(repo, {"kornia.mymodule": ["a"]})
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    assert exit_code == 0
+    assert REMOVALS_PATH in capsys.readouterr().out
+
+
+def test_malformed_explicit_acknowledgement_fails_closed(tmp_path, capsys):
+    repo = _repo_with_inventory(tmp_path, inventory={"kornia.other": ["z"]})
+    (repo / "kornia" / "mymodule.py").write_text("__all__ = ['b']\n\ndef b():\n    pass\n")
+    (repo / REMOVALS_PATH).write_text('{"kornia.mymodule": {}}\n')
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    assert exit_code == 1
+    assert "malformed acknowledgement" in capsys.readouterr().out
+
+
+def test_explicit_acknowledgement_is_new_only_and_can_be_cleaned_up(tmp_path, capsys):
+    repo = _repo_with_inventory(tmp_path, inventory={"kornia.other": ["z"]})
+    _write_removals(repo, {"kornia.mymodule": ["a"]})
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "old acknowledgement", cwd=repo)
+    _git("branch", "-f", "base", "HEAD", cwd=repo)
+    (repo / "kornia" / "mymodule.py").write_text("__all__ = ['b']\n\ndef b():\n    pass\n")
+
+    assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 1
+    assert "cannot be reused" in capsys.readouterr().out
+    (repo / "kornia" / "mymodule.py").write_text(_exports("a", "b"))
+    _write_removals(repo, {})  # restoring an API clears its old acknowledgement.
+    assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_mixed_removals_have_separate_actionable_remedies(tmp_path, capsys):
+    repo = _repo_with_inventory(tmp_path, inventory={"kornia.mymodule": ["a"]})
+    (repo / "kornia/mymodule.py").write_text("__all__ = []\n")
+    assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 1
+    errors = [line for line in capsys.readouterr().out.splitlines() if "Removed from __all__" in line]
+    assert len(errors) == 2
+    assert "['a']" in errors[0] and INVENTORY_PATH in errors[0] and REMOVALS_PATH not in errors[0]
+    assert "['b']" in errors[1] and REMOVALS_PATH in errors[1]
+
+
+def test_explicit_record_does_not_replace_exact_inventory_update(tmp_path, capsys):
+    repo = _repo_with_inventory(tmp_path)
+    (repo / "kornia/mymodule.py").write_text(_exports("b"))
+    _write_removals(repo, {"kornia.mymodule": ["a"]})
+    assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 1
+    assert "do not replace" in capsys.readouterr().out
+
+
+def test_explicit_sibling_removal_preserves_unrelated_package_export(tmp_path, capsys):
+    repo = _repo_with_package(
+        tmp_path,
+        init_body="from .a import thing\n",
+        submodules={"a": _exports("thing"), "b": _exports("thing")},
+        inventory={"kornia.pkg": ["thing"]},
+    )
+    (repo / "kornia/pkg/b.py").write_text(_exports())
+    _write_removals(repo, {"kornia.pkg.b": ["thing"]})
+    assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 0
+    assert "::error" not in capsys.readouterr().out
+
+
+def test_inventory_acknowledges_an_unbound_all_entry(tmp_path, capsys):
+    repo = _repo_with_package(
+        tmp_path,
+        init_body="__all__ = ['AUTUMN']\n",
+        submodules={},
+        inventory={"kornia.pkg": ["AUTUMN"]},
+    )
+    (repo / "kornia/pkg/__init__.py").write_text("__all__ = []\n")
+    _write_inventory(repo, {"kornia.pkg": []})
+    assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 0
+    assert INVENTORY_PATH in capsys.readouterr().out
+
+
+def test_dynamic_all_cannot_prove_an_inventory_removal(tmp_path, capsys):
+    repo = _repo_with_inventory(tmp_path)
+    (repo / "kornia/mymodule.py").write_text("__all__ = ['b']\n__all__.append('a')\n")
+    _write_inventory(repo, {"kornia.mymodule": ["b"]})
+    assert _in_repo(repo, lambda: main(["--base-ref", "base"])) == 1
+    assert "exact resolved export delta" in capsys.readouterr().out
