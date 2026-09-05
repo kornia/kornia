@@ -148,7 +148,6 @@ def figure_yunet() -> None:
 
 def _sam_figure(model_type: str, name: str, title: str) -> None:
     from kornia.contrib.visual_prompter import VisualPrompter
-    from kornia.geometry.boxes import Boxes
     from kornia.geometry.keypoints import Keypoints
     from kornia.models.sam import SamConfig
 
