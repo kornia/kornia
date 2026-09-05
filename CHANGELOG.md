@@ -289,10 +289,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for unbatched `(N, 4, 2)` input. The old `dim=1` was correct for batched
   `(B, N, 4, 2)` data (where dim 1 is the box axis) but wrong for 3-D tensors
   (where dim 1 is the vertex dimension); `dim=-3` is correct in both cases and
-  the behaviour of the batched path is byte-identical. Also clear the stale
-  ``_N`` list-padding metadata on both the inplace and non-inplace paths after
-  every merge so that ``to_tensor`` counts the merged boxes correctly instead of
-  silently truncating them (#4168).
+  the behaviour of the batched path is byte-identical. For list-backed inputs,
+  each batch row is now repacked with its real boxes before all trailing padding,
+  and the combined per-image padding counts are retained. This makes ``to_tensor``
+  trim only padding instead of dropping merged boxes or exposing old padding as
+  real boxes (#4168, #4175).
 
 * `Boxes3D.to_tensor` and `Boxes3D.get_boxes_shape` are differentiable again (#1396). Both reduce a box's 8
   vertices to its min/max corner with `amin`/`amax`, which is a genuine kink -- not differentiable in the
