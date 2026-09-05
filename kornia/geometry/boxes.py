@@ -303,6 +303,16 @@ class Boxes:
     def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes:
         new_box = type(self)(self._data[key], False)
         new_box._mode = self._mode
+        # Preserve list-padding metadata so to_tensor() still trims pad rows (#4179).
+        # An int key drops the batch axis and returns an unbatched object (no _N).
+        if self._N is not None and not isinstance(key, int):
+            if isinstance(key, torch.Tensor):
+                indices = key.tolist()
+                if isinstance(indices, int):
+                    indices = [indices]
+                new_box._N = [self._N[i] for i in indices]
+            else:
+                new_box._N = list(self._N[key])
         return new_box
 
     def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> Boxes:
