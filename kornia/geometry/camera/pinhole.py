@@ -34,16 +34,19 @@ class PinholeCamera:
           transform ``[R | t]`` (OpenCV / COLMAP semantics): :meth:`project` computes ``K (R X + t)`` and
           :meth:`unproject` inverts it, so both take and return **world** coordinates. The functional API
           (:func:`~kornia.geometry.camera.perspective.project_points`,
-          :func:`~kornia.geometry.camera.perspective.unproject_points`, :doc:`/geometry.depth`) takes a
-          :math:`(*, 3, 3)` ``K`` and no extrinsics, so it works in the **camera** frame.
+          :func:`~kornia.geometry.camera.perspective.unproject_points`,
+          :func:`~kornia.geometry.depth.depth_to_3d`, :func:`~kornia.geometry.depth.depth_to_3d_v2`,
+          :func:`~kornia.geometry.depth.unproject_meshgrid`, :func:`~kornia.geometry.depth.depth_to_normals`)
+          takes a :math:`(*, 3, 3)` ``K`` and no extrinsics, so it works in the **camera** frame.
         - pixel coordinates are ``(u, v)`` = ``(x, y)`` = (column, row) with **integer pixel centres**: pixel
           ``(0, 0)`` is centred at ``(0, 0)``, which is what :func:`~kornia.geometry.grid.create_meshgrid`
           enumerates, so a centred image has its principal point at ``cx = (W - 1) / 2``, ``cy = (H - 1) / 2``.
           A half-pixel convention, which places the pixel *corner* at the origin (COLMAP), reports the same
           principal point half a pixel larger on each axis. See :doc:`/get-started/conventions`.
         - ``depth`` is the camera-frame ``z`` coordinate. The ``normalize`` argument of
-          :func:`~kornia.geometry.camera.perspective.unproject_points` and the ``normalize_points`` flags in
-          :doc:`/geometry.depth` read it as the Euclidean ray length instead.
+          :func:`~kornia.geometry.camera.perspective.unproject_points` and the ``normalize_points`` flags of
+          :func:`~kornia.geometry.depth.depth_to_3d` and :func:`~kornia.geometry.depth.depth_to_3d_v2` read it
+          as the Euclidean ray length instead, so the unprojected point has that norm rather than that ``z``.
         - the class stores the tensors it is constructed from instead of copying them: :meth:`scale` returns a
           new camera that **shares** ``extrinsics`` with the source, and :meth:`scale_` and the ``tx`` / ``ty``
           / ``tz`` setters write into the caller's tensors. :meth:`clone` is the only deep copy.
@@ -387,8 +390,8 @@ class PinholeCamera:
         Convention:
             - ``point_3d`` must be at least rank 2: an unbatched :math:`(3,)` point raises :class:`IndexError`
               although the shape below reads :math:`(*, 3)`. An empty point set returns an empty result.
-            - a point with ``z = 0`` does not raise: ``K`` is applied first and the perspective divide is then
-              skipped, so the result is ``K X``.
+            - a point whose **camera-frame** ``z`` is 0 does not raise: ``K`` is applied first and the
+              perspective divide is then skipped, so the result is the undivided ``K (R X + t)``.
 
         .. warning::
             The unbatched-input contract is `#4266 <https://github.com/kornia/kornia/issues/4266>`_ and the
@@ -599,7 +602,8 @@ def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         The output is built as ``eye(4) + eps`` before the parameters are written, so in ``float32`` and
         ``float64`` every remaining entry — the structural zeros and ones alike — carries ``eps``; ``eps=0.0``
         returns the exact matrix. This legacy 12-vector API is also exported nowhere and appears on no
-        documentation page. Tracked in `#4268 <https://github.com/kornia/kornia/issues/4268>`_.
+        API-reference page, so this docstring renders nowhere. Tracked in
+        `#4268 <https://github.com/kornia/kornia/issues/4268>`_.
 
     Args:
         pinholes: torch.Tensor of pinhole models.
@@ -655,8 +659,8 @@ def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float = 1e-6) -> torch.Te
     .. warning::
         The focal lengths are inverted as ``1 / (fx + eps)``, which inverts a perturbed matrix rather than the
         one ``pinhole_matrix`` returns, and a zero focal length gives a large finite number rather than
-        raising. This legacy 12-vector API is also exported nowhere and appears on no documentation page.
-        Tracked in `#4268 <https://github.com/kornia/kornia/issues/4268>`_.
+        raising. This legacy 12-vector API is also exported nowhere and appears on no API-reference page, so
+        this docstring renders nowhere. Tracked in `#4268 <https://github.com/kornia/kornia/issues/4268>`_.
 
     Args:
         pinhole: torch.Tensor with pinhole models.
@@ -778,8 +782,9 @@ def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> to
         H_{ref}^{i} = K_{i} * T_{ref}^{i} * K_{ref}^{-1}
 
     .. warning::
-        This function always raises :class:`NotImplementedError`: it calls ``get_optical_pose_base``, which is
-        unimplemented. Tracked in `#4283 <https://github.com/kornia/kornia/issues/4283>`_.
+        This function validates its input and then always raises :class:`NotImplementedError`: it calls
+        ``get_optical_pose_base``, which is unimplemented. Tracked in
+        `#4283 <https://github.com/kornia/kornia/issues/4283>`_.
 
     Args:
         pinhole_i: torch.Tensor with pinhole model for ith frame.
@@ -822,13 +827,16 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
         - ``intrinsics_inv`` is a :math:`(B, 4, 4)` inverse calibration matrix — the layout of
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, not the :math:`(*, 3, 3)` ``K`` the functional API
           takes — and ``depth`` is the camera-frame ``z`` at each pixel of the ``(u, v, 1)`` grid.
-        - ``intrinsics_inv`` is checked for rank 3 alone, so a :math:`(B, 3, 3)` inverse passes; the ``depth``
-          and ``pixel_coords`` checks are written ``if not <rank> and <channel>``, which leaves the channel
-          clause dead, so a rank-3 or multi-channel ``depth`` passes too. Each of these fails further in with
-          an unrelated message rather than at the guard.
+        - ``intrinsics_inv`` is checked for rank 3 alone, so a :math:`(B, 3, 3)` inverse passes the check and
+          fails further in with an unrelated message.
+        - the ``depth`` and ``pixel_coords`` checks are written ``if not <rank> and <second clause>``, so the
+          ``depth`` one raises exactly when ``depth`` is *not* rank 4 **and** its second dimension is 1 — the
+          complement of the documented ``Bx1xHxW``. A multi-channel ``depth`` therefore always reaches the
+          body: two channels fail inside the multiplication, while three channels line up with the
+          ``(x, y, z)`` axis after the internal ``permute`` and **return a result silently**.
 
     .. warning::
-        The rank-only ``intrinsics_inv`` check and the dead channel clauses are tracked in
+        The rank-only ``intrinsics_inv`` check and the ``and`` slip in the other two guards are tracked in
         `#4266 <https://github.com/kornia/kornia/issues/4266>`_.
 
     Args:
