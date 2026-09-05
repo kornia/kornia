@@ -12,20 +12,10 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 | [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. |
 | [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL. |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions. |
-| [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`laf_ops.py`](feature/laf_ops.py) microbenchmarks the shared LAF operations and [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) drills into one of them (both base-revision A/B — no cross-library baseline exists). |
+| [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`laf_ops.py`](feature/laf_ops.py) microbenchmarks the shared LAF operations and [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) drills into one of them (both base-revision A/B — no cross-library baseline exists). [`local_features.py`](feature/local_features.py) measures Oxford graf speed and homography corner error for SIFT, SIFT-AffNet-HardNet and KeyNet-HardNet on CPU, CUDA or MPS (`--device cpu --timing-pairs 2` times the representative 1–2 pair and still scores all five); results in [`graf_benchmark.md`](feature/graf_benchmark.md). [`sift_runtime.py`](feature/sift_runtime.py) and [`plot_sift_runtime.py`](feature/plot_sift_runtime.py) chart scale-space SIFT runtime across releases and batch sizes; results in [`sift_runtime.md`](feature/sift_runtime.md). |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |
 
 ## Methodology contract
-
-For Oxford affine graf speed and reprojection error, run
-`python -m benchmarks.feature.local_features --seq /data/graf --device cuda --json graf.json`
-from the checkout root (`--device mps` is supported; it evaluates RANSAC on CPU). It compares SIFT, SIFT-AffNet-HardNet, and KeyNet-HardNet with fixed
-pipeline settings; use `--device cpu --timing-pairs 2` to time the representative 1–2 pair
-while still evaluating quality on all five pairs. The module docstring defines the exact
-timed region and corner-error metric.
-See the [graf CPU/CUDA comparison](feature/graf_benchmark.md) for measured results and raw JSON.
-The [historical SIFT runtime chart](feature/sift_runtime.md) compares 0.8.2, 0.8.3,
-current eager/compiled, and OpenCV across CPU and CUDA batch sizes 1, 4, and 8.
 
 Every benchmark here must follow the same rules (utilities in [`common.py`](common.py)):
 
@@ -114,6 +104,20 @@ One file per run:
 4. Commit the file and open a PR. CI validates the schema (`benchmarks/results_schema.py`);
    the docs page and the llms digest regenerate from it automatically at the next docs build
    (`python docs/generate_benchmarks.py --refresh-llms` refreshes the committed digest).
+
+### Comparison artefacts
+
+A base-versus-branch A/B or a cross-release comparison is not a release snapshot: it records a
+revision that is by construction not the current tree, so it does not fit
+`benchmarks/results/<kornia-version>/` and does not feed the docs performance page. Keep such
+raw JSON next to the report that cites it, as `benchmarks/<area>/<name>_results/*.json`
+(for example [`feature/graf_results/`](feature/graf_results/) and
+[`feature/sift_runtime_results/`](feature/sift_runtime_results/)), named by the compared
+revision or series. CI validates them with `results_schema.validate_artefact`: the same
+envelope, metadata, privacy and row-type rules as a release snapshot, without the filename and
+version-directory rules; `load` is optional there because a base revision's harness may predate
+it. The report states what was measured, on which commits, with which command, in the style of
+the sample-results sections below.
 
 ## Sample results — geometry flagship ops
 

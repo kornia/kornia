@@ -41,6 +41,11 @@ modules, or KeyNet response/NMS, with dynamic=True and the default Inductor mode
 Descriptors, orientation, affine adaptation, matching, and RANSAC remain eager.
 Initial calls (including any compilation/cache loading) are recorded separately,
 outside warmup and steady-state timing. No autocast or pipeline settings change.
+
+The JSON written by ``--json`` uses the shared metadata/results envelope, including the
+aggregate ``load`` snapshot, and is a comparison artefact in the sense of
+``benchmarks/results_schema.validate_artefact``: each row is one image pair's timing and
+reprojection error, not a throughput cell, so it is not a ``--contribute`` release snapshot.
 """
 
 from __future__ import annotations
@@ -64,7 +69,7 @@ if importlib.util.find_spec("cv2") is None:
     raise SystemExit("SKIP: this benchmark requires the optional opencv-python package")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import run_metadata, save_json, time_us, versions_line
+from common import collect_load_metrics, print_preflight, run_metadata, save_json, time_us, versions_line
 
 from benchmarks.feature.scale_space_detector import build_extractor, get_MAE_imgcorners, load_gray
 
@@ -90,6 +95,7 @@ def evaluate(args: argparse.Namespace) -> None:
     # outside the timed region, so evaluating it on CPU leaves the timings untouched.
     ransac_device = torch.device("cpu") if device.type == "mps" else device
     meta = run_metadata(device)
+    meta["load"] = collect_load_metrics()
     meta.update(
         sequence=args.seq.name,
         num_features=args.nf,
@@ -114,6 +120,7 @@ def evaluate(args: argparse.Namespace) -> None:
     print(f"# {meta['git_commit']} | {meta['platform']} | {meta.get('cuda_device', device)}", flush=True)
     print(versions_line(meta), flush=True)
     print(f"# interpreter: {sys.executable}\n# kornia: {kornia.__file__}", flush=True)
+    print_preflight(meta["load"])
     images = [load_gray(str(image_path(args.seq, i)), device) for i in range(1, 7)]
     rows = []
     for name in args.methods:

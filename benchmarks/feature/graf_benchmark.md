@@ -148,10 +148,9 @@ medians/IQRs and initial-call latencies are retained in the raw files.
 .venv/bin/python -m benchmarks.feature.local_features --seq /data/graf --device cuda --compile --json graf-compiled.json
 ```
 
-The additional CPU pair-benchmark sweep was interrupted to prioritize the requested
-historical batching chart. It is not presented as a completed CPU compiled comparison.
-The completed [historical SIFT runtime chart](sift_runtime.md) includes CPU eager/compiled
-and CUDA batches 1, 4, and 8 for the public scale-space SIFT preset.
+No compiled CPU pair comparison was run. The [historical SIFT runtime chart](sift_runtime.md)
+covers CPU eager and compiled runs of the public scale-space SIFT preset at batch one, and
+CUDA batches 1, 4, and 8.
 
 ## Implementation
 
@@ -196,25 +195,6 @@ budget to at least five warmup-call durations, so a slow CPU call does not becom
 single measured sample. CPU thread count is one, matching the shared Timer. Matmul TF32 is disabled;
 cuDNN retains its default TF32 setting, recorded in the metadata.
 
-## Verification
-
-- Full `pixi run pre-commit-all` passed; `pixi run typecheck` passed with the existing
-  `lightglue.py` AMP deprecation warning.
-- Focused CPU/CUDA float32/float64 tests: 391 passed, 35 skipped, two cases of the
-  existing half-versus-float32 test deselected. A subsequent final detector run passed
-  all 292 selected tests, with 12 skips.
-- CPU float16 and bfloat16 known-failure-profile runs: 137 passed and 11 skipped each.
-- CPU/CUDA compilation tests for KeyNet and gradient orientation: four passed.
-  Compiled joint min/max refinement also matched eager output in a direct check.
-- Independent review checked numerical behavior, extension points, checkpoint
-  compatibility, memory tradeoffs, and MPS portability of the added tests.
-
-The broader initial test run found the existing
-`TestOrientationHalfPrecisionIsFinite::test_half_precision_matches_float32[cuda]`
-failure. An explicit base-worktree reproduction produced the same float32 and
-float16 outputs as the optimized tree (one orientation differs by about 2.66 radians
-between precisions). No tolerance or known-failure manifest was changed.
-
 ## Raw results
 
 - [Base CUDA](graf_results/base-cuda.json)
@@ -226,4 +206,7 @@ between precisions). No tolerance or known-failure manifest was changed.
 - [Base MPS](graf_results/base-mps.json)
 - [Optimized MPS](graf_results/optimized-mps.json)
 
-These are local benchmark results rather than release-wide performance guarantees.
+These are local benchmark results rather than release-wide performance guarantees. The files
+are comparison artefacts in the sense of `benchmarks/README.md` and are validated by
+`results_schema.validate_artefact` in CI. They were measured before the harness recorded the
+aggregate `load` snapshot; the runs were sequential, with no concurrent workloads.

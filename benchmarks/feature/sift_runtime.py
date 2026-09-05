@@ -49,7 +49,7 @@ import kornia
 from kornia.feature import SIFTFeatureScaleSpace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import run_metadata, save_json, time_us, versions_line
+from common import collect_load_metrics, run_metadata, save_json, time_us, versions_line
 
 
 @torch.no_grad()
@@ -85,6 +85,7 @@ def main() -> None:
     if pixels is None:
         raise FileNotFoundError(args.image)
     meta = run_metadata(device)
+    meta["load"] = collect_load_metrics()
     compiled = args.series == "current + compile"
     meta.update(
         series=args.series,
