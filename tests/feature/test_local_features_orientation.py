@@ -71,16 +71,19 @@ class TestPatchDominantGradientOrientation(BaseTester):
             (32, 36, [0.0, 0.010140574846868589, -1.574052870184957, -1.5575465831257427]),
         ],
     )
-    def test_histogram_reference(self, device, size, bins, expected):
-        # Kornia 601b5a4a reference: one masked adaptive-average-pool per angular
-        # bin, using the deterministic patch generation below in float64.
-        if device.type == "mps":
-            pytest.skip("Reference requires float64")
-        t = torch.linspace(-1, 1, size, device=device, dtype=torch.float64)
+    def test_histogram_reference(self, device, dtype, size, bins, expected):
+        # Kornia 601b5a4a reference: one masked adaptive-average-pool per angular bin, using the
+        # deterministic patch generation below in float64. The literals hold in float32 to 8e-7 rad
+        # on CPU and MPS (no peak is a near-tie), so the pin also runs on the MPS gate. Half precision
+        # quantises the histogram bins before the parabolic peak refinement and moves the angle by
+        # several half-precision ulps, so the literals do not apply there.
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("float64 reference literals; half precision quantises the histogram bins")
+        t = torch.linspace(-1, 1, size, device=device, dtype=dtype)
         y, x = torch.meshgrid(t, t, indexing="ij")
         patches = torch.stack([torch.sin(3 * x + a) * torch.cos(4 * y - a) + 0.3 * x * y for a in [0, 0.4, 1.1, 2]])
-        actual = PatchDominantGradientOrientation(size, bins).to(device, torch.float64)(patches[:, None])
-        self.assert_close(actual, torch.tensor(expected, device=device, dtype=torch.float64))
+        actual = PatchDominantGradientOrientation(size, bins).to(device, dtype)(patches[:, None])
+        self.assert_close(actual, torch.tensor(expected, device=device, dtype=dtype))
 
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)

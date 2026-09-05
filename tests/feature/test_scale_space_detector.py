@@ -82,20 +82,20 @@ class TestScaleSpaceDetector(BaseTester):
     @pytest.mark.parametrize("batch", [1, 2])
     @pytest.mark.parametrize("bonus", [0.0, 10.0])
     @pytest.mark.parametrize("max_candidates", [None, 3])
-    def test_joint_extrema_matches_separate_refinement(self, device, subpix_type, batch, bonus, max_candidates):
+    def test_joint_extrema_matches_separate_refinement(self, device, dtype, subpix_type, batch, bonus, max_candidates):
         # A subclass remains on the general extension path, which refines each sign
         # independently. Pin the batched built-in path to that reference, including
-        # signed/weighted responses and gradients through the selected features.
+        # signed/weighted responses and gradients through the selected features. The value
+        # comparison alone cannot fail on a tree without the stacked call, where both detectors
+        # refine separately, so the refiner call counts pin that the built-in path was taken.
         class SeparateSubpix(subpix_type):
             pass
 
-        if device.type == "mps":
-            pytest.skip("Reference requires float64")
         if subpix_type is ConvQuadInterp3d and max_candidates is not None:
             pytest.skip("ConvQuadInterp3d has no candidate cap")
         torch.manual_seed(17)
-        img = torch.rand(batch, 1, 96, 99, device=device, dtype=torch.float64, requires_grad=True)
-        mask = torch.rand(batch, 1, 96, 99, device=device, dtype=torch.float64)
+        img = torch.rand(batch, 1, 96, 99, device=device, dtype=dtype, requires_grad=True)
+        mask = torch.rand(batch, 1, 96, 99, device=device, dtype=dtype)
         mask[..., :8, :] = 0
 
         def detector(subpix):
@@ -107,16 +107,38 @@ class TestScaleSpaceDetector(BaseTester):
                 subpix_module=subpix,
                 minima_are_also_good=True,
                 scale_space_response=True,
-            ).to(device, torch.float64)
+            ).to(device, dtype)
+
+        def count_calls(module):
+            calls = []
+            forward = module.forward
+
+            def counted(*args, **kwargs):
+                calls.append(1)
+                return forward(*args, **kwargs)
+
+            module.forward = counted
+            return calls
 
         kwargs = {"strict_maxima_bonus": bonus}
         if subpix_type is not ConvQuadInterp3d:
             kwargs["max_candidates"] = max_candidates
-        actual = detector(subpix_type(**kwargs))(img, mask)
-        expected = detector(SeparateSubpix(**kwargs))(img, mask)
+        joint, separate = subpix_type(**kwargs), SeparateSubpix(**kwargs)
+        joint_calls, separate_calls = count_calls(joint), count_calls(separate)
+        actual = detector(joint)(img, mask)
+        expected = detector(separate)(img, mask)
         assert actual[0].ne(0).any()
         for a, e in zip(actual, expected):
             self.assert_close(a, e)
+        # The subclass refines each sign of every octave in its own call. The built-in refiner
+        # stacks both signs into one call, unless a candidate cap keeps it on the separate path.
+        assert len(separate_calls) > 0 and len(separate_calls) % 2 == 0
+        assert len(joint_calls) == (len(separate_calls) if max_candidates is not None else len(separate_calls) // 2)
+        if dtype is torch.float16:
+            # ConvQuadInterp3d's float16 backward is NaN over part of the image on CPU (#4257), on
+            # `main` as well as here and on both paths, and `assert_close` treats matching NaNs as a
+            # mismatch. The gradient half of this pin runs in the other dtypes.
+            return
         actual_grad = torch.autograd.grad(sum(x.sum() for x in actual), img, retain_graph=True)[0]
         expected_grad = torch.autograd.grad(sum(x.sum() for x in expected), img)[0]
         self.assert_close(actual_grad, expected_grad)
