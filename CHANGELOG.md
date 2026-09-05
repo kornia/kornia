@@ -255,8 +255,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already instructs contributors to make it for a removal whose deprecation window has passed — so a
   policy-compliant removal could satisfy the test that names the procedure and still be blocked by a check with
   no notion of it. The removal is now reported as a `::notice` instead, and the check's error message names the
-  escape hatch. A removal the inventory does not record still fails, an unrelated inventory entry does not excuse
-  it, and a deleted or unparsable inventory acknowledges nothing. (#4190)
+  escape hatch. The hatch fails closed everywhere else: a removal the inventory does not record still fails, an
+  unrelated inventory entry does not excuse it, and an inventory that is deleted, unparsable, wrong-shaped in any
+  entry, or missing a tracked module's key acknowledges nothing — each of those makes recorded names look removed
+  without anyone recording them. (#4190)
 
 * `validate_bbox` and `validate_bbox3d` flatten rank-4 `(B, N, 4, 2)` / `(B, N, 8, 3)` input with `reshape`
   instead of `view`, so a non-contiguous leading-dimension stride (a transpose, a slice that drops boxes, an

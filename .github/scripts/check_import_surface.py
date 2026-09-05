@@ -255,11 +255,18 @@ INVENTORY_PATH = "tests/api_surface.json"
 def _parse_inventory(source: bytes | None) -> dict[str, set[str]] | None:
     """Parse the api_surface.json inventory into {module: names}.
 
-    Returns ``None`` -- distinct from an empty mapping -- for anything it cannot read
-    as that shape: absent, invalid JSON, or a different structure. The distinction is
-    the whole safety property. An unreadable inventory at the new revision makes every
-    recorded name look *removed*, which would open the escape hatch for the entire
-    surface; the caller turns ``None`` into "acknowledge nothing" instead.
+    Returns ``None`` -- distinct from an empty mapping -- for anything that is not
+    exactly ``dict[str, list[str]]``: absent, invalid JSON, a different top-level
+    structure, an entry whose key is not a string, an entry whose value is not a list,
+    or a list holding anything but strings. The distinction is the whole safety
+    property. An unreadable inventory at the new revision makes every recorded name
+    look *removed*, which would open the escape hatch for the entire surface; the
+    caller turns ``None`` into "acknowledge nothing" instead.
+
+    Rejecting one bad *entry* rather than skipping it matters just as much as rejecting
+    a bad top-level value: skipping ``"kornia.color": {}`` would drop that module from
+    the parsed mapping, and a dropped module reads downstream exactly like one that lost
+    every name -- so a single wrong-shaped entry would launder every removal in it.
     """
     if source is None:
         return None
@@ -269,11 +276,14 @@ def _parse_inventory(source: bytes | None) -> dict[str, set[str]] | None:
         return None
     if not isinstance(data, dict):
         return None
-    return {
-        module: {name for name in names if isinstance(name, str)}
-        for module, names in data.items()
-        if isinstance(module, str) and isinstance(names, list)
-    }
+    inventory: dict[str, set[str]] = {}
+    for module, names in data.items():
+        if not isinstance(module, str) or not isinstance(names, list):
+            return None
+        if not all(isinstance(name, str) for name in names):
+            return None
+        inventory[module] = set(names)
+    return inventory
 
 
 def inventory_removals(base_ref: str, inventory_path: str = INVENTORY_PATH) -> dict[str, set[str]]:
@@ -282,6 +292,11 @@ def inventory_removals(base_ref: str, inventory_path: str = INVENTORY_PATH) -> d
     Working tree, not `HEAD`, for the same reason `_changed_kornia_files` diffs the
     working tree: an uncommitted inventory edit has to count during a local run, and
     on CI's clean checkout the two are identical.
+
+    Only a name dropped from an entry that is well-shaped at *both* ends counts; every
+    other way the inventory can change -- unreadable, wrong-shaped, or a tracked module
+    key deleted -- acknowledges nothing, because each of those makes recorded names look
+    removed without anyone recording them.
     """
     old = _parse_inventory(_git_show(base_ref, inventory_path))
     try:
@@ -297,7 +312,18 @@ def inventory_removals(base_ref: str, inventory_path: str = INVENTORY_PATH) -> d
 
     removals: dict[str, set[str]] = {}
     for module, names in old.items():
-        gone = names - new.get(module, set())
+        if module not in new:
+            # Deleting a tracked module's entry is not an acknowledgement either. It would
+            # make every name recorded for that module look removed at once, and it also
+            # drops the module from test_no_public_name_removed's parametrization, so
+            # nothing guards it afterwards. A change that really removes every public name
+            # of a module records that with an empty list, which keeps the module tracked.
+            # Deleting a whole tracked module (rather than emptying it) is the one case with
+            # no acknowledgement path: test_no_public_name_removed imports every key, so the
+            # key has to go too, and this check keeps failing. That is deliberate -- dropping
+            # a stable-core package is a policy decision, not a routine recorded removal.
+            continue
+        gone = names - new[module]
         if gone:
             removals[module] = gone
     return removals

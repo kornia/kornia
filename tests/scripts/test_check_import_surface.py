@@ -679,6 +679,81 @@ def test_inventory_removals_ignores_an_inventory_of_the_wrong_shape(tmp_path):
     assert _in_repo(repo, lambda: inventory_removals("base")) == {}
 
 
+def test_inventory_removals_rejects_an_entry_whose_value_is_not_a_list(tmp_path):
+    # Fail closed on a *partially* wrong-shaped inventory too. Skipping the bad entry would
+    # drop the module from the parsed mapping, and a dropped module reads exactly like one
+    # that lost every name -- so `"kornia.mymodule": {}` would launder every removal in it
+    # while test_no_public_name_removed still passes vacuously on `set({}) == set()`.
+    repo = _repo_with_inventory(tmp_path)
+    _write_inventory(repo, {"kornia.mymodule": {}})
+
+    assert _in_repo(repo, lambda: inventory_removals("base")) == {}
+
+
+def test_inventory_removals_rejects_an_entry_holding_a_non_string(tmp_path):
+    repo = _repo_with_inventory(tmp_path)
+    _write_inventory(repo, {"kornia.mymodule": [1, 2]})
+
+    assert _in_repo(repo, lambda: inventory_removals("base")) == {}
+
+
+def test_inventory_removals_one_bad_entry_rejects_the_whole_inventory(tmp_path):
+    # The rejection is not per-entry: an inventory that cannot be trusted at one key cannot
+    # be trusted to speak for another, so an honest edit next to a wrong-shaped entry
+    # acknowledges nothing either.
+    repo = _repo_with_inventory(tmp_path, inventory={"kornia.mymodule": ["a", "b"], "kornia.other": ["z"]})
+    _write_inventory(repo, {"kornia.mymodule": ["b"], "kornia.other": {}})
+
+    assert _in_repo(repo, lambda: inventory_removals("base")) == {}
+
+
+def test_inventory_removals_ignores_a_deleted_module_entry(tmp_path):
+    # Deleting a tracked module's key is not an acknowledgement: it would excuse every name
+    # recorded for that module at once, and it silently drops the module from
+    # test_no_public_name_removed's parametrization, so nothing guards it afterwards.
+    repo = _repo_with_inventory(tmp_path, inventory={"kornia.mymodule": ["a", "b"], "kornia.other": ["z"]})
+    _write_inventory(repo, {"kornia.other": ["z"]})
+
+    assert _in_repo(repo, lambda: inventory_removals("base")) == {}
+
+
+def test_inventory_removals_reads_an_emptied_entry_as_removing_every_name(tmp_path):
+    # The remedy the deleted-key rule points at: an empty list records losing every public
+    # name while keeping the module tracked by both this check and the pytest inventory.
+    repo = _repo_with_inventory(tmp_path)
+    _write_inventory(repo, {"kornia.mymodule": []})
+
+    assert _in_repo(repo, lambda: inventory_removals("base")) == {"kornia.mymodule": {"a", "b"}}
+
+
+def test_main_wrong_shaped_entry_does_not_acknowledge_a_removal(tmp_path, capsys):
+    # End to end on the concrete bypass: swap the module's list for `{}` while dropping a
+    # name from __all__, and the check must still hard-fail.
+    repo = _repo_with_inventory(tmp_path)
+    (repo / "kornia" / "mymodule.py").write_text("__all__ = ['b']\n\ndef b():\n    pass\n")
+    _write_inventory(repo, {"kornia.mymodule": {}})
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "::error" in captured.out
+    assert "'a'" in captured.out
+
+
+def test_main_deleted_module_entry_does_not_acknowledge_a_removal(tmp_path, capsys):
+    repo = _repo_with_inventory(tmp_path, inventory={"kornia.mymodule": ["a", "b"], "kornia.other": ["z"]})
+    (repo / "kornia" / "mymodule.py").write_text("__all__ = ['b']\n\ndef b():\n    pass\n")
+    _write_inventory(repo, {"kornia.other": ["z"]})
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "::error" in captured.out
+    assert "'a'" in captured.out
+
+
 def test_main_exits_zero_and_reports_a_recorded_removal(tmp_path, capsys):
     repo = _repo_with_inventory(tmp_path)
     (repo / "kornia" / "mymodule.py").write_text("__all__ = ['b']\n\ndef b():\n    pass\n")
