@@ -35,8 +35,9 @@ Usage::
     python3 .github/scripts/check_import_surface.py --base-ref origin/main
 
 Exit status is 1 when a name is removed from ``__all__`` (a break of documented
-public API, per the stability policy), and when the change drops a module that
-``tests/api_surface.json`` tracks. Names that disappear from module scope but
+public API, per the stability policy), when the change drops a module that
+``tests/api_surface.json`` tracks, and when it records a removal there for a
+package it does not otherwise touch. Names that disappear from module scope but
 were never in ``__all__`` are reported for visibility but do not fail the check
 -- hard-failing on those would make every incidental third-party re-export
 permanent API. Three exemptions from the hard-fail path:
@@ -369,7 +370,90 @@ def inventory_removals(base_ref: str, inventory_path: str = INVENTORY_PATH) -> d
     return removals
 
 
-def acknowledged_names(module: str, removals: dict[str, set[str]]) -> set[str]:
+def _module_source(base_ref: str, module: str) -> bytes | None:
+    """A module's source at `base_ref`, trying both `x/__init__.py` and `x.py` spellings."""
+    stem = module.replace(".", "/")
+    for path in (f"{stem}/__init__.py", f"{stem}.py"):
+        source = _git_show(base_ref, path)
+        if source is not None:
+            return source
+    return None
+
+
+def _exported_surface(source: bytes) -> set[str]:
+    """The names `from <module> import *` would bind: `__all__` if defined, else module scope."""
+    surface = parse_module_surface(source)
+    return surface.all_names if surface.has_all else surface.all_names | surface.other_names
+
+
+def reexport_sources(base_ref: str, package: str, name: str) -> set[str] | None:
+    """Submodules that could have supplied `name` to `package`'s surface at `base_ref`.
+
+    The inventory records a package's aggregate surface, so a recorded removal has to be
+    matched against a removal one or more levels down -- but matching on the *spelling*
+    alone lets one recorded name excuse every same-named symbol anywhere under that
+    package. ``kornia.pkg`` re-exporting ``thing`` from ``pkg.a`` says nothing about an
+    unrelated ``pkg.b.thing``, and dropping both while recording one would sneak the
+    second past this check.
+
+    So follow the package's own re-export of that name at the base revision: an explicit
+    ``from .a import thing`` names its source outright; a ``from .a import *`` names it
+    when ``a``'s exported surface holds the name. Callers treat each source as covering
+    the whole subtree below it, which is what carries a nested package's re-export
+    (``kornia.geometry`` -> ``.transform`` -> ``transform/affwarp.py``) without walking it.
+
+    Returns ``None`` when the name traces to nothing -- no readable ``__init__``, a
+    re-export this cannot follow (an alias, a dynamically built ``__all__``) -- and the
+    caller then falls back to the plain ancestor match. Failing open there is deliberate:
+    a wrong "no" would hard-block a policy-compliant removal, which is the exact defect
+    #4190 is about.
+    """
+    source = _module_source(base_ref, package)
+    if source is None:
+        return None
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return None
+
+    explicit: set[str] = set()
+    wildcard: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.level >= 1:
+            # `from .a import thing`, `from . import a`
+            source = f"{package}.{node.module}" if node.module else package
+        elif node.module and (node.module == package or node.module.startswith(package + ".")):
+            # kornia's packages import their own submodules absolutely as often as relatively
+            # (`from kornia.augmentation._2d import CenterCrop`); both bind the same name here.
+            source = node.module
+        else:
+            continue
+        for alias in node.names:
+            if alias.name == "*":
+                wildcard.add(source)
+            elif (alias.asname or alias.name) == name:
+                # `from <pkg> import sub` names a submodule, not a symbol inside one.
+                explicit.add(source if source != package else f"{package}.{alias.name}")
+
+    if explicit:
+        return explicit
+    sources = {
+        module
+        for module in wildcard
+        if (source := _module_source(base_ref, module)) is not None and name in _exported_surface(source)
+    }
+    return sources or None
+
+
+def _tracked_names(inventory: dict[str, set[str]], module: str) -> set[str]:
+    """Names the inventory records for `module` or any of its ancestor packages."""
+    parts = module.split(".")
+    return set().union(*(inventory.get(".".join(parts[:d]), set()) for d in range(1, len(parts) + 1)), set())
+
+
+def acknowledged_names(module: str, removals: dict[str, set[str]], base_ref: str | None = None) -> set[str]:
     """Inventory removals that speak for `module`: its own entry, or an ancestor package's.
 
     The inventory records the stable-core top-level packages, so a name dropped from
@@ -377,11 +461,22 @@ def acknowledged_names(module: str, removals: dict[str, set[str]]) -> set[str]:
     walk is what lets a submodule's removal be acknowledged by the entry that actually
     tracks it. An unrelated module's entry never counts, so the name *and* the module
     path both have to line up.
+
+    With a `base_ref`, the ancestor's own re-export of that name has to reach `module`
+    too (`reexport_sources`); without one, or when the re-export cannot be followed, the
+    name alone is enough.
     """
     parts = module.split(".")
     acknowledged: set[str] = set()
     for depth in range(1, len(parts) + 1):
-        acknowledged |= removals.get(".".join(parts[:depth]), set())
+        ancestor = ".".join(parts[:depth])
+        for name in removals.get(ancestor, set()):
+            if ancestor == module or base_ref is None:
+                acknowledged.add(name)
+                continue
+            sources = reexport_sources(base_ref, ancestor, name)
+            if sources is None or any(module == src or module.startswith(src + ".") for src in sources):
+                acknowledged.add(name)
     return acknowledged
 
 
@@ -446,7 +541,7 @@ def check_file(base_ref: str, path: str, removals: dict[str, set[str]] | None = 
         return None
 
     module = _module_name(path)
-    acknowledged = removed_from_all & acknowledged_names(module, removals or {})
+    acknowledged = removed_from_all & acknowledged_names(module, removals or {}, base_ref)
 
     # A module-level __getattr__ in the new revision is presumed to be
     # serving these names as a deprecation shim (kornia.utils's pattern) --
@@ -491,6 +586,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     removals = inventory_removals(base)
+    base_inventory = _inventory_ends(base, INVENTORY_PATH)[0] or {}
     reports = [r for r in (check_file(base, path, removals) for path in files) if r is not None]
 
     hard_fail = False
@@ -519,6 +615,23 @@ def main(argv: list[str] | None = None) -> int:
                 f"a routine recorded removal."
             )
 
+    unaccompanied = {
+        module: names
+        for module, names in removals.items()
+        if not any(_module_name(path) == module or _module_name(path).startswith(module + ".") for path in files)
+    }
+    if unaccompanied:
+        hard_fail = True
+        listed = ", ".join(f"{module}: {sorted(names)}" for module, names in sorted(unaccompanied.items()))
+        print(
+            f"::error file={INVENTORY_PATH}::Recorded a removal in {INVENTORY_PATH} that this change "
+            f"does not make ({listed}): no file under that package is touched here. The inventory "
+            f"edit is the acknowledgement for a removal in the *same* change; recorded on its own it "
+            f"moves the review moment off the PR that removes the API, and a later PR dropping a "
+            f"`from .sub import *` re-export leaves nothing for this check to compare. Put the "
+            f"inventory edit in the PR that makes the removal."
+        )
+
     for report in reports:
         if report.acknowledged:
             print(
@@ -530,14 +643,31 @@ def main(argv: list[str] | None = None) -> int:
         if unrecorded:
             if report.fatal:
                 hard_fail = True
-                print(
-                    f"::error file={report.path}::Removed from __all__: {unrecorded}. If this "
-                    f"removal is deliberate and the deprecation window has passed (see "
-                    f"docs/source/get-started/stability.rst), record it by dropping the same "
-                    f"name(s) from {INVENTORY_PATH} in this PR -- run "
-                    f"tests.test_api_surface.regenerate() -- and list the removal in CHANGELOG.md. "
-                    f"That inventory edit is the acknowledgement this check looks for."
-                )
+                if set(unrecorded) & _tracked_names(base_inventory, _module_name(report.path)):
+                    print(
+                        f"::error file={report.path}::Removed from __all__: {unrecorded}. If this "
+                        f"removal is deliberate and the deprecation window has passed (see "
+                        f"docs/source/get-started/stability.rst), record it by dropping the same "
+                        f"name(s) from {INVENTORY_PATH} in this PR -- run "
+                        f"tests.test_api_surface.regenerate() -- and list the removal in "
+                        f"CHANGELOG.md. That inventory edit is the acknowledgement this check "
+                        f"looks for."
+                    )
+                else:
+                    # The inventory records twelve top-level packages' aggregate surfaces, so a
+                    # name it never held has no entry to drop. Saying "drop it from the inventory"
+                    # here would send a contributor after an edit that cannot be made -- the same
+                    # dead end #4190 is about. Tracked in #4236.
+                    print(
+                        f"::error file={report.path}::Removed from __all__: {unrecorded}. "
+                        f"{INVENTORY_PATH} does not record these names under any package it "
+                        f"tracks, so there is no inventory entry to drop and this check has no "
+                        f"recorded-removal path for them. Per the stability policy "
+                        f"(docs/source/get-started/stability.rst) a public symbol spends at least "
+                        f"one minor release as a deprecated shim first; keep one (a module-level "
+                        f"__getattr__ exempts the module here), or raise the removal with a "
+                        f"maintainer. See #4236."
+                    )
             else:
                 print(f"::notice file={report.path}::Removed from __all__ (exempt, see comment above): {unrecorded}")
         if report.removed_undocumented:

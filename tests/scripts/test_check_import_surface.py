@@ -32,6 +32,7 @@ from check_import_surface import (
     inventory_removals,
     main,
     parse_module_surface,
+    reexport_sources,
     untracked_modules,
 )
 
@@ -602,6 +603,122 @@ def test_acknowledged_names_ignores_an_unrelated_modules_entry():
     assert acknowledged_names("kornia.geometry", removals) == set()
 
 
+def _repo_with_package(tmp_path, *, init_body, submodules, inventory):
+    """A throwaway repo whose base commit has a `kornia/pkg` package re-exporting submodules."""
+    repo = tmp_path / "repo"
+    (repo / "kornia" / "pkg").mkdir(parents=True)
+    (repo / "tests").mkdir(parents=True)
+    _git("init", "-q", cwd=repo)
+    _git("config", "user.email", "test@example.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+
+    (repo / "kornia" / "pkg" / "__init__.py").write_text(init_body)
+    for name, body in submodules.items():
+        (repo / "kornia" / "pkg" / f"{name}.py").write_text(body)
+    _write_inventory(repo, inventory)
+
+    _git("add", "-A", cwd=repo)
+    _git("commit", "-q", "-m", "base", cwd=repo)
+    _git("branch", "base", cwd=repo)
+    return repo
+
+
+def _exports(*names):
+    return f"__all__ = {list(names)!r}\n\n" + "".join(f"def {n}():\n    pass\n\n" for n in names)
+
+
+def test_reexport_sources_follows_an_explicit_import(tmp_path):
+    repo = _repo_with_package(
+        tmp_path,
+        init_body="from .a import thing\nfrom .b import other\n",
+        submodules={"a": _exports("thing"), "b": _exports("thing", "other")},
+        inventory={"kornia.pkg": ["other", "thing"]},
+    )
+
+    assert _in_repo(repo, lambda: reexport_sources("base", "kornia.pkg", "thing")) == {"kornia.pkg.a"}
+
+
+def test_reexport_sources_follows_an_absolute_self_import(tmp_path):
+    # kornia's packages import their own submodules absolutely as often as relatively
+    # (kornia/augmentation/__init__.py is entirely `from kornia.augmentation._2d import ...`),
+    # and 86 of its recorded names resolve through that spelling alone.
+    repo = _repo_with_package(
+        tmp_path,
+        init_body="from kornia.pkg.a import thing\n",
+        submodules={"a": _exports("thing"), "b": _exports("thing")},
+        inventory={"kornia.pkg": ["thing"]},
+    )
+
+    assert _in_repo(repo, lambda: reexport_sources("base", "kornia.pkg", "thing")) == {"kornia.pkg.a"}
+
+
+def test_reexport_sources_resolves_a_wildcard_by_the_sources_own_surface(tmp_path):
+    repo = _repo_with_package(
+        tmp_path,
+        init_body="from .a import *\nfrom .b import *\n",
+        submodules={"a": _exports("thing"), "b": _exports("other")},
+        inventory={"kornia.pkg": ["other", "thing"]},
+    )
+
+    assert _in_repo(repo, lambda: reexport_sources("base", "kornia.pkg", "thing")) == {"kornia.pkg.a"}
+
+
+def test_reexport_sources_returns_none_when_the_name_traces_to_nothing(tmp_path):
+    # kornia.color records AUTUMN, which no import in kornia/color/__init__.py binds. A name
+    # that traces nowhere must fall back to the plain ancestor match, not to a hard block --
+    # a wrong "no" here is exactly the #4190 defect.
+    repo = _repo_with_package(
+        tmp_path,
+        init_body="from .a import thing\n",
+        submodules={"a": _exports("thing")},
+        inventory={"kornia.pkg": ["thing", "untraceable"]},
+    )
+
+    assert _in_repo(repo, lambda: reexport_sources("base", "kornia.pkg", "untraceable")) is None
+
+
+def test_check_file_ancestor_entry_does_not_excuse_a_sibling_of_the_same_name(tmp_path):
+    # kornia.pkg re-exports `thing` from pkg.a; pkg.b has an unrelated symbol of the same
+    # name. Recording the package losing `thing` says nothing about pkg.b's, and matching on
+    # the spelling alone let the second removal ride along on the first.
+    repo = _repo_with_package(
+        tmp_path,
+        init_body="from .a import thing\nfrom .b import other\n",
+        submodules={"a": _exports("thing"), "b": _exports("thing", "other")},
+        inventory={"kornia.pkg": ["other", "thing"]},
+    )
+    (repo / "kornia" / "pkg" / "__init__.py").write_text("from .b import other\n")
+    (repo / "kornia" / "pkg" / "b.py").write_text(_exports("other"))
+    _write_inventory(repo, {"kornia.pkg": ["other"]})
+
+    report = _in_repo(repo, lambda: check_file("base", "kornia/pkg/b.py", inventory_removals("base")))
+
+    assert report is not None
+    assert report.removed_from_all == {"thing"}
+    assert report.acknowledged == set()
+    assert report.fatal is True
+
+
+def test_check_file_ancestor_entry_still_excuses_its_real_source(tmp_path):
+    # The other half of the same rule: the module the package actually re-exports from is
+    # acknowledged, including through a wildcard, or the hatch would not work for
+    # kornia.geometry at all.
+    repo = _repo_with_package(
+        tmp_path,
+        init_body="from .a import *\n",
+        submodules={"a": _exports("thing", "other")},
+        inventory={"kornia.pkg": ["other", "thing"]},
+    )
+    (repo / "kornia" / "pkg" / "a.py").write_text(_exports("other"))
+    _write_inventory(repo, {"kornia.pkg": ["other"]})
+
+    report = _in_repo(repo, lambda: check_file("base", "kornia/pkg/a.py", inventory_removals("base")))
+
+    assert report is not None
+    assert report.acknowledged == {"thing"}
+    assert report.fatal is False
+
+
 def test_check_file_inventory_removal_is_not_fatal(tmp_path):
     # #4190's live case (#4143 dropping AUTUMN): the contributor follows the procedure
     # test_no_public_name_removed's own assertion message spells out, and the check has
@@ -869,6 +986,38 @@ def test_main_fails_on_an_unreadable_inventory_and_says_so(tmp_path, capsys):
     assert exit_code == 1
     assert "unparsable" in captured.out
     assert "'kornia.mymodule'" in captured.out
+
+
+def test_main_fails_on_an_inventory_removal_this_change_does_not_make(tmp_path, capsys):
+    # Staging the acknowledgement in its own PR takes the review moment off the PR that
+    # removes the API: record `a` leaving now, and a later PR dropping a `from .sub import *`
+    # re-export has nothing left to fail on, because wildcards are invisible to the parser.
+    repo = _repo_with_inventory(tmp_path)
+    _write_inventory(repo, {"kornia.mymodule": ["b"]})  # no kornia/ file touched
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "::error" in captured.out
+    assert "does not make" in captured.out
+    assert "'a'" in captured.out
+
+
+def test_main_untracked_name_removal_does_not_prescribe_an_impossible_edit(tmp_path, capsys):
+    # The inventory records twelve package aggregates, so 132 public __all__ names under them
+    # are in no entry (#4236). Telling their remover to "drop the same name from the
+    # inventory" sends them after an edit that cannot be made.
+    repo = _repo_with_inventory(tmp_path, inventory={"kornia.other": ["z"]})
+    (repo / "kornia" / "mymodule.py").write_text("__all__ = ['b']\n\ndef b():\n    pass\n")
+
+    exit_code = _in_repo(repo, lambda: main(["--base-ref", "base"]))
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "does not record these names" in captured.out
+    assert "#4236" in captured.out
+    assert "regenerate()" not in captured.out
 
 
 def test_main_exits_zero_and_reports_a_recorded_removal(tmp_path, capsys):

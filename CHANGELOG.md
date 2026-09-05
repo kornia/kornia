@@ -255,14 +255,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already instructs contributors to make it for a removal whose deprecation window has passed — so a
   policy-compliant removal could satisfy the test that names the procedure and still be blocked by a check with
   no notion of it. The removal is now reported as a `::notice` instead, and the check's error message names the
-  escape hatch. The hatch fails closed everywhere else: a removal the inventory does not record still fails, an
-  unrelated inventory entry does not excuse it, and an inventory that is deleted, unparsable, wrong-shaped in any
-  entry, or missing a tracked module's key acknowledges nothing — each of those makes recorded names look removed
-  without anyone recording them. Dropping a module's key from the inventory now fails the check outright rather
-  than merely acknowledging nothing: that key is what puts the module in
-  `test_no_public_name_removed`'s parametrization, so deleting it ended that guard silently, and a package whose
-  public names arrive through `from .sub import *` has no static `__all__` for this check to compare instead. The
-  workflow's path filter covers `tests/api_surface.json` so an inventory-only change still runs it. (#4190)
+  escape hatch. The hatch is narrow: a removal the inventory does not record still fails, an unrelated entry does
+  not excuse it, and an inventory that is deleted, unparsable or wrong-shaped in any entry acknowledges nothing —
+  each of those makes recorded names look removed without anyone recording them. Three further ways the
+  acknowledgement could be claimed without being earned fail the check outright. Dropping a module's key from the
+  inventory is fatal: that key is what puts the module in `test_no_public_name_removed`'s parametrization, so
+  deleting it ended that guard silently, and a package whose public names arrive through `from .sub import *` has
+  no static `__all__` for this check to compare instead. Recording a removal the same change does not make is
+  fatal, so the acknowledgement cannot be staged in an earlier PR and then spent in a later one. And an ancestor
+  package's recorded removal now has to reach the module claiming it through that package's own re-export of the
+  name, so one recorded name no longer excuses every same-named symbol beneath it. The workflow's path filter
+  covers `tests/api_surface.json` so an inventory-only change still runs the check. Names that no tracked package
+  records have no inventory entry to drop; the check now says so instead of prescribing an impossible edit, and
+  #4236 tracks closing that gap. (#4190, #4230)
 
 * `validate_bbox` and `validate_bbox3d` flatten rank-4 `(B, N, 4, 2)` / `(B, N, 8, 3)` input with `reshape`
   instead of `view`, so a non-contiguous leading-dimension stride (a transpose, a slice that drops boxes, an
