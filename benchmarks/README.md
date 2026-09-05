@@ -23,6 +23,7 @@ from the checkout root. It compares SIFT, SIFT-AffNet-HardNet, and KeyNet-HardNe
 pipeline settings; use `--device cpu --timing-pairs 2` to time the representative 1–2 pair
 while still evaluating quality on all five pairs. The module docstring defines the exact
 timed region and corner-error metric.
+See the [graf CPU/CUDA comparison](feature/graf_benchmark.md) for measured results and raw JSON.
 
 Every benchmark here must follow the same rules (utilities in [`common.py`](common.py)):
 
