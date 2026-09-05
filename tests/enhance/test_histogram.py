@@ -17,7 +17,6 @@
 
 import pytest
 import torch
-from packaging import version
 
 import kornia
 
@@ -54,9 +53,6 @@ class TestImageHistogram2d(BaseTester):
         centers = torch.linspace(0, 255, 8, device=device, dtype=torch.float64)
         self.gradcheck(TestImageHistogram2d.fcn, (sample, 0.0, 255.0, 8, None, centers, True, kernel))
 
-    @pytest.mark.skipif(
-        version.parse(torch.__version__) < version.parse("1.9"), reason="Tuple cannot be jitted with PyTorch < v1.9"
-    )
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_jit(self, device, dtype, kernel):
         sample = torch.linspace(0, 255, 10, device=device, dtype=dtype)
