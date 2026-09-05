@@ -179,7 +179,20 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_D_zero_solutions = (a_D_zero <= 0) & (a_Q_zero != 0)
 
     if torch.any(mask_D_zero):
-        theta_D_zero = torch.acos(R[mask_D_zero] / torch.sqrt(-Q3[mask_D_zero]))
+        # d(acos)/dx = -1/sqrt(1-x^2) is unbounded at x = +-1. The branch condition (D <= 0)
+        # guarantees |ratio_D_zero| <= 1 (D = Q3 + R^2 <= 0 implies R^2 <= -Q3), but a repeated
+        # or near-repeated real root pushes the ratio to exactly that boundary, where the
+        # *value* is fine but the *derivative* diverges -- same shape as the acos/asin boundary
+        # in quaternion_exp_to_log/euler_from_quaternion (#4007, fixed in #4228). A plain
+        # `.clamp(-1, 1)` does not help here: it only guards the value, not the diverging
+        # derivative of a value already inside the domain. Route the boundary through `.acos()`
+        # on a detached copy for the value and through `.acos()` on a substituted safe argument
+        # for the gradient, so autograd never differentiates `acos` at +-1 at all. (#4290)
+        ratio_D_zero = R[mask_D_zero] / torch.sqrt(-Q3[mask_D_zero])
+        ratio_D_zero = torch.clamp(ratio_D_zero, min=-1.0, max=1.0)
+        at_boundary_D_zero = ratio_D_zero.abs() >= 1.0
+        safe_ratio_D_zero = torch.where(at_boundary_D_zero, torch.zeros_like(ratio_D_zero), ratio_D_zero)
+        theta_D_zero = torch.where(at_boundary_D_zero, ratio_D_zero.detach().acos(), safe_ratio_D_zero.acos())
         sqrt_Q_D_zero = torch.sqrt(-Q[mask_D_zero])
         x0_D_zero = 2 * sqrt_Q_D_zero * torch.cos(theta_D_zero / 3.0) - b_a_3[mask_D_zero]
         x1_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 2 * _PI) / 3.0) - b_a_3[mask_D_zero]
