@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
+  KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
+  historical scale-space SIFT CPU/CUDA batch-runtime comparisons and plotting. (#4254)
+
 * Documented bbox/Boxes geometry-operation conventions and added executable pins for transforms,
   NMS, padding, clipping, and area filtering, including known unbatched-input limitations. (#4245)
 
@@ -266,6 +270,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   zero-scale input keeps its center and zero affine block.
 
 ### Bug fixes
+
+* Reduce local-feature extraction overhead by accumulating orientation histograms directly,
+  batching built-in DoG extrema refinement, selecting coordinates before combining response signs,
+  and using faster activation layouts in KeyNet and CPU HardNet. Detector settings and pretrained
+  checkpoint formats are preserved. On CUDA the orientation histogram now accumulates with atomics,
+  so identical inputs can differ at the ulp level between calls unless
+  `torch.use_deterministic_algorithms(True)` is set. (#4254)
 
 * Non-maxima suppression with a window larger than `(7, 7)` no longer builds a `(k*k, 1, k, k)` one-hot
   convolution to gather each neighbour into its own channel. On CPU in half precision that convolution

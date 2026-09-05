@@ -112,6 +112,11 @@ class _LearnableBlock(nn.Sequential):
         self.conv2 = _KeyNetConvBlock()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # These narrow convolutions benefit from channel-contiguous activations on
+        # CPU and CUDA. Convert once at the block boundary, without changing the
+        # parameter layout or the pretrained state-dict contract.
+        if x.dtype == torch.float32 and x.device.type in ("cpu", "cuda"):
+            x = x.to(memory_format=torch.channels_last)
         x = self.conv2(self.conv1(self.conv0(x)))
         return x
 
