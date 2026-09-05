@@ -24,6 +24,8 @@ pipeline settings; use `--device cpu --timing-pairs 2` to time the representativ
 while still evaluating quality on all five pairs. The module docstring defines the exact
 timed region and corner-error metric.
 See the [graf CPU/CUDA comparison](feature/graf_benchmark.md) for measured results and raw JSON.
+The [historical SIFT runtime chart](feature/sift_runtime.md) compares 0.8.2, 0.8.3,
+current eager/compiled, and OpenCV across CPU and CUDA batch sizes 1, 4, and 8.
 
 Every benchmark here must follow the same rules (utilities in [`common.py`](common.py)):
 

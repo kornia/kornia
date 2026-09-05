@@ -106,6 +106,10 @@ def load_rows(paths: list[Path]) -> dict[tuple[str, str, int], tuple[float, floa
 def describe_environment(paths: list[Path], cpu_label: str | None = None) -> str:
     """Build a hardware subtitle and reject mixed GPU or PyTorch environments."""
     metadata = [json.loads(path.read_text())["metadata"] for path in paths]
+    for key in ("python", "input_sha256", "torch_num_threads", "opencv_num_threads"):
+        values = {str(meta.get(key)) for meta in metadata}
+        if len(values) != 1 or "None" in values:
+            raise ValueError(f"Input metadata must agree on {key}")
     labels = []
     for key in ("cuda_device", "cpu_model", "torch"):
         values = {str(meta[key]) for meta in metadata if meta.get(key)}
@@ -123,7 +127,33 @@ def describe_environment(paths: list[Path], cpu_label: str | None = None) -> str
     return " · ".join(labels)
 
 
-def plot_runtime(timings: dict[tuple[str, str, int], tuple[float, float]], output: Path, environment: str = "") -> None:
+def describe_outputs(paths: list[Path]) -> str:
+    """Disclose returned work, without calling historical LAF slots valid detections."""
+    counts: dict[str, set[int]] = {"Kornia": set(), "OpenCV": set()}
+    for path in paths:
+        for row in json.loads(path.read_text())["results"]:
+            label = "OpenCV" if row["series"] == "OpenCV" else "Kornia"
+            values = row.get("features_per_image")
+            if not isinstance(values, list) or len(values) != row["batch"]:
+                raise ValueError(f"{path}: expected one output count per image")
+            if any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in values):
+                raise ValueError(f"{path}: output counts must be nonnegative integers")
+            counts[label].update(values)
+    labels = []
+    for label, values in counts.items():
+        if values:
+            count = str(min(values)) if len(values) == 1 else f"{min(values)}\N{EN DASH}{max(values)}"
+            unit = "keypoints" if label == "OpenCV" else "nonzero LAF/descriptor slots"
+            labels.append(f"{label}: {count} {unit}/image")
+    return "; ".join(labels) + ". RootSIFT enabled; native detection/filtering differ."
+
+
+def plot_runtime(
+    timings: dict[tuple[str, str, int], tuple[float, float]],
+    output: Path,
+    environment: str = "",
+    output_note: str = "",
+) -> None:
     """Write a grouped logarithmic chart with explicit missing measurements."""
     import matplotlib as mpl
 
@@ -138,7 +168,7 @@ def plot_runtime(timings: dict[tuple[str, str, int], tuple[float, float]], outpu
     clipped = any(median - iqr / 2 < low for median, iqr in timings.values())
     with plt.rc_context({"font.family": "DejaVu Sans", "font.size": 11, "svg.fonttype": "none"}):
         fig, ax = plt.subplots(figsize=(12, 7.5))
-        fig.subplots_adjust(left=0.085, right=0.975, bottom=0.26, top=0.77)
+        fig.subplots_adjust(left=0.085, right=0.975, bottom=0.30, top=0.77)
         ax.set_yscale("log")
         ax.set_ylim(low, high)
         ax.set_xlim(-0.57, 3.57)
@@ -241,7 +271,9 @@ def plot_runtime(timings: dict[tuple[str, str, int], tuple[float, float]], outpu
         )
         if clipped:
             caption += "\nLower whiskers clipped at the logarithmic axis floor."
-        fig.text(0.085, 0.14, caption, ha="left", va="top", fontsize=9.2, linespacing=1.65, color="#51565d")
+        if output_note:
+            caption += "\n" + output_note
+        fig.text(0.085, 0.19, caption, ha="left", va="top", fontsize=9.2, linespacing=1.65, color="#51565d")
         output.parent.mkdir(parents=True, exist_ok=True)
         for suffix in (".png", ".svg"):
             path = output.with_suffix(suffix)
@@ -259,10 +291,11 @@ def main() -> None:
     try:
         timings = load_rows(args.inputs)
         environment = describe_environment(args.inputs, args.cpu_label)
+        output_note = describe_outputs(args.inputs)
     except (OSError, ValueError) as error:
         parser.error(str(error))
     try:
-        plot_runtime(timings, args.output, environment)
+        plot_runtime(timings, args.output, environment, output_note)
     except ModuleNotFoundError as error:
         if error.name and error.name.startswith("matplotlib"):
             print("SKIP: Matplotlib is not installed; install the project's plotting dependencies to render charts.")

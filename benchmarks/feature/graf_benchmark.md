@@ -111,6 +111,8 @@ medians/IQRs and initial-call latencies are retained in the raw files.
 
 The additional CPU pair-benchmark sweep was interrupted to prioritize the requested
 historical batching chart. It is not presented as a completed CPU compiled comparison.
+The completed [historical SIFT runtime chart](sift_runtime.md) includes CPU eager/compiled
+and CUDA batches 1, 4, and 8 for the public scale-space SIFT preset.
 
 ## Implementation
 

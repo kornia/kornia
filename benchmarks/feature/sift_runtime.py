@@ -28,6 +28,8 @@ thread. Transfers, initialization, compilation, matching, and RANSAC are outside
 steady-state timing. Raw median/IQR are BATCH latency; divide by B for ms/image.
 OpenCV is a one-thread uint8 CPU detectAndCompute call plus RootSIFT normalization,
 using its native contrast/edge filtering. It is not a GPU or batched baseline.
+The features_per_image field counts nonzero LAF output slots for Kornia, not
+verified valid detections: historical releases could retain rejected LAFs.
 """
 
 from __future__ import annotations
