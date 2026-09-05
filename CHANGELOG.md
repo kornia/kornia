@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Documented camera projection-core conventions (`PinholeCamera` frames, integer pixel centres, the two
+  meanings of depth, the `z = 0` policies) and added executable pins for `kornia.geometry.camera`'s
+  projection core, with the known scale-rule, aliasing, guard and legacy-API limitations tracked in
+  dedicated issues. (#4294)
+
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
   historical scale-space SIFT CPU/CUDA batch-runtime comparisons and plotting. (#4254)
