@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from kornia.feature.lightglue import (
+    Attention,
     LearnableFourierPositionalEncoding,
     LightGlue,
     TokenConfidence,
@@ -28,7 +29,7 @@ from kornia.feature.lightglue import (
     rotate_half,
 )
 
-from testing.base import BaseTester
+from testing.base import BaseTester, assert_close
 
 # ---------------------------------------------------------------------------
 # Pure function tests
@@ -144,6 +145,36 @@ def test_apply_cached_rotary_emb_shape():
     t = torch.rand(B, 1, N, D)
     out = apply_cached_rotary_emb(freqs, t)
     assert out.shape == t.shape
+
+
+def test_attention_allow_flash_matches_on_cpu():
+    """On CPU, ``allow_flash`` never selects the CUDA-only branch, so both settings take the
+    same ``scaled_dot_product_attention`` path and must produce identical outputs, with and
+    without a boolean mask (exercising the ``nan_to_num`` handling of fully-masked rows).
+    """
+    torch.manual_seed(0)
+    B, H, N, Dh = 1, 2, 5, 8
+    q = torch.rand(B, H, N, Dh)
+    k = torch.rand(B, H, N, Dh)
+    v = torch.rand(B, H, N, Dh)
+
+    attn_no_flash = Attention(allow_flash=False)
+    attn_flash = Attention(allow_flash=True)
+
+    out_no_flash = attn_no_flash(q, k, v)
+    out_flash = attn_flash(q, k, v)
+    assert_close(out_no_flash, out_flash)
+
+    # First query row cannot attend to anything: softmax produces NaN there, which
+    # ``Attention.forward`` replaces via ``nan_to_num``.
+    mask = torch.ones(B, H, N, N, dtype=torch.bool)
+    mask[:, :, 0, :] = False
+
+    out_no_flash_masked = attn_no_flash(q, k, v, mask=mask)
+    out_flash_masked = attn_flash(q, k, v, mask=mask)
+    assert not torch.isnan(out_no_flash_masked).any()
+    assert not torch.isnan(out_flash_masked).any()
+    assert_close(out_no_flash_masked, out_flash_masked)
 
 
 # ---------------------------------------------------------------------------
