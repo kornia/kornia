@@ -48,8 +48,10 @@ def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
     d1_sq = (d1**2).sum(dim=1, keepdim=True)
     d2_sq = (d2**2).sum(dim=1, keepdim=True)
     dm = d1_sq.repeat(1, d2.size(0)) + d2_sq.repeat(1, d1.size(0)).t() - 2.0 * d1 @ d2.t()
-    dm = dm.clamp(min=0.0).sqrt()
-    return dm
+    dm = dm.clamp(min=0.0)
+    mask = dm > 0.0
+    safe_dm = torch.where(mask, dm, torch.ones_like(dm))
+    return torch.where(mask, safe_dm.sqrt(), torch.zeros_like(dm))
 
 
 def _get_default_fginn_params() -> Dict[str, Any]:
