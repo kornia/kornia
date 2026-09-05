@@ -64,6 +64,13 @@ class PatchDominantGradientOrientation(nn.Module):
         num_angular_bins: number of histogram bins.
         eps: for safe division, and arctan.
 
+    Note:
+        Each gradient pixel is accumulated into its two neighbouring histogram bins with
+        ``scatter_add_``. On CUDA that accumulation uses atomics, so two calls on identical input
+        can differ at the ulp level, and a patch whose two strongest bins are nearly tied can
+        return the neighbouring peak. ``torch.use_deterministic_algorithms(True)`` selects the
+        deterministic kernel and restores run-to-run reproducibility.
+
     """
 
     def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, eps: float = 1e-8) -> None:
@@ -134,8 +141,9 @@ class PatchDominantGradientOrientation(nn.Module):
         # accumulate half-precision inputs in float32, then divide before casting back.
         accumulation_dtype = torch.float64 if patch.dtype == torch.float64 else torch.float32
         ang_bins = torch.zeros(patch.shape[0], self.num_ang_bins, device=patch.device, dtype=accumulation_dtype)
-        # Remainder after the integer conversion also keeps non-finite orientations
-        # in bounds; their non-finite weights still propagate through the histogram.
+        # The `%` after the integer conversion only keeps the index in range: a NaN orientation
+        # casts to an arbitrary integer. A patch with NaN pixels returns a finite but arbitrary
+        # angle, as it did before this accumulation; the `max`/`where` below do not propagate NaN.
         ang_bins.scatter_add_(
             1, bo0_big.flatten(1).long() % self.num_ang_bins, wo0_big.flatten(1).to(accumulation_dtype)
         )

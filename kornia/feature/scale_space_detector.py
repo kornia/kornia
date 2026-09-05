@@ -186,6 +186,27 @@ def _zero_unfilled(lafs: torch.Tensor, filled: torch.Tensor) -> torch.Tensor:
     return torch.where(filled.view(filled.shape[0], -1, 1, 1), lafs, torch.zeros_like(lafs))
 
 
+_BUILTIN_SUBPIX = (ConvQuadInterp3d, AdaptiveQuadInterp3d, IterativeQuadInterp3d)
+
+
+def _subpix_dispatch(module: nn.Module) -> Tuple[bool, bool]:
+    """Classify the sub-pixel refiner the detector currently holds.
+
+    Returns ``(is_iterative, batchable)``. ``is_iterative`` means the module is one of the built-in
+    refiners or a subclass, so it accepts ``precomputed_nms_mask``. ``batchable`` means both response
+    signs can be refined in one stacked call: only the exact built-in classes qualify (a subclass may
+    change the per-image semantics), and only without a candidate cap, which
+    :func:`~kornia.geometry.subpix.iterative_quad_interp3d` applies across the whole batch rather
+    than per image. Both flags read through a :func:`torch.compile` wrapper, whether the detector
+    compiled the module itself or the caller passed a compiled one, so the same module is dispatched
+    the same way on every path.
+    """
+    subpix = getattr(module, "_orig_mod", module)
+    is_iterative = isinstance(subpix, _BUILTIN_SUBPIX)
+    batchable = type(subpix) in _BUILTIN_SUBPIX and getattr(subpix, "max_candidates", None) is None
+    return is_iterative, batchable
+
+
 class ScaleSpaceDetector(nn.Module):
     r"""nn.Module for differentiable local feature detection.
 
@@ -213,6 +234,9 @@ class ScaleSpaceDetector(nn.Module):
             which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
         minima_are_also_good: if True, then both response function minima and maxima are detected.
             Useful for symmetric response functions like DoG or Hessian. Default is False.
+            With a built-in ``subpix_module`` both signs are refined in one stacked call, which
+            roughly doubles the peak memory of the refinement step: the response volume and its
+            three coordinate maps are materialised for ``2B`` images at once.
         compile_modules: selects which sub-modules to wrap with :func:`torch.compile`.
             Pass ``True`` to compile every sub-module, ``False`` (default) for none, or a list
             containing any subset of ``["scale_pyr", "resp", "subpix", "ori", "aff"]``.
@@ -264,10 +288,6 @@ class ScaleSpaceDetector(nn.Module):
         self.resp = _maybe_compile(resp_module, "resp")
         if subpix_module is None:
             subpix_module = AdaptiveQuadInterp3d(strict_maxima_bonus=0.0, allow_scale_steps=True)
-        # Record before torch.compile wraps the module — isinstance won't match OptimizedModule.
-        self._is_iterative_subpix: bool = isinstance(
-            subpix_module, (ConvQuadInterp3d, AdaptiveQuadInterp3d, IterativeQuadInterp3d)
-        )
         self.subpix = _maybe_compile(subpix_module, "subpix")
         if ori_module is None:
             ori_module = PassLAF()
@@ -307,16 +327,13 @@ class ScaleSpaceDetector(nn.Module):
         max_mask: torch.Tensor,
         min_mask: torch.Tensor,
         is_iterative_subpix: bool,
+        batchable_subpix: bool,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Refine both response signs, batching only independent built-in refiners."""
-        # Inspect the current module so replacing a built-in with a custom refiner
-        # after construction preserves the extension path, including compiled modules.
-        subpix = getattr(self.subpix, "_orig_mod", self.subpix)
-        batchable = type(subpix) in (ConvQuadInterp3d, AdaptiveQuadInterp3d, IterativeQuadInterp3d)
-        if batchable and getattr(subpix, "max_candidates", None) is None:
+        if batchable_subpix:
             # Keep NMS neighbourhoods separate: merging masks would let extrema
-            # move into the other sign's dilation neighbourhood. A candidate cap
-            # also needs separate calls, since it applies across the whole batch.
+            # move into the other sign's dilation neighbourhood. The candidate cap
+            # excluded above needs separate calls, since it applies across the whole batch.
             batch = response.shape[0]
             coords, values = self.subpix(
                 torch.cat((response, -response), dim=0),
@@ -340,6 +357,7 @@ class ScaleSpaceDetector(nn.Module):
         rotmat: torch.Tensor,
         num_levels: int,
         is_iterative_subpix: bool,
+        batchable_subpix: bool,
         px_size: float,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Process one scale-space octave: response → NMS/subpix → top-K → LAF.
@@ -411,7 +429,7 @@ class ScaleSpaceDetector(nn.Module):
         with self._dynamo_config_patch(("subpix",)):
             if self.minima_are_also_good:
                 coord_max, response_max, coord_min, response_min = self._refine_minmax(
-                    oct_resp, max_nms_mask, min_nms_mask, is_iterative_subpix
+                    oct_resp, max_nms_mask, min_nms_mask, is_iterative_subpix, batchable_subpix
                 )
             elif is_iterative_subpix:
                 coord_max, response_max = self.subpix(oct_resp, precomputed_nms_mask=max_nms_mask)
@@ -567,7 +585,10 @@ class ScaleSpaceDetector(nn.Module):
                 f"Gotcha {type(self.scale_pyr.n_levels)}"
             )
         rotmat = torch.eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)
-        is_iterative_subpix = self._is_iterative_subpix
+        # Read the live module once per forward, so a refiner swapped in after construction, or a
+        # compiled one passed by the caller, is dispatched consistently on both the single-sign and
+        # the minima-and-maxima path.
+        is_iterative_subpix, batchable_subpix = _subpix_dispatch(self.subpix)
         px_size0 = 0.5 if self.scale_pyr.double_image else 1.0
         px_sizes = [px_size0 * (2.0**i) for i in range(len(sp))]
 
@@ -579,7 +600,15 @@ class ScaleSpaceDetector(nn.Module):
         n_oct = len(sp)
         results: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = [
             self._process_octave(
-                sp[i], sigmas[i], num_feats, mask, rotmat, num_levels, is_iterative_subpix, px_sizes[i]
+                sp[i],
+                sigmas[i],
+                num_feats,
+                mask,
+                rotmat,
+                num_levels,
+                is_iterative_subpix,
+                batchable_subpix,
+                px_sizes[i],
             )
             for i in range(n_oct)
         ]
