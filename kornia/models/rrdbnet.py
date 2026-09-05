@@ -18,8 +18,9 @@
 """Residual-in-Residual Dense Block (RRDB) generator used by ESRGAN and Real-ESRGAN.
 
 Adapted from BasicSR (https://github.com/XPixelGroup/BasicSR), Copyright 2018-2022 BasicSR Authors,
-Apache-2.0. Modified: type hints and docstrings, and the vendored ``pixel_unshuffle`` helper is
-expressed as :func:`torch.nn.functional.pixel_unshuffle`, which returns a byte-identical result.
+Apache-2.0. Modified: type hints, docstrings and minor structural adaptation; the vendored
+``pixel_unshuffle`` helper is expressed as :func:`torch.nn.functional.pixel_unshuffle`
+(byte-identical). The arithmetic is unchanged.
 
 The module and parameter names are kept identical to upstream so that the published Real-ESRGAN
 checkpoints load with ``strict=True``.

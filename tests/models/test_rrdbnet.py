@@ -22,6 +22,7 @@ from torch import nn
 from kornia.contrib import super_resolution as super_resolution_module
 from kornia.contrib.super_resolution import RRDBNetBuilder
 from kornia.models import RRDBNet
+from kornia.models.processors import OutputRangePostProcessor
 from kornia.models.rrdbnet import RRDB, ResidualDenseBlock, _default_init_weights
 
 from testing.base import BaseTester
@@ -157,13 +158,39 @@ class TestRRDBNet(BaseTester):
     def test_default_init_weights(self, device, dtype):
         """The vendored initializer zeroes biases and sets BatchNorm weights to one."""
         module = nn.Sequential(nn.Conv2d(2, 2, 3), nn.Linear(2, 2), nn.BatchNorm2d(2)).to(device, dtype)
+        # BatchNorm2d already ships ones/zeros, so perturb both first: without this the BatchNorm
+        # assertions below pass whether or not the `_BatchNorm` branch ever runs.
+        module[2].weight.data.fill_(3.0)
+        module[2].bias.data.fill_(3.0)
+        for m in (module[0], module[1]):
+            m.bias.data.fill_(3.0)
+
         _default_init_weights(module, scale=0.1, bias_fill=0.0)
         assert torch.count_nonzero(module[0].bias) == 0
         assert torch.count_nonzero(module[1].bias) == 0
         self.assert_close(module[2].weight, torch.ones_like(module[2].weight))
+        assert torch.count_nonzero(module[2].bias) == 0
         # a single module and a list of modules are both accepted
+        module[0].bias.data.fill_(3.0)
         _default_init_weights([module[0]], scale=0.1)
         assert torch.count_nonzero(module[0].bias) == 0
+
+    def test_default_init_weights_applies_the_scale(self, device, dtype):
+        """``scale`` multiplies the drawn weights -- the 0.1 residual scaling ESRGAN needs.
+
+        ``kaiming_normal_`` draws from the global RNG, so seeding both calls identically makes the
+        two initializations differ only by the multiplier.
+        """
+        unscaled = nn.Conv2d(4, 4, 3).to(device, dtype)
+        scaled = nn.Conv2d(4, 4, 3).to(device, dtype)
+
+        torch.manual_seed(0)
+        _default_init_weights(unscaled, scale=1.0)
+        torch.manual_seed(0)
+        _default_init_weights(scaled, scale=0.1)
+
+        assert torch.count_nonzero(unscaled.weight) > 0
+        self.assert_close(scaled.weight, unscaled.weight * 0.1)
 
     def test_gradcheck(self, device):
         pytest.skip("RRDBNet is a deep convolutional generator; gradcheck is prohibitively slow.")
@@ -192,9 +219,10 @@ class TestRRDBNetBuilder:
         ],
     )
     def test_build_selects_the_vendored_rrdbnet(self, monkeypatch, model_name, scale, num_block):
-        # `SuperResolution` cannot be instantiated today (`ModelBase.from_config` is abstract, a
-        # pre-existing kornia defect that also skips this builder in the export survey), so the
-        # wrapper is stubbed out to reach the model the builder constructs.
+        # `SuperResolution` cannot be instantiated today (`ModelBase.from_config` is abstract --
+        # kornia#4291, a pre-existing defect that also skips this builder in the export survey), so
+        # the wrapper is stubbed out to reach the model the builder constructs. Once #4291 is fixed,
+        # drop the stub and assert on the returned `SuperResolution` directly.
         captured = {}
 
         def record(model, **kwargs):
@@ -211,9 +239,16 @@ class TestRRDBNetBuilder:
         assert isinstance(model, RRDBNet)
         assert model.scale == scale
         assert len(model.body) == num_block
-        assert model.conv_first.out_channels == 64
+        assert model.conv_first.out_channels == 64  # num_feat=64
+        assert model.body[0].rdb1.conv1.out_channels == 32  # num_grow_ch=32
         assert not model.training
         assert captured["kwargs"]["name"] == model_name
+
+        # the rest of `build`'s contract: no pre-processing, outputs clamped back into [0, 1]
+        assert isinstance(captured["kwargs"]["pre_processor"], nn.Identity)
+        post_processor = captured["kwargs"]["post_processor"]
+        assert isinstance(post_processor, OutputRangePostProcessor)
+        assert (post_processor.min_val, post_processor.max_val) == (0.0, 1.0)
 
     def test_build_rejects_an_unknown_model_name(self):
         with pytest.raises(ValueError, match="not found"):

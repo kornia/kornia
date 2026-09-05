@@ -17,8 +17,9 @@
 
 """Models submodule for Kornia.
 
-This package provides model architectures and utilities for state-of-the-art models for Visual Language
-Models and Vision Language Action Models.
+This package provides state-of-the-art model architectures and their utilities, spanning vision backbones,
+detection, segmentation and super-resolution networks as well as Visual Language Models and Vision Language
+Action Models.
 """
 
 from kornia.models.rrdbnet import RRDBNet
