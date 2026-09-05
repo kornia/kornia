@@ -158,7 +158,7 @@ def _sam_figure(model_type: str, name: str, title: str) -> None:
 
     keypoints = Keypoints(torch.tensor([[[300.0, 90.0]]]))  # (K, N, 2): K prompts of N (x, y) points; on the eye
     labels = torch.tensor([[1]])  # 1 = foreground, 0 = background
-    box = Boxes.from_tensor(torch.tensor([[[180.0, 20.0, 380.0, 240.0]]]), mode="xyxy")  # around the head
+    box = what(torch.tensor([[[180.0, 20.0, 380.0, 240.0]]]), mode="xyxy")  # around the head
     point_pred = prompter.predict(keypoints=keypoints, keypoints_labels=labels)  # 3 candidate masks
     box_pred = prompter.predict(boxes=box, multimask_output=False)  # 1 mask
 
