@@ -1,8 +1,8 @@
 # Oxford graf local-feature benchmark
 
 Measured 2026-09-05. Base `601b5a4a` versus optimized implementation `e8e4ec0f`.
-Original 640×800 images, 4,096 requested features, grayscale float32, eager evaluation,
-no autocast or compilation. Pyramid levels, scales, iteration budgets, descriptors,
+Original 640×800 images, 4,096 requested features, grayscale float32. The first two
+sections use eager evaluation without autocast or compilation. Pyramid levels, scales, iteration budgets, descriptors,
 weights, matching threshold, and RANSAC settings are identical between revisions.
 
 ## GPU speed and quality
@@ -72,6 +72,46 @@ backends and numerical kernels differ; compare each device against its own basel
 | 1–5 | 507.037 | 1.792 | 3.658 |
 | 1–6 | 605.427 | 11.658 | 8.828 |
 
+## Selective compilation: CUDA
+
+Base `601b5a4a` versus `fb66de1d` (the same optimized library implementation, with a
+compiled benchmark mode). The existing factory compiles the scale-space pyramid,
+response, and subpixel modules, or KeyNet response/NMS, using `dynamic=True` and
+default Inductor settings. Descriptors, orientation, affine adaptation, matching,
+and RANSAC stay eager: this is **not whole-pipeline compilation**. The workload,
+hardware, feature budgets, and quality metric are the same as the eager pair benchmark.
+
+| Pipeline | Base compiled ms/pair | Optimized compiled ms/pair | Speedup | Mean corner error, base → optimized |
+| --- | ---: | ---: | ---: | ---: |
+| SIFT | 94.64 | 71.23 | 1.33× | 223.654 → 223.654 |
+| SIFT–AffNet–HardNet | 158.27 | 132.87 | 1.19× | 2.381 → 2.381 |
+| KeyNet–HardNet | 106.01 | 105.08 | 1.01× | 5.638 → 5.638 |
+
+Entries again average the five pair-specific medians. KeyNet's difference is timing
+noise. Match counts, inliers, feature counts, and corner errors are exactly identical
+between compiled revisions for all pairs. Compilation itself changes some scale-space
+results relative to eager, so eager and compiled quality must be compared separately.
+For example, SIFT–AffNet–HardNet's mean error is 2.381 px compiled versus 2.183 px eager.
+
+Each revision started in a separate process with a fresh `TORCHINDUCTOR_CACHE_DIR`.
+Initial calls are excluded from warmup and steady-state timing, and recorded in JSON.
+SIFT's first extraction-and-match call took 43.42 s on the base and 43.38 s optimized.
+KeyNet's first call took 15.25 s and 16.84 s. SIFT–AffNet–HardNet ran after SIFT and
+reused its already compiled detector graphs: its 0.233/0.209 s initial calls are
+**not independent cold-compilation measurements**. Initial latency includes useful
+execution and initialization as well as compilation, not compiler time alone.
+
+Maximum extra CUDA allocation: SIFT 566.9 → 690.1 MiB; SIFT–AffNet–HardNet
+1058.6 → 1058.6 MiB; KeyNet–HardNet 1057.7 → 1057.7 MiB. All five per-pair
+medians/IQRs and initial-call latencies are retained in the raw files.
+
+```bash
+.venv/bin/python -m benchmarks.feature.local_features --seq /data/graf --device cuda --compile --json graf-compiled.json
+```
+
+The additional CPU pair-benchmark sweep was interrupted to prioritize the requested
+historical batching chart. It is not presented as a completed CPU compiled comparison.
+
 ## Implementation
 
 - Accumulate each gradient pixel into its two orientation bins with `scatter_add_`,
@@ -139,5 +179,7 @@ between precisions). No tolerance or known-failure manifest was changed.
 - [Optimized CUDA](graf_results/optimized-cuda.json)
 - [Base CPU](graf_results/base-cpu.json)
 - [Optimized CPU](graf_results/optimized-cpu.json)
+- [Base selectively compiled CUDA](graf_results/base-compiled-cuda.json)
+- [Optimized selectively compiled CUDA](graf_results/optimized-compiled-cuda.json)
 
 These are local benchmark results rather than release-wide performance guarantees.
