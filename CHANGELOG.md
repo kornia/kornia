@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Optional-dependency extras `kornia[onnx]`, `kornia[sd]`, `kornia[tracking]` and
+  `kornia[segmentation]` declare the third-party packages that the ONNX, Stable-Diffusion-dissolving,
+  tracking and segmentation-model wrappers lazily import, and are documented on the installation
+  page. Missing-dependency errors now name the extra to install, and `dev` no longer pulls
+  `diffusers` and `transformers`. (#XXXX)
+
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
   historical scale-space SIFT CPU/CUDA batch-runtime comparisons and plotting. (#4254)

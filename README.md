@@ -137,6 +137,9 @@ Kornia is an open-source project that is developed and maintained by volunteers.
   pip install kornia
   ```
 
+Some features (ONNX, Stable Diffusion dissolving, tracking, segmentation-model builders) need extra
+packages; see [Optional extras](https://kornia.readthedocs.io/en/latest/get-started/installation.html#optional-extras).
+
 <details>
   <summary>Other installation options</summary>
 
