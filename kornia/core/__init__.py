@@ -29,6 +29,7 @@ from .mixin import (
     ONNXRuntimeMixin,
 )
 from .module import ImageModule, ImageSequential
+from .ops import eye_like, vec_like
 from .tensor_wrapper import TensorWrapper
 
 __all__ = [

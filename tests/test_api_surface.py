@@ -30,8 +30,11 @@ Additions are fine and do not fail the test; run this file with
 ``regenerate()`` below) whenever new public API lands.
 """
 
+import contextlib
 import importlib
 import json
+import pkgutil
+import warnings
 from pathlib import Path
 
 import pytest
@@ -83,6 +86,56 @@ def test_no_public_name_removed(module_name):
         "release as a deprecated shim before removal. If this removal is deliberate and the "
         "deprecation window has passed, update tests/api_surface.json in this PR (run "
         "tests.test_api_surface.regenerate()) and list the removal in the release notes."
+    )
+
+
+def _modules_declaring_all() -> list:
+    """Every importable ``kornia`` submodule that declares ``__all__``.
+
+    The inventory tracks the stable-core modules, but an unbound name is a problem
+    wherever it sits: the breakage that motivated this guard (#4026, the
+    ComfyUI-LTXVideo report in #3986) was in ``kornia.geometry.transform.pyramid``,
+    which the inventory does not cover. Walking the package finds every module that
+    declares a public surface, costs a fraction of a second, and needs no upkeep as
+    modules come and go.
+    """
+    import kornia
+
+    found = []
+    for info in pkgutil.walk_packages(kornia.__path__, "kornia."):
+        # Optional extras and backends are out of scope for this guard, so a module that
+        # cannot be imported here is skipped rather than failing the sweep.
+        with contextlib.suppress(Exception):
+            mod = importlib.import_module(info.name)
+            if getattr(mod, "__all__", None) is not None:
+                found.append(info.name)
+    return sorted(found)
+
+
+@pytest.mark.parametrize("module_name", _modules_declaring_all())
+def test_public_names_resolve(module_name):
+    """
+    Every name in ``__all__`` has to be bound in its module.
+
+    An unbound name breaks ``from <module> import *`` for everyone, and
+    ``test_no_public_name_removed`` cannot see it: the surface that test compares is
+    ``__all__`` itself, so a name whose binding was dropped still reads as present.
+    """
+    mod = importlib.import_module(module_name)
+    declared = mod.__all__
+
+    with warnings.catch_warnings():
+        # ``hasattr`` runs module-level ``__getattr__``, which is how the deprecated
+        # ``kornia.utils`` re-exports announce themselves. Keep the probe quiet so it
+        # does not emit a DeprecationWarning per run just by looking.
+        warnings.simplefilter("ignore")
+        unbound = sorted(name for name in declared if not hasattr(mod, name))
+
+    assert not unbound, (
+        f"{module_name}.__all__ lists names that are not bound in the module: "
+        f"{unbound}. `from {module_name} import *` raises AttributeError on the "
+        "first of them. Either restore the binding or drop the name from __all__ "
+        "and from tests/api_surface.json in the same PR."
     )
 
 
