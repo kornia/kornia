@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   HuggingFace cache (`~/.cache/huggingface/hub/models--<owner>--<name>/…`) and now means torch's hub
   directory (`<torch hub dir>/checkpoints/<owner>--<name>--model.safetensors`), so the first
   `from_pretrained_hf()` call after upgrading re-downloads the checkpoint (854 MB for KimiVL,
-  ~1.5 GB for SigLIP2) even for users who already had it. (#XXXX)
+  ~1.5 GB for SigLIP2) even for users who already had it. (#4293)
 
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
