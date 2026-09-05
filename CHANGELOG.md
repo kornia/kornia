@@ -411,6 +411,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   branch, used to raise: `_compute_zero_padding3d` defined a `(k - 1) // 2` helper and then returned the
   full kernel sizes, so the padded volume did not match the kernel it was convolved with. (#4241, #4242)
 
+* Eager bbox validation now rejects NaN and infinite coordinates: `validate_bbox` returns `False` and
+  `Boxes.from_tensor(..., validate_boxes=True)` raises `ValueError` for the `xyxy`, `xyxy_plus` and `xywh`
+  modes, instead of accepting them as valid geometry (closes #4238). (#4243)
+
 * `HyNet` and `SOSNet` now run in half precision, on CPU and on GPU, and no longer return NaN for a
   degenerate patch (closes #4224). Two defects sat on the same line. On CPU both raised
   `NotImplementedError: "avg_pool3d_out_frame" not implemented for 'Half'` (and the `'BFloat16'` spelling):
