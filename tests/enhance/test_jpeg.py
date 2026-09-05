@@ -28,7 +28,7 @@ class TestDiffJPEG(BaseTester):
         """This test standard usage."""
         B, H, W = 2, 32, 32
         img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-        jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
         img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
@@ -37,7 +37,7 @@ class TestDiffJPEG(BaseTester):
         """Regression test for #3745: the image must be passable via the ``input=`` keyword."""
         B, H, W = 2, 32, 32
         img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-        jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
         img_jpeg = kornia.enhance.jpeg_codec_differentiable(input=img, jpeg_quality=jpeg_quality)
         self.assert_close(img_jpeg, kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality))
 
@@ -45,7 +45,7 @@ class TestDiffJPEG(BaseTester):
         """This test standard usage."""
         B, H, W = 2, 33, 33
         img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-        jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
         img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
@@ -54,7 +54,7 @@ class TestDiffJPEG(BaseTester):
         """Here we test two batch dimensions."""
         B, H, W = 4, 32, 32
         img = torch.rand(B, B, 3, H, W, device=device, dtype=dtype)
-        jpeg_quality = torch.randint(low=0, high=100, size=(1,), device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(1,), device=device, dtype=dtype)
         qt_y = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
         qt_c = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
         img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
@@ -65,7 +65,7 @@ class TestDiffJPEG(BaseTester):
         """Here we test if we can handle custom quantization tables."""
         B, H, W = 4, 32, 32
         img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-        jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
         qt_y = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
         qt_c = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
         img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
@@ -76,7 +76,7 @@ class TestDiffJPEG(BaseTester):
         """Here we test if we can handle non-batched JPEG parameters (JPEG quality and QT's)."""
         B, H, W = 3, 32, 32
         img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-        jpeg_quality = torch.randint(low=0, high=100, size=(1,), device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(1,), device=device, dtype=dtype)
         qt_y = torch.randint(low=1, high=255, size=(1, 8, 8), device=device, dtype=dtype)
         qt_c = torch.randint(low=1, high=255, size=(1, 8, 8), device=device, dtype=dtype)
         img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
@@ -87,18 +87,50 @@ class TestDiffJPEG(BaseTester):
         """Here we test if we can handle non-batched inputs (input image, JPEG quality, and QT's)."""
         H, W = 32, 32
         img = torch.rand(3, H, W, device=device, dtype=dtype)
-        jpeg_quality = torch.randint(low=0, high=100, size=(1,), device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(1,), device=device, dtype=dtype)
         qt_y = torch.randint(low=1, high=255, size=(8, 8), device=device, dtype=dtype)
         qt_c = torch.randint(low=1, high=255, size=(8, 8), device=device, dtype=dtype)
         img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
 
+    def test_quality_zero_is_finite(self, device, dtype) -> None:
+        """A quality of 0 is inside the documented [0, 100] range and must not produce NaN (#4205)."""
+        B, H, W = 2, 32, 32
+        img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
+        jpeg_quality = torch.zeros(B, device=device, dtype=dtype).requires_grad_(True)
+
+        img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
+        assert torch.isfinite(img_jpeg).all()
+
+        img_jpeg.sum().backward()
+        assert jpeg_quality.grad is not None
+        assert torch.isfinite(jpeg_quality.grad).all()
+
+    def test_quality_zero_matches_quality_one(self, device, dtype) -> None:
+        """Quality 0 is clamped to 1, the strongest compression, as libjpeg does (#4205)."""
+        B, H, W = 2, 32, 32
+        img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
+
+        img_zero = kornia.enhance.jpeg_codec_differentiable(img, torch.zeros(B, device=device, dtype=dtype))
+        img_one = kornia.enhance.jpeg_codec_differentiable(img, torch.ones(B, device=device, dtype=dtype))
+        self.assert_close(img_zero, img_one)
+
+    def test_quality_zero_only_affects_its_own_batch_entry(self, device, dtype) -> None:
+        """The guard is elementwise: a 0 in the batch must not disturb its batch-mates (#4205)."""
+        B, H, W = 2, 32, 32
+        img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
+        mixed = torch.tensor([0.0, 50.0], device=device, dtype=dtype)
+
+        img_mixed = kornia.enhance.jpeg_codec_differentiable(img, mixed)
+        img_alone = kornia.enhance.jpeg_codec_differentiable(img, torch.full((B,), 50.0, device=device, dtype=dtype))
+        self.assert_close(img_mixed[1], img_alone[1])
+
     def test_exception(self, device, dtype) -> None:
         """Test exceptions (non-tensor input, wrong JPEG quality shape, wrong img shape, and wrong QT shape.)"""
         with pytest.raises(TypeError) as errinfo:
             B = 2
-            jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
+            jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(1904.0, jpeg_quality)
         assert "Input input type is not a torch.Tensor" in str(errinfo.value)
 
@@ -115,7 +147,7 @@ class TestDiffJPEG(BaseTester):
         with pytest.raises(BaseError) as errinfo:
             B, H, W = 2, 32, 32
             img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-            jpeg_quality = torch.randint(low=0, high=100, size=(B, 3, 2, 1), device=device, dtype=dtype)
+            jpeg_quality = torch.randint(low=1, high=100, size=(B, 3, 2, 1), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
         assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
@@ -124,7 +156,7 @@ class TestDiffJPEG(BaseTester):
         with pytest.raises(BaseError) as errinfo:
             B, H, W = 4, 32, 32
             img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-            jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
+            jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
             qt_y = torch.randint(low=1, high=255, size=(B, 7, 8), device=device, dtype=dtype)
             qt_c = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
@@ -139,7 +171,7 @@ class TestDiffJPEG(BaseTester):
         with pytest.raises(BaseError) as errinfo:
             B, H, W = 4, 32, 32
             img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-            jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
+            jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
             qt_y = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
             qt_c = torch.randint(low=1, high=255, size=(B, 8, 7), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
@@ -154,7 +186,7 @@ class TestDiffJPEG(BaseTester):
         with pytest.raises(BaseError) as errinfo:
             B, H, W = 4, 32, 32
             img = torch.rand(B, B, 3, H, W, device=device, dtype=dtype)
-            jpeg_quality = torch.randint(low=0, high=100, size=(B * B,), device=device, dtype=dtype)
+            jpeg_quality = torch.randint(low=1, high=100, size=(B * B,), device=device, dtype=dtype)
             qt_y = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
             qt_c = torch.randint(low=1, high=255, size=(B * 2, 8, 8), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
@@ -165,7 +197,7 @@ class TestDiffJPEG(BaseTester):
         with pytest.raises(BaseError) as errinfo:
             B, H, W = 4, 32, 32
             img = torch.rand(B, B, 3, H, W, device=device, dtype=dtype)
-            jpeg_quality = torch.randint(low=0, high=100, size=(B * B,), device=device, dtype=dtype)
+            jpeg_quality = torch.randint(low=1, high=100, size=(B * B,), device=device, dtype=dtype)
             qt_y = torch.randint(low=1, high=255, size=(B * 2, 8, 8), device=device, dtype=dtype)
             qt_c = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
@@ -176,7 +208,7 @@ class TestDiffJPEG(BaseTester):
         with pytest.raises(BaseError) as errinfo:
             B, H, W = 4, 32, 32
             img = torch.rand(B, B, 3, H, W, device=device, dtype=dtype)
-            jpeg_quality = torch.randint(low=0, high=100, size=(B * 2,), device=device, dtype=dtype)
+            jpeg_quality = torch.randint(low=1, high=100, size=(B * 2,), device=device, dtype=dtype)
             qt_y = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
             qt_c = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
@@ -1073,7 +1105,7 @@ class TestDiffJPEG(BaseTester):
     def test_module(self, device, dtype) -> None:
         B, H, W = 4, 16, 16
         img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-        jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
         qt_y = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
         qt_c = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
         diff_jpeg_module = kornia.enhance.JPEGCodecDifferentiable(qt_y, qt_c)
@@ -1084,7 +1116,7 @@ class TestDiffJPEG(BaseTester):
     def test_module_with_param(self, device, dtype) -> None:
         B, H, W = 4, 16, 16
         img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-        jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=1, high=100, size=(B,), device=device, dtype=dtype)
         qt_y = torch.nn.Parameter(torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype))
         qt_c = torch.nn.Parameter(torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype))
         diff_jpeg_module = kornia.enhance.JPEGCodecDifferentiable(qt_y, qt_c)
