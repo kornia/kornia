@@ -284,16 +284,13 @@ language = "en"
 # This patterns also effect to html_static_path and html_extra_path
 exclude_patterns = ["_build", ".ipynb_checkpoints"]
 
-# The name of the Pygments (syntax highlighting) style to use.
+# The name of the Pygments (syntax highlighting) style to use. The dark counterpart is a
+# pydata-sphinx-theme option, set in ``_PYDATA_THEME_OPTIONS`` below.
 pygments_style = "friendly"
-pygments_dark_style = "monokai"
 
 # The documentation builds on pydata-sphinx-theme (top navbar with Learn / API / Models and the
-# Ecosystem / About / Support dropdowns). ``KORNIA_DOCS_THEME=furo`` selects the previous furo
-# layout, kept as a fallback while the redesign settles.
-DOCS_THEME = os.environ.get("KORNIA_DOCS_THEME", "pydata")
-
-html_theme = "pydata_sphinx_theme" if DOCS_THEME == "pydata" else "furo"
+# Ecosystem / About / Support dropdowns).
+html_theme = "pydata_sphinx_theme"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -311,61 +308,6 @@ else:
 
 # Changing sidebar title to Kornia
 html_title = "Kornia"
-
-_GITHUB_ICON_SVG = (
-    '<svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 16 16">'
-    '<path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 '
-    "0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 "
-    "1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 "
-    "0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 "
-    "2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 "
-    "3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 "
-    '8c0-4.42-3.58-8-8-8z"></path></svg>'
-)
-
-_FURO_THEME_OPTIONS = {
-    # 'analytics_id': 'G-RKS4WFXVHJ', # Unsupported by furo theme
-    "light_logo": "img/kornia_logo_only_light.svg",
-    "dark_logo": "img/kornia_logo_only_dark.svg",
-    "sidebar_hide_name": True,
-    "navigation_with_keys": True,
-    # "View source" / "Edit on GitHub" buttons at the top of every page: the cheapest
-    # way to turn a reader who spotted a typo into a contributor.
-    "source_repository": "https://github.com/kornia/kornia/",
-    "source_branch": code_ref,
-    "source_directory": "docs/source/",
-    "top_of_page_buttons": ["view", "edit"],
-    "footer_icons": [
-        {
-            "name": "GitHub",
-            "url": "https://github.com/kornia/kornia",
-            "html": _GITHUB_ICON_SVG,
-            "class": "",
-        },
-    ],
-    "light_css_variables": {
-        "color-sidebar-background": "#3980F5",
-        "color-sidebar-background-border": "#3980F5",
-        "color-sidebar-caption-text": "white",
-        "color-sidebar-link-text--top-level": "white",
-        "color-sidebar-link-text": "white",
-        "sidebar-caption-font-size": "normal",
-        "color-sidebar-item-background--hover": " #5dade2",
-    },
-    "dark_css_variables": {
-        "color-sidebar-background": "#1a1c1e",
-        "color-sidebar-background-border": "#1a1c1e",
-        "color-sidebar-caption-text": "white",
-        "color-sidebar-link-text--top-level": "white",
-    },
-    # "announcement": """
-    #     <a style=\"text-decoration: none; color: white;\"
-    #        href=\"https://github.com/kornia/kornia\">
-    #        <img src=\"https://github.com/kornia/data/raw/main/GitHub-Mark-Light-32px.png\" width=20 height=20/>
-    #        Star Kornia on GitHub
-    #     </a>
-    # """,
-}
 
 _PYDATA_THEME_OPTIONS = {
     "logo": {
@@ -405,7 +347,7 @@ _PYDATA_THEME_OPTIONS = {
     "footer_end": [],
 }
 
-html_theme_options = _PYDATA_THEME_OPTIONS if DOCS_THEME == "pydata" else _FURO_THEME_OPTIONS
+html_theme_options = _PYDATA_THEME_OPTIONS
 
 # Navbar dropdown menus, rendered by ``_static/js/custom.js``: "Support" and "About" hang off the
 # toctree entries of the same name in index.rst; "Ecosystem" is a grouped panel inserted before
@@ -444,16 +386,15 @@ NAVBAR_MENUS = {
     },
 }
 
-if DOCS_THEME == "pydata":
-    # Feeds the "Edit this page" button and the source links.
-    html_context = {
-        "github_user": "kornia",
-        "github_repo": "kornia",
-        "github_version": code_ref,
-        "doc_path": "docs/source",
-    }
-    # The landing page has its own card grid; a section sidebar next to it would be empty noise.
-    html_sidebars = {"index": []}
+# Feeds the "Edit this page" button and the source links.
+html_context = {
+    "github_user": "kornia",
+    "github_repo": "kornia",
+    "github_version": code_ref,
+    "doc_path": "docs/source",
+}
+# The landing page has its own card grid; a section sidebar next to it would be empty noise.
+html_sidebars = {"index": []}
 
 # html_logo = '_static/img/kornia_logo.svg'
 # html_logo = '_static/img/kornia_logo_only.png'
@@ -483,7 +424,7 @@ html_extra_path = ["_extra"]
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = "Kornia"
-html_css_files = ["css/pydata.css" if DOCS_THEME == "pydata" else "css/main.css"]
+html_css_files = ["css/pydata.css"]
 html_js_files = ["js/custom.js"]
 
 # Configure viewcode extension.
@@ -608,8 +549,8 @@ _META_ATTR_RE = re.compile(r'(\w+)="([^"]*)"')
 def _inject_social_metatags(app, pagename, templatename, context, doctree):
     """Add Open Graph / Twitter card tags (and a fallback description) to every HTML page.
 
-    Search engines and chat apps render these when a docs link is shared; Sphinx and furo emit
-    none of them by default. The description is taken from the page's own ``.. meta::``
+    Search engines and chat apps render these when a docs link is shared; Sphinx and the theme
+    emit none of them by default. The description is taken from the page's own ``.. meta::``
     directive when it has one, so page authors keep control of the snippet.
     """
     metatags = context.get("metatags", "") or ""
@@ -731,8 +672,6 @@ def _check_navbar_menus(app, env):
 
 
 def _inject_navbar_menus(app, pagename, templatename, context, doctree):
-    if DOCS_THEME != "pydata":
-        return
     context["metatags"] = (context.get("metatags", "") or "") + "\n" + _json_script("kornia-navbar-menus", NAVBAR_MENUS)
 
 
