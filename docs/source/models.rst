@@ -71,6 +71,37 @@ The `EdgeDetectorBuilder` class implements a state-of-the-art edge detection mod
        model = EdgeDetectorBuilder.build()
        edges = model(image)  # list with one (1, 1, H, W) edge map per image
 
+.. _RRDBNet:
+
+RRDBNet
+-------
+
+The `RRDBNet` class is the Residual-in-Residual Dense Block generator behind ESRGAN and Real-ESRGAN.
+It is a plain ``nn.Module`` that upsamples a batched ``(B, 3, H, W)`` image by a factor of 1, 2 or 4,
+and its module and parameter names match the reference implementation, so the published Real-ESRGAN
+checkpoints load with ``strict=True``. ``kornia.contrib.super_resolution.RRDBNetBuilder`` configures
+it for the released Real-ESRGAN variants and downloads their weights.
+
+The architecture is vendored from `BasicSR <https://github.com/XPixelGroup/BasicSR>`_ (Apache-2.0,
+Copyright 2018-2022 BasicSR Authors); no extra package is required to use it.
+
+.. autoclass:: kornia.models.RRDBNet
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+   .. rubric:: Example
+
+   The following code upsamples an image by a factor of 4 with a randomly initialized generator:
+
+   .. code-block:: python
+
+       import torch
+       from kornia.models import RRDBNet
+
+       model = RRDBNet(num_in_ch=3, num_out_ch=3, scale=4, num_feat=64, num_block=23).eval()
+       upsampled = model(torch.rand(1, 3, 32, 32))  # (1, 3, 128, 128)
+
 .. _SegmentationModels:
 
 SegmentationModelsBuilder
