@@ -85,7 +85,10 @@ class TestSigLip2Builder:
         # The repository reaches the downloader whole, so its cache name carries
         # the owner; every HF repo publishes a ``model.safetensors``.
         download.assert_called_once_with(
-            "google/siglip2-base-patch16-224", "model.safetensors", model_dir=str(tmp_path)
+            "google/siglip2-base-patch16-224",
+            "model.safetensors",
+            model_dir=str(tmp_path),
+            validate=siglip2_builder.check_safetensors,
         )
 
     def test_the_variant_reaches_the_downloader(self, tmp_path):
