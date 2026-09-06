@@ -351,6 +351,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
   `kornia_rs.io`, and kornia kept calling the root, so on 0.1.11 and newer `load_image` raised
@@ -362,6 +363,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so instead of mislabelling the tensor. The nightly PyPI job now imports the installed wheel from
   outside the checkout (it used to import the source tree) and round-trips an image instead of only
   importing. (#4326)
+
+* `distance_transform` no longer returns NaN gradients when the cascade's convolution is exactly zero, including
+  sparse masks and all-zero inputs; the existing forward output is unchanged. (#4232)
+
+
 * `SemanticSegmentation.visualize` works for CUDA, MPS and half-precision models. It indexed the
   CPU-drawn colormap with the mask's `argmax`, which raises for CUDA and MPS masks, and recognised a
   softmax head with `torch.allclose(sum, 1)` at float32-sized default tolerances, which a float16 or
