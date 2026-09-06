@@ -63,7 +63,7 @@ def rgba_png_image(tmp_path_factory):
     """Create an RGBA PNG image for testing."""
     filename = tmp_path_factory.mktemp("data") / "rgba_image.png"
     img_rgba = np.random.randint(0, 255, (32, 32, 4), dtype=np.uint8)  # noqa: NPY002
-    kornia_rs.write_image_png_u8(str(filename), img_rgba, mode="rgba")
+    kornia_rs.io.write_image_png_u8(str(filename), img_rgba, mode="rgba")
     return filename
 
 
@@ -199,3 +199,83 @@ class TestDownloadImage:
         ):
             download_image(self.URL, str(dst))
         assert not dst.exists()
+
+
+class TestKorniaRsImageIo:
+    """``kornia.io`` calls ``kornia_rs.io``, where kornia_rs keeps its image readers and writers since 0.1.11.
+
+    kornia_rs 0.1.11 moved every ``read_image_*``/``write_image_*`` out of the package root; kornia kept
+    calling the root, so ``pip install kornia`` (which resolves the newest kornia_rs) lost JPEG loading and
+    most writes until the floor moved to 0.1.14 and the calls to ``kornia_rs.io`` (kornia#4325).
+    """
+
+    @staticmethod
+    def _used_function_names() -> set[str]:
+        """Every ``_rs_io.<name>`` attribute in ``kornia/io/io.py``."""
+        import ast
+        import inspect
+
+        import kornia.io.io as io_module
+
+        return {
+            node.attr
+            for node in ast.walk(ast.parse(inspect.getsource(io_module)))
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "_rs_io"
+        }
+
+    def test_used_function_names_are_extracted_from_the_source(self):
+        assert {"read_image_jpegturbo", "read_image", "write_image_tiff_f32"} <= self._used_function_names()
+
+    def test_installed_kornia_rs_provides_every_used_function(self):
+        missing = sorted(n for n in self._used_function_names() if not callable(getattr(kornia_rs.io, n, None)))
+        assert missing == [], f"kornia_rs {kornia_rs.__version__}: {missing}"
+
+    @pytest.mark.parametrize("ext", ["jpg", "png", "tiff"])
+    def test_uint8_round_trip_every_extension(self, tmp_path, ext):
+        img = create_random_img8_torch(5, 6, 3)
+        path = tmp_path / f"image.{ext}"
+        write_image(path, img)
+        loaded = load_image(path, ImageLoadType.UNCHANGED)
+        assert loaded.shape == img.shape
+        if ext != "jpg":  # lossless containers come back bit-exact
+            assert torch.equal(loaded, img)
+
+    def test_lookup_happens_at_call_time(self, tmp_path, monkeypatch):
+        """Patching the kornia_rs function is seen by the next call."""
+        calls = []
+        real = kornia_rs.io.write_image_png_u8
+
+        def spy(*args, **kwargs):
+            calls.append(args[0])
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(kornia_rs.io, "write_image_png_u8", spy)
+        write_image(tmp_path / "image.png", create_random_img8_torch(2, 3, 3))
+        assert calls == [str(tmp_path / "image.png")]
+
+
+class TestWiderThanUint8Decodes:
+    """kornia_rs decodes 16-bit PNG/TIFF and float TIFF; the 8-bit load types are not defined for them."""
+
+    @pytest.mark.parametrize(
+        "ext,dtype",
+        [("png", torch.uint16), ("tiff", torch.uint16), ("tiff", torch.float32)],
+    )
+    def test_unchanged_returns_the_decoded_dtype(self, tmp_path, ext, dtype):
+        if dtype == torch.uint16:
+            img = torch.randint(0, 65535, (3, 4, 5), dtype=torch.int32).to(torch.uint16)
+        else:
+            img = torch.rand(3, 4, 5)
+        path = tmp_path / f"image.{ext}"
+        write_image(path, img)
+        loaded = load_image(path, ImageLoadType.UNCHANGED)
+        assert loaded.dtype == dtype
+        assert torch.equal(loaded, img)
+
+    @pytest.mark.parametrize("load_type", [ImageLoadType.RGB8, ImageLoadType.GRAY8, ImageLoadType.RGB32])
+    def test_eight_bit_load_types_reject_a_float_decode(self, tmp_path, load_type):
+        path = tmp_path / "image.tiff"
+        write_image(path, torch.rand(3, 4, 5))
+        expected = rf"decoded to torch\.float32, and ImageLoadType\.{load_type.name}"
+        with pytest.raises(NotImplementedError, match=expected):
+            load_image(path, load_type)
