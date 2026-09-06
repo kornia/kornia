@@ -72,7 +72,6 @@ DIST_TO_IMPORT = {
     "opencv_python": "cv2",
     "opencv_python_headless": "cv2",
     "kornia_rs": "kornia_rs",
-    "segmentation_models_pytorch": "segmentation_models_pytorch",
 }
 
 # Third-party modules that are allowed without appearing in ``pyproject.toml``: torch, which is a
@@ -105,8 +104,6 @@ MUST_NOT_LOAD_ON_IMPORT = (
     "requests",
     "diffusers",
     "transformers",
-    "boxmot",
-    "segmentation_models_pytorch",
     "huggingface_hub",
     "safetensors",
     "cv2",
