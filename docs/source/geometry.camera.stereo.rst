@@ -125,7 +125,9 @@ where :math:`Q` is
     0       & 0       & -fy & fy * (cx_{left} -cx_{right})
     \end{bmatrix}
 
-Notice that the x-coordinate of the principal point, :math:`cx`, may differ between the left and right cameras, which is taken into account here.
+The point cloud is obtained by a homogeneous transform by :math:`Q` followed by the division by :math:`W`, so this :math:`Q` is only determined up to an overall sign, which cancels in that divide: :math:`Q` and :math:`-Q` give the same points. :class:`StereoCamera` builds the negated form of the matrix above.
+
+The :math:`Q[3, 3]` term carries :math:`fy * (cx_{left} - cx_{right})` for a setup whose principal points differ in :math:`cx`, but :class:`StereoCamera` rejects such a pair today: its constructor requires the two projection matrices to be equal outside the last column, so :math:`cx_{left} = cx_{right}` and that factor is zero. This is tracked in `#4270 <https://github.com/kornia/kornia/issues/4270>`_.
 
 Assuming :math:`fx = fy` you can further reduce this to:
 
