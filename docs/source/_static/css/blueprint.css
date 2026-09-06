@@ -1,0 +1,84 @@
+/* Match the docs to the kornia.org homepage "Blueprint" look: Space Grotesk + JetBrains Mono,
+   an amber accent, a muted-blue primary and a navy-dark / paper-light palette, plus a faint grid
+   ground. Loaded after pydata.css so these variable values win. Colours are lifted from the
+   homepage styles.css so the two sites read as one family. */
+
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+html,
+html[data-theme="light"] {
+    --pst-font-family-base: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --pst-font-family-heading: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --pst-font-family-monospace: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    /* light: paper ground, ink text, muted-blue links, amber accent */
+    --pst-color-primary: #1d4f7c;
+    --pst-color-primary-highlight: #163d61;
+    --pst-color-secondary: #163d61;
+    --pst-color-link: #1d4f7c;
+    --pst-color-link-hover: #163d61;
+    --pst-color-accent: #f5b301;
+    --pst-color-background: #eef3f8;
+    --pst-color-on-background: #ffffff;
+    --pst-color-surface: #e6edf4;
+    --pst-color-on-surface: #0b1a2b;
+    --pst-color-text-base: #0b1a2b;
+    --pst-color-text-muted: #3e546b;
+    --pst-color-border: #c3d1de;
+    --pst-color-border-muted: #d9e3ec;
+
+    --kornia-grid-line: rgba(11, 26, 43, 0.045);
+    --kornia-grid-line-2: rgba(11, 26, 43, 0.018);
+}
+
+html[data-theme="dark"] {
+    /* dark: navy ground, sky text, sky-blue links, the same amber accent */
+    --pst-color-primary: #9fd3ff;
+    --pst-color-primary-highlight: #cfe6ff;
+    --pst-color-secondary: #cfe6ff;
+    --pst-color-link: #9fd3ff;
+    --pst-color-link-hover: #cfe6ff;
+    --pst-color-accent: #f5b301;
+    --pst-color-background: #0b1a2b;
+    --pst-color-on-background: #10233a;
+    --pst-color-surface: #10233a;
+    --pst-color-on-surface: #e8f1ff;
+    --pst-color-text-base: #e8f1ff;
+    --pst-color-text-muted: #b7c9dd;
+    --pst-color-border: #244260;
+    --pst-color-border-muted: #1a3350;
+
+    --kornia-grid-line: rgba(159, 211, 255, 0.055);
+    --kornia-grid-line-2: rgba(159, 211, 255, 0.02);
+}
+
+/* the blueprint ground: a fine grid with a coarser line every fifth one, on the page background.
+   Content panels carry their own solid background, so the grid shows only in the gutters. */
+body {
+    background-color: var(--pst-color-background);
+    background-image:
+        linear-gradient(var(--kornia-grid-line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--kornia-grid-line) 1px, transparent 1px),
+        linear-gradient(var(--kornia-grid-line-2) 1px, transparent 1px),
+        linear-gradient(90deg, var(--kornia-grid-line-2) 1px, transparent 1px);
+    background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px;
+    background-attachment: fixed;
+}
+
+/* sharper corners, like the homepage's 2-3px radii */
+.bd-content .sd-card,
+.bd-content div.highlight,
+.bd-content pre,
+.bd-content .admonition,
+.bd-search input,
+kbd {
+    border-radius: 3px;
+}
+
+/* keep the amber accent legible as a button colour (dark ink on amber) */
+.bd-content a.sd-btn-primary,
+.bd-content .sd-btn-primary {
+    background-color: var(--pst-color-accent);
+    border-color: var(--pst-color-accent);
+    color: #0b1a2b;
+}
