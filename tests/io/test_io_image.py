@@ -168,3 +168,45 @@ class TestIoImage:
         write_image(file_path, img_th)
 
         assert file_path.is_file()
+
+
+class TestDownloadImage:
+    """Offline pins for ``kornia.io.sample.download_image``; ``urlopen`` is mocked, no network is touched."""
+
+    URL = "https://raw.githubusercontent.com/kornia/data/main/panda.jpg"
+
+    def test_saves_the_fetched_bytes(self, tmp_path):
+        from unittest import mock
+
+        from PIL import Image as PILImage
+
+        from kornia.io.sample import download_image
+
+        payload = io.BytesIO()
+        PILImage.new("RGB", (4, 3), (10, 20, 30)).save(payload, format="PNG")
+        with mock.patch("kornia.io.sample.urlopen") as mock_urlopen:
+            mock_urlopen.return_value.__enter__.return_value.read.return_value = payload.getvalue()
+            dst = tmp_path / "panda.png"
+            download_image(self.URL, str(dst))
+
+        mock_urlopen.assert_called_once_with(self.URL, timeout=30)
+        with PILImage.open(dst) as saved:
+            assert saved.size == (4, 3)
+            assert saved.getpixel((0, 0)) == (10, 20, 30)
+
+    def test_http_error_propagates(self, tmp_path):
+        import urllib.error
+        from unittest import mock
+
+        from kornia.io.sample import download_image
+
+        dst = tmp_path / "panda.png"
+        with (
+            mock.patch(
+                "kornia.io.sample.urlopen",
+                side_effect=urllib.error.HTTPError(self.URL, 404, "Not Found", {}, None),
+            ),
+            pytest.raises(urllib.error.HTTPError, match="404"),
+        ):
+            download_image(self.URL, str(dst))
+        assert not dst.exists()

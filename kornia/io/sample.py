@@ -51,7 +51,7 @@ def download_image(url: str, save_to: str) -> None:
         save_to: The file path where the downloaded image will be saved.
 
     """
-    # url defaults to one of the fixed https:// literals in _IMAGE_URLS below.
+    # get_sample_images only routes paths that start with "http" here (default: the https:// literals above).
     with urlopen(url, timeout=30) as resp:  # noqa: S310
         im = Image.open(io.BytesIO(resp.read()))
     im.save(save_to)
