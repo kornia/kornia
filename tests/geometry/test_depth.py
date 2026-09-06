@@ -497,26 +497,33 @@ class TestDepthToNormals(BaseTester):
         # the COLUMN tilts the normal towards -x, a depth that grows with the ROW tilts it towards -y. The
         # magnitudes are dtype-dependent (float32 -0.99995, float16 -1.0), so this pin asserts the sign pattern
         # with separators far from every measured value, and only the flat plane as an exact triple.
-        # Snippet used to generate expected: depth_to_normals(depth, K)[0, :, 1, 1] executed 2026-09-06 on this
-        # worktree (torch 2.14.0) -> flat plane exactly [0.0, 0.0, 1.0] (cpu float32/float16/bfloat16) and
-        # [0.0, -0.0, 1.0] (cpu float64, mps float32); column ramp [-0.9999499917030334, 0.0,
-        # -0.009999499656260014] on cpu float32, [-1.0, 0.0, -0.0099945068359375] on cpu float16,
-        # [-0.9999499917030334, 6.98e-08, -0.009999497793614864] on mps float32; row ramp [0.0, -1.0, 0.0] on
-        # cpu and [0.0, -1.0, -2.3283064365386963e-10] on mps float32.
-        camera_matrix = _k_asymmetric(device, dtype)
-        flat = depth_to_normals(torch.full((1, 1, 3, 3), 2.0, device=device, dtype=dtype), camera_matrix)
+        # The map is 3 x 4 with fx = 100 != fy = 50, so H != W and the two focal lengths differ: a transposed
+        # depth map does not even have the right shape here, and a reading that swapped fx and fy would move the
+        # ramp normals.
+        # Snippet used to generate expected: depth_to_normals(depth, K)[0, :, 1, 1] on the 3 x 4 map executed
+        # 2026-09-06 on this worktree (torch 2.14.0) -> flat plane exactly [0.0, 0.0, 1.0] (cpu
+        # float32/float16/bfloat16) and [0.0, -0.0, 1.0] (cpu float64, mps float32); column ramp
+        # [-0.9999499917030334, 0.0, -0.009999499656260014] on cpu float32, [-1.0, 0.0, -0.0099945068359375] on
+        # cpu float16, [-1.0, 0.0, -0.010009765625] on cpu bfloat16 and [-0.9999499917030334, 3.49e-08,
+        # -0.009999497793614864] on mps float32; row ramp [0.0, -1.0, 0.0] on cpu and
+        # [0.0, -1.0, -4.656612873077393e-10] on mps float32.
+        camera_matrix = _k_asymmetric(device, dtype, fy=50.0)
+        flat = depth_to_normals(torch.full((1, 1, 3, 4), 2.0, device=device, dtype=dtype), camera_matrix)
+        assert flat.shape == (1, 3, 3, 4)
         self.assert_close(
             flat[0, :, 1, 1], torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype), atol=0.0, rtol=0.0
         )
-        ramp = torch.arange(3.0, device=device, dtype=dtype) + 1.0
-        by_column = depth_to_normals(ramp.view(1, 1, 1, 3).expand(1, 1, 3, 3).contiguous(), camera_matrix)[0, :, 1, 1]
+        columns = torch.arange(4.0, device=device, dtype=dtype) + 1.0
+        by_column = depth_to_normals(columns.view(1, 1, 1, 4).expand(1, 1, 3, 4).contiguous(), camera_matrix)[
+            0, :, 1, 1
+        ]
         assert by_column[0].item() < -0.9
         assert by_column[1].abs().item() < 0.01
         assert by_column[2].item() < -0.001
-        by_row = depth_to_normals(ramp.view(1, 1, 3, 1).expand(1, 1, 3, 3).contiguous(), camera_matrix)[0, :, 1, 1]
+        rows = torch.arange(3.0, device=device, dtype=dtype) + 1.0
+        by_row = depth_to_normals(rows.view(1, 1, 3, 1).expand(1, 1, 3, 4).contiguous(), camera_matrix)[0, :, 1, 1]
         assert by_row[1].item() < -0.9
         assert by_row[0].abs().item() < 0.01
-        self.assert_close(by_column.norm(), torch.ones(1, device=device, dtype=dtype).squeeze())
 
 
 class TestWarpFrameDepth(BaseTester):
@@ -650,26 +657,33 @@ class TestWarpFrameDepth(BaseTester):
         # depth_to_3d_v2, so it inherits unproject_meshgrid's squeezed W = 1 axis: a (1, 2, 4, 1) image comes
         # back as a (1, 2, 4, 4) image -- silently three columns too wide -- while the H = 1 twin is correct.
         # A one-pixel-wide crop is a valid input and nothing raises.
-        # Snippet used to generate expected: warp_frame_depth(rand(1, 2, 4, 1), ones(1, 1, 4, 1), eye(4)[None],
-        # K).shape executed 2026-09-06 on this worktree (torch 2.14.0) -> (1, 2, 4, 4) and, for the H = 1 twin,
-        # (1, 2, 1, 5), on cpu for float32, float64, float16 and bfloat16 and on mps for float32 and float16.
-        # Pins the CURRENT shape; NOT a contract; delete when #4278 is repaired.
+        # The image carries distinct values so the pin is about the CONTENT, not only the shape: the single input
+        # column [1, 2, 3, 4] comes back as a 4 x 4 block whose every row is [1, 2, 3, 4] (and [5, 6, 7, 8] in
+        # the second channel), i.e. the column laid out along the phantom width and tiled. A shape-only
+        # assertion would also pass on an all-zero padded result.
+        # Snippet used to generate expected: warp_frame_depth(column_image, ones(1, 1, 4, 1), eye(4)[None], K)
+        # executed 2026-09-06 on this worktree (torch 2.14.0) -> shape (1, 2, 4, 4), values
+        # [1, 2, 3, 4] x 4 rows then [5, 6, 7, 8] x 4 rows, torch.equal to that block on cpu for float32,
+        # float64, float16 and bfloat16 and on mps for float32 and float16; the H = 1 twin returns (1, 2, 1, 5)
+        # and is torch.equal to its input in the same cells.
+        # Pins the CURRENT shape and values; NOT a contract; delete when #4278 is repaired.
         camera_matrix = _k_asymmetric(device, dtype)
         identity = _eye4(device, dtype)
+        column_image = torch.tensor(
+            [[[[1.0], [2.0], [3.0], [4.0]], [[5.0], [6.0], [7.0], [8.0]]]], device=device, dtype=dtype
+        )
         narrow = warp_frame_depth(
-            torch.zeros(1, 2, 4, 1, device=device, dtype=dtype),
-            torch.ones(1, 1, 4, 1, device=device, dtype=dtype),
-            identity,
-            camera_matrix,
+            column_image, torch.ones(1, 1, 4, 1, device=device, dtype=dtype), identity, camera_matrix
         )
         assert narrow.shape == (1, 2, 4, 4)
-        short = warp_frame_depth(
-            torch.zeros(1, 2, 1, 5, device=device, dtype=dtype),
-            torch.ones(1, 1, 1, 5, device=device, dtype=dtype),
-            identity,
-            camera_matrix,
+        assert torch.equal(narrow[0, 0], column_image[0, 0].reshape(1, 4).expand(4, 4))
+        assert torch.equal(narrow[0, 1], column_image[0, 1].reshape(1, 4).expand(4, 4))
+        row_image = torch.tensor(
+            [[[[1.0, 2.0, 3.0, 4.0, 5.0]], [[6.0, 7.0, 8.0, 9.0, 10.0]]]], device=device, dtype=dtype
         )
+        short = warp_frame_depth(row_image, torch.ones(1, 1, 1, 5, device=device, dtype=dtype), identity, camera_matrix)
         assert short.shape == (1, 2, 1, 5)
+        assert torch.equal(short, row_image)
 
     def test_wart_warp_frame_depth_rejects_an_empty_batch_4281(self, device, dtype):
         # Wart pin for kornia#4281 (audit labels 5c-wf-15, Y5-05): an empty batch raises a bare
@@ -924,27 +938,51 @@ class TestDepthWarper(BaseTester):
 
     def test_wart_warp_frame_depth_and_depth_warper_name_the_depth_frame_oppositely_4273(self, device, dtype):
         # Wart pin for kornia#4273 (audit labels 5c-wf-03, 5c-wf-04, 5c-wf-05): the two APIs produce the same
-        # warp from OPPOSITE argument names. warp_frame_depth reaches out[u] = image[u + 1] when the +1
-        # translation is passed as ``src_trans_dst``; DepthWarper reaches the same row when the same +1
-        # translation is the extrinsics of the camera it calls ``pinhole_dst`` and the identity is the camera it
-        # calls ``pinhole_src`` -- so a reader who maps "dst" to "dst" across the two APIs gets the inverse warp
-        # out[u] = image[u - 1], which is the swapped pair pinned here as the contrast.
+        # warp from OPPOSITE argument names, and this pin spells every argument as a KEYWORD so the clash is in
+        # the source text and not only in the prose. The identical warp is written
+        #   warp_frame_depth(image_src=IMG, depth_dst=D, src_trans_dst=T)          -- the depth is "dst"
+        #   DepthWarper(pinhole_dst=camera(T)).compute_projection_matrix(pinhole_src=camera(I))(
+        #       depth_src=D, patch_dst=IMG)                                        -- the same depth is "src",
+        # and the image the other one calls "src" is "patch_dst" here. A reader who maps "dst" to "dst" across
+        # the two APIs gets the INVERSE warp, out[u] = image[u - 1], which is the swapped pair below.
+        # The keywords are load-bearing: #4273's Expected section is a parameter RENAME
+        # (depth_src -> depth_dst, patch_dst -> image_src, and the matching pinhole_dst / pinhole_src), so a
+        # positional version of this pin would keep passing through the repair and never force its own deletion.
         # Snippet used to generate expected: the three row-0 calls executed 2026-09-06 on this worktree
-        # (torch 2.14.0) -> warp_frame_depth [1.0, 2.0, 3.0, 4.0, 0.0]; DepthWarper(dst = +1 tx) with an
-        # identity source [1.0, 2.0, 3.0, 4.0, 0.0] (float64: the last entry is 2.00e-11, hence assert_close and
-        # not torch.equal); DepthWarper(dst = identity) with a +1 tx source [0.0, 0.0, 1.0, 2.0, 3.0]. All three
-        # hold on cpu for float32, float64, float16 and bfloat16 and on mps for float32 and float16.
+        # (torch 2.14.0) -> warp_frame_depth [1.0, 2.0, 3.0, 4.0, 0.0]; DepthWarper(pinhole_dst = +1 tx) with an
+        # identity pinhole_src [1.0, 2.0, 3.0, 4.0, 0.0] (float64: the last entry is 2.00e-11, hence assert_close
+        # and not torch.equal); DepthWarper(pinhole_dst = identity) with a +1 tx pinhole_src
+        # [0.0, 0.0, 1.0, 2.0, 3.0]. All three hold on cpu for float32, float64, float16 and bfloat16 and on mps
+        # for float32 and float16.
         # Pins the CURRENT naming; NOT a contract; delete when #4273 aligns the two argument names.
         image = torch.arange(20.0, device=device, dtype=dtype).view(1, 1, 4, 5)
         depth = torch.ones(1, 1, 4, 5, device=device, dtype=dtype)
         identity = _eye4(device, dtype)
         tx_plus_one = _tx_plus_one(device, dtype)
+        intrinsics = _k44_warp(device, dtype)
+        height = torch.tensor([4], device=device)
+        width = torch.tensor([5], device=device)
         shifted_right = torch.tensor([1.0, 2.0, 3.0, 4.0, 0.0], device=device, dtype=dtype)
-        by_function = warp_frame_depth(image, depth, tx_plus_one, _k53_warp(device, dtype))[0, 0, 0]
-        by_class = self._warper(device, dtype, tx_plus_one, identity)(depth, image)[0, 0, 0]
+        by_function = warp_frame_depth(
+            image_src=image,
+            depth_dst=depth,
+            src_trans_dst=tx_plus_one,
+            camera_matrix=_k53_warp(device, dtype),
+        )[0, 0, 0]
+        moving = DepthWarper(
+            pinhole_dst=PinholeCamera(intrinsics.clone(), tx_plus_one.clone(), height, width), height=4, width=5
+        )
+        moving.compute_projection_matrix(pinhole_src=PinholeCamera(intrinsics.clone(), identity.clone(), height, width))
+        by_class = moving(depth_src=depth, patch_dst=image)[0, 0, 0]
         self.assert_close(by_function, shifted_right)
         self.assert_close(by_class, shifted_right)
-        swapped = self._warper(device, dtype, identity, tx_plus_one)(depth, image)[0, 0, 0]
+        naive = DepthWarper(
+            pinhole_dst=PinholeCamera(intrinsics.clone(), identity.clone(), height, width), height=4, width=5
+        )
+        naive.compute_projection_matrix(
+            pinhole_src=PinholeCamera(intrinsics.clone(), tx_plus_one.clone(), height, width)
+        )
+        swapped = naive(depth_src=depth, patch_dst=image)[0, 0, 0]
         self.assert_close(swapped, torch.tensor([0.0, 0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype))
         assert (by_class - swapped).abs().max().item() > 0.5
 
@@ -1181,11 +1219,16 @@ class TestDepthFromPlaneEquation(BaseTester):
         # preserved, so the two arms differ by their sign rather than only by magnitude. Nothing outside the
         # mask is touched, which is why the fronto-parallel pin above is exact. The one denominator the mask
         # does not fix is exactly 0 (kornia#4280), pinned below.
+        # ``eps`` is passed explicitly, equal to the function's own default, so the +/- 2e8 literal is a
+        # statement about the CLAMP and not about a default that could move: at eps = 1e-6 the same input
+        # returns +/- 2000000.0 instead (executed below).
         # Snippet used to generate expected: depth_from_plane_equation([[0, 1, 2.384185791015625e-09]], [[2.0]],
-        # [[[4.0, 3.0]]], K) and the negated normal, executed 2026-09-06 on this worktree (torch 2.14.0) ->
-        # 200000000.0 and -200000000.0 on cpu float32 and float64 and on mps float32, 200278016.0 and
-        # -200278016.0 on cpu bfloat16. float16 is skipped: 2.384185791015625e-09 underflows to 0 there, so the
-        # probe input is no longer inside the mask and the call returns inf on both signs.
+        # [[[4.0, 3.0]]], K, eps=1e-8) and the negated normal, executed 2026-09-06 on this worktree
+        # (torch 2.14.0) -> 200000000.0 and -200000000.0 on cpu float32 and float64 and on mps float32,
+        # 200278016.0 and -200278016.0 on cpu bfloat16; with eps=1e-6, 2000000.0 / -2000000.0 (cpu float32,
+        # float64, mps float32) and 2007040.0 / -2007040.0 (cpu bfloat16). float16 is skipped:
+        # 2.384185791015625e-09 underflows to 0 there, so the probe input is no longer inside the mask and the
+        # call returns inf on both signs at either eps.
         if dtype == torch.float16:
             pytest.skip(
                 "float16: the 2.384185791015625e-09 normal component underflows to 0, so the input is "
@@ -1195,12 +1238,14 @@ class TestDepthFromPlaneEquation(BaseTester):
         offsets = torch.tensor([[2.0]], device=device, dtype=dtype)
         principal_point = torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype)
         normal = torch.tensor([[0.0, 1.0, 2.384185791015625e-09]], device=device, dtype=dtype)
-        positive = depth_from_plane_equation(normal, offsets, principal_point, camera_matrix)
-        negative = depth_from_plane_equation(-normal, offsets, principal_point, camera_matrix)
+        positive = depth_from_plane_equation(normal, offsets, principal_point, camera_matrix, eps=1e-8)
+        negative = depth_from_plane_equation(-normal, offsets, principal_point, camera_matrix, eps=1e-8)
         assert torch.isfinite(positive).all()
         assert torch.isfinite(negative).all()
         self.assert_close(positive, torch.full((1, 1), 2.0e8, device=device, dtype=dtype))
         self.assert_close(negative, torch.full((1, 1), -2.0e8, device=device, dtype=dtype))
+        wider = depth_from_plane_equation(normal, offsets, principal_point, camera_matrix, eps=1e-6)
+        self.assert_close(wider, torch.full((1, 1), 2.0e6, device=device, dtype=dtype))
 
     def test_wart_depth_from_plane_equation_grazing_ray_is_inf_4280(self, device, dtype):
         # Wart pin for kornia#4280 (audit labels 5c-pl-03, 5c-pl-04, 5c-pl-05, Z-08, Z-11): the guard is
@@ -1213,9 +1258,10 @@ class TestDepthFromPlaneEquation(BaseTester):
         # one axis; the principal point's ray is exactly (0, 0, 1), which is what makes the dot product exactly
         # zero in every dtype.
         # Snippet used to generate expected: depth_from_plane_equation(n, [[2.0]], [[[4.0, 3.0]]], K) for
-        # n = (0, 1, 0), (1, 0, 0) and (0, -1, 0), and torch.sign(zeros(1)), executed 2026-09-06 on this
-        # worktree (torch 2.14.0) -> inf and 0.0 on cpu for float32, float64, float16 and bfloat16 and on mps
-        # for float32 and float16.
+        # n = (0, 1, 0), (1, 0, 0) and (0, -1, 0), executed 2026-09-06 on this worktree (torch 2.14.0) -> inf on
+        # cpu for float32, float64, float16 and bfloat16 and on mps for float32 and float16. (The mechanism,
+        # ``torch.sign(0.) == 0.``, is a torch fact rather than a kornia one and is stated here rather than
+        # asserted; it was executed alongside and returns 0.0 in every one of those cells.)
         # Pins the CURRENT value; NOT a contract; delete when #4280 is repaired.
         camera_matrix = _k_asymmetric(device, dtype)
         offsets = torch.tensor([[2.0]], device=device, dtype=dtype)
@@ -1225,7 +1271,6 @@ class TestDepthFromPlaneEquation(BaseTester):
                 torch.tensor([normal], device=device, dtype=dtype), offsets, principal_point, camera_matrix
             )
             assert torch.isinf(grazing).all()
-        assert torch.sign(torch.zeros(1, device=device, dtype=dtype)).item() == 0.0
 
     @pytest.mark.xfail(strict=True, reason="kornia#4280: sign(0) = 0, so the eps guard is a no-op at denom == 0")
     def test_convention_depth_from_plane_equation_clamps_the_singularity_4280(self, device, dtype):

@@ -292,8 +292,11 @@ class TestStereoCamera(BaseTester):
         # Convention pin (audit labels 5c-st-16, 5c-st-17, 5c-st-18, 5c-st-19, 5c-st-20): the disparity map is
         # channels-LAST, (B, H, W, 1), for both the method and the module-level function, and the returned point
         # cloud is (B, H, W, 3). The channels-FIRST (B, 1, H, W) layout that the rest of kornia uses for images
-        # is rejected, and so is an unbatched (B, H, W) -- the method's own docstring said (B, 1, H, W) before
-        # batch 5, which is the docs defect #4269 records.
+        # is rejected, and so is an unbatched (B, H, W). On this base the METHOD's docstring says the disparity
+        # is (B, 1, H, W) -- that is simply wrong, as the guard it forwards to rejects exactly that layout, and
+        # the module-level function it forwards to documents (B, H, W, 1) correctly; the batch 5c docstring
+        # commit corrects the method to match. No issue is filed for it, because it is a documentation error
+        # fixed in the same batch that pins the behavior.
         # The shape claim carries a value so it cannot pass on a dummy: with fx = 100 and tx = 0.5, a disparity
         # of 10 puts every point at Z = fx * tx / d = 5.
         # Snippet used to generate expected: cam.reproject_disparity_to_3D(full((1, 3, 5, 1), 10.0)) executed
@@ -484,11 +487,17 @@ class TestStereoCamera(BaseTester):
         # sign guard fires on an empty batch and B = 0 is rejected with a message about a tensor that has no
         # elements at all. kornia's degenerate-shape convention is empty in, empty out; the non-empty rig on the
         # same code path is accepted.
+        # The match is on the EMPTY tensor in the message, not on "to be negative", because the all-positive rig
+        # pinned above raises the same sentence -- ``Got tensor([50.])`` -- so a looser match would not tell the
+        # two apart.
         # Snippet used to generate expected: StereoCamera(zeros(0, 3, 4), zeros(0, 3, 4)) executed 2026-09-06 on
         # this worktree (torch 2.14.0) -> StereoException("Expected :math:`T_x * f_x` to be negative. Got
-        # tensor([]).") on cpu for float32, float64, float16 and bfloat16 and on mps for float32 and float16.
+        # tensor([]).") on cpu float32, "... Got tensor([], dtype=torch.float64)." / "torch.float16" /
+        # "torch.bfloat16" on the other cpu cells and "... Got tensor([], device='mps:0')." on mps -- so the
+        # regex stops before the closing bracket. The all-positive rig raises "... Got tensor([50.])" in the
+        # same cells and does not match it.
         # Pins the CURRENT behavior; NOT a contract; delete when #4281 is repaired.
-        with pytest.raises(StereoException, match="to be negative"):
+        with pytest.raises(StereoException, match=r"Got tensor\(\[\]"):
             StereoCamera(
                 torch.zeros(0, 3, 4, device=device, dtype=dtype), torch.zeros(0, 3, 4, device=device, dtype=dtype)
             )
