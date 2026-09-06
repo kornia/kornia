@@ -527,8 +527,10 @@ intersphinx_mapping = {
     "torch": ("https://pytorch.org/docs/stable/", None),
 }
 
-# mock these modules and won't try to actually import them
-autodoc_mock_imports = ["boxmot", "segmentation_models_pytorch"]
+# Optional third-party modules that autodoc must not try to import. Empty: the packages the documented
+# API still reaches lazily (diffusers, onnx, onnxruntime) go through kornia.core.external.LazyLoader,
+# which returns a placeholder under Sphinx (see the note there), so nothing needs mocking.
+autodoc_mock_imports: list[str] = []
 
 
 # -- Social / SEO metadata --------------------------------------------------

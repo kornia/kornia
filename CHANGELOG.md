@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Optional-dependency extras `kornia[onnx]` and `kornia[sd]` declare the third-party packages that
+  the ONNX and Stable-Diffusion-dissolving wrappers lazily import, and are documented on the
+  installation page. Missing-dependency errors now name the extra to install, and `dev` no longer
+  pulls `diffusers` and `transformers`. (#4301)
 * KimiVL and SigLIP2 builders load their safetensors checkpoints with kornia's own downloader
   (`kornia.core.download_hf_file`/`download_file_from_url`, which share the retrying, rate-limit-aware
   cache every other checkpoint uses) and a pure-torch reader (`kornia.core.load_safetensors`);
@@ -128,6 +132,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+* `kornia_rs>=0.1.14` is required; the floor used to be 0.1.9. kornia_rs 0.1.11 relocated its image I/O
+  and 0.1.12/0.1.13 lack the libjpeg-turbo reader, so no single call site works across 0.1.9-0.1.14;
+  rather than dispatch per version, kornia calls the current layout. `pip install -U kornia_rs` on an
+  environment that pins an older one. (#4326)
+* `kornia.contrib.BoxMotTracker` is removed, together with the `kornia.contrib.boxmot_tracker` module.
+  It wrapped the [boxmot](https://github.com/mikel-brostrom/boxmot) tracker zoo around a kornia detector,
+  but called the boxmot 10.x API (`boxmot.DeepOCSORT(model_weights=..., device=..., fp16=...)`), and no
+  boxmot release that installs alongside the torch versions kornia supports (`torch>=2.5.1`) provides
+  it, so the class could not be instantiated on any supported stack (see
+  [#4320](https://github.com/kornia/kornia/issues/4320)). Track with boxmot directly, feeding it the
+  output of a kornia detector such as `RTDETRDetectorBuilder`. `kornia.core.external.boxmot` is gone
+  with it. (#4301)
+
+* `SegmentationModelsBuilder.build()` no longer imports `segmentation_models_pytorch` (smp). It used
+  to take `model_name`, `encoder_name`, `encoder_weights`, `in_channels`, `classes`, `activation` and
+  `**kwargs`, import smp lazily, instantiate the smp architecture and look up the encoder's
+  preprocessing parameters itself. It now takes a constructed `nn.Module` and the encoder's
+  preprocessing-parameter dictionary (`build(model, preproc_params=None, name="segmentation_model")`),
+  where `preproc_params` is what `smp.encoders.get_preprocessing_params(encoder_name)` returns; build
+  the smp network and fetch its parameters yourself. Kornia no longer imports smp anywhere, and
+  `kornia.core.external.segmentation_models_pytorch` is gone. `SemanticSegmentation` gained the
+  `__init__(model, pre_processor, post_processor, name=None)` its siblings have, so the container the
+  builder returns can be instantiated (it was abstract before). The `input_range: [0, 255]`
+  preprocessing step is now `kornia.enhance.Rescale(255.0)`, a multiply by 255, instead of a
+  `Normalize` by a stored `1/255`: bfloat16 rounds that reciprocal to a ~254.0 multiplier (0.5 mapped
+  to 127.0 instead of 127.5), and float32 outputs of that step move by at most one ulp. (#4301)
+
+* `kornia.core.external.transformers` was removed; it was a `LazyLoader` handle no kornia code used.
+  Previously `from kornia.core.external import transformers` gave a lazy proxy that imported
+  `transformers` on first attribute access; that name no longer exists, so import `transformers`
+  directly instead. (#4301)
 * `KimiVLBuilder.from_pretrained_hf()` and `SigLip2Builder.from_pretrained_hf()` cache their
   checkpoint where every other kornia checkpoint lives. `cache_dir=None` used to mean the HuggingFace
   cache (`~/.cache/huggingface/hub/models--<owner>--<name>/snapshots/<sha>/model.safetensors`) and now
@@ -206,6 +241,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   patches on the image's device; both extractors move the LAF to the image's device up front, so a cross-device
   call now samples on the image's device and matches the same-device result (`extract_patches_simple` previously
   built the full sampling grid on the LAF's device).
+
+* `AUTUMN` is dropped from `kornia.color.__all__` (#4143). The class was deprecated in 0.7.2 in favour of
+  `ColorMap(base='autumn')` and removed by #3432, which left the `__all__` entry behind. Since that removal
+  `from kornia.color import AUTUMN` has raised `AttributeError` and `from kornia.color import *` has failed on
+  it, so nothing that works today stops working — the entry named a binding that no longer existed. Callers
+  still reaching for the class should use `ColorMap(base='autumn')`.
 
 * The shape guards of `normalize_homography` and `denormalize_homography` now reject everything but a
   `(3, 3)`/`(B, 3, 3)` matrix, and `normalize_homography3d`'s everything but a `(4, 4)`/`(B, 4, 4)` one (#3999).
@@ -310,6 +351,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+
+* `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
+  resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
+  `kornia_rs.io`, and kornia kept calling the root, so on 0.1.11 and newer `load_image` raised
+  `AttributeError` for every JPEG and every PNG that is not plain RGB, and `write_image` raised for
+  TIFF, 16-bit and float32 output (8-bit JPEG and PNG writes still worked); the lock's 0.1.10 kept CI
+  green. kornia now calls `kornia_rs.io` and requires kornia_rs 0.1.14 (see *Breaking changes*). That
+  decoder also reads 16-bit PNG/TIFF and float TIFF, which 0.1.10 rejected: `ImageLoadType.UNCHANGED`
+  returns them as `uint16`/`float32`, and the 8-bit load types raise a `NotImplementedError` that says
+  so instead of mislabelling the tensor. The nightly PyPI job now imports the installed wheel from
+  outside the checkout (it used to import the source tree) and round-trips an image instead of only
+  importing. (#4326)
+
+* `distance_transform` no longer returns NaN gradients when the cascade's convolution is exactly zero, including
+  sparse masks and all-zero inputs; the existing forward output is unchanged. (#4232)
+
+
+* `SemanticSegmentation.visualize` works for CUDA, MPS and half-precision models. It indexed the
+  CPU-drawn colormap with the mask's `argmax`, which raises for CUDA and MPS masks, and recognised a
+  softmax head with `torch.allclose(sum, 1)` at float32-sized default tolerances, which a float16 or
+  bfloat16 sum of probabilities never meets; the tolerance now scales with the number of classes and the
+  dtype's epsilon, and the colormap follows the mask's device and dtype, so the visualization keeps the
+  model's dtype instead of coming back as float32. `OnnxLightGlue` without `onnxruntime` raises an
+  `ImportError` that names `pip install "kornia[onnx]"`, like the lazy-loader handles do, instead of a
+  bare `BaseError`. (#4301)
+* `unproject_meshgrid` now returns the documented `(*, H, W, 3)` shape when `W` is 1. It squeezed the
+  meshgrid with a bare `.squeeze()`, which drops the width axis along with the leading batch axis whenever
+  `W == 1`, so `unproject_meshgrid(1, 3, K)` and `unproject_meshgrid(3, 1, K)` returned the same shape with
+  different values. The grid then broadcast across a phantom width in the two public functions built on it:
+  `depth_to_3d_v2` returned `(1, 3, 3, 3)` for a `W = 1` depth where `depth_to_3d` correctly returns
+  `(1, 3, 1, 3)`, and `warp_frame_depth` returned a 4-pixel-wide image for a 1-pixel-wide input. Only the
+  batch axis is dropped now. Output for every `W > 1` is byte-identical, and `depth_to_3d_v2` agrees with
+  `depth_to_3d` at `W = 1` as it already did everywhere else. (#4278)
+* The generated example figures in the API reference are rendered from RGB input.
+  `docs/generate_examples.py` decoded the sample images with `cv2.imdecode` and wrote them with
+  `cv2.imwrite`, both BGR, so every tensor the examples fed to kornia held reversed channels. The two
+  swaps cancel in the written file for channel-agnostic operations, but 35 colour-dependent figures
+  change, and the ones that depend on which channel is which (`rgb_to_hsv`, `ColorJitter`,
+  `apply_colormap`, the bbox and keypoint colours of `AugmentationSequential`, ...) showed a blue cast
+  or swapped overlay colours. The generator now decodes and writes with PIL, draws the KeyNetAffNet
+  LAF figure with kornia's own `get_laf_pts_to_draw`, and `opencv-python` and `kornia_moons` leave
+  the `[docs]` extra. (#4306)
+* `kornia.io.get_sample_images` and `kornia.onnx.ONNXLoader.list_operators` / `list_models` no longer need
+  `requests`, which `pip install kornia` never installed; they fetch with the standard library `urllib` instead.
+  The failure exceptions change with it, all still `OSError` subclasses: a sample-image URL that returns 404 now
+  raises `urllib.error.HTTPError` instead of `PIL.UnidentifiedImageError`, and an unreachable host raises
+  `urllib.error.URLError` instead of `requests.exceptions.ConnectionError`. A 404 from the Hugging Face listing
+  still raises the same `ValueError` (#4302)
 * `packaging` is no longer a runtime dependency; it was never imported. The `dev` extra no longer lists
   `pytest-cov` (CI runs `coverage run -m pytest`), `ruff` (the pre-commit hook installs the pinned copy) or a
   `numpy<3` cap, and `uv.lock` is regenerated to match (#4296).
@@ -328,6 +417,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer see the other two slabs' bounds. Computing the intersection directly with `&` needs no
   such recovery step. Interior boxes (the case the old reductions happened to recover correctly)
   are unaffected and byte-identical.
+* `solve_cubic`'s `D <= 0` (three-real-roots) branch no longer returns `nan` gradients for a
+  repeated or near-repeated real root (#4290, #4299). It differentiates `acos(R / sqrt(-Q3))`, whose own
+  derivative `-1/sqrt(1-x^2)` is unbounded at `x = +-1`; the branch condition guarantees the ratio
+  lies in `[-1, 1]`, but a repeated or near-repeated root pushes it to exactly that boundary,
+  where the value is correct but the derivative diverges. A double-root quartic reaches this
+  through `solve_quartic`'s resolvent cubic routinely, not as an edge case: measured on 20,000
+  random real-rooted quartics, 10.7% hit a non-finite gradient or a disconnected graph overall,
+  35.3% for exact double-root pairs specifically. Same failure shape as the `acos`/`asin`
+  boundary in `quaternion_exp_to_log`/`euler_from_quaternion` (#4007, fixed in #4228) — this is a
+  different call site, not covered by that fix, using the same guard: differentiate a substituted
+  safe argument, take the value from a detached copy of the real (possibly boundary) argument.
+  Forward values are unchanged; re-running the same 20,000-trial search with the fix applied
+  drops the failure count to 1,269 — a real, separate residual (a disconnected-graph case with
+  two simultaneous double-root pairs) remains and is tracked in #4290, not fixed here.
+
+* `ConvQuadInterp3d` / `conv_quad_interp3d` no longer return NaN gradients for `float16` input. The
+  Hessian determinant `_solve_cramer_sym3x3` divides by is a product of three second derivatives, so for
+  a `[0, 1]` response it lands around 1e-4 and below and still clears the `eps` gate. The forward divides
+  by it once and stays finite, but the backward scales by `1 / det**2`, which `float16` cannot represent
+  (`finfo(float16).tiny` is 6.1e-5), so the gradient overflowed and reduced to NaN over part of the
+  volume. The solve is now promoted to `float32` for `float16` input and the shifts cast back, as #4231
+  already does for the half-precision meshgrid. `bfloat16` keeps `float32`'s exponent range and was never
+  affected; `bfloat16` and `float32` outputs are unchanged. (#4305)
 
 * `RandAugment`, `AutoAugment`, `TrivialAugment` and `AugMix` no longer silently upcast half-precision
   batches to `float32`. `OperationBase.forward` — the shared gate every auto-augment op routes through —
@@ -401,6 +513,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `infer_bbox_shape` and `bbox_to_mask` now reject rank-4 `(B, N, 4, 2)` inputs with `ShapeError`. Previously,
   `N < 3` raised an incidental `IndexError`, while `N >= 3` silently returned `(B, 2)` extents computed from the
   wrong vertices. (#4218)
+
+* Fix `symmetric_transfer_error` returning `NaN` instead of `max_num` for singular homographies.
+  When `safe_inverse_with_mask` flags an input as non-invertible, the unshielded inverse matrix containing
+  non-finite values propagated `NaN` through `oneway_transfer_error` and the arithmetic mask
+  `(there + back) * mask + max_num * (~mask)`, poisoning both the forward error and autograd gradients.
+  Singular rows are now replaced by the identity *before* the differentiable inverse is taken, so the
+  gradients with respect to both the correspondences and `H` itself stay finite (zero on the singular
+  rows), and the final masking uses `torch.where` to cleanly assign `max_num`. Values for invertible
+  homographies are unchanged; for `squared=False` a singular row now scores `max_num` rather than the
+  previous `(max_num + eps).sqrt()`, matching the documented contract. (#4203)
 
 * Constructing `ScaleSpaceDetector` with `compile_modules` no longer permanently mutates the process-global
   `torch._dynamo.config.capture_dynamic_output_shape_ops` setting. (#4134)

@@ -15,12 +15,11 @@
 # limitations under the License.
 #
 
-from typing import Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import Callable, Dict, List, Optional, Self, Tuple, TypeVar
 
 import torch
 from torch import nn
 from torch.distributions import Bernoulli, RelaxedBernoulli
-from typing_extensions import Self
 
 from kornia.augmentation.base import _AugmentationBase
 
