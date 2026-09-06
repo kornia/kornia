@@ -18,10 +18,10 @@
 import io
 import sys
 from pathlib import Path
+from urllib.request import urlopen
 
 import numpy as np
 import pytest
-import requests
 import torch
 
 from kornia.core._compat import torch_version_ge
@@ -50,7 +50,8 @@ def _download_image(url: str, filename: str = "") -> Path:
 
     filename = url.rsplit("/", maxsplit=1)[-1] if len(filename) == 0 else filename
     # Download
-    bytesio = io.BytesIO(requests.get(url, timeout=60).content)
+    # url is a fixed https:// literal defined by each fixture above.
+    bytesio = io.BytesIO(urlopen(url, timeout=60).read())  # noqa: S310
     # Save file
     with open(filename, "wb") as outfile:
         outfile.write(bytesio.getbuffer())

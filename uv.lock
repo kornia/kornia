@@ -918,7 +918,6 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-timeout" },
-    { name = "requests" },
     { name = "ruff" },
     { name = "setuptools" },
 ]
@@ -985,7 +984,6 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'" },
     { name = "pytest-timeout", marker = "extra == 'dev'" },
     { name = "pyyaml", marker = "extra == 'docs'", specifier = ">=5.1" },
-    { name = "requests", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "segmentation-models-pytorch", marker = "extra == 'segmentation'" },
     { name = "setuptools", marker = "extra == 'dev'" },
