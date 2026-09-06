@@ -336,6 +336,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the only one. `kornia.feature.lightglue.Attention.enable_flash`, the attribute that combined the
   constructor argument with the probe result (and so always equalled the argument, because SDPA is
   present on every supported torch), was renamed to `Attention.allow_flash`. (#4287)
+* `packaging` is no longer a runtime dependency; it was never imported. The `dev` extra no longer lists
+  `pytest-cov` (CI runs `coverage run -m pytest`), `ruff` (the pre-commit hook installs the pinned copy) or a
+  `numpy<3` cap, and `uv.lock` is regenerated to match (#4296).
 
 * `RandAugment`, `AutoAugment`, `TrivialAugment` and `AugMix` no longer silently upcast half-precision
   batches to `float32`. `OperationBase.forward` — the shared gate every auto-augment op routes through —
