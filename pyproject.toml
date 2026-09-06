@@ -57,11 +57,10 @@ dev = [
 docs = [
   "furo",
   "pydata-sphinx-theme>=0.21,<0.22",  # _static/css/pydata.css and js/custom.js target theme internals
-  "kornia_moons",
   "matplotlib",
   "onnx",
   "onnxruntime",
-  "opencv-python",
+  "pillow",  # docs/generate_examples.py decodes and writes the generated figures with PIL
   "PyYAML>=5.1",
   "sphinx",
   "sphinx-autodoc-defaultargs",
