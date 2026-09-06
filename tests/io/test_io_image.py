@@ -51,7 +51,8 @@ def _download_image(url: str, filename: str = "") -> Path:
     filename = url.rsplit("/", maxsplit=1)[-1] if len(filename) == 0 else filename
     # Download
     # url is a fixed https:// literal defined by each fixture above.
-    bytesio = io.BytesIO(urlopen(url, timeout=60).read())  # noqa: S310
+    with urlopen(url, timeout=60) as resp:  # noqa: S310
+        bytesio = io.BytesIO(resp.read())
     # Save file
     with open(filename, "wb") as outfile:
         outfile.write(bytesio.getbuffer())
