@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* KimiVL and SigLIP2 builders load their safetensors checkpoints with kornia's own downloader
+  (`kornia.core.download_hf_file`/`download_file_from_url`, which share the retrying, rate-limit-aware
+  cache every other checkpoint uses) and a pure-torch reader (`kornia.core.load_safetensors`);
+  `huggingface_hub` and `safetensors` are no longer needed. Both were imported without ever being
+  declared as dependencies, so `KimiVLBuilder.from_pretrained_hf()` and
+  `SigLip2Builder.from_pretrained_hf()` used to raise `ImportError` on a plain `pip install kornia`.
+  The checkpoints move to torch's hub cache as a result; see *Breaking changes*. (#4293)
+* `kornia.models.RRDBNet`, a vendored Real-ESRGAN generator; `RRDBNetBuilder` no longer needs `basicsr`. (#4292)
+
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
   historical scale-space SIFT CPU/CUDA batch-runtime comparisons and plotting. (#4254)
@@ -118,6 +127,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-tree MPS workarounds stay. (#4202)
 
 ### Breaking changes
+
+* `KimiVLBuilder.from_pretrained_hf()` and `SigLip2Builder.from_pretrained_hf()` cache their
+  checkpoint where every other kornia checkpoint lives. `cache_dir=None` used to mean the HuggingFace
+  cache (`~/.cache/huggingface/hub/models--<owner>--<name>/snapshots/<sha>/model.safetensors`) and now
+  means torch's hub directory (`<torch hub dir>/checkpoints/<owner>--<name>--model.safetensors`); an
+  explicit `cache_dir` used to hold the same `models--<owner>--<name>/…` tree and now holds the flat
+  `<owner>--<name>--model.safetensors` file. Either way the first `from_pretrained_hf()` call after
+  upgrading re-downloads the checkpoint (854 MB for KimiVL, ~1.5 GB for SigLIP2) even for users who
+  already had it. (#4293)
 
 * Non-maxima suppression applies one border rule at every window size. `NonMaximaSuppression2d` /
   `nms2d` with a window larger than `(7, 7)`, and `NonMaximaSuppression3d` / `nms3d`, no longer report
@@ -293,6 +311,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * `import kornia` no longer imports onnxruntime when it is installed (#4295)
+* DeDoDe's vendored DINOv2 no longer probes for `xformers`; the pure-PyTorch path it always ran is the
+  only one. (#4288)
+* `kornia.feature.LightGlue` no longer probes for `flash_attn`; the SDPA path it always used is now
+  the only one. `kornia.feature.lightglue.Attention.enable_flash`, the attribute that combined the
+  constructor argument with the probe result (and so always equalled the argument, because SDPA is
+  present on every supported torch), was renamed to `Attention.allow_flash`. (#4287)
 
 * `RandAugment`, `AutoAugment`, `TrivialAugment` and `AugMix` no longer silently upcast half-precision
   batches to `float32`. `OperationBase.forward` — the shared gate every auto-augment op routes through —
