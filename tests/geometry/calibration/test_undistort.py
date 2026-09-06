@@ -367,9 +367,9 @@ class TestUndistortPoints(BaseTester):
         # already-converged answers.
         # Snippet used to generate expected: (undistort_points(distort_points(pts, K, d), K, d, num_iters=n)
         # - pts).abs().max() for n in (5, 10, 50), executed 2026-09-06 on the batch-5b worktree (torch 2.14.0),
-        # differenced in the working dtype -> cpu float64 1.355131e-02, 2.410766e-05, 0.0; cpu float32
+        # differenced in the working dtype -> cpu float64 1.355131e-02, 2.410766e-05, 1.421085e-14; cpu float32
         # 1.355362e-02, 3.051758e-05, 1.907349e-06; mps float32 the same three float32 values. float32 has
-        # reached its own rounding floor by 50 steps while float64 has closed exactly, which is the scoping the
+        # reached its own rounding floor by 50 steps while float64 is still closing, which is the scoping the
         # Convention block states. The forward map displaces these points by 7.306 px, so an identity
         # undistort_points would not pass. In float16 and bfloat16 the residual is pinned at the dtype's own
         # quantum from the first step (1.5625e-02 and 0.5), so the three counts are indistinguishable there and
