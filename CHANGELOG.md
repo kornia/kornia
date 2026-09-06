@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declared as dependencies, so `KimiVLBuilder.from_pretrained_hf()` and
   `SigLip2Builder.from_pretrained_hf()` used to raise `ImportError` on a plain `pip install kornia`.
   The checkpoints move to torch's hub cache as a result; see *Breaking changes*. (#4293)
+* `kornia.models.RRDBNet`, a vendored Real-ESRGAN generator; `RRDBNetBuilder` no longer needs `basicsr`. (#4292)
 
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
@@ -308,6 +309,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unnormalize as an exact pixel index. Refs #4030. (#4231)
 
 ### Bug fixes
+
+* DeDoDe's vendored DINOv2 no longer probes for `xformers`; the pure-PyTorch path it always ran is the
+  only one. (#4288)
+* `kornia.feature.LightGlue` no longer probes for `flash_attn`; the SDPA path it always used is now
+  the only one. `kornia.feature.lightglue.Attention.enable_flash`, the attribute that combined the
+  constructor argument with the probe result (and so always equalled the argument, because SDPA is
+  present on every supported torch), was renamed to `Attention.allow_flash`. (#4287)
 
 * `RandAugment`, `AutoAugment`, `TrivialAugment` and `AugMix` no longer silently upcast half-precision
   batches to `float32`. `OperationBase.forward` — the shared gate every auto-augment op routes through —
