@@ -85,10 +85,11 @@ class Attention(nn.Module):
 
 
 class MemEffAttention(Attention):
-    """Implement Multi-Head Self-Attention with the signature the vendored DINOv2 blocks call.
+    """Implement Multi-Head Self-Attention under the class name the vendored DINOv2 builders select.
 
-    The computation is the one of :class:`Attention`. The extra ``attn_bias`` argument is kept for
-    signature compatibility with the DINOv2 model builders that select this class, and must be ``None``.
+    The computation is the one of :class:`Attention`. The class name is kept because the DINOv2 model
+    builders reference it; the extra ``attn_bias`` argument is kept so :meth:`forward` matches the upstream
+    DINOv2 signature. Nothing in kornia passes it, and it must be ``None``.
     """
 
     def forward(self, x: Tensor, attn_bias=None) -> Tensor:  # type: ignore[no-untyped-def]
