@@ -92,11 +92,15 @@ class TestSegmentationModelsBuilder(BaseTester):
         expected = (x64.flip(1) * 255.0 - mean_t) / std_t
 
         assert out.shape == x.shape and out.dtype == dtype and out.device == x.device
-        # The pipeline chains three rounding ops in the working dtype at magnitudes up to ~1100, and its
-        # rescale is `Normalize(std=1 / 255)`, a division by the reciprocal, which bfloat16 rounds to
-        # exactly 1/256 (a 0.4% bias). Both stay inside a few ulps of the dtype, so pin the exact math
-        # within 8 eps rather than BaseTester's default per-dtype tolerance.
-        tol = 8 * torch.finfo(dtype).eps
+        # The pipeline chains three rounding ops in the working dtype at magnitudes up to ~1100, so the
+        # accumulated error reaches ~2 eps (measured over 50 draws: 1.9 float32, 1.3 float16, 1.4 bfloat16)
+        # while BaseTester's half-precision defaults are rtol ~1 eps and fail here. The rescale is
+        # `Normalize(std=1 / 255)`, a division by the reciprocal, which bfloat16 stores as 0.0039368
+        # (a multiplier of ~254.0, 0.4% low: 0.5 -> 127.0 instead of 127.5); that bias is ~0.5 eps and
+        # sits inside the same bound. The pipeline builds its mean/std/1/255 constants as float32 tensors,
+        # so a float64 input is only float32-accurate (measured 1.3 float32 eps); floor the tolerance there.
+        # Pin the exact math within 8 eps of the coarser of the two.
+        tol = 8 * max(torch.finfo(dtype).eps, torch.finfo(torch.float32).eps)
         self.assert_close(out.to(torch.float64), expected, rtol=tol, atol=tol)
         # The flip is load-bearing: the un-flipped normalization is a different tensor.
         assert not torch.allclose(out.to(torch.float64), (x64 * 255.0 - mean_t) / std_t, rtol=tol, atol=tol)
@@ -117,7 +121,8 @@ class TestSegmentationModelsBuilder(BaseTester):
     @pytest.mark.parametrize("missing", ["input_space", "input_range", "mean", "std"])
     def test_exception_missing_key(self, missing):
         params = {k: v for k, v in IMAGENET_PARAMS.items() if k != missing}
-        with pytest.raises(Exception, match=missing):
+        # Match the KORNIA_CHECK message, not just the key: a bare `KeyError(key)` would match the key too.
+        with pytest.raises(Exception, match=f"preproc_params is missing the key '{missing}'"):
             SegmentationModelsBuilder.get_preprocessing_pipeline(params)
 
     def test_exception_unsupported_input_space(self):
@@ -132,7 +137,7 @@ class TestSegmentationModelsBuilder(BaseTester):
 
     def test_exception_missing_key_with_build(self):
         params = {k: v for k, v in IMAGENET_PARAMS.items() if k != "std"}
-        with pytest.raises(Exception, match="std"):
+        with pytest.raises(Exception, match="preproc_params is missing the key 'std'"):
             SegmentationModelsBuilder.build(_stand_in_network(), params)
 
 
