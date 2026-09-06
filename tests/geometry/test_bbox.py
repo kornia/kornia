@@ -280,6 +280,21 @@ class TestBbox2D(BaseTester):
         fractional = torch.tensor([[[1.4, 1.4], [3.6, 1.4], [3.6, 2.6], [1.4, 2.6]]], device=device, dtype=dtype)
         assert bbox_to_mask(fractional, 6, 5).sum().item() == 2.0
 
+    def test_bbox_to_mask_matches_float32_reference_for_float16_boxes_on_a_large_image(self, device):
+        # float16 can only represent integers exactly up to 2048; beyond that consecutive
+        # positions collapse onto the same value. bbox_to_mask's position grid used to be built
+        # at boxes.dtype, so a float16 `boxes` on an image taller/wider than 2048px silently
+        # mismasked rows/columns near the collapse. Compare against a float32 box covering the
+        # same region on a 4096x4096 image, well past the collapse threshold on both axes.
+        boxes32 = torch.tensor(
+            [[[1000.0, 1000.0], [4090.0, 1000.0], [4090.0, 3000.0], [1000.0, 3000.0]]], device=device
+        )
+        boxes16 = boxes32.half()
+        mask32 = bbox_to_mask(boxes32, width=4096, height=4096)
+        mask16 = bbox_to_mask(boxes16, width=4096, height=4096)
+        assert mask16.dtype == torch.float16
+        assert torch.equal(mask16.bool(), mask32.bool())
+
     def test_convention_bbox_generator_far_corner_is_start_plus_size_minus_one_3934(self, device, dtype):
         # Convention pin (kornia#3934 tracks the inclusive arithmetic): width 3 from x=1 places
         # the right edge at x=3, which infer_bbox_shape reads back as width 3. A scalar input is a

@@ -335,8 +335,15 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     # (`torch.any(...)` -> Python `if`) that blocked torch.compile fullgraph (e.g. RandomErasing,
     # which builds its mask through this function). Dropped; behaviour is byte-identical.
     # zero padding the surroundings
-    yy = torch.arange(height, device=boxes.device, dtype=boxes.dtype).view(height, 1)
-    xx = torch.arange(width, device=boxes.device, dtype=boxes.dtype).view(1, width)
+    # Built at a fixed float32 regardless of boxes.dtype: these are exact pixel
+    # indices, and float16 can only represent integers exactly up to 2048 --
+    # beyond that, consecutive positions collapse onto the same value, so a
+    # float16 `boxes` on an image taller/wider than 2048px silently mismasks
+    # rows/columns near the collapse. float32 vs boxes.dtype comparisons below
+    # promote to float32 automatically, so nothing downstream loses precision;
+    # the returned mask still casts back to boxes.dtype exactly as documented.
+    yy = torch.arange(height, device=boxes.device, dtype=torch.float32).view(height, 1)
+    xx = torch.arange(width, device=boxes.device, dtype=torch.float32).view(1, width)
     x_min = boxes[:, 0, 0].view(-1, 1, 1)
     y_min = boxes[:, 0, 1].view(-1, 1, 1)
     x_max = boxes[:, 2, 0].view(-1, 1, 1)
