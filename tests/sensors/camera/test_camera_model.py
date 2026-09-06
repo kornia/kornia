@@ -18,11 +18,27 @@
 import pytest
 import torch
 
-from kornia.geometry.vector import Vector3
+from kornia.geometry.camera import project_points, unproject_points
+from kornia.geometry.vector import Vector2, Vector3
 from kornia.image import ImageSize
 from kornia.sensors.camera import CameraModel, CameraModelType
 
 from testing.base import BaseTester
+
+# Asymmetric fixture shared by the convention/wart pins below: fx = 100 != fy = 50 and cx = 4 != cy = 3 on a
+# non-square 6 x 8 image, so a transposed or swapped reading of the parameter vector changes the literals.
+_PARAMS = (100.0, 50.0, 4.0, 3.0)
+
+
+def _pinhole(device, dtype, params=_PARAMS):
+    """Build the asymmetric PINHOLE ``CameraModel`` the pins below share."""
+    return CameraModel(ImageSize(6, 8), CameraModelType.PINHOLE, torch.tensor(params, device=device, dtype=dtype))
+
+
+def _k3(device, dtype, params=_PARAMS):
+    """Build the (1, 3, 3) ``kornia.geometry.camera`` intrinsics matrix for the same parameters."""
+    fx, fy, cx, cy = params
+    return torch.tensor([[[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
 
 class TestPinholeCamera(BaseTester):
@@ -111,3 +127,208 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(cam.cy * scale, scaled_cam.cy)
         self.assert_close(cam.width * scale, scaled_cam.width)
         self.assert_close(cam.height * scale, scaled_cam.height)
+
+    def test_convention_projection_matches_geometry_camera_project_points(self, device, dtype):
+        # Convention pin (audit labels 5d-sc-01, 5d-sc-02; duplication-ledger row "geometry.camera /
+        # sensors.camera", KEEP SEPARATE, kornia#4274): kornia ships two camera type systems and their Pinhole
+        # paths compute the same numbers through different types. ``PinholeModel.project`` takes a Vector3 and
+        # returns a Vector2 whose ``.data`` is BYTE-IDENTICAL to ``kornia.geometry.camera.project_points`` on
+        # the 3x3 K built from the same (fx, fy, cx, cy) -- torch.equal, not a tolerance -- while a raw Tensor
+        # is rejected with AttributeError rather than accepted (the request in the closed #2708).
+        # fx = 100 != fy = 50, cx = 4 != cy = 3 and the point is off-axis, so a transposed reading of the
+        # parameter vector moves both components; the second arm changes ONE parameter (fy 50 -> 100) and the
+        # v coordinate alone moves, which is what fixes fy as the y-axis scale rather than a shared focal.
+        # Snippet used to generate expected: CameraModel(ImageSize(6, 8), CameraModelType.PINHOLE,
+        # tensor([100., 50., 4., 3.])).project(Vector3(tensor([[1., 2., 4.]]))).data executed 2026-09-06 on
+        # this worktree (torch 2.14.0) -> [[29.0, 28.0]] with torch.equal against project_points True, on cpu
+        # for float32, float64, float16 and bfloat16 and on mps for float32 and float16. With fy = 100 the
+        # same call gives the audit's [[29.0, 53.0]].
+        cam = _pinhole(device, dtype)
+        points = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
+        projected = cam.project(Vector3(points))
+        assert isinstance(projected, Vector2)
+        self.assert_close(projected.data, torch.tensor([[29.0, 28.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        assert torch.equal(projected.data, project_points(points, _k3(device, dtype)))
+        symmetric = (100.0, 100.0, 4.0, 3.0)
+        square = _pinhole(device, dtype, symmetric).project(Vector3(points))
+        self.assert_close(square.data, torch.tensor([[29.0, 53.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        assert torch.equal(square.data, project_points(points, _k3(device, dtype, symmetric)))
+        with pytest.raises(AttributeError):
+            cam.project(points)
+
+    def test_convention_unproject_takes_the_camera_frame_z_as_depth(self, device, dtype):
+        # Convention pin (audit labels 5d-sc-03, 5d-sc-40; pre-finding P6): the ``depth`` argument of
+        # ``CameraModelBase.unproject`` is the camera-frame z, not a ray length -- it multiplies the z = 1
+        # point, so the third component of the result IS the depth that was passed in. The result is
+        # byte-identical to ``kornia.geometry.camera.unproject_points`` (whose own ``normalize`` flag would
+        # give the ray-length reading instead, and which takes the depth as (B, 1) where the sensors API takes
+        # it as (B,)). The round trip through project() is not the identity map on the fixture: the projected
+        # pixel [[29.0, 28.0]] differs from the first two coordinates [[1.0, 2.0]] of the input, so the
+        # equality below is not vacuously true of any pair of inverse functions.
+        # Snippet used to generate expected: cam.unproject(Vector2(tensor([[29., 28.]])), tensor([2.])).data
+        # and cam.unproject(cam.project(Vector3(X)), X[..., 2]).data executed 2026-09-06 on this worktree
+        # (torch 2.14.0) -> [[0.5, 1.0, 2.0]] and [[1.0, 2.0, 4.0]], both torch.equal against
+        # unproject_points / against the input, on cpu for float32, float64, float16 and bfloat16 and on mps
+        # for float32 and float16.
+        cam = _pinhole(device, dtype)
+        pixels = torch.tensor([[29.0, 28.0]], device=device, dtype=dtype)
+        depth = torch.tensor([2.0], device=device, dtype=dtype)
+        unprojected = cam.unproject(Vector2(pixels), depth)
+        assert isinstance(unprojected, Vector3)
+        expected = torch.tensor([[0.5, 1.0, 2.0]], device=device, dtype=dtype)
+        self.assert_close(unprojected.data, expected, atol=0.0, rtol=0.0)
+        assert torch.equal(unprojected.data, unproject_points(pixels, depth[:, None], _k3(device, dtype)))
+        points = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
+        projected = cam.project(Vector3(points))
+        assert not torch.equal(projected.data, points[..., :2])
+        assert torch.equal(cam.unproject(projected, points[..., 2]).data, points)
+
+    def test_convention_matrix_is_the_three_by_three_intrinsics(self, device, dtype):
+        # Convention pin (audit labels 5d-sc-04, 5d-sc-05): ``matrix()`` returns the 3x3 pinhole intrinsics
+        # [[fx, 0, cx], [0, fy, cy], [0, 0, 1]] -- the same K that ``kornia.geometry.camera`` takes as an
+        # argument, byte-identical, and NOT the 4x4 layout ``kornia.geometry.camera.PinholeCamera`` stores.
+        # ``K()`` is an alias of ``matrix()``. Unbatched (4,) params give (3, 3) and (1, 4) params give
+        # (1, 3, 3), so the batch axis of the parameters is carried through. fx != fy and cx != cy, so the
+        # transpose of this matrix is a different matrix and torch.equal discriminates it.
+        # Snippet used to generate expected: cam.matrix() executed 2026-09-06 on this worktree (torch 2.14.0)
+        # -> [[100.0, 0.0, 4.0], [0.0, 50.0, 3.0], [0.0, 0.0, 1.0]] with torch.equal against the hand-built K
+        # True and shapes (3, 3) / (1, 3, 3), on cpu for float32, float64, float16 and bfloat16 and on mps for
+        # float32 and float16.
+        cam = _pinhole(device, dtype)
+        expected = _k3(device, dtype)
+        assert cam.matrix().shape == (3, 3)
+        assert torch.equal(cam.matrix(), expected[0])
+        assert torch.equal(cam.K(), cam.matrix())
+        assert not torch.equal(cam.matrix(), expected[0].transpose(-2, -1))
+        batched = CameraModel(
+            ImageSize(6, 8), CameraModelType.PINHOLE, torch.tensor([_PARAMS], device=device, dtype=dtype)
+        )
+        assert batched.matrix().shape == (1, 3, 3)
+        assert torch.equal(batched.matrix(), expected)
+
+    def test_wart_scale_rescales_the_principal_point_by_the_half_pixel_rule_4263(self, device, dtype):
+        # Wart pin for kornia#4263 (audit labels 5d-sc-06, 5d-sc-07, 5a-al-16; pre-finding P1):
+        # ``PinholeModel.scale(s)`` gives cx' = s * cx (2.0 for cx = 4, s = 0.5), the half-pixel / COLMAP
+        # rule, although every pixel grid in the library enumerates integer pixel CENTRES, under which the
+        # grid-consistent value is s * cx + (s - 1) / 2 = 1.75 for cx and 1.25 for cy. This is one of the four
+        # sites #4263 lists; ``PinholeCamera.scale``, ``PinholeCamera.scale_`` and ``scale_pinhole`` apply the
+        # same rule and are pinned in tests/geometry/camera/test_pinhole.py. cx = 4 != cy = 3 and s = 0.5 != 1,
+        # so the two candidate rules differ in both components and by different amounts.
+        # Snippet used to generate expected: cam.scale(tensor(0.5)).params executed 2026-09-06 on this
+        # worktree (torch 2.14.0) -> [50.0, 25.0, 2.0, 1.5], and the integer-centre rule 0.5 * 4 - 0.25 = 1.75
+        # / 0.5 * 3 - 0.25 = 1.25; on cpu for float32, float64, float16 and bfloat16 and on mps for float32
+        # and float16.
+        # Pins the CURRENT rescale rule; NOT a contract; delete when #4263 is repaired.
+        cam = _pinhole(device, dtype)
+        scaled = cam.scale(torch.tensor(0.5, device=device, dtype=dtype))
+        expected = torch.tensor([50.0, 25.0, 2.0, 1.5], device=device, dtype=dtype)
+        self.assert_close(scaled.params, expected, atol=0.0, rtol=0.0)
+        integer_centre = torch.tensor([50.0, 25.0, 1.75, 1.25], device=device, dtype=dtype)
+        assert not torch.equal(scaled.params, integer_centre)
+
+    def test_wart_scale_turns_the_image_size_fields_into_tensors_4263(self, device, dtype):
+        # Wart pin for kornia#4263 (audit label 5d-sc-38): ``PinholeModel.scale`` rebuilds the ImageSize as
+        # ``ImageSize(height * scale_factor, width * scale_factor)``, so the python ``int`` height and width
+        # that the constructor accepted come back as 0-dim floating tensors on the model's device -- and 3.0
+        # / 4.0 rather than the integer pixel counts an ImageSize is meant to hold. No filed issue records
+        # this: #4263's body covers only the principal-point rule of the same method, so the type change is
+        # pinned here under #4263 as that method's second deviation, and this pin outlives a #4263 repair only
+        # if the repair leaves the ImageSize construction alone.
+        # Snippet used to generate expected: (type(cam.image_size.height).__name__,
+        # type(cam.scale(tensor(0.5)).image_size.height).__name__, cam.scale(tensor(0.5)).image_size) executed
+        # 2026-09-06 on this worktree (torch 2.14.0, cpu float32) -> ('int', 'Tensor',
+        # ImageSize(height=tensor(3.), width=tensor(4.))); on mps the two fields carry device='mps:0'.
+        # Pins the CURRENT types and values; NOT a contract; delete when #4263 is repaired.
+        cam = _pinhole(device, dtype)
+        assert isinstance(cam.image_size.height, int)
+        assert isinstance(cam.image_size.width, int)
+        scaled = cam.scale(torch.tensor(0.5, device=device, dtype=dtype))
+        assert isinstance(scaled.image_size.height, torch.Tensor)
+        assert isinstance(scaled.image_size.width, torch.Tensor)
+        assert scaled.image_size.height.shape == ()
+        assert scaled.image_size.height.is_floating_point()
+        assert scaled.image_size.height.device == cam.params.device
+        self.assert_close(scaled.image_size.height, torch.tensor(3.0, device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(scaled.image_size.width, torch.tensor(4.0, device=device, dtype=dtype), atol=0.0, rtol=0.0)
+
+
+class TestCameraModelTypes(BaseTester):
+    # The four CameraModelType members and the parameter-vector contract each one enforces.  Only PINHOLE is
+    # usable; see test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284 below.
+    _LENGTHS = (
+        (CameraModelType.PINHOLE, 4),
+        (CameraModelType.BROWN_CONRADY, 12),
+        (CameraModelType.KANNALA_BRANDT_K3, 8),
+        (CameraModelType.ORTHOGRAPHIC, 4),
+    )
+
+    def test_convention_params_length_is_fixed_per_camera_model_type(self, device, dtype):
+        # Convention pin (audit labels 5d-sc-12, 5d-sc-13, 5d-sc-14, 5d-sc-15, 5d-sc-17, 5d-sc-18, 5d-sc-20,
+        # 5d-sc-21, 5d-sc-35): ``params`` is a (B, N) tensor whose LAST axis is fixed by the model type --
+        # 4 for PINHOLE (fx, fy, cx, cy), 12 for BROWN_CONRADY, 8 for KANNALA_BRANDT_K3 and 4 for ORTHOGRAPHIC
+        # -- and any other length raises ValueError.  The guard is ``params.shape[-1] != N or
+        # len(params.shape) > 2``, so an unbatched (N,) vector and a batched (B, N) one are both accepted
+        # while a (B, 1, N) one is rejected with the same message: there is no (B, N, 4) multi-camera form.
+        # The rejected lengths are N - 1, one parameter away from the accepted one, rather than a wildly
+        # wrong shape.  The four enum members and their values are part of the contract because
+        # ``CameraModelType`` is what a caller passes.
+        # Snippet used to generate expected: CameraModel(ImageSize(6, 8), t, ones(n)) / ones(2, n) /
+        # ones(n - 1) / ones(1, 1, n) for each (t, n) executed 2026-09-06 on this worktree (torch 2.14.0) ->
+        # shapes (n,) and (2, n) accepted, and ValueError "params must be of shape (B, 4) for PINHOLE Camera",
+        # "params must be of shape (B, 12) for BROWN_CONRADY Camera", "params must be of shape B, 8 for
+        # KANNALA_BRANDT_K3 Camera", "params must be of shape B, 4 for ORTHOGRAPHIC Camera" for both rejected
+        # shapes; on cpu for float32, float64, float16 and bfloat16 and on mps for float32 and float16.
+        assert [(m.name, m.value) for m in CameraModelType] == [
+            ("PINHOLE", 0),
+            ("BROWN_CONRADY", 1),
+            ("KANNALA_BRANDT_K3", 2),
+            ("ORTHOGRAPHIC", 3),
+        ]
+        for model_type, length in self._LENGTHS:
+            unbatched = CameraModel(ImageSize(6, 8), model_type, torch.ones(length, device=device, dtype=dtype))
+            assert unbatched.params.shape == (length,)
+            batched = CameraModel(ImageSize(6, 8), model_type, torch.ones(2, length, device=device, dtype=dtype))
+            assert batched.params.shape == (2, length)
+            with pytest.raises(ValueError, match="params must be of shape"):
+                CameraModel(ImageSize(6, 8), model_type, torch.ones(length - 1, device=device, dtype=dtype))
+            with pytest.raises(ValueError, match="params must be of shape"):
+                CameraModel(ImageSize(6, 8), model_type, torch.ones(1, 1, length, device=device, dtype=dtype))
+        with pytest.raises(ValueError, match=r"params must be of shape \(B, 4\) for PINHOLE Camera"):
+            CameraModel(ImageSize(6, 8), CameraModelType.PINHOLE, torch.ones(1, 1, 4, device=device, dtype=dtype))
+        with pytest.raises(ValueError, match=r"params must be of shape B, 8 for KANNALA_BRANDT_K3 Camera"):
+            CameraModel(ImageSize(6, 8), CameraModelType.KANNALA_BRANDT_K3, torch.ones(7, device=device, dtype=dtype))
+
+    def test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284(self, device, dtype):
+        # Wart pin for kornia#4284 (audit labels 5d-sc-14, 5d-sc-16, 5d-sc-17, 5d-sc-19, 5d-sc-20, 5d-sc-22,
+        # 5d-sc-23): BROWN_CONRADY, KANNALA_BRANDT_K3 and ORTHOGRAPHIC are exported from
+        # ``kornia.sensors.camera.__all__``, validate their parameter vectors and construct without complaint
+        # -- and then every operation on them raises NotImplementedError with an EMPTY message: project,
+        # unproject and matrix alike, because the underlying BrownConradyTransform / KannalaBrandtK3Transform
+        # distortions and the OrthographicProjection are bare ``raise NotImplementedError`` placeholders
+        # (pinned at their own level in tests/sensors/camera/test_distortion_model.py and
+        # test_projection_model.py).  ORTHOGRAPHIC's ``unproject`` is the one branch that reaches
+        # OrthographicProjection.unproject rather than a distortion placeholder; BROWN_CONRADY and
+        # KANNALA_BRANDT_K3 wire up the working Z1Projection and fail in the distortion instead, so all three
+        # models raise for two different reasons and every branch is executed here.
+        # ``CameraModelBase.project``/``unproject`` are the methods being called -- the three classes add no
+        # overrides -- so this pins the base class's behaviour on those models too.
+        # Snippet used to generate expected: project(Vector3([[1., 2., 4.]])) / unproject(Vector2([[0.5,
+        # 0.25]]), tensor([2.])) / matrix() on each of the three models executed 2026-09-06 on this worktree
+        # (torch 2.14.0) -> NotImplementedError('') for all nine calls, on cpu for float32, float64, float16
+        # and bfloat16 and on mps for float32 and float16.
+        # Pins the CURRENT behaviour; NOT a contract; delete when #4284 is repaired.
+        point3 = Vector3(torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype))
+        point2 = Vector2(torch.tensor([[0.5, 0.25]], device=device, dtype=dtype))
+        depth = torch.tensor([2.0], device=device, dtype=dtype)
+        for model_type, length in self._LENGTHS[1:]:
+            cam = CameraModel(ImageSize(6, 8), model_type, torch.ones(length, device=device, dtype=dtype))
+            assert cam.params.shape == (length,)
+            with pytest.raises(NotImplementedError):
+                cam.project(point3)
+            with pytest.raises(NotImplementedError):
+                cam.unproject(point2, depth)
+            with pytest.raises(NotImplementedError):
+                cam.matrix()
+        pinhole = CameraModel(ImageSize(6, 8), CameraModelType.PINHOLE, torch.ones(4, device=device, dtype=dtype))
+        assert isinstance(pinhole.project(point3), Vector2)
+        assert isinstance(pinhole.matrix(), torch.Tensor)
