@@ -10,7 +10,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-* `kornia.models.RRDBNet`, a vendored Real-ESRGAN generator; `RRDBNetBuilder` no longer needs `basicsr`. (#4292)
 * KimiVL and SigLIP2 builders load their safetensors checkpoints with kornia's own downloader
   (`kornia.core.download_hf_file`/`download_file_from_url`, which share the retrying, rate-limit-aware
   cache every other checkpoint uses) and a pure-torch reader (`kornia.core.load_safetensors`);
@@ -354,12 +353,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the only one. `kornia.feature.lightglue.Attention.enable_flash`, the attribute that combined the
   constructor argument with the probe result (and so always equalled the argument, because SDPA is
   present on every supported torch), was renamed to `Attention.allow_flash`. (#4287)
-* DeDoDe's vendored DINOv2 no longer probes for `xformers`; the pure-PyTorch path it always ran is the
-  only one. (#4288)
-* `import kornia` no longer imports onnxruntime when it is installed (#4295)
-* `packaging` is no longer a runtime dependency; it was never imported. The `dev` extra no longer lists
-  `pytest-cov` (CI runs `coverage run -m pytest`), `ruff` (the pre-commit hook installs the pinned copy) or a
-  `numpy<3` cap, and `uv.lock` is regenerated to match (#4296).
 * `kornia.io.get_sample_images` and `kornia.onnx.ONNXLoader.list_operators` / `list_models` no longer need
   `requests`, which `pip install kornia` never installed; they fetch with the standard library `urllib` instead.
   The failure exceptions change with it, all still `OSError` subclasses: a sample-image URL that returns 404 now
