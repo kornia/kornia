@@ -41,6 +41,39 @@ def undistort_points(
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
     distortion models are considered in this function.
 
+    Convention:
+        - ``points`` are **pixel** coordinates and so is the result.
+          Those pixels are measured on the integer-centre grid described in the Convention block on
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+        - ``dist`` follows the coefficient layout documented on
+          :func:`~kornia.geometry.calibration.distort_points`, which is the forward map this function inverts;
+          the accepted lengths and the internal zero-padding to 14 are the same.
+        - ``K`` and ``new_K`` play the mirror image of their roles in the forward map: ``K`` maps the incoming
+          pixel onto the normalized plane and ``new_K`` maps the undistorted normalized point back to pixels.
+        - the inverse is a fixed-point iteration of ``num_iters`` steps, not a closed form, so the round trip
+          through :func:`~kornia.geometry.calibration.distort_points` closes at the working dtype's tolerance
+          rather than exactly.
+
+    .. warning::
+        The iteration has no convergence test and no valid-radius guard. Outside the region where the radial
+        polynomial is monotonic it diverges silently, and raising ``num_iters`` makes the answer worse instead
+        of better. Tracked as `#4285 <https://github.com/kornia/kornia/issues/4285>`_; it carries no pin,
+        because what the function should return outside that region is not settled.
+
+    .. warning::
+        With a non-zero :math:`\tau_x` or :math:`\tau_y` this function and
+        :func:`~kornia.geometry.calibration.distort_points` are not inverses of each other, because they apply
+        the two branches of :func:`~kornia.geometry.calibration.tilt_projection` and those two are not
+        inverses. This function applies the inverse branch, which is the one that matches OpenCV. Tracked as
+        `#4276 <https://github.com/kornia/kornia/issues/4276>`_ and pinned by
+        ``test_wart_distort_undistort_round_trip_breaks_with_tilt_4276`` in
+        ``tests/geometry/calibration/test_undistort.py``.
+
+    .. warning::
+        ``torch.compile(fullgraph=True)`` fails on this function because the tilt test reads the coefficient
+        values on the host; ONNX export is already routed around it by ``is_exporting()``. Tracked as
+        `#4286 <https://github.com/kornia/kornia/issues/4286>`_.
+
     Args:
         points: Input image points with shape :math:`(*, N, 2)`.
         K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
@@ -140,9 +173,31 @@ def undistort_points(
 def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) -> torch.Tensor:
     r"""Compensate an image for lens distortion.
 
-    Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
+    Radial :math:`(k_1, k_2, k_3, k_4, k_5, k_6)`,
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
     distortion models are considered in this function.
+
+    Convention:
+        - two input conventions are accepted: the batched :math:`(B, C, H, W)` image with a
+          :math:`(B, 3, 3)` ``K`` and a :math:`(B, n)` ``dist``, and the legacy unbatched
+          :math:`(1, C, H, W)` image with a :math:`(3, 3)` ``K`` and an :math:`(n,)` ``dist``, which the
+          source keeps to avoid a breaking change. The legacy form is not a broadcast: the same unbatched
+          ``K`` and ``dist`` with a :math:`B > 1` image raise :class:`ValueError`.
+        - the sampling map is built by applying :func:`~kornia.geometry.calibration.distort_points` to the
+          grid of integer pixel centres that :func:`~kornia.geometry.grid.create_meshgrid` enumerates, so the
+          pixel-centre convention is the one described in the Convention block on
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+        - the map is resampled with ``align_corners=True``; the flag is baked in and the function exposes no
+          way to change it.
+        - with every coefficient zero the map is the pixel grid up to floating-point rounding, but the image
+          still goes through the bilinear sampler, so the output is equal to the input at the working dtype's
+          tolerance and is not bit-identical to it.
+
+    .. warning::
+        The sampling map is built with :func:`~kornia.geometry.calibration.distort_points`, so a non-zero
+        :math:`\tau_x` or :math:`\tau_y` carries the tilt defect tracked in
+        `#4276 <https://github.com/kornia/kornia/issues/4276>`_ into the resampled image, which is visibly
+        different from the untilted one.
 
     Args:
         image: Input image with shape :math:`(*, C, H, W)`.

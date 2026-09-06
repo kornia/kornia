@@ -64,6 +64,17 @@ def distort_points_kannala_brandt(
 ) -> torch.Tensor:
     r"""Distort points from the canonical z=1 plane into the camera frame using the Kannala-Brandt model.
 
+    Convention:
+        - ``projected_points_in_camera_z1_plane`` is a point on the **normalized** :math:`z = 1` plane, not a
+          pixel, and the result is in pixels.
+          Those pixels are measured on the integer-centre grid described in the Convention block on
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+        - ``params`` is the flat vector ``[fx, fy, cx, cy, k0, k1, k2, k3]``: the first four are the affine
+          part that :func:`~kornia.geometry.camera.distort_points_affine` takes on its own, and ``k0`` to
+          ``k3`` multiply :math:`\theta^2`, :math:`\theta^4`, :math:`\theta^6` and :math:`\theta^8` in the
+          fish-eye polynomial.
+        - :func:`undistort_points_kannala_brandt` is the inverse map.
+
     Args:
         projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).
         params: torch.Tensor representing the parameters of the Kannala-Brandt distortion model with shape (..., 8).
@@ -101,6 +112,17 @@ def distort_points_kannala_brandt(
 
 def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
     r"""Undistort points from the camera frame into the canonical z=1 plane using the Kannala-Brandt model.
+
+    Convention:
+        - ``distorted_points_in_camera`` is a **pixel** coordinate and the result is a point on the normalized
+          :math:`z = 1` plane; ``params`` is the same 8-element vector documented on
+          :func:`distort_points_kannala_brandt`.
+        - the inverse is a fixed number of Gauss-Newton steps rather than a closed form: the step count is not
+          a parameter and there is no convergence test, so the round trip through
+          :func:`distort_points_kannala_brandt` closes at the working dtype's tolerance rather than exactly.
+          :func:`~kornia.geometry.camera.undistort_points_affine` is the closed-form contrast.
+        - small constants guard the Newton denominator and the final radial rescale, so a point at the
+          principal point comes back as the origin rather than ``nan``.
 
     Args:
         distorted_points_in_camera: torch.Tensor representing the points to undistort with shape (..., 2).
@@ -169,17 +191,31 @@ def dx_distort_points_kannala_brandt(
 ) -> torch.Tensor:
     r"""Compute the derivative of the x distortion with respect to the x coordinate.
 
-    .. math::
-        \frac{\partial u}{\partial x} =
-        \begin{bmatrix} f_x & 0 \\ 0 & f_y \end{bmatrix}
+    Convention:
+        - the result has shape :math:`(..., 2, 2)` and is laid out like the Jacobian that
+          :func:`~kornia.geometry.camera.dx_distort_points_affine` returns: rows are the output components
+          ``(u, v)``, columns the input components ``(x, y)``. Unlike that one, it is **not** the Jacobian of
+          the function it is named after -- see the warning below.
+
+    .. warning::
+        The matrix returned here disagrees with :func:`torch.autograd.functional.jacobian` of
+        :func:`distort_points_kannala_brandt` and with central finite differences, which agree with each
+        other, and transposing it does not close the gap; at the origin it is ``nan``. Tracked as
+        `#4277 <https://github.com/kornia/kornia/issues/4277>`_. The ``Example:`` block below prints the value
+        this implementation returns today and is deliberately left byte-identical -- it is the executable
+        evidence for the issue, and the repair has to re-derive it together with the existing
+        ``test_dx_distort_points_kannala_brandt``. The current matrix is pinned by
+        ``test_wart_dx_distort_points_kannala_brandt_disagrees_with_autograd_4277`` and the intended one by the
+        strict ``xfail`` ``test_convention_dx_distort_points_kannala_brandt_matches_autograd_4277``, both in
+        ``tests/geometry/camera/test_distortion.py``.
 
     Args:
         projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).
         params: torch.Tensor representing the parameters of the Kannala-Brandt distortion model with shape (..., 8).
 
     Returns:
-        torch.Tensor representing the derivative of the x distortion with respect to the x coordinate
-        with shape (..., 2).
+        torch.Tensor representing the derivative of the distortion with respect to the point
+        with shape (..., 2, 2).
 
     Example:
         >>> points = torch.tensor([1., 2.])

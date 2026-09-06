@@ -27,13 +27,35 @@ from kornia.core.utils import is_exporting
 def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool = False) -> torch.Tensor:
     r"""Estimate the tilt projection matrix or the inverse tilt projection matrix.
 
+    Convention:
+        - the rotation is ``R = Ry(tauy) @ Rx(taux)`` and ``Pz`` is built from the third column of ``R``. Both
+          branches return exactly ``eye(3)`` when ``taux`` and ``tauy`` are zero, which is the case for a
+          ``dist`` vector whose 13th and 14th entries are zero.
+        - ``return_inverse=True`` returns the inverse of ``Pz @ R``. That is the branch
+          :func:`~kornia.geometry.calibration.undistort_points` applies, and it is what reproduces OpenCV's
+          ``undistortPoints`` on this repository's own reference values.
+        - ``return_inverse=False`` returns ``Pz @ R.T``, so the two branches are not inverses of each other.
+
+    .. warning::
+        OpenCV's ``computeTiltProjectionMatrix``, which this implementation cites, returns ``Pz @ R`` for the
+        forward branch, and so does the tilt step written out at the top of the ``kornia.geometry.calibration``
+        documentation page; the branch here returns ``Pz @ R.T``. Tracked as
+        `#4276 <https://github.com/kornia/kornia/issues/4276>`_. The consequence is silent while both angles
+        are zero and otherwise makes
+        :func:`~kornia.geometry.calibration.distort_points` and
+        :func:`~kornia.geometry.calibration.undistort_points` stop being inverses. The behaviour is documented
+        as it is and pinned by the ``test_convention_*`` / ``test_wart_*`` tests in
+        ``tests/geometry/calibration/test_distort.py``, including the strict ``xfail``
+        ``test_convention_tilt_projection_branches_are_inverses_4276``.
+
     Args:
         taux: Rotation angle in radians around the :math:`x`-axis with shape :math:`(*, 1)`.
         tauy: Rotation angle in radians around the :math:`y`-axis with shape :math:`(*, 1)`.
         return_inverse: False to obtain the tilt projection matrix. True for the inverse matrix.
 
     Returns:
-        torch.Tensor: Inverse tilt projection matrix with shape :math:`(*, 3, 3)`.
+        torch.Tensor: Tilt projection matrix, or the inverse tilt projection matrix when ``return_inverse`` is
+        True, with shape :math:`(*, 3, 3)`.
 
     """
     if taux.shape != tauy.shape:
@@ -82,9 +104,42 @@ def distort_points(
 ) -> torch.Tensor:
     r"""Distortion of a set of 2D points based on the lens distortion model.
 
-    Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
+    Radial :math:`(k_1, k_2, k_3, k_4, k_5, k_6)`,
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
     distortion models are considered in this function.
+
+    Convention:
+        - ``points`` are **pixel** coordinates and so is the result.
+          Those pixels are measured on the integer-centre grid described in the Convention block on
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+          :func:`~kornia.geometry.camera.distort_points_affine` and
+          :func:`~kornia.geometry.camera.distort_points_kannala_brandt` are the counterparts that take a point
+          on the normalized :math:`z = 1` plane and a flat parameter vector instead of ``K`` and ``dist``.
+        - ``dist`` is OpenCV's coefficient vector in the order listed under ``Args``. The lengths 4, 5, 8, 12
+          and 14 are accepted and every other length raises :class:`ValueError`; an accepted shorter vector is
+          zero-padded to 14 internally, so a 4-element vector and its 14-element zero padding give the same
+          answer.
+        - ``new_K`` and ``K`` play opposite roles: ``new_K`` maps the incoming pixel onto the normalized
+          plane and ``K`` maps the distorted normalized point back to pixels. ``new_K`` defaults to ``K``.
+        - :func:`~kornia.geometry.calibration.undistort_points` is the inverse map and takes the same
+          coefficient layout, with the two intrinsics in the mirrored roles.
+
+    .. warning::
+        With a non-zero :math:`\tau_x` or :math:`\tau_y` this function applies
+        :func:`~kornia.geometry.calibration.tilt_projection`\'s forward branch, ``Pz @ R.T``, while
+        :func:`~kornia.geometry.calibration.undistort_points` applies the inverse branch, the inverse of
+        ``Pz @ R``. The two are therefore not inverses of each other there, and this function disagrees with
+        the inverse of OpenCV's ``undistortPoints``. Tracked as
+        `#4276 <https://github.com/kornia/kornia/issues/4276>`_ and pinned by
+        ``test_wart_tilt_projection_forward_is_pz_times_r_transpose_4276`` in
+        ``tests/geometry/calibration/test_distort.py`` and
+        ``test_wart_distort_undistort_round_trip_breaks_with_tilt_4276`` in
+        ``tests/geometry/calibration/test_undistort.py``.
+
+    .. warning::
+        ``torch.compile(fullgraph=True)`` fails on this function because the tilt test reads the coefficient
+        values on the host; ONNX export is already routed around it by ``is_exporting()``. Tracked as
+        `#4286 <https://github.com/kornia/kornia/issues/4286>`_.
 
     Args:
         points: Input image points with shape :math:`(*, N, 2)`.
@@ -96,7 +151,7 @@ def distort_points(
             scale and shift the result by using a different matrix. Shape: :math:`(*, 3, 3)`. Default: None.
 
     Returns:
-        Undistorted 2D points with shape :math:`(*, N, 2)`.
+        Distorted 2D points with shape :math:`(*, N, 2)`.
 
     Example:
         >>> points = torch.rand(1, 1, 2)
