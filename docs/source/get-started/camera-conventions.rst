@@ -66,7 +66,7 @@ rest of the functional camera API assume. The convention is pinned by:
 .. warning::
 
    :meth:`kornia.geometry.camera.pinhole.PinholeCamera.scale` (and ``scale_``, and
-   ``kornia.sensors.camera.PinholeModel.scale``) rescale the principal point as ``cx' = s * cx`` — the COLMAP
+   :meth:`kornia.sensors.camera.PinholeModel.scale`) rescale the principal point as ``cx' = s * cx`` — the COLMAP
    rule — which disagrees with the integer pixel centres the rest of the library uses. It is documented as it
    is and tracked as a coordinated repair in
    `#4263 <https://github.com/kornia/kornia/issues/4263>`_.
