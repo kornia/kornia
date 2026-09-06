@@ -134,11 +134,6 @@ class TestScaleSpaceDetector(BaseTester):
         # stacks both signs into one call, unless a candidate cap keeps it on the separate path.
         assert len(separate_calls) > 0 and len(separate_calls) % 2 == 0
         assert len(joint_calls) == (len(separate_calls) if max_candidates is not None else len(separate_calls) // 2)
-        if dtype is torch.float16:
-            # ConvQuadInterp3d's float16 backward is NaN over part of the image on CPU (#4257), on
-            # `main` as well as here and on both paths, and `assert_close` treats matching NaNs as a
-            # mismatch. The gradient half of this pin runs in the other dtypes.
-            return
         actual_grad = torch.autograd.grad(sum(x.sum() for x in actual), img, retain_graph=True)[0]
         expected_grad = torch.autograd.grad(sum(x.sum() for x in expected), img)[0]
         self.assert_close(actual_grad, expected_grad)
