@@ -99,7 +99,7 @@ class LazyLoader:
                     if_install = input(
                         f"Optional dependency '{self.module_name}' is not installed. "
                         f"{self._install_hint} "
-                        "You may silent this prompt by `kornia_config.lazyloader.installation_mode = 'auto'`. "
+                        "You may silence this prompt by `kornia_config.lazyloader.installation_mode = 'auto'`. "
                         "Do you wish to install the dependency? [Y]es, [N]o, [A]ll."
                     )
                     while to_ask:
