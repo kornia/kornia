@@ -89,10 +89,16 @@ class TestDeformConv2d(BaseTester):
     # why the test this replaces, `test_matches_torchvision`, never ran there) in a throwaway venv:
     #   uv venv /tmp/tv && uv pip install --python /tmp/tv/bin/python torch torchvision
     #   -> torch==2.14.0, torchvision==0.29.0 (CPU wheels, Python 3.11.0)
-    # Snippet (inputs built exactly as `_torchvision_reference_inputs` above):
+    # Standalone snippet for that venv (which has neither kornia nor pytest, so the inputs are inlined
+    # rather than imported; keep them identical to `_torchvision_reference_inputs` above):
     #   import torch, torchvision.ops as tvops
     #   torch.set_printoptions(precision=10)
-    #   x, weight, bias, offset, mask = _torchvision_reference_inputs()
+    #   B, C_in, H, W, C_out, kH, kW = 1, 2, 4, 4, 2, 3, 3
+    #   x = torch.linspace(-1, 1, B * C_in * H * W, dtype=torch.float64).reshape(B, C_in, H, W)
+    #   weight = torch.linspace(-0.5, 0.5, C_out * C_in * kH * kW, dtype=torch.float64).reshape(C_out, C_in, kH, kW)
+    #   bias = torch.tensor([0.1, -0.2], dtype=torch.float64)
+    #   offset = 0.3 * torch.sin(torch.arange(B * 2 * kH * kW * H * W, dtype=torch.float64)).reshape(B, 18, H, W)
+    #   mask = torch.sigmoid(torch.cos(torch.arange(B * kH * kW * H * W, dtype=torch.float64))).reshape(B, 9, H, W)
     #   for use_mask in (False, True):
     #       out = tvops.deform_conv2d(
     #           x, offset, weight, bias=bias, padding=1, stride=1, mask=mask if use_mask else None
@@ -197,7 +203,10 @@ class TestDeformConv2d(BaseTester):
         expected = expected64.to(device=device, dtype=dtype)
 
         if dtype == torch.float64 and device.type == "cpu":
-            self.assert_close(out, expected, rtol=1e-6, atol=1e-6)
+            # The literal is quoted to 10 decimals (its own rounding is <= 5e-11) and kornia's float64
+            # CPU result lands within 5e-11 of it, so an absolute bound of 1e-9 still has 20x headroom;
+            # a looser bound would only hide float64 arithmetic bugs.
+            self.assert_close(out, expected, rtol=0, atol=1e-9)
         else:
             self.assert_close(out, expected)
 
