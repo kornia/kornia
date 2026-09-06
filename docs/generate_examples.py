@@ -690,7 +690,7 @@ def main():
     with torch.no_grad():
         lafs, _resps, _descs = kah(K.color.rgb_to_grayscale(img_outdoor))
         fig1, ax = plt.subplots(1, 1)
-        ax.imshow(K.tensor_to_image(img_outdoor[0]))
+        ax.imshow(K.image.tensor_to_image(img_outdoor[0]))
         draw_lafs(ax, lafs, color="lime")
         ax.set_title("KeyNetAffNet 512 LAFs")
         cur_fname = str(OUTPUT_PATH / "keynet_affnet.jpg")
