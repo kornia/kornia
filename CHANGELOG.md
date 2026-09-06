@@ -316,15 +316,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * `kornia.feature.LightGlue` no longer probes for `flash_attn`; the SDPA path it always used is now
-  the only one. (#4287)
+  the only one. `kornia.feature.lightglue.Attention.enable_flash`, the public attribute that recorded
+  whether the probe had succeeded, was renamed to `Attention.allow_flash` and now simply mirrors the
+  constructor argument of the same name. (#4287)
 * DeDoDe's vendored DINOv2 no longer probes for `xformers`; the pure-PyTorch path it always ran is the
   only one. (#4288)
 * `import kornia` no longer imports onnxruntime when it is installed (#4295)
 * `packaging` is no longer a runtime dependency; it was never imported (#4296).
 * `kornia.onnx.ONNXLoader.list_operators` and `kornia.io.sample` no longer need `requests` (#4302)
-  the only one. `kornia.feature.lightglue.Attention.enable_flash`, the public attribute that recorded
-  whether the probe had succeeded, was renamed to `Attention.allow_flash` and now simply mirrors the
-  constructor argument of the same name. (#4287)
 
 * `RandAugment`, `AutoAugment`, `TrivialAugment` and `AugMix` no longer silently upcast half-precision
   batches to `float32`. `OperationBase.forward` — the shared gate every auto-augment op routes through —
