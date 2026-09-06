@@ -292,6 +292,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* DeDoDe's vendored DINOv2 no longer probes for `xformers`; the pure-PyTorch path it always ran is the
+  only one. (#4288)
 * `kornia.feature.LightGlue` no longer probes for `flash_attn`; the SDPA path it always used is now
   the only one. `kornia.feature.lightglue.Attention.enable_flash`, the attribute that combined the
   constructor argument with the probe result (and so always equalled the argument, because SDPA is
