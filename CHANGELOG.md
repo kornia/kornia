@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `kornia[segmentation]` declare the third-party packages that the ONNX, Stable-Diffusion-dissolving,
   tracking and segmentation-model wrappers lazily import, and are documented on the installation
   page. Missing-dependency errors now name the extra to install, and `dev` no longer pulls
-  `diffusers` and `transformers`. (#XXXX)
+  `diffusers` and `transformers`. (#4301)
 
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
@@ -128,7 +128,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `kornia.core.external.transformers` was removed; it was a `LazyLoader` handle no kornia code used.
   Previously `from kornia.core.external import transformers` gave a lazy proxy that imported
   `transformers` on first attribute access; that name no longer exists, so import `transformers`
-  directly instead. (#XXXX)
+  directly instead. (#4301)
 
 * Non-maxima suppression applies one border rule at every window size. `NonMaximaSuppression2d` /
   `nms2d` with a window larger than `(7, 7)`, and `NonMaximaSuppression3d` / `nms3d`, no longer report
