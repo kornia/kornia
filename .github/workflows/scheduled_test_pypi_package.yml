@@ -27,27 +27,36 @@ jobs:
       - name: Pip install Kornia
         run: pip install kornia
 
+      # Run from outside the checkout: with the repository root as the working directory ``import kornia``
+      # resolves the checked-out source tree, not the wheel that was just installed.
       - name: Check dependencies and kornia version
+        working-directory: ${{ runner.temp }}
         run: |
           python -c "import torch;print('Pytorch version: ', torch.__version__)"
           python -c "import kornia;print('Kornia version: ', kornia.__version__)"
 
       # A bare import proves nothing about the Rust backend: kornia_rs 0.1.11 moved its image I/O into
-      # ``kornia_rs.io`` and ``import kornia`` still succeeded while ``load_image``/``write_image`` raised
-      # AttributeError (kornia#4325). Round-trip a pixel through every writable container instead.
+      # ``kornia_rs.io`` and ``import kornia`` still succeeded while ``load_image`` raised AttributeError on
+      # every JPEG (kornia#4325). Round-trip a pixel through every writable container instead. This is red
+      # for a release that predates the fix: that is the signal this job existed to give.
       - name: Round-trip an image through kornia.io
+        working-directory: ${{ runner.temp }}
         shell: bash
         run: |
           python - <<'EOF'
+          import kornia
           import kornia_rs
           import torch
 
           from kornia.io import ImageLoadType, load_image, write_image
 
+          print("kornia", kornia.__version__, "from", kornia.__file__, "| kornia_rs", kornia_rs.__version__)
           image = (torch.rand(3, 8, 9) * 255).to(torch.uint8)
           for ext in ("jpg", "png", "tiff"):
               write_image(f"smoke.{ext}", image)
               loaded = load_image(f"smoke.{ext}", ImageLoadType.UNCHANGED)
               assert loaded.shape == image.shape, (ext, loaded.shape)
-          print("kornia.io round-trip OK with kornia_rs", kornia_rs.__version__)
+              if ext != "jpg":
+                  assert torch.equal(loaded, image), f"{ext} round-trip changed the pixels"
+          print("kornia.io round-trip OK")
           EOF

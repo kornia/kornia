@@ -215,62 +215,96 @@ class TestDownloadImage:
 
 
 class TestImageIoBackend:
-    """``kornia.io`` follows the kornia_rs layout it finds: root functions on 0.1.9/0.1.10, ``kornia_rs.io`` on 0.1.11+.
+    """``kornia.io`` finds kornia_rs's image I/O wherever the installed kornia_rs keeps it (kornia#4325).
 
-    kornia_rs 0.1.11 moved every ``read_image_*``/``write_image_*`` into ``kornia_rs.io`` and left a deprecated
-    ``read_image_any`` at the root, so ``pip install kornia`` (which resolves the newest kornia_rs) lost JPEG
-    loading and every ``write_image`` until the shim in ``kornia/io/io.py`` (kornia#4325).
+    Five released layouts exist: 0.1.9/0.1.10 export everything from the package root; 0.1.11 moved the
+    readers and writers into ``kornia_rs.io`` (root keeps a deprecated ``read_image_any`` and the uint8
+    JPEG/PNG writers); 0.1.12 and 0.1.13 have no ``read_image_jpegturbo`` at all; 0.1.14 has it in ``io``.
     """
 
-    # Every kornia_rs function ``kornia/io/io.py`` calls through the resolved namespace.
-    USED = (
-        "read_image_jpegturbo",
-        "read_image_png_u8",
-        "write_image_jpeg",
-        "write_image_png_u8",
-        "write_image_tiff_u8",
-        "write_image_png_u16",
-        "write_image_tiff_u16",
-        "write_image_tiff_f32",
-    )
+    @staticmethod
+    def _backend(module):
+        from kornia.io.io import _KorniaRsImageIO
+
+        return _KorniaRsImageIO(module)
+
+    @staticmethod
+    def _used_function_names() -> set[str]:
+        """Every ``_rs_io.<name>`` attribute and ``_rs_io.find("<name>")`` argument in ``kornia/io/io.py``."""
+        import ast
+        import inspect
+
+        import kornia.io.io as io_module
+
+        names: set[str] = set()
+        for node in ast.walk(ast.parse(inspect.getsource(io_module))):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "_rs_io":
+                if node.attr != "find":
+                    names.add(node.attr)
+            elif (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "find"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "_rs_io"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+            ):
+                names.add(node.args[0].value)
+        return names
+
+    def test_used_function_names_are_extracted_from_the_source(self):
+        names = self._used_function_names()
+        assert {"read_image_jpegturbo", "read_image", "read_image_any", "write_image_tiff_f32"} <= names
 
     def test_root_layout(self):
         from types import SimpleNamespace
 
-        from kornia.io.io import _image_io_backend
+        root = SimpleNamespace(read_image_any=lambda p: "any", write_image_png_u8=lambda *a: None)
+        backend = self._backend(root)
+        assert backend.find("read_image_any") is root.read_image_any
+        assert backend.find("read_image") is None
+        assert backend.write_image_png_u8 is root.write_image_png_u8
 
-        root = SimpleNamespace(read_image_any=object(), read_image_jpegturbo=object())
-        namespace, read_any = _image_io_backend(root)
-        assert namespace is root
-        assert read_any is root.read_image_any
-
-    def test_io_submodule_layout(self):
+    def test_io_submodule_wins_over_the_root(self):
         from types import SimpleNamespace
 
-        from kornia.io.io import _image_io_backend
+        io_ns = SimpleNamespace(read_image=lambda p: "io", write_image_png_u8=lambda *a: "io")
+        root = SimpleNamespace(io=io_ns, read_image_any=lambda p: "root", write_image_png_u8=lambda *a: "root")
+        backend = self._backend(root)
+        assert backend.write_image_png_u8 is io_ns.write_image_png_u8
+        assert backend.find("read_image") is io_ns.read_image
+        assert backend.find("read_image_any") is root.read_image_any  # falls back to the root
 
-        io_ns = SimpleNamespace(read_image=object(), read_image_jpegturbo=object())
-        root = SimpleNamespace(io=io_ns, read_image_any=object())
-        namespace, read_any = _image_io_backend(root)
-        assert namespace is io_ns
-        assert read_any is io_ns.read_image
-
-    def test_unrelated_io_attribute_is_ignored(self):
+    def test_non_callable_attribute_is_not_a_function(self):
         from types import SimpleNamespace
 
-        from kornia.io.io import _image_io_backend
+        backend = self._backend(SimpleNamespace(io=SimpleNamespace(read_image=1), read_image=lambda p: "root"))
+        assert backend.find("read_image")("x") == "root"
 
-        root = SimpleNamespace(io=SimpleNamespace(), read_image_any=object(), read_image_jpegturbo=object())
-        namespace, read_any = _image_io_backend(root)
-        assert namespace is root
-        assert read_any is root.read_image_any
+    def test_missing_function_raises_import_error_naming_the_version(self):
+        from types import SimpleNamespace
+
+        backend = self._backend(SimpleNamespace(__version__="0.1.13", io=SimpleNamespace()))
+        with pytest.raises(ImportError, match=r"kornia_rs 0\.1\.13 has no image I/O function 'read_image_jpegturbo'"):
+            backend.read_image_jpegturbo("x.jpg")
+
+    def test_dunder_lookup_raises_attribute_error(self):
+        """``inspect``/doctest collection probe ``__wrapped__`` and friends; those must not become ImportErrors."""
+        from types import SimpleNamespace
+
+        backend = self._backend(SimpleNamespace(read_image_any=lambda p: "any"))
+        with pytest.raises(AttributeError):
+            backend.__wrapped__  # noqa: B018
+        assert not hasattr(backend, "__wrapped__")
 
     def test_installed_kornia_rs_provides_every_used_function(self):
-        from kornia.io.io import _read_image_any, _rs_io
+        from kornia.io.io import _rs_io
 
-        missing = [name for name in self.USED if not callable(getattr(_rs_io, name, None))]
+        optional = {"read_image_jpegturbo", "read_image", "read_image_any"}  # each has a fallback in io.py
+        missing = sorted(n for n in self._used_function_names() - optional if _rs_io.find(n) is None)
         assert missing == [], f"kornia_rs {kornia_rs.__version__}: {missing}"
-        assert callable(_read_image_any)
+        assert _rs_io.find("read_image") is not None or _rs_io.find("read_image_any") is not None
 
     @pytest.mark.parametrize("ext", ["jpg", "png", "tiff"])
     def test_uint8_round_trip_every_extension(self, tmp_path, ext):
@@ -281,3 +315,80 @@ class TestImageIoBackend:
         assert loaded.shape == img.shape
         if ext != "jpg":  # lossless containers come back bit-exact
             assert torch.equal(loaded, img)
+
+    def test_jpeg_loads_without_a_libjpeg_turbo_reader(self, tmp_path, monkeypatch):
+        """The 0.1.12/0.1.13 layout: ``kornia_rs.io`` exists but has no ``read_image_jpegturbo``."""
+        import kornia.io.io as io_module
+        from kornia.io.io import _KorniaRsImageIO
+
+        class _WithoutJpegTurbo:
+            def __init__(self, namespace):
+                self._namespace = namespace
+
+            def __getattr__(self, name):
+                if name == "read_image_jpegturbo":
+                    raise AttributeError(name)
+                attribute = getattr(self._namespace, name)
+                return _WithoutJpegTurbo(attribute) if name == "io" else attribute
+
+        pruned = _WithoutJpegTurbo(kornia_rs)
+        if io_module._rs_io.find("read_image") is None:
+            pytest.skip("kornia_rs < 0.1.11 has no generic reader to fall back to")
+        monkeypatch.setattr(io_module, "_rs_io", _KorniaRsImageIO(pruned))
+        assert io_module._rs_io.find("read_image_jpegturbo") is None
+
+        img = create_random_img8_torch(5, 6, 3)
+        path = tmp_path / "image.jpg"
+        write_image(path, img)
+        assert load_image(path, ImageLoadType.UNCHANGED).shape == img.shape
+
+    def test_lookup_happens_at_call_time(self, tmp_path, monkeypatch):
+        """Patching the kornia_rs function is seen by the next call, as it was before the resolver existed."""
+        import kornia.io.io as io_module
+
+        calls = []
+        namespace = io_module._rs_io._namespaces[0]
+        real = namespace.write_image_png_u8
+
+        def spy(*args, **kwargs):
+            calls.append(args[0])
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(namespace, "write_image_png_u8", spy)
+        write_image(tmp_path / "image.png", create_random_img8_torch(2, 3, 3))
+        assert calls == [str(tmp_path / "image.png")]
+
+
+class TestWiderThanUint8Decodes:
+    """kornia_rs 0.1.11+ decodes 16-bit PNG/TIFF and float TIFF, which 0.1.10 rejected at decode time."""
+
+    @pytest.fixture(autouse=True)
+    def _needs_generic_reader(self):
+        from kornia.io.io import _rs_io
+
+        if _rs_io.find("read_image") is None:
+            pytest.skip("kornia_rs < 0.1.11 cannot decode 16-bit or float images")
+
+    @pytest.mark.parametrize(
+        "ext,dtype",
+        [("png", torch.uint16), ("tiff", torch.uint16), ("tiff", torch.float32)],
+    )
+    def test_unchanged_returns_the_decoded_dtype(self, tmp_path, ext, dtype):
+        if dtype == torch.uint16:
+            img = torch.randint(0, 65535, (3, 4, 5), dtype=torch.int32).to(torch.uint16)
+        else:
+            img = torch.rand(3, 4, 5)
+        path = tmp_path / f"image.{ext}"
+        write_image(path, img)
+        loaded = load_image(path, ImageLoadType.UNCHANGED)
+        assert loaded.dtype == dtype
+        assert torch.equal(loaded, img)
+
+    @pytest.mark.parametrize("load_type", [ImageLoadType.RGB8, ImageLoadType.GRAY8, ImageLoadType.RGB32])
+    def test_eight_bit_load_types_reject_a_float_decode(self, tmp_path, load_type):
+        path = tmp_path / "image.tiff"
+        write_image(path, torch.rand(3, 4, 5))
+        with pytest.raises(
+            NotImplementedError, match=rf"decoded to torch\.float32, and ImageLoadType\.{load_type.name}"
+        ):
+            load_image(path, load_type)
