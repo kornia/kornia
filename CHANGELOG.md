@@ -342,6 +342,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* The generated example figures in the API reference are rendered from RGB input.
+  `docs/generate_examples.py` decoded the sample images with `cv2.imdecode` and wrote them with
+  `cv2.imwrite`, both BGR, so every tensor the examples fed to kornia held reversed channels. The two
+  swaps cancel in the written file for channel-agnostic operations, but 35 colour-dependent figures
+  change, and the ones that depend on which channel is which (`rgb_to_hsv`, `ColorJitter`,
+  `apply_colormap`, the bbox and keypoint colours of `AugmentationSequential`, ...) showed a blue cast
+  or swapped overlay colours. The generator now decodes and writes with PIL, draws the KeyNetAffNet
+  LAF figure with kornia's own `get_laf_pts_to_draw`, and `opencv-python` and `kornia_moons` leave
+  the `[docs]` extra. (#4306)
+* `kornia.io.get_sample_images` and `kornia.onnx.ONNXLoader.list_operators` / `list_models` no longer need
+  `requests`, which `pip install kornia` never installed; they fetch with the standard library `urllib` instead.
+  The failure exceptions change with it, all still `OSError` subclasses: a sample-image URL that returns 404 now
+  raises `urllib.error.HTTPError` instead of `PIL.UnidentifiedImageError`, and an unreachable host raises
+  `urllib.error.URLError` instead of `requests.exceptions.ConnectionError`. A 404 from the Hugging Face listing
+  still raises the same `ValueError` (#4302)
 * `packaging` is no longer a runtime dependency; it was never imported. The `dev` extra no longer lists
   `pytest-cov` (CI runs `coverage run -m pytest`), `ruff` (the pre-commit hook installs the pinned copy) or a
   `numpy<3` cap, and `uv.lock` is regenerated to match (#4296).
