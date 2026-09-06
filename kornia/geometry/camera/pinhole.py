@@ -33,12 +33,13 @@ class PinholeCamera:
           ``[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]``, and ``extrinsics`` the :math:`(B, 4, 4)` **world-to-camera**
           transform ``[R | t]`` (OpenCV / COLMAP semantics): :meth:`project` takes **world** points, computes
           ``K (R X + t)`` and returns pixels, while :meth:`unproject` inverts that step -- it takes pixels and a
-          camera-frame depth and returns **world** points. The functional API
-          (:func:`~kornia.geometry.camera.perspective.project_points`,
-          :func:`~kornia.geometry.camera.perspective.unproject_points`,
+          camera-frame depth and returns **world** points. The functional API takes a ``K`` and no
+          extrinsics, so it works in the **camera** frame:
+          :func:`~kornia.geometry.camera.perspective.project_points` and
+          :func:`~kornia.geometry.camera.perspective.unproject_points` take a :math:`(*, 3, 3)` ``K``, while
           :func:`~kornia.geometry.depth.depth_to_3d`, :func:`~kornia.geometry.depth.depth_to_3d_v2`,
-          :func:`~kornia.geometry.depth.unproject_meshgrid`, :func:`~kornia.geometry.depth.depth_to_normals`)
-          takes a :math:`(*, 3, 3)` ``K`` and no extrinsics, so it works in the **camera** frame.
+          :func:`~kornia.geometry.depth.unproject_meshgrid` and
+          :func:`~kornia.geometry.depth.depth_to_normals` need it **batched**, :math:`(B, 3, 3)`.
         - pixel coordinates are ``(u, v)`` = ``(x, y)`` = (column, row) with **integer pixel centres**: pixel
           ``(0, 0)`` is centred at ``(0, 0)``, which is what :func:`~kornia.geometry.grid.create_meshgrid`
           enumerates, so a centred image has its principal point at ``cx = (W - 1) / 2``, ``cy = (H - 1) / 2``.
