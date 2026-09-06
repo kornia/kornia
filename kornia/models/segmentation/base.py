@@ -176,8 +176,10 @@ class SemanticSegmentation(ModelBase):
         ):
             # Softmax is used, thus, muliclass segmentation
             semantic_mask = semantic_mask.argmax(dim=channel_dim, keepdim=True)
-            # Create a colormap for each pixel based on the class with the highest probability
-            output = colors[semantic_mask.squeeze(channel_dim)]
+            # Create a colormap for each pixel based on the class with the highest probability. The colormap is
+            # generated on the CPU (a seeded CPU generator keeps it reproducible), so it has to follow the mask
+            # before the gather: indexing a CPU tensor with CUDA or MPS indices raises.
+            output = colors.to(semantic_mask.device)[semantic_mask.squeeze(channel_dim)]
             if semantic_mask.dim() == 3:
                 output = output.permute(2, 0, 1)
             elif semantic_mask.dim() == 4:
