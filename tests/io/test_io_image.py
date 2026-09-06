@@ -16,25 +16,15 @@
 #
 
 import io
-import sys
 from pathlib import Path
 from urllib.request import urlopen
 
+import kornia_rs
 import numpy as np
 import pytest
 import torch
 
-from kornia.core._compat import torch_version_ge
 from kornia.io import ImageLoadType, load_image, write_image
-
-try:
-    import kornia_rs
-except ImportError:
-    kornia_rs = None
-
-
-def available_package() -> bool:
-    return sys.version_info >= (3, 7, 0) and torch_version_ge(1, 10, 0) and kornia_rs is not None
 
 
 def create_random_img8(height: int, width: int, channels: int) -> np.ndarray:
@@ -90,7 +80,6 @@ def images_fn(png_image, jpg_image):
     return {"png": png_image, "jpg": jpg_image}
 
 
-@pytest.mark.skipif(not available_package(), reason="kornia_rs only supports python >=3.7 and pt >= 1.10.0")
 class TestIoImage:
     def test_smoke(self, tmp_path: Path) -> None:
         height, width = 4, 5
