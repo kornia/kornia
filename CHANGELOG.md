@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Documented depth and stereo conventions (the two meanings of depth, the `(B, 3, H, W)` versus
+  `(B, H, W, 3)` layouts, the opposite source/destination naming of `warp_frame_depth` and
+  `DepthWarper`, the rectified stereo `Q` matrix) and added executable pins for `kornia.geometry.depth`
+  and `StereoCamera`, with the disparity-reprojection axis swap, the `W = 1` axis loss and the guard
+  defects tracked in dedicated issues. (#4317)
+
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
   historical scale-space SIFT CPU/CUDA batch-runtime comparisons and plotting. (#4254)
