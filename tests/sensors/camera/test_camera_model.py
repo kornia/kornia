@@ -251,6 +251,25 @@ class TestPinholeCamera(BaseTester):
         assert scaled.image_size.height.device == cam.params.device
         self.assert_close(scaled.image_size.height, torch.tensor(3.0, device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(scaled.image_size.width, torch.tensor(4.0, device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        # The conversion is a property of the ARGUMENT TYPE, not of ``scale``: ``image_size`` is rebuilt by
+        # multiplying the stored fields, so a python number multiplies python numbers and keeps them.  The
+        # counterexample is in this method's own docstring, whose doctest calls ``cam.scale(2)``.  Without
+        # these two arms the assertions above would read as "scale() turns the fields into tensors", which is
+        # false.  Snippet used to generate expected: cam.scale(2).image_size and cam.scale(2.0).image_size
+        # executed 2026-09-06 on this worktree (torch 2.14.0) -> ImageSize(height=12, width=16) with int
+        # fields and ImageSize(height=12.0, width=16.0) with float fields, on cpu for float32, float64,
+        # float16 and bfloat16 and on mps for float32 and float16.
+        from_int = cam.scale(2)
+        assert isinstance(from_int.image_size.height, int)
+        assert isinstance(from_int.image_size.width, int)
+        assert (from_int.image_size.height, from_int.image_size.width) == (12, 16)
+        from_float = cam.scale(2.0)
+        assert isinstance(from_float.image_size.height, float)
+        assert isinstance(from_float.image_size.width, float)
+        assert (from_float.image_size.height, from_float.image_size.width) == (12.0, 16.0)
+        from_tensor = cam.scale(torch.tensor(2.0, device=device, dtype=dtype))
+        assert isinstance(from_tensor.image_size.height, torch.Tensor)
+        assert isinstance(from_tensor.image_size.width, torch.Tensor)
 
 
 class TestCameraModelTypes(BaseTester):

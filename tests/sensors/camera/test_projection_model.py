@@ -99,6 +99,16 @@ class TestProjection(BaseTester):
         behind = projection.project(Vector3(torch.tensor([[1.0, 2.0, -4.0]], device=device, dtype=dtype)))
         assert torch.isfinite(behind.data).all()
         self.assert_close(behind.data, torch.tensor([[-0.25, -0.5]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        # The infinity is not the whole answer at z = 0: an axis whose NUMERATOR is also zero computes 0 / 0
+        # and comes back nan, so a caller that tests the result with ``isinf`` misses that component.  The
+        # arm above uses x = 1 != 0 and y = 2 != 0, which is exactly the case that hides this.
+        # Snippet used to generate expected: Z1Projection().project(Vector3(tensor([[0., 2., 0.]]))).data
+        # executed 2026-09-06 on this worktree (torch 2.14.0) -> [[nan, inf]], on cpu for float32, float64,
+        # float16 and bfloat16 and on mps for float32 and float16.
+        zero_numerator = projection.project(Vector3(torch.tensor([[0.0, 2.0, 0.0]], device=device, dtype=dtype)))
+        assert torch.isnan(zero_numerator.data[..., 0]).all()
+        assert torch.isinf(zero_numerator.data[..., 1]).all()
+        assert (zero_numerator.data[..., 1] > 0).all()
 
     def test_wart_unproject_with_a_python_scalar_depth_builds_a_cpu_tensor_4313(self, device, dtype):
         # Wart pin for kornia#4313 (audit label 5d-sc-30): ``Z1Projection.unproject`` documents

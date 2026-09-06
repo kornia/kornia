@@ -82,19 +82,24 @@ class CameraModelBase:
           accepted -- reading a coordinate off it raises ``AttributeError``.
         - ``params`` is a flat parameter vector whose length is fixed by the :class:`CameraModelType`:
           ``[fx, fy, cx, cy]`` for ``PINHOLE`` and ``ORTHOGRAPHIC``, 12 parameters for ``BROWN_CONRADY`` and
-          8 for ``KANNALA_BRANDT_K3``, laid out as each constructor documents. An unbatched ``(N,)`` vector
-          and a batched :math:`(B, N)` one are both accepted; another length, or a rank above 2, raises
-          ``ValueError``.
+          8 for ``KANNALA_BRANDT_K3``, laid out as each constructor documents. That length is enforced by
+          the typed constructors -- :class:`CameraModel` and the :class:`PinholeModel`,
+          :class:`BrownConradyModel`, :class:`KannalaBrandtK3` and :class:`Orthographic` subclasses -- which
+          accept an unbatched ``(N,)`` vector and a batched :math:`(B, N)` one and raise ``ValueError`` for
+          another length or a rank above 2. ``CameraModelBase`` itself validates nothing: it stores what it
+          is given, so a :math:`(B, 1, N)` vector the typed constructors reject is used as it is, and a
+          too-short one reaches :meth:`project` and fails there with ``IndexError``.
         - :meth:`matrix` and its alias :meth:`K` return the :math:`(*, 3, 3)` intrinsics
           ``[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]``, carrying the batch axis of ``params`` -- not the
           :math:`(B, 4, 4)` matrix :class:`~kornia.geometry.camera.pinhole.PinholeCamera` stores.
           :class:`PinholeModel` implements it; ``CameraModelBase.matrix`` itself raises
           ``NotImplementedError``.
-        - :meth:`project` is ``distortion.distort(projection.project(points))`` and :meth:`unproject` the
-          reverse, ``projection.unproject(distortion.undistort(points), depth)``. ``depth`` is the
-          camera-frame ``z``: :class:`~kornia.sensors.camera.projection_model.Z1Projection` multiplies the
-          :math:`z = 1` point by it, so the third coordinate of the result is the ``depth`` that was passed
-          in, and not a Euclidean ray length.
+        - :meth:`project` is ``self.distortion.distort(self.params, self.projection.project(points))`` and
+          :meth:`unproject` the reverse,
+          ``self.projection.unproject(self.distortion.undistort(self.params, points), depth)``. ``depth`` is
+          the camera-frame ``z``: :class:`~kornia.sensors.camera.projection_model.Z1Projection` multiplies
+          the :math:`z = 1` point by it, so the third coordinate of the result is the ``depth`` that was
+          passed in, and not a Euclidean ray length.
         - on the Pinhole path the numbers are those of :doc:`kornia.geometry.camera </geometry.camera>`:
           :meth:`project` matches :func:`~kornia.geometry.camera.perspective.project_points` and
           :meth:`unproject` matches :func:`~kornia.geometry.camera.perspective.unproject_points` on the ``K``
@@ -117,10 +122,10 @@ class CameraModelBase:
     .. warning::
         :meth:`unproject` forwards ``depth`` to the projection, and
         :class:`~kornia.sensors.camera.projection_model.Z1Projection` promotes a python ``float`` or ``int``
-        with ``torch.Tensor([depth])``, which ignores the device and the dtype of ``points``: on an
-        accelerator the multiply that follows raises ``RuntimeError``. Pass a tensor built on the device of
-        ``points``. Tracked in `#4313 <https://github.com/kornia/kornia/issues/4313>`_ and pinned by
-        ``test_wart_unproject_with_a_python_scalar_depth_builds_a_cpu_tensor_4313`` in
+        with ``torch.Tensor([depth])``, which ignores the device and the dtype of ``points``: on a non-CPU
+        device (verified on MPS) the multiply that follows raises ``RuntimeError``. Pass a tensor built on
+        the device of ``points``. Tracked in `#4313 <https://github.com/kornia/kornia/issues/4313>`_ and
+        pinned by ``test_wart_unproject_with_a_python_scalar_depth_builds_a_cpu_tensor_4313`` in
         ``tests/sensors/camera/test_projection_model.py``.
 
     Example:
@@ -324,9 +329,11 @@ class PinholeModel(CameraModelBase):
 
         .. warning::
             ``cx' = s * cx`` disagrees with the integer pixel centres the rest of the library enumerates, and
-            the rebuilt ``image_size`` carries 0-dim floating tensors where the constructor took python
-            integers. Both are tracked in `#4263 <https://github.com/kornia/kornia/issues/4263>`_, the second
-            in its comment thread; they are documented as they are and pinned by
+            a tensor ``scale_factor`` rebuilds ``image_size`` with 0-dim floating tensors where the
+            constructor took python integers -- a python ``int`` keeps ``int`` fields and a python ``float``
+            gives ``float`` ones. Both are tracked in
+            `#4263 <https://github.com/kornia/kornia/issues/4263>`_, the second in its comment thread; they
+            are documented as they are and pinned by
             ``test_wart_scale_rescales_the_principal_point_by_the_half_pixel_rule_4263`` and
             ``test_wart_scale_turns_the_image_size_fields_into_tensors_4263`` in
             ``tests/sensors/camera/test_camera_model.py``.

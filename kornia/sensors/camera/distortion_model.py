@@ -106,7 +106,8 @@ class BrownConradyTransform:
         `#4284 <https://github.com/kornia/kornia/issues/4284>`_ and pinned by
         ``test_wart_brown_conrady_and_kannala_brandt_transforms_are_placeholders_4284`` in
         ``tests/sensors/camera/test_distortion_model.py``.
-        :func:`~kornia.geometry.calibration.distort_points` is the implemented equivalent.
+        :func:`~kornia.geometry.calibration.distort_points` is the implemented Brown-Conrady model, in
+        pixel space with a separate ``K`` and coefficient vector rather than one packed parameter vector.
 
     Args:
         params: A tensor containing the distortion coefficients
@@ -167,7 +168,8 @@ class KannalaBrandtK3Transform:
         `#4284 <https://github.com/kornia/kornia/issues/4284>`_ and pinned by
         ``test_wart_brown_conrady_and_kannala_brandt_transforms_are_placeholders_4284`` in
         ``tests/sensors/camera/test_distortion_model.py``.
-        :func:`~kornia.geometry.camera.distort_points_kannala_brandt` is the implemented equivalent.
+        :func:`~kornia.geometry.camera.distort_points_kannala_brandt` is the implemented equivalent, on the
+        same normalized input and the same packed parameter vector.
     """
 
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:

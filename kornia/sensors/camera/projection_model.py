@@ -35,8 +35,8 @@ class Z1Projection:
         Convention:
             - ``points`` is in the **camera frame** and the result is on the normalized :math:`z = 1` plane,
               not in pixels: the map is ``xy / z``, with no epsilon and no validation. A point on the camera
-              plane (:math:`z = 0`) therefore projects to an infinity instead of raising, and a point behind
-              the camera to a finite coordinate.
+              plane (:math:`z = 0`) therefore projects to an infinity instead of raising -- to ``nan`` on an
+              axis whose numerator is zero as well -- and a point behind the camera to a finite coordinate.
 
         .. warning::
             That :math:`z = 0` answer is one of several that the projection entry points of kornia give for
@@ -76,8 +76,9 @@ class Z1Projection:
 
         .. warning::
             A python ``float`` or ``int`` ``depth`` is promoted with ``torch.Tensor([depth])``, a CPU float32
-            constructor that ignores the device and the dtype of ``points``: on an accelerator the multiply
-            below raises ``RuntimeError``, and on the CPU a half-precision input comes back widened. The
+            constructor that ignores the device and the dtype of ``points``: on a non-CPU device (verified
+            on MPS) the multiply below raises ``RuntimeError``, and on the CPU a half-precision input comes
+            back widened. The
             tensor spelling of the same argument has neither problem. Tracked in
             `#4313 <https://github.com/kornia/kornia/issues/4313>`_ and pinned by
             ``test_wart_unproject_with_a_python_scalar_depth_builds_a_cpu_tensor_4313`` in
