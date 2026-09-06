@@ -116,6 +116,21 @@ class TestDiffJPEG(BaseTester):
         img_one = kornia.enhance.jpeg_codec_differentiable(img, torch.ones(B, device=device, dtype=dtype))
         self.assert_close(img_zero, img_one)
 
+    def test_sub_unit_quality_is_untouched(self, device, dtype) -> None:
+        """The guard is exactly the zero point: a quality in (0, 1) was already finite and keeps its own
+        (harsher) scale rather than collapsing onto quality 1 (#4205)."""
+        B, H, W = 1, 32, 32
+        img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
+        qt = torch.ones(1, 8, 8, device=device, dtype=dtype)
+
+        img_half = kornia.enhance.jpeg_codec_differentiable(
+            img, torch.tensor([0.5], device=device, dtype=dtype), qt, qt
+        )
+        img_one = kornia.enhance.jpeg_codec_differentiable(img, torch.tensor([1.0], device=device, dtype=dtype), qt, qt)
+
+        assert torch.isfinite(img_half).all()
+        assert (img_half - img_one).abs().max() > 1e-2
+
     def test_quality_zero_only_affects_its_own_batch_entry(self, device, dtype) -> None:
         """The guard is elementwise: a 0 in the batch must not disturb its batch-mates (#4205)."""
         B, H, W = 2, 32, 32
