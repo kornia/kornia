@@ -106,6 +106,12 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
        roots should be represented as 0. Thus, the output for a single real root should be in the
        format [real_root, 0, 0], and for two real roots, it should be [real_root_1, real_root_2, 0].
 
+    .. note::
+       At the acos boundary reached by a repeated (or near-repeated) real root, backward suppresses
+       the derivative of the acos argument to keep gradients finite. Repeated-root derivatives are
+       undefined; this is a surrogate convention, not a mathematical Jacobian. :func:`solve_quartic`
+       inherits this convention wherever it falls back to :func:`solve_cubic`.
+
     """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "4"])
 
@@ -187,7 +193,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         # `.clamp(-1, 1)` does not help here: it only guards the value, not the diverging
         # derivative of a value already inside the domain. Route the boundary through `.acos()`
         # on a detached copy for the value and through `.acos()` on a substituted safe argument
-        # for the gradient, so autograd never differentiates `acos` at +-1 at all. (#4290)
+        # for the gradient, so autograd never differentiates `acos` at +-1 at all.
         ratio_D_zero = R[mask_D_zero] / torch.sqrt(-Q3[mask_D_zero])
         ratio_D_zero = torch.clamp(ratio_D_zero, min=-1.0, max=1.0)
         at_boundary_D_zero = ratio_D_zero.abs() >= 1.0
@@ -245,6 +251,11 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
        In cases where a quartic polynomial has fewer than four real roots, the remaining entries
        in the output are set to 0. Similarly, any non-real (complex) roots are represented as 0.
        This is done to maintain a consistent output shape for all cases.
+
+    .. note::
+       For a repeated (or near-repeated) real root, the resolvent-cubic solve internally
+       delegates to :func:`solve_cubic`'s finite-but-surrogate boundary-gradient convention;
+       see that function's docstring for details.
     """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "5"])
 

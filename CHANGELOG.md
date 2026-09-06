@@ -336,7 +336,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   constructor argument with the probe result (and so always equalled the argument, because SDPA is
   present on every supported torch), was renamed to `Attention.allow_flash`. (#4287)
 * `solve_cubic`'s `D <= 0` (three-real-roots) branch no longer returns `nan` gradients for a
-  repeated or near-repeated real root (#4290). It differentiates `acos(R / sqrt(-Q3))`, whose own
+  repeated or near-repeated real root (#4290, #4299). It differentiates `acos(R / sqrt(-Q3))`, whose own
   derivative `-1/sqrt(1-x^2)` is unbounded at `x = +-1`; the branch condition guarantees the ratio
   lies in `[-1, 1]`, but a repeated or near-repeated root pushes it to exactly that boundary,
   where the value is correct but the derivative diverges. A double-root quartic reaches this
