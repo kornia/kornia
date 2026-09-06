@@ -684,7 +684,7 @@ def _inject_navbar_menus(app, pagename, templatename, context, doctree):
 try:
     with open(os.path.join(os.path.dirname(__file__), "_playground_links.json"), encoding="utf-8") as _f:
         _PLAYGROUND_LINKS = json.load(_f)
-except OSError:  # the docs must still build without the snapshot
+except (OSError, json.JSONDecodeError):  # the docs must still build without the snapshot
     _PLAYGROUND_LINKS = {}
 
 
