@@ -218,12 +218,18 @@ class Denormalize(nn.Module):
     def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
         super().__init__()
 
-        # A float has to become a tensor before it can be a buffer. This is
-        # also what `Normalize` already does with the same argument, so the two
-        # classes now agree on what they store.
-        if not isinstance(mean, torch.Tensor):
+        # A float has to become a tensor before it can be a buffer. Wrap a
+        # scalar in a list so it becomes 1-D, exactly as `Normalize` does: the
+        # ONNX export branch indexes `mean.shape[0]`, which a 0-d tensor would
+        # turn into `IndexError: tuple index out of range`.
+        if isinstance(mean, (int, float)):
+            mean = torch.tensor([mean])
+        elif not isinstance(mean, torch.Tensor):
             mean = torch.tensor(mean)
-        if not isinstance(std, torch.Tensor):
+
+        if isinstance(std, (int, float)):
+            std = torch.tensor([std])
+        elif not isinstance(std, torch.Tensor):
             std = torch.tensor(std)
 
         # See Normalize: buffers so `.to(device)` moves them; non-persistent so

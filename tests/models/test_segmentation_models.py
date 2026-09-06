@@ -189,10 +189,6 @@ class TestSemanticSegmentation(BaseTester):
         pytest.importorskip("onnx")
         ort = pytest.importorskip("onnxruntime")
         pytest.importorskip("onnxscript")
-        if device.type != "cpu":
-            # `Normalize` keeps mean/std as plain tensor attributes that `.to(device)` does not move, so
-            # exporting an accelerator-resident pipeline fails on a device mismatch (pre-existing).
-            pytest.skip("export of a non-CPU pipeline is blocked by Normalize's tensor attributes")
         params = {**IMAGENET_PARAMS, "input_space": "BGR", "input_range": [0, 255]}
         pipeline = SegmentationModelsBuilder.get_preprocessing_pipeline(params).to(device).eval()
         # Export tensor operations without the convenience I/O cache: torch.export in PyTorch 2.9

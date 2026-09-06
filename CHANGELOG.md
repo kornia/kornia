@@ -135,17 +135,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tests — a physical M1 on macOS 26 compiles them fine. kornia still supports torch 2.5.1, so the
   in-tree MPS workarounds stay. (#4202)
 
-### Fixed
-
-* `Normalize`, `Denormalize` and `Rescale` register their constants (`mean`, `std`, `factor`) as
-  non-persistent buffers instead of plain attributes, so `.to(device)` moves them with the module.
-  Previously they stayed on the CPU: eager tolerates the mix, but `torch.export` traces with fake
-  tensors and refused it, so exporting a preprocessing pipeline from an accelerator failed while
-  the same pipeline exported fine from the CPU. `Denormalize` now coerces a scalar `mean`/`std` to
-  a tensor, as `Normalize` already did, which changes its `__repr__` to match `Normalize`'s. The
-  buffers are non-persistent, so `state_dict()` is unchanged and existing checkpoints still load.
-  (#4323)
-
 ### Breaking changes
 
 * `kornia_rs>=0.1.14` is required; the floor used to be 0.1.9. kornia_rs 0.1.11 relocated its image I/O
@@ -369,6 +358,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Fixed `unproject_points_z1` depth shape handling for singleton and multi-axis batches,
   accepting both trailing-singleton and flat depth tensors. (#4355)
+
+* `Normalize`, `Denormalize` and `Rescale` register their constants (`mean`, `std`, `factor`) as
+  non-persistent buffers instead of plain attributes, so `.to(device)` moves them with the module.
+  Previously they stayed on the CPU: eager tolerates the mix, but `torch.export` traces with fake
+  tensors and refused it, so exporting a preprocessing pipeline from an accelerator failed while
+  the same pipeline exported fine from the CPU. `Denormalize` now coerces a scalar `mean`/`std` to
+  a 1-D tensor, as `Normalize` already did, which changes its `__repr__` to match `Normalize`'s and
+  lets a scalar `Denormalize` reach the ONNX export branch instead of raising `IndexError` there.
+  The buffers are non-persistent, so `state_dict()` is unchanged and existing checkpoints still
+  load. (#4323, #4330)
 
 * `RenderingDeFMO` (used by `DeFMO`) no longer crashes on a half-precision forward pass. Its rendering
   time-steps (`times`) were a plain Python attribute, not a registered buffer, so `nn.Module.to()` never
