@@ -66,8 +66,6 @@ docs = [
 ]
 onnx = ["onnx", "onnxruntime", "onnxscript"]
 sd = ["diffusers", "transformers"]
-segmentation = ["segmentation_models_pytorch"]
-tracking = ["boxmot"]
 
 [build-system]
 requires = ["hatchling"]

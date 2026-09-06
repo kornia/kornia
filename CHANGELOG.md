@@ -18,11 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declared as dependencies, so `KimiVLBuilder.from_pretrained_hf()` and
   `SigLip2Builder.from_pretrained_hf()` used to raise `ImportError` on a plain `pip install kornia`.
   The checkpoints move to torch's hub cache as a result; see *Breaking changes*. (#4293)
-* Optional-dependency extras `kornia[onnx]`, `kornia[sd]`, `kornia[tracking]` and
-  `kornia[segmentation]` declare the third-party packages that the ONNX, Stable-Diffusion-dissolving,
-  tracking and segmentation-model wrappers lazily import, and are documented on the installation
-  page. Missing-dependency errors now name the extra to install, and `dev` no longer pulls
-  `diffusers` and `transformers`. (#4301)
+* Optional-dependency extras `kornia[onnx]` and `kornia[sd]` declare the third-party packages that
+  the ONNX and Stable-Diffusion-dissolving wrappers lazily import, and are documented on the
+  installation page. Missing-dependency errors now name the extra to install, and `dev` no longer
+  pulls `diffusers` and `transformers`. (#4301)
+
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
   historical scale-space SIFT CPU/CUDA batch-runtime comparisons and plotting. (#4254)
@@ -132,10 +132,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+* `kornia.contrib.BoxMotTracker` is removed, together with the `kornia.contrib.boxmot_tracker` module.
+  It wrapped the [boxmot](https://github.com/mikel-brostrom/boxmot) tracker zoo around a kornia detector,
+  but called the boxmot 10.x API (`boxmot.DeepOCSORT(model_weights=..., device=..., fp16=...)`), and no
+  boxmot release that installs alongside the torch versions kornia supports (`torch>=2.5.1`) provides
+  it, so the class could not be instantiated on any supported stack (see
+  [#4320](https://github.com/kornia/kornia/issues/4320)). Track with boxmot directly, feeding it the
+  output of a kornia detector such as `RTDETRDetectorBuilder`. `kornia.core.external.boxmot` is gone
+  with it. (#4301)
+
+* `SegmentationModelsBuilder.build()` no longer imports `segmentation_models_pytorch` (smp). It used
+  to take `model_name`, `encoder_name`, `encoder_weights`, `in_channels`, `classes`, `activation` and
+  `**kwargs`, import smp lazily, instantiate the smp architecture and look up the encoder's
+  preprocessing parameters itself. It now takes a constructed `nn.Module` and the encoder's
+  preprocessing-parameter dictionary (`build(model, preproc_params=None, name="segmentation_model")`),
+  where `preproc_params` is what `smp.encoders.get_preprocessing_params(encoder_name)` returns; build
+  the smp network and fetch its parameters yourself. Kornia no longer imports smp anywhere, and
+  `kornia.core.external.segmentation_models_pytorch` is gone. `SemanticSegmentation` gained the
+  `__init__(model, pre_processor, post_processor, name=None)` its siblings have, so the container the
+  builder returns can be instantiated (it was abstract before). (#4301)
+
 * `kornia.core.external.transformers` was removed; it was a `LazyLoader` handle no kornia code used.
   Previously `from kornia.core.external import transformers` gave a lazy proxy that imported
   `transformers` on first attribute access; that name no longer exists, so import `transformers`
   directly instead. (#4301)
+
 * `KimiVLBuilder.from_pretrained_hf()` and `SigLip2Builder.from_pretrained_hf()` cache their
   checkpoint where every other kornia checkpoint lives. `cache_dir=None` used to mean the HuggingFace
   cache (`~/.cache/huggingface/hub/models--<owner>--<name>/snapshots/<sha>/model.safetensors`) and now
