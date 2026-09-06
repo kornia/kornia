@@ -424,7 +424,7 @@ html_extra_path = ["_extra"]
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = "Kornia"
-html_css_files = ["css/pydata.css", "css/playground.css"]
+html_css_files = ["css/pydata.css", "css/blueprint.css", "css/playground.css"]
 html_js_files = ["js/custom.js"]
 
 # Configure viewcode extension.
