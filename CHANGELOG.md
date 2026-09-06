@@ -150,7 +150,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the smp network and fetch its parameters yourself. Kornia no longer imports smp anywhere, and
   `kornia.core.external.segmentation_models_pytorch` is gone. `SemanticSegmentation` gained the
   `__init__(model, pre_processor, post_processor, name=None)` its siblings have, so the container the
-  builder returns can be instantiated (it was abstract before). (#4301)
+  builder returns can be instantiated (it was abstract before), and its `visualize` gathers the
+  CPU-drawn colormap on the mask's device, so it works for CUDA and MPS outputs. (#4301)
 
 * `kornia.core.external.transformers` was removed; it was a `LazyLoader` handle no kornia code used.
   Previously `from kornia.core.external import transformers` gave a lazy proxy that imported

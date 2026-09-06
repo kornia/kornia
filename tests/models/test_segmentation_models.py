@@ -86,10 +86,12 @@ class TestSegmentationModelsBuilder(BaseTester):
         out = pipeline(x)
 
         # By hand, in float64: flip the channels, rescale [0, 1] -> [0, 255], then (x - mean) / std per channel.
-        mean_t = torch.tensor(mean, device=device, dtype=torch.float64).view(1, 3, 1, 1)
-        std_t = torch.tensor(std, device=device, dtype=torch.float64).view(1, 3, 1, 1)
-        x64 = x.to(torch.float64)
+        # The reference lives on the CPU because MPS has no float64; the comparison brings `out` over to it.
+        mean_t = torch.tensor(mean, dtype=torch.float64).view(1, 3, 1, 1)
+        std_t = torch.tensor(std, dtype=torch.float64).view(1, 3, 1, 1)
+        x64 = x.cpu().to(torch.float64)
         expected = (x64.flip(1) * 255.0 - mean_t) / std_t
+        out64 = out.cpu().to(torch.float64)
 
         assert out.shape == x.shape and out.dtype == dtype and out.device == x.device
         # The pipeline chains three rounding ops in the working dtype at magnitudes up to ~1100, so the
@@ -101,9 +103,9 @@ class TestSegmentationModelsBuilder(BaseTester):
         # so a float64 input is only float32-accurate (measured 1.3 float32 eps); floor the tolerance there.
         # Pin the exact math within 8 eps of the coarser of the two.
         tol = 8 * max(torch.finfo(dtype).eps, torch.finfo(torch.float32).eps)
-        self.assert_close(out.to(torch.float64), expected, rtol=tol, atol=tol)
+        self.assert_close(out64, expected, rtol=tol, atol=tol)
         # The flip is load-bearing: the un-flipped normalization is a different tensor.
-        assert not torch.allclose(out.to(torch.float64), (x64 * 255.0 - mean_t) / std_t, rtol=tol, atol=tol)
+        assert not torch.allclose(out64, (x64 * 255.0 - mean_t) / std_t, rtol=tol, atol=tol)
 
     def test_preprocessing_rgb_unit_range(self, device, dtype):
         pipeline = SegmentationModelsBuilder.get_preprocessing_pipeline(IMAGENET_PARAMS).to(device, dtype)
@@ -153,4 +155,12 @@ class TestSemanticSegmentation(BaseTester):
         images = torch.rand(2, 3, 6, 6, device=device)
         vis = model.visualize(images)
         assert vis.shape == (2, 3, 6, 6)
+        # The colormap is drawn on the CPU; the gather has to happen on the mask's device (a CUDA or MPS
+        # mask indexing a CPU colormap raised before), and the result stays there.
+        assert vis.device == images.device
         assert torch.isfinite(vis).all()
+        # Same through the per-image list path, which draws a colormap per mask.
+        vis_list = model.visualize([images[0], images[1]])
+        assert isinstance(vis_list, list) and len(vis_list) == 2
+        assert vis_list[0].shape == (3, 6, 6) and vis_list[0].device == images.device
+        self.assert_close(vis_list[0], vis[0])
