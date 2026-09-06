@@ -292,7 +292,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
-* `kornia.onnx.ONNXLoader.list_operators` and `kornia.io.sample` no longer need `requests` (#XXXX)
+* `kornia.onnx.ONNXLoader.list_operators` and `kornia.io.sample` no longer need `requests` (#4302)
 
 * `RandAugment`, `AutoAugment`, `TrivialAugment` and `AugMix` no longer silently upcast half-precision
   batches to `float32`. `OperationBase.forward` — the shared gate every auto-augment op routes through —
