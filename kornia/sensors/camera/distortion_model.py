@@ -31,6 +31,18 @@ class AffineTransform:
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         """Distort one or more Vector2 points using the affine transform.
 
+        Convention:
+            - ``points`` is on the **normalized** :math:`z = 1` plane and the result is in **pixels**:
+              ``u = fx * x + cx`` and ``v = fy * y + cy``, with ``params`` laid out as ``[fx, fy, cx, cy]``.
+              Those pixels are on the integer-centre grid described in the Convention block on
+              :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+            - it computes the same values as :func:`~kornia.geometry.camera.distort_points_affine`, which
+              takes plain tensors where this method takes ``Vector2``; the two camera type systems are kept
+              separate by design, which is recorded in
+              `#4274 <https://github.com/kornia/kornia/issues/4274>`_.
+            - :meth:`undistort` is the closed-form inverse, one subtraction and one division per axis with no
+              iteration.
+
         Args:
             params: torch.Tensor representing the affine transform parameters.
             points: Vector2 representing the points to distort.
@@ -53,6 +65,11 @@ class AffineTransform:
 
     def undistort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         """Undistort one or more Vector2 points using the affine transform.
+
+        Convention:
+            - ``points`` is in **pixels** and the result is on the normalized :math:`z = 1` plane:
+              ``x = (u - cx) / fx`` and ``y = (v - cy) / fy``, the closed-form inverse of :meth:`distort`
+              with the same ``params`` layout -- see the Convention block there.
 
         Args:
             params: torch.Tensor representing the affine transform parameters.
@@ -81,6 +98,15 @@ class BrownConradyTransform:
     The model accounts for radial distortion (due to lens shape) and tangential
     distortion (due to lens misalignment). It is commonly used to transform
     points between ideal pinhole projections and distorted image coordinates.
+
+    .. warning::
+        Both methods are placeholders: :meth:`distort` and :meth:`undistort` raise
+        ``NotImplementedError`` with an empty message, which is what makes
+        :class:`~kornia.sensors.camera.BrownConradyModel` unusable in either direction. Tracked in
+        `#4284 <https://github.com/kornia/kornia/issues/4284>`_ and pinned by
+        ``test_wart_brown_conrady_and_kannala_brandt_transforms_are_placeholders_4284`` in
+        ``tests/sensors/camera/test_distortion_model.py``.
+        :func:`~kornia.geometry.calibration.distort_points` is the implemented equivalent.
 
     Args:
         params: A tensor containing the distortion coefficients
@@ -133,6 +159,15 @@ class KannalaBrandtK3Transform:
 
     This model is specifically designed for fisheye lenses with significant
     radial distortion, using a polynomial approximation for the projection.
+
+    .. warning::
+        Both methods are placeholders: :meth:`distort` and :meth:`undistort` raise
+        ``NotImplementedError`` with an empty message, which is what makes
+        :class:`~kornia.sensors.camera.KannalaBrandtK3` unusable in either direction. Tracked in
+        `#4284 <https://github.com/kornia/kornia/issues/4284>`_ and pinned by
+        ``test_wart_brown_conrady_and_kannala_brandt_transforms_are_placeholders_4284`` in
+        ``tests/sensors/camera/test_distortion_model.py``.
+        :func:`~kornia.geometry.camera.distort_points_kannala_brandt` is the implemented equivalent.
     """
 
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:

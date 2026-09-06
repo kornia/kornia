@@ -69,12 +69,59 @@ class CameraModelBase:
     r"""Base class to represent camera models based on distortion and projection types.
 
     Distortion is of 3 types:
-        - Affine
-        - Brown Conrady
-        - Kannala Brandt K3
+        - Affine, implemented by :class:`~kornia.sensors.camera.distortion_model.AffineTransform`
+        - Brown Conrady, a placeholder that raises ``NotImplementedError``
+        - Kannala Brandt K3, a placeholder that raises ``NotImplementedError``
     Projection is of 2 types:
-        - Z1
-        - Orthographic
+        - Z1, implemented by :class:`~kornia.sensors.camera.projection_model.Z1Projection`
+        - Orthographic, a placeholder that raises ``NotImplementedError``
+
+    Convention:
+        - the API is ``Vector``-typed: :meth:`project` takes a ``Vector3`` and returns a ``Vector2``, and
+          :meth:`unproject` takes a ``Vector2`` and returns a ``Vector3``. A raw :class:`torch.Tensor` is not
+          accepted -- reading a coordinate off it raises ``AttributeError``.
+        - ``params`` is a flat parameter vector whose length is fixed by the :class:`CameraModelType`:
+          ``[fx, fy, cx, cy]`` for ``PINHOLE`` and ``ORTHOGRAPHIC``, 12 parameters for ``BROWN_CONRADY`` and
+          8 for ``KANNALA_BRANDT_K3``, laid out as each constructor documents. An unbatched ``(N,)`` vector
+          and a batched :math:`(B, N)` one are both accepted; another length, or a rank above 2, raises
+          ``ValueError``.
+        - :meth:`matrix` and its alias :meth:`K` return the :math:`(*, 3, 3)` intrinsics
+          ``[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]``, carrying the batch axis of ``params`` -- not the
+          :math:`(B, 4, 4)` matrix :class:`~kornia.geometry.camera.pinhole.PinholeCamera` stores.
+          :class:`PinholeModel` implements it; ``CameraModelBase.matrix`` itself raises
+          ``NotImplementedError``.
+        - :meth:`project` is ``distortion.distort(projection.project(points))`` and :meth:`unproject` the
+          reverse, ``projection.unproject(distortion.undistort(points), depth)``. ``depth`` is the
+          camera-frame ``z``: :class:`~kornia.sensors.camera.projection_model.Z1Projection` multiplies the
+          :math:`z = 1` point by it, so the third coordinate of the result is the ``depth`` that was passed
+          in, and not a Euclidean ray length.
+        - on the Pinhole path the numbers are those of :doc:`kornia.geometry.camera </geometry.camera>`:
+          :meth:`project` matches :func:`~kornia.geometry.camera.perspective.project_points` and
+          :meth:`unproject` matches :func:`~kornia.geometry.camera.perspective.unproject_points` on the ``K``
+          built from the same ``[fx, fy, cx, cy]``, so the pixels are on the integer-centre grid described in
+          the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`. The two type systems
+          are kept separate by design -- this one takes ``Vector`` objects, that one plain tensors -- which is
+          recorded in `#4274 <https://github.com/kornia/kornia/issues/4274>`_.
+
+    .. warning::
+        :class:`BrownConradyModel`, :class:`KannalaBrandtK3` and :class:`Orthographic` validate their
+        parameters and construct, and then every :meth:`project`, :meth:`unproject` and :meth:`matrix` call on
+        them raises ``NotImplementedError`` with an empty message, from three independent sites: the
+        distortion placeholders ``BrownConradyTransform`` and ``KannalaBrandtK3Transform``, the projection
+        placeholder ``OrthographicProjection``, and ``CameraModelBase.matrix``, which those three classes do
+        not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_; the behaviour is
+        documented as it is and pinned by
+        ``test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284`` in
+        ``tests/sensors/camera/test_camera_model.py``.
+
+    .. warning::
+        :meth:`unproject` forwards ``depth`` to the projection, and
+        :class:`~kornia.sensors.camera.projection_model.Z1Projection` promotes a python ``float`` or ``int``
+        with ``torch.Tensor([depth])``, which ignores the device and the dtype of ``points``: on an
+        accelerator the multiply that follows raises ``RuntimeError``. Pass a tensor built on the device of
+        ``points``. Tracked in `#4313 <https://github.com/kornia/kornia/issues/4313>`_ and pinned by
+        ``test_wart_unproject_with_a_python_scalar_depth_builds_a_cpu_tensor_4313`` in
+        ``tests/sensors/camera/test_projection_model.py``.
 
     Example:
         >>> params = torch.Tensor([328., 328., 320., 240.])
@@ -151,15 +198,23 @@ class CameraModelBase:
         return self._params[..., 3]
 
     def matrix(self) -> torch.Tensor:
-        """Return the camera matrix."""
+        """Return the camera matrix.
+
+        See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
+        """
         raise NotImplementedError
 
     def K(self) -> torch.Tensor:
-        """Return the camera matrix."""
+        """Return the camera matrix.
+
+        See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
+        """
         return self.matrix()
 
     def project(self, points: Vector3) -> Vector2:
         """Projects 3D points to 2D camera plane.
+
+        See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
 
         Args:
             points: Vector3 representing 3D points.
@@ -179,6 +234,8 @@ class CameraModelBase:
 
     def unproject(self, points: Vector2, depth: torch.Tensor) -> Vector3:
         """Unprojects 2D points from camera plane to 3D.
+
+        See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
 
         Args:
             points: Vector2 representing 2D points.
@@ -201,6 +258,8 @@ class CameraModelBase:
 
 class PinholeModel(CameraModelBase):
     r"""Class to represent Pinhole Camera Model.
+
+    See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
 
     The pinhole camera model describes the mathematical relationship between
     the coordinates of a point in three-dimensional space and its projection
@@ -230,6 +289,8 @@ class PinholeModel(CameraModelBase):
     def matrix(self) -> torch.Tensor:
         r"""Return the camera matrix.
 
+        See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
+
         The matrix is of the form:
 
         .. math::
@@ -256,6 +317,20 @@ class PinholeModel(CameraModelBase):
     def scale(self, scale_factor: torch.Tensor) -> PinholeModel:
         """Scales the camera model by a scale factor.
 
+        Convention:
+            - returns a **new** model whose focal lengths, principal point and image size are multiplied by
+              ``scale_factor``: ``fx' = s * fx`` and ``cx' = s * cx``, the half-pixel rule, which is the rule
+              :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.scale` applies as well.
+
+        .. warning::
+            ``cx' = s * cx`` disagrees with the integer pixel centres the rest of the library enumerates, and
+            the rebuilt ``image_size`` carries 0-dim floating tensors where the constructor took python
+            integers. Both are tracked in `#4263 <https://github.com/kornia/kornia/issues/4263>`_, the second
+            in its comment thread; they are documented as they are and pinned by
+            ``test_wart_scale_rescales_the_principal_point_by_the_half_pixel_rule_4263`` and
+            ``test_wart_scale_turns_the_image_size_fields_into_tensors_4263`` in
+            ``tests/sensors/camera/test_camera_model.py``.
+
         Args:
             scale_factor: Scale factor to scale the camera model.
 
@@ -279,7 +354,17 @@ class PinholeModel(CameraModelBase):
 
 
 class BrownConradyModel(CameraModelBase):
-    """Brown Conrady Camera Model."""
+    """Brown Conrady Camera Model.
+
+    .. warning::
+        Constructing this model succeeds; :meth:`~kornia.sensors.camera.CameraModelBase.project` and
+        :meth:`~kornia.sensors.camera.CameraModelBase.unproject` then raise ``NotImplementedError`` with an
+        empty message inside ``BrownConradyTransform``, and
+        :meth:`~kornia.sensors.camera.CameraModelBase.matrix` inside ``CameraModelBase.matrix``, which this
+        class does not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_ and
+        pinned by ``test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284`` in
+        ``tests/sensors/camera/test_camera_model.py``.
+    """
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
         """Construct BrownConradyModel class.
@@ -296,7 +381,17 @@ class BrownConradyModel(CameraModelBase):
 
 
 class KannalaBrandtK3(CameraModelBase):
-    """Kannala Brandt K3 Camera Model."""
+    """Kannala Brandt K3 Camera Model.
+
+    .. warning::
+        Constructing this model succeeds; :meth:`~kornia.sensors.camera.CameraModelBase.project` and
+        :meth:`~kornia.sensors.camera.CameraModelBase.unproject` then raise ``NotImplementedError`` with an
+        empty message inside ``KannalaBrandtK3Transform``, and
+        :meth:`~kornia.sensors.camera.CameraModelBase.matrix` inside ``CameraModelBase.matrix``, which this
+        class does not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_ and
+        pinned by ``test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284`` in
+        ``tests/sensors/camera/test_camera_model.py``.
+    """
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
         """Construct KannalaBrandtK3 class.
@@ -312,7 +407,17 @@ class KannalaBrandtK3(CameraModelBase):
 
 
 class Orthographic(CameraModelBase):
-    """Orthographic Camera Model."""
+    """Orthographic Camera Model.
+
+    .. warning::
+        Constructing this model succeeds; :meth:`~kornia.sensors.camera.CameraModelBase.project` and
+        :meth:`~kornia.sensors.camera.CameraModelBase.unproject` then raise ``NotImplementedError`` with an
+        empty message inside ``OrthographicProjection``, and
+        :meth:`~kornia.sensors.camera.CameraModelBase.matrix` inside ``CameraModelBase.matrix``, which this
+        class does not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_ and
+        pinned by ``test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284`` in
+        ``tests/sensors/camera/test_camera_model.py``.
+    """
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
         """Construct Orthographic class.
@@ -332,6 +437,8 @@ CameraModelVariants = Union[PinholeModel, BrownConradyModel, KannalaBrandtK3, Or
 
 class CameraModel:
     r"""Class to represent camera models.
+
+    See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
 
     Example:
         >>> # Pinhole Camera Model
