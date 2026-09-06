@@ -58,7 +58,8 @@ def _download_weights(model_name: str, cache_dir: Optional[str]) -> dict[str, to
         return load_safetensors(path)
     except FileNotFoundError as e:
         error_msg = (
-            f"Could not find model.safetensors for {model_name}. The model must be available in safetensors format."
+            f"Could not find model.safetensors for {model_name} at {path}: the cached checkpoint disappeared "
+            "between the download and the read. Delete that cache entry and retry."
         )
         _logger.error(error_msg)
         raise FileNotFoundError(error_msg) from e
