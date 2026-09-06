@@ -39,8 +39,11 @@ takes to develop kornia, and something a user runs must not need them.
 
 The allowed set is *derived* from ``pyproject.toml`` and from the ``LazyLoader`` registry rather
 than hardcoded: adding a dependency in the usual place is all it takes to satisfy these tests.
-The only literals are the handful of distribution names whose import name differs
-(:data:`DIST_TO_IMPORT`), :data:`CONTRIBUTOR_EXTRAS` and :data:`IMPLICIT_ALLOWED`.
+The literals are the handful of distribution names whose import name differs
+(:data:`DIST_TO_IMPORT`), :data:`CONTRIBUTOR_EXTRAS`, :data:`IMPLICIT_ALLOWED`, the tolerated
+orphans in :data:`LAZY_LOADERS_WITHOUT_DECLARED_DEP` (each with a reason, and checked for
+staleness) and :data:`MUST_NOT_LOAD_ON_IMPORT` (checked to stay a superset of the derived
+optional set).
 
 Deliberately no ``packaging`` import: it is not a kornia dependency, and this file must pass on a
 bare ``pip install -e ".[dev]"``.
