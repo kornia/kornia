@@ -158,23 +158,29 @@ def test_attention_allow_flash_matches_on_cpu():
     k = torch.rand(B, H, N, Dh)
     v = torch.rand(B, H, N, Dh)
 
-    attn_no_flash = Attention(allow_flash=False)
-    attn_flash = Attention(allow_flash=True)
+    # ``Attention.__init__`` flips the process-global ``torch.backends.cuda`` flash-SDPA switch;
+    # put back whatever this test found so later tests in a CUDA run do not depend on its order.
+    flash_sdp_was_enabled = torch.backends.cuda.flash_sdp_enabled()
+    try:
+        attn_no_flash = Attention(allow_flash=False)
+        attn_flash = Attention(allow_flash=True)
 
-    out_no_flash = attn_no_flash(q, k, v)
-    out_flash = attn_flash(q, k, v)
-    assert_close(out_no_flash, out_flash)
+        out_no_flash = attn_no_flash(q, k, v)
+        out_flash = attn_flash(q, k, v)
+        assert_close(out_no_flash, out_flash)
 
-    # First query row cannot attend to anything: softmax produces NaN there, which
-    # ``Attention.forward`` replaces via ``nan_to_num``.
-    mask = torch.ones(B, H, N, N, dtype=torch.bool)
-    mask[:, :, 0, :] = False
+        # First query row cannot attend to anything: softmax produces NaN there, which
+        # ``Attention.forward`` replaces via ``nan_to_num``.
+        mask = torch.ones(B, H, N, N, dtype=torch.bool)
+        mask[:, :, 0, :] = False
 
-    out_no_flash_masked = attn_no_flash(q, k, v, mask=mask)
-    out_flash_masked = attn_flash(q, k, v, mask=mask)
-    assert not torch.isnan(out_no_flash_masked).any()
-    assert not torch.isnan(out_flash_masked).any()
-    assert_close(out_no_flash_masked, out_flash_masked)
+        out_no_flash_masked = attn_no_flash(q, k, v, mask=mask)
+        out_flash_masked = attn_flash(q, k, v, mask=mask)
+        assert not torch.isnan(out_no_flash_masked).any()
+        assert not torch.isnan(out_flash_masked).any()
+        assert_close(out_no_flash_masked, out_flash_masked)
+    finally:
+        torch.backends.cuda.enable_flash_sdp(flash_sdp_was_enabled)
 
 
 # ---------------------------------------------------------------------------
