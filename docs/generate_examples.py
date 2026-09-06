@@ -30,6 +30,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
+from matplotlib.axes import Axes
 from PIL import Image
 
 import kornia as K
@@ -41,7 +42,7 @@ def download_tutorials_examples(download_infos: dict[str, str], directory: Path)
     URL_BASE = "https://raw.githubusercontent.com/kornia/tutorials/master/"
     for filename, path in download_infos.items():
         url = URL_BASE + path
-        # perform request
+        # perform request; S310 is safe here because the URL is the fixed https:// base above
         with urlopen(url, timeout=60) as resp:  # noqa: S310
             response = resp.read()
 
@@ -51,7 +52,7 @@ def download_tutorials_examples(download_infos: dict[str, str], directory: Path)
 
 
 def read_img_from_url(url: str, resize_to: Optional[tuple[int, int]] = None, **resize_kwargs) -> torch.Tensor:
-    # perform request
+    # perform request; S310 is safe here because every caller passes a fixed https:// constant
     with urlopen(url, timeout=60) as resp:  # noqa: S310
         response = resp.read()
     # decode to an HxWx3 RGB array; ``convert`` also drops the alpha of the RGBA sources.
@@ -68,19 +69,19 @@ def read_img_from_url(url: str, resize_to: Optional[tuple[int, int]] = None, **r
 
 
 def write_png(path: Path, img: np.ndarray) -> None:
-    """Save an ``HxWx3`` RGB or ``HxWx4`` RGBA ``uint8`` array as a PNG."""
+    """Save an ``HxW`` grayscale, ``HxWx3`` RGB or ``HxWx4`` RGBA ``uint8`` array as a PNG."""
     Image.fromarray(np.ascontiguousarray(img)).save(path)
 
 
-def draw_lafs(ax, lafs: torch.Tensor, color: str = "lime", linewidth: float = 1.0, img_idx: int = 0) -> None:
-    """Outline the local affine frames of ``lafs[img_idx]`` on an existing matplotlib axes.
+def draw_lafs(ax: Axes, lafs: torch.Tensor, color: str) -> None:
+    """Outline the local affine frames of the first image of ``lafs`` on an existing axes.
 
     Reproduces ``kornia_moons.viz.visualize_LAF(..., draw_ori=False)``: the regions are drawn at
     half the LAF scale, and the leading boundary point -- the LAF centre, which ``draw_ori`` would
     join to the outline -- is dropped.
     """
-    xs, ys = K.feature.laf.get_laf_pts_to_draw(K.feature.scale_laf(lafs, 0.5), img_idx)
-    ax.plot(xs[1:], ys[1:], color, linewidth=linewidth)
+    xs, ys = K.feature.laf.get_laf_pts_to_draw(K.feature.scale_laf(lafs, 0.5), 0)
+    ax.plot(xs[1:], ys[1:], color, linewidth=1)
 
 
 def transparent_pad(src: torch.Tensor, shape: tuple[int, int]) -> torch.Tensor:
