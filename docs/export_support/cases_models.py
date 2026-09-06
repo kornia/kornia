@@ -682,7 +682,7 @@ A(
         "contrib",
         None,
         [],
-        skip="needs `basicsr` (not installed) and would hit the same abstract SuperResolution TypeError",
+        skip="builds a 17M-parameter Real-ESRGAN generator and would hit the same abstract SuperResolution TypeError",
     )
 )
 
