@@ -1,0 +1,44 @@
+/* "Try in browser" badge that links an API to its interactive kornia.org playground page.
+   Added to autodoc entries by _inject_playground_link in conf.py. */
+
+.kornia-try {
+    margin: 0.4rem 0 0.9rem;
+    text-align: right;   /* sit the badge at the right edge of the content column */
+}
+
+.kornia-try a,
+.kornia-try a:visited {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15em 0.7em;
+    border: 1px solid #f5b301;
+    border-radius: 999px;
+    background: rgba(245, 179, 1, 0.12);
+    color: #8a6100;
+    font-size: 0.82em;
+    font-weight: 600;
+    line-height: 1.6;
+    text-decoration: none;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.kornia-try a:hover {
+    background: #f5b301;
+    color: #1a1205;
+    text-decoration: none;
+}
+
+/* dark mode: pydata-sphinx-theme sets data-theme, other themes follow the OS preference */
+html[data-theme="dark"] .kornia-try a,
+html[data-theme="dark"] .kornia-try a:visited {
+    color: #f5c94b;
+    background: rgba(245, 179, 1, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]) .kornia-try a,
+    html:not([data-theme="light"]) .kornia-try a:visited {
+        color: #f5c94b;
+        background: rgba(245, 179, 1, 0.16);
+    }
+}

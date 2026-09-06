@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* API reference entries now carry a **Try in browser** badge that links a function, its
+  `nn.Module` counterpart or a browser model to its interactive page on the kornia.org
+  playground, so readers can run the operator on a sample image without installing anything.
+  The set of linked APIs is a snapshot of the playground in `docs/source/_playground_links.json`,
+  refreshed by `docs/generate_playground_links.py`. (#PR)
 * Optional-dependency extras `kornia[onnx]` and `kornia[sd]` declare the third-party packages that
   the ONNX and Stable-Diffusion-dissolving wrappers lazily import, and are documented on the
   installation page. Missing-dependency errors now name the extra to install, and `dev` no longer
