@@ -118,7 +118,7 @@ def undistort_points_affine(distorted_points_in_camera: torch.Tensor, params: to
 
 
 def dx_distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
-    r"""Compute the derivative of the x distortion with respect to the x coordinate.
+    r"""Compute the Jacobian of the affine distortion with respect to the point.
 
     .. math::
         \frac{\partial u}{\partial x} =

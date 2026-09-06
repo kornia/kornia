@@ -147,8 +147,11 @@ def distort_points(
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
-        new_K: Intrinsic camera matrix of the distorted image. By default, it is the same as K but you may additionally
-            scale and shift the result by using a different matrix. Shape: :math:`(*, 3, 3)`. Default: None.
+        new_K: Intrinsic camera matrix used to map the incoming ``points`` from pixels onto the normalized
+            :math:`z = 1` plane -- the opposite of what the argument order suggests, since ``K`` is the one
+            that maps the distorted normalized point back to pixels. By default it is the same as ``K``, in
+            which case both steps use the same camera; a different matrix rescales and shifts the **input**,
+            not the result. Shape: :math:`(*, 3, 3)`. Default: None.
 
     Returns:
         Distorted 2D points with shape :math:`(*, N, 2)`.

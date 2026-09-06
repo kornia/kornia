@@ -52,9 +52,11 @@ def undistort_points(
           pixel onto the normalized plane and ``new_K`` maps the undistorted normalized point back to pixels.
         - the inverse is a fixed-point iteration of ``num_iters`` steps, not a closed form, so the round trip
           through :func:`~kornia.geometry.calibration.distort_points` closes only to the accuracy that
-          iteration has reached. That accuracy is set by the step count and by the camera and coefficients
-          rather than by the working dtype, and inside the region where the iteration converges, raising
-          ``num_iters`` improves it.
+          iteration has reached. At the default step count that accuracy is set by the camera and the
+          coefficients rather than by the working dtype, and inside the region where the iteration converges
+          raising ``num_iters`` improves it. That dtype-independence is a statement about the default step
+          count only: raised far enough, float32 stops improving once it reaches its own rounding floor while
+          float64 keeps closing.
 
     .. warning::
         The iteration has no convergence test and no valid-radius guard. Outside the region where the radial
@@ -82,8 +84,12 @@ def undistort_points(
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
-        new_K: Intrinsic camera matrix of the distorted image. By default, it is the same as K but you may additionally
-            scale and shift the result by using a different matrix. Shape: :math:`(*, 3, 3)`. Default: None.
+        new_K: Intrinsic camera matrix used to map the undistorted normalized point back to pixels, while ``K``
+            is the one that maps the incoming distorted ``points`` from pixels onto the normalized
+            :math:`z = 1` plane -- the mirror image of the two roles in
+            :func:`~kornia.geometry.calibration.distort_points`. By default it is the same as ``K``, in which
+            case both steps use the same camera; a different matrix rescales and shifts the **result**.
+            Shape: :math:`(*, 3, 3)`. Default: None.
         num_iters: Number of undistortion iterations. Default: 5.
 
     Returns:

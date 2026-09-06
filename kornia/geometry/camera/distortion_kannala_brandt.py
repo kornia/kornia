@@ -123,7 +123,15 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
           accuracy is set by the model and the point rather than by the working dtype, and a caller cannot
           raise it. :func:`~kornia.geometry.camera.undistort_points_affine` is the closed-form contrast.
         - small constants guard the Newton denominator and the final radial rescale, so a point at the
-          principal point comes back as the origin rather than ``nan``.
+          principal point comes back as the origin rather than ``nan`` -- as long as those constants are
+          representable in the dtype of ``params``, which is the dtype the whole body runs in.
+
+    .. warning::
+        Those guard constants are hardcoded and both underflow to zero in ``float16``, so with ``float16``
+        ``params`` the principal point returns ``nan`` instead of the origin. ``float32``, ``float64`` and
+        ``bfloat16`` are unaffected. Tracked as `#4308 <https://github.com/kornia/kornia/issues/4308>`_ and
+        pinned by ``test_wart_principal_point_undistorts_to_nan_in_float16_4308`` in
+        ``tests/geometry/camera/test_distortion.py``.
 
     Args:
         distorted_points_in_camera: torch.Tensor representing the points to undistort with shape (..., 2).
@@ -190,7 +198,7 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
 def dx_distort_points_kannala_brandt(
     projected_points_in_camera_z1_plane: torch.Tensor, params: torch.Tensor
 ) -> torch.Tensor:
-    r"""Compute the derivative of the x distortion with respect to the x coordinate.
+    r"""Return the analytic matrix the Kannala-Brandt model provides as its distortion Jacobian.
 
     Convention:
         - the result has shape :math:`(..., 2, 2)` and is laid out like the Jacobian that

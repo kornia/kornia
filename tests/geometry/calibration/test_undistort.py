@@ -322,6 +322,71 @@ class TestUndistortPoints(BaseTester):
         )
         self.assert_close(undistort_points(distort_points(points, K, zero_tilt), K, zero_tilt), points)
 
+    def test_convention_new_K_denormalizes_and_K_normalizes(self, device, dtype):
+        # Convention pin (no audit label -- the audit's undistort_points probes all leave new_K at its default;
+        # the executed snippet below is the evidence): the two intrinsics play the MIRROR IMAGE of their
+        # roles in distort_points -- here K maps the incoming distorted pixel onto the normalized z = 1 plane and
+        # new_K maps the undistorted normalized point back to pixels, which is why the same new_K that shrinks
+        # the forward answer enlarges this one. Every intrinsic is distinct (K: fx 2, fy 3, cx 1, cy 1; new_K:
+        # fx 5, fy 7, cx 2, cy 4), so swapping the two arguments, or fx with fy, changes both literals:
+        # (10, 10) normalizes under K to ((10-1)/2, (10-1)/3) = (4.5, 3.0) and denormalizes under new_K to
+        # (5*4.5+2, 7*3+4) = (24.5, 25.0). The sibling pin in test_distort.py fixes the forward direction.
+        # Snippet used to generate expected: undistort_points([[[10., 10.]]], K, zeros(1, 4), new_K) executed
+        # 2026-09-06 on the batch-5b worktree (torch 2.14.0, cpu float32 and float64) -> [[[24.5, 25.0]]]; the
+        # same call on mps float32 gives the same value. The second case, the mirror of test_distort.py's
+        # diag(2, 2, 1) probe, doubles instead of halving: (1, 2) under K = eye(3) and new_K = diag(2, 2, 1)
+        # comes back as (2.0, 4.0).
+        K = torch.tensor([[[2.0, 0.0, 1.0], [0.0, 3.0, 1.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        new_K = torch.tensor([[[5.0, 0.0, 2.0], [0.0, 7.0, 4.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        zero_dist = torch.zeros(1, 4, device=device, dtype=dtype)
+        points = torch.tensor([[[10.0, 10.0]]], device=device, dtype=dtype)
+        self.assert_close(
+            undistort_points(points, K, zero_dist, new_K),
+            torch.tensor([[[24.5, 25.0]]], device=device, dtype=dtype),
+        )
+        self.assert_close(
+            undistort_points(
+                torch.tensor([[[1.0, 2.0]]], device=device, dtype=dtype),
+                torch.eye(3, device=device, dtype=dtype)[None],
+                zero_dist,
+                torch.tensor([[[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype),
+            ),
+            torch.tensor([[[2.0, 4.0]]], device=device, dtype=dtype),
+        )
+
+    def test_convention_more_iterations_shrink_the_round_trip_residual(self, device, dtype):
+        # Convention pin extending audit labels 5b-up-01 / 5b-up-02: inside the region where the fixed point
+        # converges, raising num_iters improves the round trip. Those two labels were measured on the audit's
+        # own camera, where num_iters=50 makes no difference at all, so they do not by themselves establish the
+        # claim. The round-trip pin above uses that same fx = fy = 100 camera, where five steps already land
+        # inside assert_close's tolerance and 50 steps change nothing; this pin halves the vertical focal
+        # length to fy = 50, which doubles the normalized radius in y and leaves the five-step answer visibly
+        # short, so the three step counts are actually distinguishable.
+        # The first assertion is the non-triviality guard: the five-step answer is OUTSIDE the tolerance that
+        # assert_close would use on these points, so the strict decrease below is not a decrease between three
+        # already-converged answers.
+        # Snippet used to generate expected: (undistort_points(distort_points(pts, K, d), K, d, num_iters=n)
+        # - pts).abs().max() for n in (5, 10, 50), executed 2026-09-06 on the batch-5b worktree (torch 2.14.0),
+        # differenced in the working dtype -> cpu float64 1.355131e-02, 2.410766e-05, 0.0; cpu float32
+        # 1.355362e-02, 3.051758e-05, 1.907349e-06; mps float32 the same three float32 values. float32 has
+        # reached its own rounding floor by 50 steps while float64 has closed exactly, which is the scoping the
+        # Convention block states. The forward map displaces these points by 7.306 px, so an identity
+        # undistort_points would not pass. In float16 and bfloat16 the residual is pinned at the dtype's own
+        # quantum from the first step (1.5625e-02 and 0.5), so the three counts are indistinguishable there and
+        # those cells are skipped.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("half precision quantizes the residual, so the three step counts are indistinguishable")
+        points = torch.tensor([[[54.0, 53.0], [-16.0, 23.0]]], device=device, dtype=dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 50.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        dist = torch.tensor([[0.1, 0.01, 0.001, 0.001]], device=device, dtype=dtype)
+        distorted = distort_points(points, K, dist)
+        with pytest.raises(AssertionError):
+            self.assert_close(undistort_points(distorted, K, dist, num_iters=5), points)
+        residuals = [(undistort_points(distorted, K, dist, num_iters=n) - points).abs().max() for n in (5, 10, 50)]
+        assert residuals[0] > residuals[1]
+        assert residuals[1] > residuals[2]
+        self.assert_close(undistort_points(distorted, K, dist, num_iters=50), points)
+
     def test_gradcheck(self, device):
         points = torch.rand(1, 8, 2, device=device, dtype=torch.float64, requires_grad=True)
         K = torch.rand(1, 3, 3, device=device, dtype=torch.float64)

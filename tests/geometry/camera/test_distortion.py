@@ -339,6 +339,59 @@ class TestDistortionKannalaBrandt(BaseTester):
         far = torch.tensor([3.0, 0.0], device=device, dtype=dtype)
         self.assert_close(undistort_points_kannala_brandt(distort_points_kannala_brandt(far, params), params), far)
 
+    def test_convention_principal_point_undistorts_to_the_origin(self, device, dtype):
+        # Convention pin (no audit label -- the audit probed distort_points_kannala_brandt at the origin,
+        # 5b-kb-03, not the inverse at the principal point; the executed snippet below is the evidence): the
+        # small constants that guard the Gauss-Newton denominator and the final radial rescale mean the
+        # principal point (cx, cy) undistorts to the EXACT origin instead of the 0/0 that the unguarded
+        # arithmetic would give. The assertion is torch.equal, not assert_close, because the guard makes the
+        # result exactly zero rather than nearly zero.
+        # cx != cy in these params, so the principal point is off the diagonal and a cx/cy swap would move it.
+        # The second, off-centre point is what keeps the pin from being frame-invariant: (54, 28) normalizes to
+        # (0.5, 0.25) and undistorts to a value that changes under either swap -- the same params with cx and cy
+        # exchanged give [0.5507686734199524, 0.2591852843761444] and with fy halved to 50 they give
+        # [0.5658687353134155, 0.5658687353134155].
+        # Snippet used to generate expected: undistort_points_kannala_brandt(tensor([4., 3.]), params) and the
+        # same call on tensor([54., 28.]), executed 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> the
+        # principal point gives exactly [0.0, 0.0] on cpu float64/float32/bfloat16 and on mps float32; the
+        # off-centre point gives [0.5392647981643677, 0.26963239908218384] on cpu and mps float32. In float16
+        # the guard constants underflow and the principal point gives [nan, nan] -- kornia#4308, pinned by
+        # test_wart_principal_point_undistorts_to_nan_in_float16_4308 below.
+        if dtype == torch.float16:
+            pytest.skip("float16: the guard constants underflow to zero and the principal point returns nan (#4308)")
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        principal_point = torch.tensor([4.0, 3.0], device=device, dtype=dtype)
+        undistorted = undistort_points_kannala_brandt(principal_point, params)
+        assert torch.equal(undistorted, torch.zeros(2, device=device, dtype=dtype))
+        off_centre = torch.tensor([54.0, 28.0], device=device, dtype=dtype)
+        self.assert_close(
+            undistort_points_kannala_brandt(off_centre, params),
+            torch.tensor([0.5392647981643677, 0.26963239908218384], device=device, dtype=dtype),
+        )
+
+    def test_wart_principal_point_undistorts_to_nan_in_float16_4308(self, device, dtype):
+        # Wart pin for kornia#4308: the two guard constants in undistort_points_kannala_brandt are hardcoded
+        # (1e-16 on the Newton start, 1e-8 on the final radial rescale) and both underflow to exactly 0.0 in
+        # float16, whose smallest subnormal is about 5.96e-08. The whole body runs in params.dtype, so with
+        # float16 params the guards are no guards at all and the principal point returns nan instead of the
+        # origin that every other dtype returns (pinned above). bfloat16 survives because it keeps the float32
+        # exponent range, so this is specific to float16 and not to half precision in general.
+        # Snippet used to generate expected: undistort_points_kannala_brandt(tensor([4., 3.], dtype=torch.
+        # float16), params.half()) executed 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> [nan, nan] on
+        # both cpu and mps; the same call at 92e5fe8d on main gives the same value. float16 POINTS with float32
+        # params return [0.0, 0.0], because the body casts the points to params.dtype first.
+        # Pins the CURRENT behavior; NOT a contract; delete when #4308 is repaired.
+        if dtype != torch.float16:
+            pytest.skip("float16-only wart: the guard constants are representable in every other dtype")
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        principal_point = torch.tensor([4.0, 3.0], device=device, dtype=dtype)
+        assert undistort_points_kannala_brandt(principal_point, params).isnan().all()
+        wide_params = params.to(torch.float32)
+        self.assert_close(
+            undistort_points_kannala_brandt(principal_point, wide_params),
+            torch.zeros(2, device=device, dtype=dtype),
+        )
+
     def test_wart_dx_distort_points_kannala_brandt_disagrees_with_autograd_4277(self, device, dtype):
         # Wart pin for kornia#4277 (audit labels Y2-01, Y2-02, Y2-04, Y2-08, 5b-kb-10): the analytic Jacobian is
         # not the Jacobian of distort_points_kannala_brandt. torch.autograd.functional.jacobian and central finite

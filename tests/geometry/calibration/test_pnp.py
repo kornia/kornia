@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import ShapeError
 from kornia.geometry.calibration.pnp import _mean_isotropic_scale_normalize
 
 from testing.base import BaseTester
@@ -232,6 +233,29 @@ class TestSolvePnpDlt(BaseTester):
         assert translation[0] > 0.5
         assert abs(translation[1]) < 0.5
         assert abs(translation[2]) < 0.5
+
+    def test_convention_rejects_4x4_intrinsics(self, device, dtype):
+        # Convention pin (no audit label -- the audit probed solve_pnp_dlt's point-count and degeneracy guards,
+        # not its intrinsics shape; the executed snippet below is the evidence): ``intrinsics`` is the (B, 3, 3)
+        # K, and the (B, 4, 4) intrinsics matrix that a PinholeCamera stores is rejected by the shape check
+        # rather than silently truncated to its upper-left block. The positive control is the same call with
+        # that upper-left block passed on its own, which solves: so the rejection is about the shape and not
+        # about the camera.
+        # Snippet used to generate expected: solve_pnp_dlt(W, project_points(W, K), eye(4)[None] with K in the
+        # upper-left 3x3) executed 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> ShapeError("Shape
+        # mismatch at dimension 1: expected 3, got 4. | Expected shape: ['B', '3', '3'] | Actual shape:
+        # [1, 4, 4]") on cpu float32 and float64. In float16 and bfloat16 the earlier dtype validation fires
+        # first with a bare BaseError("Validation condition failed"), so those cells are skipped.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt rejects half precision before the intrinsics shape check (BaseError)")
+        world_points = self._convention_world_points(device, dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        img_points = kornia.geometry.project_points(world_points, K)
+        K_4x4 = torch.eye(4, device=device, dtype=dtype)[None].clone()
+        K_4x4[:, :3, :3] = K
+        with pytest.raises(ShapeError, match="expected 3, got 4"):
+            kornia.geometry.solve_pnp_dlt(world_points, img_points, K_4x4)
+        assert kornia.geometry.solve_pnp_dlt(world_points, img_points, K_4x4[:, :3, :3]).shape == (1, 3, 4)
 
     def test_convention_planar_world_points_raise(self, device, dtype):
         # Convention pin (audit labels 5b-pnp-04, 5b-pnp-05): the DLT needs a non-degenerate configuration, and
