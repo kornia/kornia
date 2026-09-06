@@ -813,7 +813,9 @@ def download_file_from_url(
             basename is not unique to this file: two repositories publishing a
             ``model.safetensors`` each would otherwise share one cache entry, and
             the second model would silently load the first one's weights (see
-            :func:`_hf_cache_file_name`).
+            :func:`_hf_cache_file_name`). Must be a bare filename: the cache is
+            one flat directory, so a value carrying a path separator or naming
+            ``.``/``..`` would write outside it.
         model_dir: directory to cache the file in. Defaults to torch's
             ``<hub dir>/checkpoints``, which is the cache CI restores.
         progress: whether to display a progress bar during a transfer.
@@ -822,6 +824,7 @@ def download_file_from_url(
         The path of the cached file.
 
     Raises:
+        ValueError: if ``file_name`` is not a single path component.
         RuntimeError: if every URL fails. The message carries the last failure's
             type and text, the source it came from and the cache path in play,
             and the exception itself is chained.
@@ -832,6 +835,8 @@ def download_file_from_url(
         ...     file_name="kornia--kimi-vl-a3b-instruct-vision--model.safetensors",
         ... )
     """
+    if file_name is not None and (file_name in {"", ".", ".."} or os.path.basename(file_name) != file_name):
+        raise ValueError(f"file_name must be a bare filename inside the cache directory, got {file_name!r}.")
     urls = [url] if isinstance(url, str) else list(url)
 
     # Pin the cache filename to the primary URL's basename so that all attempts
@@ -894,6 +899,8 @@ def download_hf_file(repo: str, filename: str, *, model_dir: str | None = None, 
         :func:`kornia.core.load_safetensors`.
 
     Raises:
+        ValueError: if ``filename`` carries a path separator; only files at the
+            repository root are supported, because the cache is one flat directory.
         RuntimeError: if the download fails; see :func:`download_file_from_url`.
 
     Example:

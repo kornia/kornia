@@ -264,8 +264,9 @@ class TestRejectsCorruptFiles:
         with pytest.raises(ValueError, match="expected a list of non-negative integers"):
             load_safetensors(path)
 
-    @pytest.mark.parametrize("offsets", [[0], [0, 1, 2], [-1, 1], "0,1"])
+    @pytest.mark.parametrize("offsets", [[0], [0, 1, 2], [-1, 1], "0,1", [False, True]])
     def test_invalid_offsets(self, tmp_path, offsets) -> None:
+        """``[False, True]`` is the offsets twin of the ``[True]`` shape: a bool is an ``int``."""
         header = {"weight": {"dtype": "U8", "shape": [1], "data_offsets": offsets}}
         path = _write(tmp_path, _pack(header, b"\x00"))
 

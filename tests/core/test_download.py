@@ -1311,6 +1311,26 @@ class TestDownloadFileFromUrl:
         assert captured.out == ""
         assert f'Downloading: "{url}"' in captured.err
 
+    @pytest.mark.parametrize("file_name", ["../escaped.safetensors", "sub/model.safetensors", "", ".", ".."])
+    def test_file_name_must_be_a_bare_filename(self, tmp_path, file_name) -> None:
+        """The cache is one flat directory; a name with a path in it would write outside it."""
+        url, _ = self._serve(tmp_path)
+        model_dir = tmp_path / "cache"
+
+        with pytest.raises(ValueError, match="bare filename"):
+            download_file_from_url(url, file_name=file_name, model_dir=str(model_dir), progress=False)
+
+        assert not (tmp_path / "escaped.safetensors").exists()
+        assert not model_dir.exists(), "nothing was transferred"
+
+    def test_an_absolute_file_name_is_rejected(self, tmp_path) -> None:
+        url, _ = self._serve(tmp_path)
+
+        with pytest.raises(ValueError, match="bare filename"):
+            download_file_from_url(url, file_name=str(tmp_path / "abs.safetensors"), model_dir=str(tmp_path / "cache"))
+
+        assert not (tmp_path / "abs.safetensors").exists()
+
 
 class TestDownloadHfFile:
     """The Hub wrapper: the ``resolve/main`` URL and the collision-free cache name in one call."""
