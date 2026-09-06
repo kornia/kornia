@@ -23,13 +23,12 @@ BOXMOT_REASON = '`boxmot` is not installed. Install it with: pip install "kornia
 class TestBoxMotTracker:
     """Smoke tests for the ``kornia[tracking]`` extra.
 
-    They skip unless ``boxmot`` is installed; they exist so the wrapper cannot rot silently once
-    somebody installs the extra.
+    The tests that touch ``boxmot`` itself skip unless it is installed; they exist so the wrapper
+    cannot rot silently once somebody installs the extra.
     """
 
     def test_wrapper_is_importable(self):
-        pytest.importorskip("boxmot", reason=BOXMOT_REASON)
-
+        # The wrapper itself imports `boxmot` lazily, so this runs without the extra installed.
         from kornia.contrib import BoxMotTracker
         from kornia.contrib.boxmot_tracker import BoxMotTracker as BoxMotTrackerDirect
 

@@ -125,6 +125,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+* `kornia.core.external.transformers` was removed; it was a `LazyLoader` handle no kornia code used.
+  Previously `from kornia.core.external import transformers` gave a lazy proxy that imported
+  `transformers` on first attribute access; that name no longer exists, so import `transformers`
+  directly instead. (#XXXX)
+
 * Non-maxima suppression applies one border rule at every window size. `NonMaximaSuppression2d` /
   `nms2d` with a window larger than `(7, 7)`, and `NonMaximaSuppression3d` / `nms3d`, no longer report
   maxima inside the `(k - 1) // 2` border strip. Previously the general path replicate-padded its input,

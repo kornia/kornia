@@ -18,10 +18,12 @@
 import pytest
 import torch
 
+from testing.base import BaseTester
+
 SMP_REASON = '`segmentation_models_pytorch` is not installed. Install it with: pip install "kornia[segmentation]"'
 
 
-class TestSegmentationModelsBuilder:
+class TestSegmentationModelsBuilder(BaseTester):
     """Smoke tests for the ``kornia[segmentation]`` extra.
 
     They skip unless ``segmentation_models_pytorch`` is installed; they exist so the builder cannot
@@ -33,8 +35,10 @@ class TestSegmentationModelsBuilder:
 
         from kornia.models.segmentation import SegmentationModelsBuilder, SemanticSegmentation
 
+        # `build` defaults to `activation="softmax"`, so a single-class head would be identically 1.0
+        # and a shape-only assertion would pass on a degenerate output. Two classes make it discriminate.
         model = SegmentationModelsBuilder.build(
-            model_name="Unet", encoder_name="resnet34", classes=1, encoder_weights=None
+            model_name="Unet", encoder_name="resnet34", classes=2, encoder_weights=None
         )
         assert isinstance(model, SemanticSegmentation)
 
@@ -42,4 +46,9 @@ class TestSegmentationModelsBuilder:
         images = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
         out = model(images)
         assert isinstance(out, torch.Tensor)
-        assert out.shape == (1, 1, 64, 64)
+        assert out.shape == (1, 2, 64, 64)
+        assert torch.isfinite(out).all()
+        # The softmax head normalizes over the class dimension.
+        self.assert_close(out.sum(dim=1), torch.ones(1, 64, 64, device=device, dtype=dtype))
+        # A two-class softmax that is not the degenerate all-ones map varies across the class axis.
+        assert not torch.allclose(out[:, 0], out[:, 1])

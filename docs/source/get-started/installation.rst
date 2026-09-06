@@ -79,8 +79,7 @@ so you only pay for the ones you use. If one is missing, the corresponding Korni
      - ``pip install -e ".[dev]"``
 
 Independently of the extras, the ``visualize`` and ``save`` helpers of the model wrappers need
-`pillow <https://pypi.org/project/pillow/>`_ for ``output_type="pil"`` and
-`numpy <https://pypi.org/project/numpy/>`_ for ``output_type="numpy"``.
+`pillow <https://pypi.org/project/pillow/>`_ for ``output_type="pil"``.
 
 Next steps
 ----------

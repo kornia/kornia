@@ -64,7 +64,7 @@ class LazyLoader:
     def _install_hint(self) -> str:
         """Return the trailing sentence of the "not installed" messages."""
         if self.extra is not None:
-            return f'Install it with: pip install "kornia[{self.extra}]"'
+            return f'Install it with: pip install "kornia[{self.extra}]".'
         return "Please install it to use this functionality."
 
     def _install_package(self, module_name: str) -> None:
