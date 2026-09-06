@@ -150,11 +150,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the smp network and fetch its parameters yourself. Kornia no longer imports smp anywhere, and
   `kornia.core.external.segmentation_models_pytorch` is gone. `SemanticSegmentation` gained the
   `__init__(model, pre_processor, post_processor, name=None)` its siblings have, so the container the
-  builder returns can be instantiated (it was abstract before), and its `visualize` gathers the
-  CPU-drawn colormap on the mask's device, so it works for CUDA and MPS outputs. The
-  `input_range: [0, 255]` preprocessing step now multiplies by 255 instead of dividing by a stored
-  `1/255`: bfloat16 rounds that reciprocal to a ~254.0 multiplier (0.5 mapped to 127.0 instead of
-  127.5), and float32 outputs of that step move by at most one ulp. (#4301)
+  builder returns can be instantiated (it was abstract before). The `input_range: [0, 255]`
+  preprocessing step is now `kornia.enhance.Rescale(255.0)`, a multiply by 255, instead of a
+  `Normalize` by a stored `1/255`: bfloat16 rounds that reciprocal to a ~254.0 multiplier (0.5 mapped
+  to 127.0 instead of 127.5), and float32 outputs of that step move by at most one ulp. (#4301)
 
 * `kornia.core.external.transformers` was removed; it was a `LazyLoader` handle no kornia code used.
   Previously `from kornia.core.external import transformers` gave a lazy proxy that imported
@@ -343,6 +342,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `SemanticSegmentation.visualize` works for CUDA, MPS and half-precision models. It indexed the
+  CPU-drawn colormap with the mask's `argmax`, which raises for CUDA and MPS masks, and recognised a
+  softmax head with `torch.allclose(sum, 1)` at float32-sized default tolerances, which a float16 or
+  bfloat16 sum of probabilities never meets; the tolerance now scales with the number of classes and the
+  dtype's epsilon, and the colormap follows the mask's device and dtype, so the visualization keeps the
+  model's dtype instead of coming back as float32. `OnnxLightGlue` without `onnxruntime` raises an
+  `ImportError` that names `pip install "kornia[onnx]"`, like the lazy-loader handles do, instead of a
+  bare `BaseError`. (#4301)
 * The generated example figures in the API reference are rendered from RGB input.
   `docs/generate_examples.py` decoded the sample images with `cv2.imdecode` and wrote them with
   `cv2.imwrite`, both BGR, so every tensor the examples fed to kornia held reversed channels. The two

@@ -527,8 +527,9 @@ intersphinx_mapping = {
     "torch": ("https://pytorch.org/docs/stable/", None),
 }
 
-# Optional third-party modules that autodoc must not try to import (see the note in
-# kornia/core/external.py). Empty since every LazyLoader'd package left the documented API.
+# Optional third-party modules that autodoc must not try to import. Empty: the packages the documented
+# API still reaches lazily (diffusers, onnx, onnxruntime) go through kornia.core.external.LazyLoader,
+# which returns a placeholder under Sphinx (see the note there), so nothing needs mocking.
 autodoc_mock_imports: list[str] = []
 
 

@@ -38,6 +38,7 @@ class SemanticSegmentation(ModelBase):
 
     Args:
         model: The segmentation network, mapping a ``(B, 3, H, W)`` batch to ``(B, C, H, W)`` predictions.
+            :meth:`visualize` expects per-pixel class probabilities (a softmax head); raw logits raise.
         pre_processor: Pre-processing module applied to the input images.
         post_processor: Post-processing module applied to the network output.
         name: Optional name, used by :meth:`save` for file names.
@@ -171,15 +172,23 @@ class SemanticSegmentation(ModelBase):
         else:
             raise ValueError(f"Semantic mask must be of shape (C, H, W) or (B, C, H, W), got {semantic_mask.shape}.")
 
-        if torch.allclose(
-            semantic_mask.sum(dim=channel_dim), torch.tensor(1, dtype=semantic_mask.dtype, device=semantic_mask.device)
-        ):
+        # A softmax head sums to one per pixel up to rounding. Allow ``C * eps`` of the mask's dtype: a
+        # half-precision sum of ``C`` probabilities is off by about that much, far more than allclose's
+        # float32-sized default tolerance, which rejected every float16 and bfloat16 model.
+        is_probabilities = False
+        if semantic_mask.is_floating_point():
+            tol = semantic_mask.shape[channel_dim] * torch.finfo(semantic_mask.dtype).eps
+            one = torch.tensor(1, dtype=semantic_mask.dtype, device=semantic_mask.device)
+            is_probabilities = torch.allclose(semantic_mask.sum(dim=channel_dim), one, rtol=tol, atol=tol)
+        if is_probabilities:
+            device, dtype = semantic_mask.device, semantic_mask.dtype
             # Softmax is used, thus, muliclass segmentation
             semantic_mask = semantic_mask.argmax(dim=channel_dim, keepdim=True)
             # Create a colormap for each pixel based on the class with the highest probability. The colormap is
-            # generated on the CPU (a seeded CPU generator keeps it reproducible), so it has to follow the mask
-            # before the gather: indexing a CPU tensor with CUDA or MPS indices raises.
-            output = colors.to(semantic_mask.device)[semantic_mask.squeeze(channel_dim)]
+            # generated on the CPU in float32 (a seeded CPU generator keeps it reproducible), so it has to
+            # follow the mask's device and dtype before the gather: indexing a CPU tensor with CUDA or MPS
+            # indices raises, and the visualization keeps the model's dtype.
+            output = colors.to(device=device, dtype=dtype)[semantic_mask.squeeze(channel_dim)]
             if semantic_mask.dim() == 3:
                 output = output.permute(2, 0, 1)
             elif semantic_mask.dim() == 4:

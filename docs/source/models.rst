@@ -154,8 +154,11 @@ import smp; you build the network and fetch its preprocessing parameters yoursel
        segmented_output = model(input_tensor)
        print(segmented_output.shape)  # (1, 2, H, W)
 
+   The softmax head is what :meth:`~kornia.models.segmentation.SemanticSegmentation.visualize` needs: it
+   colours each pixel by its most probable class and raises on raw logits.
+
 .. autoclass:: kornia.models.segmentation.SemanticSegmentation
-   :members: forward, visualize, save
+   :members: forward, visualize
 
 .. _KimiVLBuilder:
 
