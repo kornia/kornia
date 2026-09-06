@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the ONNX and Stable-Diffusion-dissolving wrappers lazily import, and are documented on the
   installation page. Missing-dependency errors now name the extra to install, and `dev` no longer
   pulls `diffusers` and `transformers`. (#4301)
+* `kornia.models.RRDBNet`, a vendored Real-ESRGAN generator; `RRDBNetBuilder` no longer needs `basicsr`. (#4292)
 
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
@@ -166,6 +167,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<owner>--<name>--model.safetensors` file. Either way the first `from_pretrained_hf()` call after
   upgrading re-downloads the checkpoint (854 MB for KimiVL, ~1.5 GB for SigLIP2) even for users who
   already had it. (#4293)
+
 * Non-maxima suppression applies one border rule at every window size. `NonMaximaSuppression2d` /
   `nms2d` with a window larger than `(7, 7)`, and `NonMaximaSuppression3d` / `nms3d`, no longer report
   maxima inside the `(k - 1) // 2` border strip. Previously the general path replicate-padded its input,
@@ -339,6 +341,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `packaging` is no longer a runtime dependency; it was never imported. The `dev` extra no longer lists
+  `pytest-cov` (CI runs `coverage run -m pytest`), `ruff` (the pre-commit hook installs the pinned copy) or a
+  `numpy<3` cap, and `uv.lock` is regenerated to match (#4296).
+* `import kornia` no longer imports onnxruntime when it is installed (#4295)
+* DeDoDe's vendored DINOv2 no longer probes for `xformers`; the pure-PyTorch path it always ran is the
+  only one. (#4288)
 * `kornia.feature.LightGlue` no longer probes for `flash_attn`; the SDPA path it always used is now
   the only one. `kornia.feature.lightglue.Attention.enable_flash`, the attribute that combined the
   constructor argument with the probe result (and so always equalled the argument, because SDPA is
@@ -364,6 +372,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or swapped overlay colours. The generator now decodes and writes with PIL, draws the KeyNetAffNet
   LAF figure with kornia's own `get_laf_pts_to_draw`, and `opencv-python` and `kornia_moons` leave
   the `[docs]` extra. (#4306)
+
 * `RandAugment`, `AutoAugment`, `TrivialAugment` and `AugMix` no longer silently upcast half-precision
   batches to `float32`. `OperationBase.forward` — the shared gate every auto-augment op routes through —
   moved its `batch_prob` mask to `input.device` but not `input.dtype`, and since `batch_prob` is `float32`
