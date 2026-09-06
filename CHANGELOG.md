@@ -320,6 +320,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the only one. `kornia.feature.lightglue.Attention.enable_flash`, the attribute that combined the
   constructor argument with the probe result (and so always equalled the argument, because SDPA is
   present on every supported torch), was renamed to `Attention.allow_flash`. (#4287)
+* `bbox_to_mask3d` now returns the intersection of the three axis ranges for a box that covers or
+  overhangs a whole output axis, matching `Boxes3D.to_mask`, instead of filling the entire volume
+  (#4255). The old implementation `|`-ed the three broadcast axis slabs and tried to recover the
+  intersection with a three-way `all()` reduction; that recovery breaks the moment any one slab
+  covers a whole axis, since the union is then all-true on that axis and the reduction can no
+  longer see the other two slabs' bounds. Computing the intersection directly with `&` needs no
+  such recovery step. Interior boxes (the case the old reductions happened to recover correctly)
+  are unaffected and byte-identical.
 
 * `RandAugment`, `AutoAugment`, `TrivialAugment` and `AugMix` no longer silently upcast half-precision
   batches to `float32`. `OperationBase.forward` — the shared gate every auto-augment op routes through —
