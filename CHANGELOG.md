@@ -310,6 +310,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `packaging` is no longer a runtime dependency; it was never imported. The `dev` extra no longer lists
+  `pytest-cov` (CI runs `coverage run -m pytest`), `ruff` (the pre-commit hook installs the pinned copy) or a
+  `numpy<3` cap, and `uv.lock` is regenerated to match (#4296).
 * `import kornia` no longer imports onnxruntime when it is installed (#4295)
 * DeDoDe's vendored DINOv2 no longer probes for `xformers`; the pure-PyTorch path it always ran is the
   only one. (#4288)

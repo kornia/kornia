@@ -25,7 +25,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Image Processing",
   "Topic :: Software Development :: Libraries",
 ]
-dependencies = ["kornia_rs>=0.1.9", "numpy>=1.21", "packaging", "torch>=2.5.1"]
+dependencies = ["kornia_rs>=0.1.9", "numpy>=1.21", "torch>=2.5.1"]
 dynamic = ["version"]
 
 [project.urls]
@@ -40,18 +40,15 @@ Issues = "https://github.com/kornia/kornia/issues"
 dev = [
   "coverage",
   "diffusers",
-  "numpy<3",
   "onnx",
   "onnxruntime",
   "onnxscript",
   "pillow",
   "pre-commit",
   "pytest",
-  "pytest-cov",
   "pytest-timeout",
   "requests",
-  "ruff",
-  "setuptools",  # For torch.compile
+  "setuptools",  # torch.compile / triton on py3.11 + torch 2.5.1, which does not declare it there
   "transformers<5.11",
 ]
 docs = [
