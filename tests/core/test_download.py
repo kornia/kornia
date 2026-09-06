@@ -1384,3 +1384,137 @@ class TestDownloadHfFile:
         assert paths[0] != paths[1]
         assert Path(paths[0]).read_bytes() == b"kornia"
         assert Path(paths[1]).read_bytes() == b"google"
+
+
+class TestDownloadValidate:
+    """``validate=`` gives a download-only call the quarantine a load gets.
+
+    Without it a transfer cut short after a 2xx leaves a truncated file in the
+    cache, and every later call returns it as a hit -- the caller fails on it
+    forever, until someone deletes the file by hand.
+    """
+
+    @staticmethod
+    def _serve(tmp_path, payload: bytes) -> str:
+        source = tmp_path / "remote" / "model.safetensors"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(payload)
+        return source.as_uri()
+
+    @staticmethod
+    def _reject_truncated(expected_size: int):
+        """A stand-in for a header parse: rejects anything short."""
+
+        def validate(path: str) -> None:
+            if os.path.getsize(path) != expected_size:
+                raise ValueError(f"{path}: truncated")
+
+        return validate
+
+    def test_a_poisoned_cache_entry_is_refetched(self, tmp_path) -> None:
+        payload = b"the-whole-file"
+        url = self._serve(tmp_path, payload)
+        model_dir = tmp_path / "cache"
+        model_dir.mkdir()
+        (model_dir / "model.safetensors").write_bytes(payload[:4])
+
+        path = download_file_from_url(
+            url,
+            model_dir=str(model_dir),
+            progress=False,
+            validate=self._reject_truncated(len(payload)),
+        )
+
+        assert Path(path).read_bytes() == payload
+
+    def test_without_validate_the_poisoned_entry_is_returned(self, tmp_path) -> None:
+        """The behaviour ``validate`` opts out of, pinned so it stays a choice."""
+        payload = b"the-whole-file"
+        url = self._serve(tmp_path, payload)
+        model_dir = tmp_path / "cache"
+        model_dir.mkdir()
+        (model_dir / "model.safetensors").write_bytes(payload[:4])
+
+        path = download_file_from_url(url, model_dir=str(model_dir), progress=False)
+
+        assert Path(path).read_bytes() == payload[:4]
+
+    def test_a_good_cache_entry_is_not_refetched(self, monkeypatch, tmp_path) -> None:
+        """``validate`` runs on hits, so it must not cost a transfer when it passes."""
+        payload = b"the-whole-file"
+        url = self._serve(tmp_path, payload)
+        model_dir = tmp_path / "cache"
+        transfers: list[str] = []
+        real = torch.hub.download_url_to_file
+
+        def counted(url_, dst, *args, **kwargs):
+            transfers.append(url_)
+            return real(url_, dst, *args, **kwargs)
+
+        monkeypatch.setattr(torch.hub, "download_url_to_file", counted)
+        validate = self._reject_truncated(len(payload))
+
+        first = download_file_from_url(url, model_dir=str(model_dir), progress=False, validate=validate)
+        second = download_file_from_url(url, model_dir=str(model_dir), progress=False, validate=validate)
+
+        assert second == first
+        assert transfers == [url], "a valid cache entry was fetched again"
+
+    def test_a_source_that_serves_a_bad_file_falls_through_to_the_next(self, tmp_path) -> None:
+        payload = b"the-whole-file"
+        bad = tmp_path / "remote" / "bad.safetensors"
+        bad.parent.mkdir(parents=True, exist_ok=True)
+        bad.write_bytes(payload[:4])
+        good_url = self._serve(tmp_path, payload)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            path = download_file_from_url(
+                [bad.as_uri(), good_url],
+                file_name="model.safetensors",
+                model_dir=str(tmp_path / "cache"),
+                progress=False,
+                validate=self._reject_truncated(len(payload)),
+            )
+
+        assert Path(path).read_bytes() == payload
+
+    def test_a_file_that_never_validates_raises_and_keeps_the_original(self, tmp_path) -> None:
+        """Nothing on disk is known-good, so the pre-call entry is put back.
+
+        Deleting instead would destroy a multi-gigabyte checkpoint over a
+        validator that was wrong, which is why the quarantine renames.
+        """
+        payload = b"the-whole-file"
+        url = self._serve(tmp_path, payload)
+        model_dir = tmp_path / "cache"
+        model_dir.mkdir()
+        (model_dir / "model.safetensors").write_bytes(b"original")
+
+        def always_reject(path: str) -> None:
+            raise ValueError("never valid")
+
+        with pytest.raises(RuntimeError, match="Failed to download the file"):
+            download_file_from_url(url, model_dir=str(model_dir), progress=False, validate=always_reject)
+
+        assert (model_dir / "model.safetensors").read_bytes() == b"original"
+
+    def test_check_safetensors_rejects_a_truncated_checkpoint(self, tmp_path) -> None:
+        """The validator the builders actually pass."""
+        import json
+        import struct
+
+        from kornia.core.safetensors import check_safetensors
+
+        data = torch.arange(8, dtype=torch.float32).numpy().tobytes()
+        header = json.dumps({"a": {"dtype": "F32", "shape": [8], "data_offsets": [0, len(data)]}}).encode()
+        whole = struct.pack("<Q", len(header)) + header + data
+
+        good = tmp_path / "good.safetensors"
+        good.write_bytes(whole)
+        check_safetensors(good)  # must not raise
+
+        truncated = tmp_path / "bad.safetensors"
+        truncated.write_bytes(whole[:-4])
+        with pytest.raises(ValueError):
+            check_safetensors(truncated)
