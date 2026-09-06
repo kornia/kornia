@@ -21,7 +21,9 @@ import torch
 from kornia.geometry.camera import project_points, unproject_points
 from kornia.geometry.vector import Vector2, Vector3
 from kornia.image import ImageSize
-from kornia.sensors.camera import CameraModel, CameraModelType
+from kornia.sensors.camera import CameraModel, CameraModelBase, CameraModelType
+from kornia.sensors.camera.distortion_model import AffineTransform
+from kornia.sensors.camera.projection_model import Z1Projection
 
 from testing.base import BaseTester
 
@@ -212,8 +214,9 @@ class TestPinholeCamera(BaseTester):
         # rule, although every pixel grid in the library enumerates integer pixel CENTRES, under which the
         # grid-consistent value is s * cx + (s - 1) / 2 = 1.75 for cx and 1.25 for cy. This is one of the four
         # sites #4263 lists; ``PinholeCamera.scale``, ``PinholeCamera.scale_`` and ``scale_pinhole`` apply the
-        # same rule and are pinned in tests/geometry/camera/test_pinhole.py. cx = 4 != cy = 3 and s = 0.5 != 1,
-        # so the two candidate rules differ in both components and by different amounts.
+        # same rule and are pinned by the 5a PR (#4294) in tests/geometry/camera/test_pinhole.py -- those
+        # pins are not on this branch. cx = 4 != cy = 3 and s = 0.5 != 1, so the two candidate rules differ
+        # in both components and by different amounts.
         # Snippet used to generate expected: cam.scale(tensor(0.5)).params executed 2026-09-06 on this
         # worktree (torch 2.14.0) -> [50.0, 25.0, 2.0, 1.5], and the integer-centre rule 0.5 * 4 - 0.25 = 1.75
         # / 0.5 * 3 - 0.25 = 1.25; on cpu for float32, float64, float16 and bfloat16 and on mps for float32
@@ -318,20 +321,68 @@ class TestCameraModelTypes(BaseTester):
         with pytest.raises(ValueError, match=r"params must be of shape B, 8 for KANNALA_BRANDT_K3 Camera"):
             CameraModel(ImageSize(6, 8), CameraModelType.KANNALA_BRANDT_K3, torch.ones(7, device=device, dtype=dtype))
 
+    def test_wart_camera_model_base_validates_no_params_shape_4316(self, device, dtype):
+        # Wart pin for kornia#4316 (whole-branch review finding; the audit's ``CameraModelBase`` cells
+        # 5d-sc-08 / 5d-sc-09 construct the base directly, but only ever with a well-shaped ``params``):
+        # ``CameraModelBase.__init__`` documents ``params`` as (B, 4) / (B, 12) / (B, 8) and then validates
+        # neither the length nor the rank -- it stores what it is given.  ``CameraModelBase`` is public (it
+        # is in ``kornia.sensors.camera.__all__`` and its own docstring example constructs one directly), so
+        # the documented precondition is enforced on the typed path and simply absent on this one.  Two
+        # counterexamples:
+        #   * a THREE-element vector constructs, and the missing cy is only discovered one call deep inside
+        #     ``AffineTransform.distort``, as an IndexError whose message names neither ``params`` nor the
+        #     camera model;
+        #   * a (1, 1, 4) vector -- the rank the typed constructors reject, because there is no (B, N, 4)
+        #     multi-camera form -- constructs, projects without complaint and returns a (1, 1, 2) result.
+        # The typed-constructor arm is the discriminator: it rejects BOTH of those parameter tensors with
+        # ValueError, so without it this method would read as "nothing anywhere validates params", which is
+        # false.  Either repair in #4316 must flip a line here: validating in the base turns both
+        # constructions into ValueError, and the docstring-only option is a no-op for this pin only because
+        # it changes no behaviour.
+        # The parameters are asymmetric -- fx = 100 != fy = 50, cx = 4 != cy = 3, and the truncated vector
+        # drops cy specifically -- so a swapped reading of the layout changes the projected literals.
+        # Snippet used to generate expected: CameraModelBase(AffineTransform(), Z1Projection(),
+        # ImageSize(6, 8), tensor([100., 50., 4.])).project(Vector3(tensor([[1., 2., 4.]]))) and the same
+        # with tensor([[[100., 50., 4., 3.]]]) executed 2026-09-06 on this worktree (torch 2.14.0) ->
+        # IndexError("index 3 is out of bounds for dimension 1 with size 3") and a (1, 1, 2) Vector2 equal
+        # to [[[29.0, 28.0]]]; on cpu for float32, float64, float16 and bfloat16 and on mps for float32 and
+        # float16.  CameraModel(ImageSize(6, 8), PINHOLE, ...) raises ValueError "params must be of shape
+        # (B, 4) for PINHOLE Camera" for both tensors.
+        # Pins the CURRENT behaviour; NOT a contract; delete when #4316 is repaired.
+        point = Vector3(torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype))
+        short_params = torch.tensor([100.0, 50.0, 4.0], device=device, dtype=dtype)
+        short = CameraModelBase(AffineTransform(), Z1Projection(), ImageSize(6, 8), short_params)
+        assert short.params.shape == (3,)
+        with pytest.raises(IndexError, match="out of bounds"):
+            short.project(point)
+        rank3_params = torch.tensor([[[100.0, 50.0, 4.0, 3.0]]], device=device, dtype=dtype)
+        rank3 = CameraModelBase(AffineTransform(), Z1Projection(), ImageSize(6, 8), rank3_params)
+        assert rank3.params.shape == (1, 1, 4)
+        projected = rank3.project(point)
+        assert projected.data.shape == (1, 1, 2)
+        self.assert_close(
+            projected.data, torch.tensor([[[29.0, 28.0]]], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        )
+        for params in (short_params, rank3_params):
+            with pytest.raises(ValueError, match=r"params must be of shape \(B, 4\) for PINHOLE Camera"):
+                CameraModel(ImageSize(6, 8), CameraModelType.PINHOLE, params)
+
     def test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284(self, device, dtype):
         # Wart pin for kornia#4284 (audit labels 5d-sc-14, 5d-sc-16, 5d-sc-17, 5d-sc-19, 5d-sc-20, 5d-sc-22,
         # 5d-sc-23): BROWN_CONRADY, KANNALA_BRANDT_K3 and ORTHOGRAPHIC are exported from
         # ``kornia.sensors.camera.__all__``, validate their parameter vectors and construct without complaint
         # -- and then project, unproject and matrix all raise NotImplementedError with an EMPTY message,
-        # from THREE different kinds of site.  Measured raise sites, from the last frame of each traceback
-        # (executed 2026-09-06 on this worktree, torch 2.14.0, cpu float32):
-        #   BROWN_CONRADY     project   -> distortion_model.py:108 BrownConradyTransform.distort
-        #                     unproject -> distortion_model.py:128 BrownConradyTransform.undistort
-        #   KANNALA_BRANDT_K3 project   -> distortion_model.py:153 KannalaBrandtK3Transform.distort
-        #                     unproject -> distortion_model.py:171 KannalaBrandtK3Transform.undistort
-        #   ORTHOGRAPHIC      project   -> projection_model.py:107 OrthographicProjection.project
-        #                     unproject -> projection_model.py:126 OrthographicProjection.unproject
-        #   all three         matrix    -> camera_model.py:155     CameraModelBase.matrix
+        # from THREE different kinds of site.  Measured raise sites, as the qualified function name of the
+        # last frame of each traceback -- ``traceback.extract_tb(exc.__traceback__)[-1]`` -- executed
+        # 2026-09-06 on this worktree (torch 2.14.0, cpu float32).  Names rather than line numbers, because
+        # a line number in a comment rots the next time either module is edited:
+        #   BROWN_CONRADY     project   -> BrownConradyTransform.distort
+        #                     unproject -> BrownConradyTransform.undistort
+        #   KANNALA_BRANDT_K3 project   -> KannalaBrandtK3Transform.distort
+        #                     unproject -> KannalaBrandtK3Transform.undistort
+        #   ORTHOGRAPHIC      project   -> OrthographicProjection.project
+        #                     unproject -> OrthographicProjection.unproject
+        #   all three         matrix    -> CameraModelBase.matrix
         # So the two failure modes of project/unproject are a distortion placeholder (BROWN_CONRADY and
         # KANNALA_BRANDT_K3, which wire up the working Z1Projection and fail in the distortion) and a
         # projection placeholder (ORTHOGRAPHIC, in BOTH directions -- its AffineTransform never fails); those

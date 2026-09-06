@@ -73,16 +73,24 @@ class TestAffineTransform(BaseTester):
         # map from NORMALIZED (z = 1 plane) coordinates to PIXELS, u = fx * x + cx and v = fy * y + cy, with
         # ``params`` laid out as (fx, fy, cx, cy).  It agrees byte-for-byte with
         # ``kornia.geometry.camera.distort_points_affine`` (the duplication-ledger row "geometry.camera /
-        # sensors.camera", KEEP SEPARATE, kornia#4274), and ``undistort`` is its exact inverse: the round trip
-        # returns the input bit-for-bit, not merely within tolerance, so atol = rtol = 0 is the right
-        # assertion rather than a rounded one.  The round trip is non-trivial -- the distorted point
-        # [[54.0, 15.5]] is not the input [[0.5, 0.25]] -- and fx = 100 != fy = 50, cx = 4 != cy = 3 with an
-        # off-axis point, so swapping either pair changes both components.
+        # sensors.camera", KEEP SEPARATE, kornia#4274), and ``undistort`` is its closed-form inverse -- one
+        # subtraction and one division per axis, no iteration.  The "exact inverse" in this method's name is
+        # scoped to the literals pinned below: on THESE representable points the round trip returns the input
+        # bit-for-bit, so atol = rtol = 0 is the right assertion here rather than a rounded one.  It is NOT
+        # bit-exact in general: over 2000 random float32 draws 1456 differ from the input, by up to 3.9e-06.
+        # What the docstring claims, and what this pin checks, is the algebraic inverse, not float exactness.
+        # The round trip is non-trivial -- the distorted point [[54.0, 15.5]] is not the input [[0.5, 0.25]]
+        # -- and fx = 100 != fy = 50, cx = 4 != cy = 3 with an off-axis point, so swapping either pair
+        # changes both components.
         # Snippet used to generate expected: AffineTransform().distort(tensor([100., 50., 4., 3.]),
         # Vector2(tensor([[0.5, 0.25]]))).data and the undistort of that executed 2026-09-06 on this worktree
         # (torch 2.14.0) -> [[54.0, 15.5]] and [[0.5, 0.25]], both torch.equal against distort_points_affine
         # and against the input, on cpu for float32, float64, float16 and bfloat16 and on mps for float32 and
         # float16.  With the audit's symmetric fy = 100 the distorted point is [[54.0, 28.0]].
+        # Snippet used for the "not in general" figures: 2000 iterations of params = rand(4) * 200 + 1,
+        # points = (rand(1, 2) - 0.5) * 4, both float32 from torch.Generator().manual_seed(0), comparing
+        # torch.equal(undistort(params, distort(params, points)).data, points) -- executed 2026-09-06 on this
+        # worktree (torch 2.14.0, cpu) -> 544 bit-exact, 1456 differing, max abs error 3.934e-06.
         transform = AffineTransform()
         points = torch.tensor([[0.5, 0.25]], device=device, dtype=dtype)
         params = torch.tensor([100.0, 50.0, 4.0, 3.0], device=device, dtype=dtype)
@@ -107,9 +115,10 @@ class TestUnimplementedDistortions(BaseTester):
         # an EMPTY message, in both directions -- ``distort`` and ``undistort``.  They are what makes
         # ``CameraModel(..., BROWN_CONRADY, ...)`` and ``CameraModel(..., KANNALA_BRANDT_K3, ...)``
         # unusable in BOTH directions (pinned at the model level in
-        # tests/sensors/camera/test_camera_model.py, whose comment records the measured raise sites --
-        # distortion_model.py:108/128 and :153/171 for these four calls).  Working equivalents already exist
-        # next door as ``kornia.geometry.calibration.distort_points`` and
+        # tests/sensors/camera/test_camera_model.py, whose comment records the measured raise sites as
+        # qualified function names -- ``BrownConradyTransform.distort`` / ``.undistort`` and
+        # ``KannalaBrandtK3Transform.distort`` / ``.undistort`` for these four calls).  Working equivalents
+        # already exist next door as ``kornia.geometry.calibration.distort_points`` and
         # ``kornia.geometry.camera.distort_points_kannala_brandt``.  Parameter vectors of the documented
         # lengths (12 and 8) are used, so the raise is not a shape rejection in disguise.  The empty message
         # is asserted rather than described, because #4284's Expected asks at minimum for a message naming

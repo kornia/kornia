@@ -86,14 +86,14 @@ class CameraModelBase:
           the typed constructors -- :class:`CameraModel` and the :class:`PinholeModel`,
           :class:`BrownConradyModel`, :class:`KannalaBrandtK3` and :class:`Orthographic` subclasses -- which
           accept an unbatched ``(N,)`` vector and a batched :math:`(B, N)` one and raise ``ValueError`` for
-          another length or a rank above 2. ``CameraModelBase`` itself validates nothing: it stores what it
-          is given, so a :math:`(B, 1, N)` vector the typed constructors reject is used as it is, and a
-          too-short one reaches :meth:`project` and fails there with ``IndexError``.
+          another length or a rank above 2. ``CameraModelBase`` itself validates neither the length nor the
+          rank -- see the warning below.
         - :meth:`matrix` and its alias :meth:`K` return the :math:`(*, 3, 3)` intrinsics
           ``[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]``, carrying the batch axis of ``params`` -- not the
-          :math:`(B, 4, 4)` matrix :class:`~kornia.geometry.camera.pinhole.PinholeCamera` stores.
-          :class:`PinholeModel` implements it; ``CameraModelBase.matrix`` itself raises
-          ``NotImplementedError``.
+          :math:`(B, 4, 4)` ``intrinsics`` that :class:`~kornia.geometry.camera.pinhole.PinholeCamera`
+          stores, whose :attr:`~kornia.geometry.camera.pinhole.PinholeCamera.camera_matrix` property returns
+          the :math:`(B, 3, 3)` block of it. :class:`PinholeModel` implements it; ``CameraModelBase.matrix``
+          itself raises ``NotImplementedError``.
         - :meth:`project` is ``self.distortion.distort(self.params, self.projection.project(points))`` and
           :meth:`unproject` the reverse,
           ``self.projection.unproject(self.distortion.undistort(self.params, points), depth)``. ``depth`` is
@@ -107,6 +107,15 @@ class CameraModelBase:
           the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`. The two type systems
           are kept separate by design -- this one takes ``Vector`` objects, that one plain tensors -- which is
           recorded in `#4274 <https://github.com/kornia/kornia/issues/4274>`_.
+
+    .. warning::
+        ``CameraModelBase.__init__`` documents a ``params`` shape and validates nothing: it stores what it is
+        given. A :math:`(B, 1, N)` vector the typed constructors reject is used as it is -- it projects and
+        returns a :math:`(B, 1, 2)` result -- and a too-short one reaches :meth:`project` and fails there
+        with ``IndexError``, far from the constructor. Tracked in
+        `#4316 <https://github.com/kornia/kornia/issues/4316>`_; the behaviour is documented as it is and
+        pinned by ``test_wart_camera_model_base_validates_no_params_shape_4316`` in
+        ``tests/sensors/camera/test_camera_model.py``.
 
     .. warning::
         :class:`BrownConradyModel`, :class:`KannalaBrandtK3` and :class:`Orthographic` validate their

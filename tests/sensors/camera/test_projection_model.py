@@ -154,9 +154,11 @@ class TestOrthographicProjection(BaseTester):
         # an EMPTY message in both directions.  It is reachable through the public API --
         # ``CameraModel(..., CameraModelType.ORTHOGRAPHIC, ...)`` constructs and wires this class in -- so the
         # model-level project AND unproject raises pinned in tests/sensors/camera/test_camera_model.py both
-        # come from here (measured last traceback frames projection_model.py:107 and :126), not from a
-        # distortion placeholder: ORTHOGRAPHIC pairs this projection with the working ``AffineTransform``,
-        # which never fails for it in either direction.  Its ``matrix()`` raises from a third site again,
+        # come from here (the last traceback frame of each is measured as ``OrthographicProjection.project``
+        # and ``OrthographicProjection.unproject`` -- a name rather than a line number, which would rot on
+        # the next edit of that module), not from a distortion placeholder: ORTHOGRAPHIC pairs this
+        # projection with the working ``AffineTransform``, which never fails for it in either direction.
+        # Its ``matrix()`` raises from a third site again,
         # ``CameraModelBase.matrix``.  A working equivalent already exists next door as
         # ``kornia.geometry.camera.project_points_orthographic``.  The empty message is asserted rather than
         # described, because #4284's Expected asks at minimum for a message naming the model: a message-only
