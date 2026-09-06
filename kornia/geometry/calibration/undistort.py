@@ -47,12 +47,14 @@ def undistort_points(
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
         - ``dist`` follows the coefficient layout documented on
           :func:`~kornia.geometry.calibration.distort_points`, which is the forward map this function inverts;
-          the accepted lengths and the internal zero-padding to 14 are the same.
+          the accepted lengths and the internal zero-padding are the same.
         - ``K`` and ``new_K`` play the mirror image of their roles in the forward map: ``K`` maps the incoming
           pixel onto the normalized plane and ``new_K`` maps the undistorted normalized point back to pixels.
         - the inverse is a fixed-point iteration of ``num_iters`` steps, not a closed form, so the round trip
-          through :func:`~kornia.geometry.calibration.distort_points` closes at the working dtype's tolerance
-          rather than exactly.
+          through :func:`~kornia.geometry.calibration.distort_points` closes only to the accuracy that
+          iteration has reached. That accuracy is set by the step count and by the camera and coefficients
+          rather than by the working dtype, and inside the region where the iteration converges, raising
+          ``num_iters`` improves it.
 
     .. warning::
         The iteration has no convergence test and no valid-radius guard. Outside the region where the radial
@@ -178,11 +180,12 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     distortion models are considered in this function.
 
     Convention:
-        - two input conventions are accepted: the batched :math:`(B, C, H, W)` image with a
-          :math:`(B, 3, 3)` ``K`` and a :math:`(B, n)` ``dist``, and the legacy unbatched
-          :math:`(1, C, H, W)` image with a :math:`(3, 3)` ``K`` and an :math:`(n,)` ``dist``, which the
-          source keeps to avoid a breaking change. The legacy form is not a broadcast: the same unbatched
-          ``K`` and ``dist`` with a :math:`B > 1` image raise :class:`ValueError`.
+        - the leading dimensions of ``image`` (everything in front of ``C, H, W``), of ``K`` (in front of its
+          :math:`3 \times 3` block) and of ``dist`` (in front of its ``n`` coefficients) must match exactly.
+          They may be empty, a single batch axis, or several axes deep. The one exception is the legacy
+          unbatched call -- a :math:`(1, C, H, W)` image with a :math:`(3, 3)` ``K`` and an :math:`(n,)`
+          ``dist``, which the source keeps to avoid a breaking change. That exception is not a broadcast: the
+          same unbatched ``K`` and ``dist`` with a leading dimension larger than 1 raise :class:`ValueError`.
         - the sampling map is built by applying :func:`~kornia.geometry.calibration.distort_points` to the
           grid of integer pixel centres that :func:`~kornia.geometry.grid.create_meshgrid` enumerates, so the
           pixel-centre convention is the one described in the Convention block on

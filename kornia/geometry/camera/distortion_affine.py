@@ -84,8 +84,9 @@ def undistort_points_affine(distorted_points_in_camera: torch.Tensor, params: to
         - ``distorted_points_in_camera`` is a **pixel** coordinate and the result is a point on the normalized
           :math:`z = 1` plane; ``params`` is the same ``[fx, fy, cx, cy]`` vector that
           :func:`distort_points_affine` takes, and this function is its closed-form inverse.
-        - a zero ``fx`` or ``fy`` is not rejected: that axis divides by zero and comes back as ``inf``, or as
-          ``nan`` for a point that sits exactly on the corresponding principal-point coordinate.
+        - a zero ``fx`` or ``fy`` is not rejected: that axis divides by zero and comes back as an infinity
+          carrying the numerator's sign, or as ``nan`` for a point that sits exactly on the corresponding
+          principal-point coordinate.
 
     Args:
         distorted_points_in_camera: torch.Tensor representing the points to undistort with shape (..., 2).

@@ -119,8 +119,9 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
           :func:`distort_points_kannala_brandt`.
         - the inverse is a fixed number of Gauss-Newton steps rather than a closed form: the step count is not
           a parameter and there is no convergence test, so the round trip through
-          :func:`distort_points_kannala_brandt` closes at the working dtype's tolerance rather than exactly.
-          :func:`~kornia.geometry.camera.undistort_points_affine` is the closed-form contrast.
+          :func:`distort_points_kannala_brandt` closes only to the accuracy that iteration has reached. That
+          accuracy is set by the model and the point rather than by the working dtype, and a caller cannot
+          raise it. :func:`~kornia.geometry.camera.undistort_points_affine` is the closed-form contrast.
         - small constants guard the Newton denominator and the final radial rescale, so a point at the
           principal point comes back as the origin rather than ``nan``.
 
@@ -194,13 +195,13 @@ def dx_distort_points_kannala_brandt(
     Convention:
         - the result has shape :math:`(..., 2, 2)` and is laid out like the Jacobian that
           :func:`~kornia.geometry.camera.dx_distort_points_affine` returns: rows are the output components
-          ``(u, v)``, columns the input components ``(x, y)``. Unlike that one, it is **not** the Jacobian of
-          the function it is named after -- see the warning below.
+          ``(u, v)``, columns the input components ``(x, y)``.
 
     .. warning::
-        The matrix returned here disagrees with :func:`torch.autograd.functional.jacobian` of
-        :func:`distort_points_kannala_brandt` and with central finite differences, which agree with each
-        other, and transposing it does not close the gap; at the origin it is ``nan``. Tracked as
+        The matrix this function returns today is **not** the Jacobian of
+        :func:`distort_points_kannala_brandt`. It disagrees with :func:`torch.autograd.functional.jacobian`
+        and with central finite differences, which agree with each other, and transposing it does not close
+        the gap; at the origin it is ``nan``. Tracked as
         `#4277 <https://github.com/kornia/kornia/issues/4277>`_. The ``Example:`` block below prints the value
         this implementation returns today and is deliberately left byte-identical -- it is the executable
         evidence for the issue, and the repair has to re-derive it together with the existing
