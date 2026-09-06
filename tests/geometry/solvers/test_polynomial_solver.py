@@ -91,6 +91,62 @@ class TestCubicSolver(BaseTester):
         coeffs = torch.tensor([[2.0, 3.0, -11.0, -6.0]], device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(solver.solve_cubic, (coeffs,))
 
+    @pytest.mark.parametrize(
+        "coeffs",
+        [
+            # (x - 1)^2 (x + 2): a repeated real root puts R / sqrt(-Q3) exactly
+            # on acos's domain boundary, where its derivative is unbounded.
+            [1.0, 0.0, -3.0, 2.0],
+            # The same root pair a hair apart, which is the case reached in
+            # practice through solve_quartic's resolvent cubic.
+            [1.0, 0.0, -3.0, 2.0 - 1e-6],
+            # Repeated root away from 1, to show it is the repeat and not the value.
+            [1.0, -8.0, 20.0, -16.0],
+        ],
+    )
+    def test_repeated_root_gradients_are_finite(self, coeffs, device, dtype):
+        """A repeated real root must not produce NaN or inf gradients.
+
+        The `D <= 0` branch takes `acos(R / sqrt(-Q3))`. `D <= 0` guarantees the
+        ratio is in [-1, 1], but a repeated root drives it to exactly +-1, where
+        `d(acos)/dx` is unbounded -- so the backward pass returned NaN while the
+        forward value was correct.
+        """
+        c = torch.tensor([coeffs], device=device, dtype=dtype, requires_grad=True)
+        roots = solver.solve_cubic(c)
+        roots.sum().backward()
+        assert c.grad is not None
+        assert torch.isfinite(c.grad).all(), f"non-finite gradient: {c.grad}"
+
+    def test_repeated_root_values_are_unchanged(self, device, dtype):
+        """Guarding the gradient must not move the roots.
+
+        The gradient is taken a margin inside acos's domain while the value is
+        kept exact, so this pins the forward pass against a fix that clamps the
+        value instead and silently degrades a repeated root.
+        """
+        coeffs = torch.tensor([[1.0, 0.0, -3.0, 2.0]], device=device, dtype=dtype)
+        roots = solver.solve_cubic(coeffs)
+        self.assert_close(
+            roots[0].sort().values,
+            torch.tensor([-2.0, 1.0, 1.0], device=device, dtype=dtype),
+            rtol=1e-5,
+            atol=1e-5,
+        )
+
+    def test_quartic_with_a_repeated_root_has_finite_gradients(self, device, dtype):
+        """The path that reaches this in practice.
+
+        `solve_quartic` builds a resolvent cubic; a quartic with a close real
+        root pair sends it straight to the boundary.
+        """
+        # (x - 1)^2 (x - 2)(x - 3)
+        coeffs = torch.tensor([[1.0, -7.0, 17.0, -17.0, 6.0]], device=device, dtype=dtype, requires_grad=True)
+        roots = solver.solve_quartic(coeffs)
+        roots.sum().backward()
+        assert coeffs.grad is not None
+        assert torch.isfinite(coeffs.grad).all(), f"non-finite gradient: {coeffs.grad}"
+
 
 class TestMultiplyDegOnePoly(BaseTester):
     def test_smoke(self, device, dtype):

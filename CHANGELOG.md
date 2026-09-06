@@ -130,6 +130,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tests — a physical M1 on macOS 26 compiles them fine. kornia still supports torch 2.5.1, so the
   in-tree MPS workarounds stay. (#4202)
 
+### Fixed
+
+* `solve_cubic` no longer returns NaN gradients for a cubic with a repeated or near-repeated real
+  root. Its `D <= 0` branch takes `acos(R / sqrt(-Q3))`; the branch condition puts the ratio inside
+  `[-1, 1]`, but a repeated root drives it to exactly `+-1`, where `d(acos)/dx` is unbounded. The
+  gradient is now taken a margin inside the domain while the value is kept exact, so the roots are
+  unchanged. Reached in practice through `solve_quartic`'s resolvent cubic. (#4290)
+
 ### Breaking changes
 
 * `kornia_rs>=0.1.14` is required; the floor used to be 0.1.9. kornia_rs 0.1.11 relocated its image I/O

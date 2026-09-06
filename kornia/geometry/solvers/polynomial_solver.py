@@ -179,7 +179,24 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_D_zero_solutions = (a_D_zero <= 0) & (a_Q_zero != 0)
 
     if torch.any(mask_D_zero):
-        theta_D_zero = torch.acos(R[mask_D_zero] / torch.sqrt(-Q3[mask_D_zero]))
+        # D <= 0 guarantees R^2 <= -Q3, so the ratio is in [-1, 1] and acos is
+        # defined. Its *derivative* is not: d(acos)/dx is unbounded at x = +-1,
+        # which is exactly where a cubic with a repeated real root lands --
+        # reached routinely through solve_quartic's resolvent cubic whenever
+        # the quartic has a close real root pair.
+        #
+        # Clamping to [-1, 1] does not help; acos would still be evaluated at
+        # the boundary. So the value is kept exact and only the gradient is
+        # taken at a point a margin inside the domain: the two acos terms
+        # cancel in the forward pass, and the detached one contributes no
+        # gradient, leaving d/d(ratio) evaluated at the clamped point. Where
+        # the clamp saturates that derivative is 0, which is the usual finite
+        # stand-in for a root that is genuinely non-differentiable in the
+        # coefficients at a repeat.
+        ratio = R[mask_D_zero] / torch.sqrt(-Q3[mask_D_zero])
+        eps = torch.finfo(ratio.dtype).eps
+        ratio_for_grad = torch.clamp(ratio, min=-1.0 + eps, max=1.0 - eps)
+        theta_D_zero = torch.acos(ratio_for_grad) + (torch.acos(ratio) - torch.acos(ratio_for_grad)).detach()
         sqrt_Q_D_zero = torch.sqrt(-Q[mask_D_zero])
         x0_D_zero = 2 * sqrt_Q_D_zero * torch.cos(theta_D_zero / 3.0) - b_a_3[mask_D_zero]
         x1_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 2 * _PI) / 3.0) - b_a_3[mask_D_zero]
