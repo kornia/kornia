@@ -22,14 +22,16 @@ appearing in ``pyproject.toml``: ``flash_attn``, ``xformers``, ``basicsr``, ``hu
 ``safetensors``, ``requests`` and ``transformers``. Nothing in CI compared the imports against
 the declaration, so each one only surfaced as an ``ImportError`` in a user's environment.
 
-The three tests here are that comparison:
+The four tests here are that comparison:
 
 1. every third-party module imported anywhere under ``kornia/`` is declared -- as a runtime
    dependency, in some user-facing optional-dependency extra, or as a :class:`LazyLoader`;
 2. every :class:`LazyLoader` names a module that a dependency a *user* can install actually
    provides, so a new lazy optional dependency cannot be added without also giving users a way to
    install it;
-3. a bare ``import kornia`` loads none of the optional packages, so declaring a dependency as
+3. every ``LazyLoader(extra=...)`` hint names a user-facing extra that installs that module, so
+   the ``pip install "kornia[<extra>]"`` line in the ``ImportError`` is one that works;
+4. a bare ``import kornia`` loads none of the optional packages, so declaring a dependency as
    optional stays true at runtime.
 
 "User-facing" excludes :data:`CONTRIBUTOR_EXTRAS` (``dev`` and ``docs``): those install what it
@@ -92,14 +94,21 @@ LAZY_LOADERS_WITHOUT_DECLARED_DEP: dict[str, str] = {
     ),
 }
 
-# Optional packages that ``import kornia`` must not pull in.
+# Optional packages that ``import kornia`` must not pull in: everything a user-facing extra or a
+# ``LazyLoader`` provides beyond the runtime dependencies (the import test checks this tuple stays a
+# superset of that derived set), plus the packages the kornia#4259 audit found imported eagerly.
 MUST_NOT_LOAD_ON_IMPORT = (
     "onnxruntime",
     "onnx",
+    "onnxscript",
     "PIL",
     "requests",
     "diffusers",
     "transformers",
+    "boxmot",
+    "segmentation_models_pytorch",
+    "huggingface_hub",
+    "safetensors",
     "cv2",
     "yaml",
 )
@@ -123,19 +132,18 @@ def _requirement(spec: str) -> tuple[str, tuple[str, ...]]:
     return _normalise(match.group(1)), extras
 
 
-def _declared_import_names() -> set[str]:
-    """Return the import names of every distribution a *user* of kornia can install.
+def _pyproject_import_names() -> tuple[set[str], dict[str, set[str]]]:
+    """Return the import names of the runtime dependencies and of every user-facing extra.
 
-    That is the runtime ``dependencies`` plus every user-facing ``[project.optional-dependencies]``
-    extra -- all of them except :data:`CONTRIBUTOR_EXTRAS`, which exist for developing kornia, not
-    for running it. ``kornia[<extra>]`` self-references expand to that extra's own requirements.
+    The extras are every ``[project.optional-dependencies]`` entry except :data:`CONTRIBUTOR_EXTRAS`,
+    which exist for developing kornia, not for running it. ``kornia[<extra>]`` self-references
+    expand to that extra's own requirements.
     """
     project = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]
     optional = {_normalise(name): reqs for name, reqs in project.get("optional-dependencies", {}).items()}
-    user_facing = set(optional) - CONTRIBUTOR_EXTRAS
-    names: set[str] = set()
 
-    def collect(specs: list[str], seen: frozenset[str]) -> None:
+    def collect(specs: list[str], seen: frozenset[str]) -> set[str]:
+        names: set[str] = set()
         for spec in specs:
             dist, extras = _requirement(spec)
             if not dist:
@@ -143,23 +151,32 @@ def _declared_import_names() -> set[str]:
             if dist == "kornia":  # self-reference: expand the extras it pulls in
                 for extra in extras:
                     if extra not in seen:
-                        collect(optional.get(extra, []), seen | {extra})
+                        names |= collect(optional.get(extra, []), seen | {extra})
                 continue
             names.add(DIST_TO_IMPORT.get(dist, dist))
+        return names
 
-    collect(project.get("dependencies", []), frozenset())
-    for extra in user_facing:
-        collect(optional[extra], frozenset({extra}))
-    return names
+    runtime = collect(project.get("dependencies", []), frozenset())
+    user_facing = {
+        extra: collect(reqs, frozenset({extra})) for extra, reqs in optional.items() if extra not in CONTRIBUTOR_EXTRAS
+    }
+    return runtime, user_facing
+
+
+def _declared_import_names() -> set[str]:
+    """Return the import names of every distribution a *user* of kornia can install."""
+    runtime, user_facing = _pyproject_import_names()
+    return runtime.union(*user_facing.values())
+
+
+def _lazy_loaders() -> dict[str, LazyLoader]:
+    """Return ``{module name: loader}`` for the ``LazyLoader`` registry."""
+    return {loader.module_name: loader for loader in vars(external).values() if isinstance(loader, LazyLoader)}
 
 
 def _lazy_loader_modules() -> dict[str, str]:
     """Return ``{module name: top-level module name}`` for the ``LazyLoader`` registry."""
-    return {
-        loader.module_name: loader.module_name.split(".")[0]
-        for loader in vars(external).values()
-        if isinstance(loader, LazyLoader)
-    }
+    return {name: name.split(".")[0] for name in _lazy_loaders()}
 
 
 def _imported_modules() -> list[tuple[str, int, str]]:
@@ -230,8 +247,34 @@ def test_every_lazy_loader_module_is_installable():
     )
 
 
+def test_every_lazy_loader_extra_hint_provides_its_module():
+    """A ``LazyLoader(extra=...)`` hint must name a user-facing extra that installs the module.
+
+    The hint ends up in the ``ImportError`` a user reads (``pip install "kornia[<extra>]"``), so an
+    extra that does not exist, or exists but does not carry the package, sends them down a dead end.
+    """
+    _, extras = _pyproject_import_names()
+    wrong = {
+        name: loader.extra
+        for name, loader in _lazy_loaders().items()
+        if loader.extra is not None and name.split(".")[0] not in extras.get(_normalise(loader.extra), set())
+    }
+
+    assert not wrong, (
+        "kornia.core.external declares LazyLoader(s) whose extra= hint names no user-facing "
+        "optional-dependency extra that installs the module: "
+        + ", ".join(f"{name} -> kornia[{extra}]" for name, extra in sorted(wrong.items()))
+        + f". User-facing extras: {sorted(extras)}."
+    )
+
+
 def test_import_kornia_does_not_load_optional_dependencies():
     """A bare ``import kornia`` must not load any optional dependency (kornia#4260)."""
+    runtime, extras = _pyproject_import_names()
+    optional = (set().union(*extras.values()) | set(_lazy_loader_modules().values())) - runtime
+    unlisted = sorted(optional - set(MUST_NOT_LOAD_ON_IMPORT))
+    assert not unlisted, f"add these optional packages to MUST_NOT_LOAD_ON_IMPORT so this test covers them: {unlisted}"
+
     checked = [name for name in MUST_NOT_LOAD_ON_IMPORT if _is_installed(name)]
     if not checked:
         pytest.skip(f"none of {list(MUST_NOT_LOAD_ON_IMPORT)} is installed")
@@ -243,14 +286,16 @@ def test_import_kornia_does_not_load_optional_dependencies():
         "print(' '.join(n for n in names if any(m == n or m.startswith(n + '.') for m in sys.modules)))\n"
     )
     # S603: no untrusted input -- this interpreter, a literal program, and module names from
-    # MUST_NOT_LOAD_ON_IMPORT above.
+    # MUST_NOT_LOAD_ON_IMPORT above. check=False so a crashed probe reports its stderr instead of
+    # an opaque CalledProcessError; the return-code assertion keeps the test from passing vacuously.
     result = subprocess.run(  # noqa: S603
         [sys.executable, "-c", code, *checked],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
     )
+    assert result.returncode == 0, f"`import kornia` failed in the probe subprocess:\n{result.stderr}"
     loaded = result.stdout.split()
 
     assert not loaded, (
