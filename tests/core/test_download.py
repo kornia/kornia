@@ -25,6 +25,7 @@ import time
 import warnings
 from email.message import Message
 from email.utils import formatdate
+from pathlib import Path
 from unittest.mock import call, patch
 from urllib.error import HTTPError, URLError
 
@@ -32,7 +33,13 @@ import pytest
 import torch
 
 from kornia.core import download as download_mod
-from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.core.download import (
+    _hf_cache_file_name,
+    download_file_from_url,
+    download_hf_file,
+    hf_url,
+    load_state_dict_from_url,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -52,6 +59,35 @@ class TestHfUrl:
     def test_subdirectory(self) -> None:
         url = hf_url("loftr", "loftr_outdoor.ckpt")
         assert url.startswith("https://huggingface.co/kornia/loftr/resolve/main/")
+
+    def test_a_full_repo_id_keeps_its_owner(self) -> None:
+        """A repo name cannot contain a ``/``, so one marks an ``owner/name`` id."""
+        assert hf_url("google/siglip2-base-patch16-224", "model.safetensors") == (
+            "https://huggingface.co/google/siglip2-base-patch16-224/resolve/main/model.safetensors"
+        )
+
+
+class TestHfCacheFileName:
+    """The cache is one flat directory, and every HF repo names its checkpoint alike."""
+
+    def test_repo_id_is_folded_into_the_name(self) -> None:
+        assert _hf_cache_file_name("kornia/kimi-vl-a3b-instruct-vision", "model.safetensors") == (
+            "kornia--kimi-vl-a3b-instruct-vision--model.safetensors"
+        )
+
+    def test_both_spellings_of_a_kornia_repo_agree(self) -> None:
+        """They resolve to one URL, so they must resolve to one cache entry."""
+        assert _hf_cache_file_name("hardnet", "HardNetPP.pth") == _hf_cache_file_name("kornia/hardnet", "HardNetPP.pth")
+        assert _hf_cache_file_name("hardnet", "HardNetPP.pth") == "kornia--hardnet--HardNetPP.pth"
+
+    def test_two_repos_do_not_collide(self) -> None:
+        first = _hf_cache_file_name("google/siglip2-base-patch16-224", "model.safetensors")
+        second = _hf_cache_file_name("google/siglip2-base-patch16-256", "model.safetensors")
+        assert first != second
+
+    def test_the_result_is_one_path_component(self) -> None:
+        name = _hf_cache_file_name("google/siglip2-base-patch16-224", "model.safetensors")
+        assert os.sep not in name and "/" not in name
 
 
 class TestLoadStateDictFromUrl:
@@ -1120,3 +1156,211 @@ class TestFailureMessageCarriesCause:
         assert os.path.join(str(tmp_path), "checkpoints", "m.pth") in message
         # The original exception stays chained for a full traceback.
         assert isinstance(excinfo.value.__cause__, HTTPError)
+
+
+class TestDownloadFileFromUrl:
+    """The path for checkpoints torch cannot unpickle -- a ``.safetensors`` file.
+
+    The transfers here are real: a ``file://`` URL goes through the same
+    ``torch.hub.download_url_to_file`` a remote one does, so the cache path, the
+    bytes on disk and the cache hit are all exercised end to end without a
+    network or a stub standing in for the transfer.
+    """
+
+    @staticmethod
+    def _serve(tmp_path, name: str = "model.safetensors", payload: bytes = b"weights") -> tuple[str, bytes]:
+        """Write a file and return the ``file://`` URL that serves it."""
+        source = tmp_path / "remote" / name
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(payload)
+        return source.as_uri(), payload
+
+    def test_downloads_into_model_dir(self, tmp_path) -> None:
+        url, payload = self._serve(tmp_path)
+        model_dir = tmp_path / "cache"
+
+        path = download_file_from_url(url, model_dir=str(model_dir), progress=False)
+
+        assert path == str(model_dir / "model.safetensors")
+        assert Path(path).read_bytes() == payload
+
+    def test_second_call_is_a_cache_hit(self, monkeypatch, tmp_path) -> None:
+        url, _ = self._serve(tmp_path)
+        model_dir = tmp_path / "cache"
+        transfers: list[str] = []
+        real = torch.hub.download_url_to_file
+
+        def counted(url_, dst, *args, **kwargs):
+            transfers.append(url_)
+            return real(url_, dst, *args, **kwargs)
+
+        monkeypatch.setattr(torch.hub, "download_url_to_file", counted)
+
+        first = download_file_from_url(url, model_dir=str(model_dir), progress=False)
+        second = download_file_from_url(url, model_dir=str(model_dir), progress=False)
+
+        assert second == first
+        assert transfers == [url], "the cached file was fetched again"
+
+    def test_defaults_to_the_torch_hub_cache(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path / "hub"))
+        url, _ = self._serve(tmp_path)
+
+        path = download_file_from_url(url, progress=False)
+
+        assert path == str(tmp_path / "hub" / "checkpoints" / "model.safetensors")
+
+    def test_file_name_overrides_the_basename(self, tmp_path) -> None:
+        """Two repositories publish a ``model.safetensors`` each; one cache slot is not enough."""
+        first_url, first_payload = self._serve(tmp_path / "a", payload=b"first")
+        second_url, second_payload = self._serve(tmp_path / "b", payload=b"second")
+        model_dir = tmp_path / "cache"
+
+        first = download_file_from_url(first_url, file_name="a--model.safetensors", model_dir=str(model_dir))
+        second = download_file_from_url(second_url, file_name="b--model.safetensors", model_dir=str(model_dir))
+
+        assert first != second
+        assert Path(first).read_bytes() == first_payload
+        assert Path(second).read_bytes() == second_payload
+
+    def test_fallback_source_is_tried(self, monkeypatch, tmp_path) -> None:
+        url, payload = self._serve(tmp_path)
+        model_dir = tmp_path / "cache"
+        dead = (tmp_path / "remote" / "missing.safetensors").as_uri()
+        # A missing file:// URL raises URLError, which is transient, so the dead
+        # source is retried before the fallback is reached; the waits are faked.
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            path = download_file_from_url([dead, url], model_dir=str(model_dir), progress=False)
+
+        # The cache name is pinned to the *first* URL, as in load_state_dict_from_url.
+        assert path == str(model_dir / "missing.safetensors")
+        assert Path(path).read_bytes() == payload
+        assert any("Trying next source" in str(warning.message) for warning in caught)
+
+    def test_all_sources_failing_names_the_cause_and_the_path(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(
+            torch.hub,
+            "download_url_to_file",
+            lambda url, dst, *a, **k: (_ for _ in ()).throw(_http_error(url, 404)),
+        )
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            with pytest.raises(RuntimeError) as excinfo:
+                download_file_from_url(["http://a.example.com/m.safetensors", "http://b.example.com/m.safetensors"])
+
+        message = str(excinfo.value)
+        assert "Failed to download the file from all 2 source" in message
+        assert "HTTPError" in message and "404" in message
+        assert os.path.join(str(tmp_path), "checkpoints", "m.safetensors") in message
+        assert isinstance(excinfo.value.__cause__, HTTPError)
+
+    def test_a_transient_failure_is_retried(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+        attempts: list[str] = []
+
+        def flaky(url, dst, *args, **kwargs):
+            attempts.append(url)
+            if len(attempts) < 3:
+                raise _http_error(url, 429)
+            Path(dst).write_bytes(b"weights")
+
+        monkeypatch.setattr(torch.hub, "download_url_to_file", flaky)
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            path = download_file_from_url("http://example.com/m.safetensors", progress=False)
+
+        assert len(attempts) == 3
+        assert Path(path).read_bytes() == b"weights"
+
+    def test_a_partial_transfer_does_not_block_the_next_source(self, monkeypatch, tmp_path) -> None:
+        """A source that writes and then fails must not be handed to the next one as a cache hit."""
+        monkeypatch.setattr(torch.hub, "get_dir", lambda: str(tmp_path))
+
+        def half_written(url, dst, *args, **kwargs):
+            if "primary" in url:
+                Path(dst).write_bytes(b"truncated")
+                raise OSError("connection reset")
+            Path(dst).write_bytes(b"complete")
+
+        monkeypatch.setattr(torch.hub, "download_url_to_file", half_written)
+
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            path = download_file_from_url(
+                ["http://primary.example.com/m.safetensors", "http://mirror.example.com/m.safetensors"],
+                progress=False,
+            )
+
+        # ``b"truncated"`` here would mean the mirror was skipped: the two share
+        # one cache path, so the primary's leftovers would have read as a hit.
+        assert Path(path).read_bytes() == b"complete"
+
+    def test_transfer_is_announced_on_stderr_only(self, capsys, tmp_path) -> None:
+        url, _ = self._serve(tmp_path)
+
+        download_file_from_url(url, model_dir=str(tmp_path / "cache"), progress=False)
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert f'Downloading: "{url}"' in captured.err
+
+
+class TestDownloadHfFile:
+    """The Hub wrapper: the ``resolve/main`` URL and the collision-free cache name in one call."""
+
+    @staticmethod
+    def _capture(monkeypatch) -> list[tuple]:
+        """Record what reaches ``download_file_from_url`` instead of downloading."""
+        calls: list[tuple] = []
+
+        def fake(url, **kwargs):
+            calls.append((url, kwargs))
+            return "cached"
+
+        monkeypatch.setattr(download_mod, "download_file_from_url", fake)
+        return calls
+
+    def test_full_repo_id(self, monkeypatch) -> None:
+        calls = self._capture(monkeypatch)
+
+        assert download_hf_file("google/siglip2-base-patch16-224", "model.safetensors") == "cached"
+
+        url, kwargs = calls[0]
+        assert url == "https://huggingface.co/google/siglip2-base-patch16-224/resolve/main/model.safetensors"
+        assert kwargs["file_name"] == "google--siglip2-base-patch16-224--model.safetensors"
+        assert kwargs["model_dir"] is None
+
+    def test_bare_repo_name_resolves_under_the_kornia_org(self, monkeypatch, tmp_path) -> None:
+        calls = self._capture(monkeypatch)
+
+        download_hf_file("kimi-vl-a3b-instruct-vision", "model.safetensors", model_dir=str(tmp_path), progress=False)
+
+        url, kwargs = calls[0]
+        assert url == "https://huggingface.co/kornia/kimi-vl-a3b-instruct-vision/resolve/main/model.safetensors"
+        # The org is in the cache name too, so the bare and full spellings of the
+        # same repo cannot end up in two cache entries.
+        assert kwargs["file_name"] == "kornia--kimi-vl-a3b-instruct-vision--model.safetensors"
+        assert kwargs["model_dir"] == str(tmp_path)
+        assert kwargs["progress"] is False
+
+    def test_two_repos_publishing_the_same_filename_do_not_collide(self, tmp_path) -> None:
+        """End to end, through a real transfer: one cache directory, two entries."""
+        model_dir = tmp_path / "cache"
+        paths = []
+        for owner in ("kornia", "google"):
+            source = tmp_path / owner / "model.safetensors"
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_bytes(owner.encode())
+            with patch.object(download_mod, "hf_url", return_value=source.as_uri()):
+                paths.append(download_hf_file(f"{owner}/a-model", "model.safetensors", model_dir=str(model_dir)))
+
+        assert paths[0] != paths[1]
+        assert Path(paths[0]).read_bytes() == b"kornia"
+        assert Path(paths[1]).read_bytes() == b"google"
