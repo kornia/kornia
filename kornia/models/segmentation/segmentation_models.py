@@ -23,68 +23,66 @@ import torch
 from torch import nn
 
 import kornia
-from kornia.core.external import segmentation_models_pytorch as smp
+from kornia.core.check import KORNIA_CHECK
 
 from .base import SemanticSegmentation
 
 __all__ = ["SegmentationModelsBuilder"]
 
+_PREPROC_KEYS = ("input_space", "input_range", "mean", "std")
+
 
 class SegmentationModelsBuilder:
-    """Provide a factory to build various semantic segmentation models.
+    """Wrap a segmentation network and its encoder's preprocessing in a :class:`SemanticSegmentation`.
 
-    This builder simplifies the creation of models like UNet or DeepLabV3
-    by providing a unified interface for configuration and weight loading.
+    The builder is written for networks from `segmentation_models_pytorch
+    <https://github.com/qubvel-org/segmentation_models.pytorch>`_ (smp), whose encoders ship the
+    preprocessing parameters their pretrained weights expect, but any ``nn.Module`` mapping a
+    ``(B, 3, H, W)`` image batch to a ``(B, C, H, W)`` prediction works. Kornia does not import smp:
+    you build the network and fetch its preprocessing parameters, and the builder supplies the
+    ONNX-friendly preprocessing pipeline and the container.
+
+    Example:
+        >>> import segmentation_models_pytorch as smp  # doctest: +SKIP
+        >>> from kornia.models.segmentation import SegmentationModelsBuilder
+        >>> net = smp.Unet(encoder_name="resnet34", encoder_weights="imagenet", classes=2)  # doctest: +SKIP
+        >>> params = smp.encoders.get_preprocessing_params("resnet34")  # doctest: +SKIP
+        >>> model = SegmentationModelsBuilder.build(net, params, name="Unet_resnet34")  # doctest: +SKIP
+        >>> model(torch.rand(1, 3, 64, 64)).shape  # doctest: +SKIP
+        torch.Size([1, 2, 64, 64])
     """
 
     @staticmethod
     def build(
-        model_name: str = "Unet",
-        encoder_name: str = "resnet34",
-        encoder_weights: Optional[str] = "imagenet",
-        in_channels: int = 3,
-        classes: int = 1,
-        activation: str = "softmax",
-        **kwargs: Any,
+        model: nn.Module,
+        preproc_params: Optional[dict[str, Any]] = None,
+        name: str = "segmentation_model",
     ) -> SemanticSegmentation:
-        """SegmentationModel is a module that wraps a segmentation model.
-
-        This module uses SegmentationModel library for segmentation.
+        """Wrap a constructed segmentation network in a :class:`SemanticSegmentation`.
 
         Args:
-            model_name: Name of the model to use. Valid options are:
-                "Unet", "UnetPlusPlus", "MAnet", "LinkNet", "FPN", "PSPNet", "PAN", "DeepLabV3", "DeepLabV3Plus".
-            encoder_name: Name of the encoder to use.
-            encoder_depth: Depth of the encoder.
-            encoder_weights: Weights of the encoder.
-            decoder_channels: Number of channels in the decoder.
-            in_channels: Number of channels in the input.
-            classes: Number of classes to predict.
-            activation: Type of activation layer.
-            **kwargs: Additional arguments to pass to the model. Detailed arguments can be found at:
-                https://github.com/qubvel-org/segmentation_models.pytorch/tree/main/segmentation_models_pytorch/decoders
+            model: The segmentation network, e.g. ``smp.Unet(...)``. It is put in ``eval`` mode.
+            preproc_params: The preprocessing parameters of the network's encoder, in the shape
+                returned by ``smp.encoders.get_preprocessing_params(encoder_name)``: the keys
+                ``input_space`` (``"RGB"`` or ``"BGR"``), ``input_range`` (``[0, 1]`` or ``[0, 255]``),
+                ``mean`` and ``std`` (per-channel lists, or ``None`` for no normalization). See
+                :meth:`get_preprocessing_pipeline`. ``None`` feeds the input to the network unchanged.
+            name: Name of the wrapped model; :meth:`SemanticSegmentation.save` uses it for file names.
 
-        Note:
-            Only encoder weights are available.
-            Pretrained weights for the whole model are not available.
+        Returns:
+            The container running preprocessing, the network and an identity post-processor.
 
         """
-        preproc_params = smp.encoders.get_preprocessing_params(encoder_name)  # type: ignore
-        preprocessor = SegmentationModelsBuilder.get_preprocessing_pipeline(preproc_params)
-        segmentation_model = getattr(smp, model_name)(
-            encoder_name=encoder_name,
-            encoder_weights=encoder_weights,
-            in_channels=in_channels,
-            classes=classes,
-            activation=activation,
-            **kwargs,
-        )
+        if preproc_params is None:
+            preprocessor: nn.Module = nn.Identity()
+        else:
+            preprocessor = SegmentationModelsBuilder.get_preprocessing_pipeline(preproc_params)
 
         return SemanticSegmentation(
-            model=segmentation_model,
+            model=model,
             pre_processor=preprocessor,
             post_processor=nn.Identity(),
-            name=f"{model_name}_{encoder_name}",
+            name=name,
         )
 
     @staticmethod
@@ -92,14 +90,26 @@ class SegmentationModelsBuilder:
         """Build the preprocessing pipeline expected by a segmentation model.
 
         Args:
-            preproc_params: Dictionary from the segmentation-model metadata.
-                It must describe the input color space, value range, mean, and
-                standard deviation used by the pretrained encoder.
+            preproc_params: Dictionary from the segmentation-model metadata, e.g.
+                ``smp.encoders.get_preprocessing_params(encoder_name)``. It must carry the keys
+                ``input_space`` (``"RGB"`` or ``"BGR"``: the color order the network was trained on,
+                so a ``"BGR"`` network gets its RGB input flipped), ``input_range`` (``[0, 1]`` or
+                ``[0, 255]``: the range the ``mean``/``std`` are expressed in, so ``[0, 255]``
+                multiplies the ``[0, 1]`` input by 255 first), and ``mean`` and ``std`` (per-channel
+                lists, or ``None`` for no normalization).
 
         Returns:
             :class:`~kornia.augmentation.container.ImageSequential` containing
             ONNX-friendly color conversion, rescaling, and normalization steps.
+
+        Raises:
+            Exception: If one of the four keys is missing.
+            ValueError: If ``input_space`` or ``input_range`` is not one of the supported values.
+
         """
+        for key in _PREPROC_KEYS:
+            KORNIA_CHECK(key in preproc_params, f"preproc_params is missing the key '{key}'")
+
         # Ensure the color space transformation is ONNX-friendly
         proc_sequence: list[nn.Module] = []
         input_space = preproc_params["input_space"]

@@ -28,7 +28,7 @@ class TestLazyLoaderExtra:
         previous_mode = kornia_config.lazyloader.installation_mode
         kornia_config.lazyloader.installation_mode = InstallationMode.RAISE
         try:
-            loader = LazyLoader("definitely_not_a_module_xyz", extra="tracking")
+            loader = LazyLoader("definitely_not_a_module_xyz", extra="sd")
             with pytest.raises(ImportError) as excinfo:
                 loader.__getattr__("x")
         finally:
@@ -36,7 +36,7 @@ class TestLazyLoaderExtra:
 
         message = str(excinfo.value)
         assert "Optional dependency 'definitely_not_a_module_xyz' is not installed" in message
-        assert 'pip install "kornia[tracking]"' in message
+        assert 'pip install "kornia[sd]"' in message
 
     def test_missing_dependency_without_extra_keeps_generic_message(self):
         previous_mode = kornia_config.lazyloader.installation_mode
@@ -58,8 +58,6 @@ class TestLazyLoaderExtra:
             ("onnx", "onnx"),
             ("onnxruntime", "onnx"),
             ("diffusers", "sd"),
-            ("boxmot", "tracking"),
-            ("segmentation_models_pytorch", "segmentation"),
         ],
     )
     def test_declared_loaders_carry_their_extra(self, name, extra):

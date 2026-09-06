@@ -421,21 +421,29 @@ A(
     case(
         "models.segmentation.SegmentationModelsBuilder.build",
         "models.segmentation",
-        lambda d: SegmentationModelsBuilder.build("Unet", "resnet34", encoder_weights=None),
+        SegmentationModelsBuilder.build(
+            torch.nn.Sequential(torch.nn.Conv2d(3, 2, 1), torch.nn.Softmax(dim=1)),
+            {
+                "input_space": "BGR",
+                "input_range": [0, 255],
+                "mean": [0.485, 0.456, 0.406],
+                "std": [0.229, 0.224, 0.225],
+            },
+        ),
         [IMG],
-        note="segmentation_models_pytorch not installed -> ImportError expected; even with it installed the builder "
-        "instantiates abstract SemanticSegmentation (no from_config, no __init__) -> TypeError (kornia bug)",
+        note="builder wraps a user-built network (a 1x1 conv + softmax stand-in here; kornia does not import "
+        "segmentation_models_pytorch) behind the BgrToRgb/rescale/Normalize preprocessing an smp encoder declares",
     )
 )
 A(
     case(
         "models.segmentation.SemanticSegmentation",
         "models.segmentation",
-        lambda d: SemanticSegmentation(
+        SemanticSegmentation(
             model=torch.nn.Identity(), pre_processor=torch.nn.Identity(), post_processor=torch.nn.Identity(), name="x"
         ),
         [IMG],
-        note="KORNIA BUG: abstract class (ModelBase.from_config not implemented) -> cannot be instantiated",
+        note="container with identity model/pre/post: the graph is the input",
     )
 )
 A(case("models.base.ModelBase", "models.base", None, [], skip="abstract base class (from_config abstract)"))
@@ -1311,8 +1319,6 @@ A(
         "models.sam cases; default config is vit_h (>500 MB)",
     )
 )
-A(case("contrib.BoxMotTracker", "contrib.wrappers", None, [], skip="`boxmot` not installed; stateful tracker"))
-
 # ============================================================================= kornia.tracking
 A(
     case(

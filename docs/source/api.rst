@@ -64,7 +64,7 @@ Models
    :widths: 28 72
 
    * - :doc:`kornia.models <models>`
-     - Builders for the pretrained detection, edge detection, segmentation and tracking models.
+     - Builders for the pretrained detection, edge detection and segmentation models.
    * - :doc:`kornia.contrib <contrib>`
      - Experimental operators and model wrappers: face detection, object detection, visual prompting, image stitching, KMeans.
    * - :doc:`kornia.tracking <tracking>`

@@ -71,12 +71,6 @@ extra covers it -- only the contributor ``dev`` and ``docs`` environments instal
    * - ``sd``
      - ``kornia.filters.StableDiffusionDissolving``
      - ``pip install "kornia[sd]"``
-   * - ``tracking``
-     - :class:`~kornia.contrib.boxmot_tracker.BoxMotTracker`
-     - ``pip install "kornia[tracking]"``
-   * - ``segmentation``
-     - :class:`~kornia.models.segmentation.segmentation_models.SegmentationModelsBuilder`
-     - ``pip install "kornia[segmentation]"``
    * - ``dev``
      - Contributor environment: the test and lint toolchain (includes ``kornia[onnx]``)
      - ``pip install -e ".[dev]"``

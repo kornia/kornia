@@ -17,9 +17,10 @@
 
 from __future__ import annotations
 
-from typing import ClassVar, Optional, Union
+from typing import Any, ClassVar, Optional, Union
 
 import torch
+from torch import nn
 
 import kornia
 from kornia.core.external import PILImage as Image
@@ -31,11 +32,64 @@ __all__ = ["SemanticSegmentation"]
 class SemanticSegmentation(ModelBase):
     """Semantic Segmentation is a module that wraps a semantic segmentation model.
 
-    This module uses SegmentationModel library for semantic segmentation.
+    It runs ``pre_processor``, ``model`` and ``post_processor`` in turn on a batch or a list of images.
+    :class:`~kornia.models.segmentation.SegmentationModelsBuilder` builds one around a
+    ``segmentation_models_pytorch`` network and its encoder's preprocessing.
+
+    Args:
+        model: The segmentation network, mapping a ``(B, 3, H, W)`` batch to ``(B, C, H, W)`` predictions.
+        pre_processor: Pre-processing module applied to the input images.
+        post_processor: Post-processing module applied to the network output.
+        name: Optional name, used by :meth:`save` for file names.
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
+
+    name: str = "segmentation"
+
+    def __init__(
+        self,
+        model: nn.Module,
+        pre_processor: nn.Module,
+        post_processor: nn.Module,
+        name: Optional[str] = None,
+    ) -> None:
+        """Initialize SemanticSegmentation.
+
+        Args:
+            model: The segmentation network.
+            pre_processor: Pre-processing module applied to the input images.
+            post_processor: Post-processing module applied to the network output.
+            name: Optional name, used by :meth:`save` for file names.
+
+        """
+        super().__init__()
+        self.model = model.eval()
+        self.pre_processor = pre_processor
+        self.post_processor = post_processor
+        if name is not None:
+            self.name = name
+
+    @staticmethod
+    def from_config(config: Any) -> SemanticSegmentation:
+        """Build SemanticSegmentation from config.
+
+        This is a placeholder to satisfy the abstract method requirement.
+        Use :meth:`SegmentationModelsBuilder.build` or instantiate SemanticSegmentation directly.
+
+        Args:
+            config: Configuration object (not used, kept for interface compatibility).
+
+        Returns:
+            SemanticSegmentation instance.
+
+        """
+        raise NotImplementedError(
+            "SemanticSegmentation.from_config() is not implemented. "
+            "Use SegmentationModelsBuilder.build() or instantiate SemanticSegmentation directly."
+        )
 
     @torch.inference_mode()
     def forward(self, images: Union[torch.Tensor, list[torch.Tensor]]) -> Union[torch.Tensor, list[torch.Tensor]]:
