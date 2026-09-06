@@ -52,13 +52,12 @@ dev = [
 ]
 docs = [
   "pydata-sphinx-theme>=0.21,<0.22",  # _static/css/pydata.css and js/custom.js target theme internals
-  "kornia_moons",
   "matplotlib",
   # kornia.core.mixin.onnx annotates public members with ``onnx.ModelProto``; without onnx the
   # lazy loader prompts on stdin while autodoc resolves them and the build dies. onnxruntime is
   # not needed: no documented member resolves an ``onnxruntime`` annotation.
   "onnx",
-  "opencv-python",
+  "pillow",  # docs/generate_examples.py decodes and writes the generated figures with PIL
   "sphinx",
   "sphinx-autodoc-defaultargs",
   "sphinx-autodoc-typehints",
