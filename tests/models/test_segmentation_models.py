@@ -96,16 +96,26 @@ class TestSegmentationModelsBuilder(BaseTester):
         assert out.shape == x.shape and out.dtype == dtype and out.device == x.device
         # The pipeline chains three rounding ops in the working dtype at magnitudes up to ~1100, so the
         # accumulated error reaches ~2 eps (measured over 50 draws: 1.9 float32, 1.3 float16, 1.4 bfloat16)
-        # while BaseTester's half-precision defaults are rtol ~1 eps and fail here. The rescale is
-        # `Normalize(std=1 / 255)`, a division by the reciprocal, which bfloat16 stores as 0.0039368
-        # (a multiplier of ~254.0, 0.4% low: 0.5 -> 127.0 instead of 127.5); that bias is ~0.5 eps and
-        # sits inside the same bound. The pipeline builds its mean/std/1/255 constants as float32 tensors,
+        # while BaseTester's half-precision defaults are rtol ~1 eps and fail here. The pipeline builds its
+        # mean/std constants as float32 tensors (float64 ones would change the ONNX graph's output dtype),
         # so a float64 input is only float32-accurate (measured 1.3 float32 eps); floor the tolerance there.
         # Pin the exact math within 8 eps of the coarser of the two.
         tol = 8 * max(torch.finfo(dtype).eps, torch.finfo(torch.float32).eps)
         self.assert_close(out64, expected, rtol=tol, atol=tol)
         # The flip is load-bearing: the un-flipped normalization is a different tensor.
         assert not torch.allclose(out64, (x64 * 255.0 - mean_t) / std_t, rtol=tol, atol=tol)
+
+    def test_preprocessing_255_rescale_is_exact(self, device, dtype):
+        # The [0, 1] -> [0, 255] step multiplies by 255, which every dtype stores exactly. A division by
+        # the reciprocal is not: bfloat16 stores 1/255 as 0.0039368 and maps 0.5 to 127.0 (127.5 is
+        # representable in every dtype here, so equality is the right check).
+        params = {"input_space": "RGB", "input_range": [0, 255], "mean": None, "std": None}
+        pipeline = SegmentationModelsBuilder.get_preprocessing_pipeline(params).to(device, dtype)
+        x = torch.tensor([0.0, 0.5, 1.0], device=device, dtype=dtype).view(1, 3, 1, 1).expand(1, 3, 2, 2)
+        expected = torch.tensor([0.0, 127.5, 255.0], device=device, dtype=dtype).view(1, 3, 1, 1).expand(1, 3, 2, 2)
+        out = pipeline(x)
+        assert out.dtype == dtype and out.device == x.device
+        assert torch.equal(out, expected)
 
     def test_preprocessing_rgb_unit_range(self, device, dtype):
         pipeline = SegmentationModelsBuilder.get_preprocessing_pipeline(IMAGENET_PARAMS).to(device, dtype)

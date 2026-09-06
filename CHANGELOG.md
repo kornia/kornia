@@ -151,7 +151,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `kornia.core.external.segmentation_models_pytorch` is gone. `SemanticSegmentation` gained the
   `__init__(model, pre_processor, post_processor, name=None)` its siblings have, so the container the
   builder returns can be instantiated (it was abstract before), and its `visualize` gathers the
-  CPU-drawn colormap on the mask's device, so it works for CUDA and MPS outputs. (#4301)
+  CPU-drawn colormap on the mask's device, so it works for CUDA and MPS outputs. The
+  `input_range: [0, 255]` preprocessing step now multiplies by 255 instead of dividing by a stored
+  `1/255`: bfloat16 rounds that reciprocal to a ~254.0 multiplier (0.5 mapped to 127.0 instead of
+  127.5), and float32 outputs of that step move by at most one ulp. (#4301)
 
 * `kornia.core.external.transformers` was removed; it was a `LazyLoader` handle no kornia code used.
   Previously `from kornia.core.external import transformers` gave a lazy proxy that imported
