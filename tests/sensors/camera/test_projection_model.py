@@ -143,23 +143,29 @@ class TestOrthographicProjection(BaseTester):
         # projection half of the ORTHOGRAPHIC camera model and is a bare ``raise NotImplementedError`` with
         # an EMPTY message in both directions.  It is reachable through the public API --
         # ``CameraModel(..., CameraModelType.ORTHOGRAPHIC, ...)`` constructs and wires this class in -- so the
-        # model-level raise pinned in tests/sensors/camera/test_camera_model.py comes from here, not from a
-        # distortion placeholder: ORTHOGRAPHIC pairs this projection with the working ``AffineTransform``.
-        # A working equivalent already exists next door as
-        # ``kornia.geometry.camera.project_points_orthographic``.
+        # model-level project AND unproject raises pinned in tests/sensors/camera/test_camera_model.py both
+        # come from here (measured last traceback frames projection_model.py:107 and :126), not from a
+        # distortion placeholder: ORTHOGRAPHIC pairs this projection with the working ``AffineTransform``,
+        # which never fails for it in either direction.  Its ``matrix()`` raises from a third site again,
+        # ``CameraModelBase.matrix``.  A working equivalent already exists next door as
+        # ``kornia.geometry.camera.project_points_orthographic``.  The empty message is asserted rather than
+        # described, because #4284's Expected asks at minimum for a message naming the model: a message-only
+        # partial fix must flip this pin.
         # Snippet used to generate expected: OrthographicProjection().project(Vector3(tensor([[1., 2., 4.]])))
         # and .unproject(Vector2(tensor([[0.5, 0.25]])), tensor([2.])) executed 2026-09-06 on this worktree
         # (torch 2.14.0) -> NotImplementedError('') for both, on cpu for float32, float64, float16 and
         # bfloat16 and on mps for float32 and float16.
         # Pins the CURRENT behaviour; NOT a contract; delete when #4284 is repaired.
         projection = OrthographicProjection()
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotImplementedError) as raised:
             projection.project(Vector3(torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)))
-        with pytest.raises(NotImplementedError):
+        assert str(raised.value) == ""
+        with pytest.raises(NotImplementedError) as raised:
             projection.unproject(
                 Vector2(torch.tensor([[0.5, 0.25]], device=device, dtype=dtype)),
                 torch.tensor([2.0], device=device, dtype=dtype),
             )
+        assert str(raised.value) == ""
         assert isinstance(
             Z1Projection().project(Vector3(torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype))), Vector2
         )

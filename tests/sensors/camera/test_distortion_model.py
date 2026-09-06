@@ -106,10 +106,14 @@ class TestUnimplementedDistortions(BaseTester):
         # ``kornia.sensors.camera.distortion_model`` are bare ``raise NotImplementedError`` placeholders with
         # an EMPTY message, in both directions -- ``distort`` and ``undistort``.  They are what makes
         # ``CameraModel(..., BROWN_CONRADY, ...)`` and ``CameraModel(..., KANNALA_BRANDT_K3, ...)``
-        # unusable (pinned at the model level in tests/sensors/camera/test_camera_model.py), and working
-        # equivalents already exist next door as ``kornia.geometry.calibration.distort_points`` and
+        # unusable in BOTH directions (pinned at the model level in
+        # tests/sensors/camera/test_camera_model.py, whose comment records the measured raise sites --
+        # distortion_model.py:108/128 and :153/171 for these four calls).  Working equivalents already exist
+        # next door as ``kornia.geometry.calibration.distort_points`` and
         # ``kornia.geometry.camera.distort_points_kannala_brandt``.  Parameter vectors of the documented
-        # lengths (12 and 8) are used, so the raise is not a shape rejection in disguise.
+        # lengths (12 and 8) are used, so the raise is not a shape rejection in disguise.  The empty message
+        # is asserted rather than described, because #4284's Expected asks at minimum for a message naming
+        # the model: a message-only partial fix must flip this pin.
         # Snippet used to generate expected: BrownConradyTransform().distort(ones(12), Vector2([[0.5,
         # 0.25]])) and the three sibling calls executed 2026-09-06 on this worktree (torch 2.14.0) ->
         # NotImplementedError('') for all four, on cpu for float32, float64, float16 and bfloat16 and on mps
@@ -118,9 +122,9 @@ class TestUnimplementedDistortions(BaseTester):
         points = Vector2(torch.tensor([[0.5, 0.25]], device=device, dtype=dtype))
         for transform, length in ((BrownConradyTransform(), 12), (KannalaBrandtK3Transform(), 8)):
             params = torch.ones(length, device=device, dtype=dtype)
-            with pytest.raises(NotImplementedError):
-                transform.distort(params, points)
-            with pytest.raises(NotImplementedError):
-                transform.undistort(params, points)
+            for call in (transform.distort, transform.undistort):
+                with pytest.raises(NotImplementedError) as raised:
+                    call(params, points)
+                assert str(raised.value) == ""
         affine_params = torch.ones(4, device=device, dtype=dtype)
         assert isinstance(AffineTransform().distort(affine_params, points), Vector2)

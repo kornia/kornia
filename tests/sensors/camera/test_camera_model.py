@@ -153,7 +153,7 @@ class TestPinholeCamera(BaseTester):
         square = _pinhole(device, dtype, symmetric).project(Vector3(points))
         self.assert_close(square.data, torch.tensor([[29.0, 53.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         assert torch.equal(square.data, project_points(points, _k3(device, dtype, symmetric)))
-        with pytest.raises(AttributeError):
+        with pytest.raises(AttributeError, match="has no attribute 'z'"):
             cam.project(points)
 
     def test_convention_unproject_takes_the_camera_frame_z_as_depth(self, device, dtype):
@@ -230,10 +230,11 @@ class TestPinholeCamera(BaseTester):
         # Wart pin for kornia#4263 (audit label 5d-sc-38): ``PinholeModel.scale`` rebuilds the ImageSize as
         # ``ImageSize(height * scale_factor, width * scale_factor)``, so the python ``int`` height and width
         # that the constructor accepted come back as 0-dim floating tensors on the model's device -- and 3.0
-        # / 4.0 rather than the integer pixel counts an ImageSize is meant to hold. No filed issue records
-        # this: #4263's body covers only the principal-point rule of the same method, so the type change is
-        # pinned here under #4263 as that method's second deviation, and this pin outlives a #4263 repair only
-        # if the repair leaves the ImageSize construction alone.
+        # / 4.0 rather than the integer pixel counts an ImageSize is meant to hold.  #4263's body covers only
+        # the principal-point rule of the same method; #4263 records THIS observation in its comment thread
+        # (issuecomment-5556356093), where it is stated as a question the repair of that method has to answer
+        # -- whether ImageSize keeps python ints -- because both of #4263's Expected outcomes change only
+        # what cx' is.  So the pin is named for #4263 and is deleted with it, like the sibling pin above.
         # Snippet used to generate expected: (type(cam.image_size.height).__name__,
         # type(cam.scale(tensor(0.5)).image_size.height).__name__, cam.scale(tensor(0.5)).image_size) executed
         # 2026-09-06 on this worktree (torch 2.14.0, cpu float32) -> ('int', 'Tensor',
@@ -302,16 +303,28 @@ class TestCameraModelTypes(BaseTester):
         # Wart pin for kornia#4284 (audit labels 5d-sc-14, 5d-sc-16, 5d-sc-17, 5d-sc-19, 5d-sc-20, 5d-sc-22,
         # 5d-sc-23): BROWN_CONRADY, KANNALA_BRANDT_K3 and ORTHOGRAPHIC are exported from
         # ``kornia.sensors.camera.__all__``, validate their parameter vectors and construct without complaint
-        # -- and then every operation on them raises NotImplementedError with an EMPTY message: project,
-        # unproject and matrix alike, because the underlying BrownConradyTransform / KannalaBrandtK3Transform
-        # distortions and the OrthographicProjection are bare ``raise NotImplementedError`` placeholders
-        # (pinned at their own level in tests/sensors/camera/test_distortion_model.py and
-        # test_projection_model.py).  ORTHOGRAPHIC's ``unproject`` is the one branch that reaches
-        # OrthographicProjection.unproject rather than a distortion placeholder; BROWN_CONRADY and
-        # KANNALA_BRANDT_K3 wire up the working Z1Projection and fail in the distortion instead, so all three
-        # models raise for two different reasons and every branch is executed here.
-        # ``CameraModelBase.project``/``unproject`` are the methods being called -- the three classes add no
-        # overrides -- so this pins the base class's behaviour on those models too.
+        # -- and then project, unproject and matrix all raise NotImplementedError with an EMPTY message,
+        # from THREE different kinds of site.  Measured raise sites, from the last frame of each traceback
+        # (executed 2026-09-06 on this worktree, torch 2.14.0, cpu float32):
+        #   BROWN_CONRADY     project   -> distortion_model.py:108 BrownConradyTransform.distort
+        #                     unproject -> distortion_model.py:128 BrownConradyTransform.undistort
+        #   KANNALA_BRANDT_K3 project   -> distortion_model.py:153 KannalaBrandtK3Transform.distort
+        #                     unproject -> distortion_model.py:171 KannalaBrandtK3Transform.undistort
+        #   ORTHOGRAPHIC      project   -> projection_model.py:107 OrthographicProjection.project
+        #                     unproject -> projection_model.py:126 OrthographicProjection.unproject
+        #   all three         matrix    -> camera_model.py:155     CameraModelBase.matrix
+        # So the two failure modes of project/unproject are a distortion placeholder (BROWN_CONRADY and
+        # KANNALA_BRANDT_K3, which wire up the working Z1Projection and fail in the distortion) and a
+        # projection placeholder (ORTHOGRAPHIC, in BOTH directions -- its AffineTransform never fails); those
+        # placeholders are pinned at their own level in tests/sensors/camera/test_distortion_model.py and
+        # test_projection_model.py.  ``matrix()`` is a THIRD, independent site: the three classes do not
+        # override ``CameraModelBase.matrix``, which is itself a bare raise, so implementing the distortions
+        # and the orthographic projection (#4284's Expected option 1) would leave ``matrix()`` raising until
+        # each class grows its own override the way PinholeModel already has.
+        # ``project``/``unproject`` are ``CameraModelBase``'s -- the three classes add no overrides -- so this
+        # pins the base class's behaviour on those models too.
+        # The empty message is asserted rather than described, because #4284's Expected asks at minimum for a
+        # message naming the model: a message-only partial fix must flip these pins.
         # Snippet used to generate expected: project(Vector3([[1., 2., 4.]])) / unproject(Vector2([[0.5,
         # 0.25]]), tensor([2.])) / matrix() on each of the three models executed 2026-09-06 on this worktree
         # (torch 2.14.0) -> NotImplementedError('') for all nine calls, on cpu for float32, float64, float16
@@ -323,12 +336,10 @@ class TestCameraModelTypes(BaseTester):
         for model_type, length in self._LENGTHS[1:]:
             cam = CameraModel(ImageSize(6, 8), model_type, torch.ones(length, device=device, dtype=dtype))
             assert cam.params.shape == (length,)
-            with pytest.raises(NotImplementedError):
-                cam.project(point3)
-            with pytest.raises(NotImplementedError):
-                cam.unproject(point2, depth)
-            with pytest.raises(NotImplementedError):
-                cam.matrix()
+            for call, args in ((cam.project, (point3,)), (cam.unproject, (point2, depth)), (cam.matrix, ())):
+                with pytest.raises(NotImplementedError) as raised:
+                    call(*args)
+                assert str(raised.value) == ""
         pinhole = CameraModel(ImageSize(6, 8), CameraModelType.PINHOLE, torch.ones(4, device=device, dtype=dtype))
         assert isinstance(pinhole.project(point3), Vector2)
         assert isinstance(pinhole.matrix(), torch.Tensor)
