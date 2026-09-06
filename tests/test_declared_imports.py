@@ -255,5 +255,5 @@ def test_import_kornia_does_not_load_optional_dependencies():
 
     assert not loaded, (
         f"`import kornia` eagerly loaded optional dependencies: {loaded}. They must stay behind a "
-        f"kornia.core.external.LazyLoader or a function-local import. Checked: {checked}." + result.stderr
+        f"kornia.core.external.LazyLoader or a function-local import. Checked: {checked}."
     )
