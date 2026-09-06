@@ -292,6 +292,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `kornia.feature.LightGlue` no longer probes for `flash_attn`; the SDPA path it always used is now
+  the only one. `kornia.feature.lightglue.Attention.enable_flash`, the attribute that combined the
+  constructor argument with the probe result (and so always equalled the argument, because SDPA is
+  present on every supported torch), was renamed to `Attention.allow_flash`. (#4287)
+
 * `RandAugment`, `AutoAugment`, `TrivialAugment` and `AugMix` no longer silently upcast half-precision
   batches to `float32`. `OperationBase.forward` — the shared gate every auto-augment op routes through —
   moved its `batch_prob` mask to `input.device` but not `input.dtype`, and since `batch_prob` is `float32`
