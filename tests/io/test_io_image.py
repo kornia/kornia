@@ -72,8 +72,10 @@ def png_image(tmp_path_factory):
 def rgba_png_image(tmp_path_factory):
     """Create an RGBA PNG image for testing."""
     filename = tmp_path_factory.mktemp("data") / "rgba_image.png"
+    from kornia.io.io import _rs_io  # the kornia_rs namespace that holds the writers on this kornia_rs version
+
     img_rgba = np.random.randint(0, 255, (32, 32, 4), dtype=np.uint8)  # noqa: NPY002
-    kornia_rs.write_image_png_u8(str(filename), img_rgba, mode="rgba")
+    _rs_io.write_image_png_u8(str(filename), img_rgba, mode="rgba")
     return filename
 
 
@@ -210,3 +212,72 @@ class TestDownloadImage:
         ):
             download_image(self.URL, str(dst))
         assert not dst.exists()
+
+
+class TestImageIoBackend:
+    """``kornia.io`` follows the kornia_rs layout it finds: root functions on 0.1.9/0.1.10, ``kornia_rs.io`` on 0.1.11+.
+
+    kornia_rs 0.1.11 moved every ``read_image_*``/``write_image_*`` into ``kornia_rs.io`` and left a deprecated
+    ``read_image_any`` at the root, so ``pip install kornia`` (which resolves the newest kornia_rs) lost JPEG
+    loading and every ``write_image`` until the shim in ``kornia/io/io.py`` (kornia#4325).
+    """
+
+    # Every kornia_rs function ``kornia/io/io.py`` calls through the resolved namespace.
+    USED = (
+        "read_image_jpegturbo",
+        "read_image_png_u8",
+        "write_image_jpeg",
+        "write_image_png_u8",
+        "write_image_tiff_u8",
+        "write_image_png_u16",
+        "write_image_tiff_u16",
+        "write_image_tiff_f32",
+    )
+
+    def test_root_layout(self):
+        from types import SimpleNamespace
+
+        from kornia.io.io import _image_io_backend
+
+        root = SimpleNamespace(read_image_any=object(), read_image_jpegturbo=object())
+        namespace, read_any = _image_io_backend(root)
+        assert namespace is root
+        assert read_any is root.read_image_any
+
+    def test_io_submodule_layout(self):
+        from types import SimpleNamespace
+
+        from kornia.io.io import _image_io_backend
+
+        io_ns = SimpleNamespace(read_image=object(), read_image_jpegturbo=object())
+        root = SimpleNamespace(io=io_ns, read_image_any=object())
+        namespace, read_any = _image_io_backend(root)
+        assert namespace is io_ns
+        assert read_any is io_ns.read_image
+
+    def test_unrelated_io_attribute_is_ignored(self):
+        from types import SimpleNamespace
+
+        from kornia.io.io import _image_io_backend
+
+        root = SimpleNamespace(io=SimpleNamespace(), read_image_any=object(), read_image_jpegturbo=object())
+        namespace, read_any = _image_io_backend(root)
+        assert namespace is root
+        assert read_any is root.read_image_any
+
+    def test_installed_kornia_rs_provides_every_used_function(self):
+        from kornia.io.io import _read_image_any, _rs_io
+
+        missing = [name for name in self.USED if not callable(getattr(_rs_io, name, None))]
+        assert missing == [], f"kornia_rs {kornia_rs.__version__}: {missing}"
+        assert callable(_read_image_any)
+
+    @pytest.mark.parametrize("ext", ["jpg", "png", "tiff"])
+    def test_uint8_round_trip_every_extension(self, tmp_path, ext):
+        img = create_random_img8_torch(5, 6, 3)
+        path = tmp_path / f"image.{ext}"
+        write_image(path, img)
+        loaded = load_image(path, ImageLoadType.UNCHANGED)
+        assert loaded.shape == img.shape
+        if ext != "jpg":  # lossless containers come back bit-exact
+            assert torch.equal(loaded, img)
