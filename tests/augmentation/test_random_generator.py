@@ -1569,14 +1569,26 @@ class TestGaussianBlurGenBufferHygiene:
         from kornia.augmentation.random_generator._2d.gaussian_blur import RandomGaussianBlurGenerator
 
         gen = RandomGaussianBlurGenerator(sigma=torch.tensor([0.1, 2.0]))
-        # persistent=False -> visible via named_buffers()/.to() but excluded from
+        # persistent=False -> visible via named_buffers() but excluded from
         # state_dict(), same convention as #4079/#4319 (keeps checkpoint keys unchanged).
         assert "sigma" in dict(gen.named_buffers())
         assert "sigma" not in gen.state_dict()
 
-        moved = gen.to(device=device, dtype=dtype)
-        assert moved.sigma.device == torch.tensor(0.0, device=device).device
-        assert moved.sigma.dtype == dtype
+        # RandomGeneratorBase.to() is a special-cased override (see its own "TODO:
+        # refine the logic with module.to()") that only rebuilds sigma_sampler via
+        # make_samplers() -- it never calls nn.Module.to(), so calling it directly on
+        # a standalone generator does NOT exercise the buffer-move machinery this fix
+        # relies on. The real path this fix targets is a PARENT module's .to()/.half(),
+        # which nn.Module recurses into via `_apply()` (not `.to()`) on every
+        # submodule -- including this generator when assigned as `_param_generator`,
+        # exactly how RandomGaussianBlur uses it. Exercise that real path directly.
+        from kornia.augmentation import RandomGaussianBlur
+
+        aug = RandomGaussianBlur((3, 3), sigma=torch.tensor([0.1, 2.0]))
+        moved = aug.to(device=device, dtype=dtype)
+        moved_sigma = moved._param_generator.sigma
+        assert moved_sigma.device == torch.tensor(0.0, device=device).device
+        assert moved_sigma.dtype == dtype
 
     def test_tuple_sigma_stays_a_plain_attribute(self):
         from kornia.augmentation.random_generator._2d.gaussian_blur import RandomGaussianBlurGenerator
