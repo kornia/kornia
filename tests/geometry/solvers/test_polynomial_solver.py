@@ -124,7 +124,16 @@ class TestCubicSolver(BaseTester):
         The gradient is taken a margin inside acos's domain while the value is
         kept exact, so this pins the forward pass against a fix that clamps the
         value instead and silently degrades a repeated root.
+
+        Restricted to single and double precision on purpose. A repeated root
+        is ill-conditioned -- the roots separate like the square root of any
+        perturbation -- so in bfloat16 they land about 0.09 away from 1.0 on
+        `main` too. Asserting a tolerance there would be measuring the dtype,
+        not this change.
         """
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("repeated-root conditioning dominates in half precision")
+
         coeffs = torch.tensor([[1.0, 0.0, -3.0, 2.0]], device=device, dtype=dtype)
         roots = solver.solve_cubic(coeffs)
         self.assert_close(
