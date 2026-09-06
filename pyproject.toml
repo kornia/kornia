@@ -49,7 +49,6 @@ dev = [
   "pytest",
   "pytest-cov",
   "pytest-timeout",
-  "requests",
   "ruff",
   "setuptools",  # For torch.compile
   "transformers<5.11",
