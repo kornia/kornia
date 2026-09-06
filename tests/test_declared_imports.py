@@ -25,16 +25,20 @@ the declaration, so each one only surfaced as an ``ImportError`` in a user's env
 The three tests here are that comparison:
 
 1. every third-party module imported anywhere under ``kornia/`` is declared -- as a runtime
-   dependency, in some optional-dependency extra, or as a :class:`LazyLoader`;
-2. every :class:`LazyLoader` names a module that some declared dependency actually installs, so
-   a new lazy optional dependency cannot be added without also giving users a way to install it;
+   dependency, in some user-facing optional-dependency extra, or as a :class:`LazyLoader`;
+2. every :class:`LazyLoader` names a module that a dependency a *user* can install actually
+   provides, so a new lazy optional dependency cannot be added without also giving users a way to
+   install it;
 3. a bare ``import kornia`` loads none of the optional packages, so declaring a dependency as
    optional stays true at runtime.
+
+"User-facing" excludes :data:`CONTRIBUTOR_EXTRAS` (``dev`` and ``docs``): those install what it
+takes to develop kornia, and something a user runs must not need them.
 
 The allowed set is *derived* from ``pyproject.toml`` and from the ``LazyLoader`` registry rather
 than hardcoded: adding a dependency in the usual place is all it takes to satisfy these tests.
 The only literals are the handful of distribution names whose import name differs
-(:data:`DIST_TO_IMPORT`) and :data:`IMPLICIT_ALLOWED`.
+(:data:`DIST_TO_IMPORT`), :data:`CONTRIBUTOR_EXTRAS` and :data:`IMPLICIT_ALLOWED`.
 
 Deliberately no ``packaging`` import: it is not a kornia dependency, and this file must pass on a
 bare ``pip install -e ".[dev]"``.
@@ -73,10 +77,20 @@ DIST_TO_IMPORT = {
 # declared runtime dependency, installs them, so anything that can import torch has them too.
 IMPLICIT_ALLOWED = {"typing_extensions"}
 
-# ``LazyLoader`` entries whose module is provided by no declared dependency. Each needs a reason,
-# and the list is empty on purpose: a lazily imported optional package the user has no documented
-# way to install is a bug, not a design.
-LAZY_LOADERS_WITHOUT_DECLARED_DEP: dict[str, str] = {}
+# Extras that exist for contributors, not for users of the library: nothing a user runs may depend
+# on them, so they do not make a package "declared". Every other extra is user-facing and does.
+CONTRIBUTOR_EXTRAS = frozenset({"dev", "docs"})
+
+# ``LazyLoader`` modules that no user-facing dependency installs, mapped to the reason they are
+# tolerated. Every entry is a package a user can hit at runtime with no documented way to install
+# it, so each one is a bug waiting on a decision rather than a design.
+LAZY_LOADERS_WITHOUT_DECLARED_DEP: dict[str, str] = {
+    "PIL.Image": (
+        "pillow is declared only in the dev/docs extras; ImageModule output_type='pil' and "
+        "kornia.io.sample need it at runtime; which user-facing extra should carry it is an open "
+        "decision (#4261)"
+    ),
+}
 
 # Optional packages that ``import kornia`` must not pull in.
 MUST_NOT_LOAD_ON_IMPORT = (
@@ -110,13 +124,15 @@ def _requirement(spec: str) -> tuple[str, tuple[str, ...]]:
 
 
 def _declared_import_names() -> set[str]:
-    """Return the import names of every distribution declared in ``pyproject.toml``.
+    """Return the import names of every distribution a *user* of kornia can install.
 
-    Covers the runtime ``dependencies`` and every ``[project.optional-dependencies]`` extra;
-    ``kornia[<extra>]`` self-references expand to that extra's own requirements.
+    That is the runtime ``dependencies`` plus every user-facing ``[project.optional-dependencies]``
+    extra -- all of them except :data:`CONTRIBUTOR_EXTRAS`, which exist for developing kornia, not
+    for running it. ``kornia[<extra>]`` self-references expand to that extra's own requirements.
     """
     project = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["project"]
     optional = {_normalise(name): reqs for name, reqs in project.get("optional-dependencies", {}).items()}
+    user_facing = set(optional) - CONTRIBUTOR_EXTRAS
     names: set[str] = set()
 
     def collect(specs: list[str], seen: frozenset[str]) -> None:
@@ -132,16 +148,16 @@ def _declared_import_names() -> set[str]:
             names.add(DIST_TO_IMPORT.get(dist, dist))
 
     collect(project.get("dependencies", []), frozenset())
-    for extra, specs in optional.items():
-        collect(specs, frozenset({extra}))
+    for extra in user_facing:
+        collect(optional[extra], frozenset({extra}))
     return names
 
 
 def _lazy_loader_modules() -> dict[str, str]:
-    """Return ``{attribute name: top-level module name}`` for the ``LazyLoader`` registry."""
+    """Return ``{module name: top-level module name}`` for the ``LazyLoader`` registry."""
     return {
-        attr: loader.module_name.split(".")[0]
-        for attr, loader in vars(external).items()
+        loader.module_name: loader.module_name.split(".")[0]
+        for loader in vars(external).values()
         if isinstance(loader, LazyLoader)
     }
 
@@ -181,29 +197,30 @@ def test_every_third_party_import_is_declared():
 
     undeclared = [
         f"{path}:{line} -> {module}"
-        for path, line, module in _imported_modules()
+        for path, line, module in sorted(_imported_modules())
         if module not in ignored and module not in allowed
     ]
 
     assert not undeclared, (
-        "kornia/ imports modules that no pyproject.toml dependency, optional-dependency extra or "
-        "LazyLoader declares. Declare them, make them optional through kornia.core.external, or "
-        "drop the import:\n  " + "\n  ".join(undeclared)
+        "kornia/ imports modules that no pyproject.toml runtime dependency, user-facing "
+        "optional-dependency extra or LazyLoader declares. Declare them, make them optional "
+        "through kornia.core.external, or drop the import:\n  " + "\n  ".join(undeclared)
     )
 
 
 def test_every_lazy_loader_module_is_installable():
-    """Every ``LazyLoader`` module must be installable from a declared dependency."""
+    """Every ``LazyLoader`` module must be installable from a user-facing declared dependency."""
     declared = _declared_import_names() | IMPLICIT_ALLOWED
-    orphans = {attr: module for attr, module in _lazy_loader_modules().items() if module not in declared}
+    orphans = {name: top for name, top in _lazy_loader_modules().items() if top not in declared}
 
     unexpected = sorted(set(orphans) - set(LAZY_LOADERS_WITHOUT_DECLARED_DEP))
     assert not unexpected, (
-        "kornia.core.external declares LazyLoader(s) whose module no pyproject.toml dependency "
-        "installs, so users have no documented way to get them: "
-        + ", ".join(f"{attr} -> {orphans[attr]}" for attr in unexpected)
-        + ". Add the package to an optional-dependencies extra (and pass extra= to the LazyLoader),"
-        " or record it in LAZY_LOADERS_WITHOUT_DECLARED_DEP with a reason."
+        "kornia.core.external declares LazyLoader(s) whose module no runtime dependency and no "
+        "user-facing optional-dependency extra installs, so users have no documented way to get "
+        "them: "
+        + ", ".join(f"{name} -> {orphans[name]}" for name in unexpected)
+        + ". Add the package to a user-facing optional-dependencies extra (and pass extra= to the "
+        "LazyLoader), or record it in LAZY_LOADERS_WITHOUT_DECLARED_DEP with a reason."
     )
 
     stale = sorted(set(LAZY_LOADERS_WITHOUT_DECLARED_DEP) - set(orphans))
