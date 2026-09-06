@@ -41,6 +41,10 @@ Pixel-centre conventions
      - —
      - torch default since 1.3
 
+The "Used by" column names the projects each convention is commonly associated with. It is reproduced from
+the proposal this table comes from, and — unlike the frame table below — those attributions were not checked
+against upstream documentation.
+
 Two rules follow from the first two rows:
 
 - ``cx_colmap = cx_opencv + 0.5``, and the same for ``cy``. Nothing else in the calibration moves: the focal
@@ -70,8 +74,9 @@ rest of the functional camera API assume. The convention is pinned by:
 Camera and world frames
 -----------------------
 
-Each non-Kornia cell below is taken from the upstream documentation linked in the same row; a cell reads
-"not stated" when that documentation does not say, and "not verified" when the page could not be read.
+Each non-Kornia cell below is taken from, or derived from, the upstream documentation linked in the same row,
+and the derivations are spelled out under the table; a cell reads "not stated" when that documentation does not
+say, and "not verified" when the page could not be read.
 
 .. list-table::
    :header-rows: 1
@@ -108,7 +113,8 @@ Each non-Kornia cell below is taken from the upstream documentation linked in th
      - set by the ``gluLookAt`` up vector
      - normalized device coordinates; see the ``grid_sample`` rows above
      - `gluLookAt <https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/gluLookAt.xml>`_,
-       `glFrustum <https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/glFrustum.xml>`_
+       `glFrustum <https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/glFrustum.xml>`_; the handedness
+       from `ARCore Pose <https://developers.google.com/ar/reference/java/com/google/ar/core/Pose>`_
      - :func:`kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4` /
        :func:`kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt` and the inverse pair
        :func:`kornia.geometry.conversions.camtoworld_vision_to_graphics_4x4` /
@@ -157,7 +163,9 @@ What each row rests on:
   ``(u, v)`` "measured in pixels from the top-left corner of the image", and its cheirality check "means that
   the triangulated 3D points should have positive depth". ``+Xc`` therefore grows with the column index,
   ``+Yc`` with the row index, and a point in front of the camera has ``Zc > 0``; the handedness follows from
-  those three directions. The pixel-centre cell is COLMAP's statement about OpenCV, quoted below.
+  those three directions. OpenCV's own prose never names the axis directions, so that cell is **derived** from
+  these three quotes rather than quoted. The pixel-centre cell is COLMAP's statement about OpenCV, quoted
+  below.
 - COLMAP: "The local camera coordinate system of an image is defined in a way that the X axis points to the
   right, the Y axis to the bottom, and the Z axis to the front as seen from the image", it "uses a corner-based
   pixel convention, in which the center of the top-left pixel is at ``(0.5, 0.5)``", and — about the other
@@ -166,11 +174,13 @@ What each row rests on:
 - OpenGL: ``gluLookAt`` "maps the reference point to the negative z axis and the eye point to the origin", and
   the up vector "is mapped to the positive y axis so that it points upward in the viewport"; ``glFrustum``
   places the near plane at ``-nearVal`` with ``nearVal`` positive, "assuming that the eye is located at
-  (0, 0, 0)". The right-handedness is the one ARCore's ``Pose`` reference names — "Coordinate system is
-  right-handed, like OpenGL conventions".
+  (0, 0, 0)". No fetched Khronos page states the handedness, so that cell is ARCore's characterisation of
+  OpenGL — "Coordinate system is right-handed, like OpenGL conventions" — and its ``Pose`` reference is linked
+  in the OpenGL row for that reason.
 - ARKit: "the x-axis points to the right when the device is in landscapeLeft orientation […] The y-axis points
   upward (with respect to landscapeLeft orientation), and the z-axis points away from the device on the screen
-  side"; world space "follows a right-handed convention, but is oriented based on the session configuration".
+  side" — the screen side faces the user, so the rear camera's viewing direction is ``-Z``; world space
+  "follows a right-handed convention, but is oriented based on the session configuration".
 - ARCore: the camera pose has "+X pointing right, +Y pointing up, and -Z pointing in the direction the camera
   is looking", and its coordinate system "is right-handed, like OpenGL conventions".
 - PyTorch3D: "+X:left", "+Y: up" and "+Z: from us to scene (right-handed)"; in screen coordinates "(0,0) is the
