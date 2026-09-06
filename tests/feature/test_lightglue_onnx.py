@@ -15,11 +15,16 @@
 # limitations under the License.
 #
 
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("onnx")
 import torch
 
+import kornia
 from kornia.core._compat import torch_version_le
 from kornia.feature import OnnxLightGlue
 from kornia.feature.lightglue_onnx.utils import normalize_keypoints
@@ -28,6 +33,22 @@ try:
     import onnxruntime as ort
 except ImportError:
     ort = None
+
+
+def test_import_kornia_does_not_import_onnxruntime():
+    """``import kornia`` must not eagerly load onnxruntime, even when it is installed (kornia#4260)."""
+    pytest.importorskip("onnxruntime")
+
+    repo_root = Path(kornia.__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "-c", "import kornia, sys; print('onnxruntime' in sys.modules)"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert result.stdout.strip() == "False", result.stdout + result.stderr
 
 
 @pytest.mark.skipif(ort is None, reason="OnnxLightGlue requires onnxruntime-gpu")
