@@ -234,6 +234,24 @@ class TestDepthTo3d(BaseTester):
         self.assert_close(depth_to_3d(depth, camera_matrix)[0, :, 0, 0], expected)
         self.assert_close(depth_to_3d_v2(depth[:, 0], camera_matrix)[0, 0, 0], expected)
 
+    def test_convention_integer_depth_returns_a_float32_point_cloud(self, device, dtype):
+        # Convention pin (audit labels 5c-d3-07, 5c-d3-08): an integer depth map is promoted rather than
+        # rejected, and the promotion target is float32 regardless of the integer width -- int64 and int32 both
+        # return float32, not the run's ``dtype``. The value is asserted beside the dtype so the pin is not
+        # satisfied by an all-zero cloud: depth 2 at pixel (0, 0) is ((0 - 4) * 2 / 100, (0 - 3) * 2 / 100, 2).
+        # This test takes no ``dtype`` from the fixture for its input on purpose; it runs once per dtype cell
+        # and asserts the same float32 result each time.
+        # Snippet used to generate expected: depth_to_3d(full((1, 1, 2, 3), 2, dtype=torch.int64), K).dtype and
+        # the same for torch.int32 and for depth_to_3d_v2, executed 2026-09-06 on this worktree (torch 2.14.0)
+        # -> torch.float32 in all four combinations, on cpu and on mps.
+        camera_matrix = _k_asymmetric(device, torch.float32)
+        for int_dtype in (torch.int64, torch.int32):
+            depth = torch.full((1, 1, 2, 3), 2, device=device, dtype=int_dtype)
+            points = depth_to_3d(depth, camera_matrix)
+            assert points.dtype == torch.float32
+            assert depth_to_3d_v2(depth[:, 0], camera_matrix).dtype == torch.float32
+            self.assert_close(points[0, :, 0, 0], torch.tensor([-0.08, -0.06, 2.0], device=device, dtype=torch.float32))
+
     def test_convention_depth_to_3d_and_v2_agree_up_to_layout(self, device, dtype):
         # Convention pin (audit labels 5c-d3-03, 5c-d3-04, 5c-d3-05, 5c-d3-06; duplication-ledger row
         # "depth_to_3d / depth_to_3d_v2", MERGE IN WINDOW): the two functions compute the same points in two
@@ -261,35 +279,46 @@ class TestDepthTo3d(BaseTester):
 
     def test_wart_depth_to_3d_v2_disagrees_with_depth_to_3d_at_w_one_4278(self, device, dtype):
         # Wart pin for kornia#4278 (audit labels W-02, W-03, W-04, 5c-um-04): unproject_meshgrid calls
-        # ``.squeeze()`` on the meshgrid it builds, so at W = 1 the width axis disappears and the grid then
-        # broadcasts across a phantom width. depth_to_3d_v2 returns (1, 3, 3, 3) -- the correct single column
-        # tiled three times -- where depth_to_3d returns the correct (1, 3, 3, 1) and the documented
-        # (*, H, W, 3) contract asks for (1, 3, 1, 3). H = 1 is unaffected, because the batch axis absorbs the
-        # squeeze; that asymmetry is what makes this a W-only defect rather than a degenerate-shape policy.
-        # Snippet used to generate expected: depth_to_3d_v2(full((1, 3, 1), 2.0), K) executed 2026-09-06 on this
-        # worktree (torch 2.14.0, cpu float32) -> shape (1, 3, 3, 3) whose first slice is
-        # [[-0.07999999821186066, -0.05999999865889549, 2.0], [-0.07999999821186066, -0.03999999910593033, 2.0],
-        # [-0.07999999821186066, -0.019999999552965164, 2.0]]; depth_to_3d on the same depth -> shape
-        # (1, 3, 3, 1) with those same three points. The H = 1 twin is permute-equal (True) in every cell:
-        # cpu float32/float64/float16/bfloat16 and mps float32/float16.
+        # ``.squeeze()`` on the meshgrid it builds, so at W = 1 the width axis disappears and the single column
+        # of rays then broadcasts across a phantom width. depth_to_3d_v2 returns (1, 3, 3, 3) where depth_to_3d
+        # returns the correct (1, 3, 3, 1) and the documented (*, H, W, 3) contract asks for (1, 3, 1, 3).
+        # The depth VARIES down the column (1, 2, 3) on purpose: with a constant depth the wrong result happens
+        # to be the correct column tiled, which a tile-comparison would accept as harmless. With a varying depth
+        # the structure is an OUTER PRODUCT -- out[0, i, j] is the ray of row j scaled by the depth of row i --
+        # of which only the DIAGONAL is depth_to_3d's column. Both are asserted here.
+        # H = 1 and H = W = 1 are unaffected, because the batch axis absorbs the squeeze; that asymmetry is what
+        # makes this a W-only defect rather than a degenerate-shape policy.
+        # Snippet used to generate expected: depth_to_3d_v2(tensor([[[1.], [2.], [3.]]])[:, 0], K) executed
+        # 2026-09-06 on this worktree (torch 2.14.0, cpu float32) -> shape (1, 3, 3, 3); row 0 is the raw ray
+        # column [[-0.03999999910593033, -0.029999999329447746, 1.0], [-0.03999999910593033,
+        # -0.019999999552965164, 1.0], [-0.03999999910593033, -0.009999999776482582, 1.0]] and row 1 is the same
+        # column at twice the scale; depth_to_3d on the same depth -> (1, 3, 3, 1) equal to the diagonal.
+        # out[0, i, j] == unproject_meshgrid(3, 1, K)[0, 0, j] * depth_i holds for all nine (i, j) pairs, on cpu
+        # float32/float64/float16/bfloat16 and mps float32/float16; the H = 1 and H = W = 1 twins are
+        # permute-equal (True) in the same cells.
         # Pins the CURRENT shape and values; NOT a contract; delete when #4278 is repaired.
         camera_matrix = _k_asymmetric(device, dtype)
-        depth = torch.full((1, 1, 3, 1), 2.0, device=device, dtype=dtype)
+        depth = torch.tensor([[[[1.0], [2.0], [3.0]]]], device=device, dtype=dtype)
         v1 = depth_to_3d(depth, camera_matrix)
         v2 = depth_to_3d_v2(depth[:, 0], camera_matrix)
         assert v1.shape == (1, 3, 3, 1)
         assert v2.shape == (1, 3, 3, 3)
         column = v1[0].permute(1, 2, 0)
         assert column.shape == (3, 1, 3)
-        self.assert_close(
-            v2[0, 0],
-            torch.tensor([[-0.08, -0.06, 2.0], [-0.08, -0.04, 2.0], [-0.08, -0.02, 2.0]], device=device, dtype=dtype),
-        )
-        for tile in range(3):
-            assert torch.equal(v2[0, tile], column[:, 0])
-        depth_h1 = torch.full((1, 1, 1, 3), 2.0, device=device, dtype=dtype)
+        rays = unproject_meshgrid(3, 1, camera_matrix, device=device, dtype=dtype)
+        assert rays.shape == (1, 1, 3, 3)
+        for i in range(3):
+            for j in range(3):
+                assert torch.equal(v2[0, i, j], rays[0, 0, j] * depth[0, 0, i, 0])
+            # only the diagonal reproduces depth_to_3d's column; the off-diagonal entries do not
+            assert torch.equal(v2[0, i, i], column[i, 0])
+        assert not torch.equal(v2[0, 0], column[:, 0])
+        depth_h1 = torch.tensor([[[[1.0, 2.0, 3.0]]]], device=device, dtype=dtype)
         h1_v1 = depth_to_3d(depth_h1, camera_matrix).permute(0, 2, 3, 1)
         assert torch.equal(h1_v1, depth_to_3d_v2(depth_h1[:, 0], camera_matrix))
+        depth_h1w1 = torch.tensor([[[[2.0]]]], device=device, dtype=dtype)
+        h1w1_v1 = depth_to_3d(depth_h1w1, camera_matrix).permute(0, 2, 3, 1)
+        assert torch.equal(h1w1_v1, depth_to_3d_v2(depth_h1w1[:, 0], camera_matrix))
 
     @pytest.mark.xfail(strict=True, reason="kornia#4278: unproject_meshgrid squeezes the W = 1 axis away")
     def test_convention_depth_to_3d_v2_keeps_the_w_one_axis_4278(self, device, dtype):

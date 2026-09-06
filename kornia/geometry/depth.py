@@ -73,7 +73,11 @@ def unproject_meshgrid(
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`: pixel ``(0, 0)`` is centred at ``(0, 0)``.
           ``camera_matrix`` is the :math:`(3, 3)` ``[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]`` of that grid and
           there are no extrinsics, so the rays are in the **camera** frame.
-        - ``camera_matrix`` needs a leading batch dimension, and that dimension is carried into the result.
+        - ``camera_matrix`` is batched: the supported form is :math:`(B, 3, 3)`, which returns
+          :math:`(B, H, W, 3)`. Extra **singleton** leading dimensions pass through unchanged -- a
+          :math:`(2, 1, 3, 3)` intrinsics returns :math:`(2, 1, H, W, 3)` -- while a non-singleton extra
+          leading dimension raises ``RuntimeError``, and an unbatched :math:`(3, 3)` raises ``ShapeError``
+          (below).
         - ``normalize_points=True`` returns the unit ray instead of the ray whose ``z`` is 1, which is the form
           :func:`~kornia.geometry.depth.depth_to_3d_v2` needs when its depth is a Euclidean ray length rather
           than a camera-frame ``z``.
@@ -151,8 +155,8 @@ def depth_to_3d_v2(
         - ``depth`` is the camera-frame ``z`` of each pixel and the result is the camera-frame point
           ``((u - cx) z / fx, (v - cy) z / fy, z)``, laid out channels-**last** as :math:`(*, H, W, 3)`.
           :func:`~kornia.geometry.depth.depth_to_3d` computes the same points in the :math:`(B, 3, H, W)`
-          layout, and the two are equal after ``permute(0, 2, 3, 1)`` -- apart from ``W = 1``, warned about
-          below.
+          layout, and the two are equal after ``permute(0, 2, 3, 1)`` -- apart from ``W = 1`` with ``H > 1``,
+          warned about below.
         - ``u`` and ``v`` are the column and the row of the integer-centre pixel grid that
           :func:`~kornia.geometry.depth.unproject_meshgrid` builds, described in the Convention block on
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`. There are no extrinsics, so the points are in
@@ -167,11 +171,13 @@ def depth_to_3d_v2(
           :func:`~kornia.geometry.depth.unproject_meshgrid` returns for the same camera.
 
     .. warning::
-        At ``W = 1`` the width axis is squeezed away by
-        :func:`~kornia.geometry.depth.unproject_meshgrid`, so a :math:`(1, 3, 1)` depth returns a
-        :math:`(1, 3, 3, 3)` point cloud -- the correct single column tiled across a phantom width -- where the
-        layout above asks for :math:`(1, 3, 1, 3)` and :func:`~kornia.geometry.depth.depth_to_3d` returns that
-        column correctly. That is the one shape probed at which the two stop agreeing. Tracked as
+        At ``W = 1`` with ``H > 1`` the width axis is squeezed away by
+        :func:`~kornia.geometry.depth.unproject_meshgrid`, so the single column of rays broadcasts across a
+        phantom width: a :math:`(1, 3, 1)` depth returns a :math:`(1, 3, 3, 3)` point cloud whose entry
+        ``[0, i, j]`` is the ray of row ``j`` scaled by the depth of row ``i``, an outer product of which only
+        the diagonal is the column :func:`~kornia.geometry.depth.depth_to_3d` returns; the layout above asks
+        for :math:`(1, 3, 1, 3)`. ``H = 1`` and ``H = W = 1`` are unaffected, because the batch axis absorbs
+        the squeeze. That is the one shape probed at which the two stop agreeing. Tracked as
         `#4278 <https://github.com/kornia/kornia/issues/4278>`_ and pinned by
         ``test_wart_depth_to_3d_v2_disagrees_with_depth_to_3d_at_w_one_4278``,
         ``test_wart_unproject_meshgrid_loses_the_axis_at_w_one_4278`` and the strict ``xfail``
@@ -216,7 +222,7 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
     .. note::
 
         :py:func:`kornia.geometry.depth.depth_to_3d_v2` computes the same points without building a meshgrid,
-        in the :math:`(*, H, W, 3)` layout, and is the successor of this function. Which of the two survives,
+        in the :math:`(*, H, W, 3)` layout, and is the newer of the two. Which of them survives,
         and on what deprecation path, is a coordinated decision that has not been taken: the two are kept side
         by side as they are and this function emits no ``DeprecationWarning``.
 
@@ -224,8 +230,9 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
         - ``depth`` is the camera-frame ``z`` of each pixel and the result is the camera-frame point
           ``((u - cx) z / fx, (v - cy) z / fy, z)``, laid out channels-**first** as :math:`(B, 3, H, W)`.
           :func:`~kornia.geometry.depth.depth_to_3d_v2` computes the same points in the :math:`(*, H, W, 3)`
-          layout, and the two are equal after ``permute(0, 2, 3, 1)`` -- apart from ``W = 1``, where that
-          function loses the width axis (`#4278 <https://github.com/kornia/kornia/issues/4278>`_).
+          layout, and the two are equal after ``permute(0, 2, 3, 1)`` -- apart from ``W = 1`` with ``H > 1``,
+          where that function loses the width axis
+          (`#4278 <https://github.com/kornia/kornia/issues/4278>`_).
         - ``u`` and ``v`` are the column and the row of the integer pixel centres that
           :func:`~kornia.geometry.grid.create_meshgrid` enumerates, described in the Convention block on
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`: pixel ``(0, 0)`` is centred at ``(0, 0)``.
@@ -292,7 +299,8 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     .. warning::
         The unprojection goes through :func:`~kornia.geometry.depth.depth_to_3d_v2`, so the squeezed ``W = 1``
         axis reaches here as well: a :math:`(1, 1, 4, 1)` depth returns a :math:`(1, 3, 4, 4)` normal map
-        instead of the :math:`(1, 3, 4, 1)` the layout above asks for. Tracked as
+        instead of the :math:`(1, 3, 4, 1)` the layout above asks for. ``H = 1`` and ``H = W = 1`` are
+        unaffected. Tracked as
         `#4278 <https://github.com/kornia/kornia/issues/4278>`_, whose pins cover
         :func:`~kornia.geometry.depth.unproject_meshgrid`, :func:`~kornia.geometry.depth.depth_to_3d_v2` and
         :func:`~kornia.geometry.depth.warp_frame_depth`; this function carries no pin of its own.
@@ -436,9 +444,10 @@ def warp_frame_depth(
         ``tests/geometry/test_depth.py``.
 
     .. warning::
-        At ``W = 1`` the result is silently wider than the input, because
+        At ``W = 1`` with ``H > 1`` the result is silently wider than the input, because
         :func:`~kornia.geometry.depth.unproject_meshgrid` squeezes the width axis away: a :math:`(1, 2, 4, 1)`
-        image comes back as :math:`(1, 2, 4, 4)`, with its single column laid along the phantom width. Tracked
+        image comes back as :math:`(1, 2, 4, 4)`, with its single column laid along the phantom width;
+        ``H = 1`` and ``H = W = 1`` are unaffected. Tracked
         as `#4278 <https://github.com/kornia/kornia/issues/4278>`_ and pinned by
         ``test_wart_warp_frame_depth_loses_the_axis_at_w_one_4278`` in ``tests/geometry/test_depth.py``.
 
@@ -496,8 +505,9 @@ class DepthWarper(nn.Module):
           :meth:`forward` takes ``(depth_src, patch_dst)``, samples ``patch_dst`` at the pixels the
           source-frame depth projects to, and returns a :math:`(B, C, H, W)` tensor carrying ``patch_dst``'s
           channel count.
-        - this is a two-step API: :meth:`compute_projection_matrix` has to be called before
-          :meth:`warp_grid` or :meth:`forward`, and until it has been both raise ``ValueError``.
+        - this is a two-step API: :meth:`compute_projection_matrix` has to be called first. Until it has
+          been, :meth:`warp_grid` and :meth:`forward` raise ``ValueError`` and :meth:`compute_subpixel_step`
+          raises ``RuntimeError``.
         - :meth:`compute_projection_matrix` stores exactly the matrix of the equation above,
           ``K_dst @ (E_dst @ inverse(E_src))``, with ``K_dst`` and ``E_dst`` the ``intrinsics`` and
           ``extrinsics`` of the ``pinhole_dst`` given to the constructor and ``E_src`` the ``extrinsics`` of
@@ -509,8 +519,12 @@ class DepthWarper(nn.Module):
         - the ``grid`` attribute is this instance's own grid of integer pixel centres -- the grid
           :func:`~kornia.geometry.grid.create_meshgrid` enumerates and the Convention block on
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera` describes -- in homogeneous form: pixel
-          ``(0, 0)`` is ``(0, 0, 1)``. :meth:`warp_grid` returns the normalized ``grid_sample`` coordinates
-          instead, in which that same pixel is ``(-1, -1)``.
+          ``(0, 0)`` is ``(0, 0, 1)``. :meth:`warp_grid` returns something else: the sampling positions in
+          ``grid_sample``'s ``align_corners=True`` normalized coordinates, in which the **destination**
+          image's integer-centre pixel ``(0, 0)`` is ``(-1, -1)`` and its pixel ``(H - 1, W - 1)`` is
+          ``(1, 1)``. Where each destination pixel actually lands is wherever the reprojection sends it: an
+          identity camera pair leaves pixel ``(0, 0)`` at ``(-1, -1)``, a rotated and translated one sends
+          it elsewhere.
         - ``align_corners`` defaults to ``True``; it is handed to ``grid_sample`` unchanged, together with
           ``mode`` and ``padding_mode``.
         - :func:`~kornia.geometry.depth.depth_warp` is the functional form of this class -- it builds one,
@@ -520,10 +534,14 @@ class DepthWarper(nn.Module):
         :func:`~kornia.geometry.depth.warp_frame_depth` performs the same warp under the **opposite** naming.
         The frame this class calls ``src``, the one holding the depth, is that function's ``dst``
         (``depth_dst``), and the image this class takes as ``patch_dst`` is that function's ``image_src``;
-        reading "dst" as "dst" across the two APIs gives the inverse warp. The two also differ arithmetically,
-        because they unproject and reproject through different code paths, so their outputs agree at the
-        working dtype's tolerance without being equal bit for bit on a camera with a rotation and non-integer
-        intrinsics. Tracked as `#4273 <https://github.com/kornia/kornia/issues/4273>`_ and pinned by
+        reading "dst" as "dst" across the two APIs gives the inverse warp. The two also differ arithmetically:
+        they build the sampling grid by different routes -- :func:`~kornia.geometry.depth.depth_to_3d_v2` and
+        :func:`~kornia.geometry.camera.perspective.project_points` here, ``pixel2cam`` and ``cam2pixel`` there
+        -- so the grid, and with it the resampled image, can differ in the last bits. Where the two grids come
+        out bit-identical, so do the images. In float32 and float64 the two agree at the working dtype's
+        tolerance; in float16 and bfloat16 the gap is wider than that tolerance, which is why the pin below
+        states the claim for the two single- and double-precision dtypes only. Tracked as
+        `#4273 <https://github.com/kornia/kornia/issues/4273>`_ and pinned by
         ``test_wart_warp_frame_depth_and_depth_warper_name_the_depth_frame_oppositely_4273`` and
         ``test_convention_warp_frame_depth_matches_depth_warper_without_being_bitwise_equal`` in
         ``tests/geometry/test_depth.py``.
