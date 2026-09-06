@@ -652,6 +652,19 @@ def _solve_cramer_sym3x3(
         systems (``|det| > eps``).  Outputs for unsolved entries are numerically
         meaningless and should be discarded by the caller.
     """
+    # float16 cannot carry this solve. The determinant is a product of three
+    # second derivatives, so for a [0, 1] response it lands around 1e-4 and
+    # below — still above ``eps``, so ``solved`` admits it. The forward divides
+    # by it once and stays finite, but the backward of ``num / safe_det``
+    # scales by ``1 / safe_det**2``, and that square is not representable in
+    # float16 (finfo.tiny is 6.1e-5), so the gradient becomes inf and reduces
+    # to NaN. bfloat16 keeps float32's exponent range and is unaffected.
+    in_dtype = dxx.dtype
+    if in_dtype == torch.float16:
+        dxx, dyy, dss = dxx.float(), dyy.float(), dss.float()
+        dxy, dxs, dys = dxy.float(), dxs.float(), dys.float()
+        r0, r1, r2 = r0.float(), r1.float(), r2.float()
+
     cf00 = dyy * dss - dys * dys  # cofactor M00
     cf01 = dxy * dss - dys * dxs  # cofactor M01
     cf02 = dxy * dys - dyy * dxs  # cofactor M02
@@ -662,6 +675,9 @@ def _solve_cramer_sym3x3(
     sx = (r0 * cf00 - dxy * (r1 * dss - dys * r2) + dxs * (r1 * dys - dyy * r2)) / safe_det
     sy = (dxx * (r1 * dss - dys * r2) - r0 * cf01 + dxs * (dxy * r2 - r1 * dxs)) / safe_det
     ss = (dxx * (dyy * r2 - r1 * dys) - dxy * (dxy * r2 - r1 * dxs) + r0 * cf02) / safe_det
+
+    if in_dtype == torch.float16:
+        sx, sy, ss = sx.to(in_dtype), sy.to(in_dtype), ss.to(in_dtype)
     return sx, sy, ss, solved
 
 

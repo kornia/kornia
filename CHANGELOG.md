@@ -132,6 +132,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+* `kornia_rs>=0.1.14` is required; the floor used to be 0.1.9. kornia_rs 0.1.11 relocated its image I/O
+  and 0.1.12/0.1.13 lack the libjpeg-turbo reader, so no single call site works across 0.1.9-0.1.14;
+  rather than dispatch per version, kornia calls the current layout. `pip install -U kornia_rs` on an
+  environment that pins an older one. (#4326)
 * `kornia.contrib.BoxMotTracker` is removed, together with the `kornia.contrib.boxmot_tracker` module.
   It wrapped the [boxmot](https://github.com/mikel-brostrom/boxmot) tracker zoo around a kornia detector,
   but called the boxmot 10.x API (`boxmot.DeepOCSORT(model_weights=..., device=..., fp16=...)`), and no
@@ -347,6 +351,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
+  resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
+  `kornia_rs.io`, and kornia kept calling the root, so on 0.1.11 and newer `load_image` raised
+  `AttributeError` for every JPEG and every PNG that is not plain RGB, and `write_image` raised for
+  TIFF, 16-bit and float32 output (8-bit JPEG and PNG writes still worked); the lock's 0.1.10 kept CI
+  green. kornia now calls `kornia_rs.io` and requires kornia_rs 0.1.14 (see *Breaking changes*). That
+  decoder also reads 16-bit PNG/TIFF and float TIFF, which 0.1.10 rejected: `ImageLoadType.UNCHANGED`
+  returns them as `uint16`/`float32`, and the 8-bit load types raise a `NotImplementedError` that says
+  so instead of mislabelling the tensor. The nightly PyPI job now imports the installed wheel from
+  outside the checkout (it used to import the source tree) and round-trips an image instead of only
+  importing. (#4326)
 * `SemanticSegmentation.visualize` works for CUDA, MPS and half-precision models. It indexed the
   CPU-drawn colormap with the mask's `argmax`, which raises for CUDA and MPS masks, and recognised a
   softmax head with `torch.allclose(sum, 1)` at float32-sized default tolerances, which a float16 or
@@ -355,6 +370,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model's dtype instead of coming back as float32. `OnnxLightGlue` without `onnxruntime` raises an
   `ImportError` that names `pip install "kornia[onnx]"`, like the lazy-loader handles do, instead of a
   bare `BaseError`. (#4301)
+* `unproject_meshgrid` now returns the documented `(*, H, W, 3)` shape when `W` is 1. It squeezed the
+  meshgrid with a bare `.squeeze()`, which drops the width axis along with the leading batch axis whenever
+  `W == 1`, so `unproject_meshgrid(1, 3, K)` and `unproject_meshgrid(3, 1, K)` returned the same shape with
+  different values. The grid then broadcast across a phantom width in the two public functions built on it:
+  `depth_to_3d_v2` returned `(1, 3, 3, 3)` for a `W = 1` depth where `depth_to_3d` correctly returns
+  `(1, 3, 1, 3)`, and `warp_frame_depth` returned a 4-pixel-wide image for a 1-pixel-wide input. Only the
+  batch axis is dropped now. Output for every `W > 1` is byte-identical, and `depth_to_3d_v2` agrees with
+  `depth_to_3d` at `W = 1` as it already did everywhere else. (#4278)
 * The generated example figures in the API reference are rendered from RGB input.
   `docs/generate_examples.py` decoded the sample images with `cv2.imdecode` and wrote them with
   `cv2.imwrite`, both BGR, so every tensor the examples fed to kornia held reversed channels. The two
@@ -387,6 +410,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scalar and one-dimensional inputs raised `IndexError` from the guard itself. Code that passed those
   shapes and relied on them being accepted now raises `ValueError`. Valid `Bx1xHxW` depth is unaffected
   and its output is unchanged. (#4314)
+* `ConvQuadInterp3d` / `conv_quad_interp3d` no longer return NaN gradients for `float16` input. The
+  Hessian determinant `_solve_cramer_sym3x3` divides by is a product of three second derivatives, so for
+  a `[0, 1]` response it lands around 1e-4 and below and still clears the `eps` gate. The forward divides
+  by it once and stays finite, but the backward scales by `1 / det**2`, which `float16` cannot represent
+  (`finfo(float16).tiny` is 6.1e-5), so the gradient overflowed and reduced to NaN over part of the
+  volume. The solve is now promoted to `float32` for `float16` input and the shifts cast back, as #4231
+  already does for the half-precision meshgrid. `bfloat16` keeps `float32`'s exponent range and was never
+  affected; `bfloat16` and `float32` outputs are unchanged. (#4305)
 
 * `RandAugment`, `AutoAugment`, `TrivialAugment` and `AugMix` no longer silently upcast half-precision
   batches to `float32`. `OperationBase.forward` — the shared gate every auto-augment op routes through —

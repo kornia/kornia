@@ -77,8 +77,10 @@ DIST_TO_IMPORT = {
 }
 
 # Third-party modules that are allowed without appearing in ``pyproject.toml``: torch, which is a
-# declared runtime dependency, installs them, so anything that can import torch has them too.
-IMPLICIT_ALLOWED = {"typing_extensions"}
+# declared runtime dependency, installs them, so anything that can import torch has them too. Empty
+# since ``typing_extensions`` gave way to ``typing`` (every name kornia used is in the 3.11 stdlib);
+# an entry here is a package kornia imports on torch's word alone, so keep it empty when you can.
+IMPLICIT_ALLOWED: frozenset[str] = frozenset()
 
 # Extras that exist for contributors, not for users of the library: nothing a user runs may depend
 # on them, so they do not make a package "declared". Every other extra is user-facing and does.
