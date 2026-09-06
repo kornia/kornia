@@ -673,10 +673,15 @@ class TestBbox3D(BaseTester):
         assert bbox_to_mask(square, 6, 5).dtype == dtype
 
     @pytest.mark.parametrize("case", ["full_width", "full_height", "full_depth", "overhang"])
-    def test_wart_bbox_to_mask3d_fills_the_whole_volume_when_a_box_spans_an_axis_4255(self, device, dtype, case):
-        # Wart pin for kornia#4255: once one axis slab covers every index of the (4, 4, 5) volume, the
-        # union-of-planes intermediate is all true and its reductions lose the other two bounds, so all
-        # 80 voxels are filled where Boxes3D.to_mask fills the intersection. The interior box is unaffected.
+    def test_convention_bbox_to_mask3d_intersects_the_axis_ranges_for_a_full_or_overhanging_axis_box_4255(
+        self, device, dtype, case
+    ):
+        # kornia#4255: once one axis slab covers every index of the (4, 4, 5) volume, the OLD
+        # union-of-planes intermediate went all-true and its `all()`-reduction recovery lost the
+        # other two bounds, filling all 80 voxels where Boxes3D.to_mask correctly fills the
+        # intersection. bbox_to_mask3d now matches Boxes3D.to_mask exactly, including for a box
+        # that overhangs the volume on one axis (the normal state of a box after a crop or a
+        # translation). The interior box (unaffected even before the fix) is checked alongside it.
         xyzxyz_plus, intersection = {
             "full_width": ([0.0, 1.0, 1.0, 4.0, 2.0, 2.0], 20.0),
             "full_height": ([1.0, 0.0, 1.0, 2.0, 3.0, 2.0], 16.0),
@@ -684,18 +689,13 @@ class TestBbox3D(BaseTester):
             "overhang": ([-1.0, 1.0, 1.0, 5.0, 2.0, 2.0], 20.0),
         }[case]
         boxes = Boxes3D.from_tensor(torch.tensor([xyzxyz_plus], device=device, dtype=dtype), mode="xyzxyz_plus")
-        assert bbox_to_mask3d(boxes.data, (4, 4, 5)).sum().item() == 80.0
+        assert bbox_to_mask3d(boxes.data, (4, 4, 5)).sum().item() == intersection
         assert boxes.to_mask(4, 4, 5).sum().item() == intersection
         interior = Boxes3D.from_tensor(
             torch.tensor([[1.0, 1.0, 1.0, 2.0, 2.0, 2.0]], device=device, dtype=dtype), mode="xyzxyz_plus"
         )
         assert bbox_to_mask3d(interior.data, (4, 4, 5)).sum().item() == interior.to_mask(4, 4, 5).sum().item() == 8.0
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="kornia#4255: bbox_to_mask3d fills the whole volume for a full-axis box",
-    )
     def test_convention_bbox_to_mask3d_intersects_the_axis_ranges_for_a_full_axis_box_4255(self, device, dtype):
         # x spans the whole width 0..4, y and z cover 1..2: the intersection is 2 * 2 * 5 = 20 voxels.
         boxes = Boxes3D.from_tensor(
