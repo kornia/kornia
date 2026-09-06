@@ -322,6 +322,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `import kornia` no longer imports onnxruntime when it is installed (#4295)
 * `packaging` is no longer a runtime dependency; it was never imported (#4296).
 * `kornia.onnx.ONNXLoader.list_operators` and `kornia.io.sample` no longer need `requests` (#4302)
+  the only one. `kornia.feature.lightglue.Attention.enable_flash`, the public attribute that recorded
+  whether the probe had succeeded, was renamed to `Attention.allow_flash` and now simply mirrors the
+  constructor argument of the same name. (#4287)
 
 * `RandAugment`, `AutoAugment`, `TrivialAugment` and `AugMix` no longer silently upcast half-precision
   batches to `float32`. `OperationBase.forward` — the shared gate every auto-augment op routes through —
