@@ -212,6 +212,27 @@ class TestSolvePnpDlt(BaseTester):
         )
         self.assert_close(shifted, expected)
 
+    def test_convention_world_to_camera_translation_sign(self, device, dtype):
+        # Convention pin (audit label 5b-pnp-03), the tolerance-free half of the pin above so that the
+        # frame-direction claim is covered on every device and not only where float64 exists (mps has none).
+        # A camera translated so that cam = world + (1, 0, 0) gives a world-to-camera [R | t] with t = (+1, 0, 0);
+        # the cam-to-world reading is t = (-1, 0, 0). The assertion is a sign test, not a value test, so it needs
+        # no tolerance and survives the float32 solve on mps, which recovers t only to about 1e-05.
+        # Snippet used to generate expected: solve_pnp_dlt(W, project_points(W + [1., 0., 0.], K), K)[0, :, 3]
+        # executed 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> cpu float32
+        # [1.0000005960464478, 3.45e-06, 5.88e-06]; mps float32 [1.0000009536743164, -2.21e-06, -1.06e-05].
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt rejects half precision before it solves anything (BaseError)")
+        world_points = self._convention_world_points(device, dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        shift = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+        translation = kornia.geometry.solve_pnp_dlt(
+            world_points, kornia.geometry.project_points(world_points + shift, K), K
+        )[0, :, 3]
+        assert translation[0] > 0.5
+        assert abs(translation[1]) < 0.5
+        assert abs(translation[2]) < 0.5
+
     def test_convention_planar_world_points_raise(self, device, dtype):
         # Convention pin (audit labels 5b-pnp-04, 5b-pnp-05): the DLT needs a non-degenerate configuration, and
         # the function enforces it -- a coplanar point set (the same six points flattened onto z = 5) raises

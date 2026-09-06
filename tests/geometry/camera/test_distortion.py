@@ -309,14 +309,15 @@ class TestDistortionKannalaBrandt(BaseTester):
         self._test_jit_undistort(device, dtype)
 
     def test_convention_undistort_points_kannala_brandt_round_trip_closes(self, device, dtype):
-        # Convention pin (audit labels 5b-kb-02, 5b-kb-04, 5b-kb-05, 5b-kb-06, 5b-kb-07): unlike the affine pair
-        # in TestDistortionAffine, undistort_points_kannala_brandt is an ITERATIVE inverse (10 Gauss-Newton
-        # steps), so the round trip closes to the dtype tolerance rather than bit for bit -- and it still closes
-        # far off axis, at a normalized radius of 3 focal lengths. The pin asserts closure at assert_close's dtype
-        # tolerance and deliberately states no error bound; the executed residuals are recorded, not enforced.
+        # Convention pin (audit labels 5b-kb-02, 5b-kb-05, 5b-kb-06, 5b-kb-07): unlike the affine pair in
+        # TestDistortionAffine, undistort_points_kannala_brandt is an ITERATIVE inverse (10 Gauss-Newton steps),
+        # so the round trip closes to the dtype tolerance rather than bit for bit. The pin asserts closure at
+        # assert_close's dtype tolerance and deliberately states no error bound; the executed residuals are
+        # recorded, not enforced. The far-off-axis case is the sibling pin below.
         # Snippet used to generate expected: (undistort_points_kannala_brandt(distort_points_kannala_brandt(p, par),
-        # par) - p).abs().max() executed 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> cpu float32
-        # 2.98e-08, float64 0.0, float16 9.77e-04, bfloat16 1.95e-03; mps float32 2.98e-08, float16 9.77e-04.
+        # par) - p).abs().max() executed 2026-09-06 on the batch-5b worktree (torch 2.14.0), differenced in the
+        # working dtype -> cpu float32 2.98e-08, float64 9.55e-09, float16 9.77e-04, bfloat16 1.95e-03;
+        # mps float32 2.98e-08, float16 9.77e-04.
         params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
         points = torch.tensor([0.5, 0.25], device=device, dtype=dtype)
         self.assert_close(
@@ -326,13 +327,12 @@ class TestDistortionKannalaBrandt(BaseTester):
     def test_convention_undistort_points_kannala_brandt_closes_far_off_axis(self, device, dtype):
         # Convention pin (audit label 5b-kb-04): the Gauss-Newton inverse still closes at a normalized radius of
         # 3 focal lengths, where the fish-eye polynomial is far from linear -- the fixed-point iteration in
-        # kornia.geometry.calibration.undistort_points does NOT (kornia#4285). The point is on the x axis so a
-        # swapped x/y would fall on the (0, 0) affine branch and change the answer. Closure is asserted at
+        # kornia.geometry.calibration.undistort_points does NOT (kornia#4285). Closure is asserted at
         # assert_close's dtype tolerance, with no error bound.
         # Snippet used to generate expected: (undistort_points_kannala_brandt(distort_points_kannala_brandt(
         # tensor([3., 0.]), par), par) - tensor([3., 0.])).abs().max() executed 2026-09-06 on the batch-5b
-        # worktree (torch 2.14.0) -> cpu float32 1.91e-06, float64 0.0, float16 1.95e-03, bfloat16 6.25e-02;
-        # mps float32 1.91e-06, float16 1.95e-03.
+        # worktree (torch 2.14.0), differenced in the working dtype -> cpu float32 1.91e-06, float64 2.03e-08,
+        # float16 1.95e-03, bfloat16 6.25e-02; mps float32 1.91e-06, float16 1.95e-03.
         if dtype == torch.bfloat16:
             pytest.skip("bfloat16: the far-off-axis round trip closes only to 6.25e-02, outside the bfloat16 atol")
         params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)

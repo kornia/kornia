@@ -155,16 +155,34 @@ class TestDistortPoints(BaseTester):
         assert not torch.allclose(distort_points(points, K, short).float(), points.float())
         assert torch.equal(distort_points(points, K, short), distort_points(points, K, padded))
 
-    def test_convention_zero_coefficients_are_the_byte_identity(self, device, dtype):
+    def test_convention_zero_coefficients_are_a_no_op_at_dtype_tolerance(self, device, dtype):
         # Convention pin (audit labels 5b-dp-04, Y3-04): with every coefficient zero, distort_points normalizes
-        # with new_K (= K here) and denormalizes with K, and the result is the INPUT bit for bit -- torch.equal,
-        # not merely assert_close -- so the function is a true no-op for an undistorted camera. Contrast
-        # undistort_image, which resamples through remap and is only close (pinned in test_undistort.py).
-        # The points sit half a focal length off the principal point on both sides of it, so the normalize /
-        # denormalize round trip through ``/fx`` and ``* fx`` is exercised at a radius where a non-zero
-        # coefficient would move them by 2.775 px -- the identity here is not the identity of a near-axis point.
-        # Snippet used to generate expected: torch.equal(distort_points(pts, K, zeros(1, 4)), pts) executed
-        # 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> True on cpu for float32/float64/float16/bfloat16
+        # with new_K (= K here) and denormalizes with K, so it is a no-op -- but only up to the dtype tolerance,
+        # because ``(u - cx) / fx`` followed by ``fx * x + cx`` is not an exact round trip for a general pixel.
+        # This is the GENERAL statement; the bit-for-bit case is scoped in the sibling pin below.
+        # The points sit half a focal length off the principal point on both sides of it, so the round trip is
+        # exercised at a radius where a non-zero coefficient would move them by 2.775 px, and the fractional
+        # offsets keep ``(u - cx) / fx`` off the exactly-representable grid.
+        # Snippet used to generate expected: (distort_points(pts, K, zeros(1, 4)) - pts).abs().max() on
+        # [[54.3, 53.7], [-16.1, 23.9]] executed 2026-09-06 on the batch-5b worktree (torch 2.14.0), differenced
+        # in the working dtype -> cpu float32 3.81e-06 (torch.equal False), float64 0.0, float16 3.13e-02,
+        # bfloat16 2.50e-01; mps float32 3.81e-06, float16 3.13e-02.
+        points = torch.tensor([[[54.3, 53.7], [-16.1, 23.9]]], device=device, dtype=dtype)
+        K = _k_asymmetric(device, dtype)
+        self.assert_close(distort_points(points, K, torch.zeros(1, 4, device=device, dtype=dtype)), points)
+
+    def test_convention_zero_coefficients_are_bit_exact_on_representable_points(self, device, dtype):
+        # Convention pin (audit labels 5b-dp-04, Y3-04), the SCOPED half of the pin above: when ``(u - cx) / fx``
+        # is exactly representable in the working dtype, the zero-coefficient round trip returns the input bit
+        # for bit -- torch.equal, not merely assert_close. That is what the audit's byte-identity row records,
+        # and it is the contrast that makes undistort_image's behavior notable: undistort_image resamples
+        # through remap and is never byte-identical even on these points (pinned in test_undistort.py).
+        # This is NOT a general bit-for-bit no-op. Executed counterexample on the same K, 2026-09-06 on the
+        # batch-5b worktree (torch 2.14.0): the perturbed points [[54.3, 53.7], [-16.1, 23.9]] give torch.equal
+        # False with a residual of 3.81e-06 in cpu float32 (3.13e-02 in float16, 2.50e-01 in bfloat16); only the
+        # float64 cell is still exact there.
+        # Snippet used to generate expected: torch.equal(distort_points(pts, K, zeros(1, 4)), pts) on
+        # [[54.0, 53.0], [-16.0, 23.0]] executed 2026-09-06 -> True on cpu for float32/float64/float16/bfloat16
         # and on mps for float32/float16.
         points = torch.tensor([[[54.0, 53.0], [-16.0, 23.0]]], device=device, dtype=dtype)
         K = _k_asymmetric(device, dtype)
@@ -244,25 +262,55 @@ class TestDistortPoints(BaseTester):
         assert torch.equal(tilt_projection(zero, zero), identity)
         self.assert_close(tilt_projection(zero, zero, True), identity, atol=0.0, rtol=0.0)
 
+    def test_convention_tilt_projection_inverse_branch_inverts_pz_times_r(self, device, dtype):
+        # Convention pin (audit label Y1-03): the ``return_inverse=True`` branch is the inverse of OpenCV's
+        # ``Pz @ R``, not of kornia's own forward branch -- ``(Pz @ R) @ inverse`` is the identity at the dtype
+        # tolerance, while ``(Pz @ R.T) @ inverse`` (kornia's forward reading, kornia#4276) is not.
+        # This pin is PERMANENT and outlives the #4276 repair, and that is its point: the strict xfail below only
+        # asks for ``forward @ inverse == I``, which the WRONG repair -- moving the inverse branch to
+        # ``inv(Pz @ R.T)`` -- would satisfy just as well. #4276's Expected section forbids that repair because
+        # undistort_points uses this branch and is what currently reproduces the repo's own cv2.undistortPoints
+        # values (TestUndistortPoints::test_opencv_all_coeff in test_undistort.py). Written as a matrix product
+        # rather than torch.linalg.inv so it runs on mps.
+        # Snippet used to generate expected: ((Pz @ R) @ tilt_projection([0.1], [0.2], True) - eye(3)).abs().max()
+        # executed 2026-09-06 on the batch-5b worktree (torch 2.14.0), differenced in the working dtype -> cpu
+        # float32 1.19e-07, float64 2.22e-16, float16 4.88e-04, bfloat16 3.91e-03; mps float32 1.19e-07,
+        # float16 4.88e-04. The same product built from Pz @ R.T is 0.396 away from the identity on every cell.
+        # The second assertion uses a 0.1 SEPARATOR rather than ``not torch.allclose``: the identity's zero
+        # entries pull torch.allclose's default atol down to 1e-08, which the correct reading's own float32
+        # residual (1.19e-07) already exceeds, so ``not allclose`` would hold for BOTH readings and discriminate
+        # nothing. 0.1 sits between the two populations (worst correct cell 3.91e-03, wrong reading 0.396).
+        r, p_z = _pz_r(0.1, 0.2, device, dtype)
+        inverse = tilt_projection(
+            torch.tensor([0.1], device=device, dtype=dtype), torch.tensor([0.2], device=device, dtype=dtype), True
+        )
+        identity = torch.eye(3, device=device, dtype=dtype)[None]
+        self.assert_close((p_z @ r) @ inverse, identity)
+        wrong = (p_z @ r.transpose(-1, -2)) @ inverse
+        assert (wrong - identity).abs().max().item() > 0.1
+
     def test_wart_tilt_projection_forward_is_pz_times_r_transpose_4276(self, device, dtype):
         # Wart pin for kornia#4276 (audit labels Y1-01, Y1-04, Y1-05): the forward branch returns ``Pz @ R.T``
         # where OpenCV's computeTiltProjectionMatrix returns ``Pz @ R``, while the return_inverse=True branch IS
-        # the OpenCV inverse (audit label Y1-03, inv(Pz @ R) to 1.19e-07). The consequence is that the two
+        # the OpenCV inverse (pinned permanently by
+        # test_convention_tilt_projection_inverse_branch_inverts_pz_times_r above). The consequence is that the two
         # branches of the same function are not inverses of each other: forward @ inverse is visibly not eye(3).
         # taux = 0.1 != tauy = 0.2, so Pz @ R and Pz @ R.T are different matrices here (they coincide at 0, 0).
         # Snippet used to generate expected: (tilt_projection([0.1], [0.2]) - Pz @ R.transpose(-1, -2)).abs().max()
         # executed 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> 0.0 on cpu for float32/float64/float16/
         # bfloat16 and on mps for float32/float16; forward @ inverse deviates from eye(3) by 0.3963 (cpu float32).
-        # Pins the CURRENT value; NOT a contract; delete when #4276 is repaired.
+        # The last two assertions use a 0.1 separator for the same reason as the inverse-branch pin above:
+        # ``not torch.allclose`` against an identity is satisfied by a 1e-07 residual too, so it would not flip
+        # when #4276 is repaired. Pins the CURRENT value; NOT a contract; delete when #4276 is repaired.
         r, p_z = _pz_r(0.1, 0.2, device, dtype)
         taux = torch.tensor([0.1], device=device, dtype=dtype)
         tauy = torch.tensor([0.2], device=device, dtype=dtype)
         forward = tilt_projection(taux, tauy)
         self.assert_close(forward, p_z @ r.transpose(-1, -2), atol=0.0, rtol=0.0)
-        assert not torch.allclose(forward.float(), (p_z @ r).float())
+        assert (forward - p_z @ r).abs().max().item() > 0.1
         inverse = tilt_projection(taux, tauy, True)
         identity = torch.eye(3, device=device, dtype=dtype)[None]
-        assert not torch.allclose((forward @ inverse).float(), identity.float())
+        assert (forward @ inverse - identity).abs().max().item() > 0.1
 
     @pytest.mark.xfail(
         strict=True, reason="kornia#4276: the forward tilt branch returns Pz @ R.T, so it is not the inverse's inverse"

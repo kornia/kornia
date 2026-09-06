@@ -285,9 +285,9 @@ class TestUndistortPoints(BaseTester):
         # it, so the forward map actually moves them by 2.775 px -- a round trip pin on near-axis points would
         # pass with undistort_points replaced by the identity.
         # Snippet used to generate expected: (undistort_points(distort_points(pts, K, d), K, d) - pts).abs().max()
-        # executed 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> cpu float32 3.81e-05, float64 4.58e-05,
-        # float16 1.56e-02, bfloat16 0.0; mps float32 3.81e-05, float16 1.56e-02. The forward displacement
-        # (distorted - points).abs().max() is 2.775 px on cpu float32.
+        # executed 2026-09-06 on the batch-5b worktree (torch 2.14.0), differenced in the working dtype -> cpu
+        # float32 3.81e-05, float64 4.62e-05, float16 1.56e-02, bfloat16 0.0; mps float32 3.81e-05,
+        # float16 1.56e-02. The forward displacement (distorted - points).abs().max() is 2.775 px on cpu float32.
         points = torch.tensor([[[54.0, 53.0], [-16.0, 23.0]]], device=device, dtype=dtype)
         K = _k_asymmetric(device, dtype)
         dist = torch.tensor([[0.1, 0.01, 0.001, 0.001]], device=device, dtype=dtype)
@@ -442,9 +442,10 @@ class TestUndistortImage(BaseTester):
         # Snippet used to generate expected: (torch.equal(undistort_image(img, K, zeros(1, 4)), img),
         # (undistort_image(...) - img).abs().max()) executed 2026-09-06 on the batch-5b worktree (torch 2.14.0)
         # -> cpu float32 (False, 1.19e-07), float64 (False, 2.09e-16), float16 (False, 9.19e-04), bfloat16
-        # (False, 7.81e-03); mps float32 (False, 1.19e-07), float16 (False, 1.84e-03).
-        if dtype == torch.float16:
-            pytest.skip("float16: the remap round trip leaves a 1.8e-03 residual on mps, outside the float16 atol")
+        # (False, 7.81e-03); mps float32 (False, 1.19e-07), float16 (False, 1.84e-03). Only the mps float16 cell
+        # exceeds its atol, so the skip is conditioned on the device and the cpu float16 leg still runs.
+        if dtype == torch.float16 and device.type == "mps":
+            pytest.skip("mps float16 only: the remap round trip leaves a 1.84e-03 residual, outside the atol")
         image = _ramp_image(1, 3, 5, 7, device, dtype)
         K = _k_short_focal(device, dtype)
         out = undistort_image(image, K, torch.zeros(1, 4, device=device, dtype=dtype))
@@ -484,10 +485,10 @@ class TestUndistortImage(BaseTester):
         # passing for both settings; the coefficients are non-trivial for the same reason.
         # Snippet used to generate expected: torch.equal(undistort_image(img, K, dist), remap(img, mapx, mapy,
         # align_corners=True)) executed 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> True on cpu for
-        # float32/float64/float16/bfloat16 and on mps for float32/float16; the align_corners=False output differs
-        # by 0.63 (cpu float32) on an image with values in [0, 1). On this short-focal camera the map deviates
-        # from the pixel grid by 0.74 px and the undistorted image differs from the input by 0.65, so the pin is
-        # not comparing two copies of an unresampled image.
+        # float32/float64/float16/bfloat16 and on mps for float32/float16; the align_corners=False output is
+        # visibly different on every one of those cells, which the pin asserts without a bound. On this
+        # short-focal camera the map deviates from the pixel grid by 0.738 px and the undistorted image differs
+        # from the input by 0.652 (cpu float32), so the pin is not comparing two copies of an unresampled image.
         image = _ramp_image(1, 3, 5, 7, device, dtype)
         K = _k_short_focal(device, dtype)
         dist = torch.tensor([[0.1, 0.01, 0.001, 0.001]], device=device, dtype=dtype)
