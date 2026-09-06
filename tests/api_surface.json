@@ -183,7 +183,9 @@
     "download_hf_file",
     "external",
     "eye_like",
+    "hf_url",
     "load_safetensors",
+    "load_state_dict_from_url",
     "vec_like"
   ],
   "kornia.enhance": [
