@@ -40,12 +40,16 @@ class SegmentationModelsBuilder:
     preprocessing parameters their pretrained weights expect, but any ``nn.Module`` mapping a
     ``(B, 3, H, W)`` image batch to a ``(B, C, H, W)`` prediction works. Kornia does not import smp:
     you build the network and fetch its preprocessing parameters, and the builder supplies the
-    ONNX-friendly preprocessing pipeline and the container.
+    ONNX-friendly preprocessing pipeline and the container. Give the network a softmax head
+    (``activation="softmax2d"`` in smp) if you want :meth:`SemanticSegmentation.visualize`: it
+    expects per-pixel class probabilities and raises on raw logits.
 
     Example:
         >>> import segmentation_models_pytorch as smp  # doctest: +SKIP
         >>> from kornia.models.segmentation import SegmentationModelsBuilder
-        >>> net = smp.Unet(encoder_name="resnet34", encoder_weights="imagenet", classes=2)  # doctest: +SKIP
+        >>> net = smp.Unet(
+        ...     encoder_name="resnet34", encoder_weights="imagenet", classes=2, activation="softmax2d"
+        ... )  # doctest: +SKIP
         >>> params = smp.encoders.get_preprocessing_params("resnet34")  # doctest: +SKIP
         >>> model = SegmentationModelsBuilder.build(net, params, name="Unet_resnet34")  # doctest: +SKIP
         >>> model(torch.rand(1, 3, 64, 64)).shape  # doctest: +SKIP
@@ -103,7 +107,7 @@ class SegmentationModelsBuilder:
             ONNX-friendly color conversion, rescaling, and normalization steps.
 
         Raises:
-            Exception: If one of the four keys is missing.
+            BaseError: If one of the four keys is missing (a :func:`~kornia.core.check.KORNIA_CHECK`).
             ValueError: If ``input_space`` or ``input_range`` is not one of the supported values.
 
         """
@@ -122,11 +126,11 @@ class SegmentationModelsBuilder:
 
         # Rescale the [0, 1] input to [0, 255] if the network expects it. Multiply by 255, which every
         # dtype stores exactly, rather than divide by the reciprocal: bfloat16 rounds 1/255 to 0.0039368,
-        # a ~254.0 multiplier that maps 0.5 to 127.0 instead of 127.5. Tensor constants keep the step
-        # ONNX-exportable (the functional form rejects Python floats during export).
+        # a ~254.0 multiplier that maps 0.5 to 127.0 instead of 127.5. `Rescale` holds the factor as a
+        # 0-d tensor and exports to ONNX from any device.
         input_range = preproc_params["input_range"]
         if input_range[1] == 255:
-            proc_sequence.append(kornia.enhance.Denormalize(mean=torch.tensor([0.0]), std=torch.tensor([255.0])))
+            proc_sequence.append(kornia.enhance.Rescale(255.0))
         elif input_range[1] == 1:
             pass
         else:

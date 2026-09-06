@@ -53,9 +53,12 @@ Optional extras
 A few Kornia features wrap third-party packages that are not installed with the base wheel. They are
 declared as `extras <https://packaging.python.org/en/latest/specifications/dependency-specifiers/#extras>`_,
 so you only pay for the ones you use. If one of the extras below is missing, the corresponding Kornia
-object raises an ``ImportError`` naming the extra to install. Pillow is the exception: no feature
+object tells you which extra to install: by default it offers to install the package for you on the
+terminal (``kornia.config.kornia_config.lazyloader.installation_mode``, ``"ask"``; set it to ``"auto"``
+to install without asking or ``"raise"`` to never install), and in ``"raise"`` mode, or when the offer
+is declined, it raises an ``ImportError`` naming the extra. Pillow is the exception: no feature
 extra covers it -- only the contributor ``dev`` and ``docs`` environments install it -- so its
-``ImportError`` only asks you to install the package
+message only asks you to install the package
 (`kornia#4261 <https://github.com/kornia/kornia/issues/4261>`_ tracks which extra should carry it).
 
 .. list-table::

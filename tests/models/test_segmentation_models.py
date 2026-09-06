@@ -158,19 +158,46 @@ class TestSemanticSegmentation(BaseTester):
         with pytest.raises(NotImplementedError, match=r"SegmentationModelsBuilder\.build"):
             SemanticSegmentation.from_config(None)
 
-    def test_visualize(self, device):
-        # float32 only: `visualize_output` recognizes a softmax head with `torch.allclose(sum, 1)` at
-        # default tolerances, which a half-precision softmax sum does not meet.
-        model = SegmentationModelsBuilder.build(_stand_in_network(3), IMAGENET_PARAMS).to(device)
-        images = torch.rand(2, 3, 6, 6, device=device)
+    def test_visualize(self, device, dtype):
+        model = SegmentationModelsBuilder.build(_stand_in_network(3), IMAGENET_PARAMS).to(device, dtype)
+        images = torch.rand(2, 3, 6, 6, device=device, dtype=dtype)
         vis = model.visualize(images)
         assert vis.shape == (2, 3, 6, 6)
-        # The colormap is drawn on the CPU; the gather has to happen on the mask's device (a CUDA or MPS
-        # mask indexing a CPU colormap raised before), and the result stays there.
+        # The colormap is drawn on the CPU in float32; the gather has to happen on the mask's device (a CUDA
+        # or MPS mask indexing a CPU colormap raised before) and the result keeps the model's device and dtype.
+        # The softmax probe tolerates a half-precision sum of probabilities, which allclose's default did not.
         assert vis.device == images.device
+        assert vis.dtype == dtype
         assert torch.isfinite(vis).all()
         # Same through the per-image list path, which draws a colormap per mask.
         vis_list = model.visualize([images[0], images[1]])
         assert isinstance(vis_list, list) and len(vis_list) == 2
         assert vis_list[0].shape == (3, 6, 6) and vis_list[0].device == images.device
         self.assert_close(vis_list[0], vis[0])
+
+    def test_visualize_rejects_logits(self, device, dtype):
+        # The probe's tolerance scales with the dtype, but a raw-logit head (no softmax) must still be refused.
+        logits_net = nn.Conv2d(3, 3, kernel_size=1)
+        with torch.no_grad():
+            logits_net.weight.mul_(4.0)
+        model = SegmentationModelsBuilder.build(logits_net, IMAGENET_PARAMS).to(device, dtype)
+        with pytest.raises(ValueError, match="softmax"):
+            model.visualize(torch.rand(1, 3, 6, 6, device=device, dtype=dtype))
+
+    def test_preprocessing_onnx_export(self, device):
+        # The pipeline is documented as ONNX-friendly: export it and compare the runtime against eager.
+        pytest.importorskip("onnx")
+        ort = pytest.importorskip("onnxruntime")
+        pytest.importorskip("onnxscript")
+        if device.type != "cpu":
+            # `Normalize` keeps mean/std as plain tensor attributes that `.to(device)` does not move, so
+            # exporting an accelerator-resident pipeline fails on a device mismatch (pre-existing).
+            pytest.skip("export of a non-CPU pipeline is blocked by Normalize's tensor attributes")
+        params = {**IMAGENET_PARAMS, "input_space": "BGR", "input_range": [0, 255]}
+        pipeline = SegmentationModelsBuilder.get_preprocessing_pipeline(params).to(device).eval()
+        x = torch.rand(1, 3, 6, 6, device=device)
+        program = torch.onnx.export(pipeline, (x,), dynamo=True, opset_version=18, verbose=False)
+        assert program is not None
+        session = ort.InferenceSession(program.model_proto.SerializeToString(), providers=["CPUExecutionProvider"])
+        (out,) = session.run(None, {session.get_inputs()[0].name: x.cpu().numpy()})
+        self.assert_close(torch.from_numpy(out), pipeline(x).cpu(), rtol=1e-5, atol=1e-5)
