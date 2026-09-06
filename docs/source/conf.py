@@ -424,7 +424,7 @@ html_extra_path = ["_extra"]
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = "Kornia"
-html_css_files = ["css/pydata.css"]
+html_css_files = ["css/pydata.css", "css/playground.css"]
 html_js_files = ["js/custom.js"]
 
 # Configure viewcode extension.
@@ -677,7 +677,31 @@ def _inject_navbar_menus(app, pagename, templatename, context, doctree):
     context["metatags"] = (context.get("metatags", "") or "") + "\n" + _json_script("kornia-navbar-menus", NAVBAR_MENUS)
 
 
+# --- "Try in browser" badges: link an autodoc'd API to its interactive playground page ----------
+# The map (fully-qualified name -> page URL) is a snapshot of the kornia.org playground; refresh it
+# with docs/generate_playground_links.py. Functions, their nn.Module counterparts and browser models
+# that have a page get a small badge after their summary line.
+try:
+    with open(os.path.join(os.path.dirname(__file__), "_playground_links.json"), encoding="utf-8") as _f:
+        _PLAYGROUND_LINKS = json.load(_f)
+except OSError:  # the docs must still build without the snapshot
+    _PLAYGROUND_LINKS = {}
+
+
+def _inject_playground_link(app, what, name, obj, options, lines):
+    if what not in ("function", "class"):
+        return
+    url = _PLAYGROUND_LINKS.get(name)
+    if not url:
+        return
+    badge = ["", ".. container:: kornia-try", "", f"   `Try in browser <{url}>`__", ""]
+    # keep the summary as the first line (autosummary uses it) and drop the badge in just after it
+    cut = next((i for i, line in enumerate(lines) if line.strip() == ""), len(lines))
+    lines[cut:cut] = badge
+
+
 def setup(app):
+    app.connect("autodoc-process-docstring", _inject_playground_link)
     # Run after the theme's canonical URL normalizer so redirects can replace ``pageurl``.
     app.connect("html-page-context", _inject_social_metatags, priority=900)
     app.connect("html-page-context", _inject_anchor_redirects)
