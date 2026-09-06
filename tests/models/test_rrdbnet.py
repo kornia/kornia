@@ -22,6 +22,7 @@ from torch import nn
 from kornia.contrib import super_resolution as super_resolution_module
 from kornia.contrib.super_resolution import RRDBNetBuilder
 from kornia.models import RRDBNet
+from kornia.models import rrdbnet as rrdbnet_module
 from kornia.models.processors import OutputRangePostProcessor
 from kornia.models.rrdbnet import RRDB, ResidualDenseBlock, _default_init_weights
 
@@ -83,6 +84,19 @@ def tiny_rrdbnet(scale: int = 4) -> RRDBNet:
     return RRDBNet(num_in_ch=3, num_out_ch=3, scale=scale, num_feat=8, num_block=1, num_grow_ch=4)
 
 
+def _cosine_ramp_weights(model: nn.Module) -> None:
+    """Overwrite every parameter with an RNG-free pattern of roughly kaiming magnitude.
+
+    Parameter ``i`` in the sorted ``state_dict`` becomes ``0.1 * cos(0.37 * arange(numel) + i)``, computed in
+    float64 and cast to the parameter's dtype, so the same weights come out on every device, dtype and torch
+    version.
+    """
+    with torch.no_grad():
+        for i, (_, param) in enumerate(sorted(model.state_dict().items())):
+            ramp = torch.cos(torch.arange(param.numel(), dtype=torch.float64) * 0.37 + i)
+            param.copy_((0.1 * ramp).reshape(param.shape).to(param.dtype))
+
+
 class TestRRDBNet(BaseTester):
     def test_smoke(self, device, dtype):
         model = tiny_rrdbnet(scale=4).to(device, dtype)
@@ -106,6 +120,13 @@ class TestRRDBNet(BaseTester):
         model = tiny_rrdbnet(scale=2).to(device, dtype)
         with pytest.raises(RuntimeError):
             model(torch.rand(1, 3, 7, 7, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("scale", [0, 3, 8])
+    def test_exception_rejects_unsupported_scale(self, scale):
+        # Upstream lets any scale other than 1/2 fall through to the x4 path, so `scale=3` silently
+        # returns a 4x output. The vendored copy rejects it at construction instead.
+        with pytest.raises(ValueError, match="scale must be 1, 2 or 4"):
+            tiny_rrdbnet(scale=scale)
 
     def test_module(self, device, dtype):
         model = tiny_rrdbnet(scale=4).to(device, dtype)
@@ -192,10 +213,89 @@ class TestRRDBNet(BaseTester):
         assert torch.count_nonzero(unscaled.weight) > 0
         self.assert_close(scaled.weight, unscaled.weight * 0.1)
 
+    def test_residual_dense_block_init_is_scaled_by_0_1(self, monkeypatch):
+        """Upstream initializes the five dense convolutions with ``default_init_weights(..., 0.1)``.
+
+        The multiplier is what the checkpoints were trained from; a block that skips it still builds
+        and runs, so the call is recorded rather than inferred from weight statistics.
+        """
+        calls = []
+        monkeypatch.setattr(
+            rrdbnet_module, "_default_init_weights", lambda modules, scale=1.0, **kw: calls.append((modules, scale))
+        )
+        block = ResidualDenseBlock(num_feat=8, num_grow_ch=4)
+        assert calls == [([block.conv1, block.conv2, block.conv3, block.conv4, block.conv5], 0.1)]
+
+    def test_rrdb_residual_scaling(self, device, dtype):
+        """Pin the outer 0.2 residual scaling of :class:`RRDB`, separately from the inner one."""
+        block = RRDB(num_feat=8, num_grow_ch=4).to(device, dtype).eval()
+        x = torch.rand(1, 8, 6, 6, device=device, dtype=dtype)
+        with torch.no_grad():
+            out = block(x)
+            expected = block.rdb3(block.rdb2(block.rdb1(x))) * 0.2 + x
+        self.assert_close(out, expected)
+
+    @pytest.mark.parametrize(
+        ("scale", "expected_sum", "expected_first", "expected_last"),
+        [
+            (
+                4,
+                20.91297187055941,
+                [-0.004543595971873713, 0.027261616129030625, 0.049594551942778516],
+                [-0.016568600126998914, 0.036161773272664045, 0.06274978373798744],
+            ),
+            (
+                2,
+                5.639646965369472,
+                [-0.0017096129540983347, 0.02974716223297922, 0.047076207498800086],
+                [-0.01746539690853942, 0.036172963633466226, 0.0636480015792775],
+            ),
+            (
+                1,
+                1.3505577490199843,
+                [-0.0021678145765582375, 0.029241923490125363, 0.04747024904152217],
+                [-0.017201746167144025, 0.03585330869516471, 0.0633437579763486],
+            ),
+        ],
+    )
+    def test_numerical_matches_upstream(
+        self, device, dtype, scale, expected_sum, expected_first, expected_last, cudnn_tf32_follows_option
+    ):
+        """Pin the forward pass against upstream BasicSR on RNG-free weights.
+
+        The name snapshot above pins the parameter *layout*; this pins the *arithmetic* (the two 0.2
+        residual scalings, the 0.2 LeakyReLU slope, nearest-neighbour upsampling and the unshuffle
+        order), which a tensor of the right shape says nothing about. Every parameter is overwritten
+        with a cosine ramp keyed on its position in the sorted ``state_dict``, so the reference
+        depends on no random draw and holds across torch versions. Generated in float64 with
+        ``basicsr/archs/rrdbnet_arch.py`` at BasicSR ``master`` (2026-09), its ``ARCH_REGISTRY``
+        decorator and ``arch_util`` import replaced by the three helpers it uses::
+
+            model = RRDBNet(3, 3, scale=scale, num_feat=8, num_block=1, num_grow_ch=4).double().eval()
+            _cosine_ramp_weights(model)                          # the module-level helper above
+            out = model(torch.linspace(0.0, 1.0, 48, dtype=torch.float64).reshape(1, 3, 4, 4))
+            out.sum(), out[0, :, 0, 0], out[0, :, -1, -1]
+
+        Compared to the same snippet on the vendored class, the outputs were ``torch.equal``.
+        """
+        model = tiny_rrdbnet(scale=scale).to(device, dtype).eval()
+        _cosine_ramp_weights(model)
+        x = torch.linspace(0.0, 1.0, 48, dtype=torch.float64).reshape(1, 3, 4, 4).to(device, dtype)
+        with torch.no_grad():
+            out = model(x)
+
+        assert out.shape == (1, 3, 4 * scale, 4 * scale)
+        self.assert_close(out.sum(), torch.tensor(expected_sum, device=device, dtype=dtype))
+        self.assert_close(out[0, :, 0, 0], torch.tensor(expected_first, device=device, dtype=dtype))
+        self.assert_close(out[0, :, -1, -1], torch.tensor(expected_last, device=device, dtype=dtype))
+
     def test_gradcheck(self, device):
         pytest.skip("RRDBNet is a deep convolutional generator; gradcheck is prohibitively slow.")
 
-    def test_dynamo(self, device, dtype, torch_optimizer):
+    def test_dynamo(self, device, dtype, torch_optimizer, cudnn_tf32_follows_option):
+        # `cudnn_tf32_follows_option` keeps the CUDA float32 leg in real float32 (see its docstring).
+        # The tolerances are `assert_close`'s per-dtype defaults: inductor and eager legitimately
+        # differ by an ulp or so on the half dtypes, which a hard-coded 1e-4 rejects.
         model = tiny_rrdbnet(scale=4).to(device, dtype).eval()
         x = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
 
@@ -203,7 +303,7 @@ class TestRRDBNet(BaseTester):
         op_optimized = torch_optimizer(model)
 
         with torch.no_grad():
-            self.assert_close(op(x), op_optimized(x), rtol=1e-4, atol=1e-4)
+            self.assert_close(op(x), op_optimized(x))
 
 
 class TestRRDBNetBuilder:
