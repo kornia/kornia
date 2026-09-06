@@ -17,11 +17,10 @@
 
 import copy
 from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, Dict, Generic, List, Optional, Type, TypeVar, Union
+from typing import Any, Callable, Dict, Generic, List, Optional, ParamSpec, Type, TypeVar, Union
 
 import torch
 from torch import nn
-from typing_extensions import ParamSpec
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
