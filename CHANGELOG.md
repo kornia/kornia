@@ -410,6 +410,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   form and reshapes internally, but both callers index dim 1 as the vertex axis, so the box axis was
   read as the vertices: an out-of-bounds error with one box, and three `(1, 3)` tensors -- one value
   per coordinate rather than per box -- with eight. (#4248, #4351)
+* `solve_cubic` and `solve_quartic` return finite gradients for a row whose neighbours in the
+  same batch take a different branch. The `D > 0` branch selected its rows with `abs(R) > 1e-16`
+  alone, so it evaluated `sqrt(D)` on `D < 0` rows too. Those rows are never read back, but the
+  resulting `-Q / nan` stays in the graph and its backward returns `nan`, which reaches every
+  coefficient: a three-real-root cubic differentiated correctly on its own and gave `nan` as soon
+  as a one-real-root cubic shared the batch, and `solve_quartic` inherited it through its
+  resolvent cubic. The forward values are unchanged. (#4334, #4338)
 
 * `RenderingDeFMO` (used by `DeFMO`) no longer crashes on a half-precision forward pass. Its rendering
   time-steps (`times`) were a plain Python attribute, not a registered buffer, so `nn.Module.to()` never

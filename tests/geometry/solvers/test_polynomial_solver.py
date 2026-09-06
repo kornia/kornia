@@ -124,6 +124,33 @@ class TestCubicSolver(BaseTester):
         cubic_roots.sum().backward()
         assert bool(torch.isfinite(cubic_coeffs.grad).all()), cubic_coeffs.grad
 
+    def test_convention_gradient_does_not_leak_across_batch_rows_4334(self, device, dtype):
+        # #4334: the D > 0 branch keyed its work off `abs(R) > 1e-16` alone, so it evaluated
+        # sqrt(D) on D < 0 rows too. Those rows are never read back, but `-Q / nan` stays in
+        # the graph and DivBackward0 returns nan, which reaches every coefficient. The result
+        # is that a row differentiates fine alone and gives nan in a mixed batch.
+        three = [1.0, -7.0, 14.0, -8.0]  # (x-1)(x-2)(x-4): D < 0, three real roots, R != 0
+        one = [1.0, 0.0, 1.0, -2.0]  # (x-1)(x^2+x+2): D > 0, one real root, Q != 0
+
+        alone = torch.tensor([three], device=device, dtype=dtype, requires_grad=True)
+        solver.solve_cubic(alone).sum().backward()
+
+        mixed = torch.tensor([three, one], device=device, dtype=dtype, requires_grad=True)
+        solver.solve_cubic(mixed).sum().backward()
+
+        assert bool(torch.isfinite(mixed.grad).all()), mixed.grad
+        # Batching must not change the answer either, not merely keep it finite.
+        self.assert_close(mixed.grad[0], alone.grad[0])
+
+    def test_convention_batched_forward_is_unchanged_by_neighbours_4334(self, device, dtype):
+        # The forward pass was always correct; pin that, so a later fix that repairs the
+        # gradient by perturbing the value is caught here.
+        three = [1.0, -7.0, 14.0, -8.0]
+        one = [1.0, 0.0, 1.0, -2.0]
+        alone = torch.tensor([three], device=device, dtype=dtype)
+        mixed = torch.tensor([three, one], device=device, dtype=dtype)
+        self.assert_close(solver.solve_cubic(mixed)[0], solver.solve_cubic(alone)[0])
+
 
 class TestMultiplyDegOnePoly(BaseTester):
     def test_smoke(self, device, dtype):
@@ -466,3 +493,22 @@ class TestQuarticSolver(BaseTester):
                 rtol=1e-4,
                 atol=1e-4,
             )
+
+    def test_convention_gradient_does_not_leak_across_batch_rows_4334(self, device, dtype):
+        # #4334 through the resolvent cubic: a four-real-root quartic batched with a
+        # two-real-root one took nan gradients from solve_cubic's D > 0 branch.
+        four = [1.0, -10.0, 35.0, -50.0, 24.0]  # (x-1)(x-2)(x-3)(x-4)
+        two = [1.0, 0.0, 0.0, 0.0, -16.0]  # x^4 - 16
+
+        alone = torch.tensor([four], device=device, dtype=dtype, requires_grad=True)
+        solver.solve_quartic(alone).sum().backward()
+
+        mixed = torch.tensor([four, two], device=device, dtype=dtype, requires_grad=True)
+        solver.solve_quartic(mixed).sum().backward()
+
+        # Row 0 only. `x^4 - 16` has non-finite gradients on its own as well, from a separate
+        # defect in solve_quartic's own sqrt sites (#4229) that this change does not touch --
+        # so asserting over the whole batch here would pin an unrelated bug. What #4334 is
+        # about is row 0 being poisoned by row 1's presence, and that is what is checked.
+        assert bool(torch.isfinite(mixed.grad[0]).all()), mixed.grad
+        self.assert_close(mixed.grad[0], alone.grad[0])

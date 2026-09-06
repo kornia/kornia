@@ -214,7 +214,10 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         AD = torch.zeros_like(R)
         BD = torch.zeros_like(R)
         R_abs = torch.abs(R)
-        mask_R_positive = R_abs > 1e-16
+        # Intersect with mask_D_positive: sqrt(D) on a D <= 0 row is nan, and
+        # although such a row is never read out of AD/BD, `-Q / nan` stays in
+        # the graph and its backward poisons every coefficient's gradient.
+        mask_R_positive = (R_abs > 1e-16) & mask_D_positive
         if torch.any(mask_R_positive):
             AD[mask_R_positive] = torch.pow(R_abs[mask_R_positive] + torch.sqrt(D[mask_R_positive]), 1 / 3)
             mask_R_positive_ = R < 0
