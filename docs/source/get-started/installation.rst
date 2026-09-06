@@ -53,8 +53,9 @@ Optional extras
 A few Kornia features wrap third-party packages that are not installed with the base wheel. They are
 declared as `extras <https://packaging.python.org/en/latest/specifications/dependency-specifiers/#extras>`_,
 so you only pay for the ones you use. If one of the extras below is missing, the corresponding Kornia
-object raises an ``ImportError`` naming the extra to install. Pillow is the exception: it is not
-covered by any extra yet, so its ``ImportError`` only asks you to install the package
+object raises an ``ImportError`` naming the extra to install. Pillow is the exception: no feature
+extra covers it -- only the contributor ``dev`` and ``docs`` environments install it -- so its
+``ImportError`` only asks you to install the package
 (`kornia#4261 <https://github.com/kornia/kornia/issues/4261>`_ tracks which extra should carry it).
 
 .. list-table::
@@ -81,8 +82,9 @@ covered by any extra yet, so its ``ImportError`` only asks you to install the pa
      - ``pip install -e ".[dev]"``
 
 Independently of the extras, the ``visualize`` and ``save`` helpers of the model wrappers need
-`pillow <https://pypi.org/project/pillow/>`_ for ``output_type="pil"``. No extra installs it, so
-install it directly with ``pip install pillow``.
+`pillow <https://pypi.org/project/pillow/>`_ for ``output_type="pil"``. No feature extra installs
+it, so unless you are in a ``dev`` or ``docs`` environment, install it directly with
+``pip install pillow``.
 
 Next steps
 ----------
