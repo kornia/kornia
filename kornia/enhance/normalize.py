@@ -77,8 +77,17 @@ class Normalize(nn.Module):
         if isinstance(std, (tuple, list)):
             std = torch.tensor(std)[None]
 
-        self.mean = mean
-        self.std = std
+        # Buffers, not plain attributes: `.to(device)` has to move them, or a
+        # module living on an accelerator keeps CPU constants. Eager tolerates
+        # the mix (a broadcastable CPU tensor combines with a CUDA/MPS one),
+        # which is why this went unnoticed, but `torch.export` traces with fake
+        # tensors and refuses it.
+        #
+        # persistent=False: these are constructor arguments, not learned state.
+        # Putting them in `state_dict()` would make every existing checkpoint
+        # report unexpected keys, for values the constructor already supplies.
+        self.register_buffer("mean", mean, persistent=False)
+        self.register_buffer("std", std, persistent=False)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Normalize an input tensor channel-wise with this module's statistics.
@@ -209,8 +218,18 @@ class Denormalize(nn.Module):
     def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
         super().__init__()
 
-        self.mean = mean
-        self.std = std
+        # A float has to become a tensor before it can be a buffer. This is
+        # also what `Normalize` already does with the same argument, so the two
+        # classes now agree on what they store.
+        if not isinstance(mean, torch.Tensor):
+            mean = torch.tensor(mean)
+        if not isinstance(std, torch.Tensor):
+            std = torch.tensor(std)
+
+        # See Normalize: buffers so `.to(device)` moves them; non-persistent so
+        # they stay out of `state_dict()`.
+        self.register_buffer("mean", mean, persistent=False)
+        self.register_buffer("std", std, persistent=False)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Restore scale/offset from a tensor normalized by mean and std.
