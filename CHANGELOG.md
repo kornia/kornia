@@ -17,18 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `huggingface_hub` and `safetensors` are no longer needed. Both were imported without ever being
   declared as dependencies, so `KimiVLBuilder.from_pretrained_hf()` and
   `SigLip2Builder.from_pretrained_hf()` used to raise `ImportError` on a plain `pip install kornia`.
-  Note that the checkpoints are cached elsewhere as a result: `cache_dir=None` used to mean the
-  HuggingFace cache (`~/.cache/huggingface/hub/models--<owner>--<name>/…`) and now means torch's hub
-  directory (`<torch hub dir>/checkpoints/<owner>--<name>--model.safetensors`), so the first
-  `from_pretrained_hf()` call after upgrading re-downloads the checkpoint (854 MB for KimiVL,
-  ~1.5 GB for SigLIP2) even for users who already had it. (#4293)
+  The checkpoints move to torch's hub cache as a result; see *Breaking changes*. (#4293)
 * Optional-dependency extras `kornia[onnx]`, `kornia[sd]`, `kornia[tracking]` and
   `kornia[segmentation]` declare the third-party packages that the ONNX, Stable-Diffusion-dissolving,
   tracking and segmentation-model wrappers lazily import, and are documented on the installation
   page. Missing-dependency errors now name the extra to install, and `dev` no longer pulls
   `diffusers` and `transformers`. (#4301)
-  The checkpoints move to torch's hub cache as a result; see *Breaking changes*. (#4293)
-
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
   historical scale-space SIFT CPU/CUDA batch-runtime comparisons and plotting. (#4254)
@@ -150,7 +144,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<owner>--<name>--model.safetensors` file. Either way the first `from_pretrained_hf()` call after
   upgrading re-downloads the checkpoint (854 MB for KimiVL, ~1.5 GB for SigLIP2) even for users who
   already had it. (#4293)
-
 * Non-maxima suppression applies one border rule at every window size. `NonMaximaSuppression2d` /
   `nms2d` with a window larger than `(7, 7)`, and `NonMaximaSuppression3d` / `nms3d`, no longer report
   maxima inside the `(k - 1) // 2` border strip. Previously the general path replicate-padded its input,
@@ -325,17 +318,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * `kornia.feature.LightGlue` no longer probes for `flash_attn`; the SDPA path it always used is now
-  the only one. `kornia.feature.lightglue.Attention.enable_flash`, the public attribute that recorded
-  whether the probe had succeeded, was renamed to `Attention.allow_flash` and now simply mirrors the
-  constructor argument of the same name. (#4287)
-* DeDoDe's vendored DINOv2 no longer probes for `xformers`; the pure-PyTorch path it always ran is the
-  only one. (#4288)
-* `import kornia` no longer imports onnxruntime when it is installed (#4295)
-* `packaging` is no longer a runtime dependency; it was never imported (#4296).
-* `kornia.onnx.ONNXLoader.list_operators` and `kornia.io.sample` no longer need `requests` (#4302)
   the only one. `kornia.feature.lightglue.Attention.enable_flash`, the attribute that combined the
   constructor argument with the probe result (and so always equalled the argument, because SDPA is
   present on every supported torch), was renamed to `Attention.allow_flash`. (#4287)
+* DeDoDe's vendored DINOv2 no longer probes for `xformers`; the pure-PyTorch path it always ran is the
+  only one. (#4288)
+* `import kornia` no longer imports onnxruntime when it is installed (#4295)
 * `packaging` is no longer a runtime dependency; it was never imported. The `dev` extra no longer lists
   `pytest-cov` (CI runs `coverage run -m pytest`), `ruff` (the pre-commit hook installs the pinned copy) or a
   `numpy<3` cap, and `uv.lock` is regenerated to match (#4296).
@@ -354,7 +342,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or swapped overlay colours. The generator now decodes and writes with PIL, draws the KeyNetAffNet
   LAF figure with kornia's own `get_laf_pts_to_draw`, and `opencv-python` and `kornia_moons` leave
   the `[docs]` extra. (#4306)
-
 * `RandAugment`, `AutoAugment`, `TrivialAugment` and `AugMix` no longer silently upcast half-precision
   batches to `float32`. `OperationBase.forward` — the shared gate every auto-augment op routes through —
   moved its `batch_prob` mask to `input.device` but not `input.dtype`, and since `batch_prob` is `float32`
