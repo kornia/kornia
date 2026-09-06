@@ -697,7 +697,7 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
         torch.Tensor of shape BxHxWx3 with (x, y, z) cam coordinates.
 
     """
-    if not len(depth.shape) == 4 and depth.shape[1] == 1:
+    if not (len(depth.shape) == 4 and depth.shape[1] == 1):
         raise ValueError(f"Input depth has to be in the shape of Bx1xHxW. Got {depth.shape}")
     if not len(intrinsics_inv.shape) == 3:
         raise ValueError(f"Input intrinsics_inv has to be in the shape of Bx4x4. Got {intrinsics_inv.shape}")

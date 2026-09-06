@@ -135,6 +135,15 @@ class TestCam2Pixel(BaseTester):
 
 
 class TestPixel2Cam(BaseTester):
+    @pytest.mark.parametrize("depth_shape", [(), (2,), (2, 1, 3), (2, 2, 3, 4), (2, 3, 3, 4), (2, 1, 3, 4, 1)])
+    def test_invalid_depth_shape(self, depth_shape, device, dtype):
+        depth = torch.ones(depth_shape, device=device, dtype=dtype)
+        intrinsics_inv = torch.eye(4, device=device, dtype=dtype).repeat(2, 1, 1)
+        pixel_coords = torch.ones(2, 3, 4, 3, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="Input depth has to be in the shape of Bx1xHxW"):
+            kornia.geometry.camera.pixel2cam(depth, intrinsics_inv, pixel_coords)
+
     def _create_intrinsics(self, batch_size, fx, fy, cx, cy, device, dtype):
         temp = torch.eye(4, device=device, dtype=dtype)
         temp[0, 0], temp[0, 2] = fx, cx
