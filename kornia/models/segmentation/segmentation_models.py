@@ -120,10 +120,13 @@ class SegmentationModelsBuilder:
         else:
             raise ValueError(f"Unsupported input space: {input_space}")
 
-        # Normalize input range if needed
+        # Rescale the [0, 1] input to [0, 255] if the network expects it. Multiply by 255, which every
+        # dtype stores exactly, rather than divide by the reciprocal: bfloat16 rounds 1/255 to 0.0039368,
+        # a ~254.0 multiplier that maps 0.5 to 127.0 instead of 127.5. Tensor constants keep the step
+        # ONNX-exportable (the functional form rejects Python floats during export).
         input_range = preproc_params["input_range"]
         if input_range[1] == 255:
-            proc_sequence.append(kornia.enhance.Normalize(mean=0.0, std=1 / 255.0))
+            proc_sequence.append(kornia.enhance.Denormalize(mean=torch.tensor([0.0]), std=torch.tensor([255.0])))
         elif input_range[1] == 1:
             pass
         else:
