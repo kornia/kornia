@@ -207,7 +207,7 @@ class TestDeformConv2d(BaseTester):
         out_f32 = deform_conv2d(
             x64.float(), offset64.float(), weight64.float(), bias=bias64.float(), padding=1, stride=1, mask=mask32
         )
-        assert torch.allclose(out_f32.double(), expected64, atol=1e-5)
+        assert torch.allclose(out_f32.double(), expected64, rtol=0, atol=1e-5)
 
     def test_gradients(self, device):
         """Gradients should flow through the pure-PyTorch implementation."""
