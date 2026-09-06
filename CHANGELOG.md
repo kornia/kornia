@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tracking and segmentation-model wrappers lazily import, and are documented on the installation
   page. Missing-dependency errors now name the extra to install, and `dev` no longer pulls
   `diffusers` and `transformers`. (#4301)
+  The checkpoints move to torch's hub cache as a result; see *Breaking changes*. (#4293)
 
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
@@ -141,6 +142,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Previously `from kornia.core.external import transformers` gave a lazy proxy that imported
   `transformers` on first attribute access; that name no longer exists, so import `transformers`
   directly instead. (#4301)
+* `KimiVLBuilder.from_pretrained_hf()` and `SigLip2Builder.from_pretrained_hf()` cache their
+  checkpoint where every other kornia checkpoint lives. `cache_dir=None` used to mean the HuggingFace
+  cache (`~/.cache/huggingface/hub/models--<owner>--<name>/snapshots/<sha>/model.safetensors`) and now
+  means torch's hub directory (`<torch hub dir>/checkpoints/<owner>--<name>--model.safetensors`); an
+  explicit `cache_dir` used to hold the same `models--<owner>--<name>/…` tree and now holds the flat
+  `<owner>--<name>--model.safetensors` file. Either way the first `from_pretrained_hf()` call after
+  upgrading re-downloads the checkpoint (854 MB for KimiVL, ~1.5 GB for SigLIP2) even for users who
+  already had it. (#4293)
 
 * Non-maxima suppression applies one border rule at every window size. `NonMaximaSuppression2d` /
   `nms2d` with a window larger than `(7, 7)`, and `NonMaximaSuppression3d` / `nms3d`, no longer report

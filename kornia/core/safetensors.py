@@ -122,7 +122,11 @@ def _parse_entry(path: str, name: str, entry: Any, data_len: int) -> _TensorEntr
         raise ValueError(f"{path}: tensor {name!r} has shape {shape!r}, expected a list of non-negative integers.")
 
     offsets = entry["data_offsets"]
-    if not isinstance(offsets, list) or len(offsets) != 2 or any(not isinstance(o, int) or o < 0 for o in offsets):
+    if (
+        not isinstance(offsets, list)
+        or len(offsets) != 2
+        or any(not isinstance(o, int) or isinstance(o, bool) or o < 0 for o in offsets)
+    ):
         raise ValueError(f"{path}: tensor {name!r} has data_offsets {offsets!r}, expected two non-negative integers.")
     start, end = offsets
     if start > end or end > data_len:
