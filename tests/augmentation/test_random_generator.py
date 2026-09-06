@@ -1557,3 +1557,30 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
         assert res.keys() == expected.keys(), res.keys()
         assert_close(res["mix_pairs"], expected["mix_pairs"], rtol=1e-4, atol=1e-4)
         assert_close(res["crop_src"], expected["crop_src"], rtol=1e-4, atol=1e-4)
+
+
+class TestGaussianBlurGenBufferHygiene:
+    # `sigma` used to be a plain attribute when passed as a Tensor -- invisible to
+    # state_dict() and to Module.to()/.half()/.cuda() (make_samplers compensated with
+    # its own inline `.to()`, so this was never a crash risk, just missing buffer
+    # hygiene). A plain (min, max) tuple of Python floats has no device/dtype and stays
+    # a plain attribute, which is correct.
+    def test_tensor_sigma_is_a_registered_buffer(self, device, dtype):
+        from kornia.augmentation.random_generator._2d.gaussian_blur import RandomGaussianBlurGenerator
+
+        gen = RandomGaussianBlurGenerator(sigma=torch.tensor([0.1, 2.0]))
+        # persistent=False -> visible via named_buffers()/.to() but excluded from
+        # state_dict(), same convention as #4079/#4319 (keeps checkpoint keys unchanged).
+        assert "sigma" in dict(gen.named_buffers())
+        assert "sigma" not in gen.state_dict()
+
+        moved = gen.to(device=device, dtype=dtype)
+        assert moved.sigma.device == torch.tensor(0.0, device=device).device
+        assert moved.sigma.dtype == dtype
+
+    def test_tuple_sigma_stays_a_plain_attribute(self):
+        from kornia.augmentation.random_generator._2d.gaussian_blur import RandomGaussianBlurGenerator
+
+        gen = RandomGaussianBlurGenerator(sigma=(0.1, 2.0))
+        assert "sigma" not in dict(gen.named_buffers())
+        assert gen.sigma == (0.1, 2.0)

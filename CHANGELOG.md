@@ -352,6 +352,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 
+* `RandomChannelDropout.fill_value` and `RandomGaussianBlurGenerator.sigma` (when passed as a
+  Tensor) are registered as non-persistent buffers instead of plain attributes, so they move with
+  `Module.to()`/`.half()`/`.cuda()` and appear in `named_buffers()` like the rest of the module's
+  state; `state_dict()` keys are unchanged. Neither crashed before this change (both re-derived
+  device and dtype inline on every call), so this is a hygiene fix, not a bug fix for a crash.
+
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
   `kornia_rs.io`, and kornia kept calling the root, so on 0.1.11 and newer `load_image` raised

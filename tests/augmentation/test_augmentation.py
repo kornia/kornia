@@ -4541,6 +4541,21 @@ class TestRandomChannelDropout(BaseTester):
         output_tensor = transform(input_tensor)
         self.assert_close(output_tensor[0], output_tensor[1])
 
+    def test_fill_value_is_a_registered_buffer(self, device, dtype):
+        # `fill_value` used to be a plain attribute -- invisible to state_dict() and to
+        # Module.to()/.half()/.cuda() (apply_transform compensated with its own inline
+        # `.to()`, so this was never a crash risk, just missing buffer hygiene).
+        aug = RandomChannelDropout(fill_value=0.3, p=1.0)
+        # persistent=False -> visible via named_buffers()/.to() but excluded from
+        # state_dict(), same convention as #4079/#4319 (keeps checkpoint keys unchanged).
+        assert "fill_value" in dict(aug.named_buffers())
+        assert "fill_value" not in aug.state_dict()
+
+        input_tensor = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
+        moved = aug.to(device=device, dtype=dtype)
+        assert moved.fill_value.device == input_tensor.device
+        assert moved.fill_value.dtype == dtype
+
 
 class TestNormalize(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
