@@ -22,16 +22,17 @@ appearing in ``pyproject.toml``: ``flash_attn``, ``xformers``, ``basicsr``, ``hu
 ``safetensors``, ``requests`` and ``transformers``. Nothing in CI compared the imports against
 the declaration, so each one only surfaced as an ``ImportError`` in a user's environment.
 
-The four tests here are that comparison:
+The five tests here enforce that contract:
 
 1. every third-party module imported anywhere under ``kornia/`` is declared -- as a runtime
    dependency, in some user-facing optional-dependency extra, or as a :class:`LazyLoader`;
-2. every :class:`LazyLoader` names a module that a dependency a *user* can install actually
+2. every implicitly allowed package is required by torch;
+3. every :class:`LazyLoader` names a module that a dependency a *user* can install actually
    provides, so a new lazy optional dependency cannot be added without also giving users a way to
    install it;
-3. every ``LazyLoader(extra=...)`` hint names a user-facing extra that installs that module, so
+4. every ``LazyLoader(extra=...)`` hint names a user-facing extra that installs that module, so
    the ``pip install "kornia[<extra>]"`` line in the ``ImportError`` is one that works;
-4. a bare ``import kornia`` loads none of the optional packages, so declaring a dependency as
+5. a bare ``import kornia`` loads none of the optional packages, so declaring a dependency as
    optional stays true at runtime.
 
 "User-facing" excludes :data:`CONTRIBUTOR_EXTRAS` (``dev`` and ``docs``): those install what it

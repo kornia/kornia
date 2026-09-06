@@ -106,6 +106,12 @@ class SegmentationModelsBuilder:
             :class:`~kornia.augmentation.container.ImageSequential` containing
             ONNX-friendly color conversion, rescaling, and normalization steps.
 
+        Note:
+            Set ``pipeline.disable_features = True`` before exporting the returned
+            pipeline to ONNX. This disables convenience input/output conversion and
+            output caching, whose tensor attribute mutation is rejected by some
+            versions of ``torch.export``.
+
         Raises:
             BaseError: If one of the four keys is missing (a :func:`~kornia.core.check.KORNIA_CHECK`).
             ValueError: If ``input_space`` or ``input_range`` is not one of the supported values.

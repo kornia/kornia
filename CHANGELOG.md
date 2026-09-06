@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Optional-dependency extras `kornia[onnx]` and `kornia[sd]` declare the third-party packages that
+  the ONNX and Stable-Diffusion-dissolving wrappers lazily import, and are documented on the
+  installation page. Missing-dependency errors now name the extra to install, and `dev` no longer
+  pulls `diffusers` and `transformers`. (#4301)
 * KimiVL and SigLIP2 builders load their safetensors checkpoints with kornia's own downloader
   (`kornia.core.download_hf_file`/`download_file_from_url`, which share the retrying, rate-limit-aware
   cache every other checkpoint uses) and a pure-torch reader (`kornia.core.load_safetensors`);
@@ -17,10 +21,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declared as dependencies, so `KimiVLBuilder.from_pretrained_hf()` and
   `SigLip2Builder.from_pretrained_hf()` used to raise `ImportError` on a plain `pip install kornia`.
   The checkpoints move to torch's hub cache as a result; see *Breaking changes*. (#4293)
-* Optional-dependency extras `kornia[onnx]` and `kornia[sd]` declare the third-party packages that
-  the ONNX and Stable-Diffusion-dissolving wrappers lazily import, and are documented on the
-  installation page. Missing-dependency errors now name the extra to install, and `dev` no longer
-  pulls `diffusers` and `transformers`. (#4301)
 * `kornia.models.RRDBNet`, a vendored Real-ESRGAN generator; `RRDBNetBuilder` no longer needs `basicsr`. (#4292)
 
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
@@ -159,7 +159,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Previously `from kornia.core.external import transformers` gave a lazy proxy that imported
   `transformers` on first attribute access; that name no longer exists, so import `transformers`
   directly instead. (#4301)
-
 * `KimiVLBuilder.from_pretrained_hf()` and `SigLip2Builder.from_pretrained_hf()` cache their
   checkpoint where every other kornia checkpoint lives. `cache_dir=None` used to mean the HuggingFace
   cache (`~/.cache/huggingface/hub/models--<owner>--<name>/snapshots/<sha>/model.safetensors`) and now

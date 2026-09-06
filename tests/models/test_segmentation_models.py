@@ -195,6 +195,9 @@ class TestSemanticSegmentation(BaseTester):
             pytest.skip("export of a non-CPU pipeline is blocked by Normalize's tensor attributes")
         params = {**IMAGENET_PARAMS, "input_space": "BGR", "input_range": [0, 255]}
         pipeline = SegmentationModelsBuilder.get_preprocessing_pipeline(params).to(device).eval()
+        # Export tensor operations without the convenience I/O cache: torch.export in PyTorch 2.9
+        # rejects the `_output_image` tensor attribute created by ImageSequential.__call__.
+        pipeline.disable_features = True
         x = torch.rand(1, 3, 6, 6, device=device)
         program = torch.onnx.export(pipeline, (x,), dynamo=True, opset_version=18, verbose=False)
         assert program is not None
