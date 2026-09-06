@@ -23,5 +23,3 @@ Action Models.
 """
 
 from kornia.models.rrdbnet import RRDBNet
-
-__all__ = ["RRDBNet"]
