@@ -823,7 +823,6 @@ dev = [
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-timeout" },
-    { name = "requests" },
     { name = "setuptools" },
     { name = "transformers" },
 ]
@@ -862,7 +861,6 @@ requires-dist = [
     { name = "pydata-sphinx-theme", marker = "extra == 'docs'", specifier = ">=0.21,<0.22" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-timeout", marker = "extra == 'dev'" },
-    { name = "requests", marker = "extra == 'dev'" },
     { name = "setuptools", marker = "extra == 'dev'" },
     { name = "sphinx", marker = "extra == 'docs'" },
     { name = "sphinx-autodoc-defaultargs", marker = "extra == 'docs'" },
