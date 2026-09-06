@@ -19,8 +19,65 @@ import pytest
 import torch
 
 from kornia.feature import DeFMO
+from kornia.feature.defmo import RenderingDeFMO
 
 from testing.base import BaseTester
+
+
+class TestRenderingDeFMOTimesBuffer(BaseTester):
+    """`times` must be a real buffer so `.to()` moves it, and `forward` must not rebind it.
+
+    Same bug shape as #4069/#4079 (SIFTDescriptor.gk et al.) in a different class: `times`
+    was a plain Python attribute, invisible to `Module.to()`/`.half()`, and `forward`
+    compensated by re-deriving its DEVICE (but never its dtype) from the input on every
+    call -- so `.half()` a module and calling it crashed with a dtype-mismatch RuntimeError.
+    """
+
+    def test_to_moves_times(self, device):
+        # float16 rather than the default float32, or the dtype assertion would hold
+        # vacuously; float16 also works on MPS, where float64 is unavailable.
+        mod = RenderingDeFMO().to(device, torch.float16)
+        assert mod.times.dtype == torch.float16
+        assert mod.times.device == torch.empty(0, device=device).device
+
+    def test_times_stays_out_of_state_dict(self, device):
+        # non-persistent: `times` is fully determined by `tsr_steps`, not learned, so
+        # existing checkpoints keep loading with strict=True.
+        assert "times" not in RenderingDeFMO().state_dict()
+
+    def test_forward_does_not_mutate_the_module(self, device):
+        mod = RenderingDeFMO().to(device).eval()
+        before = (mod.times.dtype, mod.times.device)
+        latent = torch.rand(1, 2048, 4, 4, device=device)
+        with torch.no_grad():
+            mod(latent)
+        assert (mod.times.dtype, mod.times.device) == before
+
+    @pytest.mark.slow
+    def test_half_precision_forward_no_longer_crashes(self, device):
+        # the actual reported defect: .half() left `times` at float32 (only device was
+        # ever re-derived in forward, never dtype), so a half-precision forward crashed
+        # with "Input type ... and weight type ... should be the same".
+        mod = RenderingDeFMO().to(device, torch.float16).eval()
+        latent = torch.rand(1, 2048, 4, 4, device=device, dtype=torch.float16)
+        with torch.no_grad():
+            out = mod(latent)
+        assert out.dtype == torch.float16
+
+    def test_matches_pre_fix_output_in_the_normal_float32_path(self, device):
+        # behaviour-preserving: pinned against the pre-fix module (plain `self.times`
+        # attribute, `.to(latent.device)`-only) with the same seed and input -- confirmed
+        # byte-identical (torch.equal) before this value was hardcoded here.
+        if device.type != "cpu":
+            pytest.skip("checksum pinned on CPU; cross-device float summation can differ in the ULP")
+        torch.manual_seed(0)
+        mod = RenderingDeFMO().to(device).eval()
+        latent = torch.rand(1, 2048, 4, 4, device=device)
+        with torch.no_grad():
+            out = mod(latent)
+        assert out.shape == (1, 24, 4, 64, 64)
+        assert out.dtype == torch.float32
+        assert out.sum().item() == pytest.approx(201291.984375, abs=1e-3)
 
 
 class TestDeFMO(BaseTester):
