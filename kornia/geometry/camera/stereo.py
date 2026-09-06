@@ -63,10 +63,11 @@ class StereoCamera:
           and the second by ``1 / fy``.
         - a point cloud is a homogeneous transform by :attr:`Q` followed by the divide by ``W``, so an
           overall sign on :attr:`Q` cancels: :attr:`Q` and its negation return the same points. The matrix
-          written on :doc:`/geometry.camera.stereo` is not that negation -- its last row is the same as this
-          one's. It is the same expression evaluated at the opposite baseline: the page's :math:`P_1` puts
-          ``+tx * fx`` in the last column where the constructor reads ``tx = -P_right[0, 3] / fx``, so
-          substituting ``tx -> -tx`` in the page's matrix gives this one exactly.
+          written out on the :doc:`/geometry.camera.stereo` page, above this docstring, is not that negation
+          -- its last row is the same as this one's. It is the same expression evaluated at the opposite
+          baseline: the page's :math:`P_1` puts ``+tx * fx`` in the last column where the constructor reads
+          ``tx = -P_right[0, 3] / fx``, so substituting ``tx -> -tx`` in the page's matrix gives this one
+          exactly.
         - a disparity map is channels-**last**, :math:`(B, H, W, 1)`, for :meth:`reproject_disparity_to_3D` and
           for the module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` alike -- the
           :math:`(B, 1, H, W)` layout the rest of kornia uses for images is rejected -- and the returned point
@@ -88,21 +89,23 @@ class StereoCamera:
         ``tests/geometry/camera/test_stereo.py``.
 
     .. warning::
-        Among the constructor guards, four do not enforce the contract above. A differing ``cx`` is
-        **rejected**, even
-        though :attr:`cx_left` and :attr:`cx_right` are exposed separately and ``Q[3, 3]`` carries
-        ``fy * (cx_left - cx_right)`` for exactly that case, so that factor is zero on any rig the
-        constructor accepts. The ``tx * fx < 0`` guard is quantified with ``torch.all``, so a batch whose second element
-        has the two cameras the wrong way round is accepted and reprojects that element behind the camera. And
-        ``tx = 0`` passes the same guard, collapsing ``Q`` so that every disparity reprojects to the origin
-        with no ``inf`` to notice. An empty batch is rejected by that guard as well, because ``torch.all`` of
-        an empty tensor is ``True`` (`#4281 <https://github.com/kornia/kornia/issues/4281>`_). The
-        per-camera :math:`(3, 4)` shape check compares ``shape[:1]`` rather than ``shape[-2:]``, so it can
-        never fire and a :math:`(B, 4, 4)` pair is accepted, building a :math:`(B, 4, 4)` ``Q``. Tracked as
+        Several of the constructor guards do not enforce the contract above. A differing ``cx`` is
+        **rejected**, even though :attr:`cx_left` and :attr:`cx_right` are exposed separately and
+        ``Q[3, 3]`` carries ``fy * (cx_left - cx_right)`` for exactly that case, so that factor is zero on
+        any rig the constructor accepts. The ``tx * fx < 0`` guard is quantified with ``torch.all``, so a
+        batch whose second element has the two cameras the wrong way round is accepted and reprojects that
+        element behind the camera. And ``tx = 0`` passes the same guard, collapsing ``Q`` so that every
+        disparity reprojects to the origin with no ``inf`` to notice. An empty batch is rejected by that
+        guard as well, because ``torch.all`` of an empty tensor is ``True``
+        (`#4281 <https://github.com/kornia/kornia/issues/4281>`_). The per-camera :math:`(3, 4)` shape check
+        compares ``shape[:1]`` rather than ``shape[-2:]``, so it can never fire and a :math:`(B, 4, 4)` pair
+        is accepted, building the same :math:`(B, 4, 4)` ``Q`` as the :math:`(B, 3, 4)` pair it should have
+        required. Tracked as
         `#4270 <https://github.com/kornia/kornia/issues/4270>`_ and pinned by
         ``test_wart_stereo_rejects_differing_principal_points_4270``,
         ``test_wart_stereo_accepts_a_batch_with_one_positive_tx_fx_4270``,
-        ``test_wart_stereo_tx_zero_collapses_every_point_to_the_origin_4270`` and
+        ``test_wart_stereo_tx_zero_collapses_every_point_to_the_origin_4270``,
+        ``test_wart_stereo_accepts_a_four_by_four_pair_4270`` and
         ``test_wart_stereo_rejects_an_empty_batch_4281`` in ``tests/geometry/camera/test_stereo.py``.
 
     .. warning::

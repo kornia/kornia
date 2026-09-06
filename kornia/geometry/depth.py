@@ -299,11 +299,12 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     .. warning::
         The unprojection goes through :func:`~kornia.geometry.depth.depth_to_3d_v2`, so the squeezed ``W = 1``
         axis reaches here as well: a :math:`(1, 1, 4, 1)` depth returns a :math:`(1, 3, 4, 4)` normal map
-        instead of the :math:`(1, 3, 4, 1)` the layout above asks for. ``H = 1`` and ``H = W = 1`` are
-        unaffected. Tracked as
-        `#4278 <https://github.com/kornia/kornia/issues/4278>`_, whose pins cover
-        :func:`~kornia.geometry.depth.unproject_meshgrid`, :func:`~kornia.geometry.depth.depth_to_3d_v2` and
-        :func:`~kornia.geometry.depth.warp_frame_depth`; this function carries no pin of its own.
+        instead of the :math:`(1, 3, 4, 1)` the layout above asks for, with its single column of normals
+        laid along the phantom width. ``H = 1`` and ``H = W = 1`` are unaffected. Tracked as
+        `#4278 <https://github.com/kornia/kornia/issues/4278>`_ and pinned by
+        ``test_wart_depth_to_normals_loses_the_axis_at_w_one_4278`` in ``tests/geometry/test_depth.py``,
+        beside that issue's pins for :func:`~kornia.geometry.depth.unproject_meshgrid`,
+        :func:`~kornia.geometry.depth.depth_to_3d_v2` and :func:`~kornia.geometry.depth.warp_frame_depth`.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
@@ -467,7 +468,7 @@ def warp_frame_depth(
            is represented as the Euclidean ray length from the camera position.
 
     Return:
-        the warped tensor in the source frame with shape :math:`(B,D,H,W)`.
+        ``image_src`` resampled onto the destination pixel grid, with shape :math:`(B,D,H,W)`.
 
     """
     KORNIA_CHECK_SHAPE(image_src, ["B", "D", "H", "W"])

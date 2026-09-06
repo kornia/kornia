@@ -19,7 +19,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.core.exceptions import ShapeError
+from kornia.core.exceptions import BaseError, ShapeError
 from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.depth import (
     DepthWarper,
@@ -359,22 +359,31 @@ class TestUnprojectMeshgrid(BaseTester):
         self.assert_close(asymmetric[0, 1, 0], torch.tensor([-0.04, -0.04, 1.0], device=device, dtype=dtype))
 
     def test_wart_unproject_meshgrid_rejects_unbatched_intrinsics_4271(self, device, dtype):
-        # Wart pin for kornia#4271 (audit labels 5c-um-01, 5c-um-02): the docstring says the camera matrix has
-        # shape (3, 3) and the guard is written ["*", "3", "3"], which admits a bare (3, 3) -- but the body then
-        # does ``camera_matrix[:, None, None]``, which on a 2-D tensor produces a (3, 1, 1, 3) and trips a LATER
-        # check whose message describes that shape rather than the one the caller passed. Only the undocumented
-        # (B, 3, 3) works, which is what depth_to_3d_v2 documents for the same argument. Batch 5c fixes the
-        # docstring to (*, 3, 3); the guard and its message are the part #4271 leaves open.
-        # Snippet used to generate expected: unproject_meshgrid(2, 3, K[0], device=..., dtype=...) executed
-        # 2026-09-06 on this worktree (torch 2.14.0) -> ShapeError("Shape mismatch at dimension 0: expected 3,
-        # got 1. ... Actual shape: [3, 1, 1, 3]") on cpu for float32, float64, float16 and bfloat16 and on mps
-        # for float32 and float16; the (1, 3, 3) call on the same K returns (1, 2, 3, 3).
+        # Wart pin for kornia#4271 (audit labels 5c-um-01, 5c-um-02): the guard is written ["*", "3", "3"],
+        # which admits a bare (3, 3) -- but the body then does ``camera_matrix[:, None, None]``, which on a 2-D
+        # tensor produces a (3, 1, 1, 3) and trips a LATER check whose message describes that shape rather than
+        # the one the caller passed. What the ``*`` actually buys is SINGLETON extra leading dimensions and
+        # nothing else: a (2, 1, 3, 3) passes through to a (2, 1, H, W, 3), while the same shape with the extra
+        # dimension non-singleton, (2, 2, 3, 3), raises a bare RuntimeError from the broadcast inside the body.
+        # So the one working form is (B, 3, 3), which is what the batch 5c docstring states; the guard and its
+        # message are the part #4271 leaves open.
+        # Snippet used to generate expected: unproject_meshgrid(2, 3, K, device=..., dtype=...) at four K
+        # shapes, executed 2026-09-06 on this worktree (torch 2.14.0) -> (3, 3): ShapeError("Shape mismatch at
+        # dimension 0: expected 3, got 1. ... Actual shape: [3, 1, 1, 3]"); (1, 3, 3): (1, 2, 3, 3);
+        # (2, 1, 3, 3): (2, 1, 2, 3, 3); (2, 2, 3, 3): RuntimeError("The size of tensor a (3) must match the
+        # size of tensor b (2) at non-singleton dimension 3"). All four on cpu for float32, float64, float16
+        # and bfloat16 and on mps for float32 and float16.
         # Pins the CURRENT behavior; NOT a contract; delete when #4271 is repaired.
         camera_matrix = _k_asymmetric(device, dtype)
         with pytest.raises(ShapeError) as errinfo:
             unproject_meshgrid(2, 3, camera_matrix[0], device=device, dtype=dtype)
         assert "[3, 1, 1, 3]" in str(errinfo.value)
         assert unproject_meshgrid(2, 3, camera_matrix, device=device, dtype=dtype).shape == (1, 2, 3, 3)
+        singleton = camera_matrix.expand(2, 3, 3).unsqueeze(1).contiguous()
+        assert singleton.shape == (2, 1, 3, 3)
+        assert unproject_meshgrid(2, 3, singleton, device=device, dtype=dtype).shape == (2, 1, 2, 3, 3)
+        with pytest.raises(RuntimeError, match="must match the size of tensor"):
+            unproject_meshgrid(2, 3, singleton.expand(2, 2, 3, 3).contiguous(), device=device, dtype=dtype)
 
     @pytest.mark.xfail(
         strict=True, reason="kornia#4271: the guard reports a [3, 1, 1, 3] shape the caller never passed"
@@ -553,6 +562,38 @@ class TestDepthToNormals(BaseTester):
         by_row = depth_to_normals(rows.view(1, 1, 3, 1).expand(1, 1, 3, 4).contiguous(), camera_matrix)[0, :, 1, 1]
         assert by_row[1].item() < -0.9
         assert by_row[0].abs().item() < 0.01
+
+    def test_wart_depth_to_normals_loses_the_axis_at_w_one_4278(self, device, dtype):
+        # Wart pin for kornia#4278: depth_to_normals unprojects through depth_to_3d_v2, so it inherits
+        # unproject_meshgrid's squeezed W = 1 axis. A (1, 1, 4, 1) depth -- a one-pixel-wide crop, a valid
+        # input -- returns a (1, 3, 4, 4) normal map, three columns too wide, and nothing raises. The H = 1 and
+        # H = W = 1 twins keep their shape, because the batch axis absorbs the squeeze.
+        # The pin is not shape-only: the four columns of the inflated map carry the SAME normal (the one
+        # computed column laid along the phantom width), and that normal is not the degenerate zero vector --
+        # with a depth that grows down the column it tilts hard towards +x, with the y component exactly 0. An
+        # all-zero or NaN result would pass a shape assertion; it does not pass this one.
+        # The H = 1 twin's VALUES are device-dependent (audit label 5c-nm-05: a zero cross product normalized;
+        # NaN in float16), so only its shape is asserted here.
+        # No audit label covers depth_to_normals at W = 1. Snippet used to generate expected:
+        # depth_to_normals(tensor([[[[1.0], [2.0], [3.0], [4.0]]]]), K) executed 2026-09-06 on this worktree
+        # (torch 2.14.0) -> shape (1, 3, 4, 4) with every column of row 0 equal to
+        # [0.9992009401321411, -0.0, 0.039968039840459824] on cpu float32 and on mps float32,
+        # [0.9992009587217894, -0.0, 0.03996803834887158] on cpu float64,
+        # [0.99951171875, -0.0, 0.040008544921875] on cpu float16 and on mps float16, and
+        # [1.0, -0.0, 0.0400390625] on cpu bfloat16; the H = 1 twin returns (1, 3, 1, 4) and the H = W = 1 twin
+        # (1, 3, 1, 1) in every one of those cells.
+        # Pins the CURRENT shape and values; NOT a contract; delete when #4278 is repaired.
+        camera_matrix = _k_asymmetric(device, dtype)
+        column = torch.tensor([[[[1.0], [2.0], [3.0], [4.0]]]], device=device, dtype=dtype)
+        narrow = depth_to_normals(column, camera_matrix)
+        assert narrow.shape == (1, 3, 4, 4)
+        for phantom in (1, 2, 3):
+            self.assert_close(narrow[0, :, :, phantom], narrow[0, :, :, 0])
+        assert narrow[0, 0, 0, 0].item() > 0.9
+        assert narrow[0, 1, 0, 0].item() == 0.0
+        assert 0.03 < narrow[0, 2, 0, 0].item() < 0.05
+        assert depth_to_normals(column.reshape(1, 1, 1, 4), camera_matrix).shape == (1, 3, 1, 4)
+        assert depth_to_normals(column[:, :, :1], camera_matrix).shape == (1, 3, 1, 1)
 
 
 class TestWarpFrameDepth(BaseTester):
@@ -869,13 +910,16 @@ class TestDepthWarper(BaseTester):
     def test_convention_warp_grid_requires_compute_projection_matrix_first(self, device, dtype):
         # Convention pin (audit labels 5c-wf-21, 5c-wf-24, 5c-wf-25): DepthWarper is a two-step API. Until
         # compute_projection_matrix has been called there is no relative pose, and both warp_grid and forward
-        # raise ValueError("Please, call compute_projection_matrix."). Afterwards warp_grid returns the
-        # grid_sample-ready NORMALIZED coordinates, (B, H, W, 2), in which pixel (0, 0) is (-1, -1) -- not the
-        # integer pixel grid that DepthWarper.grid itself holds.
+        # raise ValueError("Please, call compute_projection_matrix."), while compute_subpixel_step raises
+        # RuntimeError from the None projection matrix instead. Afterwards warp_grid returns the
+        # grid_sample-ready NORMALIZED coordinates, (B, H, W, 2), in which pixel (0, 0) is (-1, -1) and pixel
+        # (H - 1, W - 1) is (1, 1) -- not the integer pixel grid that DepthWarper.grid itself holds.
         # Snippet used to generate expected: DepthWarper(cam, 4, 5).warp_grid(ones(1, 1, 4, 5)) and the same
         # instance called as a module, executed 2026-09-06 on this worktree (torch 2.14.0) -> ValueError with
-        # that message; after compute_projection_matrix, shape (1, 4, 5, 2) and first pixel [-1.0, -1.0]. Both
-        # hold on cpu for float32, float64, float16 and bfloat16 and on mps for float32 and float16.
+        # that message; compute_subpixel_step on the same bare instance -> RuntimeError("Expected torch.Tensor,
+        # but got None Type from the projection matrix"); after compute_projection_matrix, shape (1, 4, 5, 2)
+        # with first pixel [-1.0, -1.0] and last pixel [1.0, 1.0]. All hold on cpu for float32, float64,
+        # float16 and bfloat16 and on mps for float32 and float16.
         identity = _eye4(device, dtype)
         depth_src = torch.ones(1, 1, 4, 5, device=device, dtype=dtype)
         bare = DepthWarper(
@@ -889,9 +933,12 @@ class TestDepthWarper(BaseTester):
             bare.warp_grid(depth_src)
         with pytest.raises(ValueError, match="Please, call compute_projection_matrix"):
             bare(depth_src, torch.zeros(1, 2, 4, 5, device=device, dtype=dtype))
+        with pytest.raises(RuntimeError, match="but got None Type from the projection matrix"):
+            bare.compute_subpixel_step()
         grid = self._warper(device, dtype, identity, identity).warp_grid(depth_src)
         assert grid.shape == (1, 4, 5, 2)
         self.assert_close(grid[0, 0, 0], torch.tensor([-1.0, -1.0], device=device, dtype=dtype))
+        self.assert_close(grid[0, -1, -1], torch.tensor([1.0, 1.0], device=device, dtype=dtype))
 
     def test_convention_depth_warp_is_byte_identical_to_depth_warper(self, device, dtype):
         # Convention pin (audit labels 5c-wf-06, 5c-wf-07, 5c-wf-08, 5c-wf-09, 5c-wf-10; duplication-ledger row
@@ -1101,12 +1148,15 @@ class TestDepthFromDisparity(BaseTester):
         # docstring says baseline and focal are "float/tensor", but the guard is KORNIA_CHECK_SHAPE(..., ["1"]),
         # so a tensor argument must have exactly shape (1,). A 0-dim tensor -- what ``torch.tensor(0.5)`` or any
         # reduction produces -- is rejected, and so is a per-batch-element (2,) baseline, even though the
-        # disparity itself is batched. A python ``int`` is rejected outright by the type check.
+        # disparity itself is batched. A python ``int`` is rejected outright by the type check, for either
+        # argument -- so ``depth_from_disparity(d, 1, 100.0)`` fails while ``(d, 1.0, 100.0)`` works.
         # Snippet used to generate expected: depth_from_disparity(ones(1, 1, 2, 3), baseline, focal) executed
         # 2026-09-06 on this worktree (torch 2.14.0) -> ShapeError("Shape dimension mismatch: expected 1
         # dimensions, got 0.") for the 0-dim baseline and ShapeError("Shape mismatch at dimension 0: expected 1,
         # got 2.") for the (2,) baseline and the (2,) focal, on cpu for float32, float64, float16 and bfloat16
-        # and on mps for float32 and float16; the (1,) form returns shape (1, 1, 2, 3).
+        # and on mps for float32 and float16; a python int raises BaseError("Input baseline should be either a
+        # float or torch.Tensor. Got <class 'int'>") and the same sentence for ``focal`` in those cells, and
+        # the (1,) form returns shape (1, 1, 2, 3).
         # Pins the CURRENT behavior; NOT a contract; delete when #4272 is repaired.
         disparity = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
         focal = torch.tensor([100.0], device=device, dtype=dtype)
@@ -1120,6 +1170,11 @@ class TestDepthFromDisparity(BaseTester):
                 torch.tensor([0.5], device=device, dtype=dtype),
                 torch.tensor([100.0, 100.0], device=device, dtype=dtype),
             )
+        with pytest.raises(BaseError, match=r"Input baseline should be either a float or torch\.Tensor"):
+            depth_from_disparity(disparity, 1, 100.0)
+        with pytest.raises(BaseError, match=r"Input focal should be either a float or torch\.Tensor"):
+            depth_from_disparity(disparity, 0.5, 100)
+        assert depth_from_disparity(disparity, 1.0, 100.0).shape == (1, 1, 2, 3)
         assert depth_from_disparity(disparity, torch.tensor([0.5], device=device, dtype=dtype), focal).shape == (
             1,
             1,

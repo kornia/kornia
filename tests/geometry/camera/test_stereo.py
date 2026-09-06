@@ -365,20 +365,56 @@ class TestStereoCamera(BaseTester):
         # meshgrid is unbound as ``v, u = torch.unbind(uv, dim=-1)``, but create_meshgrid returns (x, y), so
         # uv[..., 0] is the COLUMN and uv[..., 1] is the ROW. X is therefore computed from the row index and Y
         # from the column index -- the opposite of cv2.reprojectImageTo3D, which this function was added
-        # (kornia#2042) to provide. The Q matrix's own focal swap partially masks it, so the error cancels
-        # exactly when fx == fy and cx == cy on a square image; this fixture is H = 3 != W = 5 with cx = 4 !=
-        # cy = 3 so nothing cancels.
+        # (kornia#2042) to provide. What comes out is the OpenCV answer with the two pixel indices TRANSPOSED:
+        # kornia's value at (row, col) is what cv2.reprojectImageTo3D puts at (col, row), i.e. exactly
+        # X = (row - cx) Z / fx, Y = (col - cy) Z / fy with Z = fx * tx / d. The fy/fx swap in Q rows 0 and 1
+        # compensates for the homogeneous divide, so X is still scaled by 1/fx and Y by 1/fy -- what moved is
+        # only which INDEX feeds which coordinate. The transpose arm below runs on the fy = 50 camera, where
+        # fx != fy, so a reading that swapped the focal lengths as well would not reproduce it.
+        # The swap does NOT cancel on a square image with fx == fy and cx == cy: transposing the index pair is
+        # a no-op only where row == col, so the diagonal agrees with OpenCV and everything else does not (the
+        # square arm below measures a 0.2 gap on a 5 x 5 map, asserted as > 0.1).
         # Snippet used to generate expected: cam.reproject_disparity_to_3D(full((1, 3, 5, 1), 10.0)) executed
         # 2026-09-06 on this worktree (torch 2.14.0, cpu float32) -> (row 0, col 2) [-0.2, -0.05, 5.0],
         # (row 1, col 0) [-0.15, -0.15, 5.0], (row 2, col 4) [-0.1, 0.05, 5.0]; the hand-computed OpenCV answers
-        # for the same three pixels are [-0.1, -0.15, 5.0], [-0.2, -0.1, 5.0] and [0.0, -0.05, 5.0]. Every cell
-        # (cpu float32/float64/float16/bfloat16, mps float32/float16) reproduces the kornia values.
+        # for the same three pixels are [-0.1, -0.15, 5.0], [-0.2, -0.1, 5.0] and [0.0, -0.05, 5.0]. On the
+        # fy = 50 camera the whole (1, 3, 5, 3) map equals the transposed OpenCV map to 0.0 (float32, float64,
+        # bfloat16 on cpu and float32 on mps) and to 0.00390625 in float16 (cpu and mps), which is that dtype's
+        # rounding of Z = 5. On the square fx = fy = 100, cx = cy = 3 camera the same map is 0.2 away from the
+        # untransposed OpenCV map in every one of those cells, and its (2, 2) pixel is on the diagonal and
+        # agrees. Every cell (cpu float32/float64/float16/bfloat16, mps float32/float16) reproduces this.
         # Pins the CURRENT value; NOT a contract; delete when #4269 is repaired.
         cam = self._asymmetric_stereo(device, dtype)
         points = cam.reproject_disparity_to_3D(torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype))
         self.assert_close(points[0, 0, 2], torch.tensor([-0.2, -0.05, 5.0], device=device, dtype=dtype))
         self.assert_close(points[0, 1, 0], torch.tensor([-0.15, -0.15, 5.0], device=device, dtype=dtype))
         self.assert_close(points[0, 2, 4], torch.tensor([-0.1, 0.05, 5.0], device=device, dtype=dtype))
+        # the whole map, on a camera with fx = 100 != fy = 50: the OpenCV formula read at (u, v) = (row, col)
+        transposed = self._asymmetric_stereo(device, dtype, fy=50.0).reproject_disparity_to_3D(
+            torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype)
+        )
+        rows = torch.arange(3.0, device=device, dtype=dtype).view(3, 1).expand(3, 5)
+        columns = torch.arange(5.0, device=device, dtype=dtype).view(1, 5).expand(3, 5)
+        depth = torch.full((3, 5), 5.0, device=device, dtype=dtype)
+        self.assert_close(transposed, torch.stack([(rows - 4.0) * 0.05, (columns - 3.0) * 0.1, depth], dim=-1)[None])
+        # fx == fy and cx == cy on a square map does not make it cancel: only the diagonal agrees with OpenCV
+        square_left = torch.tensor(
+            [[[100.0, 0.0, 3.0, 0.0], [0.0, 100.0, 3.0, 0.0], [0.0, 0.0, 1.0, 0.0]]], device=device, dtype=dtype
+        )
+        square_right = square_left.clone()
+        square_right[0, 0, 3] = -50.0
+        square = StereoCamera(square_left, square_right)
+        square_points = square.reproject_disparity_to_3D(torch.full((1, 5, 5, 1), 10.0, device=device, dtype=dtype))
+        square_rows = torch.arange(5.0, device=device, dtype=dtype).view(5, 1).expand(5, 5)
+        square_columns = torch.arange(5.0, device=device, dtype=dtype).view(1, 5).expand(5, 5)
+        square_depth = torch.full((5, 5), 5.0, device=device, dtype=dtype)
+        opencv = torch.stack([(square_columns - 3.0) * 0.05, (square_rows - 3.0) * 0.05, square_depth], dim=-1)[None]
+        self.assert_close(
+            square_points,
+            torch.stack([(square_rows - 3.0) * 0.05, (square_columns - 3.0) * 0.05, square_depth], dim=-1)[None],
+        )
+        assert (square_points - opencv).abs().max().item() > 0.1
+        self.assert_close(square_points[0, 2, 2], opencv[0, 2, 2])
 
     @pytest.mark.xfail(strict=True, reason="kornia#4269: reproject_disparity_to_3D swaps u and v")
     def test_convention_reproject_disparity_uses_the_column_as_u_4269(self, device, dtype):
@@ -481,6 +517,32 @@ class TestStereoCamera(BaseTester):
         points = degenerate.reproject_disparity_to_3D(disparity)
         self.assert_close(points, torch.zeros(1, 3, 5, 3, device=device, dtype=dtype), atol=0.0, rtol=0.0)
         assert self._asymmetric_stereo(device, dtype).reproject_disparity_to_3D(disparity).abs().max().item() > 0.1
+
+    def test_wart_stereo_accepts_a_four_by_four_pair_4270(self, device, dtype):
+        # Wart pin for kornia#4270 (audit labels 5c-st-10, 5c-st-11): the per-camera shape check compares
+        # ``shape[:1]`` -- the batch dimension alone -- with (3, 4) instead of ``shape[-2:]``, so it can never
+        # fire. Only the rank check does any work: an unbatched (3, 4) pair is rejected for having 2 dimensions
+        # rather than 3, while a (B, 4, 4) pair -- a projection matrix that kept its homogeneous bottom row --
+        # sails through. The extra row is then ignored, and Q comes out (B, 4, 4) and EQUAL to the Q of the
+        # (B, 3, 4) pair, so what is wrong here is the acceptance, not the shape of Q.
+        # Snippet used to generate expected: StereoCamera(left, right) with a [0, 0, 0, 1] row appended to each
+        # camera, executed 2026-09-06 on this worktree (torch 2.14.0) -> accepted, Q shape (1, 4, 4) and
+        # torch.equal to the (1, 3, 4) pair's Q; the unbatched pair raises StereoException("Expected
+        # 'rectified_left_camera' to have 3 dimensions. Got 2."). Both hold on cpu for float32, float64,
+        # float16 and bfloat16 and on mps for float32 and float16.
+        # Pins the CURRENT behavior; NOT a contract; delete when #4270 is repaired.
+        cam = self._asymmetric_stereo(device, dtype)
+        bottom = torch.tensor([[[0.0, 0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        square = StereoCamera(
+            torch.cat([cam.rectified_left_camera, bottom], dim=-2),
+            torch.cat([cam.rectified_right_camera, bottom], dim=-2),
+        )
+        assert square.rectified_left_camera.shape == (1, 4, 4)
+        assert square.Q.shape == (1, 4, 4)
+        assert cam.Q.shape == (1, 4, 4)
+        assert torch.equal(square.Q, cam.Q)
+        with pytest.raises(StereoException, match="to have 3 dimensions"):
+            StereoCamera(cam.rectified_left_camera[0], cam.rectified_right_camera[0])
 
     def test_wart_stereo_rejects_an_empty_batch_4281(self, device, dtype):
         # Wart pin for kornia#4281 (audit label 5c-st-24): ``torch.all`` of an empty tensor is True, so the

@@ -125,7 +125,7 @@ where :math:`Q` is
     0       & 0       & -fy & fy * (cx_{left} -cx_{right})
     \end{bmatrix}
 
-The point cloud is obtained by a homogeneous transform by :math:`Q` followed by the division by :math:`W`, so an overall sign on :math:`Q` cancels in that divide: :math:`Q` and :math:`-Q` give the same points. Note that :class:`StereoCamera` does not build this matrix, nor its negation -- it evaluates the same expression at the opposite baseline. The :math:`P_1` above puts :math:`tx * fx` in the last column, while the class reads the baseline back as :math:`tx = -P_1[0, 3] / fx`, so substituting :math:`tx \rightarrow -tx` in the matrix above gives the class's :math:`Q` exactly.
+The point cloud is obtained by a homogeneous transform by :math:`Q` followed by the division by :math:`W`, so an overall sign on :math:`Q` cancels in that divide: :math:`Q` and :math:`-Q` give the same points. Note that :class:`StereoCamera` does not build the matrix above, nor its negation -- it evaluates the same expression at the opposite baseline. The :math:`P_1` above puts :math:`tx * fx` in the last column, while the class reads the baseline back as :math:`tx = -P_1[0, 3] / fx`, so substituting :math:`tx \rightarrow -tx` in the matrix above gives the class's :math:`Q` exactly.
 
 The :math:`Q[3, 3]` term carries :math:`fy * (cx_{left} - cx_{right})` for a setup whose principal points differ in :math:`cx`, but :class:`StereoCamera` rejects such a pair today: its constructor requires the two projection matrices to be equal outside the last column, so :math:`cx_{left} = cx_{right}` and that factor is zero. This is tracked in `#4270 <https://github.com/kornia/kornia/issues/4270>`_.
 
