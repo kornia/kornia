@@ -5421,6 +5421,11 @@ class TestRandomJPEG(BaseTester):
 class TestRandomDissolving(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
+    @pytest.fixture(autouse=True)
+    def _needs_diffusers(self):
+        # `diffusers` left the `dev` extra; skip rather than hit the LazyLoader prompt under --runslow.
+        pytest.importorskip("diffusers", reason='`diffusers` is not installed: pip install "kornia[sd]"')
+
     def test_batch_proc(self, device, dtype):
         images = torch.rand(4, 3, 16, 16)
         aug = RandomDissolving(p=1.0, version="1.5", cache_dir="weights/")

@@ -39,16 +39,12 @@ Issues = "https://github.com/kornia/kornia/issues"
 [project.optional-dependencies]
 dev = [
   "coverage",
-  "diffusers",
-  "onnx",
-  "onnxruntime",
-  "onnxscript",
+  "kornia[onnx]",
   "pillow",
   "pre-commit",
   "pytest",
   "pytest-timeout",
   "setuptools",  # torch.compile / triton on py3.11 + torch 2.5.1, which does not declare it there
-  "transformers<5.11",
 ]
 docs = [
   "pydata-sphinx-theme>=0.21,<0.22",  # _static/css/pydata.css and js/custom.js target theme internals
@@ -68,6 +64,8 @@ docs = [
   "sphinxcontrib-gtagjs",
   "sphinxcontrib-youtube",
 ]
+onnx = ["onnx", "onnxruntime", "onnxscript"]
+sd = ["diffusers", "transformers"]
 
 [build-system]
 requires = ["hatchling"]

@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Optional-dependency extras `kornia[onnx]` and `kornia[sd]` declare the third-party packages that
+  the ONNX and Stable-Diffusion-dissolving wrappers lazily import, and are documented on the
+  installation page. Missing-dependency errors now name the extra to install, and `dev` no longer
+  pulls `diffusers` and `transformers`. (#4301)
 * KimiVL and SigLIP2 builders load their safetensors checkpoints with kornia's own downloader
   (`kornia.core.download_hf_file`/`download_file_from_url`, which share the retrying, rate-limit-aware
   cache every other checkpoint uses) and a pure-torch reader (`kornia.core.load_safetensors`);
@@ -128,6 +132,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+* `kornia.contrib.BoxMotTracker` is removed, together with the `kornia.contrib.boxmot_tracker` module.
+  It wrapped the [boxmot](https://github.com/mikel-brostrom/boxmot) tracker zoo around a kornia detector,
+  but called the boxmot 10.x API (`boxmot.DeepOCSORT(model_weights=..., device=..., fp16=...)`), and no
+  boxmot release that installs alongside the torch versions kornia supports (`torch>=2.5.1`) provides
+  it, so the class could not be instantiated on any supported stack (see
+  [#4320](https://github.com/kornia/kornia/issues/4320)). Track with boxmot directly, feeding it the
+  output of a kornia detector such as `RTDETRDetectorBuilder`. `kornia.core.external.boxmot` is gone
+  with it. (#4301)
+
+* `SegmentationModelsBuilder.build()` no longer imports `segmentation_models_pytorch` (smp). It used
+  to take `model_name`, `encoder_name`, `encoder_weights`, `in_channels`, `classes`, `activation` and
+  `**kwargs`, import smp lazily, instantiate the smp architecture and look up the encoder's
+  preprocessing parameters itself. It now takes a constructed `nn.Module` and the encoder's
+  preprocessing-parameter dictionary (`build(model, preproc_params=None, name="segmentation_model")`),
+  where `preproc_params` is what `smp.encoders.get_preprocessing_params(encoder_name)` returns; build
+  the smp network and fetch its parameters yourself. Kornia no longer imports smp anywhere, and
+  `kornia.core.external.segmentation_models_pytorch` is gone. `SemanticSegmentation` gained the
+  `__init__(model, pre_processor, post_processor, name=None)` its siblings have, so the container the
+  builder returns can be instantiated (it was abstract before). The `input_range: [0, 255]`
+  preprocessing step is now `kornia.enhance.Rescale(255.0)`, a multiply by 255, instead of a
+  `Normalize` by a stored `1/255`: bfloat16 rounds that reciprocal to a ~254.0 multiplier (0.5 mapped
+  to 127.0 instead of 127.5), and float32 outputs of that step move by at most one ulp. (#4301)
+
+* `kornia.core.external.transformers` was removed; it was a `LazyLoader` handle no kornia code used.
+  Previously `from kornia.core.external import transformers` gave a lazy proxy that imported
+  `transformers` on first attribute access; that name no longer exists, so import `transformers`
+  directly instead. (#4301)
 * `KimiVLBuilder.from_pretrained_hf()` and `SigLip2Builder.from_pretrained_hf()` cache their
   checkpoint where every other kornia checkpoint lives. `cache_dir=None` used to mean the HuggingFace
   cache (`~/.cache/huggingface/hub/models--<owner>--<name>/snapshots/<sha>/model.safetensors`) and now
@@ -310,6 +341,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `SemanticSegmentation.visualize` works for CUDA, MPS and half-precision models. It indexed the
+  CPU-drawn colormap with the mask's `argmax`, which raises for CUDA and MPS masks, and recognised a
+  softmax head with `torch.allclose(sum, 1)` at float32-sized default tolerances, which a float16 or
+  bfloat16 sum of probabilities never meets; the tolerance now scales with the number of classes and the
+  dtype's epsilon, and the colormap follows the mask's device and dtype, so the visualization keeps the
+  model's dtype instead of coming back as float32. `OnnxLightGlue` without `onnxruntime` raises an
+  `ImportError` that names `pip install "kornia[onnx]"`, like the lazy-loader handles do, instead of a
+  bare `BaseError`. (#4301)
 * The generated example figures in the API reference are rendered from RGB input.
   `docs/generate_examples.py` decoded the sample images with `cv2.imdecode` and wrote them with
   `cv2.imwrite`, both BGR, so every tensor the examples fed to kornia held reversed channels. The two

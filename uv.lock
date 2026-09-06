@@ -815,7 +815,6 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "coverage" },
-    { name = "diffusers" },
     { name = "onnx" },
     { name = "onnxruntime" },
     { name = "onnxscript" },
@@ -824,7 +823,6 @@ dev = [
     { name = "pytest" },
     { name = "pytest-timeout" },
     { name = "setuptools" },
-    { name = "transformers" },
 ]
 docs = [
     { name = "matplotlib" },
@@ -841,18 +839,30 @@ docs = [
     { name = "sphinxcontrib-gtagjs" },
     { name = "sphinxcontrib-youtube" },
 ]
+onnx = [
+    { name = "onnx" },
+    { name = "onnxruntime" },
+    { name = "onnxscript" },
+]
+sd = [
+    { name = "diffusers" },
+    { name = "transformers" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "coverage", marker = "extra == 'dev'" },
-    { name = "diffusers", marker = "extra == 'dev'" },
+    { name = "diffusers", marker = "extra == 'sd'" },
     { name = "kornia-rs", specifier = ">=0.1.9" },
     { name = "matplotlib", marker = "extra == 'docs'" },
     { name = "numpy", specifier = ">=1.21" },
     { name = "onnx", marker = "extra == 'dev'" },
     { name = "onnx", marker = "extra == 'docs'" },
+    { name = "onnx", marker = "extra == 'onnx'" },
     { name = "onnxruntime", marker = "extra == 'dev'" },
+    { name = "onnxruntime", marker = "extra == 'onnx'" },
     { name = "onnxscript", marker = "extra == 'dev'" },
+    { name = "onnxscript", marker = "extra == 'onnx'" },
     { name = "pillow", marker = "extra == 'dev'" },
     { name = "pillow", marker = "extra == 'docs'" },
     { name = "pre-commit", marker = "extra == 'dev'" },
@@ -870,9 +880,9 @@ requires-dist = [
     { name = "sphinxcontrib-gtagjs", marker = "extra == 'docs'" },
     { name = "sphinxcontrib-youtube", marker = "extra == 'docs'" },
     { name = "torch", specifier = ">=2.5.1" },
-    { name = "transformers", marker = "extra == 'dev'", specifier = "<5.11" },
+    { name = "transformers", marker = "extra == 'sd'" },
 ]
-provides-extras = ["dev", "docs"]
+provides-extras = ["dev", "docs", "onnx", "sd"]
 
 [[package]]
 name = "kornia-rs"

@@ -37,12 +37,13 @@ class LazyLoader:
     Attributes:
         module_name: The name of the module to be lazily loaded.
         module: The actual module object, initialized to None and loaded upon first access.
+        extra: The name of the kornia optional-dependency extra that provides the module, if any.
 
     """
 
     auto_install: bool = False
 
-    def __init__(self, module_name: str, dev_dependency: bool = False) -> None:
+    def __init__(self, module_name: str, dev_dependency: bool = False, extra: Optional[str] = None) -> None:
         """Initialize the LazyLoader with the name of the module.
 
         Args:
@@ -50,11 +51,21 @@ class LazyLoader:
             dev_dependency: If the dependency is required in the dev environment.
                 If True, the module will be loaded in the dev environment.
                 If False, the module will not be loaded in the dev environment.
+            extra: The name of the kornia optional-dependency extra that installs the module, e.g. ``"onnx"``.
+                When set, the "not installed" messages tell the user to run ``pip install "kornia[<extra>]"``.
 
         """
         self.module_name = module_name
         self.module: Optional[ModuleType] = None
         self.dev_dependency = dev_dependency
+        self.extra = extra
+
+    @property
+    def _install_hint(self) -> str:
+        """Return the trailing sentence of the "not installed" messages."""
+        if self.extra is not None:
+            return f'Install it with: pip install "kornia[{self.extra}]".'
+        return "Please install it to use this functionality."
 
     def _install_package(self, module_name: str) -> None:
         logger.info(f"Installing `{module_name}` ...")
@@ -87,6 +98,7 @@ class LazyLoader:
                     to_ask = True
                     if_install = input(
                         f"Optional dependency '{self.module_name}' is not installed. "
+                        f"{self._install_hint} "
                         "You may silent this prompt by `kornia_config.lazyloader.installation_mode = 'auto'`. "
                         "Do you wish to install the dependency? [Y]es, [N]o, [A]ll."
                     )
@@ -102,16 +114,14 @@ class LazyLoader:
                             to_ask = False
                         elif if_install.lower() == "n" or if_install.lower() == "no":
                             raise ImportError(
-                                f"Optional dependency '{self.module_name}' is not installed. "
-                                f"Please install it to use this functionality."
+                                f"Optional dependency '{self.module_name}' is not installed. {self._install_hint}"
                             ) from e
                         else:
                             if_install = input("Invalid input. Please enter 'Y', 'N', or 'A'.")
 
                 elif kornia_config.lazyloader.installation_mode == InstallationMode.RAISE:
                     raise ImportError(
-                        f"Optional dependency '{self.module_name}' is not installed. "
-                        f"Please install it to use this functionality."
+                        f"Optional dependency '{self.module_name}' is not installed. {self._install_hint}"
                     ) from e
                 self.module = importlib.import_module(self.module_name)
 
@@ -151,9 +161,6 @@ class LazyLoader:
 #       installation of external modules.
 numpy = LazyLoader("numpy", dev_dependency=True)
 PILImage = LazyLoader("PIL.Image", dev_dependency=True)
-onnx = LazyLoader("onnx", dev_dependency=True)
-diffusers = LazyLoader("diffusers")
-transformers = LazyLoader("transformers")
-onnxruntime = LazyLoader("onnxruntime")
-boxmot = LazyLoader("boxmot")
-segmentation_models_pytorch = LazyLoader("segmentation_models_pytorch")
+onnx = LazyLoader("onnx", dev_dependency=True, extra="onnx")
+diffusers = LazyLoader("diffusers", extra="sd")
+onnxruntime = LazyLoader("onnxruntime", extra="onnx")
