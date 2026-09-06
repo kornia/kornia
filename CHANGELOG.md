@@ -55,8 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   restructured API reference with per-topic subpages, and a long list of fixed doc examples and
   removed dead interactive demos. Old deep links into the split module pages
   (e.g. `augmentation.module.html#kornia.augmentation.RandomAffine`) are forwarded to the subpage
-  that now documents the object, so existing links keep resolving. The previous furo layout remains
-  available with `KORNIA_DOCS_THEME=furo`. (#4155)
+  that now documents the object, so existing links keep resolving. The furo layout stayed available
+  behind `KORNIA_DOCS_THEME=furo` until #4304 removed that fallback. (#4155)
 * An **Adoption** page (`community/adoption`) listing the most-starred GitHub repositories and
   packages that depend on kornia, rendered at build time from `docs/source/_data/dependents.json`;
   `docs/fetch_dependents.py` refreshes that snapshot from GitHub's dependency graph. (#4155)
