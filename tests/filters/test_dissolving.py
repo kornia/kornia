@@ -18,7 +18,6 @@
 import pytest
 import torch
 
-from kornia.core._compat import torch_version_le
 from kornia.filters.dissolving import StableDiffusionDissolving
 
 from testing.base import BaseTester
@@ -31,10 +30,6 @@ WEIGHTS_CACHE_DIR = "weights/"
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(
-    torch_version_le(2, 0, 1),
-    reason="Skipped for torch versions <= 2.0.1: transformers clip model needs distributed tensor.",
-)
 class TestStableDiffusionDissolving(BaseTester):
     @pytest.fixture(scope="class")
     def sdm_2_1(self):
