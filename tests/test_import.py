@@ -18,6 +18,9 @@
 import subprocess
 import sys
 import textwrap
+from pathlib import Path
+
+import pytest
 
 
 def test_import_without_jit_script_deprecation():
@@ -78,9 +81,10 @@ def test_import_emits_no_warnings():
 
         import torch  # noqa: F401  # torch's own import warnings are not kornia's to fix
 
-        # Same for onnxruntime, which kornia.feature.lightglue_onnx imports eagerly when
-        # installed: its import-time platform warnings (e.g. "Unsupported Windows version
-        # (2025server)" on windows-2025 runners) are not kornia's to fix either.
+        # Same for onnxruntime, if installed: its import-time platform warnings (e.g.
+        # "Unsupported Windows version (2025server)" on windows-2025 runners) are not
+        # kornia's to fix either. `import kornia` no longer imports onnxruntime eagerly
+        # (kornia#4260), but pre-importing it here keeps the guard robust regardless.
         with contextlib.suppress(ImportError):
             import onnxruntime  # noqa: F401
 
@@ -97,3 +101,33 @@ def test_import_emits_no_warnings():
         timeout=300,
     )
     assert result.returncode == 0, f"importing kornia emitted a warning:\n{result.stderr}"
+
+
+def test_import_kornia_does_not_import_onnxruntime():
+    """``import kornia`` must not eagerly load onnxruntime, even when it is installed.
+
+    ``kornia.feature.lightglue_onnx`` used to import onnxruntime at module level, so a plain
+    ``import kornia`` loaded the ORT native extension for a class nobody had instantiated.
+    Every ONNX consumer now goes through the ``LazyLoader`` handles in
+    ``kornia.core.external``; this pin keeps it that way. See
+    https://github.com/kornia/kornia/issues/4260.
+
+    Skipped when onnxruntime is not installed, otherwise the assertion is vacuous. The child
+    interpreter runs with the repository root as its working directory so it imports the same
+    ``kornia`` as this session, even when kornia is installed editable from another checkout.
+    """
+    pytest.importorskip("onnxruntime")
+
+    import kornia
+
+    repo_root = Path(kornia.__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "-c", "import kornia, sys; print('onnxruntime' in sys.modules)"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, f"importing kornia failed:\n{result.stderr}"
+    assert result.stdout.strip() == "False", f"import kornia loaded onnxruntime:\n{result.stdout}{result.stderr}"
