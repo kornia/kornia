@@ -305,7 +305,16 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     y = torch.gather(y_roots, -1, best_idx).squeeze(-1)
     R_sq = torch.gather(R_sq_candidates, -1, best_idx).squeeze(-1)
 
-    R = torch.sqrt(torch.clamp(R_sq, min=0.0))
+    # `clamp(min=0).sqrt()` does not guard the gradient: d(sqrt)/dx is unbounded at 0, and on
+    # torch < 2.14 clamp passes the incoming gradient straight through at the bound (#4229), so
+    # R_sq == 0 -- a biquadratic such as x^4 - 16 -- gave inf and then nan. Substitute a safe
+    # radicand instead, as solve_quadratic above already does, so sqrt is never differentiated at 0.
+    mask_R_sq_positive = R_sq > 0
+    R = torch.where(
+        mask_R_sq_positive,
+        torch.sqrt(torch.where(mask_R_sq_positive, R_sq, torch.ones_like(R_sq))),
+        torch.zeros_like(R_sq),
+    )
 
     # Compute E term
     mask_R_small = torch.abs(R) < zero_tol
@@ -320,7 +329,13 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # Fallback for R approx 0
     if torch.any(mask_R_small):
         radicand = 0.25 * y[mask_R_small] * y[mask_R_small] - D[mask_R_small]
-        E[mask_R_small] = torch.sqrt(torch.clamp(radicand, min=0.0))
+        # Same guard as for R above.
+        mask_radicand_positive = radicand > 0
+        E[mask_R_small] = torch.where(
+            mask_radicand_positive,
+            torch.sqrt(torch.where(mask_radicand_positive, radicand, torch.ones_like(radicand))),
+            torch.zeros_like(radicand),
+        )
 
     # Solve two resulting quadratic equations
     # Quad 1: x^2 + (A/2 - R)x + (y/2 - E) = 0

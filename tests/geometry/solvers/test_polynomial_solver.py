@@ -410,3 +410,33 @@ class TestQuarticSolver(BaseTester):
             requires_grad=True,
         )
         self.gradcheck(solver.solve_quartic, (coeffs,), raise_exception=True, fast_mode=True)
+
+    @pytest.mark.parametrize(
+        ("coeffs", "expected"),
+        [
+            # x^4 - 16 = (x^2-4)(x^2+4): two real roots, +-2.
+            ([1.0, 0.0, 0.0, 0.0, -16.0], [2.0, -2.0]),
+            # x^4 - 1 = (x^2-1)(x^2+1): two real roots, +-1.
+            ([1.0, 0.0, 0.0, 0.0, -1.0], [1.0, -1.0]),
+        ],
+    )
+    def test_convention_gradient_is_finite_for_a_pure_biquadratic_4229(self, coeffs, expected, device, dtype):
+        # A quartic with no x^3 and no x^2 term puts R_sq exactly on 0, and
+        # `torch.clamp(R_sq, min=0.0).sqrt()` does not guard that: d(sqrt)/dx is unbounded at 0,
+        # and on torch < 2.14 clamp passes the incoming gradient through at the bound rather
+        # than zeroing it (#4229). kornia supports torch>=2.5.1, so the guard was a no-op on the
+        # older half of the supported range and the backward returned nan.
+        c = torch.tensor([coeffs], device=device, dtype=dtype, requires_grad=True)
+        roots = solver.solve_quartic(c)
+        roots.sum().backward()
+
+        assert bool(torch.isfinite(c.grad).all()), c.grad
+        # The forward pass was always correct; pin it, so a fix that repairs the gradient by
+        # moving the value is caught here.
+        real = torch.sort(roots.detach()[0][:2]).values
+        self.assert_close(
+            real,
+            torch.sort(torch.tensor(expected, device=device, dtype=dtype)).values,
+            rtol=1e-4,
+            atol=1e-4,
+        )
