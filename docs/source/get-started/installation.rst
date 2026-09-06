@@ -77,9 +77,12 @@ extra covers it -- only the contributor ``dev`` and ``docs`` environments instal
    * - ``segmentation``
      - :class:`~kornia.models.segmentation.segmentation_models.SegmentationModelsBuilder`
      - ``pip install "kornia[segmentation]"``
-   * - ``dev``, ``docs``
-     - Contributor environments: test, lint and documentation toolchains
+   * - ``dev``
+     - Contributor environment: the test and lint toolchain (includes ``kornia[onnx]``)
      - ``pip install -e ".[dev]"``
+   * - ``docs``
+     - Documentation toolchain, on top of ``dev``
+     - ``pip install -e ".[dev,docs]"``
 
 Independently of the extras, the ``visualize`` and ``save`` helpers of the model wrappers need
 `pillow <https://pypi.org/project/pillow/>`_ for ``output_type="pil"``. No feature extra installs

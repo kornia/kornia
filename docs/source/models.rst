@@ -78,7 +78,7 @@ SegmentationModelsBuilder
 
 The `SegmentationModelsBuilder` class offers a flexible API for building and running segmentation models from the
 optional `segmentation_models_pytorch <https://github.com/qubvel-org/segmentation_models.pytorch>`_ package
-(``pip install segmentation_models_pytorch``). It supports a variety of architectures such as UNet, FPN, DeepLabV3 and
+(``pip install "kornia[segmentation]"``). It supports a variety of architectures such as UNet, FPN, DeepLabV3 and
 others, with ImageNet-pretrained encoders.
 
 **Key Methods:**
@@ -144,8 +144,8 @@ BoxMotTracker
 -------------
 
 The `BoxMotTracker` class is used for multi-object tracking in video streams. It combines a Kornia object detector with
-a tracker from the optional `boxmot <https://github.com/mikel-brostrom/boxmot>`_ package (``pip install boxmot``) to
-track bounding boxes across frames.
+a tracker from the optional `boxmot <https://github.com/mikel-brostrom/boxmot>`_ package
+(``pip install "kornia[tracking]"``) to track bounding boxes across frames.
 
 **Key Methods:**
 
