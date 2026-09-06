@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, Union
 
 import torch
@@ -41,6 +42,32 @@ _URLs = {
 
 
 # TODO: support patching -> SR -> unpatching pipeline
+@dataclass
+class SuperResolutionConfig:
+    """Configuration to construct a :class:`SuperResolution` model.
+
+    The fields mirror the arguments accepted by :class:`RRDBNetBuilder` and
+    :class:`SmallSRBuilder`, so a config can drive either builder.
+
+    Args:
+        model_name: Name of the model variant to build. RRDB variants are
+            ``"RealESRGAN_x4plus"``, ``"RealESRNet_x4plus"``,
+            ``"RealESRGAN_x4plus_anime_6B"`` and ``"RealESRGAN_x2plus"``;
+            the lightweight variant is ``"small_sr"``.
+        pretrained: If ``True``, load pretrained weights for the selected variant.
+        upscale_factor: Integer scale used by the lightweight variant. Ignored by
+            the RRDB variants, whose scale is fixed by ``model_name``.
+        image_size: Optional fixed input size for the lightweight variant. When
+            provided, output metadata is configured as ``image_size * upscale_factor``.
+
+    """
+
+    model_name: str = "small_sr"
+    pretrained: bool = True
+    upscale_factor: int = 3
+    image_size: Optional[int] = None
+
+
 class SuperResolution(ModelBase, ONNXExportMixin):
     """SuperResolution is a module that wraps an super resolution model."""
 
@@ -48,6 +75,55 @@ class SuperResolution(ModelBase, ONNXExportMixin):
     input_image_size: Optional[int]
     output_image_size: Optional[int]
     pseudo_image_size: Optional[int]
+
+    def __init__(
+        self,
+        model: nn.Module,
+        pre_processor: nn.Module,
+        post_processor: nn.Module,
+        name: Optional[str] = None,
+    ) -> None:
+        """Initialize SuperResolution.
+
+        Args:
+            model: The super-resolution network.
+            pre_processor: Pre-processing module applied to the input images.
+            post_processor: Post-processing module applied to the network output.
+            name: Optional name, used by :meth:`save` for file names.
+
+        """
+        super().__init__()
+        self.model = model.eval()
+        self.pre_processor = pre_processor
+        self.post_processor = post_processor
+        if name is not None:
+            self.name = name
+
+    @staticmethod
+    def from_config(config: SuperResolutionConfig) -> "SuperResolution":
+        """Build a super-resolution model from a configuration object.
+
+        Dispatches to :class:`SmallSRBuilder` for the lightweight variant and to
+        :class:`RRDBNetBuilder` for the RRDB variants.
+
+        Args:
+            config: Super-resolution configuration. See :class:`SuperResolutionConfig`.
+
+        Returns:
+            A :class:`SuperResolution` wrapper ready for inference.
+
+        Raises:
+            ValueError: If ``config.model_name`` is not a supported variant.
+
+        """
+        if config.model_name.lower() == "small_sr":
+            return SmallSRBuilder.build(
+                model_name=config.model_name,
+                pretrained=config.pretrained,
+                upscale_factor=config.upscale_factor,
+                image_size=config.image_size,
+            )
+        return RRDBNetBuilder.build(model_name=config.model_name, pretrained=config.pretrained)
 
     @torch.inference_mode()
     def forward(self, images: Union[torch.Tensor, List[torch.Tensor]]) -> Union[torch.Tensor, List[torch.Tensor]]:

@@ -488,6 +488,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now built in `float32` and `float16`/`bfloat16` results are byte-identical to `float32`/`float64`.
   `RandomErasing` and `RandomCutMixV2` build their masks through it. (#4336)
 
+* `kornia.contrib.super_resolution` builders construct again. `SuperResolution` never implemented
+  `ModelBase`'s abstract `from_config` and defined no `__init__`, so `SmallSRBuilder.build()` and
+  `RRDBNetBuilder.build()` both raised `TypeError` at construction — the whole public
+  super-resolution entry point had been unreachable since the models refactor made `from_config`
+  abstract. It now has a `SuperResolutionConfig` and a `from_config` that dispatches to either
+  builder family, and both builders are covered by tests. (#4291)
+
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
   `kornia_rs.io`, and kornia kept calling the root, so on 0.1.11 and newer `load_image` raised
