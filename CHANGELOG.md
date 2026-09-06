@@ -132,6 +132,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking changes
 
+* `kornia_rs>=0.1.14` is required; the floor used to be 0.1.9. kornia_rs 0.1.11 relocated its image I/O
+  and 0.1.12/0.1.13 lack the libjpeg-turbo reader, so no single call site works across 0.1.9-0.1.14;
+  rather than dispatch per version, kornia calls the current layout. `pip install -U kornia_rs` on an
+  environment that pins an older one. (#4326)
 * `kornia.contrib.BoxMotTracker` is removed, together with the `kornia.contrib.boxmot_tracker` module.
   It wrapped the [boxmot](https://github.com/mikel-brostrom/boxmot) tracker zoo around a kornia detector,
   but called the boxmot 10.x API (`boxmot.DeepOCSORT(model_weights=..., device=..., fp16=...)`), and no
@@ -347,19 +351,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
-* `kornia.io` works on every released kornia_rs again, including the 0.1.14 that a plain
-  `pip install kornia` resolves. kornia_rs 0.1.11 moved its image readers and writers from the package
-  root into `kornia_rs.io`, and kornia kept calling the root, so on 0.1.11 and newer `load_image` raised
+* `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
+  resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
+  `kornia_rs.io`, and kornia kept calling the root, so on 0.1.11 and newer `load_image` raised
   `AttributeError` for every JPEG and every PNG that is not plain RGB, and `write_image` raised for
-  TIFF, 16-bit and float32 output (8-bit JPEG and PNG writes still worked). kornia now looks each
-  function up in `kornia_rs.io` and then the root at call time, uses the generic decoder for JPEG on
-  0.1.12 and 0.1.13 (which have no libjpeg-turbo reader at all), and names the kornia_rs version in the
-  error if a function is missing. On 0.1.11 and newer the decoder also reads 16-bit PNG/TIFF and float
-  TIFF, which 0.1.10 rejected: `ImageLoadType.UNCHANGED` returns them as `uint16`/`float32`, and the
-  8-bit load types raise a `NotImplementedError` that says so instead of mislabelling the tensor. The
-  declared floor stays `kornia_rs>=0.1.9`, the lock moves to 0.1.14, and the nightly PyPI job now imports
-  the installed wheel from outside the checkout (it used to import the source tree) and round-trips an
-  image instead of only importing. (#4326)
+  TIFF, 16-bit and float32 output (8-bit JPEG and PNG writes still worked); the lock's 0.1.10 kept CI
+  green. kornia now calls `kornia_rs.io` and requires kornia_rs 0.1.14 (see *Breaking changes*). That
+  decoder also reads 16-bit PNG/TIFF and float TIFF, which 0.1.10 rejected: `ImageLoadType.UNCHANGED`
+  returns them as `uint16`/`float32`, and the 8-bit load types raise a `NotImplementedError` that says
+  so instead of mislabelling the tensor. The nightly PyPI job now imports the installed wheel from
+  outside the checkout (it used to import the source tree) and round-trips an image instead of only
+  importing. (#4326)
 * `SemanticSegmentation.visualize` works for CUDA, MPS and half-precision models. It indexed the
   CPU-drawn colormap with the mask's `argmax`, which raises for CUDA and MPS masks, and recognised a
   softmax head with `torch.allclose(sum, 1)` at float32-sized default tolerances, which a float16 or

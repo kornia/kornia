@@ -853,7 +853,7 @@ sd = [
 requires-dist = [
     { name = "coverage", marker = "extra == 'dev'" },
     { name = "diffusers", marker = "extra == 'sd'" },
-    { name = "kornia-rs", specifier = ">=0.1.9" },
+    { name = "kornia-rs", specifier = ">=0.1.14" },
     { name = "matplotlib", marker = "extra == 'docs'" },
     { name = "numpy", specifier = ">=1.21" },
     { name = "onnx", marker = "extra == 'dev'" },

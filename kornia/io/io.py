@@ -19,64 +19,14 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any, Union
 
-import kornia_rs
 import torch
+from kornia_rs import io as _rs_io
 
 import kornia
 from kornia.core.check import KORNIA_CHECK
 from kornia.image.utils import image_to_tensor, tensor_to_image
-
-
-class _KorniaRsImageIO:
-    """Look up kornia_rs's image readers and writers in whichever namespace this kornia_rs version keeps them.
-
-    kornia_rs 0.1.9 and 0.1.10 export ``read_image_*``/``write_image_*`` from the package root and have no
-    ``io`` submodule. 0.1.11 moved them into ``kornia_rs.io``, replaced the root ``read_image_any`` with
-    ``kornia_rs.io.read_image`` (the root one survives, deprecated) and kept only the uint8 JPEG/PNG writers at
-    the root; 0.1.12 and 0.1.13 dropped ``read_image_jpegturbo`` even from ``io``; 0.1.14 brought it back.
-    Every lookup happens at call time, first in ``kornia_rs.io`` and then at the root, so one code path serves
-    all five layouts and a missing function fails with a message that names the version.
-    """
-
-    def __init__(self, module: Any) -> None:
-        self._module = module
-        io_namespace = getattr(module, "io", None)
-        self._namespaces = (io_namespace, module) if io_namespace is not None else (module,)
-
-    def find(self, name: str) -> Optional[Callable[..., Any]]:
-        """Return the function called ``name``, or ``None`` if this kornia_rs has no such function."""
-        for namespace in self._namespaces:
-            function = getattr(namespace, name, None)
-            if callable(function):
-                return function
-        return None
-
-    def __getattr__(self, name: str) -> Callable[..., Any]:
-        if name.startswith("_"):  # introspection (``inspect``, doctest collection, copy) probes dunder names
-            raise AttributeError(name)
-        function = self.find(name)
-        if function is None:
-            version = getattr(self._module, "__version__", "?")
-            raise ImportError(
-                f"kornia_rs {version} has no image I/O function {name!r}; install kornia_rs>=0.1.14 "
-                "(pip install -U kornia_rs)."
-            )
-        return function
-
-
-_rs_io = _KorniaRsImageIO(kornia_rs)
-
-
-def _read_image_any(path: str) -> Any:
-    """Decode any supported container to HxWxC: ``kornia_rs.io.read_image``, or ``read_image_any`` before 0.1.11."""
-    return (_rs_io.find("read_image") or _rs_io.read_image_any)(path)
-
-
-def _read_image_jpeg(path: str) -> Any:
-    """Decode a JPEG with libjpeg-turbo when this kornia_rs exposes it (all but 0.1.12/0.1.13), else generically."""
-    return (_rs_io.find("read_image_jpegturbo") or _read_image_any)(path)
 
 
 def _color_mode(img_np: Any) -> str:
@@ -113,9 +63,9 @@ def _read_png_color_type(path_file: Path) -> int | None:
 
 
 # Map PNG color type byte to kornia_rs read mode.
-# Types not listed here fall through to the any-format reader (which handles RGB).
+# Types not listed here fall through to ``kornia_rs.io.read_image`` (which handles RGB).
 # Note: color type 4 (Grayscale+Alpha) is intentionally omitted: no kornia_rs
-# release decodes it, so the any-format reader raises for such a file.
+# release decodes it, so ``read_image`` raises for such a file.
 _PNG_COLOR_TYPE_TO_MODE: dict[int, str] = {
     0: "mono",  # Grayscale
     3: "mono",  # Indexed (palette) — decoded as single channel by kornia_rs
@@ -138,18 +88,18 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
     """
     # read image and return as `np.ndarray` with shape HxWxC
     if path_file.suffix.lower() in [".jpg", ".jpeg"]:
-        img = _read_image_jpeg(str(path_file))
+        img = _rs_io.read_image_jpegturbo(str(path_file))
     elif path_file.suffix.lower() == ".png":
         color_type = _read_png_color_type(path_file)
-        # None (truncated/invalid header) intentionally falls through to the any-format reader
+        # None (truncated/invalid header) intentionally falls through to read_image
         mode = _PNG_COLOR_TYPE_TO_MODE.get(color_type)
         if mode is None or mode == "rgb":
-            # RGB is the default of the any-format reader; use it for unknown types too
-            img = _read_image_any(str(path_file))
+            # RGB is the default of read_image; use it for unknown types too
+            img = _rs_io.read_image(str(path_file))
         else:
             img = _rs_io.read_image_png_u8(str(path_file), mode)
     else:
-        img = _read_image_any(str(path_file))
+        img = _rs_io.read_image(str(path_file))
 
     # convert the image to torch.Tensor with shape CxHxW
     img_t = image_to_tensor(img, keepdim=True)
@@ -176,8 +126,8 @@ def _convert_image_type(image: torch.Tensor, desired_type: ImageLoadType) -> tor
     """Convert a raw CxHxW uint8 image tensor to the desired type.
 
     ``UNCHANGED`` returns whatever the decoder produced, so a 16-bit PNG or TIFF comes back as ``uint16`` and a
-    float TIFF as ``float32`` on kornia_rs 0.1.11 and newer (0.1.10 cannot decode them at all). Every other
-    load type is defined for 8-bit input; asking for one on a wider decode raises rather than mislabelling it.
+    float TIFF as ``float32``. Every other load type is defined for 8-bit input; asking for one on a wider
+    decode raises rather than mislabelling it.
     """
     channels = image.shape[0]
 
