@@ -20,7 +20,8 @@
 Adapted from BasicSR (https://github.com/XPixelGroup/BasicSR), Copyright 2018-2022 BasicSR Authors,
 Apache-2.0. Modified: type hints, docstrings and minor structural adaptation; the vendored
 ``pixel_unshuffle`` helper is expressed as :func:`torch.nn.functional.pixel_unshuffle`
-(byte-identical). The arithmetic is unchanged.
+(byte-identical); :class:`RRDBNet` rejects a ``scale`` outside ``{1, 2, 4}`` with a ``ValueError``
+where upstream silently upsamples by 4. The arithmetic is unchanged.
 
 The module and parameter names are kept identical to upstream so that the published Real-ESRGAN
 checkpoints load with ``strict=True``.
@@ -152,6 +153,9 @@ class RRDBNet(nn.Module):
           2, and for ``scale=1`` by 4.
         - Output: :math:`(B, C_{out}, H \cdot scale, W \cdot scale)`.
 
+    Raises:
+        ValueError: If ``scale`` is not ``1``, ``2`` or ``4``.
+
     Example:
         >>> import torch
         >>> model = RRDBNet(num_in_ch=3, num_out_ch=3, scale=4, num_feat=8, num_block=1, num_grow_ch=4)
@@ -170,6 +174,10 @@ class RRDBNet(nn.Module):
         num_grow_ch: int = 32,
     ) -> None:
         super().__init__()
+        if scale not in (1, 2, 4):
+            # Upstream lets any other value fall through to the x4 path: `conv_first` is then built
+            # for the un-shuffled input and the output is 4x, not `scale`x, with no error.
+            raise ValueError(f"scale must be 1, 2 or 4, got {scale}")
         self.scale = scale
         if scale == 2:
             num_in_ch = num_in_ch * 4
