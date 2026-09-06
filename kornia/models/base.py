@@ -47,7 +47,8 @@ def _to_writable_png(image: torch.Tensor) -> torch.Tensor:
     conversion is to ``uint8`` -- the same thing ``ImageModule`` already does
     before handing a tensor to PIL. Values are clamped first: a visualization
     that overshoots ``[0, 1]`` would otherwise wrap and put black where it
-    should be white. Integer images pass through untouched.
+    should be white. Non-float images pass through untouched, so a ``uint8``
+    or ``uint16`` visualization is written as-is.
     """
     if not image.is_floating_point():
         return image
