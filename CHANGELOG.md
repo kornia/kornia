@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directory (`<torch hub dir>/checkpoints/<owner>--<name>--model.safetensors`), so the first
   `from_pretrained_hf()` call after upgrading re-downloads the checkpoint (854 MB for KimiVL,
   ~1.5 GB for SigLIP2) even for users who already had it. (#4293)
+* Optional-dependency extras `kornia[onnx]`, `kornia[sd]`, `kornia[tracking]` and
+  `kornia[segmentation]` declare the third-party packages that the ONNX, Stable-Diffusion-dissolving,
+  tracking and segmentation-model wrappers lazily import, and are documented on the installation
+  page. Missing-dependency errors now name the extra to install, and `dev` no longer pulls
+  `diffusers` and `transformers`. (#4301)
 
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
@@ -131,6 +136,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-tree MPS workarounds stay. (#4202)
 
 ### Breaking changes
+
+* `kornia.core.external.transformers` was removed; it was a `LazyLoader` handle no kornia code used.
+  Previously `from kornia.core.external import transformers` gave a lazy proxy that imported
+  `transformers` on first attribute access; that name no longer exists, so import `transformers`
+  directly instead. (#4301)
 
 * Non-maxima suppression applies one border rule at every window size. `NonMaximaSuppression2d` /
   `nms2d` with a window larger than `(7, 7)`, and `NonMaximaSuppression3d` / `nms3d`, no longer report

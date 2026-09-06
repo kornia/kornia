@@ -23,6 +23,10 @@ from kornia.filters.dissolving import StableDiffusionDissolving
 
 from testing.base import BaseTester
 
+# `StableDiffusionDissolving` lazily imports `diffusers`, which ships in the `kornia[sd]` extra and
+# is therefore absent from the default dev environment.
+pytest.importorskip("diffusers", reason='`diffusers` is not installed. Install it with: pip install "kornia[sd]"')
+
 WEIGHTS_CACHE_DIR = "weights/"
 
 

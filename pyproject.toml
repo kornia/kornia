@@ -39,17 +39,13 @@ Issues = "https://github.com/kornia/kornia/issues"
 [project.optional-dependencies]
 dev = [
   "coverage",
-  "diffusers",
-  "onnx",
-  "onnxruntime",
-  "onnxscript",
+  "kornia[onnx]",
   "pillow",
   "pre-commit",
   "pytest",
   "pytest-timeout",
   "requests",
   "setuptools",  # torch.compile / triton on py3.11 + torch 2.5.1, which does not declare it there
-  "transformers<5.11",
 ]
 docs = [
   "furo",
@@ -70,6 +66,10 @@ docs = [
   "sphinxcontrib-gtagjs",
   "sphinxcontrib-youtube",
 ]
+onnx = ["onnx", "onnxruntime", "onnxscript"]
+sd = ["diffusers", "transformers"]
+segmentation = ["segmentation_models_pytorch"]
+tracking = ["boxmot"]
 
 [build-system]
 requires = ["hatchling"]
