@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Documented the `kornia.sensors.camera` conventions (`Vector`-typed inputs, the per-model `params`
+  layout, the shared half-pixel `scale` rule, numerical agreement with `kornia.geometry.camera` on the
+  pinhole path) and added executable pins, with the unimplemented models, the scalar-depth device defect
+  and the unvalidated base-class parameters tracked in dedicated issues; the three non-pinhole models now
+  appear on the sensors documentation page. (#4318)
+
 * Repeatable Oxford affine local-feature benchmarks for SIFT, SIFT-AffNet-HardNet, and
   KeyNet-HardNet, with eager/compiled median/IQR speed, homography corner error, and JSON output;
   historical scale-space SIFT CPU/CUDA batch-runtime comparisons and plotting. (#4254)
