@@ -1448,9 +1448,7 @@ class Boxes3D:
 
         .. warning::
             The rounding split with :func:`~kornia.geometry.bbox.bbox_to_mask3d` is tracked in
-            `#4015 <https://github.com/kornia/kornia/issues/4015>`_. That function also fills the whole volume for
-            a box that covers or overhangs a full axis, where this method fills the clamped region; tracked in
-            `#4255 <https://github.com/kornia/kornia/issues/4255>`_.
+            `#4015 <https://github.com/kornia/kornia/issues/4015>`_.
 
         Args:
             depth: depth of the masked image/images.

@@ -431,12 +431,12 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
     y = torch.arange(D1, device=boxes.device, dtype=torch.long)
     x = torch.arange(D2, device=boxes.device, dtype=torch.long)
 
-    # Intersection of the three broadcast axis slabs, computed directly with `&`. (kornia#4255:
-    # this used to `|` the three slabs and recover the intersection with a three-way `all()`
-    # reduction/product; that recovery breaks the moment any one slab covers a whole axis, since
-    # the union is then all-true on that axis and the reduction can no longer see the other two
-    # slabs' bounds. `&` needs no such recovery step -- each broadcast slab already carries its
-    # own axis's bound at every position, so the elementwise intersection is exactly the answer.)
+    # Intersection of the three broadcast axis slabs, computed directly with `&`. This used to
+    # `|` the three slabs and recover the intersection with a three-way `all()` reduction/product;
+    # that recovery breaks the moment any one slab covers a whole axis, since the union is then
+    # all-true on that axis and the reduction can no longer see the other two slabs' bounds. `&`
+    # needs no such recovery step -- each broadcast slab already carries its own axis's bound at
+    # every position, so the elementwise intersection is exactly the answer.
     m = (
         ((z[None, :] >= z_min[:, None]) & (z[None, :] <= z_max[:, None]))[:, None, :, None, None]
         & ((y[None, :] >= y_min[:, None]) & (y[None, :] <= y_max[:, None]))[:, None, None, :, None]
