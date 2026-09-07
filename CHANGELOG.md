@@ -360,6 +360,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existing checkpoints are unaffected), and `forward` casts into a local variable rather than depending
   on the caller having matched dtype. Same bug shape as #4069/#4079 in a different class; the normal
   `float32` path is byte-identical to before. (#4319)
+* `jpeg_codec_differentiable` no longer returns an all-`NaN` image at `jpeg_quality=0`, a value inside the
+  `[0, 100]` range it documents and validates. `_jpeg_quality_to_scale` divides `5000` by the quality on the
+  `< 50` branch, which is `inf` at `0`, and the polynomial floor of `inf` is `NaN`, poisoning the image and
+  its gradient. A quality of exactly `0` is now given the scale of quality `1`, which is the table libjpeg
+  gives quality `0`. The guard is that one point: a fractional quality in `(0, 1)` was already finite, keeps
+  its own larger scale, and is untouched, so this endpoint is not the limit of the formula from above.
+  Output and gradients for every quality `> 0` are byte-identical. The tests drew
+  the quality with `torch.randint(low=0, high=100)` unseeded at sixteen sites, so roughly one run in twenty of
+  `tests/enhance/test_jpeg.py` went red on any job; the draws now start at `1` and the boundary has pinned
+  cases of its own. (#4205)
 
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
@@ -384,6 +394,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model's dtype instead of coming back as float32. `OnnxLightGlue` without `onnxruntime` raises an
   `ImportError` that names `pip install "kornia[onnx]"`, like the lazy-loader handles do, instead of a
   bare `BaseError`. (#4301)
+* `PinholeCamera.from_parameters` now fills `height` and `width` for the whole batch. It built them with
+  `height_tmp[..., 0] += height` on a `(B,)` zero tensor, so every batch element after the first kept `0`
+  while `fx`, `fy`, `cx`, `cy`, `tx`, `ty` and `tz` were broadcast correctly, and the camera looked healthy
+  until something read its image size. `batch_size=1`, the only case that worked, is unchanged. (#4279)
 * `unproject_meshgrid` now returns the documented `(*, H, W, 3)` shape when `W` is 1. It squeezed the
   meshgrid with a bare `.squeeze()`, which drops the width axis along with the leading batch axis whenever
   `W == 1`, so `unproject_meshgrid(1, 3, K)` and `unproject_meshgrid(3, 1, K)` returned the same shape with
@@ -440,6 +454,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   drops the failure count to 1,269 — a real, separate residual (a disconnected-graph case with
   two simultaneous double-root pairs) remains and is tracked in #4290, not fixed here.
 
+* `pixel2cam` now rejects depth tensors outside the documented `Bx1xHxW` shape. The guard's predicate
+  bound as `(ndim != 4) and (shape[1] == 1)`, so four-dimensional multi-channel depth bypassed the
+  channel check — a three-channel depth silently broadcast into separate camera coordinates — while
+  scalar and one-dimensional inputs raised `IndexError` from the guard itself. Code that passed those
+  shapes and relied on them being accepted now raises `ValueError`. Valid `Bx1xHxW` depth is unaffected
+  and its output is unchanged. (#4314)
 * `ConvQuadInterp3d` / `conv_quad_interp3d` no longer return NaN gradients for `float16` input. The
   Hessian determinant `_solve_cramer_sym3x3` divides by is a product of three second derivatives, so for
   a `[0, 1]` response it lands around 1e-4 and below and still clears the `eps` gate. The forward divides
