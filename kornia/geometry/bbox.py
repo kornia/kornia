@@ -99,7 +99,7 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
 
 
 def validate_bbox3d(boxes: torch.Tensor) -> bool:
-    """Validate that a 3D box has equal inclusive edge extents along each axis, raising when it does not.
+    r"""Validate that a 3D box has equal inclusive edge extents along each axis, raising when it does not.
 
     Convention:
         Vertices use inclusive coordinates in the order front-top-left, front-top-right, front-bottom-right,
@@ -356,7 +356,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
 
 
 def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Tensor:
-    """Convert 3D bounding boxes to masks. Covered area is 1. and the remaining is 0.
+    r"""Convert 3D bounding boxes to masks. Covered area is 1. and the remaining is 0.
 
     Convention:
         ``size`` is ``(depth, height, width)`` and the mask comes back as :math:`(B, 1, depth, height, width)` in
