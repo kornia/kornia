@@ -58,5 +58,36 @@ class TestSuperResolutionBuilders(BaseTester):
         assert out.shape[1] == 3
 
     def test_from_config_rejects_unknown_model_name(self):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="small_sr"):
             SuperResolution.from_config(SuperResolutionConfig(model_name="not_a_model", pretrained=False))
+
+    @pytest.mark.parametrize("builder", [SmallSRBuilder, RRDBNetBuilder])
+    def test_onnx_metadata_is_initialised(self, builder):
+        """``to_onnx`` reads these three; without defaults they are annotations only.
+
+        Regression test for the review of #4335: an ``__init__`` that does not set them
+        leaves export raising ``AttributeError``.
+        """
+        model = builder.build(pretrained=False)
+        assert model.pseudo_image_size is None or isinstance(model.pseudo_image_size, int)
+        assert model.input_image_size is None or isinstance(model.input_image_size, int)
+        assert model.output_image_size is None or isinstance(model.output_image_size, int)
+
+    def test_rrdbnet_onnx_metadata_defaults_to_none(self):
+        """``RRDBNetBuilder`` sets none of the three, so they must default to ``None``."""
+        model = RRDBNetBuilder.build(pretrained=False)
+        assert model.input_image_size is None
+        assert model.output_image_size is None
+        assert model.pseudo_image_size is None
+
+    @pytest.mark.parametrize("builder", [SmallSRBuilder, RRDBNetBuilder])
+    def test_to_onnx_exports(self, builder):
+        """Both families export; this fails with ``AttributeError`` if the metadata is unset."""
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        builder.build(pretrained=False).to_onnx(save=False)
+
+    def test_small_sr_output_image_size_uses_upscale_factor(self):
+        """``output_image_size`` follows the documented ``image_size * upscale_factor``."""
+        model = SmallSRBuilder.build(pretrained=False, upscale_factor=2, image_size=32)
+        assert model.output_image_size == 64

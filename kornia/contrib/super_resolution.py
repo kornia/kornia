@@ -31,7 +31,7 @@ from kornia.models.rrdbnet import RRDBNet
 from kornia.models.small_sr import SmallSRNetWrapper
 from kornia.onnx.download import CachedDownloader
 
-__all__ = ["RRDBNetBuilder", "SmallSRBuilder", "SuperResolution"]
+__all__ = ["RRDBNetBuilder", "SmallSRBuilder", "SuperResolution", "SuperResolutionConfig"]
 
 _URLs = {
     "RealESRGAN_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
@@ -68,7 +68,7 @@ class SuperResolutionConfig:
     image_size: Optional[int] = None
 
 
-class SuperResolution(ModelBase, ONNXExportMixin):
+class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
     """SuperResolution is a module that wraps an super resolution model."""
 
     name: str = "super_resolution"
@@ -98,6 +98,12 @@ class SuperResolution(ModelBase, ONNXExportMixin):
         self.post_processor = post_processor
         if name is not None:
             self.name = name
+        # `to_onnx` reads these three; builders overwrite the ones they know.
+        # Without defaults they are annotations only, and export raises
+        # AttributeError.
+        self.input_image_size = None
+        self.output_image_size = None
+        self.pseudo_image_size = None
 
     @staticmethod
     def from_config(config: SuperResolutionConfig) -> "SuperResolution":
@@ -122,6 +128,12 @@ class SuperResolution(ModelBase, ONNXExportMixin):
                 pretrained=config.pretrained,
                 upscale_factor=config.upscale_factor,
                 image_size=config.image_size,
+            )
+        if config.model_name not in _URLs:
+            raise ValueError(
+                f"Model {config.model_name} not found. Please choose from 'small_sr', "
+                "'RealESRGAN_x4plus', 'RealESRNet_x4plus', 'RealESRGAN_x4plus_anime_6B', "
+                "'RealESRGAN_x2plus'."
             )
         return RRDBNetBuilder.build(model_name=config.model_name, pretrained=config.pretrained)
 
@@ -338,6 +350,6 @@ class SmallSRBuilder:
             sr.pseudo_image_size = 224
         else:
             sr.input_image_size = image_size
-            sr.output_image_size = image_size * 3
+            sr.output_image_size = image_size * upscale_factor
             sr.pseudo_image_size = image_size
         return sr
