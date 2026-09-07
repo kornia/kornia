@@ -351,6 +351,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `RenderingDeFMO` (used by `DeFMO`) no longer crashes on a half-precision forward pass. Its rendering
+  time-steps (`times`) were a plain Python attribute, not a registered buffer, so `nn.Module.to()` never
+  moved it; `forward` re-derived `times`'s device from the input on every call but never its dtype, so
+  `RenderingDeFMO().half()` left `times` at `float32` and the first forward raised `RuntimeError: Input
+  type (torch.FloatTensor) and weight type (torch.HalfTensor) should be the same`. `times` is now a
+  non-persistent buffer (it is fully determined by `tsr_steps`, not learned, so `state_dict()` keys and
+  existing checkpoints are unaffected), and `forward` casts into a local variable rather than depending
+  on the caller having matched dtype. Same bug shape as #4069/#4079 in a different class; the normal
+  `float32` path is byte-identical to before. (#4319)
 * `jpeg_codec_differentiable` no longer returns an all-`NaN` image at `jpeg_quality=0`, a value inside the
   `[0, 100]` range it documents and validates. `_jpeg_quality_to_scale` divides `5000` by the quality on the
   `< 50` branch, which is `inf` at `0`, and the polynomial floor of `inf` is `NaN`, poisoning the image and
@@ -376,7 +385,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * `distance_transform` no longer returns NaN gradients when the cascade's convolution is exactly zero, including
   sparse masks and all-zero inputs; the existing forward output is unchanged. (#4232)
-
 
 * `SemanticSegmentation.visualize` works for CUDA, MPS and half-precision models. It indexed the
   CPU-drawn colormap with the mask's `argmax`, which raises for CUDA and MPS masks, and recognised a
