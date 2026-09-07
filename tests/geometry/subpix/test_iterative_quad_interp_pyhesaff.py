@@ -33,7 +33,7 @@ import pytest
 import torch
 
 from kornia.geometry.subpix.nms import nms3d
-from kornia.geometry.subpix.spatial_soft_argmax import conv_quad_interp3d
+from kornia.geometry.subpix.spatial_soft_argmax import conv_quad_interp3d, iterative_quad_interp3d
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -194,3 +194,40 @@ class TestIterativeQuadInterp3dAccuracy:
             ours_y = coords[0, 0, 2, d_peak, h_int, w_int].item()
             assert abs(ours_x - bx) < 0.1, f"blob ({bx},{by}): x ours={ours_x:.3f}"
             assert abs(ours_y - by) < 0.1, f"blob ({bx},{by}): y ours={ours_y:.3f}"
+
+
+class TestIterativeQuadInterp3dMaxCandidates:
+    """The candidate cap is a per-image budget, not a budget over the batch."""
+
+    def test_cap_is_per_image_not_per_batch(self) -> None:
+        """One image's refinement must not depend on its batch-mates.
+
+        The cap used to rank the flattened (B*C) candidate list, so a quiet
+        image next to a high-contrast one lost its whole budget to the other
+        image and came back unrefined.
+        """
+        torch.manual_seed(0)
+        x = torch.rand(2, 1, 5, 40, 40)
+        x[1] *= 10  # every candidate here outranks every candidate in image 0
+
+        coords_batched, vals_batched = iterative_quad_interp3d(x, max_candidates=50)
+        coords_0, vals_0 = iterative_quad_interp3d(x[:1], max_candidates=50)
+        coords_1, vals_1 = iterative_quad_interp3d(x[1:], max_candidates=50)
+
+        assert torch.equal(coords_batched[:1], coords_0)
+        assert torch.equal(vals_batched[:1], vals_0)
+        assert torch.equal(coords_batched[1:], coords_1)
+        assert torch.equal(vals_batched[1:], vals_1)
+
+    def test_cap_still_bounds_the_work_per_image(self) -> None:
+        """A per-image cap must still cap: refine at most K positions per image."""
+        torch.manual_seed(0)
+        x = torch.rand(2, 1, 5, 40, 40)
+        cap = 10
+
+        coords, _ = iterative_quad_interp3d(x, max_candidates=cap)
+        unrefined, _ = iterative_quad_interp3d(x, max_candidates=0)
+        # A position is refined when its coordinates moved off the integer grid
+        # that max_candidates=0 leaves everywhere.
+        moved = (coords != unrefined).any(dim=2).flatten(1).sum(dim=1)
+        assert (moved <= cap).all(), f"refined {moved.tolist()} positions with cap {cap}"

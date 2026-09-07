@@ -1108,14 +1108,26 @@ def iterative_quad_interp3d(
     # few hundred features are ultimately needed.  The per-candidate patch gather
     # (random memory access into a multi-MB volume) is cache-miss dominated on CPU;
     # reducing N here gives a proportional speedup of the iteration loop below.
+    # The cap is per image, not over the flattened batch: a global topk would make
+    # one image's refined keypoints depend on which other images share its batch,
+    # so a quiet image next to a high-contrast one would get none. N <= the cap is
+    # the fast path, because then no row can be over it either.
     if max_candidates is not None and N > max_candidates:
         cand_vals = inp[bc_idx, d_idx, h_idx, w_idx]  # (N,) pre-refinement responses
-        _, keep = torch.topk(cand_vals, k=max_candidates)
+        # Sort by response, then stably by row: within each row the candidates
+        # stay in descending-response order, so a positional rank inside the row
+        # is the same ranking the global topk used, taken one image at a time.
+        by_value = torch.argsort(cand_vals, descending=True, stable=True)
+        grouped = by_value[torch.argsort(bc_idx[by_value], stable=True)]
+        counts = torch.bincount(bc_idx, minlength=B * C)
+        row_start = torch.cumsum(counts, 0) - counts
+        rank = torch.arange(N, device=device) - row_start[bc_idx[grouped]]
+        keep = grouped[rank < max_candidates]
         bc_idx = bc_idx[keep]
         d_idx = d_idx[keep]
         h_idx = h_idx[keep]
         w_idx = w_idx[keep]
-        N = max_candidates
+        N = int(keep.shape[0])
 
     patch_offsets = _PATCH_DD.to(device) * HW + _PATCH_DH.to(device) * W + _PATCH_DW.to(device)
 
