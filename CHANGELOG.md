@@ -357,7 +357,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * Fixed `unproject_points_z1` depth shape handling for singleton and multi-axis batches,
-  accepting both trailing-singleton and flat depth tensors. (#4282)
+  accepting both trailing-singleton and flat depth tensors. (#4355)
 
 * `RenderingDeFMO` (used by `DeFMO`) no longer crashes on a half-precision forward pass. Its rendering
   time-steps (`times`) were a plain Python attribute, not a registered buffer, so `nn.Module.to()` never
