@@ -402,6 +402,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the dtype of `points`; it used to build a CPU float32 tensor, which raised `RuntimeError`
   on every accelerator and widened float16/bfloat16 results to float32. (#4340)
 
+* `PinholeCamera.scale_` now rebinds ``height``/``width`` to the promoted result instead of
+  writing into their storage, so a camera built with int64 sizes (as the class example does) no
+  longer raises ``RuntimeError: result type Float can't be cast to the desired output type Long``
+  and matches :meth:`scale`. As a consequence ``scale_`` no longer mutates the ``height``/``width``
+  tensors the caller passed to the constructor; ``intrinsics`` are still updated in place. (#4341)
+
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
   `kornia_rs.io`, and kornia kept calling the root, so on 0.1.11 and newer `load_image` raised

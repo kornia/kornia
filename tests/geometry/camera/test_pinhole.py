@@ -486,6 +486,34 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
         self.assert_close(pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
 
+    def test_scale_inplace_int64_size(self, device, dtype):
+        """Regression test: scale_ must promote int64 height/width to float.
+
+        PR #4341: PinholeCamera.scale_ used to write the scaled result into
+        the int64 storage, which raised RuntimeError on every accelerator.
+        """
+        import kornia
+        batch_size = 1
+        fx, fy, cx, cy = 1.0, 2.0, 4.0, 3.0
+        tx, ty, tz = 1.0, 2.0, 3.0
+        s = torch.tensor([0.5], device=device, dtype=dtype)
+
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
+        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz, device=device, dtype=dtype)
+        # Build camera with int64 height/width (as the class docstring example does)
+        height = torch.tensor([6], device=device)
+        width = torch.tensor([8], device=device)
+
+        cam = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
+        expected = cam.clone().scale(s)
+        out = cam.scale_(s)
+        assert out is cam, "scale_ must return self"
+        assert cam.height.is_floating_point(), "height must be promoted to float"
+        assert cam.height.dtype == expected.height.dtype, "height dtype must match scale()"
+        self.assert_close(cam.height, expected.height, atol=0.0, rtol=0.0)
+        self.assert_close(cam.width, expected.width, atol=0.0, rtol=0.0)
+        self.assert_close(cam.intrinsics, expected.intrinsics, atol=0.0, rtol=0.0)
+
     def test_pinhole_camera_project_and_unproject(self, device, dtype):
         batch_size = 5
         n = 2  # Point per batch

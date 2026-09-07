@@ -295,6 +295,10 @@ class PinholeCamera:
     def scale_(self, scale_factor: Union[float, torch.Tensor]) -> "PinholeCamera":
         r"""Scale the pinhole model in-place.
 
+        The intrinsics are updated in place while ``height`` and ``width``
+        are rebound to the floating-point scaled size, so an integer image
+        size is promoted as in :meth:`scale`.
+
         Args:
             scale_factor: a torch.Tensor with the scale factor. It has
               to be broadcastable with class members. The expected shape is
@@ -302,6 +306,11 @@ class PinholeCamera:
 
         Returns:
             the camera model with scaled parameters.
+
+        .. note::
+            As a consequence of the rebinding, ``scale_`` no longer mutates
+            the ``height``/``width`` tensors the caller passed to the
+            constructor; ``intrinsics`` are still updated in place.
 
         """
         # scale the intrinsic parameters
@@ -313,7 +322,6 @@ class PinholeCamera:
         self.height = self.height * scale_factor
         self.width = self.width * scale_factor
         return self
-
     def project(self, point_3d: torch.Tensor) -> torch.Tensor:
         r"""Project a 3d point in world coordinates onto the 2d camera plane.
 
