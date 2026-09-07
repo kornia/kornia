@@ -573,6 +573,31 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
         self.assert_close(pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
 
+    def test_pinhole_camera_scale_does_not_alias_the_source(self, device, dtype):
+        """scale() returns a new camera, so writing to it must not reach the source.
+
+        The intrinsics were already cloned; the extrinsics were handed over by
+        reference, and the constructor stores what it is given. Setting tx on
+        the scaled camera therefore moved the source camera too.
+        """
+        batch_size = 2
+        height, width = 4, 6
+        intrinsics = self._create_intrinsics(batch_size, 1, 2, width / 2, height / 2, device=device, dtype=dtype)
+        extrinsics = self._create_extrinsics(batch_size, 1, 2, 3, device=device, dtype=dtype)
+        height_t = torch.ones(batch_size, device=device, dtype=dtype) * height
+        width_t = torch.ones(batch_size, device=device, dtype=dtype) * width
+        scale_factor = torch.ones(batch_size, device=device, dtype=dtype) * 2.0
+
+        pinhole = kornia.geometry.camera.PinholeCamera(intrinsics.clone(), extrinsics.clone(), height_t, width_t)
+        tx_before = pinhole.tx.clone()
+
+        pinhole_scale = pinhole.scale(scale_factor)
+        assert pinhole_scale.extrinsics is not pinhole.extrinsics
+        assert pinhole_scale.extrinsics.data_ptr() != pinhole.extrinsics.data_ptr()
+
+        pinhole_scale.tx = 7.0
+        self.assert_close(pinhole.tx, tx_before)
+
     def test_pinhole_camera_scale_inplace(self, device, dtype):
         batch_size = 2
         height, width = 4, 6
@@ -677,7 +702,8 @@ class TestPinholeCamera(BaseTester):
     def test_convention_clone_is_a_deep_copy(self, device, dtype):
         # Convention pin: clone() is the ONLY deep copy on PinholeCamera -- a new
         # object, new intrinsics and extrinsics tensors with different storage, and mutating the clone leaves the
-        # source untouched. Contrast scale(), which hands the SAME extrinsics to the new camera (kornia#4264).
+        # source untouched. scale() also returns a camera with its own tensors; scale_() and the tx / ty / tz
+        # setters are the ones that still write through to the caller (kornia#4264).
         # Snippet used to generate expected: build a tx = 2 camera, clone it, set clone.tx = 9; executed
         # 2026-09-05 (torch 2.14.0, every dtype) -> source tx [2.0], clone tx [9.0].
         cam = kornia.geometry.camera.PinholeCamera(
@@ -732,31 +758,19 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(scaled.cy, torch.tensor([1.5], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(scaled.fx, torch.tensor([50.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
-    def test_wart_scale_shares_extrinsics_with_the_source_4264(self, device, dtype):
-        # Wart pin for kornia#4264: the class stores the tensors it is constructed from
-        # instead of copying them, so every mutating accessor writes into the CALLER's tensors, and scale()
-        # clones the intrinsics but passes ``self.extrinsics`` straight through, so the returned camera aliases
-        # the source's pose -- writing ``scaled.tx = 7`` (the tx setter writes into extrinsics) changes the
-        # SOURCE camera too. The second half below pins the three other legs of the same sentence: the
-        # constructor keeps the caller's ``intrinsics`` / ``extrinsics`` objects, the ``tx`` setter writes into
-        # the caller's extrinsics, and the in-place ``scale_`` rewrites the caller's intrinsics and image size.
-        # Snippet used to generate expected: scaled.extrinsics is cam.extrinsics -> True; after scaled.tx = 7 the
-        # source tx reads [7.0]; cam.intrinsics is K and cam.extrinsics is E -> True; after ``cam.tx = 5.0``
-        # E[0, 0, 3] reads 5.0; after ``cam.scale_(0.5)`` K[0, 0, 2] reads 2.0 (from 4.0), K[0, 0, 0] reads 50.0
-        # and the caller's height/width read [3.0] / [4.0] (from [6.0] / [8.0]); executed 2026-09-05
-        # (torch 2.14.0, cpu and mps, every dtype).
-        # Pins the CURRENT behavior; NOT a contract; delete when #4264 is repaired.
-        cam = kornia.geometry.camera.PinholeCamera(
-            _k44(device, dtype),
-            _e44(device, dtype, tx=1.0),
-            torch.tensor([6.0], device=device, dtype=dtype),
-            torch.tensor([8.0], device=device, dtype=dtype),
-        )
-        scaled = cam.scale(torch.tensor([2.0], device=device, dtype=dtype))
-        assert scaled.extrinsics is cam.extrinsics
-        assert scaled.intrinsics is not cam.intrinsics
-        scaled.tx = torch.tensor([7.0], device=device, dtype=dtype)
-        self.assert_close(cam.tx, torch.tensor([7.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+    def test_wart_constructor_and_scale_inplace_write_through_to_the_caller_4264(self, device, dtype):
+        # Wart pin for kornia#4264: the class stores the tensors it is constructed from instead of copying
+        # them, so every mutating accessor writes into the CALLER's tensors -- the constructor keeps the
+        # caller's ``intrinsics`` / ``extrinsics`` objects, the ``tx`` setter writes into the caller's
+        # extrinsics, and the in-place ``scale_`` rewrites the caller's intrinsics and image size.
+        # The fourth leg of #4264 -- ``scale()`` handing ``self.extrinsics`` to the new camera by reference --
+        # is repaired, and is pinned the other way up by
+        # ``test_pinhole_camera_scale_does_not_alias_the_source``; it is deliberately not asserted here.
+        # Snippet used to generate expected: cam.intrinsics is K and cam.extrinsics is E -> True; after
+        # ``cam.tx = 5.0`` E[0, 0, 3] reads 5.0; after ``cam.scale_(0.5)`` K[0, 0, 2] reads 2.0 (from 4.0),
+        # K[0, 0, 0] reads 50.0 and the caller's height/width read [3.0] / [4.0] (from [6.0] / [8.0]);
+        # executed 2026-09-05 (torch 2.14.0, cpu and mps, every dtype).
+        # Pins the CURRENT behavior; NOT a contract; delete when the rest of #4264 is repaired.
         # The constructor stores, rather than copies, all four arguments.
         K = _k44(device, dtype)
         E = _e44(device, dtype, tx=1.0)

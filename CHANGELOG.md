@@ -436,6 +436,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   step: a rejected entry is moved aside, the next source is tried, and the discarded source is
   re-fetched once. Without `validate` the behaviour is unchanged. (#4309, #4332)
 
+* `PinholeCamera.scale` no longer shares its `extrinsics` tensor with the source camera. The
+  intrinsics were cloned, the extrinsics were handed to the new object by reference, and the
+  constructor stores what it is given, so `scaled.tx = 7` moved the camera `scale()` was called on.
+  The returned camera's numbers are unchanged. (#4264, #4349)
+
 * `RenderingDeFMO` (used by `DeFMO`) no longer crashes on a half-precision forward pass. Its rendering
   time-steps (`times`) were a plain Python attribute, not a registered buffer, so `nn.Module.to()` never
   moved it; `forward` re-derived `times`'s device from the input on every call but never its dtype, so
