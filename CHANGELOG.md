@@ -364,6 +364,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `Boxes3D.from_tensor(..., validate_boxes=True)` rejects non-finite coordinates, and `validate_bbox3d`
+  returns `False` for them instead of raising an `AssertionError` that names the wrong defect. This is the
+  3D counterpart of #4243. An `inf` passed the positive-extent checks outright, and a `NaN` passed them
+  because every comparison against `NaN` is `False`, so the box was constructed with non-finite vertices;
+  in `validate_bbox3d` the `NaN` instead reached the `allclose` extent comparisons and raised
+  "Boxes must have be cube, while get different widths". `validate_bbox3d`'s four internal callers use it
+  for its raise and discard the result, so they now convert the `False` themselves and keep raising, as
+  they did before. The `validate_boxes=False` opt-out and the export gate are unchanged. (#4258)
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
   while the implementation preserves ONNX export compatibility. (#4358)
