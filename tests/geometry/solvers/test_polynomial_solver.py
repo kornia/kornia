@@ -412,31 +412,57 @@ class TestQuarticSolver(BaseTester):
         self.gradcheck(solver.solve_quartic, (coeffs,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.parametrize(
-        ("coeffs", "expected"),
+        ("coeffs", "expected", "expected_grad"),
         [
-            # x^4 - 16 = (x^2-4)(x^2+4): two real roots, +-2.
-            ([1.0, 0.0, 0.0, 0.0, -16.0], [2.0, -2.0]),
-            # x^4 - 1 = (x^2-1)(x^2+1): two real roots, +-1.
-            ([1.0, 0.0, 0.0, 0.0, -1.0], [1.0, -1.0]),
+            # x^4 - 16 = (x^2-4)(x^2+4): two real roots, +-2. R_sq lands exactly on 0.
+            ([1.0, 0.0, 0.0, 0.0, -16.0], [2.0, -2.0], [0.0, -0.5, 0.0, 0.0, 0.0]),
+            # x^4 - 1 = (x^2-1)(x^2+1): two real roots, +-1. R_sq lands exactly on 0.
+            ([1.0, 0.0, 0.0, 0.0, -1.0], [1.0, -1.0], [0.0, -0.5, 0.0, 0.0, 0.0]),
+            # (x^2+1)(x^2+4): no real roots. R_sq < 0 sends R to the `R approx 0` fallback,
+            # whose own radicand is then exactly 0 -- the second sqrt site.
+            ([1.0, 0.0, 5.0, 0.0, 4.0], None, [0.0, 0.0, 0.0, 0.0, 0.0]),
         ],
     )
-    def test_convention_gradient_is_finite_for_a_pure_biquadratic_4229(self, coeffs, expected, device, dtype):
+    def test_convention_gradient_is_finite_for_a_pure_biquadratic_4229(
+        self, coeffs, expected, expected_grad, device, dtype
+    ):
         # A quartic with no x^3 and no x^2 term puts R_sq exactly on 0, and
         # `torch.clamp(R_sq, min=0.0).sqrt()` does not guard that: d(sqrt)/dx is unbounded at 0,
         # and on torch < 2.14 clamp passes the incoming gradient through at the bound rather
         # than zeroing it (#4229). kornia supports torch>=2.5.1, so the guard was a no-op on the
-        # older half of the supported range and the backward returned nan.
+        # older half of the supported range and the backward returned nan. On torch >= 2.14 clamp
+        # already zeroes the boundary gradient, so these pins pass on base on those legs; the
+        # 2.5.1 and 2.9.1 CI legs carry the discrimination.
         c = torch.tensor([coeffs], device=device, dtype=dtype, requires_grad=True)
         roots = solver.solve_quartic(c)
         roots.sum().backward()
 
         assert bool(torch.isfinite(c.grad).all()), c.grad
-        # The forward pass was always correct; pin it, so a fix that repairs the gradient by
-        # moving the value is caught here.
-        real = torch.sort(roots.detach()[0][:2]).values
+        # Pin the value the guard produces, not just its finiteness: a "detach everything"
+        # pseudo-fix keeps the gradient finite but does not reproduce these numbers. This is a
+        # convention, not a Jacobian -- the forward is discontinuous at exactly these points
+        # (#4346), so there is no finite-difference derivative to pin against.
         self.assert_close(
-            real,
-            torch.sort(torch.tensor(expected, device=device, dtype=dtype)).values,
+            c.grad[0],
+            torch.tensor(expected_grad, device=device, dtype=dtype),
             rtol=1e-4,
             atol=1e-4,
         )
+        # The forward pass was always correct; pin it, so a fix that repairs the gradient by
+        # moving the value is caught here.
+        if expected is None:
+            # No real roots: every entry is the zero placeholder.
+            self.assert_close(
+                roots.detach()[0],
+                torch.zeros(4, device=device, dtype=dtype),
+                rtol=1e-4,
+                atol=1e-4,
+            )
+        else:
+            real = torch.sort(roots.detach()[0][:2]).values
+            self.assert_close(
+                real,
+                torch.sort(torch.tensor(expected, device=device, dtype=dtype)).values,
+                rtol=1e-4,
+                atol=1e-4,
+            )

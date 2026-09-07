@@ -256,6 +256,13 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
        For a repeated (or near-repeated) real root, the resolvent-cubic solve internally
        delegates to :func:`solve_cubic`'s finite-but-surrogate boundary-gradient convention;
        see that function's docstring for details.
+
+    .. note::
+       The same surrogate convention applies at this function's own two ``sqrt`` boundaries:
+       when the resolvent radicand ``R^2`` is 0 (a pure biquadratic such as :math:`x^4 - 16`)
+       and when the ``R pprox 0`` fallback's radicand is 0, backward suppresses the diverging
+       ``sqrt`` derivative to keep gradients finite. The result is finite but is not the root
+       Jacobian; the forward values are unaffected.
     """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "5"])
 
@@ -309,6 +316,8 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # torch < 2.14 clamp passes the incoming gradient straight through at the bound (#4229), so
     # R_sq == 0 -- a biquadratic such as x^4 - 16 -- gave inf and then nan. Substitute a safe
     # radicand instead, as solve_quadratic above already does, so sqrt is never differentiated at 0.
+    # On torch >= 2.14 clamp already zeroes the boundary gradient, so the pins for this guard pass
+    # on base there too; the 2.5.1 and 2.9.1 CI legs are the ones that discriminate.
     mask_R_sq_positive = R_sq > 0
     R = torch.where(
         mask_R_sq_positive,
@@ -330,6 +339,8 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     if torch.any(mask_R_small):
         radicand = 0.25 * y[mask_R_small] * y[mask_R_small] - D[mask_R_small]
         # Same guard as for R above.
+        # Reachable, and its own gradient boundary: a quartic with no real roots, such as
+        # (x^2+1)(x^2+4) = [1, 0, 5, 0, 4], drives R_sq < 0 -> R = 0 -> radicand == 0 exactly.
         mask_radicand_positive = radicand > 0
         E[mask_R_small] = torch.where(
             mask_radicand_positive,
