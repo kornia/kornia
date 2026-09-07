@@ -386,6 +386,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   model's dtype instead of coming back as float32. `OnnxLightGlue` without `onnxruntime` raises an
   `ImportError` that names `pip install "kornia[onnx]"`, like the lazy-loader handles do, instead of a
   bare `BaseError`. (#4301)
+* `PinholeCamera.from_parameters` now fills `height` and `width` for the whole batch. It built them with
+  `height_tmp[..., 0] += height` on a `(B,)` zero tensor, so every batch element after the first kept `0`
+  while `fx`, `fy`, `cx`, `cy`, `tx`, `ty` and `tz` were broadcast correctly, and the camera looked healthy
+  until something read its image size. `batch_size=1`, the only case that worked, is unchanged. (#4279)
 * `unproject_meshgrid` now returns the documented `(*, H, W, 3)` shape when `W` is 1. It squeezed the
   meshgrid with a bare `.squeeze()`, which drops the width axis along with the leading batch axis whenever
   `W == 1`, so `unproject_meshgrid(1, 3, K)` and `unproject_meshgrid(3, 1, K)` returned the same shape with
