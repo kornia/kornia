@@ -271,7 +271,8 @@ def depth_from_plane_equation(
     denom = torch.sum(rays * plane_normals_exp, dim=-1)  # (B, N)
     denom_abs = torch.abs(denom)
     zero_mask = denom_abs < eps
-    denom = torch.where(zero_mask, eps * torch.sign(denom), denom)
+    sign = torch.where(denom < 0, denom.new_tensor(-1.0), denom.new_tensor(1.0))
+    denom = torch.where(zero_mask, eps * sign, denom)
 
     # Compute depth from plane equation
     depth = plane_offsets / denom  # plane_offsets: (B, 1), denom: (B, N) -> depth: (B, N)

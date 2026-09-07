@@ -534,3 +534,13 @@ class TestDepthFromPlaneEquation(BaseTester):
             eps=1e-6,
             atol=1e-4,
         )
+
+    def test_grazing_ray_singularity(self, device, dtype):
+        K = torch.tensor([[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)[None]
+        px = torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype)
+        plane_normals = torch.tensor([[0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        plane_offsets = torch.tensor([[2.0]], device=device, dtype=dtype)
+        depth = kornia.geometry.depth.depth_from_plane_equation(plane_normals, plane_offsets, px, K, eps=1e-8)
+        assert torch.isfinite(depth).all()
+        expected = plane_offsets.repeat(1, 1) / 1e-8
+        self.assert_close(depth, expected, rtol=1e-5, atol=1e-5)

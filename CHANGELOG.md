@@ -356,6 +356,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `depth_from_plane_equation` now guards rays perpendicular to the plane normal (`denom == 0`). The
+  previous guard multiplied `eps` by `torch.sign(denom)`, which evaluates to `0.0` at `denom == 0` and
+  returned `inf`. The guard now uses a zero-safe sign fallback so grazing rays are clamped to a finite
+  depth. (#4280)
 * `RenderingDeFMO` (used by `DeFMO`) no longer crashes on a half-precision forward pass. Its rendering
   time-steps (`times`) were a plain Python attribute, not a registered buffer, so `nn.Module.to()` never
   moved it; `forward` re-derived `times`'s device from the input on every call but never its dtype, so
