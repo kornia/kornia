@@ -395,6 +395,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or `0.30078125` (bfloat16) rather than `0.3` -- the same buffer semantics as `Normalize`.
   (#4337)
 
+* `Z1Projection.unproject` now materialises a python `int`/`float` `depth` on the device and
+  in the dtype of `points`; it used to build a CPU float32 tensor, which raised `RuntimeError`
+  on every accelerator and widened float16/bfloat16 results to float32. (#4340)
+
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
   `kornia_rs.io`, and kornia kept calling the root, so on 0.1.11 and newer `load_image` raised
