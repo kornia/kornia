@@ -124,7 +124,7 @@ def distort_points(
         - :func:`~kornia.geometry.calibration.undistort_points` is the inverse map and takes the same
           coefficient layout, with the two intrinsics in the mirrored roles.
         - In eager execution, arbitrary matching leading dimensions work while the tilt path is inactive.
-          With non-zero tilt, only a scalar or one leading batch dimension is supported; two or more leading
+          With non-zero tilt, only unbatched inputs or one leading batch dimension are supported; two or more leading
           dimensions are flattened by :func:`~kornia.geometry.calibration.tilt_projection`. ONNX export always
           takes that path, including for zero tilt. Tracked as `#4324 <https://github.com/kornia/kornia/issues/4324>`_.
 

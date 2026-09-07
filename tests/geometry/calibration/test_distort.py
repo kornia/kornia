@@ -322,6 +322,9 @@ class TestDistortPoints(BaseTester):
 
     @pytest.mark.parametrize("return_inverse", [False, True])
     def test_wart_tilt_projection_flattens_leading_axes_4324(self, device, dtype, return_inverse):
+        # Wart pin for kornia#4324: every leading axis of the angles is flattened into one, so (2, 3, 1) angles
+        # give (6, 3, 3) where the Returns line at the base commit promised (*, 3, 3). Both branches.
+        # Pins the CURRENT behavior; NOT a contract; delete when #4324 is repaired.
         angles = torch.zeros(2, 3, 1, device=device, dtype=dtype)
         assert tilt_projection(angles, angles, return_inverse).shape == (6, 3, 3)
 

@@ -391,6 +391,23 @@ class TestDistortionKannalaBrandt(BaseTester):
             torch.zeros(2, device=device, dtype=dtype),
         )
 
+    def test_wart_rescale_guard_caps_float64_round_trip_4308(self, device, dtype):
+        # Wart pin for kornia#4308, the float64 side of the same constant: the final radial rescale divides by
+        # ``rth + 1e-8`` rather than ``rth``, so every result is scaled by ``1 - 1e-8 / r`` and the float64 round
+        # trip stops at about 1e-8 on the normalized plane instead of the ~1e-16 the ten Gauss-Newton steps reach.
+        # Snippet used to generate expected: (undistort_points_kannala_brandt(distort_points_kannala_brandt(
+        # tensor([3., 0.]), par), par) - tensor([3., 0.])).abs().max() executed 2026-09-08 at d2fe9507 (torch
+        # 2.14.0, cpu float64) -> 2.03e-08; the same body with the guard set to 0.0 -> 0.0. float32's rounding
+        # floor (1.91e-06 here) sits above the bias, so only float64 sees it.
+        # Pins the CURRENT behavior; NOT a contract; delete when #4308 is repaired.
+        if dtype != torch.float64:
+            pytest.skip("float64-only wart: every other dtype's rounding floor is above the 1e-8 bias")
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        far = torch.tensor([3.0, 0.0], device=device, dtype=dtype)
+        distorted = distort_points_kannala_brandt(far, params)
+        residual = (undistort_points_kannala_brandt(distorted, params) - far).abs().max().item()
+        assert 1e-9 < residual < 1e-7
+
     def test_wart_dx_distort_points_kannala_brandt_disagrees_with_autograd_4277(self, device, dtype):
         # Wart pin for kornia#4277: the analytic Jacobian is
         # not the Jacobian of distort_points_kannala_brandt. torch.autograd.functional.jacobian and central finite

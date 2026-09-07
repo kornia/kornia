@@ -119,9 +119,11 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
         - the inverse is a fixed number of Gauss-Newton steps rather than a closed form: the step count is not
           a parameter and there is no convergence test, so the round trip through
           :func:`distort_points_kannala_brandt` closes only to the accuracy that iteration has reached. The
-          fixed step count cannot be raised by a caller, and the residual eventually bottoms out at the
-          working dtype's rounding floor. :func:`~kornia.geometry.camera.undistort_points_affine` is the
-          closed-form contrast.
+          step count cannot be raised by a caller. In ``float32`` the residual reaches the rounding floor; in
+          ``float64`` it stops at about ``1e-8`` on the normalized plane, because the final radial rescale
+          divides by ``r + 1e-8`` rather than ``r`` and so scales every result by ``1 - 1e-8 / r``. That is the
+          ``float64`` side of `#4308 <https://github.com/kornia/kornia/issues/4308>`_.
+          :func:`~kornia.geometry.camera.undistort_points_affine` is the closed-form contrast.
         - three small constants guard the Newton start (``1e-16``), Newton denominator (``1e-12``), and final
           radial rescale (``1e-8``), so a point at the principal point comes back as the origin rather than
           ``nan`` -- as long as those constants are representable in the dtype of ``params``, which is the

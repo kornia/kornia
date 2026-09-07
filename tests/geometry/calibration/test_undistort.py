@@ -400,7 +400,9 @@ class TestUndistortPoints(BaseTester):
     @pytest.mark.parametrize("op", [distort_points, undistort_points])
     @pytest.mark.parametrize("exporting", [False, True])
     def test_wart_multi_axis_tilt_batch_fails_4324(self, device, dtype, monkeypatch, op, exporting):
-        # Export always takes the tilt branch, including for four zero coefficients.
+        # Wart pin for kornia#4324: with two leading axes the tilt path fails, and export always takes the tilt
+        # path, including for four zero coefficients. The first assertion is the eager control on the same shapes.
+        # Pins the CURRENT behavior; NOT a contract; delete when #4324 is repaired.
         points = torch.ones(2, 3, 5, 2, device=device, dtype=dtype)
         K = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3)
         dist = torch.zeros(2, 3, 4 if exporting else 14, device=device, dtype=dtype)
@@ -415,6 +417,9 @@ class TestUndistortPoints(BaseTester):
             op(points, K, dist)
 
     def test_wart_unbatched_export_undistort_fails_4324(self, device, dtype, monkeypatch):
+        # Wart pin for kornia#4324: the legacy unbatched form that eager undistort_points accepts is rejected on
+        # the export path, which the four-coefficient vector does not avoid.
+        # Pins the CURRENT behavior; NOT a contract; delete when #4324 is repaired.
         points = torch.ones(1, 2, device=device, dtype=dtype)
         K = torch.eye(3, device=device, dtype=dtype)
         dist = torch.zeros(4, device=device, dtype=dtype)
@@ -471,6 +476,9 @@ class TestUndistortImage(BaseTester):
 
     @pytest.mark.parametrize("exporting", [False, True])
     def test_wart_multi_axis_tilt_image_fails_4324(self, device, dtype, monkeypatch, exporting):
+        # Wart pin for kornia#4324: undistort_image inherits the distort_points failure on two leading axes once
+        # the tilt path is taken (non-zero tilt in eager, always under export).
+        # Pins the CURRENT behavior; NOT a contract; delete when #4324 is repaired.
         image = torch.ones(2, 3, 1, 5, 5, device=device, dtype=dtype)
         K = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3)
         dist = torch.zeros(2, 3, 4 if exporting else 14, device=device, dtype=dtype)
