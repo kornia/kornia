@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.geometry.calibration.distort import distort_points
 from kornia.geometry.calibration.undistort import undistort_image, undistort_points
 
 from testing.base import BaseTester
@@ -62,6 +63,23 @@ class TestUndistortPoints(BaseTester):
         new_K = torch.rand(B, 3, 3, device=device, dtype=dtype)
         pointsu = undistort_points(points, K, distCoeff, new_K)
         assert pointsu.shape == (B, N, 2)
+
+    @pytest.mark.device_agnostic
+    def test_convention_out_of_radius_fixed_point_is_a_two_cycle_4285(self):
+        dtype = torch.float64
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], dtype=dtype)
+        dist = torch.tensor([[0.5, 0.0, 0.0, 0.0]], dtype=dtype)
+        points = torch.tensor([[[304.0, 3.0]]], dtype=dtype)
+        distorted = distort_points(points, K, dist)
+
+        residuals = {}
+        for num_iters in (5, 6, 7, 8):
+            recovered = undistort_points(distorted, K, dist, num_iters=num_iters)
+            residuals[num_iters] = (recovered - points).abs().max()
+
+        self.assert_close(residuals[5], residuals[7])
+        self.assert_close(residuals[6], residuals[8])
+        assert residuals[6] > residuals[5] > 1
 
     def test_opencv_five_coeff(self, device, dtype):
         # Test using 5 distortion coefficients
