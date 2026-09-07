@@ -19,6 +19,7 @@ import pytest
 import torch
 from torch import Tensor
 
+from kornia.augmentation import RandomGaussianBlur
 from kornia.augmentation.random_generator import (
     AffineGenerator,
     ColorJiggleGenerator,
@@ -31,6 +32,7 @@ from kornia.augmentation.random_generator import (
     PlainUniformGenerator,
     PosterizeGenerator,
     ProbabilityGenerator,
+    RandomGaussianBlurGenerator,
     RectangleEraseGenerator,
     ResizedCropGenerator,
     center_crop_generator,
@@ -1566,11 +1568,10 @@ class TestGaussianBlurGenBufferHygiene:
     # hygiene). A plain (min, max) tuple of Python floats has no device/dtype and stays
     # a plain attribute, which is correct.
     def test_tensor_sigma_is_a_registered_buffer(self, device, dtype):
-        from kornia.augmentation.random_generator._2d.gaussian_blur import RandomGaussianBlurGenerator
-
         gen = RandomGaussianBlurGenerator(sigma=torch.tensor([0.1, 2.0]))
         # persistent=False -> visible via named_buffers() but excluded from
-        # state_dict(), same convention as #4079/#4319 (keeps checkpoint keys unchanged).
+        # state_dict(), as in the buffer fixes #4079 and #4319 (keeps checkpoint
+        # keys unchanged); not every kornia buffer is non-persistent.
         assert "sigma" in dict(gen.named_buffers())
         assert "sigma" not in gen.state_dict()
 
@@ -1582,8 +1583,6 @@ class TestGaussianBlurGenBufferHygiene:
         # which nn.Module recurses into via `_apply()` (not `.to()`) on every
         # submodule -- including this generator when assigned as `_param_generator`,
         # exactly how RandomGaussianBlur uses it. Exercise that real path directly.
-        from kornia.augmentation import RandomGaussianBlur
-
         aug = RandomGaussianBlur((3, 3), sigma=torch.tensor([0.1, 2.0]))
         moved = aug.to(device=device, dtype=dtype)
         moved_sigma = moved._param_generator.sigma
@@ -1591,8 +1590,6 @@ class TestGaussianBlurGenBufferHygiene:
         assert moved_sigma.dtype == dtype
 
     def test_tuple_sigma_stays_a_plain_attribute(self):
-        from kornia.augmentation.random_generator._2d.gaussian_blur import RandomGaussianBlurGenerator
-
         gen = RandomGaussianBlurGenerator(sigma=(0.1, 2.0))
         assert "sigma" not in dict(gen.named_buffers())
         assert gen.sigma == (0.1, 2.0)

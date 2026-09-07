@@ -4547,14 +4547,18 @@ class TestRandomChannelDropout(BaseTester):
         # `.to()`, so this was never a crash risk, just missing buffer hygiene).
         aug = RandomChannelDropout(fill_value=0.3, p=1.0)
         # persistent=False -> visible via named_buffers()/.to() but excluded from
-        # state_dict(), same convention as #4079/#4319 (keeps checkpoint keys unchanged).
+        # state_dict(), as in the buffer fixes #4079 and #4319 (keeps checkpoint
+        # keys unchanged); not every kornia buffer is non-persistent.
         assert "fill_value" in dict(aug.named_buffers())
         assert "fill_value" not in aug.state_dict()
 
-        input_tensor = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
         moved = aug.to(device=device, dtype=dtype)
-        assert moved.fill_value.device == input_tensor.device
+        assert moved.fill_value.device.type == torch.device(device).type
         assert moved.fill_value.dtype == dtype
+        # the moved buffer is the value the forward actually fills with
+        out = moved(torch.zeros(1, 3, 8, 8, device=device, dtype=dtype))
+        assert (out == moved.fill_value).any()
+        assert out.max() == moved.fill_value
 
 
 class TestNormalize(BaseTester):
