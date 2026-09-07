@@ -135,6 +135,15 @@ class TestCam2Pixel(BaseTester):
 
 
 class TestPixel2Cam(BaseTester):
+    @pytest.mark.parametrize("depth_shape", [(), (2,), (2, 1, 3), (2, 2, 3, 4), (2, 3, 3, 4), (2, 1, 3, 4, 1)])
+    def test_invalid_depth_shape(self, depth_shape, device, dtype):
+        depth = torch.ones(depth_shape, device=device, dtype=dtype)
+        intrinsics_inv = torch.eye(4, device=device, dtype=dtype).repeat(2, 1, 1)
+        pixel_coords = torch.ones(2, 3, 4, 3, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="Input depth has to be in the shape of Bx1xHxW"):
+            kornia.geometry.camera.pixel2cam(depth, intrinsics_inv, pixel_coords)
+
     def _create_intrinsics(self, batch_size, fx, fy, cx, cy, device, dtype):
         temp = torch.eye(4, device=device, dtype=dtype)
         temp[0, 0], temp[0, 2] = fx, cx
@@ -387,6 +396,32 @@ class TestPinholeCamera(BaseTester):
         assert pinhole.camera_matrix.shape == (batch_size, 3, 3)
         assert pinhole.rotation_matrix.shape == (batch_size, 3, 3)
         assert pinhole.translation_vector.shape == (batch_size, 3, 1)
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_from_parameters(self, batch_size, device, dtype):
+        height, width = 6, 8
+        fx = torch.arange(1, batch_size + 1, device=device, dtype=dtype) * 100.0
+        fy = fx / 2.0
+        cx = torch.full((batch_size,), width / 2, device=device, dtype=dtype)
+        cy = torch.full((batch_size,), height / 2, device=device, dtype=dtype)
+        tx = torch.arange(batch_size, device=device, dtype=dtype)
+        ty, tz = tx + 1.0, tx + 2.0
+
+        pinhole = kornia.geometry.camera.PinholeCamera.from_parameters(
+            fx, fy, cx, cy, height, width, tx, ty, tz, batch_size, device=device, dtype=dtype
+        )
+
+        assert pinhole.batch_size == batch_size
+        # ``height`` and ``width`` are broadcast over the whole batch, like every other parameter
+        self.assert_close(pinhole.height, torch.full((batch_size,), float(height), device=device, dtype=dtype))
+        self.assert_close(pinhole.width, torch.full((batch_size,), float(width), device=device, dtype=dtype))
+        self.assert_close(pinhole.fx, fx)
+        self.assert_close(pinhole.fy, fy)
+        self.assert_close(pinhole.cx, cx)
+        self.assert_close(pinhole.cy, cy)
+        self.assert_close(pinhole.tx, tx)
+        self.assert_close(pinhole.ty, ty)
+        self.assert_close(pinhole.tz, tz)
 
     def test_pinhole_camera_scale(self, device, dtype):
         batch_size = 2

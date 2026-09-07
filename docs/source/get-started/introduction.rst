@@ -69,7 +69,7 @@ At a granular level, Kornia is a library that consists of the following componen
    * - :doc:`kornia.metrics </metrics>`
      - metrics for classification, segmentation, detection, image quality and pose
    * - :doc:`kornia.models </models>`
-     - pretrained model builders for detection, edge detection, segmentation and tracking
+     - pretrained model builders for detection, edge detection and segmentation
    * - :doc:`kornia.morphology </morphology>`
      - a module to perform morphological operations
    * - :doc:`kornia.onnx </onnx>`

@@ -15,12 +15,11 @@
 # limitations under the License.
 #
 
-from typing import List, Optional
+from typing import List, Optional, TypedDict
 
 import torch
 import torch.nn.functional as F
 from torch import nn
-from typing_extensions import TypedDict
 
 from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.filters import SpatialGradient
