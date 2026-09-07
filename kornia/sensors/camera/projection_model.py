@@ -59,7 +59,7 @@ class Z1Projection:
 
         Args:
             points: Vector2 representing the points to unproject.
-            depth: torch.Tensor representing the depth of the points to unproject.
+            depth: a :class:`torch.Tensor` of shape ``(B,)``, or a python scalar for a single point.
 
         Returns:
             Vector3 representing the unprojected points.
@@ -73,7 +73,7 @@ class Z1Projection:
 
         """
         if isinstance(depth, (float, int)):
-            depth = torch.Tensor([depth])
+            depth = torch.as_tensor([depth], device=points.data.device, dtype=points.data.dtype)
         return Vector3.from_coords(points.x * depth, points.y * depth, depth)
 
 

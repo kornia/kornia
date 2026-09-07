@@ -92,7 +92,8 @@ def unproject_points_z1(
 
     Args:
         points_in_cam_canonical: torch.Tensor representing the points to unproject with shape (..., 2).
-        extension: torch.Tensor representing the extension (depth) of the points to unproject with shape (..., 1).
+        extension: torch.Tensor representing the extension (depth) of the points to unproject with shape
+            (..., 1) or (...), matching the points' leading dimensions. Defaults to unit depth.
 
     Returns:
         torch.Tensor representing the unprojected points with shape (..., 3).
@@ -112,7 +113,7 @@ def unproject_points_z1(
             device=points_in_cam_canonical.device,
             dtype=points_in_cam_canonical.dtype,
         )  # (..., 1)
-    elif extension.shape[0] > 1:
+    elif extension.ndim == points_in_cam_canonical.ndim - 1:
         extension = extension[..., None]  # (..., 1)
 
     return torch.cat([points_in_cam_canonical * extension, extension], dim=-1)

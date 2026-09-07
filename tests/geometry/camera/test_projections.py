@@ -100,6 +100,26 @@ class TestProjectionZ1(BaseTester):
         expected = torch.tensor([[2.0, 4.0, 2.0], [9.0, 12.0, 3.0]], device=device, dtype=dtype)
         self.assert_close(unproject_points_z1(points, extension), expected)
 
+    @pytest.mark.parametrize("batch_shape", [(), (0,), (1,), (2,), (1, 2), (2, 3)])
+    @pytest.mark.parametrize("column_depth", [False, True])
+    def test_unproject_depth_shapes_4282(self, device, dtype, batch_shape, column_depth):
+        points = torch.tensor([1.0, 2.0], device=device, dtype=dtype).expand(batch_shape + (2,))
+        depth_shape = batch_shape + (1,) if column_depth else batch_shape
+        depth = torch.full(depth_shape, 3.0, device=device, dtype=dtype)
+        expected = torch.tensor([3.0, 6.0, 3.0], device=device, dtype=dtype).expand(batch_shape + (3,))
+        actual = unproject_points_z1(points, depth)
+        self.assert_close(actual, expected)
+        self.assert_close(project_points_z1(actual), points)
+        self.assert_close(torch.jit.script(unproject_points_z1)(points, depth), expected)
+
+    @pytest.mark.parametrize("column_depth", [False, True])
+    def test_unproject_batched_depth_gradcheck(self, device, column_depth):
+        points = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=torch.float64)
+        depth = torch.tensor([2.0, 3.0], device=device, dtype=torch.float64)
+        if column_depth:
+            depth = depth.unsqueeze(-1)
+        self.gradcheck(unproject_points_z1, (points, depth))
+
     def test_dx_proj_x(self, device, dtype):
         points = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
         expected = torch.tensor(

@@ -78,10 +78,12 @@ def unproject_meshgrid(
     """
     KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
 
-    # create base coordinates grid
+    # create base coordinates grid. ``create_meshgrid`` returns ``(1, H, W, 2)``; drop only that leading
+    # batch axis. A bare ``squeeze()`` would also drop ``H`` or ``W`` whenever either is 1, and the grid
+    # would then broadcast across a phantom axis instead of keeping the documented ``(*, H, W, 3)`` shape.
     points_uv: torch.Tensor = create_meshgrid(
         height, width, normalized_coordinates=False, device=device, dtype=dtype
-    ).squeeze()  # HxWx2
+    ).squeeze(0)  # HxWx2
 
     # project pixels to camera frame
     camera_matrix_tmp: torch.Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
