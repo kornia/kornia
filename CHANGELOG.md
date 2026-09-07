@@ -370,6 +370,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the quality with `torch.randint(low=0, high=100)` unseeded at sixteen sites, so roughly one run in twenty of
   `tests/enhance/test_jpeg.py` went red on any job; the draws now start at `1` and the boundary has pinned
   cases of its own. (#4205)
+* `ModelBase.save` and `_save_outputs` write the visualizations they are given instead of raising.
+  They handed `visualize`'s float output to `write_image` under a hard-coded `.png` name, but PNG is
+  `uint8`/`uint16` only, so every container's `save` (`SemanticSegmentation`, `ObjectDetector`,
+  `EdgeDetector`, `DepthEstimation`) raised on its first write and left an empty directory behind.
+  Float images are now converted to `uint8`, clamped to `[0, 1]` first so an out-of-range
+  visualization does not wrap. A batched `(B, 3, H, W)` output -- the shape the containers document
+  -- is written as one file per item rather than passed whole to `write_image`, which takes
+  `(3, H, W)` and rejected the rank with a message naming neither. (#4322)
 
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
