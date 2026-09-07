@@ -1554,6 +1554,9 @@ class TestQuaternionToRotationMatrix(BaseTester):
 
         assert_close(out, quaternion, atol=0.0, rtol=0.0)
 
+        without_guard = kornia.geometry.conversions.normalize_quaternion(quaternion, eps=0.0)
+        assert torch.isnan(without_guard).all()
+
     def test_convention_normalize_quaternion_preserves_float16_subnormal_4021(self, device):
         _skip_if_dtype_unavailable(device, torch.float16)
         quaternion = torch.tensor([5.960464477539063e-08, 0.0, 0.0, 0.0], device=device, dtype=torch.float16)
