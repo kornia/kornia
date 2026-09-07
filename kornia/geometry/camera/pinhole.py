@@ -58,7 +58,8 @@ class PinholeCamera:
         which disagrees with the integer pixel centres above; it is tracked as a coordinated repair in
         `#4263 <https://github.com/kornia/kornia/issues/4263>`_. The shared storage is
         `#4264 <https://github.com/kornia/kornia/issues/4264>`_, the in-place :meth:`scale_` failure on an
-        integer ``height`` / ``width`` `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the shape
+        integer ``height`` / ``width`` with a floating-point scale factor
+        `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the shape
         guards that admit an ``intrinsics`` whose projection is meaningless
         `#4266 <https://github.com/kornia/kornia/issues/4266>`_, and the rejection of an empty batch
         (:math:`B = 0`) `#4281 <https://github.com/kornia/kornia/issues/4281>`_. The behaviour described here is
@@ -69,7 +70,8 @@ class PinholeCamera:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
           containing the full 4x4 camera calibration matrix. The constructor rejects it when it is neither
           rank 3 nor rank 4 **and** its last two dimensions are not 4x4, so a :math:`(B, 3, 3)` matrix is
-          accepted although :meth:`project` needs the documented :math:`(B, 4, 4)`.
+          accepted, as is an unbatched :math:`(4, 4)` matrix, although :meth:`project` needs
+          the documented :math:`(B, 4, 4)`.
         extrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
           containing the full 4x4 rotation-translation matrix, checked by the same predicate.
         height: torch.Tensor with shape :math:`(B)` containing the image height.
@@ -303,7 +305,7 @@ class PinholeCamera:
         return PinholeCamera(intrinsics, extrinsics, height, width)
 
     def intrinsics_inverse(self) -> torch.Tensor:
-        r"""Return the inverse of the 4x4 instrisics matrix.
+        r"""Return the inverse of the 4x4 intrinsics matrix.
 
         See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
 
@@ -321,7 +323,8 @@ class PinholeCamera:
               ``scale_factor``: ``fx' = s * fx`` and ``cx' = s * cx``, the half-pixel rule.
             - the new camera **shares** its ``extrinsics`` tensor with the source, so writing ``tx`` / ``ty`` /
               ``tz`` on either camera moves both; the intrinsics are cloned. :meth:`clone` is the deep copy.
-            - an integer ``height`` / ``width`` is promoted to floating point, unlike :meth:`scale_`.
+            - with a floating-point ``scale_factor``, an integer ``height`` / ``width`` is promoted to floating
+              point, unlike :meth:`scale_`. An integer factor preserves the integer image-size dtype.
 
         .. warning::
             The ``cx' = s * cx`` rule disagrees with the integer pixel centres the rest of the library
@@ -356,11 +359,15 @@ class PinholeCamera:
             - applies the same rescaling as :meth:`scale` in place and returns ``self``. The camera stores the
               tensors it was constructed from, so the caller's ``intrinsics``, ``height`` and ``width`` are
               written into as well.
-            - the image size is written back into its own storage, so an integer ``height`` / ``width`` raises
-              :class:`RuntimeError` where :meth:`scale` promotes it to floating point.
+            - with a floating-point ``scale_factor``, writing back into an integer ``height`` / ``width`` raises
+              :class:`RuntimeError` where :meth:`scale` promotes it to floating point. An integer factor
+              succeeds. The focal lengths and principal point have already been scaled when the error is
+              raised, including in the caller's intrinsics tensor: the camera is left partially scaled.
+              If ``height`` is integer, both image dimensions are unchanged; if only ``width`` is integer,
+              ``height`` has already been scaled too.
 
         .. warning::
-            The failure on an integer image size is tracked in
+            The failure on an integer image size with a floating-point scale factor is tracked in
             `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the write-through to the caller's tensors
             in `#4264 <https://github.com/kornia/kornia/issues/4264>`_, and the principal-point rule shared
             with :meth:`scale` in `#4263 <https://github.com/kornia/kornia/issues/4263>`_.
@@ -480,14 +487,9 @@ class PinholeCamera:
         and wraps them into a :class:`PinholeCamera` instance.
 
         Convention:
-            - every parameter is broadcast over ``batch_size`` except ``height`` and ``width``, which are
-              written into the first batch element only; the remaining elements keep zero.
+            - every parameter, including ``height`` and ``width``, is broadcast over ``batch_size``.
             - ``height`` and ``width`` are stored as floating-point tensors of the requested ``dtype``, so the
               camera it builds can be scaled in place.
-
-        .. warning::
-            The zeroed image size of every batch element after the first is tracked in
-            `#4279 <https://github.com/kornia/kornia/issues/4279>`_.
 
         Args:
             fx: Horizontal focal length per batch element.
@@ -658,8 +660,9 @@ def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float = 1e-6) -> torch.Te
 
     .. warning::
         The focal lengths are inverted as ``1 / (fx + eps)``, which inverts a perturbed matrix rather than the
-        one ``pinhole_matrix`` returns, and a zero focal length gives a large finite number rather than
-        raising. This legacy 12-vector API is also exported nowhere and appears on no API-reference page, so
+        one ``pinhole_matrix`` returns. With the default ``eps``, a zero focal length gives a large finite
+        number in ``float32``, ``float64`` and ``bfloat16``, or ``inf`` in ``float16``, rather than raising.
+        This legacy 12-vector API is also exported nowhere and appears on no API-reference page, so
         this docstring renders nowhere. Tracked in `#4268 <https://github.com/kornia/kornia/issues/4268>`_.
 
     Args:
@@ -702,8 +705,8 @@ def scale_pinhole(pinholes: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     r"""Scale the pinhole matrix for each pinhole model.
 
     .. note::
-        This method is going to be deprecated in version 0.2 in favour of
-        :attr:`kornia.PinholeCamera.scale()`.
+        Superseded by :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.scale`.
+        This legacy 12-vector API is tracked in `#4268 <https://github.com/kornia/kornia/issues/4268>`_.
 
     Args:
         pinholes: torch.Tensor with the pinhole model.
@@ -829,14 +832,12 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
           takes — and ``depth`` is the camera-frame ``z`` at each pixel of the ``(u, v, 1)`` grid.
         - ``intrinsics_inv`` is checked for rank 3 alone, so a :math:`(B, 3, 3)` inverse passes the check and
           fails further in with an unrelated message.
-        - the ``depth`` and ``pixel_coords`` checks are written ``if not <rank> and <second clause>``, so the
-          ``depth`` one raises exactly when ``depth`` is *not* rank 4 **and** its second dimension is 1 — the
-          complement of the documented ``Bx1xHxW``. A multi-channel ``depth`` therefore always reaches the
-          body: two channels fail inside the multiplication, while three channels line up with the
-          ``(x, y, z)`` axis after the internal ``permute`` and **return a result silently**.
+        - ``depth`` must have shape ``Bx1xHxW``; multi-channel depth raises :class:`ValueError`.
+          The ``pixel_coords`` guard raises when the input is not rank 4 **and** its fourth dimension is 3;
+          for lower ranks, accessing that dimension can itself raise :class:`IndexError`.
 
     .. warning::
-        The rank-only ``intrinsics_inv`` check and the ``and`` slip in the other two guards are tracked in
+        The rank-only ``intrinsics_inv`` check and the incorrect ``pixel_coords`` predicate are tracked in
         `#4266 <https://github.com/kornia/kornia/issues/4266>`_.
 
     Args:
@@ -871,15 +872,18 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
         - ``dst_proj_src`` is a :math:`(B, 4, 4)` projection matrix — the layout of
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, not the :math:`(*, 3, 3)` ``K`` the functional API
           takes — and the result is ``(u, v)`` pixel coordinates in the destination frame.
-        - both shape checks are written ``if not <rank> and <shape>``, which leaves the shape clause dead, so
-          a :math:`(B, 3, 3)` matrix has the accepted rank, passes, and fails further in with an unrelated
-          message rather than at the guard.
-        - the perspective division is ``x / (z + eps)`` rather than a guarded divide, so a point with ``z = 0``
-          returns a finite, very large pixel in ``float32``, ``float64`` and ``bfloat16`` and overflows to
-          ``inf`` in ``float16``; ``eps`` also biases the result for a small ``z``.
+        - the projection guard raises exactly when ``dst_proj_src`` is not rank 3 **and** its trailing
+          dimensions are :math:`(4, 4)`. Thus an unbatched :math:`(4, 4)` matrix raises at the guard, while
+          a :math:`(B, 3, 3)` matrix passes and fails later inside ``transform_points``. The coordinate guard
+          similarly raises when the input is not rank 4 **and** its fourth dimension is 3; for lower ranks,
+          accessing that dimension can itself raise :class:`IndexError`.
+        - the perspective division is ``x / (z + eps)`` rather than a guarded divide. With the default ``eps``,
+          a projected coordinate ``x = 100, z = 0`` gives about ``1e14`` in ``float32``, ``float64`` and
+          ``bfloat16``, and ``inf`` in ``float16`` (where ``eps`` rounds to zero). A zero numerator then gives
+          zero in the former dtypes and ``nan`` in ``float16``; ``eps`` also biases small nonzero depths.
 
     .. warning::
-        The dead shape clauses are tracked in `#4266 <https://github.com/kornia/kornia/issues/4266>`_, and the
+        The incorrect shape predicates are tracked in `#4266 <https://github.com/kornia/kornia/issues/4266>`_, and the
         ``z = 0`` answer in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
     Args:

@@ -165,37 +165,27 @@ class TestCam2Pixel(BaseTester):
         self.gradcheck(kornia.geometry.camera.cam2pixel, (cam_coords_src, proj_mat, eps), atol=atol, rtol=rtol)
 
     def test_wart_cam2pixel_epsilon_makes_the_singular_divide_finite_4267(self, device, dtype):
-        # Wart pin for kornia#4267 (audit labels 5a-pc2-07, 5a-pc2-15): cam2pixel divides by ``z + 1e-12`` instead
+        # Wart pin for kornia#4267: cam2pixel divides by ``z + 1e-12`` instead
         # of guarding the singularity, so the camera-plane point (1, 2, 0) yields a finite 1e14-scale pixel rather
         # than inf (project_points_z1) or [[104, 203]] (project_points). The epsilon enters the arithmetic, so it
         # also biases every finite result below z ~ 1e-10.
         # Snippet used to generate expected: cam2pixel([[[[1., 2., 0.]]]], _k44(...)) executed 2026-09-05
         # (torch 2.14.0, cpu and mps) -> float32 [[[[1.00000000376832e14, 2.00000000753664e14]]]].
         # Pins the CURRENT value; NOT a contract; delete when #4267 is repaired.
-        if dtype == torch.float16:
-            pytest.skip("float16 overflows to inf at z = 0; that cell is pinned separately below")
-        cam_coords = torch.tensor([[[[1.0, 2.0, 0.0]]]], device=device, dtype=dtype)
+        cam_coords = torch.tensor([[[[1.0, 2.0, 0.0], [1.0, 2.0, 1.0e-12]]]], device=device, dtype=dtype)
         uv = kornia.geometry.camera.cam2pixel(cam_coords, _k44(device, dtype))
-        assert bool(torch.isfinite(uv).all())
-        self.assert_close(uv, torch.tensor([[[[1.0e14, 2.0e14]]]], device=device, dtype=dtype))
-
-    def test_wart_cam2pixel_overflows_to_inf_at_z_zero_in_float16_4267(self, device, dtype):
-        # Wart pin for kornia#4267 (audit label 5a-pc2-08): the same ``z + 1e-12`` divide overflows float16's
-        # 65504 range, so the float16 answer at z = 0 is inf while float32 is a finite 1e14 -- the epsilon does
-        # not even achieve in half precision what it was added for.
-        # Snippet used to generate expected: cam2pixel([[[[1., 2., 0.]]]].half(), _k44(..., float16)) executed
-        # 2026-09-05 (torch 2.14.0, cpu and mps) -> [[[[inf, inf]]]].
-        # Pins the CURRENT value; NOT a contract; delete when #4267 is repaired.
-        if dtype != torch.float32:
-            pytest.skip("float16-specific pin; the float32 cell runs it exactly once per device")
-        cam_coords = torch.tensor([[[[1.0, 2.0, 0.0]]]], device=device, dtype=torch.float16)
-        uv = kornia.geometry.camera.cam2pixel(cam_coords, _k44(device, torch.float16))
-        assert bool(torch.isinf(uv).all())
+        if dtype == torch.float16:
+            assert bool(torch.isposinf(uv).all())
+        else:
+            assert bool(torch.isfinite(uv).all())
+            # At z = eps the additive denominator halves the result; a guarded divide would not.
+            expected = torch.tensor([[[[1.0e14, 2.0e14], [5.0e13, 1.0e14]]]], device=device, dtype=dtype)
+            self.assert_close(uv, expected)
 
     def test_wart_cam2pixel_guard_admits_a_3x3_projection_4266(self, device, dtype):
-        # Wart pin for kornia#4266 (audit labels 5a-pc2-11, 5a-pc2-12): cam2pixel's second guard is written
+        # Wart pin for kornia#4266: cam2pixel's second guard is written
         # ``if not len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4)``, so the shape clause is
-        # dead and only the rank is tested. A (B, 3, 3) projection -- the shape the functional API takes -- has
+        # live: it rejects a wrong rank only when the trailing shape is (4, 4). A (B, 3, 3) projection has
         # the accepted rank, passes the guard whose message promises Bx4x4, and fails much later inside
         # transform_points with a message about homogeneous dimensions rather than at the guard.
         # Snippet used to generate expected: cam2pixel([[[[1., 2., 4.]]]], _k44(...)[:, :3, :3]) executed
@@ -206,6 +196,11 @@ class TestCam2Pixel(BaseTester):
         proj_3x3 = _k44(device, dtype)[:, :3, :3].contiguous()
         with pytest.raises(ValueError, match="Last input dimensions must differ by one unit"):
             kornia.geometry.camera.cam2pixel(cam_coords, proj_3x3)
+        with pytest.raises(ValueError, match="Input dst_proj_src has to be in the shape of Bx4x4"):
+            kornia.geometry.camera.cam2pixel(cam_coords, torch.eye(4, device=device, dtype=dtype))
+        # An unbatched 3x3 passes this guard and instead reaches transform_points' rank check.
+        with pytest.raises(ValueError, match="Input batch size must be the same for both tensors"):
+            kornia.geometry.camera.cam2pixel(cam_coords, torch.eye(3, device=device, dtype=dtype))
 
 
 class TestPixel2Cam(BaseTester):
@@ -326,7 +321,7 @@ class TestPixel2Cam(BaseTester):
         self.gradcheck(kornia.geometry.camera.pixel2cam, (depth, intrinsics_inv, pixel_coords_input), fast_mode=False)
 
     def test_wart_pixel2cam_guard_admits_a_3x3_inverse_4266(self, device, dtype):
-        # Wart pin for kornia#4266 (audit label 5a-pc2-03): pixel2cam's ``intrinsics_inv`` guard is written
+        # Wart pin for kornia#4266: pixel2cam's ``intrinsics_inv`` guard is written
         # ``if not len(intrinsics_inv.shape) == 3``, so it checks the RANK alone and never inspects the trailing
         # 4x4 its own message promises. A (B, 3, 3) inverse -- the shape every free function on this surface
         # takes -- has rank 3, passes the guard, and the failure surfaces much later, from transform_points.
@@ -341,19 +336,9 @@ class TestPixel2Cam(BaseTester):
         with pytest.raises(ValueError, match="Last input dimensions must differ by one unit"):
             kornia.geometry.camera.pixel2cam(depth, intrinsics_inv_3x3, pixel_coords)
 
-    def test_wart_pixel2cam_returns_silently_for_a_three_channel_depth_4266(self, device, dtype):
-        # Wart pin for kornia#4266 (audit label 5a-pc2-02): the depth guard is written
-        # ``if not len(depth.shape) == 4 and depth.shape[1] == 1``, so it raises exactly when depth is NOT rank 4
-        # AND its second dimension is 1 -- the complement of the documented Bx1xHxW -- and every multi-channel
-        # depth reaches the body. Three channels then line up with the (x, y, z) axis after the internal
-        # ``depth.permute(0, 2, 3, 1)`` and RETURN SILENTLY: each channel scales a different coordinate, so a
-        # (2, 3, 5) per-channel depth turns the camera point (1, 2, 1) into (2, 6, 5) instead of the (2, 4, 2)
-        # the documented single-channel depth 2 gives. Two channels fail inside the multiplication instead.
-        # Snippet used to generate expected: pixel2cam(depth, intrinsics_inv, pixel_coords) with the tensors
-        # below executed 2026-09-05 (torch 2.14.0, cpu and mps, every dtype) -> shape (1, 3, 4, 3),
-        # out[0, 0, 0] = [2., 6., 5.], out[0, 2, 3] = [8., 12., 5.]; the two-channel call ->
-        # RuntimeError("The size of tensor a (3) must match the size of tensor b (2) at non-singleton...").
-        # Pins the CURRENT behavior; NOT a contract; delete when #4266 is repaired.
+    def test_convention_pixel2cam_rejects_multi_channel_depth_4266(self, device, dtype):
+        # Regression pin for kornia#4266: multi-channel depth must be rejected instead of scaling
+        # each camera coordinate by a different channel. Single-channel depth scales the whole ray.
         # An exact inverse of fx = fy = 1, cx = 4, cy = 3, so every literal below is exact in every dtype.
         intrinsics_inv = torch.tensor(
             [[[1.0, 0.0, -4.0, 0.0], [0.0, 1.0, -3.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]],
@@ -374,18 +359,15 @@ class TestPixel2Cam(BaseTester):
             dtype=dtype,
         )
         depth_3ch = torch.tensor([2.0, 3.0, 5.0], device=device, dtype=dtype).reshape(1, 3, 1, 1).expand(1, 3, 3, 4)
-        out = kornia.geometry.camera.pixel2cam(depth_3ch.contiguous(), intrinsics_inv, pixel_coords)
-        assert out.shape == (1, 3, 4, 3)
-        self.assert_close(out[0, 0, 0], torch.tensor([2.0, 6.0, 5.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        self.assert_close(out[0, 2, 3], torch.tensor([8.0, 12.0, 5.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        # The documented Bx1xHxW depth scales all three coordinates by the same number, which is the contrast.
+        with pytest.raises(ValueError, match="Input depth has to be in the shape of Bx1xHxW"):
+            kornia.geometry.camera.pixel2cam(depth_3ch.contiguous(), intrinsics_inv, pixel_coords)
         depth_1ch = torch.full((1, 1, 3, 4), 2.0, device=device, dtype=dtype)
         out_1ch = kornia.geometry.camera.pixel2cam(depth_1ch, intrinsics_inv, pixel_coords)
         self.assert_close(
             out_1ch[0, 2, 3], torch.tensor([8.0, 8.0, 2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0
         )
         depth_2ch = torch.tensor([2.0, 3.0], device=device, dtype=dtype).reshape(1, 2, 1, 1).expand(1, 2, 3, 4)
-        with pytest.raises(RuntimeError, match="must match the size of tensor"):
+        with pytest.raises(ValueError, match="Input depth has to be in the shape of Bx1xHxW"):
             kornia.geometry.camera.pixel2cam(depth_2ch.contiguous(), intrinsics_inv, pixel_coords)
 
 
@@ -693,7 +675,7 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(back, X)
 
     def test_convention_clone_is_a_deep_copy(self, device, dtype):
-        # Convention pin (audit labels 5a-al-05, 5a-al-06): clone() is the ONLY deep copy on PinholeCamera -- a new
+        # Convention pin: clone() is the ONLY deep copy on PinholeCamera -- a new
         # object, new intrinsics and extrinsics tensors with different storage, and mutating the clone leaves the
         # source untouched. Contrast scale(), which hands the SAME extrinsics to the new camera (kornia#4264).
         # Snippet used to generate expected: build a tx = 2 camera, clone it, set clone.tx = 9; executed
@@ -715,7 +697,7 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(cloned.tx, torch.tensor([9.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_convention_intrinsics_inverse_is_the_exact_inverse(self, device, dtype):
-        # Convention pin (audit label 5a-al-13): intrinsics_inverse() @ intrinsics is byte-exact eye(4) on an
+        # Convention pin: intrinsics_inverse() @ intrinsics is byte-exact eye(4) on an
         # asymmetric fx = 100, fy = 50, cx = 4, cy = 3 intrinsics -- this is the pair DepthWarper feeds pixel2cam.
         # The legacy 12-vector twins are NOT exact: inverse_pinhole_matrix @ pinhole_matrix is 1e-06 off
         # (kornia#4268, pinned in TestPinholeMatrix below).
@@ -733,7 +715,7 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(product, torch.eye(4, device=device, dtype=dtype)[None], atol=0.0, rtol=0.0)
 
     def test_wart_scale_rescales_the_principal_point_by_the_half_pixel_rule_4263(self, device, dtype):
-        # Wart pin for kornia#4263 (audit labels 5a-al-01, 5a-al-18): scale(s) gives cx' = s * cx (2.0 for cx = 4,
+        # Wart pin for kornia#4263: scale(s) gives cx' = s * cx (2.0 for cx = 4,
         # s = 0.5) -- the half-pixel / COLMAP convention -- although create_meshgrid and every unprojection path in
         # the library enumerate integer pixel CENTRES, under which the grid-consistent value is
         # cx' = s * cx + (s - 1) / 2 = 1.75. Pins the CURRENT value so the window's repair flips this loudly.
@@ -751,7 +733,7 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(scaled.fx, torch.tensor([50.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_wart_scale_shares_extrinsics_with_the_source_4264(self, device, dtype):
-        # Wart pin for kornia#4264 (audit label 5a-al-01): the class stores the tensors it is constructed from
+        # Wart pin for kornia#4264: the class stores the tensors it is constructed from
         # instead of copying them, so every mutating accessor writes into the CALLER's tensors, and scale()
         # clones the intrinsics but passes ``self.extrinsics`` straight through, so the returned camera aliases
         # the source's pose -- writing ``scaled.tx = 7`` (the tx setter writes into extrinsics) changes the
@@ -794,24 +776,41 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(width, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_wart_scale_inplace_rejects_integer_image_size_4265(self, device, dtype):
-        # Wart pin for kornia#4265 (audit labels 5a-al-02, 5a-al-03): the constructor accepts int64 height/width --
-        # that is what the class docstring's own example builds -- and scale() promotes them to float, but the
+        # Wart pin for kornia#4265: the constructor accepts int64 height/width --
+        # that is what the class docstring's own example builds -- and a floating factor promotes them, but the
         # in-place twin scale_() writes the float result back into the int64 storage and raises.
         # Snippet used to generate expected: cam.scale_(0.5) on an int64 height executed 2026-09-05 (torch 2.14.0,
         # every dtype) -> RuntimeError("result type Float can't be cast to the desired output type Long").
         # Pins the CURRENT behavior; NOT a contract; delete when #4265 is repaired.
+        K = _k44(device, dtype)
         cam = kornia.geometry.camera.PinholeCamera(
-            _k44(device, dtype),
+            K,
             _e44(device, dtype, tx=1.0),
             torch.tensor([6], device=device),
             torch.tensor([8], device=device),
         )
+        for factor in (2, torch.tensor([2], device=device)):
+            scaled = cam.scale(factor)
+            assert scaled.height.dtype == scaled.width.dtype == torch.int64
+            self.assert_close(scaled.height, torch.tensor([12], device=device))
+            self.assert_close(scaled.width, torch.tensor([16], device=device))
+            inplace = cam.clone()
+            assert inplace.scale_(factor) is inplace
+            self.assert_close(inplace.height, scaled.height)
+            self.assert_close(inplace.width, scaled.width)
+            self.assert_close(inplace.intrinsics, scaled.intrinsics)
         assert cam.scale(torch.tensor([0.5], device=device, dtype=dtype)).height.is_floating_point()
         with pytest.raises(RuntimeError, match="can't be cast to the desired output type"):
             cam.scale_(0.5)
+        expected_K = _k44(device, dtype)
+        expected_K[:, :2, :3] *= 0.5
+        self.assert_close(K, expected_K, atol=0.0, rtol=0.0)
+        self.assert_close(cam.intrinsics, expected_K, atol=0.0, rtol=0.0)
+        self.assert_close(cam.height, torch.tensor([6], device=device))
+        self.assert_close(cam.width, torch.tensor([8], device=device))
 
     def test_wart_constructor_accepts_3x3_intrinsics_whose_projection_is_garbage_4266(self, device, dtype):
-        # Wart pin for kornia#4266 (audit labels 5a-pc-02, 5a-pc-03): _check_valid_params uses ``and`` where ``or``
+        # Wart pin for kornia#4266: _check_valid_params uses ``and`` where ``or``
         # was meant (the source even carries the author's "Shouldn't this be an OR logic than AND?"), so a
         # (1, 3, 3) intrinsics with a (1, 3, 4) extrinsics passes a validator whose message promises Bx4x4, and
         # .project returns a (1, 1) tensor of nonsense instead of a (1, 2) pixel.
@@ -826,7 +825,7 @@ class TestPinholeCamera(BaseTester):
         assert cam.project(torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)).shape == (1, 1)
 
     def test_wart_project_rejects_an_unbatched_point_with_indexerror_4266(self, device, dtype):
-        # Wart pin for kornia#4266 (audit labels 5a-pj-03, 5a-pp-01): PinholeCamera.project documents ``(*, 3)``
+        # Wart pin for kornia#4266: PinholeCamera.project documents ``(*, 3)``
         # and raises a bare IndexError("tuple index out of range") on a (3,) point, while the free function
         # project_points raises ValueError("Input must be at least a 2D tensor") on the same input -- two
         # exception types for one documented contract, and neither is the documented shape.
@@ -845,7 +844,7 @@ class TestPinholeCamera(BaseTester):
             kornia.geometry.camera.project_points(point, _k44(device, dtype)[:, :3, :3].contiguous())
 
     def test_wart_constructor_rejects_an_empty_batch_4281(self, device, dtype):
-        # Mixed pin. The FIRST assertion is a wart pin for kornia#4281 (audit label 5a-pc-09): _check_valid is
+        # Mixed pin. The FIRST assertion is a wart pin for kornia#4281: _check_valid is
         # ``all(data.shape[0] for ...)``, which tests that each batch size is non-zero rather than that they are
         # EQUAL, so a perfectly consistent B = 0 camera is rejected with a message about mismatched shapes. It
         # pins the CURRENT behavior, is NOT a contract, and is the only assertion here that is deleted when
@@ -867,7 +866,7 @@ class TestPinholeCamera(BaseTester):
         assert empty.shape == (0, 1, 2)
 
     def test_wart_project_and_project_points_disagree_at_z_zero_4267(self, device, dtype):
-        # Wart pin for kornia#4267 (audit labels Y4-01, Y4-03, Y4-05): PinholeCamera.project and the free function
+        # Wart pin for kornia#4267: PinholeCamera.project and the free function
         # project_points are documented as the same projection and agree exactly away from the singularity, but
         # they apply K on OPPOSITE sides of the masked |z| <= 1e-8 divide, so at z = 0 they return different
         # answers -- K @ [1, 2, 0] = [100, 200] for the method and fx*x + cx = [104, 203] for the function.
@@ -894,28 +893,13 @@ class TestPinholeCamera(BaseTester):
         regular = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
         self.assert_close(cam.project(regular), kornia.geometry.camera.project_points(regular, K3))
 
-    def test_wart_from_parameters_zeroes_the_size_of_later_batch_elements_4279(self, device, dtype):
-        # Wart pin for kornia#4279 (audit label 5a-al-11): from_parameters does ``height_tmp[..., 0] += height`` on
-        # a (B,) zero tensor, so height and width are filled only for batch element 0 while every other parameter
-        # (fx, fy, cx, cy, tx, ty, tz) is broadcast correctly -- the camera looks healthy until something reads its
-        # image size.
-        # Snippet used to generate expected: from_parameters(height=6, width=8, batch_size=2) executed 2026-09-05
-        # (torch 2.14.0, every dtype) -> height [6.0, 0.0], width [8.0, 0.0], fx [100.0, 200.0], tx [1.0, 2.0].
-        # Pins the CURRENT value; NOT a contract; delete when #4279 is repaired.
-        cam = self._from_parameters_batch2(device, dtype)
-        self.assert_close(cam.height, torch.tensor([6.0, 0.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        self.assert_close(cam.width, torch.tensor([8.0, 0.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        self.assert_close(cam.fx, torch.tensor([100.0, 200.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        self.assert_close(cam.tx, torch.tensor([1.0, 2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
-
-    @pytest.mark.xfail(strict=True, reason="kornia#4279: from_parameters fills height/width only for element 0")
     def test_convention_from_parameters_fills_every_batch_element_4279(self, device, dtype):
-        # Intended contract, asserted as a strict xfail so the repair makes it XPASS and forces this mark out:
-        # ``batch_size=B`` builds B cameras, so a height of 6 and a width of 8 apply to every element exactly as
-        # fx, cx and tx already do. Settled by #4279's own Expected section ("height.tolist() == [6.0, 6.0]").
+        # Regression pin for #4279: image size must be filled for every camera in the batch.
         cam = self._from_parameters_batch2(device, dtype)
         self.assert_close(cam.height, torch.tensor([6.0, 6.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(cam.width, torch.tensor([8.0, 8.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(cam.fx, torch.tensor([100.0, 200.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(cam.tx, torch.tensor([1.0, 2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def _from_parameters_batch2(self, device, dtype):
         # Asymmetric per-element parameters (fx 100/200, fy 100/50, cx 4/6, cy 3/2, tx 1/2) so a pin that reads the
@@ -939,8 +923,8 @@ class TestPinholeCamera(BaseTester):
 class TestPinholeMatrix(BaseTester):
     """Pins for the legacy 12-vector pinhole API in ``kornia.geometry.camera.pinhole``.
 
-    None of these names is in ``kornia.geometry.camera.__all__`` or reachable as ``kornia.geometry.camera.X``
-    (audit labels 5a-lg-16, 5a-lg-17), so they are imported from the module directly.
+    None of these names is in ``kornia.geometry.camera.__all__`` or reachable as ``kornia.geometry.camera.X``,
+    so they are imported from the module directly.
     """
 
     def _vec12(self, device, dtype):
@@ -951,7 +935,7 @@ class TestPinholeMatrix(BaseTester):
         )
 
     def test_wart_pinhole_matrix_perturbs_every_entry_4268(self, device, dtype):
-        # Wart pin for kornia#4268 (audit labels 5a-lg-01, 5a-lg-02, 5a-lg-03, 5a-lg-06, 5a-lg-07): pinhole_matrix
+        # Wart pin for kornia#4268: pinhole_matrix
         # adds its eps to the WHOLE identity before writing the parameters, so every entry is perturbed -- the
         # structural zero at [0, 0, 1] is 1e-06 and the structural one at [0, 3, 3] is 1.000001. Passing eps=0.0
         # gives the exact matrix, so the default is the only thing wrong. inverse_pinhole_matrix divides by
@@ -977,7 +961,7 @@ class TestPinholeMatrix(BaseTester):
             inverse_pinhole_matrix(torch.eye(4, device=device, dtype=dtype)[None])
 
     def test_wart_dead_legacy_functions_always_raise_4283(self, device, dtype):
-        # Wart pin for kornia#4283 (audit labels 5a-lg-12, 5a-lg-13): get_optical_pose_base and homography_i_H_ref
+        # Wart pin for kornia#4283: get_optical_pose_base and homography_i_H_ref
         # carry full docstrings, Args/Returns blocks and a .. math:: block, validate their input, and then always
         # raise NotImplementedError -- get_optical_pose_base's dependency was removed from torchgeometry years ago
         # ("# TODO: where is rtvec_to_pose?"), and homography_i_H_ref is dead because it calls it.

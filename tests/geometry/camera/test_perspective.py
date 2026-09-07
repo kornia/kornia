@@ -67,7 +67,7 @@ class TestProjectPoints(BaseTester):
         self.assert_close(op(points_3d, camera_matrix), op_jit(points_3d, camera_matrix))
 
     def test_wart_project_points_skips_the_divide_at_z_zero_4267(self, device, dtype):
-        # Wart pin for kornia#4267 (audit labels 5a-pp-13, 5a-pp-15, Y4-05): convert_points_from_homogeneous masks
+        # Wart pin for kornia#4267: convert_points_from_homogeneous masks
         # |z| <= 1e-8 to a divisor of 1 and project_points applies K AFTER that divide, so a point on the camera
         # plane projects to fx*x + cx = 104, fy*y + cy = 203 instead of raising or returning inf. Four other
         # entry points answer differently at the same input: PinholeCamera.project gives [[100, 200]],
@@ -87,7 +87,7 @@ class TestProjectPoints(BaseTester):
         self.assert_close(behind, torch.tensor([[-21.0, -47.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_convention_integer_pixel_centres_put_the_principal_point_at_w_minus_one_half(self, device, dtype):
-        # Convention pin for the anchor block on PinholeCamera (audit labels 5a-al-04, 5a-pp-02): pixel
+        # Convention pin for the anchor block on PinholeCamera: pixel
         # coordinates are (u, v) = (column, row) with INTEGER pixel centres -- create_meshgrid enumerates
         # [0, 0] for the first pixel and [W - 1, H - 1] for the last -- so a centred image has its principal
         # point at cx = (W - 1) / 2, cy = (H - 1) / 2, and NOT at (W / 2, H / 2), the half-pixel/COLMAP value.
@@ -189,7 +189,7 @@ class TestUnprojectPoints(BaseTester):
         self.assert_close(op(*args), op_jit(*args))
 
     def test_convention_normalize_makes_depth_the_ray_length(self, device, dtype):
-        # Convention pin (audit labels 5a-up-01, 5a-up-02): ``depth`` is the CAMERA-frame z by default, so pixel
+        # Convention pin: ``depth`` is the CAMERA-frame z by default, so pixel
         # (29, 53) at depth 2 unprojects to (0.5, 1, 2); with ``normalize=True`` the same depth is the length of
         # the ray instead, so the result has norm 2 and its z component is strictly below 2. The pixel is off the
         # principal point (cx = 4 != cy = 3) so the two readings differ; a centred pixel would not discriminate.

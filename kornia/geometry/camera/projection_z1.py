@@ -43,14 +43,17 @@ def project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
 
     Convention:
         - the input is a **camera-frame** point and the output its position on the canonical ``z = 1`` plane,
-          which is a normalized coordinate rather than a pixel: applying a ``K`` to it with
-          :func:`~kornia.geometry.conversions.denormalize_points_with_intrinsics` gives the pixel that
-          :func:`~kornia.geometry.camera.perspective.project_points` returns.
-        - the ``z > 0`` precondition above is not validated: a point with ``z = 0`` returns ``inf`` rather
-          than raising.
+          which is a normalized coordinate rather than a pixel. Well away from the ``1e-8`` homogeneous-depth
+          threshold, applying a ``K`` to it with
+          :func:`~kornia.geometry.conversions.denormalize_points_with_intrinsics` approximately gives the pixel
+          that :func:`~kornia.geometry.camera.perspective.project_points` returns. At ``abs(z) <= 1e-8``,
+          :func:`~kornia.geometry.camera.perspective.project_points` skips its divide while this function does not.
+        - the ``z > 0`` precondition above is not validated. At ``z = 0``, each output component is ``inf``,
+          ``-inf``, or ``nan`` according to its numerator; in particular, a zero numerator gives ``nan``.
 
     .. warning::
-        Returning ``inf`` is one of several answers this namespace gives at ``z = 0``. Tracked in
+        Returning component-dependent infinities or ``nan`` is one of several answers this namespace gives at
+        ``z = 0``. Tracked in
         `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
     Args:
@@ -83,12 +86,8 @@ def unproject_points_z1(
           by it and it becomes the third component.
           :meth:`~kornia.sensors.camera.projection_model.Z1Projection.unproject` names the same argument
           ``depth``.
-        - the guard reads the **batch size** of ``extension`` rather than its rank, so the documented
-          ``(..., 1)`` shape raises for more than one point while an undocumented ``(N,)`` shape works there.
-          :func:`~kornia.geometry.camera.unproject_points_orthographic` compares ranks and accepts both.
-
-    .. warning::
-        The reversed guard is tracked in `#4282 <https://github.com/kornia/kornia/issues/4282>`_.
+        - the guard compares the rank of ``extension`` with the rank of the points. Both ``(...,)`` and
+          ``(..., 1)`` extensions are accepted when their leading dimensions match those of the points.
 
     Args:
         points_in_cam_canonical: torch.Tensor representing the points to unproject with shape (..., 2).
