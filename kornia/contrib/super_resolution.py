@@ -33,6 +33,10 @@ from kornia.onnx.download import CachedDownloader
 
 __all__ = ["RRDBNetBuilder", "SmallSRBuilder", "SuperResolution", "SuperResolutionConfig"]
 
+# `SmallSRBuilder`'s wrapper resizes every input to this before the network, so the
+# pipeline's output side is always this times `upscale_factor`, whatever `image_size` is.
+_SMALL_SR_INPUT_SIZE = 224
+
 _URLs = {
     "RealESRGAN_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
     "RealESRNet_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.1/RealESRNet_x4plus.pth",
@@ -57,8 +61,9 @@ class SuperResolutionConfig:
         pretrained: If ``True``, load pretrained weights for the selected variant.
         upscale_factor: Integer scale used by the lightweight variant. Ignored by
             the RRDB variants, whose scale is fixed by ``model_name``.
-        image_size: Optional fixed input size for the lightweight variant. When
-            provided, output metadata is configured as ``image_size * upscale_factor``.
+        image_size: Optional fixed input size for the lightweight variant. It declares
+            the size fed to the wrapper; it does not change the pre-processor, which
+            always resizes to 224, so the output side stays ``224 * upscale_factor``.
 
     """
 
@@ -325,8 +330,9 @@ class SmallSRBuilder:
             upscale_factor: Integer scale used by ``SmallSRNetWrapper``.
                 For example, ``3`` maps an input image of size ``H x W`` to an
                 output image of approximately ``3H x 3W``.
-            image_size: Optional fixed input size. When provided, output metadata is
-                configured as ``image_size * upscale_factor``.
+            image_size: Optional fixed input size. It declares the size fed to the
+                wrapper and does not change the pre-processor, which always resizes to
+                224; the output side is therefore ``224 * upscale_factor``.
 
         Returns:
             A :class:`SuperResolution` instance configured with resizing pre-processing
@@ -342,14 +348,16 @@ class SmallSRBuilder:
 
         sr = SuperResolution(
             model,
-            pre_processor=ResizePreProcessor(224, 224),
+            pre_processor=ResizePreProcessor(_SMALL_SR_INPUT_SIZE, _SMALL_SR_INPUT_SIZE),
             post_processor=nn.Identity(),
             name=model_name,
         )
+        # The pre-processor resizes to `_SMALL_SR_INPUT_SIZE` regardless of `image_size`,
+        # so the wrapper's output side does not depend on the input size.
+        sr.output_image_size = _SMALL_SR_INPUT_SIZE * upscale_factor
         if image_size is None:
-            sr.pseudo_image_size = 224
+            sr.pseudo_image_size = _SMALL_SR_INPUT_SIZE
         else:
             sr.input_image_size = image_size
-            sr.output_image_size = image_size * upscale_factor
             sr.pseudo_image_size = image_size
         return sr

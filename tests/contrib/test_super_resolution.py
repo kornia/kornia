@@ -87,7 +87,27 @@ class TestSuperResolutionBuilders(BaseTester):
         pytest.importorskip("onnxscript")
         builder.build(pretrained=False).to_onnx(save=False)
 
-    def test_small_sr_output_image_size_uses_upscale_factor(self):
-        """``output_image_size`` follows the documented ``image_size * upscale_factor``."""
+    @pytest.mark.parametrize(("upscale_factor", "image_size"), [(2, 32), (3, None), (4, 64)])
+    def test_output_image_size_matches_the_real_forward(self, device, dtype, upscale_factor, image_size):
+        """``output_image_size`` must equal what a forward actually returns.
+
+        The pre-processor resizes every input to 224 before the network, so the output
+        side is ``224 * upscale_factor`` and does not depend on ``image_size``. Pinning
+        the attribute alone let it disagree with the model it describes.
+        """
+        model = SmallSRBuilder.build(pretrained=False, upscale_factor=upscale_factor, image_size=image_size).to(
+            device, dtype
+        )
+        out = model(torch.rand(1, 3, 32, 32, device=device, dtype=dtype))
+        assert out.shape[-1] == model.output_image_size
+        assert out.shape[-2] == model.output_image_size
+        assert model.output_image_size == 224 * upscale_factor
+
+    def test_onnx_export_shape_matches_the_real_forward(self):
+        """The static size handed to ``to_onnx`` must be the one the graph produces."""
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
         model = SmallSRBuilder.build(pretrained=False, upscale_factor=2, image_size=32)
-        assert model.output_image_size == 64
+        exported = model.to_onnx(save=False)
+        out_dim = exported.graph.output[0].type.tensor_type.shape.dim[-1]
+        assert out_dim.dim_value == model.output_image_size
