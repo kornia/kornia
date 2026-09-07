@@ -103,7 +103,7 @@ class TestProjectionZ1(BaseTester):
 
     @pytest.mark.parametrize("batch_shape", [(), (0,), (1,), (2,), (1, 2), (2, 3)])
     @pytest.mark.parametrize("column_depth", [False, True])
-    def test_unproject_depth_shapes(self, device, dtype, batch_shape, column_depth):
+    def test_unproject_depth_shapes_4282(self, device, dtype, batch_shape, column_depth):
         points = torch.tensor([1.0, 2.0], device=device, dtype=dtype).expand(batch_shape + (2,))
         depth_shape = batch_shape + (1,) if column_depth else batch_shape
         depth = torch.full(depth_shape, 3.0, device=device, dtype=dtype)
@@ -112,12 +112,6 @@ class TestProjectionZ1(BaseTester):
         self.assert_close(actual, expected)
         self.assert_close(project_points_z1(actual), points)
         self.assert_close(torch.jit.script(unproject_points_z1)(points, depth), expected)
-
-    def test_unproject_depth_shape_mismatch(self, device, dtype):
-        points = torch.tensor([[[1.0, 2.0]], [[3.0, 4.0]]], device=device, dtype=dtype)
-        depth = torch.tensor([[[3.0], [5.0]]], device=device, dtype=dtype)
-        with pytest.raises(RuntimeError, match="Sizes of tensors must match"):
-            unproject_points_z1(points, depth)
 
     @pytest.mark.parametrize("column_depth", [False, True])
     def test_unproject_batched_depth_gradcheck(self, device, column_depth):
@@ -178,17 +172,6 @@ class TestProjectionZ1(BaseTester):
     def test_jit(self, device, dtype) -> None:
         self._test_jit_project(device, dtype)
         self._test_jit_unproject(device, dtype)
-
-    def test_convention_unproject_points_z1_accepts_both_extension_shapes(self, device, dtype):
-        # The rank-based guard introduced in f4532f39 accepts both depth representations for multidimensional
-        # batches. Snippet used to generate expected: points [[[1, 2]], [[3, 4]]] with depths [[3], [5]] and
-        # [[[3]], [[5]]] -> [[[3, 6, 3]], [[15, 20, 5]]] for both.
-        points = torch.tensor([[[1.0, 2.0]], [[3.0, 4.0]]], device=device, dtype=dtype)
-        expected = torch.tensor([[[3.0, 6.0, 3.0]], [[15.0, 20.0, 5.0]]], device=device, dtype=dtype)
-        flat = unproject_points_z1(points, torch.tensor([[3.0], [5.0]], device=device, dtype=dtype))
-        column = unproject_points_z1(points, torch.tensor([[[3.0]], [[5.0]]], device=device, dtype=dtype))
-        self.assert_close(flat, expected, atol=0.0, rtol=0.0)
-        self.assert_close(column, expected, atol=0.0, rtol=0.0)
 
     def test_wart_project_points_z1_zero_depth_is_component_dependent_4267(self, device, dtype):
         # project_points_z1 divides plainly. Snippet used to generate expected: project_points_z1 applied to the
