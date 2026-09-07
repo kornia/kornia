@@ -446,6 +446,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   drops the failure count to 1,269 — a real, separate residual (a disconnected-graph case with
   two simultaneous double-root pairs) remains and is tracked in #4290, not fixed here.
 
+* `pixel2cam` now rejects depth tensors outside the documented `Bx1xHxW` shape. The guard's predicate
+  bound as `(ndim != 4) and (shape[1] == 1)`, so four-dimensional multi-channel depth bypassed the
+  channel check — a three-channel depth silently broadcast into separate camera coordinates — while
+  scalar and one-dimensional inputs raised `IndexError` from the guard itself. Code that passed those
+  shapes and relied on them being accepted now raises `ValueError`. Valid `Bx1xHxW` depth is unaffected
+  and its output is unchanged. (#4314)
 * `ConvQuadInterp3d` / `conv_quad_interp3d` no longer return NaN gradients for `float16` input. The
   Hessian determinant `_solve_cramer_sym3x3` divides by is a product of three second derivatives, so for
   a `[0, 1]` response it lands around 1e-4 and below and still clears the `eps` gate. The forward divides
