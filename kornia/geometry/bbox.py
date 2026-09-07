@@ -70,6 +70,9 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
     if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([4, 2])):
         return False
 
+    if not torch.isfinite(boxes).all():
+        return False
+
     if len(boxes.shape) == 4:
         boxes = boxes.reshape(-1, 4, 2)
 
@@ -357,14 +360,11 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         :math:`(N, depth, height, width)`. After :func:`validate_bbox3d`, which raises ``AssertionError`` for an
         invalid box, the bounds are read from fixed vertex positions, truncated toward zero with ``.long()``, and
         compared inclusively, which reads the vertices as inclusive: pass the ``'vertices_plus'`` export. The
-        intersection of the three axis ranges is recovered only when the box leaves at least one index uncovered
-        on every axis; see the warning. There is no gradient path.
+        intersection of the three axis ranges is always recovered, including when a box covers or overhangs a
+        whole output axis. There is no gradient path.
 
     .. warning::
-        A box that covers or overhangs a whole output axis fills the entire volume instead of the intersection:
-        the union-of-planes intermediate becomes all true and its reductions lose the other two bounds, where
-        :meth:`~kornia.geometry.boxes.Boxes3D.to_mask` fills the clamped region. Tracked in
-        `#4255 <https://github.com/kornia/kornia/issues/4255>`_. The truncation differs from the inclusive
+        The truncation differs from the inclusive
         raw-float comparison of :func:`bbox_to_mask` and the rounding of
         :meth:`~kornia.geometry.boxes.Boxes3D.to_mask` for fractional coordinates and is tracked in
         `#4015 <https://github.com/kornia/kornia/issues/4015>`_. The ``float32`` output with a channel axis is
@@ -434,20 +434,18 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
     y = torch.arange(D1, device=boxes.device, dtype=torch.long)
     x = torch.arange(D2, device=boxes.device, dtype=torch.long)
 
-    # Compute mask as union of planes in one step
+    # Intersection of the three broadcast axis slabs, computed directly with `&`. This used to
+    # `|` the three slabs and recover the intersection with a three-way `all()` reduction/product;
+    # that recovery breaks the moment any one slab covers a whole axis, since the union is then
+    # all-true on that axis and the reduction can no longer see the other two slabs' bounds. `&`
+    # needs no such recovery step -- each broadcast slab already carries its own axis's bound at
+    # every position, so the elementwise intersection is exactly the answer.
     m = (
         ((z[None, :] >= z_min[:, None]) & (z[None, :] <= z_max[:, None]))[:, None, :, None, None]
-        | ((y[None, :] >= y_min[:, None]) & (y[None, :] <= y_max[:, None]))[:, None, None, :, None]
-        | ((x[None, :] >= x_min[:, None]) & (x[None, :] <= x_max[:, None]))[:, None, None, None, :]
-    ).float()  # Shape: (N, 1, D0, D1, D2)
-
-    # Compute conditions
-    cond1 = m.all(dim=3, keepdim=True).all(dim=2, keepdim=True)
-    cond2 = m.all(dim=4, keepdim=True).all(dim=2, keepdim=True)
-    cond3 = m.all(dim=3, keepdim=True).all(dim=4, keepdim=True)
-
-    m_out = cond1 * cond2 * cond3  # Broadcasting to (N, 1, D0, D1, D2)
-    return m_out.float()
+        & ((y[None, :] >= y_min[:, None]) & (y[None, :] <= y_max[:, None]))[:, None, None, :, None]
+        & ((x[None, :] >= x_min[:, None]) & (x[None, :] <= x_max[:, None]))[:, None, None, None, :]
+    )  # Shape: (N, 1, D0, D1, D2)
+    return m.float()
 
 
 def bbox_generator(

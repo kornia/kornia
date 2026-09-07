@@ -91,6 +91,39 @@ class TestCubicSolver(BaseTester):
         coeffs = torch.tensor([[2.0, 3.0, -11.0, -6.0]], device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(solver.solve_cubic, (coeffs,))
 
+    def test_convention_gradient_is_finite_at_the_acos_boundary_4290(self, device, dtype):
+        # #4290: d(acos)/dx = -1/sqrt(1-x^2) is unbounded at x = +-1. solve_cubic's D<=0
+        # branch computes acos(R / sqrt(-Q3)); the branch condition guarantees the ratio is in
+        # [-1, 1], but a cubic with a repeated or near-repeated root pushes it to exactly that
+        # boundary, where the VALUE is fine but the DERIVATIVE diverges -- same shape as the
+        # acos/asin boundary in quaternion_exp_to_log/euler_from_quaternion (#4007, fixed in
+        # #4228), a different call site not covered by that fix.
+        #
+        # This resolvent cubic comes from kornia's OWN existing double-root quartic fixture
+        # (TestQuarticSolver.test_solve_quartic, "Case 3: Double Roots": (x-2)^2(x-3)(x+1),
+        # coeffs [1, -6, 9, 4, -12]) -- already in the suite, already passes on forward value,
+        # because that test never calls .backward(). It fails immediately if you do.
+        coeffs = torch.tensor([[1.0, -6.0, 9.0, 4.0, -12.0]], device=device, dtype=dtype, requires_grad=True)
+        roots = solver.solve_quartic(coeffs)
+        roots.sum().backward()
+        assert bool(torch.isfinite(coeffs.grad).all()), coeffs.grad
+
+        # The forward value is unaffected by the gradient guard: unchanged, sorted match to the
+        # documented roots -1, 2, 2, 3.
+        expected = torch.tensor([[-1.0, 2.0, 2.0, 3.0]], device=device, dtype=dtype)
+        roots_sorted, _ = torch.sort(roots.detach(), dim=-1)
+        expected_sorted, _ = torch.sort(expected, dim=-1)
+        self.assert_close(roots_sorted, expected_sorted, rtol=1e-3, atol=1e-3)
+
+        # Second, independent repeated-root cubic exercising solve_cubic directly (not via a
+        # quartic's resolvent): (x-1)^2(x-4) = x^3 - 6x^2 + 9x - 4. Verified this lands exactly
+        # at the acos boundary (Q=-1, R=1, Q3=-1, D=Q3+R^2=0, ratio=R/sqrt(-Q3)=1.0 exactly) via
+        # the D<=0 branch (Q != 0, so this is not the separate Q==0-and-R==0 triple-root path).
+        cubic_coeffs = torch.tensor([[1.0, -6.0, 9.0, -4.0]], device=device, dtype=dtype, requires_grad=True)
+        cubic_roots = solver.solve_cubic(cubic_coeffs)
+        cubic_roots.sum().backward()
+        assert bool(torch.isfinite(cubic_coeffs.grad).all()), cubic_coeffs.grad
+
 
 class TestMultiplyDegOnePoly(BaseTester):
     def test_smoke(self, device, dtype):

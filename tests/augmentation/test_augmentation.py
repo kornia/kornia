@@ -77,7 +77,7 @@ from kornia.augmentation import (
 )
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
-from kornia.core._compat import torch_version, torch_version_le
+from kornia.core._compat import torch_version
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
 
@@ -5414,12 +5414,13 @@ class TestRandomJPEG(BaseTester):
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(
-    torch_version_le(2, 0, 1),
-    reason="Test requires distributed tensor support introduced in PyTorch > 2.0.1 for transformers clip model.",
-)
 class TestRandomDissolving(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
+
+    @pytest.fixture(autouse=True)
+    def _needs_diffusers(self):
+        # `diffusers` left the `dev` extra; skip rather than hit the LazyLoader prompt under --runslow.
+        pytest.importorskip("diffusers", reason='`diffusers` is not installed: pip install "kornia[sd]"')
 
     def test_batch_proc(self, device, dtype):
         images = torch.rand(4, 3, 16, 16)

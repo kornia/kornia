@@ -360,6 +360,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existing checkpoints are unaffected), and `forward` casts into a local variable rather than depending
   on the caller having matched dtype. Same bug shape as #4069/#4079 in a different class; the normal
   `float32` path is byte-identical to before. (#4319)
+
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
   `kornia_rs.io`, and kornia kept calling the root, so on 0.1.11 and newer `load_image` raised
@@ -371,6 +372,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so instead of mislabelling the tensor. The nightly PyPI job now imports the installed wheel from
   outside the checkout (it used to import the source tree) and round-trips an image instead of only
   importing. (#4326)
+
+* `distance_transform` no longer returns NaN gradients when the cascade's convolution is exactly zero, including
+  sparse masks and all-zero inputs; the existing forward output is unchanged. (#4232)
+
 * `SemanticSegmentation.visualize` works for CUDA, MPS and half-precision models. It indexed the
   CPU-drawn colormap with the mask's `argmax`, which raises for CUDA and MPS masks, and recognised a
   softmax head with `torch.allclose(sum, 1)` at float32-sized default tolerances, which a float16 or
@@ -412,6 +417,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the only one. `kornia.feature.lightglue.Attention.enable_flash`, the attribute that combined the
   constructor argument with the probe result (and so always equalled the argument, because SDPA is
   present on every supported torch), was renamed to `Attention.allow_flash`. (#4287)
+* `bbox_to_mask3d` now returns the intersection of the three axis ranges for a box that covers or
+  overhangs a whole output axis, matching `Boxes3D.to_mask`, instead of filling the entire volume
+  (#4255, #4303). The old implementation `|`-ed the three broadcast axis slabs and tried to recover the
+  intersection with a three-way `all()` reduction; that recovery breaks the moment any one slab
+  covers a whole axis, since the union is then all-true on that axis and the reduction can no
+  longer see the other two slabs' bounds. Computing the intersection directly with `&` needs no
+  such recovery step. Interior boxes (the case the old reductions happened to recover correctly)
+  are unaffected and byte-identical.
+* `solve_cubic`'s `D <= 0` (three-real-roots) branch no longer returns `nan` gradients for a
+  repeated or near-repeated real root (#4290, #4299). It differentiates `acos(R / sqrt(-Q3))`, whose own
+  derivative `-1/sqrt(1-x^2)` is unbounded at `x = +-1`; the branch condition guarantees the ratio
+  lies in `[-1, 1]`, but a repeated or near-repeated root pushes it to exactly that boundary,
+  where the value is correct but the derivative diverges. A double-root quartic reaches this
+  through `solve_quartic`'s resolvent cubic routinely, not as an edge case: measured on 20,000
+  random real-rooted quartics, 10.7% hit a non-finite gradient or a disconnected graph overall,
+  35.3% for exact double-root pairs specifically. Same failure shape as the `acos`/`asin`
+  boundary in `quaternion_exp_to_log`/`euler_from_quaternion` (#4007, fixed in #4228) — this is a
+  different call site, not covered by that fix, using the same guard: differentiate a substituted
+  safe argument, take the value from a detached copy of the real (possibly boundary) argument.
+  Forward values are unchanged; re-running the same 20,000-trial search with the fix applied
+  drops the failure count to 1,269 — a real, separate residual (a disconnected-graph case with
+  two simultaneous double-root pairs) remains and is tracked in #4290, not fixed here.
 
 * `ConvQuadInterp3d` / `conv_quad_interp3d` no longer return NaN gradients for `float16` input. The
   Hessian determinant `_solve_cramer_sym3x3` divides by is a product of three second derivatives, so for
@@ -457,6 +484,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `nms3d` accepts any `kernel_size`. Every size other than `(3, 3, 3)`, the one served by a hand-written
   branch, used to raise: `_compute_zero_padding3d` defined a `(k - 1) // 2` helper and then returned the
   full kernel sizes, so the padded volume did not match the kernel it was convolved with. (#4241, #4242)
+
+* Eager bbox validation now rejects NaN and infinite coordinates: `validate_bbox` returns `False` and
+  `Boxes.from_tensor(..., validate_boxes=True)` raises `ValueError` for the `xyxy`, `xyxy_plus` and `xywh`
+  modes, instead of accepting them as valid geometry (closes #4238). (#4243)
 
 * `HyNet` and `SOSNet` now run in half precision, on CPU and on GPU, and no longer return NaN for a
   degenerate patch (closes #4224). Two defects sat on the same line. On CPU both raised

@@ -22,7 +22,6 @@ This subpackage provides community-contributed and experimental features.
 
 from kornia.models.tiny_vit import TinyViT
 
-from .boxmot_tracker import BoxMotTracker
 from .connected_components import connected_components
 from .diamond_square import diamond_square
 from .distance_transform import DistanceTransform, distance_transform
@@ -43,7 +42,6 @@ from .object_detection import ObjectDetector, RTDETRDetectorBuilder
 from .super_resolution import RRDBNetBuilder, SmallSRBuilder, SuperResolution
 
 __all__ = [
-    "BoxMotTracker",
     "CombineTensorPatches",
     "DistanceTransform",
     "EdgeDetector",
