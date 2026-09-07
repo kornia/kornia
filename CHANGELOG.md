@@ -359,6 +359,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fixed `unproject_points_z1` depth shape handling for singleton and multi-axis batches,
   accepting both trailing-singleton and flat depth tensors. (#4355)
 
+* `depth_from_plane_equation` returns a finite depth for a ray exactly parallel to the plane. The
+  near-singular guard was `eps * torch.sign(denom)`, and `torch.sign` is zero at zero, so at the exact
+  singularity the epsilon was multiplied away and the division still ran against zero, returning `inf`.
+  A grazing ray is not an exotic input: it is every pixel on the horizon of a ground plane. The guard
+  now uses `torch.copysign`, which has no such hole and keeps the sign the small non-zero denominators
+  already got. (#4280)
+
 * `RenderingDeFMO` (used by `DeFMO`) no longer crashes on a half-precision forward pass. Its rendering
   time-steps (`times`) were a plain Python attribute, not a registered buffer, so `nn.Module.to()` never
   moved it; `forward` re-derived `times`'s device from the input on every call but never its dtype, so

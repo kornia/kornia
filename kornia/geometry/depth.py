@@ -271,7 +271,12 @@ def depth_from_plane_equation(
     denom = torch.sum(rays * plane_normals_exp, dim=-1)  # (B, N)
     denom_abs = torch.abs(denom)
     zero_mask = denom_abs < eps
-    denom = torch.where(zero_mask, eps * torch.sign(denom), denom)
+    # copysign rather than `eps * sign(denom)`: `sign` is zero at zero, so the
+    # multiplication cancelled the guard at the exact singularity it exists for
+    # and a ray parallel to the plane returned inf. copysign has no such hole,
+    # and keeps the branch's sign for the small non-zero denominators the guard
+    # already handled.
+    denom = torch.where(zero_mask, torch.copysign(torch.full_like(denom, eps), denom), denom)
 
     # Compute depth from plane equation
     depth = plane_offsets / denom  # plane_offsets: (B, 1), denom: (B, N) -> depth: (B, N)
