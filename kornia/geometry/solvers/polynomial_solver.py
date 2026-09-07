@@ -260,7 +260,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     .. note::
        The same surrogate convention applies at this function's own two ``sqrt`` boundaries:
        when the resolvent radicand ``R^2`` is 0 (a pure biquadratic such as :math:`x^4 - 16`)
-       and when the ``R pprox 0`` fallback's radicand is 0, backward suppresses the diverging
+       and when the ``R \\approx 0`` fallback's radicand is 0, backward suppresses the diverging
        ``sqrt`` derivative to keep gradients finite. The result is finite but is not the root
        Jacobian; the forward values are unaffected.
     """
