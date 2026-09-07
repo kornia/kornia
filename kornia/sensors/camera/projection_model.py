@@ -73,7 +73,7 @@ class Z1Projection:
 
         """
         if isinstance(depth, (float, int)):
-            depth = torch.Tensor([depth])
+            depth = torch.as_tensor([depth], device=points.data.device, dtype=points.data.dtype)
         return Vector3.from_coords(points.x * depth, points.y * depth, depth)
 
 
