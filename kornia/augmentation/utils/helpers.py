@@ -22,7 +22,6 @@ import torch
 from torch.distributions import Beta, Uniform
 
 from kornia.core.utils import _extract_device_dtype
-
 from kornia.geometry.keypoints import Keypoints
 
 
@@ -425,8 +424,6 @@ def override_parameters(
         else:
             raise ValueError(f"`{if_none_exist}` is not a valid option.")
     return out
-
-
 
 
 def preprocess_keypoints(input: Union[torch.Tensor, Keypoints]) -> Keypoints:
