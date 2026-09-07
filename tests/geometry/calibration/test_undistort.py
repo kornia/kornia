@@ -273,19 +273,20 @@ class TestUndistortPoints(BaseTester):
         self.assert_close(ptsu[1], ptsu_expected2, rtol=1e-4, atol=1e-4)
 
     def test_convention_undistort_points_inverts_distort_points(self, device, dtype):
-        # Convention pin (audit labels 5b-up-01, 5b-up-02, 5b-up-06, 5b-up-07, 5b-up-08): undistort_points is the
+        # Convention pin: undistort_points is the
         # ITERATIVE inverse of distort_points (a 5-step fixed point by default), so the round trip closes to the
-        # dtype tolerance on moderate coefficients, and raising num_iters to 50 does not change the answer. Both
+        # dtype tolerance on these points with moderate coefficients. Both
         # functions take PIXEL points and a (3, 3) K -- contrast the affine and Kannala-Brandt pairs in
         # tests/geometry/camera/test_distortion.py, which take normalized z = 1 points and a flat parameter
         # vector. The pin asserts closure at assert_close's dtype tolerance and states no error bound; the
-        # executed residuals are recorded, not enforced. (Outside the valid radius the same iteration diverges,
-        # kornia#4285 -- deliberately not pinned here, since the divergence point is a modelling question.)
+        # five-step float64 residual (4.62e-05) passes because atol plus rtol * abs(points) allows it.
+        # Raising the count to 50 improves float32/float64 accuracy; float16 stays at its rounding floor.
+        # Outside the valid radius the iteration can cycle (#4285), pinned separately below.
         # The two pixels sit half a focal length off the principal point in both directions and on both sides of
         # it, so the forward map actually moves them by 2.775 px -- a round trip pin on near-axis points would
         # pass with undistort_points replaced by the identity.
         # Snippet used to generate expected: (undistort_points(distort_points(pts, K, d), K, d) - pts).abs().max()
-        # executed 2026-09-06 on the batch-5b worktree (torch 2.14.0), differenced in the working dtype -> cpu
+        # executed 2026-09-06 on commit c0b50ad7 (torch 2.14.0), differenced in the working dtype -> cpu
         # float32 3.81e-05, float64 4.62e-05, float16 1.56e-02, bfloat16 0.0; mps float32 3.81e-05,
         # float16 1.56e-02. The forward displacement (distorted - points).abs().max() is 2.775 px on cpu float32.
         points = torch.tensor([[[54.0, 53.0], [-16.0, 23.0]]], device=device, dtype=dtype)
@@ -297,18 +298,18 @@ class TestUndistortPoints(BaseTester):
         self.assert_close(undistort_points(distorted, K, dist, num_iters=50), points)
 
     def test_wart_distort_undistort_round_trip_breaks_with_tilt_4276(self, device, dtype):
-        # Wart pin for kornia#4276 (audit labels Y1-06, Y1-07): distort_points and undistort_points stop being
+        # Wart pin for kornia#4276: distort_points and undistort_points stop being
         # inverses as soon as the 13th and 14th coefficients (taux, tauy) are non-zero, because distort_points
         # applies tilt_projection's FORWARD branch (Pz @ R.T) while undistort_points applies the return_inverse
         # branch (inv(Pz @ R)) -- see test_wart_tilt_projection_forward_is_pz_times_r_transpose_4276 in
         # test_distort.py. With taux = 0.1, tauy = 0.2 the round trip misses by tens of pixels; with the same
-        # 14-coefficient vector and both tilt angles zero it closes exactly. taux != tauy so a symmetric tilt
-        # cannot mask the defect.
+        # 14-coefficient vector and both tilt angles zero it closes within the dtype tolerance.
+        # taux != tauy so a symmetric tilt cannot mask the defect.
         # The two 14-coefficient vectors below share the SAME radial and tangential part, so the only difference
         # between the two arms is the tilt: with tau = 0 the round trip on genuinely distorted points closes, and
         # with tau != 0 it misses by tens of pixels.
         # Snippet used to generate expected: (undistort_points(distort_points(pts, K, d14), K, d14) - pts)
-        # .abs().max() executed 2026-09-06 on the batch-5b worktree (torch 2.14.0), tau = (0.1, 0.2) -> cpu
+        # .abs().max() executed 2026-09-06 on commit c0b50ad7 (torch 2.14.0), tau = (0.1, 0.2) -> cpu
         # float32 47.765, float64 47.765, float16 47.812, bfloat16 47.5; mps float32 47.765, float16 47.75. The
         # same vector with tau = 0 gives 3.81e-05 (cpu float32) / 0.0 (cpu bfloat16).
         # Pins the CURRENT behavior; NOT a contract; delete when #4276 is repaired.
@@ -323,8 +324,7 @@ class TestUndistortPoints(BaseTester):
         self.assert_close(undistort_points(distort_points(points, K, zero_tilt), K, zero_tilt), points)
 
     def test_convention_new_K_denormalizes_and_K_normalizes(self, device, dtype):
-        # Convention pin (no audit label -- the audit's undistort_points probes all leave new_K at its default;
-        # the executed snippet below is the evidence): the two intrinsics play the MIRROR IMAGE of their
+        # The two intrinsics play the mirror image of their
         # roles in distort_points -- here K maps the incoming distorted pixel onto the normalized z = 1 plane and
         # new_K maps the undistorted normalized point back to pixels, which is why the same new_K that shrinks
         # the forward answer enlarges this one. Every intrinsic is distinct (K: fx 2, fy 3, cx 1, cy 1; new_K:
@@ -332,7 +332,7 @@ class TestUndistortPoints(BaseTester):
         # (10, 10) normalizes under K to ((10-1)/2, (10-1)/3) = (4.5, 3.0) and denormalizes under new_K to
         # (5*4.5+2, 7*3+4) = (24.5, 25.0). The sibling pin in test_distort.py fixes the forward direction.
         # Snippet used to generate expected: undistort_points([[[10., 10.]]], K, zeros(1, 4), new_K) executed
-        # 2026-09-06 on the batch-5b worktree (torch 2.14.0, cpu float32 and float64) -> [[[24.5, 25.0]]]; the
+        # 2026-09-06 on commit c0b50ad7 (torch 2.14.0, cpu float32 and float64) -> [[[24.5, 25.0]]]; the
         # same call on mps float32 gives the same value. The second case, the mirror of test_distort.py's
         # diag(2, 2, 1) probe, doubles instead of halving: (1, 2) under K = eye(3) and new_K = diag(2, 2, 1)
         # comes back as (2.0, 4.0).
@@ -355,18 +355,14 @@ class TestUndistortPoints(BaseTester):
         )
 
     def test_convention_more_iterations_shrink_the_round_trip_residual(self, device, dtype):
-        # Convention pin extending audit labels 5b-up-01 / 5b-up-02: inside the region where the fixed point
-        # converges, raising num_iters improves the round trip. Those two labels were measured on the audit's
-        # own camera, where num_iters=50 makes no difference at all, so they do not by themselves establish the
-        # claim. The round-trip pin above uses that same fx = fy = 100 camera, where five steps already land
-        # inside assert_close's tolerance and 50 steps change nothing; this pin halves the vertical focal
-        # length to fy = 50, which doubles the normalized radius in y and leaves the five-step answer visibly
-        # short, so the three step counts are actually distinguishable.
+        # Inside the convergence region, more iterations reduce the residual down to the rounding floor.
+        # The fx = fy = 100 camera above already passes assert_close after five steps, although 50 steps
+        # improve its float32/float64 residual. Halving fy here makes the five-step error exceed that tolerance.
         # The first assertion is the non-triviality guard: the five-step answer is OUTSIDE the tolerance that
         # assert_close would use on these points, so the strict decrease below is not a decrease between three
         # already-converged answers.
         # Snippet used to generate expected: (undistort_points(distort_points(pts, K, d), K, d, num_iters=n)
-        # - pts).abs().max() for n in (5, 10, 50), executed 2026-09-06 on the batch-5b worktree (torch 2.14.0),
+        # - pts).abs().max() for n in (5, 10, 50), executed 2026-09-06 on commit c0b50ad7 (torch 2.14.0),
         # differenced in the working dtype -> cpu float64 1.355131e-02, 2.410766e-05, 1.421085e-14; cpu float32
         # 1.355362e-02, 3.051758e-05, 1.907349e-06; mps float32 the same three float32 values. float32 has
         # reached its own rounding floor by 50 steps while float64 is still closing, which is the scoping the
@@ -386,6 +382,46 @@ class TestUndistortPoints(BaseTester):
         assert residuals[0] > residuals[1]
         assert residuals[1] > residuals[2]
         self.assert_close(undistort_points(distorted, K, dist, num_iters=50), points)
+
+    def test_wart_fixed_point_cycles_outside_valid_radius_4285(self, device, dtype):
+        # The iteration alternates between two inaccurate values; a larger even count is worse
+        # than an odd count, rather than the residual increasing monotonically. Delete after #4285.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("probe requires float32/float64 to avoid half-precision overflow")
+        points = torch.tensor([[[304.0, 3.0]]], device=device, dtype=dtype)
+        K = _k_asymmetric(device, dtype)
+        dist = torch.tensor([[0.5, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
+        distorted = distort_points(points, K, dist)
+        residuals = [(undistort_points(distorted, K, dist, num_iters=n) - points).abs().max() for n in (5, 6, 7, 8)]
+        self.assert_close(residuals[0], residuals[2], atol=1e-3, rtol=1e-5)
+        self.assert_close(residuals[1], residuals[3], atol=1e-3, rtol=1e-5)
+        assert residuals[1] > residuals[0] > 1
+
+    @pytest.mark.parametrize("op", [distort_points, undistort_points])
+    @pytest.mark.parametrize("exporting", [False, True])
+    def test_wart_multi_axis_tilt_batch_fails_4324(self, device, dtype, monkeypatch, op, exporting):
+        # Export always takes the tilt branch, including for four zero coefficients.
+        points = torch.ones(2, 3, 5, 2, device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3)
+        dist = torch.zeros(2, 3, 4 if exporting else 14, device=device, dtype=dtype)
+        assert op(points, K, dist).shape == points.shape
+        if exporting:
+            monkeypatch.setattr(f"{op.__module__}.is_exporting", lambda: True)
+        else:
+            dist[..., 12:] = torch.tensor([0.01, 0.02], device=device, dtype=dtype)
+        error = RuntimeError if op is distort_points else ValueError
+        message = "size of tensor" if op is distort_points else "Input batch size must be the same"
+        with pytest.raises(error, match=message):
+            op(points, K, dist)
+
+    def test_wart_unbatched_export_undistort_fails_4324(self, device, dtype, monkeypatch):
+        points = torch.ones(1, 2, device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype)
+        dist = torch.zeros(4, device=device, dtype=dtype)
+        assert undistort_points(points, K, dist).shape == points.shape
+        monkeypatch.setattr(f"{undistort_points.__module__}.is_exporting", lambda: True)
+        with pytest.raises(ValueError, match="Input batch size must be the same"):
+            undistort_points(points, K, dist)
 
     def test_gradcheck(self, device):
         points = torch.rand(1, 8, 2, device=device, dtype=torch.float64, requires_grad=True)
@@ -432,6 +468,19 @@ class TestUndistortImage(BaseTester):
         imu = undistort_image(im, K, distCoeff)
         assert imu.shape == (3, 2, 3, 5, 5)
         self.assert_close(imu[0], imu[1])
+
+    @pytest.mark.parametrize("exporting", [False, True])
+    def test_wart_multi_axis_tilt_image_fails_4324(self, device, dtype, monkeypatch, exporting):
+        image = torch.ones(2, 3, 1, 5, 5, device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3)
+        dist = torch.zeros(2, 3, 4 if exporting else 14, device=device, dtype=dtype)
+        assert undistort_image(image, K, dist).shape == image.shape
+        if exporting:
+            monkeypatch.setattr(f"{distort_points.__module__}.is_exporting", lambda: True)
+        else:
+            dist[..., 12:] = torch.tensor([0.01, 0.02], device=device, dtype=dtype)
+        with pytest.raises(RuntimeError, match="size of tensor"):
+            undistort_image(image, K, dist)
 
     def test_exception(self, device, dtype):
         with pytest.raises(ValueError):
@@ -498,14 +547,14 @@ class TestUndistortImage(BaseTester):
         self.assert_close(imu, imu_expected / 255.0, rtol=1e-2, atol=1e-2)
 
     def test_convention_zero_coefficients_are_close_but_not_byte_identical(self, device, dtype):
-        # Convention pin (audit labels 5b-ui-01, Y3-01, Y3-02, Y3-03, Y3-04): with every coefficient zero the
+        # Convention pin: with every coefficient zero the
         # DISTORTION MAP is exact -- distort_points reproduces the pixel grid bit for bit (Y3-03: 0.0) -- but
         # undistort_image still routes the image through remap's bilinear sampler, so the returned image is NOT
         # byte-identical to the input; it is only equal within the dtype tolerance. This refutes the plausible
         # "zero coefficients give back the same image" reading, and it is why the pin uses assert_close where the
         # point-level pin in test_distort.py uses torch.equal. No residual bound is asserted.
         # Snippet used to generate expected: (torch.equal(undistort_image(img, K, zeros(1, 4)), img),
-        # (undistort_image(...) - img).abs().max()) executed 2026-09-06 on the batch-5b worktree (torch 2.14.0)
+        # (undistort_image(...) - img).abs().max()) executed 2026-09-06 on commit c0b50ad7 (torch 2.14.0)
         # -> cpu float32 (False, 1.19e-07), float64 (False, 2.09e-16), float16 (False, 9.19e-04), bfloat16
         # (False, 7.81e-03); mps float32 (False, 1.19e-07), float16 (False, 1.84e-03). Only the mps float16 cell
         # exceeds its atol, so the skip is conditioned on the device and the cpu float16 leg still runs.
@@ -518,14 +567,14 @@ class TestUndistortImage(BaseTester):
         self.assert_close(out, image)
 
     def test_convention_accepts_both_batch_conventions(self, device, dtype):
-        # Convention pin (audit labels 5b-ui-02, 5b-ui-03, 5b-ui-04): undistort_image accepts the batched form
+        # Convention pin: undistort_image accepts the batched form
         # (B, C, H, W) + (B, 3, 3) + (B, n) AND the legacy unbatched form (1, C, H, W) + (3, 3) + (n,), which the
         # source keeps "to avoid a breaking change". The legacy relaxation is special-cased to B = 1 only: the
         # same unbatched K and dist with a B = 2 image raise ValueError rather than broadcasting. The batch is
         # built from the SAME image repeated twice with different intrinsics (fx 3/5, fy 2/4, cx 3/2, cy 2/1) and
         # different coefficients, so the two output rows can only differ if each element used its own K and dist.
         # Snippet used to generate expected: shapes from undistort_image on each form, plus
-        # (out[0] - out[1]).abs().max(), executed 2026-09-06 on the batch-5b worktree (torch 2.14.0) ->
+        # (out[0] - out[1]).abs().max(), executed 2026-09-06 on commit c0b50ad7 (torch 2.14.0) ->
         # (2, 3, 5, 7), (1, 3, 5, 7), ValueError("Input shape is invalid. Input batch dimensions should match."),
         # and a row-to-row difference of 0.284 (cpu float32) / 0.283 (mps float32) on an image in [0, 1).
         dist = torch.tensor([[0.1, 0.01, 0.001, 0.001]], device=device, dtype=dtype)
@@ -542,14 +591,14 @@ class TestUndistortImage(BaseTester):
             undistort_image(torch.cat([image, image]), K[0], dist[0])
 
     def test_convention_resamples_with_align_corners_true(self, device, dtype):
-        # Convention pin (audit labels 5b-ui-10, Y3-03): undistort_image is exactly
+        # Convention pin: undistort_image is exactly
         # ``remap(image, mapx, mapy, align_corners=True)`` over the map that distort_points produces on the
         # create_meshgrid pixel grid -- the align_corners choice is BAKED IN and the function exposes no way to
         # change it (a documented window item; the same baked flag appears in warp_frame_depth and DepthWarper).
         # The align_corners=False arm is asserted to DIFFER on the same map, so the pin discriminates rather than
         # passing for both settings; the coefficients are non-trivial for the same reason.
         # Snippet used to generate expected: torch.equal(undistort_image(img, K, dist), remap(img, mapx, mapy,
-        # align_corners=True)) executed 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> True on cpu for
+        # align_corners=True)) executed 2026-09-06 on commit c0b50ad7 (torch 2.14.0) -> True on cpu for
         # float32/float64/float16/bfloat16 and on mps for float32/float16; the align_corners=False output is
         # visibly different on every one of those cells, which the pin asserts without a bound. On this
         # short-focal camera the map deviates from the pixel grid by 0.738 px and the undistorted image differs

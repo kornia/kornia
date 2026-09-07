@@ -85,10 +85,8 @@ def solve_pnp_dlt(
 
     Convention:
         - the returned :math:`(B, 3, 4)` matrix is the **world-to-camera** ``[R | t]``: it maps a world point
-          into the camera frame, which is the direction the ``extrinsics`` of
-          :class:`~kornia.geometry.camera.pinhole.PinholeCamera` also store, and the inverse of the
-          camera-to-world pose a reader may expect from "camera pose". If the camera frame is the world frame
-          shifted so that ``X_cam = X_world + (1, 0, 0)``, the recovered ``t`` is ``(+1, 0, 0)`` and not
+          into the camera frame, rather than storing a camera-to-world pose. If the camera frame is the world
+          frame shifted so that ``X_cam = X_world + (1, 0, 0)``, the recovered ``t`` is ``(+1, 0, 0)`` and not
           ``(-1, 0, 0)``.
         - ``intrinsics`` is the :math:`(B, 3, 3)` ``K``; the :math:`(B, 4, 4)` matrix that a
           ``PinholeCamera`` stores is rejected by the shape check.

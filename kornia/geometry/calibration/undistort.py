@@ -42,9 +42,8 @@ def undistort_points(
     distortion models are considered in this function.
 
     Convention:
-        - ``points`` are **pixel** coordinates and so is the result.
-          Those pixels are measured on the integer-centre grid described in the Convention block on
-          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+        - ``points`` are **pixel** coordinates in ``(u, v)`` order and so is the result. Pixel centres lie at
+          integer coordinates: the top-left centre is ``(0, 0)``.
         - ``dist`` follows the coefficient layout documented on
           :func:`~kornia.geometry.calibration.distort_points`, which is the forward map this function inverts;
           the accepted lengths and the internal zero-padding are the same.
@@ -52,30 +51,27 @@ def undistort_points(
           pixel onto the normalized plane and ``new_K`` maps the undistorted normalized point back to pixels.
         - the inverse is a fixed-point iteration of ``num_iters`` steps, not a closed form, so the round trip
           through :func:`~kornia.geometry.calibration.distort_points` closes only to the accuracy that
-          iteration has reached. At the default step count that accuracy is set by the camera and the
-          coefficients rather than by the working dtype, and inside the region where the iteration converges
-          raising ``num_iters`` improves it. That dtype-independence is a statement about the default step
-          count only: raised far enough, float32 stops improving once it reaches its own rounding floor while
-          float64 keeps closing.
+          iteration has reached. Within its convergence region, increasing ``num_iters`` can improve the
+          result until it reaches the working dtype's rounding floor; ``float16`` can reach that floor at the
+          default count, while ``float32`` and ``float64`` can continue to improve.
+        - In eager execution, arbitrary matching leading dimensions work while the tilt path is inactive.
+          With non-zero tilt, use one explicit leading batch dimension; multiple leading dimensions and
+          unbatched intrinsics can fail. ONNX export always takes that path, including for zero tilt, so
+          even unbatched inputs with four coefficients can fail. Tracked as `#4324 <https://github.com/kornia/kornia/issues/4324>`_.
 
     .. warning::
-        The iteration has no convergence test and no valid-radius guard. Outside the region where the radial
-        polynomial is monotonic it diverges silently, and raising ``num_iters`` makes the answer worse instead
-        of better. Tracked as `#4285 <https://github.com/kornia/kornia/issues/4285>`_; it carries no pin,
-        because what the function should return outside that region is not settled.
+        The iteration has no convergence test and no valid-radius guard. Outside the iteration
+        convergence region it can enter a two-point cycle, so the answer depends on whether ``num_iters``
+        is odd or even and no count converges. Tracked as `#4285 <https://github.com/kornia/kornia/issues/4285>`_.
 
     .. warning::
-        With a non-zero :math:`\tau_x` or :math:`\tau_y` this function and
-        :func:`~kornia.geometry.calibration.distort_points` are not inverses of each other, because they apply
-        the two branches of :func:`~kornia.geometry.calibration.tilt_projection` and those two are not
-        inverses. This function applies the inverse branch, which is the one that matches OpenCV. Tracked as
-        `#4276 <https://github.com/kornia/kornia/issues/4276>`_ and pinned by
-        ``test_wart_distort_undistort_round_trip_breaks_with_tilt_4276`` in
-        ``tests/geometry/calibration/test_undistort.py``.
+        Non-zero tilt breaks the forward/inverse round trip; see
+        :func:`~kornia.geometry.calibration.tilt_projection` and
+        `#4276 <https://github.com/kornia/kornia/issues/4276>`_ for the explanation.
 
     .. warning::
-        ``torch.compile(fullgraph=True)`` fails on this function because the tilt test reads the coefficient
-        values on the host; ONNX export is already routed around it by ``is_exporting()``. Tracked as
+        This function has the same ``torch.compile(fullgraph=True)`` limitation as
+        :func:`~kornia.geometry.calibration.distort_points`; see that function for the explanation. Tracked as
         `#4286 <https://github.com/kornia/kornia/issues/4286>`_.
 
     Args:
@@ -186,16 +182,16 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     distortion models are considered in this function.
 
     Convention:
-        - the leading dimensions of ``image`` (everything in front of ``C, H, W``), of ``K`` (in front of its
-          :math:`3 \times 3` block) and of ``dist`` (in front of its ``n`` coefficients) must match exactly.
-          They may be empty, a single batch axis, or several axes deep. The one exception is the legacy
-          unbatched call -- a :math:`(1, C, H, W)` image with a :math:`(3, 3)` ``K`` and an :math:`(n,)`
-          ``dist``, which the source keeps to avoid a breaking change. That exception is not a broadcast: the
-          same unbatched ``K`` and ``dist`` with a leading dimension larger than 1 raise :class:`ValueError`.
+        - In eager execution while the tilt path is inactive, the leading dimensions of ``image`` (everything
+          in front of ``C, H, W``), of ``K`` (in front of its :math:`3 \times 3` block) and of ``dist`` (in
+          front of its ``n`` coefficients) must match exactly. They may be empty, a single batch axis, or
+          several axes deep. The one exception is the legacy unbatched call -- a :math:`(1, C, H, W)` image
+          with a :math:`(3, 3)` ``K`` and an :math:`(n,)` ``dist``. With non-zero tilt, at most one leading batch
+          axis is supported; ONNX export always takes the tilt path, including for zero tilt. Tracked as
+          `#4324 <https://github.com/kornia/kornia/issues/4324>`_.
         - the sampling map is built by applying :func:`~kornia.geometry.calibration.distort_points` to the
-          grid of integer pixel centres that :func:`~kornia.geometry.grid.create_meshgrid` enumerates, so the
-          pixel-centre convention is the one described in the Convention block on
-          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+          grid of integer pixel centres that :func:`~kornia.geometry.grid.create_meshgrid` enumerates: the
+          top-left centre is ``(0, 0)``.
         - the map is resampled with ``align_corners=True``; the flag is baked in and the function exposes no
           way to change it.
         - with every coefficient zero the map is the pixel grid up to floating-point rounding, but the image
@@ -206,7 +202,8 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         The sampling map is built with :func:`~kornia.geometry.calibration.distort_points`, so a non-zero
         :math:`\tau_x` or :math:`\tau_y` carries the tilt defect tracked in
         `#4276 <https://github.com/kornia/kornia/issues/4276>`_ into the resampled image, which is visibly
-        different from the untilted one.
+        different from the untilted one. See :func:`~kornia.geometry.calibration.tilt_projection` for the full
+        explanation.
 
     Args:
         image: Input image with shape :math:`(*, C, H, W)`.

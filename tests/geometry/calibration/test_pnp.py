@@ -165,8 +165,8 @@ class TestSolvePnpDlt(BaseTester):
 
     @staticmethod
     def _convention_world_points(device, dtype):
-        # Six non-coplanar, non-collinear points spread over x, y and z with mixed signs -- the audit's set
-        # (full_audit.py, WPTS). A planar or collinear set trips solve_pnp_dlt's own singular-value guard, and a
+        # Six non-coplanar, non-collinear points spread over x, y and z with mixed signs. A planar or collinear set
+        # trips solve_pnp_dlt's own singular-value guard, and a
         # symmetric set would hide a transposed [R|t].
         return torch.tensor(
             [
@@ -184,14 +184,14 @@ class TestSolvePnpDlt(BaseTester):
         )
 
     def test_convention_returns_the_world_to_camera_extrinsics(self, device, dtype):
-        # Convention pin (audit labels 5b-pnp-01, 5b-pnp-02, 5b-pnp-03): solve_pnp_dlt returns a (B, 3, 4)
+        # Convention pin: solve_pnp_dlt returns a (B, 3, 4)
         # [R | t] that maps WORLD points INTO the camera frame -- the same direction as PinholeCamera.extrinsics
         # and OpenCV's solvePnP rvec/tvec, not the camera pose in the world. Two cases: world points that are
         # already camera-frame points recover [I | 0], and a camera translated so that cam = world + (1, 0, 0)
         # recovers t = (+1, 0, 0). A cam-to-world reading would give t = (-1, 0, 0) on the second case, which is
         # why the identity case alone is not enough.
         # Snippet used to generate expected: solve_pnp_dlt(W, project_points(W + [1., 0., 0.], K), K) executed
-        # 2026-09-06 on the batch-5b worktree (torch 2.14.0, cpu float64) -> [[[1., -0., -0., 1.], [0., 1., -0.,
+        # 2026-09-06 at c0b50ad7 (torch 2.14.0, cpu float64) -> [[[1., -0., -0., 1.], [0., 1., -0.,
         # 0.], [0., 0., 1., 0.]]], max abs error vs [I | (1, 0, 0)] 6.14e-15; the identity case gives [I | 0] to
         # 8.01e-14.
         if dtype != torch.float64:
@@ -214,16 +214,16 @@ class TestSolvePnpDlt(BaseTester):
         self.assert_close(shifted, expected)
 
     def test_convention_world_to_camera_translation_sign(self, device, dtype):
-        # Convention pin (audit label 5b-pnp-03), the tolerance-free half of the pin above so that the
+        # Convention pin: the tolerance-free half of the pin above covers the
         # frame-direction claim is covered on every device and not only where float64 exists (mps has none).
         # A camera translated so that cam = world + (1, 0, 0) gives a world-to-camera [R | t] with t = (+1, 0, 0);
         # the cam-to-world reading is t = (-1, 0, 0). The assertion is a sign test, not a value test, so it needs
         # no tolerance and survives the float32 solve on mps, which recovers t only to about 1e-05.
         # Snippet used to generate expected: solve_pnp_dlt(W, project_points(W + [1., 0., 0.], K), K)[0, :, 3]
-        # executed 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> cpu float32
+        # executed 2026-09-06 at c0b50ad7 (torch 2.14.0) -> cpu float32
         # [1.0000005960464478, 3.45e-06, 5.88e-06]; mps float32 [1.0000009536743164, -2.21e-06, -1.06e-05].
         if dtype not in (torch.float32, torch.float64):
-            pytest.skip("solve_pnp_dlt rejects half precision before it solves anything (BaseError)")
+            pytest.skip("solve_pnp_dlt's shape/dtype validation rejects float16 and bfloat16 (BaseError)")
         world_points = self._convention_world_points(device, dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         shift = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
@@ -235,19 +235,18 @@ class TestSolvePnpDlt(BaseTester):
         assert abs(translation[2]) < 0.5
 
     def test_convention_rejects_4x4_intrinsics(self, device, dtype):
-        # Convention pin (no audit label -- the audit probed solve_pnp_dlt's point-count and degeneracy guards,
-        # not its intrinsics shape; the executed snippet below is the evidence): ``intrinsics`` is the (B, 3, 3)
+        # Convention pin: ``intrinsics`` is the (B, 3, 3)
         # K, and the (B, 4, 4) intrinsics matrix that a PinholeCamera stores is rejected by the shape check
         # rather than silently truncated to its upper-left block. The positive control is the same call with
         # that upper-left block passed on its own, which solves: so the rejection is about the shape and not
         # about the camera.
         # Snippet used to generate expected: solve_pnp_dlt(W, project_points(W, K), eye(4)[None] with K in the
-        # upper-left 3x3) executed 2026-09-06 on the batch-5b worktree (torch 2.14.0) -> ShapeError("Shape
+        # upper-left 3x3) executed 2026-09-06 at c0b50ad7 (torch 2.14.0) -> ShapeError("Shape
         # mismatch at dimension 1: expected 3, got 4. | Expected shape: ['B', '3', '3'] | Actual shape:
         # [1, 4, 4]") on cpu float32 and float64. In float16 and bfloat16 the earlier dtype validation fires
         # first with a bare BaseError("Validation condition failed"), so those cells are skipped.
         if dtype not in (torch.float32, torch.float64):
-            pytest.skip("solve_pnp_dlt rejects half precision before the intrinsics shape check (BaseError)")
+            pytest.skip("solve_pnp_dlt's dtype validation rejects float16 and bfloat16 before the 4x4 shape check")
         world_points = self._convention_world_points(device, dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         img_points = kornia.geometry.project_points(world_points, K)
@@ -258,16 +257,16 @@ class TestSolvePnpDlt(BaseTester):
         assert kornia.geometry.solve_pnp_dlt(world_points, img_points, K_4x4[:, :3, :3]).shape == (1, 3, 4)
 
     def test_convention_planar_world_points_raise(self, device, dtype):
-        # Convention pin (audit labels 5b-pnp-04, 5b-pnp-05): the DLT needs a non-degenerate configuration, and
+        # Convention pin: the DLT needs a non-degenerate configuration, and
         # the function enforces it -- a coplanar point set (the same six points flattened onto z = 5) raises
         # AssertionError naming the last singular value, rather than returning a silently wrong pose. This is a
         # documented, validated contract, so it is a convention and not a wart.
         # Snippet used to generate expected: solve_pnp_dlt(planar, project_points(planar, K), K) executed
-        # 2026-09-06 on the batch-5b worktree (torch 2.14.0, cpu float32 and float64) -> AssertionError("The last
+        # 2026-09-06 at c0b50ad7 (torch 2.14.0, cpu float32 and float64) -> AssertionError("The last
         # singular value of one/more of the elements of the batch is smaller than 0.0001. ..."). In float16 and
         # bfloat16 the earlier dtype validation fires first, so those cells are skipped.
         if dtype not in (torch.float32, torch.float64):
-            pytest.skip("solve_pnp_dlt rejects half precision before the degeneracy check (BaseError)")
+            pytest.skip("solve_pnp_dlt's dtype validation rejects float16 and bfloat16 before the degeneracy check")
         world_points = self._convention_world_points(device, dtype)
         K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         planar = torch.stack(

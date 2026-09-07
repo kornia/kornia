@@ -35,8 +35,7 @@ def distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, par
     Convention:
         - ``projected_points_in_camera_z1_plane`` is a point on the **normalized** :math:`z = 1` plane, not a
           pixel, and ``params`` is the flat vector ``[fx, fy, cx, cy]``; the result is in pixels.
-          Those pixels are measured on the integer-centre grid described in the Convention block on
-          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+          Pixel centres lie at integer coordinates: the top-left centre is ``(0, 0)``.
         - :func:`~kornia.geometry.calibration.distort_points` is the same camera parametrized by a
           :math:`(*, 3, 3)` ``K`` and an OpenCV coefficient vector; it takes a **pixel** input instead.
         - :func:`undistort_points_affine` inverts this map in closed form -- one subtraction and one division
@@ -121,7 +120,7 @@ def dx_distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, 
     r"""Compute the Jacobian of the affine distortion with respect to the point.
 
     .. math::
-        \frac{\partial u}{\partial x} =
+        \frac{\partial (u, v)}{\partial (x, y)} =
         \begin{bmatrix} f_x & 0 \\ 0 & f_y \end{bmatrix}
 
     Convention:

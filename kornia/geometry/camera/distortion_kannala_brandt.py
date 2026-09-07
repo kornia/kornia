@@ -67,8 +67,7 @@ def distort_points_kannala_brandt(
     Convention:
         - ``projected_points_in_camera_z1_plane`` is a point on the **normalized** :math:`z = 1` plane, not a
           pixel, and the result is in pixels.
-          Those pixels are measured on the integer-centre grid described in the Convention block on
-          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+          Pixel centres lie at integer coordinates: the top-left centre is ``(0, 0)``.
         - ``params`` is the flat vector ``[fx, fy, cx, cy, k0, k1, k2, k3]``: the first four are the affine
           part that :func:`~kornia.geometry.camera.distort_points_affine` takes on its own, and ``k0`` to
           ``k3`` multiply :math:`\theta^2`, :math:`\theta^4`, :math:`\theta^6` and :math:`\theta^8` in the
@@ -119,19 +118,20 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
           :func:`distort_points_kannala_brandt`.
         - the inverse is a fixed number of Gauss-Newton steps rather than a closed form: the step count is not
           a parameter and there is no convergence test, so the round trip through
-          :func:`distort_points_kannala_brandt` closes only to the accuracy that iteration has reached. That
-          accuracy is set by the model and the point rather than by the working dtype, and a caller cannot
-          raise it. :func:`~kornia.geometry.camera.undistort_points_affine` is the closed-form contrast.
-        - small constants guard the Newton denominator and the final radial rescale, so a point at the
-          principal point comes back as the origin rather than ``nan`` -- as long as those constants are
-          representable in the dtype of ``params``, which is the dtype the whole body runs in.
+          :func:`distort_points_kannala_brandt` closes only to the accuracy that iteration has reached. The
+          fixed step count cannot be raised by a caller, and the residual eventually bottoms out at the
+          working dtype's rounding floor. :func:`~kornia.geometry.camera.undistort_points_affine` is the
+          closed-form contrast.
+        - three small constants guard the Newton start (``1e-16``), Newton denominator (``1e-12``), and final
+          radial rescale (``1e-8``), so a point at the principal point comes back as the origin rather than
+          ``nan`` -- as long as those constants are representable in the dtype of ``params``, which is the
+          dtype the whole body runs in.
 
     .. warning::
-        Those guard constants are hardcoded and both underflow to zero in ``float16``, so with ``float16``
-        ``params`` the principal point returns ``nan`` instead of the origin. ``float32``, ``float64`` and
-        ``bfloat16`` are unaffected. Tracked as `#4308 <https://github.com/kornia/kornia/issues/4308>`_ and
-        pinned by ``test_wart_principal_point_undistorts_to_nan_in_float16_4308`` in
-        ``tests/geometry/camera/test_distortion.py``.
+        All three guard constants underflow to zero in ``float16``. At the principal point the unguarded Newton
+        denominator is one, but the final ``1e-8`` rescale guard then underflows and returns ``nan`` instead of
+        the origin. ``float32``, ``float64`` and ``bfloat16`` are unaffected. Tracked as
+        `#4308 <https://github.com/kornia/kornia/issues/4308>`_.
 
     Args:
         distorted_points_in_camera: torch.Tensor representing the points to undistort with shape (..., 2).
@@ -212,11 +212,7 @@ def dx_distort_points_kannala_brandt(
         the gap; at the origin it is ``nan``. Tracked as
         `#4277 <https://github.com/kornia/kornia/issues/4277>`_. The ``Example:`` block below prints the value
         this implementation returns today and is deliberately left byte-identical -- it is the executable
-        evidence for the issue, and the repair has to re-derive it together with the existing
-        ``test_dx_distort_points_kannala_brandt``. The current matrix is pinned by
-        ``test_wart_dx_distort_points_kannala_brandt_disagrees_with_autograd_4277`` and the intended one by the
-        strict ``xfail`` ``test_convention_dx_distort_points_kannala_brandt_matches_autograd_4277``, both in
-        ``tests/geometry/camera/test_distortion.py``.
+        evidence for the issue, and the repair has to re-derive it together with the existing regression tests.
 
     Args:
         projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).
