@@ -493,6 +493,7 @@ class TestPinholeCamera(BaseTester):
         the int64 storage, which raised RuntimeError on every accelerator.
         """
         import kornia
+
         batch_size = 1
         fx, fy, cx, cy = 1.0, 2.0, 4.0, 3.0
         tx, ty, tz = 1.0, 2.0, 3.0

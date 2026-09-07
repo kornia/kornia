@@ -322,6 +322,7 @@ class PinholeCamera:
         self.height = self.height * scale_factor
         self.width = self.width * scale_factor
         return self
+
     def project(self, point_3d: torch.Tensor) -> torch.Tensor:
         r"""Project a 3d point in world coordinates onto the 2d camera plane.
 
