@@ -506,10 +506,7 @@ class TestQuarticSolver(BaseTester):
         mixed = torch.tensor([four, two], device=device, dtype=dtype, requires_grad=True)
         solver.solve_quartic(mixed).sum().backward()
 
-        # Row 0 only. Row 1's own gradients are not this fix's to guarantee: they depend on
-        # solve_quartic's separate sqrt sites (#4229), which are torch-version sensitive --
-        # `x^4 - 16` alone is non-finite on torch <= 2.9.1 and finite on 2.14, where clamp
-        # zeroes the boundary gradient. Asserting over the whole batch would pin that moving
-        # target. What #4334 is about is row 0 being poisoned by row 1's presence.
+        # Check row 0 for the cross-batch contamination from #4334. Row 1's separate
+        # zero-radicand gradient convention was fixed in #4339 and is covered above.
         assert bool(torch.isfinite(mixed.grad[0]).all()), mixed.grad
         self.assert_close(mixed.grad[0], alone.grad[0])
