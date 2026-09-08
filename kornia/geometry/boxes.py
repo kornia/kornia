@@ -267,9 +267,7 @@ class Boxes:
         unvalidated, and ``'vertices'`` also subtracts one from fixed vertex positions, potentially deforming the
         input rather than rejecting it; this is tracked in `#4177 <https://github.com/kornia/kornia/issues/4177>`_.
         The unimplemented ``trim``, ``translate(method='fast')``, and tuple-bound ``clamp`` paths are tracked in
-        `#4017 <https://github.com/kornia/kornia/issues/4017>`_. The pad, unpad, and clamp operations fail for
-        unbatched containers even though the class accepts :math:`(N, 4, 2)` data; this is tracked in
-        `#4244 <https://github.com/kornia/kornia/issues/4244>`_.
+        `#4017 <https://github.com/kornia/kornia/issues/4017>`_.
 
     """
 
@@ -449,6 +447,22 @@ class Boxes:
         obj._data = _data
         return obj
 
+    def _broadcast_over_vertices(self, values: torch.Tensor) -> torch.Tensor:
+        """Shape a per-image ``(B, k)`` column so it broadcasts over ``self._data[..., i]``.
+
+        The batched container indexes as ``(B, N, 4)``, so the column needs one axis for the box
+        count. The unbatched ``(N, 4, 2)`` form carries a single implicit image and indexes as
+        ``(N, 4)``, so its ``(1, k)`` column already broadcasts and must not gain that axis.
+        """
+        if self._is_batched:
+            return values[..., None, :]
+        if values.size(0) != 1:
+            raise RuntimeError(
+                f"Unbatched (N, 4, 2) boxes carry a single image, so a per-image tensor must have one row. "
+                f"Got {values.size(0)}."
+            )
+        return values
+
     def pad(self, padding_size: torch.Tensor) -> Boxes:
         """Pad every box in place.
 
@@ -456,8 +470,10 @@ class Boxes:
 
         ``padding_size`` is ordered as ``(left, right, top, bottom)``. Only
         ``left`` and ``top`` change the coordinate origin; this method returns
-        ``self`` after adding those two values to every vertex. This operation
-        supports only batched :math:`(B, N, 4, 2)` containers.
+        ``self`` after adding those two values to every vertex. Both the batched
+        :math:`(B, N, 4, 2)` and the unbatched :math:`(N, 4, 2)` container are
+        supported; the unbatched form carries a single image, so ``padding_size``
+        must have exactly one row.
 
         Note:
             Padded :class:`~kornia.augmentation.RandomCrop` uses this method
@@ -470,8 +486,9 @@ class Boxes:
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
             raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
-        self._data[..., 0] += padding_size[..., None, :1].to(device=self._data.device)  # left padding
-        self._data[..., 1] += padding_size[..., None, 2:3].to(device=self._data.device)  # top padding
+        offset = padding_size.to(device=self._data.device)
+        self._data[..., 0] += self._broadcast_over_vertices(offset[..., :1])  # left padding
+        self._data[..., 1] += self._broadcast_over_vertices(offset[..., 2:3])  # top padding
         return self
 
     def unpad(self, padding_size: torch.Tensor) -> Boxes:
@@ -481,8 +498,10 @@ class Boxes:
 
         ``padding_size`` is ordered as ``(left, right, top, bottom)``. Only
         ``left`` and ``top`` change the coordinate origin; this method returns
-        ``self`` after subtracting those two values from every vertex. This
-        operation supports only batched :math:`(B, N, 4, 2)` containers.
+        ``self`` after subtracting those two values from every vertex. Both the
+        batched :math:`(B, N, 4, 2)` and the unbatched :math:`(N, 4, 2)` container
+        are supported; the unbatched form carries a single image, so
+        ``padding_size`` must have exactly one row.
 
         Args:
             padding_size: Per-batch padding in ``(left, right, top, bottom)``
@@ -491,8 +510,9 @@ class Boxes:
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
             raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
-        self._data[..., 0] -= padding_size[..., None, :1].to(device=self._data.device)  # left padding
-        self._data[..., 1] -= padding_size[..., None, 2:3].to(device=self._data.device)  # top padding
+        offset = padding_size.to(device=self._data.device)
+        self._data[..., 0] -= self._broadcast_over_vertices(offset[..., :1])  # left padding
+        self._data[..., 1] -= self._broadcast_over_vertices(offset[..., 2:3])  # top padding
         return self
 
     def clamp(
@@ -509,7 +529,9 @@ class Boxes:
             Bounds must be tensors with one ``(x, y)`` pair per batch element.
             Every vertex is clamped independently, so a box wholly outside the
             bounds collapses onto the nearest boundary instead of being removed.
-            This operation supports only batched :math:`(B, N, 4, 2)` containers.
+            Both the batched :math:`(B, N, 4, 2)` and the unbatched
+            :math:`(N, 4, 2)` container are supported; the unbatched form carries
+            a single image, so the bounds must have exactly one row.
 
         Coordinates below ``topleft`` are raised to the lower bound and
         coordinates above ``botright`` are lowered to the upper bound. The
@@ -534,17 +556,23 @@ class Boxes:
             _data = self._data
         else:
             _data = self._data.clone()
-        topleft_x = topleft[:, None, :1].repeat(1, _data.size(1), 4)
-        _data[..., 0][_data[..., 0] < topleft_x] = topleft_x[_data[..., 0] < topleft_x]
+        # Broadcast the per-image bounds rather than materialising them at the data's shape: the
+        # masked assignment this replaces needed a bound tensor of exactly the mask's shape, which
+        # is what tied it to the batched (B, N, 4) indexing. ``torch.where`` on the same comparison
+        # keeps its semantics exactly, which ``maximum``/``minimum`` would not: every comparison
+        # against a NaN bound is False, so the coordinate is left alone instead of becoming NaN.
+        topleft_x = self._broadcast_over_vertices(topleft[..., :1])
+        topleft_y = self._broadcast_over_vertices(topleft[..., 1:])
+        botright_x = self._broadcast_over_vertices(botright[..., :1])
+        botright_y = self._broadcast_over_vertices(botright[..., 1:])
 
-        topleft_y = topleft[:, None, 1:].repeat(1, _data.size(1), 4)
-        _data[..., 1][_data[..., 1] < topleft_y] = topleft_y[_data[..., 1] < topleft_y]
-
-        botright_x = botright[:, None, :1].repeat(1, _data.size(1), 4)
-        _data[..., 0][_data[..., 0] > botright_x] = botright_x[_data[..., 0] > botright_x]
-
-        botright_y = botright[:, None, 1:].repeat(1, _data.size(1), 4)
-        _data[..., 1][_data[..., 1] > botright_y] = botright_y[_data[..., 1] > botright_y]
+        coord_x, coord_y = _data[..., 0], _data[..., 1]
+        coord_x = torch.where(coord_x < topleft_x, topleft_x.expand_as(coord_x), coord_x)
+        coord_y = torch.where(coord_y < topleft_y, topleft_y.expand_as(coord_y), coord_y)
+        coord_x = torch.where(coord_x > botright_x, botright_x.expand_as(coord_x), coord_x)
+        coord_y = torch.where(coord_y > botright_y, botright_y.expand_as(coord_y), coord_y)
+        _data[..., 0] = coord_x
+        _data[..., 1] = coord_y
         if inplace:
             return self
 

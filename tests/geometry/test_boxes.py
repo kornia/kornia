@@ -784,31 +784,45 @@ class TestBoxes2D(BaseTester):
         self.assert_close(boxes.data[:, :1], first, atol=0.0, rtol=0.0)
         self.assert_close(boxes.data[:, 1:], torch.zeros_like(boxes.data[:, 1:]), atol=0.0, rtol=0.0)
 
-    @pytest.mark.parametrize("operation, inplace", [("pad", None), ("unpad", None), ("clamp", False), ("clamp", True)])
-    @pytest.mark.parametrize("num_boxes", [1, 2])
-    def test_wart_unbatched_geometry_operations_raise_4244(self, operation, inplace, num_boxes, device, dtype):
-        # Wart pin for kornia#4244: the documented unbatched (N, 4, 2) form
-        # fails although its singleton-batched counterpart works. Clamp reaches
-        # indexing failure for one box and broadcasting failure for two boxes.
-        boxes = Boxes(_unbatched_geometry_data(device, dtype)[:num_boxes])
-        if operation == "clamp":
-            with pytest.raises((RuntimeError, IndexError)):
-                boxes.clamp(
-                    torch.tensor([[2.0, 3.0]], device=device, dtype=dtype),
-                    torch.tensor([[6.0, 7.0]], device=device, dtype=dtype),
-                    inplace=inplace,
-                )
+    @pytest.mark.parametrize("non_finite", [float("nan"), float("inf"), float("-inf")])
+    @pytest.mark.parametrize("bound", ["topleft", "botright"])
+    @pytest.mark.parametrize("position", [0, 1])
+    def test_convention_clamp_leaves_coordinates_alone_for_a_non_finite_bound_4244(
+        self, non_finite, bound, position, device, dtype
+    ):
+        # clamp is comparison-based: every comparison against a non-finite bound that is NaN is
+        # False, so the coordinate is left alone rather than taking the bound. maximum/minimum do
+        # not agree here -- they propagate the NaN into every coordinate on that axis -- which is
+        # why this pin exists alongside the rank fix that motivated rewriting the bound broadcast.
+        # An infinite bound is a real clamp on one side and a no-op on the other, so it is swept
+        # too, and both bound tensors and both coordinate positions are covered.
+        data = torch.tensor([[[[1.0, 2.0], [5.0, 2.0], [5.0, 4.0], [1.0, 4.0]]]], device=device, dtype=dtype)
+        topleft = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
+        botright = torch.tensor([[10.0, 10.0]], device=device, dtype=dtype)
+        if bound == "topleft":
+            topleft[0, position] = non_finite
         else:
-            with pytest.raises((RuntimeError, IndexError)):
-                getattr(boxes, operation)(torch.tensor([[10.0, 99.0, 20.0, 88.0]], device=device, dtype=dtype))
+            botright[0, position] = non_finite
+
+        out = Boxes(data.clone()).clamp(topleft, botright, inplace=False).data
+
+        # Hand-derived from the two ordered comparison passes, lower bound first:
+        #   topleft=nan  -> `c < nan` is False, so the coordinate is left alone
+        #   topleft=+inf -> `c < inf` raises every coordinate to +inf, which the botright pass then
+        #                   lowers to botright (10), so +inf never survives
+        #   topleft=-inf -> `c < -inf` is False, left alone
+        #   botright=nan -> `c > nan` is False, left alone
+        #   botright=+inf-> `c > inf` is False, left alone
+        #   botright=-inf-> `c > -inf` lowers every coordinate to -inf
+        expected = data.clone()
+        if bound == "topleft" and non_finite == float("inf"):
+            expected[..., position] = botright[0, position]
+        elif bound == "botright" and non_finite == float("-inf"):
+            expected[..., position] = float("-inf")
+        self.assert_close(out, expected, atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("operation, inplace", [("pad", None), ("unpad", None), ("clamp", False), ("clamp", True)])
     @pytest.mark.parametrize("num_boxes", [1, 2])
-    @pytest.mark.xfail(
-        strict=True,
-        raises=(RuntimeError, IndexError),
-        reason="kornia#4244: unbatched geometry operations do not match singleton batches",
-    )
     def test_convention_unbatched_geometry_operations_match_singleton_batch_4244(
         self, operation, inplace, num_boxes, device, dtype
     ):

@@ -171,6 +171,25 @@ class TestAugmentationSequential:
 
         reproducibility_test((input, bbox), aug)
 
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_convention_padded_random_crop_keeps_bboxes_finite_4244(self, batch_size, device, dtype):
+        # kornia#4244: RandomCrop's padded path routes bounding boxes through Boxes.pad and
+        # Boxes.unpad, which crashed on an unbatched (N, 4, 2) container. This is the public
+        # adapter over those methods, so it pins the user-facing path the direct Boxes tests in
+        # tests/geometry/test_boxes.py do not reach.
+        input = torch.rand(batch_size, 3, 8, 8, device=device, dtype=dtype)
+        bbox = torch.tensor([[[1.0, 1.0, 4.0, 4.0]]], device=device, dtype=dtype).expand(batch_size, -1, -1)
+        aug = K.AugmentationSequential(
+            K.RandomCrop((6, 6), padding=1, cropping_mode="resample", fill=0),
+            data_keys=["input", "bbox_xyxy"],
+        )
+
+        out_input, out_bbox = aug(input, bbox)
+
+        assert out_input.shape == (batch_size, 3, 6, 6)
+        assert out_bbox.shape == (batch_size, 1, 4)
+        assert torch.isfinite(out_bbox).all()
+
     def test_random_crops_and_flips(self, device, dtype):
         width, height = 100, 100
         crop_width, crop_height = 3, 3
