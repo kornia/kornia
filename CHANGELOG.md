@@ -401,6 +401,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `Z1Projection.unproject` now materialises a python `int`/`float` `depth` on the device and
   in the dtype of `points`; it used to build a CPU float32 tensor, which raised `RuntimeError`
   on every accelerator and widened float16/bfloat16 results to float32. (#4340)
+* `_cdist` replaces `dm.clamp(min=0.0).sqrt()` with a masked argument substitution, avoiding `NaN` gradients for
+  exact zero-distance pairs on PyTorch 2.5.1 and 2.9.1 where `clamp`'s boundary gradient passed through to `sqrt(0)`.
+  PyTorch 2.14.0 was already finite, and forward behavior and computed distances are unchanged. (#4233)
 
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
