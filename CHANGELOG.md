@@ -364,6 +364,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Fixed `dx_distort_points_kannala_brandt` to return the true Jacobian of `distort_points_kannala_brandt`, including a finite affine Jacobian at the origin. (#4277)
 * `warp_affine`, `warp_perspective` and `remap` crashed on MPS for an empty destination -- a `dsize` with a
   zero dimension, or zero-sized `remap` maps -- with an internal
   `[srcBuf length] > 0 INTERNAL ASSERT FAILED ... Placeholder tensor is empty!` from PyTorch. The MPS backend
