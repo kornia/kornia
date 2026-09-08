@@ -863,6 +863,7 @@ def download_file_from_url(
     budget = _SleepBudget(_MAX_CALL_SLEEP_SECONDS)
     quarantine: str | None = None
     discarded_url: str | None = None
+    discard_exc: Exception | None = None
     downloaded = False
     last_exc: Exception | None = None
     last_url: str | None = None
@@ -883,10 +884,21 @@ def download_file_from_url(
                     if fetched:
                         # These bytes are this source's own transfer, not an entry
                         # the call found, so there is nothing to preserve and the
-                        # quarantine does not apply. Drop them when a later source
-                        # can use the emptied path.
-                        if more_sources:
-                            _drop_failed_download(cache_path)
+                        # quarantine does not apply.
+                        #
+                        # They go whether or not a later source can use the emptied
+                        # path, which is where this differs from
+                        # :func:`load_state_dict_from_url`. Reaching here with
+                        # ``fetched`` true means the transfer succeeded and
+                        # ``validate`` refused what it wrote -- a verdict on the file
+                        # itself. The load failures that function has to weigh are
+                        # ambiguous, so it keeps the bytes rather than risk deleting
+                        # an intact checkpoint behind a bad ``map_location``; a
+                        # rejection here is not, and keeping them would end the call
+                        # having *added* a poisoned entry to a cache that had none.
+                        # ``download_hf_file`` passes a single URL, so this is the
+                        # ordinary cold-cache path, not an edge case.
+                        _drop_failed_download(cache_path)
                     else:
                         # Either nothing transferred, or -- the case this whole
                         # branch exists for -- a cache hit was handed back and
@@ -894,7 +906,7 @@ def download_file_from_url(
                         # source really fetches; it comes back below if none does.
                         moved = _discard_cache_entry(u, kwargs)
                         if moved is not None:
-                            quarantine, discarded_url = moved, u
+                            quarantine, discarded_url, discard_exc = moved, u, e
                     if more_sources:
                         warnings.warn(f"Failed to download {u!r}: {e}. Trying next source.", stacklevel=2)
                     continue
@@ -914,10 +926,24 @@ def download_file_from_url(
         if quarantine is not None:
             _settle_quarantine(cache_path, quarantine, loaded=False, downloaded=downloaded)
 
+    # The re-attempt pass runs only when nothing transferred, so if it also failed
+    # without transferring, ``last_exc`` is a refetch failure sitting on top of the
+    # rejection that fired the discard -- and that rejection is the one thing naming
+    # what is wrong with the file. Reporting the network instead points the caller at
+    # an entry that is intact and, offline, has just been restored by the ``finally``
+    # above. :func:`load_state_dict_from_url` makes the same swap.
+    refetch_note = ""
+    if re_attempted and not downloaded and discard_exc is not None:
+        refetch_note = (
+            f" (the cache entry was set aside and refetching it from that same source "
+            f"failed too: {type(last_exc).__name__}: {last_exc})"
+        )
+        last_exc, last_url = discard_exc, discarded_url
+
     raise RuntimeError(
         f"Failed to download the file from all {len(urls)} source(s). "
         f"Last URL tried: {last_url!r}. "
-        f"Last error: {type(last_exc).__name__}: {last_exc}. "
+        f"Last error: {type(last_exc).__name__}: {last_exc}{refetch_note}. "
         # Unquoted: the point of naming the path is that it can be pasted into
         # ``rm``/``del``, and ``repr`` doubles every backslash of a Windows path.
         f"Cache path: {cache_path} -- delete it if it is corrupt and this repeats."
