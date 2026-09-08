@@ -7,6 +7,12 @@
 
 English | [简体中文](README_zh-CN.md)
 
+<p align="center">
+  <a href="https://www.kornia.org/playground/"><img alt="Try in your browser" src="https://img.shields.io/badge/%E2%96%B6%20Try%20in%20your%20browser-F5B301?style=for-the-badge&labelColor=F5B301"></a>
+  <a href="https://www.kornia.org"><img alt="Website" src="https://img.shields.io/badge/Website-0B1A2B?style=for-the-badge"></a>
+  <a href="https://kornia.readthedocs.io"><img alt="Docs" src="https://img.shields.io/badge/Docs-0B1A2B?style=for-the-badge"></a>
+</p>
+
 <!-- prettier-ignore -->
 <a href="https://kornia.readthedocs.io">Docs</a> •
 <a href="https://colab.sandbox.google.com/github/kornia/tutorials/blob/master/nbs/hello_world_tutorial.ipynb">Try it Now</a> •
