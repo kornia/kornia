@@ -363,7 +363,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keyword; it only changes a list-backed container, and a `VideoBoxes` built from a
   `(B, T, N, 4, 2)` tensor is not one, so no working call changes its result. Indexing a
   `VideoBoxes` still drops `temporal_channel_size`, which is the remaining half of #4249.
-  (#4176, #4361)
+  (#4176, #4365)
 
 * Fixed `unproject_points_z1` depth shape handling for singleton and multi-axis batches,
   accepting both trailing-singleton and flat depth tensors. (#4355)
