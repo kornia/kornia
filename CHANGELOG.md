@@ -562,6 +562,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   abstract. It now has a `SuperResolutionConfig` and a `from_config` that dispatches to either
   builder family, and both builders are covered by tests. Fixes #4291. (#4335)
 
+* `tilt_projection` preserves its documented leading batch dimensions, so `distort_points`,
+  `undistort_points`, and `undistort_image` no longer fail on multi-axis batches when tilt distortion
+  is applied. (#4345)
+
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
   `kornia_rs.io`, and kornia kept calling the root, so on 0.1.11 and newer `load_image` raised
