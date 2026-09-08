@@ -535,7 +535,13 @@ class TestDepthFromPlaneEquation(BaseTester):
         plane_offsets = torch.tensor([[2.0]], device=device, dtype=dtype)
         points_uv = torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype)
 
-        depth = kornia.geometry.depth.depth_from_plane_equation(plane_normals, plane_offsets, points_uv, camera_matrix)
+        # The default eps=1e-8 is below float16 resolution: it rounds to zero,
+        # so `denom_abs < eps` can never hold, and 2/1e-8 is outside float16's
+        # finite range anyway. Ask for an epsilon this dtype can represent.
+        eps = max(1e-8, float(torch.finfo(dtype).eps))
+        depth = kornia.geometry.depth.depth_from_plane_equation(
+            plane_normals, plane_offsets, points_uv, camera_matrix, eps=eps
+        )
         assert torch.isfinite(depth).all(), f"grazing ray returned {depth.tolist()}"
 
     def test_small_denominators_keep_their_sign(self, device, dtype):
@@ -546,13 +552,18 @@ class TestDepthFromPlaneEquation(BaseTester):
         collapsing onto one branch.
         """
         camera_matrix = torch.eye(3, device=device, dtype=dtype)[None].repeat(2, 1, 1)
-        eps = 1e-8
+        # As above: 1e-8 and eps/4 both round to zero in float16, which would
+        # turn this into the grazing-ray case and lose the sign under test.
+        eps = max(1e-8, float(torch.finfo(dtype).eps))
+        half = eps / 4
         # Ray (0, 0, 1) for both; the normal's z carries the whole dot product.
-        plane_normals = torch.tensor([[0.0, 0.0, eps / 4], [0.0, 0.0, -eps / 4]], device=device, dtype=dtype)
+        plane_normals = torch.tensor([[0.0, 0.0, half], [0.0, 0.0, -half]], device=device, dtype=dtype)
         plane_offsets = torch.tensor([[2.0], [2.0]], device=device, dtype=dtype)
         points_uv = torch.zeros(2, 1, 2, device=device, dtype=dtype)
 
-        depth = kornia.geometry.depth.depth_from_plane_equation(plane_normals, plane_offsets, points_uv, camera_matrix)
+        depth = kornia.geometry.depth.depth_from_plane_equation(
+            plane_normals, plane_offsets, points_uv, camera_matrix, eps=eps
+        )
         assert torch.isfinite(depth).all()
         self.assert_close(depth[0], -depth[1])
 

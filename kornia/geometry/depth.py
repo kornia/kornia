@@ -271,12 +271,17 @@ def depth_from_plane_equation(
     denom = torch.sum(rays * plane_normals_exp, dim=-1)  # (B, N)
     denom_abs = torch.abs(denom)
     zero_mask = denom_abs < eps
-    # copysign rather than `eps * sign(denom)`: `sign` is zero at zero, so the
+    # The guard was `eps * sign(denom)`, and `sign` is zero at zero, so the
     # multiplication cancelled the guard at the exact singularity it exists for
-    # and a ray parallel to the plane returned inf. copysign has no such hole,
-    # and keeps the branch's sign for the small non-zero denominators the guard
-    # already handled.
-    denom = torch.where(zero_mask, torch.copysign(torch.full_like(denom, eps), denom), denom)
+    # and a ray parallel to the plane returned inf. Choose the sign with a
+    # comparison instead: it has no hole at zero, and keeps the branch's sign
+    # for the small non-zero denominators the guard already handled.
+    # `torch.copysign` would read the same but is not exportable -- the legacy
+    # ONNX exporter has no `aten::copysign` and the dynamo one has no ONNX
+    # function for the `prims.signbit` it decomposes to -- and this function is
+    # in the documented export surface (docs/export_support/cases_geomB.py).
+    signed_eps = torch.where(denom < 0, torch.full_like(denom, -eps), torch.full_like(denom, eps))
+    denom = torch.where(zero_mask, signed_eps, denom)
 
     # Compute depth from plane equation
     depth = plane_offsets / denom  # plane_offsets: (B, 1), denom: (B, N) -> depth: (B, N)
