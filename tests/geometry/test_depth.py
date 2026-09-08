@@ -349,6 +349,15 @@ class TestUnprojectMeshgrid(BaseTester):
             unproject_meshgrid(2, 3, singleton.expand(2, 2, 3, 3).contiguous(), device=device, dtype=dtype)
 
     def test_wart_unproject_meshgrid_extra_camera_axis_broadcasts_over_columns_4271(self, device, dtype):
+        # Wart pin for kornia#4271: the ["*", "3", "3"] guard admits a (2, 3, 3, 3) camera as readily as a
+        # (2, 1, 3, 3), and an extra axis of size 3 == W then broadcasts against the pixel width instead of
+        # being rejected, so each COLUMN is unprojected with a different cx. The (2, 2, 3, 3) case in the pin
+        # above raises; this one silently succeeds. Neither is a supported layout.
+        # Snippet used to generate expected: unproject_meshgrid(2, 3, K) with K = eye(3).expand(2, 3, 3, 3) and
+        # K[:, :, 0, 2] = [0, 2, 4], executed 2026-09-08 at commit 26ddb21e (torch 2.14.0) -> shape
+        # (2, 1, 2, 3, 3) with row 0 [[0, 0, 1], [-1, 0, 1], [-2, 0, 1]] on cpu for float32, float64, float16
+        # and bfloat16 and on mps for float32 and float16.
+        # Pins the CURRENT behavior; NOT a contract; delete when #4271 is repaired.
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3).clone()
         camera_matrix[:, :, 0, 2] = torch.tensor([0.0, 2.0, 4.0], device=device, dtype=dtype)
         grid = unproject_meshgrid(2, 3, camera_matrix, device=device, dtype=dtype)
@@ -577,6 +586,12 @@ class TestWarpFrameDepth(BaseTester):
         self.assert_close(image_dst, image_dst_expected, rtol=1e-3, atol=1e-3)
 
     def test_convention_subpixel_border_blends_with_zero_padding(self, device, dtype):
+        # Convention pin: the baked padding_mode="zeros" is a zero EXTENSION of the image, not a mask on the
+        # sampling point: a quarter-pixel translation samples the last column at x = 2.25, and bilinear
+        # interpolation blends the in-bounds neighbour (1.0, weight 0.75) with the padded zero (weight 0.25).
+        # Snippet used to generate expected: warp_frame_depth(ones(1, 1, 2, 3), ones, T, eye(3)) with
+        # T[0, 0, 3] = 0.25, executed 2026-09-08 at commit 26ddb21e (torch 2.14.0) -> [[1, 1, 0.75], [1, 1, 0.75]]
+        # on cpu for float32, float64, float16 and bfloat16 and on mps for float32 and float16.
         image = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype)[None]
         transform = torch.eye(4, device=device, dtype=dtype)[None]
@@ -964,6 +979,51 @@ class TestDepthWarper(BaseTester):
         self.assert_close(swapped, torch.tensor([0.0, 0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype))
         assert (by_class - swapped).abs().max().item() > 0.5
 
+    def test_wart_warp_frame_depth_and_depth_warper_split_at_zero_transformed_depth_4267(self, device, dtype):
+        # Wart pin for kornia#4267: the two warps guard the z = 0 singularity differently. With K = I, unit
+        # depth and a transform that moves every point by (+1, 0, -1), every destination pixel lands at
+        # camera-frame z = 0 in the other view. warp_frame_depth projects through project_points, which SKIPS
+        # the homogeneous divide when abs(z) <= 1e-8, so it samples image_src at the undivided (u + 1, v) and
+        # returns the image shifted by one column; DepthWarper projects through cam2pixel, which divides by
+        # z + 1e-12, so the same pixel is sent to a coordinate of order 1e12 (inf in float16, where 1e-12
+        # rounds to 0) and nothing of the image comes back. One half unit closer (z = 0.5) the two agree, which
+        # is the claim the pin above states for float32 and float64.
+        # Snippet used to generate expected: warp_frame_depth(arange(1, 7).view(1, 1, 2, 3), ones, T, eye(3))
+        # and the DepthWarper pair built from the same T, executed 2026-09-08 at commit 26ddb21e
+        # (torch 2.14.0) -> warp_frame_depth [[2, 3, 0], [5, 6, 0]] in every cell (cpu float32, float64,
+        # float16, bfloat16; mps float32, float16); DepthWarper all zeros on cpu float32, float64 and bfloat16,
+        # nan on cpu float16, and backend-dependent values on mps (zeros in row 0, 1e24 in row 1 for float32) --
+        # so the pin asserts warp_frame_depth's value and the 1e12 grid coordinate, not what grid_sample makes
+        # of a coordinate that far out. The z = 0.5 arm: max gap 0.0 (float32) and 2.4e-11 (float64) on cpu.
+        # Pins the CURRENT behavior; NOT a contract; delete when #4267 settles one z = 0 policy.
+        image = torch.arange(1.0, 7.0, device=device, dtype=dtype).view(1, 1, 2, 3)
+        depth = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype)[None]
+        intrinsics = _eye4(device, dtype)
+        height = torch.tensor([2], device=device)
+        width = torch.tensor([3], device=device)
+
+        def warper_for(transform):
+            warper = DepthWarper(PinholeCamera(intrinsics.clone(), transform.clone(), height, width), 2, 3)
+            warper.compute_projection_matrix(PinholeCamera(intrinsics.clone(), _eye4(device, dtype), height, width))
+            return warper
+
+        to_zero_depth = _eye4(device, dtype)
+        to_zero_depth[0, 0, 3] = 1.0
+        to_zero_depth[0, 2, 3] = -1.0
+        by_function = warp_frame_depth(image, depth, to_zero_depth, camera_matrix)
+        self.assert_close(by_function, torch.tensor([[[[2.0, 3.0, 0.0], [5.0, 6.0, 0.0]]]], device=device, dtype=dtype))
+        singular = warper_for(to_zero_depth)
+        # compared in float32: a float16 1e9 is itself inf, and inf > inf is False
+        assert (singular.warp_grid(depth)[..., 0].abs().to(torch.float32) > 1.0e9).all()
+        assert (singular(depth, image) != by_function).any()
+        if dtype in (torch.float32, torch.float64):
+            half_way = to_zero_depth.clone()
+            half_way[0, 2, 3] = -0.5
+            self.assert_close(
+                warper_for(half_way)(depth, image), warp_frame_depth(image, depth, half_way, camera_matrix)
+            )
+
 
 class TestDepthFromDisparity(BaseTester):
     def test_smoke(self, device, dtype):
@@ -1031,13 +1091,16 @@ class TestDepthFromDisparity(BaseTester):
         # gives 0.5 * 100 / 2 = 25.
         # Snippet used to generate expected: depth_from_disparity(zeros(1, 1, 1, 1), 0.5, 100.0).item() executed
         # 2026-09-06 at commit 1a96bfd1 (torch 2.14.0) -> 5000000000.0 on cpu float32 and float64 and on mps
-        # float32, 4999610368.0 on cpu bfloat16, and inf on cpu and mps float16 (which is why float16 is
-        # skipped: 5e9 is past the float16 range, so the finite-depth claim cannot be stated there at all).
+        # float32, 4999610368.0 on cpu bfloat16, and inf on cpu and mps float16 -- there the 1e-8 itself rounds
+        # to 0 (zeros(1, 1, 1, 1, dtype=float16) + 1e-8 is exactly 0), the divide is by zero, and the "finite
+        # depth" wart does not occur at all. The float16 arm asserts that inf instead of the finite value.
         # Pins the CURRENT value; NOT a contract; delete when #4272 is repaired.
-        if dtype == torch.float16:
-            pytest.skip("float16: 0.5 * 100 / 1e-8 = 5e9 overflows the float16 range and the result is inf")
         disparity = torch.zeros(1, 1, 1, 1, device=device, dtype=dtype)
         depth = depth_from_disparity(disparity, 0.5, 100.0)
+        if dtype == torch.float16:
+            assert (disparity + 1e-8).eq(0.0).all()
+            assert torch.isinf(depth).all()
+            return
         assert torch.isfinite(depth).all()
         self.assert_close(depth, torch.full((1, 1, 1, 1), 5.0e9, device=device, dtype=dtype))
         self.assert_close(

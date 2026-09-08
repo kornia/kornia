@@ -364,6 +364,9 @@ class TestStereoCamera(BaseTester):
         # The homogeneous conversion divides by W only when abs(W) > 1e-8. With zero disparity, this Q gives
         # W = 0, so the conversion returns the homogeneous numerator. Negating Q therefore negates the result
         # instead of cancelling as it does for ordinary Euclidean points.
+        # Snippet used to generate expected: reproject_disparity_to_3D(zeros(1, 1, 2, 1), q) and the same call
+        # with -q, executed 2026-09-08 at commit 26ddb21e (torch 2.14.0) -> [[1, 2, 3], [1, 3, 3]] and its
+        # negation on cpu for float32, float64, float16 and bfloat16 and on mps for float32 and float16.
         q = torch.tensor(
             [[[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 2.0], [0.0, 0.0, 0.0, 3.0], [0.0, 0.0, 1.0, 0.0]]],
             device=device,
