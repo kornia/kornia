@@ -1,12 +1,13 @@
-# Exact failure baseline recorded from
-# https://github.com/kornia/kornia/actions/runs/33808269822/job/100824208527 -- that job ran
-# without --xfail-known-failures, so it reports these 12 as failures: it is the run the baseline
-# was recorded from, not a replay of this file.
-# macos-15-arm64, Python 3.13, PyTorch 2.14.0, MPS float32, no CPU fallback,
+# Exact strict baseline verified by
+# https://github.com/kornia/kornia/actions/runs/33920557535/job/101177935411 -- the post-#4185
+# full-suite replay completed with --xfail-known-failures: 8327 passed, 4126 skipped, 95 deselected,
+# 43 xfailed, 9 xpassed in 425.15s. The 12 entries below are the strict MPS manifest.
+# macos-15-arm64, Python 3.13.11, PyTorch 2.14.0, MPS float32, no CPU fallback,
 # one pytest process for the full suite (tests marked device_agnostic are deselected on an mps-only run).
 # Remove an entry when it becomes a strict XPASS; fix or explicitly add any new failure. Tracked in #4159.
 # torch 2.14.0 added MPS kernels for the eigen/QR/LU/SVD family and for both grid_sample backward
-# passes, which took this baseline from 200 entries to 12. One cause remains:
+# passes, which took the baseline from 200 entries to 14. #4185 then fixed the two YUV420/YUV422
+# empty-input failures, leaving 12 entries. One cause remains:
 #   NotImplementedError  aten::_linalg_eigvals has no MPS kernel (the 5-point essential solver).
 # tests/geometry/test_ransac.py is skipped on MPS, not pinned: it aborts the process (#4204).
 # Keep the entries sorted by node ID: KnownFailureTracker prints its regeneration output sorted,

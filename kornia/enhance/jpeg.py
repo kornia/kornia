@@ -228,17 +228,27 @@ def _jpeg_quality_to_scale(
 
     Args:
         compression_strength (torch.Tensor): Compression strength ranging from 0 to 100. Any shape is supported.
+            A strength of exactly 0 is given the scale of strength 1, matching libjpeg, which gives quality 0
+            the quality-1 table. Fractional strengths in (0, 1) are left alone and scale as the formula says.
 
     Returns:
         scale (torch.Tensor): Scaling factor to be applied to quantization matrix. Same shape as input.
 
     """
+    # ``5000 / 0`` is ``inf`` and the polynomial floor of ``inf`` is ``NaN``, which poisons the whole codec
+    # for a documented input. libjpeg gives quality 0 the quality-1 table, so give it the quality-1 scale.
+    # The guard is exactly the zero point: a fractional quality in (0, 1) is already finite, keeps its own
+    # (larger) scale, and is not touched. ``torch.where`` rather than ``clamp`` also keeps the gradient at
+    # every unguarded quality independent of the torch version (see #4229).
+    strength: torch.Tensor = torch.where(
+        compression_strength == 0.0, torch.ones_like(compression_strength), compression_strength
+    )
     # Get scale
     scale: torch.Tensor = _differentiable_polynomial_floor(
         torch.where(
-            compression_strength < 50,
-            5000.0 / compression_strength,
-            200.0 - 2.0 * compression_strength,
+            strength < 50,
+            5000.0 / strength,
+            200.0 - 2.0 * strength,
         )
     )
     return scale
@@ -517,6 +527,9 @@ def jpeg_codec_differentiable(
     Args:
         input: the RGB image to be coded.
         jpeg_quality: JPEG quality in the range :math:`[0, 100]` controlling the compression strength.
+          A quality of exactly 0 is treated as 1, matching libjpeg, which gives quality 0 the quality-1
+          table. This endpoint is not the limit of the formula as the quality approaches 0 from above:
+          a fractional quality in (0, 1) is left alone and compresses harder still.
         quantization_table_y: quantization table for Y channel. Default: `None`, which will load the standard
           quantization table.
         quantization_table_c: quantization table for C channels. Default: `None`, which will load the standard

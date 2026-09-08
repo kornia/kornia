@@ -25,6 +25,7 @@ from kornia.feature.matching import (
     DescriptorMatcher,
     DescriptorMatcherWithSteerer,
     GeometryAwareDescriptorMatcher,
+    _cdist,
     match_adalam,
     match_fginn,
     match_mnn,
@@ -687,3 +688,21 @@ class TestMatchSteererLocal(BaseTester):
         self.assert_close(idxs, expected_idx)
 
         assert num_rot is None
+
+
+class TestCDist(BaseTester):
+    @pytest.mark.parametrize("desc_dtype", [torch.float16, torch.bfloat16])
+    def test_half_precision_zero_distance_gradient(self, device, desc_dtype):
+        if not supports_matmul(device, desc_dtype):
+            pytest.skip(f"no matmul kernel for {desc_dtype} on {device.type}")
+        d1 = torch.tensor([[1.0, 2.0], [3.0, 4.0], [1.0, 2.0]], device=device, dtype=desc_dtype, requires_grad=True)
+        d2 = torch.tensor([[1.0, 2.0], [5.0, 6.0], [3.0, 4.0]], device=device, dtype=desc_dtype, requires_grad=True)
+        dists = _cdist(d1, d2)
+        assert torch.isfinite(dists).all()
+        assert dists[0, 0] == 0.0
+        assert dists[2, 0] == 0.0
+        assert dists[1, 2] == 0.0
+        loss = dists.sum()
+        loss.backward()
+        assert d1.grad is not None and torch.isfinite(d1.grad).all()
+        assert d2.grad is not None and torch.isfinite(d2.grad).all()

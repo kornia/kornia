@@ -117,10 +117,12 @@ def unproject_meshgrid(
     """
     KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
 
-    # create base coordinates grid
+    # create base coordinates grid. ``create_meshgrid`` returns ``(1, H, W, 2)``; drop only that leading
+    # batch axis. A bare ``squeeze()`` would also drop ``H`` or ``W`` whenever either is 1, and the grid
+    # would then broadcast across a phantom axis instead of keeping the documented ``(*, H, W, 3)`` shape.
     points_uv: torch.Tensor = create_meshgrid(
         height, width, normalized_coordinates=False, device=device, dtype=dtype
-    ).squeeze()  # HxWx2
+    ).squeeze(0)  # HxWx2
 
     # project pixels to camera frame
     camera_matrix_tmp: torch.Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
@@ -402,7 +404,17 @@ def depth_from_plane_equation(
     denom = torch.sum(rays * plane_normals_exp, dim=-1)  # (B, N)
     denom_abs = torch.abs(denom)
     zero_mask = denom_abs < eps
-    denom = torch.where(zero_mask, eps * torch.sign(denom), denom)
+    # The guard was `eps * sign(denom)`, and `sign` is zero at zero, so the
+    # multiplication cancelled the guard at the exact singularity it exists for
+    # and a ray parallel to the plane returned inf. Choose the sign with a
+    # comparison instead: it has no hole at zero, and keeps the branch's sign
+    # for the small non-zero denominators the guard already handled.
+    # `torch.copysign` would read the same but is not exportable -- the legacy
+    # ONNX exporter has no `aten::copysign` and the dynamo one has no ONNX
+    # function for the `prims.signbit` it decomposes to -- and this function is
+    # in the documented export surface (docs/export_support/cases_geomB.py).
+    signed_eps = torch.where(denom < 0, torch.full_like(denom, -eps), torch.full_like(denom, eps))
+    denom = torch.where(zero_mask, signed_eps, denom)
 
     # Compute depth from plane equation
     depth = plane_offsets / denom  # plane_offsets: (B, 1), denom: (B, N) -> depth: (B, N)

@@ -19,6 +19,7 @@ import pytest
 import torch
 from torch import Tensor
 
+from kornia.augmentation import RandomGaussianBlur
 from kornia.augmentation.random_generator import (
     AffineGenerator,
     ColorJiggleGenerator,
@@ -31,6 +32,7 @@ from kornia.augmentation.random_generator import (
     PlainUniformGenerator,
     PosterizeGenerator,
     ProbabilityGenerator,
+    RandomGaussianBlurGenerator,
     RectangleEraseGenerator,
     ResizedCropGenerator,
     center_crop_generator,
@@ -1557,3 +1559,37 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
         assert res.keys() == expected.keys(), res.keys()
         assert_close(res["mix_pairs"], expected["mix_pairs"], rtol=1e-4, atol=1e-4)
         assert_close(res["crop_src"], expected["crop_src"], rtol=1e-4, atol=1e-4)
+
+
+class TestGaussianBlurGenBufferHygiene:
+    # `sigma` used to be a plain attribute when passed as a Tensor -- invisible to
+    # state_dict() and to Module.to()/.half()/.cuda() (make_samplers compensated with
+    # its own inline `.to()`, so this was never a crash risk, just missing buffer
+    # hygiene). A plain (min, max) tuple of Python floats has no device/dtype and stays
+    # a plain attribute, which is correct.
+    def test_tensor_sigma_is_a_registered_buffer(self, device, dtype):
+        gen = RandomGaussianBlurGenerator(sigma=torch.tensor([0.1, 2.0]))
+        # persistent=False -> visible via named_buffers() but excluded from
+        # state_dict(), as in the buffer fixes #4079 and #4319 (keeps checkpoint
+        # keys unchanged); not every kornia buffer is non-persistent.
+        assert "sigma" in dict(gen.named_buffers())
+        assert "sigma" not in gen.state_dict()
+
+        # RandomGeneratorBase.to() is a special-cased override (see its own "TODO:
+        # refine the logic with module.to()") that only rebuilds sigma_sampler via
+        # make_samplers() -- it never calls nn.Module.to(), so calling it directly on
+        # a standalone generator does NOT exercise the buffer-move machinery this fix
+        # relies on. The real path this fix targets is a PARENT module's .to()/.half(),
+        # which nn.Module recurses into via `_apply()` (not `.to()`) on every
+        # submodule -- including this generator when assigned as `_param_generator`,
+        # exactly how RandomGaussianBlur uses it. Exercise that real path directly.
+        aug = RandomGaussianBlur((3, 3), sigma=torch.tensor([0.1, 2.0]))
+        moved = aug.to(device=device, dtype=dtype)
+        moved_sigma = moved._param_generator.sigma
+        assert moved_sigma.device == torch.tensor(0.0, device=device).device
+        assert moved_sigma.dtype == dtype
+
+    def test_tuple_sigma_stays_a_plain_attribute(self):
+        gen = RandomGaussianBlurGenerator(sigma=(0.1, 2.0))
+        assert "sigma" not in dict(gen.named_buffers())
+        assert gen.sigma == (0.1, 2.0)

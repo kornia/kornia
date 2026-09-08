@@ -131,6 +131,26 @@ class TestDepthTo3d(BaseTester):
         # test for now that the grid is correct and have homogeneous coords
         self.assert_close(grid[..., 2], torch.ones_like(grid[..., 2]))
 
+    @pytest.mark.parametrize(("height", "width"), [(1, 1), (1, 3), (3, 1), (2, 5)])
+    def test_unproject_meshgrid_degenerate_sizes(self, height, width, device, dtype):
+        # a single-column (W = 1) or single-row (H = 1) grid keeps its own axis
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).repeat(2, 1, 1)
+        grid = kornia.geometry.unproject_meshgrid(height, width, camera_matrix, device=device, dtype=dtype)
+        assert grid.shape == (2, height, width, 3)
+
+    @pytest.mark.parametrize(("height", "width"), [(1, 1), (1, 3), (3, 1), (2, 5)])
+    def test_depth_to_3d_v2_degenerate_sizes(self, height, width, device, dtype):
+        depth = torch.rand(2, 1, height, width, device=device, dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[[100.0, 0.0, 4.0], [0.0, 50.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        ).repeat(2, 1, 1)
+
+        points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix)
+        points3d_v2 = kornia.geometry.depth.depth_to_3d_v2(depth[:, 0], camera_matrix)
+
+        assert points3d_v2.shape == (2, height, width, 3)
+        self.assert_close(points3d.permute(0, 2, 3, 1), points3d_v2)
+
     def test_unproject_denormalized(self, device, dtype):
         # this is for default normalize_points=False
         depth = 2 * torch.tensor(
@@ -616,6 +636,18 @@ class TestWarpFrameDepth(BaseTester):
 
         image_dst = kornia.geometry.depth.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
         assert image_dst.shape == (batch_size, num_features, 3, 4)
+
+    @pytest.mark.parametrize(("height", "width"), [(1, 1), (1, 5), (4, 1)])
+    def test_shape_degenerate_sizes(self, height, width, device, dtype):
+        image_src = torch.rand(1, 2, height, width, device=device, dtype=dtype)
+        depth_dst = torch.rand(1, 1, height, width, device=device, dtype=dtype)
+        src_trans_dst = torch.eye(4, device=device, dtype=dtype)[None]
+        camera_matrix = torch.tensor(
+            [[[100.0, 0.0, 4.0], [0.0, 50.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
+
+        image_dst = kornia.geometry.depth.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
+        assert image_dst.shape == (1, 2, height, width)
 
     def test_translation(self, device, dtype):
         # this is for normalize_points=False
@@ -1249,6 +1281,55 @@ class TestDepthFromPlaneEquation(BaseTester):
 
         # Assert that the computed depth matches the expected depth
         self.assert_close(depth, depth_expected, rtol=1e-6, atol=1e-6)
+
+    def test_grazing_ray_is_finite(self, device, dtype):
+        """A ray exactly parallel to the plane must take the epsilon guard.
+
+        The guard was `eps * sign(denom)`, and `sign` is zero at zero, so at the
+        exact singularity the epsilon was multiplied away and the depth came
+        back as inf. A grazing ray is not exotic: it is every pixel on the
+        horizon of a ground plane.
+        """
+        camera_matrix = torch.tensor(
+            [[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype
+        )[None]
+        # The principal point's ray is (0, 0, 1); this normal is perpendicular
+        # to it, so the ray-plane dot product is exactly zero.
+        plane_normals = torch.tensor([[0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        plane_offsets = torch.tensor([[2.0]], device=device, dtype=dtype)
+        points_uv = torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype)
+
+        # The default eps=1e-8 is below float16 resolution: it rounds to zero,
+        # so `denom_abs < eps` can never hold, and 2/1e-8 is outside float16's
+        # finite range anyway. Ask for an epsilon this dtype can represent.
+        eps = max(1e-8, float(torch.finfo(dtype).eps))
+        depth = kornia.geometry.depth.depth_from_plane_equation(
+            plane_normals, plane_offsets, points_uv, camera_matrix, eps=eps
+        )
+        assert torch.isfinite(depth).all(), f"grazing ray returned {depth.tolist()}"
+
+    def test_small_denominators_keep_their_sign(self, device, dtype):
+        """The guard already handled small non-zero denominators; keep that.
+
+        Two rays whose dot products differ only in sign must come back with
+        depths of the same magnitude and opposite signs, rather than both
+        collapsing onto one branch.
+        """
+        camera_matrix = torch.eye(3, device=device, dtype=dtype)[None].repeat(2, 1, 1)
+        # As above: 1e-8 and eps/4 both round to zero in float16, which would
+        # turn this into the grazing-ray case and lose the sign under test.
+        eps = max(1e-8, float(torch.finfo(dtype).eps))
+        half = eps / 4
+        # Ray (0, 0, 1) for both; the normal's z carries the whole dot product.
+        plane_normals = torch.tensor([[0.0, 0.0, half], [0.0, 0.0, -half]], device=device, dtype=dtype)
+        plane_offsets = torch.tensor([[2.0], [2.0]], device=device, dtype=dtype)
+        points_uv = torch.zeros(2, 1, 2, device=device, dtype=dtype)
+
+        depth = kornia.geometry.depth.depth_from_plane_equation(
+            plane_normals, plane_offsets, points_uv, camera_matrix, eps=eps
+        )
+        assert torch.isfinite(depth).all()
+        self.assert_close(depth[0], -depth[1])
 
     def test_gradcheck(self, device):
         B = 2

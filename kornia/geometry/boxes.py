@@ -139,6 +139,8 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
 
         # Value validation reads the data, which graph capture cannot do; skip it under export.
         if validate_boxes and not is_exporting():
+            if not torch.isfinite(boxes).all():
+                raise ValueError("Some boxes have non-finite coordinates.")
             if (width <= 0).any():
                 raise ValueError("Some boxes have negative widths or 0.")
             if (height <= 0).any():
@@ -1187,8 +1189,10 @@ class Boxes3D:
         :func:`~kornia.geometry.bbox.validate_bbox` is `#4013 <https://github.com/kornia/kornia/issues/4013>`_, and
         boxes built by :func:`~kornia.geometry.bbox.bbox_generator3d` measure one larger than requested,
         `#4018 <https://github.com/kornia/kornia/issues/4018>`_. The :meth:`to_tensor` default-mode split with
-        :class:`Boxes` is tracked in `#4251 <https://github.com/kornia/kornia/issues/4251>`_, and the rank-4 breakage
-        of the free functions in `#4248 <https://github.com/kornia/kornia/issues/4248>`_. :meth:`to_mask` rejects
+        :class:`Boxes` is tracked in `#4251 <https://github.com/kornia/kornia/issues/4251>`_. The free functions
+        reject rank-4 input rather than misreading it, so flatten to :math:`(B \cdot N, 8, 3)` before calling
+        :func:`~kornia.geometry.bbox.infer_bbox_shape3d` or :func:`~kornia.geometry.bbox.bbox_to_mask3d`.
+        :meth:`to_mask` rejects
         boxes that require grad even though :meth:`to_tensor` is differentiable; see the note on
         :meth:`to_tensor`.
 
@@ -1448,9 +1452,7 @@ class Boxes3D:
 
         .. warning::
             The rounding split with :func:`~kornia.geometry.bbox.bbox_to_mask3d` is tracked in
-            `#4015 <https://github.com/kornia/kornia/issues/4015>`_. That function also fills the whole volume for
-            a box that covers or overhangs a full axis, where this method fills the clamped region; tracked in
-            `#4255 <https://github.com/kornia/kornia/issues/4255>`_.
+            `#4015 <https://github.com/kornia/kornia/issues/4015>`_.
 
         Args:
             depth: depth of the masked image/images.

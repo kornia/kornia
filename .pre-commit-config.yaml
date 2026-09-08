@@ -16,12 +16,11 @@ repos:
         args: ['--maxkb=1000']
       - id: mixed-line-ending
         args: ['--fix=lf']
-      - id: requirements-txt-fixer
       - id: pretty-format-json
         exclude: ^$|.devcontainer
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.4
+    rev: v0.16.6
     hooks:
       - id: ruff-check
         args: [--fix, --exit-non-zero-on-fix]
