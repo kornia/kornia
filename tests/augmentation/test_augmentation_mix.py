@@ -159,9 +159,7 @@ class TestRandomMixUpV2(BaseTester):
 
         out_image, _out_label = f(input, label)
 
-        assert out_image.dtype == input_dtype, (
-            f"input dtype {input_dtype} became {out_image.dtype} in the mixed output"
-        )
+        assert out_image.dtype == input_dtype, f"input dtype {input_dtype} became {out_image.dtype} in the mixed output"
 
 
 class TestRandomCutMixV2(BaseTester):
