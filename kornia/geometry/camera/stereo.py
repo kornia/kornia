@@ -61,8 +61,10 @@ class StereoCamera:
           ``Q[0, 0]`` carries ``fy`` and ``Q[1, 1]`` carries ``fx``, while the homogeneous divide is by
           ``-fy * disparity``, so the two cancel and the first output coordinate ends up scaled by ``1 / fx``
           and the second by ``1 / fy``.
-        - a point cloud is a homogeneous transform by :attr:`Q` followed by the divide by ``W``, so an
-          overall sign on :attr:`Q` cancels: :attr:`Q` and its negation return the same points. The matrix
+        - a point cloud is a homogeneous transform by :attr:`Q` followed by the divide by ``W``. When
+          ``abs(W) > 1e-8``, an overall sign on :attr:`Q` cancels, so :attr:`Q` and its negation return the
+          same points. For ``abs(W) <= 1e-8``, the homogeneous conversion returns the numerator unchanged,
+          and the two matrices return opposing values. The matrix
           written out on the :doc:`/geometry.camera.stereo` page, above this docstring, is not that negation
           -- its last row is the same as this one's. It is the same expression evaluated at the opposite
           baseline: the page's :math:`P_1` puts ``+tx * fx`` in the last column where the constructor reads
