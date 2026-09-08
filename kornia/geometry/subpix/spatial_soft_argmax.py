@@ -1051,7 +1051,7 @@ def iterative_quad_interp3d(
             making the per-candidate gather+solve loop the dominant CPU cost.  Setting
             ``max_candidates = num_features * 5`` (say) dramatically reduces that work
             at the cost of occasionally missing a feature whose response rank would have
-            improved after refinement.
+            improved after refinement.  Must be non-negative; ``0`` refines nothing.
 
     Returns:
         A tuple ``(coords_max, y_max)`` where
@@ -1075,6 +1075,8 @@ def iterative_quad_interp3d(
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
     if input.ndim != 5:
         raise ValueError(f"Invalid input shape, expected BxCxDxHxW. Got: {input.shape}")
+    if max_candidates is not None and max_candidates < 0:
+        raise ValueError(f"max_candidates must be non-negative. Got: {max_candidates}")
 
     B, C, D, H, W = input.shape
     device = input.device

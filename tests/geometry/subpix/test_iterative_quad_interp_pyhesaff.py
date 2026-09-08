@@ -231,3 +231,17 @@ class TestIterativeQuadInterp3dMaxCandidates:
         # that max_candidates=0 leaves everywhere.
         moved = (coords != unrefined).any(dim=2).flatten(1).sum(dim=1)
         assert (moved <= cap).all(), f"refined {moved.tolist()} positions with cap {cap}"
+
+    @pytest.mark.parametrize("cap", [-1, -50])
+    def test_negative_cap_is_rejected(self, cap: int) -> None:
+        """A negative budget is an error, not a silent no-op.
+
+        Ranking per image compares a positional rank against the cap, so a
+        negative cap would select nothing and return every candidate
+        unrefined -- quietly disabling refinement. Before the per-image
+        ranking, ``torch.topk`` rejected it with a ``RuntimeError``; keep it
+        an error, with a message that names the argument.
+        """
+        x = torch.rand(1, 1, 5, 10, 10)
+        with pytest.raises(ValueError, match="max_candidates must be non-negative"):
+            iterative_quad_interp3d(x, max_candidates=cap)
