@@ -193,8 +193,13 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
     ) -> torch.Tensor:
         KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])
         # Index with the tensor itself: `.tolist()` reads the data, which graph capture cannot do. The buffer
-        # follows the module's device, so it is not re-assigned here.
-        coeffs = self.pl.to(device=input.device)[params["idx"].long()]
+        # follows the module's device, so it is not re-assigned here -- but NOT its dtype: `self.pl` is a
+        # registered buffer at its own construction-time dtype (float32), independent of whatever dtype a
+        # caller's `input` happens to be unless the whole nn.Module is explicitly `.to(dtype=...)`'d. Without
+        # an explicit dtype= here, `input * r_w` below silently upcasts a float16/bfloat16 input to float32
+        # the moment `r_w`/`b_w` (sliced from coeffs) aren't already the same dtype -- confirmed directly
+        # (RandomPlanckianJitter on a float16 batch returned a float32 batch).
+        coeffs = self.pl.to(device=input.device, dtype=input.dtype)[params["idx"].long()]
 
         r_w = coeffs[:, 0][..., None, None]
         b_w = coeffs[:, 1][..., None, None]
