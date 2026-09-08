@@ -171,8 +171,8 @@ class TestDistortionAffine(BaseTester):
         # Jacobian of distort_points_affine with respect to the POINT (rows = output components, columns = input
         # components), byte-identical to torch.autograd.functional.jacobian, and constant in the point because the
         # map is affine -- diag(fx, fy) = diag(100, 100). This is the control probe for the Kannala-Brandt
-        # Jacobian pinned in TestDistortionKannalaBrandt below, which is NOT the Jacobian of the function it
-        # documents (kornia#4277).
+        # Jacobian pinned in TestDistortionKannalaBrandt below, which now also matches the Jacobian of
+        # distort_points_kannala_brandt (kornia#4277, kornia#4368).
         # Snippet used to generate expected: torch.equal(dx_distort_points_affine(p, par),
         # torch.autograd.functional.jacobian(lambda q: distort_points_affine(q, par), p)) executed 2026-09-06 on
         # c0b50ad7 (torch 2.14.0) -> True on cpu (float32/float64/float16/bfloat16) and on mps
