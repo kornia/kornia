@@ -293,12 +293,36 @@ class TestDepthTo3d(BaseTester):
         assert not torch.equal(v1.reshape(-1), v2.reshape(-1))
 
     def test_convention_depth_to_3d_v2_keeps_the_w_one_axis_4278(self, device, dtype):
-        # Regression for #4278: a single column retains its width axis and agrees across layouts.
+        # Regression for #4278 (repaired by #4298): a single column retains its width axis and agrees across
+        # layouts, and the two public consumers of unproject_meshgrid that inherited the squeeze --
+        # depth_to_normals and warp_frame_depth -- keep the axis too. At H = 1 the normals' VALUE is
+        # device-dependent (all-zero on cpu, [-1, -1, -1] on mps, nan in float16), so only shapes are asserted
+        # for those two.
         camera_matrix = _k_asymmetric(device, dtype)
         depth = torch.full((1, 1, 3, 1), 2.0, device=device, dtype=dtype)
         v2 = depth_to_3d_v2(depth[:, 0], camera_matrix)
         assert v2.shape == (1, 3, 1, 3)
         assert torch.equal(depth_to_3d(depth, camera_matrix).permute(0, 2, 3, 1), v2)
+        assert depth_to_normals(depth, camera_matrix).shape == (1, 3, 3, 1)
+        assert depth_to_normals(depth.transpose(-1, -2).contiguous(), camera_matrix).shape == (1, 3, 1, 3)
+        assert warp_frame_depth(depth, depth, _eye4(device, dtype), camera_matrix).shape == (1, 1, 3, 1)
+
+    def test_convention_xyz_grid_bypasses_the_camera_matrix(self, device, dtype):
+        # Convention pin: with ``xyz_grid`` given, depth_to_3d_v2 never reads ``camera_matrix`` beyond its
+        # (*, 3, 3) guard, so the bare (3, 3) that the no-grid call rejects inside unproject_meshgrid (#4271)
+        # is silently accepted here and the result is the batched call's, bit for bit.
+        # Snippet used to generate expected: depth_to_3d_v2(ones(1, 3, 5), K[0], xyz_grid=unproject_meshgrid(3,
+        # 5, K)) executed 2026-09-08 at commit 089daad9 (torch 2.14.0) -> shape (1, 3, 5, 3), torch.equal to
+        # depth_to_3d_v2(ones(1, 3, 5), K); depth_to_3d_v2(ones(1, 3, 5), K[0]) -> ShapeError. Every cpu dtype
+        # and mps float32/float16.
+        camera_matrix = _k_asymmetric(device, dtype)
+        depth = torch.ones(1, 3, 5, device=device, dtype=dtype)
+        grid = unproject_meshgrid(3, 5, camera_matrix, device=device, dtype=dtype)
+        bypassed = depth_to_3d_v2(depth, camera_matrix[0], xyz_grid=grid)
+        assert bypassed.shape == (1, 3, 5, 3)
+        assert torch.equal(bypassed, depth_to_3d_v2(depth, camera_matrix))
+        with pytest.raises(ShapeError):
+            depth_to_3d_v2(depth, camera_matrix[0])
 
 
 class TestUnprojectMeshgrid(BaseTester):
@@ -383,12 +407,14 @@ class TestUnprojectMeshgrid(BaseTester):
         # Settled by #4271's Expected section, which calls exactly this -- "the guard should reject a bare
         # (3, 3) at the guard rather than three lines later with a message about a (3, 1, 1, 3) shape the caller
         # never passed" -- a focused fix, welcome as a PR. #4271 deliberately does NOT settle whether (3, 3) is
-        # then accepted, so this pin asserts only the message, not the acceptance.
+        # then accepted, so this pin asserts only the message, not the acceptance: a repair that accepts (3, 3)
+        # by unsqueezing it passes through the ``try`` and XPASSes just as a repair of the message does.
         camera_matrix = _k_asymmetric(device, dtype)
-        with pytest.raises(ShapeError) as errinfo:
+        try:
             unproject_meshgrid(2, 3, camera_matrix[0], device=device, dtype=dtype)
-        assert "[3, 3]" in str(errinfo.value)
-        assert "[3, 1, 1, 3]" not in str(errinfo.value)
+        except ShapeError as err:
+            assert "[3, 3]" in str(err)
+            assert "[3, 1, 1, 3]" not in str(err)
 
 
 class TestDepthToNormals(BaseTester):
@@ -485,7 +511,7 @@ class TestDepthToNormals(BaseTester):
         # evaluate function gradient
         self.gradcheck(kornia.geometry.depth.depth_to_normals, (depth, camera_matrix))
 
-    def test_convention_normals_face_the_camera_and_x_tracks_the_column(self, device, dtype):
+    def test_convention_normals_point_away_from_the_camera_and_x_tracks_the_column(self, device, dtype):
         # Convention pin: depth_to_normals takes
         # the cross product of the spatial gradients of the unprojected point cloud in the order dx x dy, so a
         # fronto-parallel plane gets the unit normal (0, 0, 1) -- +z points AWAY from the camera, along the
@@ -699,7 +725,7 @@ class TestWarpFrameDepth(BaseTester):
         assert empty.shape == (0, 3, 4, 5)
 
 
-class TestDepthWarper(BaseTester):
+class TestDepthWarperConventions(BaseTester):
     """Convention and wart pins for :class:`~kornia.geometry.depth.DepthWarper` and ``depth_warp``."""
 
     @staticmethod
@@ -787,9 +813,9 @@ class TestDepthWarper(BaseTester):
     def test_convention_forward_returns_b_c_h_w_and_align_corners_defaults_to_true(self, device, dtype):
         # Convention pin: forward takes the depth in
         # the reference frame and the patch in the destination frame and returns a (B, C, H, W) tensor with the
-        # patch's channel count, for any C. ``align_corners`` defaults to True and is the only one of the three
-        # grid_sample knobs DepthWarper exposes that warp_frame_depth bakes in -- warp_frame_depth has no such
-        # parameter at all , which this pin records rather than repairs.
+        # patch's channel count, for any C. ``align_corners`` defaults to True; DepthWarper exposes all three
+        # grid_sample knobs (mode, padding_mode, align_corners) while warp_frame_depth bakes all three in and has
+        # no such parameter at all, which this pin records rather than repairs.
         # The shape claim is backed by a value: an identity camera pair returns the patch byte for byte in
         # float32, so the assertion cannot be satisfied by an all-zero padded result.
         # Snippet used to generate expected: DepthWarper(...).compute_projection_matrix(...)(ones(1, 1, 4, 5),
@@ -1346,15 +1372,21 @@ class TestDepthFromPlaneEquation(BaseTester):
         self.assert_close(wider, torch.full((1, 1), 2.0e6, device=device, dtype=dtype))
 
     def test_convention_depth_from_plane_equation_clamps_the_singularity_4280(self, device, dtype):
-        # The zero-safe clamp fixed in #4280 uses positive eps at an exactly zero denominator.
+        # Regression for #4280 (repaired by #4348): an exactly zero denominator is replaced by POSITIVE eps, so
+        # the grazing ray returns +2 / 1e-8 = +2e8 for either sign of the normal -- there is no sign to keep at
+        # zero, and the pin asserts the sign, not just the magnitude.
+        # Snippet used to generate expected: depth_from_plane_equation([[0, +-1, 0]], [[2.0]], [[[4.0, 3.0]]], K)
+        # executed 2026-09-08 at commit 089daad9 (torch 2.14.0) -> 200000000.0 for both normals on cpu float32,
+        # float64 and bfloat16 and on mps float32; float16 is skipped because 2e8 is past its range.
         if dtype == torch.float16:
             pytest.skip("float16: 2 / 1e-8 = 2e8 overflows the float16 range, so the repaired value is inf too")
         camera_matrix = _k_asymmetric(device, dtype)
-        grazing = depth_from_plane_equation(
-            torch.tensor([[0.0, 1.0, 0.0]], device=device, dtype=dtype),
-            torch.tensor([[2.0]], device=device, dtype=dtype),
-            torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype),
-            camera_matrix,
-        )
-        assert torch.isfinite(grazing).all()
-        self.assert_close(grazing.abs(), torch.full((1, 1), 2.0e8, device=device, dtype=dtype))
+        for sign in (1.0, -1.0):
+            grazing = depth_from_plane_equation(
+                torch.tensor([[0.0, sign, 0.0]], device=device, dtype=dtype),
+                torch.tensor([[2.0]], device=device, dtype=dtype),
+                torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype),
+                camera_matrix,
+            )
+            assert torch.isfinite(grazing).all()
+            self.assert_close(grazing, torch.full((1, 1), 2.0e8, device=device, dtype=dtype))

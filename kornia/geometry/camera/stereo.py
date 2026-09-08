@@ -64,12 +64,13 @@ class StereoCamera:
         - a point cloud is a homogeneous transform by :attr:`Q` followed by the divide by ``W``. When
           ``abs(W) > 1e-8``, an overall sign on :attr:`Q` cancels, so :attr:`Q` and its negation return the
           same points. For ``abs(W) <= 1e-8``, the homogeneous conversion returns the numerator unchanged,
-          and the two matrices return opposing values. The matrix
-          written out on the :doc:`/geometry.camera.stereo` page, above this docstring, is not that negation
-          -- its last row is the same as this one's. It is the same expression evaluated at the opposite
-          baseline: the page's :math:`P_1` puts ``+tx * fx`` in the last column where the constructor reads
-          ``tx = -P_right[0, 3] / fx``, so substituting ``tx -> -tx`` in the page's matrix gives this one
-          exactly.
+          and the two matrices return opposing values. :attr:`Q` is exactly the matrix written out on the
+          :doc:`/geometry.camera.stereo` page, above this docstring, evaluated at the page's own ``tx``: the
+          page's :math:`P_1` carries ``fx * tx`` in its last column, so that ``tx`` is ``P_right[0, 3] / fx``,
+          which the constructor requires to be **negative**. The :attr:`tx` attribute exposes the negation of
+          that symbol, ``-P_right[0, 3] / fx``, a positive baseline; substituting the attribute's value for the
+          page's ``tx`` gives neither :attr:`Q` nor its negation, because the page's last row carries no
+          ``tx`` and does not flip.
         - a disparity map is channels-**last**, :math:`(B, H, W, 1)`, for :meth:`reproject_disparity_to_3D` and
           for the module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` alike -- the
           :math:`(B, 1, H, W)` layout the rest of kornia uses for images is rejected -- and the returned point
@@ -83,7 +84,7 @@ class StereoCamera:
         :func:`~kornia.geometry.grid.create_meshgrid` returns it as ``(x, y)``, so ``X`` is computed from the
         **row** index and ``Y`` from the column index -- the opposite of ``cv2.reprojectImageTo3D``, whose
         semantics this function was added to provide. The repository's own real-data test stores the swapped
-        values as its ground truth, so a fix has to re-derive them in the same change. Tracked as
+        values as its ground truth, so a fix has to update that test in the same change. Tracked as
         `#4269 <https://github.com/kornia/kornia/issues/4269>`_ and pinned by
         ``test_wart_reproject_disparity_reads_u_from_the_row_index_4269``,
         ``test_wart_reproject_disparity_x_varies_with_the_row_and_y_with_the_column_4269`` and the strict

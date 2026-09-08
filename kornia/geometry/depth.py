@@ -149,7 +149,7 @@ def depth_to_3d_v2(
 
     Convention:
         - ``depth`` is the camera-frame ``z`` of each pixel and the result is the camera-frame point
-          ``((u - cx) z / fx, (v - cy) z / fy, z)``, laid out channels-**last** as :math:`(*, H, W, 3)`.
+          ``((u - cx) z / fx, (v - cy) z / fy, z)``, laid out channels-**last** as :math:`(B, H, W, 3)`.
           :func:`~kornia.geometry.depth.depth_to_3d` computes the same points in the :math:`(B, 3, H, W)`
           layout, and the two are equal after ``permute(0, 2, 3, 1)``.
         - ``u`` and ``v`` are the column and the row of the integer-centre pixel grid that
@@ -157,8 +157,11 @@ def depth_to_3d_v2(
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`. There are no extrinsics, so the points are in
           the **camera** frame.
         - ``camera_matrix`` needs a leading batch dimension: a bare :math:`(3, 3)` passes this function's own
-          guard and is then rejected inside :func:`~kornia.geometry.depth.unproject_meshgrid`
-          (`#4271 <https://github.com/kornia/kornia/issues/4271>`_).
+          guard and, when ``xyz_grid`` is not given, is then rejected inside
+          :func:`~kornia.geometry.depth.unproject_meshgrid`
+          (`#4271 <https://github.com/kornia/kornia/issues/4271>`_). When ``xyz_grid`` is given,
+          ``camera_matrix`` is never read, so any matrix that passes the ``(*, 3, 3)`` guard -- a bare
+          :math:`(3, 3)` included -- is silently accepted.
         - ``normalize_points=True`` reads ``depth`` as the Euclidean ray length from the camera centre instead
           of as ``z``, so the returned point has that norm rather than that ``z``.
         - passing ``xyz_grid`` skips the grid construction and uses the given rays instead; the two forms give
@@ -167,13 +170,13 @@ def depth_to_3d_v2(
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(*, H, W)`.
-        camera_matrix: tensor containing the camera intrinsics with shape :math:`(*, 3, 3)`.
+        camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
         normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
           represented as the Euclidean ray length from the camera position.
         xyz_grid: explicit xyz point values.
 
     Return:
-        tensor with a 3d point per pixel of the same resolution as the input :math:`(*, H, W, 3)`.
+        tensor with a 3d point per pixel of the same resolution as the input :math:`(B, H, W, 3)`.
 
     Example:
         >>> depth = torch.rand(4, 4)
@@ -204,14 +207,14 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
     .. note::
 
         :py:func:`kornia.geometry.depth.depth_to_3d_v2` computes the same points without building a meshgrid,
-        in the :math:`(*, H, W, 3)` layout, and is the newer of the two. Which of them survives,
+        in the :math:`(B, H, W, 3)` layout, and is the newer of the two. Which of them survives,
         and on what deprecation path, is a coordinated decision that has not been taken: the two are kept side
         by side as they are and this function emits no ``DeprecationWarning``.
 
     Convention:
         - ``depth`` is the camera-frame ``z`` of each pixel and the result is the camera-frame point
           ``((u - cx) z / fx, (v - cy) z / fy, z)``, laid out channels-**first** as :math:`(B, 3, H, W)`.
-          :func:`~kornia.geometry.depth.depth_to_3d_v2` computes the same points in the :math:`(*, H, W, 3)`
+          :func:`~kornia.geometry.depth.depth_to_3d_v2` computes the same points in the :math:`(B, H, W, 3)`
           layout, and the two are equal after ``permute(0, 2, 3, 1)``.
         - ``u`` and ``v`` are the column and the row of the integer pixel centres that
           :func:`~kornia.geometry.grid.create_meshgrid` enumerates, described in the Convention block on
@@ -420,8 +423,9 @@ def warp_frame_depth(
         ``tests/geometry/test_depth.py``.
 
     .. warning::
-        An empty batch (:math:`B = 0`) raises ``ZeroDivisionError`` from the pixel-coordinate normalization
-        rather than returning an empty result, although the shape guards on the way in accept it and
+        An empty batch (:math:`B = 0`) raises ``ZeroDivisionError`` from ``transform_points`` -- its
+        batch-repeat count is ``0 // 0`` -- before any sampling runs, rather than returning an empty result,
+        although the shape guards on the way in accept it and
         :func:`~kornia.geometry.depth.depth_to_3d` -- the same unprojection in the other layout -- returns an
         empty point cloud. Tracked as `#4281 <https://github.com/kornia/kornia/issues/4281>`_ and pinned by
         ``test_wart_warp_frame_depth_rejects_an_empty_batch_4281`` in ``tests/geometry/test_depth.py``.
@@ -801,10 +805,11 @@ def depth_from_disparity(
     .. warning::
         The epsilon is inside the arithmetic -- the divisor is ``disparity + 1e-8`` -- instead of selecting a
         branch, so a zero disparity, which is what a stereo matcher writes where it found no match, returns a
-        large finite depth rather than ``inf`` in float32, float64 and bfloat16 (``5e9`` for a baseline of
-        ``0.5`` and a focal length of ``100``), and that value is a function of the epsilon rather than of the
-        camera. In float16 the ``1e-8`` itself rounds to zero, so the same call divides by zero and returns
-        ``inf`` after all. Tracked as `#4272 <https://github.com/kornia/kornia/issues/4272>`_ and pinned by
+        large finite depth rather than ``inf`` in float32, float64 and bfloat16: ``baseline * focal / 1e-8``,
+        ``5e9`` for a baseline of ``0.5`` and a focal length of ``100``, a value set by the epsilon as much as
+        by the camera and one no caller can threshold against. In float16 the ``1e-8`` itself rounds to zero,
+        so the same call divides by zero and returns ``inf`` after all. Tracked as
+        `#4272 <https://github.com/kornia/kornia/issues/4272>`_ and pinned by
         ``test_wart_zero_disparity_gives_a_finite_depth_4272`` and
         ``test_wart_depth_from_disparity_rejects_a_batched_baseline_4272`` in ``tests/geometry/test_depth.py``.
 

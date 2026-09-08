@@ -292,11 +292,10 @@ class TestStereoCamera(BaseTester):
         # Convention pin: the disparity map is
         # channels-LAST, (B, H, W, 1), for both the method and the module-level function, and the returned point
         # cloud is (B, H, W, 3). The channels-FIRST (B, 1, H, W) layout that the rest of kornia uses for images
-        # is rejected, and so is an unbatched (B, H, W). On this base the METHOD's docstring says the disparity
-        # is (B, 1, H, W) -- that is simply wrong, as the guard it forwards to rejects exactly that layout, and
-        # the module-level function it forwards to documents (B, H, W, 1) correctly; the batch 5c docstring
-        # commit corrects the method to match. No issue is filed for it, because it is a documentation error
-        # fixed in the same batch that pins the behavior.
+        # is rejected, and so is an unbatched (B, H, W). The method's docstring used to say (B, 1, H, W) -- the
+        # layout the shared guard rejects -- and now says (B, H, W, 1), matching the module-level function; no
+        # issue was filed, because the documentation error is corrected in the same change that pins the
+        # behavior.
         # The shape claim carries a value so it cannot pass on a dummy: with fx = 100 and tx = 0.5, a disparity
         # of 10 puts every point at Z = fx * tx / d = 5.
         # Snippet used to generate expected: cam.reproject_disparity_to_3D(full((1, 3, 5, 1), 10.0)) executed
@@ -314,8 +313,7 @@ class TestStereoCamera(BaseTester):
             cam.reproject_disparity_to_3D(torch.full((1, 3, 5), 10.0, device=device, dtype=dtype))
 
     def test_convention_reproject_method_and_free_function_are_byte_identical(self, device, dtype):
-        # Convention pin (duplication-ledger row
-        # "StereoCamera.reproject_disparity_to_3D / the module-level reproject_disparity_to_3D"): the method is
+        # Convention pin: the method is
         # a thin forwarder -- it passes ``self.Q`` to the module-level function and returns its result bit for
         # bit. ``Q`` is the cached tensor, not a fresh one, so the two calls see the same matrix. The result is
         # not a degenerate all-zero cloud (it reaches 5.0), so the equality is not the trivial one.
@@ -364,17 +362,19 @@ class TestStereoCamera(BaseTester):
         # The homogeneous conversion divides by W only when abs(W) > 1e-8. With zero disparity, this Q gives
         # W = 0, so the conversion returns the homogeneous numerator. Negating Q therefore negates the result
         # instead of cancelling as it does for ordinary Euclidean points.
-        # Snippet used to generate expected: reproject_disparity_to_3D(zeros(1, 1, 2, 1), q) and the same call
-        # with -q, executed 2026-09-08 at commit 26ddb21e (torch 2.14.0) -> [[1, 2, 3], [1, 3, 3]] and its
-        # negation on cpu for float32, float64, float16 and bfloat16 and on mps for float32 and float16.
+        # The map is a single pixel (u = v = 0) on purpose: the claim is about W = 0, and a 1 x 1 map reads the
+        # same whichever index feeds which coordinate, so this pin survives the #4269 repair unchanged.
+        # Snippet used to generate expected: reproject_disparity_to_3D(zeros(1, 1, 1, 1), q) and the same call
+        # with -q, executed 2026-09-08 at commit 089daad9 (torch 2.14.0) -> [1, 2, 3] and its negation on cpu
+        # for float32, float64, float16 and bfloat16 and on mps for float32 and float16.
         q = torch.tensor(
             [[[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 2.0], [0.0, 0.0, 0.0, 3.0], [0.0, 0.0, 1.0, 0.0]]],
             device=device,
             dtype=dtype,
         )
-        disparity = torch.zeros(1, 1, 2, 1, device=device, dtype=dtype)
+        disparity = torch.zeros(1, 1, 1, 1, device=device, dtype=dtype)
         points = reproject_disparity_to_3D(disparity, q)
-        expected = torch.tensor([[[[1.0, 2.0, 3.0], [1.0, 3.0, 3.0]]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[1.0, 2.0, 3.0]]]], device=device, dtype=dtype)
         self.assert_close(points, expected)
         self.assert_close(reproject_disparity_to_3D(disparity, -q), -expected)
 
@@ -442,7 +442,7 @@ class TestStereoCamera(BaseTester):
         # cx = 4, cy = 3, tx = 0.5, d = 10, so Z = 5) that is [-0.1, -0.15, 5] at (row 0, col 2),
         # [-0.2, -0.1, 5] at (row 1, col 0) and [0.0, -0.05, 5] at (row 2, col 4).
         # Settled by #4269's Expected section (unbind as ``u, v``); the fix is focused and welcome as a PR, and
-        # it also has to re-derive the stored ground truth in _RealTestData, which encodes the swap.
+        # it also has to update the stored ground truth in _RealTestData, which encodes the swap.
         cam = self._asymmetric_stereo(device, dtype)
         points = cam.reproject_disparity_to_3D(torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype))
         self.assert_close(points[0, 0, 2], torch.tensor([-0.1, -0.15, 5.0], device=device, dtype=dtype))
@@ -563,7 +563,7 @@ class TestStereoCamera(BaseTester):
             StereoCamera(cam.rectified_left_camera[0], cam.rectified_right_camera[0])
 
     def test_wart_stereo_rejects_an_empty_batch_4281(self, device, dtype):
-        # Wart pin for kornia#4281 (audit label 5c-st-24): ``torch.all`` of an empty tensor is True, so the
+        # Wart pin for kornia#4281: ``torch.all`` of an empty tensor is True, so the
         # sign guard fires on an empty batch and B = 0 is rejected with a message about a tensor that has no
         # elements at all. kornia's degenerate-shape convention is empty in, empty out; the non-empty rig on the
         # same code path is accepted.
