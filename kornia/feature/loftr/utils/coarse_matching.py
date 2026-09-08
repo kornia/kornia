@@ -267,15 +267,17 @@ class CoarseMatching(nn.Module):
                 (max(num_matches_train - num_matches_pred, self.train_pad_num_gt_min),),
                 device=_device,
             )
-            mconf_gt = torch.zeros(len(data["spv_b_ids"]), device=_device)  # set conf of gt paddings to all zero
+            # set conf of gt paddings to all zero, in mconf's own dtype -- mconf itself is
+            # sliced straight from conf_matrix (line 237) and can be float16/bfloat16 under
+            # autocast; defaulting this to float32 would silently upcast the padded mconf
+            # below via torch.cat's implicit type promotion.
+            mconf_gt = torch.zeros(len(data["spv_b_ids"]), device=_device, dtype=mconf.dtype)
 
             b_ids, i_ids, j_ids, mconf = (  # type: ignore
                 torch.cat([x[pred_indices], y[gt_pad_indices]], dim=0)
                 for x, y in zip(
-                    [b_ids, data["spv_b_ids"]],
-                    [i_ids, data["spv_i_ids"]],
-                    [j_ids, data["spv_j_ids"]],
-                    [mconf, mconf_gt],
+                    [b_ids, i_ids, j_ids, mconf],
+                    [data["spv_b_ids"], data["spv_i_ids"], data["spv_j_ids"], mconf_gt],
                 )
             )
 
