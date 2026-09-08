@@ -124,7 +124,11 @@ class _RealTestData(BaseTester):
             ],
             device=device,
             dtype=dtype,
-        ).permute(0, 2, 3, 1)
+        )
+        # The literal is already (B, rows=1, cols=10, 1). It used to be permuted to
+        # (B, 10, 1, 1) -- ten rows of one column -- which contradicts the comment above
+        # and the ground truth below, and made this test pass only because the pixel
+        # indices were swapped inside reproject_disparity_to_3D (#4269).
         return disp.expand(batch_size, -1, -1, -1)
 
     @staticmethod
@@ -147,7 +151,8 @@ class _RealTestData(BaseTester):
             ],
             device=device,
             dtype=dtype,
-        )
+        ).permute(0, 2, 1, 3)
+        # Same ten points, laid out as the one row of ten columns the comment describes.
 
         return pc.expand(batch_size, -1, -1, -1)
 
@@ -294,6 +299,46 @@ class TestStereoCamera(BaseTester):
         xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
 
         self.assert_close(xyz, xyz_gt)
+
+    def test_reproject_disparity_to_3D_uses_the_column_for_x(self, batch_size, device, dtype):
+        """X must come from the column and Y from the row, as in cv2.reprojectImageTo3D.
+
+        The meshgrid was unbound as ``v, u``, but create_meshgrid returns ``(x, y)``, so the
+        row fed X and the column fed Y: every pixel got the value belonging to its transpose.
+        A square rig with fx == fy and cx == cy hides it everywhere except off the diagonal,
+        so this uses an asymmetric 3x5 rig with cx != cy (#4269).
+        """
+        fx, fy, cx, cy, tx = 100.0, 100.0, 4.0, 3.0, 0.5
+        left = torch.zeros(batch_size, 3, 4, device=device, dtype=dtype)
+        left[:, 0, 0], left[:, 1, 1], left[:, 2, 2] = fx, fy, 1.0
+        left[:, 0, 2], left[:, 1, 2] = cx, cy
+        right = left.clone()
+        right[:, 0, 3] = -tx * fx
+        camera = StereoCamera(left, right)
+
+        rows, cols, disparity = 3, 5, 10.0
+        points = camera.reproject_disparity_to_3D(
+            torch.full((batch_size, rows, cols, 1), disparity, device=device, dtype=dtype)
+        )
+
+        depth = fx * tx / disparity
+        expected = torch.stack(
+            [
+                (torch.arange(cols, device=device, dtype=dtype) - cx).view(1, 1, cols).expand(1, rows, cols)
+                * depth
+                / fx,
+                (torch.arange(rows, device=device, dtype=dtype) - cy).view(1, rows, 1).expand(1, rows, cols)
+                * depth
+                / fy,
+                torch.full((1, rows, cols), depth, device=device, dtype=dtype),
+            ],
+            dim=-1,
+        ).expand(batch_size, -1, -1, -1)
+        self.assert_close(points, expected)
+
+        # The axis dependence, stated directly: X varies across a row, Y does not.
+        assert not torch.allclose(points[0, 0, :, 0], points[0, 0, :1, 0].expand(cols))
+        self.assert_close(points[0, 0, :, 1], points[0, 0, :1, 1].expand(cols))
 
     def test_reproject_disparity_to_3D_simple(self, batch_size, device, dtype):
         """Test reprojecting of disparity to 3D for real data."""
