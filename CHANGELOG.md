@@ -420,6 +420,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exact zero-distance pairs on PyTorch 2.5.1 and 2.9.1 where `clamp`'s boundary gradient passed through to `sqrt(0)`.
   PyTorch 2.14.0 was already finite, and forward behavior and computed distances are unchanged. (#4233)
 
+* `bbox_to_mask` built its pixel-position grid in the box dtype. With `float16` boxes (and
+  `bfloat16` boxes) on images wider or taller than 2048 px (256 px for `bfloat16`) consecutive
+  pixel positions collapsed, so rows and columns near the collapse were mismasked; the grid is
+  now built in `float32` and `float16`/`bfloat16` results are byte-identical to `float32`/`float64`.
+  `RandomErasing` and `RandomCutMixV2` build their masks through it. (#4336)
+
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
   `kornia_rs.io`, and kornia kept calling the root, so on 0.1.11 and newer `load_image` raised

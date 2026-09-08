@@ -280,6 +280,25 @@ class TestBbox2D(BaseTester):
         fractional = torch.tensor([[[1.4, 1.4], [3.6, 1.4], [3.6, 2.6], [1.4, 2.6]]], device=device, dtype=dtype)
         assert bbox_to_mask(fractional, 6, 5).sum().item() == 2.0
 
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_bbox_to_mask_position_grid_is_exact_for_half_boxes_on_a_large_image(self, device, half_dtype):
+        # float16/bfloat16 can only represent consecutive integers exactly up to 2048 px /
+        # 256 px; beyond that, adjacent pixel positions collapse onto the same value.
+        # bbox_to_mask's position grid used to be built at boxes.dtype, so a half-precision
+        # `boxes` on an image past that threshold silently mismasked rows/columns near the
+        # collapse. Compare against the float32 result for the same region on a 4096x4096
+        # image -- well past the threshold on both axes for either half dtype. Coordinates
+        # 1000 / 3072 / 4080 are exactly representable in both half dtypes, so the half box
+        # covers exactly the same rectangle as the float32 one.
+        boxes32 = torch.tensor(
+            [[[1000.0, 1000.0], [4080.0, 1000.0], [4080.0, 3072.0], [1000.0, 3072.0]]], device=device
+        )
+        boxes_half = boxes32.to(half_dtype)
+        mask32 = bbox_to_mask(boxes32, width=4096, height=4096)
+        mask_half = bbox_to_mask(boxes_half, width=4096, height=4096)
+        assert mask_half.dtype == half_dtype
+        assert torch.equal(mask_half.bool(), mask32.bool())
+
     def test_convention_bbox_generator_far_corner_is_start_plus_size_minus_one_3934(self, device, dtype):
         # Convention pin (kornia#3934 tracks the inclusive arithmetic): width 3 from x=1 places
         # the right edge at x=3, which infer_bbox_shape reads back as width 3. A scalar input is a
