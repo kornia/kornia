@@ -28,11 +28,11 @@ from __future__ import annotations
 import json
 import mmap
 import os
-from typing import Any, NamedTuple
+from typing import Any, BinaryIO, NamedTuple
 
 import torch
 
-__all__ = ["load_safetensors"]
+__all__ = ["check_safetensors", "load_safetensors"]
 
 
 class _TensorEntry(NamedTuple):
@@ -190,6 +190,65 @@ def _check_the_buffer_is_covered_once(path: str, parsed: dict[str, _TensorEntry]
         )
 
 
+def check_safetensors(path: str | os.PathLike[str]) -> None:
+    """Check that *path* is a readable safetensors file, without reading tensors.
+
+    The header half of :func:`load_safetensors`: the length prefix, the JSON
+    header, every entry's dtype and byte range, and that those ranges cover the
+    buffer exactly once. It reads only the header, so it stays cheap on a
+    multi-gigabyte checkpoint.
+
+    Written for :func:`kornia.core.download_file_from_url`'s ``validate``
+    argument, where it turns a truncated cache entry into a re-download instead
+    of a permanent failure. Every truncation the download path can produce is
+    visible here: a file cut short after a 2xx leaves the declared header length
+    or the entries' ``data_offsets`` pointing past the end.
+
+    Args:
+        path: the checkpoint to check.
+
+    Raises:
+        ValueError: if the file is not a readable safetensors checkpoint. The
+            message names *path*, as :func:`load_safetensors` does.
+        OSError: if the file cannot be opened.
+    """
+    path = os.fspath(path)
+    with open(path, "rb") as f:
+        _read_and_check_header(path, f)
+
+
+def _read_and_check_header(path: str, f: BinaryIO) -> tuple[dict[str, _TensorEntry], int]:
+    """Validate the header of an open safetensors file, leaving nothing mapped.
+
+    Returns:
+        The parsed entries, and the offset the byte buffer starts at.
+    """
+    size = os.fstat(f.fileno()).st_size
+    if size < _HEADER_LEN_BYTES:
+        raise ValueError(f"{path}: {size} bytes is too short to be a safetensors file.")
+    header_len = int.from_bytes(f.read(_HEADER_LEN_BYTES), "little", signed=False)
+    if header_len > _MAX_HEADER_BYTES:
+        raise ValueError(f"{path}: the header declares {header_len} bytes, more than the {_MAX_HEADER_BYTES} cap.")
+    data_start = _HEADER_LEN_BYTES + header_len
+    if data_start > size:
+        raise ValueError(
+            f"{path}: the header declares {header_len} bytes but the file holds "
+            f"{size - _HEADER_LEN_BYTES} after the length prefix."
+        )
+    try:
+        header = json.loads(f.read(header_len))
+    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise ValueError(f"{path}: the header is not valid JSON: {e}") from e
+    if not isinstance(header, dict):
+        raise ValueError(f"{path}: the header is a JSON {type(header).__name__}, expected an object.")
+
+    entries = {name: entry for name, entry in header.items() if name != "__metadata__"}
+    data_len = size - data_start
+    parsed = {name: _parse_entry(path, name, entry, data_len) for name, entry in entries.items()}
+    _check_the_buffer_is_covered_once(path, parsed, data_len)
+    return parsed, data_start
+
+
 def load_safetensors(path: str | os.PathLike[str], device: str | torch.device = "cpu") -> dict[str, torch.Tensor]:
     """Load a ``.safetensors`` checkpoint into a state dict.
 
@@ -228,29 +287,7 @@ def load_safetensors(path: str | os.PathLike[str], device: str | torch.device = 
     """
     path = os.fspath(path)
     with open(path, "rb") as f:
-        size = os.fstat(f.fileno()).st_size
-        if size < _HEADER_LEN_BYTES:
-            raise ValueError(f"{path}: {size} bytes is too short to be a safetensors file.")
-        header_len = int.from_bytes(f.read(_HEADER_LEN_BYTES), "little", signed=False)
-        if header_len > _MAX_HEADER_BYTES:
-            raise ValueError(f"{path}: the header declares {header_len} bytes, more than the {_MAX_HEADER_BYTES} cap.")
-        data_start = _HEADER_LEN_BYTES + header_len
-        if data_start > size:
-            raise ValueError(
-                f"{path}: the header declares {header_len} bytes but the file holds "
-                f"{size - _HEADER_LEN_BYTES} after the length prefix."
-            )
-        try:
-            header = json.loads(f.read(header_len))
-        except (UnicodeDecodeError, json.JSONDecodeError) as e:
-            raise ValueError(f"{path}: the header is not valid JSON: {e}") from e
-        if not isinstance(header, dict):
-            raise ValueError(f"{path}: the header is a JSON {type(header).__name__}, expected an object.")
-
-        entries = {name: entry for name, entry in header.items() if name != "__metadata__"}
-        data_len = size - data_start
-        parsed = {name: _parse_entry(path, name, entry, data_len) for name, entry in entries.items()}
-        _check_the_buffer_is_covered_once(path, parsed, data_len)
+        parsed, data_start = _read_and_check_header(path, f)
 
         state_dict: dict[str, torch.Tensor] = {}
         # ``ACCESS_COPY`` maps the whole file, so the offsets below are file
