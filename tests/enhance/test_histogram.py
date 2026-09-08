@@ -104,24 +104,25 @@ class TestImageHistogram2d(BaseTester):
         density output regardless of the real underlying data spread.
 
         Compares the function's own auto-constructed centers against EXPLICITLY-supplied
-        float64 centers on the *same* float16 image tensor (the `centers=` argument bypasses
+        float32 centers on the *same* float16 image tensor (the `centers=` argument bypasses
         internal construction entirely) -- this isolates the bug mechanism cleanly, with no
         confound from float16 also quantizing the image's own pixel VALUES (a separate, benign,
-        expected precision limit unrelated to how centers are built). Measured directly:
-        unfixed max abs error ~5.99 against the explicit-centers reference; fixed, ~9e-7
-        (ordinary float32 rounding noise)."""
+        expected precision limit unrelated to how centers are built). float32 is an exact
+        reference here: n_bins=4096 is far below float32's 2**24 integer limit (MPS has no
+        float64). Measured directly: unfixed max abs error ~5.99 against the explicit-centers
+        reference; fixed, ~9e-7 (ordinary float32 rounding noise)."""
         torch.manual_seed(0)
         n_bins = 4096
         image = torch.rand(1, 64, 64, device=device, dtype=torch.float16)
 
         hist_auto, _ = TestImageHistogram2d.fcn(image, 0.0, 1.0, n_bins, kernel="gaussian")
 
-        explicit_centers = 0.0 + (1.0 / n_bins) * (torch.arange(n_bins, device=device, dtype=torch.float64) + 0.5)
+        explicit_centers = 0.0 + (1.0 / n_bins) * (torch.arange(n_bins, device=device, dtype=torch.float32) + 0.5)
         hist_explicit, _ = TestImageHistogram2d.fcn(
             image, 0.0, 1.0, n_bins, centers=explicit_centers, kernel="gaussian"
         )
 
-        self.assert_close(hist_auto.double(), hist_explicit.double(), atol=1e-3, rtol=1e-3)
+        self.assert_close(hist_auto.float(), hist_explicit.float(), atol=1e-3, rtol=1e-3)
 
 
 class TestHistogram2d(BaseTester):
