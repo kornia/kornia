@@ -79,10 +79,12 @@ class TestRenderGaussian2d(BaseTester):
         Compares the peak location against `mean`'s own ACTUAL stored value (post float16
         rounding), not the original higher-precision Python float -- so this isolates the
         internal-grid bug specifically, without conflating it with float16's separate, expected,
-        unrelated precision limit on the input `mean` itself."""
+        unrelated precision limit on the input `mean` itself. The float32 arm is the
+        wide-precision control (exact for widths well past 2**24); float64 is avoided so the
+        test also runs on MPS, which has no float64."""
         width = 2200
         mu = 2049.3
-        for dtype in (torch.float16, torch.float64):
+        for dtype in (torch.float16, torch.float32):
             mean = torch.tensor([[mu, 5.0]], dtype=dtype, device=device)
             std = torch.tensor([[2.0, 2.0]], dtype=dtype, device=device)
             heatmap = kornia.geometry.subpix.render_gaussian2d(mean, std, (10, width), False)
