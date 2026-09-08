@@ -411,6 +411,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read as the vertices: an out-of-bounds error with one box, and three `(1, 3)` tensors -- one value
   per coordinate rather than per box -- with eight. (#4248, #4351)
 
+* `Normalize`, `Denormalize` and `Rescale` register their constants (`mean`, `std`, `factor`) as
+  non-persistent buffers instead of plain attributes, so `.to(device)` moves them with the module.
+  Previously they stayed on the CPU: eager tolerates the mix, but `torch.export` traces with fake
+  tensors and refused it, so exporting a preprocessing pipeline from an accelerator failed while
+  the same pipeline exported fine from the CPU. `Denormalize` now coerces a scalar `mean`/`std` to
+  a 1-D tensor, as `Normalize` already did, which changes its `__repr__` to match `Normalize`'s and
+  lets a scalar `Denormalize` reach the ONNX export branch instead of raising `IndexError` there.
+  The buffers are non-persistent, so `state_dict()` is unchanged and existing checkpoints still
+  load. (#4323, #4330)
+
 * `RenderingDeFMO` (used by `DeFMO`) no longer crashes on a half-precision forward pass. Its rendering
   time-steps (`times`) were a plain Python attribute, not a registered buffer, so `nn.Module.to()` never
   moved it; `forward` re-derived `times`'s device from the input on every call but never its dtype, so
