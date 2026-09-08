@@ -365,7 +365,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is in `load_state_dict_from_url`, so the entry is quarantined, refetched and restored if nothing
   can replace it. `kornia.core.validate_safetensors` is that check for a `.safetensors` file -- the
   header parse of `load_safetensors` without the mapping, so its cost does not scale with the
-  checkpoint -- and the KimiVL and SigLIP2 builders pass it. Fixes #4309. (#PRNUM)
+  checkpoint -- and the KimiVL and SigLIP2 builders pass it. Fixes #4309. (#4362)
 
 * `RenderingDeFMO` (used by `DeFMO`) no longer crashes on a half-precision forward pass. Its rendering
   time-steps (`times`) were a plain Python attribute, not a registered buffer, so `nn.Module.to()` never
