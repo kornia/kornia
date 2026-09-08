@@ -30,7 +30,7 @@ from .mixin import (
 )
 from .module import ImageModule, ImageSequential
 from .ops import eye_like, vec_like
-from .safetensors import load_safetensors
+from .safetensors import check_safetensors, load_safetensors
 from .tensor_wrapper import TensorWrapper
 
 __all__ = [
@@ -41,6 +41,7 @@ __all__ = [
     "ONNXMixin",
     "ONNXRuntimeMixin",
     "TensorWrapper",
+    "check_safetensors",
     "download_file_from_url",
     "download_hf_file",
     "external",

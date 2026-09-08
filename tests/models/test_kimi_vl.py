@@ -83,7 +83,10 @@ class TestKimiVLBuilder(BaseTester):
         assert state_dict is expected
         read.assert_called_once_with("cached.safetensors")
         download.assert_called_once_with(
-            "kornia/kimi-vl-a3b-instruct-vision", "model.safetensors", model_dir=str(tmp_path)
+            "kornia/kimi-vl-a3b-instruct-vision",
+            "model.safetensors",
+            model_dir=str(tmp_path),
+            validate=kimi_vl_builder.check_safetensors,
         )
 
     def test_pretrained_config_matches_checkpoint_grid(self):

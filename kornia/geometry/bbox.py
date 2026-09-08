@@ -99,7 +99,7 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
 
 
 def validate_bbox3d(boxes: torch.Tensor) -> bool:
-    """Validate that a 3D box has equal inclusive edge extents along each axis, raising when it does not.
+    r"""Validate that a 3D box has equal inclusive edge extents along each axis, raising when it does not.
 
     Convention:
         Vertices use inclusive coordinates in the order front-top-left, front-top-right, front-bottom-right,
@@ -113,9 +113,9 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
 
     .. warning::
         :func:`validate_bbox` returns ``False`` where this function raises; that inconsistency is tracked in
-        `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Rank-4 input passes this check but breaks
-        :func:`infer_bbox_shape3d` and :func:`bbox_to_mask3d`, tracked in
-        `#4248 <https://github.com/kornia/kornia/issues/4248>`_.
+        `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Rank-4 input passes this check, but
+        :func:`infer_bbox_shape3d` and :func:`bbox_to_mask3d` reject it with
+        :class:`~kornia.core.exceptions.ShapeError`: flatten to :math:`(B \cdot N, 8, 3)` before calling them.
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
@@ -226,9 +226,9 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
         `#3934 <https://github.com/kornia/kornia/issues/3934>`_; the exclusive-export trap is
         `#4009 <https://github.com/kornia/kornia/issues/4009>`_. Validation raises ``AssertionError`` rather than
         returning ``False``, see `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Batched :math:`(B, N, 8, 3)`
-        input passes validation but is then indexed as if the box axis were the vertex axis, which raises an
-        indexing error or returns wrong-shaped values depending on ``N``; flatten to :math:`(B \cdot N, 8, 3)`
-        first. Tracked in `#4248 <https://github.com/kornia/kornia/issues/4248>`_.
+        input is rejected with :class:`~kornia.core.exceptions.ShapeError`, as the 2D helpers reject
+        :math:`(B, N, 4, 2)`; flatten to :math:`(B \cdot N, 8, 3)` first. :func:`validate_bbox3d` still accepts
+        the rank-4 form and reshapes internally, which is why the rejection lives here rather than there.
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
@@ -262,6 +262,11 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
         (tensor([31, 61]), tensor([21, 51]), tensor([11, 41]))
 
     """
+    # validate_bbox3d also accepts (B, N, 8, 3) and reshapes internally, but the
+    # indexing below reads dim 1 as the vertex axis, so a rank-4 input would be
+    # read as if the box axis were the vertices. Reject it here, the way #4218
+    # did for the 2D twin.
+    KORNIA_CHECK_SHAPE(boxes, ["N", "8", "3"])
     validate_bbox3d(boxes)
 
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
@@ -313,6 +318,12 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     Note:
         It is currently non-differentiable.
 
+    Note:
+        The pixel-position grid is built in ``float32`` regardless of ``boxes.dtype``, so
+        ``float16``/``bfloat16`` boxes are masked exactly even on images wider or taller than
+        the integer-exact range of those dtypes (2048 px for ``float16``, 256 px for
+        ``bfloat16``). The result is still returned in ``boxes.dtype``.
+
     Examples:
         >>> boxes = torch.tensor([[
         ...        [1., 1.],
@@ -335,8 +346,16 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     # (`torch.any(...)` -> Python `if`) that blocked torch.compile fullgraph (e.g. RandomErasing,
     # which builds its mask through this function). Dropped; behaviour is byte-identical.
     # zero padding the surroundings
-    yy = torch.arange(height, device=boxes.device, dtype=boxes.dtype).view(height, 1)
-    xx = torch.arange(width, device=boxes.device, dtype=boxes.dtype).view(1, width)
+    # Built at a fixed float32 regardless of boxes.dtype: these are exact pixel
+    # indices, and float16 can only represent integers exactly up to 2048 --
+    # beyond that, consecutive positions collapse onto the same value, so a
+    # float16 `boxes` on an image taller/wider than 2048px silently mismasks
+    # rows/columns near the collapse. The grid-vs-boxes comparisons below
+    # promote to the wider of the two dtypes (float32 for float16/bfloat16/
+    # float32 boxes, float64 for float64 boxes), so nothing downstream loses
+    # precision; the returned mask still casts back to boxes.dtype as documented.
+    yy = torch.arange(height, device=boxes.device, dtype=torch.float32).view(height, 1)
+    xx = torch.arange(width, device=boxes.device, dtype=torch.float32).view(1, width)
     x_min = boxes[:, 0, 0].view(-1, 1, 1)
     y_min = boxes[:, 0, 1].view(-1, 1, 1)
     x_max = boxes[:, 2, 0].view(-1, 1, 1)
@@ -351,7 +370,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
 
 
 def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Tensor:
-    """Convert 3D bounding boxes to masks. Covered area is 1. and the remaining is 0.
+    r"""Convert 3D bounding boxes to masks. Covered area is 1. and the remaining is 0.
 
     Convention:
         ``size`` is ``(depth, height, width)`` and the mask comes back as :math:`(B, 1, depth, height, width)` in
@@ -370,8 +389,8 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         `#4015 <https://github.com/kornia/kornia/issues/4015>`_. The ``float32`` output with a channel axis is
         tracked in `#4250 <https://github.com/kornia/kornia/issues/4250>`_. Validation raises rather than returning
         ``False``, `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Batched :math:`(B, N, 8, 3)` input passes
-        validation and then raises an indexing or broadcasting error; flatten it first. Tracked in
-        `#4248 <https://github.com/kornia/kornia/issues/4248>`_.
+        :func:`validate_bbox3d` but is rejected here with :class:`~kornia.core.exceptions.ShapeError`; flatten to
+        :math:`(B \cdot N, 8, 3)` first.
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
@@ -420,6 +439,9 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
                    [0., 0., 0., 0., 0.]]]]])
 
     """
+    # Same as infer_bbox_shape3d: boxes[:, 4, 2] below reads dim 1 as the vertex
+    # axis, which a rank-4 (B, N, 8, 3) input silently is not.
+    KORNIA_CHECK_SHAPE(boxes, ["B", "8", "3"])
     validate_bbox3d(boxes)
     D0, D1, D2 = size  # get depth, height, width
 
