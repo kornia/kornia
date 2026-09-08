@@ -616,40 +616,18 @@ class TestBbox3D(BaseTester):
         self.assert_close(widths, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("num_boxes", [1, 8])
-    def test_wart_rank4_input_passes_validate_bbox3d_then_breaks_the_3d_helpers_4248(self, device, dtype, num_boxes):
-        # Wart pin for kornia#4248: validate_bbox3d accepts (B, N, 8, 3), but infer_bbox_shape3d and bbox_to_mask3d
-        # then index the box axis as the vertex axis. With one box that raises out-of-bounds errors;
-        # with eight boxes infer_bbox_shape3d instead returns three (1, 3) tensors, one value per
-        # coordinate rather than per box. The 2D helpers had the same defect until kornia#4180.
-        boxes = self._unit_cuboid(device, dtype).expand(num_boxes, 8, 3)[None].contiguous()
-        assert validate_bbox3d(boxes) is True
-        if num_boxes == 8:
-            depths, heights, widths = infer_bbox_shape3d(boxes)
-            assert depths.shape == heights.shape == widths.shape == (1, 3)
-            with pytest.raises(RuntimeError):
-                bbox_to_mask3d(boxes, (4, 5, 5))
-        else:
-            with pytest.raises((RuntimeError, IndexError)):
-                infer_bbox_shape3d(boxes)
-            with pytest.raises((RuntimeError, IndexError)):
-                bbox_to_mask3d(boxes, (4, 5, 5))
-
-    @pytest.mark.parametrize("num_boxes", [1, 8])
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="kornia#4248: rank-4 3D input is not rejected with ShapeError as the 2D helpers do since kornia#4218",
-    )
     def test_convention_rank4_input_is_rejected_by_the_3d_helpers_4248(self, device, dtype, num_boxes):
+        # kornia#4248, the 3D twin of kornia#4180. validate_bbox3d still accepts (B, N, 8, 3) and
+        # reshapes internally, but infer_bbox_shape3d and bbox_to_mask3d read dim 1 as the vertex
+        # axis, so rank-4 input was read as if the box axis were the vertices: out-of-bounds with
+        # one box, and three (1, 3) tensors -- one value per coordinate rather than per box -- with
+        # eight. Both now reject it up front, the way the 2D helpers have since kornia#4218.
         boxes = self._unit_cuboid(device, dtype).expand(num_boxes, 8, 3)[None].contiguous()
+        # The accepting half of the mismatch is unchanged and still worth pinning.
+        assert validate_bbox3d(boxes) is True
         for call in (lambda: infer_bbox_shape3d(boxes), lambda: bbox_to_mask3d(boxes, (4, 5, 5))):
-            try:
+            with pytest.raises(ShapeError):
                 call()
-            except ShapeError:
-                continue
-            except Exception as error:
-                raise AssertionError(f"expected ShapeError, got {type(error).__name__}") from error
-            raise AssertionError("expected ShapeError, the call returned")
 
     def test_wart_bbox_generator3d_extent_is_one_larger_than_requested_4018(self, device, dtype):
         # Wart pin for kornia#4018: the 3D generator places the far corner at start + size, so
