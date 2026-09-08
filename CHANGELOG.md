@@ -364,6 +364,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
+  float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
+  while the implementation preserves ONNX export compatibility. (#4358)
 * `CameraModelBase.__init__` now validates `params` against the shape it documents, instead of storing
   whatever it is given. The typed constructors (`PinholeModel`, `BrownConradyModel`, `KannalaBrandtK3`,
   `Orthographic`) each apply the same two comparisons, so only the direct-construction path -- which is

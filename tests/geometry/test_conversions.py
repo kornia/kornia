@@ -2542,12 +2542,6 @@ class TestRadDegConversions(BaseTester):
         x_deg = 180.0 * torch.rand(batch_shape, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.conversions.deg2rad, (x_deg,))
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="kornia.constants.pi is float32, so f64 loses ~7 digits (angle_to_rotation_matrix "
-        "inherits it via deg2rad) — kornia#3937",
-        strict=True,
-    )
     @pytest.mark.parametrize(
         ("op_name", "arg", "expected"),
         [
@@ -2557,24 +2551,12 @@ class TestRadDegConversions(BaseTester):
         ],
     )
     def test_convention_float64_results_are_exact_3937(self, device, op_name, arg, expected):
-        # Intended behavior: each op is exact to the precision of its input dtype, like
-        # torch.rad2deg / torch.deg2rad; angle_to_rotation_matrix(90) is then the exact quarter
-        # turn. It is not: all three multiply by kornia.constants.pi, a *float32* tensor merely
-        # cast to the input dtype, so a float64 input carries a systematic ~2.8e-8 relative
-        # error (#3937). float64 is hardcoded (like test_rad2deg_gradcheck above) because at
-        # float32 the biased constant *is* the correctly rounded pi; MPS is skipped visibly
-        # below because it has no float64 at all, so without the skip the xfail would be
-        # satisfied by a TypeError instead of the precision assert it documents (hence also
-        # raises=AssertionError on the mark). Marked xfail(strict=True) so fixing #3937 makes
-        # every case XPASS and forces this mark out — a one-place edit.
-        # Snippet used to generate expected (stdlib + torch):
-        #   math.degrees(math.pi) == 180.0 and (180.0 * math.pi) / 180.0 == math.pi exactly
-        #   kornia rad2deg(tensor(pi, f64)).item()   -> 179.99999499104382
-        #   kornia deg2rad(tensor(180., f64)).item() -> 3.1415927410125732 (math.pi + 8.7e-08)
-        #   kornia angle_to_rotation_matrix(tensor(90., f64)).flatten().tolist() ->
-        #     [-4.371139000186241e-08, 0.999999999999999, -0.999999999999999, -4.371139e-08]
-        # atol/rtol 1e-12 sits between the current ~4.4e-8 cosine error and the 6.123234e-17
-        # an unbiased constant would give.
+        # Regression for #3937: rad2deg and deg2rad must preserve float64 precision.
+        # angle_to_rotation_matrix inherits the corrected conversion through deg2rad,
+        # so a 90-degree input should produce the expected quarter-turn matrix without
+        # the previous float32 pi bias.
+        # float64 is hardcoded because this regression specifically checks double precision.
+
         if device.type == "mps":
             pytest.skip("MPS has no float64, and this pin is float64-only by construction")
 
@@ -2612,36 +2594,22 @@ class TestRadDegConversions(BaseTester):
     @pytest.mark.parametrize(
         ("op_name", "arg", "expected"),
         [
-            ("rad2deg", [1, 2, 3], [60.0, 120.0, 180.0]),
-            ("deg2rad", [180, 90], [3.0, 1.5]),
-            ("angle_to_rotation_matrix", [90], [[[0.07073720, 0.99749500], [-0.99749500, 0.07073720]]]),
+            ("rad2deg", [1, 2, 3], [57.29577951308232, 114.59155902616465, 171.88733853924697]),
+            ("deg2rad", [180, 90], [3.141592653589793, 1.5707963267948966]),
+            ("angle_to_rotation_matrix", [90], [[[0.0, 1.0], [-1.0, 0.0]]]),
         ],
     )
-    def test_wart_integer_input_truncates_pi_to_3_3937(self, device, op_name, arg, expected):
-        # Wart pins for #3937: assert the CURRENT broken outputs the docstring warnings document.
-        # kornia.constants.pi is cast to the *integer* input dtype and truncates to 3, so rad2deg
-        # divides by 3, deg2rad multiplies by 3 (90 degrees -> 1.5 radians), and the downstream
-        # angle_to_rotation_matrix([90]) is nowhere near the quarter turn. If a case fails, #3937
-        # was (partly) fixed -- update or remove the warnings in rad2deg, deg2rad and
-        # angle_to_rotation_matrix and flip/remove the strict xfail above. NOT a contract that
-        # int inputs must keep these values: what they *should* do (promote to float like
-        # torch.rad2deg, or raise) is a maintainer decision, and a strict xfail asserting the
-        # promoted-float answer would stay silently XFAIL forever if the fix chose to raise;
-        # a wart pin flips loudly under either polarity.
-        # Snippet used to generate expected (torch only):
-        #   kornia rad2deg(torch.tensor([1, 2, 3])) -> tensor([ 60., 120., 180.]), dtype float32
-        #     (torch.rad2deg gives [ 57.2958, 114.5916, 171.8873])
-        #   kornia deg2rad(torch.tensor([180, 90])) -> tensor([3.0000, 1.5000]), dtype float32
-        #     (torch.deg2rad gives [3.1416, 1.5708])
-        #   kornia angle_to_rotation_matrix(torch.tensor([90])).flatten().tolist() ->
-        #     [0.07073719799518585, 0.9974949955940247, -0.9974949955940247, 0.07073719799518585]
-        #     (math.cos(1.5), math.sin(1.5) -> (0.0707372016677029, 0.9974949866040544))
+    def test_integer_input_promotes_to_float_3937(self, device, op_name, arg, expected):
         op = getattr(kornia.geometry.conversions, op_name)
-
         out = op(torch.tensor(arg, device=device))
 
         assert out.dtype == torch.float32
-        self.assert_close(out, torch.tensor(expected, device=device, dtype=torch.float32), atol=1e-4, rtol=1e-4)
+        self.assert_close(
+            out,
+            torch.tensor(expected, device=device, dtype=torch.float32),
+            atol=1e-6,
+            rtol=1e-6,
+        )
 
 
 class TestPolCartConversions(BaseTester):
