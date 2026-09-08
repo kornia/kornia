@@ -5081,6 +5081,21 @@ class TestPlanckianJitter(BaseTester):
         expected = self._get_expected_output_same_on_batch(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    @pytest.mark.parametrize("input_dtype", [torch.float16, torch.float32])
+    def test_output_preserves_input_dtype(self, input_dtype, device):
+        """apply_transform indexed the registered `pl` buffer (the Planckian-locus color
+        coefficient table) with `.to(device=input.device)` but no dtype=. The buffer keeps its
+        own construction-time dtype (float32) independent of `input`'s dtype unless the whole
+        nn.Module is explicitly `.to(dtype=...)`'d -- `input * r_w` then silently upcasts a
+        float16 input to float32 through ordinary PyTorch type promotion, confirmed directly."""
+        torch.manual_seed(0)
+        f = RandomPlanckianJitter(p=1.0)
+        input = torch.rand(2, 3, 8, 8, device=device, dtype=input_dtype)
+
+        out = f(input)
+
+        assert out.dtype == input_dtype, f"input dtype {input_dtype} became {out.dtype}"
+
 
 class TestRandomRGBShift(BaseTester):
     def test_smoke(self, device, dtype):
