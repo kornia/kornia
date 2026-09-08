@@ -24,7 +24,6 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.constants import pi
 from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast, is_compiling
