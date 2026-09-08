@@ -1019,8 +1019,12 @@ class TestDepthWarperConventions(BaseTester):
         # (torch 2.14.0) -> warp_frame_depth [[2, 3, 0], [5, 6, 0]] in every cell (cpu float32, float64,
         # float16, bfloat16; mps float32, float16); DepthWarper all zeros on cpu float32, float64 and bfloat16,
         # nan on cpu float16, and backend-dependent values on mps (zeros in row 0, 1e24 in row 1 for float32) --
-        # so the pin asserts warp_frame_depth's value and the 1e12 grid coordinate, not what grid_sample makes
-        # of a coordinate that far out. The z = 0.5 arm: max gap 0.0 (float32) and 2.4e-11 (float64) on cpu.
+        # so the pin asserts warp_frame_depth's value and the 1e12 grid coordinate and never samples through that
+        # grid: torch 2.5.1's aarch64 CPU grid_sample segfaults once one normalized coordinate exceeds 2**31 while
+        # the other is in range (x = 2147483648.0, y = -1.0 crashes; x = 2147483000.0 does not), which is what
+        # DepthWarper's grid holds here and what killed the macOS torch 2.5.1 CI legs on 2026-09-08; the
+        # vectorized-kernel crash is the open pytorch/pytorch#24823 (expanded from #19826).
+        # The z = 0.5 arm: max gap 0.0 (float32) and 2.4e-11 (float64) on cpu.
         # Pins the CURRENT behavior; NOT a contract; delete when #4267 settles one z = 0 policy.
         image = torch.arange(1.0, 7.0, device=device, dtype=dtype).view(1, 1, 2, 3)
         depth = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
@@ -1042,7 +1046,6 @@ class TestDepthWarperConventions(BaseTester):
         singular = warper_for(to_zero_depth)
         # compared in float32: a float16 1e9 is itself inf, and inf > inf is False
         assert (singular.warp_grid(depth)[..., 0].abs().to(torch.float32) > 1.0e9).all()
-        assert (singular(depth, image) != by_function).any()
         if dtype in (torch.float32, torch.float64):
             half_way = to_zero_depth.clone()
             half_way[0, 2, 3] = -0.5
