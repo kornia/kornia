@@ -356,6 +356,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
+  float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
+  while the implementation preserves ONNX export compatibility. (#4358)
+
 * Fixed `unproject_points_z1` depth shape handling for singleton and multi-axis batches,
   accepting both trailing-singleton and flat depth tensors. (#4355)
 
