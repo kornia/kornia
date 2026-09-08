@@ -518,6 +518,55 @@ class TestDepthFromPlaneEquation(BaseTester):
         # Assert that the computed depth matches the expected depth
         self.assert_close(depth, depth_expected, rtol=1e-6, atol=1e-6)
 
+    def test_grazing_ray_is_finite(self, device, dtype):
+        """A ray exactly parallel to the plane must take the epsilon guard.
+
+        The guard was `eps * sign(denom)`, and `sign` is zero at zero, so at the
+        exact singularity the epsilon was multiplied away and the depth came
+        back as inf. A grazing ray is not exotic: it is every pixel on the
+        horizon of a ground plane.
+        """
+        camera_matrix = torch.tensor(
+            [[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype
+        )[None]
+        # The principal point's ray is (0, 0, 1); this normal is perpendicular
+        # to it, so the ray-plane dot product is exactly zero.
+        plane_normals = torch.tensor([[0.0, 1.0, 0.0]], device=device, dtype=dtype)
+        plane_offsets = torch.tensor([[2.0]], device=device, dtype=dtype)
+        points_uv = torch.tensor([[[4.0, 3.0]]], device=device, dtype=dtype)
+
+        # The default eps=1e-8 is below float16 resolution: it rounds to zero,
+        # so `denom_abs < eps` can never hold, and 2/1e-8 is outside float16's
+        # finite range anyway. Ask for an epsilon this dtype can represent.
+        eps = max(1e-8, float(torch.finfo(dtype).eps))
+        depth = kornia.geometry.depth.depth_from_plane_equation(
+            plane_normals, plane_offsets, points_uv, camera_matrix, eps=eps
+        )
+        assert torch.isfinite(depth).all(), f"grazing ray returned {depth.tolist()}"
+
+    def test_small_denominators_keep_their_sign(self, device, dtype):
+        """The guard already handled small non-zero denominators; keep that.
+
+        Two rays whose dot products differ only in sign must come back with
+        depths of the same magnitude and opposite signs, rather than both
+        collapsing onto one branch.
+        """
+        camera_matrix = torch.eye(3, device=device, dtype=dtype)[None].repeat(2, 1, 1)
+        # As above: 1e-8 and eps/4 both round to zero in float16, which would
+        # turn this into the grazing-ray case and lose the sign under test.
+        eps = max(1e-8, float(torch.finfo(dtype).eps))
+        half = eps / 4
+        # Ray (0, 0, 1) for both; the normal's z carries the whole dot product.
+        plane_normals = torch.tensor([[0.0, 0.0, half], [0.0, 0.0, -half]], device=device, dtype=dtype)
+        plane_offsets = torch.tensor([[2.0], [2.0]], device=device, dtype=dtype)
+        points_uv = torch.zeros(2, 1, 2, device=device, dtype=dtype)
+
+        depth = kornia.geometry.depth.depth_from_plane_equation(
+            plane_normals, plane_offsets, points_uv, camera_matrix, eps=eps
+        )
+        assert torch.isfinite(depth).all()
+        self.assert_close(depth[0], -depth[1])
+
     def test_gradcheck(self, device):
         B = 2
         N = 5
