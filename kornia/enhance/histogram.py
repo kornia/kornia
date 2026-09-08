@@ -233,7 +233,19 @@ def image_histogram2d(
         bandwidth = (max - min) / n_bins
 
     if centers is None:
-        centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=image.dtype) + 0.5)
+        # Build the bin-index arange at a fixed float32 regardless of image.dtype -- a
+        # low-precision image.dtype (float16/bfloat16) can't exactly represent integers past
+        # 2048 (float16) / has limited integer range (bfloat16's 8-bit mantissa), so building
+        # the arange directly at image.dtype silently collapses distinct bin indices together
+        # once n_bins is large enough: torch.arange(4096, dtype=torch.float16) has only 3073
+        # distinct values, not 4096 (confirmed directly), which collapsed centers[i] == centers[j]
+        # for i != j and gave those bins numerically identical (redundant) histogram output.
+        # Deliberately NOT cast back to image.dtype: centers is an internal working buffer, not
+        # a returned value, so there is no output-dtype contract to preserve here -- doing so
+        # would re-round every value straight back down to float16 and reproduce the exact same
+        # collapse this fix exists to prevent. `image.unsqueeze(0) - centers` below promotes
+        # normally through ordinary PyTorch type promotion instead.
+        centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=torch.float32) + 0.5)
     centers = centers.reshape(-1, 1, 1, 1, 1)
 
     u = torch.abs(image.unsqueeze(0) - centers) / bandwidth
