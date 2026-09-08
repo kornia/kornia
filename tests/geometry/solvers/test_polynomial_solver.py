@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import numpy as np
 import pytest
 import torch
 
@@ -426,6 +427,137 @@ class TestQuarticSolver(BaseTester):
         # to recover exactly those roots (no complex outputs).
         self.assert_close(computed_roots_sorted, true_roots_sorted, atol=1e-3, rtol=1e-3)
 
+    @pytest.mark.parametrize(
+        "coeffs, expected_solutions",
+        [
+            (
+                [1.0, 2.0, 0.0, 0.0, -16.0],
+                [-2.760555, 0.0, 0.0, 1.638345],
+            ),
+            (
+                [1.0, 0.0, -4.0, 0.0, -5.0],
+                [-(5.0**0.5), 0.0, 0.0, 5.0**0.5],
+            ),
+        ],
+    )
+    def test_real_roots_with_complex_pair(self, coeffs, expected_solutions, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("This regression is limited to float32 and float64.")
+
+        coeffs_tensor = torch.tensor([coeffs], device=device, dtype=dtype)
+        expected = torch.tensor([expected_solutions], device=device, dtype=dtype)
+
+        roots = solver.solve_quartic(coeffs_tensor)
+        roots_sorted, _ = torch.sort(roots, dim=-1)
+
+        self.assert_close(roots_sorted, expected, rtol=1e-4, atol=1e-4)
+
+    def test_resolvent_filter_half_precision(self, device, dtype):
+        if dtype not in (torch.float16, torch.bfloat16):
+            pytest.skip("This regression targets half-precision resolvent validation.")
+
+        coeffs = torch.tensor([[1.0, -10.0, 35.0, -50.0, 24.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[1.0, 2.0, 3.0, 4.0]], device=device, dtype=dtype)
+
+        roots = solver.solve_quartic(coeffs)
+        assert bool(torch.isfinite(roots).all()), roots
+        assert bool((roots != 0).all()), roots
+        roots_sorted, _ = torch.sort(roots, dim=-1)
+
+        self.assert_close(roots_sorted, expected)
+
+    @pytest.mark.parametrize(
+        "coeffs",
+        [
+            [1.0, 0.0, 0.0, 1e-6, -16.0],
+            [1.0, 1e-6, 0.0, 0.0, -16.0],
+        ],
+    )
+    def test_near_biquadratic_avoids_R_division(self, coeffs, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("This regression targets the float64 R^2 tolerance.")
+
+        coeffs_tensor = torch.tensor([coeffs], device=device, dtype=dtype)
+        expected = torch.tensor([[-2.0, 0.0, 0.0, 2.0]], device=device, dtype=dtype)
+
+        roots = solver.solve_quartic(coeffs_tensor)
+        roots_sorted, _ = torch.sort(roots, dim=-1)
+
+        self.assert_close(roots_sorted, expected, rtol=1e-6, atol=1e-6)
+
+    @pytest.mark.parametrize(
+        "coeffs, expected_solutions",
+        [
+            (
+                [1.0, -0.046868806472256, 0.0, 0.0, -3.9079498911375055],
+                [-1.3944338896982997, 0.0, 0.0, 1.417871547980907],
+            ),
+            (
+                [1.0, 0.0, 0.876698529368765, 1e-6, -0.007128260662146779],
+                [-0.08976001409129965, 0.0, 0.0, 0.08975889403473052],
+            ),
+        ],
+    )
+    def test_small_R_sq_constant_term_identity(self, coeffs, expected_solutions, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("This regression targets float64 resolvent conditioning.")
+
+        coeffs_tensor = torch.tensor([coeffs], device=device, dtype=dtype)
+        expected = torch.tensor([expected_solutions], device=device, dtype=dtype)
+
+        roots = solver.solve_quartic(coeffs_tensor)
+        roots_sorted, _ = torch.sort(roots, dim=-1)
+
+        self.assert_close(roots_sorted, expected, rtol=0.0, atol=1e-5)
+
+    def test_direct_coefficients_against_numpy(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("NumPy reference coverage is limited to float32 and float64.")
+
+        rng = np.random.default_rng(4346)
+        coeffs_np = np.concatenate([np.ones((64, 1)), rng.uniform(-5.0, 5.0, size=(64, 4))], axis=1)
+        expected_np = np.zeros((64, 4))
+
+        for idx, row in enumerate(coeffs_np):
+            roots = np.roots(row)
+            real_roots = roots.real[np.abs(roots.imag) <= 1e-7]
+            expected_np[idx, : len(real_roots)] = real_roots
+
+        coeffs_tensor = torch.tensor(coeffs_np, device=device, dtype=dtype)
+        expected = torch.tensor(expected_np, device=device, dtype=dtype)
+
+        computed_roots = solver.solve_quartic(coeffs_tensor)
+        computed_roots_sorted, _ = torch.sort(computed_roots, dim=-1)
+        expected_sorted, _ = torch.sort(expected, dim=-1)
+
+        if dtype == torch.float64:
+            self.assert_close(computed_roots_sorted, expected_sorted, rtol=0.0, atol=1e-5)
+        else:
+            self.assert_close(computed_roots_sorted, expected_sorted, rtol=1e-3, atol=1e-3)
+
+    def test_constant_term_E_float32_regression(self, device, dtype):
+        if dtype != torch.float32:
+            pytest.skip("This regression targets the float32 near-zero-R conditioning failure.")
+
+        coeffs = torch.tensor([[1.0, -2.4491360, 1.1192101, -2.0354464, -3.8231988]], device=device, dtype=dtype)
+        expected_real = torch.tensor([-0.782185, 2.552848], device=device, dtype=dtype)
+
+        roots = solver.solve_quartic(coeffs)
+        assert bool(torch.isfinite(roots).all()), roots
+        assert int(torch.count_nonzero(roots)) == 2, roots
+
+        real_roots = torch.sort(roots[roots != 0]).values
+        self.assert_close(real_roots, expected_real, rtol=1e-3, atol=1e-3)
+
+        residuals = (
+            coeffs[0, 0] * real_roots**4
+            + coeffs[0, 1] * real_roots**3
+            + coeffs[0, 2] * real_roots**2
+            + coeffs[0, 3] * real_roots
+            + coeffs[0, 4]
+        )
+        self.assert_close(residuals, torch.zeros_like(residuals), rtol=0.0, atol=1e-3)
+
     def test_gradcheck(self, device):
         # Use a specific polynomial with distinct roots to ensure gradient stability
         # x^4 - 10x^3 + 35x^2 - 50x + 24 = 0
@@ -445,8 +577,8 @@ class TestQuarticSolver(BaseTester):
             ([1.0, 0.0, 0.0, 0.0, -16.0], [2.0, -2.0], [0.0, -0.5, 0.0, 0.0, 0.0]),
             # x^4 - 1 = (x^2-1)(x^2+1): two real roots, +-1. R_sq lands exactly on 0.
             ([1.0, 0.0, 0.0, 0.0, -1.0], [1.0, -1.0], [0.0, -0.5, 0.0, 0.0, 0.0]),
-            # (x^2+1)(x^2+4): no real roots. R_sq < 0 sends R to the `R approx 0` fallback,
-            # whose own radicand is then exactly 0 -- the second sqrt site.
+            # (x^2+1)(x^2+4): no real roots. R_sq < 0 makes R zero, while the constant-term
+            # identity for E also has radicand 0 exactly -- the second sqrt site.
             ([1.0, 0.0, 5.0, 0.0, 4.0], None, [0.0, 0.0, 0.0, 0.0, 0.0]),
         ],
     )
@@ -467,8 +599,8 @@ class TestQuarticSolver(BaseTester):
         assert bool(torch.isfinite(c.grad).all()), c.grad
         # Pin the value the guard produces, not just its finiteness: a "detach everything"
         # pseudo-fix keeps the gradient finite but does not reproduce these numbers. This is a
-        # convention, not a Jacobian -- the forward is discontinuous at exactly these points
-        # (#4346), so there is no finite-difference derivative to pin against.
+        # convention at the zero-radicand sqrt boundaries (#4229/#4339), not a claim about the
+        # mathematical quartic-root Jacobian.
         self.assert_close(
             c.grad[0],
             torch.tensor(expected_grad, device=device, dtype=dtype),

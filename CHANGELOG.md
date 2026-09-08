@@ -431,6 +431,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the origin, and the exact principal-point path now has finite autograd gradients. The zero-radius decision is
   made from the unsquared normalized coordinates, and the `float16` radius uses `float32` intermediates so its
   squared value does not underflow; nonzero radial rescaling remains epsilon-free. (#4308, #4370)
+* `solve_quartic` now validates Ferrari resolvent candidates with a dtype-aware scaled residual,
+  falls back to the pre-filter ranking when no candidate passes, and computes the Ferrari `E`
+  magnitude from its constant-term identity instead of dividing by a near-zero `R`, while keeping
+  the gradient-safe zero-radicand path. This prevents half-precision non-finite or dropped roots and
+  float32 non-roots while preserving the public real-root/zero-placeholder contract. (#4357)
 
 * `warp_affine`, `warp_perspective` and `remap` crashed on MPS for an empty destination -- a `dsize` with a
   zero dimension, or zero-sized `remap` maps -- with an internal
