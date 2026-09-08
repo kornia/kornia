@@ -49,14 +49,16 @@ class PinholeCamera:
           :func:`~kornia.geometry.camera.perspective.unproject_points` and the ``normalize_points`` flags of
           :func:`~kornia.geometry.depth.depth_to_3d` and :func:`~kornia.geometry.depth.depth_to_3d_v2` read it
           as the Euclidean ray length instead, so the unprojected point has that norm rather than that ``z``.
-        - the class stores the tensors it is constructed from instead of copying them: :meth:`scale` returns a
-          new camera that **shares** ``extrinsics`` with the source, and :meth:`scale_` and the ``tx`` / ``ty``
-          / ``tz`` setters write into the caller's tensors. :meth:`clone` is the only deep copy.
+        - the class stores the tensors it is constructed from instead of copying them, so :meth:`scale_` and
+          the ``tx`` / ``ty`` / ``tz`` setters write into the caller's tensors. :meth:`scale` is the exception:
+          it returns a new camera that owns both its ``intrinsics`` and its ``extrinsics``. :meth:`clone` is
+          the deep copy of an existing camera.
 
     .. warning::
         :meth:`scale` and :meth:`scale_` rescale the principal point as ``cx' = s * cx`` — the half-pixel rule —
         which disagrees with the integer pixel centres above; it is tracked as a coordinated repair in
-        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. The shared storage is
+        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. The write-through to the caller's tensors
+        that remains on :meth:`scale_` and the setters is
         `#4264 <https://github.com/kornia/kornia/issues/4264>`_, the in-place :meth:`scale_` failure on an
         integer ``height`` / ``width`` with a floating-point scale factor
         `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the shape
@@ -321,16 +323,15 @@ class PinholeCamera:
         Convention:
             - returns a **new** camera whose focal lengths, principal point and image size are multiplied by
               ``scale_factor``: ``fx' = s * fx`` and ``cx' = s * cx``, the half-pixel rule.
-            - the new camera **shares** its ``extrinsics`` tensor with the source, so writing ``tx`` / ``ty`` /
-              ``tz`` on either camera moves both; the intrinsics are cloned. :meth:`clone` is the deep copy.
+            - the new camera owns its ``intrinsics`` and its ``extrinsics``: both are cloned, so writing
+              ``tx`` / ``ty`` / ``tz`` on the returned camera leaves the source where it was.
             - with a floating-point ``scale_factor``, an integer ``height`` / ``width`` is promoted to floating
               point, unlike :meth:`scale_`. An integer factor preserves the integer image-size dtype.
 
         .. warning::
             The ``cx' = s * cx`` rule disagrees with the integer pixel centres the rest of the library
             enumerates; it is tracked as a coordinated repair in
-            `#4263 <https://github.com/kornia/kornia/issues/4263>`_. The shared ``extrinsics`` are
-            `#4264 <https://github.com/kornia/kornia/issues/4264>`_.
+            `#4263 <https://github.com/kornia/kornia/issues/4263>`_.
 
         Args:
             scale_factor: a torch.Tensor with the scale factor. It has
@@ -350,7 +351,11 @@ class PinholeCamera:
         # scale the image height/width
         height: torch.Tensor = scale_factor * self.height.clone()
         width: torch.Tensor = scale_factor * self.width.clone()
-        return PinholeCamera(intrinsics, self.extrinsics, height, width)
+        # The extrinsics are cloned for the same reason the intrinsics are: the
+        # constructor stores what it is given by reference, so handing over
+        # self.extrinsics would let the returned camera's tx/ty/tz setters and
+        # scale_ write into the source camera.
+        return PinholeCamera(intrinsics, self.extrinsics.clone(), height, width)
 
     def scale_(self, scale_factor: Union[float, torch.Tensor]) -> "PinholeCamera":
         r"""Scale the pinhole model in-place.
