@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import math
 import warnings
 from typing import Optional
 
@@ -113,7 +114,7 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
-    return 180.0 * tensor / pi.to(tensor.device).type(tensor.dtype)
+    return 180.0 * tensor / math.pi
 
 
 def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
@@ -146,7 +147,7 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
-    return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.0
+    return tensor * math.pi / 180.0
 
 
 def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
