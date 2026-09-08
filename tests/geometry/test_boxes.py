@@ -1841,16 +1841,14 @@ class TestVideoBoxes(BaseTester):
         assert transformed.temporal_channel_size == 3
         self.assert_close(transformed.to_tensor(), boxes, atol=0.0, rtol=0.0)
 
-    def test_wart_inherited_methods_break_on_the_temporal_wrapper_4249(self, device, dtype):
-        # Wart pin for kornia#4249: the to_tensor override drops the as_padded_sequence keyword that
-        # the inherited get_boxes_shape and to_mask pass, and indexing builds a wrapper without the temporal size,
-        # so its to_tensor fails. The inherited methods keep the temporal size whether they copy or update in
-        # place; test_convention_inherited_methods_split_copies_from_in_place_updates pins which is which.
+    def test_wart_indexing_drops_the_temporal_size_4249(self, device, dtype):
+        # Wart pin for the part of kornia#4249 that survives #4176: Boxes.__getitem__ builds the result
+        # with type(self)(...) and never sets temporal_channel_size, so the sliced wrapper's to_tensor
+        # fails. get_boxes_shape and to_mask no longer raise; that half is pinned as a convention by
+        # test_convention_inherited_shape_and_mask_work_on_the_temporal_wrapper_4249. The inherited
+        # methods keep the temporal size whether they copy or update in place;
+        # test_convention_inherited_methods_split_copies_from_in_place_updates pins which is which.
         video_boxes = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1))
-        with pytest.raises(TypeError, match="as_padded_sequence"):
-            video_boxes.get_boxes_shape()
-        with pytest.raises(TypeError, match="as_padded_sequence"):
-            video_boxes.to_mask(4, 5)
         frame = video_boxes[0]
         assert isinstance(frame, VideoBoxes)
         with pytest.raises(AttributeError, match="temporal_channel_size"):
@@ -1895,9 +1893,6 @@ class TestVideoBoxes(BaseTester):
         assert video_boxes.dtype == dtype
         assert video_boxes.temporal_channel_size == 3
 
-    @pytest.mark.xfail(
-        strict=True, raises=AssertionError, reason="kornia#4249: VideoBoxes.get_boxes_shape and to_mask raise TypeError"
-    )
     def test_convention_inherited_shape_and_mask_work_on_the_temporal_wrapper_4249(self, device, dtype):
         video_boxes = VideoBoxes.from_tensor(self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1))
         try:

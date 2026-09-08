@@ -1058,9 +1058,8 @@ class VideoBoxes(Boxes):
           original coordinates or dtype.
 
     .. warning::
-        :meth:`get_boxes_shape` and :meth:`to_mask` raise ``TypeError`` because the :meth:`to_tensor` override
-        does not accept the ``as_padded_sequence`` keyword they pass, and indexing returns a wrapper without
-        :attr:`temporal_channel_size`, so its :meth:`to_tensor` raises ``AttributeError``. Both are tracked in
+        Indexing returns a wrapper without :attr:`temporal_channel_size`, so its :meth:`to_tensor` raises
+        ``AttributeError``; this is the remaining half of
         `#4249 <https://github.com/kornia/kornia/issues/4249>`_. The inert ``validate_boxes`` flag is part of
         `#4177 <https://github.com/kornia/kornia/issues/4177>`_.
 
@@ -1108,21 +1107,26 @@ class VideoBoxes(Boxes):
         out.temporal_channel_size = temporal_channel_size
         return out
 
-    def to_tensor(self, mode: Optional[str] = None) -> torch.Tensor | list[torch.Tensor]:  # type: ignore[override]
+    def to_tensor(
+        self, mode: Optional[str] = None, as_padded_sequence: bool = False
+    ) -> torch.Tensor | list[torch.Tensor]:
         r"""Cast :class:`VideoBoxes` to a tensor with the temporal axis restored.
-
-        The ``as_padded_sequence`` keyword of :meth:`Boxes.to_tensor` is not
-        accepted; see the warning on the class.
 
         Args:
             mode: Output box format forwarded to :meth:`Boxes.to_tensor`. When
                 ``None``, uses the stored mode (``vertices_plus`` by default).
+            as_padded_sequence: Forwarded to :meth:`Boxes.to_tensor`. It only
+                changes the result of a list-backed container; a
+                :class:`VideoBoxes` built from a :math:`(B, T, N, 4, 2)` tensor
+                is not list-backed, so the value makes no difference there. The
+                keyword is accepted because the inherited :meth:`get_boxes_shape`,
+                :meth:`to_mask`, :meth:`clip` and :meth:`clamp` all pass it.
 
         Returns:
             Tensor shaped :math:`(B, T, \ldots)` where :math:`T` is
             :attr:`temporal_channel_size`.
         """
-        out = super().to_tensor(mode, as_padded_sequence=False)
+        out = super().to_tensor(mode, as_padded_sequence=as_padded_sequence)
         if isinstance(out, torch.Tensor):
             return out.view(-1, self.temporal_channel_size, *out.shape[1:])
         # If returns a list of boxes.
