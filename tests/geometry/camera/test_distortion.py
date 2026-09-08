@@ -363,6 +363,26 @@ class TestDistortionKannalaBrandt(BaseTester):
             torch.tensor([0.5392647981643677, 0.26963239908218384], device=device, dtype=dtype),
         )
 
+    def test_convention_nearest_float16_point_is_not_collapsed_4308(self, device, dtype):
+        if device.type != "cpu" or dtype != torch.float16:
+            pytest.skip("CPU float16 near-origin regression")
+        params = torch.tensor([100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        point = torch.tensor([4.00390625, 3.0], device=device, dtype=dtype)
+        undistorted = undistort_points_kannala_brandt(point, params)
+        expected_x = (point[0] - params[2]) / params[0]
+        assert undistorted[0] != 0
+        self.assert_close(undistorted, torch.stack([expected_x, torch.zeros_like(expected_x)]), atol=6e-8, rtol=0.0)
+
+    def test_convention_principal_point_has_finite_gradients_4308(self, device, dtype):
+        params = torch.tensor(
+            [100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype, requires_grad=True
+        )
+        principal_point = torch.tensor([4.0, 3.0], device=device, dtype=dtype, requires_grad=True)
+        output = undistort_points_kannala_brandt(principal_point, params)
+        point_grad, params_grad = torch.autograd.grad(output.sum(), (principal_point, params))
+        assert torch.isfinite(point_grad).all()
+        assert torch.isfinite(params_grad).all()
+
     def test_convention_float64_round_trip_precision_4308(self, device, dtype):
         # Regression for kornia#4308: nonzero radii must be rescaled by r itself. An additive 1e-8 denominator
         # guard biases these representative float64 round trips by about 1e-8, well above the dtype's rounding floor.

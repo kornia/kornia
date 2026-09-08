@@ -163,9 +163,15 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
     un = (x - cx) / fx
     vn = (y - cy) / fy
 
-    rth2 = un * un + vn * vn
-    rth = rth2.sqrt()
-    nonzero_radius = rth > 0
+    nonzero_radius = (un != 0) | (vn != 0)
+    safe_un = torch.where(nonzero_radius, un, torch.ones_like(un))
+    safe_vn = torch.where(nonzero_radius, vn, torch.zeros_like(vn))
+    radius_dtype = safe_un.dtype
+    if radius_dtype == torch.float16:
+        safe_un = safe_un.float()
+        safe_vn = safe_vn.float()
+    rth = (safe_un * safe_un + safe_vn * safe_vn).sqrt().to(radius_dtype)
+    rth = torch.where(nonzero_radius, rth, torch.zeros_like(rth))
 
     safe_rth = torch.where(nonzero_radius, rth, torch.ones_like(rth))
     th = safe_rth.sqrt()
