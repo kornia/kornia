@@ -19,7 +19,8 @@ Helpers for fetching and reading pretrained weights. :func:`load_state_dict_from
 is the one models load a ``torch.load``-able checkpoint with;
 :func:`download_hf_file` (or :func:`download_file_from_url`) and
 :func:`load_safetensors` are the two halves of the same job for a
-``.safetensors`` checkpoint.
+``.safetensors`` checkpoint, with :func:`validate_safetensors` as the cheap
+check the download half runs to reject a transfer that was cut short.
 
 .. autofunction:: hf_url
 
@@ -30,3 +31,5 @@ is the one models load a ``torch.load``-able checkpoint with;
 .. autofunction:: download_hf_file
 
 .. autofunction:: load_safetensors
+
+.. autofunction:: validate_safetensors

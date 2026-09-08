@@ -185,6 +185,7 @@
     "hf_url",
     "load_safetensors",
     "load_state_dict_from_url",
+    "validate_safetensors",
     "vec_like"
   ],
   "kornia.enhance": [

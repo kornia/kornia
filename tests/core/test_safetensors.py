@@ -28,6 +28,7 @@ used it to produce the *expectations* would only be comparing two readers.
 from __future__ import annotations
 
 import json
+import mmap
 import re
 import struct
 import warnings
@@ -37,7 +38,7 @@ from typing import Any
 import pytest
 import torch
 
-from kornia.core.safetensors import load_safetensors
+from kornia.core.safetensors import load_safetensors, validate_safetensors
 
 # Names the format gives the dtypes this reader accepts, for the fixtures below.
 _NAMES: dict[torch.dtype, str] = {
@@ -312,3 +313,68 @@ class TestRejectsCorruptFiles:
 
         with pytest.raises(ValueError, match=re.escape(str(path))):
             load_safetensors(path)
+
+
+class TestValidateSafetensors:
+    """The header check ``download_file_from_url`` runs on a cached file.
+
+    It has to accept exactly what :func:`load_safetensors` accepts and reject a
+    file cut short after a 2xx, which is the case it exists for. Anything it
+    wrongly accepts is a poisoned cache entry returned on every later call;
+    anything it wrongly rejects re-downloads a checkpoint that was fine.
+    """
+
+    def test_accepts_a_valid_file(self, tmp_path) -> None:
+        path = _write(tmp_path, _build({"w": torch.arange(6, dtype=torch.float32).reshape(2, 3)}))
+
+        assert validate_safetensors(path) is None
+
+    def test_accepts_what_load_safetensors_accepts(self, tmp_path) -> None:
+        """Empty tensors, metadata and several dtypes are all legal."""
+        payload = _build(
+            {"a": torch.zeros(0, dtype=torch.float32), "b": torch.ones(2, dtype=torch.bfloat16)},
+            metadata={"format": "pt"},
+        )
+        path = _write(tmp_path, payload)
+
+        validate_safetensors(path)
+        assert list(load_safetensors(path)) == ["a", "b"]
+
+    def test_rejects_a_truncated_body(self, tmp_path) -> None:
+        """The case this exists for: a 2xx whose connection dropped mid-transfer."""
+        payload = _build({"w": torch.arange(64, dtype=torch.float32)})
+        path = _write(tmp_path, payload[: len(payload) - 32])
+
+        with pytest.raises(ValueError):
+            validate_safetensors(path)
+
+    def test_rejects_a_truncated_header(self, tmp_path) -> None:
+        payload = _build({"w": torch.ones(4)})
+        path = _write(tmp_path, payload[:10])
+
+        with pytest.raises(ValueError):
+            validate_safetensors(path)
+
+    def test_rejects_an_empty_file(self, tmp_path) -> None:
+        path = _write(tmp_path, b"")
+
+        with pytest.raises(ValueError):
+            validate_safetensors(path)
+
+    def test_rejects_a_page_served_with_a_200(self, tmp_path) -> None:
+        """A rate-limit page is a 2xx body too, and lands in the cache the same way."""
+        path = _write(tmp_path, b"<!DOCTYPE html><html><body>429 Too Many Requests</body></html>")
+
+        with pytest.raises(ValueError):
+            validate_safetensors(path)
+
+    def test_raises_file_not_found_when_there_is_nothing_there(self, tmp_path) -> None:
+        with pytest.raises(FileNotFoundError):
+            validate_safetensors(tmp_path / "absent.safetensors")
+
+    def test_does_not_read_the_tensor_bytes(self, tmp_path, monkeypatch) -> None:
+        """The cost must not scale with the checkpoint; a header parse is the point."""
+        path = _write(tmp_path, _build({"w": torch.ones(1024, dtype=torch.float32)}))
+        monkeypatch.setattr(mmap, "mmap", lambda *a, **k: pytest.fail("validate_safetensors mapped the file"))
+
+        validate_safetensors(path)

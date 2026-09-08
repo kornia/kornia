@@ -21,6 +21,7 @@ import pytest
 import torch
 
 import kornia.models.kimi_vl.builder as kimi_vl_builder
+from kornia.core.safetensors import validate_safetensors
 from kornia.models.kimi_vl import KimiVLBuilder, KimiVLConfig, KimiVLModel
 from kornia.models.kimi_vl.config import KimiVLProjectorConfig, MoonViTConfig
 from kornia.models.kimi_vl.model import KimiVLProjector
@@ -83,7 +84,10 @@ class TestKimiVLBuilder(BaseTester):
         assert state_dict is expected
         read.assert_called_once_with("cached.safetensors")
         download.assert_called_once_with(
-            "kornia/kimi-vl-a3b-instruct-vision", "model.safetensors", model_dir=str(tmp_path)
+            "kornia/kimi-vl-a3b-instruct-vision",
+            "model.safetensors",
+            model_dir=str(tmp_path),
+            validate=validate_safetensors,
         )
 
     def test_pretrained_config_matches_checkpoint_grid(self):

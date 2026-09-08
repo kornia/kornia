@@ -23,6 +23,7 @@ import os
 import sys
 import time
 import warnings
+from collections.abc import Callable
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -786,6 +787,7 @@ def download_file_from_url(
     file_name: str | None = None,
     model_dir: str | None = None,
     progress: bool = True,
+    validate: Callable[[str], None] | None = None,
 ) -> str:
     """Download a file into the torch hub cache and return its path, without loading it.
 
@@ -797,13 +799,22 @@ def download_file_from_url(
     announcing a transfer on :data:`sys.stderr` rather than stdout. A file
     already in the cache is returned as it is, with no request made.
 
-    It does *not* quarantine an existing cache entry the way
+    Without *validate* it cannot quarantine an existing cache entry the way
     :func:`load_state_dict_from_url` does, because it never reads the file: a
     corrupt entry is only discovered by the caller, one step later, and nothing
     here can tell it apart from an intact one. The path is returned to the caller
     and named in the failure message so that a file which turns out to be
     unreadable can be deleted; :func:`kornia.core.load_safetensors` names it in
     every error it raises for the same reason.
+
+    Passing *validate* closes that gap. The transfer underneath does not check
+    the body against ``Content-Length``, so a connection dropping after a 2xx
+    leaves a truncated file in the cache; every later call then returns it as a
+    hit and the caller fails on it forever. A *validate* that reads enough of the
+    file to reject a truncated one gives this function the load step it otherwise
+    lacks, and the same quarantine that protects state dicts applies: the entry is
+    moved aside, the remaining sources get the emptied path, and a failed call
+    puts the original back.
 
     Args:
         url: a URL string, or a list of URL strings tried left-to-right.
@@ -819,6 +830,15 @@ def download_file_from_url(
         model_dir: directory to cache the file in. Defaults to torch's
             ``<hub dir>/checkpoints``, which is the cache CI restores.
         progress: whether to display a progress bar during a transfer.
+        validate: called with the cache path once a source has provided the file,
+            to decide whether it is usable. It should raise to reject the file --
+            :func:`kornia.core.load_safetensors` raises :class:`ValueError` on a
+            header or ``data_offsets`` that no longer fit the file, which is what
+            a truncated transfer looks like. Rejection is treated exactly as a
+            load failure is in :func:`load_state_dict_from_url`: the entry is
+            quarantined and the next source tried. It should not be expensive; a
+            header parse is enough, and reading a multi-gigabyte checkpoint twice
+            is not the intent.
 
     Returns:
         The path of the cached file.
@@ -849,34 +869,105 @@ def download_file_from_url(
     budget = _SleepBudget(_MAX_CALL_SLEEP_SECONDS)
     last_exc: Exception | None = None
     last_url: str | None = None
-    for i, u in enumerate(urls):
-        more_sources = i < len(urls) - 1
-        try:
-            _prefetch_with_retry(u, kwargs, budget)
-        except Exception as e:  # noqa: BLE001
-            last_exc, last_url = e, u
-            if more_sources:
-                # Anything at the cache path was written by this failed attempt:
-                # a cache hit returns without transferring and without raising,
-                # so reaching here means the path was empty when the attempt
-                # started. Clearing it is what lets the next source transfer into
-                # it rather than be handed a partial file as a cache hit.
-                _drop_failed_download(cache_path)
-                warnings.warn(f"Failed to download {u!r}: {e}. Trying next source.", stacklevel=2)
-            continue
-        return cache_path
+    quarantine: str | None = None
+    discarded_url: str | None = None
+    discard_exc: Exception | None = None
+    downloaded = False
+    sources = urls
+    re_attempted = False
+    try:
+        while True:
+            for i, u in enumerate(sources):
+                fetched = False
+                more_sources = i < len(sources) - 1
+                try:
+                    fetched = _prefetch_with_retry(u, kwargs, budget)
+                    downloaded |= fetched
+                    if validate is not None:
+                        validate(cache_path)
+                except Exception as e:  # noqa: BLE001
+                    last_exc, last_url = e, u
+                    if fetched:
+                        # Bytes this source transferred, not an entry the call
+                        # found: there is no earlier state to preserve, so they
+                        # are dropped rather than quarantined -- the same split
+                        # :func:`load_state_dict_from_url` makes.
+                        #
+                        # Unlike there, they are dropped whether or not a source
+                        # is left to use the emptied path. Reaching here with
+                        # ``fetched`` true means the transfer succeeded and
+                        # *validate* refused what it wrote, which is a verdict on
+                        # the file itself; the load failures that function weighs
+                        # are ambiguous -- a bad ``map_location`` fails an intact
+                        # checkpoint -- so it keeps the bytes and spends no
+                        # discard on them. A rejection here is not ambiguous, and
+                        # keeping them would end the call having *added* a
+                        # poisoned entry to a cache that had none.
+                        _drop_failed_download(cache_path)
+                    else:
+                        # A cache hit that *validate* rejected. Every remaining
+                        # URL shares this path, so without moving it aside each
+                        # one would be handed the same bad file as a hit and
+                        # never fetch.
+                        moved = _discard_cache_entry(u, kwargs)
+                        if moved is not None:
+                            quarantine, discarded_url, discard_exc = moved, u, e
+                    if more_sources:
+                        warnings.warn(f"Failed to download {u!r}: {e}. Trying next source.", stacklevel=2)
+                    continue
+                if quarantine is not None:
+                    _settle_quarantine(cache_path, quarantine, loaded=True, downloaded=downloaded)
+                    quarantine = None
+                return cache_path
+
+            # The source whose cache hit was rejected never got a transfer of its
+            # own: the discard emptied the path *after* it had already been served
+            # the bad file, and with a single URL -- the common case here, since
+            # :func:`download_hf_file` passes one -- there is no later source to
+            # fetch into it. Give that source the fetch it never got, exactly as
+            # :func:`load_state_dict_from_url` does. One extra pass per path per
+            # process, and a poisoned entry recovers inside the call instead of
+            # after one guaranteed failure.
+            if re_attempted or discarded_url is None or downloaded:
+                break
+            sources = [discarded_url]
+            re_attempted = True
+    finally:
+        if quarantine is not None:
+            _settle_quarantine(cache_path, quarantine, loaded=False, downloaded=downloaded)
+
+    # The re-attempt pass runs only when nothing transferred, so if it also failed
+    # without transferring, ``last_exc`` is a refetch failure sitting on top of the
+    # rejection that fired the discard -- and that rejection is the one thing naming
+    # what is actually wrong with the file. Reporting the network instead points the
+    # caller at an entry that is intact and, offline, restored by the ``finally``
+    # above. Mirrors :func:`load_state_dict_from_url`.
+    refetch_note = ""
+    if re_attempted and not downloaded and discard_exc is not None:
+        refetch_note = (
+            f" (the cache entry was set aside and refetching it from that same source "
+            f"failed too: {type(last_exc).__name__}: {last_exc})"
+        )
+        last_exc, last_url = discard_exc, discarded_url
 
     raise RuntimeError(
         f"Failed to download the file from all {len(urls)} source(s). "
         f"Last URL tried: {last_url!r}. "
-        f"Last error: {type(last_exc).__name__}: {last_exc}. "
+        f"Last error: {type(last_exc).__name__}: {last_exc}{refetch_note}. "
         # Unquoted: the point of naming the path is that it can be pasted into
         # ``rm``/``del``, and ``repr`` doubles every backslash of a Windows path.
         f"Cache path: {cache_path} -- delete it if it is corrupt and this repeats."
     ) from last_exc
 
 
-def download_hf_file(repo: str, filename: str, *, model_dir: str | None = None, progress: bool = True) -> str:
+def download_hf_file(
+    repo: str,
+    filename: str,
+    *,
+    model_dir: str | None = None,
+    progress: bool = True,
+    validate: Callable[[str], None] | None = None,
+) -> str:
     """Download one file from a HuggingFace repo and return the path it is cached at.
 
     :func:`download_file_from_url` with the two decisions a Hub file needs
@@ -893,6 +984,11 @@ def download_hf_file(repo: str, filename: str, *, model_dir: str | None = None, 
         model_dir: directory to cache the file in. Defaults to torch's
             ``<hub dir>/checkpoints``, which is the cache CI restores.
         progress: whether to display a progress bar during a transfer.
+        validate: checked against the cached file before it is returned; see
+            :func:`download_file_from_url`. Pass
+            :func:`kornia.core.validate_safetensors` for a ``.safetensors`` file,
+            so that a transfer cut short after a 2xx is refetched rather than
+            cached and returned on every later call.
 
     Returns:
         The path of the cached file. Read a ``.safetensors`` one with
@@ -913,4 +1009,5 @@ def download_hf_file(repo: str, filename: str, *, model_dir: str | None = None, 
         file_name=_hf_cache_file_name(repo, filename),
         model_dir=model_dir,
         progress=progress,
+        validate=validate,
     )

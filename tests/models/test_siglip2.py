@@ -24,6 +24,7 @@ import pytest
 import torch
 
 import kornia.models.siglip2.builder as siglip2_builder
+from kornia.core.safetensors import validate_safetensors
 from kornia.models.siglip2 import SigLip2Config, SigLip2Model, SigLip2Result
 from kornia.models.siglip2.attention import SigLip2Attention
 from kornia.models.siglip2.config import SigLip2TextConfig, SigLip2VisionConfig
@@ -85,7 +86,10 @@ class TestSigLip2Builder:
         # The repository reaches the downloader whole, so its cache name carries
         # the owner; every HF repo publishes a ``model.safetensors``.
         download.assert_called_once_with(
-            "google/siglip2-base-patch16-224", "model.safetensors", model_dir=str(tmp_path)
+            "google/siglip2-base-patch16-224",
+            "model.safetensors",
+            model_dir=str(tmp_path),
+            validate=validate_safetensors,
         )
 
     def test_the_variant_reaches_the_downloader(self, tmp_path):

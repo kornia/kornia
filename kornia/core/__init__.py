@@ -30,7 +30,7 @@ from .mixin import (
 )
 from .module import ImageModule, ImageSequential
 from .ops import eye_like, vec_like
-from .safetensors import load_safetensors
+from .safetensors import load_safetensors, validate_safetensors
 from .tensor_wrapper import TensorWrapper
 
 __all__ = [
@@ -48,5 +48,6 @@ __all__ = [
     "hf_url",
     "load_safetensors",
     "load_state_dict_from_url",
+    "validate_safetensors",
     "vec_like",
 ]

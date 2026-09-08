@@ -1332,6 +1332,137 @@ class TestDownloadFileFromUrl:
         assert not (tmp_path / "abs.safetensors").exists()
 
 
+class TestValidateRejectsACorruptCacheEntry:
+    """``validate`` gives a download-only call the load step it otherwise lacks.
+
+    ``torch.hub.download_url_to_file`` does not check the body against
+    ``Content-Length``, so a connection dropping after a 2xx leaves a truncated
+    file in the cache. Without ``validate`` every later call returns it as a hit
+    and the caller fails on it forever; with one, the entry is quarantined and
+    refetched exactly as a corrupt state dict is.
+    """
+
+    @staticmethod
+    def _serve(tmp_path, name: str = "model.safetensors", payload: bytes = b"complete-weights") -> str:
+        source = tmp_path / "remote" / name
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(payload)
+        return source.as_uri()
+
+    @staticmethod
+    def _reject_truncated(path: str) -> None:
+        """Stand-in for a header parse: a short file is a truncated transfer."""
+        if Path(path).stat().st_size < len(b"complete-weights"):
+            raise ValueError(f"{path}: truncated")
+
+    def test_a_truncated_cache_entry_is_refetched(self, tmp_path) -> None:
+        url = self._serve(tmp_path)
+        model_dir = tmp_path / "cache"
+        model_dir.mkdir()
+        poisoned = model_dir / "model.safetensors"
+        poisoned.write_bytes(b"trunc")  # a 2xx that stopped early
+
+        path = download_file_from_url(url, model_dir=str(model_dir), progress=False, validate=self._reject_truncated)
+
+        assert Path(path).read_bytes() == b"complete-weights"
+
+    def test_without_validate_the_truncated_entry_is_returned(self, tmp_path) -> None:
+        """The behaviour ``validate`` exists to change."""
+        url = self._serve(tmp_path)
+        model_dir = tmp_path / "cache"
+        model_dir.mkdir()
+        (model_dir / "model.safetensors").write_bytes(b"trunc")
+
+        path = download_file_from_url(url, model_dir=str(model_dir), progress=False)
+
+        assert Path(path).read_bytes() == b"trunc"
+
+    def test_a_valid_cache_entry_is_not_refetched(self, monkeypatch, tmp_path) -> None:
+        url = self._serve(tmp_path)
+        model_dir = tmp_path / "cache"
+        transfers: list[str] = []
+        real = torch.hub.download_url_to_file
+
+        def counted(url_, dst, *args, **kwargs):
+            transfers.append(url_)
+            return real(url_, dst, *args, **kwargs)
+
+        monkeypatch.setattr(torch.hub, "download_url_to_file", counted)
+
+        first = download_file_from_url(url, model_dir=str(model_dir), progress=False, validate=self._reject_truncated)
+        second = download_file_from_url(url, model_dir=str(model_dir), progress=False, validate=self._reject_truncated)
+
+        assert second == first
+        assert transfers == [url], "a file that validates was fetched twice"
+
+    def test_a_rejected_entry_is_restored_when_no_source_can_replace_it(self, monkeypatch, tmp_path) -> None:
+        """A failed call ends with the cache it started with, not an emptied one."""
+        # A dead ``file://`` URL raises ``URLError``, which the retry logic treats
+        # as transient, so without this the test spends the whole backoff sleeping.
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+        model_dir = tmp_path / "cache"
+        model_dir.mkdir()
+        poisoned = model_dir / "model.safetensors"
+        poisoned.write_bytes(b"trunc")
+        dead = (tmp_path / "missing" / "model.safetensors").as_uri()
+
+        with pytest.raises(RuntimeError, match="Failed to download the file"):
+            download_file_from_url(dead, model_dir=str(model_dir), progress=False, validate=self._reject_truncated)
+
+        assert poisoned.read_bytes() == b"trunc", "the entry was dropped rather than put back"
+
+    def test_a_rejected_fresh_transfer_is_not_left_in_the_cache(self, tmp_path) -> None:
+        """A cold cache that fails must not end the call poisoned.
+
+        The single-URL case: nothing was in the cache, the transfer arrived
+        truncated, and *validate* refused it. Those bytes are this call's own and
+        known bad, so they go rather than waiting for a later call to find them.
+        """
+        short = self._serve(tmp_path, payload=b"trunc")
+        model_dir = tmp_path / "cache"
+
+        with pytest.raises(RuntimeError, match="Failed to download the file"):
+            download_file_from_url(short, model_dir=str(model_dir), progress=False, validate=self._reject_truncated)
+
+        assert not (model_dir / "model.safetensors").exists(), "a corrupt transfer was left cached"
+
+    def test_the_rejection_is_what_the_failure_reports(self, monkeypatch, tmp_path) -> None:
+        """Offline with a poisoned entry: the message must name the file, not the network.
+
+        The re-attempt fails on the network, so ``last_exc`` ends up being a
+        ``URLError`` sitting on top of the rejection that actually explains what is
+        wrong. Reporting the network would point the caller at an entry that is
+        intact -- and, offline, has just been restored.
+        """
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+        model_dir = tmp_path / "cache"
+        model_dir.mkdir()
+        (model_dir / "model.safetensors").write_bytes(b"trunc")
+        dead = (tmp_path / "missing" / "model.safetensors").as_uri()
+
+        with pytest.raises(RuntimeError) as excinfo:
+            download_file_from_url(dead, model_dir=str(model_dir), progress=False, validate=self._reject_truncated)
+
+        message = str(excinfo.value)
+        assert "truncated" in message, "the rejection that explains the failure is missing"
+        assert "refetching it from that same source failed too" in message, "the refetch is not noted"
+
+    def test_a_source_whose_own_transfer_is_rejected_falls_through(self, tmp_path) -> None:
+        """Bytes a source wrote itself are dropped, not quarantined, and the next source runs."""
+        short = self._serve(tmp_path / "a", payload=b"trunc")
+        full = self._serve(tmp_path / "b")
+        model_dir = tmp_path / "cache"
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            path = download_file_from_url(
+                [short, full], model_dir=str(model_dir), progress=False, validate=self._reject_truncated
+            )
+
+        assert Path(path).read_bytes() == b"complete-weights"
+        assert any("truncated" in str(warning.message) for warning in w)
+
+
 class TestDownloadHfFile:
     """The Hub wrapper: the ``resolve/main`` URL and the collision-free cache name in one call."""
 

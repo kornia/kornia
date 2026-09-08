@@ -356,6 +356,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* A `.safetensors` checkpoint whose transfer was cut short after a 2xx no longer poisons its cache
+  entry permanently. `torch.hub.download_url_to_file` does not check the body against
+  `Content-Length`, so a dropped connection leaves a truncated file that `download_file_from_url`
+  returned as a cache hit on every later call, failing `from_pretrained_hf()` until the user deleted
+  it by hand. `download_file_from_url` and `download_hf_file` take an optional `validate` callable,
+  applied to the cached file before it is returned; a rejection is treated exactly as a load failure
+  is in `load_state_dict_from_url`, so the entry is quarantined, refetched and restored if nothing
+  can replace it. `kornia.core.validate_safetensors` is that check for a `.safetensors` file -- the
+  header parse of `load_safetensors` without the mapping, so its cost does not scale with the
+  checkpoint -- and the KimiVL and SigLIP2 builders pass it. Fixes #4309. (#PRNUM)
+
 * `RenderingDeFMO` (used by `DeFMO`) no longer crashes on a half-precision forward pass. Its rendering
   time-steps (`times`) were a plain Python attribute, not a registered buffer, so `nn.Module.to()` never
   moved it; `forward` re-derived `times`'s device from the input on every call but never its dtype, so
