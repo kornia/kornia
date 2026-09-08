@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Documented camera projection-core conventions (`PinholeCamera` frames, integer pixel centres, the two
+  meanings of depth, the `z = 0` policies) and added executable pins for `kornia.geometry.camera`'s
+  projection core, with the known scale-rule, aliasing, guard and legacy-API limitations tracked in
+  dedicated issues. (#4294)
 * API reference entries now carry a **Try in browser** badge that links a function, its
   `nn.Module` counterpart or a browser model to its interactive page on the kornia.org
   playground, so readers can run the operator on a sample image without installing anything.
