@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Documented camera distortion and calibration conventions (normalized versus pixel inputs, the
+  coefficient layout, the `new_K`/`K` roles, the iterative inverses) and added executable pins for
+  `kornia.geometry.camera`'s distortion models and `kornia.geometry.calibration`, with the
+  tilt-projection, Kannala-Brandt Jacobian and float16 defects tracked in dedicated issues. (#4312)
 * Documented camera projection-core conventions (`PinholeCamera` frames, integer pixel centres, the two
   meanings of depth, the `z = 0` policies) and added executable pins for `kornia.geometry.camera`'s
   projection core, with the known scale-rule, aliasing, guard and legacy-API limitations tracked in
