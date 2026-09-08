@@ -23,7 +23,6 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.constants import pi
 from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast, is_compiling
@@ -84,20 +83,6 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
         - the input is in **radians** and the output in **degrees**; the
           conversion is elementwise and preserves shape, device and float dtype
 
-    .. warning::
-        Two distinct defects, tracked in
-        `#3937 <https://github.com/kornia/kornia/issues/3937>`_. A ``float64``
-        input is left with only about seven correct significant digits
-        (``rad2deg(torch.tensor(math.pi, dtype=torch.float64)) - 180`` is
-        ``-5.0e-06``, not ``0``) because ``kornia.constants.pi`` is a
-        **float32** tensor — a defect in the constant itself, which several
-        other kornia modules also consume (the issue tracks the current
-        inventory). Separately, ``rad2deg``/``deg2rad``
-        themselves cast that constant to the input dtype, so an integer input
-        truncates ``pi`` to ``3``: ``rad2deg(torch.tensor([1, 2, 3]))`` returns
-        ``[60., 120., 180.]`` instead of ``[57.2958, 114.5916, 171.8873]``, and
-        a ``float64`` constant alone would not fix it.
-
     Args:
         tensor: torch.Tensor of arbitrary shape.
 
@@ -113,7 +98,7 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
-    return 180.0 * tensor / pi.to(tensor.device).type(tensor.dtype)
+    return torch.rad2deg(tensor)
 
 
 def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
@@ -123,13 +108,6 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
         - the input is in **degrees** and the output in **radians**; it
           performs the opposite conversion to
           :func:`~kornia.geometry.conversions.rad2deg`
-
-    .. warning::
-        Inherits both defects of :func:`~kornia.geometry.conversions.rad2deg`
-        — the float32 ``kornia.constants.pi`` and the cast to the input dtype
-        (``deg2rad(torch.tensor([180, 90]))`` returns ``[3.0000, 1.5000]``).
-        See its warning and
-        `#3937 <https://github.com/kornia/kornia/issues/3937>`_.
 
     Args:
         tensor: torch.Tensor of arbitrary shape.
@@ -146,7 +124,7 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
-    return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.0
+    return torch.deg2rad(tensor)
 
 
 def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -1759,13 +1737,6 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
           plane this is the opposite sense to
           :func:`~kornia.geometry.conversions.cart2pol`, whose Convention block
           spells out the modulo-:math:`2\pi` relation between the two ops
-
-    .. warning::
-        The degrees-to-radians step is
-        :func:`~kornia.geometry.conversions.deg2rad`, so it inherits both
-        defects of :func:`~kornia.geometry.conversions.rad2deg` — the float32
-        ``kornia.constants.pi`` and the cast to the input dtype. See its
-        warning and `#3937 <https://github.com/kornia/kornia/issues/3937>`_.
 
     Args:
         angle: tensor of angles in degrees, any shape :math:`(*)`.

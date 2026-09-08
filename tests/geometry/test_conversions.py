@@ -2542,12 +2542,6 @@ class TestRadDegConversions(BaseTester):
         x_deg = 180.0 * torch.rand(batch_shape, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.conversions.deg2rad, (x_deg,))
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="kornia.constants.pi is float32, so f64 loses ~7 digits (angle_to_rotation_matrix "
-        "inherits it via deg2rad) — kornia#3937",
-        strict=True,
-    )
     @pytest.mark.parametrize(
         ("op_name", "arg", "expected"),
         [
@@ -2612,36 +2606,22 @@ class TestRadDegConversions(BaseTester):
     @pytest.mark.parametrize(
         ("op_name", "arg", "expected"),
         [
-            ("rad2deg", [1, 2, 3], [60.0, 120.0, 180.0]),
-            ("deg2rad", [180, 90], [3.0, 1.5]),
-            ("angle_to_rotation_matrix", [90], [[[0.07073720, 0.99749500], [-0.99749500, 0.07073720]]]),
+            ("rad2deg", [1, 2, 3], [57.29577951308232, 114.59155902616465, 171.88733853924697]),
+            ("deg2rad", [180, 90], [3.141592653589793, 1.5707963267948966]),
+            ("angle_to_rotation_matrix", [90], [[[0.0, 1.0], [-1.0, 0.0]]]),
         ],
     )
-    def test_wart_integer_input_truncates_pi_to_3_3937(self, device, op_name, arg, expected):
-        # Wart pins for #3937: assert the CURRENT broken outputs the docstring warnings document.
-        # kornia.constants.pi is cast to the *integer* input dtype and truncates to 3, so rad2deg
-        # divides by 3, deg2rad multiplies by 3 (90 degrees -> 1.5 radians), and the downstream
-        # angle_to_rotation_matrix([90]) is nowhere near the quarter turn. If a case fails, #3937
-        # was (partly) fixed -- update or remove the warnings in rad2deg, deg2rad and
-        # angle_to_rotation_matrix and flip/remove the strict xfail above. NOT a contract that
-        # int inputs must keep these values: what they *should* do (promote to float like
-        # torch.rad2deg, or raise) is a maintainer decision, and a strict xfail asserting the
-        # promoted-float answer would stay silently XFAIL forever if the fix chose to raise;
-        # a wart pin flips loudly under either polarity.
-        # Snippet used to generate expected (torch only):
-        #   kornia rad2deg(torch.tensor([1, 2, 3])) -> tensor([ 60., 120., 180.]), dtype float32
-        #     (torch.rad2deg gives [ 57.2958, 114.5916, 171.8873])
-        #   kornia deg2rad(torch.tensor([180, 90])) -> tensor([3.0000, 1.5000]), dtype float32
-        #     (torch.deg2rad gives [3.1416, 1.5708])
-        #   kornia angle_to_rotation_matrix(torch.tensor([90])).flatten().tolist() ->
-        #     [0.07073719799518585, 0.9974949955940247, -0.9974949955940247, 0.07073719799518585]
-        #     (math.cos(1.5), math.sin(1.5) -> (0.0707372016677029, 0.9974949866040544))
+    def test_integer_input_promotes_to_float_3937(self, device, op_name, arg, expected):
         op = getattr(kornia.geometry.conversions, op_name)
-
         out = op(torch.tensor(arg, device=device))
 
         assert out.dtype == torch.float32
-        self.assert_close(out, torch.tensor(expected, device=device, dtype=torch.float32), atol=1e-4, rtol=1e-4)
+        self.assert_close(
+            out,
+            torch.tensor(expected, device=device, dtype=torch.float32),
+            atol=1e-6,
+            rtol=1e-6,
+        )
 
 
 class TestPolCartConversions(BaseTester):
