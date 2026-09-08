@@ -67,24 +67,27 @@ class StereoCamera:
           and the two matrices return opposing values. :attr:`Q` is exactly the matrix written out on the
           :doc:`/geometry.camera.stereo` page, above this docstring, evaluated at the page's own ``tx``: the
           page's :math:`P_1` carries ``fx * tx`` in its last column, so that ``tx`` is ``P_right[0, 3] / fx``,
-          which the constructor requires to be **negative**. The :attr:`tx` attribute exposes the negation of
-          that symbol, ``-P_right[0, 3] / fx``, a positive baseline; substituting the attribute's value for the
-          page's ``tx`` gives neither :attr:`Q` nor its negation, because the page's last row carries no
-          ``tx`` and does not flip.
-        - a disparity map is channels-**last**, :math:`(B, H, W, 1)`, for :meth:`reproject_disparity_to_3D` and
-          for the module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` alike -- the
-          :math:`(B, 1, H, W)` layout the rest of kornia uses for images is rejected -- and the returned point
-          cloud is :math:`(B, H, W, 3)`.
+          which the constructor rejects only when it is **positive** (``tx = 0`` and a batch with one positive
+          product pass, see the second warning below). The :attr:`tx` attribute exposes the negation of that
+          symbol, ``-P_right[0, 3] / fx``; substituting the attribute's value for the page's ``tx`` gives
+          neither :attr:`Q` nor its negation, because the page's last row carries no ``tx`` and does not flip.
+        - a disparity map is channels-**last**, :math:`(B, H, W, 1)`, for
+          :meth:`~kornia.geometry.camera.stereo.StereoCamera.reproject_disparity_to_3D` and for the module-level
+          :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` alike -- the :math:`(B, 1, H, W)`
+          layout the rest of kornia uses for images is rejected -- and the returned point cloud is
+          :math:`(B, H, W, 3)`.
         - the pixels are the integer pixel centres that :func:`~kornia.geometry.grid.create_meshgrid`
           enumerates, described in the Convention block on
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
 
     .. warning::
-        :meth:`reproject_disparity_to_3D` unbinds that pixel grid as ``v, u``, while
-        :func:`~kornia.geometry.grid.create_meshgrid` returns it as ``(x, y)``, so ``X`` is computed from the
-        **row** index and ``Y`` from the column index -- the opposite of ``cv2.reprojectImageTo3D``, whose
-        semantics this function was added to provide. The repository's own real-data test stores the swapped
-        values as its ground truth, so a fix has to update that test in the same change. Tracked as
+        :meth:`~kornia.geometry.camera.stereo.StereoCamera.reproject_disparity_to_3D` unbinds that pixel grid
+        as ``v, u``, while :func:`~kornia.geometry.grid.create_meshgrid` returns it as ``(x, y)``, so ``X`` is
+        computed from the **row** index and ``Y`` from the column index -- the opposite of
+        ``cv2.reprojectImageTo3D``, whose semantics this function was added to provide. The repository's own
+        real-data test passes only because its fixture lays a one-row, ten-column strip out as ten rows of one
+        column, which the swap cancels; its stored numbers are correct OpenCV output for that strip, so a fix
+        corrects the layout and keeps every literal. Tracked as
         `#4269 <https://github.com/kornia/kornia/issues/4269>`_ and pinned by
         ``test_wart_reproject_disparity_reads_u_from_the_row_index_4269``,
         ``test_wart_reproject_disparity_x_varies_with_the_row_and_y_with_the_column_4269`` and the strict
@@ -335,7 +338,7 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor) -> None:
     r"""Ensure correct user provided correct disparity torch.Tensor.
 
     Args:
-        disparity_tensor: The disparity torch.Tensor of shape :math:`(B, 1, H, W)`.
+        disparity_tensor: The disparity torch.Tensor of shape :math:`(B, H, W, 1)`.
 
     """
     if not isinstance(disparity_tensor, torch.Tensor):

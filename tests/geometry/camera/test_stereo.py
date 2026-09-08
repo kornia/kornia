@@ -293,9 +293,9 @@ class TestStereoCamera(BaseTester):
         # channels-LAST, (B, H, W, 1), for both the method and the module-level function, and the returned point
         # cloud is (B, H, W, 3). The channels-FIRST (B, 1, H, W) layout that the rest of kornia uses for images
         # is rejected, and so is an unbatched (B, H, W). The method's docstring used to say (B, 1, H, W) -- the
-        # layout the shared guard rejects -- and now says (B, H, W, 1), matching the module-level function; no
-        # issue was filed, because the documentation error is corrected in the same change that pins the
-        # behavior.
+        # layout the shared guard rejects -- and now says (B, H, W, 1), matching the module-level function and
+        # the private guard's own docstring. The guard's message still says "dimension 1" for a shape[-1] check
+        # and never names (B, H, W, 1); that is kornia#4374, and the match below is on the current text.
         # The shape claim carries a value so it cannot pass on a dummy: with fx = 100 and tx = 0.5, a disparity
         # of 10 puts every point at Z = fx * tx / d = 5.
         # Snippet used to generate expected: cam.reproject_disparity_to_3D(full((1, 3, 5, 1), 10.0)) executed
@@ -442,7 +442,8 @@ class TestStereoCamera(BaseTester):
         # cx = 4, cy = 3, tx = 0.5, d = 10, so Z = 5) that is [-0.1, -0.15, 5] at (row 0, col 2),
         # [-0.2, -0.1, 5] at (row 1, col 0) and [0.0, -0.05, 5] at (row 2, col 4).
         # Settled by #4269's Expected section (unbind as ``u, v``); the fix is focused and welcome as a PR, and
-        # it also has to update the stored ground truth in _RealTestData, which encodes the swap.
+        # it also has to re-lay _RealTestData's disparity and point cloud as (1, 1, 10, 1) / (1, 1, 10, 3): the
+        # stored literals are correct OpenCV output for a one-row strip and stay as they are.
         cam = self._asymmetric_stereo(device, dtype)
         points = cam.reproject_disparity_to_3D(torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype))
         self.assert_close(points[0, 0, 2], torch.tensor([-0.1, -0.15, 5.0], device=device, dtype=dtype))

@@ -703,7 +703,8 @@ class TestWarpFrameDepth(BaseTester):
 
     def test_wart_warp_frame_depth_rejects_an_empty_batch_4281(self, device, dtype):
         # Wart pin for kornia#4281: an empty batch raises a bare
-        # ZeroDivisionError from normalize_pixel_coordinates rather than returning an empty result, although
+        # ZeroDivisionError from transform_points (0 // 0 in its batch-repeat count) rather than returning an empty
+        # result, although
         # every shape guard on the way in accepts B = 0 and depth_to_3d -- the same computation in the other
         # layout -- handles it. kornia's degenerate-shape convention is empty in, empty out.
         # Snippet used to generate expected: warp_frame_depth(zeros(0, 2, 4, 5), ones(0, 1, 4, 5),

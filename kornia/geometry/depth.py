@@ -74,12 +74,11 @@ def unproject_meshgrid(
           ``camera_matrix`` is the :math:`(3, 3)` ``[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]`` of that grid and
           there are no extrinsics, so the rays are in the **camera** frame.
         - ``camera_matrix`` is batched: the supported form is :math:`(B, 3, 3)`, which returns
-          :math:`(B, H, W, 3)`. Extra **singleton** leading dimensions pass through unchanged -- a
-          :math:`(2, 1, 3, 3)` intrinsics returns :math:`(2, 1, H, W, 3)` -- while non-singleton extra
-          leading dimensions are unsupported: depending on their sizes they either raise ``RuntimeError``
-          or accidentally broadcast against pixel dimensions (for example, an extra axis matching ``W``
-          can apply different intrinsics to each column). An unbatched :math:`(3, 3)` raises ``ShapeError``
-          (below).
+          :math:`(B, H, W, 3)`. Extra leading dimensions are not part of the contract: today a singleton one
+          passes through by accident -- a :math:`(2, 1, 3, 3)` intrinsics returns :math:`(2, 1, H, W, 3)` --
+          and non-singleton ones either raise ``RuntimeError`` or broadcast against the pixel axes (an extra
+          axis matching ``W`` applies different intrinsics to each column); both are the subject of the
+          warning below. An unbatched :math:`(3, 3)` raises ``ShapeError`` (below).
         - ``normalize_points=True`` returns the unit ray instead of the ray whose ``z`` is 1, which is the form
           :func:`~kornia.geometry.depth.depth_to_3d_v2` needs when its depth is a Euclidean ray length rather
           than a camera-frame ``z``.
@@ -105,8 +104,7 @@ def unproject_meshgrid(
         dtype: dtype of the result.
 
     Return:
-        tensor with a 3d point per pixel, with shape :math:`(B, H, W, 3)` plus any preserved
-        singleton leading dimensions described above.
+        tensor with a 3d point per pixel, with shape :math:`(B, H, W, 3)`.
 
     """
     KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
@@ -149,7 +147,7 @@ def depth_to_3d_v2(
 
     Convention:
         - ``depth`` is the camera-frame ``z`` of each pixel and the result is the camera-frame point
-          ``((u - cx) z / fx, (v - cy) z / fy, z)``, laid out channels-**last** as :math:`(B, H, W, 3)`.
+          ``((u - cx) z / fx, (v - cy) z / fy, z)``, laid out channels-**last** as :math:`(*, H, W, 3)`.
           :func:`~kornia.geometry.depth.depth_to_3d` computes the same points in the :math:`(B, 3, H, W)`
           layout, and the two are equal after ``permute(0, 2, 3, 1)``.
         - ``u`` and ``v`` are the column and the row of the integer-centre pixel grid that
@@ -170,13 +168,16 @@ def depth_to_3d_v2(
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(*, H, W)`.
-        camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
+        camera_matrix: tensor containing the camera intrinsics with shape :math:`(*, 3, 3)`.
         normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
           represented as the Euclidean ray length from the camera position.
         xyz_grid: explicit xyz point values.
 
     Return:
-        tensor with a 3d point per pixel of the same resolution as the input :math:`(B, H, W, 3)`.
+        tensor with a 3d point per pixel of the same resolution as the input, :math:`(*, H, W, 3)`, whose
+        leading dimensions are the broadcast of ``depth``'s and ``camera_matrix``'s: the Example broadcasts a
+        :math:`(4, 4)` depth against a :math:`(2, 3, 3)` camera to :math:`(2, 4, 4, 3)`, and a
+        :math:`(B, T, H, W)` depth with a :math:`(B, 1, 3, 3)` camera returns :math:`(B, T, H, W, 3)`.
 
     Example:
         >>> depth = torch.rand(4, 4)
@@ -501,6 +502,7 @@ class DepthWarper(nn.Module):
           ``mode`` and ``padding_mode``.
         - :func:`~kornia.geometry.depth.depth_warp` is the functional form of this class -- it builds one,
           calls :meth:`compute_projection_matrix` and forwards -- and returns a result equal to it bit for bit.
+          It exposes ``align_corners`` only; ``mode`` and ``padding_mode`` keep their defaults there.
 
     .. warning::
         :func:`~kornia.geometry.depth.warp_frame_depth` performs the same warp under the **opposite** naming.
@@ -522,8 +524,9 @@ class DepthWarper(nn.Module):
         `#4267 <https://github.com/kornia/kornia/issues/4267>`_, the namespace-wide ``z = 0`` conflict, and is
         pinned by ``test_wart_warp_frame_depth_and_depth_warper_split_at_zero_transformed_depth_4267``. The
         naming conflict is tracked as `#4273 <https://github.com/kornia/kornia/issues/4273>`_ and pinned by
-        ``test_wart_warp_frame_depth_and_depth_warper_name_the_depth_frame_oppositely_4273`` and
-        ``test_convention_warp_frame_depth_matches_depth_warper_without_being_bitwise_equal``, all three in
+        ``test_wart_warp_frame_depth_and_depth_warper_name_the_depth_frame_oppositely_4273``; the agreement away
+        from ``z = 0`` is pinned by
+        ``test_convention_warp_frame_depth_matches_depth_warper_without_being_bitwise_equal``. All three pins are in
         ``tests/geometry/test_depth.py``.
 
     Args:
@@ -762,7 +765,8 @@ def depth_warp(
 
     This function is that class's functional form: it constructs a
     :class:`~kornia.geometry.depth.DepthWarper`, calls its ``compute_projection_matrix`` and returns its
-    output, which is equal to the class's bit for bit.
+    output, which is equal to the class's bit for bit under the default ``mode`` and ``padding_mode``, the only
+    ones this function offers (``align_corners`` is forwarded).
 
     Example:
         >>> # pinholes camera models
