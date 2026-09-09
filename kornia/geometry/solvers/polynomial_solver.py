@@ -276,6 +276,9 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
 
     # Numerical tolerances
     zero_tol = 1e-6 if coeffs.dtype == torch.float32 else 1e-12
+    # Relative tolerance for deciding that a candidate y is a real root of the
+    # resolvent cubic (see the root-selection step below).
+    root_tol = 1e-4 if coeffs.dtype == torch.float32 else 1e-10
 
     # Cubic fallback for a approx 0
     mask_a_zero = torch.abs(a) < zero_tol
@@ -311,6 +314,21 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     A_sq = A * A
     R_sq_candidates = 0.25 * A_sq.unsqueeze(-1) - B.unsqueeze(-1) + y_roots
 
+    # solve_cubic reports its non-real roots as 0 placeholders. A placeholder
+    # y=0 competes in the R^2 argmax below and wins whenever the real resolvent
+    # root is negative (A^2/4 - B + 0 > A^2/4 - B + y), which sends Ferrari's
+    # method down the wrong pair of quadratics. Mask the placeholders by "is a
+    # root of the resolvent" (residual within a relative tolerance) so only real
+    # roots are ranked.
+    y_sq = y_roots * y_roots
+    residual = y_roots * y_sq + rc_b.unsqueeze(-1) * y_sq + rc_c.unsqueeze(-1) * y_roots + rc_d.unsqueeze(-1)
+    residual_scale = torch.maximum(y_sq * torch.abs(y_roots), torch.abs(rc_b.unsqueeze(-1)) * y_sq)
+    residual_scale = torch.maximum(residual_scale, torch.abs(rc_c.unsqueeze(-1)) * torch.abs(y_roots))
+    residual_scale = torch.maximum(residual_scale, torch.abs(rc_d.unsqueeze(-1)))
+    residual_scale = torch.maximum(residual_scale, torch.ones_like(residual_scale))
+    mask_root = torch.abs(residual) <= root_tol * residual_scale
+    R_sq_candidates = torch.where(mask_root, R_sq_candidates, torch.full_like(R_sq_candidates, -torch.inf))
+
     best_idx = torch.argmax(R_sq_candidates, dim=-1, keepdim=True)
     y = torch.gather(y_roots, -1, best_idx).squeeze(-1)
     R_sq = torch.gather(R_sq_candidates, -1, best_idx).squeeze(-1)
@@ -328,8 +346,15 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         torch.zeros_like(R_sq),
     )
 
-    # Compute E term
-    mask_R_small = torch.abs(R) < zero_tol
+    # Compute E term. The R ~ 0 fallback must key on R^2 (before the sqrt) and
+    # relative to scale, not on |R| after a sqrt: for a biquadratic R^2 is
+    # analytically 0 but numerically ±1e-16, whose sqrt is 1e-8 — above an
+    # absolute zero_tol on R — which sends the division path a near-zero
+    # denominator and an arbitrary E.
+    R_sq_scale = torch.maximum(0.25 * A_sq, torch.abs(B))
+    R_sq_scale = torch.maximum(R_sq_scale, torch.abs(y))
+    R_sq_scale = torch.maximum(R_sq_scale, torch.ones_like(R_sq_scale))
+    mask_R_small = R_sq <= zero_tol * R_sq_scale
     mask_R_large = ~mask_R_small
     E = torch.zeros_like(R)
 

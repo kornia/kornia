@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import numpy as np
 import pytest
 import torch
 
@@ -437,6 +438,47 @@ class TestQuarticSolver(BaseTester):
             requires_grad=True,
         )
         self.gradcheck(solver.solve_quartic, (coeffs,), raise_exception=True, fast_mode=True)
+
+    @pytest.mark.parametrize(
+        ("coeffs", "expected_real"),
+        [
+            # A resolvent cubic with one negative real root: the y=0 placeholder used to win the
+            # R^2 argmax and return a spurious -2 while missing both real roots (#4346).
+            ([1.0, 2.0, 0.0, 0.0, -16.0], [-2.760555138195215, 1.6383450267923287]),
+            # A biquadratic: R^2 is 0, so R = sqrt(±1e-16) ≈ 1e-8 previously beat the absolute
+            # tolerance on R and sent the division path a near-zero denominator (#4346).
+            ([1.0, 0.0, -4.0, 0.0, -5.0], [-2.23606797749979, 2.23606797749979]),
+            # A 1e-6 x^3 perturbation of x^4 - 16 must leave the ±2 roots in place, not vanish them.
+            ([1.0, 1e-6, 0.0, 0.0, -16.0], [-2.0, 2.0]),
+        ],
+    )
+    def test_solve_quartic_recovers_real_roots_4346(self, coeffs, expected_real, device):
+        roots = solver.solve_quartic(torch.tensor([coeffs], device=device, dtype=torch.float64))
+        real = torch.sort(roots[0][roots[0].abs() > 1e-12]).values
+        expected = torch.sort(torch.tensor(expected_real, device=device, dtype=torch.float64)).values
+        self.assert_close(real, expected, rtol=1e-6, atol=1e-6)
+
+    def test_random_general_coefficients_match_numpy_roots_4346(self, device):
+        # ``test_random`` only builds quartics from four *real* roots, so its resolvent cubic always
+        # has three real roots and neither defective branch is reached. Draw general coefficients and
+        # check that every returned entry is a real root and that every real root is returned.
+        torch.manual_seed(0)
+        batch_size = 64
+        coeffs = torch.rand(batch_size, 5, device=device, dtype=torch.float64) * 10 - 5
+        coeffs[:, 0] = 1.0
+        roots = solver.solve_quartic(coeffs).detach().cpu().numpy()
+        coeffs_np = coeffs.cpu().numpy()
+        for i in range(batch_size):
+            reference = np.roots(coeffs_np[i])
+            real_ref = reference[np.abs(reference.imag) < 1e-7].real
+            # no spurious entries: every returned root is a genuine real root
+            for g in roots[i]:
+                if abs(g) < 1e-12:
+                    continue
+                assert np.any(np.abs(g - real_ref) < 1e-6), (coeffs_np[i], g, real_ref)
+            # nothing missing: every real root is returned
+            for t in real_ref:
+                assert np.any(np.abs(roots[i] - t) < 1e-6), (coeffs_np[i], t, roots[i])
 
     @pytest.mark.parametrize(
         ("coeffs", "expected", "expected_grad"),

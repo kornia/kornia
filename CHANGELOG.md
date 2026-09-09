@@ -397,6 +397,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   radicand under the `sqrt`, as `solve_quadratic` in the same module already did. Forward values
   are unchanged. (#4339)
 
+* `solve_quartic` now returns the correct real roots for ordinary quartics. Two defects in Ferrari's
+  method meant ~28% of general quartics lost a real root and gained a spurious one (and biquadratics
+  failed ~55% of the time). First, `solve_cubic` reports its non-real roots as `0` placeholders, and
+  the step that "picks the resolvent root maximising `R^2`" ranked those placeholders alongside the
+  real root, so whenever the single real root was negative the placeholder won and both quadratics
+  were wrong. Candidates are now masked by "is a root of the resolvent" (residual within a relative
+  tolerance) before the `argmax`. Second, the `R ≈ 0` fallback keyed on `|R|` after a `sqrt`, so for
+  a biquadratic — where `R^2` is analytically 0 but numerically `±1e-16` — `R ≈ 1e-8` beat the
+  absolute tolerance and the division path ran against a near-zero denominator. The threshold now
+  keys on `R^2` and is relative to the coefficient scale. (#4346)
+
 * `depth_from_plane_equation` returns a finite depth for a ray exactly parallel to the plane. The
   near-singular guard was `eps * torch.sign(denom)`, and `torch.sign` is zero at zero, so at the exact
   singularity the epsilon was multiplied away and the division still ran against zero, returning `inf`.
