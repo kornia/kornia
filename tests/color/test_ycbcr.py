@@ -118,10 +118,6 @@ class TestRgbToYcbcr(BaseTester):
 
         self.assert_close(kornia.color.rgb_to_ycbcr(data), expected, low_tolerance=True)
 
-    # TODO: investigate and implement me
-    # def test_forth_and_back(self, device, dtype):
-    #    pass
-
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
@@ -196,30 +192,31 @@ class TestYcbcrToRgb(BaseTester):
             dtype=dtype,
         )
 
-        # Reference output generated using OpenCV: cv2.cvtColor(data, cv2.COLOR_RGB2XYZ)
+        # Expected output of the corrected inverse (the exact inverse of the forward
+        # coefficients). test_forth_and_back verifies these are a true inverse.
         expected = torch.tensor(
             [
                 [
                     [
-                        [1.0000, 0.5639256, 0.14902398, 1.0000, 0.2569923],
-                        [0.37973762, 0.64386904, 1.0000, 0.0000, 0.4239992],
-                        [1.0000, 1.0000, 0.0000, 0.60653293, 0.3505922],
-                        [0.0000, 0.6076593, 0.33508536, 0.27470887, 1.0000],
-                        [0.52727354, 0.0000, 0.05404532, 1.0000, 0.5783674],
+                        [1.0000000, 0.5638233, 0.1491153, 1.0000000, 0.2569999],
+                        [0.3796334, 0.6439500, 1.0000000, 0.0000000, 0.4241198],
+                        [1.0000000, 1.0000000, 0.0000000, 0.6066259, 0.3506505],
+                        [0.0000000, 0.6075770, 0.3351226, 0.2747582, 1.0000000],
+                        [0.5274045, 0.0000000, 0.0541712, 1.0000000, 0.5782173],
                     ],
                     [
-                        [0.736647, 0.0000, 0.55139434, 0.44206098, 0.4548782],
-                        [0.0000, 0.98196536, 0.54739904, 0.33826917, 0.850068],
-                        [0.72412336, 0.6222996, 0.110618, 1.0000, 0.614918],
-                        [0.15862459, 0.0699634, 0.66296846, 0.4845066, 0.3705502],
-                        [1.0000, 0.46070462, 0.5654058, 0.24897486, 0.0000],
+                        [0.7364692, 0.0000000, 0.5514678, 0.4420818, 0.4550470],
+                        [0.0000000, 0.9820120, 0.5471494, 0.3383944, 0.8500608],
+                        [0.7240790, 0.6222921, 0.1106665, 1.0000000, 0.6149722],
+                        [0.1586052, 0.0697242, 0.6631604, 0.4845388, 0.3703003],
+                        [1.0000000, 0.4608885, 0.5654638, 0.2487269, 0.0000000],
                     ],
                     [
-                        [1.0000, 0.88769174, 0.4394987, 0.0000, 0.0000],
-                        [0.77483994, 0.99839956, 1.0000, 0.41622213, 1.0000],
-                        [0.7488585, 0.0000, 0.01748962, 0.9683316, 0.49795526],
-                        [0.9473541, 1.0000, 0.0000, 0.47037587, 1.0000],
-                        [1.0000, 0.0000, 0.6804801, 0.9795798, 0.24646705],
+                        [1.0000000, 0.8877093, 0.4394993, 0.0000000, 0.0000000],
+                        [0.7748596, 0.9984028, 1.0000000, 0.4162319, 1.0000000],
+                        [0.7488568, 0.0000000, 0.0174894, 0.9683340, 0.4979546],
+                        [0.9473788, 1.0000000, 0.0000000, 0.4703773, 1.0000000],
+                        [1.0000000, 0.0000000, 0.6804873, 0.9795894, 0.2464702],
                     ],
                 ]
             ],
@@ -229,9 +226,14 @@ class TestYcbcrToRgb(BaseTester):
 
         self.assert_close(kornia.color.ycbcr_to_rgb(data), expected)
 
-    # TODO: investigate and implement me
-    # def test_forth_and_back(self, device, dtype):
-    #    pass
+    def test_forth_and_back(self, device, dtype):
+        # ycbcr_to_rgb must invert rgb_to_ycbcr. Previously the inverse used
+        # rounded coefficients that were not a true inverse, so the round-trip
+        # drifted by ~2.7e-4; with the corrected coefficients it is lossless.
+        data = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        ycbcr = kornia.color.rgb_to_ycbcr(data)
+        rgb = kornia.color.ycbcr_to_rgb(ycbcr)
+        self.assert_close(rgb, data, low_tolerance=True)
 
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
