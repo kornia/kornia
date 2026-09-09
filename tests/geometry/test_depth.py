@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import ShapeError
 
 from testing.base import BaseTester
 
@@ -77,6 +78,14 @@ class TestDepthTo3d(BaseTester):
         assert grid.shape == (2, 3, 4, 3)
         # test for now that the grid is correct and have homogeneous coords
         self.assert_close(grid[..., 2], torch.ones_like(grid[..., 2]))
+
+    @pytest.mark.parametrize("shape", [(3, 3), (2, 1, 3, 3), (2, 2, 3, 3), (2, 3, 3, 3)])
+    def test_unproject_meshgrid_invalid_camera_rank(self, shape, device, dtype):
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(shape)
+        # An extra camera axis of size W must not broadcast across pixel columns.
+        with pytest.raises(ShapeError) as exc_info:
+            kornia.geometry.unproject_meshgrid(2, 3, camera_matrix, device=device, dtype=dtype)
+        assert f"Actual shape: {list(shape)}" in str(exc_info.value)
 
     @pytest.mark.parametrize(("height", "width"), [(1, 1), (1, 3), (3, 1), (2, 5)])
     def test_unproject_meshgrid_degenerate_sizes(self, height, width, device, dtype):

@@ -364,6 +364,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `unproject_meshgrid` now requires camera intrinsics of shape `(B, 3, 3)`, rejecting extra
+  camera axes before they can broadcast across pixel columns and reporting the caller's original shape. (#4271)
+
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
   while the implementation preserves ONNX export compatibility. (#4358)

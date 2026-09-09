@@ -66,17 +66,17 @@ def unproject_meshgrid(
     Args:
         height: height of image.
         width: width of image.
-        camera_matrix: tensor containing the camera intrinsics with shape :math:`(3, 3)`.
+        camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
         normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
           represented as the Euclidean ray length from the camera position.
         device: device to place the result on.
         dtype: dtype of the result.
 
     Return:
-        tensor with a 3d point per pixel of the same resolution as the input :math:`(*, H, W, 3)`.
+        tensor with a 3d point per pixel of the same resolution as the input :math:`(B, H, W, 3)`.
 
     """
-    KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
 
     # create base coordinates grid. ``create_meshgrid`` returns ``(1, H, W, 2)``; drop only that leading
     # batch axis. A bare ``squeeze()`` would also drop ``H`` or ``W`` whenever either is 1, and the grid
