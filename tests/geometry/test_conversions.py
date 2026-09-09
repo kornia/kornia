@@ -964,9 +964,10 @@ class TestAngleAxisToQuaternion(BaseTester):
         # #4237's fix replaced the constant k=2.0 at the zero-vector-part branch with the analytic
         # limit 2/w (w = cos_theta), which introduces a real division that a genuinely-degenerate
         # all-zero quaternion (0,0,0,0) -- not a valid rotation, w=0 too -- would divide by zero
-        # through. That division is guarded the same way the sin_theta one already is, so this
-        # input keeps returning the same harmless (0,0,0) value with a finite gradient, rather than
-        # picking up a new inf/nan. The gradient value itself (all-zero) is not claimed to be the
+        # through. That division is guarded the same way the sin_theta one already is, and `atan2`
+        # is shielded at the same input (atan2(0, 0) has a `nan` backward on torch <= 2.9.1), so
+        # this input keeps returning the same harmless (0,0,0) value and now has a finite gradient
+        # on every supported torch version. The gradient value itself (all-zero) is not claimed to be the
         # unique "correct" one -- the function has no limit at this point, approached along
         # different paths -- only that it stays finite and does not regress from before this fix.
         _skip_if_dtype_unavailable(device, torch.float64)

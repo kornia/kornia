@@ -957,21 +957,33 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
     pos: torch.Tensor = sin_squared_theta > 0.0
     safe_sin_squared_theta: torch.Tensor = torch.where(pos, sin_squared_theta, torch.ones_like(sin_squared_theta))
     sin_theta: torch.Tensor = torch.where(pos, torch.sqrt(safe_sin_squared_theta), torch.zeros_like(sin_squared_theta))
-    two_theta: torch.Tensor = 2.0 * torch.where(
+    # w=0 with a zero vector part is only the exact-zero quaternion (0,0,0,0), which is not a
+    # valid rotation -- a genuine half-turn has w=0 with a nonzero vector part and takes the
+    # `pos` branches. Two operations need shielding at that one input: the 2/w division below,
+    # and `atan2` here, whose derivative w.r.t. its second argument is 0/0 at (0, 0) -- `nan` on
+    # torch <= 2.9.1, 0 on 2.14. Substituting a 1 there keeps the backward finite across the
+    # whole supported torch range, so don't simplify the shield away. The substitution goes
+    # through `torch.where`, which hands atan2 a contiguous tensor instead of the stride-4 view
+    # and can therefore pick a different kernel and move the forward by one ulp -- so take the
+    # value from the unshielded expression and only the gradient from the shielded one.
+    w_nonzero: torch.Tensor = cos_theta != 0.0
+    safe_cos_for_atan2: torch.Tensor = torch.where(pos | w_nonzero, cos_theta, torch.ones_like(cos_theta))
+    two_theta_shielded: torch.Tensor = 2.0 * torch.where(
+        cos_theta < 0.0, torch.atan2(-sin_theta, -safe_cos_for_atan2), torch.atan2(sin_theta, safe_cos_for_atan2)
+    )
+    two_theta_value: torch.Tensor = 2.0 * torch.where(
         cos_theta < 0.0, torch.atan2(-sin_theta, -cos_theta), torch.atan2(sin_theta, cos_theta)
     )
+    two_theta: torch.Tensor = two_theta_shielded + (two_theta_value.detach() - two_theta_shielded.detach())
 
     k_pos: torch.Tensor = two_theta / torch.where(pos, sin_theta, torch.ones_like(sin_theta))
     # The zero-vector-part branch's analytic limit is 2/w (w = cos_theta), not the constant 2.0
     # that implicitly assumed w=1 -- see #4237. That constant gave the wrong sign at the negative
     # unit identity (-1,0,0,0), which is the same rotation as (1,0,0,0), and the wrong magnitude
-    # at any non-unit "identity" (e.g. w=2), which this function explicitly allows. w=0 only
-    # reaches this branch for the exact-zero quaternion (0,0,0,0), not a valid rotation -- a
-    # genuine half-turn has w=0 with a nonzero vector part, which takes the k_pos branch instead
-    # -- so guard that division the same way `pos` already guards the sin_theta one above, and
-    # keep that degenerate input's previous harmless (0, zero-gradient) behavior rather than
-    # picking up a new inf/nan.
-    w_nonzero: torch.Tensor = cos_theta != 0.0
+    # at any non-unit "identity" (e.g. w=2), which this function explicitly allows. Guard the
+    # division the same way `pos` already guards the sin_theta one above; that leaves the
+    # exact-zero quaternion at 0 with a zero gradient, where it previously had 2 in each vector
+    # slot and, on torch <= 2.9.1, `nan` in w's.
     safe_cos_theta: torch.Tensor = torch.where(w_nonzero, cos_theta, torch.ones_like(cos_theta))
     k_neg: torch.Tensor = torch.where(w_nonzero, 2.0 / safe_cos_theta, torch.zeros_like(cos_theta))
     k: torch.Tensor = torch.where(pos, k_pos, k_neg)
