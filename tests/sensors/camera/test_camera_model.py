@@ -637,12 +637,7 @@ class TestNonPinholeCameraProjectUnproject(BaseTester):
         projected = cam.project(Vector3(points))
         unprojected = cam.unproject(projected, points[..., 2])
 
-        self.assert_close(
-            unprojected.data,
-            points,
-            atol=1e-4,
-            rtol=1e-4,
-        )
+        self.assert_close(unprojected.data, points)
 
     @pytest.mark.parametrize(
         ("model_type", "num_params"),
@@ -680,9 +675,4 @@ class TestNonPinholeCameraProjectUnproject(BaseTester):
         assert projected.data.shape == (2, 2)
         assert unprojected.data.shape == points.shape
 
-        self.assert_close(
-            unprojected.data,
-            points,
-            atol=1e-4,
-            rtol=1e-4,
-        )
+        self.assert_close(unprojected.data, points)
