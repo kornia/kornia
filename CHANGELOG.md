@@ -365,7 +365,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * Fixed TorchScript compilation of `unproject_meshgrid`, `depth_to_3d_v2` and
-  `warp_frame_depth` by passing a floating-point norm order. (#4286)
+  `warp_frame_depth` by passing a floating-point norm order. (#4389)
 
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
