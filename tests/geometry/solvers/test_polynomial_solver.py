@@ -453,6 +453,8 @@ class TestQuarticSolver(BaseTester):
         ],
     )
     def test_solve_quartic_recovers_real_roots_4346(self, coeffs, expected_real, device):
+        if device.type == "mps":
+            pytest.skip("float64 is not supported on the MPS backend")
         roots = solver.solve_quartic(torch.tensor([coeffs], device=device, dtype=torch.float64))
         real = torch.sort(roots[0][roots[0].abs() > 1e-12]).values
         expected = torch.sort(torch.tensor(expected_real, device=device, dtype=torch.float64)).values
@@ -462,6 +464,8 @@ class TestQuarticSolver(BaseTester):
         # ``test_random`` only builds quartics from four *real* roots, so its resolvent cubic always
         # has three real roots and neither defective branch is reached. Draw general coefficients and
         # check that every returned entry is a real root and that every real root is returned.
+        if device.type == "mps":
+            pytest.skip("float64 is not supported on the MPS backend")
         torch.manual_seed(0)
         batch_size = 64
         coeffs = torch.rand(batch_size, 5, device=device, dtype=torch.float64) * 10 - 5

@@ -276,9 +276,28 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
 
     # Numerical tolerances
     zero_tol = 1e-6 if coeffs.dtype == torch.float32 else 1e-12
-    # Relative tolerance for deciding that a candidate y is a real root of the
-    # resolvent cubic (see the root-selection step below).
-    root_tol = 1e-4 if coeffs.dtype == torch.float32 else 1e-10
+    # Relative tolerance for the "is a candidate a real root of the resolvent"
+    # test below. It scales with the dtype's precision: half precision carries so
+    # little mantissa that solve_cubic's conditioning error is orders of magnitude
+    # above float64's, and an over-tight tolerance masks every real root, which
+    # sends the argmax (and then the R ~ 0 fallback) to a placeholder.
+    if coeffs.dtype == torch.float64:
+        root_tol = 1e-10
+    elif coeffs.dtype == torch.float32:
+        root_tol = 1e-4
+    else:  # float16, bfloat16
+        root_tol = 1e-2
+    # Relative tolerance for the "is R^2 effectively zero" test. Tighter than
+    # ``root_tol`` on float32/float64 on purpose: R^2 is a difference of
+    # nearly-cancelling terms, so a genuinely small but nonzero R^2 must still
+    # take the division path -- only a biquadratic's pure rounding noise should
+    # trip the fallback.
+    if coeffs.dtype == torch.float64:
+        r_sq_tol = 1e-10
+    elif coeffs.dtype == torch.float32:
+        r_sq_tol = 1e-6
+    else:  # float16, bfloat16
+        r_sq_tol = 1e-2
 
     # Cubic fallback for a approx 0
     mask_a_zero = torch.abs(a) < zero_tol
@@ -354,7 +373,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     R_sq_scale = torch.maximum(0.25 * A_sq, torch.abs(B))
     R_sq_scale = torch.maximum(R_sq_scale, torch.abs(y))
     R_sq_scale = torch.maximum(R_sq_scale, torch.ones_like(R_sq_scale))
-    mask_R_small = R_sq <= zero_tol * R_sq_scale
+    mask_R_small = R_sq <= r_sq_tol * R_sq_scale
     mask_R_large = ~mask_R_small
     E = torch.zeros_like(R)
 
