@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from kornia.geometry.camera import StereoCamera
+from kornia.geometry.camera.stereo import StereoException, reproject_disparity_to_3D
 
 from testing.base import BaseTester
 
@@ -184,6 +185,25 @@ class _SmokeTestData:
 
 class TestStereoCamera(BaseTester):
     """Test class for :class:`~kornia.geometry.camera.stereo.StereoCamera`"""
+
+    @pytest.mark.parametrize("disparity_shape", [(1, 1, 3, 5), (2, 3, 5, 2)])
+    @pytest.mark.parametrize("entrypoint", ["method", "function"])
+    def test_reproject_disparity_layout_error_4374(self, disparity_shape, entrypoint, device, dtype):
+        left, right = _SmokeTestData._create_stereo_camera(disparity_shape[0], device, dtype, tx_fx=-10)
+        camera = StereoCamera(left, right)
+        disparity = torch.ones(disparity_shape, device=device, dtype=dtype)
+
+        with pytest.raises(StereoException) as exc_info:
+            if entrypoint == "method":
+                camera.reproject_disparity_to_3D(disparity)
+            else:
+                reproject_disparity_to_3D(disparity, camera.Q)
+
+        assert str(exc_info.value).splitlines()[0] == (
+            "Expected 'disparity_tensor' to have channels-last shape (B, H, W, 1) "
+            "with a single channel in the last dimension. "
+            f"Got {disparity.shape}."
+        )
 
     @staticmethod
     def _create_disparity_tensor(batch_size, height, width, max_disparity, device, dtype):

@@ -280,7 +280,8 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor) -> None:
 
     if disparity_tensor.shape[-1] != 1:
         raise StereoException(
-            "Expected dimension 1 of 'disparity_tensor' to be 1 for as single channeled disparity map."
+            "Expected 'disparity_tensor' to have channels-last shape (B, H, W, 1) "
+            "with a single channel in the last dimension. "
             f"Got {disparity_tensor.shape}."
         )
 
