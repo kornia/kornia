@@ -533,8 +533,12 @@ def _drop_failed_download(path: str) -> None:
     returns the path to the state the call found, which is also the empty path the
     next source needs in order to be fetched at all.
 
-    Only called while a later source remains; see :func:`load_state_dict_from_url`
-    for why the final source keeps what it wrote.
+    :func:`load_state_dict_from_url` calls this only while a later source remains,
+    because there a load failure does not establish that the bytes are bad -- a
+    ``map_location`` a build cannot satisfy fails an intact checkpoint -- so the
+    final source keeps what it wrote. :func:`download_file_from_url` calls it for
+    every ``validate`` rejection of a fresh transfer, last source or not, because
+    that rejection *is* a verdict on the file.
 
     Args:
         path: the cache path this source just wrote.
@@ -804,10 +808,25 @@ def download_file_from_url(
     download-only function does not have: without one, nothing here can tell a
     truncated cache entry from an intact one, so a bad file is handed back as a
     cache hit on every later call and the caller keeps failing until it is
-    deleted by hand. ``validate`` supplies the missing step -- it is called with
-    the cache path after each attempt, and raising from it is treated exactly as
-    a load failure is: the entry is quarantined, the next source is tried, and
-    the discarded source is re-fetched once.
+    deleted by hand.
+
+    ``validate`` supplies the missing step: it is called with the cache path
+    after each attempt, and raising from it rejects the file. What follows
+    depends on where the file came from.
+
+    A rejected *cache entry* -- one the call found rather than fetched -- is
+    quarantined as :func:`load_state_dict_from_url` quarantines a checkpoint that
+    fails to load: it is moved aside so the remaining sources see an empty path,
+    the source that was handed it is re-fetched once, and if nothing usable turns
+    up the original is put back.
+
+    A rejected *fresh transfer* is deleted outright, whether or not a later
+    source could have used the emptied path. Those bytes arrived during this call
+    and ``validate`` refused them, which is a verdict on the file itself, unlike
+    the ambiguous load failures that function has to weigh; keeping them would end
+    the call having added a poisoned entry to a cache that had none. Nothing is
+    re-fetched in that case, so a one-URL call -- what :func:`download_hf_file`
+    makes -- raises with the cache left empty rather than poisoned.
 
     Without ``validate`` nothing is quarantined, as before. The path is returned
     to the caller and named in the failure message so that a file which turns
