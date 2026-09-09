@@ -2319,23 +2319,45 @@ class TestAngleAxisToRotationMatrix(BaseTester):
             3,
         )
 
-    def test_convention_low_angle_taylor_branch_is_rank_agnostic_3955(self, device):
+    def test_convention_low_angle_taylor_branch_is_rank_agnostic_3955(self, device, dtype):
         # The two branches of axis_angle_to_rotation_matrix are selected by a mask built from
         # theta2, and the Taylor branch reshapes separately from the general one, so a rank fix has
         # to hold on both sides of the theta2 > 1e-6 boundary and on a batch that straddles it.
+        # The dtype fixture is taken rather than hardcoding float64, which MPS cannot represent.
+        # 1e-9 keeps theta2 (~3e-18) under the 1e-6 boundary in every supported dtype, so the
+        # Taylor branch is the one exercised at each of them.
         aa2R = kornia.geometry.conversions.axis_angle_to_rotation_matrix
 
         for value in (1e-9, 1.0):  # Taylor branch, then the general branch
-            nested = torch.full((2, 5, 3), value, device=device, dtype=torch.float64)
+            nested = torch.full((2, 5, 3), value, device=device, dtype=dtype)
             assert torch.equal(aa2R(nested), aa2R(nested.reshape(-1, 3)).reshape(2, 5, 3, 3))
 
         straddling = torch.cat(
             [
-                torch.full((5, 3), 1e-9, device=device, dtype=torch.float64),
-                torch.full((5, 3), 1.0, device=device, dtype=torch.float64),
+                torch.full((5, 3), 1e-9, device=device, dtype=dtype),
+                torch.full((5, 3), 1.0, device=device, dtype=dtype),
             ]
         ).reshape(2, 5, 3)
         assert torch.equal(aa2R(straddling), aa2R(straddling.reshape(-1, 3)).reshape(2, 5, 3, 3))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # Compile coverage for the rank path specifically: the body now reshapes the Taylor branch
+        # with reshape(list(axis_angle.shape[:-1]) + [3, 3]) and broadcasts the branch mask with
+        # [..., None, None], both of which read the input's own rank. The input straddles the
+        # theta2 > 1e-6 boundary so both branches are traced.
+        axis_angle = torch.cat(
+            [
+                torch.full((5, 3), 1e-9, device=device, dtype=dtype),
+                torch.full((5, 3), 1.0, device=device, dtype=dtype),
+            ]
+        ).reshape(2, 5, 3)
+        op = kornia.geometry.conversions.axis_angle_to_rotation_matrix
+        op_optimized = torch_optimizer(op)
+
+        actual = op_optimized(axis_angle)
+        expected = op(axis_angle)
+
+        self.assert_close(actual, expected)
 
 
 class TestRotationMatrixToAngleAxis(BaseTester):

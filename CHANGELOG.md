@@ -371,7 +371,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `(*, 3)`, so `axis_angle_to_rotation_matrix(rotation_matrix_to_axis_angle(R))` composed for an `(N, 3, 3)`
   rotation matrix and for nothing else, including for the shape `rotation_matrix_to_axis_angle`'s own
   doctest returns. This is additive: `(N, 3)` output and gradients are byte-identical, and only shapes that
-  used to raise now return. (#3955)
+  used to raise now return (closes #3955). (#4342)
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
   while the implementation preserves ONNX export compatibility. (#4358)
