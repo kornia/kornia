@@ -18,6 +18,10 @@
 
 import torch
 
+from kornia.geometry.camera.distortion_kannala_brandt import (
+    distort_points_kannala_brandt,
+    undistort_points_kannala_brandt,
+)
 from kornia.geometry.vector import Vector2
 
 
@@ -183,7 +187,7 @@ class KannalaBrandtK3Transform:
             NotImplementedError: The K3 distortion interface is declared here,
                 but the concrete computation is not implemented.
         """
-        raise NotImplementedError
+        return Vector2(distort_points_kannala_brandt(points.data, params))
 
     def undistort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         """Remove Kannala-Brandt K3 fisheye distortion from observed points.
@@ -201,4 +205,4 @@ class KannalaBrandtK3Transform:
             NotImplementedError: The K3 inverse distortion interface is
                 declared here, but the concrete computation is not implemented.
         """
-        raise NotImplementedError
+        return Vector2(undistort_points_kannala_brandt(points.data, params))
