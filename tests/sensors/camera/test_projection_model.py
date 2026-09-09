@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.geometry.camera import project_points_orthographic, unproject_points_orthographic
 from kornia.geometry.vector import Vector2, Vector3
 from kornia.sensors.camera.projection_model import OrthographicProjection, Z1Projection
 
@@ -167,3 +168,30 @@ class TestOrthographicProjection(BaseTester):
         # Also verify a vector depth still works unchanged
         out_vec = projection.unproject(points, torch.tensor([4.0], device=device, dtype=dtype))
         self.assert_close(out_vec.data, expected, atol=0.0, rtol=0.0)
+
+    def test_orthographic_project_matches_geometry(self, device, dtype):
+        projection = OrthographicProjection()
+        points = torch.tensor(
+            [[1.0, 2.0, 3.0], [-4.0, 5.0, 7.0]],
+            device=device,
+            dtype=dtype,
+        )
+
+        expected = project_points_orthographic(points)
+        actual = projection.project(Vector3(points)).data
+
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+    def test_orthographic_unproject_matches_geometry(self, device, dtype):
+        projection = OrthographicProjection()
+        points = torch.tensor(
+            [[1.0, 2.0], [3.0, 4.0]],
+            device=device,
+            dtype=dtype,
+        )
+        depth = torch.tensor([5.0, 6.0], device=device, dtype=dtype)
+
+        expected = unproject_points_orthographic(points, depth)
+        actual = projection.unproject(Vector2(points), depth).data
+
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)

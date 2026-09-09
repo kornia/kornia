@@ -19,6 +19,10 @@ from __future__ import annotations
 
 import torch
 
+from kornia.geometry.camera.projection_orthographic import (
+    project_points_orthographic,
+    unproject_points_orthographic,
+)
 from kornia.geometry.vector import Vector2, Vector3
 
 
@@ -123,11 +127,8 @@ class OrthographicProjection:
             Two-dimensional point container containing the projected ``x`` and
             ``y`` coordinates.
 
-        Raises:
-            NotImplementedError: This projection model is declared as an
-                interface placeholder and is not implemented yet.
         """
-        raise NotImplementedError
+        return Vector2(project_points_orthographic(points.data))
 
     def unproject(self, points: Vector2, depth: torch.Tensor) -> Vector3:
         """Lift orthographic image-plane points back into 3D using depth.
@@ -142,8 +143,5 @@ class OrthographicProjection:
             Three-dimensional point container with ``x`` and ``y`` copied from
             ``points`` and ``z`` supplied by ``depth``.
 
-        Raises:
-            NotImplementedError: This projection model is declared as an
-                interface placeholder and is not implemented yet.
         """
-        raise NotImplementedError
+        return Vector3(unproject_points_orthographic(points.data, depth))
