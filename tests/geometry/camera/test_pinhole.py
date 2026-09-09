@@ -320,21 +320,36 @@ class TestPixel2Cam(BaseTester):
 
         self.gradcheck(kornia.geometry.camera.pixel2cam, (depth, intrinsics_inv, pixel_coords_input), fast_mode=False)
 
-    def test_wart_pixel2cam_guard_admits_a_3x3_inverse_4266(self, device, dtype):
-        # Wart pin for kornia#4266: pixel2cam's ``intrinsics_inv`` guard is written
-        # ``if not len(intrinsics_inv.shape) == 3``, so it checks the RANK alone and never inspects the trailing
-        # 4x4 its own message promises. A (B, 3, 3) inverse -- the shape every free function on this surface
-        # takes -- has rank 3, passes the guard, and the failure surfaces much later, from transform_points.
-        # Snippet used to generate expected: pixel2cam(ones(1,1,2,3), (1,3,3) inverse, zeros(1,2,3,3)) executed
-        # 2026-09-05 (torch 2.14.0) -> ValueError("Last input dimensions must differ by one unit Got...").
-        # Pins the CURRENT behavior; NOT a contract; delete when #4266 is repaired.
+    @pytest.mark.parametrize(
+        "intrinsics_shape",
+        [(), (4,), (4, 4), (1, 4, 4, 1), (1, 3, 3), (1, 2, 2), (1, 5, 5), (1, 3, 4), (1, 4, 3), (1, 5, 4)],
+    )
+    def test_invalid_intrinsics_shape_4266(self, intrinsics_shape, device, dtype):
+        # A rank-only guard lets non-square matrices return the wrong number of coordinate components.
         depth = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
-        pixel_coords = torch.zeros(1, 2, 3, 3, device=device, dtype=dtype)
-        intrinsics_inv_3x3 = torch.tensor(
-            [[[0.01, 0.0, -0.04], [0.0, 0.01, -0.03], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
-        )
-        with pytest.raises(ValueError, match="Last input dimensions must differ by one unit"):
-            kornia.geometry.camera.pixel2cam(depth, intrinsics_inv_3x3, pixel_coords)
+        pixel_coords = torch.ones(1, 2, 3, 3, device=device, dtype=dtype)
+        intrinsics_inv = torch.ones(intrinsics_shape, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="Input intrinsics_inv has to be in the shape of Bx4x4") as exc_info:
+            kornia.geometry.camera.pixel2cam(depth, intrinsics_inv, pixel_coords)
+
+        assert str(intrinsics_inv.shape) in str(exc_info.value)
+
+    @pytest.mark.parametrize("intrinsics_batch, points_batch", [(1, 1), (2, 2), (1, 2)])
+    def test_intrinsics_batch_broadcast(self, intrinsics_batch, points_batch, device, dtype):
+        # fx=2, fy=4, cx=4, cy=3: pixel (6, 11) at depth 2 maps to camera point (2, 4, 2).
+        intrinsics_inv = torch.tensor(
+            [[[0.5, 0.0, -2.0, 0.0], [0.0, 0.25, -0.75, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        ).expand(intrinsics_batch, -1, -1)
+        depth = torch.full((points_batch, 1, 1, 1), 2.0, device=device, dtype=dtype)
+        pixel_coords = torch.tensor([[[[6.0, 11.0, 1.0]]]], device=device, dtype=dtype).expand(points_batch, -1, -1, -1)
+
+        actual = kornia.geometry.camera.pixel2cam(depth, intrinsics_inv, pixel_coords)
+
+        expected = torch.tensor([[[[2.0, 4.0, 2.0]]]], device=device, dtype=dtype).expand(points_batch, -1, -1, -1)
+        self.assert_close(actual, expected)
 
     def test_convention_pixel2cam_rejects_multi_channel_depth_4266(self, device, dtype):
         # Regression pin for kornia#4266: multi-channel depth must be rejected instead of scaling

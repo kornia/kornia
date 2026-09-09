@@ -835,14 +835,14 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
         - ``intrinsics_inv`` is a :math:`(B, 4, 4)` inverse calibration matrix — the layout of
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, not the :math:`(*, 3, 3)` ``K`` the functional API
           takes — and ``depth`` is the camera-frame ``z`` at each pixel of the ``(u, v, 1)`` grid.
-        - ``intrinsics_inv`` is checked for rank 3 alone, so a :math:`(B, 3, 3)` inverse passes the check and
-          fails further in with an unrelated message.
+        - ``intrinsics_inv`` must have shape :math:`(B, 4, 4)`; other ranks or matrix sizes raise
+          :class:`ValueError` before transforming the pixel coordinates.
         - ``depth`` must have shape ``Bx1xHxW``; multi-channel depth raises :class:`ValueError`.
           The ``pixel_coords`` guard raises when the input is not rank 4 **and** its fourth dimension is 3;
           for lower ranks, accessing that dimension can itself raise :class:`IndexError`.
 
     .. warning::
-        The rank-only ``intrinsics_inv`` check and the incorrect ``pixel_coords`` predicate are tracked in
+        The incorrect ``pixel_coords`` predicate is tracked in
         `#4266 <https://github.com/kornia/kornia/issues/4266>`_.
 
     Args:
@@ -856,7 +856,7 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
     """
     if not (len(depth.shape) == 4 and depth.shape[1] == 1):
         raise ValueError(f"Input depth has to be in the shape of Bx1xHxW. Got {depth.shape}")
-    if not len(intrinsics_inv.shape) == 3:
+    if not (len(intrinsics_inv.shape) == 3 and intrinsics_inv.shape[-2:] == (4, 4)):
         raise ValueError(f"Input intrinsics_inv has to be in the shape of Bx4x4. Got {intrinsics_inv.shape}")
     if not len(pixel_coords.shape) == 4 and pixel_coords.shape[3] == 3:
         raise ValueError(f"Input pixel_coords has to be in the shape of BxHxWx3. Got {intrinsics_inv.shape}")
