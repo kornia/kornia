@@ -64,6 +64,41 @@ def get_model_from_type(
 CameraDistortionType = Union[AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform]
 CameraProjectionType = Union[Z1Projection, OrthographicProjection]
 
+# The number of parameters each distortion model reads, which is what fixes the
+# trailing dimension of ``params``. The typed constructors below each spell the
+# same number out; this is the one place that maps it to the distortion, so the
+# base class can enforce the shape its own docstring documents.
+_PARAMS_LEN_FOR_DISTORTION: dict[type, int] = {
+    AffineTransform: 4,
+    BrownConradyTransform: 12,
+    KannalaBrandtK3Transform: 8,
+}
+
+
+def _validate_params(distortion: CameraDistortionType, params: torch.Tensor) -> None:
+    """Check ``params`` against the shape :class:`CameraModelBase` documents.
+
+    ``CameraModelBase`` is public and its docstring states a shape, but only the
+    typed subclasses checked it. Constructing the base directly with a short
+    vector deferred the failure to an ``IndexError`` inside the distortion model,
+    naming neither ``params`` nor the camera; a rank-3 ``(B, 1, N)`` tensor --
+    the shape the subclasses reject, because there is no multi-camera form --
+    was accepted and projected to a silently wrong ``(1, 1, 2)`` result.
+
+    Raises:
+        ValueError: if ``params`` is not of shape :math:`(N,)` or :math:`(B, N)`,
+            with ``N`` the length the distortion model reads.
+
+    """
+    if params.ndim not in (1, 2):
+        raise ValueError(f"params must be of rank 1 or 2, of shape (B, N) or (N,); got shape {tuple(params.shape)}")
+    expected = _PARAMS_LEN_FOR_DISTORTION.get(type(distortion))
+    if expected is not None and params.shape[-1] != expected:
+        raise ValueError(
+            f"params must be of shape (B, {expected}) or ({expected},) for "
+            f"{type(distortion).__name__}; got shape {tuple(params.shape)}"
+        )
+
 
 class CameraModelBase:
     r"""Base class to represent camera models based on distortion and projection types.
@@ -78,7 +113,7 @@ class CameraModelBase:
 
     Example:
         >>> params = torch.Tensor([328., 328., 320., 240.])
-        >>> cam = CameraModelBase(BrownConradyTransform(), Z1Projection(), ImageSize(480, 640), params)
+        >>> cam = CameraModelBase(AffineTransform(), Z1Projection(), ImageSize(480, 640), params)
         >>> cam.params
         tensor([328., 328., 320., 240.])
 
@@ -97,12 +132,17 @@ class CameraModelBase:
             distortion: Distortion type
             projection: Projection type
             image_size: Image size
-            params: Camera parameters of shape :math:`(B, 4)`
-                    for PINHOLE Camera, :math:`(B, 12)`
-                    for Brown Conrady, :math:`(B, 8)`
-                    for Kannala Brandt K3.
+            params: Camera parameters of shape :math:`(B, N)` or :math:`(N,)`, with
+                    :math:`N` fixed by ``distortion``: 4 for
+                    :class:`AffineTransform` (pinhole and orthographic), 12 for
+                    :class:`BrownConradyTransform`, 8 for
+                    :class:`KannalaBrandtK3Transform`.
+
+        Raises:
+            ValueError: if ``params`` does not have that shape.
 
         """
+        _validate_params(distortion, params)
         self.distortion = distortion
         self.projection = projection
         self._image_size = image_size
@@ -322,9 +362,9 @@ class Orthographic(CameraModelBase):
             params: Camera parameters of shape :math:`(B, 4)` of the form :math:`(fx, fy, cx, cy)`.
 
         """
-        super().__init__(AffineTransform(), OrthographicProjection(), image_size, params)
         if params.shape[-1] != 4 or len(params.shape) > 2:
             raise ValueError("params must be of shape B, 4 for ORTHOGRAPHIC Camera")
+        super().__init__(AffineTransform(), OrthographicProjection(), image_size, params)
 
 
 CameraModelVariants = Union[PinholeModel, BrownConradyModel, KannalaBrandtK3, Orthographic]

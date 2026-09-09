@@ -413,8 +413,6 @@ call	builtins.AssertionError	tests/geometry/test_conversions.py::TestNormalizePi
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestNormalizePixelCoordinates::test_tensor_bhw2[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestQuaternionExpToLog::test_back_and_forth[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestQuaternionFromEuler::test_values[cpu-bfloat16]
-call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRadDegConversions::test_deg2rad[cpu-bfloat16-batch_shape0]
-call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRadDegConversions::test_deg2rad[cpu-bfloat16-batch_shape1]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRadDegConversions::test_deg2rad[cpu-bfloat16-batch_shape2]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRadDegConversions::test_deg2rad[cpu-bfloat16-batch_shape3]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRotationMatrixToAngleAxis::test_rand_quaternion_gradcheck[cpu-bfloat16-1]
