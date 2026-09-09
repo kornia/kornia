@@ -365,7 +365,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * Correct non-zero sensor tilt in `tilt_projection` and `distort_points` to match OpenCV,
-  restoring forward/inverse round trips and correcting `undistort_image` sampling. (Fixes #4276)
+  restoring forward/inverse round trips and correcting `undistort_image` sampling. (#4384)
 
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
