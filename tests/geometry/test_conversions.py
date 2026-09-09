@@ -980,6 +980,34 @@ class TestAngleAxisToQuaternion(BaseTester):
         assert q.grad is not None
         assert torch.isfinite(q.grad).all(), f"kornia#4237: zero quaternion has a non-finite gradient: {q.grad}"
 
+    @pytest.mark.parametrize("grad_dtype_name", ["float16", "float32", "float64"])
+    def test_convention_quaternion_to_axis_angle_near_half_turn_gradient_is_finite_4237(self, device, grad_dtype_name):
+        # The 2/w limit introduced for #4237 is only ever selected on the zero-vector-part branch,
+        # but the division was evaluated for every element, and `2.0 / t` lowers to
+        # `t.reciprocal() * 2`, whose backward is `-grad * result**2`. For a rotation just short of
+        # a half turn `w` is small and non-zero, so `(1/w)**2` overflows to `inf`, and the exact
+        # 0.0 that the unselected branch receives from `torch.where` meets it as `0 * inf` -> nan.
+        # In float16 that is every rotation within ~0.45 degrees of 180 -- ordinary inputs, not
+        # degenerate ones -- so the division is gated on `~pos`, the mask that actually selects it.
+        # The mirror case is a zero vector part with a small `w`, where the branch *is* selected
+        # and `d(2/w)/dw` overflows against an exactly-zero vector component; `2 / w` is detached
+        # for that reason. Both directions are swept here.
+        dtype = getattr(torch, grad_dtype_name)
+        _skip_if_dtype_unavailable(device, dtype)
+        ws = [0.5, 0.05, 3e-3, 1e-4, 0.0]
+        quaternions = [[w, 1.0, 0.0, 0.0] for w in ws] + [[w, 0.0, 0.0, 0.0] for w in ws]
+        quaternions += [[-w, 1.0, 0.0, 0.0] for w in ws] + [[-w, 0.0, 0.0, 0.0] for w in ws]
+
+        q = torch.tensor(quaternions, device=device, dtype=dtype, requires_grad=True)
+        kornia.geometry.conversions.quaternion_to_axis_angle(q).sum().backward()
+
+        assert q.grad is not None
+        finite = torch.isfinite(q.grad).all(dim=-1)
+        assert finite.all(), (
+            f"kornia#4237: non-finite gradient at {[quaternions[i] for i in (~finite).nonzero().flatten().tolist()]}"
+            f" in {grad_dtype_name}: {q.grad[~finite]}"
+        )
+
 
 class TestQuaternionToAngleAxis(BaseTester):
     def test_smoke(self, device, dtype):
