@@ -97,14 +97,15 @@ class StereoCamera:
                 f"Expected 'rectified_right_camera' to have 3 dimension. Got {rectified_right_camera.shape}."
             )
 
-        if rectified_left_camera.shape[:1] == (3, 4):
+        if rectified_left_camera.shape[-2:] != (3, 4):
             raise StereoException(
-                f"Expected each 'rectified_left_camera' to be of shape (3, 4).Got {rectified_left_camera.shape[:1]}."
+                f"Expected each 'rectified_left_camera' to be of shape (3, 4). Got {rectified_left_camera.shape[-2:]}."
             )
 
-        if rectified_right_camera.shape[:1] == (3, 4):
+        if rectified_right_camera.shape[-2:] != (3, 4):
             raise StereoException(
-                f"Expected each 'rectified_right_camera' to be of shape (3, 4).Got {rectified_right_camera.shape[:1]}."
+                "Expected each 'rectified_right_camera' to be of shape (3, 4). "
+                f"Got {rectified_right_camera.shape[-2:]}."
             )
 
         # Ensure same devices for cameras.

@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from kornia.geometry.camera import StereoCamera
+from kornia.geometry.camera.stereo import StereoException
 
 from testing.base import BaseTester
 
@@ -184,6 +185,16 @@ class _SmokeTestData:
 
 class TestStereoCamera(BaseTester):
     """Test class for :class:`~kornia.geometry.camera.stereo.StereoCamera`"""
+
+    @pytest.mark.parametrize("camera_index", [0, 1])
+    @pytest.mark.parametrize("shape", [(3, 3), (4, 4), (3, 5)])
+    def test_exception_invalid_camera_shape(self, batch_size, device, dtype, camera_index, shape):
+        cameras = list(_SmokeTestData._create_stereo_camera(batch_size, device, dtype, tx_fx=-10))
+        cameras[camera_index] = torch.nn.functional.pad(cameras[camera_index], (0, shape[1] - 4, 0, shape[0] - 3))
+        camera_name = "rectified_left_camera" if camera_index == 0 else "rectified_right_camera"
+
+        with pytest.raises(StereoException, match=f"Expected each '{camera_name}' to be of shape"):
+            StereoCamera(*cameras)
 
     @staticmethod
     def _create_disparity_tensor(batch_size, height, width, max_disparity, device, dtype):
