@@ -18,6 +18,7 @@
 
 import torch
 
+from kornia.geometry.calibration import distort_points, undistort_points
 from kornia.geometry.camera.distortion_kannala_brandt import (
     distort_points_kannala_brandt,
     undistort_points_kannala_brandt,
@@ -130,11 +131,43 @@ class BrownConradyTransform:
         Returns:
             Distorted two-dimensional points in the same coordinate convention.
 
-        Raises:
-            NotImplementedError: The Brown-Conrady transform interface is
-                declared here, but the concrete computation is not implemented.
         """
-        raise NotImplementedError
+        fx, fy, cx, cy = (
+            params[..., 0],
+            params[..., 1],
+            params[..., 2],
+            params[..., 3],
+        )
+        zero = torch.zeros_like(fx)
+        one = torch.ones_like(fx)
+
+        K = torch.stack(
+            (
+                torch.stack((fx, zero, cx), dim=-1),
+                torch.stack((zero, fy, cy), dim=-1),
+                torch.stack((zero, zero, one), dim=-1),
+            ),
+            dim=-2,
+        )
+
+        identity = torch.eye(3, device=params.device, dtype=params.dtype)
+
+        point_data = points.data
+        squeeze_point_dim = point_data.ndim == params.ndim
+        if squeeze_point_dim:
+            point_data = point_data.unsqueeze(-2)
+
+        distorted = distort_points(
+            point_data,
+            K,
+            params[..., 4:],
+            new_K=identity,
+        )
+
+        if squeeze_point_dim:
+            distorted = distorted.squeeze(-2)
+
+        return Vector2(distorted)
 
     def undistort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         """Remove Brown-Conrady lens distortion from observed points.
@@ -149,12 +182,43 @@ class BrownConradyTransform:
             Undistorted two-dimensional points that approximate the ideal
             pinhole projection.
 
-        Raises:
-            NotImplementedError: The Brown-Conrady inverse transform interface
-                is declared here, but the concrete computation is not
-                implemented.
         """
-        raise NotImplementedError
+        fx, fy, cx, cy = (
+            params[..., 0],
+            params[..., 1],
+            params[..., 2],
+            params[..., 3],
+        )
+        zero = torch.zeros_like(fx)
+        one = torch.ones_like(fx)
+
+        K = torch.stack(
+            (
+                torch.stack((fx, zero, cx), dim=-1),
+                torch.stack((zero, fy, cy), dim=-1),
+                torch.stack((zero, zero, one), dim=-1),
+            ),
+            dim=-2,
+        )
+
+        identity = torch.eye(3, device=params.device, dtype=params.dtype)
+
+        point_data = points.data
+        squeeze_point_dim = point_data.ndim == params.ndim
+        if squeeze_point_dim:
+            point_data = point_data.unsqueeze(-2)
+
+        undistorted = undistort_points(
+            point_data,
+            K,
+            params[..., 4:],
+            new_K=identity,
+        )
+
+        if squeeze_point_dim:
+            undistorted = undistorted.squeeze(-2)
+
+        return Vector2(undistorted)
 
 
 class KannalaBrandtK3Transform:

@@ -18,13 +18,19 @@
 import pytest
 import torch
 
+from kornia.geometry.calibration import distort_points, undistort_points
+
 from kornia.geometry.camera import (
     distort_points_affine,
     distort_points_kannala_brandt,
     undistort_points_kannala_brandt,
 )
 from kornia.geometry.vector import Vector2
-from kornia.sensors.camera.distortion_model import AffineTransform, KannalaBrandtK3Transform
+from kornia.sensors.camera.distortion_model import (
+    AffineTransform,
+    BrownConradyTransform,
+    KannalaBrandtK3Transform,
+)
 
 from testing.base import BaseTester
 
@@ -150,3 +156,171 @@ class TestKannalaBrandtK3Transform(BaseTester):
         actual = distortion.undistort(params, Vector2(distorted)).data
 
         self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+
+class TestBrownConradyTransform(BaseTester):
+    def test_batched_distort_preserves_batch_shape(self, device, dtype):
+        distortion = BrownConradyTransform()
+
+        points = torch.tensor(
+            [[0.1, 0.2], [-0.2, 0.15]],
+            device=device,
+            dtype=dtype,
+        )
+
+        params = torch.tensor(
+            [
+                [300.0, 320.0, 160.0, 120.0, 0.01, -0.001, 0.0005, -0.0003, 0.0001, -0.0001, 0.00005, -0.00002],
+                [280.0, 300.0, 150.0, 110.0, 0.02, -0.002, 0.0004, -0.0002, 0.0002, -0.0001, 0.00003, -0.00001],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        actual = distortion.distort(params, Vector2(points)).data
+
+        assert actual.shape == points.shape
+
+    def test_batched_undistort_preserves_batch_shape(self, device, dtype):
+        distortion = BrownConradyTransform()
+
+        normalized = torch.tensor(
+            [[0.1, 0.2], [-0.2, 0.15]],
+            device=device,
+            dtype=dtype,
+        )
+
+        params = torch.tensor(
+            [
+                [300.0, 320.0, 160.0, 120.0, 0.01, -0.001, 0.0005, -0.0003, 0.0001, -0.0001, 0.00005, -0.00002],
+                [280.0, 300.0, 150.0, 110.0, 0.02, -0.002, 0.0004, -0.0002, 0.0002, -0.0001, 0.00003, -0.00001],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        distorted = distortion.distort(params, Vector2(normalized)).data
+        actual = distortion.undistort(params, Vector2(distorted)).data
+
+        assert actual.shape == normalized.shape
+
+    def test_distort_matches_calibration(self, device, dtype):
+        distortion = BrownConradyTransform()
+
+        points = torch.tensor(
+            [[0.1, 0.2], [-0.2, 0.15]],
+            device=device,
+            dtype=dtype,
+        )
+
+        params = torch.tensor(
+            [
+                300.0,
+                320.0,
+                160.0,
+                120.0,
+                0.01,
+                -0.001,
+                0.0005,
+                -0.0003,
+                0.0001,
+                -0.0001,
+                0.00005,
+                -0.00002,
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        fx, fy, cx, cy = params[:4]
+
+        K = torch.stack(
+            [
+                torch.stack([fx, torch.zeros_like(fx), cx]),
+                torch.stack([torch.zeros_like(fy), fy, cy]),
+                torch.stack(
+                    [
+                        torch.zeros_like(fx),
+                        torch.zeros_like(fx),
+                        torch.ones_like(fx),
+                    ]
+                ),
+            ]
+        )
+
+        identity = torch.eye(3, device=device, dtype=dtype)
+
+        expected = distort_points(
+            points,
+            K,
+            params[4:],
+            new_K=identity,
+        )
+
+        actual = distortion.distort(params, Vector2(points)).data
+
+        self.assert_close(actual, expected)
+
+    def test_undistort_matches_calibration(self, device, dtype):
+        distortion = BrownConradyTransform()
+
+        normalized = torch.tensor(
+            [[0.1, 0.2], [-0.2, 0.15]],
+            device=device,
+            dtype=dtype,
+        )
+
+        params = torch.tensor(
+            [
+                300.0,
+                320.0,
+                160.0,
+                120.0,
+                0.01,
+                -0.001,
+                0.0005,
+                -0.0003,
+                0.0001,
+                -0.0001,
+                0.00005,
+                -0.00002,
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        fx, fy, cx, cy = params[:4]
+
+        K = torch.stack(
+            [
+                torch.stack([fx, torch.zeros_like(fx), cx]),
+                torch.stack([torch.zeros_like(fy), fy, cy]),
+                torch.stack(
+                    [
+                        torch.zeros_like(fx),
+                        torch.zeros_like(fx),
+                        torch.ones_like(fx),
+                    ]
+                ),
+            ]
+        )
+
+        identity = torch.eye(3, device=device, dtype=dtype)
+
+        distorted = distort_points(
+            normalized,
+            K,
+            params[4:],
+            new_K=identity,
+        )
+
+        expected = undistort_points(
+            distorted,
+            K,
+            params[4:],
+            new_K=identity,
+        )
+
+        actual = distortion.undistort(params, Vector2(distorted)).data
+
+        self.assert_close(actual, expected)
