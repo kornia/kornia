@@ -483,7 +483,6 @@ call	builtins.AssertionError	tests/geometry/transform/test_crop3d.py::TestCenter
 call	builtins.AssertionError	tests/geometry/transform/test_crop3d.py::TestCenterCrop3D::test_center_crop_357_batch[cpu-bfloat16-crop_size2]
 call	builtins.AssertionError	tests/geometry/transform/test_crop3d.py::TestCropByBoxes3D::test_crop_by_boxes_no_resizing[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_crop3d.py::TestCropByBoxes3D::test_crop_by_boxes_resizing[cpu-bfloat16]
-call	builtins.AssertionError	tests/geometry/transform/test_elastic_transform.py::TestElasticTransform::test_values[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/transform/test_homography_warper.py::TestHomographyWarper3D::test_normalize_homography_identity[cpu-bfloat16-1]
 call	builtins.AssertionError	tests/geometry/transform/test_homography_warper.py::TestHomographyWarper3D::test_normalize_homography_identity[cpu-bfloat16-3]
 call	builtins.AssertionError	tests/geometry/transform/test_homography_warper.py::TestHomographyWarper::test_normalize_homography_identity[cpu-bfloat16-1]
