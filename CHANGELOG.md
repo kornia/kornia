@@ -365,7 +365,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * Corrected stereo disparity validation errors to describe the required channels-last
-  `(B, H, W, 1)` layout and report the received shape. (Fixes #4374; PR number pending)
+  `(B, H, W, 1)` layout and report the received shape. (#4380)
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
   while the implementation preserves ONNX export compatibility. (#4358)
