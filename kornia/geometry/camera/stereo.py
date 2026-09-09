@@ -196,7 +196,7 @@ class StereoCamera:
 
         # Ensure that tx * fx is negative and exists.
         tx_fx = rectified_right_camera[..., 0, 3]
-        if not is_exporting() and torch.all(torch.gt(tx_fx, 0)):
+        if not is_exporting() and tx_fx.numel() > 0 and torch.all(torch.gt(tx_fx, 0)):
             raise StereoException(f"Expected :math:`T_x * f_x` to be negative. Got {tx_fx}.")
 
     @property

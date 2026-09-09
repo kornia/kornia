@@ -441,6 +441,16 @@ def warp_frame_depth(
     KORNIA_CHECK_SHAPE(src_trans_dst, ["B", "4", "4"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
 
+    if (
+        image_src.shape[0] == 0
+        and depth_dst.shape[0] == 0
+        and src_trans_dst.shape[0] == 0
+        and camera_matrix.shape[0] == 0
+    ):
+        output_shape = (0, image_src.shape[1], depth_dst.shape[-2], depth_dst.shape[-1])
+        output_zero = image_src.reshape(-1)[:1].sum() * 0.0
+        return output_zero.reshape(1, 1, 1, 1).expand(output_shape)
+
     # unproject source points to camera frame as (B, H, W, 3) directly — avoids two permutes
     points_3d_dst: torch.Tensor = depth_to_3d_v2(depth_dst.squeeze(1), camera_matrix, normalize_points)  # BxHxWx3
 
