@@ -247,9 +247,6 @@ class KannalaBrandtK3Transform:
         Returns:
             Distorted two-dimensional points following the K3 fisheye model.
 
-        Raises:
-            NotImplementedError: The K3 distortion interface is declared here,
-                but the concrete computation is not implemented.
         """
         return Vector2(distort_points_kannala_brandt(points.data, params))
 
@@ -265,8 +262,5 @@ class KannalaBrandtK3Transform:
             Undistorted normalized points that approximate ideal pinhole
             coordinates.
 
-        Raises:
-            NotImplementedError: The K3 inverse distortion interface is
-                declared here, but the concrete computation is not implemented.
         """
         return Vector2(undistort_points_kannala_brandt(points.data, params))
