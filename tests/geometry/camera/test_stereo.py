@@ -213,6 +213,18 @@ class TestStereoCamera(BaseTester):
         assert stereo_camera.Q.shape == (batch_size, 4, 4)
         assert stereo_camera.Q.dtype in (torch.float16, torch.float32, torch.float64)
 
+    def test_empty_batch_4281(self, device, dtype):
+        # Regression for kornia#4281: an empty stereo rig is vacuously valid.
+        left_rectified_camera = torch.zeros(0, 3, 4, device=device, dtype=dtype)
+        right_rectified_camera = torch.zeros(0, 3, 4, device=device, dtype=dtype)
+
+        stereo_camera = StereoCamera(left_rectified_camera, right_rectified_camera)
+
+        assert stereo_camera.batch_size == 0
+        assert stereo_camera.Q.shape == (0, 4, 4)
+        assert stereo_camera.Q.dtype == dtype
+        assert stereo_camera.Q.device == device
+
     def test_stereo_camera_attributes_real(self, batch_size, device, dtype):
         """Test proper setup of the class for real data."""
         left_rectified_camera, right_rectified_camera = _RealTestData._get_real_stereo_camera(batch_size, device, dtype)

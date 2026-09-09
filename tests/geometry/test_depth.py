@@ -581,6 +581,22 @@ class TestWarpFrameDepth(BaseTester):
         image_dst = kornia.geometry.depth.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
         assert image_dst.shape == (1, 2, height, width)
 
+    def test_empty_batch_4281(self, device, dtype):
+        # Regression for kornia#4281: output geometry comes from the destination depth map.
+        image_src = torch.zeros(0, 3, 2, 3, device=device, dtype=dtype, requires_grad=True)
+        depth_dst = torch.zeros(0, 1, 4, 5, device=device, dtype=dtype)
+        src_trans_dst = torch.zeros(0, 4, 4, device=device, dtype=dtype)
+        camera_matrix = torch.zeros(0, 3, 3, device=device, dtype=dtype)
+
+        image_dst = kornia.geometry.depth.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
+
+        assert image_dst.shape == (0, 3, 4, 5)
+        assert image_dst.dtype == dtype
+        assert image_dst.device == device
+        assert image_dst.requires_grad
+        image_dst.sum().backward()
+        assert image_src.grad is not None
+
     def test_translation(self, device, dtype):
         # this is for normalize_points=False
         image_src = torch.tensor(
