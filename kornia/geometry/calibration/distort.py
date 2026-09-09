@@ -34,20 +34,10 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
         - ``return_inverse=True`` returns the inverse of ``Pz @ R``. That is the branch
           :func:`~kornia.geometry.calibration.undistort_points` applies, and it is what reproduces OpenCV's
           ``undistortPoints`` on this repository's own reference values.
-        - ``return_inverse=False`` returns ``Pz @ R.T``, so the two branches are not inverses of each other.
+        - ``return_inverse=False`` returns ``Pz @ R``, matching OpenCV's tilt projection.
         - Scalar angles return :math:`(3, 3)`. For any non-scalar angle shape, all input dimensions
           are flattened and the result is ``(taux.numel(), 3, 3)``; multiple batch axes are not preserved.
           This is tracked as `#4324 <https://github.com/kornia/kornia/issues/4324>`_.
-
-    .. warning::
-        OpenCV's ``computeTiltProjectionMatrix``, which this implementation cites, returns ``Pz @ R`` for the
-        forward branch, and so does the tilt step written out at the top of the ``kornia.geometry.calibration``
-        documentation page; the branch here returns ``Pz @ R.T``. Tracked as
-        `#4276 <https://github.com/kornia/kornia/issues/4276>`_. The consequence is silent while both angles
-        are zero and otherwise makes
-        :func:`~kornia.geometry.calibration.distort_points` and
-        :func:`~kornia.geometry.calibration.undistort_points` stop being inverses. The behaviour is documented
-        as it is by regression tests.
 
     Args:
         taux: Rotation angle in radians around the :math:`x`-axis with any shape, matching the other angle.
@@ -93,7 +83,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
         [R[..., 2, 2], zero, -R[..., 0, 2], zero, R[..., 2, 2], -R[..., 1, 2], zero, zero, one], -1
     ).reshape(-1, 3, 3)
 
-    tilt = Pz @ R.transpose(-1, -2)
+    tilt = Pz @ R
     if ndim == 0:
         tilt = torch.squeeze(tilt)
 
@@ -127,10 +117,6 @@ def distort_points(
           With non-zero tilt, only unbatched inputs or one leading batch dimension are supported; two or more leading
           dimensions are flattened by :func:`~kornia.geometry.calibration.tilt_projection`. ONNX export always
           takes that path, including for zero tilt. Tracked as `#4324 <https://github.com/kornia/kornia/issues/4324>`_.
-
-    .. warning::
-        Non-zero tilt uses the forward branch of :func:`tilt_projection` and breaks the inverse round trip;
-        see that function and `#4276 <https://github.com/kornia/kornia/issues/4276>`_ for the explanation.
 
     .. warning::
         ``torch.compile(fullgraph=True)`` fails on this function because the tilt test reads the coefficient

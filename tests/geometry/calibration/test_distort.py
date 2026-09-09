@@ -30,7 +30,7 @@ def _pz_r(taux, tauy, device, dtype):
 
     Uses the independent Euler-angle test helper for ``R = Ry(tauy) @ Rx(taux)``;
     ``Pz`` follows OpenCV's ``modules/calib3d/src/distortion_model.hpp``.
-    OpenCV's tilt projection is ``Pz @ R``; kornia returns ``Pz @ R.T`` (#4276).
+    OpenCV's tilt projection is ``Pz @ R``.
     """
     taux = torch.tensor([taux], device=device, dtype=dtype)
     tauy = torch.tensor([tauy], device=device, dtype=dtype)
@@ -243,35 +243,15 @@ class TestDistortPoints(BaseTester):
         self.assert_close(distort_points(expected, K, zero_dist), expected, atol=0.0, rtol=0.0)
 
     def test_convention_tilt_projection_zero_angles_are_the_identity(self, device, dtype):
-        # Convention pin: tilt_projection(0, 0) is exactly eye(3) in BOTH branches,
-        # which is why a caller who leaves the 13th and 14th coefficients at zero never meets kornia#4276 -- and
-        # why the round trip pinned in test_undistort.py closes to 0.0 with tau = 0 and not with tau != 0.
-        # Snippet used to generate expected: torch.equal(tilt_projection(tensor([0.]), tensor([0.])), eye(3)[None])
-        # executed 2026-09-06 on commit c0b50ad7 (torch 2.14.0) -> True on cpu for float32/float64/float16/
-        # bfloat16 and on mps for float32/float16; same for return_inverse=True.
+        # Both branches reduce to the identity when tilt is disabled.
         zero = torch.zeros(1, device=device, dtype=dtype)
         identity = torch.eye(3, device=device, dtype=dtype)[None]
         assert torch.equal(tilt_projection(zero, zero), identity)
         self.assert_close(tilt_projection(zero, zero, True), identity, atol=0.0, rtol=0.0)
 
     def test_convention_tilt_projection_inverse_branch_inverts_pz_times_r(self, device, dtype):
-        # Convention pin: the ``return_inverse=True`` branch is the inverse of OpenCV's
-        # ``Pz @ R``, not of kornia's own forward branch -- ``(Pz @ R) @ inverse`` is the identity at the dtype
-        # tolerance, while ``(Pz @ R.T) @ inverse`` (kornia's forward reading, kornia#4276) is not.
-        # This pin is PERMANENT and outlives the #4276 repair, and that is its point: the strict xfail below only
-        # asks for ``forward @ inverse == I``, which the WRONG repair -- moving the inverse branch to
-        # ``inv(Pz @ R.T)`` -- would satisfy just as well. #4276's Expected section forbids that repair because
-        # undistort_points uses this branch and is what currently reproduces the repo's own cv2.undistortPoints
-        # values (TestUndistortPoints::test_opencv_all_coeff in test_undistort.py). Written as a matrix product
-        # rather than torch.linalg.inv so it runs on mps.
-        # Snippet used to generate expected: ((Pz @ R) @ tilt_projection([0.1], [0.2], True) - eye(3)).abs().max()
-        # executed 2026-09-06 on commit c0b50ad7 (torch 2.14.0), differenced in the working dtype -> cpu
-        # float32 1.19e-07, float64 2.22e-16, float16 4.88e-04, bfloat16 3.91e-03; mps float32 1.19e-07,
-        # float16 4.88e-04. The same product built from Pz @ R.T is 0.396 away from the identity on every cell.
-        # The second assertion uses a 0.1 SEPARATOR rather than ``not torch.allclose``: the identity's zero
-        # entries pull torch.allclose's default atol down to 1e-08, which the correct reading's own float32
-        # residual (1.19e-07) already exceeds, so ``not allclose`` would hold for BOTH readings and discriminate
-        # nothing. 0.1 sits between the two populations (worst correct cell 3.91e-03, wrong reading 0.396).
+        # Preserve OpenCV's inverse independently of the forward/inverse round trip (#4276).
+        # A simultaneous change to both branches must not hide a convention error.
         r, p_z = _pz_r(0.1, 0.2, device, dtype)
         inverse = tilt_projection(
             torch.tensor([0.1], device=device, dtype=dtype), torch.tensor([0.2], device=device, dtype=dtype), True
@@ -281,40 +261,13 @@ class TestDistortPoints(BaseTester):
         wrong = (p_z @ r.transpose(-1, -2)) @ inverse
         assert (wrong - identity).abs().max().item() > 0.1
 
-    def test_wart_tilt_projection_forward_is_pz_times_r_transpose_4276(self, device, dtype):
-        # Wart pin for kornia#4276: the forward branch returns ``Pz @ R.T``
-        # where OpenCV's computeTiltProjectionMatrix returns ``Pz @ R``, while the return_inverse=True branch IS
-        # the OpenCV inverse (pinned permanently by
-        # test_convention_tilt_projection_inverse_branch_inverts_pz_times_r above). The consequence is that the two
-        # branches of the same function are not inverses of each other: forward @ inverse is visibly not eye(3).
-        # taux = 0.1 != tauy = 0.2, so Pz @ R and Pz @ R.T are different matrices here (they coincide at 0, 0).
-        # Snippet used to generate expected: (tilt_projection([0.1], [0.2]) - Pz @ R.transpose(-1, -2)).abs().max()
-        # executed 2026-09-06 on commit c0b50ad7 (torch 2.14.0) -> 0.0 on cpu for float32/float64/float16/
-        # bfloat16 and on mps for float32/float16; forward @ inverse deviates from eye(3) by 0.3963 (cpu float32).
-        # The last two assertions use a 0.1 separator for the same reason as the inverse-branch pin above:
-        # ``not torch.allclose`` against an identity is satisfied by a 1e-07 residual too, so it would not flip
-        # when #4276 is repaired. Pins the CURRENT value; NOT a contract; delete when #4276 is repaired.
+    def test_convention_tilt_projection_forward_is_pz_times_r_4276(self, device, dtype):
         r, p_z = _pz_r(0.1, 0.2, device, dtype)
         taux = torch.tensor([0.1], device=device, dtype=dtype)
         tauy = torch.tensor([0.2], device=device, dtype=dtype)
-        forward = tilt_projection(taux, tauy)
-        self.assert_close(forward, p_z @ r.transpose(-1, -2), atol=0.0, rtol=0.0)
-        assert (forward - p_z @ r).abs().max().item() > 0.1
-        inverse = tilt_projection(taux, tauy, True)
-        identity = torch.eye(3, device=device, dtype=dtype)[None]
-        assert (forward @ inverse - identity).abs().max().item() > 0.1
+        self.assert_close(tilt_projection(taux, tauy), p_z @ r)
 
-    @pytest.mark.xfail(
-        strict=True, reason="kornia#4276: the forward tilt branch returns Pz @ R.T, so it is not the inverse's inverse"
-    )
     def test_convention_tilt_projection_branches_are_inverses_4276(self, device, dtype):
-        # Intended contract, asserted as a strict xfail so the repair makes it XPASS and forces this mark out: the
-        # two branches of tilt_projection document themselves as a matrix and its inverse
-        # (``return_inverse``: "False to obtain the tilt projection matrix. True for the inverse matrix."), so
-        # ``forward @ inverse`` must be the identity. Settled by the function's own signature and by #4276's
-        # Expected section, which fixes the FORWARD branch and leaves the inverse branch -- the one that already
-        # matches OpenCV and the repo's own cv2 pin -- untouched. The pin does not assert any particular OpenCV
-        # form; #4276's ``Pz @ R`` claim comes from reading OpenCV's source, not from executing it here.
         taux = torch.tensor([0.1], device=device, dtype=dtype)
         tauy = torch.tensor([0.2], device=device, dtype=dtype)
         product = tilt_projection(taux, tauy) @ tilt_projection(taux, tauy, True)

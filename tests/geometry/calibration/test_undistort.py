@@ -190,6 +190,9 @@ class TestUndistortPoints(BaseTester):
         ptsu = undistort_points(pts, K, dist)
         self.assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
 
+        # Forward distortion of the independent OpenCV values must recover the input (#4276).
+        self.assert_close(distort_points(ptsu_expected, K, dist), pts, rtol=1e-4, atol=1e-4)
+
         new_K = K * 2
         new_K[2, 2] = 1
         # Expected output generated with OpenCV:
@@ -314,30 +317,18 @@ class TestUndistortPoints(BaseTester):
         self.assert_close(undistort_points(distorted, K, dist), points)
         self.assert_close(undistort_points(distorted, K, dist, num_iters=50), points)
 
-    def test_wart_distort_undistort_round_trip_breaks_with_tilt_4276(self, device, dtype):
-        # Wart pin for kornia#4276: distort_points and undistort_points stop being
-        # inverses as soon as the 13th and 14th coefficients (taux, tauy) are non-zero, because distort_points
-        # applies tilt_projection's FORWARD branch (Pz @ R.T) while undistort_points applies the return_inverse
-        # branch (inv(Pz @ R)) -- see test_wart_tilt_projection_forward_is_pz_times_r_transpose_4276 in
-        # test_distort.py. With taux = 0.1, tauy = 0.2 the round trip misses by tens of pixels; with the same
-        # 14-coefficient vector and both tilt angles zero it closes within the dtype tolerance.
-        # taux != tauy so a symmetric tilt cannot mask the defect.
-        # The two 14-coefficient vectors below share the SAME radial and tangential part, so the only difference
-        # between the two arms is the tilt: with tau = 0 the round trip on genuinely distorted points closes, and
-        # with tau != 0 it misses by tens of pixels.
-        # Snippet used to generate expected: (undistort_points(distort_points(pts, K, d14), K, d14) - pts)
-        # .abs().max() executed 2026-09-06 on commit c0b50ad7 (torch 2.14.0), tau = (0.1, 0.2) -> cpu
-        # float32 47.765, float64 47.765, float16 47.812, bfloat16 47.5; mps float32 47.765, float16 47.75. The
-        # same vector with tau = 0 gives 3.81e-05 (cpu float32) / 0.0 (cpu bfloat16).
-        # Pins the CURRENT behavior; NOT a contract; delete when #4276 is repaired.
+    def test_convention_distort_undistort_round_trip_with_tilt_4276(self, device, dtype):
+        # Unequal tilt angles plus non-zero radial/tangential coefficients expose #4276.
         points = torch.tensor([[[54.0, 53.0], [-16.0, 23.0]]], device=device, dtype=dtype)
         K = _k_asymmetric(device, dtype)
         radial = torch.tensor([[0.1, 0.01, 0.001, 0.001]], device=device, dtype=dtype)
         zero_tilt = torch.cat([radial, torch.zeros(1, 10, device=device, dtype=dtype)], -1)
         tilted = torch.cat([zero_tilt[:, :12], torch.tensor([[0.1, 0.2]], device=device, dtype=dtype)], -1)
-        assert not torch.allclose(
-            undistort_points(distort_points(points, K, tilted), K, tilted).float(), points.float()
-        )
+        # float16 accumulates two ulps through forward tilt and iterative inversion;
+        # increasing num_iters from 5 to 50 leaves the same 0.0625-pixel rounding floor.
+        rtol = 2 * torch.finfo(dtype).eps if dtype == torch.float16 else None
+        atol = 0.0 if dtype == torch.float16 else None
+        self.assert_close(undistort_points(distort_points(points, K, tilted), K, tilted), points, rtol=rtol, atol=atol)
         self.assert_close(undistort_points(distort_points(points, K, zero_tilt), K, zero_tilt), points)
 
     def test_convention_new_K_denormalizes_and_K_normalizes(self, device, dtype):
