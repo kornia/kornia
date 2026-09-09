@@ -118,7 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-tree MPS workarounds stay. (#4202)
 
 ### Breaking changes
-* Removed the unused `preprocess_boxes` helper, which had no public export or caller. (#4181)
+* Removed the unused `preprocess_boxes` helper, which had no public export or caller. (#4181, #4321)
 
 * Non-maxima suppression applies one border rule at every window size. `NonMaximaSuppression2d` /
   `nms2d` with a window larger than `(7, 7)`, and `NonMaximaSuppression3d` / `nms3d`, no longer report
