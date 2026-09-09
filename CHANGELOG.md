@@ -365,7 +365,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * Fixed fixture teardown between files when running half-precision tests with
-  `--isolate-half-precision`, including reporting parent fixture finalizer errors. (#4149)
+  `--isolate-half-precision`, including reporting parent fixture finalizer errors. (#4388)
 
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
