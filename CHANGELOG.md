@@ -367,7 +367,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Corrected the matrix-shape checks shared by `PinholeCamera` and `PinholeCamerasList`, the
   `pixel2cam` coordinate-shape check, and the `cam2pixel` coordinate/projection checks. Invalid
   inputs now raise the intended `ValueError` instead of being accepted or failing later in tensor
-  operations. The rank-4 matrices used by `PinholeCamerasList` remain supported. (#4266)
+  operations. The rank-4 matrices used by `PinholeCamerasList` remain supported. (#4387)
 
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
