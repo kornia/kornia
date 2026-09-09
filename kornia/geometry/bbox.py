@@ -373,9 +373,9 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
     r"""Convert 3D bounding boxes to masks. Covered area is 1. and the remaining is 0.
 
     Convention:
-        ``size`` is ``(depth, height, width)`` and the mask comes back as :math:`(B, 1, depth, height, width)` in
-        ``float32`` whatever the input dtype, unlike :func:`bbox_to_mask`, which keeps the input dtype and has no
-        channel axis, and :meth:`kornia.geometry.boxes.Boxes3D.to_mask`, which keeps the box dtype and returns
+        ``size`` is ``(depth, height, width)`` and the mask comes back as :math:`(B, 1, depth, height, width)` in the
+        input dtype, like :func:`bbox_to_mask`, which keeps the input dtype and has no channel axis, and
+        :meth:`kornia.geometry.boxes.Boxes3D.to_mask`, which keeps the box dtype and returns
         :math:`(N, depth, height, width)`. After :func:`validate_bbox3d`, which raises ``AssertionError`` for an
         invalid box, the bounds are read from fixed vertex positions, truncated toward zero with ``.long()``, and
         compared inclusively, which reads the vertices as inclusive: pass the ``'vertices_plus'`` export. The
@@ -386,8 +386,7 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         The truncation differs from the inclusive
         raw-float comparison of :func:`bbox_to_mask` and the rounding of
         :meth:`~kornia.geometry.boxes.Boxes3D.to_mask` for fractional coordinates and is tracked in
-        `#4015 <https://github.com/kornia/kornia/issues/4015>`_. The ``float32`` output with a channel axis is
-        tracked in `#4250 <https://github.com/kornia/kornia/issues/4250>`_. Validation raises rather than returning
+        `#4015 <https://github.com/kornia/kornia/issues/4015>`_. Validation raises rather than returning
         ``False``, `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Batched :math:`(B, N, 8, 3)` input passes
         :func:`validate_bbox3d` but is rejected here with :class:`~kornia.core.exceptions.ShapeError`; flatten to
         :math:`(B \cdot N, 8, 3)` first.
@@ -400,7 +399,7 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         size: depth, height and width of the masked image.
 
     Returns:
-        the output mask tensor, shape of :math:`(B, 1, depth, height, width)` and dtype ``float32``.
+            the output mask tensor, shape of :math:`(B, 1, depth, height, width)` and dtype of ``boxes``.
 
     Examples:
         >>> boxes = torch.tensor([[
@@ -467,7 +466,7 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         & ((y[None, :] >= y_min[:, None]) & (y[None, :] <= y_max[:, None]))[:, None, None, :, None]
         & ((x[None, :] >= x_min[:, None]) & (x[None, :] <= x_max[:, None]))[:, None, None, None, :]
     )  # Shape: (N, 1, D0, D1, D2)
-    return m.float()
+    return m.to(boxes.dtype)
 
 
 def bbox_generator(
