@@ -253,7 +253,13 @@ class CameraModelBase:
 
         See the Convention block on :class:`~kornia.sensors.camera.CameraModelBase`.
         """
-        raise NotImplementedError
+        z = torch.zeros_like(self.fx)
+        row1 = torch.stack((self.fx, z, self.cx), -1)
+        row2 = torch.stack((z, self.fy, self.cy), -1)
+        row3 = torch.stack((z, z, z), -1)
+        K = torch.stack((row1, row2, row3), -2)
+        K[..., -1, -1] = 1.0
+        return K
 
     def K(self) -> torch.Tensor:
         """Return the camera matrix.

@@ -535,3 +535,154 @@ class TestCameraModelBaseParamsValidation:
             AffineTransform(), OrthographicProjection(), self.image_size, torch.ones(4, device=device, dtype=dtype)
         )
         assert tuple(cam.params.shape) == (4,)
+
+
+class TestNonPinholeCameraMatrix(BaseTester):
+    @pytest.mark.parametrize(
+        ("model_type", "num_params"),
+        [
+            (CameraModelType.BROWN_CONRADY, 12),
+            (CameraModelType.KANNALA_BRANDT_K3, 8),
+            (CameraModelType.ORTHOGRAPHIC, 4),
+        ],
+    )
+    def test_matrix_unbatched(self, device, dtype, model_type, num_params):
+        params = torch.zeros(num_params, device=device, dtype=dtype)
+        params[:4] = torch.tensor(
+            [300.0, 320.0, 160.0, 120.0],
+            device=device,
+            dtype=dtype,
+        )
+
+        cam = CameraModel(ImageSize(240, 320), model_type, params)
+
+        expected = torch.tensor(
+            [
+                [300.0, 0.0, 160.0],
+                [0.0, 320.0, 120.0],
+                [0.0, 0.0, 1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        self.assert_close(cam.matrix(), expected)
+
+    @pytest.mark.parametrize(
+        ("model_type", "num_params"),
+        [
+            (CameraModelType.BROWN_CONRADY, 12),
+            (CameraModelType.KANNALA_BRANDT_K3, 8),
+            (CameraModelType.ORTHOGRAPHIC, 4),
+        ],
+    )
+    def test_matrix_batched(self, device, dtype, model_type, num_params):
+        params = torch.zeros(2, num_params, device=device, dtype=dtype)
+        params[:, :4] = torch.tensor(
+            [
+                [300.0, 320.0, 160.0, 120.0],
+                [280.0, 300.0, 150.0, 110.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        cam = CameraModel(ImageSize(240, 320), model_type, params)
+
+        expected = torch.tensor(
+            [
+                [
+                    [300.0, 0.0, 160.0],
+                    [0.0, 320.0, 120.0],
+                    [0.0, 0.0, 1.0],
+                ],
+                [
+                    [280.0, 0.0, 150.0],
+                    [0.0, 300.0, 110.0],
+                    [0.0, 0.0, 1.0],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        self.assert_close(cam.matrix(), expected)
+
+
+class TestNonPinholeCameraProjectUnproject(BaseTester):
+    @pytest.mark.parametrize(
+        ("model_type", "num_params"),
+        [
+            (CameraModelType.BROWN_CONRADY, 12),
+            (CameraModelType.KANNALA_BRANDT_K3, 8),
+            (CameraModelType.ORTHOGRAPHIC, 4),
+        ],
+    )
+    def test_project_unproject_unbatched(self, device, dtype, model_type, num_params):
+        params = torch.zeros(num_params, device=device, dtype=dtype)
+        params[:4] = torch.tensor(
+            [300.0, 320.0, 160.0, 120.0],
+            device=device,
+            dtype=dtype,
+        )
+
+        cam = CameraModel(ImageSize(240, 320), model_type, params)
+
+        points = torch.tensor(
+            [0.3, -0.2, 2.0],
+            device=device,
+            dtype=dtype,
+        )
+
+        projected = cam.project(Vector3(points))
+        unprojected = cam.unproject(projected, points[..., 2])
+
+        self.assert_close(
+            unprojected.data,
+            points,
+            atol=1e-4,
+            rtol=1e-4,
+        )
+
+    @pytest.mark.parametrize(
+        ("model_type", "num_params"),
+        [
+            (CameraModelType.BROWN_CONRADY, 12),
+            (CameraModelType.KANNALA_BRANDT_K3, 8),
+            (CameraModelType.ORTHOGRAPHIC, 4),
+        ],
+    )
+    def test_project_unproject_batched(self, device, dtype, model_type, num_params):
+        params = torch.zeros(2, num_params, device=device, dtype=dtype)
+        params[:, :4] = torch.tensor(
+            [
+                [300.0, 320.0, 160.0, 120.0],
+                [280.0, 300.0, 150.0, 110.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        cam = CameraModel(ImageSize(240, 320), model_type, params)
+
+        points = torch.tensor(
+            [
+                [0.3, -0.2, 2.0],
+                [-0.4, 0.25, 3.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        projected = cam.project(Vector3(points))
+        unprojected = cam.unproject(projected, points[..., 2])
+
+        assert projected.data.shape == (2, 2)
+        assert unprojected.data.shape == points.shape
+
+        self.assert_close(
+            unprojected.data,
+            points,
+            atol=1e-4,
+            rtol=1e-4,
+        )
