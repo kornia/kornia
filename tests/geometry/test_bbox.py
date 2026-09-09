@@ -34,6 +34,7 @@ from kornia.geometry.bbox import (
     validate_bbox3d,
 )
 from kornia.geometry.boxes import Boxes3D
+from kornia.geometry.transform.crop3d import crop_and_resize3d, crop_by_boxes3d
 
 from testing.base import BaseTester
 
@@ -510,9 +511,22 @@ class TestBbox3D(BaseTester):
         with pytest.raises(AssertionError, match="finite"):
             bbox_to_mask3d(invalid, (6, 6, 6))
 
+        # The other two callers are the src_box and dst_box of _crop_by_boxes3d_to_size, reached
+        # through crop_by_boxes3d and crop_and_resize3d. They need their own cells: the dst_box is
+        # caught earlier by infer_bbox_shape3d, but the src_box is not, because crop_by_boxes3d
+        # sizes its output from the *dst* box. With the crop3d guard reverted both calls below
+        # accept the non-finite src_box without raising, while the two cells above stay green.
+        volume = torch.arange(64, device=device, dtype=dtype).reshape(1, 1, 4, 4, 4)
+        with pytest.raises(AssertionError, match="finite"):
+            crop_by_boxes3d(volume, invalid, box)
+        with pytest.raises(AssertionError, match="finite"):
+            crop_and_resize3d(volume, invalid, (2, 2, 2))
+
         # the valid box is untouched
         assert len(infer_bbox_shape3d(box)) == 3
         assert bbox_to_mask3d(box, (6, 6, 6)).shape == (1, 1, 6, 6, 6)
+        assert crop_by_boxes3d(volume, box, box).shape == (1, 1, 5, 5, 5)
+        assert crop_and_resize3d(volume, box, (2, 2, 2)).shape == (1, 1, 2, 2, 2)
 
     def test_generator_scalar_inputs(self, device, dtype):
         args = [torch.tensor(value, device=device, dtype=dtype) for value in (1, 2, 3, 4, 5, 6)]

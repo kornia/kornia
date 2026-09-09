@@ -233,10 +233,13 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
         The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked in
         `#3934 <https://github.com/kornia/kornia/issues/3934>`_; the exclusive-export trap is
         `#4009 <https://github.com/kornia/kornia/issues/4009>`_. Validation raises ``AssertionError`` rather than
-        returning ``False``, see `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Batched :math:`(B, N, 8, 3)`
-        input is rejected with :class:`~kornia.core.exceptions.ShapeError`, as the 2D helpers reject
-        :math:`(B, N, 4, 2)`; flatten to :math:`(B \cdot N, 8, 3)` first. :func:`validate_bbox3d` still accepts
-        the rank-4 form and reshapes internally, which is why the rejection lives here rather than there.
+        returning ``False`` for a shape or extent failure, see
+        `#4013 <https://github.com/kornia/kornia/issues/4013>`_; a non-finite coordinate is the one case
+        :func:`validate_bbox3d` reports as ``False``, and this function raises ``AssertionError`` for it too.
+        Batched :math:`(B, N, 8, 3)` input is rejected with :class:`~kornia.core.exceptions.ShapeError`, as
+        the 2D helpers reject :math:`(B, N, 4, 2)`; flatten to :math:`(B \cdot N, 8, 3)` first.
+        :func:`validate_bbox3d` still accepts the rank-4 form and reshapes internally, which is why the
+        rejection lives here rather than there.
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
@@ -399,7 +402,9 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         :meth:`~kornia.geometry.boxes.Boxes3D.to_mask` for fractional coordinates and is tracked in
         `#4015 <https://github.com/kornia/kornia/issues/4015>`_. The ``float32`` output with a channel axis is
         tracked in `#4250 <https://github.com/kornia/kornia/issues/4250>`_. Validation raises rather than returning
-        ``False``, `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Batched :math:`(B, N, 8, 3)` input passes
+        ``False`` for a shape or extent failure, `#4013 <https://github.com/kornia/kornia/issues/4013>`_; a
+        non-finite coordinate is reported as ``False`` by :func:`validate_bbox3d` and raised here too.
+        Batched :math:`(B, N, 8, 3)` input passes
         :func:`validate_bbox3d` but is rejected here with :class:`~kornia.core.exceptions.ShapeError`; flatten to
         :math:`(B \cdot N, 8, 3)` first.
 
