@@ -70,6 +70,20 @@ class TestDepthTo3d(BaseTester):
         out_uncached = kornia.geometry.depth.depth_to_3d_v2(depth, camera_matrix)
         self.assert_close(out_cached, out_uncached)
 
+    @pytest.mark.parametrize("normalize_points", [False, True])
+    def test_jit(self, normalize_points, device, dtype):
+        depth = torch.rand(2, 1, 3, 4, device=device, dtype=dtype).add_(1)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).repeat(2, 1, 1)
+        expected = kornia.geometry.depth.depth_to_3d(depth, camera_matrix, normalize_points).permute(0, 2, 3, 1)
+
+        grid_jit = torch.jit.script(kornia.geometry.unproject_meshgrid)
+        grid = grid_jit(3, 4, camera_matrix, normalize_points, device, dtype)
+        self.assert_close(grid * depth[:, 0, ..., None], expected)
+
+        depth_to_3d_jit = torch.jit.script(kornia.geometry.depth.depth_to_3d_v2)
+        self.assert_close(depth_to_3d_jit(depth[:, 0], camera_matrix, normalize_points), expected)
+        self.assert_close(depth_to_3d_jit(depth[:, 0], camera_matrix, normalize_points, grid), expected)
+
     def test_unproject_meshgrid(self, device, dtype):
         # TODO: implement me with batch
         camera_matrix = torch.eye(3, device=device, dtype=dtype).repeat(2, 1, 1)
@@ -277,6 +291,17 @@ class TestDepthToNormals(BaseTester):
 
 
 class TestWarpFrameDepth(BaseTester):
+    @pytest.mark.parametrize("normalize_points", [False, True])
+    def test_jit(self, normalize_points, device, dtype):
+        image = torch.rand(2, 3, 3, 4, device=device, dtype=dtype)
+        depth = torch.rand(2, 1, 3, 4, device=device, dtype=dtype).add_(1)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).repeat(2, 1, 1)
+        transform = torch.eye(4, device=device, dtype=dtype).repeat(2, 1, 1)
+        op = kornia.geometry.depth.warp_frame_depth
+        op_jit = torch.jit.script(op)
+        expected = op(image, depth, transform, camera_matrix, normalize_points)
+        self.assert_close(op_jit(image, depth, transform, camera_matrix, normalize_points), expected)
+
     def test_smoke(self, device, dtype):
         image_src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
         depth_dst = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
