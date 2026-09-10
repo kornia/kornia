@@ -137,10 +137,16 @@ class CameraModelBase:
           the camera-frame ``z``: :class:`~kornia.sensors.camera.projection_model.Z1Projection` multiplies
           the :math:`z = 1` point by it, so the third coordinate of the result is the ``depth`` that was
           passed in, and not a Euclidean ray length.
-        - on the Pinhole path the numbers are those of :doc:`kornia.geometry.camera </geometry.camera>`:
-          :meth:`project` matches :func:`~kornia.geometry.camera.perspective.project_points` and
-          :meth:`unproject` matches :func:`~kornia.geometry.camera.perspective.unproject_points` on the ``K``
-          built from the same ``[fx, fy, cx, cy]``, so the pixels are on the integer-centre grid described in
+        - the Pinhole path uses the same mathematical camera mapping as
+          :doc:`kornia.geometry.camera </geometry.camera>` with ``K`` built from the same ``[fx, fy, cx, cy]``.
+          However, :meth:`project` divides directly by ``z``, whereas
+          :func:`~kornia.geometry.camera.perspective.project_points` multiplies by its reciprocal and skips
+          the divide when ``abs(z) <= 1e-8`` (compared in the working dtype). Results can differ by rounding
+          away from that threshold and differ substantially at or below it: ``[1, 2, 0]`` yields infinities
+          here but finite pixels there. See `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+          :meth:`unproject` corresponds to :func:`~kornia.geometry.camera.perspective.unproject_points`
+          with ``normalize=False`` and depth shaped as ``(*, 1)`` there instead of ``(*,)`` here.
+          Pixels use the integer-centre grid described in
           the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`. The two type systems
           are kept separate by design -- this one takes ``Vector`` objects, that one plain tensors -- which is
           recorded in `#4274 <https://github.com/kornia/kornia/issues/4274>`_.

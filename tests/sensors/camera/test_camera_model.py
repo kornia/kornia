@@ -138,9 +138,9 @@ class TestPinholeCamera(BaseTester):
     def test_convention_projection_matches_geometry_camera_project_points(self, device, dtype):
         # Convention pin (audit labels 5d-sc-01, 5d-sc-02; duplication-ledger row "geometry.camera /
         # sensors.camera", KEEP SEPARATE, kornia#4274): kornia ships two camera type systems and their Pinhole
-        # paths compute the same numbers through different types. ``PinholeModel.project`` takes a Vector3 and
-        # returns a Vector2 whose ``.data`` is BYTE-IDENTICAL to ``kornia.geometry.camera.project_points`` on
-        # the 3x3 K built from the same (fx, fy, cx, cy) -- torch.equal, not a tolerance -- while a raw Tensor
+        # paths share the mathematical mapping through different types. On the exactly representable z=4
+        # fixture below, ``PinholeModel.project`` returns a Vector2 whose data is byte-identical to
+        # ``project_points`` with the same K; general depths can differ through rounding, while a raw Tensor
         # is rejected with AttributeError rather than accepted (the request in the closed #2708).
         # fx = 100 != fy = 50, cx = 4 != cy = 3 and the point is off-axis, so a transposed reading of the
         # parameter vector moves both components; the second arm changes ONE parameter (fy 50 -> 100) and the
@@ -162,6 +162,34 @@ class TestPinholeCamera(BaseTester):
         assert torch.equal(square.data, project_points(points, _k3(device, dtype, symmetric)))
         with pytest.raises(AttributeError, match="has no attribute 'z'"):
             cam.project(points)
+
+        # A non-power-of-two depth exposes direct division versus reciprocal multiplication. On CPU
+        # float32 at 3ced4c71 (torch 2.14.0), x is 170.66665649414062 here versus 170.6666717529297
+        # in project_points. Numerical agreement is approximate; bit identity is not the contract.
+        points = torch.tensor([[5.0, 2.0, 3.0]], device=device, dtype=dtype)
+        projected = cam.project(Vector3(points)).data
+        expected = torch.tensor([[512.0 / 3.0, 109.0 / 3.0]], device=device, dtype=dtype)
+        self.assert_close(projected, expected)
+        self.assert_close(projected, project_points(points, _k3(device, dtype)))
+
+    @pytest.mark.parametrize("z", [0.0, 1e-9, -1e-9, 1e-8, -1e-8])
+    def test_wart_projection_differs_from_geometry_at_small_depth_4267(self, device, dtype, z):
+        # Pin the current #4267 policy difference, including the threshold boundary. Retire or update
+        # this pin when that policy is repaired. Geometry skips division at abs(z) <= 1e-8; sensors
+        # divides unconditionally. In float16 these depths underflow to zero, so expect infinities.
+        cam = _pinhole(device, dtype)
+        points = torch.tensor([[1.0, 2.0, z]], device=device, dtype=dtype)
+        projected = cam.project(Vector3(points)).data
+        geometry = project_points(points, _k3(device, dtype))
+        expected_geometry = torch.tensor([[104.0, 103.0]], device=device, dtype=dtype)
+        self.assert_close(geometry, expected_geometry, atol=0.0, rtol=0.0)
+        assert not torch.equal(projected, geometry)
+        if points[0, 2] == 0:
+            assert torch.isinf(projected).all()
+        else:
+            assert torch.isfinite(projected).all()
+            assert (projected.abs() > 1e9).all()
+            assert (projected.sign() == points[0, 2].sign()).all()
 
     def test_convention_unproject_takes_the_camera_frame_z_as_depth(self, device, dtype):
         # Convention pin (audit labels 5d-sc-03, 5d-sc-40; pre-finding P6): the ``depth`` argument of

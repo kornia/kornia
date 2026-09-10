@@ -11,9 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 * Documented the `kornia.sensors.camera` conventions (`Vector`-typed inputs, the per-model `params`
-  layout, the shared half-pixel `scale` rule, numerical agreement with `kornia.geometry.camera` on the
-  pinhole path) and added executable pins, with the unimplemented models tracked in a dedicated issue; the
-  three non-pinhole models now appear on the sensors documentation page. (#4318)
+  layout, the shared half-pixel `scale` rule, and the pinhole mapping shared with `kornia.geometry.camera`,
+  including its projection rounding and zero/near-zero depth differences) and added executable pins, with
+  the unimplemented models tracked in a dedicated issue; the three non-pinhole models now appear on the
+  sensors documentation page. (#4318)
 * Documented depth and stereo conventions (the two meanings of depth, the `(B, 3, H, W)` versus
   `(B, H, W, 3)` layouts, the opposite source/destination naming of `warp_frame_depth` and
   `DepthWarper`, the rectified stereo `Q` matrix) and added executable pins for `kornia.geometry.depth`
