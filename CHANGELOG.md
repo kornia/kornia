@@ -369,6 +369,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `Boxes3D.from_tensor(..., validate_boxes=True)` rejects non-finite coordinates, and `validate_bbox3d`
+  returns `False` for them instead of raising an `AssertionError` that names the wrong defect. This is the
+  3D counterpart of #4243. An `inf` passed the positive-extent checks outright, and a `NaN` passed them
+  because every comparison against `NaN` is `False`, so the box was constructed with non-finite vertices;
+  in `validate_bbox3d` the `NaN` instead reached the `allclose` extent comparisons and raised
+  "Boxes must have be cube, while get different widths". `validate_bbox3d`'s four internal callers use it
+  for its raise and discard the result, so they now convert the `False` themselves and keep raising the same
+  `AssertionError` they did before, with a message that now names the non-finite coordinates instead of
+  reporting mismatched cube extents. The `validate_boxes=False` opt-out and the export gate are unchanged
+  (closes #4258). (#4343)
 * `axis_angle_to_rotation_matrix` accepts the `(*, 3)` shape its own guard message promises, instead of
   only `(N, 3)`. The body did `wxyz.unbind(dim=1)` and `.view(-1, 3, 3)`, so an unbatched `(3,)` raised
   `IndexError: Dimension out of range` and any extra batch dimension raised `ValueError` out of the unbind,
