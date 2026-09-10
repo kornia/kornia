@@ -369,6 +369,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Fixed `dx_distort_points_kannala_brandt` to return the true Jacobian of `distort_points_kannala_brandt`, including a finite affine Jacobian at the origin. (#4277, #4368)
 * `Boxes3D.from_tensor(..., validate_boxes=True)` rejects non-finite coordinates, and `validate_bbox3d`
   returns `False` for them instead of raising an `AssertionError` that names the wrong defect. This is the
   3D counterpart of #4243. An `inf` passed the positive-extent checks outright, and a `NaN` passed them
