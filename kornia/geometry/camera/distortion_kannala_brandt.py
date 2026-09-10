@@ -64,6 +64,16 @@ def distort_points_kannala_brandt(
 ) -> torch.Tensor:
     r"""Distort points from the canonical z=1 plane into the camera frame using the Kannala-Brandt model.
 
+    Convention:
+        - ``projected_points_in_camera_z1_plane`` is a point on the **normalized** :math:`z = 1` plane, not a
+          pixel, and the result is in pixels.
+          Pixel centres lie at integer coordinates: the top-left centre is ``(0, 0)``.
+        - ``params`` is the flat vector ``[fx, fy, cx, cy, k0, k1, k2, k3]``: the first four are the affine
+          part that :func:`~kornia.geometry.camera.distort_points_affine` takes on its own, and ``k0`` to
+          ``k3`` multiply :math:`\theta^2`, :math:`\theta^4`, :math:`\theta^6` and :math:`\theta^8` in the
+          fish-eye polynomial.
+        - :func:`undistort_points_kannala_brandt` is the inverse map.
+
     Args:
         projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).
         params: torch.Tensor representing the parameters of the Kannala-Brandt distortion model with shape (..., 8).
@@ -101,6 +111,29 @@ def distort_points_kannala_brandt(
 
 def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
     r"""Undistort points from the camera frame into the canonical z=1 plane using the Kannala-Brandt model.
+
+    Convention:
+        - ``distorted_points_in_camera`` is a **pixel** coordinate and the result is a point on the normalized
+          :math:`z = 1` plane; ``params`` is the same 8-element vector documented on
+          :func:`distort_points_kannala_brandt`.
+        - the inverse is a fixed number of Gauss-Newton steps rather than a closed form: the step count is not
+          a parameter and there is no convergence test, so the round trip through
+          :func:`distort_points_kannala_brandt` closes only to the accuracy that iteration has reached. The
+          step count cannot be raised by a caller. In ``float32`` the residual reaches the rounding floor; in
+          ``float64`` it stops at about ``1e-8`` on the normalized plane, because the final radial rescale
+          divides by ``r + 1e-8`` rather than ``r`` and so scales every result by ``1 - 1e-8 / r``. That is the
+          ``float64`` side of `#4308 <https://github.com/kornia/kornia/issues/4308>`_.
+          :func:`~kornia.geometry.camera.undistort_points_affine` is the closed-form contrast.
+        - three small constants guard the Newton start (``1e-16``), Newton denominator (``1e-12``), and final
+          radial rescale (``1e-8``), so a point at the principal point comes back as the origin rather than
+          ``nan`` -- as long as those constants are representable in the dtype of ``params``, which is the
+          dtype the whole body runs in.
+
+    .. warning::
+        All three guard constants underflow to zero in ``float16``. At the principal point the unguarded Newton
+        denominator is one, but the final ``1e-8`` rescale guard then underflows and returns ``nan`` instead of
+        the origin. ``float32``, ``float64`` and ``bfloat16`` are unaffected. Tracked as
+        `#4308 <https://github.com/kornia/kornia/issues/4308>`_.
 
     Args:
         distorted_points_in_camera: torch.Tensor representing the points to undistort with shape (..., 2).
@@ -167,19 +200,29 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
 def dx_distort_points_kannala_brandt(
     projected_points_in_camera_z1_plane: torch.Tensor, params: torch.Tensor
 ) -> torch.Tensor:
-    r"""Compute the derivative of the x distortion with respect to the x coordinate.
+    r"""Return the analytic matrix the Kannala-Brandt model provides as its distortion Jacobian.
 
-    .. math::
-        \frac{\partial u}{\partial x} =
-        \begin{bmatrix} f_x & 0 \\ 0 & f_y \end{bmatrix}
+    Convention:
+        - the result has shape :math:`(..., 2, 2)` and is laid out like the Jacobian that
+          :func:`~kornia.geometry.camera.dx_distort_points_affine` returns: rows are the output components
+          ``(u, v)``, columns the input components ``(x, y)``.
+
+    .. warning::
+        The matrix this function returns today is **not** the Jacobian of
+        :func:`distort_points_kannala_brandt`. It disagrees with :func:`torch.autograd.functional.jacobian`
+        and with central finite differences, which agree with each other, and transposing it does not close
+        the gap; at the origin it is ``nan``. Tracked as
+        `#4277 <https://github.com/kornia/kornia/issues/4277>`_. The ``Example:`` block below prints the value
+        this implementation returns today and is deliberately left byte-identical -- it is the executable
+        evidence for the issue, and the repair has to re-derive it together with the existing regression tests.
 
     Args:
         projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).
         params: torch.Tensor representing the parameters of the Kannala-Brandt distortion model with shape (..., 8).
 
     Returns:
-        torch.Tensor representing the derivative of the x distortion with respect to the x coordinate
-        with shape (..., 2).
+        torch.Tensor representing the derivative of the distortion with respect to the point
+        with shape (..., 2, 2).
 
     Example:
         >>> points = torch.tensor([1., 2.])

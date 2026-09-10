@@ -17,13 +17,13 @@
 
 from __future__ import annotations
 
+import math
 import warnings
 from typing import Optional
 
 import torch
 import torch.nn.functional as F
 
-from kornia.constants import pi
 from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast, is_compiling
@@ -84,20 +84,6 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
         - the input is in **radians** and the output in **degrees**; the
           conversion is elementwise and preserves shape, device and float dtype
 
-    .. warning::
-        Two distinct defects, tracked in
-        `#3937 <https://github.com/kornia/kornia/issues/3937>`_. A ``float64``
-        input is left with only about seven correct significant digits
-        (``rad2deg(torch.tensor(math.pi, dtype=torch.float64)) - 180`` is
-        ``-5.0e-06``, not ``0``) because ``kornia.constants.pi`` is a
-        **float32** tensor — a defect in the constant itself, which several
-        other kornia modules also consume (the issue tracks the current
-        inventory). Separately, ``rad2deg``/``deg2rad``
-        themselves cast that constant to the input dtype, so an integer input
-        truncates ``pi`` to ``3``: ``rad2deg(torch.tensor([1, 2, 3]))`` returns
-        ``[60., 120., 180.]`` instead of ``[57.2958, 114.5916, 171.8873]``, and
-        a ``float64`` constant alone would not fix it.
-
     Args:
         tensor: torch.Tensor of arbitrary shape.
 
@@ -113,7 +99,7 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
-    return 180.0 * tensor / pi.to(tensor.device).type(tensor.dtype)
+    return tensor * (180.0 / math.pi)
 
 
 def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
@@ -123,13 +109,6 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
         - the input is in **degrees** and the output in **radians**; it
           performs the opposite conversion to
           :func:`~kornia.geometry.conversions.rad2deg`
-
-    .. warning::
-        Inherits both defects of :func:`~kornia.geometry.conversions.rad2deg`
-        — the float32 ``kornia.constants.pi`` and the cast to the input dtype
-        (``deg2rad(torch.tensor([180, 90]))`` returns ``[3.0000, 1.5000]``).
-        See its warning and
-        `#3937 <https://github.com/kornia/kornia/issues/3937>`_.
 
     Args:
         tensor: torch.Tensor of arbitrary shape.
@@ -146,7 +125,7 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
-    return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.0
+    return tensor * (math.pi / 180.0)
 
 
 def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -734,11 +713,12 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
         returns ``zeros(4)``, and with ``eps=0.0`` the zero quaternion returns
         ``[nan, nan, nan, nan]`` instead. ``float32`` and ``bfloat16`` behave
         the same up to their rounding (``0.10000000149011612`` and
-        ``0.099609375`` for the first input). In ``float16`` both ``1e-13`` and
-        the default ``eps`` round to ``0``, so the clamp is a no-op and each of
-        those two inputs already returns ``[nan, nan, nan, nan]`` at the
-        default — the same underflow class as
-        `#3966 <https://github.com/kornia/kornia/issues/3966>`_. Tracked in
+        ``0.099609375`` for the first input). For ``float16``, a positive
+        ``eps`` is floored at the dtype's smallest positive subnormal value, so
+        the default guard remains active and a zero quaternion also returns
+        ``zeros(4)`` without clamping non-zero representable magnitudes. An
+        explicit ``eps=0.0`` still disables that guard. The remaining
+        sub-``eps`` behavior is tracked in
         `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
 
     Args:
@@ -760,7 +740,10 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
 
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
-    return F.normalize(quaternion, p=2.0, dim=-1, eps=eps)
+
+    # Exact smallest positive float16 subnormal, kept literal for TorchScript support.
+    safe_eps = max(eps, 5.960464477539063e-08) if quaternion.dtype == torch.float16 and eps > 0.0 else eps
+    return F.normalize(quaternion, p=2.0, dim=-1, eps=safe_eps)
 
 
 # based on:
@@ -798,8 +781,9 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
           approaches the maximum possible ``2``), while the ``1e6`` end is
           ``nan`` outright because ``0.5 * 1e6`` overflows the dtype.
           Once ``||q||`` drops below
-          :func:`~kornia.geometry.conversions.normalize_quaternion`'s
-          ``eps = 1e-12`` the clamp takes over and rescaling changes the matrix
+          :func:`~kornia.geometry.conversions.normalize_quaternion`'s effective
+          floor (``eps = 1e-12``, raised to the smallest positive subnormal in
+          ``float16``), the clamp takes over and rescaling changes the matrix
           outright: in ``float64``, ``q * 1e-13`` and ``q`` can give matrices
           that differ by order 1
         - :func:`~kornia.geometry.conversions.quaternion_to_axis_angle` is
@@ -819,11 +803,9 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
     .. warning::
         The zero quaternion returns the identity matrix rather than raising:
         ``quaternion_to_rotation_matrix(torch.zeros(4))`` is ``eye(3)`` in
-        ``float64``, ``float32`` and ``bfloat16``. In ``float16`` the internal
-        ``eps = 1e-12`` normalisation floor rounds to ``0``, the guard it
-        provides disappears and the matrix is all-``nan`` instead — the same
-        underflow class as
-        `#3966 <https://github.com/kornia/kornia/issues/3966>`_. Tracked in
+        ``float64``, ``float32``, ``bfloat16`` and ``float16``. This silently
+        treats an input that is not a rotation as the identity rather than
+        raising. Tracked in
         `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
 
     Args:
@@ -1756,13 +1738,6 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
           plane this is the opposite sense to
           :func:`~kornia.geometry.conversions.cart2pol`, whose Convention block
           spells out the modulo-:math:`2\pi` relation between the two ops
-
-    .. warning::
-        The degrees-to-radians step is
-        :func:`~kornia.geometry.conversions.deg2rad`, so it inherits both
-        defects of :func:`~kornia.geometry.conversions.rad2deg` — the float32
-        ``kornia.constants.pi`` and the cast to the input dtype. See its
-        warning and `#3937 <https://github.com/kornia/kornia/issues/3937>`_.
 
     Args:
         angle: tensor of angles in degrees, any shape :math:`(*)`.
@@ -2980,12 +2955,13 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
           of** ``||q||``: rescaling it moves the resulting pose only by the working
           dtype's rounding as long as ``||q||`` stays **above**
           :func:`~kornia.geometry.conversions.normalize_quaternion`'s
-          ``eps = 1e-12`` and **below** the point at which the norm's
-          sum-of-squares accumulator overflows. Over 64 random unit quaternions
-          rescaled by factors from ``1e-3`` to ``1e5``, the output rotation and
-          translation moved at the ``1e-06`` scale in ``float32`` — a few ulps
-          of their entries, with the maximum moving from draw to draw, so this
-          is an order of magnitude and not a bound. ``q`` and
+          effective floor (``eps = 1e-12``, raised to the smallest positive
+          subnormal in ``float16``) and **below** the point at which the norm's
+          sum-of-squares accumulator overflows. Over 64 random unit
+          quaternions rescaled by factors from ``1e-3`` to ``1e5``, the output
+          rotation and translation moved at the ``1e-06`` scale in ``float32``
+          — a few ulps of their entries, with the maximum moving from draw to
+          draw, so this is an order of magnitude and not a bound. ``q`` and
           ``-q`` give bitwise the same output at every scale tried, since they
           are the same rotation
         - **past either end the pose changes outright, silently.** Below the
@@ -3061,20 +3037,14 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
         `#3951 <https://github.com/kornia/kornia/issues/3951>`_.
 
     .. warning::
-        The all-zero quaternion is never rejected, and what it gives back
-        instead **splits by dtype**. In ``float64``, ``float32`` and
-        ``bfloat16`` the internal normalisation floor absorbs it:
-        ``torch.zeros(1, 4)`` with ``t = (1, 1, 1)`` returns the
-        plausible-looking ``q = [0., 1., 0., 0.]``, ``t = (-1, 1, 1)`` in
-        ``float32`` — the same answer as the identity input, at every one of
-        those three dtypes — rather than raising. In ``float16`` the default
-        ``eps = 1e-12`` underflows to ``0`` (``bfloat16``'s wider exponent
-        keeps it), so the clamp is a no-op, the normalisation divides ``0`` by
-        ``0``, and **both returned tensors are entirely** ``nan``. Neither
-        branch is an error: validate the quaternion before calling if the input
-        may be degenerate. This is the downstream reach of the sub-``eps``
-        clamp in :func:`~kornia.geometry.conversions.normalize_quaternion`,
-        whose own warning carries the same ``float16`` underflow. Tracked in
+        The all-zero quaternion is never rejected. At every floating dtype, the
+        internal normalisation floor absorbs it: ``torch.zeros(1, 4)`` with
+        ``t = (1, 1, 1)`` returns the plausible-looking
+        ``q = [0., 1., 0., 0.]``, ``t = (-1, 1, 1)`` in ``float32`` — the same
+        answer as the identity input — rather than raising. Validate the
+        quaternion before calling if the input may be degenerate. This is the
+        downstream reach of the sub-``eps`` clamp in
+        :func:`~kornia.geometry.conversions.normalize_quaternion`. Tracked in
         `#3952 <https://github.com/kornia/kornia/issues/3952>`_.
 
     Args:

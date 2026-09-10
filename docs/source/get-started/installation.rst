@@ -7,7 +7,7 @@ Installation
 *Kornia* is distributed as pure-Python wheels on `PyPI <https://pypi.org/project/kornia/>`_ and on
 `conda-forge <https://anaconda.org/conda-forge/kornia>`_. It requires
 `PyTorch <https://pytorch.org/get-started/locally/>`_ 2.5.1 or newer; the only other dependencies are
-``numpy``, ``packaging`` and `kornia-rs <https://github.com/kornia/kornia-rs>`_ (the Rust image I/O
+``numpy`` and `kornia-rs <https://github.com/kornia/kornia-rs>`_ (the Rust image I/O
 backend used by :mod:`kornia.io`). Install PyTorch first if you need a specific CUDA build.
 
 .. tab-set::
@@ -46,6 +46,45 @@ Once the installation has finished, check that you can import the package:
 
 Pretrained models (RT-DETR, LoFTR, DISK, SAM, ...) download their checkpoints on first use, so no
 extra installation step is needed for them.
+
+Optional extras
+---------------
+
+A few Kornia features wrap third-party packages that are not installed with the base wheel. They are
+declared as `extras <https://packaging.python.org/en/latest/specifications/dependency-specifiers/#extras>`_,
+so you only pay for the ones you use. If one of the extras below is missing, the corresponding Kornia
+object tells you which extra to install: by default it offers to install the package for you on the
+terminal (``kornia.config.kornia_config.lazyloader.installation_mode``, ``"ask"``; set it to ``"auto"``
+to install without asking or ``"raise"`` to never install), and in ``"raise"`` mode, or when the offer
+is declined, it raises an ``ImportError`` naming the extra. Pillow is the exception: no feature
+extra covers it -- only the contributor ``dev`` and ``docs`` environments install it -- so its
+message only asks you to install the package
+(`kornia#4261 <https://github.com/kornia/kornia/issues/4261>`_ tracks which extra should carry it).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 55 30
+
+   * - Extra
+     - What it enables
+     - Install command
+   * - ``onnx``
+     - :doc:`kornia.onnx </onnx>`, ONNX export of Kornia modules, and :class:`~kornia.feature.OnnxLightGlue`
+     - ``pip install "kornia[onnx]"``
+   * - ``sd``
+     - ``kornia.filters.StableDiffusionDissolving``
+     - ``pip install "kornia[sd]"``
+   * - ``dev``
+     - Contributor environment: the test and lint toolchain (includes ``kornia[onnx]``)
+     - ``pip install -e ".[dev]"``
+   * - ``docs``
+     - Documentation toolchain, on top of ``dev``
+     - ``pip install -e ".[dev,docs]"``
+
+Independently of the extras, the ``visualize`` and ``save`` helpers of the model wrappers need
+`pillow <https://pypi.org/project/pillow/>`_ for ``output_type="pil"``. No feature extra installs
+it, so unless you are in a ``dev`` or ``docs`` environment, install it directly with
+``pip install pillow``.
 
 Next steps
 ----------

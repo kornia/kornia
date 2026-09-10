@@ -2,13 +2,13 @@ kornia.models
 =============
 
 .. meta::
-   :description: The Kornia models overview provides detailed information about key built-in models for computer vision tasks, including real-time object detection (RT-DETR), edge detection (DexiNed), segmentation (UNet, DeepLabV3), and multi-object tracking (BoxMotTracker). It offers comprehensive documentation on each model, including methods, parameters, and example usage to streamline the integration of these models into computer vision workflows.
+   :description: The Kornia models overview provides detailed information about key built-in models for computer vision tasks, including real-time object detection (RT-DETR), edge detection (DexiNed) and semantic segmentation (a wrapper for segmentation_models_pytorch networks). It offers comprehensive documentation on each model, including methods, parameters, and example usage to streamline the integration of these models into computer vision workflows.
 
 
-Builders for Kornia's ready-to-use models (object detection, edge detection, semantic segmentation, multi-object tracking and Kimi-VL).
+Builders for Kornia's ready-to-use models (object detection, edge detection, semantic segmentation and Kimi-VL).
 Each builder returns a configured model with pretrained weights. For the papers behind the models, see the :doc:`Models </models/index>` section.
 Pretrained weights are downloaded on first use, and the model builders return a regular ``nn.Module`` that accepts a
-batched ``(B, 3, H, W)`` float image in ``[0, 1]`` (the tracker below wraps a detector in a plain Python class instead). :func:`kornia.io.get_sample_images` provides a couple of sample images for quick experiments.
+batched ``(B, 3, H, W)`` float image in ``[0, 1]``. :func:`kornia.io.get_sample_images` provides a couple of sample images for quick experiments.
 
 .. _RTDETRDetectorBuilder:
 
@@ -71,25 +71,65 @@ The `EdgeDetectorBuilder` class implements a state-of-the-art edge detection mod
        model = EdgeDetectorBuilder.build()
        edges = model(image)  # list with one (1, 1, H, W) edge map per image
 
+.. _RRDBNet:
+
+RRDBNet
+-------
+
+The `RRDBNet` class is the Residual-in-Residual Dense Block generator behind ESRGAN and Real-ESRGAN.
+It is a plain ``nn.Module`` that upsamples a batched ``(B, 3, H, W)`` image by a factor of 1, 2 or 4,
+and its module and parameter names match the reference implementation, so the published Real-ESRGAN
+checkpoints load with ``strict=True``. ``kornia.contrib.super_resolution.RRDBNetBuilder`` configures
+it for the released Real-ESRGAN variants and downloads their weights, but it currently raises
+``TypeError`` because the ``SuperResolution`` wrapper it returns never implements the abstract
+``from_config`` method it inherits (`kornia#4291 <https://github.com/kornia/kornia/issues/4291>`_);
+until that is fixed, construct ``RRDBNet`` directly and load the checkpoint with ``load_state_dict``.
+
+The architecture is vendored from `BasicSR <https://github.com/XPixelGroup/BasicSR>`_ (Apache-2.0,
+Copyright 2018-2022 BasicSR Authors); no extra package is required to use it.
+
+.. autoclass:: kornia.models.RRDBNet
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+   .. rubric:: Example
+
+   The following code upsamples an image by a factor of 4 with a randomly initialized generator:
+
+   .. code-block:: python
+
+       import torch
+       from kornia.models import RRDBNet
+
+       model = RRDBNet(num_in_ch=3, num_out_ch=3, scale=4, num_feat=64, num_block=23).eval()
+       upsampled = model(torch.rand(1, 3, 32, 32))  # (1, 3, 128, 128)
+
 .. _SegmentationModels:
 
 SegmentationModelsBuilder
 -------------------------
 
-The `SegmentationModelsBuilder` class offers a flexible API for building and running segmentation models from the
-optional `segmentation_models_pytorch <https://github.com/qubvel-org/segmentation_models.pytorch>`_ package
-(``pip install segmentation_models_pytorch``). It supports a variety of architectures such as UNet, FPN, DeepLabV3 and
-others, with ImageNet-pretrained encoders.
+The `SegmentationModelsBuilder` class wraps a segmentation network you have already built -- typically one from
+`segmentation_models_pytorch <https://github.com/qubvel-org/segmentation_models.pytorch>`_ (smp), but any
+``nn.Module`` mapping ``(B, 3, H, W)`` to ``(B, C, H, W)`` works -- in a
+:class:`~kornia.models.segmentation.SemanticSegmentation` container, prepending the ONNX-friendly preprocessing
+(BGR-to-RGB, range rescaling, mean/std normalization) that the encoder's pretrained weights expect. Kornia does not
+import smp; you build the network and fetch its preprocessing parameters yourself.
 
 **Key Methods:**
 
-- `build`: Constructs a segmentation model for the chosen architecture, encoder and number of classes.
+- `build`: Wraps a constructed segmentation network and its encoder's preprocessing parameters.
+- `get_preprocessing_pipeline`: Turns a preprocessing-parameter dictionary into an
+  :class:`~kornia.augmentation.container.ImageSequential`.
 
 **Main parameters of** `build`:
 
-- `model_name`: (str) Name of the segmentation architecture to use, e.g., `"Unet"`, `"DeepLabV3"`.
-- `encoder_name`: (str) Name of the encoder backbone, e.g., `"resnet34"`.
-- `classes`: (int) The number of output classes for segmentation.
+- `model`: (nn.Module) The segmentation network.
+- `preproc_params`: (dict | None) The encoder's preprocessing parameters, in the shape returned by
+  ``smp.encoders.get_preprocessing_params(encoder_name)``: ``input_space``, ``input_range``, ``mean`` and ``std``.
+  ``None`` means the input is fed to the network unchanged.
+- `name`: (str) The name of the wrapped model, used by ``save``.
 
 .. autoclass:: kornia.models.segmentation.segmentation_models.SegmentationModelsBuilder
    :members:
@@ -98,17 +138,27 @@ others, with ImageNet-pretrained encoders.
 
    .. rubric:: Example
 
-   Here's an example of how to use `SegmentationModelsBuilder` for binary segmentation:
+   Here's an example of how to use `SegmentationModelsBuilder` with an smp UNet for two-class segmentation:
 
    .. code-block:: python
 
        import kornia
-       from kornia.models.segmentation.segmentation_models import SegmentationModelsBuilder
+       import segmentation_models_pytorch as smp
+       from kornia.models.segmentation import SegmentationModelsBuilder
+
+       net = smp.Unet(encoder_name="resnet34", encoder_weights="imagenet", classes=2, activation="softmax2d")
+       params = smp.encoders.get_preprocessing_params("resnet34")
+       model = SegmentationModelsBuilder.build(net, params, name="Unet_resnet34")
 
        input_tensor = kornia.io.get_sample_images()[0][None]
-       model = SegmentationModelsBuilder.build(model_name="Unet", encoder_name="resnet34", classes=1)
        segmented_output = model(input_tensor)
-       print(segmented_output.shape)
+       print(segmented_output.shape)  # (1, 2, H, W)
+
+   The softmax head is what :meth:`~kornia.models.segmentation.SemanticSegmentation.visualize` needs: it
+   colours each pixel by its most probable class and raises on raw logits.
+
+.. autoclass:: kornia.models.segmentation.SemanticSegmentation
+   :members: forward, visualize
 
 .. _KimiVLBuilder:
 
@@ -137,46 +187,6 @@ loading currently supports only the converted Kimi-VL-A3B-Instruct vision encode
        from kornia.models.kimi_vl import KimiVLBuilder
 
        model = KimiVLBuilder.from_pretrained_hf().eval()
-
-.. _BoxMotTracker:
-
-BoxMotTracker
--------------
-
-The `BoxMotTracker` class is used for multi-object tracking in video streams. It combines a Kornia object detector with
-a tracker from the optional `boxmot <https://github.com/mikel-brostrom/boxmot>`_ package (``pip install boxmot``) to
-track bounding boxes across frames.
-
-**Key Methods:**
-
-- `__init__`: Initializes the multi-object tracker from a detector and a tracker model name.
-- `update`: Updates the tracker with a new image frame.
-- `visualize`: Draws the tracked boxes (and optionally their trajectories) on a frame.
-
-**Main parameters:**
-
-- `detector`: (ObjectDetector | str) The object detector instance, or the name of an RT-DETR model to build, e.g. `"rtdetr_r18vd"`.
-- `tracker_model_name`: (str) The boxmot tracker to use, e.g. `"DeepOCSORT"`.
-
-.. autoclass:: kornia.contrib.boxmot_tracker.BoxMotTracker
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-   .. rubric:: Example
-
-   The following example demonstrates how to track objects across multiple frames using `BoxMotTracker`:
-
-   .. code-block:: python
-
-       import kornia
-       from kornia.contrib.boxmot_tracker import BoxMotTracker
-
-       image = kornia.io.get_sample_images()[0][None]
-       model = BoxMotTracker()
-       for i in range(4):
-           model.update(image)  # Update the tracker with new frames
-       tracked = model.visualize(image)  # Draw the tracked boxes on the frame
 
 ----
 

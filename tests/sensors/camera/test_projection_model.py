@@ -181,3 +181,25 @@ class TestOrthographicProjection(BaseTester):
         assert isinstance(
             Z1Projection().project(Vector3(torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype))), Vector2
         )
+
+    def test_unproject_scalar_depth(self, device, dtype):
+        """Regression test: scalar depth must preserve device and dtype.
+
+        PR #4340: Z1Projection.unproject used to build a CPU float32 tensor
+        for python int/float depth, which raised RuntimeError on every
+        accelerator and widened float16/bfloat16 results to float32.
+        """
+        projection = Z1Projection()
+        points = Vector2(torch.tensor([[0.25, 0.5]], device=device, dtype=dtype))
+        expected = projection.unproject(
+            points,
+            torch.tensor([4.0], device=device, dtype=dtype),
+        ).data
+        for depth in (4, 4.0):
+            out = projection.unproject(points, depth)
+            assert out.data.device.type == device.type, f"expected device {device.type}, got {out.data.device.type}"
+            assert out.data.dtype == dtype, f"expected dtype {dtype}, got {out.data.dtype}"
+            self.assert_close(out.data, expected, atol=0.0, rtol=0.0)
+        # Also verify a vector depth still works unchanged
+        out_vec = projection.unproject(points, torch.tensor([4.0], device=device, dtype=dtype))
+        self.assert_close(out_vec.data, expected, atol=0.0, rtol=0.0)

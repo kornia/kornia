@@ -109,14 +109,14 @@ class TestONNXLoader:
                 ONNXLoader.download(url, file_path)
 
     def test_fetch_repo_contents_success(self):
+        import json
         import os
         from unittest import mock
 
-        with mock.patch("requests.get") as mock_get:
-            mock_response = mock.Mock()
-            mock_response.status_code = 200
-            mock_response.json.return_value = [{"path": os.path.join("operators", "model.onnx")}]
-            mock_get.return_value = mock_response
+        with mock.patch("kornia.onnx.utils.urlopen") as mock_urlopen:
+            mock_response = mock.MagicMock()
+            mock_response.read.return_value = json.dumps([{"path": os.path.join("operators", "model.onnx")}]).encode()
+            mock_urlopen.return_value.__enter__.return_value = mock_response
 
             contents = ONNXLoader._fetch_repo_contents("operators")
             assert contents == [{"path": os.path.join("operators", "model.onnx")}]
@@ -124,11 +124,11 @@ class TestONNXLoader:
     def test_fetch_repo_contents_failure(self):
         from unittest import mock
 
-        with mock.patch("requests.get") as mock_get:
-            mock_response = mock.Mock()
-            mock_response.status_code = 404
-            mock_get.return_value = mock_response
-
+        url = "https://huggingface.co/api/models/kornia/ONNX_models/tree/main/operators"
+        with mock.patch(
+            "kornia.onnx.utils.urlopen",
+            side_effect=urllib.error.HTTPError(url, 404, "Not Found", {}, None),
+        ):
             with pytest.raises(ValueError, match="Failed to fetch repository contents"):
                 ONNXLoader._fetch_repo_contents("operators")
 

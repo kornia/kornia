@@ -17,12 +17,11 @@
 
 import math
 from contextlib import nullcontext
-from typing import ContextManager, List, Optional, Tuple, Union
+from typing import ContextManager, List, Optional, Tuple, TypedDict, Union
 
 import torch
 import torch.nn.functional as F
 from torch import nn
-from typing_extensions import TypedDict
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.geometry.subpix import (
