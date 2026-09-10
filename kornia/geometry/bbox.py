@@ -107,8 +107,9 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
         :math:`(B, N, 8, 3)` tensors and raises ``AssertionError`` for any other shape. It compares the inclusive
         ``+1`` extents of the four edges parallel to each axis and raises ``AssertionError`` when they differ, so a
         sheared parallelepiped with equal edge lengths and a zero-extent box both pass; it does not check right
-        angles or positive extent. Under graph capture the extent checks are skipped and the shape check alone
-        returns ``True``. The ``+1`` terms cancel in exact arithmetic and are tracked in
+        angles or positive extent. A box with a non-finite coordinate returns ``False``. Under graph capture
+        the extent checks are skipped and the shape check alone returns ``True``. The ``+1`` terms cancel
+        in exact arithmetic and are tracked in
         `#3934 <https://github.com/kornia/kornia/issues/3934>`_.
 
     .. warning::
@@ -124,7 +125,8 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
 
     Returns:
-        ``True``. Invalid input raises instead of returning ``False``.
+        ``True``, or ``False`` when any coordinate is non-finite. Invalid input otherwise raises instead of
+        returning ``False``.
 
     """
     if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([8, 3])):
@@ -133,9 +135,15 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
     if len(boxes.shape) == 4:
         boxes = boxes.reshape(-1, 8, 3)
 
-    # The cube checks below read the data, which graph capture cannot do; skip them under export.
+    # The value checks below read the data, which graph capture cannot do; skip them under export.
     if is_exporting():
         return True
+
+    # Non-finite coordinates are rejected as a predicate result rather than through the ``allclose``
+    # comparisons below, which see ``nan != nan`` and raise a "different widths" AssertionError that
+    # names the wrong defect.
+    if not torch.isfinite(boxes).all():
+        return False
 
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
     right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]
@@ -225,10 +233,13 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
         The inclusive ``+1`` arithmetic differs from torchvision, COCO, and albumentations and is tracked in
         `#3934 <https://github.com/kornia/kornia/issues/3934>`_; the exclusive-export trap is
         `#4009 <https://github.com/kornia/kornia/issues/4009>`_. Validation raises ``AssertionError`` rather than
-        returning ``False``, see `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Batched :math:`(B, N, 8, 3)`
-        input is rejected with :class:`~kornia.core.exceptions.ShapeError`, as the 2D helpers reject
-        :math:`(B, N, 4, 2)`; flatten to :math:`(B \cdot N, 8, 3)` first. :func:`validate_bbox3d` still accepts
-        the rank-4 form and reshapes internally, which is why the rejection lives here rather than there.
+        returning ``False`` for a shape or extent failure, see
+        `#4013 <https://github.com/kornia/kornia/issues/4013>`_; a non-finite coordinate is the one case
+        :func:`validate_bbox3d` reports as ``False``, and this function raises ``AssertionError`` for it too.
+        Batched :math:`(B, N, 8, 3)` input is rejected with :class:`~kornia.core.exceptions.ShapeError`, as
+        the 2D helpers reject :math:`(B, N, 4, 2)`; flatten to :math:`(B \cdot N, 8, 3)` first.
+        :func:`validate_bbox3d` still accepts the rank-4 form and reshapes internally, which is why the
+        rejection lives here rather than there.
 
     Args:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
@@ -267,7 +278,10 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
     # read as if the box axis were the vertices. Reject it here, the way #4218
     # did for the 2D twin.
     KORNIA_CHECK_SHAPE(boxes, ["N", "8", "3"])
-    validate_bbox3d(boxes)
+    # ``validate_bbox3d`` raises for every failure it detects except a non-finite coordinate, which is a
+    # ``False`` predicate result; this call site relies on the raise, so it converts that ``False`` itself.
+    if not validate_bbox3d(boxes):
+        raise AssertionError("Boxes must have finite coordinates, got non-finite values.")
 
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
     right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]
@@ -388,7 +402,9 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         :meth:`~kornia.geometry.boxes.Boxes3D.to_mask` for fractional coordinates and is tracked in
         `#4015 <https://github.com/kornia/kornia/issues/4015>`_. The ``float32`` output with a channel axis is
         tracked in `#4250 <https://github.com/kornia/kornia/issues/4250>`_. Validation raises rather than returning
-        ``False``, `#4013 <https://github.com/kornia/kornia/issues/4013>`_. Batched :math:`(B, N, 8, 3)` input passes
+        ``False`` for a shape or extent failure, `#4013 <https://github.com/kornia/kornia/issues/4013>`_; a
+        non-finite coordinate is reported as ``False`` by :func:`validate_bbox3d` and raised here too.
+        Batched :math:`(B, N, 8, 3)` input passes
         :func:`validate_bbox3d` but is rejected here with :class:`~kornia.core.exceptions.ShapeError`; flatten to
         :math:`(B \cdot N, 8, 3)` first.
 
@@ -442,7 +458,8 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
     # Same as infer_bbox_shape3d: boxes[:, 4, 2] below reads dim 1 as the vertex
     # axis, which a rank-4 (B, N, 8, 3) input silently is not.
     KORNIA_CHECK_SHAPE(boxes, ["B", "8", "3"])
-    validate_bbox3d(boxes)
+    if not validate_bbox3d(boxes):
+        raise AssertionError("Boxes must have finite coordinates, got non-finite values.")
     D0, D1, D2 = size  # get depth, height, width
 
     z_min = boxes[:, 0, 2].long()
