@@ -389,8 +389,8 @@ class PinholeCamera:
         self.intrinsics[..., 0, 2] *= scale_factor
         self.intrinsics[..., 1, 2] *= scale_factor
         # scale the image height/width
-        self.height *= scale_factor
-        self.width *= scale_factor
+        self.height = self.height * scale_factor
+        self.width = self.width * scale_factor
         return self
 
     def project(self, point_3d: torch.Tensor) -> torch.Tensor:
