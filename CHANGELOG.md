@@ -369,8 +369,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
-* Corrected stereo disparity validation errors to describe the required channels-last
-  `(B, H, W, 1)` layout and report the received shape. (#4380)
+* `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
+  instead of treating padding entries as real boxes. (#4390)
 * Fixed fixture teardown between files when running half-precision tests with
   `--isolate-half-precision`, including reporting parent fixture finalizer errors. (#4388)
 * Corrected the matrix-shape checks shared by `PinholeCamera` and `PinholeCamerasList`, the
@@ -403,6 +403,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
   while the implementation preserves ONNX export compatibility. (#4358)
+* Corrected stereo disparity validation errors to describe the required channels-last
+  `(B, H, W, 1)` layout and report the received shape. (#4380)
 * `CameraModelBase.__init__` now validates `params` against the shape it documents, instead of storing
   whatever it is given. The typed constructors (`PinholeModel`, `BrownConradyModel`, `KannalaBrandtK3`,
   `Orthographic`) each apply the same two comparisons, so only the direct-construction path -- which is
