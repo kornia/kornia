@@ -93,9 +93,17 @@ class TestSe2(BaseTester):
             y = torch.rand(3, dtype=dtype, device=device)
             Se2.trans(x, y)
 
-    # TODO: implement me
     def test_gradcheck(self, device):
-        pass
+        v = torch.tensor([[1.0, 2.0, 0.4]], device=device, dtype=torch.float64)
+        self.gradcheck(lambda x: Se2.exp(x).matrix(), (v,))
+
+    def test_gradient_is_finite_at_the_identity_4404(self, device, dtype):
+        # #4404: both quotients that build the translation block are 0/0 at theta = 0, and the
+        # torch.where that discards them still differentiates them, so 0 * nan = nan reached the
+        # gradient at the identity even though the forward returned the correct zero translation.
+        v = torch.zeros(1, 3, device=device, dtype=dtype, requires_grad=True)
+        Se2.exp(v).matrix().sum().backward()
+        assert bool(torch.isfinite(v.grad).all()), v.grad
 
     # TODO: implement me
     def test_jit(self, device, dtype):
