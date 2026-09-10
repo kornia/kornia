@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Documented depth and stereo conventions (the two meanings of depth, the `(B, 3, H, W)` versus
+  `(B, H, W, 3)` layouts, the opposite source/destination naming of `warp_frame_depth` and
+  `DepthWarper`, the rectified stereo `Q` matrix) and added executable pins for `kornia.geometry.depth`
+  and `StereoCamera`, including dtype promotion, extra-axis broadcasting, subpixel border sampling,
+  and singular stereo reprojection. Remaining defects are tracked in dedicated issues. (#4317)
 * Documented camera distortion and calibration conventions (normalized versus pixel inputs, the
   coefficient layout, the `new_K`/`K` roles, the iterative inverses) and added executable pins for
   `kornia.geometry.camera`'s distortion models and `kornia.geometry.calibration`, with the
@@ -366,6 +371,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Fixed fixture teardown between files when running half-precision tests with
   `--isolate-half-precision`, including reporting parent fixture finalizer errors. (#4388)
+* Corrected the matrix-shape checks shared by `PinholeCamera` and `PinholeCamerasList`, the
+  `pixel2cam` coordinate-shape check, and the `cam2pixel` coordinate/projection checks. Invalid
+  inputs now raise the intended `ValueError` instead of being accepted or failing later in tensor
+  operations. The rank-4 matrices used by `PinholeCamerasList` remain supported. (#4387)
+* Fixed `dx_distort_points_kannala_brandt` to return the true Jacobian of `distort_points_kannala_brandt`, including a finite affine Jacobian at the origin. (#4277, #4368)
+* `Boxes3D.from_tensor(..., validate_boxes=True)` rejects non-finite coordinates, and `validate_bbox3d`
+  returns `False` for them instead of raising an `AssertionError` that names the wrong defect. This is the
+  3D counterpart of #4243. An `inf` passed the positive-extent checks outright, and a `NaN` passed them
+  because every comparison against `NaN` is `False`, so the box was constructed with non-finite vertices;
+  in `validate_bbox3d` the `NaN` instead reached the `allclose` extent comparisons and raised
+  "Boxes must have be cube, while get different widths". `validate_bbox3d`'s four internal callers use it
+  for its raise and discard the result, so they now convert the `False` themselves and keep raising the same
+  `AssertionError` they did before, with a message that now names the non-finite coordinates instead of
+  reporting mismatched cube extents. The `validate_boxes=False` opt-out and the export gate are unchanged
+  (closes #4258). (#4343)
+* `axis_angle_to_rotation_matrix` accepts the `(*, 3)` shape its own guard message promises, instead of
+  only `(N, 3)`. The body did `wxyz.unbind(dim=1)` and `.view(-1, 3, 3)`, so an unbatched `(3,)` raised
+  `IndexError: Dimension out of range` and any extra batch dimension raised `ValueError` out of the unbind,
+  three frames below kornia's own shape guard. Every sibling conversion in the module already accepted
+  `(*, 3)`, so `axis_angle_to_rotation_matrix(rotation_matrix_to_axis_angle(R))` composed for an `(N, 3, 3)`
+  rotation matrix and for nothing else, including for the shape `rotation_matrix_to_axis_angle`'s own
+  doctest returns. This is additive: `(N, 3)` output and gradients are byte-identical, and only shapes that
+  used to raise now return (closes #3955). (#4342)
+* Make calibration `distort_points` and `undistort_points` tilt checks compatible with
+  `torch.compile(fullgraph=True)`, preserving eager behavior. (#4391)
+* Canny hysteresis preserves the input dtype, avoiding a convolution dtype mismatch for half-precision images. (#4393)
 
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
@@ -455,6 +486,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   constructor stores what it is given, so `scaled.tx = 7` moved the camera `scale()` was called on.
   The returned camera's numbers are unchanged. (#4264, #4349)
 
+* A fresh transfer that `validate` rejects is now removed even when no other source could have used
+  the emptied path -- which is every `download_hf_file` caller, since it passes one URL. Those bytes
+  arrived during the call and were refused, so unlike the ambiguous load failures
+  `load_state_dict_from_url` weighs, keeping them would end the call having added a poisoned entry to
+  a cache that had none. An offline re-fetch also reports the validator's rejection rather than the
+  network error stacked on top of it, so the message names the file rather than an entry that is
+  intact and, by then, restored. (#4367)
+
 * `RenderingDeFMO` (used by `DeFMO`) no longer crashes on a half-precision forward pass. Its rendering
   time-steps (`times`) were a plain Python attribute, not a registered buffer, so `nn.Module.to()` never
   moved it; `forward` re-derived `times`'s device from the input on every call but never its dtype, so
@@ -506,6 +545,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pixel positions collapsed, so rows and columns near the collapse were mismasked; the grid is
   now built in `float32` and `float16`/`bfloat16` results are byte-identical to `float32`/`float64`.
   `RandomErasing` and `RandomCutMixV2` build their masks through it. (#4336)
+
+* `kornia.contrib.super_resolution` builders construct again. `SuperResolution` never implemented
+  `ModelBase`'s abstract `from_config` and defined no `__init__`, so `SmallSRBuilder.build()` and
+  `RRDBNetBuilder.build()` both raised `TypeError` at construction — the whole public
+  super-resolution entry point had been unreachable since the models refactor made `from_config`
+  abstract. It now has a `SuperResolutionConfig` and a `from_config` that dispatches to either
+  builder family, and both builders are covered by tests. Fixes #4291. (#4335)
 
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
