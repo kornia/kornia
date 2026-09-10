@@ -189,7 +189,7 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
     radius_undistorted = th.tan()
     denom = torch.where(nonzero_radius, rth, torch.ones_like(rth))
     mag = radius_undistorted.abs() / denom
-    mag = torch.where(nonzero_radius, mag, torch.zeros_like(mag))
+    mag = torch.where(nonzero_radius, mag, torch.ones_like(mag))
     undistorted = torch.stack([mag * un, mag * vn], dim=-1)
 
     return undistorted.to(device=device, dtype=out_dtype)

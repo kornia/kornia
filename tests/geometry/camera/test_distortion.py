@@ -374,14 +374,22 @@ class TestDistortionKannalaBrandt(BaseTester):
         self.assert_close(undistorted, torch.stack([expected_x, torch.zeros_like(expected_x)]), atol=6e-8, rtol=0.0)
 
     def test_convention_principal_point_has_finite_gradients_4308(self, device, dtype):
-        params = torch.tensor(
-            [100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype, requires_grad=True
+        params = torch.tensor([100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        principal_point = torch.tensor([4.0, 3.0], device=device, dtype=dtype)
+        point_jacobian = torch.autograd.functional.jacobian(
+            lambda point: undistort_points_kannala_brandt(point, params), principal_point
         )
-        principal_point = torch.tensor([4.0, 3.0], device=device, dtype=dtype, requires_grad=True)
-        output = undistort_points_kannala_brandt(principal_point, params)
-        point_grad, params_grad = torch.autograd.grad(output.sum(), (principal_point, params))
-        assert torch.isfinite(point_grad).all()
-        assert torch.isfinite(params_grad).all()
+        params_jacobian = torch.autograd.functional.jacobian(
+            lambda camera: undistort_points_kannala_brandt(principal_point, camera), params
+        )
+        expected_point_jacobian = torch.tensor(
+            [[1.0 / params[0], 0.0], [0.0, 1.0 / params[1]]], device=device, dtype=dtype
+        )
+        expected_params_jacobian = torch.zeros(2, 8, device=device, dtype=dtype)
+        expected_params_jacobian[0, 2] = -1.0 / params[0]
+        expected_params_jacobian[1, 3] = -1.0 / params[1]
+        self.assert_close(point_jacobian, expected_point_jacobian)
+        self.assert_close(params_jacobian, expected_params_jacobian)
 
     def test_convention_float64_round_trip_precision_4308(self, device, dtype):
         # Regression for kornia#4308: nonzero radii must be rescaled by r itself. An additive 1e-8 denominator
