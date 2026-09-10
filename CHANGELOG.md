@@ -369,9 +369,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
-* `StereoCamera` now rejects projection matrices whose last two dimensions are not `(3, 4)` with a
-  `StereoException` naming the invalid camera. Previously, the shape guards never fired, so malformed
-  matrices could be accepted or fail later with an unrelated tensor error. (#4385)
+* `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
+  instead of treating padding entries as real boxes. (#4390)
+* Fixed fixture teardown between files when running half-precision tests with
+  `--isolate-half-precision`, including reporting parent fixture finalizer errors. (#4388)
+* Corrected the matrix-shape checks shared by `PinholeCamera` and `PinholeCamerasList`, the
+  `pixel2cam` coordinate-shape check, and the `cam2pixel` coordinate/projection checks. Invalid
+  inputs now raise the intended `ValueError` instead of being accepted or failing later in tensor
+  operations. The rank-4 matrices used by `PinholeCamerasList` remain supported. (#4387)
+* Fixed `dx_distort_points_kannala_brandt` to return the true Jacobian of `distort_points_kannala_brandt`, including a finite affine Jacobian at the origin. (#4277, #4368)
 * `Boxes3D.from_tensor(..., validate_boxes=True)` rejects non-finite coordinates, and `validate_bbox3d`
   returns `False` for them instead of raising an `AssertionError` that names the wrong defect. This is the
   3D counterpart of #4243. An `inf` passed the positive-extent checks outright, and a `NaN` passed them
@@ -404,6 +410,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   construct and then fail with an `IndexError` from inside `AffineTransform.distort`, naming neither
   `params` nor the camera; a rank-3 `(B, 1, N)` tensor used to construct, project, and silently return a
   `(1, 1, 2)` result. Both now raise `ValueError` from the constructor. (#4316, #4369)
+
+* `StereoCamera` now rejects projection matrices whose last two dimensions are not `(3, 4)` with a
+  `StereoException` naming the invalid camera. Previously, the shape guards never fired, so malformed
+  matrices could be accepted or fail later with an unrelated tensor error. (#4385)
 
 * `warp_affine`, `warp_perspective` and `remap` crashed on MPS for an empty destination -- a `dsize` with a
   zero dimension, or zero-sized `remap` maps -- with an internal
