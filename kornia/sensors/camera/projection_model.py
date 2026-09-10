@@ -73,16 +73,8 @@ class Z1Projection:
         Convention:
             - ``depth`` is the camera-frame ``z``: the :math:`z = 1` point is multiplied by it, so the third
               coordinate of the result is the ``depth`` that was passed in, and not a Euclidean ray length.
-
-        .. warning::
-            A python ``float`` or ``int`` ``depth`` is promoted with ``torch.Tensor([depth])``, a CPU float32
-            constructor that ignores the device and the dtype of ``points``: on a non-CPU device (verified
-            on MPS) the multiply below raises ``RuntimeError``, and on the CPU a half-precision input comes
-            back widened. The
-            tensor spelling of the same argument has neither problem. Tracked in
-            `#4313 <https://github.com/kornia/kornia/issues/4313>`_ and pinned by
-            ``test_wart_unproject_with_a_python_scalar_depth_builds_a_cpu_tensor_4313`` in
-            ``tests/sensors/camera/test_projection_model.py``.
+            - a python ``float`` or ``int`` ``depth`` is promoted to a one-element tensor on the device and in
+              the dtype of ``points``, so it gives the same result as the tensor spelling of the same value.
 
         Args:
             points: Vector2 representing the points to unproject.

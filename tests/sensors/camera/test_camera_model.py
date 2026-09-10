@@ -326,52 +326,6 @@ class TestCameraModelTypes(BaseTester):
         with pytest.raises(ValueError, match=r"params must be of shape B, 8 for KANNALA_BRANDT_K3 Camera"):
             CameraModel(ImageSize(6, 8), CameraModelType.KANNALA_BRANDT_K3, torch.ones(7, device=device, dtype=dtype))
 
-    def test_wart_camera_model_base_validates_no_params_shape_4316(self, device, dtype):
-        # Wart pin for kornia#4316 (whole-branch review finding; the audit's ``CameraModelBase`` cells
-        # 5d-sc-08 / 5d-sc-09 construct the base directly, but only ever with a well-shaped ``params``):
-        # ``CameraModelBase.__init__`` documents ``params`` as (B, 4) / (B, 12) / (B, 8) and then validates
-        # neither the length nor the rank -- it stores what it is given.  ``CameraModelBase`` is public (it
-        # is in ``kornia.sensors.camera.__all__`` and its own docstring example constructs one directly), so
-        # the documented precondition is enforced on the typed path and simply absent on this one.  Two
-        # counterexamples:
-        #   * a THREE-element vector constructs, and the missing cy is only discovered one call deep inside
-        #     ``AffineTransform.distort``, as an IndexError whose message names neither ``params`` nor the
-        #     camera model;
-        #   * a (1, 1, 4) vector -- the rank the typed constructors reject, because there is no (B, N, 4)
-        #     multi-camera form -- constructs, projects without complaint and returns a (1, 1, 2) result.
-        # The typed-constructor arm is the discriminator: it rejects BOTH of those parameter tensors with
-        # ValueError, so without it this method would read as "nothing anywhere validates params", which is
-        # false.  Either repair in #4316 must flip a line here: validating in the base turns both
-        # constructions into ValueError, and the docstring-only option is a no-op for this pin only because
-        # it changes no behaviour.
-        # The parameters are asymmetric -- fx = 100 != fy = 50, cx = 4 != cy = 3, and the truncated vector
-        # drops cy specifically -- so a swapped reading of the layout changes the projected literals.
-        # Snippet used to generate expected: CameraModelBase(AffineTransform(), Z1Projection(),
-        # ImageSize(6, 8), tensor([100., 50., 4.])).project(Vector3(tensor([[1., 2., 4.]]))) and the same
-        # with tensor([[[100., 50., 4., 3.]]]) executed 2026-09-06 on this worktree (torch 2.14.0) ->
-        # IndexError("index 3 is out of bounds for dimension 1 with size 3") and a (1, 1, 2) Vector2 equal
-        # to [[[29.0, 28.0]]]; on cpu for float32, float64, float16 and bfloat16 and on mps for float32 and
-        # float16.  CameraModel(ImageSize(6, 8), PINHOLE, ...) raises ValueError "params must be of shape
-        # (B, 4) for PINHOLE Camera" for both tensors.
-        # Pins the CURRENT behaviour; NOT a contract; delete when #4316 is repaired.
-        point = Vector3(torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype))
-        short_params = torch.tensor([100.0, 50.0, 4.0], device=device, dtype=dtype)
-        short = CameraModelBase(AffineTransform(), Z1Projection(), ImageSize(6, 8), short_params)
-        assert short.params.shape == (3,)
-        with pytest.raises(IndexError, match="out of bounds"):
-            short.project(point)
-        rank3_params = torch.tensor([[[100.0, 50.0, 4.0, 3.0]]], device=device, dtype=dtype)
-        rank3 = CameraModelBase(AffineTransform(), Z1Projection(), ImageSize(6, 8), rank3_params)
-        assert rank3.params.shape == (1, 1, 4)
-        projected = rank3.project(point)
-        assert projected.data.shape == (1, 1, 2)
-        self.assert_close(
-            projected.data, torch.tensor([[[29.0, 28.0]]], device=device, dtype=dtype), atol=0.0, rtol=0.0
-        )
-        for params in (short_params, rank3_params):
-            with pytest.raises(ValueError, match=r"params must be of shape \(B, 4\) for PINHOLE Camera"):
-                CameraModel(ImageSize(6, 8), CameraModelType.PINHOLE, params)
-
     def test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284(self, device, dtype):
         # Wart pin for kornia#4284 (audit labels 5d-sc-14, 5d-sc-16, 5d-sc-17, 5d-sc-19, 5d-sc-20, 5d-sc-22,
         # 5d-sc-23): BROWN_CONRADY, KANNALA_BRANDT_K3 and ORTHOGRAPHIC are exported from
@@ -418,6 +372,7 @@ class TestCameraModelTypes(BaseTester):
         pinhole = CameraModel(ImageSize(6, 8), CameraModelType.PINHOLE, torch.ones(4, device=device, dtype=dtype))
         assert isinstance(pinhole.project(point3), Vector2)
         assert isinstance(pinhole.matrix(), torch.Tensor)
+
 
 class TestCameraModelBaseParamsValidation:
     """`CameraModelBase` is public and documents a `params` shape it did not check.

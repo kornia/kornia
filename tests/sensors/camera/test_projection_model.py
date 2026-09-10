@@ -110,42 +110,6 @@ class TestProjection(BaseTester):
         assert torch.isinf(zero_numerator.data[..., 1]).all()
         assert (zero_numerator.data[..., 1] > 0).all()
 
-    def test_wart_unproject_with_a_python_scalar_depth_builds_a_cpu_tensor_4313(self, device, dtype):
-        # Wart pin for kornia#4313 (audit label 5d-sc-30): ``Z1Projection.unproject`` documents
-        # ``depth: torch.Tensor | float`` and its own doctest passes the python int 3, but the promotion is
-        # ``torch.Tensor([depth])`` -- a CPU float32 constructor that ignores both the device and the dtype of
-        # ``points``.  On cpu the mismatch is invisible in the values and shows only as a widened dtype for
-        # the half types (float16 and bfloat16 points come back float32); on every accelerator the next
-        # multiply raises RuntimeError.  The tensor spelling of the same argument has neither problem, which
-        # is what makes this a defect rather than a documented limitation, so it is asserted here as the
-        # separator.  The point is off-axis and x != y so a swapped reading of the pair is visible.
-        # Snippet used to generate expected: Z1Projection().unproject(Vector2(tensor([[0.25, 0.5]])), 4).data
-        # executed 2026-09-06 on this worktree (torch 2.14.0) -> cpu [[1.0, 2.0, 4.0]] for every dtype, with
-        # dtype float32 for float16/bfloat16 inputs and the input dtype otherwise; mps raises RuntimeError
-        # "Expected all tensors to be on the same device, but found at least two devices, mps:0 and cpu!" for
-        # float32 and float16 alike.
-        # Pins the CURRENT device/dtype behaviour; NOT a contract; delete when #4313 is repaired.
-        projection = Z1Projection()
-        points = Vector2(torch.tensor([[0.25, 0.5]], device=device, dtype=dtype))
-        from_tensor = projection.unproject(points, torch.tensor([4.0], device=device, dtype=dtype))
-        self.assert_close(
-            from_tensor.data, torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0
-        )
-        assert from_tensor.data.dtype == dtype
-        if device.type == "cpu":
-            promoted = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
-            from_scalar = projection.unproject(points, 4)
-            assert from_scalar.data.dtype == promoted
-            self.assert_close(
-                from_scalar.data,
-                torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=promoted),
-                atol=0.0,
-                rtol=0.0,
-            )
-        else:
-            with pytest.raises(RuntimeError, match="same device"):
-                projection.unproject(points, 4)
-
 
 class TestOrthographicProjection(BaseTester):
     def test_wart_orthographic_projection_is_a_placeholder_4284(self, device, dtype):

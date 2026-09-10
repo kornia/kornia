@@ -121,8 +121,10 @@ class CameraModelBase:
           the typed constructors -- :class:`CameraModel` and the :class:`PinholeModel`,
           :class:`BrownConradyModel`, :class:`KannalaBrandtK3` and :class:`Orthographic` subclasses -- which
           accept an unbatched ``(N,)`` vector and a batched :math:`(B, N)` one and raise ``ValueError`` for
-          another length or a rank above 2. ``CameraModelBase`` itself validates neither the length nor the
-          rank -- see the warning below.
+          another length or a rank above 2. ``CameraModelBase.__init__`` applies the same check on the direct
+          construction path, reading the length off the distortion type -- 4 for
+          :class:`~kornia.sensors.camera.distortion_model.AffineTransform`, 12 for ``BrownConradyTransform``
+          and 8 for ``KannalaBrandtK3Transform``.
         - :meth:`matrix` and its alias :meth:`K` return the :math:`(*, 3, 3)` intrinsics
           ``[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]``, carrying the batch axis of ``params`` -- not the
           :math:`(B, 4, 4)` ``intrinsics`` that :class:`~kornia.geometry.camera.pinhole.PinholeCamera`
@@ -144,15 +146,6 @@ class CameraModelBase:
           recorded in `#4274 <https://github.com/kornia/kornia/issues/4274>`_.
 
     .. warning::
-        ``CameraModelBase.__init__`` documents a ``params`` shape and validates nothing: it stores what it is
-        given. A :math:`(B, 1, N)` vector the typed constructors reject is used as it is -- it projects and
-        returns a :math:`(B, 1, 2)` result -- and a too-short one reaches :meth:`project` and fails there
-        with ``IndexError``, far from the constructor. Tracked in
-        `#4316 <https://github.com/kornia/kornia/issues/4316>`_; the behaviour is documented as it is and
-        pinned by ``test_wart_camera_model_base_validates_no_params_shape_4316`` in
-        ``tests/sensors/camera/test_camera_model.py``.
-
-    .. warning::
         :class:`BrownConradyModel`, :class:`KannalaBrandtK3` and :class:`Orthographic` validate their
         parameters and construct, and then every :meth:`project`, :meth:`unproject` and :meth:`matrix` call on
         them raises ``NotImplementedError`` with an empty message, from three independent sites: the
@@ -162,15 +155,6 @@ class CameraModelBase:
         documented as it is and pinned by
         ``test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284`` in
         ``tests/sensors/camera/test_camera_model.py``.
-
-    .. warning::
-        :meth:`unproject` forwards ``depth`` to the projection, and
-        :class:`~kornia.sensors.camera.projection_model.Z1Projection` promotes a python ``float`` or ``int``
-        with ``torch.Tensor([depth])``, which ignores the device and the dtype of ``points``: on a non-CPU
-        device (verified on MPS) the multiply that follows raises ``RuntimeError``. Pass a tensor built on
-        the device of ``points``. Tracked in `#4313 <https://github.com/kornia/kornia/issues/4313>`_ and
-        pinned by ``test_wart_unproject_with_a_python_scalar_depth_builds_a_cpu_tensor_4313`` in
-        ``tests/sensors/camera/test_projection_model.py``.
 
     Example:
         >>> params = torch.Tensor([328., 328., 320., 240.])
