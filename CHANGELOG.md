@@ -369,7 +369,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
-* `depth_from_disparity` accepts Python integers and scalar tensors for the baseline and focal length. (#4392)
+* `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
+  instead of treating padding entries as real boxes. (#4390)
+* Fixed fixture teardown between files when running half-precision tests with
+  `--isolate-half-precision`, including reporting parent fixture finalizer errors. (#4388)
+* Corrected the matrix-shape checks shared by `PinholeCamera` and `PinholeCamerasList`, the
+  `pixel2cam` coordinate-shape check, and the `cam2pixel` coordinate/projection checks. Invalid
+  inputs now raise the intended `ValueError` instead of being accepted or failing later in tensor
+  operations. The rank-4 matrices used by `PinholeCamerasList` remain supported. (#4387)
+* Fixed `dx_distort_points_kannala_brandt` to return the true Jacobian of `distort_points_kannala_brandt`, including a finite affine Jacobian at the origin. (#4277, #4368)
 * `Boxes3D.from_tensor(..., validate_boxes=True)` rejects non-finite coordinates, and `validate_bbox3d`
   returns `False` for them instead of raising an `AssertionError` that names the wrong defect. This is the
   3D counterpart of #4243. An `inf` passed the positive-extent checks outright, and a `NaN` passed them
@@ -435,6 +443,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/onnx/test_export_coverage.py`. The finite-depth promise is bounded by the dtype: the default
   `eps=1e-8` is below float16 resolution, so half-precision callers must pass a representable `eps`.
   (#4280, #4348)
+
+* `depth_from_disparity` accepts Python integers and scalar tensors for the baseline and focal length. (#4392)
 
 * `iterative_quad_interp3d`'s `max_candidates` cap is now a per-image budget rather than one shared
   across the batch. The `topk` ranked the flattened `(B*C)` candidate list, so an image's refined
