@@ -369,6 +369,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
+  instead of treating padding entries as real boxes. (#4390)
 * Fixed fixture teardown between files when running half-precision tests with
   `--isolate-half-precision`, including reporting parent fixture finalizer errors. (#4388)
 * Corrected the matrix-shape checks shared by `PinholeCamera` and `PinholeCamerasList`, the
