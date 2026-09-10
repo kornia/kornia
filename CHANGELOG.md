@@ -479,6 +479,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   constructor stores what it is given, so `scaled.tx = 7` moved the camera `scale()` was called on.
   The returned camera's numbers are unchanged. (#4264, #4349)
 
+* A fresh transfer that `validate` rejects is now removed even when no other source could have used
+  the emptied path -- which is every `download_hf_file` caller, since it passes one URL. Those bytes
+  arrived during the call and were refused, so unlike the ambiguous load failures
+  `load_state_dict_from_url` weighs, keeping them would end the call having added a poisoned entry to
+  a cache that had none. An offline re-fetch also reports the validator's rejection rather than the
+  network error stacked on top of it, so the message names the file rather than an entry that is
+  intact and, by then, restored. (#4367)
+
 * `RenderingDeFMO` (used by `DeFMO`) no longer crashes on a half-precision forward pass. Its rendering
   time-steps (`times`) were a plain Python attribute, not a registered buffer, so `nn.Module.to()` never
   moved it; `forward` re-derived `times`'s device from the input on every call but never its dtype, so
