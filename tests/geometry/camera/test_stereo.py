@@ -313,8 +313,8 @@ class TestStereoCamera(BaseTester):
         # cloud is (B, H, W, 3). The channels-FIRST (B, 1, H, W) layout that the rest of kornia uses for images
         # is rejected, and so is an unbatched (B, H, W). The method's docstring used to say (B, 1, H, W) -- the
         # layout the shared guard rejects -- and now says (B, H, W, 1), matching the module-level function and
-        # the private guard's own docstring. The guard's message still says "dimension 1" for a shape[-1] check
-        # and never names (B, H, W, 1); that is kornia#4374, and the match below is on the current text.
+        # the private guard's own docstring. The message names the required layout and the last-dimension
+        # channel check (regression for kornia#4374).
         # The shape claim carries a value so it cannot pass on a dummy: with fx = 100 and tx = 0.5, a disparity
         # of 10 puts every point at Z = fx * tx / d = 5.
         # Snippet used to generate expected: cam.reproject_disparity_to_3D(full((1, 3, 5, 1), 10.0)) executed
@@ -326,7 +326,7 @@ class TestStereoCamera(BaseTester):
         points = cam.reproject_disparity_to_3D(disparity)
         assert points.shape == (1, 3, 5, 3)
         self.assert_close(points[0, 0, 0, 2], torch.tensor(5.0, device=device, dtype=dtype))
-        with pytest.raises(StereoException, match="to be 1 for as single channeled disparity map"):
+        with pytest.raises(StereoException, match=r"channels-last shape \(B, H, W, 1\)"):
             cam.reproject_disparity_to_3D(torch.full((1, 1, 3, 5), 10.0, device=device, dtype=dtype))
         with pytest.raises(StereoException, match="to have 4 dimensions"):
             cam.reproject_disparity_to_3D(torch.full((1, 3, 5), 10.0, device=device, dtype=dtype))
