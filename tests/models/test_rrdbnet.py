@@ -318,35 +318,22 @@ class TestRRDBNetBuilder:
             ("RealESRGAN_x2plus", 2, 23),
         ],
     )
-    def test_build_selects_the_vendored_rrdbnet(self, monkeypatch, model_name, scale, num_block):
-        # `SuperResolution` cannot be instantiated today (`ModelBase.from_config` is abstract --
-        # kornia#4291, a pre-existing defect that also skips this builder in the export survey), so
-        # the wrapper is stubbed out to reach the model the builder constructs. Once #4291 is fixed,
-        # drop the stub and assert on the returned `SuperResolution` directly.
-        captured = {}
-
-        def record(model, **kwargs):
-            captured["model"] = model
-            captured["kwargs"] = kwargs
-            return model
-
-        monkeypatch.setattr(super_resolution_module, "SuperResolution", record)
-
+    def test_build_selects_the_vendored_rrdbnet(self, model_name, scale, num_block):
         returned = RRDBNetBuilder.build(model_name, pretrained=False)
+        assert isinstance(returned, super_resolution_module.SuperResolution)
 
-        model = captured["model"]
-        assert model is returned
+        model = returned.model
         assert isinstance(model, RRDBNet)
         assert model.scale == scale
         assert len(model.body) == num_block
         assert model.conv_first.out_channels == 64  # num_feat=64
         assert model.body[0].rdb1.conv1.out_channels == 32  # num_grow_ch=32
         assert not model.training
-        assert captured["kwargs"]["name"] == model_name
+        assert returned.name == model_name
 
         # the rest of `build`'s contract: no pre-processing, outputs clamped back into [0, 1]
-        assert isinstance(captured["kwargs"]["pre_processor"], nn.Identity)
-        post_processor = captured["kwargs"]["post_processor"]
+        assert isinstance(returned.pre_processor, nn.Identity)
+        post_processor = returned.post_processor
         assert isinstance(post_processor, OutputRangePostProcessor)
         assert (post_processor.min_val, post_processor.max_val) == (0.0, 1.0)
 
