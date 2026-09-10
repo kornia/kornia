@@ -386,9 +386,10 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
     r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix.
 
     Convention:
-        - the input is the rotation axis scaled by the angle, in **radians**,
-          and must be batched — a bare ``(3,)`` vector raises (see the shape
-          warning below): ``[[0., 0., pi/2]]`` is a quarter turn about ``+z``,
+        - any number of leading batch dimensions is accepted: :math:`(3,)`
+          gives :math:`(3, 3)` and :math:`(2, 5, 3)` gives :math:`(2, 5, 3, 3)`
+        - the input is the rotation axis scaled by the angle, in **radians**:
+          ``[[0., 0., pi/2]]`` is a quarter turn about ``+z``,
           while ``[[0., 0., 90.]]`` is 90 *radians* about ``+z`` and returns a
           matrix whose leading entry is ``cos(90) = -0.4481``. The 2-D op
           :func:`~kornia.geometry.conversions.angle_to_rotation_matrix` reads
@@ -403,15 +404,6 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
           to this function, returning an equal result — see the alias warning
           below
 
-    .. warning::        Only rank-2 input is accepted, despite the guard's ``(*, 3)`` message:
-        ``(3,)`` raises ``IndexError: Dimension out of range``, ``(2, 5, 3)``
-        raises ``ValueError: too many values to unpack (expected 3)`` and
-        ``(1, 1, 3)`` raises ``ValueError: not enough values to unpack``.
-        Composing with
-        :func:`~kornia.geometry.conversions.rotation_matrix_to_axis_angle`
-        therefore fails for every rotation-matrix rank but 3. Tracked in
-        `#3955 <https://github.com/kornia/kornia/issues/3955>`_.
-
     .. warning::
         Calling any of this module's four deprecated aliases
         (``angle_axis_to_rotation_matrix``, ``rotation_matrix_to_angle_axis``,
@@ -423,10 +415,10 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
         `#3956 <https://github.com/kornia/kornia/issues/3956>`_.
 
     Args:
-        axis_angle: tensor of 3d vector of axis-angle rotations in radians with shape :math:`(N, 3)`.
+        axis_angle: tensor of 3d vector of axis-angle rotations in radians with shape :math:`(*, 3)`.
 
     Returns:
-        tensor of rotation matrices of shape :math:`(N, 3, 3)`.
+        tensor of rotation matrices of shape :math:`(*, 3, 3)`.
 
     Example:
         >>> input = torch.tensor([[0., 0., 0.]])
@@ -450,8 +442,8 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
 
     def _compute_rotation_matrix(axis_angle: torch.Tensor, theta2: torch.Tensor) -> torch.Tensor:
         theta = torch.sqrt(theta2.clamp(min=1e-12))  # clamping to ensure no nan gradients
-        wxyz = axis_angle / theta.unsqueeze(-1)  # (B, 3)
-        wx, wy, wz = wxyz.unbind(dim=1)  # (B,)
+        wxyz = axis_angle / theta.unsqueeze(-1)  # (*, 3)
+        wx, wy, wz = wxyz.unbind(dim=-1)  # (*,)
 
         cos_theta = torch.cos(theta)
         sin_theta = torch.sin(theta)
@@ -479,7 +471,7 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
                 torch.stack([r10, r11, r12], dim=-1),
                 torch.stack([r20, r21, r22], dim=-1),
             ],
-            dim=1,
+            dim=-2,
         )
 
         return rot
@@ -510,16 +502,16 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
                 k_one - k_half * (rx2 + ry2),
             ],
             dim=-1,
-        ).view(-1, 3, 3)
+        ).reshape(list(axis_angle.shape[:-1]) + [3, 3])
 
         return rot
 
     theta2 = (axis_angle * axis_angle).sum(dim=-1)
 
-    rot_normal = _compute_rotation_matrix(axis_angle, theta2)  # (N,3,3)
-    rot_taylor = _compute_rotation_matrix_taylor(axis_angle)  # (N,3,3)
+    rot_normal = _compute_rotation_matrix(axis_angle, theta2)  # (*,3,3)
+    rot_taylor = _compute_rotation_matrix_taylor(axis_angle)  # (*,3,3)
 
-    mask = (theta2 > 1e-6).view(-1, 1, 1)  # shape (N,1,1)
+    mask = (theta2 > 1e-6)[..., None, None]  # shape (*,1,1)
 
     rotation_matrix = torch.where(mask, rot_normal, rot_taylor)
 
@@ -540,9 +532,8 @@ def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor) -> torch.Tensor
         - the output is the rotation axis scaled by the angle in **radians**,
           the parametrization
           :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
-          consumes — but that function accepts only rank-2 input, so the
-          :math:`(3,)` and :math:`(2, 5, 3)` results above cannot be fed
-          straight back (see its shape warning)
+          consumes, at every rank: the :math:`(3,)` and :math:`(2, 5, 3)`
+          results above can be fed straight back
         - the round trip through
           :func:`~kornia.geometry.conversions.axis_angle_to_rotation_matrix`
           is accurate to about ``5e-09`` in ``float64`` — measured

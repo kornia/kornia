@@ -371,6 +371,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * `unproject_meshgrid` now requires camera intrinsics of shape `(B, 3, 3)`, rejecting extra
   camera axes before they can broadcast across pixel columns and reporting the caller's original shape. (#4383)
+* `axis_angle_to_rotation_matrix` accepts the `(*, 3)` shape its own guard message promises, instead of
+  only `(N, 3)`. The body did `wxyz.unbind(dim=1)` and `.view(-1, 3, 3)`, so an unbatched `(3,)` raised
+  `IndexError: Dimension out of range` and any extra batch dimension raised `ValueError` out of the unbind,
+  three frames below kornia's own shape guard. Every sibling conversion in the module already accepted
+  `(*, 3)`, so `axis_angle_to_rotation_matrix(rotation_matrix_to_axis_angle(R))` composed for an `(N, 3, 3)`
+  rotation matrix and for nothing else, including for the shape `rotation_matrix_to_axis_angle`'s own
+  doctest returns. This is additive: `(N, 3)` output and gradients are byte-identical, and only shapes that
+  used to raise now return (closes #3955). (#4342)
+* Make calibration `distort_points` and `undistort_points` tilt checks compatible with
+  `torch.compile(fullgraph=True)`, preserving eager behavior. (#4391)
+* Canny hysteresis preserves the input dtype, avoiding a convolution dtype mismatch for half-precision images. (#4393)
 
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
@@ -511,6 +522,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pixel positions collapsed, so rows and columns near the collapse were mismasked; the grid is
   now built in `float32` and `float16`/`bfloat16` results are byte-identical to `float32`/`float64`.
   `RandomErasing` and `RandomCutMixV2` build their masks through it. (#4336)
+
+* `kornia.contrib.super_resolution` builders construct again. `SuperResolution` never implemented
+  `ModelBase`'s abstract `from_config` and defined no `__init__`, so `SmallSRBuilder.build()` and
+  `RRDBNetBuilder.build()` both raised `TypeError` at construction — the whole public
+  super-resolution entry point had been unreachable since the models refactor made `from_config`
+  abstract. It now has a `SuperResolutionConfig` and a `from_config` that dispatches to either
+  builder family, and both builders are covered by tests. Fixes #4291. (#4335)
 
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
