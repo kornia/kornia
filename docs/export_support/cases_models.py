@@ -672,7 +672,6 @@ A(
             model=torch.nn.Identity(), pre_processor=torch.nn.Identity(), post_processor=torch.nn.Identity(), name="x"
         ),
         [IMG],
-        note="KORNIA BUG: abstract (ModelBase.from_config not implemented, no __init__) -> TypeError",
     )
 )
 A(
@@ -681,7 +680,6 @@ A(
         "contrib",
         lambda x: K.contrib.SmallSRBuilder.build("small_sr", pretrained=False),
         [IMG],
-        note="KORNIA BUG: builder instantiates abstract SuperResolution -> TypeError at super_resolution.py:262",
     )
 )
 A(
@@ -690,7 +688,7 @@ A(
         "contrib",
         None,
         [],
-        skip="builds a 17M-parameter Real-ESRGAN generator and would hit the same abstract SuperResolution TypeError",
+        skip="builds a 17M-parameter Real-ESRGAN generator; too heavy for the survey",
     )
 )
 
