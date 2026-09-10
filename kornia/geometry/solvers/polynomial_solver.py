@@ -316,7 +316,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     R_sq = torch.gather(R_sq_candidates, -1, best_idx).squeeze(-1)
 
     # `clamp(min=0).sqrt()` does not guard the gradient: d(sqrt)/dx is unbounded at 0, and on
-    # torch < 2.14 clamp passes the incoming gradient straight through at the bound (#4229), so
+    # torch < 2.14 clamp passes the incoming gradient straight through at the bound, as measured in #4229, so
     # R_sq == 0 -- a biquadratic such as x^4 - 16 -- gave inf and then nan. Substitute a safe
     # radicand instead, as solve_quadratic above already does, so sqrt is never differentiated at 0.
     # On torch >= 2.14 clamp already zeroes the boundary gradient, so the pins for this guard pass
