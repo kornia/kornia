@@ -364,6 +364,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `bbox_to_mask3d` now preserves the input dtype in the returned mask, matching `bbox_to_mask`
+  and the `Boxes3D.to_mask` contract: the earlier implementation downcast every result to
+  `float32`, so a `float64` or half-precision box produced a mask that silently lost precision.
+  The mask keeps the input box's dtype end to end. (#4376)
+
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
   while the implementation preserves ONNX export compatibility. (#4358)

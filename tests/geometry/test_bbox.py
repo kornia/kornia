@@ -669,7 +669,7 @@ class TestBbox3D(BaseTester):
             device=device,
             dtype=dtype,
         )
-        expected = torch.zeros(1, 1, 5, 5, 6, device=device, dtype=torch.float32)
+        expected = torch.zeros(1, 1, 5, 5, 6, device=device, dtype=dtype)
         expected[0, 0, 1:3, 1:3, 1:4] = 1.0
         self.assert_close(bbox_to_mask3d(boxes, (5, 5, 6)), expected, atol=0.0, rtol=0.0)
 
@@ -715,7 +715,7 @@ class TestBbox3D(BaseTester):
         boxes = Boxes3D.from_tensor(
             torch.tensor([[0.0, 1.0, 1.0, 4.0, 2.0, 2.0]], device=device, dtype=dtype), mode="xyzxyz_plus"
         )
-        expected = torch.zeros(1, 1, 4, 4, 5, device=device, dtype=torch.float32)
+        expected = torch.zeros(1, 1, 4, 4, 5, device=device, dtype=dtype)
         expected[0, 0, 1:3, 1:3, :] = 1.0
         self.assert_close(bbox_to_mask3d(boxes.data, (4, 4, 5)), expected, atol=0.0, rtol=0.0)
 
