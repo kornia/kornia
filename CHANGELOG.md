@@ -369,6 +369,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Corrected the matrix-shape checks shared by `PinholeCamera` and `PinholeCamerasList`, the
+  `pixel2cam` coordinate-shape check, and the `cam2pixel` coordinate/projection checks. Invalid
+  inputs now raise the intended `ValueError` instead of being accepted or failing later in tensor
+  operations. The rank-4 matrices used by `PinholeCamerasList` remain supported. (#4387)
 * Fixed `dx_distort_points_kannala_brandt` to return the true Jacobian of `distort_points_kannala_brandt`, including a finite affine Jacobian at the origin. (#4277, #4368)
 * `Boxes3D.from_tensor(..., validate_boxes=True)` rejects non-finite coordinates, and `validate_bbox3d`
   returns `False` for them instead of raising an `AssertionError` that names the wrong defect. This is the
