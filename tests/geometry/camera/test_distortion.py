@@ -171,8 +171,8 @@ class TestDistortionAffine(BaseTester):
         # Jacobian of distort_points_affine with respect to the POINT (rows = output components, columns = input
         # components), byte-identical to torch.autograd.functional.jacobian, and constant in the point because the
         # map is affine -- diag(fx, fy) = diag(100, 100). This is the control probe for the Kannala-Brandt
-        # Jacobian pinned in TestDistortionKannalaBrandt below, which is NOT the Jacobian of the function it
-        # documents (kornia#4277).
+        # Jacobian pinned in TestDistortionKannalaBrandt below, which now also matches the Jacobian of
+        # distort_points_kannala_brandt (kornia#4277, kornia#4368).
         # Snippet used to generate expected: torch.equal(dx_distort_points_affine(p, par),
         # torch.autograd.functional.jacobian(lambda q: distort_points_affine(q, par), p)) executed 2026-09-06 on
         # c0b50ad7 (torch 2.14.0) -> True on cpu (float32/float64/float16/bfloat16) and on mps
@@ -250,8 +250,8 @@ class TestDistortionKannalaBrandt(BaseTester):
         params = torch.tensor([600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4], device=device, dtype=dtype)
         expected = torch.tensor(
             [
-                [1191.5316162109375, 282.3212890625],
-                [282.3212890625, 1615.0135498046875],
+                [1221.1801242852937, 341.6185175810278],
+                [341.6185175810278, 1733.6079006568352],
             ],
             device=device,
             dtype=dtype,
@@ -408,45 +408,45 @@ class TestDistortionKannalaBrandt(BaseTester):
         residual = (undistort_points_kannala_brandt(distorted, params) - far).abs().max().item()
         assert 1e-9 < residual < 1e-7
 
-    def test_wart_dx_distort_points_kannala_brandt_disagrees_with_autograd_4277(self, device, dtype):
-        # Wart pin for kornia#4277: the analytic Jacobian is
-        # not the Jacobian of distort_points_kannala_brandt. torch.autograd.functional.jacobian and central finite
-        # differences agree with each other and both disagree with the analytic matrix -- by 62.58 in absolute
-        # terms on entries of order 1e2 at this point. The asymmetric focal lengths also make the analytic matrix
-        # nonsymmetric, and its transpose still does not close the gap, so it is not an index-order slip. The
-        # sibling dx_distort_points_affine (pinned in
-        # TestDistortionAffine) matches autograd byte for byte.
-        # The pre-existing test_dx_distort_points_kannala_brandt in this class asserts the same wrong analytic
-        # family at a different input; the fix for
-        # #4277 has to re-derive both its ``expected`` and the function's docstring example.
-        # Snippet used to generate expected: dx_distort_points_kannala_brandt(tensor([0.5, 0.25]), params) executed
-        # 2026-09-06 at c0b50ad7 (torch 2.14.0, cpu float32) with fx = 100 and fy = 50 ->
-        # [[22.0633487701416, -35.7770881652832], [-17.8885440826416, 37.8644866943359]]; autograd at the same
-        # input -> [[84.64064025878906, -4.488434791564941], [-2.24421739578247, 45.6866455078125]].
-        # Pins the CURRENT value; NOT a contract; delete when #4277 is repaired.
+    def test_dx_distort_points_kannala_brandt_affine_branch(self, device, dtype) -> None:
+        # The forward distortion switches to the affine model when radius_sq <= 1e-8.
+        # Its Jacobian must therefore be diag(fx, fy), including exactly at the origin.
+        points = torch.tensor([[0.0, 0.0], [1e-5, 0.0]], device=device, dtype=dtype)
         params = torch.tensor([100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
-        points = torch.tensor([0.5, 0.25], device=device, dtype=dtype)
-        analytic = dx_distort_points_kannala_brandt(points, params)
-        self.assert_close(
-            analytic,
-            torch.tensor(
-                [[22.0633487701416, -35.7770881652832], [-17.8885440826416, 37.8644866943359]],
-                device=device,
-                dtype=dtype,
-            ),
-        )
-        autograd = torch.autograd.functional.jacobian(lambda q: distort_points_kannala_brandt(q, params), points)
-        assert not torch.allclose(analytic.float(), analytic.transpose(-1, -2).float())
-        assert not torch.allclose(analytic.float(), autograd.float())
-        assert not torch.allclose(analytic.transpose(-1, -2).float(), autograd.float())
 
-    @pytest.mark.xfail(strict=True, reason="kornia#4277: the analytic Kannala-Brandt Jacobian disagrees with autograd")
+        expected_single = torch.tensor([[100.0, 0.0], [0.0, 50.0]], device=device, dtype=dtype)
+        expected = torch.stack([expected_single, expected_single])
+
+        self.assert_close(
+            dx_distort_points_kannala_brandt(points, params),
+            expected,
+            atol=0.0,
+            rtol=0.0,
+        )
+
     def test_convention_dx_distort_points_kannala_brandt_matches_autograd_4277(self, device, dtype):
-        # Intended contract, asserted as a strict xfail so the repair makes it XPASS and forces this mark out:
-        # dx_distort_points_kannala_brandt returns the Jacobian of the function it is named after, exactly as
-        # dx_distort_points_affine and dx_project_points_z1 already do.
-        # Settled by #4277's own Expected section ("re-derived so it matches autograd and central differences").
-        params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        # Regression for #4277: the analytic Kannala-Brandt Jacobian must match
+        # the derivative of distort_points_kannala_brandt with respect to the point.
+        # Asymmetric focal lengths ensure an fx/fy or row/column swap cannot hide.
+        params = torch.tensor(
+            [100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001],
+            device=device,
+            dtype=dtype,
+        )
         points = torch.tensor([0.5, 0.25], device=device, dtype=dtype)
-        autograd = torch.autograd.functional.jacobian(lambda q: distort_points_kannala_brandt(q, params), points)
-        self.assert_close(dx_distort_points_kannala_brandt(points, params), autograd)
+
+        analytic = dx_distort_points_kannala_brandt(points, params)
+
+        reference_dtype = dtype
+        if dtype in (torch.float16, torch.bfloat16):
+            reference_dtype = torch.float32
+
+        reference_points = points.to(reference_dtype)
+        reference_params = params.to(reference_dtype)
+
+        autograd = torch.autograd.functional.jacobian(
+            lambda q: distort_points_kannala_brandt(q, reference_params),
+            reference_points,
+        ).to(dtype)
+
+        self.assert_close(analytic, autograd)
