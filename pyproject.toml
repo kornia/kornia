@@ -25,7 +25,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Image Processing",
   "Topic :: Software Development :: Libraries",
 ]
-dependencies = ["kornia_rs>=0.1.9", "numpy>=1.21", "packaging", "torch>=2.5.1"]
+dependencies = ["kornia_rs>=0.1.14", "numpy>=1.21", "torch>=2.5.1"]
 dynamic = ["version"]
 
 [project.urls]
@@ -39,30 +39,21 @@ Issues = "https://github.com/kornia/kornia/issues"
 [project.optional-dependencies]
 dev = [
   "coverage",
-  "diffusers",
-  "numpy<3",
-  "onnx",
-  "onnxruntime",
-  "onnxscript",
+  "kornia[onnx]",
   "pillow",
   "pre-commit",
   "pytest",
-  "pytest-cov",
   "pytest-timeout",
-  "requests",
-  "ruff",
-  "setuptools",  # For torch.compile
-  "transformers<5.11",
+  "setuptools",  # torch.compile / triton on py3.11 + torch 2.5.1, which does not declare it there
 ]
 docs = [
-  "furo",
   "pydata-sphinx-theme>=0.21,<0.22",  # _static/css/pydata.css and js/custom.js target theme internals
-  "kornia_moons",
   "matplotlib",
+  # kornia.core.mixin.onnx annotates public members with ``onnx.ModelProto``; without onnx the
+  # lazy loader prompts on stdin while autodoc resolves them and the build dies. onnxruntime is
+  # not needed: no documented member resolves an ``onnxruntime`` annotation.
   "onnx",
-  "onnxruntime",
-  "opencv-python",
-  "PyYAML>=5.1",
+  "pillow",  # docs/generate_examples.py decodes and writes the generated figures with PIL
   "sphinx",
   "sphinx-autodoc-defaultargs",
   "sphinx-autodoc-typehints",
@@ -73,6 +64,8 @@ docs = [
   "sphinxcontrib-gtagjs",
   "sphinxcontrib-youtube",
 ]
+onnx = ["onnx", "onnxruntime", "onnxscript"]
+sd = ["diffusers", "transformers"]
 
 [build-system]
 requires = ["hatchling"]

@@ -77,7 +77,7 @@ from kornia.augmentation import (
 )
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
-from kornia.core._compat import torch_version, torch_version_le
+from kornia.core._compat import torch_version
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
 
@@ -4541,6 +4541,25 @@ class TestRandomChannelDropout(BaseTester):
         output_tensor = transform(input_tensor)
         self.assert_close(output_tensor[0], output_tensor[1])
 
+    def test_fill_value_is_a_registered_buffer(self, device, dtype):
+        # `fill_value` used to be a plain attribute -- invisible to state_dict() and to
+        # Module.to()/.half()/.cuda() (apply_transform compensated with its own inline
+        # `.to()`, so this was never a crash risk, just missing buffer hygiene).
+        aug = RandomChannelDropout(fill_value=0.3, p=1.0)
+        # persistent=False -> visible via named_buffers()/.to() but excluded from
+        # state_dict(), as in the buffer fixes #4079 and #4319 (keeps checkpoint
+        # keys unchanged); not every kornia buffer is non-persistent.
+        assert "fill_value" in dict(aug.named_buffers())
+        assert "fill_value" not in aug.state_dict()
+
+        moved = aug.to(device=device, dtype=dtype)
+        assert moved.fill_value.device.type == torch.device(device).type
+        assert moved.fill_value.dtype == dtype
+        # the moved buffer is the value the forward actually fills with
+        out = moved(torch.zeros(1, 3, 8, 8, device=device, dtype=dtype))
+        assert (out == moved.fill_value).any()
+        assert out.max() == moved.fill_value
+
 
 class TestNormalize(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
@@ -5414,12 +5433,13 @@ class TestRandomJPEG(BaseTester):
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(
-    torch_version_le(2, 0, 1),
-    reason="Test requires distributed tensor support introduced in PyTorch > 2.0.1 for transformers clip model.",
-)
 class TestRandomDissolving(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
+
+    @pytest.fixture(autouse=True)
+    def _needs_diffusers(self):
+        # `diffusers` left the `dev` extra; skip rather than hit the LazyLoader prompt under --runslow.
+        pytest.importorskip("diffusers", reason='`diffusers` is not installed: pip install "kornia[sd]"')
 
     def test_batch_proc(self, device, dtype):
         images = torch.rand(4, 3, 16, 16)

@@ -72,19 +72,11 @@ class SwiGLUFFN(nn.Module):
         return self.w3(hidden)
 
 
-try:
-    from xformers.ops import SwiGLU
+class SwiGLUFFNFused(SwiGLUFFN):
+    """Implement :class:`SwiGLUFFN` with the DINOv2 hidden-dimension rounding.
 
-    XFORMERS_AVAILABLE = True
-except ImportError:
-    SwiGLU = SwiGLUFFN
-    XFORMERS_AVAILABLE = False
-
-
-class SwiGLUFFNFused(SwiGLU):
-    """Implement the fused SwiGLU activation and Feed-Forward Network.
-
-    This implementation is optimized for training speed and memory usage.
+    The hidden dimension is scaled by ``2 / 3`` and rounded up to a multiple of 8, which is the
+    shape the pretrained DINOv2 checkpoints were saved with.
     """
 
     def __init__(

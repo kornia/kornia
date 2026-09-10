@@ -32,6 +32,19 @@ class Z1Projection:
     def project(self, points: Vector3) -> Vector2:
         """Project one or more Vector3 from the camera frame into the canonical z=1 plane through perspective division.
 
+        Convention:
+            - ``points`` is in the **camera frame** and the result is on the normalized :math:`z = 1` plane,
+              not in pixels: the map is ``xy / z``, with no epsilon and no validation. A point on the camera
+              plane (:math:`z = 0`) therefore projects to an infinity instead of raising -- to ``nan`` on an
+              axis whose numerator is zero as well -- and a point behind the camera to a finite coordinate.
+
+        .. warning::
+            That :math:`z = 0` answer is one of several that the projection entry points of kornia give for
+            the same input; they are collected in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+            The behaviour above is documented as it is and pinned by
+            ``test_wart_project_divides_by_z_with_no_guard_4267`` in
+            ``tests/sensors/camera/test_projection_model.py``.
+
         Args:
             points: Vector3 representing the points to project.
 
@@ -57,9 +70,15 @@ class Z1Projection:
     def unproject(self, points: Vector2, depth: torch.Tensor | float) -> Vector3:
         """Unproject one or more Vector2 from the canonical z=1 plane into the camera frame.
 
+        Convention:
+            - ``depth`` is the camera-frame ``z``: the :math:`z = 1` point is multiplied by it, so the third
+              coordinate of the result is the ``depth`` that was passed in, and not a Euclidean ray length.
+            - a python ``float`` or ``int`` ``depth`` is promoted to a one-element tensor on the device and in
+              the dtype of ``points``, so it gives the same result as the tensor spelling of the same value.
+
         Args:
             points: Vector2 representing the points to unproject.
-            depth: torch.Tensor representing the depth of the points to unproject.
+            depth: a :class:`torch.Tensor` of shape ``(B,)``, or a python scalar for a single point.
 
         Returns:
             Vector3 representing the unprojected points.
@@ -73,7 +92,7 @@ class Z1Projection:
 
         """
         if isinstance(depth, (float, int)):
-            depth = torch.Tensor([depth])
+            depth = torch.as_tensor([depth], device=points.data.device, dtype=points.data.dtype)
         return Vector3.from_coords(points.x * depth, points.y * depth, depth)
 
 
@@ -82,6 +101,14 @@ class OrthographicProjection:
 
     This model assumes parallel projection where the $z$ coordinate is
     discarded and no perspective scaling is applied.
+
+    .. warning::
+        Both methods are placeholders: :meth:`project` and :meth:`unproject` raise ``NotImplementedError``
+        with an empty message, which is what makes :class:`~kornia.sensors.camera.Orthographic` unusable in
+        either direction. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_ and pinned by
+        ``test_wart_orthographic_projection_is_a_placeholder_4284`` in
+        ``tests/sensors/camera/test_projection_model.py``.
+        :func:`~kornia.geometry.camera.project_points_orthographic` is the implemented equivalent.
     """
 
     def project(self, points: Vector3) -> Vector2:

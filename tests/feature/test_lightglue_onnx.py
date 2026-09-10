@@ -30,6 +30,21 @@ except ImportError:
     ort = None
 
 
+def test_missing_onnxruntime_names_the_extra(monkeypatch):
+    # Without onnxruntime the constructor must fail the way the LazyLoader handles do: an ImportError that
+    # says `pip install "kornia[onnx]"`, which the installation page promises.
+    import importlib.util
+
+    real_find_spec = importlib.util.find_spec
+
+    def hide_onnxruntime(name, *args, **kwargs):
+        return None if name == "onnxruntime" else real_find_spec(name, *args, **kwargs)
+
+    monkeypatch.setattr(importlib.util, "find_spec", hide_onnxruntime)
+    with pytest.raises(ImportError, match=r"kornia\[onnx\]"):
+        OnnxLightGlue()
+
+
 @pytest.mark.skipif(ort is None, reason="OnnxLightGlue requires onnxruntime-gpu")
 @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Needs dlpack")
 class TestOnnxLightGlue:

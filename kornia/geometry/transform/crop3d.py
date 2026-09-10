@@ -367,8 +367,10 @@ def _crop_by_boxes3d_to_size(
     # ``crop_by_boxes3d`` with the output size already known as Python ints. ``crop_and_resize3d`` and
     # ``center_crop3d`` build ``dst_box`` from ``size``, so they take this path and never read the box
     # values back from the device -- which also keeps them capturable by ``torch.onnx.export``.
-    validate_bbox3d(src_box)
-    validate_bbox3d(dst_box)
+    # ``validate_bbox3d`` raises for every failure it detects except a non-finite coordinate, which is a
+    # ``False`` predicate result; these call sites rely on the raise, so they convert that ``False``.
+    if not (validate_bbox3d(src_box) and validate_bbox3d(dst_box)):
+        raise AssertionError("Boxes must have finite coordinates, got non-finite values.")
 
     if len(tensor.shape) != 5:
         raise AssertionError(f"Only tensor with shape (B, C, D, H, W) supported. Got {tensor.shape}.")

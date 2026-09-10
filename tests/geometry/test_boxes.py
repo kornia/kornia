@@ -48,6 +48,24 @@ class TestBoxes2D(BaseTester):
         expected = torch.tensor([[[[1.0, 2.0], [4.0, 2.0], [4.0, 3.0], [1.0, 3.0]]]], device=device, dtype=dtype)
         self.assert_close(boxes.data, expected, atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh"])
+    def test_convention_from_tensor_rejects_non_finite_coordinates_4238(self, mode, device, dtype):
+        # Pin kornia#4238: eager validation rejects non-finite values in both
+        # unbatched and batched inputs, even when valid rows are present too.
+        source = torch.tensor([[0.0, 0.0, 4.0, 4.0], [1.0, 1.0, 5.0, 5.0]], device=device, dtype=dtype)
+        for source_layout in [source, source.unsqueeze(0)]:
+            for coordinate_index in range(4):
+                for non_finite in [float("nan"), float("inf"), float("-inf")]:
+                    invalid_source = source_layout.clone()
+                    invalid_source.reshape(-1, 4)[1, coordinate_index] = non_finite
+                    with pytest.raises(ValueError, match="non-finite coordinates"):
+                        Boxes.from_tensor(invalid_source, mode=mode, validate_boxes=True)
+
+    def test_convention_from_tensor_opt_out_preserves_non_finite_input_4238(self, device, dtype):
+        source = torch.tensor([[0.0, 0.0, float("nan"), 4.0]], device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(source, mode="xyxy", validate_boxes=False)
+        assert torch.isnan(boxes.data).any()
+
     @pytest.mark.parametrize("mode", ["xyxy", "xyxy_plus", "xywh", "vertices", "vertices_plus"])
     def test_convention_axis_aligned_box_round_trips_in_each_mode(self, mode, device, dtype):
         # Convention pin: an axis-aligned rectangle whose extent is at least one unit
@@ -864,18 +882,26 @@ class TestBoxes2D(BaseTester):
         with pytest.raises(RuntimeError, match="differentiable"):
             Boxes(boxes.clone().requires_grad_()).to_mask(5, 6)
 
-    def test_wart_to_mask_fills_the_origin_pixel_for_list_padding_rows_4252(self, device, dtype):
-        # Wart pin for kornia#4252: a list-backed object exports its zero padding rows as the exclusive xyxy box
-        # [0, 0, 1, 1] (see the padding note on the class), so to_mask marks pixel (0, 0) in the
-        # mask channel of every padding entry instead of leaving it empty.
+    @pytest.mark.parametrize("export_path", [False, True])
+    @pytest.mark.parametrize("offset", [0, 2])
+    def test_convention_to_mask_leaves_list_padding_empty_4252(self, export_path, offset, device, dtype, monkeypatch):
+        # Padding must stay empty even after transforms, while a real point box still covers one pixel.
+        point = torch.zeros(1, 4, 2, device=device, dtype=dtype)
         box = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
-        boxes = Boxes([box, torch.cat([box, box + 2.0])])
-        mask = boxes.to_mask(5, 5)
-        assert mask.shape == (2, 2, 5, 5)
-        expected_padding = torch.zeros(5, 5, device=device, dtype=dtype)
-        expected_padding[0, 0] = 1.0
-        self.assert_close(mask[0, 1], expected_padding, atol=0.0, rtol=0.0)
-        self.assert_close(mask[0, 0], mask[1, 0], atol=0.0, rtol=0.0)
+        boxes = Boxes([point[:0], point, torch.cat([point, box])])
+        if offset:
+            transform = torch.eye(3, device=device, dtype=dtype)
+            transform[:2, 2] = offset
+            boxes = boxes.transform_boxes(transform.expand(3, -1, -1))
+        original_data = boxes.data.clone()
+        if export_path:
+            monkeypatch.setattr(boxes_module, "is_exporting", lambda: True)
+        mask = boxes.to_mask(6, 6)
+        expected = torch.zeros(3, 2, 6, 6, device=device, dtype=dtype)
+        expected[1:, 0, offset, offset] = 1.0
+        expected[2, 1, offset + 1 : offset + 3, offset + 1 : offset + 3] = 1.0
+        self.assert_close(mask, expected, atol=0.0, rtol=0.0)
+        self.assert_close(boxes.data, original_data, atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("case", ["fractional", "outside", "negative", "rotated", "batched"])
     def test_convention_to_mask_export_path_matches_loop_path(self, case, device, dtype, monkeypatch):
@@ -1002,6 +1028,29 @@ class TestTransformBoxes2D(BaseTester):
 
 
 class TestBbox3D(BaseTester):
+    @pytest.mark.parametrize("mode", ["xyzxyz", "xyzxyz_plus", "xyzwhd"])
+    def test_convention_from_tensor_rejects_non_finite_coordinates_4258(self, mode, device, dtype):
+        # Pin kornia#4258, the 3D counterpart of the #4238 pin on Boxes.from_tensor: eager
+        # validation rejects non-finite values in both the unbatched and batched layouts, even when
+        # a valid row is present too. Before the fix an inf passed the positive-extent checks
+        # outright (inf - 0 > 0) and a nan passed them because every comparison against nan is
+        # False, so the box was constructed with non-finite vertices.
+        source = torch.tensor(
+            [[0.0, 0.0, 0.0, 4.0, 4.0, 4.0], [1.0, 1.0, 1.0, 5.0, 5.0, 5.0]], device=device, dtype=dtype
+        )
+        for source_layout in [source, source.unsqueeze(0)]:
+            for coordinate_index in range(6):
+                for non_finite in [float("nan"), float("inf"), float("-inf")]:
+                    invalid_source = source_layout.clone()
+                    invalid_source.reshape(-1, 6)[1, coordinate_index] = non_finite
+                    with pytest.raises(ValueError, match="non-finite coordinates"):
+                        Boxes3D.from_tensor(invalid_source, mode=mode, validate_boxes=True)
+
+    def test_convention_from_tensor_opt_out_preserves_non_finite_input_4258(self, device, dtype):
+        source = torch.tensor([[0.0, 0.0, 0.0, float("nan"), 4.0, 4.0]], device=device, dtype=dtype)
+        boxes = Boxes3D.from_tensor(source, mode="xyzxyz", validate_boxes=False)
+        assert torch.isnan(boxes.data).any()
+
     def test_smoke(self, device, dtype):
         def _create_tensor_box():
             # Sample two points of the 3d rect

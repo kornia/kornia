@@ -34,6 +34,7 @@ from kornia.geometry.bbox import (
     validate_bbox3d,
 )
 from kornia.geometry.boxes import Boxes3D
+from kornia.geometry.transform.crop3d import crop_and_resize3d, crop_by_boxes3d
 
 from testing.base import BaseTester
 
@@ -122,6 +123,23 @@ class TestBbox2D(BaseTester):
         expanded = torch.zeros(1, 3, 4, 2, device=device, dtype=dtype).expand(2, -1, -1, -1)
         assert expanded.stride(0) == 0
         assert validate_bbox(expanded) is True
+
+    def test_convention_validate_bbox_rejects_non_finite_coordinates_4238(self, device, dtype):
+        # Pin kornia#4238: NaN and infinite coordinates must not pass validation,
+        # including when an invalid row is mixed with a valid row.
+        boxes = torch.tensor(
+            [
+                [[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]],
+                [[1.0, 1.0], [5.0, 1.0], [5.0, 5.0], [1.0, 5.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        for coordinate_index in range(8):
+            for non_finite in [float("nan"), float("inf"), float("-inf")]:
+                invalid_boxes = boxes.clone()
+                invalid_boxes[1].reshape(-1)[coordinate_index] = non_finite
+                assert validate_bbox(invalid_boxes) is False
 
     def test_convention_validate_bbox_invariance_is_exact_arithmetic_only(self, device):
         # In float16 the inclusive +1 rounds distinct sub-unit spans to the same
@@ -262,6 +280,25 @@ class TestBbox2D(BaseTester):
         self.assert_close(bbox_to_mask(boxes, 6, 5), expected, atol=0.0, rtol=0.0)
         fractional = torch.tensor([[[1.4, 1.4], [3.6, 1.4], [3.6, 2.6], [1.4, 2.6]]], device=device, dtype=dtype)
         assert bbox_to_mask(fractional, 6, 5).sum().item() == 2.0
+
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_bbox_to_mask_position_grid_is_exact_for_half_boxes_on_a_large_image(self, device, half_dtype):
+        # float16/bfloat16 can only represent consecutive integers exactly up to 2048 px /
+        # 256 px; beyond that, adjacent pixel positions collapse onto the same value.
+        # bbox_to_mask's position grid used to be built at boxes.dtype, so a half-precision
+        # `boxes` on an image past that threshold silently mismasked rows/columns near the
+        # collapse. Compare against the float32 result for the same region on a 4096x4096
+        # image -- well past the threshold on both axes for either half dtype. Coordinates
+        # 1000 / 3072 / 4080 are exactly representable in both half dtypes, so the half box
+        # covers exactly the same rectangle as the float32 one.
+        boxes32 = torch.tensor(
+            [[[1000.0, 1000.0], [4080.0, 1000.0], [4080.0, 3072.0], [1000.0, 3072.0]]], device=device
+        )
+        boxes_half = boxes32.to(half_dtype)
+        mask32 = bbox_to_mask(boxes32, width=4096, height=4096)
+        mask_half = bbox_to_mask(boxes_half, width=4096, height=4096)
+        assert mask_half.dtype == half_dtype
+        assert torch.equal(mask_half.bool(), mask32.bool())
 
     def test_convention_bbox_generator_far_corner_is_start_plus_size_minus_one_3934(self, device, dtype):
         # Convention pin (kornia#3934 tracks the inclusive arithmetic): width 3 from x=1 places
@@ -414,6 +451,83 @@ class TestTransformBoxes2D(BaseTester):
 
 
 class TestBbox3D(BaseTester):
+    def test_convention_validate_bbox3d_rejects_non_finite_coordinates_4258(self, device, dtype):
+        # Pin kornia#4258, the 3D counterpart of the #4238 pin on validate_bbox above: a non-finite
+        # coordinate makes this a False predicate result, not an AssertionError. Before the fix the
+        # nan reached the allclose extent comparisons, which see nan != nan and raise "Boxes must
+        # have be cube, while get different heights", naming the wrong defect; an inf reached them
+        # as inf - inf = nan with the same result.
+        boxes = torch.tensor(
+            [
+                [
+                    [0.0, 0.0, 0.0],
+                    [4.0, 0.0, 0.0],
+                    [4.0, 4.0, 0.0],
+                    [0.0, 4.0, 0.0],
+                    [0.0, 0.0, 4.0],
+                    [4.0, 0.0, 4.0],
+                    [4.0, 4.0, 4.0],
+                    [0.0, 4.0, 4.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        assert validate_bbox3d(boxes) is True
+
+        for coordinate_index in range(24):
+            for non_finite in [float("nan"), float("inf"), float("-inf")]:
+                invalid_boxes = boxes.clone()
+                invalid_boxes[0].reshape(-1)[coordinate_index] = non_finite
+                assert validate_bbox3d(invalid_boxes) is False
+                # the same holds for the (B, N, 8, 3) rank-4 layout
+                assert validate_bbox3d(invalid_boxes[None]) is False
+
+    def test_convention_consumers_still_raise_on_non_finite_coordinates_4258(self, device, dtype):
+        # validate_bbox3d's four internal callers use it for its raise and discard the return value,
+        # so turning the non-finite case into a False predicate result must not quietly let NaN
+        # through them. All of them raised on main and all of them still do.
+        box = torch.tensor(
+            [
+                [
+                    [0.0, 0.0, 0.0],
+                    [4.0, 0.0, 0.0],
+                    [4.0, 4.0, 0.0],
+                    [0.0, 4.0, 0.0],
+                    [0.0, 0.0, 4.0],
+                    [4.0, 0.0, 4.0],
+                    [4.0, 4.0, 4.0],
+                    [0.0, 4.0, 4.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        invalid = box.clone()
+        invalid[0, 7, 1] = float("nan")
+
+        with pytest.raises(AssertionError, match="finite"):
+            infer_bbox_shape3d(invalid)
+        with pytest.raises(AssertionError, match="finite"):
+            bbox_to_mask3d(invalid, (6, 6, 6))
+
+        # The other two callers are the src_box and dst_box of _crop_by_boxes3d_to_size, reached
+        # through crop_by_boxes3d and crop_and_resize3d. They need their own cells: the dst_box is
+        # caught earlier by infer_bbox_shape3d, but the src_box is not, because crop_by_boxes3d
+        # sizes its output from the *dst* box. With the crop3d guard reverted both calls below
+        # accept the non-finite src_box without raising, while the two cells above stay green.
+        volume = torch.arange(64, device=device, dtype=dtype).reshape(1, 1, 4, 4, 4)
+        with pytest.raises(AssertionError, match="finite"):
+            crop_by_boxes3d(volume, invalid, box)
+        with pytest.raises(AssertionError, match="finite"):
+            crop_and_resize3d(volume, invalid, (2, 2, 2))
+
+        # the valid box is untouched
+        assert len(infer_bbox_shape3d(box)) == 3
+        assert bbox_to_mask3d(box, (6, 6, 6)).shape == (1, 1, 6, 6, 6)
+        assert crop_by_boxes3d(volume, box, box).shape == (1, 1, 5, 5, 5)
+        assert crop_and_resize3d(volume, box, (2, 2, 2)).shape == (1, 1, 2, 2, 2)
+
     def test_generator_scalar_inputs(self, device, dtype):
         args = [torch.tensor(value, device=device, dtype=dtype) for value in (1, 2, 3, 4, 5, 6)]
         boxes = bbox_generator3d(*args)
@@ -580,40 +694,18 @@ class TestBbox3D(BaseTester):
         self.assert_close(widths, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("num_boxes", [1, 8])
-    def test_wart_rank4_input_passes_validate_bbox3d_then_breaks_the_3d_helpers_4248(self, device, dtype, num_boxes):
-        # Wart pin for kornia#4248: validate_bbox3d accepts (B, N, 8, 3), but infer_bbox_shape3d and bbox_to_mask3d
-        # then index the box axis as the vertex axis. With one box that raises out-of-bounds errors;
-        # with eight boxes infer_bbox_shape3d instead returns three (1, 3) tensors, one value per
-        # coordinate rather than per box. The 2D helpers had the same defect until kornia#4180.
-        boxes = self._unit_cuboid(device, dtype).expand(num_boxes, 8, 3)[None].contiguous()
-        assert validate_bbox3d(boxes) is True
-        if num_boxes == 8:
-            depths, heights, widths = infer_bbox_shape3d(boxes)
-            assert depths.shape == heights.shape == widths.shape == (1, 3)
-            with pytest.raises(RuntimeError):
-                bbox_to_mask3d(boxes, (4, 5, 5))
-        else:
-            with pytest.raises((RuntimeError, IndexError)):
-                infer_bbox_shape3d(boxes)
-            with pytest.raises((RuntimeError, IndexError)):
-                bbox_to_mask3d(boxes, (4, 5, 5))
-
-    @pytest.mark.parametrize("num_boxes", [1, 8])
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="kornia#4248: rank-4 3D input is not rejected with ShapeError as the 2D helpers do since kornia#4218",
-    )
     def test_convention_rank4_input_is_rejected_by_the_3d_helpers_4248(self, device, dtype, num_boxes):
+        # kornia#4248, the 3D twin of kornia#4180. validate_bbox3d still accepts (B, N, 8, 3) and
+        # reshapes internally, but infer_bbox_shape3d and bbox_to_mask3d read dim 1 as the vertex
+        # axis, so rank-4 input was read as if the box axis were the vertices: out-of-bounds with
+        # one box, and three (1, 3) tensors -- one value per coordinate rather than per box -- with
+        # eight. Both now reject it up front, the way the 2D helpers have since kornia#4218.
         boxes = self._unit_cuboid(device, dtype).expand(num_boxes, 8, 3)[None].contiguous()
+        # The accepting half of the mismatch is unchanged and still worth pinning.
+        assert validate_bbox3d(boxes) is True
         for call in (lambda: infer_bbox_shape3d(boxes), lambda: bbox_to_mask3d(boxes, (4, 5, 5))):
-            try:
+            with pytest.raises(ShapeError):
                 call()
-            except ShapeError:
-                continue
-            except Exception as error:
-                raise AssertionError(f"expected ShapeError, got {type(error).__name__}") from error
-            raise AssertionError("expected ShapeError, the call returned")
 
     def test_wart_bbox_generator3d_extent_is_one_larger_than_requested_4018(self, device, dtype):
         # Wart pin for kornia#4018: the 3D generator places the far corner at start + size, so
@@ -673,10 +765,15 @@ class TestBbox3D(BaseTester):
         assert bbox_to_mask(square, 6, 5).dtype == dtype
 
     @pytest.mark.parametrize("case", ["full_width", "full_height", "full_depth", "overhang"])
-    def test_wart_bbox_to_mask3d_fills_the_whole_volume_when_a_box_spans_an_axis_4255(self, device, dtype, case):
-        # Wart pin for kornia#4255: once one axis slab covers every index of the (4, 4, 5) volume, the
-        # union-of-planes intermediate is all true and its reductions lose the other two bounds, so all
-        # 80 voxels are filled where Boxes3D.to_mask fills the intersection. The interior box is unaffected.
+    def test_convention_bbox_to_mask3d_intersects_the_axis_ranges_for_a_full_or_overhanging_axis_box_4255(
+        self, device, dtype, case
+    ):
+        # kornia#4255: once one axis slab covers every index of the (4, 4, 5) volume, the OLD
+        # union-of-planes intermediate went all-true and its `all()`-reduction recovery lost the
+        # other two bounds, filling all 80 voxels where Boxes3D.to_mask correctly fills the
+        # intersection. bbox_to_mask3d now matches Boxes3D.to_mask exactly, including for a box
+        # that overhangs the volume on one axis (the normal state of a box after a crop or a
+        # translation). The interior box (unaffected even before the fix) is checked alongside it.
         xyzxyz_plus, intersection = {
             "full_width": ([0.0, 1.0, 1.0, 4.0, 2.0, 2.0], 20.0),
             "full_height": ([1.0, 0.0, 1.0, 2.0, 3.0, 2.0], 16.0),
@@ -684,18 +781,13 @@ class TestBbox3D(BaseTester):
             "overhang": ([-1.0, 1.0, 1.0, 5.0, 2.0, 2.0], 20.0),
         }[case]
         boxes = Boxes3D.from_tensor(torch.tensor([xyzxyz_plus], device=device, dtype=dtype), mode="xyzxyz_plus")
-        assert bbox_to_mask3d(boxes.data, (4, 4, 5)).sum().item() == 80.0
+        assert bbox_to_mask3d(boxes.data, (4, 4, 5)).sum().item() == intersection
         assert boxes.to_mask(4, 4, 5).sum().item() == intersection
         interior = Boxes3D.from_tensor(
             torch.tensor([[1.0, 1.0, 1.0, 2.0, 2.0, 2.0]], device=device, dtype=dtype), mode="xyzxyz_plus"
         )
         assert bbox_to_mask3d(interior.data, (4, 4, 5)).sum().item() == interior.to_mask(4, 4, 5).sum().item() == 8.0
 
-    @pytest.mark.xfail(
-        strict=True,
-        raises=AssertionError,
-        reason="kornia#4255: bbox_to_mask3d fills the whole volume for a full-axis box",
-    )
     def test_convention_bbox_to_mask3d_intersects_the_axis_ranges_for_a_full_axis_box_4255(self, device, dtype):
         # x spans the whole width 0..4, y and z cover 1..2: the intersection is 2 * 2 * 5 = 20 voxels.
         boxes = Boxes3D.from_tensor(
