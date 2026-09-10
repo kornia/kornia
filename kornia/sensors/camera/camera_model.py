@@ -410,23 +410,17 @@ class PinholeModel(CameraModelBase):
 
 
 class BrownConradyModel(CameraModelBase):
-    """Brown Conrady Camera Model.
-
-    .. warning::
-        Constructing this model succeeds; :meth:`~kornia.sensors.camera.CameraModelBase.project` and
-        :meth:`~kornia.sensors.camera.CameraModelBase.unproject` then raise ``NotImplementedError`` with an
-        empty message inside ``BrownConradyTransform``, and
-        :meth:`~kornia.sensors.camera.CameraModelBase.matrix` inside ``CameraModelBase.matrix``, which this
-        class does not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_.
-    """
+    """Brown Conrady Camera Model."""
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
         """Construct BrownConradyModel class.
 
         Args:
             image_size: Image size
-            params: Camera parameters of shape :math:`(B, 12)` of the form :math:`(fx, fy, cx, cy, kb0, kb1, kb2, kb3,
-                    k1, k2, k3, k4)`.
+            params: Camera parameters of shape :math:`(12,)` or :math:`(B, 12)`, ordered as
+                :math:`(fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, k5, k6)`. The first four values
+                are the camera intrinsics and the trailing eight values are the Brown-Conrady
+                distortion coefficients.
 
         """
         if params.shape[-1] != 12 or len(params.shape) > 2:
