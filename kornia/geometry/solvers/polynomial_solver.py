@@ -287,17 +287,6 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         root_tol = 1e-4
     else:  # float16, bfloat16
         root_tol = 1e-2
-    # Relative tolerance for the "is R^2 effectively zero" test. Tighter than
-    # ``root_tol`` on float32/float64 on purpose: R^2 is a difference of
-    # nearly-cancelling terms, so a genuinely small but nonzero R^2 must still
-    # take the division path -- only a biquadratic's pure rounding noise should
-    # trip the fallback.
-    if coeffs.dtype == torch.float64:
-        r_sq_tol = 1e-10
-    elif coeffs.dtype == torch.float32:
-        r_sq_tol = 1e-6
-    else:  # float16, bfloat16
-        r_sq_tol = 1e-2
 
     # Cubic fallback for a approx 0
     mask_a_zero = torch.abs(a) < zero_tol
@@ -365,35 +354,22 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         torch.zeros_like(R_sq),
     )
 
-    # Compute E term. The R ~ 0 fallback must key on R^2 (before the sqrt) and
-    # relative to scale, not on |R| after a sqrt: for a biquadratic R^2 is
-    # analytically 0 but numerically ±1e-16, whose sqrt is 1e-8 — above an
-    # absolute zero_tol on R — which sends the division path a near-zero
-    # denominator and an arbitrary E.
-    R_sq_scale = torch.maximum(0.25 * A_sq, torch.abs(B))
-    R_sq_scale = torch.maximum(R_sq_scale, torch.abs(y))
-    R_sq_scale = torch.maximum(R_sq_scale, torch.ones_like(R_sq_scale))
-    mask_R_small = R_sq <= r_sq_tol * R_sq_scale
-    mask_R_large = ~mask_R_small
-    E = torch.zeros_like(R)
-
-    if torch.any(mask_R_large):
-        numerator = A[mask_R_large] * y[mask_R_large] - 2.0 * C[mask_R_large]
-        denominator = 4.0 * R[mask_R_large]
-        E[mask_R_large] = numerator / denominator
-
-    # Fallback for R approx 0
-    if torch.any(mask_R_small):
-        radicand = 0.25 * y[mask_R_small] * y[mask_R_small] - D[mask_R_small]
-        # Same guard as for R above.
-        # Reachable, and its own gradient boundary: a quartic with no real roots, such as
-        # (x^2+1)(x^2+4) = [1, 0, 5, 0, 4], drives R_sq < 0 -> R = 0 -> radicand == 0 exactly.
-        mask_radicand_positive = radicand > 0
-        E[mask_R_small] = torch.where(
-            mask_radicand_positive,
-            torch.sqrt(torch.where(mask_radicand_positive, radicand, torch.ones_like(radicand))),
-            torch.zeros_like(radicand),
-        )
+    # Compute E from the constant-term constraint E^2 = y^2/4 - D directly, not
+    # the cross-term division (A*y - 2C)/(4R). That division cancels
+    # catastrophically when R is small (a near-biquadratic): A*y and 2C are nearly
+    # equal, so float32 rounds their difference away and then divides it by a tiny
+    # R, returning a value that is not even close to a root. Only the *sign* of E
+    # depends on the cross term (sign(E) = sign(A*y - 2C)), and a sign is robust
+    # to the cancellation. Guard sqrt's gradient at a zero radicand, as for R above.
+    radicand = 0.25 * y * y - D
+    mask_radicand_positive = radicand > 0
+    E = torch.where(
+        mask_radicand_positive,
+        torch.sqrt(torch.where(mask_radicand_positive, radicand, torch.ones_like(radicand))),
+        torch.zeros_like(radicand),
+    )
+    cross = A * y - 2.0 * C
+    E = torch.where(cross >= 0, E, -E)
 
     # Solve two resulting quadratic equations
     # Quad 1: x^2 + (A/2 - R)x + (y/2 - E) = 0

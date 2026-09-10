@@ -460,15 +460,50 @@ class TestQuarticSolver(BaseTester):
         expected = torch.sort(torch.tensor(expected_real, device=device, dtype=torch.float64)).values
         self.assert_close(real, expected, rtol=1e-6, atol=1e-6)
 
-    def test_random_general_coefficients_match_numpy_roots_4346(self, device):
+    def test_float32_candidate_selection_is_a_root_and_batch_invariant_4346(self, device):
+        # A near-biquadratic: R^2 is tiny but nonzero, so the cross-term division
+        # (A*y - 2C)/(4R) used to cancel catastrophically in float32 and return
+        # values that are not roots (residual ~ -0.49), and the answer changed with
+        # unrelated batch neighbours. Real roots are ~-1.8317 and ~0.7260.
+        coeffs = [1.0, 2.2074893, 3.4836431, 2.5101993, -4.7806377]
+        c = torch.tensor([coeffs], device=device, dtype=torch.float32)
+        p = torch.tensor(coeffs, device=device, dtype=torch.float32)
+
+        def real(t: torch.Tensor) -> torch.Tensor:
+            return torch.sort(t[t.abs() > 1e-6]).values
+
+        roots = real(solver.solve_quartic(c)[0])
+        assert len(roots) == 2
+
+        # every returned value is an actual root, not merely close to one
+        for r in roots:
+            residual = p[0] * r**4 + p[1] * r**3 + p[2] * r**2 + p[3] * r + p[4]
+            assert abs(float(residual)) < 1e-2, (r, residual)
+
+        # invariance to unrelated batch neighbours: the same row must give the same
+        # roots whether solved alone or embedded among unrelated quartics.
+        torch.manual_seed(0)
+        neighbours = torch.rand(256, 5, device=device, dtype=torch.float32) * 10 - 5
+        neighbours[:, 0] = 1.0
+        batched = real(solver.solve_quartic(torch.cat([c, neighbours], dim=0))[0])
+        self.assert_close(roots, batched, rtol=1e-3, atol=1e-3)
+
+    @pytest.mark.parametrize(
+        ("dtype", "tol"),
+        [
+            (torch.float64, 1e-6),
+            (torch.float32, 1e-2),
+        ],
+    )
+    def test_random_general_coefficients_match_numpy_roots_4346(self, device, dtype, tol):
         # ``test_random`` only builds quartics from four *real* roots, so its resolvent cubic always
         # has three real roots and neither defective branch is reached. Draw general coefficients and
         # check that every returned entry is a real root and that every real root is returned.
-        if device.type == "mps":
+        if device.type == "mps" and dtype == torch.float64:
             pytest.skip("float64 is not supported on the MPS backend")
         torch.manual_seed(0)
         batch_size = 64
-        coeffs = torch.rand(batch_size, 5, device=device, dtype=torch.float64) * 10 - 5
+        coeffs = torch.rand(batch_size, 5, device=device, dtype=dtype) * 10 - 5
         coeffs[:, 0] = 1.0
         roots = solver.solve_quartic(coeffs).detach().cpu().numpy()
         coeffs_np = coeffs.cpu().numpy()
@@ -479,10 +514,10 @@ class TestQuarticSolver(BaseTester):
             for g in roots[i]:
                 if abs(g) < 1e-12:
                     continue
-                assert np.any(np.abs(g - real_ref) < 1e-6), (coeffs_np[i], g, real_ref)
+                assert np.any(np.abs(g - real_ref) < tol), (coeffs_np[i], g, real_ref)
             # nothing missing: every real root is returned
             for t in real_ref:
-                assert np.any(np.abs(roots[i] - t) < 1e-6), (coeffs_np[i], t, roots[i])
+                assert np.any(np.abs(roots[i] - t) < tol), (coeffs_np[i], t, roots[i])
 
     @pytest.mark.parametrize(
         ("coeffs", "expected", "expected_grad"),
