@@ -44,7 +44,7 @@ class PinholeCamera:
           ``(0, 0)`` is centred at ``(0, 0)``, which is what :func:`~kornia.geometry.grid.create_meshgrid`
           enumerates, so a centred image has its principal point at ``cx = (W - 1) / 2``, ``cy = (H - 1) / 2``.
           A half-pixel convention, which places the pixel *corner* at the origin (COLMAP), reports the same
-          principal point half a pixel larger on each axis. See :doc:`/get-started/conventions`.
+          principal point half a pixel larger on each axis. See :doc:`/get-started/camera-conventions`.
         - ``depth`` is the camera-frame ``z`` coordinate. The ``normalize`` argument of
           :func:`~kornia.geometry.camera.perspective.unproject_points` and the ``normalize_points`` flags of
           :func:`~kornia.geometry.depth.depth_to_3d` and :func:`~kornia.geometry.depth.depth_to_3d_v2` read it
