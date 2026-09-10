@@ -55,7 +55,16 @@ class RandomGaussianBlurGenerator(RandomGeneratorBase):
         if sigma[1] < sigma[0]:
             raise TypeError(f"sigma_max should be higher than sigma_min: {sigma} passed.")
 
-        self.sigma = sigma
+        # `sigma` may be a plain (min, max) tuple of Python floats -- no device/dtype,
+        # nothing for `.to()`/`.half()` to move -- or a Tensor supplied by the caller.
+        # Only the Tensor case is derived state that needs to track the module: register
+        # it as a non-persistent buffer so `.to()` moves it through the normal nn.Module
+        # machinery instead of leaving it behind as a plain attribute. persistent=False
+        # keeps state_dict() keys unchanged, same rationale/convention as #4079/#4319.
+        if isinstance(sigma, torch.Tensor):
+            self.register_buffer("sigma", sigma, persistent=False)
+        else:
+            self.sigma = sigma
         self.sigma_sampler: UniformDistribution
 
     def __repr__(self) -> str:

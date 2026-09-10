@@ -49,6 +49,10 @@ Coordinates and sizes
 - 3D grids and 3D pixel coordinates are ``(d, x, y)`` — depth first, not
   ``(x, y, z)``; :func:`kornia.geometry.grid.create_meshgrid3d` produces this
   order and the ``*_pixel_coordinates3d`` conversions consume it.
+- Pixel ``(0, 0)`` is centred at ``(0, 0)`` — the OpenCV "integer" convention,
+  not COLMAP's half-pixel one. :doc:`camera-conventions` catalogues the
+  pixel-centre and camera-frame conventions of the surrounding ecosystem and
+  the converters between them.
 
 Angles and rotations
 --------------------
@@ -146,6 +150,12 @@ with ``torch.nn.functional.interpolate``/``grid_sample``, pass
      - ``None`` (PyTorch's per-mode default)
    * - ``homography_warp``
      - ``False``
+   * - ``undistort_image``
+     - ``True``
+   * - ``warp_frame_depth``
+     - ``True``
+   * - ``DepthWarper`` / ``depth_warp``
+     - ``True`` (default)
 
 Bounding boxes
 --------------

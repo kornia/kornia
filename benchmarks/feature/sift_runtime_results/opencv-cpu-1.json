@@ -1,0 +1,54 @@
+{
+  "metadata": {
+    "albumentations": null,
+    "batch_regime": "same graf image repeated as a true tensor batch",
+    "compile": false,
+    "compile_dynamic": null,
+    "compile_scope": [],
+    "cudnn_allow_tf32": true,
+    "cudnn_benchmark": false,
+    "device": "cpu",
+    "git_commit": "15d548fb",
+    "historical_presets": "native release defaults; refinement algorithms and quality differ",
+    "image": "img1.ppm",
+    "input_sha256": "8d53092ffa5b27f5138ec458302f35e7c72a9f35d1f94078ca35944c4b3626dd",
+    "kornia": "0.9.0rc1",
+    "kornia_rs": "0.1.10",
+    "machine": "x86_64",
+    "min_run_time": 5,
+    "num_features": 4096,
+    "numpy": "2.4.0",
+    "opencv": "4.11.0",
+    "opencv_num_threads": 1,
+    "pillow": "12.3.0",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python": "3.11.14",
+    "seed": 0,
+    "series": "OpenCV",
+    "timestamp_utc": "2026-09-05T17:36:09+00:00",
+    "timing": "feature extraction only; raw batch latency; transfers/compilation/matching/RANSAC excluded",
+    "torch": "2.14.0+cu130",
+    "torch_num_threads": 1,
+    "torchvision": null
+  },
+  "results": [
+    {
+      "backend": "opencv",
+      "batch": 1,
+      "device": "cpu",
+      "dtype": "uint8 input/float32 descriptor",
+      "features_per_image": [
+        2678
+      ],
+      "height": 640,
+      "initial_call_seconds": 0.13361100899783196,
+      "iqr_us": 3447.1422504793736,
+      "median_us": 87030.59100116661,
+      "op": "OpenCV SIFT",
+      "peak_extra_cuda_bytes": null,
+      "series": "OpenCV",
+      "throughput_per_s": 11.490212676903404,
+      "width": 800
+    }
+  ]
+}

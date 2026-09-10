@@ -64,6 +64,13 @@ class PatchDominantGradientOrientation(nn.Module):
         num_angular_bins: number of histogram bins.
         eps: for safe division, and arctan.
 
+    Note:
+        Each gradient pixel is accumulated into its two neighbouring histogram bins with
+        ``scatter_add_``. On CUDA that accumulation uses atomics, so two calls on identical input
+        can differ at the ulp level, and a patch whose two strongest bins are nearly tied can
+        return the neighbouring peak. ``torch.use_deterministic_algorithms(True)`` selects the
+        deterministic kernel and restores run-to-run reproducibility.
+
     """
 
     def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, eps: float = 1e-8) -> None:
@@ -129,13 +136,21 @@ class PatchDominantGradientOrientation(nn.Module):
         bo1_big = (bo0_big + 1) % self.num_ang_bins
         wo0_big = (1.0 - wo1_big) * mag
         wo1_big = wo1_big * mag
-        ang_bins_list = []
-        for i in range(self.num_ang_bins):
-            ang_bins_i = F.adaptive_avg_pool2d(
-                (bo0_big == i).to(patch.dtype) * wo0_big + (bo1_big == i).to(patch.dtype) * wo1_big, (1, 1)
-            )
-            ang_bins_list.append(ang_bins_i)
-        ang_bins = torch.cat(ang_bins_list, 1).view(-1, 1, self.num_ang_bins)
+        # Each pixel votes into just two bins. Accumulate those votes directly instead
+        # of scanning the entire patch once per angular bin. Like average pooling,
+        # accumulate half-precision inputs in float32, then divide before casting back.
+        accumulation_dtype = torch.float64 if patch.dtype == torch.float64 else torch.float32
+        ang_bins = torch.zeros(patch.shape[0], self.num_ang_bins, device=patch.device, dtype=accumulation_dtype)
+        # The `%` after the integer conversion only keeps the index in range: a NaN orientation
+        # casts to an arbitrary integer. A patch with NaN pixels returns a finite but arbitrary
+        # angle, as it did before this accumulation; the `max`/`where` below do not propagate NaN.
+        ang_bins.scatter_add_(
+            1, bo0_big.flatten(1).long() % self.num_ang_bins, wo0_big.flatten(1).to(accumulation_dtype)
+        )
+        ang_bins.scatter_add_(
+            1, bo1_big.flatten(1).long() % self.num_ang_bins, wo1_big.flatten(1).to(accumulation_dtype)
+        )
+        ang_bins = (ang_bins / (W * H)).to(patch.dtype).view(-1, 1, self.num_ang_bins)
         angular_smooth_padding = self.angular_smooth.padding
         if self.angular_smooth.padding_mode != "zeros":
             ang_bins = F.pad(

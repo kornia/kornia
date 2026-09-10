@@ -106,6 +106,12 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
        roots should be represented as 0. Thus, the output for a single real root should be in the
        format [real_root, 0, 0], and for two real roots, it should be [real_root_1, real_root_2, 0].
 
+    .. note::
+       At the acos boundary reached by a repeated (or near-repeated) real root, backward suppresses
+       the derivative of the acos argument to keep gradients finite. Repeated-root derivatives are
+       undefined; this is a surrogate convention, not a mathematical Jacobian. :func:`solve_quartic`
+       inherits this convention wherever it falls back to :func:`solve_cubic`.
+
     """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "4"])
 
@@ -179,7 +185,20 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_D_zero_solutions = (a_D_zero <= 0) & (a_Q_zero != 0)
 
     if torch.any(mask_D_zero):
-        theta_D_zero = torch.acos(R[mask_D_zero] / torch.sqrt(-Q3[mask_D_zero]))
+        # d(acos)/dx = -1/sqrt(1-x^2) is unbounded at x = +-1. The branch condition (D <= 0)
+        # guarantees |ratio_D_zero| <= 1 (D = Q3 + R^2 <= 0 implies R^2 <= -Q3), but a repeated
+        # or near-repeated real root pushes the ratio to exactly that boundary, where the
+        # *value* is fine but the *derivative* diverges -- same shape as the acos/asin boundary
+        # in quaternion_exp_to_log/euler_from_quaternion (#4007, fixed in #4228). A plain
+        # `.clamp(-1, 1)` does not help here: it only guards the value, not the diverging
+        # derivative of a value already inside the domain. Route the boundary through `.acos()`
+        # on a detached copy for the value and through `.acos()` on a substituted safe argument
+        # for the gradient, so autograd never differentiates `acos` at +-1 at all.
+        ratio_D_zero = R[mask_D_zero] / torch.sqrt(-Q3[mask_D_zero])
+        ratio_D_zero = torch.clamp(ratio_D_zero, min=-1.0, max=1.0)
+        at_boundary_D_zero = ratio_D_zero.abs() >= 1.0
+        safe_ratio_D_zero = torch.where(at_boundary_D_zero, torch.zeros_like(ratio_D_zero), ratio_D_zero)
+        theta_D_zero = torch.where(at_boundary_D_zero, ratio_D_zero.detach().acos(), safe_ratio_D_zero.acos())
         sqrt_Q_D_zero = torch.sqrt(-Q[mask_D_zero])
         x0_D_zero = 2 * sqrt_Q_D_zero * torch.cos(theta_D_zero / 3.0) - b_a_3[mask_D_zero]
         x1_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 2 * _PI) / 3.0) - b_a_3[mask_D_zero]
@@ -195,7 +214,10 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         AD = torch.zeros_like(R)
         BD = torch.zeros_like(R)
         R_abs = torch.abs(R)
-        mask_R_positive = R_abs > 1e-16
+        # Intersect with mask_D_positive: sqrt(D) on a D <= 0 row is nan, and
+        # although such a row is never read out of AD/BD, `-Q / nan` stays in
+        # the graph and its backward poisons every coefficient's gradient.
+        mask_R_positive = (R_abs > 1e-16) & mask_D_positive
         if torch.any(mask_R_positive):
             AD[mask_R_positive] = torch.pow(R_abs[mask_R_positive] + torch.sqrt(D[mask_R_positive]), 1 / 3)
             mask_R_positive_ = R < 0
@@ -232,6 +254,18 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
        In cases where a quartic polynomial has fewer than four real roots, the remaining entries
        in the output are set to 0. Similarly, any non-real (complex) roots are represented as 0.
        This is done to maintain a consistent output shape for all cases.
+
+    .. note::
+       For a repeated (or near-repeated) real root, the resolvent-cubic solve internally
+       delegates to :func:`solve_cubic`'s finite-but-surrogate boundary-gradient convention;
+       see that function's docstring for details.
+
+    .. note::
+       The same surrogate convention applies at this function's own two ``sqrt`` boundaries:
+       when the resolvent radicand ``R^2`` is 0 (a pure biquadratic such as :math:`x^4 - 16`)
+       and when the :math:`R \approx 0` fallback's radicand is 0, backward suppresses the diverging
+       ``sqrt`` derivative to keep gradients finite. The result is finite but is not the root
+       Jacobian; the forward values are unaffected.
     """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "5"])
 
@@ -281,7 +315,18 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     y = torch.gather(y_roots, -1, best_idx).squeeze(-1)
     R_sq = torch.gather(R_sq_candidates, -1, best_idx).squeeze(-1)
 
-    R = torch.sqrt(torch.clamp(R_sq, min=0.0))
+    # `clamp(min=0).sqrt()` does not guard the gradient: d(sqrt)/dx is unbounded at 0, and on
+    # torch < 2.14 clamp passes the incoming gradient straight through at the bound (#4229), so
+    # R_sq == 0 -- a biquadratic such as x^4 - 16 -- gave inf and then nan. Substitute a safe
+    # radicand instead, as solve_quadratic above already does, so sqrt is never differentiated at 0.
+    # On torch >= 2.14 clamp already zeroes the boundary gradient, so the pins for this guard pass
+    # on base there too; the 2.5.1 and 2.9.1 CI legs are the ones that discriminate.
+    mask_R_sq_positive = R_sq > 0
+    R = torch.where(
+        mask_R_sq_positive,
+        torch.sqrt(torch.where(mask_R_sq_positive, R_sq, torch.ones_like(R_sq))),
+        torch.zeros_like(R_sq),
+    )
 
     # Compute E term
     mask_R_small = torch.abs(R) < zero_tol
@@ -296,7 +341,15 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # Fallback for R approx 0
     if torch.any(mask_R_small):
         radicand = 0.25 * y[mask_R_small] * y[mask_R_small] - D[mask_R_small]
-        E[mask_R_small] = torch.sqrt(torch.clamp(radicand, min=0.0))
+        # Same guard as for R above.
+        # Reachable, and its own gradient boundary: a quartic with no real roots, such as
+        # (x^2+1)(x^2+4) = [1, 0, 5, 0, 4], drives R_sq < 0 -> R = 0 -> radicand == 0 exactly.
+        mask_radicand_positive = radicand > 0
+        E[mask_R_small] = torch.where(
+            mask_radicand_positive,
+            torch.sqrt(torch.where(mask_radicand_positive, radicand, torch.ones_like(radicand))),
+            torch.zeros_like(radicand),
+        )
 
     # Solve two resulting quadratic equations
     # Quad 1: x^2 + (A/2 - R)x + (y/2 - E) = 0
