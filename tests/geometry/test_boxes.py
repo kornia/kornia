@@ -275,6 +275,28 @@ class TestBoxes2D(BaseTester):
         batched_bbox = torch.stack([_create_tensor_box(), _create_tensor_box()])
         assert Boxes(batched_bbox)
 
+    def test_integer_input_respects_default_dtype_4379(self, device):
+        # kornia#4379: integer boxes and transformation matrices were hardcoded to
+        # float32 (`.float()`) regardless of the caller's default dtype. They now
+        # cast to torch.get_default_dtype(). Pin the fix end to end and restore the
+        # global default so the test cannot leak state to siblings.
+        old_default = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float64)
+            # Boxes constructor path (integer tensor, no mode conversion).
+            boxes = Boxes(torch.tensor([[1, 1, 4, 3]], device=device))
+            assert boxes.data.dtype == torch.float64
+            # _boxes_to_quadrilaterals path via from_tensor (integer xyxy input).
+            boxes_from = Boxes.from_tensor(torch.tensor([[1, 1, 4, 3]], device=device), mode="xyxy")
+            assert boxes_from.data.dtype == torch.float64
+            # _transform_boxes path: an integer transformation matrix is cast to
+            # the default dtype before the homography is applied.
+            transformed = boxes_from.transform_boxes(torch.eye(3, dtype=torch.int64, device=device))
+            assert transformed.data.dtype == torch.float64
+            assert transformed.data.dtype == boxes_from.data.dtype
+        finally:
+            torch.set_default_dtype(old_default)
+
     def test_get_boxes_shape(self, device, dtype):
         box = Boxes(torch.tensor([[[1.0, 1.0], [3.0, 2.0], [1.0, 2.0], [3.0, 1.0]]], device=device, dtype=dtype))
         t_boxes = torch.tensor(
@@ -1103,6 +1125,20 @@ class TestBbox3D(BaseTester):
         self.assert_close(d, torch.as_tensor([[31.0, 61.0]], device=device, dtype=dtype))
         self.assert_close(h, torch.as_tensor([[21.0, 51.0]], device=device, dtype=dtype))
         self.assert_close(w, torch.as_tensor([[11.0, 41.0]], device=device, dtype=dtype))
+
+    def test_integer_input_respects_default_dtype_4379(self, device):
+        old_default = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(torch.float64)
+            # Boxes3D constructor path with integer input.
+            boxes = Boxes3D(torch.tensor([[[0, 1, 2], [0, 1, 3], [1, 1, 2], [0, 1, 2],
+                                           [0, 2, 2], [1, 1, 3], [1, 2, 2], [0, 2, 3]]], device=device))
+            assert boxes.data.dtype == torch.float64
+            # Boxes3D.from_tensor path with integer input.
+            boxes_from = Boxes3D.from_tensor(torch.tensor([[0, 1, 2, 4, 5, 6]], device=device), mode="xyzxyz")
+            assert boxes_from.data.dtype == torch.float64
+        finally:
+            torch.set_default_dtype(old_default)
 
     def test_get_boxes_shape_batch(self, device, dtype):
         t_box1 = torch.tensor(

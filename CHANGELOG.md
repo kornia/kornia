@@ -364,6 +364,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `Boxes`, `Boxes3D`, their `from_tensor` helpers and `_transform_boxes` now cast integer
+  input to `torch.get_default_dtype()` instead of a hardcoded `float32`. Under a caller that
+  sets `torch.set_default_dtype(torch.float64)` — as NPU and other backends commonly do — the
+  old `.float()` silently forced every box and transformation matrix down to single precision,
+  losing precision end to end. The mask, shape and transform results now follow the configured
+  default dtype. (#4379)
+
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
   while the implementation preserves ONNX export compatibility. (#4358)
