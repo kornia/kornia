@@ -200,21 +200,15 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
 def dx_distort_points_kannala_brandt(
     projected_points_in_camera_z1_plane: torch.Tensor, params: torch.Tensor
 ) -> torch.Tensor:
-    r"""Return the analytic matrix the Kannala-Brandt model provides as its distortion Jacobian.
+    r"""Return the analytic Jacobian of the Kannala-Brandt distortion model.
 
     Convention:
         - the result has shape :math:`(..., 2, 2)` and is laid out like the Jacobian that
           :func:`~kornia.geometry.camera.dx_distort_points_affine` returns: rows are the output components
           ``(u, v)``, columns the input components ``(x, y)``.
-
-    .. warning::
-        The matrix this function returns today is **not** the Jacobian of
-        :func:`distort_points_kannala_brandt`. It disagrees with :func:`torch.autograd.functional.jacobian`
-        and with central finite differences, which agree with each other, and transposing it does not close
-        the gap; at the origin it is ``nan``. Tracked as
-        `#4277 <https://github.com/kornia/kornia/issues/4277>`_. The ``Example:`` block below prints the value
-        this implementation returns today and is deliberately left byte-identical -- it is the executable
-        evidence for the issue, and the repair has to re-derive it together with the existing regression tests.
+        - the Jacobian matches :func:`distort_points_kannala_brandt` with respect to the input point.
+          For squared radii less than or equal to ``1e-8``, the forward function uses its affine branch,
+          so the Jacobian is ``diag(fx, fy)``.
 
     Args:
         projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).
@@ -228,53 +222,103 @@ def dx_distort_points_kannala_brandt(
         >>> points = torch.tensor([1., 2.])
         >>> params = torch.tensor([1000.0, 1000.0, 320.0, 280.0, 0.1, 0.01, 0.001, 0.0001])
         >>> dx_distort_points_kannala_brandt(points, params)
-        tensor([[ 486.0507, -213.5573],
-                [-213.5573,  165.7147]])
+        tensor([[ 524.3779, -136.9029],
+                [-136.9029,  319.0236]])
 
     """
     KORNIA_CHECK_SHAPE(projected_points_in_camera_z1_plane, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "8"])
 
-    a = projected_points_in_camera_z1_plane[..., 0]
-    b = projected_points_in_camera_z1_plane[..., 1]
+    # Match normal PyTorch dtype promotion. Half-precision arithmetic is
+    # evaluated in float32 and rounded once at the end for numerical stability.
+    output_dtype = torch.promote_types(projected_points_in_camera_z1_plane.dtype, params.dtype)
+    compute_dtype = output_dtype
 
-    fx, fy = params[..., 0], params[..., 1]
+    if compute_dtype in (torch.float16, torch.bfloat16):
+        compute_dtype = torch.float32
 
-    k0 = params[..., 4]
-    k1 = params[..., 5]
-    k2 = params[..., 6]
-    k3 = params[..., 7]
+    points = projected_points_in_camera_z1_plane.to(dtype=compute_dtype)
+    params_work = params.to(dtype=compute_dtype)
 
-    # TODO: return identity matrix if a and b are zero
-    # radius_sq = a ** 2 + b ** 2
+    x = points[..., 0]
+    y = points[..., 1]
 
-    c0 = a.pow(2.0)
-    c1 = b.pow(2.0)
-    c2 = c0 + c1
-    c3 = c2.pow(5.0 / 2.0)
-    c4 = c2 + 1.0
-    c5 = c2.sqrt().atan()
-    c6 = c5.pow(2.0)
-    c7 = c6 * k0
-    c8 = c5.pow(4.0)
-    c9 = c8 * k1
-    c10 = c5.pow(6.0)
-    c11 = c10 * k2
-    c12 = c5.pow(8.0) * k3
-    c13 = 1.0 * c4 * c5 * (c11 + c12 + c7 + c9 + 1.0)
-    c14 = c13 * c3
-    c15 = c2.pow(3.0 / 2.0)
-    c16 = c13 * c15
-    c17 = 1.0 * c11 + 1.0 * c12 + 2.0 * c6 * (4.0 * c10 * k3 + 2.0 * c6 * k1 + 3.0 * c8 * k2 + k0)
-    c18 = c17 * c2.pow(2.0)
-    c19 = 1.0 / c4
-    c20 = c19 / c2.pow(3.0)
-    c21 = a * b * c19 * (-c13 * c2 + c15 * c17) / c3
+    fx, fy = params_work[..., 0], params_work[..., 1]
 
-    return torch.stack(
+    k0 = params_work[..., 4]
+    k1 = params_work[..., 5]
+    k2 = params_work[..., 6]
+    k3 = params_work[..., 7]
+
+    radius_sq = x * x + y * y
+
+    # The forward distortion uses the affine model for very small radii.
+    # Keep the nonlinear expression finite too because both branch tensors
+    # are evaluated before torch.where selects the result.
+    nonlinear_mask = radius_sq > 1e-8
+    safe_radius_sq = torch.where(
+        nonlinear_mask,
+        radius_sq,
+        torch.ones_like(radius_sq),
+    )
+
+    radius = safe_radius_sq.sqrt()
+    theta = radius.atan2(torch.ones_like(radius))
+
+    theta2 = theta * theta
+    theta4 = theta2 * theta2
+    theta6 = theta4 * theta2
+    theta8 = theta4 * theta4
+
+    polynomial = 1.0 + k0 * theta2 + k1 * theta4 + k2 * theta6 + k3 * theta8
+
+    radius_distorted = theta * polynomial
+
+    d_radius_distorted_d_theta = 1.0 + 3.0 * k0 * theta2 + 5.0 * k1 * theta4 + 7.0 * k2 * theta6 + 9.0 * k3 * theta8
+
+    d_radius_distorted_d_radius = d_radius_distorted_d_theta / (1.0 + safe_radius_sq)
+
+    scaling = radius_distorted / radius
+
+    radial_term = (radius * d_radius_distorted_d_radius - radius_distorted) / (radius * radius * radius)
+
+    nonlinear_jacobian = torch.stack(
         [
-            torch.stack([c20 * fx * (-c0 * c16 + c0 * c18 + c14), c21 * fx], dim=-1),
-            torch.stack([c21 * fy, c20 * fy * (-c1 * c16 + c1 * c18 + c14)], dim=-1),
+            torch.stack(
+                [
+                    fx * (scaling + x * x * radial_term),
+                    fx * x * y * radial_term,
+                ],
+                dim=-1,
+            ),
+            torch.stack(
+                [
+                    fy * x * y * radial_term,
+                    fy * (scaling + y * y * radial_term),
+                ],
+                dim=-1,
+            ),
         ],
         dim=-2,
     )
+
+    zero = torch.zeros_like(fx)
+
+    affine_jacobian = torch.stack(
+        [
+            torch.stack([fx, zero], dim=-1),
+            torch.stack([zero, fy], dim=-1),
+        ],
+        dim=-2,
+    )
+
+    jacobian = torch.where(
+        nonlinear_mask[..., None, None],
+        nonlinear_jacobian,
+        affine_jacobian,
+    )
+
+    if output_dtype in (torch.float16, torch.bfloat16):
+        jacobian = jacobian.to(dtype=output_dtype)
+
+    return jacobian

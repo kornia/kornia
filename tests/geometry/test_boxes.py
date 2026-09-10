@@ -1028,6 +1028,29 @@ class TestTransformBoxes2D(BaseTester):
 
 
 class TestBbox3D(BaseTester):
+    @pytest.mark.parametrize("mode", ["xyzxyz", "xyzxyz_plus", "xyzwhd"])
+    def test_convention_from_tensor_rejects_non_finite_coordinates_4258(self, mode, device, dtype):
+        # Pin kornia#4258, the 3D counterpart of the #4238 pin on Boxes.from_tensor: eager
+        # validation rejects non-finite values in both the unbatched and batched layouts, even when
+        # a valid row is present too. Before the fix an inf passed the positive-extent checks
+        # outright (inf - 0 > 0) and a nan passed them because every comparison against nan is
+        # False, so the box was constructed with non-finite vertices.
+        source = torch.tensor(
+            [[0.0, 0.0, 0.0, 4.0, 4.0, 4.0], [1.0, 1.0, 1.0, 5.0, 5.0, 5.0]], device=device, dtype=dtype
+        )
+        for source_layout in [source, source.unsqueeze(0)]:
+            for coordinate_index in range(6):
+                for non_finite in [float("nan"), float("inf"), float("-inf")]:
+                    invalid_source = source_layout.clone()
+                    invalid_source.reshape(-1, 6)[1, coordinate_index] = non_finite
+                    with pytest.raises(ValueError, match="non-finite coordinates"):
+                        Boxes3D.from_tensor(invalid_source, mode=mode, validate_boxes=True)
+
+    def test_convention_from_tensor_opt_out_preserves_non_finite_input_4258(self, device, dtype):
+        source = torch.tensor([[0.0, 0.0, 0.0, float("nan"), 4.0, 4.0]], device=device, dtype=dtype)
+        boxes = Boxes3D.from_tensor(source, mode="xyzxyz", validate_boxes=False)
+        assert torch.isnan(boxes.data).any()
+
     def test_smoke(self, device, dtype):
         def _create_tensor_box():
             # Sample two points of the 3d rect

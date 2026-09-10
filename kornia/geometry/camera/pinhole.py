@@ -61,8 +61,7 @@ class PinholeCamera:
         that remains on :meth:`scale_` and the setters is
         `#4264 <https://github.com/kornia/kornia/issues/4264>`_, the in-place :meth:`scale_` failure on an
         integer ``height`` / ``width`` with a floating-point scale factor
-        `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the shape
-        guards that admit an ``intrinsics`` whose projection is meaningless
+        `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the batch-size and point-shape limitations
         `#4266 <https://github.com/kornia/kornia/issues/4266>`_, and the rejection of an empty batch
         (:math:`B = 0`) `#4281 <https://github.com/kornia/kornia/issues/4281>`_. The behaviour described here is
         documented as it is and pinned by the ``test_convention_*`` / ``test_wart_*`` tests in
@@ -70,10 +69,9 @@ class PinholeCamera:
 
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
-          containing the full 4x4 camera calibration matrix. The constructor rejects it when it is neither
-          rank 3 nor rank 4 **and** its last two dimensions are not 4x4, so a :math:`(B, 3, 3)` matrix is
-          accepted, as is an unbatched :math:`(4, 4)` matrix, although :meth:`project` needs
-          the documented :math:`(B, 4, 4)`.
+          containing the full 4x4 camera calibration matrix. The shared shape validator also accepts
+          :math:`(B, N, 4, 4)` for ``PinholeCamerasList``, while :meth:`project` requires
+          the documented :math:`(B, 4, 4)` layout.
         extrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
           containing the full 4x4 rotation-translation matrix, checked by the same predicate.
         height: torch.Tensor with shape :math:`(B)` containing the image height.
@@ -109,7 +107,7 @@ class PinholeCamera:
 
     @staticmethod
     def _check_valid_params(data: torch.Tensor, data_name: str) -> bool:
-        if len(data.shape) not in (3, 4) and data.shape[-2:] != (4, 4):  # Shouldn't this be an OR logic than AND?
+        if len(data.shape) not in (3, 4) or data.shape[-2:] != (4, 4):
             raise ValueError(
                 f"Argument {data_name} shape must be in the following shape Bx4x4 or BxNx4x4. Got {data.shape}"
             )
@@ -838,11 +836,10 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
         - ``intrinsics_inv`` is checked for rank 3 alone, so a :math:`(B, 3, 3)` inverse passes the check and
           fails further in with an unrelated message.
         - ``depth`` must have shape ``Bx1xHxW``; multi-channel depth raises :class:`ValueError`.
-          The ``pixel_coords`` guard raises when the input is not rank 4 **and** its fourth dimension is 3;
-          for lower ranks, accessing that dimension can itself raise :class:`IndexError`.
+          ``pixel_coords`` must have shape ``BxHxWx3``.
 
     .. warning::
-        The rank-only ``intrinsics_inv`` check and the incorrect ``pixel_coords`` predicate are tracked in
+        The rank-only ``intrinsics_inv`` check is tracked in
         `#4266 <https://github.com/kornia/kornia/issues/4266>`_.
 
     Args:
@@ -858,8 +855,8 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
         raise ValueError(f"Input depth has to be in the shape of Bx1xHxW. Got {depth.shape}")
     if not len(intrinsics_inv.shape) == 3:
         raise ValueError(f"Input intrinsics_inv has to be in the shape of Bx4x4. Got {intrinsics_inv.shape}")
-    if not len(pixel_coords.shape) == 4 and pixel_coords.shape[3] == 3:
-        raise ValueError(f"Input pixel_coords has to be in the shape of BxHxWx3. Got {intrinsics_inv.shape}")
+    if not (len(pixel_coords.shape) == 4 and pixel_coords.shape[3] == 3):
+        raise ValueError(f"Input pixel_coords has to be in the shape of BxHxWx3. Got {pixel_coords.shape}")
     cam_coords: torch.Tensor = transform_points(intrinsics_inv[:, None], pixel_coords)
     return cam_coords * depth.permute(0, 2, 3, 1)
 
@@ -877,19 +874,13 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
         - ``dst_proj_src`` is a :math:`(B, 4, 4)` projection matrix — the layout of
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, not the :math:`(*, 3, 3)` ``K`` the functional API
           takes — and the result is ``(u, v)`` pixel coordinates in the destination frame.
-        - the projection guard raises exactly when ``dst_proj_src`` is not rank 3 **and** its trailing
-          dimensions are :math:`(4, 4)`. Thus an unbatched :math:`(4, 4)` matrix raises at the guard, while
-          a :math:`(B, 3, 3)` matrix passes and fails later inside ``transform_points``. The coordinate guard
-          similarly raises when the input is not rank 4 **and** its fourth dimension is 3; for lower ranks,
-          accessing that dimension can itself raise :class:`IndexError`.
         - the perspective division is ``x / (z + eps)`` rather than a guarded divide. With the default ``eps``,
           a projected coordinate ``x = 100, z = 0`` gives about ``1e14`` in ``float32``, ``float64`` and
           ``bfloat16``, and ``inf`` in ``float16`` (where ``eps`` rounds to zero). A zero numerator then gives
           zero in the former dtypes and ``nan`` in ``float16``; ``eps`` also biases small nonzero depths.
 
     .. warning::
-        The incorrect shape predicates are tracked in `#4266 <https://github.com/kornia/kornia/issues/4266>`_, and the
-        ``z = 0`` answer in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        The ``z = 0`` answer is tracked in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
     Args:
         cam_coords_src: (x, y, z) coordinates defined in the first camera coordinates system. Shape must be BxHxWx3.
@@ -901,9 +892,9 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
         torch.Tensor of shape BxHxWx2 with (u, v) pixel coordinates.
 
     """
-    if not len(cam_coords_src.shape) == 4 and cam_coords_src.shape[3] == 3:
+    if not (len(cam_coords_src.shape) == 4 and cam_coords_src.shape[3] == 3):
         raise ValueError(f"Input cam_coords_src has to be in the shape of BxHxWx3. Got {cam_coords_src.shape}")
-    if not len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4):
+    if not (len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4)):
         raise ValueError(f"Input dst_proj_src has to be in the shape of Bx4x4. Got {dst_proj_src.shape}")
     # apply projection matrix to points
     point_coords: torch.Tensor = transform_points(dst_proj_src[:, None], cam_coords_src)
