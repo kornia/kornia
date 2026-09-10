@@ -103,9 +103,7 @@ class BrownConradyTransform:
         Both methods are placeholders: :meth:`distort` and :meth:`undistort` raise
         ``NotImplementedError`` with an empty message, which is what makes
         :class:`~kornia.sensors.camera.BrownConradyModel` unusable in either direction. Tracked in
-        `#4284 <https://github.com/kornia/kornia/issues/4284>`_ and pinned by
-        ``test_wart_brown_conrady_and_kannala_brandt_transforms_are_placeholders_4284`` in
-        ``tests/sensors/camera/test_distortion_model.py``.
+        `#4284 <https://github.com/kornia/kornia/issues/4284>`_.
         :func:`~kornia.geometry.calibration.distort_points` is the implemented Brown-Conrady model, in
         pixel space with a separate ``K`` and coefficient vector rather than one packed parameter vector.
 
@@ -165,9 +163,7 @@ class KannalaBrandtK3Transform:
         Both methods are placeholders: :meth:`distort` and :meth:`undistort` raise
         ``NotImplementedError`` with an empty message, which is what makes
         :class:`~kornia.sensors.camera.KannalaBrandtK3` unusable in either direction. Tracked in
-        `#4284 <https://github.com/kornia/kornia/issues/4284>`_ and pinned by
-        ``test_wart_brown_conrady_and_kannala_brandt_transforms_are_placeholders_4284`` in
-        ``tests/sensors/camera/test_distortion_model.py``.
+        `#4284 <https://github.com/kornia/kornia/issues/4284>`_.
         :func:`~kornia.geometry.camera.distort_points_kannala_brandt` is the implemented equivalent, on the
         same normalized input and the same packed parameter vector.
     """

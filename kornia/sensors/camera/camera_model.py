@@ -167,9 +167,7 @@ class CameraModelBase:
         distortion placeholders ``BrownConradyTransform`` and ``KannalaBrandtK3Transform``, the projection
         placeholder ``OrthographicProjection``, and ``CameraModelBase.matrix``, which those three classes do
         not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_; the behaviour is
-        documented as it is and pinned by
-        ``test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284`` in
-        ``tests/sensors/camera/test_camera_model.py``.
+        documented as it is.
 
     Example:
         >>> params = torch.Tensor([328., 328., 320., 240.])
@@ -381,10 +379,7 @@ class PinholeModel(CameraModelBase):
             (floating for a floating-point factor) where the constructor took python integers -- a python
             ``int`` keeps ``int`` fields and a python ``float`` gives ``float`` ones. Both are tracked in
             `#4263 <https://github.com/kornia/kornia/issues/4263>`_, the second in its comment thread; they
-            are documented as they are and pinned by
-            ``test_wart_scale_rescales_the_principal_point_by_the_half_pixel_rule_4263`` and
-            ``test_wart_scale_turns_the_image_size_fields_into_tensors_4263`` in
-            ``tests/sensors/camera/test_camera_model.py``.
+            are documented as they are.
 
         Args:
             scale_factor: Scale factor to scale the camera model.
@@ -416,9 +411,7 @@ class BrownConradyModel(CameraModelBase):
         :meth:`~kornia.sensors.camera.CameraModelBase.unproject` then raise ``NotImplementedError`` with an
         empty message inside ``BrownConradyTransform``, and
         :meth:`~kornia.sensors.camera.CameraModelBase.matrix` inside ``CameraModelBase.matrix``, which this
-        class does not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_ and
-        pinned by ``test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284`` in
-        ``tests/sensors/camera/test_camera_model.py``.
+        class does not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_.
     """
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
@@ -443,9 +436,7 @@ class KannalaBrandtK3(CameraModelBase):
         :meth:`~kornia.sensors.camera.CameraModelBase.unproject` then raise ``NotImplementedError`` with an
         empty message inside ``KannalaBrandtK3Transform``, and
         :meth:`~kornia.sensors.camera.CameraModelBase.matrix` inside ``CameraModelBase.matrix``, which this
-        class does not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_ and
-        pinned by ``test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284`` in
-        ``tests/sensors/camera/test_camera_model.py``.
+        class does not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_.
     """
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
@@ -469,9 +460,7 @@ class Orthographic(CameraModelBase):
         :meth:`~kornia.sensors.camera.CameraModelBase.unproject` then raise ``NotImplementedError`` with an
         empty message inside ``OrthographicProjection``, and
         :meth:`~kornia.sensors.camera.CameraModelBase.matrix` inside ``CameraModelBase.matrix``, which this
-        class does not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_ and
-        pinned by ``test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284`` in
-        ``tests/sensors/camera/test_camera_model.py``.
+        class does not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_.
     """
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:

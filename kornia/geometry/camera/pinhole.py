@@ -64,8 +64,7 @@ class PinholeCamera:
         `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the batch-size and point-shape limitations
         `#4266 <https://github.com/kornia/kornia/issues/4266>`_, and the rejection of an empty batch
         (:math:`B = 0`) `#4281 <https://github.com/kornia/kornia/issues/4281>`_. The behaviour described here is
-        documented as it is and pinned by the ``test_convention_*`` / ``test_wart_*`` tests in
-        ``tests/geometry/camera/test_pinhole.py``.
+        documented as it is; the issues above track the repairs.
 
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`

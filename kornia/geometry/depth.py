@@ -88,11 +88,7 @@ def unproject_meshgrid(
         and then raises a ``ShapeError`` further into the body, whose message describes a shape the caller
         never passed rather than the one it did. The same guard admits non-singleton extra leading dimensions,
         which then broadcast against the pixel axes instead of being rejected (above). Tracked as
-        `#4271 <https://github.com/kornia/kornia/issues/4271>`_ and pinned by
-        ``test_wart_unproject_meshgrid_rejects_unbatched_intrinsics_4271``,
-        ``test_wart_unproject_meshgrid_extra_camera_axis_broadcasts_over_columns_4271`` and the strict ``xfail``
-        ``test_convention_unproject_meshgrid_error_names_the_shape_the_caller_passed_4271`` in
-        ``tests/geometry/test_depth.py``.
+        `#4271 <https://github.com/kornia/kornia/issues/4271>`_.
 
     Args:
         height: height of image.
@@ -419,17 +415,14 @@ def warp_frame_depth(
         frame this function calls ``dst`` (the one holding the depth) is that class's ``src``, and the image it
         calls ``image_src`` is that class's ``patch_dst``. The Convention block on
         :class:`~kornia.geometry.depth.DepthWarper` states the mapping in full. Tracked as
-        `#4273 <https://github.com/kornia/kornia/issues/4273>`_ and pinned by
-        ``test_wart_warp_frame_depth_and_depth_warper_name_the_depth_frame_oppositely_4273`` in
-        ``tests/geometry/test_depth.py``.
+        `#4273 <https://github.com/kornia/kornia/issues/4273>`_.
 
     .. warning::
         An empty batch (:math:`B = 0`) raises ``ZeroDivisionError`` from ``transform_points`` -- its
         batch-repeat count is ``0 // 0`` -- before any sampling runs, rather than returning an empty result,
         although the shape guards on the way in accept it and
         :func:`~kornia.geometry.depth.depth_to_3d` -- the same unprojection in the other layout -- returns an
-        empty point cloud. Tracked as `#4281 <https://github.com/kornia/kornia/issues/4281>`_ and pinned by
-        ``test_wart_warp_frame_depth_rejects_an_empty_batch_4281`` in ``tests/geometry/test_depth.py``.
+        empty point cloud. Tracked as `#4281 <https://github.com/kornia/kornia/issues/4281>`_.
 
     Args:
         image_src: image tensor in the source frame with shape :math:`(B,D,H,W)`.
@@ -514,20 +507,15 @@ class DepthWarper(nn.Module):
         -- so the grid, and with it the resampled image, can differ in the last bits. Where the two grids come
         out bit-identical, so do the images. Wherever the transformed points keep a camera-frame ``z`` away
         from zero, the two agree at the working dtype's tolerance in float32 and float64; in float16 and
-        bfloat16 the gap is wider than that tolerance, which is why the pin below states the claim for the two
+        bfloat16 the gap is wider than that tolerance, which is why the agreement is claimed for the two
         single- and double-precision dtypes only. At ``z = 0`` the two split outright, because their two
         projection routes guard the singularity differently:
         :func:`~kornia.geometry.camera.perspective.project_points` skips the homogeneous divide when
         ``abs(z) <= 1e-8``, so :func:`~kornia.geometry.depth.warp_frame_depth` samples ``image_src`` at the
         undivided ``(x, y)`` and returns image content, while ``cam2pixel`` divides by ``z + 1e-12`` and sends
         the same pixel to a coordinate of order ``1e12``, far outside the image. That split is one instance of
-        `#4267 <https://github.com/kornia/kornia/issues/4267>`_, the namespace-wide ``z = 0`` conflict, and is
-        pinned by ``test_wart_warp_frame_depth_and_depth_warper_split_at_zero_transformed_depth_4267``. The
-        naming conflict is tracked as `#4273 <https://github.com/kornia/kornia/issues/4273>`_ and pinned by
-        ``test_wart_warp_frame_depth_and_depth_warper_name_the_depth_frame_oppositely_4273``; the agreement away
-        from ``z = 0`` is pinned by
-        ``test_convention_warp_frame_depth_matches_depth_warper_without_being_bitwise_equal``. All three pins are in
-        ``tests/geometry/test_depth.py``.
+        `#4267 <https://github.com/kornia/kornia/issues/4267>`_, the namespace-wide ``z = 0`` conflict. The
+        naming conflict is tracked as `#4273 <https://github.com/kornia/kornia/issues/4273>`_.
 
     Args:
         pinhole_dst: the pinhole model for the destination frame.
@@ -813,9 +801,7 @@ def depth_from_disparity(
         ``5e9`` for a baseline of ``0.5`` and a focal length of ``100``, a value set by the epsilon as much as
         by the camera and one no caller can threshold against. In float16 the ``1e-8`` itself rounds to zero,
         so the same call divides by zero and returns ``inf`` after all. Tracked as
-        `#4272 <https://github.com/kornia/kornia/issues/4272>`_ and pinned by
-        ``test_wart_zero_disparity_gives_a_finite_depth_4272`` and
-        ``test_wart_depth_from_disparity_rejects_a_batched_baseline_4272`` in ``tests/geometry/test_depth.py``.
+        `#4272 <https://github.com/kornia/kornia/issues/4272>`_.
 
     Args:
         disparity: Disparity tensor of shape :math:`(*, H, W)`.
