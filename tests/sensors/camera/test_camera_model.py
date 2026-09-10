@@ -138,10 +138,10 @@ class TestPinholeCamera(BaseTester):
     def test_convention_projection_matches_geometry_camera_project_points(self, device, dtype):
         # Convention pin (audit labels 5d-sc-01, 5d-sc-02; duplication-ledger row "geometry.camera /
         # sensors.camera", KEEP SEPARATE, kornia#4274): kornia ships two camera type systems and their Pinhole
-        # paths share the mathematical mapping through different types. On the exactly representable z=4
-        # fixture below, ``PinholeModel.project`` returns a Vector2 whose data is byte-identical to
-        # ``project_points`` with the same K; general depths can differ through rounding, while a raw Tensor
-        # is rejected with AttributeError rather than accepted (the request in the closed #2708).
+        # paths share the mathematical mapping through different types. On the shared-intrinsics,
+        # exactly representable z=4 fixture below, ``PinholeModel.project`` returns a Vector2 whose data is
+        # byte-identical to ``project_points`` with the same K; general depths can differ through rounding.
+        # A raw Tensor is rejected with AttributeError rather than accepted (the request in the closed #2708).
         # fx = 100 != fy = 50, cx = 4 != cy = 3 and the point is off-axis, so a transposed reading of the
         # parameter vector moves both components; the second arm changes ONE parameter (fy 50 -> 100) and the
         # v coordinate alone moves, which is what fixes fy as the y-axis scale rather than a shared focal.
@@ -194,9 +194,9 @@ class TestPinholeCamera(BaseTester):
     def test_convention_unproject_takes_the_camera_frame_z_as_depth(self, device, dtype):
         # Convention pin (audit labels 5d-sc-03, 5d-sc-40; pre-finding P6): the ``depth`` argument of
         # ``CameraModelBase.unproject`` is the camera-frame z, not a ray length -- it multiplies the z = 1
-        # point, so the third component of the result IS the depth that was passed in. The result is
-        # byte-identical to ``kornia.geometry.camera.unproject_points`` (whose own ``normalize`` flag would
-        # give the ray-length reading instead, and which takes the depth as (B, 1) where the sensors API takes
+        # point, so the third component of the result IS the depth that was passed in. On this shared-intrinsics
+        # fixture, the result is byte-identical to ``kornia.geometry.camera.unproject_points`` (whose ``normalize``
+        # flag would give the ray-length reading instead, and which takes depth as (B, 1) where the sensors API takes
         # it as (B,)). The round trip through project() is not the identity map on the fixture: the projected
         # pixel [[29.0, 28.0]] differs from the first two coordinates [[1.0, 2.0]] of the input, so the
         # equality below is not vacuously true of any pair of inverse functions.
@@ -217,6 +217,64 @@ class TestPinholeCamera(BaseTester):
         projected = cam.project(Vector3(points))
         assert not torch.equal(projected.data, points[..., :2])
         assert torch.equal(cam.unproject(projected, points[..., 2]).data, points)
+
+    @pytest.mark.parametrize("shared_intrinsics", [True, False])
+    def test_convention_shared_or_paired_intrinsics_match_geometry(self, device, dtype, shared_intrinsics):
+        # Shared intrinsics support a point cloud; batched intrinsics agree for one point per camera.
+        # These asymmetric values keep both projection and unprojection exactly representable in all dtypes.
+        params = torch.tensor([[8.0, 4.0, 1.0, 2.0], [4.0, 8.0, 3.0, 4.0]], device=device, dtype=dtype)
+        point_shape = (2, 3) if shared_intrinsics else (2,)
+        cam = CameraModel(ImageSize(6, 8), CameraModelType.PINHOLE, params[0] if shared_intrinsics else params)
+        points = torch.tensor([1.0, 2.0, 4.0], device=device, dtype=dtype).expand(*point_shape, 3)
+        pixels = torch.tensor([9.0, 10.0], device=device, dtype=dtype).expand(*point_shape, 2)
+        depth = torch.ones(point_shape, device=device, dtype=dtype)
+        expected_projected = torch.tensor([[3.0, 4.0], [4.0, 8.0]], device=device, dtype=dtype)
+        expected_unprojected = torch.tensor([[1.0, 2.0, 1.0], [1.5, 0.75, 1.0]], device=device, dtype=dtype)
+        if shared_intrinsics:
+            expected_projected = expected_projected[0].expand(*point_shape, 2)
+            expected_unprojected = expected_unprojected[0].expand(*point_shape, 3)
+        projected = cam.project(Vector3(points)).data
+        unprojected = cam.unproject(Vector2(pixels), depth).data
+        self.assert_close(projected, expected_projected, atol=0.0, rtol=0.0)
+        self.assert_close(unprojected, expected_unprojected, atol=0.0, rtol=0.0)
+        self.assert_close(projected, project_points(points, cam.matrix()), atol=0.0, rtol=0.0)
+        self.assert_close(unprojected, unproject_points(pixels, depth[..., None], cam.matrix()), atol=0.0, rtol=0.0)
+
+    @pytest.mark.parametrize("num_points", [2, 3])
+    def test_wart_batched_intrinsics_differ_from_geometry_4274(self, device, dtype, num_points):
+        # The two camera APIs discussed in #4274 also differ in broadcasting (PR #4318 review).
+        # Sensors aligns (B,) intrinsic components with the trailing axis of (B, N) coordinates;
+        # geometry inserts a singleton point axis. With B == N this silently changes camera associations;
+        # B = 2, N = 3 instead raises. Pin CURRENT behavior; retire/update if this distinction is repaired.
+        # Hand-computed at z=4: camera 0 projects [1, 2, 4] to [3, 4], camera 1 to [4, 8].
+        # At unit depth, [9, 10] unprojects to [1, 2, 1] / [1.5, .75, 1], respectively.
+        params = torch.tensor([[8.0, 4.0, 1.0, 2.0], [4.0, 8.0, 3.0, 4.0]], device=device, dtype=dtype)
+        cam = CameraModel(ImageSize(6, 8), CameraModelType.PINHOLE, params)
+        points = torch.tensor([1.0, 2.0, 4.0], device=device, dtype=dtype).expand(2, num_points, 3)
+        pixels = torch.tensor([9.0, 10.0], device=device, dtype=dtype).expand(2, num_points, 2)
+        depth = torch.ones(2, num_points, device=device, dtype=dtype)
+        per_camera_projected = torch.tensor([[3.0, 4.0], [4.0, 8.0]], device=device, dtype=dtype)
+        per_camera_unprojected = torch.tensor([[1.0, 2.0, 1.0], [1.5, 0.75, 1.0]], device=device, dtype=dtype)
+        geometry_projected = project_points(points, cam.matrix())
+        geometry_unprojected = unproject_points(pixels, depth[..., None], cam.matrix())
+        self.assert_close(
+            geometry_projected, per_camera_projected[:, None].expand(2, num_points, 2), atol=0.0, rtol=0.0
+        )
+        self.assert_close(
+            geometry_unprojected, per_camera_unprojected[:, None].expand(2, num_points, 3), atol=0.0, rtol=0.0
+        )
+        if num_points == 2:
+            projected = cam.project(Vector3(points)).data
+            unprojected = cam.unproject(Vector2(pixels), depth).data
+            self.assert_close(projected, per_camera_projected[None].expand(2, 2, 2), atol=0.0, rtol=0.0)
+            self.assert_close(unprojected, per_camera_unprojected[None].expand(2, 2, 3), atol=0.0, rtol=0.0)
+            assert not torch.equal(projected, geometry_projected)
+            assert not torch.equal(unprojected, geometry_unprojected)
+        else:
+            with pytest.raises(RuntimeError, match="size of tensor"):
+                cam.project(Vector3(points))
+            with pytest.raises(RuntimeError, match="size of tensor"):
+                cam.unproject(Vector2(pixels), depth)
 
     def test_convention_matrix_is_the_three_by_three_intrinsics(self, device, dtype):
         # Convention pin (audit labels 5d-sc-04, 5d-sc-05): ``matrix()`` returns the 3x3 pinhole intrinsics

@@ -137,8 +137,10 @@ class CameraModelBase:
           the camera-frame ``z``: :class:`~kornia.sensors.camera.projection_model.Z1Projection` multiplies
           the :math:`z = 1` point by it, so the third coordinate of the result is the ``depth`` that was
           passed in, and not a Euclidean ray length.
-        - the Pinhole path uses the same mathematical camera mapping as
-          :doc:`kornia.geometry.camera </geometry.camera>` with ``K`` built from the same ``[fx, fy, cx, cy]``.
+        - with shared intrinsics ``params.shape == (4,)``, or one point per camera with ``params`` of shape
+          ``(B, 4)`` and points of shape ``(B, 3)`` / ``(B, 2)``, the Pinhole path uses the same mathematical
+          camera mapping as :doc:`kornia.geometry.camera </geometry.camera>` with ``K`` built from the same
+          ``[fx, fy, cx, cy]``.
           However, :meth:`project` divides directly by ``z``, whereas
           :func:`~kornia.geometry.camera.perspective.project_points` multiplies by its reciprocal and skips
           the divide when ``abs(z) <= 1e-8`` (compared in the working dtype). Results can differ by rounding
@@ -146,7 +148,14 @@ class CameraModelBase:
           here but finite pixels there. See `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
           :meth:`unproject` corresponds to :func:`~kornia.geometry.camera.perspective.unproject_points`
           with ``normalize=False`` and depth shaped as ``(*, 1)`` there instead of ``(*,)`` here.
-          Pixels use the integer-centre grid described in
+        - for point clouds shaped ``(B, N, 3)`` / ``(B, N, 2)``, batched ``(B, 4)`` intrinsics broadcast
+          differently: this API applies each ``(B,)`` intrinsic component directly to ``(B, N)`` coordinates,
+          aligning it with the point axis. The geometry functions insert a singleton point axis and apply
+          intrinsics along the camera batch axis. When ``B == N > 1``, both APIs run but associate the
+          intrinsics with different points; with ``B = 2, N = 3``, both :meth:`project` and :meth:`unproject`
+          here raise ``RuntimeError`` while the geometry functions support those shapes. Changing only the
+          point container and depth shape is therefore insufficient for batched point clouds.
+        - pixels use the integer-centre grid described in
           the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`. The two type systems
           are kept separate by design -- this one takes ``Vector`` objects, that one plain tensors -- which is
           recorded in `#4274 <https://github.com/kornia/kornia/issues/4274>`_.
