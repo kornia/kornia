@@ -362,18 +362,17 @@ class PinholeCamera:
             - applies the same rescaling as :meth:`scale` in place and returns ``self``. The camera stores the
               tensors it was constructed from, so the caller's ``intrinsics``, ``height`` and ``width`` are
               written into as well.
-            - with a floating-point ``scale_factor``, writing back into an integer ``height`` / ``width`` raises
-              :class:`RuntimeError` where :meth:`scale` promotes it to floating point. An integer factor
-              succeeds. The focal lengths and principal point have already been scaled when the error is
-              raised, including in the caller's intrinsics tensor: the camera is left partially scaled.
-              If ``height`` is integer, both image dimensions are unchanged; if only ``width`` is integer,
-              ``height`` has already been scaled too.
+            - with a floating-point ``scale_factor``, an integer ``height`` / ``width`` is promoted to floating
+              point, just as :meth:`scale` now does. An integer factor preserves the integer image-size dtype.
+              The focal lengths and principal point have already been scaled when the promotion happens,
+              including in the caller's intrinsics tensor.
 
         .. warning::
-            The failure on an integer image size with a floating-point scale factor is tracked in
-            `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the write-through to the caller's tensors
-            in `#4264 <https://github.com/kornia/kornia/issues/4264>`_, and the principal-point rule shared
-            with :meth:`scale` in `#4263 <https://github.com/kornia/kornia/issues/4263>`_.
+            The write-through to the caller's tensors is tracked in
+            `#4264 <https://github.com/kornia/kornia/issues/4264>`_, and the principal-point rule shared
+            with :meth:`scale` in `#4263 <https://github.com/kornia/kornia/issues/4263>`_. The integer
+            height/width failure was repaired in
+            `#4371 <https://github.com/kornia/kornia/pull/4371>`_.
 
         Args:
             scale_factor: a torch.Tensor with the scale factor. It has
