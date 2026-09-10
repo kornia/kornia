@@ -370,7 +370,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * `fft_conv` now accepts CPU float16 and bfloat16 inputs by computing the FFTs
-  in float32 and returning the input dtype. (#4153)
+  in float32 and returning the input dtype. (#4394)
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
   while the implementation preserves ONNX export compatibility. (#4358)
