@@ -22,6 +22,7 @@ import torch
 
 import kornia
 from kornia.geometry.camera.pinhole import (
+    PinholeCamerasList,
     get_optical_pose_base,
     homography_i_H_ref,
     inverse_pinhole_matrix,
@@ -182,28 +183,29 @@ class TestCam2Pixel(BaseTester):
             expected = torch.tensor([[[[1.0e14, 2.0e14], [5.0e13, 1.0e14]]]], device=device, dtype=dtype)
             self.assert_close(uv, expected)
 
-    def test_wart_cam2pixel_guard_admits_a_3x3_projection_4266(self, device, dtype):
-        # Wart pin for kornia#4266: cam2pixel's second guard is written
-        # ``if not len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4)``, so the shape clause is
-        # live: it rejects a wrong rank only when the trailing shape is (4, 4). A (B, 3, 3) projection has
-        # the accepted rank, passes the guard whose message promises Bx4x4, and fails much later inside
-        # transform_points with a message about homogeneous dimensions rather than at the guard.
-        # Snippet used to generate expected: cam2pixel([[[[1., 2., 4.]]]], _k44(...)[:, :3, :3]) executed
-        # 2026-09-05 (torch 2.14.0, cpu and mps, every dtype)
-        # -> ValueError("Last input dimensions must differ by one unit Got...").
-        # Pins the CURRENT behavior; NOT a contract; delete when #4266 is repaired.
+    @pytest.mark.parametrize("shape", [(), (4, 4), (3, 3), (1, 3, 3), (1, 3, 4), (1, 5, 4), (1, 1, 4, 4)])
+    def test_invalid_projection_shape_4266(self, shape, device, dtype):
         cam_coords = torch.tensor([[[[1.0, 2.0, 4.0]]]], device=device, dtype=dtype)
-        proj_3x3 = _k44(device, dtype)[:, :3, :3].contiguous()
-        with pytest.raises(ValueError, match="Last input dimensions must differ by one unit"):
-            kornia.geometry.camera.cam2pixel(cam_coords, proj_3x3)
+        projection = torch.ones(shape, device=device, dtype=dtype)
         with pytest.raises(ValueError, match="Input dst_proj_src has to be in the shape of Bx4x4"):
-            kornia.geometry.camera.cam2pixel(cam_coords, torch.eye(4, device=device, dtype=dtype))
-        # An unbatched 3x3 passes this guard and instead reaches transform_points' rank check.
-        with pytest.raises(ValueError, match="Input batch size must be the same for both tensors"):
-            kornia.geometry.camera.cam2pixel(cam_coords, torch.eye(3, device=device, dtype=dtype))
+            kornia.geometry.camera.cam2pixel(cam_coords, projection)
+
+    @pytest.mark.parametrize("shape", [(), (3,), (1, 3), (1, 2, 3), (1, 2, 3, 2), (1, 2, 3, 4), (1, 2, 3, 1, 3)])
+    def test_invalid_coordinate_shape_4266(self, shape, device, dtype):
+        cam_coords = torch.ones(shape, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Input cam_coords_src has to be in the shape of BxHxWx3"):
+            kornia.geometry.camera.cam2pixel(cam_coords, _k44(device, dtype))
 
 
 class TestPixel2Cam(BaseTester):
+    @pytest.mark.parametrize("shape", [(), (3,), (1, 3), (1, 2, 3), (1, 2, 3, 2), (1, 2, 3, 4), (1, 2, 3, 1, 3)])
+    def test_invalid_coordinate_shape_4266(self, shape, device, dtype):
+        depth = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
+        pixel_coords = torch.ones(shape, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="Input pixel_coords has to be in the shape of BxHxWx3") as exc_info:
+            kornia.geometry.camera.pixel2cam(depth, _k44(device, dtype), pixel_coords)
+        assert str(pixel_coords.shape) in str(exc_info.value)
+
     @pytest.mark.parametrize("depth_shape", [(), (2,), (2, 1, 3), (2, 2, 3, 4), (2, 3, 3, 4), (2, 1, 3, 4, 1)])
     def test_invalid_depth_shape(self, depth_shape, device, dtype):
         depth = torch.ones(depth_shape, device=device, dtype=dtype)
@@ -320,21 +322,36 @@ class TestPixel2Cam(BaseTester):
 
         self.gradcheck(kornia.geometry.camera.pixel2cam, (depth, intrinsics_inv, pixel_coords_input), fast_mode=False)
 
-    def test_wart_pixel2cam_guard_admits_a_3x3_inverse_4266(self, device, dtype):
-        # Wart pin for kornia#4266: pixel2cam's ``intrinsics_inv`` guard is written
-        # ``if not len(intrinsics_inv.shape) == 3``, so it checks the RANK alone and never inspects the trailing
-        # 4x4 its own message promises. A (B, 3, 3) inverse -- the shape every free function on this surface
-        # takes -- has rank 3, passes the guard, and the failure surfaces much later, from transform_points.
-        # Snippet used to generate expected: pixel2cam(ones(1,1,2,3), (1,3,3) inverse, zeros(1,2,3,3)) executed
-        # 2026-09-05 (torch 2.14.0) -> ValueError("Last input dimensions must differ by one unit Got...").
-        # Pins the CURRENT behavior; NOT a contract; delete when #4266 is repaired.
+    @pytest.mark.parametrize(
+        "intrinsics_shape",
+        [(), (4,), (4, 4), (1, 4, 4, 1), (1, 3, 3), (1, 2, 2), (1, 5, 5), (1, 3, 4), (1, 4, 3), (1, 5, 4)],
+    )
+    def test_invalid_intrinsics_shape_4266(self, intrinsics_shape, device, dtype):
+        # A rank-only guard lets non-square matrices return the wrong number of coordinate components.
         depth = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
-        pixel_coords = torch.zeros(1, 2, 3, 3, device=device, dtype=dtype)
-        intrinsics_inv_3x3 = torch.tensor(
-            [[[0.01, 0.0, -0.04], [0.0, 0.01, -0.03], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
-        )
-        with pytest.raises(ValueError, match="Last input dimensions must differ by one unit"):
-            kornia.geometry.camera.pixel2cam(depth, intrinsics_inv_3x3, pixel_coords)
+        pixel_coords = torch.ones(1, 2, 3, 3, device=device, dtype=dtype)
+        intrinsics_inv = torch.ones(intrinsics_shape, device=device, dtype=dtype)
+
+        with pytest.raises(ValueError, match="Input intrinsics_inv has to be in the shape of Bx4x4") as exc_info:
+            kornia.geometry.camera.pixel2cam(depth, intrinsics_inv, pixel_coords)
+
+        assert str(intrinsics_inv.shape) in str(exc_info.value)
+
+    @pytest.mark.parametrize("intrinsics_batch, points_batch", [(1, 1), (2, 2), (1, 2)])
+    def test_intrinsics_batch_broadcast(self, intrinsics_batch, points_batch, device, dtype):
+        # fx=2, fy=4, cx=4, cy=3: pixel (6, 11) at depth 2 maps to camera point (2, 4, 2).
+        intrinsics_inv = torch.tensor(
+            [[[0.5, 0.0, -2.0, 0.0], [0.0, 0.25, -0.75, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        ).expand(intrinsics_batch, -1, -1)
+        depth = torch.full((points_batch, 1, 1, 1), 2.0, device=device, dtype=dtype)
+        pixel_coords = torch.tensor([[[[6.0, 11.0, 1.0]]]], device=device, dtype=dtype).expand(points_batch, -1, -1, -1)
+
+        actual = kornia.geometry.camera.pixel2cam(depth, intrinsics_inv, pixel_coords)
+
+        expected = torch.tensor([[[[2.0, 4.0, 2.0]]]], device=device, dtype=dtype).expand(points_batch, -1, -1, -1)
+        self.assert_close(actual, expected)
 
     def test_convention_pixel2cam_rejects_multi_channel_depth_4266(self, device, dtype):
         # Regression pin for kornia#4266: multi-channel depth must be rejected instead of scaling
@@ -823,20 +840,30 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(cam.height, torch.tensor([6], device=device))
         self.assert_close(cam.width, torch.tensor([8], device=device))
 
-    def test_wart_constructor_accepts_3x3_intrinsics_whose_projection_is_garbage_4266(self, device, dtype):
-        # Wart pin for kornia#4266: _check_valid_params uses ``and`` where ``or``
-        # was meant (the source even carries the author's "Shouldn't this be an OR logic than AND?"), so a
-        # (1, 3, 3) intrinsics with a (1, 3, 4) extrinsics passes a validator whose message promises Bx4x4, and
-        # .project returns a (1, 1) tensor of nonsense instead of a (1, 2) pixel.
-        # Snippet used to generate expected: PinholeCamera(K[:, :3, :3], E[:, :3, :]).project([[1., 2., 4.]])
-        # executed 2026-09-05 (torch 2.14.0) -> shape (1, 1), float32 value [[0.5471698]] (dtype-dependent, so
-        # only the cardinality is pinned). NOT a contract; delete when #4266 is repaired.
-        K = _k44(device, dtype)[:, :3, :3].contiguous()
-        E = _e44(device, dtype, tx=1.0)[:, :3, :].contiguous()
+    @pytest.mark.parametrize("shape", [(4, 4), (1, 3, 3), (1, 3, 4), (1, 5, 5), (1, 2, 3, 3), (1, 1, 1, 4, 4)])
+    @pytest.mark.parametrize("parameter", ["intrinsics", "extrinsics"])
+    def test_invalid_parameter_shape_4266(self, shape, parameter, device, dtype):
+        batch_size = shape[0]
+        params = {
+            "intrinsics": _k44(device, dtype).expand(batch_size, -1, -1),
+            "extrinsics": _e44(device, dtype).expand(batch_size, -1, -1),
+            "height": torch.full((batch_size,), 6, device=device, dtype=dtype),
+            "width": torch.full((batch_size,), 8, device=device, dtype=dtype),
+        }
+        params[parameter] = torch.ones(shape, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=f"Argument {parameter} shape must be"):
+            kornia.geometry.camera.PinholeCamera(**params)
+
+    def test_camera_list_preserves_rank_four_parameters(self, device, dtype):
         cam = kornia.geometry.camera.PinholeCamera(
-            K, E, torch.tensor([6], device=device), torch.tensor([8], device=device)
+            _k44(device, dtype), _e44(device, dtype), torch.tensor([6], device=device), torch.tensor([8], device=device)
         )
-        assert cam.project(torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)).shape == (1, 1)
+        cameras = PinholeCamerasList([cam, cam.clone()])
+        assert cameras.intrinsics.shape == (1, 2, 4, 4)
+        assert cameras.extrinsics.shape == (1, 2, 4, 4)
+        assert cameras.num_cameras == 2
+        points = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
+        self.assert_close(cameras.get_pinhole(1).project(points), cam.project(points))
 
     def test_wart_project_rejects_an_unbatched_point_with_indexerror_4266(self, device, dtype):
         # Wart pin for kornia#4266: PinholeCamera.project documents ``(*, 3)``

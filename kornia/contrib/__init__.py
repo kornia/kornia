@@ -39,7 +39,7 @@ from .image_stitching import ImageStitcher
 from .kmeans import KMeans
 from .lambda_module import Lambda
 from .object_detection import ObjectDetector, RTDETRDetectorBuilder
-from .super_resolution import RRDBNetBuilder, SmallSRBuilder, SuperResolution
+from .super_resolution import RRDBNetBuilder, SmallSRBuilder, SuperResolution, SuperResolutionConfig
 
 __all__ = [
     "CombineTensorPatches",
@@ -55,6 +55,7 @@ __all__ = [
     "RTDETRDetectorBuilder",
     "SmallSRBuilder",
     "SuperResolution",
+    "SuperResolutionConfig",
     "TinyViT",
     "combine_tensor_patches",
     "compute_padding",

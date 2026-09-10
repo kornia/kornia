@@ -23,7 +23,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_exporting
+from kornia.core.utils import is_compiling, is_exporting
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import remap
@@ -56,18 +56,13 @@ def undistort_points(
           default count, while ``float32`` and ``float64`` can continue to improve.
         - In eager execution, arbitrary matching leading dimensions work while the tilt path is inactive.
           With non-zero tilt, use one explicit leading batch dimension; multiple leading dimensions and
-          unbatched intrinsics can fail. ONNX export always takes that path, including for zero tilt, so
+          unbatched intrinsics can fail. Compilation and ONNX export always take that path, including for zero tilt, so
           even unbatched inputs with four coefficients can fail. Tracked as `#4324 <https://github.com/kornia/kornia/issues/4324>`_.
 
     .. warning::
         The iteration has no convergence test and no valid-radius guard. Outside the iteration
         convergence region it can enter a two-point cycle, so the answer depends on whether ``num_iters``
         is odd or even and no count converges. Tracked as `#4285 <https://github.com/kornia/kornia/issues/4285>`_.
-
-    .. warning::
-        This function has the same ``torch.compile(fullgraph=True)`` limitation as
-        :func:`~kornia.geometry.calibration.distort_points`; see that function for the explanation. Tracked as
-        `#4286 <https://github.com/kornia/kornia/issues/4286>`_.
 
     Args:
         points: Input image points with shape :math:`(*, N, 2)`.
@@ -126,9 +121,12 @@ def undistort_points(
     x: torch.Tensor = (points[..., 0] - cx) / fx  # (BxN - Bx1)/Bx1 -> BxN
     y: torch.Tensor = (points[..., 1] - cy) / fy  # (BxN - Bx1)/Bx1 -> BxN
 
-    # Compensate for tilt distortion. The zero test reads the data, which graph capture cannot do, so the
-    # exported graph always applies the tilt (an identity when both tau coefficients are zero).
-    if is_exporting() or torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
+    # Graph capture cannot read the coefficient values on the host. Apply the tilt unconditionally
+    # while compiling or exporting; zero angles give the identity. Keep eager and scripted behavior.
+    capture = is_exporting()
+    if not torch.jit.is_scripting():
+        capture = capture or is_compiling()
+    if capture or torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
         inv_tilt = tilt_projection(dist[..., 12], dist[..., 13], True)
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
@@ -182,7 +180,7 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
           front of its ``n`` coefficients) must match exactly. They may be empty, a single batch axis, or
           several axes deep. The one exception is the legacy unbatched call -- a :math:`(1, C, H, W)` image
           with a :math:`(3, 3)` ``K`` and an :math:`(n,)` ``dist``. With non-zero tilt, at most one leading batch
-          axis is supported; ONNX export always takes the tilt path, including for zero tilt. Tracked as
+          axis is supported; compilation and ONNX export always take the tilt path, including for zero tilt. Tracked as
           `#4324 <https://github.com/kornia/kornia/issues/4324>`_.
         - the sampling map is built by applying :func:`~kornia.geometry.calibration.distort_points` to the
           grid of integer pixel centres that :func:`~kornia.geometry.grid.create_meshgrid` enumerates: the
