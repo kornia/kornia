@@ -30,9 +30,10 @@ import pytest
 import torch
 
 try:
-    from pytest import TestReport  # public since pytest 7.x
+    from pytest import CallInfo, TestReport  # public since pytest 7.x
 except ImportError:  # pragma: no cover
     from _pytest.reports import TestReport  # type: ignore[no-redef]
+    from _pytest.runner import CallInfo  # type: ignore[no-redef]
 
 import kornia
 
@@ -832,9 +833,21 @@ def pytest_runtest_protocol(item, nextitem):
     for rep in [
         _report("setup", "passed", None),
         _report("call", outcome, longrepr, duration),
-        _report("teardown", "passed", None),
     ]:
         item.ihook.pytest_runtest_logreport(report=rep)
+
+    # The previous normal item may have kept module/class fixtures alive for this item.
+    # Unwind them for the next item without setting up the isolated item's fixtures here.
+    # Capture finalizer failures as teardown errors rather than aborting the runner.
+    if item.session.shouldfail or item.session.shouldstop:
+        nextitem = None
+    teardown = CallInfo.from_call(
+        lambda: item.session._setupstate.teardown_exact(nextitem),
+        when="teardown",
+        reraise=(KeyboardInterrupt, pytest.exit.Exception),
+    )
+    report = item.ihook.pytest_runtest_makereport(item=item, call=teardown)
+    item.ihook.pytest_runtest_logreport(report=report)
 
     item.ihook.pytest_runtest_logfinish(nodeid=item.nodeid, location=item.location)
     return True

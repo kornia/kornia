@@ -128,7 +128,6 @@ call	builtins.AssertionError	tests/geometry/calibration/test_undistort.py::TestU
 call	builtins.AssertionError	tests/geometry/calibration/test_undistort.py::TestUndistortPoints::test_opencv_five_coeff[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/calibration/test_undistort.py::TestUndistortPoints::test_opencv_stereo[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/camera/test_distortion.py::TestDistortionKannalaBrandt::test_distort_points_roundtrip[cpu-bfloat16]
-call	builtins.AssertionError	tests/geometry/camera/test_distortion.py::TestDistortionKannalaBrandt::test_dx_distort_points_kannala_brandt[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/camera/test_pinhole.py::TestCam2Pixel::test_consistency[cpu-bfloat16-1]
 call	builtins.AssertionError	tests/geometry/camera/test_pinhole.py::TestCam2Pixel::test_consistency[cpu-bfloat16-2]
 call	builtins.AssertionError	tests/geometry/camera/test_pinhole.py::TestCam2Pixel::test_consistency[cpu-bfloat16-5]
