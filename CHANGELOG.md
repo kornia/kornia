@@ -379,6 +379,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `PinholeCamera.scale_` now rebinds ``height``/``width`` to the promoted result instead of
+  writing into their storage, so a camera built with int64 sizes (as the class example does) no
+  longer raises ``RuntimeError: result type Float can't be cast to the desired output type Long``
+  and matches :meth:`scale`. As a consequence ``scale_`` no longer mutates the ``height``/``width``
+  tensors the caller passed to the constructor; ``intrinsics`` are still updated in place. (#4371)
+
 * `pixel2cam` now validates the full `Bx4x4` shape of `intrinsics_inv`, rejecting invalid matrix sizes
   before they cause unrelated transformation errors or return the wrong number of coordinate components. (#4381)
 * `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
