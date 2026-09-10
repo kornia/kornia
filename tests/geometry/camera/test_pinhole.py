@@ -898,12 +898,25 @@ class TestPinholeCamera(BaseTester):
         assert camera.extrinsics.shape == (0, 4, 4)
         assert camera.height.shape == (0,)
         assert camera.width.shape == (0,)
+        for tensor in (camera.intrinsics, camera.extrinsics, camera.height, camera.width):
+            assert tensor.dtype == dtype
+            assert tensor.device == device
 
         # Free functions on the same surface follow the same empty-in/empty-out convention.
         empty = kornia.geometry.camera.project_points(
             torch.zeros(0, 1, 3, device=device, dtype=dtype), _k44(device, dtype)[:, :3, :3].contiguous()
         )
         assert empty.shape == (0, 1, 2)
+
+    @pytest.mark.parametrize("batch_sizes", [(1, 2, 1, 1), (0, 1, 0, 0)])
+    def test_constructor_rejects_mismatched_batch_sizes_4281(self, batch_sizes, device, dtype):
+        with pytest.raises(ValueError, match="Arguments shapes must match"):
+            kornia.geometry.camera.PinholeCamera(
+                torch.zeros(batch_sizes[0], 4, 4, device=device, dtype=dtype),
+                torch.zeros(batch_sizes[1], 4, 4, device=device, dtype=dtype),
+                torch.zeros(batch_sizes[2], device=device, dtype=dtype),
+                torch.zeros(batch_sizes[3], device=device, dtype=dtype),
+            )
 
     def test_wart_project_and_project_points_disagree_at_z_zero_4267(self, device, dtype):
         # Wart pin for kornia#4267: PinholeCamera.project and the free function

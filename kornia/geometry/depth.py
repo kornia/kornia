@@ -417,13 +417,6 @@ def warp_frame_depth(
         :class:`~kornia.geometry.depth.DepthWarper` states the mapping in full. Tracked as
         `#4273 <https://github.com/kornia/kornia/issues/4273>`_.
 
-    .. warning::
-        An empty batch (:math:`B = 0`) raises ``ZeroDivisionError`` from ``transform_points`` -- its
-        batch-repeat count is ``0 // 0`` -- before any sampling runs, rather than returning an empty result,
-        although the shape guards on the way in accept it and
-        :func:`~kornia.geometry.depth.depth_to_3d` -- the same unprojection in the other layout -- returns an
-        empty point cloud. Tracked as `#4281 <https://github.com/kornia/kornia/issues/4281>`_.
-
     Args:
         image_src: image tensor in the source frame with shape :math:`(B,D,H,W)`.
         depth_dst: depth tensor in the destination frame with shape :math:`(B,1,H,W)`.

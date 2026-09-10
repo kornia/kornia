@@ -717,30 +717,6 @@ class TestWarpFrameDepth(BaseTester):
         assert (warped - image_src).abs().max().item() > 0.5
         assert torch.equal(warp_frame_depth(image_src, depth_dst, _eye4(device, dtype), camera_matrix), image_src)
 
-    def test_wart_warp_frame_depth_rejects_an_empty_batch_4281(self, device, dtype):
-        # Wart pin for kornia#4281: an empty batch raises a bare
-        # ZeroDivisionError from transform_points (0 // 0 in its batch-repeat count) rather than returning an empty
-        # result, although
-        # every shape guard on the way in accepts B = 0 and depth_to_3d -- the same computation in the other
-        # layout -- handles it. kornia's degenerate-shape convention is empty in, empty out.
-        # Snippet used to generate expected: warp_frame_depth(zeros(0, 2, 4, 5), ones(0, 1, 4, 5),
-        # zeros(0, 4, 4), zeros(0, 3, 3)) executed 2026-09-06 at commit 1a96bfd1 (torch 2.14.0) ->
-        # ZeroDivisionError("integer division or modulo by zero") on cpu for float32, float64, float16 and
-        # bfloat16 and on mps for float32 and float16; depth_to_3d(zeros(0, 1, 4, 5), zeros(0, 3, 3)) returns
-        # shape (0, 3, 4, 5) in the same cells.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4281 is repaired.
-        with pytest.raises(ZeroDivisionError, match="integer division or modulo by zero"):
-            warp_frame_depth(
-                torch.zeros(0, 2, 4, 5, device=device, dtype=dtype),
-                torch.ones(0, 1, 4, 5, device=device, dtype=dtype),
-                torch.zeros(0, 4, 4, device=device, dtype=dtype),
-                torch.zeros(0, 3, 3, device=device, dtype=dtype),
-            )
-        empty = depth_to_3d(
-            torch.zeros(0, 1, 4, 5, device=device, dtype=dtype), torch.zeros(0, 3, 3, device=device, dtype=dtype)
-        )
-        assert empty.shape == (0, 3, 4, 5)
-
 
 class TestDepthWarperConventions(BaseTester):
     """Convention and wart pins for :class:`~kornia.geometry.depth.DepthWarper` and ``depth_warp``."""

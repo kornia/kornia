@@ -97,9 +97,7 @@ class StereoCamera:
         any rig the constructor accepts. The ``tx * fx < 0`` guard is quantified with ``torch.all``, so a
         batch whose second element has the two cameras the wrong way round is accepted and reprojects that
         element behind the camera. And ``tx = 0`` passes the same guard, collapsing ``Q`` so that every
-        disparity reprojects to the origin with no ``inf`` to notice. An empty batch is rejected by that
-        guard as well, because ``torch.all`` of an empty tensor is ``True``
-        (`#4281 <https://github.com/kornia/kornia/issues/4281>`_). The per-camera :math:`(3, 4)` shape check
+        disparity reprojects to the origin with no ``inf`` to notice. The per-camera :math:`(3, 4)` shape check
         compares ``shape[:1]`` rather than ``shape[-2:]``, so it can never fire and a :math:`(B, 4, 4)` pair
         is accepted, building the same :math:`(B, 4, 4)` ``Q`` as the :math:`(B, 3, 4)` pair it should have
         required. Tracked as
