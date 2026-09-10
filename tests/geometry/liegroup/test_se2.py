@@ -101,6 +101,10 @@ class TestSe2(BaseTester):
         # #4404: both quotients that build the translation block are 0/0 at theta = 0, and the
         # torch.where that discards them still differentiates them, so 0 * nan = nan reached the
         # gradient at the identity even though the forward returned the correct zero translation.
+        if dtype == torch.bfloat16:
+            # Se2 holds its rotation as a complex So2, and torch.complex has no bfloat16 overload,
+            # so most of this class already cannot run at that dtype -- unrelated to the guard.
+            pytest.skip("torch.complex has no bfloat16 overload, so So2 cannot be built at all")
         v = torch.zeros(1, 3, device=device, dtype=dtype, requires_grad=True)
         Se2.exp(v).matrix().sum().backward()
         assert bool(torch.isfinite(v.grad).all()), v.grad

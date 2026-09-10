@@ -73,16 +73,19 @@ class TestSo3(BaseTester):
         So3(Quaternion(half_turn)).log().sum().backward()
         assert bool(torch.isfinite(half_turn.grad).all()), half_turn.grad
 
-    def test_convention_log_identity_gradient_is_the_on_manifold_limit_4404(self, device):
+    def test_convention_log_identity_gradient_is_the_on_manifold_limit_4404(self, device, dtype):
         # The value the guard leaves in place, pinned rather than merely asserted finite: at the
-        # identity log evaluates 2 * vec / real, so d(omega_x)/dq_x = 2. Central differences taken
-        # through the ambient 4-space disagree (they return 0) because a perturbed (1, h, 0, 0) is
-        # not a unit quaternion and lands in the other branch, where acos(1) = 0 kills the result.
-        # Along the unit sphere -- q(h) = (sqrt(1 - h^2), h, 0, 0), the only path that stays a
-        # rotation -- the difference quotient is 2.000000017 at h = 1e-4, which is this value.
-        q = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=torch.float64, requires_grad=True)
+        # identity log evaluates 2 * vec / real, so d(omega_x)/dq_x = 2 -- exact in every dtype,
+        # which is why this runs on the dtype fixture rather than pinning float64 (MPS cannot hold
+        # float64 at all, and this test's name does not carry the "gradcheck" that conftest skips
+        # on that device). Central differences taken through the ambient 4-space disagree (they
+        # return 0) because a perturbed (1, h, 0, 0) is not a unit quaternion and lands in the
+        # other branch, where acos(1) = 0 kills the result. Along the unit sphere --
+        # q(h) = (sqrt(1 - h^2), h, 0, 0), the only path that stays a rotation -- the difference
+        # quotient is 2.000000017 at h = 1e-4 in float64, which is this value.
+        q = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
         So3(Quaternion(q)).log()[0, 0].backward()
-        self.assert_close(q.grad, torch.tensor([[0.0, 2.0, 0.0, 0.0]], device=device, dtype=torch.float64))
+        self.assert_close(q.grad, torch.tensor([[0.0, 2.0, 0.0, 0.0]], device=device, dtype=dtype))
 
     # TODO: implement me
     def test_jit(self, device, dtype):
