@@ -369,6 +369,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Fixed fixture teardown between files when running half-precision tests with
+  `--isolate-half-precision`, including reporting parent fixture finalizer errors. (#4388)
 * Corrected the matrix-shape checks shared by `PinholeCamera` and `PinholeCamerasList`, the
   `pixel2cam` coordinate-shape check, and the `cam2pixel` coordinate/projection checks. Invalid
   inputs now raise the intended `ValueError` instead of being accepted or failing later in tensor
