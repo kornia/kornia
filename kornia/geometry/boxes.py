@@ -59,7 +59,7 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
             :math:`(B, 4, 4)` for 3D hexahedron.
 
     """
-    M = M if M.is_floating_point() else M.float()
+    M = M if M.is_floating_point() else M.to(torch.get_default_dtype())
 
     # Work with batch as kornia.transform_points only supports a batch of points.
     boxes_per_batch, n_points_per_box, coordinates_dimension = boxes.shape[-3:]
@@ -111,7 +111,7 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
     else:
         raise ValueError(f"Unknown mode {mode}")
 
-    boxes = boxes if boxes.is_floating_point() else boxes.float()
+    boxes = boxes if boxes.is_floating_point() else boxes.to(torch.get_default_dtype())
     boxes = boxes if batched else boxes.unsqueeze(0)
 
     if mode.startswith("vertices"):
@@ -290,7 +290,7 @@ class Boxes:
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}")
 
-            boxes = boxes.float()
+            boxes = boxes.to(torch.get_default_dtype())
 
         if len(boxes.shape) == 0:
             boxes = boxes.reshape((-1, 4))
@@ -1208,7 +1208,7 @@ class Boxes3D:
             if raise_if_not_floating_point:
                 raise ValueError(f"Coordinates must be in floating point. Got {boxes.dtype}.")
 
-            boxes = boxes.float()
+            boxes = boxes.to(torch.get_default_dtype())
 
         if len(boxes.shape) == 0:
             boxes = boxes.reshape((-1, 6))
@@ -1314,7 +1314,7 @@ class Boxes3D:
 
         batched = boxes.ndim == 3
         boxes = boxes if batched else boxes.unsqueeze(0)
-        boxes = boxes if boxes.is_floating_point() else boxes.float()
+        boxes = boxes if boxes.is_floating_point() else boxes.to(torch.get_default_dtype())
 
         xmin, ymin, zmin = boxes[..., 0], boxes[..., 1], boxes[..., 2]
         mode = mode.lower()
