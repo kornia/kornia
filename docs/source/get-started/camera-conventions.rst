@@ -80,12 +80,7 @@ Kornia's grids are **integer-centre**: :func:`kornia.geometry.grid.create_meshgr
 ``normalized_coordinates=False`` enumerates ``0 .. W-1`` along ``x`` and ``0 .. H-1`` along ``y``, so a centred
 image has its principal point at ``cx = (W - 1) / 2``, ``cy = (H - 1) / 2``. That is what
 :func:`kornia.geometry.camera.perspective.project_points`, :func:`kornia.geometry.depth.depth_to_3d` and the
-rest of the functional camera API assume. The convention is pinned by:
-
-- ``tests/geometry/camera/test_perspective.py``,
-  ``TestProjectPoints::test_convention_integer_pixel_centres_put_the_principal_point_at_w_minus_one_half``
-- ``tests/geometry/test_depth.py``,
-  ``TestDepthTo3d::test_convention_pixel_origin_is_the_integer_centre``
+rest of the functional camera API assume.
 
 .. warning::
 

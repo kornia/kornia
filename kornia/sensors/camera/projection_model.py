@@ -41,9 +41,7 @@ class Z1Projection:
         .. warning::
             That :math:`z = 0` answer is one of several that the projection entry points of kornia give for
             the same input; they are collected in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
-            The behaviour above is documented as it is and pinned by
-            ``test_wart_project_divides_by_z_with_no_guard_4267`` in
-            ``tests/sensors/camera/test_projection_model.py``.
+            The behaviour above is documented as it is.
 
         Args:
             points: Vector3 representing the points to project.
@@ -105,9 +103,7 @@ class OrthographicProjection:
     .. warning::
         Both methods are placeholders: :meth:`project` and :meth:`unproject` raise ``NotImplementedError``
         with an empty message, which is what makes :class:`~kornia.sensors.camera.Orthographic` unusable in
-        either direction. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_ and pinned by
-        ``test_wart_orthographic_projection_is_a_placeholder_4284`` in
-        ``tests/sensors/camera/test_projection_model.py``.
+        either direction. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_.
         :func:`~kornia.geometry.camera.project_points_orthographic` is the implemented equivalent.
     """
 

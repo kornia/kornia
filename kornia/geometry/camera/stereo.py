@@ -88,11 +88,7 @@ class StereoCamera:
         real-data test passes only because its fixture lays a one-row, ten-column strip out as ten rows of one
         column, which the swap cancels; its stored numbers are correct OpenCV output for that strip, so a fix
         corrects the layout and keeps every literal. Tracked as
-        `#4269 <https://github.com/kornia/kornia/issues/4269>`_ and pinned by
-        ``test_wart_reproject_disparity_reads_u_from_the_row_index_4269``,
-        ``test_wart_reproject_disparity_x_varies_with_the_row_and_y_with_the_column_4269`` and the strict
-        ``xfail`` ``test_convention_reproject_disparity_uses_the_column_as_u_4269`` in
-        ``tests/geometry/camera/test_stereo.py``.
+        `#4269 <https://github.com/kornia/kornia/issues/4269>`_.
 
     .. warning::
         Several of the constructor guards do not enforce the contract above. A differing ``cx`` is
@@ -107,12 +103,7 @@ class StereoCamera:
         compares ``shape[:1]`` rather than ``shape[-2:]``, so it can never fire and a :math:`(B, 4, 4)` pair
         is accepted, building the same :math:`(B, 4, 4)` ``Q`` as the :math:`(B, 3, 4)` pair it should have
         required. Tracked as
-        `#4270 <https://github.com/kornia/kornia/issues/4270>`_ and pinned by
-        ``test_wart_stereo_rejects_differing_principal_points_4270``,
-        ``test_wart_stereo_accepts_a_batch_with_one_positive_tx_fx_4270``,
-        ``test_wart_stereo_tx_zero_collapses_every_point_to_the_origin_4270``,
-        ``test_wart_stereo_accepts_a_four_by_four_pair_4270`` and
-        ``test_wart_stereo_rejects_an_empty_batch_4281`` in ``tests/geometry/camera/test_stereo.py``.
+        `#4270 <https://github.com/kornia/kornia/issues/4270>`_.
 
     .. warning::
         The module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` is rendered on
