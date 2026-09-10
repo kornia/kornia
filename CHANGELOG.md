@@ -365,7 +365,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
-  instead of treating padding entries as real boxes. (#4252)
+  instead of treating padding entries as real boxes. (#4390)
 
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
