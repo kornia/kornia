@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* New "Camera and world conventions across the ecosystem" page cataloguing the pixel-centre, axis
+  and extrinsics conventions of OpenCV, COLMAP, OpenGL, ARKit, ARCore, PyTorch3D and Direct3D with the
+  kornia converter for each, plus the baked `align_corners` rows for the depth and undistortion warps on
+  the Conventions & Pitfalls page. (#4315)
 * Documented the `kornia.sensors.camera` conventions (`Vector`-typed inputs, the per-model `params`
   layout, the shared half-pixel `scale` rule, and the pinhole mapping shared with `kornia.geometry.camera`,
   including its camera-axis broadcasting, projection rounding and zero/near-zero depth differences) and
