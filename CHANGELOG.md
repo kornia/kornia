@@ -452,6 +452,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `PinholeCamera`, `StereoCamera`, and `warp_frame_depth` now support empty batches. (#4386)
 * `elastic_transform2d` now builds its identity sampling grid with the requested `align_corners`
   convention, so a zero displacement field preserves the input image. (closes #4235). (#4382)
+* `Boxes`, `Boxes3D`, their `from_tensor` helpers and `_transform_boxes` now cast integer
+  input to `torch.get_default_dtype()` instead of a hardcoded `float32`. Under a caller that
+  sets `torch.set_default_dtype(torch.float64)` — as NPU and other backends commonly do — the
+  old `.float()` silently forced every box and transformation matrix down to single precision,
+  losing precision end to end. The mask, shape and transform results now follow the configured
+  default dtype. (#4379)
 
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
