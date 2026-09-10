@@ -49,6 +49,39 @@ class TestCanny(BaseTester):
         assert magnitude.shape == (batch_size, 1, 4, 4)
         assert edges.shape == (batch_size, 1, 4, 4)
 
+    @pytest.mark.parametrize("as_module", [False, True])
+    @pytest.mark.parametrize("with_weak_edges", [False, True])
+    def test_hysteresis_preserves_dtype(self, device, dtype, as_module, with_weak_edges):
+        inp = torch.tensor(
+            [
+                [0.5, 0.4, 0.5, 0.45, 0.1],
+                [0.3, 0.2, 0.3, 0.0, 0.3],
+                [0.5, 1.0, 1.0, 0.6, 0.75],
+                [0.2, 0.4, 0.6, 0.0, 0.5],
+                [0.1, 0.35, 0.35, 0.26, 0.1],
+            ],
+            device=device,
+            dtype=dtype,
+        ).view(1, 1, 5, 5)
+        if not with_weak_edges:
+            inp.zero_()
+        _, thresholded = canny(inp, hysteresis=False)
+        if with_weak_edges:
+            # This weak edge is adjacent to a strong one and must survive hysteresis.
+            assert thresholded[0, 0, 2, 0] == 0.5
+            assert thresholded[0, 0, 1, 0] == 1.0
+
+        magnitude, edges = Canny()(inp) if as_module else canny(inp)
+
+        assert magnitude.dtype == edges.dtype == dtype
+        assert magnitude.device == edges.device == inp.device
+        assert magnitude.shape == edges.shape == inp.shape
+        assert ((edges == 0) | (edges == 1)).all()
+        if with_weak_edges:
+            assert edges[0, 0, 2, 0] == 1.0
+        else:
+            assert (edges == 0).all()
+
     def test_exception(self, device, dtype):
         from kornia.core.exceptions import BaseError, ShapeError, TypeCheckError
 
