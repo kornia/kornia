@@ -377,9 +377,9 @@ class PinholeModel(CameraModelBase):
 
         .. warning::
             ``cx' = s * cx`` disagrees with the integer pixel centres the rest of the library enumerates, and
-            a tensor ``scale_factor`` rebuilds ``image_size`` with 0-dim floating tensors where the
-            constructor took python integers -- a python ``int`` keeps ``int`` fields and a python ``float``
-            gives ``float`` ones. Both are tracked in
+            a tensor ``scale_factor`` rebuilds ``image_size`` with 0-dim tensors in the promoted dtype
+            (floating for a floating-point factor) where the constructor took python integers -- a python
+            ``int`` keeps ``int`` fields and a python ``float`` gives ``float`` ones. Both are tracked in
             `#4263 <https://github.com/kornia/kornia/issues/4263>`_, the second in its comment thread; they
             are documented as they are and pinned by
             ``test_wart_scale_rescales_the_principal_point_by_the_half_pixel_rule_4263`` and

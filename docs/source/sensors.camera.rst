@@ -2,7 +2,7 @@ kornia.sensors.camera
 ======================
 
 .. meta::
-   :description: The `kornia.sensors.camera` module provides tools to define and manipulate various camera models, including the Pinhole model. It allows users to specify distortion and projection types in a differentiable way. While currently supporting only the Pinhole model, the module aims to extend its support to other models like Kannala Brandt and Orthographic. It also enables users to define custom camera models using distortion and projection types.
+   :description: The `kornia.sensors.camera` module provides tools to define and manipulate various camera models, including the Pinhole model. It allows users to specify distortion and projection types in a differentiable way. Pinhole is the only model that works today; the Brown-Conrady, Kannala-Brandt and orthographic models are exported but not yet implemented. It also enables users to define custom camera models using distortion and projection types.
 
 .. currentmodule:: kornia.sensors.camera
 

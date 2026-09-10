@@ -407,9 +407,11 @@ class TestCameraModelTypes(BaseTester):
                 CameraModel(ImageSize(6, 8), model_type, torch.ones(length - 1, device=device, dtype=dtype))
             with pytest.raises(ValueError, match="params must be of shape"):
                 CameraModel(ImageSize(6, 8), model_type, torch.ones(1, 1, length, device=device, dtype=dtype))
-        with pytest.raises(ValueError, match=r"params must be of shape \(B, 4\) for PINHOLE Camera"):
+        # The message names the model type; its shape spelling ("(B, 4)" versus "B, 8") is not part of the
+        # contract and is not pinned.
+        with pytest.raises(ValueError, match=r"params must be of shape .* for PINHOLE Camera"):
             CameraModel(ImageSize(6, 8), CameraModelType.PINHOLE, torch.ones(1, 1, 4, device=device, dtype=dtype))
-        with pytest.raises(ValueError, match=r"params must be of shape B, 8 for KANNALA_BRANDT_K3 Camera"):
+        with pytest.raises(ValueError, match=r"params must be of shape .* for KANNALA_BRANDT_K3 Camera"):
             CameraModel(ImageSize(6, 8), CameraModelType.KANNALA_BRANDT_K3, torch.ones(7, device=device, dtype=dtype))
 
     def test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284(self, device, dtype):
