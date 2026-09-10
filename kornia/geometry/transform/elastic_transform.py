@@ -124,7 +124,14 @@ def elastic_transform2d(
 
     # Warp image based on displacement matrix
     _, _, h, w = image.shape
-    grid = create_meshgrid(h, w, device=image.device).to(image.dtype)
+    
+    if align_corners:
+        grid = create_meshgrid(h, w, device=image.device).to(image.dtype)
+    else:
+        grid = create_meshgrid(h, w, normalized_coordinates=False, device=image.device).to(image.dtype)
+        grid[..., 0] = (grid[..., 0] + 0.5) * 2.0 / max(w, 1) - 1.0
+        grid[..., 1] = (grid[..., 1] + 0.5) * 2.0 / max(h, 1) - 1.0
+        
     warped = F.grid_sample(
         image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode, padding_mode=padding_mode
     )

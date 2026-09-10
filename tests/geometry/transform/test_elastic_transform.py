@@ -103,13 +103,20 @@ class TestElasticTransform(BaseTester):
         noise = torch.ones(1, 2, 3, 3, device=device, dtype=dtype)
 
         expected = torch.tensor(
-            [[[[0.0005, 0.3795, 0.1905], [0.1034, 0.4235, 0.0702], [0.0259, 0.2007, 0.2193]]]],
+            [[[[0.0062, 0.7506, 0.7487], [0.2058, 0.4235, 0.1397], [0.1036, 0.3996, 0.8693]]]],
             device=device,
             dtype=dtype,
         )
 
         actual = elastic_transform2d(image, noise)
         self.assert_close(actual, expected, atol=1e-3, rtol=1e-3)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    def test_identity(self, device, dtype, align_corners):
+        image = torch.arange(16.0, device=device, dtype=dtype).reshape(1, 1, 4, 4)
+        noise = torch.zeros(1, 2, 4, 4, device=device, dtype=dtype)
+        output = elastic_transform2d(image, noise, align_corners=align_corners)
+        self.assert_close(output, image)
 
     @pytest.mark.parametrize("requires_grad", [True, False])
     def test_gradcheck(self, device, dtype, requires_grad):
