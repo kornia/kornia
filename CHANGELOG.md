@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Documented depth and stereo conventions (the two meanings of depth, the `(B, 3, H, W)` versus
+  `(B, H, W, 3)` layouts, the opposite source/destination naming of `warp_frame_depth` and
+  `DepthWarper`, the rectified stereo `Q` matrix) and added executable pins for `kornia.geometry.depth`
+  and `StereoCamera`, including dtype promotion, extra-axis broadcasting, subpixel border sampling,
+  and singular stereo reprojection. Remaining defects are tracked in dedicated issues. (#4317)
 * Documented camera distortion and calibration conventions (normalized versus pixel inputs, the
   coefficient layout, the `new_K`/`K` roles, the iterative inverses) and added executable pins for
   `kornia.geometry.camera`'s distortion models and `kornia.geometry.calibration`, with the
@@ -372,6 +377,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rotation matrix and for nothing else, including for the shape `rotation_matrix_to_axis_angle`'s own
   doctest returns. This is additive: `(N, 3)` output and gradients are byte-identical, and only shapes that
   used to raise now return (closes #3955). (#4342)
+* Make calibration `distort_points` and `undistort_points` tilt checks compatible with
+  `torch.compile(fullgraph=True)`, preserving eager behavior. (#4391)
+* Canny hysteresis preserves the input dtype, avoiding a convolution dtype mismatch for half-precision images. (#4393)
+
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
   while the implementation preserves ONNX export compatibility. (#4358)
@@ -511,6 +520,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pixel positions collapsed, so rows and columns near the collapse were mismasked; the grid is
   now built in `float32` and `float16`/`bfloat16` results are byte-identical to `float32`/`float64`.
   `RandomErasing` and `RandomCutMixV2` build their masks through it. (#4336)
+
+* `kornia.contrib.super_resolution` builders construct again. `SuperResolution` never implemented
+  `ModelBase`'s abstract `from_config` and defined no `__init__`, so `SmallSRBuilder.build()` and
+  `RRDBNetBuilder.build()` both raised `TypeError` at construction — the whole public
+  super-resolution entry point had been unreachable since the models refactor made `from_config`
+  abstract. It now has a `SuperResolutionConfig` and a `from_config` that dispatches to either
+  builder family, and both builders are covered by tests. Fixes #4291. (#4335)
 
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
