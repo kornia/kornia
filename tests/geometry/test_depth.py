@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import BaseError, ShapeError
 
 from testing.base import BaseTester
 
@@ -395,6 +396,43 @@ class TestWarpFrameDepth(BaseTester):
 
 
 class TestDepthFromDisparity(BaseTester):
+    @pytest.mark.parametrize("baseline_kind", ["int", "float", "scalar_tensor", "tensor"])
+    @pytest.mark.parametrize("focal_kind", ["int", "float", "scalar_tensor", "tensor"])
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_scalar_camera_parameters_4272(self, baseline_kind, focal_kind, batched, device, dtype):
+        def parameter(value, kind):
+            if kind == "int":
+                return int(value)
+            if kind == "float":
+                return float(value)
+            return torch.tensor(value if kind == "scalar_tensor" else [value], device=device, dtype=dtype)
+
+        disparity = torch.tensor([[1.0, 2.0, 4.0], [8.0, 16.0, 32.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[60.0, 30.0, 15.0], [7.5, 3.75, 1.875]], device=device, dtype=dtype)
+        if batched:
+            disparity = disparity.expand(2, 1, 2, 3)
+            expected = expected.expand(2, 1, 2, 3)
+        depth = kornia.geometry.depth.depth_from_disparity(
+            disparity, parameter(2.0, baseline_kind), parameter(30.0, focal_kind)
+        )
+        assert depth.shape == disparity.shape
+        assert depth.dtype == dtype
+        assert depth.device == disparity.device
+        self.assert_close(depth, expected)
+
+    @pytest.mark.parametrize("parameter_name", ["baseline", "focal"])
+    def test_scalar_camera_parameters_reject_invalid(self, parameter_name, device, dtype):
+        disparity = torch.ones(2, 1, 3, 4, device=device, dtype=dtype)
+        parameters = {"baseline": 1.0, "focal": 1.0}
+        for shape in [(0,), (2,), (1, 1)]:
+            parameters[parameter_name] = torch.ones(shape, device=device, dtype=dtype)
+            with pytest.raises(ShapeError):
+                kornia.geometry.depth.depth_from_disparity(disparity, **parameters)
+        for value in ["1", 1j, True]:
+            parameters[parameter_name] = value
+            with pytest.raises(BaseError, match=f"Input {parameter_name}"):
+                kornia.geometry.depth.depth_from_disparity(disparity, **parameters)
+
     def test_smoke(self, device, dtype):
         disparity = 2 * torch.tensor(
             [[[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]], device=device, dtype=dtype
@@ -439,13 +477,14 @@ class TestDepthFromDisparity(BaseTester):
         points3d = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
         assert points3d.shape == shape
 
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("parameter_shape", [(), (1,)])
+    def test_gradcheck(self, device, parameter_shape):
         # generate input data
         disparity = torch.rand(1, 1, 3, 4, device=device, dtype=torch.float64)
 
-        baseline = torch.rand(1, device=device, dtype=torch.float64)
+        baseline = torch.rand(parameter_shape, device=device, dtype=torch.float64)
 
-        focal = torch.rand(1, device=device, dtype=torch.float64)
+        focal = torch.rand(parameter_shape, device=device, dtype=torch.float64)
 
         # evaluate function gradient
         self.gradcheck(kornia.geometry.depth.depth_from_disparity, (disparity, baseline, focal))

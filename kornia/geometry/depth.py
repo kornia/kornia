@@ -595,8 +595,8 @@ def depth_from_disparity(
 
     Args:
         disparity: Disparity tensor of shape :math:`(*, H, W)`.
-        baseline: float/tensor containing the distance between the two lenses.
-        focal: float/tensor containing the focal length.
+        baseline: Distance between the two lenses, as an int, float, or tensor of shape ``()`` or ``(1,)``.
+        focal: Focal length, as an int, float, or tensor of shape ``()`` or ``(1,)``.
 
     Return:
         Depth map of the shape :math:`(*, H, W)`.
@@ -612,18 +612,18 @@ def depth_from_disparity(
     KORNIA_CHECK_IS_TENSOR(disparity, f"Input disparity type is not a torch.Tensor. Got {type(disparity)}.")
     KORNIA_CHECK_SHAPE(disparity, ["*", "H", "W"])
     KORNIA_CHECK(
-        isinstance(baseline, (float, torch.Tensor)),
-        f"Input baseline should be either a float or torch.Tensor. Got {type(baseline)}",
+        isinstance(baseline, (int, float, torch.Tensor)) and not isinstance(baseline, bool),
+        f"Input baseline should be an int, float or torch.Tensor. Got {type(baseline)}",
     )
     KORNIA_CHECK(
-        isinstance(focal, (float, torch.Tensor)),
-        f"Input focal should be either a float or torch.Tensor. Got {type(focal)}",
+        isinstance(focal, (int, float, torch.Tensor)) and not isinstance(focal, bool),
+        f"Input focal should be an int, float or torch.Tensor. Got {type(focal)}",
     )
 
-    if isinstance(baseline, torch.Tensor):
+    if isinstance(baseline, torch.Tensor) and baseline.ndim != 0:
         KORNIA_CHECK_SHAPE(baseline, ["1"])
 
-    if isinstance(focal, torch.Tensor):
+    if isinstance(focal, torch.Tensor) and focal.ndim != 0:
         KORNIA_CHECK_SHAPE(focal, ["1"])
 
     return baseline * focal / (disparity + 1e-8)
