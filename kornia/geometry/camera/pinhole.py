@@ -44,7 +44,7 @@ class PinholeCamera:
           ``(0, 0)`` is centred at ``(0, 0)``, which is what :func:`~kornia.geometry.grid.create_meshgrid`
           enumerates, so a centred image has its principal point at ``cx = (W - 1) / 2``, ``cy = (H - 1) / 2``.
           A half-pixel convention, which places the pixel *corner* at the origin (COLMAP), reports the same
-          principal point half a pixel larger on each axis. See :doc:`/get-started/conventions`.
+          principal point half a pixel larger on each axis. See :doc:`/get-started/camera-conventions`.
         - ``depth`` is the camera-frame ``z`` coordinate. The ``normalize`` argument of
           :func:`~kornia.geometry.camera.perspective.unproject_points` and the ``normalize_points`` flags of
           :func:`~kornia.geometry.depth.depth_to_3d` and :func:`~kornia.geometry.depth.depth_to_3d_v2` read it
@@ -62,10 +62,8 @@ class PinholeCamera:
         `#4264 <https://github.com/kornia/kornia/issues/4264>`_, the in-place :meth:`scale_` failure on an
         integer ``height`` / ``width`` with a floating-point scale factor
         `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the batch-size and point-shape limitations
-        `#4266 <https://github.com/kornia/kornia/issues/4266>`_, and the rejection of an empty batch
-        (:math:`B = 0`) `#4281 <https://github.com/kornia/kornia/issues/4281>`_. The behaviour described here is
-        documented as it is and pinned by the ``test_convention_*`` / ``test_wart_*`` tests in
-        ``tests/geometry/camera/test_pinhole.py``.
+        `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The behaviour described here is
+        documented as it is; the issues above track the repairs.
 
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
@@ -101,7 +99,8 @@ class PinholeCamera:
 
     @staticmethod
     def _check_valid(data_iter: Iterable[torch.Tensor]) -> bool:
-        if not all(data.shape[0] for data in data_iter):
+        batch_sizes = [data.shape[0] for data in data_iter]
+        if not all(batch_size == batch_sizes[0] for batch_size in batch_sizes):
             raise ValueError("Arguments shapes must match")
         return True
 

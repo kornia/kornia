@@ -35,9 +35,9 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
           :func:`~kornia.geometry.calibration.undistort_points` applies, and it is what reproduces OpenCV's
           ``undistortPoints`` on this repository's own reference values.
         - ``return_inverse=False`` returns ``Pz @ R``, matching OpenCV's tilt projection.
-        - Scalar angles return :math:`(3, 3)`. For any non-scalar angle shape, all input dimensions
-          are flattened and the result is ``(taux.numel(), 3, 3)``; multiple batch axes are not preserved.
-          This is tracked as `#4324 <https://github.com/kornia/kornia/issues/4324>`_.
+        - Scalar angles return :math:`(3, 3)`. For non-scalar angles, a trailing singleton angle-component
+          axis is consumed and every leading batch dimension is preserved; without that trailing singleton,
+          the full input shape is treated as the batch shape.
 
     Args:
         taux: Rotation angle in radians around the :math:`x`-axis with any shape, matching the other angle.
@@ -46,15 +46,16 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
 
     Returns:
         torch.Tensor: Tilt projection matrix, or the inverse tilt projection matrix when ``return_inverse`` is
-        True, with shape :math:`(3, 3)` for scalar angles or ``(taux.numel(), 3, 3)`` otherwise.
+        True, with shape :math:`(3, 3)` for scalar angles or :math:`(*, 3, 3)` for non-scalar angles, where a
+        trailing singleton angle-component axis is omitted from :math:`*`.
 
     """
     if taux.shape != tauy.shape:
         raise ValueError(f"Shape of taux {taux.shape} and tauy {tauy.shape} do not match.")
 
-    ndim: int = taux.dim()
-    taux = taux.reshape(-1)
-    tauy = tauy.reshape(-1)
+    if taux.dim() > 0 and taux.shape[-1] == 1:
+        taux = taux.squeeze(-1)
+        tauy = tauy.squeeze(-1)
 
     cTx = torch.cos(taux)
     sTx = torch.sin(taux)
@@ -63,30 +64,48 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
     zero = torch.zeros_like(cTx)
     one = torch.ones_like(cTx)
 
-    Rx = torch.stack([one, zero, zero, zero, cTx, sTx, zero, -sTx, cTx], -1).reshape(-1, 3, 3)
-    Ry = torch.stack([cTy, zero, -sTy, zero, one, zero, sTy, zero, cTy], -1).reshape(-1, 3, 3)
+    Rx = torch.stack(
+        [
+            torch.stack([one, zero, zero], -1),
+            torch.stack([zero, cTx, sTx], -1),
+            torch.stack([zero, -sTx, cTx], -1),
+        ],
+        -2,
+    )
+    Ry = torch.stack(
+        [
+            torch.stack([cTy, zero, -sTy], -1),
+            torch.stack([zero, one, zero], -1),
+            torch.stack([sTy, zero, cTy], -1),
+        ],
+        -2,
+    )
     R = Ry @ Rx
 
     if return_inverse:
         invR22 = 1 / R[..., 2, 2]
         invPz = torch.stack(
-            [invR22, zero, R[..., 0, 2] * invR22, zero, invR22, R[..., 1, 2] * invR22, zero, zero, one], -1
-        ).reshape(-1, 3, 3)
+            [
+                torch.stack([invR22, zero, R[..., 0, 2] * invR22], -1),
+                torch.stack([zero, invR22, R[..., 1, 2] * invR22], -1),
+                torch.stack([zero, zero, one], -1),
+            ],
+            -2,
+        )
 
         inv_tilt = R.transpose(-1, -2) @ invPz
-        if ndim == 0:
-            inv_tilt = torch.squeeze(inv_tilt)
-
         return inv_tilt
 
     Pz = torch.stack(
-        [R[..., 2, 2], zero, -R[..., 0, 2], zero, R[..., 2, 2], -R[..., 1, 2], zero, zero, one], -1
-    ).reshape(-1, 3, 3)
+        [
+            torch.stack([R[..., 2, 2], zero, -R[..., 0, 2]], -1),
+            torch.stack([zero, R[..., 2, 2], -R[..., 1, 2]], -1),
+            torch.stack([zero, zero, one], -1),
+        ],
+        -2,
+    )
 
     tilt = Pz @ R
-    if ndim == 0:
-        tilt = torch.squeeze(tilt)
-
     return tilt
 
 
@@ -113,10 +132,8 @@ def distort_points(
           plane and ``K`` maps the distorted normalized point back to pixels. ``new_K`` defaults to ``K``.
         - :func:`~kornia.geometry.calibration.undistort_points` is the inverse map and takes the same
           coefficient layout, with the two intrinsics in the mirrored roles.
-        - In eager execution, arbitrary matching leading dimensions work while the tilt path is inactive.
-          With non-zero tilt, only unbatched inputs or one leading batch dimension are supported; two or more leading
-          dimensions are flattened by :func:`~kornia.geometry.calibration.tilt_projection`. Compilation and ONNX export
-          always take that path, including for zero tilt. Tracked as `#4324 <https://github.com/kornia/kornia/issues/4324>`_.
+        - Matching leading dimensions are preserved with or without tilt. Compilation and ONNX export always apply
+          the tilt branch, including for zero tilt, where the resulting projection is the identity.
 
     Args:
         points: Input image points with shape :math:`(*, N, 2)`.
@@ -197,7 +214,7 @@ def distort_points(
     if not torch.jit.is_scripting():
         capture = capture or is_compiling()
     if capture or torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
-        tilt = tilt_projection(dist[..., 12], dist[..., 13])
+        tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14])
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
         points_untilt = torch.stack([xd, yd, torch.ones_like(xd)], -1) @ tilt.transpose(-2, -1)

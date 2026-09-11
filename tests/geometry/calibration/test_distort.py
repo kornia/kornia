@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+import kornia.geometry.calibration.distort as distort_module
 from kornia.geometry.calibration.distort import distort_points, tilt_projection
 from kornia.geometry.camera.distortion_affine import distort_points_affine
 
@@ -47,6 +48,30 @@ def _k_asymmetric(device, dtype):
     return torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
 
+class TestTiltProjection(BaseTester):
+    @pytest.mark.parametrize("return_inverse", [False, True])
+    def test_batch_shapes(self, return_inverse, device, dtype):
+        multi_axis = torch.zeros(2, 3, 1, device=device, dtype=dtype)
+        single_axis = torch.zeros(2, 1, device=device, dtype=dtype)
+        scalar = torch.zeros((), device=device, dtype=dtype)
+
+        assert tilt_projection(multi_axis, multi_axis, return_inverse).shape == (2, 3, 3, 3)
+        assert tilt_projection(single_axis, single_axis, return_inverse).shape == (2, 3, 3)
+        assert tilt_projection(scalar, scalar, return_inverse).shape == (3, 3)
+
+    @pytest.mark.parametrize("return_inverse", [False, True])
+    def test_multi_axis_matches_individual(self, return_inverse, device, dtype):
+        taux = torch.linspace(-0.03, 0.03, 6, device=device, dtype=dtype).reshape(2, 3, 1)
+        tauy = torch.linspace(0.02, -0.02, 6, device=device, dtype=dtype).reshape(2, 3, 1)
+
+        actual = tilt_projection(taux, tauy, return_inverse)
+        expected = torch.stack(
+            [torch.stack([tilt_projection(taux[i, j], tauy[i, j], return_inverse) for j in range(3)]) for i in range(2)]
+        )
+
+        self.assert_close(actual, expected)
+
+
 class TestDistortPoints(BaseTester):
     def test_smoke(self, device, dtype):
         points = torch.rand(1, 2, device=device, dtype=dtype)
@@ -69,6 +94,35 @@ class TestDistortPoints(BaseTester):
         new_K = torch.rand(1, 3, 3, device=device, dtype=dtype)
         pointsu = distort_points(points, K, distCoeff, new_K)
         assert points.shape == pointsu.shape
+
+    @pytest.mark.parametrize("batch_shape", [(2, 3), (2, 1)])
+    def test_tilt_multi_axis_batch(self, batch_shape, device, dtype):
+        num_points = 5
+        points = torch.rand(*batch_shape, num_points, 2, device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype).expand(*batch_shape, 3, 3).clone()
+        dist = torch.zeros(*batch_shape, 14, device=device, dtype=dtype)
+        dist[..., 12] = 0.01
+        dist[..., 13] = -0.02
+
+        actual = distort_points(points, K, dist)
+        expected = torch.stack(
+            [distort_points(p, k, d) for p, k, d in zip(points.flatten(0, -3), K.flatten(0, -3), dist.flatten(0, -2))]
+        ).reshape(*batch_shape, num_points, 2)
+
+        assert actual.shape == (*batch_shape, num_points, 2)
+        self.assert_close(actual, expected)
+
+    def test_export_multi_axis_batch(self, monkeypatch, device, dtype):
+        points = torch.rand(2, 3, 5, 2, device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3).clone()
+        dist = torch.tensor([0.01, -0.02, 0.001, -0.001], device=device, dtype=dtype).expand(2, 3, 4).clone()
+        expected = distort_points(points, K, dist)
+
+        monkeypatch.setattr(distort_module, "is_exporting", lambda: True)
+        actual = distort_points(points, K, dist)
+
+        assert actual.shape == points.shape
+        self.assert_close(actual, expected)
 
     @pytest.mark.parametrize(
         "batch_size, num_points, num_distcoeff", [(1, 3, 4), (2, 4, 5), (3, 5, 8), (4, 6, 12), (5, 7, 14)]
@@ -244,7 +298,7 @@ class TestDistortPoints(BaseTester):
 
     def test_convention_tilt_projection_zero_angles_are_the_identity(self, device, dtype):
         # Both branches reduce to the identity when tilt is disabled.
-        zero = torch.zeros(1, device=device, dtype=dtype)
+        zero = torch.zeros(1, 1, device=device, dtype=dtype)
         identity = torch.eye(3, device=device, dtype=dtype)[None]
         assert torch.equal(tilt_projection(zero, zero), identity)
         self.assert_close(tilt_projection(zero, zero, True), identity, atol=0.0, rtol=0.0)
@@ -254,7 +308,7 @@ class TestDistortPoints(BaseTester):
         # A simultaneous change to both branches must not hide a convention error.
         r, p_z = _pz_r(0.1, 0.2, device, dtype)
         inverse = tilt_projection(
-            torch.tensor([0.1], device=device, dtype=dtype), torch.tensor([0.2], device=device, dtype=dtype), True
+            torch.tensor([[0.1]], device=device, dtype=dtype), torch.tensor([[0.2]], device=device, dtype=dtype), True
         )
         identity = torch.eye(3, device=device, dtype=dtype)[None]
         self.assert_close((p_z @ r) @ inverse, identity)
@@ -263,23 +317,15 @@ class TestDistortPoints(BaseTester):
 
     def test_convention_tilt_projection_forward_is_pz_times_r_4276(self, device, dtype):
         r, p_z = _pz_r(0.1, 0.2, device, dtype)
-        taux = torch.tensor([0.1], device=device, dtype=dtype)
-        tauy = torch.tensor([0.2], device=device, dtype=dtype)
+        taux = torch.tensor([[0.1]], device=device, dtype=dtype)
+        tauy = torch.tensor([[0.2]], device=device, dtype=dtype)
         self.assert_close(tilt_projection(taux, tauy), p_z @ r)
 
     def test_convention_tilt_projection_branches_are_inverses_4276(self, device, dtype):
-        taux = torch.tensor([0.1], device=device, dtype=dtype)
-        tauy = torch.tensor([0.2], device=device, dtype=dtype)
+        taux = torch.tensor([[0.1]], device=device, dtype=dtype)
+        tauy = torch.tensor([[0.2]], device=device, dtype=dtype)
         product = tilt_projection(taux, tauy) @ tilt_projection(taux, tauy, True)
         self.assert_close(product, torch.eye(3, device=device, dtype=dtype)[None])
-
-    @pytest.mark.parametrize("return_inverse", [False, True])
-    def test_wart_tilt_projection_flattens_leading_axes_4324(self, device, dtype, return_inverse):
-        # Wart pin for kornia#4324: every leading axis of the angles is flattened into one, so (2, 3, 1) angles
-        # give (6, 3, 3) where the Returns line at the base commit promised (*, 3, 3). Both branches.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4324 is repaired.
-        angles = torch.zeros(2, 3, 1, device=device, dtype=dtype)
-        assert tilt_projection(angles, angles, return_inverse).shape == (6, 3, 3)
 
     def test_jit(self, device, dtype):
         points = torch.rand(1, 1, 2, device=device, dtype=dtype)
