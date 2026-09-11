@@ -758,11 +758,24 @@ class TestConventionAugmentationSequential(BaseTester):
         # bilinear changes nothing. The `align_corners` half of the same dict IS honoured and reaches the
         # sampler, and `RandomElasticTransform`, which has its own mask path, honours both halves.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu), seed 0, a
-        # (1, 1, 6, 8) mask with a 1-block: RandomAffine resample override max|delta| 0.0,
-        # RandomPerspective align_corners override 1.0, RandomElasticTransform resample override 0.4567949.
+        # (1, 1, 6, 8) mask with a 1-block: RandomAffine resample override max|delta| 0.0, RandomPerspective
+        # align_corners override 1.0.
+        # The elastic half uses its own fixture, reusing the #4420 pin's style below: `RandomElasticTransform
+        # (alpha=(5.0, 5.0), sigma=(4.0, 4.0), p=1.0)` on a checkerboard mask, same (1, 1, 6, 8), H != W frame,
+        # instead of the default alpha/sigma with a solid block. #4382 ("fix: respect align_corners in elastic
+        # transform grid"), now in this branch's rebased base, shrank the displacement at the default fixture
+        # until the bilinear-vs-nearest mask delta collapsed - 0.0093 (float32) / 0.0076 (float64) at seed 0,
+        # both under the old > 0.1 threshold - and a solid block mask can also map onto itself under a small
+        # warp regardless of alpha/sigma, so a checkerboard is used instead.
+        # Sweep, seeds 0-9, this elastic fixture: min/max delta 0.461683/0.739558 on cpu float32, 0.292913/
+        # 0.716883 on cpu float64, 0.462891/0.740234 on cpu float16, 0.472656/0.742188 on cpu bfloat16, and
+        # 0.401424/0.749953 on mps float32 - never near the old default-fixture value at any seed or dtype
+        # checked, so `> 0.1` stays a safe threshold. Seed-0 delta: 0.739558 (cpu float32), 0.588690 (cpu
+        # float64), 0.740234 (cpu float16), 0.742188 (cpu bfloat16), 0.749953 (mps float32). The half-dtype
+        # skip that used to guard this pin is dropped: affine and perspective are exact on float16/bfloat16
+        # (0.0 and 1.0, matching float32/float64) and the elastic delta stays far above the threshold there
+        # too.
         # The fix lands in the repair window and flips the first assertion; do not "correct" it here.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the elastic mask delta is below the half-precision resolution of this fixture")
 
         def mask_of(aug_factory, extra):
             torch.manual_seed(0)
@@ -781,8 +794,19 @@ class TestConventionAugmentationSequential(BaseTester):
         perspective = lambda: K.RandomPerspective(0.5, p=1.0)  # noqa: E731
         assert (mask_of(perspective, align) - mask_of(perspective, None)).abs().max().item() == 1.0
 
-        elastic = lambda: K.RandomElasticTransform(p=1.0)  # noqa: E731
-        assert (mask_of(elastic, bilinear) - mask_of(elastic, None)).abs().max().item() > 0.1
+        def elastic_mask_of(extra):
+            torch.manual_seed(0)
+            aug = K.AugmentationSequential(
+                K.RandomElasticTransform(alpha=(5.0, 5.0), sigma=(4.0, 4.0), p=1.0),
+                data_keys=["input", "mask"],
+                extra_args=extra,
+            )
+            img = torch.rand(1, 3, 6, 8, device=device, dtype=dtype)
+            yy, xx = torch.meshgrid(torch.arange(6, device=device), torch.arange(8, device=device), indexing="ij")
+            mask = ((yy + xx) % 2).to(dtype).expand(1, 1, 6, 8).clone()
+            return aug(img, mask)[1]
+
+        assert (elastic_mask_of(bilinear) - elastic_mask_of(None)).abs().max().item() > 0.1
 
         # a user dict replaces the container's default wholesale rather than merging into it
         default_args = K.AugmentationSequential(affine(), data_keys=["input", "mask"]).extra_args
