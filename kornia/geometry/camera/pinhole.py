@@ -49,10 +49,12 @@ class PinholeCamera:
           :func:`~kornia.geometry.camera.perspective.unproject_points` and the ``normalize_points`` flags of
           :func:`~kornia.geometry.depth.depth_to_3d` and :func:`~kornia.geometry.depth.depth_to_3d_v2` read it
           as the Euclidean ray length instead, so the unprojected point has that norm rather than that ``z``.
-        - the class stores the tensors it is constructed from instead of copying them, so :meth:`scale_` and
-          the ``tx`` / ``ty`` / ``tz`` setters write into the caller's tensors. :meth:`scale` is the exception:
-          it returns a new camera that owns both its ``intrinsics`` and its ``extrinsics``. :meth:`clone` is
-          the deep copy of an existing camera.
+        - the class stores the tensors it is constructed from instead of copying them, so the ``tx`` / ``ty`` /
+          ``tz`` setters write into the caller's tensors. :meth:`scale_` writes the scaled values into the
+          caller's ``intrinsics`` but rebinds ``height`` / ``width`` (so a floating factor promotes them rather
+          than mutating the caller's image-size tensors). :meth:`scale` is the exception: it returns a new
+          camera that owns both its ``intrinsics`` and its ``extrinsics``. :meth:`clone` is the deep copy of an
+          existing camera.
 
     .. warning::
         :meth:`scale` and :meth:`scale_` rescale the principal point as ``cx' = s * cx`` — the half-pixel rule —
@@ -62,8 +64,10 @@ class PinholeCamera:
         `#4264 <https://github.com/kornia/kornia/issues/4264>`_, the in-place :meth:`scale_` failure on an
         integer ``height`` / ``width`` with a floating-point scale factor
         `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the batch-size and point-shape limitations
-        `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The behaviour described here is
-        documented as it is; the issues above track the repairs.
+        `#4266 <https://github.com/kornia/kornia/issues/4266>`_, and the rejection of an empty batch
+        (:math:`B = 0`) `#4281 <https://github.com/kornia/kornia/issues/4281>`_. The behaviour described here is
+        documented as it is and pinned by the ``test_convention_*`` / ``test_wart_*`` tests in
+        ``tests/geometry/camera/test_pinhole.py``; the issues above track the repairs.
 
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
@@ -359,8 +363,8 @@ class PinholeCamera:
 
         Convention:
             - applies the same rescaling as :meth:`scale` in place and returns ``self``. The camera stores the
-              tensors it was constructed from, so the caller's ``intrinsics``, ``height`` and ``width`` are
-              written into as well.
+              tensors it was constructed from, so the scaled values are written into the caller's ``intrinsics``;
+              ``height`` / ``width`` are rebound rather than mutated.
             - with a floating-point ``scale_factor``, an integer ``height`` / ``width`` is promoted to floating
               point, just as :meth:`scale` now does. An integer factor preserves the integer image-size dtype.
               The focal lengths and principal point have already been scaled when the promotion happens,

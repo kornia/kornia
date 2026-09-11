@@ -807,15 +807,16 @@ class TestPinholeCamera(BaseTester):
 
     def test_wart_constructor_and_scale_inplace_write_through_to_the_caller_4264(self, device, dtype):
         # Wart pin for kornia#4264: the class stores the tensors it is constructed from instead of copying
-        # them, so every mutating accessor writes into the CALLER's tensors -- the constructor keeps the
-        # caller's ``intrinsics`` / ``extrinsics`` objects, the ``tx`` setter writes into the caller's
-        # extrinsics, and the in-place ``scale_`` rewrites the caller's intrinsics and image size.
+        # them, so the ``tx`` setter and :meth:`scale_` write into the CALLER's tensors -- the constructor keeps
+        # the caller's ``intrinsics`` / ``extrinsics`` objects, and the in-place ``scale_`` rewrites the caller's
+        # intrinsics. As of #4371 the in-place ``scale_`` no longer mutates the caller's ``height`` / ``width``
+        # (it rebinds them to promote a floating factor), so only the intrinsics write-through is asserted here.
         # The fourth leg of #4264 -- ``scale()`` handing ``self.extrinsics`` to the new camera by reference --
         # is repaired, and is pinned the other way up by
         # ``test_pinhole_camera_scale_does_not_alias_the_source``; it is deliberately not asserted here.
         # Snippet used to generate expected: cam.intrinsics is K and cam.extrinsics is E -> True; after
         # ``cam.tx = 5.0`` E[0, 0, 3] reads 5.0; after ``cam.scale_(0.5)`` K[0, 0, 2] reads 2.0 (from 4.0),
-        # K[0, 0, 0] reads 50.0 and the caller's height/width read [3.0] / [4.0] (from [6.0] / [8.0]);
+        # K[0, 0, 0] reads 50.0 while the caller's height/width stay [6.0] / [8.0] (rebound on the camera);
         # executed 2026-09-05 (torch 2.14.0, cpu and mps, every dtype).
         # Pins the CURRENT behavior; NOT a contract; delete when the rest of #4264 is repaired.
         # The constructor stores, rather than copies, all four arguments.
@@ -829,12 +830,15 @@ class TestPinholeCamera(BaseTester):
         # The tx setter writes into the caller's extrinsics tensor.
         source.tx = 5.0
         self.assert_close(E[0, 0, 3], torch.tensor(5.0, device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        # scale_ rewrites the caller's intrinsics and image-size tensors in place.
+        # scale_ rewrites the caller's intrinsics tensor in place.
         source.scale_(torch.tensor([0.5], device=device, dtype=dtype))
         self.assert_close(K[0, 0, 2], torch.tensor(2.0, device=device, dtype=dtype), atol=0.0, rtol=0.0)
         self.assert_close(K[0, 0, 0], torch.tensor(50.0, device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        self.assert_close(height, torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
-        self.assert_close(width, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        # height/width are rebound on the camera, so the caller's tensors are left untouched (#4371).
+        self.assert_close(source.height, torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(source.width, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(height, torch.tensor([6.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(width, torch.tensor([8.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
 
     def test_wart_scale_inplace_rejects_integer_image_size_4265(self, device, dtype):
         # Wart pin for kornia#4265: the constructor accepts int64 height/width --
@@ -861,14 +865,16 @@ class TestPinholeCamera(BaseTester):
             self.assert_close(inplace.width, scaled.width)
             self.assert_close(inplace.intrinsics, scaled.intrinsics)
         assert cam.scale(torch.tensor([0.5], device=device, dtype=dtype)).height.is_floating_point()
-        with pytest.raises(RuntimeError, match="can't be cast to the desired output type"):
-            cam.scale_(0.5)
+        # scale_(0.5) now promotes int64 height/width to float instead of raising (#4371).
+        inplace = cam.scale_(torch.tensor([0.5], device=device, dtype=dtype))
+        assert inplace is cam
+        assert cam.height.is_floating_point()
+        self.assert_close(cam.height, torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        self.assert_close(cam.width, torch.tensor([4.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
         expected_K = _k44(device, dtype)
         expected_K[:, :2, :3] *= 0.5
         self.assert_close(K, expected_K, atol=0.0, rtol=0.0)
         self.assert_close(cam.intrinsics, expected_K, atol=0.0, rtol=0.0)
-        self.assert_close(cam.height, torch.tensor([6], device=device))
-        self.assert_close(cam.width, torch.tensor([8], device=device))
 
     @pytest.mark.parametrize("shape", [(4, 4), (1, 3, 3), (1, 3, 4), (1, 5, 5), (1, 2, 3, 3), (1, 1, 1, 4, 4)])
     @pytest.mark.parametrize("parameter", ["intrinsics", "extrinsics"])
