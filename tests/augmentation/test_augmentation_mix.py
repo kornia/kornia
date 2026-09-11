@@ -403,6 +403,53 @@ class TestRandomMosaic(BaseTester):
         # batch dimension must be preserved regardless of how many samples are selected.
         assert out_image.shape[0] == input.shape[0]
 
+    def test_p0_passthrough(self, device, dtype):
+        torch.manual_seed(76)
+
+        f = RandomMosaic(p=0.0, data_keys=["input", "bbox_xyxy"])
+
+        input = torch.randn((4, 3, 32, 32), device=device, dtype=dtype)
+        boxes = torch.tensor(
+            [
+                [[2.0, 3.0, 10.0, 12.0], [0.0, 0.0, 0.0, 0.0]],
+                [[4.0, 5.0, 14.0, 15.0], [1.0, 2.0, 3.0, 4.0]],
+                [[6.0, 7.0, 16.0, 17.0], [0.0, 0.0, 0.0, 0.0]],
+                [[8.0, 9.0, 18.0, 19.0], [2.0, 3.0, 4.0, 5.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        input_copy = input.clone()
+        boxes_copy = boxes.clone()
+
+        out_image, out_boxes = f(input, boxes)
+
+        self.assert_close(out_image, input_copy)
+        self.assert_close(out_boxes, boxes_copy)
+
+    def test_partial_batch_passthrough(self, device, dtype):
+        torch.manual_seed(76)
+
+        f = RandomMosaic(
+            output_size=(32, 32),
+            p=0.5,
+            data_keys=["input", "bbox_xyxy"],
+        )
+
+        input = torch.randn((12, 3, 32, 32), device=device, dtype=dtype)
+        boxes = torch.zeros((12, 2, 4), device=device, dtype=dtype)
+
+        output, _ = f(input, boxes)
+
+        assert output.shape == input.shape
+
+        to_apply = f._params["batch_prob"] > 0.5
+        untouched = ~to_apply
+
+        if untouched.any():
+            self.assert_close(output[untouched], input[untouched])
+
 
 class TestRandomJigsaw(BaseTester):
     def test_smoke(self, device, dtype):

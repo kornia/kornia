@@ -96,13 +96,13 @@ class MosaicGenerator(RandomGeneratorBase):
         start_corner_factor = _adapted_rsampling(
             (batch_size, 2), self.start_ratio_range_sampler, same_on_batch=False
         ).to(device=_device, dtype=_dtype)
-        start_corner_x = start_corner_factor[:, 0] * batch_shape[-2]
-        start_corner_y = start_corner_factor[:, 1] * batch_shape[-1]
+        start_corner_x = start_corner_factor[:, 0] * batch_shape[-1] ##  batch has shape is [B, C, H, W]
+        start_corner_y = start_corner_factor[:, 1] * batch_shape[-2]
         crop_src = bbox_generator(
             start_corner_x,
             start_corner_y,
-            start_corner_x.clone().fill_(input_sizes[0]),
-            start_corner_y.clone().fill_(input_sizes[1]),
+            start_corner_x.clone().fill_(input_sizes[1]),
+            start_corner_y.clone().fill_(input_sizes[0]),
         )
         crop_dst = torch.tensor(
             [[[0, 0], [input_sizes[1] - 1, 0], [input_sizes[1] - 1, input_sizes[0] - 1], [0, input_sizes[0] - 1]]],

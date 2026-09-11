@@ -242,9 +242,13 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
                 box = self.transform_boxes(box, self._params, self.flags)
                 output = KORNIA_UNWRAP(box.to_tensor("vertices"), torch.Tensor)
             elif dcate == DataKey.BBOX_XYXY:
-                box = Boxes.from_tensor(_input, mode="xyxy", validate_boxes=False)
-                box = self.transform_boxes(box, self._params, self.flags)
-                output = KORNIA_UNWRAP(box.to_tensor("xyxy"), torch.Tensor)
+                # Avoid lossy Boxes conversion when the augmentation is not applied.
+                if not torch.atleast_1d(self._params["batch_prob"] > 0.5).any():
+                    output = _input
+                else:
+                    box = Boxes.from_tensor(_input, mode="xyxy", validate_boxes=False)
+                    box = self.transform_boxes(box, self._params, self.flags)
+                    output = KORNIA_UNWRAP(box.to_tensor("xyxy"), torch.Tensor)
             elif dcate == DataKey.BBOX_XYWH:
                 box = Boxes.from_tensor(_input, mode="xywh", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
