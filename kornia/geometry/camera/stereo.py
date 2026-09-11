@@ -88,11 +88,7 @@ class StereoCamera:
         real-data test passes only because its fixture lays a one-row, ten-column strip out as ten rows of one
         column, which the swap cancels; its stored numbers are correct OpenCV output for that strip, so a fix
         corrects the layout and keeps every literal. Tracked as
-        `#4269 <https://github.com/kornia/kornia/issues/4269>`_ and pinned by
-        ``test_wart_reproject_disparity_reads_u_from_the_row_index_4269``,
-        ``test_wart_reproject_disparity_x_varies_with_the_row_and_y_with_the_column_4269`` and the strict
-        ``xfail`` ``test_convention_reproject_disparity_uses_the_column_as_u_4269`` in
-        ``tests/geometry/camera/test_stereo.py``.
+        `#4269 <https://github.com/kornia/kornia/issues/4269>`_.
 
     .. warning::
         Several of the constructor guards do not enforce the contract above. A differing ``cx`` is
@@ -101,14 +97,12 @@ class StereoCamera:
         any rig the constructor accepts. The ``tx * fx < 0`` guard is quantified with ``torch.all``, so a
         batch whose second element has the two cameras the wrong way round is accepted and reprojects that
         element behind the camera. And ``tx = 0`` passes the same guard, collapsing ``Q`` so that every
-        disparity reprojects to the origin with no ``inf`` to notice. An empty batch is rejected by that
-        guard as well, because ``torch.all`` of an empty tensor is ``True``
-        (`#4281 <https://github.com/kornia/kornia/issues/4281>`_). These guard issues are tracked as
+        disparity reprojects to the origin with no ``inf`` to notice. These guard issues are tracked as
         `#4270 <https://github.com/kornia/kornia/issues/4270>`_ and pinned by
         ``test_wart_stereo_rejects_differing_principal_points_4270``,
         ``test_wart_stereo_accepts_a_batch_with_one_positive_tx_fx_4270``,
-        ``test_wart_stereo_tx_zero_collapses_every_point_to_the_origin_4270`` and
-        ``test_wart_stereo_rejects_an_empty_batch_4281`` in ``tests/geometry/camera/test_stereo.py``.
+        ``test_wart_stereo_tx_zero_collapses_every_point_to_the_origin_4270`` in
+        ``tests/geometry/camera/test_stereo.py``.
 
     .. warning::
         The module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` is rendered on
@@ -202,7 +196,7 @@ class StereoCamera:
 
         # Ensure that tx * fx is negative and exists.
         tx_fx = rectified_right_camera[..., 0, 3]
-        if not is_exporting() and torch.all(torch.gt(tx_fx, 0)):
+        if not is_exporting() and tx_fx.numel() > 0 and torch.all(torch.gt(tx_fx, 0)):
             raise StereoException(f"Expected :math:`T_x * f_x` to be negative. Got {tx_fx}.")
 
     @property
@@ -348,7 +342,8 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor) -> None:
 
     if disparity_tensor.shape[-1] != 1:
         raise StereoException(
-            "Expected dimension 1 of 'disparity_tensor' to be 1 for as single channeled disparity map."
+            "Expected 'disparity_tensor' to have channels-last shape (B, H, W, 1) "
+            "with a single channel in the last dimension. "
             f"Got {disparity_tensor.shape}."
         )
 
