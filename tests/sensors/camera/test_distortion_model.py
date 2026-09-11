@@ -19,7 +19,6 @@ import pytest
 import torch
 
 from kornia.geometry.calibration import distort_points, undistort_points
-
 from kornia.geometry.camera import (
     distort_points_affine,
     distort_points_kannala_brandt,
@@ -116,7 +115,6 @@ class TestAffineTransform(BaseTester):
             atol=0.0,
             rtol=0.0,
         )
-
 
 
 class TestKannalaBrandtK3Transform(BaseTester):

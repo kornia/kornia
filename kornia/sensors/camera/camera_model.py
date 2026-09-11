@@ -160,15 +160,6 @@ class CameraModelBase:
           are kept separate by design -- this one takes ``Vector`` objects, that one plain tensors -- which is
           recorded in `#4274 <https://github.com/kornia/kornia/issues/4274>`_.
 
-    .. warning::
-        :class:`BrownConradyModel`, :class:`KannalaBrandtK3` and :class:`Orthographic` validate their
-        parameters and construct, and then every :meth:`project`, :meth:`unproject` and :meth:`matrix` call on
-        them raises ``NotImplementedError`` with an empty message, from three independent sites: the
-        distortion placeholders ``BrownConradyTransform`` and ``KannalaBrandtK3Transform``, the projection
-        placeholder ``OrthographicProjection``, and ``CameraModelBase.matrix``, which those three classes do
-        not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_; the behaviour is
-        documented as it is.
-
     Example:
         >>> params = torch.Tensor([328., 328., 320., 240.])
         >>> cam = CameraModelBase(AffineTransform(), Z1Projection(), ImageSize(480, 640), params)
@@ -429,15 +420,7 @@ class BrownConradyModel(CameraModelBase):
 
 
 class KannalaBrandtK3(CameraModelBase):
-    """Kannala Brandt K3 Camera Model.
-
-    .. warning::
-        Constructing this model succeeds; :meth:`~kornia.sensors.camera.CameraModelBase.project` and
-        :meth:`~kornia.sensors.camera.CameraModelBase.unproject` then raise ``NotImplementedError`` with an
-        empty message inside ``KannalaBrandtK3Transform``, and
-        :meth:`~kornia.sensors.camera.CameraModelBase.matrix` inside ``CameraModelBase.matrix``, which this
-        class does not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_.
-    """
+    """Kannala Brandt K3 Camera Model."""
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
         """Construct KannalaBrandtK3 class.
@@ -453,15 +436,7 @@ class KannalaBrandtK3(CameraModelBase):
 
 
 class Orthographic(CameraModelBase):
-    """Orthographic Camera Model.
-
-    .. warning::
-        Constructing this model succeeds; :meth:`~kornia.sensors.camera.CameraModelBase.project` and
-        :meth:`~kornia.sensors.camera.CameraModelBase.unproject` then raise ``NotImplementedError`` with an
-        empty message inside ``OrthographicProjection``, and
-        :meth:`~kornia.sensors.camera.CameraModelBase.matrix` inside ``CameraModelBase.matrix``, which this
-        class does not override. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_.
-    """
+    """Orthographic Camera Model."""
 
     def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
         """Construct Orthographic class.

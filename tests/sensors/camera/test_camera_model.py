@@ -414,53 +414,6 @@ class TestCameraModelTypes(BaseTester):
         with pytest.raises(ValueError, match=r"params must be of shape .* for KANNALA_BRANDT_K3 Camera"):
             CameraModel(ImageSize(6, 8), CameraModelType.KANNALA_BRANDT_K3, torch.ones(7, device=device, dtype=dtype))
 
-    def test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284(self, device, dtype):
-        # Wart pin for kornia#4284 (audit labels 5d-sc-14, 5d-sc-16, 5d-sc-17, 5d-sc-19, 5d-sc-20, 5d-sc-22,
-        # 5d-sc-23): BROWN_CONRADY, KANNALA_BRANDT_K3 and ORTHOGRAPHIC are exported from
-        # ``kornia.sensors.camera.__all__``, validate their parameter vectors and construct without complaint
-        # -- and then project, unproject and matrix all raise NotImplementedError with an EMPTY message,
-        # from THREE different kinds of site.  Measured raise sites, as the qualified function name of the
-        # last frame of each traceback -- ``traceback.extract_tb(exc.__traceback__)[-1]`` -- executed
-        # 2026-09-06 on this worktree (torch 2.14.0, cpu float32).  Names rather than line numbers, because
-        # a line number in a comment rots the next time either module is edited:
-        #   BROWN_CONRADY     project   -> BrownConradyTransform.distort
-        #                     unproject -> BrownConradyTransform.undistort
-        #   KANNALA_BRANDT_K3 project   -> KannalaBrandtK3Transform.distort
-        #                     unproject -> KannalaBrandtK3Transform.undistort
-        #   ORTHOGRAPHIC      project   -> OrthographicProjection.project
-        #                     unproject -> OrthographicProjection.unproject
-        #   all three         matrix    -> CameraModelBase.matrix
-        # So the two failure modes of project/unproject are a distortion placeholder (BROWN_CONRADY and
-        # KANNALA_BRANDT_K3, which wire up the working Z1Projection and fail in the distortion) and a
-        # projection placeholder (ORTHOGRAPHIC, in BOTH directions -- its AffineTransform never fails); those
-        # placeholders are pinned at their own level in tests/sensors/camera/test_distortion_model.py and
-        # test_projection_model.py.  ``matrix()`` is a THIRD, independent site: the three classes do not
-        # override ``CameraModelBase.matrix``, which is itself a bare raise, so implementing the distortions
-        # and the orthographic projection (#4284's Expected option 1) would leave ``matrix()`` raising until
-        # each class grows its own override the way PinholeModel already has.
-        # ``project``/``unproject`` are ``CameraModelBase``'s -- the three classes add no overrides -- so this
-        # pins the base class's behaviour on those models too.
-        # The empty message is asserted rather than described, because #4284's Expected asks at minimum for a
-        # message naming the model: a message-only partial fix must flip these pins.
-        # Snippet used to generate expected: project(Vector3([[1., 2., 4.]])) / unproject(Vector2([[0.5,
-        # 0.25]]), tensor([2.])) / matrix() on each of the three models executed 2026-09-06 on this worktree
-        # (torch 2.14.0) -> NotImplementedError('') for all nine calls, on cpu for float32, float64, float16
-        # and bfloat16 and on mps for float32 and float16.
-        # Pins the CURRENT behaviour; NOT a contract; delete when #4284 is repaired.
-        point3 = Vector3(torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype))
-        point2 = Vector2(torch.tensor([[0.5, 0.25]], device=device, dtype=dtype))
-        depth = torch.tensor([2.0], device=device, dtype=dtype)
-        for model_type, length in self._LENGTHS[1:]:
-            cam = CameraModel(ImageSize(6, 8), model_type, torch.ones(length, device=device, dtype=dtype))
-            assert cam.params.shape == (length,)
-            for call, args in ((cam.project, (point3,)), (cam.unproject, (point2, depth)), (cam.matrix, ())):
-                with pytest.raises(NotImplementedError) as raised:
-                    call(*args)
-                assert str(raised.value) == ""
-        pinhole = CameraModel(ImageSize(6, 8), CameraModelType.PINHOLE, torch.ones(4, device=device, dtype=dtype))
-        assert isinstance(pinhole.project(point3), Vector2)
-        assert isinstance(pinhole.matrix(), torch.Tensor)
-
 
 class TestCameraModelBaseParamsValidation:
     """`CameraModelBase` is public and documents a `params` shape it did not check.

@@ -104,32 +104,30 @@ class BrownConradyTransform:
     distortion (due to lens misalignment). It is commonly used to transform
     points between ideal pinhole projections and distorted image coordinates.
 
-    .. warning::
-        Both methods are placeholders: :meth:`distort` and :meth:`undistort` raise
-        ``NotImplementedError`` with an empty message, which is what makes
-        :class:`~kornia.sensors.camera.BrownConradyModel` unusable in either direction. Tracked in
-        `#4284 <https://github.com/kornia/kornia/issues/4284>`_.
-        :func:`~kornia.geometry.calibration.distort_points` is the implemented Brown-Conrady model, in
-        pixel space with a separate ``K`` and coefficient vector rather than one packed parameter vector.
+    The transform expects a 12-value parameter vector ordered as
+    :math:`(fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, k5, k6)`. The first four
+    values are camera intrinsics and the trailing eight values are the
+    Brown-Conrady distortion coefficients.
 
-    Args:
-        params: A tensor containing the distortion coefficients
-            (usually k1, k2, p1, p2, k3).
-        points: A :class:`Vector2` representing the 2D coordinates to be transformed.
+    :meth:`distort` maps normalized :math:`z = 1` image-plane coordinates to
+    distorted pixel coordinates, while :meth:`undistort` maps distorted pixel
+    coordinates back to normalized :math:`z = 1` coordinates.
     """
 
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         """Apply Brown-Conrady lens distortion to ideal normalized points.
 
         Args:
-            params: Distortion parameter tensor, typically containing radial
-                coefficients such as ``k1``, ``k2``, ``k3`` and tangential
-                coefficients such as ``p1`` and ``p2``.
-            points: Ideal two-dimensional normalized points before lens
-                distortion. Leading dimensions may represent a batch.
+            params: Camera and distortion parameters ordered as
+                ``(fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, k5, k6)``.
+                The first four values define the camera intrinsics and the
+                trailing eight values follow the Brown-Conrady coefficient
+                layout used by :func:`kornia.geometry.calibration.distort_points`.
+            points: Ideal two-dimensional points on the normalized
+                :math:`z = 1` image plane. Leading dimensions may represent a batch.
 
         Returns:
-            Distorted two-dimensional points in the same coordinate convention.
+            Distorted two-dimensional points in pixel coordinates.
 
         """
         fx, fy, cx, cy = (
@@ -173,14 +171,15 @@ class BrownConradyTransform:
         """Remove Brown-Conrady lens distortion from observed points.
 
         Args:
-            params: Distortion parameter tensor matching the coefficients used
-                by :meth:`distort`.
-            points: Distorted two-dimensional points, usually measured in the
-                normalized image plane.
+            params: Camera and distortion parameters ordered as
+                ``(fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, k5, k6)``.
+                The layout is identical to :meth:`distort`.
+            points: Distorted two-dimensional points in pixel coordinates.
+                Leading dimensions may represent a batch.
 
         Returns:
-            Undistorted two-dimensional points that approximate the ideal
-            pinhole projection.
+            Undistorted two-dimensional points on the normalized
+            :math:`z = 1` image plane.
 
         """
         fx, fy, cx, cy = (
@@ -227,13 +226,6 @@ class KannalaBrandtK3Transform:
     This model is specifically designed for fisheye lenses with significant
     radial distortion, using a polynomial approximation for the projection.
 
-    .. warning::
-        Both methods are placeholders: :meth:`distort` and :meth:`undistort` raise
-        ``NotImplementedError`` with an empty message, which is what makes
-        :class:`~kornia.sensors.camera.KannalaBrandtK3` unusable in either direction. Tracked in
-        `#4284 <https://github.com/kornia/kornia/issues/4284>`_.
-        :func:`~kornia.geometry.camera.distort_points_kannala_brandt` is the implemented equivalent, on the
-        same normalized input and the same packed parameter vector.
     """
 
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:

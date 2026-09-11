@@ -104,11 +104,6 @@ class OrthographicProjection:
     This model assumes parallel projection where the $z$ coordinate is
     discarded and no perspective scaling is applied.
 
-    .. warning::
-        Both methods are placeholders: :meth:`project` and :meth:`unproject` raise ``NotImplementedError``
-        with an empty message, which is what makes :class:`~kornia.sensors.camera.Orthographic` unusable in
-        either direction. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_.
-        :func:`~kornia.geometry.camera.project_points_orthographic` is the implemented equivalent.
     """
 
     def project(self, points: Vector3) -> Vector2:
