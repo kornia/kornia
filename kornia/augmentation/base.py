@@ -55,11 +55,10 @@ class _BasicAugmentationBase(nn.Module):
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
-    The random computations happen on CPU whatever the device of the input, and the sampled parameters come
-    back in ``torch.get_default_dtype()``, read at call time, rather than in the input's dtype -- set
-    ``torch.set_default_dtype`` before the call to sample in another dtype. The ``p`` / ``p_batch`` gate is
-    the one value that follows ``set_rng_device_and_dtype`` and the dtype recorded at construction; on most
-    classes the drawn parameters do not follow it, so it is not the way to move sampling to an accelerator.
+    ``set_rng_device_and_dtype`` moves the ``p`` / ``p_batch`` gate, and on most classes nothing else: the
+    sampled augmentation parameters stay on the CPU in ``torch.get_default_dtype()``, so it is not the way to
+    move sampling to an accelerator. Tracked in `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the
+    :doc:`/get-started/conventions` page states which classes deviate and what the draw is reproducible from.
 
     For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
     implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
@@ -179,10 +178,10 @@ class _BasicAugmentationBase(nn.Module):
         .. warning::
             On most classes this reaches the ``p`` / ``p_batch`` gate only: after the call
             ``params['batch_prob']`` follows the given device and dtype, while the sampled augmentation
-            parameters stay on CPU in ``torch.get_default_dtype()``. A minority of classes -- the crop and
-            resize family, ``ColorJitter``, ``RandomElasticTransform`` and a few others -- do move some drawn
-            keys with it, and ``RandomShear`` raises. Tracked in
-            `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
+            parameters stay on CPU in ``torch.get_default_dtype()``. Tracked in
+            `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the
+            :doc:`/get-started/conventions` page names the classes that deviate and the three on which this
+            call makes the next ``forward`` raise.
 
         """
         self.device = device

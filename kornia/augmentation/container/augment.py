@@ -76,8 +76,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
                                     attribute.
-                                    If `silent`, transformation matrix will be computed silently and the non-rigid
-                                    modules will be ignored as identity transformations.
+                                    If `silent`, the default, the transformation matrix is computed silently and a
+                                    non-rigid module is skipped rather than treated as an identity: the rigid
+                                    modules around it are still accumulated, but a chain with no rigid module at
+                                    all leaves `.transform_matrix` at ``None``.
                                     If `rigid`, transformation matrix will be computed silently and the non-rigid
                                     modules will trigger errors.
                                     If `skip`, transformation matrix will be totally ignored.
@@ -120,8 +122,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           included. A ``mask`` argument may also be a list of ``(B, C, H, W)`` tensors whose channel counts
           differ; each of them still carries the whole batch.
         - one call draws once and shares that draw across every registered key -- for the rigid (matrix)
-          augmentations. A non-rigid child has no transform matrix, so it warps the image and returns the
-          other keys unchanged instead of raising.
+          augmentations. A non-rigid child has no transform matrix: it warps the image while the keypoints
+          and the boxes come back unchanged, and a ``mask`` key either comes back unchanged or raises
+          ``NotImplementedError``, depending on the child (see the warning below).
         - ``.inverse()`` undoes the geometric part of the chain and leaves an intensity step applied.
           Keypoints and boxes come back at the coordinates they started from; a resampled image or mask only
           comes back up to the interpolation error of the two warps. A 3D child runs forward but has no

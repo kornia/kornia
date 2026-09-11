@@ -219,25 +219,20 @@ generate simple uniform parameters with less boilerplate code.
 
 Random Reproducibility
 ^^^^^^^^^^^^^^^^^^^^^^
-The random parameters are sampled on the CPU, independently of the device of the input, so a seeded run gives
-the same parameters on CPU and GPU. They come back in ``torch.get_default_dtype()`` rather than in the input's
-dtype; set ``torch.set_default_dtype`` before the call to sample in another dtype.
+The random parameters are sampled on the CPU, independently of the device of the input, and come back in
+``torch.get_default_dtype()`` rather than in the input's dtype. ``set_rng_device_and_dtype`` does **not** change
+that on most classes: it reaches the `p` / `p_batch` gate, so after
+``set_rng_device_and_dtype(torch.device('mps'), torch.float32)``, ``RandomAffine._params['batch_prob']`` is on
+``mps:0`` while ``angle`` and every other sampled key stays on the CPU
+(`#4426 <https://github.com/kornia/kornia/issues/4426>`_).
 
-``set_rng_device_and_dtype`` does **not** change that on most classes: it reaches the `p` / `p_batch` gate.
-After ``set_rng_device_and_dtype(torch.device('mps'), torch.float32)``, ``RandomAffine._params['batch_prob']``
-is on ``mps:0`` while ``angle`` and every other sampled key stays on the CPU. A minority of classes — the crop
-and resize family, ``ColorJitter``, ``RandomElasticTransform`` and a few others — do move some of their drawn
-keys with it, and ``RandomShear`` raises instead. Tracked in
-`#4426 <https://github.com/kornia/kornia/issues/4426>`_.
-
-Reproducibility goes through torch's global CPU generator: ``torch.manual_seed`` before the call reproduces the
-draw bitwise, and there is no per-instance ``generator=``. The seeding, ``DataLoader``-worker and
-consumption-order rules are stated on the :doc:`/get-started/conventions` page.
+The :doc:`/get-started/conventions` page is the canonical statement of the randomness rules: what the draw is
+reproducible from, the ``DataLoader``-worker and consumption-order rules, and which classes
+``set_rng_device_and_dtype`` does move.
 
 Serialization
 ^^^^^^^^^^^^^
-An augmentation carries no learnable parameters. Some classes expose their sampling range as a buffer in
-``state_dict()``, but loading a different range changes the buffer and changes neither the draw nor the
-``repr`` — treat ``state_dict`` as empty and re-construct the augmentation to change what it samples
-(`#4428 <https://github.com/kornia/kornia/issues/4428>`_). ``pickle`` and ``copy.deepcopy`` do carry the last
-``_params`` and the ``transform_matrix``.
+An augmentation carries no learnable parameters, and the sampling-range buffers some classes expose in
+``state_dict()`` are inert (`#4428 <https://github.com/kornia/kornia/issues/4428>`_): re-construct the
+augmentation to change what it samples. What a round trip does and does not carry is stated on the
+:doc:`/get-started/conventions` page.

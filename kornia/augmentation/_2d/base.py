@@ -66,32 +66,32 @@ class AugmentationBase2D(_AugmentationBase):
         - ``p`` is a per-sample Bernoulli and ``p_batch`` a single Bernoulli per call that gates the whole
           batch, drawn before ``p``: with ``p=1.0, p_batch=0.0`` nothing is applied. ``same_on_batch=True``
           asks the batch to share one draw; the gate and the transform parameters follow it, while keys that
-          index or pair up the batch stay per sample by construction.
+          index or pair up the batch stay per sample by construction, and :class:`RandomRain` draws a
+          different drop count per sample regardless (tracked in
+          `#4448 <https://github.com/kornia/kornia/issues/4448>`_).
           ``p_batch`` is part of this base signature and available to custom subclasses, but of the 69 concrete
           classes only :class:`RandomHorizontalFlip` and :class:`RandomVerticalFlip` name it: the rest raise
           ``TypeError`` on the keyword, except :class:`RandomDissolving`, whose ``**kwargs`` binds it and
           drops it without a signal.
         - the random parameters are drawn on the CPU whatever the input's device, and come back in
           ``torch.get_default_dtype()`` rather than in the input's dtype -- set ``torch.set_default_dtype``
-          before the call to draw in another dtype. ``set_rng_device_and_dtype`` reaches the ``p`` /
-          ``p_batch`` gate, and on most classes only the gate: on :class:`RandomAffine`,
-          :class:`RandomRotation` and a custom subclass of this base every drawn key stays on the CPU in the
-          default dtype, while a minority of classes -- the crop and resize family, :class:`ColorJitter`,
-          :class:`RandomElasticTransform` and a few others -- do move some of their drawn keys with it, and
-          :class:`RandomShear` raises instead.
+          before the call to draw in another dtype. ``set_rng_device_and_dtype`` moves the ``p`` /
+          ``p_batch`` gate, and on most classes nothing else, so it is not the way to move sampling to an
+          accelerator.
         - reproducibility goes through torch's global CPU generator: ``torch.manual_seed`` before the call
           reproduces the draw bitwise. There is no per-instance generator; ``generator=`` raises at
-          construction and is silently dropped by ``forward``, as any other unknown keyword is. See
-          :doc:`/get-started/conventions` for the seeding, ``DataLoader``-worker and consumption-order rules.
+          construction and is silently dropped by ``forward``, as any other unknown keyword is.
+        - :doc:`/get-started/conventions` is the canonical statement of all of this: the seeding,
+          ``DataLoader``-worker and consumption-order rules, the classes ``set_rng_device_and_dtype`` does
+          move and the three it makes raise, and what a serialization round trip carries.
         - the last draw is kept in ``_params``; ``forward(x, params=...)`` replaces that dict wholesale rather
           than merging into it, stores the caller's dict by reference without adding or mutating a key, and
           replays the same output bitwise. The three ``RandomPlasma*`` classes are the exception: they draw
           their fractal noise while applying it, so replaying them needs the same global seed as well
           (tracked in `#4445 <https://github.com/kornia/kornia/issues/4445>`_).
-        - an augmentation carries no learnable parameters. Some classes expose their sampling range as a
-          buffer in ``state_dict()``, but loading a different range changes the buffer and changes neither
-          the draw nor the ``repr``, so re-construct the augmentation to change what it samples. ``pickle``
-          and ``copy.deepcopy`` do carry the last ``_params``.
+        - an augmentation carries no learnable parameters, and the sampling-range buffers some classes expose
+          in ``state_dict()`` are inert, so re-construct the augmentation to change what it samples.
+          ``pickle`` and ``copy.deepcopy`` do carry the last ``_params``.
         - an empty batch is an empty output on the classes that accept one, but it is not a package-wide
           guarantee: a minority of the classes raise on ``B = 0``, in several unrelated exception families.
         - rotation-like parameters are in degrees, and a positive angle turns the image counter-clockwise as
@@ -100,9 +100,11 @@ class AugmentationBase2D(_AugmentationBase):
           `#4408 <https://github.com/kornia/kornia/issues/4408>`_).
         - ``torch.jit.script`` does not support these modules: the ``forward(*args, **kwargs)`` signature of the
           base is not scriptable. ``torch.compile`` works in its default, graph-break-tolerant mode;
-          ``fullgraph=True`` fails wherever a drawn value reaches a Python-level size or branch: on the crop
-          and resize classes, on :class:`ColorJiggle` / :class:`ColorJitter` and :class:`RandomSnow`, on the
-          mix classes and on the four sequential containers.
+          ``fullgraph=True`` fails wherever a drawn value reaches a Python-level size or branch: on
+          :class:`RandomCrop`, :class:`RandomResizedCrop`, :class:`LongestMaxSize`,
+          :class:`SmallestMaxSize` and :class:`RandomCrop3D`, on :class:`ColorJiggle` /
+          :class:`ColorJitter` and :class:`RandomSnow`, on the mix classes and on the four sequential
+          containers. :class:`Resize`, :class:`CenterCrop` and :class:`PadTo` compile whole.
 
     .. warning::
         One wrong input rank raises three different exception types depending on the entry point that sees it.

@@ -244,12 +244,23 @@ Randomness in augmentations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - Parameters are sampled on the **CPU**, whatever the device of the input, and
-  come back in ``torch.get_default_dtype()`` rather than in the input's dtype.
-  Set ``torch.set_default_dtype`` before the call to sample in another dtype.
-  ``set_rng_device_and_dtype`` does not do this: on most classes it moves the
-  ``p`` / ``p_batch`` gate and nothing else, a minority of classes move some of
-  their drawn keys with it, and ``RandomShear`` raises
-  (`#4426 <https://github.com/kornia/kornia/issues/4426>`_).
+  come back in ``torch.get_default_dtype()``, read at call time, rather than in
+  the input's dtype. Set ``torch.set_default_dtype`` before the call to sample
+  in another dtype. The ``p`` / ``p_batch`` gate is the exception: its dtype is
+  the one recorded at construction.
+- ``set_rng_device_and_dtype`` is not the way to move sampling to an
+  accelerator: on most classes it moves the ``p`` / ``p_batch`` gate and nothing
+  else (`#4426 <https://github.com/kornia/kornia/issues/4426>`_). Pointed at an
+  accelerator device, the classes that do move some of their drawn keys with it
+  are ``CenterCrop``, ``Resize``, ``LongestMaxSize``, ``SmallestMaxSize``,
+  ``CenterCrop3D``, ``RandomElasticTransform``, ``RandomThinPlateSpline``,
+  ``ColorJitter``, ``RandomChannelDropout``, ``RandomChannelShuffle``,
+  ``RandomGaussianBlur``, ``RandomGaussianIllumination``,
+  ``RandomGaussianNoise`` and ``RandomPlanckianJitter`` — ``RandomCrop`` and
+  ``RandomResizedCrop``, despite the family resemblance, do not. On
+  ``RandomShear``, ``RandomLinearIllumination`` and
+  ``RandomLinearCornerIllumination`` the call leaves the module in a state where
+  the next ``forward`` raises ``RuntimeError``.
 - Reproducibility is **global-seed only**: ``torch.manual_seed`` before the
   call reproduces the draw bitwise. There is no per-instance ``generator=`` —
   it raises at construction, and ``forward`` accepts and silently drops it, as
@@ -259,8 +270,9 @@ Randomness in augmentations
   ``p`` gate and the transform parameters follow it; keys that index or pair up
   the batch — ``batch_idx``, the mix-pairing permutation, the jitter ``order``
   — stay per sample by construction, and
-  :class:`kornia.augmentation.RandomRain` does not honour it for its drop
-  count. A handful of classes do not take the argument at all. On
+  :class:`kornia.augmentation.RandomRain` does not honour it for its drop count
+  (`#4448 <https://github.com/kornia/kornia/issues/4448>`_). A handful of
+  classes do not take the argument at all. On
   ``AugmentationSequential`` the flag is three-state: ``None`` keeps each
   child's own setting, ``True`` and ``False`` overwrite it.
 - Under a :class:`torch.utils.data.DataLoader` the rule is torch's, not
