@@ -278,6 +278,9 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     NOTE: in torch 1.8.1 this function is recommended to use as torch.linalg.svd
 
     For numerical stability, fp32 inputs are promoted to fp64 (except on MPS where fp64 is unsupported).
+
+    An MPS input past the shader-compilation ceiling is decomposed on the CPU and moved back, which
+    is what keeps the batched minimal solvers behind ``RANSAC`` working on Apple silicon.
     """
     if is_mps_tensor_safe(input):
         dtype = torch.float32
@@ -286,7 +289,18 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     else:
         dtype = _normalize_to_float32_or_float64(input.dtype)
 
-    out1, out2, out3H = torch.linalg.svd(input.to(dtype))
+    x = input.to(dtype)
+    # torch 2.14's MPS ``linalg.svd`` raises "Failed to created pipeline state object" -- a Metal
+    # shader compilation failure, not memory pressure -- once a batched input holds more than 8192
+    # elements, whatever the per-matrix shape. The bound is inlined rather than named because this
+    # function is scripted (via ``zca_mean``) and TorchScript cannot close over a module global.
+    if is_mps_tensor_safe(x) and x.numel() > 8192:
+        # SVD is per-matrix, so decomposing the whole batch on the CPU gives the same result; the
+        # casts back to the MPS device keep the autograd graph intact.
+        U, S, Vh = torch.linalg.svd(x.cpu())
+        out1, out2, out3H = U.to(x.device), S.to(x.device), Vh.to(x.device)
+    else:
+        out1, out2, out3H = torch.linalg.svd(x)
     # Since kornia requires torch>=2.5.1, we can always use .mH
     out3 = out3H.mH
     return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
