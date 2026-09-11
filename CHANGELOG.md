@@ -464,6 +464,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `eps=1e-8` is below float16 resolution, so half-precision callers must pass a representable `eps`.
   (#4280, #4348)
 
+* `depth_from_disparity` accepts Python integers and scalar tensors for the baseline and focal length. (#4392)
+
 * `iterative_quad_interp3d`'s `max_candidates` cap is now a per-image budget rather than one shared
   across the batch. The `topk` ranked the flattened `(B*C)` candidate list, so an image's refined
   keypoints depended on which other images shared its batch: a quiet image next to a high-contrast
