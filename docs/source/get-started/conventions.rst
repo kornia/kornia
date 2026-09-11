@@ -176,7 +176,7 @@ Bounding boxes
     h, w = infer_bbox_shape(boxes)
     assert (h.item(), w.item()) == (2.0, 2.0)
 
-- :class:`kornia.augmentation.AugmentationSequential` accepts three box
+- :class:`kornia.augmentation.container.AugmentationSequential` accepts three box
   formats via ``data_keys``: ``"bbox"`` (4-corner), ``"bbox_xyxy"``, and
   ``"bbox_xywh"``. Keypoints are ``"keypoints"``, ``(B, N, 2)`` in
   ``(x, y)``.
@@ -200,10 +200,29 @@ Color
 Augmentations
 -------------
 
-- One :class:`kornia.augmentation.AugmentationSequential` call applies the
-  SAME sampled transform to every registered data type; ``.inverse()``
-  undoes the geometric part for all of them. Never augment image and mask
-  through two separate calls — the random draws will differ.
+- One :class:`kornia.augmentation.container.AugmentationSequential` call draws once and
+  applies that draw to every registered data type — with the non-rigid
+  exceptions in the next bullet; ``.inverse()`` undoes the geometric part for
+  all of them. Never augment image and mask through two separate calls — the
+  random draws will differ.
+- That holds for the **rigid** (matrix) augmentations. A non-rigid op has no
+  transform matrix, so it warps the image only:
+  :class:`kornia.augmentation.RandomElasticTransform` returns keypoints, boxes
+  **and** masks unchanged, while
+  :class:`kornia.augmentation.RandomThinPlateSpline` and
+  :class:`kornia.augmentation.RandomFisheye` return keypoints and boxes
+  unchanged and raise ``NotImplementedError`` when a ``mask`` key is
+  registered (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+- Masks are resampled with nearest interpolation and keep their value set and
+  their dtype. Boxes are read and written in the inclusive ``xyxy_plus``
+  convention of :class:`kornia.geometry.boxes.Boxes` — see *Bounding boxes*
+  above — and flips are inclusive about the integer pixel centre,
+  ``x' = W - 1 - x``.
+- A positive ``degrees`` turns the image **counter-clockwise as displayed** on
+  :class:`kornia.augmentation.RandomRotation`, matching
+  :func:`kornia.geometry.transform.rotate`, and **clockwise** on
+  :class:`kornia.augmentation.RandomAffine`
+  (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
 
 .. code-block:: python
 
@@ -220,6 +239,53 @@ Augmentations
     img_out, mask_out, kpts_out = aug(image, mask, kpts)
     img_back, mask_back, kpts_back = aug.inverse(img_out, mask_out, kpts_out)
     assert (kpts_back - kpts).abs().max() < 1e-3
+
+Randomness in augmentations
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- Parameters are sampled on the **CPU**, whatever the device of the input, and
+  come back in ``torch.get_default_dtype()`` rather than in the input's dtype.
+  Set ``torch.set_default_dtype`` before the call to sample in another dtype.
+  ``set_rng_device_and_dtype`` does not do this: on most classes it moves the
+  ``p`` / ``p_batch`` gate and nothing else, a minority of classes move some of
+  their drawn keys with it, and ``RandomShear`` raises
+  (`#4426 <https://github.com/kornia/kornia/issues/4426>`_).
+- Reproducibility is **global-seed only**: ``torch.manual_seed`` before the
+  call reproduces the draw bitwise. There is no per-instance ``generator=`` —
+  it raises at construction, and ``forward`` accepts and silently drops it, as
+  it does any other unknown keyword
+  (`#4427 <https://github.com/kornia/kornia/issues/4427>`_).
+- ``same_on_batch=True`` asks every sample of the batch to share one draw. The
+  ``p`` gate and the transform parameters follow it; keys that index or pair up
+  the batch — ``batch_idx``, the mix-pairing permutation, the jitter ``order``
+  — stay per sample by construction, and
+  :class:`kornia.augmentation.RandomRain` does not honour it for its drop
+  count. A handful of classes do not take the argument at all. On
+  ``AugmentationSequential`` the flag is three-state: ``None`` keeps each
+  child's own setting, ``True`` and ``False`` overwrite it.
+- Under a :class:`torch.utils.data.DataLoader` the rule is torch's, not
+  Kornia's: each worker's global CPU generator is seeded ``base_seed +
+  worker_id``, so the workers draw different augmentations and the run is
+  reproducible from the base seed. A ``worker_init_fn`` that reseeds every
+  worker to one fixed value makes them draw the *same* augmentation — the
+  classic duplicated-augmentation bug. See `Randomness in multi-process data
+  loading <https://pytorch.org/docs/stable/notes/randomness.html#dataloader>`_.
+- How many values a class takes out of the generator, and in which order, is
+  observable behaviour: changing it shifts every later draw in a seeded
+  pipeline, so it is a breaking change even when each individual draw is still
+  correctly distributed.
+
+Serializing an augmentation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- An augmentation carries no learnable parameters. Some classes expose their
+  sampling range as a buffer in ``state_dict()``, but ``load_state_dict`` from
+  an instance with a different range changes the buffer and changes neither the
+  draw nor the ``repr``
+  (`#4428 <https://github.com/kornia/kornia/issues/4428>`_). Re-construct the
+  augmentation to change what it samples.
+- ``pickle`` and ``copy.deepcopy`` do carry the last ``_params`` and the
+  ``transform_matrix``, so a saved augmentation replays its last draw.
 
 Pitfall checklist
 -----------------
@@ -248,6 +314,14 @@ Quick self-review for generated code, most common first:
     radians ``[0, 2π)``.
 14. Wrong ``data_keys`` box format — ``"bbox"`` means 4-corner ``(B, 4, 2)``;
     use ``"bbox_xyxy"``/``"bbox_xywh"`` for coordinate formats.
+15. Assuming one rotation direction across the augmentations — a positive
+    ``degrees`` on ``RandomAffine`` turns the image clockwise, on
+    ``RandomRotation`` counter-clockwise.
+16. Expecting a non-rigid augmentation (``RandomElasticTransform``,
+    ``RandomThinPlateSpline``, ``RandomFisheye``) to carry masks, boxes and
+    keypoints along with the image — it does not.
+17. Calling ``set_rng_device_and_dtype`` to move parameter sampling to the GPU
+    — on most classes it moves the ``p`` gate and nothing else.
 
 .. tip::
 

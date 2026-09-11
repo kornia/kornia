@@ -35,6 +35,8 @@ __all__ = ["VideoSequential"]
 class VideoSequential(ImageSequential):
     r"""VideoSequential for processing 5-dim video data like (B, T, C, H, W) and (B, C, T, H, W).
 
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
+
     `VideoSequential` is used to replace `nn.Sequential` for processing video data augmentations.
     By default, `VideoSequential` enabled `same_on_frame` to make sure the same augmentations happen
     across temporal dimension. Meanwhile, it will not affect other augmentation behaviours like the
@@ -50,6 +52,17 @@ class VideoSequential(ImageSequential):
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
             If None, the whole list of args will be processed as a sequence.
+
+    Convention:
+        - the input is 5-dimensional and the layout is named by ``data_format``, which accepts ``"BTCHW"``
+          (the default) and ``"BCTHW"``, case-insensitively; any other spelling raises ``AssertionError``.
+          The output keeps the input layout.
+        - ``same_on_frame`` is ``True`` by default, so one draw is shared by every frame of a clip and the
+          clip stays temporally consistent. With ``same_on_frame=False`` each frame is drawn independently.
+        - like :class:`~kornia.augmentation.container.ImageSequential`, this container takes image tensors only: it has
+          no ``data_keys`` and no ``.transform_matrix`` attribute. Register a ``VideoSequential`` as a child of
+          :class:`~kornia.augmentation.container.AugmentationSequential` to augment video masks, boxes and keypoints
+          alongside the clip.
 
     Note:
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.

@@ -81,9 +81,72 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                                     If `rigid`, transformation matrix will be computed silently and the non-rigid
                                     modules will trigger errors.
                                     If `skip`, transformation matrix will be totally ignored.
+                                    The validator also accepts `silence`, an undocumented spelling that behaves
+                                    like `silent`; any other value raises ``ValueError``.
 
-        extra_args: to control the behaviour for each datakeys. By default, masks are handled by nearest interpolation
-                    strategies.
+        extra_args: a dict keyed by ``kornia.constants.DataKey`` that **replaces** the default
+                    ``{DataKey.MASK: {'resample': Resample.NEAREST, 'align_corners': None}}`` rather than
+                    merging into it, so an override that omits a key drops that key's default. An empty dict
+                    is falsy and restores the default. ``DataKey.IMAGE`` honours both entries and
+                    ``DataKey.KEYPOINTS`` honours neither. For ``DataKey.MASK`` on a 2D geometric augmentation
+                    that uses the base mask path the ``resample`` entry is discarded -- masks are resampled
+                    with nearest neighbour whatever it says -- while ``align_corners`` does reach the sampler
+                    and can change the mask wholesale;
+                    :class:`~kornia.augmentation.RandomResizedCrop` rejects it with ``ValueError``.
+                    :class:`~kornia.augmentation.RandomElasticTransform` has its own mask path and honours
+                    both entries, but requires a ``kornia.constants.Resample`` member rather than a
+                    string.
+
+    Convention:
+        - the per-child contract is the Convention block on
+          :class:`~kornia.augmentation.AugmentationBase2D`; this block adds what the container itself decides.
+        - ``data_keys`` names one entry per positional argument, case-insensitively, out of ``input``,
+          ``image``, ``mask``, ``bbox``, ``bbox_xyxy``, ``bbox_xywh``, ``keypoints``, ``label`` and ``class``
+          (``input`` is an alias of ``image``, ``class`` of ``label``). Any other spelling -- ``boxes``,
+          ``points``, ``bboxes``, ``keypoint`` -- raises ``KeyError``. With ``data_keys=None`` the call takes a
+          dict instead, and augments the entries whose key starts with one of those names.
+        - the layouts are ``(B, C, H, W)`` for images and masks, ``(B, N, 4, 2)`` vertices for ``bbox``,
+          ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``.
+          Feeding one layout under another key raises ``ValueError`` naming the expected shape. ``N = 0`` is
+          accepted on every one of them. A wrong input *rank* raises ``RuntimeError`` here rather than the
+          ``ValueError`` a bare augmentation raises.
+        - boxes are read and written in the inclusive ``xyxy_plus`` convention of
+          :class:`~kornia.geometry.boxes.Boxes`, which is one unit wider per axis than the exclusive ``xyxy``
+          of torchvision and COCO. Flips follow the same inclusive, integer-centre rule as
+          :func:`~kornia.geometry.transform.hflip`: ``x' = W - 1 - x`` and ``y' = H - 1 - y``, for the image,
+          the mask, the keypoints and all three box spellings alike, and ``bbox_xywh`` keeps its ``w`` and
+          ``h``. Labels are passed through untouched by a geometric step.
+        - masks are resampled with nearest interpolation and keep their value set and their dtype, ``bool``
+          included. A ``mask`` argument may also be a list of ``(B, C, H, W)`` tensors whose channel counts
+          differ; each of them still carries the whole batch.
+        - one call draws once and shares that draw across every registered key -- for the rigid (matrix)
+          augmentations. A non-rigid child has no transform matrix, so it warps the image and returns the
+          other keys unchanged instead of raising.
+        - ``.inverse()`` undoes the geometric part of the chain and leaves an intensity step applied.
+          Keypoints and boxes come back at the coordinates they started from; a resampled image or mask only
+          comes back up to the interpolation error of the two warps. A 3D child runs forward but has no
+          inverse at all: ``.inverse()`` raises ``NotImplementedError``.
+        - ``same_on_batch`` and ``keepdim`` are three-state here: ``None``, the default, keeps whatever each
+          child was built with, while ``True`` and ``False`` overwrite the child's own setting in both
+          directions.
+        - ``random_apply`` selects a sublist of the children per call; ``transformation_matrix_mode`` decides
+          what ``.transform_matrix`` does with a non-rigid child. ``silent``, the default (and its
+          undocumented alias ``silence``), skips that child and keeps accumulating the rigid ones, so a chain
+          with no rigid child at all leaves ``.transform_matrix`` at ``None``; ``rigid`` raises
+          ``RuntimeError`` on the non-rigid child; ``skip`` leaves ``.transform_matrix`` at ``None`` whatever
+          the chain.
+
+    .. warning::
+        The ``resample`` half of an ``extra_args[DataKey.MASK]`` override is discarded on the 2D geometric
+        augmentations, so asking for bilinear masks changes nothing. Tracked in
+        `#4419 <https://github.com/kornia/kornia/issues/4419>`_.
+
+    .. warning::
+        A non-rigid child silently desynchronizes the data keys: :class:`~kornia.augmentation.RandomElasticTransform`
+        warps the image and returns keypoints, boxes **and** masks unchanged, and
+        :class:`~kornia.augmentation.RandomThinPlateSpline` and :class:`~kornia.augmentation.RandomFisheye`
+        return keypoints and boxes unchanged and raise a bare ``NotImplementedError`` on a ``mask`` key.
+        Tracked in `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
 
     .. note::
         Mix augmentations (e.g. RandomMixUp, RandomCutMix) can only be working with "input"/"image" data key.
@@ -310,6 +373,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     ) -> Union[DataType, List[DataType], Dict[str, DataType]]:
         """Reverse the transformation applied.
 
+        See the Convention block on :class:`~kornia.augmentation.container.AugmentationSequential`.
+
         Number of input tensors must align with the number of``data_keys``. If ``data_keys`` is not set, use
         ``self.data_keys`` by default.
         """
@@ -436,7 +501,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
     ) -> Union[DataType, List[DataType], Dict[str, DataType]]:
-        """Compute multiple tensors simultaneously according to ``self.data_keys``."""
+        """Compute multiple tensors simultaneously according to ``self.data_keys``.
+
+        See the Convention block on :class:`~kornia.augmentation.container.AugmentationSequential`.
+        """
         self.clear_state()
 
         # Strip trailing ``None`` positional args. The legacy torch.onnx.export tracer

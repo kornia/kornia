@@ -54,6 +54,8 @@ class ImageModuleForSequentialMixIn(ImageModuleMixIn):
 class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
     r"""nn.Sequential for creating kornia image processing pipeline.
 
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
+
     Args:
         *args : a list of kornia augmentation and image operation modules.
         same_on_batch: apply the same transformation across the batch.
@@ -69,6 +71,25 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             If False, the whole list of args will be processed as a sequence in original order.
         random_apply_weights: a list of selection weights for each operation. The length shall be as
             same as the number of operations. By default, operations are sampled uniformly.
+        if_unsupported_ops: intended to choose between raising and skipping on an op that cannot be inverted.
+            It is neither validated nor read, and the inverse path skips such an op under every value.
+
+    Convention:
+        - this container takes image tensors only. It has no ``data_keys``, so masks, boxes and keypoints go
+          through :class:`~kornia.augmentation.container.AugmentationSequential` instead. It also carries no
+          ``.transform_matrix`` attribute: the chained matrix is reachable through
+          ``get_transformation_matrix``, which needs the recorded ``params=`` handed back to it.
+        - any ``nn.Module`` may sit in the chain next to the augmentations -- the modules of
+          ``kornia.filters``, ``kornia.color`` and ``kornia.enhance`` among them. ``random_apply``
+          selects among all members alike and every selection is recorded in ``_params``, but a plain module
+          records a ``None`` payload there: only the augmentation members carry a parameter draw to replay.
+        - ``inverse`` undoes the members that have an inverse and silently skips the others, so the round trip
+          is not in general the input.
+
+    .. warning::
+        ``if_unsupported_ops`` never fires: a plain ``nn.Module`` in the chain is skipped on the inverse path
+        under every value of the flag, an invalid value included, and nothing is raised or warned. Tracked in
+        `#4423 <https://github.com/kornia/kornia/issues/4423>`_.
 
     .. note::
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.

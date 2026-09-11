@@ -27,6 +27,8 @@ from kornia.geometry.keypoints import Keypoints
 class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
     r"""IntensityAugmentationBase2D base class for customized intensity augmentation implementations.
 
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
+
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
           element-wise for a batch.
@@ -35,6 +37,17 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
+
+    Convention:
+        - an intensity augmentation moves no pixel, so this base supplies ``compute_transformation``
+          itself and reports the identity matrix; masks, boxes, keypoints and labels pass through untouched.
+          A subclass supplies ``apply_transform`` and, where it draws anything, its ``_param_generator``.
+        - the matrix is built lazily, on the first read of ``transform_matrix``.
+        - this base adds no ``inverse``. Inside
+          :class:`~kornia.augmentation.container.AugmentationSequential`, ``.inverse()`` therefore leaves an intensity
+          step in place and undoes the geometric steps only.
+        - these classes assume the library-wide ``[0, 1]`` float image value range; where a particular class
+          depends on it, its own block says so.
 
     """
 

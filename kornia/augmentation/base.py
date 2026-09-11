@@ -52,8 +52,14 @@ class _BasicAugmentationBase(nn.Module):
     r"""_BasicAugmentationBase base class for customized augmentation implementations.
 
     Plain augmentation base class without the functionality of transformation matrix calculations.
-    By default, the random computations will be happened on CPU with ``torch.get_default_dtype()``.
-    To change this behaviour, please use ``set_rng_device_and_dtype``.
+
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
+
+    The random computations happen on CPU whatever the device of the input, and the sampled parameters come
+    back in ``torch.get_default_dtype()``, read at call time, rather than in the input's dtype -- set
+    ``torch.set_default_dtype`` before the call to sample in another dtype. The ``p`` / ``p_batch`` gate is
+    the one value that follows ``set_rng_device_and_dtype`` and the dtype recorded at construction; on most
+    classes the drawn parameters do not follow it, so it is not the way to move sampling to an accelerator.
 
     For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
     implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
@@ -169,6 +175,14 @@ class _BasicAugmentationBase(nn.Module):
 
         Note:
             The generated random numbers are not reproducible across different devices and dtypes.
+
+        .. warning::
+            On most classes this reaches the ``p`` / ``p_batch`` gate only: after the call
+            ``params['batch_prob']`` follows the given device and dtype, while the sampled augmentation
+            parameters stay on CPU in ``torch.get_default_dtype()``. A minority of classes -- the crop and
+            resize family, ``ColorJitter``, ``RandomElasticTransform`` and a few others -- do move some drawn
+            keys with it, and ``RandomShear`` raises. Tracked in
+            `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
 
         """
         self.device = device

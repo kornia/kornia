@@ -170,7 +170,29 @@ of the selected elements, so the skipped elements must be resized as well to kee
    .. automethod:: apply_transform_class
    .. automethod:: apply_non_transform_class
 
-The same logic applies to 3D augmentations as well.
+`RigidAffineAugmentationBase2D` sits between `AugmentationBase2D` and the two rigid bases. It adds the
+transform-matrix machinery — `compute_transformation` and the `transform_matrix` attribute — but no `inverse`.
+
+.. autoclass:: RigidAffineAugmentationBase2D
+
+   .. automethod:: compute_transformation
+
+The same logic applies to 3D augmentations as well; the 3D chain mirrors the 2D one class for class, and
+none of its members has an `inverse`.
+
+.. autoclass:: AugmentationBase3D
+
+.. autoclass:: RigidAffineAugmentationBase3D
+
+.. autoclass:: GeometricAugmentationBase3D
+
+.. autoclass:: IntensityAugmentationBase3D
+
+Mix augmentations combine several samples of the batch, so they derive from `_BasicAugmentationBase` directly
+rather than from `AugmentationBase2D`, and each supports its own narrow set of data keys — the image always,
+the class label on some, boxes on `RandomMosaic` — raising ``NotImplementedError`` on the rest.
+
+.. autoclass:: MixAugmentationBaseV2
 
 Some Further Notes
 ------------------
@@ -181,6 +203,13 @@ Kornia supports two types of randomness: element-level randomness `p` and batch-
 as defined in `_BasicAugmentationBase`. Under the hood, operations like `crop` and `resize` are implemented with a fixed
 element-level probability of `p=1` and only keep the batch-level randomness.
 
+`p_batch` is part of the base signature and is available to custom subclasses, but among the shipped classes
+only `RandomHorizontalFlip` and `RandomVerticalFlip` name it in their constructor. The rest raise
+``TypeError`` on the keyword, except `RandomDissolving`, whose ``**kwargs`` binds it and drops it without a
+signal. `p_batch < 1` draws a single Bernoulli per call that gates the whole batch, before the per-sample `p`
+is drawn: with ``p=1.0, p_batch=0.0`` nothing is applied. That gap is tracked in
+`#4425 <https://github.com/kornia/kornia/issues/4425>`_.
+
 Random Generators
 ^^^^^^^^^^^^^^^^^
 To get an automatically generated ``__repr__`` that lists all custom parameters, implement
@@ -190,6 +219,25 @@ generate simple uniform parameters with less boilerplate code.
 
 Random Reproducibility
 ^^^^^^^^^^^^^^^^^^^^^^
-By default, the random parameters are sampled on the CPU with ``torch.get_default_dtype()``, independently of the
-device of the input, so a seeded run gives the same parameters on CPU and GPU.
-To change this behaviour, use ``set_rng_device_and_dtype``.
+The random parameters are sampled on the CPU, independently of the device of the input, so a seeded run gives
+the same parameters on CPU and GPU. They come back in ``torch.get_default_dtype()`` rather than in the input's
+dtype; set ``torch.set_default_dtype`` before the call to sample in another dtype.
+
+``set_rng_device_and_dtype`` does **not** change that on most classes: it reaches the `p` / `p_batch` gate.
+After ``set_rng_device_and_dtype(torch.device('mps'), torch.float32)``, ``RandomAffine._params['batch_prob']``
+is on ``mps:0`` while ``angle`` and every other sampled key stays on the CPU. A minority of classes — the crop
+and resize family, ``ColorJitter``, ``RandomElasticTransform`` and a few others — do move some of their drawn
+keys with it, and ``RandomShear`` raises instead. Tracked in
+`#4426 <https://github.com/kornia/kornia/issues/4426>`_.
+
+Reproducibility goes through torch's global CPU generator: ``torch.manual_seed`` before the call reproduces the
+draw bitwise, and there is no per-instance ``generator=``. The seeding, ``DataLoader``-worker and
+consumption-order rules are stated on the :doc:`/get-started/conventions` page.
+
+Serialization
+^^^^^^^^^^^^^
+An augmentation carries no learnable parameters. Some classes expose their sampling range as a buffer in
+``state_dict()``, but loading a different range changes the buffer and changes neither the draw nor the
+``repr`` — treat ``state_dict`` as empty and re-construct the augmentation to change what it samples
+(`#4428 <https://github.com/kornia/kornia/issues/4428>`_). ``pickle`` and ``copy.deepcopy`` do carry the last
+``_params`` and the ``transform_matrix``.

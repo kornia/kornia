@@ -39,6 +39,8 @@ __all__ = ["PatchSequential"]
 class PatchSequential(ImageSequential):
     r"""Container for performing patch-level image data augmentation.
 
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
+
     .. image:: _static/img/PatchSequential.png
 
     PatchSequential breaks input images into patches by a given grid size, which will be resembled back
@@ -68,6 +70,20 @@ class PatchSequential(ImageSequential):
             If ``False`` and not ``patchwise_apply``, the whole list of args will be processed in original order.
             If ``False`` and ``patchwise_apply``, the whole list of args will be processed in original order
             location-wisely.
+
+    Convention:
+        - like :class:`~kornia.augmentation.container.ImageSequential`, this container takes image tensors only: it has
+          no ``data_keys`` and no ``.transform_matrix`` attribute.
+        - ``grid_size`` is ``(rows, columns)`` of patches, and the patches are re-assembled into one tensor
+          afterwards. With ``patchwise_apply=True`` the number of modules has to equal the number of patches.
+        - the ``padding`` modes are not shape-preserving: ``"same"`` and ``"valid"`` can both change the
+          spatial size when the grid does not divide it, and ``"valid"`` can change the batch size as well.
+
+    .. warning::
+        The patch parameters are drawn for ``B * C`` rows rather than for ``B * n_patches``, so a ``(1, 1)``
+        grid raises ``IndexError`` for ``C > 1`` and a larger grid can leave the trailing patches unaugmented.
+        ``padding="same"`` shrinks the image instead of padding it, and ``padding="valid"`` can change the
+        batch size or raise. Tracked in `#4421 <https://github.com/kornia/kornia/issues/4421>`_.
 
     .. note::
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
