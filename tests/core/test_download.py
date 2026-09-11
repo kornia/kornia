@@ -1479,6 +1479,43 @@ class TestDownloadValidate:
 
         assert Path(path).read_bytes() == payload
 
+    def test_a_rejected_fresh_transfer_is_not_left_behind(self, tmp_path) -> None:
+        """A cold cache that fails must not end the call poisoned.
+
+        One URL -- which is what ``download_hf_file`` passes -- nothing cached, and
+        the transfer arrives truncated. Those bytes are this call's own and
+        ``validate`` has refused them, so they go rather than waiting for a later
+        call to find them.
+        """
+        url = self._serve(tmp_path, b"trunc")
+        model_dir = tmp_path / "cache"
+
+        with pytest.raises(RuntimeError, match="Failed to download the file"):
+            download_file_from_url(url, model_dir=str(model_dir), progress=False, validate=self._reject_truncated(14))
+
+        assert not (model_dir / "model.safetensors").exists(), "a refused transfer was left cached"
+
+    def test_the_rejection_is_what_the_failure_reports(self, monkeypatch, tmp_path) -> None:
+        """Offline with a poisoned entry: name the file, not the network.
+
+        The re-attempt fails on the network, so the last exception is a
+        ``URLError`` sitting on top of the rejection that actually explains the
+        failure. Reporting the network points the caller at an entry that is
+        intact and has just been restored.
+        """
+        monkeypatch.setattr(download_mod, "time", _FakeTime())
+        model_dir = tmp_path / "cache"
+        model_dir.mkdir()
+        (model_dir / "model.safetensors").write_bytes(b"trunc")
+        dead = (tmp_path / "missing" / "model.safetensors").as_uri()
+
+        with pytest.raises(RuntimeError) as excinfo:
+            download_file_from_url(dead, model_dir=str(model_dir), progress=False, validate=self._reject_truncated(14))
+
+        message = str(excinfo.value)
+        assert "truncated" in message, "the rejection that explains the failure is missing"
+        assert "refetching it from that same source failed too" in message
+
     def test_a_file_that_never_validates_raises_and_keeps_the_original(self, tmp_path) -> None:
         """Nothing on disk is known-good, so the pre-call entry is put back.
 

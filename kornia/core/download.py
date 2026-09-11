@@ -533,8 +533,12 @@ def _drop_failed_download(path: str) -> None:
     returns the path to the state the call found, which is also the empty path the
     next source needs in order to be fetched at all.
 
-    Only called while a later source remains; see :func:`load_state_dict_from_url`
-    for why the final source keeps what it wrote.
+    :func:`load_state_dict_from_url` calls this only while a later source remains,
+    because there a load failure does not establish that the bytes are bad -- a
+    ``map_location`` a build cannot satisfy fails an intact checkpoint -- so the
+    final source keeps what it wrote. :func:`download_file_from_url` calls it for
+    every ``validate`` rejection of a fresh transfer, last source or not, because
+    that rejection *is* a verdict on the file.
 
     Args:
         path: the cache path this source just wrote.
@@ -804,10 +808,25 @@ def download_file_from_url(
     download-only function does not have: without one, nothing here can tell a
     truncated cache entry from an intact one, so a bad file is handed back as a
     cache hit on every later call and the caller keeps failing until it is
-    deleted by hand. ``validate`` supplies the missing step -- it is called with
-    the cache path after each attempt, and raising from it is treated exactly as
-    a load failure is: the entry is quarantined, the next source is tried, and
-    the discarded source is re-fetched once.
+    deleted by hand.
+
+    ``validate`` supplies the missing step: it is called with the cache path
+    after each attempt, and raising from it rejects the file. What follows
+    depends on where the file came from.
+
+    A rejected *cache entry* -- one the call found rather than fetched -- is
+    quarantined as :func:`load_state_dict_from_url` quarantines a checkpoint that
+    fails to load: it is moved aside so the remaining sources see an empty path,
+    the source that was handed it is re-fetched once, and if nothing usable turns
+    up the original is put back.
+
+    A rejected *fresh transfer* is deleted outright, whether or not a later
+    source could have used the emptied path. Those bytes arrived during this call
+    and ``validate`` refused them, which is a verdict on the file itself, unlike
+    the ambiguous load failures that function has to weigh; keeping them would end
+    the call having added a poisoned entry to a cache that had none. Nothing is
+    re-fetched in that case, so a one-URL call -- what :func:`download_hf_file`
+    makes -- raises with the cache left empty rather than poisoned.
 
     Without ``validate`` nothing is quarantined, as before. The path is returned
     to the caller and named in the failure message so that a file which turns
@@ -863,6 +882,7 @@ def download_file_from_url(
     budget = _SleepBudget(_MAX_CALL_SLEEP_SECONDS)
     quarantine: str | None = None
     discarded_url: str | None = None
+    discard_exc: Exception | None = None
     downloaded = False
     last_exc: Exception | None = None
     last_url: str | None = None
@@ -883,10 +903,21 @@ def download_file_from_url(
                     if fetched:
                         # These bytes are this source's own transfer, not an entry
                         # the call found, so there is nothing to preserve and the
-                        # quarantine does not apply. Drop them when a later source
-                        # can use the emptied path.
-                        if more_sources:
-                            _drop_failed_download(cache_path)
+                        # quarantine does not apply.
+                        #
+                        # They go whether or not a later source can use the emptied
+                        # path, which is where this differs from
+                        # :func:`load_state_dict_from_url`. Reaching here with
+                        # ``fetched`` true means the transfer succeeded and
+                        # ``validate`` refused what it wrote -- a verdict on the file
+                        # itself. The load failures that function has to weigh are
+                        # ambiguous, so it keeps the bytes rather than risk deleting
+                        # an intact checkpoint behind a bad ``map_location``; a
+                        # rejection here is not, and keeping them would end the call
+                        # having *added* a poisoned entry to a cache that had none.
+                        # ``download_hf_file`` passes a single URL, so this is the
+                        # ordinary cold-cache path, not an edge case.
+                        _drop_failed_download(cache_path)
                     else:
                         # Either nothing transferred, or -- the case this whole
                         # branch exists for -- a cache hit was handed back and
@@ -894,7 +925,7 @@ def download_file_from_url(
                         # source really fetches; it comes back below if none does.
                         moved = _discard_cache_entry(u, kwargs)
                         if moved is not None:
-                            quarantine, discarded_url = moved, u
+                            quarantine, discarded_url, discard_exc = moved, u, e
                     if more_sources:
                         warnings.warn(f"Failed to download {u!r}: {e}. Trying next source.", stacklevel=2)
                     continue
@@ -914,10 +945,24 @@ def download_file_from_url(
         if quarantine is not None:
             _settle_quarantine(cache_path, quarantine, loaded=False, downloaded=downloaded)
 
+    # The re-attempt pass runs only when nothing transferred, so if it also failed
+    # without transferring, ``last_exc`` is a refetch failure sitting on top of the
+    # rejection that fired the discard -- and that rejection is the one thing naming
+    # what is wrong with the file. Reporting the network instead points the caller at
+    # an entry that is intact and, offline, has just been restored by the ``finally``
+    # above. :func:`load_state_dict_from_url` makes the same swap.
+    refetch_note = ""
+    if re_attempted and not downloaded and discard_exc is not None:
+        refetch_note = (
+            f" (the cache entry was set aside and refetching it from that same source "
+            f"failed too: {type(last_exc).__name__}: {last_exc})"
+        )
+        last_exc, last_url = discard_exc, discarded_url
+
     raise RuntimeError(
         f"Failed to download the file from all {len(urls)} source(s). "
         f"Last URL tried: {last_url!r}. "
-        f"Last error: {type(last_exc).__name__}: {last_exc}. "
+        f"Last error: {type(last_exc).__name__}: {last_exc}{refetch_note}. "
         # Unquoted: the point of naming the path is that it can be pasted into
         # ``rm``/``del``, and ``repr`` doubles every backslash of a Windows path.
         f"Cache path: {cache_path} -- delete it if it is corrupt and this repeats."

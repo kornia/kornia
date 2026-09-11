@@ -80,10 +80,13 @@ The `RRDBNet` class is the Residual-in-Residual Dense Block generator behind ESR
 It is a plain ``nn.Module`` that upsamples a batched ``(B, 3, H, W)`` image by a factor of 1, 2 or 4,
 and its module and parameter names match the reference implementation, so the published Real-ESRGAN
 checkpoints load with ``strict=True``. ``kornia.contrib.super_resolution.RRDBNetBuilder`` configures
-it for the released Real-ESRGAN variants and downloads their weights, but it currently raises
-``TypeError`` because the ``SuperResolution`` wrapper it returns never implements the abstract
-``from_config`` method it inherits (`kornia#4291 <https://github.com/kornia/kornia/issues/4291>`_);
-until that is fixed, construct ``RRDBNet`` directly and load the checkpoint with ``load_state_dict``.
+it for the released Real-ESRGAN variants and downloads their weights, and returns a
+``SuperResolution`` wrapper ready for inference::
+
+    from kornia.contrib.super_resolution import RRDBNetBuilder
+
+    model = RRDBNetBuilder.build("RealESRNet_x4plus")
+    upscaled = model(images)  # (B, 3, H, W) -> (B, 3, 4H, 4W)
 
 The architecture is vendored from `BasicSR <https://github.com/XPixelGroup/BasicSR>`_ (Apache-2.0,
 Copyright 2018-2022 BasicSR Authors); no extra package is required to use it.
