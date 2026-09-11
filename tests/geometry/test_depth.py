@@ -606,6 +606,22 @@ class TestWarpFrameDepth(BaseTester):
         image_dst = kornia.geometry.depth.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
         assert image_dst.shape == (1, 2, height, width)
 
+    def test_empty_batch_4281(self, device, dtype):
+        # Regression for kornia#4281: output geometry comes from the destination depth map.
+        image_src = torch.zeros(0, 3, 2, 3, device=device, dtype=dtype, requires_grad=True)
+        depth_dst = torch.zeros(0, 1, 4, 5, device=device, dtype=dtype)
+        src_trans_dst = torch.zeros(0, 4, 4, device=device, dtype=dtype)
+        camera_matrix = torch.zeros(0, 3, 3, device=device, dtype=dtype)
+
+        image_dst = kornia.geometry.depth.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
+
+        assert image_dst.shape == (0, 3, 4, 5)
+        assert image_dst.dtype == dtype
+        assert image_dst.device == device
+        assert image_dst.requires_grad
+        image_dst.sum().backward()
+        assert image_src.grad is not None
+
     def test_translation(self, device, dtype):
         # this is for normalize_points=False
         image_src = torch.tensor(
@@ -725,30 +741,6 @@ class TestWarpFrameDepth(BaseTester):
         self.assert_close(warped[0, 0, 0], torch.tensor([1.0, 2.0, 3.0, 4.0, 0.0], device=device, dtype=dtype))
         assert (warped - image_src).abs().max().item() > 0.5
         assert torch.equal(warp_frame_depth(image_src, depth_dst, _eye4(device, dtype), camera_matrix), image_src)
-
-    def test_wart_warp_frame_depth_rejects_an_empty_batch_4281(self, device, dtype):
-        # Wart pin for kornia#4281: an empty batch raises a bare
-        # ZeroDivisionError from transform_points (0 // 0 in its batch-repeat count) rather than returning an empty
-        # result, although
-        # every shape guard on the way in accepts B = 0 and depth_to_3d -- the same computation in the other
-        # layout -- handles it. kornia's degenerate-shape convention is empty in, empty out.
-        # Snippet used to generate expected: warp_frame_depth(zeros(0, 2, 4, 5), ones(0, 1, 4, 5),
-        # zeros(0, 4, 4), zeros(0, 3, 3)) executed 2026-09-06 at commit 1a96bfd1 (torch 2.14.0) ->
-        # ZeroDivisionError("integer division or modulo by zero") on cpu for float32, float64, float16 and
-        # bfloat16 and on mps for float32 and float16; depth_to_3d(zeros(0, 1, 4, 5), zeros(0, 3, 3)) returns
-        # shape (0, 3, 4, 5) in the same cells.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4281 is repaired.
-        with pytest.raises(ZeroDivisionError, match="integer division or modulo by zero"):
-            warp_frame_depth(
-                torch.zeros(0, 2, 4, 5, device=device, dtype=dtype),
-                torch.ones(0, 1, 4, 5, device=device, dtype=dtype),
-                torch.zeros(0, 4, 4, device=device, dtype=dtype),
-                torch.zeros(0, 3, 3, device=device, dtype=dtype),
-            )
-        empty = depth_to_3d(
-            torch.zeros(0, 1, 4, 5, device=device, dtype=dtype), torch.zeros(0, 3, 3, device=device, dtype=dtype)
-        )
-        assert empty.shape == (0, 3, 4, 5)
 
 
 class TestDepthWarperConventions(BaseTester):
@@ -1081,6 +1073,43 @@ class TestDepthWarperConventions(BaseTester):
 
 
 class TestDepthFromDisparity(BaseTester):
+    @pytest.mark.parametrize("baseline_kind", ["int", "float", "scalar_tensor", "tensor"])
+    @pytest.mark.parametrize("focal_kind", ["int", "float", "scalar_tensor", "tensor"])
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_scalar_camera_parameters_4272(self, baseline_kind, focal_kind, batched, device, dtype):
+        def parameter(value, kind):
+            if kind == "int":
+                return int(value)
+            if kind == "float":
+                return float(value)
+            return torch.tensor(value if kind == "scalar_tensor" else [value], device=device, dtype=dtype)
+
+        disparity = torch.tensor([[1.0, 2.0, 4.0], [8.0, 16.0, 32.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[60.0, 30.0, 15.0], [7.5, 3.75, 1.875]], device=device, dtype=dtype)
+        if batched:
+            disparity = disparity.expand(2, 1, 2, 3)
+            expected = expected.expand(2, 1, 2, 3)
+        depth = kornia.geometry.depth.depth_from_disparity(
+            disparity, parameter(2.0, baseline_kind), parameter(30.0, focal_kind)
+        )
+        assert depth.shape == disparity.shape
+        assert depth.dtype == dtype
+        assert depth.device == disparity.device
+        self.assert_close(depth, expected)
+
+    @pytest.mark.parametrize("parameter_name", ["baseline", "focal"])
+    def test_scalar_camera_parameters_reject_invalid(self, parameter_name, device, dtype):
+        disparity = torch.ones(2, 1, 3, 4, device=device, dtype=dtype)
+        parameters = {"baseline": 1.0, "focal": 1.0}
+        for shape in [(0,), (2,), (1, 1)]:
+            parameters[parameter_name] = torch.ones(shape, device=device, dtype=dtype)
+            with pytest.raises(ShapeError):
+                kornia.geometry.depth.depth_from_disparity(disparity, **parameters)
+        for value in ["1", 1j, True]:
+            parameters[parameter_name] = value
+            with pytest.raises(BaseError, match=f"Input {parameter_name}"):
+                kornia.geometry.depth.depth_from_disparity(disparity, **parameters)
+
     def test_smoke(self, device, dtype):
         disparity = 2 * torch.tensor(
             [[[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]], device=device, dtype=dtype
@@ -1125,13 +1154,14 @@ class TestDepthFromDisparity(BaseTester):
         points3d = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
         assert points3d.shape == shape
 
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("parameter_shape", [(), (1,)])
+    def test_gradcheck(self, device, parameter_shape):
         # generate input data
         disparity = torch.rand(1, 1, 3, 4, device=device, dtype=torch.float64)
 
-        baseline = torch.rand(1, device=device, dtype=torch.float64)
+        baseline = torch.rand(parameter_shape, device=device, dtype=torch.float64)
 
-        focal = torch.rand(1, device=device, dtype=torch.float64)
+        focal = torch.rand(parameter_shape, device=device, dtype=torch.float64)
 
         # evaluate function gradient
         self.gradcheck(kornia.geometry.depth.depth_from_disparity, (disparity, baseline, focal))
@@ -1164,24 +1194,10 @@ class TestDepthFromDisparity(BaseTester):
         )
 
     def test_wart_depth_from_disparity_rejects_a_batched_baseline_4272(self, device, dtype):
-        # Wart pin for kornia#4272: the
-        # docstring says baseline and focal are "float/tensor", but the guard is KORNIA_CHECK_SHAPE(..., ["1"]),
-        # so a tensor argument must have exactly shape (1,). A 0-dim tensor -- what ``torch.tensor(0.5)`` or any
-        # reduction produces -- is rejected, and so is a per-batch-element (2,) baseline, even though the
-        # disparity itself is batched. A python ``int`` is rejected outright by the type check, for either
-        # argument -- so ``depth_from_disparity(d, 1, 100.0)`` fails while ``(d, 1.0, 100.0)`` works.
-        # Snippet used to generate expected: depth_from_disparity(ones(1, 1, 2, 3), baseline, focal) executed
-        # 2026-09-06 at commit 1a96bfd1 (torch 2.14.0) -> ShapeError("Shape dimension mismatch: expected 1
-        # dimensions, got 0.") for the 0-dim baseline and ShapeError("Shape mismatch at dimension 0: expected 1,
-        # got 2.") for the (2,) baseline and the (2,) focal, on cpu for float32, float64, float16 and bfloat16
-        # and on mps for float32 and float16; a python int raises BaseError("Input baseline should be either a
-        # float or torch.Tensor. Got <class 'int'>") and the same sentence for ``focal`` in those cells, and
-        # the (1,) form returns shape (1, 1, 2, 3).
-        # Pins the CURRENT behavior; NOT a contract; delete when #4272 is repaired.
+        # Per-batch calibration is still unsupported; scalar forms are covered by
+        # test_scalar_camera_parameters_4272. Delete this wart pin when #4272 adds batching.
         disparity = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
         focal = torch.tensor([100.0], device=device, dtype=dtype)
-        with pytest.raises(ShapeError, match="expected 1 dimensions, got 0"):
-            depth_from_disparity(disparity, torch.tensor(0.5, device=device, dtype=dtype), focal)
         with pytest.raises(ShapeError, match="expected 1, got 2"):
             depth_from_disparity(disparity, torch.tensor([0.5, 0.5], device=device, dtype=dtype), focal)
         with pytest.raises(ShapeError, match="expected 1, got 2"):
@@ -1190,10 +1206,6 @@ class TestDepthFromDisparity(BaseTester):
                 torch.tensor([0.5], device=device, dtype=dtype),
                 torch.tensor([100.0, 100.0], device=device, dtype=dtype),
             )
-        with pytest.raises(BaseError, match=r"Input baseline should be either a float or torch\.Tensor"):
-            depth_from_disparity(disparity, 1, 100.0)
-        with pytest.raises(BaseError, match=r"Input focal should be either a float or torch\.Tensor"):
-            depth_from_disparity(disparity, 0.5, 100)
         assert depth_from_disparity(disparity, 1.0, 100.0).shape == (1, 1, 2, 3)
         assert depth_from_disparity(disparity, torch.tensor([0.5], device=device, dtype=dtype), focal).shape == (
             1,

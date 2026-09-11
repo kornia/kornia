@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* New "Camera and world conventions across the ecosystem" page cataloguing the pixel-centre, axis
+  and extrinsics conventions of OpenCV, COLMAP, OpenGL, ARKit, ARCore, PyTorch3D and Direct3D with the
+  kornia converter for each, plus the baked `align_corners` rows for the depth and undistortion warps on
+  the Conventions & Pitfalls page. (#4315)
+* Documented the `kornia.sensors.camera` conventions (`Vector`-typed inputs, the per-model `params`
+  layout, the shared half-pixel `scale` rule, and the pinhole mapping shared with `kornia.geometry.camera`,
+  including its camera-axis broadcasting, projection rounding and zero/near-zero depth differences) and
+  added executable pins, with the unimplemented models tracked in a dedicated issue; the three non-pinhole
+  models now appear on the sensors documentation page. (#4318)
 * Documented depth and stereo conventions (the two meanings of depth, the `(B, 3, H, W)` versus
   `(B, H, W, 3)` layouts, the opposite source/destination naming of `warp_frame_depth` and
   `DepthWarper`, the rectified stereo `Q` matrix) and added executable pins for `kornia.geometry.depth`
@@ -371,6 +380,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * Fixed TorchScript compilation of `unproject_meshgrid`, `depth_to_3d_v2` and
   `warp_frame_depth` by passing a floating-point norm order. (#4389)
+* `pixel2cam` now validates the full `Bx4x4` shape of `intrinsics_inv`, rejecting invalid matrix sizes
+  before they cause unrelated transformation errors or return the wrong number of coordinate components. (#4381)
 * `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
   instead of treating padding entries as real boxes. (#4390)
 * Fixed fixture teardown between files when running half-precision tests with
@@ -401,10 +412,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Make calibration `distort_points` and `undistort_points` tilt checks compatible with
   `torch.compile(fullgraph=True)`, preserving eager behavior. (#4391)
 * Canny hysteresis preserves the input dtype, avoiding a convolution dtype mismatch for half-precision images. (#4393)
+* `PinholeCamera`, `StereoCamera`, and `warp_frame_depth` now support empty batches. (#4386)
+* `elastic_transform2d` now builds its identity sampling grid with the requested `align_corners`
+  convention, so a zero displacement field preserves the input image. (closes #4235). (#4382)
 
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
   while the implementation preserves ONNX export compatibility. (#4358)
+* Corrected stereo disparity validation errors to describe the required channels-last
+  `(B, H, W, 1)` layout and report the received shape. (#4380)
 * `CameraModelBase.__init__` now validates `params` against the shape it documents, instead of storing
   whatever it is given. The typed constructors (`PinholeModel`, `BrownConradyModel`, `KannalaBrandtK3`,
   `Orthographic`) each apply the same two comparisons, so only the direct-construction path -- which is
@@ -412,6 +428,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   construct and then fail with an `IndexError` from inside `AffineTransform.distort`, naming neither
   `params` nor the camera; a rank-3 `(B, 1, N)` tensor used to construct, project, and silently return a
   `(1, 1, 2)` result. Both now raise `ValueError` from the constructor. (#4316, #4369)
+* `undistort_points_kannala_brandt` no longer collapses representable `float16` points next to the principal point
+  to the origin, and the exact principal-point path now has finite autograd gradients. The zero-radius decision is
+  made from the unsquared normalized coordinates, and the `float16` radius uses `float32` intermediates so its
+  squared value does not underflow; nonzero radial rescaling remains epsilon-free. (#4308, #4370)
 
 * `warp_affine`, `warp_perspective` and `remap` crashed on MPS for an empty destination -- a `dsize` with a
   zero dimension, or zero-sized `remap` maps -- with an internal
@@ -445,6 +465,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tests/onnx/test_export_coverage.py`. The finite-depth promise is bounded by the dtype: the default
   `eps=1e-8` is below float16 resolution, so half-precision callers must pass a representable `eps`.
   (#4280, #4348)
+
+* `depth_from_disparity` accepts Python integers and scalar tensors for the baseline and focal length. (#4392)
 
 * `iterative_quad_interp3d`'s `max_candidates` cap is now a per-image budget rather than one shared
   across the batch. The `topk` ranked the flattened `(B*C)` candidate list, so an image's refined
@@ -556,6 +578,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   super-resolution entry point had been unreachable since the models refactor made `from_config`
   abstract. It now has a `SuperResolutionConfig` and a `from_config` that dispatches to either
   builder family, and both builders are covered by tests. Fixes #4291. (#4335)
+
+* `tilt_projection` preserves its documented leading batch dimensions, so `distort_points`,
+  `undistort_points`, and `undistort_image` no longer fail on multi-axis batches when tilt distortion
+  is applied. (#4345)
 
 * `kornia.io.load_image` and `write_image` work on the kornia_rs that a plain `pip install kornia`
   resolves. kornia_rs 0.1.11 moved its image readers and writers from the package root into
