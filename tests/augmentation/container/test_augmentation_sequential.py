@@ -590,9 +590,11 @@ class TestConventionAugmentationSequential(BaseTester):
     @pytest.fixture(autouse=True)
     def _restore_global_rng(self):
         # These pins seed the global generator (or consume it through a `p=1.0` draw). Restoring its state
-        # afterwards keeps them from shifting the draw of the unseeded tests that run after them: on this
-        # tree a bare `--dtype=all` run of `tests/augmentation` flips
-        # `TestSequential::test_forward[cpu-float16-random_apply3]` purely from a changed RNG position.
+        # afterwards keeps them from shifting the draw of the unseeded tests that run after them: on a bare
+        # `--dtype=all` run of `tests/augmentation`, which float16 parametrizations of
+        # `TestSequential::test_forward` go red depends purely on the RNG position (tracked in #4446).
+        # Only the CPU generator is restored - kornia draws its parameters there - so a pin that allocates
+        # on an accelerator still advances that device's generator.
         state = torch.random.get_rng_state()
         try:
             yield
@@ -789,6 +791,27 @@ class TestConventionAugmentationSequential(BaseTester):
             affine(), data_keys=["input", "mask"], extra_args={DataKey.MASK: {"align_corners": True}}
         ).extra_args
         assert replaced == {DataKey.MASK: {"align_corners": True}}
+
+    @pytest.mark.xfail(strict=True, reason="Tracked in #4419")
+    def test_convention_extra_args_mask_resample_override_is_honoured(self, device, dtype):
+        # Strict xfail (#4419): the intended reading is the one `AugmentationSequential`'s own docstring
+        # states - `extra_args[DataKey.MASK]` controls how masks are handled, so asking for a bilinear
+        # `resample` must reach the sampler and change the mask, exactly as it already does on
+        # `RandomElasticTransform`. Today the 2D geometric mask path overwrites `resample` with NEAREST after
+        # merging the override, so this XFAILs; it turns XPASS when the repair lands, which is the signal to
+        # delete the wart pin above. Executed 2026-09-11 (torch 2.14.0, cpu): the override moves the mask by
+        # 0.0 on `RandomAffine` and by 0.4567949 on `RandomElasticTransform`.
+        def mask_of(factory, extra):
+            torch.manual_seed(0)
+            aug = K.AugmentationSequential(factory(), data_keys=["input", "mask"], extra_args=extra)
+            img = torch.rand(1, 3, 6, 8, device=device, dtype=dtype)
+            mask = torch.zeros(1, 1, 6, 8, device=device, dtype=dtype)
+            mask[:, :, 1:4, 2:6] = 1.0
+            return aug(img, mask)[1]
+
+        bilinear = {DataKey.MASK: {"resample": Resample.BILINEAR, "align_corners": None}}
+        affine = lambda: K.RandomAffine(degrees=(45.0, 45.0), p=1.0)  # noqa: E731
+        assert (mask_of(affine, bilinear) - mask_of(affine, None)).abs().max().item() > 0.0
 
     def test_wart_non_rigid_augmentation_desynchronizes_the_data_keys_4420(self, device, dtype):
         # Wart pin (#4420): the container promises that one call applies the same sampled transform to every

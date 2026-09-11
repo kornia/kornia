@@ -18,6 +18,7 @@
 import copy
 import inspect
 import pickle
+import re
 from unittest.mock import patch
 
 import pytest
@@ -419,9 +420,11 @@ class TestConventionAugmentationBase2D(BaseTester):
     @pytest.fixture(autouse=True)
     def _restore_global_rng(self):
         # These pins seed the global generator (or consume it through a `p=1.0` draw). Restoring its state
-        # afterwards keeps them from shifting the draw of the unseeded tests that run after them: on this
-        # tree a bare `--dtype=all` run of `tests/augmentation` flips
-        # `TestSequential::test_forward[cpu-float16-random_apply3]` purely from a changed RNG position.
+        # afterwards keeps them from shifting the draw of the unseeded tests that run after them: on a bare
+        # `--dtype=all` run of `tests/augmentation`, which float16 parametrizations of
+        # `TestSequential::test_forward` go red depends purely on the RNG position (tracked in #4446).
+        # Only the CPU generator is restored - kornia draws its parameters there - so a pin that allocates
+        # on an accelerator still advances that device's generator.
         state = torch.random.get_rng_state()
         try:
             yield
@@ -474,6 +477,8 @@ class TestConventionAugmentationBase2D(BaseTester):
         # input therefore gets float32 cpu parameters, while `transform_matrix` and the output follow the input.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0) for a float64
         # input: every `_params` entry `cpu`, the float entries `torch.float32`, output and matrix float64.
+        # Only the `--dtype=float64` leg separates the two dtypes; on a float32 leg (and on mps, which has no
+        # float64) the dtype half is a tautology and the device half is what bites.
         aug = K.RandomAffine(degrees=(45.0, 45.0), translate=(0.2, 0.2), p=1.0)
         out = aug(torch.rand(2, 3, 6, 8, device=device, dtype=dtype))
         assert aug._params["angle"].dtype == torch.get_default_dtype()
@@ -590,8 +595,8 @@ class TestConventionAugmentationBase2D(BaseTester):
         assert set(aug._params) == set(before)
         assert all(torch.equal(before[k], params[k]) for k in before)
 
-    def test_wart_random_plasma_replay_is_not_bitwise(self, device, dtype):
-        # Wart pin (no issue filed; recorded as a family fact in the batch-6 audit): the three `RandomPlasma*`
+    def test_wart_random_plasma_replay_4445(self, device, dtype):
+        # Wart pin (#4445): the three `RandomPlasma*`
         # classes draw their fractal noise inside `apply_transform` from the global generator instead of in
         # `generate_parameters`, so they are the only classes whose `params=` replay is NOT bitwise - the
         # documented replay contract (pinned above) does not hold for them. Replaying the same `params=` under
@@ -705,15 +710,15 @@ class TestConventionAugmentationBase2D(BaseTester):
         assert container(empty).shape == (0, 3, 6, 8)
 
     @pytest.mark.parametrize(
-        "name,error",
+        "name,error,message",
         [
-            ("RandomCrop", IndexError),
-            ("LongestMaxSize", KeyError),
-            ("RandomAutoContrast", ValueError),
-            ("Normalize", RuntimeError),
+            ("RandomCrop", IndexError, "list index out of range"),
+            ("LongestMaxSize", KeyError, "output_size"),
+            ("RandomAutoContrast", ValueError, "Invalid input tensor, it is empty."),
+            ("Normalize", RuntimeError, "cannot reshape tensor of 0 elements"),
         ],
     )
-    def test_wart_zero_batch_raises_in_four_exception_families_4429(self, name, error, device, dtype):
+    def test_wart_zero_batch_raises_in_four_exception_families_4429(self, name, error, message, device, dtype):
         # Wart pin (#4429): `B = 0` is not uniformly "empty in, empty out" - 20 classes raise on it, in six
         # exception families. These four are one class per family, all raw internal errors rather than a
         # validation message.
@@ -727,5 +732,21 @@ class TestConventionAugmentationBase2D(BaseTester):
             "RandomAutoContrast": lambda: K.RandomAutoContrast(p=1.0),
             "Normalize": lambda: K.Normalize(0.5, 0.5, p=1.0),
         }
-        with pytest.raises(error):
+        with pytest.raises(error, match=re.escape(message)):
             builders[name]()(torch.rand(0, 3, 6, 8, device=device, dtype=dtype))
+
+    @pytest.mark.xfail(strict=True, reason="Tracked in #4429")
+    def test_convention_zero_batch_is_empty_in_empty_out(self, device, dtype):
+        # Strict xfail (#4429): the settled convention for a degenerate batch is the #4115 rule - empty in,
+        # empty out - which the flip, the affine, an intensity op and `AugmentationSequential` already follow
+        # (pinned above). This asserts the intended behavior for the 20 classes that raise instead; it XFAILs
+        # today and turns XPASS the moment the repair lands, which is the signal to delete the wart pin above.
+        # Executed 2026-09-11 (torch 2.14.0, cpu): the first builder already raises IndexError.
+        empty = torch.rand(0, 3, 6, 8, device=device, dtype=dtype)
+        for aug in (
+            K.RandomCrop((4, 6), p=1.0),
+            K.LongestMaxSize(16, p=1.0),
+            K.RandomAutoContrast(p=1.0),
+            K.Normalize(0.5, 0.5, p=1.0),
+        ):
+            assert aug(empty).shape[0] == 0
