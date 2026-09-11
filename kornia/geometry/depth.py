@@ -404,17 +404,7 @@ def warp_frame_depth(
         frame this function calls ``dst`` (the one holding the depth) is that class's ``src``, and the image it
         calls ``image_src`` is that class's ``patch_dst``. The Convention block on
         :class:`~kornia.geometry.depth.DepthWarper` states the mapping in full. Tracked as
-        `#4273 <https://github.com/kornia/kornia/issues/4273>`_ and pinned by
-        ``test_wart_warp_frame_depth_and_depth_warper_name_the_depth_frame_oppositely_4273`` in
-        ``tests/geometry/test_depth.py``.
-
-    .. warning::
-        An empty batch (:math:`B = 0`) raises ``ZeroDivisionError`` from ``transform_points`` -- its
-        batch-repeat count is ``0 // 0`` -- before any sampling runs, rather than returning an empty result,
-        although the shape guards on the way in accept it and
-        :func:`~kornia.geometry.depth.depth_to_3d` -- the same unprojection in the other layout -- returns an
-        empty point cloud. Tracked as `#4281 <https://github.com/kornia/kornia/issues/4281>`_ and pinned by
-        ``test_wart_warp_frame_depth_rejects_an_empty_batch_4281`` in ``tests/geometry/test_depth.py``.
+        `#4273 <https://github.com/kornia/kornia/issues/4273>`_.
 
     Args:
         image_src: image tensor in the source frame with shape :math:`(B,D,H,W)`.
@@ -432,6 +422,16 @@ def warp_frame_depth(
     KORNIA_CHECK_SHAPE(depth_dst, ["B", "1", "H", "W"])
     KORNIA_CHECK_SHAPE(src_trans_dst, ["B", "4", "4"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
+
+    if (
+        image_src.shape[0] == 0
+        and depth_dst.shape[0] == 0
+        and src_trans_dst.shape[0] == 0
+        and camera_matrix.shape[0] == 0
+    ):
+        output_shape = (0, image_src.shape[1], depth_dst.shape[-2], depth_dst.shape[-1])
+        output_zero = image_src.reshape(-1)[:1].sum() * 0.0
+        return output_zero.reshape(1, 1, 1, 1).expand(output_shape)
 
     # unproject source points to camera frame as (B, H, W, 3) directly — avoids two permutes
     points_3d_dst: torch.Tensor = depth_to_3d_v2(depth_dst.squeeze(1), camera_matrix, normalize_points)  # BxHxWx3
@@ -499,20 +499,15 @@ class DepthWarper(nn.Module):
         -- so the grid, and with it the resampled image, can differ in the last bits. Where the two grids come
         out bit-identical, so do the images. Wherever the transformed points keep a camera-frame ``z`` away
         from zero, the two agree at the working dtype's tolerance in float32 and float64; in float16 and
-        bfloat16 the gap is wider than that tolerance, which is why the pin below states the claim for the two
+        bfloat16 the gap is wider than that tolerance, which is why the agreement is claimed for the two
         single- and double-precision dtypes only. At ``z = 0`` the two split outright, because their two
         projection routes guard the singularity differently:
         :func:`~kornia.geometry.camera.perspective.project_points` skips the homogeneous divide when
         ``abs(z) <= 1e-8``, so :func:`~kornia.geometry.depth.warp_frame_depth` samples ``image_src`` at the
         undivided ``(x, y)`` and returns image content, while ``cam2pixel`` divides by ``z + 1e-12`` and sends
         the same pixel to a coordinate of order ``1e12``, far outside the image. That split is one instance of
-        `#4267 <https://github.com/kornia/kornia/issues/4267>`_, the namespace-wide ``z = 0`` conflict, and is
-        pinned by ``test_wart_warp_frame_depth_and_depth_warper_split_at_zero_transformed_depth_4267``. The
-        naming conflict is tracked as `#4273 <https://github.com/kornia/kornia/issues/4273>`_ and pinned by
-        ``test_wart_warp_frame_depth_and_depth_warper_name_the_depth_frame_oppositely_4273``; the agreement away
-        from ``z = 0`` is pinned by
-        ``test_convention_warp_frame_depth_matches_depth_warper_without_being_bitwise_equal``. All three pins are in
-        ``tests/geometry/test_depth.py``.
+        `#4267 <https://github.com/kornia/kornia/issues/4267>`_, the namespace-wide ``z = 0`` conflict. The
+        naming conflict is tracked as `#4273 <https://github.com/kornia/kornia/issues/4273>`_.
 
     Args:
         pinhole_dst: the pinhole model for the destination frame.
@@ -784,10 +779,9 @@ def depth_from_disparity(
         - the depth is ``baseline * focal / disparity``, elementwise: ``baseline`` is the distance between the
           two camera centres and ``focal`` the focal length in pixels, so a disparity of 2 with a baseline of
           0.5 and a focal length of 100 gives a depth of 25.
-        - ``baseline`` and ``focal`` are each a python ``float`` or a tensor of shape :math:`(1,)`. A 0-dim
-          tensor -- what a reduction produces -- and a per-batch-element :math:`(B,)` tensor both raise
-          ``ShapeError``, and a python ``int`` is rejected by the type check, so one value is shared by the
-          whole batch.
+        - ``baseline`` and ``focal`` are each a Python ``int`` or ``float``, a scalar tensor, or a tensor of
+          shape :math:`(1,)`; one value is shared by the whole batch. Per-batch-element :math:`(B,)` tensors
+          with :math:`B > 1` raise ``ShapeError``.
         - ``disparity`` is :math:`(*, H, W)` and the result has its shape. Its sign is not checked, so a
           negative disparity gives a negative depth.
 
@@ -798,15 +792,12 @@ def depth_from_disparity(
         ``5e9`` for a baseline of ``0.5`` and a focal length of ``100``, a value set by the epsilon as much as
         by the camera and one no caller can threshold against. In float16 the ``1e-8`` itself rounds to zero,
         so the same call divides by zero and returns ``inf`` after all. Tracked as
-        `#4272 <https://github.com/kornia/kornia/issues/4272>`_ and pinned by
-        ``test_wart_zero_disparity_gives_a_finite_depth_4272`` and
-        ``test_wart_depth_from_disparity_rejects_a_batched_baseline_4272`` in ``tests/geometry/test_depth.py``.
+        `#4272 <https://github.com/kornia/kornia/issues/4272>`_.
 
     Args:
         disparity: Disparity tensor of shape :math:`(*, H, W)`.
-        baseline: a python ``float`` or a tensor of shape :math:`(1,)` containing the distance between the two
-          lenses.
-        focal: a python ``float`` or a tensor of shape :math:`(1,)` containing the focal length.
+        baseline: Distance between the two lenses, as an int, float, or tensor of shape ``()`` or ``(1,)``.
+        focal: Focal length, as an int, float, or tensor of shape ``()`` or ``(1,)``.
 
     Return:
         Depth map of the shape :math:`(*, H, W)`.
@@ -822,18 +813,18 @@ def depth_from_disparity(
     KORNIA_CHECK_IS_TENSOR(disparity, f"Input disparity type is not a torch.Tensor. Got {type(disparity)}.")
     KORNIA_CHECK_SHAPE(disparity, ["*", "H", "W"])
     KORNIA_CHECK(
-        isinstance(baseline, (float, torch.Tensor)),
-        f"Input baseline should be either a float or torch.Tensor. Got {type(baseline)}",
+        isinstance(baseline, (int, float, torch.Tensor)) and not isinstance(baseline, bool),
+        f"Input baseline should be an int, float or torch.Tensor. Got {type(baseline)}",
     )
     KORNIA_CHECK(
-        isinstance(focal, (float, torch.Tensor)),
-        f"Input focal should be either a float or torch.Tensor. Got {type(focal)}",
+        isinstance(focal, (int, float, torch.Tensor)) and not isinstance(focal, bool),
+        f"Input focal should be an int, float or torch.Tensor. Got {type(focal)}",
     )
 
-    if isinstance(baseline, torch.Tensor):
+    if isinstance(baseline, torch.Tensor) and baseline.ndim != 0:
         KORNIA_CHECK_SHAPE(baseline, ["1"])
 
-    if isinstance(focal, torch.Tensor):
+    if isinstance(focal, torch.Tensor) and focal.ndim != 0:
         KORNIA_CHECK_SHAPE(focal, ["1"])
 
     return baseline * focal / (disparity + 1e-8)

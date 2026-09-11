@@ -80,12 +80,21 @@ class TestSuperResolutionBuilders(BaseTester):
         assert model.output_image_size is None
         assert model.pseudo_image_size is None
 
-    @pytest.mark.parametrize("builder", [SmallSRBuilder, RRDBNetBuilder])
-    def test_to_onnx_exports(self, builder):
+    # The exporter's cost scales with the traced node count, not with the pseudo input size, so
+    # `RRDBNetBuilder`'s 23-block default costs ~4x the 6-block anime variant while traversing the
+    # identical export path. Which variant maps to which architecture is pinned in
+    # tests/models/test_rrdbnet.py::TestRRDBNetBuilder.
+    @pytest.mark.timeout(120)
+    @pytest.mark.parametrize(
+        ("builder", "build_kwargs"),
+        [(SmallSRBuilder, {}), (RRDBNetBuilder, {"model_name": "RealESRGAN_x4plus_anime_6B"})],
+        ids=["SmallSRBuilder", "RRDBNetBuilder"],
+    )
+    def test_to_onnx_exports(self, builder, build_kwargs):
         """Both families export; this fails with ``AttributeError`` if the metadata is unset."""
         pytest.importorskip("onnx")
         pytest.importorskip("onnxscript")
-        builder.build(pretrained=False).to_onnx(save=False)
+        builder.build(pretrained=False, **build_kwargs).to_onnx(save=False)
 
     @pytest.mark.parametrize(("upscale_factor", "image_size"), [(2, 32), (3, None), (4, 64)])
     def test_output_image_size_matches_the_real_forward(self, device, dtype, upscale_factor, image_size):
