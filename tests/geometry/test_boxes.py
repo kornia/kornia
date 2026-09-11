@@ -283,8 +283,11 @@ class TestBoxes2D(BaseTester):
         old_default = torch.get_default_dtype()
         try:
             torch.set_default_dtype(torch.float64)
-            # Boxes constructor path (integer tensor, no mode conversion).
-            boxes = Boxes(torch.tensor([[1, 1, 4, 3]], device=device))
+            # Boxes constructor path (integer (N, 4, 2) vertex tensor, no mode conversion).
+            boxes = Boxes(
+                torch.tensor([[[0, 0], [2, 0], [0, 2], [2, 2]]], device=device),
+                raise_if_not_floating_point=False,
+            )
             assert boxes.data.dtype == torch.float64
             # _boxes_to_quadrilaterals path via from_tensor (integer xyxy input).
             boxes_from = Boxes.from_tensor(torch.tensor([[1, 1, 4, 3]], device=device), mode="xyxy")
@@ -1131,8 +1134,13 @@ class TestBbox3D(BaseTester):
         try:
             torch.set_default_dtype(torch.float64)
             # Boxes3D constructor path with integer input.
-            boxes = Boxes3D(torch.tensor([[[0, 1, 2], [0, 1, 3], [1, 1, 2], [0, 1, 2],
-                                           [0, 2, 2], [1, 1, 3], [1, 2, 2], [0, 2, 3]]], device=device))
+            boxes = Boxes3D(
+                torch.tensor(
+                    [[[0, 1, 2], [0, 1, 3], [1, 1, 2], [0, 1, 2], [0, 2, 2], [1, 1, 3], [1, 2, 2], [0, 2, 3]]],
+                    device=device,
+                ),
+                raise_if_not_floating_point=False,
+            )
             assert boxes.data.dtype == torch.float64
             # Boxes3D.from_tensor path with integer input.
             boxes_from = Boxes3D.from_tensor(torch.tensor([[0, 1, 2, 4, 5, 6]], device=device), mode="xyzxyz")
