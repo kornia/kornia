@@ -67,6 +67,11 @@ docs = [
 onnx = ["onnx", "onnxruntime", "onnxscript"]
 sd = ["diffusers", "transformers"]
 
+[dependency-groups]
+dev = [
+  "ruff>=0.16.7",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -382,8 +387,3 @@ explicit = true
 name = "pytorch-cu124"
 url = "https://download.pytorch.org/whl/cu124"
 explicit = true
-
-[dependency-groups]
-dev = [
-    "ruff>=0.16.7",
-]
