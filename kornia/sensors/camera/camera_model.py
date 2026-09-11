@@ -105,11 +105,11 @@ class CameraModelBase:
 
     Distortion is of 3 types:
         - Affine, implemented by :class:`~kornia.sensors.camera.distortion_model.AffineTransform`
-        - Brown Conrady, a placeholder that raises ``NotImplementedError``
-        - Kannala Brandt K3, a placeholder that raises ``NotImplementedError``
+        - Brown Conrady, implemented by :class:`~kornia.sensors.camera.distortion_model.BrownConradyTransform`
+        - Kannala Brandt K3, implemented by :class:`~kornia.sensors.camera.distortion_model.KannalaBrandtK3Transform`
     Projection is of 2 types:
         - Z1, implemented by :class:`~kornia.sensors.camera.projection_model.Z1Projection`
-        - Orthographic, a placeholder that raises ``NotImplementedError``
+        - Orthographic, implemented by :class:`~kornia.sensors.camera.projection_model.OrthographicProjection`
 
     Convention:
         - the API is ``Vector``-typed: :meth:`project` takes a ``Vector3`` and returns a ``Vector2``, and
@@ -129,8 +129,7 @@ class CameraModelBase:
           ``[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]``, carrying the batch axis of ``params`` -- not the
           :math:`(B, 4, 4)` ``intrinsics`` that :class:`~kornia.geometry.camera.pinhole.PinholeCamera`
           stores, whose :attr:`~kornia.geometry.camera.pinhole.PinholeCamera.camera_matrix` property returns
-          the :math:`(B, 3, 3)` block of it. :class:`PinholeModel` implements it; ``CameraModelBase.matrix``
-          itself raises ``NotImplementedError``.
+          the :math:`(B, 3, 3)` block of it. ``CameraModelBase.matrix`` implements it for all supported camera models.
         - :meth:`project` is ``self.distortion.distort(self.params, self.projection.project(points))`` and
           :meth:`unproject` the reverse,
           ``self.projection.unproject(self.distortion.undistort(self.params, points), depth)``. ``depth`` is
