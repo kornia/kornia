@@ -74,14 +74,13 @@ class RandomRain(IntensityAugmentationBase2D):
         KORNIA_CHECK(image.shape[1] in {3, 1}, "Number of color channels should be 1 or 3.")
         KORNIA_CHECK(
             bool(
-                torch.all(params["drop_height_factor"] <= image.shape[2])
-                and torch.all(params["drop_height_factor"] > 0)
+                torch.all(params["drop_height_factor"] < image.shape[2]) and torch.all(params["drop_height_factor"] > 0)
             ),
             "Height of drop should be greater than zero and less than image height.",
         )
 
         KORNIA_CHECK(
-            bool(torch.all(torch.abs(params["drop_width_factor"]) <= image.shape[3])),
+            bool(torch.all(torch.abs(params["drop_width_factor"]) < image.shape[3])),
             "Width of drop should be less than image width.",
         )
         modeified_img = image.clone()
