@@ -44,7 +44,7 @@ class PinholeCamera:
           ``(0, 0)`` is centred at ``(0, 0)``, which is what :func:`~kornia.geometry.grid.create_meshgrid`
           enumerates, so a centred image has its principal point at ``cx = (W - 1) / 2``, ``cy = (H - 1) / 2``.
           A half-pixel convention, which places the pixel *corner* at the origin (COLMAP), reports the same
-          principal point half a pixel larger on each axis. See :doc:`/get-started/conventions`.
+          principal point half a pixel larger on each axis. See :doc:`/get-started/camera-conventions`.
         - ``depth`` is the camera-frame ``z`` coordinate. The ``normalize`` argument of
           :func:`~kornia.geometry.camera.perspective.unproject_points` and the ``normalize_points`` flags of
           :func:`~kornia.geometry.depth.depth_to_3d` and :func:`~kornia.geometry.depth.depth_to_3d_v2` read it
@@ -62,10 +62,8 @@ class PinholeCamera:
         `#4264 <https://github.com/kornia/kornia/issues/4264>`_, the in-place :meth:`scale_` failure on an
         integer ``height`` / ``width`` with a floating-point scale factor
         `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the batch-size and point-shape limitations
-        `#4266 <https://github.com/kornia/kornia/issues/4266>`_, and the rejection of an empty batch
-        (:math:`B = 0`) `#4281 <https://github.com/kornia/kornia/issues/4281>`_. The behaviour described here is
-        documented as it is and pinned by the ``test_convention_*`` / ``test_wart_*`` tests in
-        ``tests/geometry/camera/test_pinhole.py``.
+        `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The behaviour described here is
+        documented as it is; the issues above track the repairs.
 
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
@@ -101,7 +99,8 @@ class PinholeCamera:
 
     @staticmethod
     def _check_valid(data_iter: Iterable[torch.Tensor]) -> bool:
-        if not all(data.shape[0] for data in data_iter):
+        batch_sizes = [data.shape[0] for data in data_iter]
+        if not all(batch_size == batch_sizes[0] for batch_size in batch_sizes):
             raise ValueError("Arguments shapes must match")
         return True
 
@@ -833,14 +832,10 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
         - ``intrinsics_inv`` is a :math:`(B, 4, 4)` inverse calibration matrix — the layout of
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, not the :math:`(*, 3, 3)` ``K`` the functional API
           takes — and ``depth`` is the camera-frame ``z`` at each pixel of the ``(u, v, 1)`` grid.
-        - ``intrinsics_inv`` is checked for rank 3 alone, so a :math:`(B, 3, 3)` inverse passes the check and
-          fails further in with an unrelated message.
+        - ``intrinsics_inv`` must have shape :math:`(B, 4, 4)`; other ranks or matrix sizes raise
+          :class:`ValueError` before transforming the pixel coordinates.
         - ``depth`` must have shape ``Bx1xHxW``; multi-channel depth raises :class:`ValueError`.
           ``pixel_coords`` must have shape ``BxHxWx3``.
-
-    .. warning::
-        The rank-only ``intrinsics_inv`` check is tracked in
-        `#4266 <https://github.com/kornia/kornia/issues/4266>`_.
 
     Args:
         depth: the source depth maps. Shape must be Bx1xHxW.
@@ -853,7 +848,7 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
     """
     if not (len(depth.shape) == 4 and depth.shape[1] == 1):
         raise ValueError(f"Input depth has to be in the shape of Bx1xHxW. Got {depth.shape}")
-    if not len(intrinsics_inv.shape) == 3:
+    if not (len(intrinsics_inv.shape) == 3 and intrinsics_inv.shape[-2:] == (4, 4)):
         raise ValueError(f"Input intrinsics_inv has to be in the shape of Bx4x4. Got {intrinsics_inv.shape}")
     if not (len(pixel_coords.shape) == 4 and pixel_coords.shape[3] == 3):
         raise ValueError(f"Input pixel_coords has to be in the shape of BxHxWx3. Got {pixel_coords.shape}")
