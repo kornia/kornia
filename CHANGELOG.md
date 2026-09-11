@@ -410,6 +410,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Make calibration `distort_points` and `undistort_points` tilt checks compatible with
   `torch.compile(fullgraph=True)`, preserving eager behavior. (#4391)
 * Canny hysteresis preserves the input dtype, avoiding a convolution dtype mismatch for half-precision images. (#4393)
+* `elastic_transform2d` now builds its identity sampling grid with the requested `align_corners`
+  convention, so a zero displacement field preserves the input image. (closes #4235). (#4382)
 
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
