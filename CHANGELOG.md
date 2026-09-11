@@ -388,7 +388,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   magnitude bin indexes two adjacent points of an 11-point scale, so `9` is the last usable
   bin; a larger one raised a raw `IndexError` naming an internal tensor, and a negative one
   wrapped silently onto a reversed range. Out-of-range bins now name the operation and the
-  valid range. Operations that ignore the magnitude entirely keep accepting any bin. (#4443)
+  valid range. Operations that ignore the magnitude entirely keep accepting any bin. (#4447)
 
 * `pixel2cam` now validates the full `Bx4x4` shape of `intrinsics_inv`, rejecting invalid matrix sizes
   before they cause unrelated transformation errors or return the wrong number of coordinate components. (#4381)
