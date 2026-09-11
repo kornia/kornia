@@ -410,6 +410,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Make calibration `distort_points` and `undistort_points` tilt checks compatible with
   `torch.compile(fullgraph=True)`, preserving eager behavior. (#4391)
 * Canny hysteresis preserves the input dtype, avoiding a convolution dtype mismatch for half-precision images. (#4393)
+* `PinholeCamera`, `StereoCamera`, and `warp_frame_depth` now support empty batches. (#4386)
 * `elastic_transform2d` now builds its identity sampling grid with the requested `align_corners`
   convention, so a zero displacement field preserves the input image. (closes #4235). (#4382)
 

@@ -232,6 +232,18 @@ class TestStereoCamera(BaseTester):
         assert stereo_camera.Q.shape == (batch_size, 4, 4)
         assert stereo_camera.Q.dtype in (torch.float16, torch.float32, torch.float64)
 
+    def test_empty_batch_4281(self, device, dtype):
+        # Regression for kornia#4281: an empty stereo rig is vacuously valid.
+        left_rectified_camera = torch.zeros(0, 3, 4, device=device, dtype=dtype)
+        right_rectified_camera = torch.zeros(0, 3, 4, device=device, dtype=dtype)
+
+        stereo_camera = StereoCamera(left_rectified_camera, right_rectified_camera)
+
+        assert stereo_camera.batch_size == 0
+        assert stereo_camera.Q.shape == (0, 4, 4)
+        assert stereo_camera.Q.dtype == dtype
+        assert stereo_camera.Q.device == device
+
     def test_stereo_camera_attributes_real(self, batch_size, device, dtype):
         """Test proper setup of the class for real data."""
         left_rectified_camera, right_rectified_camera = _RealTestData._get_real_stereo_camera(batch_size, device, dtype)
@@ -581,24 +593,3 @@ class TestStereoCamera(BaseTester):
         assert torch.equal(square.Q, cam.Q)
         with pytest.raises(StereoException, match="to have 3 dimensions"):
             StereoCamera(cam.rectified_left_camera[0], cam.rectified_right_camera[0])
-
-    def test_wart_stereo_rejects_an_empty_batch_4281(self, device, dtype):
-        # Wart pin for kornia#4281: ``torch.all`` of an empty tensor is True, so the
-        # sign guard fires on an empty batch and B = 0 is rejected with a message about a tensor that has no
-        # elements at all. kornia's degenerate-shape convention is empty in, empty out; the non-empty rig on the
-        # same code path is accepted.
-        # The match is on the EMPTY tensor in the message, not on "to be negative", because the all-positive rig
-        # pinned above raises the same sentence -- ``Got tensor([50.])`` -- so a looser match would not tell the
-        # two apart.
-        # Snippet used to generate expected: StereoCamera(zeros(0, 3, 4), zeros(0, 3, 4)) recorded in
-        # original commit 1a96bfd1 (torch 2.14.0) -> StereoException("Expected :math:`T_x * f_x` to be negative. Got
-        # tensor([]).") on cpu float32, "... Got tensor([], dtype=torch.float64)." / "torch.float16" /
-        # "torch.bfloat16" on the other cpu cells and "... Got tensor([], device='mps:0')." on mps -- so the
-        # regex stops before the closing bracket. The all-positive rig raises "... Got tensor([50.])" in the
-        # same cells and does not match it.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4281 is repaired.
-        with pytest.raises(StereoException, match=r"Got tensor\(\[\]"):
-            StereoCamera(
-                torch.zeros(0, 3, 4, device=device, dtype=dtype), torch.zeros(0, 3, 4, device=device, dtype=dtype)
-            )
-        assert self._asymmetric_stereo(device, dtype, batch=2).Q.shape == (2, 4, 4)
