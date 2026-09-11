@@ -54,10 +54,8 @@ def undistort_points(
           iteration has reached. Within its convergence region, increasing ``num_iters`` can improve the
           result until it reaches the working dtype's rounding floor; ``float16`` can reach that floor at the
           default count, while ``float32`` and ``float64`` can continue to improve.
-        - In eager execution, arbitrary matching leading dimensions work while the tilt path is inactive.
-          With non-zero tilt, use one explicit leading batch dimension; multiple leading dimensions and
-          unbatched intrinsics can fail. Compilation and ONNX export always take that path, including for zero tilt, so
-          even unbatched inputs with four coefficients can fail. Tracked as `#4324 <https://github.com/kornia/kornia/issues/4324>`_.
+        - Matching leading dimensions are preserved with or without tilt. Compilation and ONNX export always apply
+          the tilt branch, including for zero tilt, and the legacy unbatched form remains supported there as well.
 
     .. warning::
         The iteration has no convergence test and no valid-radius guard. Outside the iteration
@@ -132,7 +130,9 @@ def undistort_points(
     if not torch.jit.is_scripting():
         capture = capture or is_compiling()
     if capture or torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
-        inv_tilt = tilt_projection(dist[..., 12], dist[..., 13], True)
+        inv_tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14], True)
+        if inv_tilt.dim() == 2:
+            inv_tilt = inv_tilt.unsqueeze(0)
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
         x, y = transform_points(inv_tilt, torch.stack([x, y], dim=-1)).unbind(-1)
@@ -180,13 +180,11 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     distortion models are considered in this function.
 
     Convention:
-        - In eager execution while the tilt path is inactive, the leading dimensions of ``image`` (everything
-          in front of ``C, H, W``), of ``K`` (in front of its :math:`3 \times 3` block) and of ``dist`` (in
-          front of its ``n`` coefficients) must match exactly. They may be empty, a single batch axis, or
-          several axes deep. The one exception is the legacy unbatched call -- a :math:`(1, C, H, W)` image
-          with a :math:`(3, 3)` ``K`` and an :math:`(n,)` ``dist``. With non-zero tilt, at most one leading batch
-          axis is supported; compilation and ONNX export always take the tilt path, including for zero tilt. Tracked as
-          `#4324 <https://github.com/kornia/kornia/issues/4324>`_.
+        - The leading dimensions of ``image`` (everything in front of ``C, H, W``), of ``K`` (in front of its
+          :math:`3 \times 3` block) and of ``dist`` (in front of its ``n`` coefficients) must match exactly.
+          They may be empty, a single batch axis, or several axes deep, including with non-zero tilt and under
+          compilation or ONNX export. The one exception is the legacy unbatched call -- a :math:`(1, C, H, W)`
+          image with a :math:`(3, 3)` ``K`` and an :math:`(n,)` ``dist``.
         - the sampling map is built by applying :func:`~kornia.geometry.calibration.distort_points` to the
           grid of integer pixel centres that :func:`~kornia.geometry.grid.create_meshgrid` enumerates: the
           top-left centre is ``(0, 0)``.
