@@ -206,6 +206,31 @@ class TestSvdCast:
         tol_val: float = 1e-1 if dtype == torch.float16 else 1e-3
         assert_close(a, u @ torch.diag_embed(s) @ v.transpose(-2, -1), atol=tol_val, rtol=tol_val)
 
+    def test_batch_above_mps_ceiling(self, device, dtype):
+        # torch 2.14's MPS SVD raises above 8192 input elements (#4201), far below the hypothesis
+        # count RANSAC's batched minimal solvers use; 1000 * 3 * 3 = 9000 elements clears it.
+        torch.manual_seed(0)
+        a = torch.randn(1000, 3, 3, device=device, dtype=dtype)
+        u, s, v = _torch_svd_cast(a)
+
+        assert u.device == a.device
+        assert s.device == a.device
+        assert v.device == a.device
+        # Both half dtypes round three factors back before the reconstruction contracts them.
+        tol_val: float = 1e-1 if dtype in (torch.float16, torch.bfloat16) else 1e-3
+        assert_close(a, u @ torch.diag_embed(s) @ v.transpose(-2, -1), atol=tol_val, rtol=tol_val)
+
+    def test_gradient_above_mps_ceiling(self, device, dtype):
+        # Decomposing the batch elsewhere must not detach it from the graph.
+        torch.manual_seed(0)
+        a = torch.randn(1000, 3, 3, device=device, dtype=dtype, requires_grad=True)
+        _, s, _ = _torch_svd_cast(a)
+
+        s.sum().backward()
+        assert a.grad is not None
+        assert a.grad.device == a.device
+        assert not a.grad.isnan().any()
+
 
 class TestSolveCast:
     def test_smoke(self, device, dtype):

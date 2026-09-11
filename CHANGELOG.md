@@ -379,6 +379,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* SVD-based solvers work on MPS for batches of any size. torch 2.14's MPS `linalg.svd` fails to build
+  its Metal pipeline state object once the input holds more than 8192 elements, so `RANSAC`,
+  `find_fundamental`, `find_essential` and `find_homography_dlt(..., solver="svd")` raised
+  "Failed to created pipeline state object" at any realistic batch; such a batch is now decomposed on
+  the CPU and moved back (closes #4201). (#4394)
 * `pixel2cam` now validates the full `Bx4x4` shape of `intrinsics_inv`, rejecting invalid matrix sizes
   before they cause unrelated transformation errors or return the wrong number of coordinate components. (#4381)
 * `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
