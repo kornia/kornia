@@ -158,6 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-tree MPS workarounds stay. (#4202)
 
 ### Breaking changes
+* Removed the unused `preprocess_boxes` helper, which had no public export or caller. (#4181, #4321)
 
 * `kornia_rs>=0.1.14` is required; the floor used to be 0.1.9. kornia_rs 0.1.11 relocated its image I/O
   and 0.1.12/0.1.13 lack the libjpeg-turbo reader, so no single call site works across 0.1.9-0.1.14;
