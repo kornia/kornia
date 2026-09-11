@@ -240,7 +240,7 @@ def _jpeg_quality_to_scale(
     # The guard is exactly the zero point: a fractional quality in (0, 1) is already finite, keeps its own
     # (larger) scale, and is not touched. ``torch.where`` rather than ``clamp`` also keeps the gradient at
     # every unguarded quality independent of the torch version -- clamp's derivative at its own bound is not
-    # portable across the supported torch range, as measured in #4229.
+    # portable across the supported torch range, as measured in PR #4406.
     strength: torch.Tensor = torch.where(
         compression_strength == 0.0, torch.ones_like(compression_strength), compression_strength
     )
