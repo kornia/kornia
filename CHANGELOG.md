@@ -378,6 +378,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `RandomRain` now rejects drop heights equal to the image height and absolute drop widths equal to the image
+  width with the documented validation error, instead of allowing boundary-sized drops to reach an internal
+  `IndexError`. (#4451)
 * `pixel2cam` now validates the full `Bx4x4` shape of `intrinsics_inv`, rejecting invalid matrix sizes
   before they cause unrelated transformation errors or return the wrong number of coordinate components. (#4381)
 * `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
