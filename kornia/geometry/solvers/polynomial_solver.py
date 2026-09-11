@@ -189,7 +189,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         # guarantees |ratio_D_zero| <= 1 (D = Q3 + R^2 <= 0 implies R^2 <= -Q3), but a repeated
         # or near-repeated real root pushes the ratio to exactly that boundary, where the
         # *value* is fine but the *derivative* diverges -- same shape as the acos/asin boundary
-        # in quaternion_exp_to_log/euler_from_quaternion (#4007, fixed in #4228). A plain
+        # in quaternion_exp_to_log/euler_from_quaternion (fixed in #4228). A plain
         # `.clamp(-1, 1)` does not help here: it only guards the value, not the diverging
         # derivative of a value already inside the domain. Route the boundary through `.acos()`
         # on a detached copy for the value and through `.acos()` on a substituted safe argument

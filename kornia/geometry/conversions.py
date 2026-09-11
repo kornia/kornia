@@ -1106,8 +1106,7 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
         rather than absent: ``clamp``'s backward returns ``0`` at the closed boundary there
         instead of passing the gradient through, so the ``-inf`` is killed before it reaches the
         multiply. That is ``clamp``'s behaviour changing, not ``acos``'s, and this guard does not
-        depend on it. Previously tracked in
-        `#4007 <https://github.com/kornia/kornia/issues/4007>`_.
+        depend on it. Delivered in `#4228 <https://github.com/kornia/kornia/pull/4228>`_.
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
@@ -1324,8 +1323,8 @@ def euler_from_quaternion(
         coefficient once anything downstream differentiated through ``pitch``, independent of
         whether the returned triple itself represented the input rotation. The ``clamp`` above
         bounds only the *value*; on torch < 2.14 it passes the gradient straight through, while
-        2.14 zeroes it at the boundary and masks the defect. Previously tracked in
-        `#4007 <https://github.com/kornia/kornia/issues/4007>`_.
+        2.14 zeroes it at the boundary and masks the defect.
+        Delivered in `#4228 <https://github.com/kornia/kornia/pull/4228>`_.
 
     Args:
         w: quaternion :math:`q_w` coefficient.
@@ -1353,7 +1352,7 @@ def euler_from_quaternion(
     # every supported torch version; the clamp above bounds the value only, and passes the
     # gradient through on torch < 2.14 (2.14 zeroes it at the boundary, masking the defect).
     # Guard the gradient the same way quaternion_exp_to_log guards its own acos boundary
-    # (previously kornia#4007) -- differentiate asin on a substituted safe argument, but take the
+    # (delivered in kornia#4228) -- differentiate asin on a substituted safe argument, but take the
     # value from a detached copy at the real (possibly +-1) argument, so the returned pitch is
     # unchanged and only the gradient is finite.
     at_boundary = sinp.abs() >= 1.0
