@@ -206,9 +206,10 @@ Augmentations
   all of them. Never augment image and mask through two separate calls — the
   random draws will differ.
 - That holds for the **rigid** (matrix) augmentations. A non-rigid op has no
-  transform matrix, so it warps the image only:
-  :class:`kornia.augmentation.RandomElasticTransform` returns keypoints, boxes
-  **and** masks unchanged, while
+  transform matrix, so the coordinate keys drop out of the draw:
+  :class:`kornia.augmentation.RandomElasticTransform` warps the image and warps
+  a ``mask`` key with it, through the same displacement field, but returns
+  keypoints and boxes unchanged, while
   :class:`kornia.augmentation.RandomThinPlateSpline` and
   :class:`kornia.augmentation.RandomFisheye` return keypoints and boxes
   unchanged and raise ``NotImplementedError`` when a ``mask`` key is
@@ -330,8 +331,9 @@ Quick self-review for generated code, most common first:
     ``degrees`` on ``RandomAffine`` turns the image clockwise, on
     ``RandomRotation`` counter-clockwise.
 16. Expecting a non-rigid augmentation (``RandomElasticTransform``,
-    ``RandomThinPlateSpline``, ``RandomFisheye``) to carry masks, boxes and
-    keypoints along with the image — it does not.
+    ``RandomThinPlateSpline``, ``RandomFisheye``) to carry boxes and keypoints
+    along with the image — it does not. Only ``RandomElasticTransform`` carries
+    a mask along, and the other two raise on a ``mask`` key.
 17. Calling ``set_rng_device_and_dtype`` to move parameter sampling to the GPU
     — on most classes it moves the ``p`` gate and nothing else.
 

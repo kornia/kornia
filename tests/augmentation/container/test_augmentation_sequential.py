@@ -815,28 +815,41 @@ class TestConventionAugmentationSequential(BaseTester):
 
     def test_wart_non_rigid_augmentation_desynchronizes_the_data_keys_4420(self, device, dtype):
         # Wart pin (#4420): the container promises that one call applies the same sampled transform to every
-        # registered data type, but a non-rigid augmentation has no transform matrix, so the other data keys
-        # pass through untouched instead of raising: `RandomElasticTransform` moves the image while the
-        # keypoints, the boxes and the mask stay exactly where they were, and `RandomThinPlateSpline` /
-        # `RandomFisheye` raise a bare `NotImplementedError` (no message) on a mask key.
-        # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu), seed 0,
-        # B = 2: elastic image max|move| 0.6690127, keypoints 0.0, mask 0.0, bbox_xyxy 0.0.
+        # registered data type, but a non-rigid augmentation has no transform matrix, so the coordinate keys
+        # pass through untouched instead of raising: `RandomElasticTransform` warps the image *and* the mask
+        # - it carries its own mask path, which resamples the mask through the very same displacement field,
+        # nearest - while the keypoints and the boxes stay exactly where they were, and
+        # `RandomThinPlateSpline` / `RandomFisheye` raise a bare `NotImplementedError` (no message) on a mask
+        # key.
+        # Fixture: a checkerboard mask on a non-square 6x8 frame at `alpha=5`, `sigma=4`, chosen because the
+        # mask move has to be visible at every seed, not on a lucky one. A spatially uniform mask cannot
+        # witness the warp at all - every pixel lands on a pixel of its own value - and the default
+        # `sigma=(32, 32)`, `alpha=(1, 1)` displacement is sub-pixel over a frame this small, so the two
+        # together read as "the mask came back unchanged", which is how the mask half of this wart was first
+        # mis-recorded.
+        # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0), B = 2, 96 mask
+        # pixels, seeds 0-9. This fixture changes 47, 39, 17, 34, 50, 33, 63, 38, 35, 30 pixels on cpu
+        # float32 - never 0, and never 0 either on float64 (16-58), float16 (16-63), bfloat16 (17-63) or mps
+        # float32 (24-54). The old solid (1:4, 2:6) block mask changes 0 pixels at every one of those seeds
+        # at the default alpha and sigma (4-13 at this alpha and sigma), and the checkerboard at the default
+        # alpha and sigma changes 10, 7, 3, 0, 7, 4, 7, 8, 0, 14 - zero on two of ten seeds, a coin flip,
+        # which is why both halves of the fixture are raised here. Image max|move| >= 0.64 and keypoint and
+        # bbox_xyxy deltas exactly 0.0 at every seed and dtype.
         # The fix lands in the repair window; do not "correct" this pin here.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the elastic displacement field is built in float32")
         torch.manual_seed(0)
         aug = K.AugmentationSequential(
-            K.RandomElasticTransform(p=1.0), data_keys=["input", "keypoints", "mask", "bbox_xyxy"]
+            K.RandomElasticTransform(p=1.0, alpha=(5.0, 5.0), sigma=(4.0, 4.0)),
+            data_keys=["input", "keypoints", "mask", "bbox_xyxy"],
         )
         img = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
         kpts = torch.tensor([[[1.0, 2.0]], [[3.0, 4.0]]], device=device, dtype=dtype)
-        mask = torch.zeros(2, 1, 6, 8, device=device, dtype=dtype)
-        mask[:, :, 1:4, 2:6] = 1.0
+        yy, xx = torch.meshgrid(torch.arange(6, device=device), torch.arange(8, device=device), indexing="ij")
+        mask = ((yy + xx) % 2).to(dtype).expand(2, 1, 6, 8).clone()
         boxes = torch.tensor([[[0.0, 0.0, 3.0, 2.0]], [[2.0, 1.0, 5.0, 4.0]]], device=device, dtype=dtype)
         out_img, out_kpts, out_mask, out_boxes = aug(img, kpts, mask, boxes)
         assert (out_img - img).abs().max().item() > 0.1  # the image really moved
-        self.assert_close(out_kpts, kpts)
-        self.assert_close(out_mask, mask)
+        assert (out_mask != mask).sum().item() > 0  # and so did the mask, through the same displacement field
+        self.assert_close(out_kpts, kpts)  # the wart: the coordinate keys did not follow
         self.assert_close(out_boxes, boxes)
         for factory in (
             lambda: K.RandomThinPlateSpline(p=1.0),

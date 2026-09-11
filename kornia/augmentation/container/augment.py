@@ -122,9 +122,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           included. A ``mask`` argument may also be a list of ``(B, C, H, W)`` tensors whose channel counts
           differ; each of them still carries the whole batch.
         - one call draws once and shares that draw across every registered key -- for the rigid (matrix)
-          augmentations. A non-rigid child has no transform matrix: it warps the image while the keypoints
-          and the boxes come back unchanged, and a ``mask`` key either comes back unchanged or raises
-          ``NotImplementedError``, depending on the child (see the warning below).
+          augmentations. A non-rigid child has no transform matrix, so the coordinate keys drop out of that
+          draw: :class:`~kornia.augmentation.RandomElasticTransform` warps the image and warps a ``mask``
+          key along with it, through the same displacement field, while the keypoints and the boxes come
+          back unchanged; :class:`~kornia.augmentation.RandomThinPlateSpline` and
+          :class:`~kornia.augmentation.RandomFisheye` leave keypoints and boxes unchanged too and raise
+          ``NotImplementedError`` on a ``mask`` key (see the warning below).
         - ``.inverse()`` undoes the geometric part of the chain and leaves an intensity step applied.
           Keypoints and boxes come back at the coordinates they started from; a resampled image or mask only
           comes back up to the interpolation error of the two warps. A 3D child runs forward but has no
@@ -145,8 +148,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         `#4419 <https://github.com/kornia/kornia/issues/4419>`_.
 
     .. warning::
-        A non-rigid child silently desynchronizes the data keys: :class:`~kornia.augmentation.RandomElasticTransform`
-        warps the image and returns keypoints, boxes **and** masks unchanged, and
+        A non-rigid child silently desynchronizes the coordinate data keys:
+        :class:`~kornia.augmentation.RandomElasticTransform` warps the image **and** a ``mask`` key with it,
+        but returns keypoints and boxes unchanged, and
         :class:`~kornia.augmentation.RandomThinPlateSpline` and :class:`~kornia.augmentation.RandomFisheye`
         return keypoints and boxes unchanged and raise a bare ``NotImplementedError`` on a ``mask`` key.
         Tracked in `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
