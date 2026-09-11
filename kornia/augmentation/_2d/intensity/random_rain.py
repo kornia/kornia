@@ -32,8 +32,10 @@ class RandomRain(IntensityAugmentationBase2D):
     Args:
         p: probability of applying the transformation.
         number_of_drops: number of drops per image
-        drop_height: height of the drop in image(same for each drops in one image)
-        drop_width: width of the drop in image(same for each drops in one image)
+        drop_height: Height of the drop in the image (same for each drop in one image). Sampled values must be
+            greater than zero and strictly smaller than the input image height.
+        drop_width: Width of the drop in the image (same for each drop in one image). The absolute sampled value
+            must be strictly smaller than the input image width.
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
