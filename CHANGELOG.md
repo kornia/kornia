@@ -421,6 +421,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   construct and then fail with an `IndexError` from inside `AffineTransform.distort`, naming neither
   `params` nor the camera; a rank-3 `(B, 1, N)` tensor used to construct, project, and silently return a
   `(1, 1, 2)` result. Both now raise `ValueError` from the constructor. (#4316, #4369)
+* `undistort_points_kannala_brandt` no longer collapses representable `float16` points next to the principal point
+  to the origin, and the exact principal-point path now has finite autograd gradients. The zero-radius decision is
+  made from the unsquared normalized coordinates, and the `float16` radius uses `float32` intermediates so its
+  squared value does not underflow; nonzero radial rescaling remains epsilon-free. (#4308, #4370)
 
 * `warp_affine`, `warp_perspective` and `remap` crashed on MPS for an empty destination -- a `dsize` with a
   zero dimension, or zero-sized `remap` maps -- with an internal

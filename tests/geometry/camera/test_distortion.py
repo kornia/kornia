@@ -315,9 +315,8 @@ class TestDistortionKannalaBrandt(BaseTester):
         # assert_close's dtype tolerance and deliberately states no error bound; the executed residuals are
         # recorded, not enforced. The far-off-axis case is the sibling pin below.
         # Snippet used to generate expected: (undistort_points_kannala_brandt(distort_points_kannala_brandt(p, par),
-        # par) - p).abs().max() executed 2026-09-06 at c0b50ad7 (torch 2.14.0), differenced in the
-        # working dtype -> cpu float32 2.98e-08, float64 9.55e-09, float16 9.77e-04, bfloat16 1.95e-03;
-        # mps float32 2.98e-08, float16 9.77e-04.
+        # par) - p).abs().max(), differenced in the working dtype. Removing the additive radial-rescale epsilon
+        # makes the float64 residual reach the Gauss-Newton rounding floor instead of stopping around 1e-8.
         params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
         points = torch.tensor([0.5, 0.25], device=device, dtype=dtype)
         self.assert_close(
@@ -330,9 +329,8 @@ class TestDistortionKannalaBrandt(BaseTester):
         # kornia.geometry.calibration.undistort_points does NOT (kornia#4285). Closure is asserted at
         # assert_close's dtype tolerance, with no error bound.
         # Snippet used to generate expected: (undistort_points_kannala_brandt(distort_points_kannala_brandt(
-        # tensor([3., 0.]), par), par) - tensor([3., 0.])).abs().max() executed 2026-09-06 at c0b50ad7
-        # (torch 2.14.0), differenced in the working dtype -> cpu float32 1.91e-06, float64 2.03e-08,
-        # float16 1.95e-03, bfloat16 6.25e-02; mps float32 1.91e-06, float16 1.95e-03.
+        # tensor([3., 0.]), par), par) - tensor([3., 0.])).abs().max(), differenced in the working dtype. The
+        # float64 result now reaches the rounding floor because the final rescale divides by r rather than r + 1e-8.
         if dtype == torch.bfloat16:
             pytest.skip("bfloat16: the far-off-axis round trip closes only to 6.25e-02, outside the bfloat16 atol")
         params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
@@ -340,73 +338,69 @@ class TestDistortionKannalaBrandt(BaseTester):
         self.assert_close(undistort_points_kannala_brandt(distort_points_kannala_brandt(far, params), params), far)
 
     def test_convention_principal_point_undistorts_to_the_origin(self, device, dtype):
-        # Convention pin: small constants that guard the Gauss-Newton denominator and final radial rescale mean the
-        # principal point (cx, cy) undistorts to the EXACT origin instead of the 0/0 that the unguarded
-        # arithmetic would give. The assertion is torch.equal, not assert_close, because the guard makes the
-        # result exactly zero rather than nearly zero.
+        # Convention pin: an exact zero distorted radius is handled structurally, so the principal point (cx, cy)
+        # undistorts to the EXACT origin without relying on a dtype-dependent epsilon. The assertion is torch.equal,
+        # not assert_close, because the masked zero-radius path is exact rather than approximate.
         # cx != cy in these params, so the principal point is off the diagonal and a cx/cy swap would move it.
         # The second, off-centre point is what keeps the pin from being frame-invariant: (54, 28) normalizes to
         # (0.5, 0.25) and undistorts to a value that changes under either swap -- the same params with cx and cy
         # exchanged give [0.5507686734199524, 0.2591852843761444] and with fy halved to 50 they give
         # [0.5658687353134155, 0.5658687353134155].
-        # Snippet used to generate expected: undistort_points_kannala_brandt(tensor([4., 3.]), params) and the
-        # same call on tensor([54., 28.]), executed 2026-09-06 at c0b50ad7 (torch 2.14.0) -> the
-        # principal point gives exactly [0.0, 0.0] on cpu float64/float32/bfloat16 and on mps float32; the
-        # off-centre point gives [0.5392647981643677, 0.26963239908218384] on cpu and mps float32. In float16
-        # the final radial-rescale denominator's 1e-8 guard underflows and the principal point gives [nan, nan]
-        # -- kornia#4308, pinned by
-        # test_wart_principal_point_undistorts_to_nan_in_float16_4308 below.
-        if dtype == torch.float16:
-            pytest.skip("float16: the final radial-rescale guard 1e-8 underflows, making the origin 0/0 (#4308)")
+        # The body computes in params.dtype and casts back to the points dtype, including the mixed float16-points /
+        # float32-params case pinned below.
         params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
         principal_point = torch.tensor([4.0, 3.0], device=device, dtype=dtype)
         undistorted = undistort_points_kannala_brandt(principal_point, params)
         assert torch.equal(undistorted, torch.zeros(2, device=device, dtype=dtype))
+        if dtype == torch.float16:
+            wide_params = params.to(torch.float32)
+            mixed = undistort_points_kannala_brandt(principal_point, wide_params)
+            assert mixed.dtype == dtype
+            assert torch.equal(mixed, torch.zeros(2, device=device, dtype=dtype))
         off_centre = torch.tensor([54.0, 28.0], device=device, dtype=dtype)
         self.assert_close(
             undistort_points_kannala_brandt(off_centre, params),
             torch.tensor([0.5392647981643677, 0.26963239908218384], device=device, dtype=dtype),
         )
 
-    def test_wart_principal_point_undistorts_to_nan_in_float16_4308(self, device, dtype):
-        # Wart pin for kornia#4308: in float16, the 1e-8 epsilon added to ``rth`` for the final radial rescale
-        # underflows to zero (the smallest subnormal is about 5.96e-08). At the principal point, both
-        # ``radius_undistorted`` and ``rth`` are zero, so ``mag = 0 / (0 + 0)`` is nan and propagates through
-        # the final multiplication. The 1e-16 Newton-start clamp and 1e-12 Newton-step denominator also
-        # underflow, but they are not the direct source of this result. The body runs in ``params.dtype``;
-        # bfloat16 preserves these values' exponent range, so the wart is specific to float16.
-        # Snippet used to generate expected: undistort_points_kannala_brandt(tensor([4., 3.], dtype=torch.
-        # float16), params.half()) executed 2026-09-06 at c0b50ad7 (torch 2.14.0) -> [nan, nan] on
-        # both cpu and mps. Float16 POINTS with float32
-        # params return [0.0, 0.0], because the body casts the points to params.dtype first.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4308 is repaired.
-        if dtype != torch.float16:
-            pytest.skip("float16-only wart: the radial-rescale epsilon is representable in every other dtype")
-        params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
-        principal_point = torch.tensor([4.0, 3.0], device=device, dtype=dtype)
-        assert undistort_points_kannala_brandt(principal_point, params).isnan().all()
-        wide_params = params.to(torch.float32)
-        self.assert_close(
-            undistort_points_kannala_brandt(principal_point, wide_params),
-            torch.zeros(2, device=device, dtype=dtype),
-        )
+    def test_convention_nearest_float16_point_is_not_collapsed_4308(self, device, dtype):
+        if device.type != "cpu" or dtype != torch.float16:
+            pytest.skip("CPU float16 near-origin regression")
+        params = torch.tensor([100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        point = torch.tensor([4.00390625, 3.0], device=device, dtype=dtype)
+        undistorted = undistort_points_kannala_brandt(point, params)
+        expected_x = (point[0] - params[2]) / params[0]
+        assert undistorted[0] != 0
+        self.assert_close(undistorted, torch.stack([expected_x, torch.zeros_like(expected_x)]), atol=6e-8, rtol=0.0)
 
-    def test_wart_rescale_guard_caps_float64_round_trip_4308(self, device, dtype):
-        # Wart pin for kornia#4308, the float64 side of the same constant: the final radial rescale divides by
-        # ``rth + 1e-8`` rather than ``rth``, so every result is scaled by ``1 - 1e-8 / r`` and the float64 round
-        # trip stops at about 1e-8 on the normalized plane instead of the ~1e-16 the ten Gauss-Newton steps reach.
-        # Snippet used to generate expected: (undistort_points_kannala_brandt(distort_points_kannala_brandt(
-        # tensor([3., 0.]), par), par) - tensor([3., 0.])).abs().max() executed 2026-09-08 at d2fe9507 (torch
-        # 2.14.0, cpu float64) -> 2.03e-08; the same body with the guard set to 0.0 -> 0.0. float32's rounding
-        # floor (1.91e-06 here) sits above the bias, so only float64 sees it.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4308 is repaired.
+    def test_convention_principal_point_has_finite_gradients_4308(self, device, dtype):
+        params = torch.tensor([100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        principal_point = torch.tensor([4.0, 3.0], device=device, dtype=dtype)
+        point_jacobian = torch.autograd.functional.jacobian(
+            lambda point: undistort_points_kannala_brandt(point, params), principal_point
+        )
+        params_jacobian = torch.autograd.functional.jacobian(
+            lambda camera: undistort_points_kannala_brandt(principal_point, camera), params
+        )
+        expected_point_jacobian = torch.tensor(
+            [[1.0 / params[0], 0.0], [0.0, 1.0 / params[1]]], device=device, dtype=dtype
+        )
+        expected_params_jacobian = torch.zeros(2, 8, device=device, dtype=dtype)
+        expected_params_jacobian[0, 2] = -1.0 / params[0]
+        expected_params_jacobian[1, 3] = -1.0 / params[1]
+        self.assert_close(point_jacobian, expected_point_jacobian)
+        self.assert_close(params_jacobian, expected_params_jacobian)
+
+    def test_convention_float64_round_trip_precision_4308(self, device, dtype):
+        # Regression for kornia#4308: nonzero radii must be rescaled by r itself. An additive 1e-8 denominator
+        # guard biases these representative float64 round trips by about 1e-8, well above the dtype's rounding floor.
         if dtype != torch.float64:
-            pytest.skip("float64-only wart: every other dtype's rounding floor is above the 1e-8 bias")
+            pytest.skip("float64-only precision regression")
         params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
-        far = torch.tensor([3.0, 0.0], device=device, dtype=dtype)
-        distorted = distort_points_kannala_brandt(far, params)
-        residual = (undistort_points_kannala_brandt(distorted, params) - far).abs().max().item()
-        assert 1e-9 < residual < 1e-7
+        points = torch.tensor([[0.5, 0.25], [3.0, 0.0], [0.01, 0.0]], device=device, dtype=dtype)
+        distorted = distort_points_kannala_brandt(points, params)
+        residual = (undistort_points_kannala_brandt(distorted, params) - points).abs().max().item()
+        assert residual < 1e-12
 
     def test_dx_distort_points_kannala_brandt_affine_branch(self, device, dtype) -> None:
         # The forward distortion switches to the affine model when radius_sq <= 1e-8.
