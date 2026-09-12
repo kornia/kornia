@@ -53,18 +53,20 @@ class TestSequential:
 
     @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward(self, random_apply, device, dtype):
-        inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
-        aug = K.ImageSequential(
-            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
-            kornia.filters.MedianBlur((3, 3)),
-            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
-            K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)),
-            K.ImageSequential(K.RandomAffine(360, p=1.0)),
-            K.RandomAffine(360, p=1.0),
-            K.RandomMixUpV2(p=1.0),
-            random_apply=random_apply,
-        )
-        out = aug(inp)
-        assert out.shape == inp.shape
-        aug.inverse(inp)
-        reproducibility_test(inp, aug)
+        with torch.random.fork_rng():
+            torch.manual_seed(0)
+            inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
+            aug = K.ImageSequential(
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+                kornia.filters.MedianBlur((3, 3)),
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+                K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)),
+                K.ImageSequential(K.RandomAffine(360, p=1.0)),
+                K.RandomAffine(360, p=1.0),
+                K.RandomMixUpV2(p=1.0),
+                random_apply=random_apply,
+            )
+            out = aug(inp)
+            assert out.shape == inp.shape
+            aug.inverse(inp)
+            reproducibility_test(inp, aug)
