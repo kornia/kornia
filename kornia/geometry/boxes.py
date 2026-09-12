@@ -476,8 +476,10 @@ class Boxes:
         must have exactly one row.
 
         Note:
-            Padded :class:`~kornia.augmentation.RandomCrop` uses this method
-            and therefore requires batched boxes.
+            Padded :class:`~kornia.augmentation.RandomCrop` routes bounding boxes
+            through this method, and so accepts either container: a rank-3
+            :math:`(B, N, 4)` ``bbox`` builds a batched one, and a rank-2
+            :math:`(N, 4)` ``bbox`` for a single image builds an unbatched one.
 
         Args:
             padding_size: Per-batch padding in ``(left, right, top, bottom)``
