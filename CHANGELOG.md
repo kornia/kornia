@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returned-parameter placement, trainable range parameters, application-time replay exceptions, padding labels,
   and information lost by rotated tensor boxes; the container, dispatcher, `p_batch`,
   `set_rng_device_and_dtype`, `state_dict` and `B = 0` defects are tracked in dedicated issues. (#4452)
+* Implemented the exported Brown-Conrady, Kannala-Brandt K3, and Orthographic sensor camera models,
+  including distortion/projection plumbing, intrinsic matrices, and batched project/unproject support. (#4284, #4377)
 * New "Camera and world conventions across the ecosystem" page cataloguing the pixel-centre, axis
   and extrinsics conventions of OpenCV, COLMAP, OpenGL, ARKit, ARCore, PyTorch3D and Direct3D with the
   kornia converter for each, plus the baked `align_corners` rows for the depth and undistortion warps on
@@ -167,6 +169,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-tree MPS workarounds stay. (#4202)
 
 ### Breaking changes
+* Removed the unused `preprocess_boxes` helper, which had no public export or caller. (#4181, #4321)
 
 * `kornia_rs>=0.1.14` is required; the floor used to be 0.1.9. kornia_rs 0.1.11 relocated its image I/O
   and 0.1.12/0.1.13 lack the libjpeg-turbo reader, so no single call site works across 0.1.9-0.1.14;
@@ -387,6 +390,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `RandomMosaic` now preserves `(H, W)` for non-square inputs when `output_size=None`; it previously
+  returned `(W, H)`. `start_ratio_range` now scales x by width and y by height; it previously scaled
+  x by height and y by width. (#4459)
+
+* `RandomThinPlateSpline(scale=0.0)` now generates zero control-point displacement instead of
+  raising an error when constructing a degenerate uniform distribution. (#4463)
+* `RandomRain` with `same_on_batch=True` now samples the same number of rain drops for all samples in the batch. (#4453)
+* `RandomRain` now rejects drop heights equal to the image height and absolute drop widths equal to the image
+  width with the documented validation error, instead of allowing boundary-sized drops to reach an internal
+  `IndexError`. (#4451)
+* `depth_to_normals` now raises `ShapeError` when `H < 2` or `W < 2`, since surface normals need two
+  tangent directions. Previously, singleton axes could yield zero or non-finite normals, and empty
+  spatial dimensions failed inside padding. Inputs with both dimensions at least 2 are unchanged. (#4458)
+* `Boxes.pad`, `Boxes.unpad` and `Boxes.clamp` accept the unbatched `(N, 4, 2)` container the class
+  documents and constructs. All three assumed the batched `(B, N, 4, 2)` indexing: `pad` and `unpad`
+  broadcast the padding as `(B, 1, 1)`, which does not fit the unbatched `(N, 4)` coordinate view and
+  raised `RuntimeError: output with shape [1, 4] doesn't match the broadcast shape [1, 1, 4]`, and `clamp`
+  materialized its bounds with `repeat(1, _data.size(1), 4)` and raised `IndexError: too many indices for
+  tensor of dimension 2`. Adding a leading singleton batch axis to the same boxes made all three work.
+  They now broadcast against whichever rank the container holds and match the singleton-batch result;
+  an unbatched container carries one image, so a per-image tensor with more than one row is rejected.
+  Batched results are byte-identical, including for a non-finite bound: `clamp` stays comparison-based, so
+  a `NaN` bound leaves the coordinate alone rather than propagating into it (closes #4244). (#4372)
+* `RandAugment`'s `m` guard is exclusive at both ends, but its docstring and its error message
+  both named the closed interval `[0, 30]`, so a user who asked for the maximum strength the
+  message advertised got an exception saying `30` was in range. Both now read `(0, 30)`; the
+  accepted values are unchanged. `n` was validated nowhere: `n=0` constructed a `RandAugment`
+  that applied nothing, and `n` above the policy length was silently clamped, because the
+  sampler draws without replacement. It is now checked against the policy. `AutoAugment`'s
+  magnitude bin indexes two adjacent points of an 11-point scale, so `9` is the last usable
+  bin; a larger one raised a raw `IndexError` naming an internal tensor, and a negative one
+  wrapped silently onto a reversed range. Out-of-range bins now name the operation and the
+  valid range. Operations that ignore the magnitude entirely keep accepting any bin. (#4447)
+
+* `PinholeCamera.project` now reports rank-1 inputs with the same explicit `ValueError` used by the point-conversion
+  helpers instead of an internal `IndexError`. Refs #4266. (#4450)
 * `pixel2cam` now validates the full `Bx4x4` shape of `intrinsics_inv`, rejecting invalid matrix sizes
   before they cause unrelated transformation errors or return the wrong number of coordinate components. (#4381)
 * `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
@@ -426,6 +465,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
   while the implementation preserves ONNX export compatibility. (#4358)
+* `fft_conv` now accepts CPU float16 and bfloat16 inputs by computing the FFTs
+  in float32 and returning the input dtype. (#4394)
 * Corrected stereo disparity validation errors to describe the required channels-last
   `(B, H, W, 1)` layout and report the received shape. (#4380)
 * `CameraModelBase.__init__` now validates `params` against the shape it documents, instead of storing
@@ -439,6 +480,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the origin, and the exact principal-point path now has finite autograd gradients. The zero-radius decision is
   made from the unsquared normalized coordinates, and the `float16` radius uses `float32` intermediates so its
   squared value does not underflow; nonzero radial rescaling remains epsilon-free. (#4308, #4370)
+
+* `StereoCamera` now rejects projection matrices whose last two dimensions are not `(3, 4)` with a
+  `StereoException` naming the invalid camera. Previously, the shape guards never fired, so malformed
+  matrices could be accepted or fail later with an unrelated tensor error. (#4385)
 
 * `warp_affine`, `warp_perspective` and `remap` crashed on MPS for an empty destination -- a `dsize` with a
   zero dimension, or zero-sized `remap` maps -- with an internal
@@ -706,6 +751,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so identical inputs can differ at the ulp level between calls unless
   `torch.use_deterministic_algorithms(True)` is set. (#4254)
 
+* `quaternion_to_axis_angle` returns the correct gradient at every identity-like quaternion, not only the
+  positive unit identity `(1, 0, 0, 0)` (#4237). Its zero-vector-part branch used the constant `k = 2.0`,
+  which is only the `w = 1` case of the true analytic limit `k = 2 / w` (`w` = the real component); every
+  other identity-like input got a wrong gradient. That included the negative unit identity `(-1, 0, 0, 0)`
+  -- the same physical rotation as `(1, 0, 0, 0)` under the double cover -- which got the **wrong sign**
+  (`+2` instead of `-2`), and any non-unit "identity" such as `(2, 0, 0, 0)` (a scale this function
+  explicitly permits), which got the **wrong magnitude** (`+2` instead of `+1`). This was a genuine
+  backward-correctness defect, not a missing edge case: a valid unit quaternion could produce the opposite
+  gradient direction in pose optimization depending purely on which sign of the identity it started from.
+  The prior regression test for the `#3949` NaN-gradient fix only exercised `w = 1`, the one point where
+  the wrong constant and the correct formula happen to agree, and so could not have caught this. The
+  division needed for `2 / w` is guarded at `w = 0` the same way the function's existing `sin_theta`
+  division already is. That gate is `~pos` -- the mask that actually selects the branch -- and not merely
+  `w != 0`: `2.0 / t` lowers to `t.reciprocal() * 2`, whose backward is `-grad * result**2`, and for a
+  rotation just short of a half turn `w` is small but non-zero, so `(1 / w)**2` overflows to `inf` and
+  meets the exact `0.0` that the unselected branch receives as `0 * inf` -> `nan`. In `float16` that
+  would have been every rotation within ~0.45 degrees of 180 -- ordinary inputs, not degenerate ones.
+  The `2 / w` coefficient is also detached, because on the branch that selects it the vector part is
+  zero, so `d(out)/dw` is exactly zero there and computing it through `-2 / w**2` only reintroduces the
+  same overflow.
+
+  The fully degenerate all-zero quaternion `(0, 0, 0, 0)` -- not a valid rotation -- keeps its
+  `(0, 0, 0)` forward value. Its gradient there changes, and improves: it was `(0, 2, 2, 2)` on torch
+  2.14 but already `(nan, 2, 2, 2)` on torch <= 2.9.1, where `atan2(0, 0)`'s derivative with respect to
+  its second argument -- a `0 / 0` -- returns `nan`. `atan2` is now shielded across that whole masked
+  branch, which also clears a pre-existing `nan` for a zero vector part whose `w**2` underflows
+  (`w = 1e-30` in `float32`, `|w| < 2.4e-4` in `float16`). No gradient is analytically correct at a point
+  with no well-defined limit, so the changed value is not a regression.
+
+  The forward value is unaffected everywhere: the `atan2` shield deliberately takes its value from the
+  unshielded expression, because routing `cos_theta` through `torch.where` hands `atan2` a contiguous
+  tensor instead of a stride-4 view and can select a different kernel. Verified byte-identical against
+  the previous implementation over 2000 random inputs in `float64`, `float32`, `float16` and `bfloat16`,
+  including forced unit, negative-unit, scaled, all-zero and near-half-turn quaternions, with no
+  non-finite gradient row remaining at any of those dtypes.
+
 * Non-maxima suppression with a window larger than `(7, 7)` no longer builds a `(k*k, 1, k, k)` one-hot
   convolution to gather each neighbour into its own channel. On CPU in half precision that convolution
   has no vectorized kernel and falls back to `_slow_conv2d_forward`, where it accounted for 99% of a
@@ -776,6 +857,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `validate_bbox` and `validate_bbox3d` flatten rank-4 `(B, N, 4, 2)` / `(B, N, 8, 3)` input with `reshape`
   instead of `view`, so a non-contiguous leading-dimension stride (a transpose, a slice that drops boxes, an
   `expand`) returns a boolean as documented instead of raising `RuntimeError`. (#4174)
+
+* `quaternion_exp_to_log` and `euler_from_quaternion` no longer return `nan`/`inf` gradients at their
+  respective rotation singularities (#4007). Both differentiate an inverse trig function (`acos`, `asin`)
+  whose own derivative is unbounded at its domain boundary (`w = +-1`, `sinp = +-1`); `quaternion_exp_to_log`
+  hits that boundary exactly at the identity quaternion `(1, 0, 0, 0)` -- the standard initialization for
+  pose optimization -- where the unbounded derivative used to multiply the identity's exactly-zero vector
+  part into `0 * inf = nan`, and `euler_from_quaternion`'s `pitch` hits it at gimbal lock. Both now guard the
+  argument fed to the differentiated `acos`/`asin` call away from the boundary while taking the returned
+  *value* from a detached copy of the real (possibly boundary) argument, so the forward result is unchanged
+  -- verified byte-identical against the previous implementation over 500 random inputs including several
+  forced onto the exact boundary -- while the gradient no longer depends on what a given torch version or
+  backend's own `acos`/`asin` derivative happens to return there. `quaternion_exp_to_log`'s antipode
+  `(-1, 0, 0, 0)` still returns a large but finite gradient (`~pi/eps`) from an unrelated, pre-existing
+  division by its clamped (zero) norm; that is unchanged and out of scope here.
 
 * `infer_bbox_shape` and `bbox_to_mask` now reject rank-4 `(B, N, 4, 2)` inputs with `ShapeError`. Previously,
   `N < 3` raised an incidental `IndexError`, while `N >= 3` silently returned `(B, 2)` extents computed from the

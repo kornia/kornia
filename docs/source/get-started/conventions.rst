@@ -291,10 +291,8 @@ Randomness in augmentations
 - ``same_on_batch=True`` asks every sample of the batch to share one draw. The
   ``p`` gate and the transform parameters follow it; keys that index or pair up
   the batch — ``batch_idx``, the mix-pairing permutation, the jitter ``order``
-  — stay per sample by construction, and
-  :class:`kornia.augmentation.RandomRain` does not honour it for its drop count
-  (`#4448 <https://github.com/kornia/kornia/issues/4448>`_). A handful of
-  classes do not take the argument at all. On
+  — stay per sample by construction. A handful of classes do not take the
+  argument at all. On
   ``AugmentationSequential`` the flag is three-state: ``None`` keeps each
   child's own setting, ``True`` and ``False`` overwrite it.
 - Under a :class:`torch.utils.data.DataLoader` the rule is torch's, not

@@ -66,9 +66,7 @@ class AugmentationBase2D(_AugmentationBase):
         - ``p`` is a per-sample Bernoulli and ``p_batch`` a single Bernoulli per call that gates the whole
           batch, drawn before ``p``: with ``p=1.0, p_batch=0.0`` nothing is applied. ``same_on_batch=True``
           asks the batch to share one draw; the gate and the transform parameters follow it, while keys that
-          index or pair up the batch stay per sample by construction, and :class:`RandomRain` draws a
-          different drop count per sample regardless (tracked in
-          `#4448 <https://github.com/kornia/kornia/issues/4448>`_).
+          index or pair up the batch stay per sample by construction.
           ``p_batch`` is part of this base signature and available to custom subclasses, but of the 69 concrete
           classes only :class:`RandomHorizontalFlip` and :class:`RandomVerticalFlip` name it: the rest raise
           ``TypeError`` on the keyword, except :class:`RandomDissolving`, whose ``**kwargs`` binds it and
