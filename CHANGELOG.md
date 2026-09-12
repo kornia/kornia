@@ -451,6 +451,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   made from the unsquared normalized coordinates, and the `float16` radius uses `float32` intermediates so its
   squared value does not underflow; nonzero radial rescaling remains epsilon-free. (#4308, #4370)
 
+* `StereoCamera` now rejects projection matrices whose last two dimensions are not `(3, 4)` with a
+  `StereoException` naming the invalid camera. Previously, the shape guards never fired, so malformed
+  matrices could be accepted or fail later with an unrelated tensor error. (#4385)
+
 * `warp_affine`, `warp_perspective` and `remap` crashed on MPS for an empty destination -- a `dsize` with a
   zero dimension, or zero-sized `remap` maps -- with an internal
   `[srcBuf length] > 0 INTERNAL ASSERT FAILED ... Placeholder tensor is empty!` from PyTorch. The MPS backend
