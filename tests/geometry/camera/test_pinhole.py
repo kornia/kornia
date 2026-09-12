@@ -842,11 +842,10 @@ class TestPinholeCamera(BaseTester):
 
     def test_wart_scale_inplace_rejects_integer_image_size_4265(self, device, dtype):
         # Wart pin for kornia#4265: the constructor accepts int64 height/width --
-        # that is what the class docstring's own example builds -- and a floating factor promotes them, but the
-        # in-place twin scale_() writes the float result back into the int64 storage and raises.
-        # Snippet used to generate expected: cam.scale_(0.5) on an int64 height executed 2026-09-05 (torch 2.14.0,
-        # every dtype) -> RuntimeError("result type Float can't be cast to the desired output type Long").
-        # Pins the CURRENT behavior; NOT a contract; delete when #4265 is repaired.
+        # that is what the class docstring's own example builds. A floating factor now
+        # promotes int64 to float in both scale() and scale_() after repair #4371.
+        # Integer factor preserves int64. Pins the CURRENT behavior; NOT a contract;
+        # delete when #4265 is repaired if the upstream fix changes this contract.
         K = _k44(device, dtype)
         cam = kornia.geometry.camera.PinholeCamera(
             K,

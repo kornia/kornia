@@ -327,7 +327,7 @@ class PinholeCamera:
             - the new camera owns its ``intrinsics`` and its ``extrinsics``: both are cloned, so writing
               ``tx`` / ``ty`` / ``tz`` on the returned camera leaves the source where it was.
             - with a floating-point ``scale_factor``, an integer ``height`` / ``width`` is promoted to floating
-              point, unlike :meth:`scale_`. An integer factor preserves the integer image-size dtype.
+              point, as :meth:`scale_` now also does. An integer factor preserves the integer image-size dtype.
 
         .. warning::
             The ``cx' = s * cx`` rule disagrees with the integer pixel centres the rest of the library
