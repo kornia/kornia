@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Added opt-in `AugmentationSequential.audit` reports with executed geometric provenance,
+  native parameter snapshots, out-of-frame diagnostics and actual keypoint/box round-trip
+  measurements, including explicit unsupported transforms and JSON export. (#4465)
 * Implemented the exported Brown-Conrady, Kannala-Brandt K3, and Orthographic sensor camera models,
   including distortion/projection plumbing, intrinsic matrices, and batched project/unproject support. (#4284, #4377)
 * New "Camera and world conventions across the ecosystem" page cataloguing the pixel-centre, axis

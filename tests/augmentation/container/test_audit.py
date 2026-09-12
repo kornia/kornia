@@ -1,0 +1,598 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+import json
+from copy import deepcopy
+
+import pytest
+import torch
+
+import kornia.augmentation as K
+from kornia.augmentation.container.params import ParamItem
+from kornia.constants import DataKey, Resample
+from kornia.geometry.boxes import Boxes
+from kornia.geometry.keypoints import Keypoints
+
+from testing.base import BaseTester
+
+
+class TestAugmentationAudit(BaseTester):
+    def test_flip_and_actual_keypoints(self, device, dtype):
+        image = torch.rand(2, 1, 8, 10, device=device, dtype=dtype)
+        points = torch.tensor([[[1.0, 2.0], [11.0, 4.0]]], device=device, dtype=dtype).expand(2, -1, -1)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1), data_keys=["input", "keypoints"])
+        outputs, report = aug.audit(image, points)
+        self.assert_close(
+            outputs[1], torch.tensor([[[8.0, 2.0], [-2.0, 4.0]]], device=device, dtype=dtype).expand(2, -1, -1)
+        )
+        assert report.geometry_status == "available"
+        assert report.steps[0].name == "RandomHorizontalFlip_0"
+        assert report.spatial[0].metric == "euclidean"
+        self.assert_close(report.spatial[0].out_of_frame, torch.ones(2, device=device, dtype=torch.long))
+        self.assert_close(report.spatial[0].roundtrip_max, torch.zeros_like(report.spatial[0].roundtrip_max))
+        assert json.loads(report.to_json())["geometry_status"] == "available"
+
+    def test_rng_and_replay(self, device, dtype):
+        image = torch.rand(2, 1, 10, 10, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomAffine(30), K.RandomBrightness(0.2))
+        torch.manual_seed(123)
+        ordinary = aug(image)
+        state = torch.random.get_rng_state()
+        torch.manual_seed(123)
+        audited, report = aug.audit(image)
+        self.assert_close(audited, ordinary)
+        assert torch.equal(torch.random.get_rng_state(), state)
+        self.assert_close(aug(image, params=report.params), audited)
+
+    def test_nested_order(self, device, dtype):
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        points = image.new_tensor([[[2, 3]]])
+        aug = K.AugmentationSequential(
+            K.ImageSequential(K.RandomHorizontalFlip(p=1), K.RandomVerticalFlip(p=1)),
+            K.RandomBrightness(0.2),
+            data_keys=["input", "keypoints"],
+        )
+        _, report = aug.audit(image, points)
+        assert [step.name for step in report.steps] == [
+            "ImageSequential_0.RandomHorizontalFlip_0",
+            "ImageSequential_0.RandomVerticalFlip_1",
+            "RandomBrightness_1",
+        ]
+        diagnostic_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        expected = torch.tensor([[[-1, 0, 9], [0, -1, 7], [0, 0, 1]]], device=device, dtype=diagnostic_dtype)
+        self.assert_close(report.matrix, expected)
+        assert report.spatial[0].roundtrip_max.item() < 1e-4
+
+    def test_repeated_operations_capture_each_matrix(self, device, dtype):
+        image = torch.rand(1, 1, 10, 10, device=device, dtype=dtype)
+        points = image.new_tensor([[[2, 3]]])
+        module = K.RandomAffine(0, translate=(0.3, 0.3), p=1)
+        aug = K.AugmentationSequential(module, data_keys=["input", "keypoints"])
+        first = module.forward_parameters(image.shape)
+        second = deepcopy(first)
+        first["translations"] = image.new_tensor([[1, 0]])
+        second["translations"] = image.new_tensor([[0, 2]])
+        params = [ParamItem("RandomAffine_0", first), ParamItem("RandomAffine_0", second)]
+        outputs, report = aug.audit(image, points, params=params)
+        assert [step.occurrence for step in report.steps] == [0, 1]
+        self.assert_close(report.steps[0].matrix[..., :2, 2], image.new_tensor([[1, 0]]))
+        self.assert_close(report.steps[1].matrix[..., :2, 2], image.new_tensor([[0, 2]]))
+        self.assert_close(outputs[1], image.new_tensor([[[3, 5]]]))
+        assert report.spatial[0].roundtrip_max.item() < 1e-4
+
+    def test_mixed_application(self, device, dtype):
+        image = torch.rand(2, 1, 8, 10, device=device, dtype=dtype)
+        points = image.new_tensor([[[1, 2]], [[1, 2]]])
+        flip = K.RandomHorizontalFlip(p=0.5)
+        params = flip.forward_parameters(image.shape)
+        params["batch_prob"] = image.new_tensor([1, 0])
+        aug = K.AugmentationSequential(flip, data_keys=["input", "keypoints"])
+        outputs, report = aug.audit(image, points, params=[ParamItem("RandomHorizontalFlip_0", params)])
+        self.assert_close(outputs[1], image.new_tensor([[[8, 2]], [[1, 2]]]))
+        self.assert_close(report.matrix[1], torch.eye(3, device=device, dtype=report.matrix.dtype))
+        assert report.spatial[0].roundtrip_max.max().item() < 1e-4
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    def test_crop_padding_and_content_loss(self, device, dtype, cropping_mode):
+        image = torch.rand(2, 1, 6, 8, device=device, dtype=dtype)
+        points = image.new_tensor([[[0, 0], [3, 3], [7, 5]]]).expand(2, -1, -1)
+        aug = K.AugmentationSequential(
+            K.RandomCrop((4, 5), padding=2, cropping_mode=cropping_mode),
+            data_keys=["input", "keypoints"],
+        )
+        _, report = aug.audit(image, points)
+        assert report.geometry_status == "available"
+        assert report.spatial[0].roundtrip_max.max().item() < 1e-4
+        assert any("discard image content" in message for message in report.warnings)
+        assert not report.image_reconstruction_evaluated
+
+    @pytest.mark.parametrize("mode", ["bbox", "bbox_xyxy", "bbox_xywh"])
+    def test_box_corner_order(self, device, dtype, mode):
+        image = torch.rand(1, 1, 10, 10, device=device, dtype=dtype)
+        vertices = image.new_tensor([[[[1, 2], [5, 2], [5, 6], [1, 6]]]])
+        box = Boxes(vertices)
+        tensor_mode = {"bbox": "vertices_plus", "bbox_xyxy": "xyxy_plus", "bbox_xywh": "xywh"}[mode]
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1), data_keys=["input", mode])
+        _, report = aug.audit(image, box.to_tensor(mode=tensor_mode))
+        assert report.spatial[0].metric == "corner_hausdorff"
+        assert report.spatial[0].roundtrip_max.item() < 1e-4
+
+    def test_box_tensor_envelope_loss(self, device, dtype):
+        image = torch.rand(1, 1, 20, 20, device=device, dtype=dtype)
+        boxes = Boxes(image.new_tensor([[[[6, 7], [12, 7], [12, 13], [6, 13]]]]))
+        aug = K.AugmentationSequential(K.RandomRotation((45, 45), p=1), data_keys=["input", "bbox"])
+        _, tensor_report = aug.audit(image, boxes.to_tensor(mode="vertices_plus"))
+        _, object_report = aug.audit(image, boxes)
+        assert tensor_report.spatial[0].roundtrip_max.item() > 1
+        # Half-precision corners are quantized before the float32 diagnostics.
+        # Budget one source-dtype epsilon over the image extent, while retaining
+        # the strict bound for float32/float64 and the >1px envelope-loss check.
+        tolerance = max(1e-4, torch.finfo(dtype).eps * max(image.shape[-2:]))
+        assert object_report.spatial[0].roundtrip_max.item() < tolerance
+        assert any("round-trip error" in warning for warning in tensor_report.warnings)
+
+    def test_detects_actual_spatial_error(self, device, dtype):
+        class BrokenFlip(K.RandomHorizontalFlip):
+            def apply_transform_keypoint(self, input, params, flags, transform=None):
+                return input.clone()
+
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(BrokenFlip(p=1), data_keys=["input", "keypoints"])
+        _, report = aug.audit(image, image.new_tensor([[[1, 2]]]))
+        diagnostic_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        self.assert_close(report.spatial[0].roundtrip_max, torch.tensor([7], device=device, dtype=diagnostic_dtype))
+        assert "round-trip error" in report.summary()
+
+    def test_nonrigid_silent_identity_is_not_supported(self, device, dtype):
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomElasticTransform(p=1), data_keys=["input", "keypoints"])
+        points = image.new_tensor([[[1, 2]]])
+        outputs, report = aug.audit(image, points)
+        self.assert_close(outputs[1], points)
+        assert report.geometry_status == "unsupported"
+        assert report.matrix is None and report.inverse_matrix is None
+        assert report.spatial[0].roundtrip_valid_count.item() == 0
+        assert torch.isnan(report.spatial[0].roundtrip_max).all()
+        assert "non-rigid" in report.summary()
+
+    def test_singular_and_nonfinite_matrices(self, device, dtype):
+        class SingularFlip(K.RandomHorizontalFlip):
+            def compute_transformation(self, input, params, flags):
+                matrix = self.identity_matrix(input)
+                matrix[1, 1, 1] = 0
+                matrix[2, 0, 0] = float("nan")
+                return matrix
+
+        image = torch.rand(3, 1, 8, 10, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(SingularFlip(p=1))
+        _, report = aug.audit(image)
+        assert report.geometry_status == "singular"
+        assert report.invertible.tolist() == [True, False, False]
+        assert report.inverse_matrix[1:].isnan().all()
+        assert json.loads(report.to_json())["matrix"]["values"][2][0][0] is None
+
+    @pytest.mark.parametrize("key, shape", [("keypoints", (2, 0, 2)), ("bbox", (2, 0, 4, 2))])
+    def test_empty_spatial_inputs(self, device, dtype, key, shape):
+        image = torch.rand(2, 1, 8, 10, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1), data_keys=["input", key])
+        _, report = aug.audit(image, torch.empty(shape, device=device, dtype=dtype))
+        assert report.spatial[0].count.tolist() == [0, 0]
+        assert report.spatial[0].roundtrip_valid_count.tolist() == [0, 0]
+        assert report.spatial[0].roundtrip_max.isnan().all()
+        assert json.loads(report.to_json())["spatial"][0]["roundtrip_max"]["values"] == [None, None]
+
+    def test_nonfinite_and_boundaries(self, device, dtype):
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        points = image.new_tensor([[[0, 0], [9, 7], [10, 7], [float("nan"), 0]]])
+        aug = K.AugmentationSequential(torch.nn.Identity(), data_keys=["input", "keypoints"])
+        _, report = aug.audit(image, points)
+        item = report.spatial[0]
+        assert item.count.item() == 4 and item.out_of_frame.item() == 1 and item.nonfinite.item() == 1
+        assert item.out_of_frame_fraction.item() == 0.25 and item.roundtrip_valid_count.item() == 3
+        json.loads(report.to_json())
+
+    def test_snapshots_and_gradients(self, device, dtype):
+        image = torch.rand(2, 1, 8, 10, device=device, dtype=dtype, requires_grad=True)
+        points = image.new_tensor([[[1, 2]], [[1, 2]]]).requires_grad_()
+        aug = K.AugmentationSequential(K.RandomAffine(20, p=1), data_keys=["input", "keypoints"])
+        outputs, report = aug.audit(image, points)
+        audited_grad = torch.autograd.grad(outputs[0].square().sum() + outputs[1].square().sum(), (image, points))
+        serialized = report.to_json()
+        ordinary = aug(image, points, params=report.params)
+        normal_grad = torch.autograd.grad(ordinary[0].square().sum() + ordinary[1].square().sum(), (image, points))
+        for actual, expected in zip(audited_grad, normal_grad):
+            self.assert_close(actual, expected)
+        aug(image, points)
+        assert report.to_json() == serialized
+        assert report.matrix.grad_fn is None
+        assert report.steps[0].matrix.grad_fn is None
+        assert report.params[0].data["translations"].grad_fn is None
+
+    def test_mask_metadata_and_data_key_override(self, device, dtype):
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1))
+        outputs, report = aug.audit(image, image.clone(), data_keys=["input", "mask"])
+        self.assert_close(outputs[0], outputs[1])
+        assert report.inputs[1]["data_key"] == "MASK"
+        assert report.configured_extra_args[DataKey.MASK]["resample"] == Resample.NEAREST
+        assert aug.data_keys == [DataKey.INPUT]
+
+    @pytest.mark.parametrize("threshold", [-1.0, float("nan"), float("inf")])
+    def test_invalid_threshold_no_side_effect(self, threshold):
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip())
+        state = torch.random.get_rng_state()
+        with pytest.raises(ValueError, match="roundtrip_tolerance"):
+            aug.audit(torch.ones(1, 1, 8, 8), roundtrip_tolerance=threshold)
+        assert torch.equal(state, torch.random.get_rng_state())
+        assert aug._params is None
+
+    def test_unsupported_inputs_before_execution(self):
+        module = K.RandomHorizontalFlip()
+        aug = K.AugmentationSequential(module)
+        state = torch.random.get_rng_state()
+        for image in [torch.ones(1, 8, 8), torch.ones(0, 1, 8, 8), {"input": torch.ones(1, 1, 8, 8)}]:
+            with pytest.raises(ValueError, match="BCHW"):
+                aug.audit(image)
+        assert torch.equal(state, torch.random.get_rng_state())
+        assert not module._forward_hooks
+
+    def test_hooks_removed_after_failure(self):
+        class FailingModule(torch.nn.Module):
+            def forward(self, input):
+                raise RuntimeError("deliberate failure")
+
+        module = FailingModule()
+        aug = K.AugmentationSequential(module)
+        with pytest.raises(RuntimeError, match="deliberate failure"):
+            aug.audit(torch.ones(1, 1, 8, 8))
+        assert not module._forward_hooks
+
+    def test_reject_shared_aliases_and_video(self):
+        module = K.RandomHorizontalFlip()
+        shared = K.AugmentationSequential(module, module)
+        video = K.AugmentationSequential(K.VideoSequential(K.RandomHorizontalFlip()))
+        for aug in (shared, video):
+            with pytest.raises(ValueError):
+                aug.audit(torch.ones(1, 1, 8, 8))
+        assert not module._forward_hooks
+
+    def test_empty_pipeline(self, device, dtype):
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        output, report = K.AugmentationSequential().audit(image)
+        self.assert_close(output, image)
+        assert report.steps == [] and report.params == []
+        assert report.geometry_status == "available"
+        self.assert_close(report.matrix, torch.eye(3, device=device, dtype=report.matrix.dtype).unsqueeze(0))
+
+    def test_random_repeated_sampling(self, device, dtype):
+        image = torch.rand(1, 1, 10, 10, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomAffine(20, p=1), random_apply=3)
+        output, report = aug.audit(image)
+        assert [step.occurrence for step in report.steps] == [0, 1, 2]
+        assert len(report.params) == 3
+        self.assert_close(aug(image, params=report.params), output)
+
+    def test_input_box_metadata_and_warning_threshold(self, device, dtype):
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        boxes = image.new_tensor([[[1, 2, 12, 6]]])
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1), data_keys=["input", "bbox_xyxy"])
+        _, report = aug.audit(image, boxes, out_of_frame_tolerance=1)
+        assert report.inputs[1]["shape"] == (1, 1, 4)
+        assert report.spatial[0].out_of_frame.item() == 1
+        assert not any("out-of-frame" in warning for warning in report.warnings)
+
+    def test_inverse_projective_horizon_is_invalid(self, device, dtype):
+        class HorizonFlip(K.RandomHorizontalFlip):
+            def compute_transformation(self, input, params, flags):
+                matrix = self.identity_matrix(input)
+                matrix[:, 2, 0] = 1
+                return matrix
+
+            def apply_transform_keypoint(self, input, params, flags, transform=None):
+                return input.clone()
+
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(HorizonFlip(p=1), data_keys=["input", "keypoints"])
+        _, report = aug.audit(image, image.new_tensor([[[1, 2]]]))
+        assert report.geometry_status == "available"
+        assert report.spatial[0].nonfinite.item() == 0
+        assert report.spatial[0].roundtrip_valid_count.item() == 0
+        assert "some round-trip errors are nonfinite" in report.summary()
+
+    def test_unknown_module_is_unavailable(self, device, dtype):
+        aug = K.AugmentationSequential(torch.nn.ReLU())
+        output, report = aug.audit(torch.ones(1, 1, 8, 10, device=device, dtype=dtype))
+        assert output.shape == (1, 1, 8, 10)
+        assert report.geometry_status == "unsupported"
+        assert report.steps[0].unsupported_reason is not None
+
+    def test_reject_ragged_container_objects_before_execution(self, device, dtype):
+        image = torch.ones(2, 1, 8, 10, device=device, dtype=dtype)
+        vertices = image.new_tensor([[[1, 2], [5, 2], [5, 6], [1, 6]], [[2, 3], [6, 3], [6, 7], [2, 7]]])
+        spatial = Boxes([vertices, vertices[:1]])
+        module = K.RandomHorizontalFlip()
+        aug = K.AugmentationSequential(module, data_keys=["input", "bbox"])
+        state = torch.random.get_rng_state()
+        with pytest.raises(ValueError, match="ragged"):
+            aug.audit(image, spatial)
+        assert torch.equal(state, torch.random.get_rng_state())
+        assert aug._params is None
+        assert not module._forward_hooks
+
+    def test_even_median_and_invalid_errors(self, device, dtype):
+        class BrokenFlip(K.RandomHorizontalFlip):
+            def apply_transform_keypoint(self, input, params, flags, transform=None):
+                return input.clone()
+
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(BrokenFlip(p=1), data_keys=["input", "keypoints"])
+        _, report = aug.audit(image, image.new_tensor([[[3, 2], [4, 2], [float("nan"), 2]]]))
+        item = report.spatial[0]
+        assert item.roundtrip_valid_count.item() == 2
+        assert item.roundtrip_mean.item() == 2
+        assert item.roundtrip_median.item() == 2
+        assert item.roundtrip_max.item() == 3
+
+    def test_none_data_keys_requires_explicit_override(self):
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(), data_keys=None)
+        image = torch.ones(1, 1, 8, 8)
+        with pytest.raises(ValueError, match="data_keys"):
+            aug.audit(image)
+        _, report = aug.audit(image, data_keys=["input"])
+        assert report.geometry_status == "available"
+
+    def test_changed_label_cardinality_cannot_broadcast(self, device, dtype):
+        class DroppingFlip(K.RandomHorizontalFlip):
+            def apply_transform_keypoint(self, input, params, flags, transform=None):
+                return Keypoints(input.data[:, :1])
+
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        module = DroppingFlip(p=1)
+        aug = K.AugmentationSequential(module, data_keys=["input", "keypoints"])
+        with pytest.raises(ValueError, match=r"spatial.*shape"):
+            aug.audit(image, image.new_tensor([[[3, 2], [4, 2]]]))
+        assert not module._forward_hooks
+
+    @pytest.mark.parametrize("policy_name", ["RandAugment", "AutoAugment", "TrivialAugment"])
+    def test_uncaptured_policy_is_unsupported(self, device, dtype, policy_name):
+        if policy_name == "RandAugment":
+            policy = K.auto.RandAugment(1, 10, policy=[[("rotate", -10.0, 10.0)]])
+        elif policy_name == "AutoAugment":
+            policy = K.auto.AutoAugment(policy=[[("rotate", 1.0, 5)]])
+        else:
+            policy = K.auto.TrivialAugment(policy=[[("rotate", -10.0, 10.0)]])
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        points = image.new_tensor([[[2, 3]]])
+        aug = K.AugmentationSequential(policy, data_keys=["input", "keypoints"])
+        outputs, report = aug.audit(image, points)
+        assert report.geometry_status == "unsupported"
+        assert report.matrix is None and report.inverse_matrix is None
+        assert not report.invertible.any()
+        assert report.spatial[0].roundtrip_valid_count.item() == 0
+        assert report.steps == []
+        assert policy_name in report.summary() and "capture" in report.summary()
+        replay = aug(image, points, params=report.params)
+        for actual, expected in zip(outputs, replay):
+            self.assert_close(actual, expected)
+
+    def test_missing_hook_with_other_captured_steps(self, device, dtype):
+        class BypassFlip(K.RandomHorizontalFlip):
+            def __call__(self, *args, **kwargs):
+                return self.forward(*args, **kwargs)
+
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomVerticalFlip(p=1), BypassFlip(p=1))
+        _, report = aug.audit(image)
+        assert [step.name for step in report.steps] == ["RandomVerticalFlip_0"]
+        assert report.geometry_status == "unsupported"
+        assert "BypassFlip_1" in report.summary()
+
+    def test_repeated_leaf_missing_one_hook(self, device, dtype):
+        class AlternatingFlip(K.RandomHorizontalFlip):
+            calls = 0
+
+            def __call__(self, *args, **kwargs):
+                self.calls += 1
+                return super().__call__(*args, **kwargs) if self.calls % 2 else self.forward(*args, **kwargs)
+
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        module = AlternatingFlip(p=1)
+        aug = K.AugmentationSequential(module)
+        param = ParamItem("AlternatingFlip_0", module.forward_parameters(image.shape))
+        output, report = aug.audit(image, params=[param, deepcopy(param)])
+        self.assert_close(output, image)
+        assert len(report.steps) == 1
+        assert report.geometry_status == "unsupported"
+        assert "capture" in report.summary()
+
+    def test_captured_order_matches_selected_params(self, device, dtype, monkeypatch):
+        nested = K.ImageSequential(K.RandomHorizontalFlip(p=1), K.RandomVerticalFlip(p=1))
+        original = nested.transform_inputs
+
+        def reverse(input, params, extra_args=None):
+            return original(input, list(reversed(params)), extra_args)
+
+        monkeypatch.setattr(nested, "transform_inputs", reverse)
+        aug = K.AugmentationSequential(nested)
+        _, report = aug.audit(torch.rand(1, 1, 8, 10, device=device, dtype=dtype))
+        assert [step.module for step in report.steps] == ["RandomVerticalFlip", "RandomHorizontalFlip"]
+        assert report.geometry_status == "unsupported"
+        assert "order" in report.summary()
+
+    @pytest.mark.parametrize("with_child", [False, True])
+    def test_custom_sequence_is_opaque(self, device, dtype, with_child):
+        class HiddenGeometry(K.ImageSequential):
+            def transform_inputs(self, input, params, extra_args=None):
+                return super().transform_inputs(input, params, extra_args).flip(-1)
+
+        child = [torch.nn.Identity()] if with_child else []
+        aug = K.AugmentationSequential(HiddenGeometry(*child))
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        output, report = aug.audit(image)
+        self.assert_close(output, image.flip(-1))
+        assert report.geometry_status == "unsupported"
+        assert "HiddenGeometry_0" in report.summary()
+
+    def test_unselected_opaque_leaf_is_not_missing(self, device, dtype):
+        policy = K.auto.RandAugment(1, 10, policy=[[("rotate", -10.0, 10.0)]])
+        nested = K.ImageSequential(policy, torch.nn.Identity(), random_apply=1, random_apply_weights=[0.0, 1.0])
+        aug = K.AugmentationSequential(nested)
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        output, report = aug.audit(image)
+        self.assert_close(output, image)
+        assert report.geometry_status == "available"
+        assert [step.name for step in report.steps] == ["ImageSequential_0.Identity_1"]
+        assert not report.warnings
+
+    def test_repeated_nested_uses_each_parameter_tree(self, device, dtype):
+        nested = K.ImageSequential(K.RandomHorizontalFlip(p=1), K.RandomVerticalFlip(p=1))
+        aug = K.AugmentationSequential(nested)
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        children = nested.forward_parameters(image.shape)
+        params = [ParamItem("ImageSequential_0", [children[0]]), ParamItem("ImageSequential_0", [children[1]])]
+        output, report = aug.audit(image, params=params)
+        self.assert_close(output, image.flip(-1, -2))
+        assert report.geometry_status == "available"
+        assert [step.module for step in report.steps] == ["RandomHorizontalFlip", "RandomVerticalFlip"]
+
+    @pytest.mark.parametrize("nested", [False, True])
+    def test_empty_selected_sequence_stays_available(self, device, dtype, nested):
+        aug = K.AugmentationSequential(K.ImageSequential()) if nested else K.AugmentationSequential(torch.nn.ReLU())
+        image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
+        output, report = aug.audit(image, params=None if nested else [])
+        self.assert_close(output, image)
+        assert report.steps == [] and report.geometry_status == "available"
+        assert not report.warnings
+
+    @pytest.mark.parametrize("name", ["Resize", "LongestMaxSize"])
+    def test_downsampling_content_warning(self, device, dtype, name):
+        module = K.Resize((4, 5)) if name == "Resize" else K.LongestMaxSize(5)
+        aug = K.AugmentationSequential(module)
+        _, report = aug.audit(torch.rand(1, 1, 8, 10, device=device, dtype=dtype))
+        assert report.geometry_status == "available"
+        assert any("downsampling" in warning for warning in report.warnings)
+        assert not report.image_reconstruction_evaluated
+
+    @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
+    @pytest.mark.parametrize(
+        "p, batch_prob",
+        [
+            (0.0, None),
+            (1.0, None),
+            (0.5, [0.0, 0.0]),
+            (0.5, [0.0, 1.0]),
+            (0.5, [1.0, 1.0]),
+            (1.0, [0.0, 1.0]),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "size, padding, pad_if_needed",
+        [
+            ((4, 8), None, False),
+            ((4, 8), (1, 2), False),
+            ((6, 10), (1, 2, 3, 0), False),
+            ((8, 12), None, True),
+        ],
+    )
+    def test_crop_matrix_tracks_actual_pixels(
+        self, device, dtype, cropping_mode, p, batch_prob, size, padding, pad_if_needed
+    ):
+        image = torch.zeros(2, 1, 6, 10, device=device, dtype=dtype)
+        image[:, 0, 1, 3] = 1  # An independent image landmark at keypoint (3, 1).
+        points = image.new_tensor([[[3, 1]], [[3, 1]]])
+        boxes = Boxes(image.new_tensor([[[[2, 1], [3, 1], [3, 2], [2, 2]]]]).expand(2, -1, -1, -1).clone())
+        module = K.RandomCrop(
+            size, padding=padding, pad_if_needed=pad_if_needed, p=p, cropping_mode=cropping_mode, resample="nearest"
+        )
+        params = module.forward_parameters(image.shape)
+        if batch_prob is not None:
+            params["batch_prob"] = image.new_tensor(batch_prob)
+        pad = params["padding_size"][0].tolist()
+        x = min(1, image.shape[-1] + pad[0] + pad[1] - size[1])
+        y = min(1, image.shape[-2] + pad[2] + pad[3] - size[0])
+        params["src"] = (
+            image.new_tensor([[[x, y], [x + size[1] - 1, y], [x + size[1] - 1, y + size[0] - 1], [x, y + size[0] - 1]]])
+            .expand(2, -1, -1)
+            .clone()
+        )
+        aug = K.AugmentationSequential(module, data_keys=["input", "keypoints", "bbox"])
+        outputs, report = aug.audit(image, points, boxes, params=[ParamItem("RandomCrop_0", params)])
+        selected = params["batch_prob"] > 0.5
+        static = p == 1.0
+        all_transformed = static or (size != image.shape[-2:] and bool(selected.any()))
+        transformed = torch.ones_like(selected) if all_transformed else selected
+        padded = torch.nn.functional.pad(image, pad)
+        expected_images = []
+        image_shift = image.new_zeros((2, 2))
+        for row in range(2):
+            if transformed[row]:
+                # Slice ignores the cached matrix; resample uses its per-row identity/crop selection.
+                use_crop = cropping_mode == "slice" or static or bool(selected[row])
+                left, top = (x, y) if use_crop else (0, 0)
+                expected_images.append(padded[row, :, top : top + size[0], left : left + size[1]])
+                image_shift[row] = image.new_tensor([pad[0] - left, pad[2] - top])
+            else:
+                expected_images.append(image[row])
+        self.assert_close(outputs[0], torch.stack(expected_images))
+        for row in range(2):
+            destination = points[row, 0] + image_shift[row]
+            assert outputs[0][row, 0, int(destination[1]), int(destination[0])].item() == 1
+        ambiguous_slice = cropping_mode == "slice" and all_transformed and not static and not bool(selected.all())
+        if ambiguous_slice:
+            assert report.geometry_status == "unsupported"
+            assert report.matrix is None and "slice" in report.summary()
+        else:
+            assert report.geometry_status == "available"
+            diagnostic_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+            self.assert_close(report.matrix[:, :2, 2], image_shift.to(diagnostic_dtype))
+            # Measure against the observed pixel mapping, without requiring the
+            # native crop to preserve any existing label-padding defect.
+            restored_points = outputs[1][:, 0].to(diagnostic_dtype) - image_shift.to(diagnostic_dtype)
+            error = torch.linalg.vector_norm(restored_points - points[:, 0].to(diagnostic_dtype), dim=-1)
+            self.assert_close(report.spatial[0].roundtrip_max, error)
+            restored_boxes = outputs[2].data.to(diagnostic_dtype) - image_shift[:, None, None, :].to(diagnostic_dtype)
+            box_error = (
+                torch.linalg.vector_norm(restored_boxes - boxes.data.to(diagnostic_dtype), dim=-1).amax(-1).amax(-1)
+            )
+            self.assert_close(report.spatial[1].roundtrip_max, box_error)
+            if bool((error > report.roundtrip_tolerance).any()):
+                assert "round-trip error exceeds" in report.summary()
+
+    @pytest.mark.parametrize("configured, effective", [("resample", "slice"), ("slice", "resample")])
+    def test_crop_effective_mode_override(self, device, dtype, configured, effective):
+        image = torch.zeros(2, 1, 6, 10, device=device, dtype=dtype)
+        image[:, 0, 1, 3] = 1
+        module = K.RandomCrop((4, 8), padding=(1, 2), p=0.5, cropping_mode=configured, resample="nearest")
+        params = module.forward_parameters(image.shape)
+        params["batch_prob"] = image.new_tensor([0, 1])
+        params["src"] = image.new_tensor([[[1, 1], [8, 1], [8, 4], [1, 4]]]).expand(2, -1, -1).clone()
+        aug = K.AugmentationSequential(
+            module, data_keys=["input", "keypoints"], extra_args={DataKey.INPUT: {"cropping_mode": effective}}
+        )
+        outputs, report = aug.audit(
+            image, image.new_tensor([[[3, 1]], [[3, 1]]]), params=[ParamItem("RandomCrop_0", params)]
+        )
+        assert report.steps[0].flags["cropping_mode"] == effective
+        assert module.flags["cropping_mode"] == configured
+        assert outputs[0][1, 0, 2, 3].item() == 1
+        if effective == "slice":
+            assert outputs[0][0, 0, 2, 3].item() == 1
+            assert report.geometry_status == "unsupported" and report.matrix is None
+        else:
+            assert outputs[0][0, 0, 3, 4].item() == 1
+            assert report.geometry_status == "available"
+            self.assert_close(report.matrix[:, :2, 2], report.matrix.new_tensor([[1, 2], [0, 1]]))

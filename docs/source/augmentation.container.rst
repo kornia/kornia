@@ -23,6 +23,128 @@ predefined routines that automate the processing of masks, bounding boxes, and k
 
    .. automethod:: inverse
 
+   .. automethod:: audit
+
+
+Auditing geometric provenance
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``AugmentationSequential.audit`` executes the ordinary pipeline once and returns
+``(outputs, report)``. It records captured operation order (including repeated
+operations and nested built-in 2D sequences), parameters, image shapes, effective
+flags (including image-call keyword overrides) and coordinate matrices, and checks
+capture completeness against the sampled execution parameters. The returned
+outputs have the same structure and gradients
+as ``forward``. Reporting has additional snapshot and diagnostic costs; ordinary
+``forward`` does not enable it.
+
+For example, a training-data validation step can inspect coordinates and export
+an artifact without storing image pixels::
+
+    import json
+    from pathlib import Path
+    import torch
+    import kornia.augmentation as K
+
+    image = torch.rand(2, 3, 32, 48)
+    points = torch.tensor([[[4., 6.], [20., 15.]]]).expand(2, -1, -1)
+    pipeline = K.AugmentationSequential(
+        K.RandomHorizontalFlip(p=1.0),
+        K.RandomAffine(degrees=15, p=1.0),
+        data_keys=["input", "keypoints"],
+    )
+    (image_out, points_out), report = pipeline.audit(
+        image, points, roundtrip_tolerance=1e-3, out_of_frame_tolerance=0.25,
+    )
+    print(report.summary())
+    point_audit = report.spatial[0]
+    assert report.geometry_status == "available"
+    assert torch.equal(point_audit.roundtrip_valid_count, point_audit.count)
+    assert bool((point_audit.roundtrip_max <= 1e-3).all())
+    Path("augmentation-audit.json").write_text(report.to_json(), encoding="utf-8")
+    assert json.loads(report.to_json())["image_reconstruction_evaluated"] is False
+
+    # Native parameter snapshots replay the run with this pipeline configuration.
+    replay_image, replay_points = pipeline(image, points, params=report.params)
+    torch.testing.assert_close(replay_image, image_out)
+    torch.testing.assert_close(replay_points, points_out)
+
+Interpreting the report
+^^^^^^^^^^^^^^^^^^^^^^^
+
+* ``matrix`` maps original pixel coordinates to final image coordinates, including
+  ``RandomCrop`` prepadding when it is part of the returned image's mapping.
+  ``inverse_matrix`` is its algebraic inverse, with
+  nonfinite entries for batches that cannot be inverted. ``invertible`` records
+  those batches explicitly. Half-precision diagnostics use float32.
+* ``geometry_status="available"`` describes matrix availability, not successful
+  spatial alignment. Round trips inverse-map the **actual returned** labels and
+  compare them with the source. A pipeline can expose an invertible matrix yet
+  have incorrect spatial propagation, which yields nonzero errors.
+* Keypoint errors are Euclidean distances. Box errors are symmetric Hausdorff
+  distances between corner sets, so corner ordering does not affect the result.
+  Tensor box exports take axis-aligned envelopes; rotation/shear can therefore
+  introduce measurable round-trip loss. Passing a ``Boxes`` object retains the
+  transformed quadrilateral instead.
+* Per-batch statistics include only finite errors. Always inspect
+  ``roundtrip_valid_count`` as well as the mean, median or maximum; empty labels
+  and unavailable inverses do not have a successful zero-error measurement.
+* Out-of-frame counts use inclusive pixel centers, from zero to ``width - 1``
+  and ``height - 1``. A box is outside when any corner is outside. Nonfinite
+  labels have a separate count. Fractions describe the supplied labels, **not**
+  image-area coverage or mask alignment.
+* Crop matrices can invert coordinates even though the crop discarded image
+  content. The report records this distinction and never evaluates image
+  reconstruction. A decrease in image height or width also produces a possible
+  sampling/content-loss warning, including for resize operations. These warnings
+  do not cover every kind of information loss: interpolation and intensity
+  operations can also lose pixels without changing image dimensions.
+* Partially applied ``RandomCrop`` mappings follow the returned image branch,
+  not just the label coordinates. A skipped crop can currently leave an image
+  unchanged while padding its labels; its nonzero round-trip error indicates a
+  real inconsistency and is not suppressed. Shape-changing slice crops with
+  unapplied rows have no reliable cached matrix for every returned image row,
+  so their geometry is reported as ``unsupported``.
+* Non-rigid and unknown operations are explicitly unsupported for matrix
+  composition. The ``silent`` transformation-matrix mode's identity fallback
+  is not treated as evidence of valid correspondence. Supported neighboring
+  operations still appear in the per-operation provenance.
+* Captured operations must match the ordered, repeated operations selected by
+  this call's native parameters. If a selected operation bypasses forward hooks,
+  geometry is ``unsupported`` even when other operations were captured; the report
+  does not invent its shape or matrix. Unselected operations do not count as
+  missing. A truly empty pipeline can report an identity mapping.
+* ``RandAugment``, ``AutoAugment`` and ``TrivialAugment`` policies, and custom
+  sequential-container subclasses, are currently opaque to the audit. A selected
+  opaque container makes geometry ``unsupported``; its internal operations are
+  not certified. The ordinary pipeline outputs are still returned.
+
+The API accepts one nonempty BCHW image first, with optional batched masks,
+keypoints and boxes in the usual positional ``data_keys`` forms. Dictionaries,
+ragged/unbatched inputs, video, patch and 3D augmentation containers, and a module
+registered under multiple names are not supported. Sampling the same registered
+operation repeatedly with ``random_apply`` is supported. The API is an eager
+diagnostic tool, not a compiled/exported graph operation; the same stateful
+pipeline should not be audited concurrently.
+Spatial operations must preserve label shapes and cardinality; the audit rejects
+changed shapes instead of broadcasting unmatched labels into a comparison.
+
+The report records operation flags and ``configured_extra_args`` (including mask
+resampling overrides), but does not evaluate whether a mask's interpolation is
+suitable for its label semantics. It does not claim that a seed alone reproduces
+an unrecorded random state. ``params`` is an independent, detached native replay
+snapshot; JSON is a portable diagnostic export, not a replay loader. Tensor
+exports include dtype, device and shape metadata; nonfinite values become JSON
+``null``. Report tensors are isolated from later forwards but remain mutable
+PyTorch tensors.
+
+.. autoclass:: AugmentationAuditReport
+   :members: summary, to_dict, to_json
+
+.. autoclass:: AugmentationAuditStep
+
+.. autoclass:: SpatialAudit
+
 
 Augmentation Dispatchers
 ------------------------

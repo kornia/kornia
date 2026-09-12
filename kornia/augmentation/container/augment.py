@@ -30,6 +30,7 @@ from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 
+from .audit import AugmentationAuditReport, audit
 from .base import TransformMatrixMinIn
 from .image import ImageSequential
 from .ops import AugmentationSequentialOps, DataType
@@ -429,6 +430,46 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")
 
         return out
+
+    def audit(
+        self,
+        *args: DataType,
+        params: Optional[List[ParamItem]] = None,
+        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
+        roundtrip_tolerance: float = 1e-3,
+        out_of_frame_tolerance: float = 0.0,
+    ) -> Tuple[Union[DataType, List[DataType], Dict[str, DataType]], AugmentationAuditReport]:
+        """Run once and return normal outputs plus an opt-in geometry audit report.
+
+        Accepts one BCHW image first, followed by batched masks, boxes or keypoints.
+        ``params`` and ``data_keys`` have the same meaning as in :meth:`forward`.
+        ``roundtrip_tolerance`` is a nonnegative pixel threshold for report warnings.
+        ``out_of_frame_tolerance`` is a fraction in [0, 1] above which a spatial
+        input receives a warning (per batch element).
+        Nested 2D image/augmentation sequences and repeated sampled operations are
+        supported. Dictionary, ragged, unbatched, video, patch, 3D and shared-module
+        alias inputs are currently unsupported. Unknown/non-rigid operations run
+        normally but make the report's geometry unavailable.
+        Spatial outputs must preserve input label shapes and cardinality.
+
+        The report inverse-maps actual returned spatial labels, records sampled
+        parameters for replay, and never evaluates image reconstruction. It incurs
+        matrix, snapshot and diagnostic overhead only when called. Reporting is an
+        eager diagnostic API, not a compiled/exported graph operation; do not call
+        it concurrently on the same stateful pipeline.
+
+        Returns:
+            A pair ``(outputs, report)``; ``outputs`` has the ordinary forward
+            structure, values and gradients. See :class:`AugmentationAuditReport`.
+        """
+        return audit(
+            self,
+            *args,
+            params=params,
+            data_keys=data_keys,
+            roundtrip_tolerance=roundtrip_tolerance,
+            out_of_frame_tolerance=out_of_frame_tolerance,
+        )
 
     def forward(  # type: ignore[override]
         self,
