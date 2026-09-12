@@ -591,23 +591,17 @@ def build_laplacian_pyramid(
           level — level 0 is **not** the unchanged original image whenever
           ``max_level > 1``
         - the input is reflect-padded up to the next power of two (per
-          dimension) only when **neither** the height **nor** the width is
-          already a power of two; when it is applied, every returned level
+          dimension) when padding is required to keep adjacent Gaussian levels
+          aligned for subtraction; when it is applied, every returned level
           — including level 0 — is shaped from the padded size
         - border_type: ``'reflect'`` by default
         - align_corners: ``False`` by default
 
     .. warning::
-        For a mixed odd/power-of-two input size (one dimension a power of two,
-        the other not), no padding is applied and the level-to-level
-        subtraction can raise ``RuntimeError`` from a shape mismatch when
-        ``max_level > 1`` (e.g. a :math:`(1, 1, 5, 8)` input with
-        ``max_level=2``). This is likely unintended and tracked in
-        `#3927 <https://github.com/kornia/kornia/issues/3927>`_. Separately, the
-        ``max_level`` bounds check does not currently reject non-positive
+        The ``max_level`` bounds check does not currently reject non-positive
         **integer** values: passing an integer ``max_level <= 0`` returns the
-        same single-element list as ``max_level=1`` instead of raising — also
-        tracked in `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
+        same single-element list as ``max_level=1`` instead of raising. Tracked
+        in `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
 
     Args:
         input : the torch.Tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.
@@ -632,7 +626,11 @@ def build_laplacian_pyramid(
 
     h = input.size()[2]
     w = input.size()[3]
-    require_padding = not (is_powerof_two(w) or is_powerof_two(h))
+    width_is_powerof_two = is_powerof_two(w)
+    height_is_powerof_two = is_powerof_two(h)
+    require_padding = not (width_is_powerof_two or height_is_powerof_two)
+    if max_level > 1:
+        require_padding = not (width_is_powerof_two and height_is_powerof_two)
 
     if require_padding:
         # in case of arbitrary shape torch.Tensor image need to be padded.
