@@ -254,6 +254,8 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
        In cases where a quartic polynomial has fewer than four real roots, the remaining entries
        in the output are set to 0. Similarly, any non-real (complex) roots are represented as 0.
        This is done to maintain a consistent output shape for all cases.
+       For ``float16`` and ``bfloat16`` quartics, Ferrari intermediates are evaluated in ``float32``
+       and the returned roots are cast back to the input dtype.
 
     .. note::
        For a repeated (or near-repeated) real root, the resolvent-cubic solve internally
@@ -360,6 +362,13 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         y = torch.where(refine_y, y - y_residual_selected / safe_y_derivative, y)
         R_sq = torch.addcmul(y - B, A, A, value=0.25)
 
+    # R^2 = A^2 / 4 - B + y can retain cancellation-level roundoff for an exact biquadratic.
+    # Snap only values within half an ulp of the scale of those three terms; this happens before
+    # the guarded sqrt so the exact-zero gradient convention remains unchanged.
+    R_sq_scale = torch.maximum(torch.ones_like(R_sq), 0.25 * A_sq + torch.abs(B) + torch.abs(y))
+    R_sq_snap_tol = 0.5 * torch.finfo(R_sq.dtype).eps * R_sq_scale
+    R_sq = torch.where(torch.abs(R_sq) <= R_sq_snap_tol, torch.zeros_like(R_sq), R_sq)
+
     # `clamp(min=0).sqrt()` does not guard the gradient: d(sqrt)/dx is unbounded at 0, and on
     # torch < 2.14 clamp passes the incoming gradient straight through at the bound (#4229), so
     # R_sq == 0 -- a biquadratic such as x^4 - 16 -- gave inf and then nan. Substitute a safe
@@ -387,27 +396,24 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     E_cross_term = A * y - 2.0 * C
     E_constant = torch.where(E_cross_term < 0, -E_magnitude, E_magnitude)
 
-    if coeffs.dtype == torch.float32:
-        # Away from R == 0, the division form satisfies the linear coefficient more accurately;
-        # the constant-term form remains stable near the division singularity. Compare their
-        # normalized Ferrari coefficient reconstruction errors instead of tuning an R threshold.
-        safe_R = torch.where(R > 0, R, torch.ones_like(R))
-        E_division = E_cross_term / (4.0 * safe_R)
-        root_sq_scale = torch.maximum(torch.ones_like(R_sq), A_sq)
-        root_sq_scale = torch.maximum(root_sq_scale, torch.abs(B))
-        root_sq_scale = torch.maximum(root_sq_scale, torch.abs(y))
-        root_scale = torch.sqrt(root_sq_scale)
+    # Away from R == 0, the division form can satisfy the linear coefficient more accurately,
+    # while the constant-term form remains stable near the division singularity. Compare their
+    # normalized Ferrari coefficient reconstruction errors in the actual Ferrari compute dtype.
+    safe_R = torch.where(R > 0, R, torch.ones_like(R))
+    E_division = E_cross_term / (4.0 * safe_R)
+    root_sq_scale = torch.maximum(torch.ones_like(R_sq), A_sq)
+    root_sq_scale = torch.maximum(root_sq_scale, torch.abs(B))
+    root_sq_scale = torch.maximum(root_sq_scale, torch.abs(y))
+    root_scale = torch.sqrt(root_sq_scale)
 
-        division_C_error = torch.abs(0.5 * A * y - 2.0 * R * E_division - C) / (root_sq_scale * root_scale)
-        division_D_error = torch.abs(0.25 * y * y - E_division * E_division - D) / (root_sq_scale * root_sq_scale)
-        constant_C_error = torch.abs(0.5 * A * y - 2.0 * R * E_constant - C) / (root_sq_scale * root_scale)
-        constant_D_error = torch.abs(0.25 * y * y - E_constant * E_constant - D) / (root_sq_scale * root_sq_scale)
-        division_error = torch.maximum(division_C_error, division_D_error)
-        constant_error = torch.maximum(constant_C_error, constant_D_error)
-        use_constant_E = (R == 0) | (constant_error < division_error)
-        E = torch.where(use_constant_E, E_constant, E_division)
-    else:
-        E = E_constant
+    division_C_error = torch.abs(0.5 * A * y - 2.0 * R * E_division - C) / (root_sq_scale * root_scale)
+    division_D_error = torch.abs(0.25 * y * y - E_division * E_division - D) / (root_sq_scale * root_sq_scale)
+    constant_C_error = torch.abs(0.5 * A * y - 2.0 * R * E_constant - C) / (root_sq_scale * root_scale)
+    constant_D_error = torch.abs(0.25 * y * y - E_constant * E_constant - D) / (root_sq_scale * root_sq_scale)
+    division_error = torch.maximum(division_C_error, division_D_error)
+    constant_error = torch.maximum(constant_C_error, constant_D_error)
+    use_constant_E = (R == 0) | (constant_error < division_error)
+    E = torch.where(use_constant_E, E_constant, E_division)
 
     # Solve two resulting quadratic equations
     # Quad 1: x^2 + (A/2 - R)x + (y/2 - E) = 0

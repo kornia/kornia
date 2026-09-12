@@ -585,6 +585,55 @@ class TestQuarticSolver(BaseTester):
         )
         self.assert_close(residuals, torch.zeros_like(residuals), rtol=0.0, atol=1e-3)
 
+    def test_E_reconstruction_precision_float64(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("This regression targets float64 Ferrari factorization precision.")
+
+        # (x^2 + 3x + 2)(x^2 - 5x + 2.000001)
+        coeffs = torch.tensor([[1.0, -2.0, -10.999999, -3.999997, 4.000002]], device=device, dtype=dtype)
+        discriminant = torch.sqrt(torch.tensor(16.999996, device=device, dtype=dtype))
+        expected = torch.tensor(
+            [[-2.0, -1.0, (5.0 - discriminant) / 2.0, (5.0 + discriminant) / 2.0]],
+            device=device,
+            dtype=dtype,
+        )
+
+        roots = torch.sort(solver.solve_quartic(coeffs), dim=-1).values
+        expected = torch.sort(expected, dim=-1).values
+        self.assert_close(roots, expected, rtol=0.0, atol=1e-12)
+
+        residuals = (
+            coeffs[:, 0:1] * roots**4
+            + coeffs[:, 1:2] * roots**3
+            + coeffs[:, 2:3] * roots**2
+            + coeffs[:, 3:4] * roots
+            + coeffs[:, 4:5]
+        )
+        self.assert_close(residuals, torch.zeros_like(residuals), rtol=0.0, atol=1e-12)
+
+    def test_biquadratic_R_sq_relative_snap(self, device, dtype):
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("This regression targets full-precision R^2 cancellation handling.")
+
+        coeffs = torch.tensor([[1.0, 0.0, 2.9696312, 0.0, -2.3985832]], device=device, dtype=dtype)
+        expected_real = torch.tensor([-0.8128378975367444, 0.8128378975367438], device=device, dtype=dtype)
+
+        roots = solver.solve_quartic(coeffs)
+        assert bool(torch.isfinite(roots).all()), roots
+        assert int(torch.count_nonzero(roots)) == 2, roots
+
+        real_roots = torch.sort(roots[roots != 0]).values
+        self.assert_close(real_roots, expected_real, rtol=0.0, atol=5e-6)
+
+        residuals = (
+            coeffs[0, 0] * real_roots**4
+            + coeffs[0, 1] * real_roots**3
+            + coeffs[0, 2] * real_roots**2
+            + coeffs[0, 3] * real_roots
+            + coeffs[0, 4]
+        )
+        self.assert_close(residuals, torch.zeros_like(residuals), rtol=0.0, atol=2e-5)
+
     def test_gradcheck(self, device):
         # Use a specific polynomial with distinct roots to ensure gradient stability
         # x^4 - 10x^3 + 35x^2 - 50x + 24 = 0
