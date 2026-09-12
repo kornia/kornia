@@ -277,6 +277,25 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # Numerical tolerances
     zero_tol = 1e-6 if coeffs.dtype == torch.float32 else 1e-12
 
+    # Half-precision inputs overflow the Ferrari intermediates: the resolvent
+    # cubic's R^2 alone exceeds float16's ~65504 maximum for ordinary coefficient
+    # magnitudes (a seeded 50k-row sweep in [-20, 20] produced 21,751 non-finite
+    # rows). Run the quartic path in float32 for half inputs and cast the roots
+    # back at the end.
+    work_dtype = torch.float32 if coeffs.dtype in (torch.float16, torch.bfloat16) else coeffs.dtype
+    # Relative tolerance for the "is a candidate a real root of the resolvent"
+    # test below, keyed to the dtype the arithmetic actually runs in. It scales
+    # with precision: half precision carries so little mantissa that solve_cubic's
+    # conditioning error is orders of magnitude above float64's, and an over-tight
+    # tolerance masks every real root, which sends the argmax (and then the
+    # R ~ 0 fallback) to a placeholder.
+    if work_dtype == torch.float64:
+        root_tol = 1e-10
+    elif work_dtype == torch.float32:
+        root_tol = 1e-4
+    else:  # float16, bfloat16 — unreachable while half is promoted to float32
+        root_tol = 1e-2
+
     # Cubic fallback for a approx 0
     mask_a_zero = torch.abs(a) < zero_tol
     mask_quartic = ~mask_a_zero
@@ -287,14 +306,16 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     if not torch.any(mask_quartic):
         return solutions
 
-    # Normalized coefficients: x^4 + A*x^3 + B*x^2 + C*x + D = 0
-    a_q = a[mask_quartic]
+    # Normalized coefficients: x^4 + A*x^3 + B*x^2 + C*x + D = 0, promoted to the
+    # working dtype so the resolvent, residual and radicand arithmetic below never
+    # overflows half precision.
+    a_q = a[mask_quartic].to(work_dtype)
     inv_a = 1.0 / a_q
 
-    A = b[mask_quartic] * inv_a
-    B = c[mask_quartic] * inv_a
-    C = d[mask_quartic] * inv_a
-    D = e[mask_quartic] * inv_a
+    A = b[mask_quartic].to(work_dtype) * inv_a
+    B = c[mask_quartic].to(work_dtype) * inv_a
+    C = d[mask_quartic].to(work_dtype) * inv_a
+    D = e[mask_quartic].to(work_dtype) * inv_a
 
     # Resolvent cubic coefficients
     rc_a = torch.ones_like(A)
@@ -310,6 +331,21 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # Robust Root Selection: Pick y that maximizes R^2
     A_sq = A * A
     R_sq_candidates = 0.25 * A_sq.unsqueeze(-1) - B.unsqueeze(-1) + y_roots
+
+    # solve_cubic reports its non-real roots as 0 placeholders. A placeholder
+    # y=0 competes in the R^2 argmax below and wins whenever the real resolvent
+    # root is negative (A^2/4 - B + 0 > A^2/4 - B + y), which sends Ferrari's
+    # method down the wrong pair of quadratics. Mask the placeholders by "is a
+    # root of the resolvent" (residual within a relative tolerance) so only real
+    # roots are ranked.
+    y_sq = y_roots * y_roots
+    residual = y_roots * y_sq + rc_b.unsqueeze(-1) * y_sq + rc_c.unsqueeze(-1) * y_roots + rc_d.unsqueeze(-1)
+    residual_scale = torch.maximum(y_sq * torch.abs(y_roots), torch.abs(rc_b.unsqueeze(-1)) * y_sq)
+    residual_scale = torch.maximum(residual_scale, torch.abs(rc_c.unsqueeze(-1)) * torch.abs(y_roots))
+    residual_scale = torch.maximum(residual_scale, torch.abs(rc_d.unsqueeze(-1)))
+    residual_scale = torch.maximum(residual_scale, torch.ones_like(residual_scale))
+    mask_root = torch.abs(residual) <= root_tol * residual_scale
+    R_sq_candidates = torch.where(mask_root, R_sq_candidates, torch.full_like(R_sq_candidates, -torch.inf))
 
     best_idx = torch.argmax(R_sq_candidates, dim=-1, keepdim=True)
     y = torch.gather(y_roots, -1, best_idx).squeeze(-1)
@@ -328,28 +364,22 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         torch.zeros_like(R_sq),
     )
 
-    # Compute E term
-    mask_R_small = torch.abs(R) < zero_tol
-    mask_R_large = ~mask_R_small
-    E = torch.zeros_like(R)
-
-    if torch.any(mask_R_large):
-        numerator = A[mask_R_large] * y[mask_R_large] - 2.0 * C[mask_R_large]
-        denominator = 4.0 * R[mask_R_large]
-        E[mask_R_large] = numerator / denominator
-
-    # Fallback for R approx 0
-    if torch.any(mask_R_small):
-        radicand = 0.25 * y[mask_R_small] * y[mask_R_small] - D[mask_R_small]
-        # Same guard as for R above.
-        # Reachable, and its own gradient boundary: a quartic with no real roots, such as
-        # (x^2+1)(x^2+4) = [1, 0, 5, 0, 4], drives R_sq < 0 -> R = 0 -> radicand == 0 exactly.
-        mask_radicand_positive = radicand > 0
-        E[mask_R_small] = torch.where(
-            mask_radicand_positive,
-            torch.sqrt(torch.where(mask_radicand_positive, radicand, torch.ones_like(radicand))),
-            torch.zeros_like(radicand),
-        )
+    # Compute E from the constant-term constraint E^2 = y^2/4 - D directly, not
+    # the cross-term division (A*y - 2C)/(4R). That division cancels
+    # catastrophically when R is small (a near-biquadratic): A*y and 2C are nearly
+    # equal, so float32 rounds their difference away and then divides it by a tiny
+    # R, returning a value that is not even close to a root. Only the *sign* of E
+    # depends on the cross term (sign(E) = sign(A*y - 2C)), and a sign is robust
+    # to the cancellation. Guard sqrt's gradient at a zero radicand, as for R above.
+    radicand = 0.25 * y * y - D
+    mask_radicand_positive = radicand > 0
+    E = torch.where(
+        mask_radicand_positive,
+        torch.sqrt(torch.where(mask_radicand_positive, radicand, torch.ones_like(radicand))),
+        torch.zeros_like(radicand),
+    )
+    cross = A * y - 2.0 * C
+    E = torch.where(cross >= 0, E, -E)
 
     # Solve two resulting quadratic equations
     # Quad 1: x^2 + (A/2 - R)x + (y/2 - E) = 0
@@ -365,8 +395,8 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     roots1 = solve_quadratic(torch.stack([q1_a, q1_b, q1_c], dim=1))
     roots2 = solve_quadratic(torch.stack([q2_a, q2_b, q2_c], dim=1))
 
-    solutions[mask_quartic, 0:2] = roots1
-    solutions[mask_quartic, 2:4] = roots2
+    solutions[mask_quartic, 0:2] = roots1.to(coeffs.dtype)
+    solutions[mask_quartic, 2:4] = roots2.to(coeffs.dtype)
 
     return solutions
 
