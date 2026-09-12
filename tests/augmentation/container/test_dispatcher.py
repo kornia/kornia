@@ -21,8 +21,48 @@ import torch
 import kornia
 import kornia.augmentation as K
 
+from testing.base import BaseTester
 
-class TestDispatcher:
+
+class TestDispatcher(BaseTester):
+    @pytest.mark.parametrize("num_augmentations,num_inputs", [(2, 1), (2, 3), (2, 0), (0, 1)])
+    def test_many_to_many_input_count(self, num_augmentations, num_inputs, device, dtype):
+        image = torch.arange(48, device=device, dtype=dtype).reshape(2, 1, 4, 6)
+        mask = image.remainder(2)
+        augmentations = [
+            K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+            for _ in range(num_augmentations)
+        ]
+        dispatcher = K.ManyToManyAugmentationDispather(*augmentations)
+
+        message = f"Expected {num_augmentations} input bundles, one per augmentation, but got {num_inputs}\\."
+        with pytest.raises(ValueError, match=message):
+            dispatcher(*[(image, mask)] * num_inputs)
+
+        # Validate before applying any augmentation or updating its replay parameters.
+        assert all(augmentation._params is None for augmentation in augmentations)
+
+    @pytest.mark.parametrize("bundle_type", [tuple, list])
+    def test_many_to_many_corresponding_inputs(self, bundle_type, device, dtype):
+        image_1 = torch.arange(48, device=device, dtype=dtype).reshape(2, 1, 4, 6)
+        image_2 = image_1 + 48
+        mask = image_2.remainder(3)
+        dispatcher = K.ManyToManyAugmentationDispather(
+            K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input"]),
+            K.AugmentationSequential(K.RandomVerticalFlip(p=1.0), data_keys=["input", "mask"]),
+        )
+
+        output = dispatcher(bundle_type([image_1]), bundle_type([image_2, mask]))
+
+        assert len(output) == 2
+        self.assert_close(output[0], image_1.flip(-1), rtol=0, atol=0)
+        self.assert_close(output[1][0], image_2.flip(-2), rtol=0, atol=0)
+        self.assert_close(output[1][1], mask.flip(-2), rtol=0, atol=0)
+
+    @pytest.mark.device_agnostic
+    def test_many_to_many_empty(self):
+        assert K.ManyToManyAugmentationDispather()() == []
+
     def test_many_to_many(self, device, dtype):
         input_1 = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)
         input_2 = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)

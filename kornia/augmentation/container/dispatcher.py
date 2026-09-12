@@ -67,7 +67,14 @@ class ManyToManyAugmentationDispather(nn.Module):
 
         Returns:
             Outputs from each augmentation, preserving input order.
+
+        Raises:
+            ValueError: If the number of input bundles differs from the number of augmentations.
         """
+        if len(input) != len(self.augmentations):
+            raise ValueError(
+                f"Expected {len(self.augmentations)} input bundles, one per augmentation, but got {len(input)}."
+            )
         return [aug(*inp) for inp, aug in zip(input, self.augmentations)]
 
 
