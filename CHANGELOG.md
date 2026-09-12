@@ -379,6 +379,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `RandomRain` now rejects drop heights equal to the image height and absolute drop widths equal to the image
+  width with the documented validation error, instead of allowing boundary-sized drops to reach an internal
+  `IndexError`. (#4451)
 * `depth_to_normals` now raises `ShapeError` when `H < 2` or `W < 2`, since surface normals need two
   tangent directions. Previously, singleton axes could yield zero or non-finite normals, and empty
   spatial dimensions failed inside padding. Inputs with both dimensions at least 2 are unchanged. (#4458)
