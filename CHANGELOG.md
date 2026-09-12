@@ -381,6 +381,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `bbox_to_mask3d` now preserves the input dtype in the returned mask, matching `bbox_to_mask`
+  and the `Boxes3D.to_mask` contract: the earlier implementation downcast every result to
+  `float32`, so a `float64` or half-precision box produced a mask that silently lost precision.
+  The mask keeps the input box's dtype end to end. (#4376)
 * `RandomRain` with `same_on_batch=True` now samples the same number of rain drops for all samples in the batch. (#4453)
 * `RandomRain` now rejects drop heights equal to the image height and absolute drop widths equal to the image
   width with the documented validation error, instead of allowing boundary-sized drops to reach an internal

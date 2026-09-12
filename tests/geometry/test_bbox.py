@@ -747,19 +747,19 @@ class TestBbox3D(BaseTester):
             device=device,
             dtype=dtype,
         )
-        expected = torch.zeros(1, 1, 5, 5, 6, device=device, dtype=torch.float32)
+        expected = torch.zeros(1, 1, 5, 5, 6, device=device, dtype=dtype)
         expected[0, 0, 1:3, 1:3, 1:4] = 1.0
         self.assert_close(bbox_to_mask3d(boxes, (5, 5, 6)), expected, atol=0.0, rtol=0.0)
 
-    def test_wart_bbox_to_mask3d_returns_float32_with_a_channel_axis_4250(self, device, dtype):
-        # Wart pin for kornia#4250: the 3D free function returns float32 (B, 1, D, H, W) whatever the input dtype,
-        # while bbox_to_mask keeps the input dtype and returns (B, H, W). Neither carries a gradient.
+    def test_bbox_to_mask3d_preserves_input_dtype_4250(self, device, dtype):
+        # kornia#4250: bbox_to_mask3d now returns a mask in the input dtype with a (B, 1, D, H, W) channel axis,
+        # matching bbox_to_mask (which keeps the input dtype, no channel axis). Neither carries a gradient.
         cuboid = self._unit_cuboid(device, dtype)
         mask = bbox_to_mask3d(cuboid, (4, 5, 6))
         assert mask.shape == (1, 1, 4, 5, 6)
-        assert mask.dtype == torch.float32
+        assert mask.dtype == dtype
         assert bbox_to_mask3d(cuboid.repeat(2, 1, 1), (4, 5, 6)).shape == (2, 1, 4, 5, 6)
-        assert bbox_to_mask3d(cuboid.to(torch.int64), (4, 5, 6)).dtype == torch.float32
+        assert bbox_to_mask3d(cuboid.to(torch.int64), (4, 5, 6)).dtype == torch.int64
         assert not bbox_to_mask3d(cuboid.clone().requires_grad_(), (4, 5, 6)).requires_grad
         square = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
         assert bbox_to_mask(square, 6, 5).dtype == dtype
@@ -793,7 +793,7 @@ class TestBbox3D(BaseTester):
         boxes = Boxes3D.from_tensor(
             torch.tensor([[0.0, 1.0, 1.0, 4.0, 2.0, 2.0]], device=device, dtype=dtype), mode="xyzxyz_plus"
         )
-        expected = torch.zeros(1, 1, 4, 4, 5, device=device, dtype=torch.float32)
+        expected = torch.zeros(1, 1, 4, 4, 5, device=device, dtype=dtype)
         expected[0, 0, 1:3, 1:3, :] = 1.0
         self.assert_close(bbox_to_mask3d(boxes.data, (4, 4, 5)), expected, atol=0.0, rtol=0.0)
 
