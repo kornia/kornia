@@ -378,7 +378,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
-* `RandomRain` with `same_on_batch=True` now samples the same number of rain drops for all samples in the batch. (#4448)
+* `RandomRain` with `same_on_batch=True` now samples the same number of rain drops for all samples in the batch. (#4453)
 * `pixel2cam` now validates the full `Bx4x4` shape of `intrinsics_inv`, rejecting invalid matrix sizes
   before they cause unrelated transformation errors or return the wrong number of coordinate components. (#4381)
 * `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
