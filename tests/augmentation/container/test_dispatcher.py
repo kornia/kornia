@@ -61,6 +61,7 @@ class TestDispatcher(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_many_to_many_empty(self):
+        # Preserve current behavior; rejecting an empty dispatcher remains under discussion in #4422.
         assert K.ManyToManyAugmentationDispather()() == []
 
     def test_many_to_many(self, device, dtype):
