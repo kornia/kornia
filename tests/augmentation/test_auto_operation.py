@@ -256,3 +256,62 @@ def test_operation_preserves_input_dtype(device, low_dtype):
         assert out.dtype == low_dtype, f"{type(op).__name__}: {out.dtype} != {low_dtype}"
         checked += 1
     assert checked, f"no op could run in {low_dtype} on this build"
+
+
+# AutoAugment sub-policies are ``(name, probability, magnitude_bin)``; the other two are
+# ``(name, min_magnitude, max_magnitude)``. RandAugment and TrivialAugment allow only one
+# operation per sub-policy, so a mixed draw has to come from two of them -- and cannot
+# happen at all under TrivialAugment, which draws exactly one operation.
+_AA_GEOMETRIC, _AA_INTENSITY = ("translate_x", 1.0, 5), ("solarize", 1.0, 5)
+_GEOMETRIC, _INTENSITY = ("translate_x", -0.5, 0.5), ("solarize", 0.0, 1.0)
+
+
+@pytest.mark.parametrize(
+    ("intensity_only", "mixed", "geometry_only"),
+    [
+        (
+            lambda: AutoAugment(policy=[[_AA_INTENSITY]]),
+            lambda: AutoAugment(policy=[[_AA_GEOMETRIC, _AA_INTENSITY]]),
+            lambda: AutoAugment(policy=[[_AA_GEOMETRIC]]),
+        ),
+        (
+            lambda: RandAugment(n=1, m=15, policy=[[_INTENSITY]]),
+            lambda: RandAugment(n=2, m=15, policy=[[_GEOMETRIC], [_INTENSITY]]),
+            lambda: RandAugment(n=1, m=15, policy=[[_GEOMETRIC]]),
+        ),
+        (
+            lambda: TrivialAugment(policy=[[_INTENSITY]]),
+            None,
+            lambda: TrivialAugment(policy=[[_GEOMETRIC]]),
+        ),
+    ],
+    ids=["AutoAugment", "RandAugment", "TrivialAugment"],
+)
+def test_inverse_refuses_a_non_invertible_draw(intensity_only, mixed, geometry_only, device, dtype):
+    # ``inverse`` can only undo geometric operations. The sub-policy is redrawn on every
+    # forward pass, so a draw holding an intensity operation used to come back through
+    # ``inverse`` with that operation still applied -- and on a draw with no geometry at
+    # all, as the input unchanged, with no error and no warning. It refuses now, the way
+    # ``MixAugmentationBaseV2.inverse`` already does.
+    x = torch.rand(2, 3, 8, 6, device=device, dtype=dtype)
+
+    aug = intensity_only()
+    with pytest.raises(RuntimeError, match="is not supported"):
+        aug.inverse(aug(x))
+
+    if mixed is not None:
+        # half-undoing a mixed draw is the same trap, so it is refused too
+        aug = mixed()
+        with pytest.raises(RuntimeError, match="is not supported"):
+            aug.inverse(aug(x))
+
+    # a geometry-only draw still inverts, unchanged
+    aug = geometry_only()
+    aug.inverse(aug(x))
+
+
+def test_inverse_without_a_forward_pass_still_reports_missing_params(device, dtype):
+    # the refusal must not shadow the pre-existing error for an un-run policy
+    x = torch.rand(2, 3, 8, 6, device=device, dtype=dtype)
+    with pytest.raises(ValueError, match="No parameters available"):
+        RandAugment(n=1, m=5).inverse(x)
