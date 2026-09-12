@@ -219,20 +219,24 @@ generate simple uniform parameters with less boilerplate code.
 
 Random Reproducibility
 ^^^^^^^^^^^^^^^^^^^^^^
-The random parameters are sampled on the CPU, independently of the device of the input, and come back in
-``torch.get_default_dtype()`` rather than in the input's dtype. ``set_rng_device_and_dtype`` does **not** change
-that on most classes: it reaches the `p` / `p_batch` gate, so after
-``set_rng_device_and_dtype(torch.device('mps'), torch.float32)``, ``RandomAffine._params['batch_prob']`` is on
-``mps:0`` while ``angle`` and every other sampled key stays on the CPU
+Sampling defaults to the CPU, independently of the input device. ``set_rng_device_and_dtype`` moves the
+`p` / `p_batch` gate and rebuilds the parameter generator's samplers. Returned parameters can still have
+a different device/dtype: for example, ``RandomAffine(45., p=1.)`` configured to sample on MPS consumes the
+MPS generator but returns ``angle`` on CPU. Tensor-valued constructor ranges can determine the returned
+placement instead. Inspecting ``_params`` alone therefore does not identify the sampling backend
 (`#4426 <https://github.com/kornia/kornia/issues/4426>`_).
 
 The :doc:`/get-started/conventions` page is the canonical statement of the randomness rules: what the draw is
-reproducible from, the ``DataLoader``-worker and consumption-order rules, and which classes
-``set_rng_device_and_dtype`` does move.
+reproducible from, the ``DataLoader``-worker and consumption-order rules, sampler precision, and the
+limitations of ``set_rng_device_and_dtype``. Some augmentations also sample during application:
+``RandomPlasma*`` draws fractal noise and ``RandomDissolving`` samples VAE latents, so their ``params=``
+replay needs control of those additional random draws.
 
 Serialization
 ^^^^^^^^^^^^^
-An augmentation carries no learnable parameters, and the sampling-range buffers some classes expose in
-``state_dict()`` are inert (`#4428 <https://github.com/kornia/kornia/issues/4428>`_): re-construct the
-augmentation to change what it samples. What a round trip does and does not carry is stated on the
-:doc:`/get-started/conventions` page.
+Ordinary numeric ranges do not create trainable range parameters, but constructors backed by
+``PlainUniformGenerator``, such as ``RandomRotation``, accept an ``nn.Parameter`` range and register it
+for optimization. With numeric ranges, some classes expose copied sampling-range buffers in
+``state_dict()`` whose loaded values do not update the sampler
+(`#4428 <https://github.com/kornia/kornia/issues/4428>`_). Re-construct those configurations to change
+what they sample. See :doc:`/get-started/conventions` for what a round trip does and does not carry.

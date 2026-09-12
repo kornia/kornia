@@ -72,7 +72,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         random_apply_weights: a list of selection weights for each operation. The length shall be as
             same as the number of operations. By default, operations are sampled uniformly.
         if_unsupported_ops: intended to choose between raising and skipping on an op that cannot be inverted.
-            It is neither validated nor read, and the inverse path skips such an op under every value.
+            It is neither validated nor enforced, and the inverse path skips such an op under every value.
 
     Convention:
         - this container takes image tensors only. It has no ``data_keys``, so masks, boxes and keypoints go

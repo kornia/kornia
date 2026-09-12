@@ -71,6 +71,7 @@ class TestSequential:
         reproducibility_test(inp, aug)
 
 
+@pytest.mark.usefixtures("restore_torch_rng")
 class TestConventionImageSequential(BaseTester):
     """Batch-6 convention pins for `ImageSequential`.
 
@@ -78,30 +79,16 @@ class TestConventionImageSequential(BaseTester):
     `.venv/bin/python` (torch 2.14.0, python 3.11, cpu, float32).
     """
 
-    @pytest.fixture(autouse=True)
-    def _restore_global_rng(self):
-        # These pins seed the global generator (or consume it through a `p=1.0` draw). Restoring its state
-        # afterwards keeps them from shifting the draw of the unseeded tests that run after them: on a bare
-        # `--dtype=all` run of `tests/augmentation`, which float16 parametrizations of
-        # `TestSequential::test_forward` go red depends purely on the RNG position (tracked in #4446).
-        # Only the CPU generator is restored - kornia draws its parameters there - so a pin that allocates
-        # on an accelerator still advances that device's generator.
-        state = torch.random.get_rng_state()
-        try:
-            yield
-        finally:
-            torch.random.set_rng_state(state)
-
     def test_wart_if_unsupported_ops_is_neither_honoured_nor_validated_4423(self, device, dtype):
         # Wart pin (#4423): `ImageSequential.if_unsupported_ops` ("raise" by default) never fires. A plain
         # `nn.Module` in the chain is silently skipped on the inverse path under every value of the flag -
         # including an invalid one, which is accepted without validation - so `inverse` undoes only the
         # invertible ops and returns something that is not the input, with no warning.
-        # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu): for
-        # if_unsupported_ops in ("raise", "skip", "bogus") the inverse equals hflip(output) exactly (only the
-        # flip was undone) and sits 0.6125205755233765 away from the input.
+        # The deterministic checkerboard ensures the omitted blur visibly changes the output: for every
+        # if_unsupported_ops value in ("raise", "skip", "bogus"), inverse equals hflip(output) exactly
+        # (only the flip was undone) and differs from the input.
         # The fix lands in the repair window; do not "correct" this pin here.
-        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        x = torch.arange(6 * 8, device=device, dtype=dtype).reshape(1, 1, 6, 8).remainder(2).expand(2, 3, -1, -1)
         assert K.ImageSequential(K.RandomHorizontalFlip(p=1.0)).if_unsupported_ops == "raise"
         for mode in ("raise", "skip", "bogus"):
             seq = K.ImageSequential(
@@ -115,12 +102,12 @@ class TestConventionImageSequential(BaseTester):
             assert (inverted - x).abs().max().item() > 0.1  # and the round trip is not the input
 
     @pytest.mark.xfail(strict=True, reason="Tracked in #4423")
-    def test_convention_if_unsupported_ops_raise_raises(self, device, dtype):
+    def test_convention_if_unsupported_ops_raise_raises_not_implemented(self, device, dtype):
         # Strict xfail (#4423): the intended reading is the argument's own contract - `if_unsupported_ops`
         # defaults to "raise", so inverting a chain that holds a non-invertible plain `nn.Module` must raise
-        # rather than silently skip it, and an invalid value must be rejected at construction. Both XFAIL
-        # today; they turn XPASS when the repair lands, which is the signal to delete the wart pin above.
-        # Executed 2026-09-11 (torch 2.14.0, cpu): the inverse returns quietly and "bogus" is accepted.
+        # `NotImplementedError` rather than silently skip it. This turns XPASS when the repair lands, which
+        # is the signal to delete the wart pin above. Executed 2026-09-11 (torch 2.14.0, cpu): inverse returns
+        # quietly.
         x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
         seq = K.ImageSequential(
             K.RandomHorizontalFlip(p=1.0),
@@ -128,7 +115,12 @@ class TestConventionImageSequential(BaseTester):
             if_unsupported_ops="raise",
         )
         out = seq(x)
-        with pytest.raises(Exception):
+        with pytest.raises(NotImplementedError):
             seq.inverse(out)
-        with pytest.raises(Exception):
+
+    @pytest.mark.xfail(strict=True, reason="Tracked in #4423")
+    def test_convention_if_unsupported_ops_rejects_invalid_value(self):
+        # Strict xfail (#4423): construction accepts only "raise" and "skip". Executed 2026-09-11 (torch
+        # 2.14.0, cpu): "bogus" is accepted without validation.
+        with pytest.raises(ValueError, match="if_unsupported_ops"):
             K.ImageSequential(K.RandomHorizontalFlip(p=1.0), if_unsupported_ops="bogus")

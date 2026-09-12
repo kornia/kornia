@@ -97,6 +97,7 @@ class TestDispatcher:
             _init_many_to_one(strict)  # passes
 
 
+@pytest.mark.usefixtures("restore_torch_rng")
 class TestConventionDispatcher(BaseTester):
     """Batch-6 convention pins for the two dispatchers.
 
@@ -104,20 +105,6 @@ class TestConventionDispatcher(BaseTester):
     `.venv/bin/python` (torch 2.14.0, python 3.11, cpu, float32); the augmentations are `p=1.0` flips, so
     nothing depends on a seed.
     """
-
-    @pytest.fixture(autouse=True)
-    def _restore_global_rng(self):
-        # These pins seed the global generator (or consume it through a `p=1.0` draw). Restoring its state
-        # afterwards keeps them from shifting the draw of the unseeded tests that run after them: on a bare
-        # `--dtype=all` run of `tests/augmentation`, which float16 parametrizations of
-        # `TestSequential::test_forward` go red depends purely on the RNG position (tracked in #4446).
-        # Only the CPU generator is restored - kornia draws its parameters there - so a pin that allocates
-        # on an accelerator still advances that device's generator.
-        state = torch.random.get_rng_state()
-        try:
-            yield
-        finally:
-            torch.random.set_rng_state(state)
 
     @staticmethod
     def _one_key_sequential():

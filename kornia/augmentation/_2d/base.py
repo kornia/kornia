@@ -73,25 +73,30 @@ class AugmentationBase2D(_AugmentationBase):
           classes only :class:`RandomHorizontalFlip` and :class:`RandomVerticalFlip` name it: the rest raise
           ``TypeError`` on the keyword, except :class:`RandomDissolving`, whose ``**kwargs`` binds it and
           drops it without a signal.
-        - the random parameters are drawn on the CPU whatever the input's device, and come back in
-          ``torch.get_default_dtype()`` rather than in the input's dtype -- set ``torch.set_default_dtype``
-          before the call to draw in another dtype. ``set_rng_device_and_dtype`` moves the ``p`` /
-          ``p_batch`` gate, and on most classes nothing else, so it is not the way to move sampling to an
-          accelerator.
-        - reproducibility goes through torch's global CPU generator: ``torch.manual_seed`` before the call
-          reproduces the draw bitwise. There is no per-instance generator; ``generator=`` raises at
+        - sampling defaults to the CPU independently of the input device. ``set_rng_device_and_dtype``
+          moves the ``p`` / ``p_batch`` gate and rebuilds the parameter generator's samplers. The returned
+          parameter tensors can still be cast to a different device and dtype, determined by constructor
+          range tensors or, for ordinary numeric ranges, the call-time default device and dtype. Their
+          placement does not identify the sampling backend or precision.
+        - reproducibility goes through torch's global generators on the devices used for sampling:
+          ``torch.manual_seed`` before the call reproduces the draw for the same backend and dtype.
+          There is no per-instance generator; ``generator=`` raises at
           construction and is silently dropped by ``forward``, as any other unknown keyword is.
         - :doc:`/get-started/conventions` is the canonical statement of all of this: the seeding,
-          ``DataLoader``-worker and consumption-order rules, the classes ``set_rng_device_and_dtype`` does
-          move and the three it makes raise, and what a serialization round trip carries.
+          ``DataLoader``-worker and consumption-order rules, sampling versus returned parameter placement,
+          the ``set_rng_device_and_dtype`` limitations, and what a serialization round trip carries.
         - the last draw is kept in ``_params``; ``forward(x, params=...)`` replaces that dict wholesale rather
-          than merging into it, stores the caller's dict by reference without adding or mutating a key, and
-          replays the same output bitwise. The three ``RandomPlasma*`` classes are the exception: they draw
-          their fractal noise while applying it, so replaying them needs the same global seed as well
-          (tracked in `#4445 <https://github.com/kornia/kornia/issues/4445>`_).
-        - an augmentation carries no learnable parameters, and the sampling-range buffers some classes expose
-          in ``state_dict()`` are inert, so re-construct the augmentation to change what it samples.
-          ``pickle`` and ``copy.deepcopy`` do carry the last ``_params``.
+          than merging into it and stores the caller's dict by reference. A complete generated dictionary
+          is not extended; if ``batch_prob`` is absent, ``forward`` inserts an all-true gate into that same
+          dictionary. Replaying parameters reproduces the output bitwise except for classes that sample
+          during application: the three ``RandomPlasma*`` classes draw fractal noise (tracked in
+          `#4445 <https://github.com/kornia/kornia/issues/4445>`_), and :class:`RandomDissolving` samples
+          VAE latents. Those draws are not stored in ``_params`` and require controlling the global seed too.
+        - ordinary numeric range configurations carry no trainable range parameters. Constructors backed by
+          ``PlainUniformGenerator``, such as :class:`RandomRotation`, can register an ``nn.Parameter`` range
+          and propagate gradients to it. For numeric ranges, the copied sampling-range buffers some classes
+          expose in ``state_dict()`` are inert; re-construct the augmentation to change what it samples.
+          ``pickle`` and ``copy.deepcopy`` carry the last ``_params`` for the ordinary configurations.
         - an empty batch is an empty output on the classes that accept one, but it is not a package-wide
           guarantee: a minority of the classes raise on ``B = 0``, in several unrelated exception families.
         - rotation-like parameters are in degrees, and a positive angle turns the image counter-clockwise as
@@ -116,8 +121,8 @@ class AugmentationBase2D(_AugmentationBase):
         `#4425 <https://github.com/kornia/kornia/issues/4425>`_.
 
     .. warning::
-        ``set_rng_device_and_dtype`` is documented as the way to change where and in what dtype the
-        parameters are sampled, but on most classes it moves the ``p`` / ``p_batch`` gate and nothing else.
+        ``set_rng_device_and_dtype`` changes sampling, but returned parameter placement can differ from
+        the sampler placement, and some classes fail after moving their samplers to an accelerator.
         Tracked in `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
 
     .. warning::
@@ -126,8 +131,9 @@ class AugmentationBase2D(_AugmentationBase):
         `#4427 <https://github.com/kornia/kornia/issues/4427>`_.
 
     .. warning::
-        The ``_param_generator.*`` range buffers that reach ``state_dict()`` are inert, so a ``state_dict``
-        round trip is a silent no-op. Tracked in `#4428 <https://github.com/kornia/kornia/issues/4428>`_.
+        With numeric constructor ranges, the copied ``_param_generator.*`` range buffers in ``state_dict()``
+        do not update the samplers when loaded. Tracked in
+        `#4428 <https://github.com/kornia/kornia/issues/4428>`_.
 
     .. warning::
         ``B = 0`` raises on a minority of the concrete classes instead of returning an empty batch, which
@@ -160,8 +166,8 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
-    RigidAffineAugmentationBase2D enables routined transformation with given transformation matrices
-    for different data types like masks, boxes, and keypoints.
+    RigidAffineAugmentationBase2D manages transformation matrices. Further subclasses supply the
+    handlers for different data types like masks, boxes, and keypoints.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -174,8 +180,10 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
     Convention:
         - a subclass implements :meth:`compute_transformation`, which returns the ``(B, 3, 3)`` matrix of the
-          sampled transform; the base raises ``NotImplementedError`` on its own. That matrix is what drives the
-          mask, box and keypoint paths, so a rigid subclass gets them for free.
+          sampled transform, and ``apply_transform`` for images. This base's ``apply_transform_mask``,
+          ``apply_transform_box`` and ``apply_transform_keypoint`` still raise ``NotImplementedError``:
+          a custom subclass must implement those handlers, or inherit the matrix-based handlers from
+          :class:`~kornia.augmentation.GeometricAugmentationBase2D`.
         - the matrix of the last call is readable as ``transform_matrix`` and is built lazily: it is
           computed on first access for the subclasses whose ``apply_transform`` does not read it. ``pickle``
           and ``copy.deepcopy`` carry it along with ``_params``.

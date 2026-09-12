@@ -118,9 +118,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           :func:`~kornia.geometry.transform.hflip`: ``x' = W - 1 - x`` and ``y' = H - 1 - y``, for the image,
           the mask, the keypoints and all three box spellings alike, and ``bbox_xywh`` keeps its ``w`` and
           ``h``. Labels are passed through untouched by a geometric step.
-        - masks are resampled with nearest interpolation and keep their value set and their dtype, ``bool``
-          included. A ``mask`` argument may also be a list of ``(B, C, H, W)`` tensors whose channel counts
-          differ; each of them still carries the whole batch.
+        - masks are resampled with nearest interpolation and keep their dtype, ``bool`` included, without
+          introducing intermediate labels. Sampling outside the image can also introduce the warp's padding
+          or fill value. A ``mask`` argument may also be a list of ``(B, C, H, W)`` tensors whose channel
+          counts differ; each of them still carries the whole batch.
         - one call draws once and shares that draw across every registered key -- for the rigid (matrix)
           augmentations. A non-rigid child has no transform matrix, so the coordinate keys drop out of that
           draw: :class:`~kornia.augmentation.RandomElasticTransform` warps the image and warps a ``mask``
@@ -129,18 +130,23 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           :class:`~kornia.augmentation.RandomFisheye` leave keypoints and boxes unchanged too and raise
           ``NotImplementedError`` on a ``mask`` key (see the warning below).
         - ``.inverse()`` undoes the geometric part of the chain and leaves an intensity step applied.
-          Keypoints and boxes come back at the coordinates they started from; a resampled image or mask only
-          comes back up to the interpolation error of the two warps. A 3D child runs forward but has no
-          inverse at all: ``.inverse()`` raises ``NotImplementedError``.
+          Keypoints come back at the coordinates they started from, up to numerical precision. Tensor box
+          outputs take axis-aligned enclosures, so a non-axis-aligned rotation can lose the corners needed
+          to recover the original boxes. Retaining a ``Boxes`` object preserves its transformed corners.
+          Inverse resampling cannot recover image or mask information lost through cropping, padding or
+          interpolation. A 3D child runs forward but has no inverse at all: ``.inverse()`` raises
+          ``NotImplementedError``.
         - ``same_on_batch`` and ``keepdim`` are three-state here: ``None``, the default, keeps whatever each
           child was built with, while ``True`` and ``False`` overwrite the child's own setting in both
           directions.
         - ``random_apply`` selects a sublist of the children per call; ``transformation_matrix_mode`` decides
           what ``.transform_matrix`` does with a non-rigid child. ``silent``, the default (and its
-          undocumented alias ``silence``), skips that child and keeps accumulating the rigid ones, so a chain
-          with no rigid child at all leaves ``.transform_matrix`` at ``None``; ``rigid`` raises
-          ``RuntimeError`` on the non-rigid child; ``skip`` leaves ``.transform_matrix`` at ``None`` whatever
-          the chain.
+          undocumented alias ``silence``), skips a direct non-rigid child and keeps accumulating the rigid
+          ones, so a chain with no rigid child at all leaves ``.transform_matrix`` at ``None``. A nested
+          sequence with no matrix is an order-sensitive exception: a rigid child followed by that nested
+          sequence raises ``TypeError`` during accumulation, while the reverse order returns the rigid
+          matrix. ``rigid`` raises ``RuntimeError`` on the non-rigid child; ``skip`` leaves
+          ``.transform_matrix`` at ``None`` whatever the chain.
 
     .. warning::
         The ``resample`` half of an ``extra_args[DataKey.MASK]`` override is discarded on the 2D geometric

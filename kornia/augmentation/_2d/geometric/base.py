@@ -42,11 +42,16 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
     Convention:
         - this is the only 2D base that adds an ``inverse``. It inverts the sampled matrix, so it restores
-          keypoints and boxes to the coordinates they came from, while a resampled image or mask only comes
-          back up to the interpolation error of the two warps.
-        - masks are resampled with nearest interpolation and keep their value set and their dtype, ``bool``
-          included, whatever ``resample`` :class:`~kornia.augmentation.container.AugmentationSequential` was given in
-          ``extra_args``; the ``align_corners`` half of that override does reach the sampler.
+          keypoints to the coordinates they came from, up to numerical precision. In a container, converting
+          transformed boxes to tensor outputs takes axis-aligned enclosures: a non-axis-aligned rotation
+          can lose the corners needed to recover the original boxes. Retaining a ``Boxes`` object preserves
+          its transformed corners. Inverse resampling cannot recover image or mask information lost through
+          cropping, padding or interpolation.
+        - masks are resampled with nearest interpolation and keep their dtype, ``bool`` included, without
+          introducing intermediate labels; sampling outside the image can also introduce the warp's padding
+          or fill value. This holds whatever ``resample``
+          :class:`~kornia.augmentation.container.AugmentationSequential` was given in ``extra_args``; the
+          ``align_corners`` half of that override does reach the sampler.
         - a subclass supplies its own :meth:`inverse_transform` -- the base raises ``NotImplementedError`` --
           while :meth:`compute_inverse_transformation` defaults to inverting the sampled matrix.
 

@@ -55,10 +55,11 @@ class _BasicAugmentationBase(nn.Module):
 
     See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
 
-    ``set_rng_device_and_dtype`` moves the ``p`` / ``p_batch`` gate, and on most classes nothing else: the
-    sampled augmentation parameters stay on the CPU in ``torch.get_default_dtype()``, so it is not the way to
-    move sampling to an accelerator. Tracked in `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the
-    :doc:`/get-started/conventions` page states which classes deviate and what the draw is reproducible from.
+    ``set_rng_device_and_dtype`` moves the ``p`` / ``p_batch`` gate and rebuilds the parameter generator's
+    samplers. Returned parameters may be cast back to the constructor ranges' device/dtype, or to the
+    call-time default device/dtype for numeric ranges. See :doc:`/get-started/conventions` for the distinction
+    between sampling and returned placement, reproducibility, and the limitations tracked in
+    `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
 
     For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
     implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
@@ -176,12 +177,11 @@ class _BasicAugmentationBase(nn.Module):
             The generated random numbers are not reproducible across different devices and dtypes.
 
         .. warning::
-            On most classes this reaches the ``p`` / ``p_batch`` gate only: after the call
-            ``params['batch_prob']`` follows the given device and dtype, while the sampled augmentation
-            parameters stay on CPU in ``torch.get_default_dtype()``. Tracked in
+            This updates both the gate and the parameter generator's samplers, but returned parameters
+            can be cast to a different device/dtype; inspecting ``_params`` alone does not reveal where
+            sampling occurred. Some classes fail after moving their samplers to an accelerator. Tracked in
             `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the
-            :doc:`/get-started/conventions` page names the classes that deviate and the three on which this
-            call makes the next ``forward`` raise.
+            :doc:`/get-started/conventions` page describes placement and the affected classes.
 
         """
         self.device = device

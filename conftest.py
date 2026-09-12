@@ -115,6 +115,23 @@ def device(device_name) -> torch.device:
 
 
 @pytest.fixture()
+def restore_torch_rng():
+    """Keep explicitly opted-in tests from shifting later CPU/CUDA/MPS random draws (#4446)."""
+    cpu_state = torch.random.get_rng_state()
+    # Initialize available generators before snapshotting: a test can make the first accelerator draw.
+    cuda_states = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    mps_state = torch.mps.get_rng_state() if torch.backends.mps.is_available() else None
+    try:
+        yield
+    finally:
+        torch.random.set_rng_state(cpu_state)
+        if cuda_states is not None:
+            torch.cuda.set_rng_state_all(cuda_states)
+        if mps_state is not None:
+            torch.mps.set_rng_state(mps_state)
+
+
+@pytest.fixture()
 def dtype(dtype_name) -> torch.dtype:
     """Return dtype for testing."""
     return TEST_DTYPES[dtype_name]

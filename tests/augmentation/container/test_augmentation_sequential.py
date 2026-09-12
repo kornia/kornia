@@ -578,6 +578,7 @@ class TestAugmentationSequential:
         assert outputs[3].dtype == dtype, "Output keypoints dtype should match the input dtype"
 
 
+@pytest.mark.usefixtures("restore_torch_rng")
 class TestConventionAugmentationSequential(BaseTester):
     """Pins for the `AugmentationSequential` contract (batch-6 conventions, anchor 2).
 
@@ -586,20 +587,6 @@ class TestConventionAugmentationSequential(BaseTester):
     (H != W, a hot pixel off both centre lines, a distinct value per box corner) and every draw is made
     deterministic with `p=1.0` plus a point range, or seeded in the test.
     """
-
-    @pytest.fixture(autouse=True)
-    def _restore_global_rng(self):
-        # These pins seed the global generator (or consume it through a `p=1.0` draw). Restoring its state
-        # afterwards keeps them from shifting the draw of the unseeded tests that run after them: on a bare
-        # `--dtype=all` run of `tests/augmentation`, which float16 parametrizations of
-        # `TestSequential::test_forward` go red depends purely on the RNG position (tracked in #4446).
-        # Only the CPU generator is restored - kornia draws its parameters there - so a pin that allocates
-        # on an accelerator still advances that device's generator.
-        state = torch.random.get_rng_state()
-        try:
-            yield
-        finally:
-            torch.random.set_rng_state(state)
 
     def test_convention_flip_is_integer_centre_inclusive_for_every_data_key(self, device, dtype):
         # Convention pin: a horizontal flip maps column x to W - 1 - x, and a vertical flip row y to H - 1 - y,
@@ -665,21 +652,22 @@ class TestConventionAugmentationSequential(BaseTester):
             out = aug(torch.rand(2, 1, 3, 4, device=device, dtype=dtype), empty)
             assert out[1].shape == shape
 
-    def test_convention_masks_keep_their_value_set_through_a_rotation(self, device, dtype):
-        # Convention pin: masks are resampled with nearest interpolation, so a {0, 1} mask still holds exactly
-        # {0, 1} after a 45 degree affine - and the mask dtype is preserved, `bool` included.
+    def test_convention_masks_keep_labels_and_add_padding_fill_through_a_rotation(self, device, dtype):
+        # Convention pin: masks are resampled with nearest interpolation, so a {2, 3} mask still holds those
+        # labels after a 45 degree affine without intermediate values. The zero padding fill is also present,
+        # and the mask dtype is preserved, `bool` included.
         # The claim is checked one parameter away from the pin's fixture: B = 2 and B = 1 both hold.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu): value set
-        # [0.0, 1.0], dtype torch.float32 preserved, bool mask stays torch.bool, max|mask - input mask| 1.0
-        # (the rotation really moved it).
+        # [0.0, 2.0, 3.0], dtype torch.float32 preserved, bool mask stays torch.bool, max|mask - input mask|
+        # 2.0 (the rotation really moved it).
         for batch in (2, 1):
             aug = K.AugmentationSequential(K.RandomAffine(degrees=(45.0, 45.0), p=1.0), data_keys=["input", "mask"])
-            mask = torch.zeros(batch, 1, 6, 8, device=device, dtype=dtype)
-            mask[:, :, 1:4, 2:6] = 1.0
+            mask = torch.full((batch, 1, 6, 8), 2.0, device=device, dtype=dtype)
+            mask[:, :, 1:4, 2:6] = 3.0
             out_mask = aug(torch.rand(batch, 3, 6, 8, device=device, dtype=dtype), mask)[1]
-            assert sorted(out_mask.unique().tolist()) == [0.0, 1.0]
+            assert sorted(out_mask.unique().tolist()) == [0.0, 2.0, 3.0]
             assert out_mask.dtype == dtype
-            assert (out_mask - mask).abs().max().item() == 1.0  # the rotation moved the mask
+            assert (out_mask - mask).abs().max().item() == 2.0  # the rotation moved the mask
         aug = K.AugmentationSequential(K.RandomAffine(degrees=(45.0, 45.0), p=1.0), data_keys=["input", "mask"])
         bool_mask = torch.zeros(2, 1, 6, 8, device=device, dtype=torch.bool)
         bool_mask[:, :, 1:4, 2:6] = True
@@ -706,10 +694,10 @@ class TestConventionAugmentationSequential(BaseTester):
         exclusive.transform_boxes_(matrix)
         assert not torch.allclose(out_boxes, exclusive.to_tensor(mode="xyxy"))
 
-    def test_convention_inverse_restores_keypoints_the_forward_moved(self, device, dtype):
-        # Convention pin: `.inverse()` undoes the geometric part of the chain on every data key. Pinned on
-        # keypoints, which are exact - resampled pixels are not - and the forward is asserted to have moved
-        # them first, so the round trip cannot pass on an identity.
+    def test_convention_inverse_restores_keypoints_and_loses_rotated_box_corners(self, device, dtype):
+        # Convention pin: `.inverse()` restores keypoints moved by the geometric chain, while non-axis-aligned
+        # rotations cannot restore tensor boxes. Forward turns both `bbox_xyxy` and vertex `bbox` formats into
+        # axis-aligned enclosures, losing the original corners before inverse is called.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu): forward
         # max|move| 1.6213202476501465, inverse max|error| 7.152557373046875e-07.
         torch.manual_seed(0)
@@ -720,6 +708,41 @@ class TestConventionAugmentationSequential(BaseTester):
         assert (out_kpts - kpts).abs().max().item() > 1.0  # the forward really moved them
         restored = aug.inverse(out_img, out_kpts)[1]
         self.assert_close(restored, kpts)
+        boxes_by_key = {
+            "bbox_xyxy": torch.tensor([[[1.0, 2.0, 4.0, 5.0]]], device=device, dtype=dtype),
+            "bbox": torch.tensor([[[[1.0, 2.0], [4.0, 2.0], [4.0, 5.0], [1.0, 5.0]]]], device=device, dtype=dtype),
+        }
+        for key, boxes in boxes_by_key.items():
+            box_aug = K.AugmentationSequential(K.RandomAffine(degrees=(45.0, 45.0), p=1.0), data_keys=["input", key])
+            out_img, out_boxes = box_aug(torch.rand(1, 3, 8, 8, device=device, dtype=dtype), boxes)
+            restored_boxes = box_aug.inverse(out_img, out_boxes)[1]
+            assert not torch.allclose(restored_boxes, boxes)
+
+    def test_wart_nested_non_rigid_silent_matrix_accumulation_is_order_sensitive(self, device, dtype):
+        # Wart pin: `transformation_matrix_mode="silent"` only skips a direct non-rigid child. A nested
+        # sequence containing `RandomElasticTransform` supplies `None` as its matrix: after a rigid child,
+        # accessing the outer matrix raises TypeError, while putting the same nested sequence first returns
+        # the rigid child's matrix. The image forward succeeds in both orders.
+        # This records a current limitation; remove the pin when nested None-matrix handling is repaired.
+        image = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        nested_non_rigid = lambda: K.AugmentationSequential(  # noqa: E731
+            K.RandomElasticTransform(p=1.0), data_keys=["input"]
+        )
+        rigid_then_nested = K.AugmentationSequential(
+            K.RandomHorizontalFlip(p=1.0), nested_non_rigid(), data_keys=["input"]
+        )
+        assert rigid_then_nested(image).shape == image.shape
+        with pytest.raises(TypeError, match=r"unsupported operand type\(s\) for @: 'NoneType' and 'Tensor'"):
+            _ = rigid_then_nested.transform_matrix
+
+        nested_then_rigid = K.AugmentationSequential(
+            nested_non_rigid(), K.RandomHorizontalFlip(p=1.0), data_keys=["input"]
+        )
+        assert nested_then_rigid(image).shape == image.shape
+        self.assert_close(
+            nested_then_rigid.transform_matrix,
+            torch.tensor([[[-1.0, 0.0, 7.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype),
+        )
 
     def test_convention_same_on_batch_none_does_not_override_a_child(self, device, dtype):
         # Convention pin: `AugmentationSequential(same_on_batch=None)` - the default - keeps whatever each

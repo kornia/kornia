@@ -15,7 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `params=` replay them, what a module serializes, and what `AugmentationSequential` does with each data key
   (layouts, the inclusive `xyxy_plus` boxes and integer-centre flips, nearest masks, `extra_args`, `inverse`) —
   as Convention blocks on the base classes and containers, with the canonical randomness and serialization
-  statements on the Conventions & Pitfalls page and executable pins; the container, dispatcher, `p_batch`,
+  statements on the Conventions & Pitfalls page and executable pins. The contracts distinguish sampler and
+  returned-parameter placement, trainable range parameters, application-time replay exceptions, padding labels,
+  and information lost by rotated tensor boxes; the container, dispatcher, `p_batch`,
   `set_rng_device_and_dtype`, `state_dict` and `B = 0` defects are tracked in dedicated issues. (#4452)
 * New "Camera and world conventions across the ecosystem" page cataloguing the pixel-centre, axis
   and extrinsics conventions of OpenCV, COLMAP, OpenGL, ARKit, ARCore, PyTorch3D and Direct3D with the
