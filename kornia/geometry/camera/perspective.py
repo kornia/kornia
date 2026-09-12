@@ -36,11 +36,9 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
           function takes no extrinsics, so it does not move between frames.
         - the input must be at least rank 2: an unbatched :math:`(3,)` point raises :class:`ValueError`
           although the shape below reads :math:`(*, 3)`.
-        - a point with ``z = 0`` does not raise: the perspective divide is skipped and ``K`` is applied to the
-          undivided point, giving ``fx x + cx``. A point behind the camera is projected just as silently.
-
-    .. warning::
-        The ``z = 0`` answer is tracked in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        - perspective division is guarded by the shared homogeneous-coordinate policy: ``abs(z) > 1e-8`` divides
+          by exactly ``z`` and ``abs(z) <= 1e-8`` leaves ``(x, y)`` unchanged before ``K`` is applied. A point
+          behind the camera is projected just as silently.
 
     Args:
         point_3d: tensor containing the 3d points to be projected

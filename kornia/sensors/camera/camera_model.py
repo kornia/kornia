@@ -139,12 +139,9 @@ class CameraModelBase:
         - with shared intrinsics ``params.shape == (4,)``, or one point per camera with ``params`` of shape
           ``(B, 4)`` and points of shape ``(B, 3)`` / ``(B, 2)``, the Pinhole path uses the same mathematical
           camera mapping as :doc:`kornia.geometry.camera </geometry.camera>` with ``K`` built from the same
-          ``[fx, fy, cx, cy]``.
-          However, :meth:`project` divides directly by ``z``, whereas
-          :func:`~kornia.geometry.camera.perspective.project_points` multiplies by its reciprocal and skips
-          the divide when ``abs(z) <= 1e-8`` (compared in the working dtype). Results can differ by rounding
-          away from that threshold and differ substantially at or below it: ``[1, 2, 0]`` yields infinities
-          here but finite pixels there. See `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+          ``[fx, fy, cx, cy]``. :meth:`project` and
+          :func:`~kornia.geometry.camera.perspective.project_points` both divide only when ``abs(z) > 1e-8``
+          (compared in the working dtype) and otherwise pass ``(x, y)`` through before applying the intrinsics.
           :meth:`unproject` corresponds to :func:`~kornia.geometry.camera.perspective.unproject_points`
           with ``normalize=False`` and depth shaped as ``(*, 1)`` there instead of ``(*,)`` here.
         - for point clouds shaped ``(B, N, 3)`` / ``(B, N, 2)``, batched ``(B, 4)`` intrinsics broadcast

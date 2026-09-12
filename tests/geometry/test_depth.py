@@ -1040,27 +1040,9 @@ class TestDepthWarperConventions(BaseTester):
         self.assert_close(swapped, torch.tensor([0.0, 0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype))
         assert (by_class - swapped).abs().max().item() > 0.5
 
-    def test_wart_warp_frame_depth_and_depth_warper_split_at_zero_transformed_depth_4267(self, device, dtype):
-        # Wart pin for kornia#4267: the two warps guard the z = 0 singularity differently. With K = I, unit
-        # depth and a transform that moves every point by (+1, 0, -1), every destination pixel lands at
-        # camera-frame z = 0 in the other view. warp_frame_depth projects through project_points, which SKIPS
-        # the homogeneous divide when abs(z) <= 1e-8, so it samples image_src at the undivided (u + 1, v) and
-        # returns the image shifted by one column; DepthWarper projects through cam2pixel, which divides by
-        # z + 1e-12, so the same pixel is sent to a coordinate of order 1e12 (inf in float16, where 1e-12
-        # rounds to 0) and nothing of the image comes back. One half unit closer (z = 0.5) the two agree, which
-        # is the claim the pin above states for float32 and float64.
-        # Snippet used to generate expected: warp_frame_depth(arange(1, 7).view(1, 1, 2, 3), ones, T, eye(3))
-        # and the DepthWarper pair built from the same T, executed 2026-09-08 at commit 26ddb21e
-        # (torch 2.14.0) -> warp_frame_depth [[2, 3, 0], [5, 6, 0]] in every cell (cpu float32, float64,
-        # float16, bfloat16; mps float32, float16); DepthWarper all zeros on cpu float32, float64 and bfloat16,
-        # nan on cpu float16, and backend-dependent values on mps (zeros in row 0, 1e24 in row 1 for float32) --
-        # so the pin asserts warp_frame_depth's value and the 1e12 grid coordinate and never samples through that
-        # grid: torch 2.5.1's aarch64 CPU grid_sample segfaults once one normalized coordinate exceeds 2**31 while
-        # the other is in range (x = 2147483648.0, y = -1.0 crashes; x = 2147483000.0 does not), which is what
-        # DepthWarper's grid holds here and what killed the macOS torch 2.5.1 CI legs on 2026-09-08; the
-        # vectorized-kernel crash is the open pytorch/pytorch#24823 (expanded from #19826).
-        # The z = 0.5 arm: max gap 0.0 (float32) and 2.4e-11 (float64) on cpu.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4267 settles one z = 0 policy.
+    def test_warp_frame_depth_and_depth_warper_agree_at_zero_transformed_depth_4267(self, device, dtype):
+        # Regression for #4267: both projection routes now mask z = 0 instead of sending DepthWarper to an
+        # order-1e12 grid coordinate. Check the grid is safe before invoking grid_sample, then pin the common warp.
         image = torch.arange(1.0, 7.0, device=device, dtype=dtype).view(1, 1, 2, 3)
         depth = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype)[None]
@@ -1077,10 +1059,13 @@ class TestDepthWarperConventions(BaseTester):
         to_zero_depth[0, 0, 3] = 1.0
         to_zero_depth[0, 2, 3] = -1.0
         by_function = warp_frame_depth(image, depth, to_zero_depth, camera_matrix)
-        self.assert_close(by_function, torch.tensor([[[[2.0, 3.0, 0.0], [5.0, 6.0, 0.0]]]], device=device, dtype=dtype))
+        expected = torch.tensor([[[[2.0, 3.0, 0.0], [5.0, 6.0, 0.0]]]], device=device, dtype=dtype)
+        self.assert_close(by_function, expected)
         singular = warper_for(to_zero_depth)
-        # compared in float32: a float16 1e9 is itself inf, and inf > inf is False
-        assert (singular.warp_grid(depth)[..., 0].abs().to(torch.float32) > 1.0e9).all()
+        singular_grid = singular.warp_grid(depth)
+        assert torch.isfinite(singular_grid).all()
+        assert singular_grid.abs().to(torch.float32).max().item() < 10.0
+        self.assert_close(singular(depth, image), expected)
         if dtype in (torch.float32, torch.float64):
             half_way = to_zero_depth.clone()
             half_way[0, 2, 3] = -0.5
