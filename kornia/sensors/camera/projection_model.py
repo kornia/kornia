@@ -19,6 +19,10 @@ from __future__ import annotations
 
 import torch
 
+from kornia.geometry.camera.projection_orthographic import (
+    project_points_orthographic,
+    unproject_points_orthographic,
+)
 from kornia.geometry.vector import Vector2, Vector3
 
 
@@ -100,11 +104,6 @@ class OrthographicProjection:
     This model assumes parallel projection where the $z$ coordinate is
     discarded and no perspective scaling is applied.
 
-    .. warning::
-        Both methods are placeholders: :meth:`project` and :meth:`unproject` raise ``NotImplementedError``
-        with an empty message, which is what makes :class:`~kornia.sensors.camera.Orthographic` unusable in
-        either direction. Tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_.
-        :func:`~kornia.geometry.camera.project_points_orthographic` is the implemented equivalent.
     """
 
     def project(self, points: Vector3) -> Vector2:
@@ -123,11 +122,8 @@ class OrthographicProjection:
             Two-dimensional point container containing the projected ``x`` and
             ``y`` coordinates.
 
-        Raises:
-            NotImplementedError: This projection model is declared as an
-                interface placeholder and is not implemented yet.
         """
-        raise NotImplementedError
+        return Vector2(project_points_orthographic(points.data))
 
     def unproject(self, points: Vector2, depth: torch.Tensor) -> Vector3:
         """Lift orthographic image-plane points back into 3D using depth.
@@ -142,8 +138,5 @@ class OrthographicProjection:
             Three-dimensional point container with ``x`` and ``y`` copied from
             ``points`` and ``z`` supplied by ``depth``.
 
-        Raises:
-            NotImplementedError: This projection model is declared as an
-                interface placeholder and is not implemented yet.
         """
-        raise NotImplementedError
+        return Vector3(unproject_points_orthographic(points.data, depth))
