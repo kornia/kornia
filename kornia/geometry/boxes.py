@@ -483,7 +483,8 @@ class Boxes:
 
         Args:
             padding_size: Per-batch padding in ``(left, right, top, bottom)``
-                order, shaped :math:`(B, 4)`.
+                order, shaped :math:`(B, 4)`. A single row broadcasts across the
+                batch.
 
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
@@ -507,7 +508,8 @@ class Boxes:
 
         Args:
             padding_size: Per-batch padding in ``(left, right, top, bottom)``
-                order, shaped :math:`(B, 4)`.
+                order, shaped :math:`(B, 4)`. A single row broadcasts across the
+                batch.
 
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
@@ -528,7 +530,8 @@ class Boxes:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes`.
 
         Convention:
-            Bounds must be tensors with one ``(x, y)`` pair per batch element.
+            Bounds must be tensors with one ``(x, y)`` pair per batch element,
+            or a single row that broadcasts across the batch.
             Every vertex is clamped independently, so a box wholly outside the
             bounds collapses onto the nearest boundary instead of being removed.
             Both the batched :math:`(B, N, 4, 2)` and the unbatched
@@ -538,13 +541,15 @@ class Boxes:
         Coordinates below ``topleft`` are raised to the lower bound and
         coordinates above ``botright`` are lowered to the upper bound. The
         implementation accepts only tensor bounds with one ``(x, y)`` pair per
-        batch element.
+        batch element, or a single row that broadcasts across the batch.
 
         Args:
             topleft: Tensor of shape :math:`(B, 2)` containing the minimum
-                ``x`` and ``y`` coordinate allowed for each batch item.
+                ``x`` and ``y`` coordinate allowed for each batch item. A single
+                row broadcasts across the batch.
             botright: Tensor of shape :math:`(B, 2)` containing the maximum
-                ``x`` and ``y`` coordinate allowed for each batch item.
+                ``x`` and ``y`` coordinate allowed for each batch item. A single
+                row broadcasts across the batch.
             inplace: If ``True``, clamp this object in place. Otherwise, return
                 a new :class:`Boxes` object with clamped data.
 

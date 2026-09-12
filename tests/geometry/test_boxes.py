@@ -854,6 +854,30 @@ class TestBoxes2D(BaseTester):
             assert actual is unbatched
         self.assert_close(actual.data, expected.data.squeeze(0), atol=0.0, rtol=0.0)
 
+    @pytest.mark.parametrize("operation, inplace", [("pad", None), ("unpad", None), ("clamp", False), ("clamp", True)])
+    def test_single_row_broadcasts_across_batch(self, operation, inplace, device, dtype):
+        data = _unbatched_geometry_data(device, dtype)[:2]
+        batched = Boxes(torch.stack([data, data]))
+        if operation == "clamp":
+            limits_single = (
+                torch.tensor([[2.0, 3.0]], device=device, dtype=dtype),
+                torch.tensor([[6.0, 7.0]], device=device, dtype=dtype),
+            )
+            limits_full = (
+                torch.tensor([[2.0, 3.0], [2.0, 3.0]], device=device, dtype=dtype),
+                torch.tensor([[6.0, 7.0], [6.0, 7.0]], device=device, dtype=dtype),
+            )
+            expected = Boxes(batched.data.clone()).clamp(*limits_full, inplace=inplace)
+            actual = batched.clamp(*limits_single, inplace=inplace)
+        else:
+            padding_single = torch.tensor([[10.0, 99.0, 20.0, 88.0]], device=device, dtype=dtype)
+            padding_full = torch.tensor(
+                [[10.0, 99.0, 20.0, 88.0], [10.0, 99.0, 20.0, 88.0]], device=device, dtype=dtype
+            )
+            expected = getattr(Boxes(batched.data.clone()), operation)(padding_full)
+            actual = getattr(batched, operation)(padding_single)
+        self.assert_close(actual.data, expected.data, atol=0.0, rtol=0.0)
+
     @pytest.mark.parametrize("batched", [False, True])
     @pytest.mark.parametrize("inplace", [False, True])
     def test_wart_transform_boxes_empty_copy_aliases_input_4020(self, batched, inplace, device, dtype):
