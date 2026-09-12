@@ -379,6 +379,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Made uncompiled `RandomGaussianIllumination` instances serializable with `pickle` and `torch.save`,
+  preserving parameter replay and the `compile()` execution path after restoring the module. (PR pending)
 * `RandAugment`'s `m` guard is exclusive at both ends, but its docstring and its error message
   both named the closed interval `[0, 30]`, so a user who asked for the maximum strength the
   message advertised got an exception saying `30` was in range. Both now read `(0, 30)`; the

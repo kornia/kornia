@@ -15,7 +15,10 @@
 # limitations under the License.
 #
 
+import copy
+import io
 import os
+import pickle
 import sys
 from typing import Any, Dict, Optional, Tuple, Type
 from unittest.mock import patch
@@ -4255,6 +4258,92 @@ class TestRandomSaltAndPepperNoise(BaseTester):
 
 
 class TestRandomGaussianIllumination(BaseTester):
+    def _roundtrip(self, aug, serializer):
+        if serializer == "pickle":
+            return pickle.loads(pickle.dumps(aug))  # noqa: S301
+        if serializer == "torch":
+            buffer = io.BytesIO()
+            torch.save(aug, buffer)
+            buffer.seek(0)
+            return torch.load(buffer, weights_only=False)
+        return copy.deepcopy(aug)
+
+    @pytest.mark.parametrize("serializer", ["pickle", "torch", "deepcopy"])
+    @pytest.mark.parametrize("after_forward", [False, True])
+    @pytest.mark.parametrize("shape,keepdim", [((2, 3, 6, 8), False), ((1, 6, 8), True)])
+    def test_serialization_roundtrip(self, device, dtype, serializer, after_forward, shape, keepdim):
+        input = torch.full(shape, 0.5, device=device, dtype=dtype)
+        original = input.clone()
+        aug = RandomGaussianIllumination(gain=0.25, sign=1.0, p=1.0, same_on_batch=True, keepdim=keepdim)
+        if after_forward:
+            aug(input)
+
+        restored = self._roundtrip(aug, serializer)
+        assert isinstance(restored, RandomGaussianIllumination)
+        assert repr(restored) == repr(aug)
+        assert restored.keepdim == aug.keepdim
+        assert restored._params.keys() == aug._params.keys()
+        for key in aug._params:
+            self.assert_close(restored._params[key], aug._params[key])
+
+        # Replay the restored state, rather than passing the original module's saved draw.
+        batch_shape = torch.Size(shape if len(shape) == 4 else (1, *shape))
+        params = copy.deepcopy(restored._params) if after_forward else aug.forward_parameters(batch_shape)
+        expected = aug(input, params=params)
+        actual = restored(input, params=params)
+        self.assert_close(actual, expected)
+        assert actual.shape == input.shape
+        assert actual.device == device
+        assert actual.dtype == dtype
+        assert not torch.equal(actual, input)
+        self.assert_close(input, original, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_input_preserved(self, device, dtype, batch_prob):
+        input = torch.tensor([0.1, 0.4, 0.7, 0.9], device=device, dtype=dtype).reshape(1, 1, 2, 2).repeat(2, 1, 1, 1)
+        original = input.clone()
+        aug = RandomGaussianIllumination(p=0.5)
+        params = aug.forward_parameters(input.shape)
+        # Deliberately keep generator output on CPU, including for accelerator inputs.
+        gradient = torch.tensor([-0.2, 0.2, 0.5, -0.3]).reshape(1, 1, 2, 2).repeat(2, 1, 1, 1)
+        params["gradient"] = gradient
+        params["batch_prob"] = torch.tensor(batch_prob)
+        expected = torch.where(
+            params["batch_prob"].to(device).view(2, 1, 1, 1),
+            (original + gradient.to(device=device, dtype=dtype)).clamp(0, 1),
+            original,
+        )
+        actual = aug(input, params=params)
+        self.assert_close(actual, expected)
+        self.assert_close(input, original, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("serializer", ["pickle", "torch"])
+    def test_compile_after_serialization(self, device, dtype, serializer, torch_optimizer):
+        compiled_graphs = []
+        executions = []
+
+        def backend(graph_module, _example_inputs):
+            compiled_graphs.append(graph_module)
+
+            def execute(*args):
+                executions.append(True)
+                return graph_module.forward(*args)
+
+            return execute
+
+        input = torch.full((2, 3, 6, 8), 0.5, device=device, dtype=dtype)
+        original = input.clone()
+        aug = RandomGaussianIllumination(gain=0.25, sign=1.0, p=1.0)
+        expected = aug(input)
+        restored = self._roundtrip(aug, serializer)
+        params = copy.deepcopy(restored._params)
+        assert restored.compile(fullgraph=True, backend=backend) is restored
+        for _ in range(2):
+            self.assert_close(restored(input, params=params), expected)
+        assert len(compiled_graphs) == 1
+        assert len(executions) == 2
+        self.assert_close(input, original, rtol=0, atol=0)
+
     def _get_expected(self, device, dtype):
         return torch.tensor(
             [
@@ -4335,9 +4424,11 @@ class TestRandomGaussianIllumination(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):
         input_tensor = torch.ones(1, 3, 3, 3, device=device, dtype=dtype) * 0.5
         aug = RandomGaussianIllumination(gain=0.5, p=1.0)
+        params = aug.forward_parameters(input_tensor.shape)
+        expected = aug(input_tensor, params=params)
         aug = aug.compile(fullgraph=True)
-        actual = aug(input_tensor)
-        assert actual.shape == input_tensor.shape
+        actual = aug(input_tensor, params=params)
+        self.assert_close(actual, expected)
 
 
 class TestRandomLinearIllumination(BaseTester):
