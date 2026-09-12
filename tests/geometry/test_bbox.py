@@ -34,6 +34,7 @@ from kornia.geometry.bbox import (
     validate_bbox3d,
 )
 from kornia.geometry.boxes import Boxes3D
+from kornia.geometry.transform.crop3d import crop_and_resize3d, crop_by_boxes3d
 
 from testing.base import BaseTester
 
@@ -450,6 +451,83 @@ class TestTransformBoxes2D(BaseTester):
 
 
 class TestBbox3D(BaseTester):
+    def test_convention_validate_bbox3d_rejects_non_finite_coordinates_4258(self, device, dtype):
+        # Pin kornia#4258, the 3D counterpart of the #4238 pin on validate_bbox above: a non-finite
+        # coordinate makes this a False predicate result, not an AssertionError. Before the fix the
+        # nan reached the allclose extent comparisons, which see nan != nan and raise "Boxes must
+        # have be cube, while get different heights", naming the wrong defect; an inf reached them
+        # as inf - inf = nan with the same result.
+        boxes = torch.tensor(
+            [
+                [
+                    [0.0, 0.0, 0.0],
+                    [4.0, 0.0, 0.0],
+                    [4.0, 4.0, 0.0],
+                    [0.0, 4.0, 0.0],
+                    [0.0, 0.0, 4.0],
+                    [4.0, 0.0, 4.0],
+                    [4.0, 4.0, 4.0],
+                    [0.0, 4.0, 4.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        assert validate_bbox3d(boxes) is True
+
+        for coordinate_index in range(24):
+            for non_finite in [float("nan"), float("inf"), float("-inf")]:
+                invalid_boxes = boxes.clone()
+                invalid_boxes[0].reshape(-1)[coordinate_index] = non_finite
+                assert validate_bbox3d(invalid_boxes) is False
+                # the same holds for the (B, N, 8, 3) rank-4 layout
+                assert validate_bbox3d(invalid_boxes[None]) is False
+
+    def test_convention_consumers_still_raise_on_non_finite_coordinates_4258(self, device, dtype):
+        # validate_bbox3d's four internal callers use it for its raise and discard the return value,
+        # so turning the non-finite case into a False predicate result must not quietly let NaN
+        # through them. All of them raised on main and all of them still do.
+        box = torch.tensor(
+            [
+                [
+                    [0.0, 0.0, 0.0],
+                    [4.0, 0.0, 0.0],
+                    [4.0, 4.0, 0.0],
+                    [0.0, 4.0, 0.0],
+                    [0.0, 0.0, 4.0],
+                    [4.0, 0.0, 4.0],
+                    [4.0, 4.0, 4.0],
+                    [0.0, 4.0, 4.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        invalid = box.clone()
+        invalid[0, 7, 1] = float("nan")
+
+        with pytest.raises(AssertionError, match="finite"):
+            infer_bbox_shape3d(invalid)
+        with pytest.raises(AssertionError, match="finite"):
+            bbox_to_mask3d(invalid, (6, 6, 6))
+
+        # The other two callers are the src_box and dst_box of _crop_by_boxes3d_to_size, reached
+        # through crop_by_boxes3d and crop_and_resize3d. They need their own cells: the dst_box is
+        # caught earlier by infer_bbox_shape3d, but the src_box is not, because crop_by_boxes3d
+        # sizes its output from the *dst* box. With the crop3d guard reverted both calls below
+        # accept the non-finite src_box without raising, while the two cells above stay green.
+        volume = torch.arange(64, device=device, dtype=dtype).reshape(1, 1, 4, 4, 4)
+        with pytest.raises(AssertionError, match="finite"):
+            crop_by_boxes3d(volume, invalid, box)
+        with pytest.raises(AssertionError, match="finite"):
+            crop_and_resize3d(volume, invalid, (2, 2, 2))
+
+        # the valid box is untouched
+        assert len(infer_bbox_shape3d(box)) == 3
+        assert bbox_to_mask3d(box, (6, 6, 6)).shape == (1, 1, 6, 6, 6)
+        assert crop_by_boxes3d(volume, box, box).shape == (1, 1, 5, 5, 5)
+        assert crop_and_resize3d(volume, box, (2, 2, 2)).shape == (1, 1, 2, 2, 2)
+
     def test_generator_scalar_inputs(self, device, dtype):
         args = [torch.tensor(value, device=device, dtype=dtype) for value in (1, 2, 3, 4, 5, 6)]
         boxes = bbox_generator3d(*args)

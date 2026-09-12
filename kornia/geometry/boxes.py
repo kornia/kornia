@@ -240,7 +240,8 @@ class Boxes:
           :func:`~kornia.geometry.bbox.nms` computes exclusive areas, and
           :func:`~kornia.geometry.bbox.transform_bbox` converts ``'xywh'`` with the exclusive
           ``xmax = xmin + width``.
-        - With ``validate_boxes=True``, the ``'xy*'`` modes reject non-positive extents measured in that mode's
+        - With ``validate_boxes=True``, a non-finite coordinate is rejected in every mode, and the ``'xy*'``
+          modes reject non-positive extents measured in that mode's
           convention.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False``. A list input is
           padded into a tensor of its *first* element's dtype before that check, so a mixed-dtype list is accepted
@@ -665,8 +666,9 @@ class Boxes:
                 * 'vertices_plus': the inclusive stored vertex form. With shape :math:`(N, 4, 2)`,
                   :math:`(B, N, 4, 2)`.
 
-            validate_boxes: Check extents for the ``'xy*'`` modes in each mode's convention. This flag has no
-                validation effect for vertex modes; see the warning on :class:`~kornia.geometry.boxes.Boxes`.
+            validate_boxes: Reject a non-finite coordinate, and check extents for the ``'xy*'`` modes in each
+                mode's convention. The extent half has no validation effect for vertex modes; see the warning on
+                :class:`~kornia.geometry.boxes.Boxes`.
 
         Returns:
             :class:`Boxes` containing the converted inclusive vertex representation.
@@ -788,16 +790,14 @@ class Boxes:
             rounded to the nearest integer, and filled over the half-open ranges ``[xmin, xmax)`` and
             ``[ymin, ymax)``, so a box entirely outside the image fills nothing and a fractional box can fill a
             different area than :func:`~kornia.geometry.bbox.bbox_to_mask` gives for the same vertices. A
-            list-backed object also fills a mask channel for each padding entry, whose zero row exports as a
-            one-pixel box at the origin. The loop taken on CPU and MPS and the vectorized path taken on CUDA and
-            under graph capture produce the same mask. A box tensor that requires grad is rejected with
-            ``RuntimeError``.
+            list-backed object keeps an empty mask channel for each padding entry. The loop taken on CPU and
+            MPS and the vectorized path taken on CUDA and under graph capture produce the same mask. A box tensor
+            that requires grad is rejected with ``RuntimeError``.
 
         .. warning::
             The argument-order split with :func:`~kornia.geometry.bbox.bbox_to_mask` is tracked in
             `#4014 <https://github.com/kornia/kornia/issues/4014>`_ and the rounding split in
-            `#4015 <https://github.com/kornia/kornia/issues/4015>`_. The padding-entry pixel is tracked in
-            `#4252 <https://github.com/kornia/kornia/issues/4252>`_.
+            `#4015 <https://github.com/kornia/kornia/issues/4015>`_.
 
         Args:
             height: height of the masked image/images.
@@ -834,6 +834,15 @@ class Boxes:
         dtype = self.dtype
         device = self.device
 
+        # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size.
+        clipped_boxes_xyxy = cast(torch.Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
+        clipped_boxes_xyxy[..., ::2].clamp_(0, width)
+        clipped_boxes_xyxy[..., 1::2].clamp_(0, height)
+        if self._N is not None:
+            # Padding is not a box, even when its coordinates have been changed by a transform.
+            for i, n in enumerate(self._N):
+                clipped_boxes_xyxy[i, clipped_boxes_xyxy.shape[1] - n :] = 0
+
         # -----------------
         # CPU Hotpath (loop)
         # -----------------
@@ -845,11 +854,6 @@ class Boxes:
                 )
             else:  # (N, 4, 2)
                 mask = torch.zeros((self._data.shape[0], height, width), dtype=self.dtype, device=self.device)
-
-            # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size
-            clipped_boxes_xyxy = cast(torch.Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
-            clipped_boxes_xyxy[..., ::2].clamp_(0, width)
-            clipped_boxes_xyxy[..., 1::2].clamp_(0, height)
 
             # Reshape mask to (BxN, H, W) and boxes to (BxN, 4) to iterate over all of them.
             # Cast boxes coordinates to be integer to use them as indexes. Use round to handle decimal values.
@@ -869,10 +873,6 @@ class Boxes:
             out_shape = (self.shape[0], self.shape[1], height, width)
         else:
             out_shape = (self.shape[0], height, width)
-
-        clipped_boxes_xyxy = cast(torch.Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
-        clipped_boxes_xyxy[..., ::2].clamp_(0, width)
-        clipped_boxes_xyxy[..., 1::2].clamp_(0, height)
 
         xyxy = clipped_boxes_xyxy.view(-1, 4).round().long()
 
@@ -1174,8 +1174,9 @@ class Boxes3D:
           pass them the ``'vertices_plus'`` export, never ``'vertices'``, which they read as one larger per axis.
           The validator also accepts batched :math:`(B, N, 8, 3)` input, but the shape and mask helpers require
           unbatched :math:`(N, 8, 3)` input; see their warnings.
-        - With ``validate_boxes=True``, :meth:`from_tensor` rejects extents that are not positive in the given
-          mode's convention, so ``xmax == xmin`` is rejected in ``'xyzxyz'`` and accepted in ``'xyzxyz_plus'``.
+        - With ``validate_boxes=True``, :meth:`from_tensor` rejects a non-finite coordinate, and extents that
+          are not positive in the given mode's convention, so ``xmax == xmin`` is rejected in ``'xyzxyz'`` and
+          accepted in ``'xyzxyz_plus'``.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False``;
           :meth:`from_tensor` silently casts integer input to ``float32``.
         - :meth:`transform_boxes` leaves the source unchanged and returns a new object labelled
@@ -1280,8 +1281,9 @@ class Boxes3D:
                 * 'xyzwhd': boxes are assumed to be in the format ``xmin, ymin, zmin, width, height, depth`` where
                   ``width = xmax - xmin``, ``height = ymax - ymin`` and ``depth = zmax - zmin``.
 
-            validate_boxes: reject boxes whose width, height or depth is not positive when measured in the given
-                mode's convention, so ``xmax == xmin`` is rejected in ``'xyzxyz'`` and accepted in ``'xyzxyz_plus'``.
+            validate_boxes: reject boxes with a non-finite coordinate, and boxes whose width, height or depth
+                is not positive when measured in the given mode's convention, so ``xmax == xmin`` is rejected in
+                ``'xyzxyz'`` and accepted in ``'xyzxyz_plus'``.
 
         Returns:
             :class:`Boxes3D` containing the converted inclusive vertex representation, labelled with ``mode``.
@@ -1333,6 +1335,8 @@ class Boxes3D:
 
         # Value validation reads the data, which graph capture cannot do; skip it under export.
         if validate_boxes and not is_exporting():
+            if not torch.isfinite(boxes).all():
+                raise ValueError("Some boxes have non-finite coordinates.")
             if (width <= 0).any():
                 raise ValueError("Some boxes have negative widths or 0.")
             if (height <= 0).any():

@@ -81,20 +81,6 @@ def rtol(device, dtype):
     return 1.0e-4
 
 
-def _runs_without_raising(func, *args, **kwargs) -> bool:
-    # Shared boolean adapter for the kornia#3955 strict-xfail call sites below, whose CURRENT
-    # behavior is a raise. That mark carries raises=AssertionError so that an unrelated
-    # environment error cannot silently *satisfy* the mark and stop the pin from testing anything;
-    # that in turn means the xfail body must fail as an assertion and must never let the exception
-    # escape. Asserting on this boolean is how each call site does it. Retire this helper together
-    # with the #3955 pins.
-    try:
-        func(*args, **kwargs)
-    except Exception:
-        return False
-    return True
-
-
 def _issue_msg(text: str):
     # torch.testing.assert_close accepts msg as a callable that receives its own diff report; this
     # wrapper prefixes the issue number so that the assert_close-based bug pins below name their
@@ -891,9 +877,19 @@ class TestAngleAxisToQuaternion(BaseTester):
     # Pinning the VALUES and not just finiteness is what separates "the NaN is gone" from "the NaN
     # was replaced by the right number": a guard that clamped the radicand to 1e-12 the way
     # axis_angle_to_rotation_matrix does would also be finite here, and wrong by a factor of the
-    # clamp. One table, two cells, because the two functions have independent sqrt guards.
+    # clamp.
+    #
+    # The three quaternion_to_axis_angle rows below w=1 are #4237, not #3949: the #3949 fix's
+    # zero-vector-part branch used the constant 2.0, which is only the w=1 case of the true limit
+    # 2/w (w = cos_theta). w=1 alone could not have caught this -- it is the one point where the
+    # wrong constant and the right formula agree. (-1,0,0,0) is the same rotation as (1,0,0,0) (the
+    # double cover) and used to get the wrong SIGN; w=2 and w=-2 are non-unit "identities", which
+    # this function explicitly permits, and used to get the wrong MAGNITUDE.
     _IDENTITY_GRADIENT_CASES = [
         ("quaternion_to_axis_angle", [1.0, 0.0, 0.0, 0.0], [0.0, 2.0, 2.0, 2.0]),
+        ("quaternion_to_axis_angle", [-1.0, 0.0, 0.0, 0.0], [0.0, -2.0, -2.0, -2.0]),
+        ("quaternion_to_axis_angle", [2.0, 0.0, 0.0, 0.0], [0.0, 1.0, 1.0, 1.0]),
+        ("quaternion_to_axis_angle", [-2.0, 0.0, 0.0, 0.0], [0.0, -1.0, -1.0, -1.0]),
         ("axis_angle_to_quaternion", [0.0, 0.0, 0.0], [0.5, 0.5, 0.5]),
     ]
 
@@ -949,6 +945,54 @@ class TestAngleAxisToQuaternion(BaseTester):
         assert torch.isfinite(batch.grad).all(), f"kornia#3949: {op_name} has a non-finite gradient in a batch"
         self.assert_close(batch.grad[0], torch.tensor(expected_grad, device=device, dtype=torch.float64))
         self.assert_close(batch.grad[1], alone.grad, atol=0.0, rtol=0.0)
+
+    def test_convention_quaternion_to_axis_angle_zero_quaternion_gradient_is_finite_4237(self, device):
+        # #4237's fix replaced the constant k=2.0 at the zero-vector-part branch with the analytic
+        # limit 2/w (w = cos_theta), which introduces a real division that a genuinely-degenerate
+        # all-zero quaternion (0,0,0,0) -- not a valid rotation, w=0 too -- would divide by zero
+        # through. That division is guarded the same way the sin_theta one already is, and `atan2`
+        # is shielded at the same input (atan2(0, 0) has a `nan` backward on torch <= 2.9.1), so
+        # this input keeps returning the same harmless (0,0,0) value and now has a finite gradient
+        # on every supported torch version. The gradient value itself (all-zero) is not claimed to be the
+        # unique "correct" one -- the function has no limit at this point, approached along
+        # different paths -- only that it stays finite and does not regress from before this fix.
+        _skip_if_dtype_unavailable(device, torch.float64)
+        q = torch.tensor([0.0, 0.0, 0.0, 0.0], device=device, dtype=torch.float64, requires_grad=True)
+
+        out = kornia.geometry.conversions.quaternion_to_axis_angle(q)
+        self.assert_close(out, torch.zeros(3, device=device, dtype=torch.float64))
+
+        out.sum().backward()
+        assert q.grad is not None
+        assert torch.isfinite(q.grad).all(), f"kornia#4237: zero quaternion has a non-finite gradient: {q.grad}"
+
+    @pytest.mark.parametrize("grad_dtype_name", ["float16", "float32", "float64"])
+    def test_convention_quaternion_to_axis_angle_near_half_turn_gradient_is_finite_4237(self, device, grad_dtype_name):
+        # The 2/w limit introduced for #4237 is only ever selected on the zero-vector-part branch,
+        # but the division was evaluated for every element, and `2.0 / t` lowers to
+        # `t.reciprocal() * 2`, whose backward is `-grad * result**2`. For a rotation just short of
+        # a half turn `w` is small and non-zero, so `(1/w)**2` overflows to `inf`, and the exact
+        # 0.0 that the unselected branch receives from `torch.where` meets it as `0 * inf` -> nan.
+        # In float16 that is every rotation within ~0.45 degrees of 180 -- ordinary inputs, not
+        # degenerate ones -- so the division is gated on `~pos`, the mask that actually selects it.
+        # The mirror case is a zero vector part with a small `w`, where the branch *is* selected
+        # and `d(2/w)/dw` overflows against an exactly-zero vector component; `2 / w` is detached
+        # for that reason. Both directions are swept here.
+        dtype = getattr(torch, grad_dtype_name)
+        _skip_if_dtype_unavailable(device, dtype)
+        ws = [0.5, 0.05, 3e-3, 1e-4, 0.0]
+        quaternions = [[w, 1.0, 0.0, 0.0] for w in ws] + [[w, 0.0, 0.0, 0.0] for w in ws]
+        quaternions += [[-w, 1.0, 0.0, 0.0] for w in ws] + [[-w, 0.0, 0.0, 0.0] for w in ws]
+
+        q = torch.tensor(quaternions, device=device, dtype=dtype, requires_grad=True)
+        kornia.geometry.conversions.quaternion_to_axis_angle(q).sum().backward()
+
+        assert q.grad is not None
+        finite = torch.isfinite(q.grad).all(dim=-1)
+        assert finite.all(), (
+            f"kornia#4237: non-finite gradient at {[quaternions[i] for i in (~finite).nonzero().flatten().tolist()]}"
+            f" in {grad_dtype_name}: {q.grad[~finite]}"
+        )
 
 
 class TestQuaternionToAngleAxis(BaseTester):
@@ -2293,94 +2337,85 @@ class TestAngleAxisToRotationMatrix(BaseTester):
             "kornia#3947: axis_angle_to_rotation_matrix disagrees with the quaternion route"
         )
 
-    @pytest.mark.xfail(
-        raises=AssertionError,
-        reason="axis_angle_to_rotation_matrix accepts only rank-2 (N, 3) input despite its own "
-        "guard message saying (*, 3) — kornia#3955",
-        strict=True,
-    )
     def test_convention_accepts_any_leading_batch_dimensions_3955(self, device):
-        # Intended behavior: axis_angle_to_rotation_matrix accepts (*, 3) -- which is what its own
-        # shape guard says in the message it raises ("Input size must be a (*, 3) tensor") and what
-        # every sibling in this module does, including rotation_matrix_to_axis_angle (pinned by
-        # TestRotationMatrixToAngleAxis.test_convention_accepts_any_leading_batch_dimensions).
-        # It accepts only rank 2: the body does wxyz.unbind(dim=1) and .view(-1, 3, 3), so an
-        # unbatched (3,) raises IndexError and any extra batch dimension raises ValueError from the
-        # unbind. The asymmetry breaks composition -- aa2R(R2aa(R)) works for a (N, 3, 3) input and
-        # for nothing else, which the last two assertions pin. Written through the shared
-        # _runs_without_raising helper because the current behavior is a *raise*: a bare call would
-        # let IndexError/ValueError escape, and the mark (raises=AssertionError) would then not
-        # match, so the failure would be reported as an error rather than an XFAIL. Marked
-        # xfail(strict=True) so fixing #3955 makes this XPASS and forces the mark out. Companion
-        # wart: test_wart_only_rank_2_input_is_accepted_3955.
-        # float32 is hardcoded and the dtype fixture dropped: all three rank errors come out of the
-        # same shape-driven `wxyz.unbind(dim=1)` inside _compute_rotation_matrix, which no dtype can
-        # change. NOT "before any arithmetic runs" -- theta2 = (aa * aa).sum(-1), the sqrt and the
-        # axis division all execute first and succeed at every float dtype; it is that the
-        # arithmetic ahead of the unbind is dtype-safe, so which ranks are accepted still cannot
-        # depend on the dtype and the fixture only multiplied the cell count.
+        # Convention: axis_angle_to_rotation_matrix accepts (*, 3) and returns (*, 3, 3) -- what its
+        # own shape guard promises in the message it raises ("Input size must be a (*, 3) tensor")
+        # and what every sibling in this module does, including rotation_matrix_to_axis_angle
+        # (pinned by TestRotationMatrixToAngleAxis.test_convention_accepts_any_leading_batch_dimensions).
+        # Until kornia#3955 was fixed the body did wxyz.unbind(dim=1) and .view(-1, 3, 3), so an
+        # unbatched (3,) raised IndexError and any extra batch dimension raised ValueError out of
+        # the unbind; the asymmetry broke composition, since aa2R(R2aa(R)) worked for an (N, 3, 3)
+        # input and for nothing else. The last two assertions are that composition.
+        # A shape assertion alone would not catch a fix that flattens the leading dimensions and
+        # reshapes at the end but unbinds the wrong axis, so each rank is also compared against the
+        # same data run through the rank-2 path, which is the shape that always worked.
+        # float32 is hardcoded and the dtype fixture dropped: the ranks a shape-driven unbind
+        # accepts cannot depend on the dtype, so the fixture only multiplied the cell count.
         axis_angle_to_rotation_matrix = kornia.geometry.conversions.axis_angle_to_rotation_matrix
         rotation_matrix_to_axis_angle = kornia.geometry.conversions.rotation_matrix_to_axis_angle
 
         unbatched = torch.tensor([0.0, 0.0, 0.6], device=device, dtype=torch.float32)
-        rot = axis_angle_to_rotation_matrix(unbatched.reshape(1, 3))[0]
+        flat = axis_angle_to_rotation_matrix(unbatched.reshape(1, 3))
+        rot = flat[0]
 
-        assert _runs_without_raising(axis_angle_to_rotation_matrix, unbatched), (
-            "kornia#3955: axis_angle_to_rotation_matrix rejects an unbatched (3,) input"
-        )
-        assert _runs_without_raising(axis_angle_to_rotation_matrix, unbatched.expand(2, 5, 3)), (
-            "kornia#3955: axis_angle_to_rotation_matrix rejects a (2, 5, 3) input"
-        )
-        assert _runs_without_raising(axis_angle_to_rotation_matrix, rotation_matrix_to_axis_angle(rot)), (
-            "kornia#3955: aa2R(R2aa(R)) fails for a (3, 3) rotation matrix"
-        )
-        assert _runs_without_raising(
-            axis_angle_to_rotation_matrix, rotation_matrix_to_axis_angle(rot.expand(2, 5, 3, 3))
-        ), "kornia#3955: aa2R(R2aa(R)) fails for a (2, 5, 3, 3) stack of rotation matrices"
+        assert axis_angle_to_rotation_matrix(unbatched).shape == (3, 3)
+        assert torch.equal(axis_angle_to_rotation_matrix(unbatched), rot)
 
-    @pytest.mark.parametrize(
-        ("shape", "error", "message"),
-        [
-            ((3,), IndexError, r"Dimension out of range"),
-            ((2, 5, 3), ValueError, r"too many values to unpack"),
-            ((1, 1, 3), ValueError, r"not enough values to unpack"),
-        ],
-        ids=["unbatched", "extra_batch_dim", "singleton_extra_batch_dim"],
-    )
-    def test_wart_only_rank_2_input_is_accepted_3955(self, device, shape, error, message):
-        # Wart pin for kornia#3955, companion to the strict xfail above: assert the CURRENT failure
-        # modes, matching on the message and not merely on the type, because the message is the
-        # evidence that these are raw Python unpacking errors leaking out of the implementation
-        # rather than kornia's own shape guard (whose message says "(*, 3)" and never fires here).
-        # Matched on the distinguishing phrase only, not the full parenthesised detail: that detail
-        # is PyTorch's and CPython's wording, so a reword upstream would flip these cells and be
-        # misread as "#3955 was partly fixed". The phrase alone still separates the three failure
-        # modes from each other and from kornia's own guard, which is all the evidence needs.
-        # Three cells: all three raise at the SAME line -- wxyz.unbind(dim=1) in
-        # _compute_rotation_matrix -- but with different error kinds, because
-        # the rank differs: the unbatched (3,) case has no dim=1 to unbind and gets an IndexError,
-        # while the two over-batched cases unbind successfully and fail on the 3-way assignment
-        # with a ValueError. So a fix that only flattens the leading dimensions flips the last two
-        # and leaves the first. The (1, 1, 3) and (2, 5, 3) cells do flip together under every fix
-        # shape I could construct, but they are kept apart because they report *different* messages
-        # today, and pinning only one of them would let the other change unnoticed.
-        # If any cell fails, #3955 was (partly) fixed -- flip/remove the strict xfail above. NOT a
-        # contract that these ranks must keep raising.
-        # float32 is hardcoded and the dtype fixture dropped for the same reason as the xfail above:
-        # every one of these errors comes from the same shape-driven unbind, and the arithmetic that
-        # precedes it succeeds at every float dtype, so the dtype cannot change which ranks raise.
-        # Snippet used to generate expected (torch only, executed on cpu float64):
-        #   axis_angle_to_rotation_matrix(torch.zeros(3, dtype=torch.float64))
-        #     -> IndexError: Dimension out of range (expected to be in range of [-1, 0], but got 1)
-        #   axis_angle_to_rotation_matrix(torch.zeros(2, 5, 3, dtype=torch.float64))
-        #     -> ValueError: too many values to unpack (expected 3)
-        #   axis_angle_to_rotation_matrix(torch.zeros(1, 1, 3, dtype=torch.float64))
-        #     -> ValueError: not enough values to unpack (expected 3, got 1)
-        #   (the accepted ranks (1, 3) and (2, 3) return (1, 3, 3) and (2, 3, 3))
-        with pytest.raises(error, match=message):
-            kornia.geometry.conversions.axis_angle_to_rotation_matrix(
-                torch.zeros(shape, device=device, dtype=torch.float32)
-            )
+        stacked = unbatched.expand(2, 5, 3)
+        assert axis_angle_to_rotation_matrix(stacked).shape == (2, 5, 3, 3)
+        assert torch.equal(
+            axis_angle_to_rotation_matrix(stacked),
+            axis_angle_to_rotation_matrix(stacked.reshape(-1, 3)).reshape(2, 5, 3, 3),
+        )
+
+        # aa2R(R2aa(R)) now composes at every rank
+        assert axis_angle_to_rotation_matrix(rotation_matrix_to_axis_angle(rot)).shape == (3, 3)
+        assert axis_angle_to_rotation_matrix(rotation_matrix_to_axis_angle(rot.expand(2, 5, 3, 3))).shape == (
+            2,
+            5,
+            3,
+            3,
+        )
+
+    def test_convention_low_angle_taylor_branch_is_rank_agnostic_3955(self, device, dtype):
+        # The two branches of axis_angle_to_rotation_matrix are selected by a mask built from
+        # theta2, and the Taylor branch reshapes separately from the general one, so a rank fix has
+        # to hold on both sides of the theta2 > 1e-6 boundary and on a batch that straddles it.
+        # The dtype fixture is taken rather than hardcoding float64, which MPS cannot represent.
+        # 1e-9 keeps theta2 (~3e-18) under the 1e-6 boundary in every supported dtype, so the
+        # Taylor branch is the one exercised at each of them.
+        aa2R = kornia.geometry.conversions.axis_angle_to_rotation_matrix
+
+        for value in (1e-9, 1.0):  # Taylor branch, then the general branch
+            nested = torch.full((2, 5, 3), value, device=device, dtype=dtype)
+            assert torch.equal(aa2R(nested), aa2R(nested.reshape(-1, 3)).reshape(2, 5, 3, 3))
+
+        straddling = torch.cat(
+            [
+                torch.full((5, 3), 1e-9, device=device, dtype=dtype),
+                torch.full((5, 3), 1.0, device=device, dtype=dtype),
+            ]
+        ).reshape(2, 5, 3)
+        assert torch.equal(aa2R(straddling), aa2R(straddling.reshape(-1, 3)).reshape(2, 5, 3, 3))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # Compile coverage for the rank path specifically: the body now reshapes the Taylor branch
+        # with reshape(list(axis_angle.shape[:-1]) + [3, 3]) and broadcasts the branch mask with
+        # [..., None, None], both of which read the input's own rank. The input straddles the
+        # theta2 > 1e-6 boundary so both branches are traced.
+        axis_angle = torch.cat(
+            [
+                torch.full((5, 3), 1e-9, device=device, dtype=dtype),
+                torch.full((5, 3), 1.0, device=device, dtype=dtype),
+            ]
+        ).reshape(2, 5, 3)
+        op = kornia.geometry.conversions.axis_angle_to_rotation_matrix
+        op_optimized = torch_optimizer(op)
+
+        actual = op_optimized(axis_angle)
+        expected = op(axis_angle)
+
+        self.assert_close(actual, expected)
 
 
 class TestRotationMatrixToAngleAxis(BaseTester):
@@ -6397,13 +6432,10 @@ def test_convention_deprecated_alias_warning_can_be_escalated_to_an_error_3956(a
     # _emit_deprecation_warning installed simplefilter("always", DeprecationWarning) immediately
     # before warnings.warn, which overrode the caller's "error" entry, so the warning was printed
     # and execution continued.
-    # The escalated DeprecationWarning is caught by type rather than through the shared
-    # _runs_without_raising helper: that helper treats *any* exception as the awaited raise, so an
-    # unrelated TypeError from the alias would set escalated=True and pass the body under a name
-    # that reads as "escalation works". Catching DeprecationWarning specifically lets any other
-    # exception propagate and be reported as an error instead. (The #3955 call sites keep the broad
-    # helper on purpose: there an unrelated exception makes the assertion *fail*, which is already
-    # the correct report.)
+    # The escalated DeprecationWarning is caught by type rather than by treating any exception as
+    # the awaited raise: an unrelated TypeError from the alias would otherwise set escalated=True
+    # and pass the body under a name that reads as "escalation works". Catching DeprecationWarning
+    # specifically lets any other exception propagate and be reported as an error instead.
     # Four cells, one per alias, because all four are separate @deprecated call sites: the fix is
     # in _emit_deprecation_warning, but a future decorator that emits its own warning would have to
     # honor this too.
