@@ -93,14 +93,15 @@ def _json_value(value: Any) -> Any:
 
 @dataclass(frozen=True)
 class AugmentationAuditStep:
-    """Snapshot of one executed leaf operation, including repeated occurrences.
+    """Snapshot of one captured leaf operation, including repeated occurrences.
 
     ``matrix`` maps this occurrence's local input pixel coordinates to its output
     coordinates, including RandomCrop prepadding. The full pipeline mapping is
     stored separately on the report. ``None`` means that the
     operation has no supported 2D matrix, not that it is an identity transform.
     Parameters and flags are detached copies; ``occurrence`` is zero-based for
-    each qualified module name. Shapes describe the image path.
+    each qualified module name. Shapes describe the image path. Flags include
+    keyword overrides observed on that image call.
     """
 
     name: str
@@ -190,10 +191,17 @@ class AugmentationAuditReport:
     def summary(self) -> str:
         """Describe matrix availability and diagnostic warnings without claiming image invertibility."""
         return (
-            f"Augmentation audit: {len(self.steps)} operations, geometry {self.geometry_status}, "
+            f"Augmentation audit: {len(self.steps)} captured operations, geometry {self.geometry_status}, "
             f"{len(self.spatial)} spatial inputs. Image reconstruction not evaluated."
             + ("\n" + "\n".join(self.warnings) if self.warnings else "")
         )
+
+
+def _supported_sequence(module: nn.Module) -> bool:
+    # Import at call time: augment imports the report types from this module.
+    from .augment import AugmentationSequential
+
+    return type(module) in (ImageSequential, AugmentationSequential)
 
 
 def _leaves(sequence: ImageSequential, prefix: str = "", seen: set[int] | None = None) -> list[tuple[str, nn.Module]]:
@@ -208,11 +216,59 @@ def _leaves(sequence: ImageSequential, prefix: str = "", seen: set[int] | None =
         seen.add(id(module))
         if isinstance(module, (VideoSequential, PatchSequential, AugmentationBase3D)):
             raise ValueError("audit supports 2D image pipelines, not video, patch or 3D augmentations.")
-        if isinstance(module, ImageSequential):
-            result.extend(_leaves(module, path, seen))
+        if _supported_sequence(module):
+            result.extend(_leaves(cast(ImageSequential, module), path, seen))
         else:
             result.append((path, module))
     return result
+
+
+def _selected_paths(sequence: ImageSequential, params: list[ParamItem], prefix: str = "") -> list[str]:
+    paths: list[str] = []
+    for param in params:
+        module = sequence.get_submodule(param.name)
+        path = f"{prefix}.{param.name}" if prefix else param.name
+        if _supported_sequence(module) and isinstance(param.data, list):
+            # Use this occurrence's tree, not the nested module's last cached params.
+            paths.extend(_selected_paths(cast(ImageSequential, module), param.data, path))
+        else:
+            paths.append(path)
+    return paths
+
+
+def _capture_warnings(sequence: AugmentationSequential, steps: list[AugmentationAuditStep]) -> list[str]:
+    if not _supported_sequence(sequence) or sequence._params is None:
+        return ["Forward capture cannot be verified for a custom container or a call without recorded parameters."]
+    selected = _selected_paths(sequence, sequence._params)
+    captured = [step.name for step in steps]
+    if selected != captured:
+        return [f"Forward capture is incomplete or out of order: selected {selected}; captured {captured}."]
+    return []
+
+
+def _crop_matrix(
+    module: RandomCrop,
+    matrix: Tensor,
+    params: dict[str, Any],
+    flags: dict[str, Any],
+    image: Tensor,
+    output: Tensor,
+) -> tuple[Tensor | None, str | None]:
+    applied = params["batch_prob"] > 0.5
+    static = module.p == 1.0 and module.p_batch == 1.0
+    changed_shape = output.shape[-2:] != image.shape[-2:]
+    if not static and changed_shape and flags["cropping_mode"] == "slice" and not bool(applied.all()):
+        # The shape-changing blend returns every transformed row, but slice uses
+        # src indices even where the cached per-row matrix is the identity.
+        return None, "mixed-application slice crop has no reliable per-row image matrix after changing shape"
+    if static or changed_shape:
+        # These paths return the entire transformed branch, including prepadding.
+        applied = torch.ones_like(applied)
+    padding = params["padding_size"].to(matrix)
+    translation = torch.eye(3, device=matrix.device, dtype=matrix.dtype).expand_as(matrix).clone()
+    translation[:, 0, 2] = padding[:, 0] * applied.to(matrix)
+    translation[:, 1, 2] = padding[:, 2] * applied.to(matrix)
+    return matrix @ translation, None
 
 
 def _coordinates(value: DataType, key: DataKey) -> Tensor:
@@ -233,27 +289,32 @@ def _coordinates(value: DataType, key: DataKey) -> Tensor:
 
 
 def _capture(
-    module: nn.Module, inputs: tuple[Any, ...], output: Any, *, name: str, steps: list[AugmentationAuditStep]
+    module: nn.Module,
+    inputs: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    output: Any,
+    *,
+    name: str,
+    steps: list[AugmentationAuditStep],
 ) -> None:
     image = inputs[0]
     params = _snapshot(getattr(module, "_params", {}))
-    flags = _snapshot(getattr(module, "flags", {}))
+    # Augmentation forward merges its kwargs into flags without necessarily
+    # saving them on module.flags. `params` is a separate bound argument.
+    flags = _snapshot(
+        {**getattr(module, "flags", {}), **{key: value for key, value in kwargs.items() if key != "params"}}
+    )
     matrix = None
     reason = None
     if isinstance(module, (GeometricAugmentationBase2D, IntensityAugmentationBase2D)):
         # Access before detaching: lazy matrix materialization must preserve ordinary autograd behavior.
         matrix = _snapshot(module.transform_matrix)
         if matrix is not None and isinstance(module, RandomCrop):
-            padding = params["padding_size"].to(matrix)
-            translation = torch.eye(3, device=matrix.device, dtype=matrix.dtype).expand_as(matrix).clone()
-            applied = (params["batch_prob"] > 0.5).to(matrix)
-            translation[:, 0, 2] = padding[:, 0] * applied
-            translation[:, 1, 2] = padding[:, 2] * applied
-            matrix = matrix @ translation
+            matrix, reason = _crop_matrix(module, matrix, params, flags, image, output)
         if matrix is not None and matrix.shape != (image.shape[0], 3, 3):
             matrix = None
             reason = "operation produced a matrix with an unsupported shape"
-        elif matrix is None:
+        elif matrix is None and reason is None:
             reason = "operation did not produce a 2D matrix"
     elif type(module) is nn.Identity:
         matrix = torch.eye(3, device=image.device, dtype=image.dtype).expand(image.shape[0], -1, -1).clone()
@@ -274,7 +335,14 @@ def _capture(
     )
 
 
-def _matrices(steps: list[AugmentationAuditStep], image: Tensor) -> tuple[Tensor | None, Tensor | None, Tensor]:
+def _matrices(
+    steps: list[AugmentationAuditStep],
+    image: Tensor,
+    *,
+    capture_complete: bool,
+) -> tuple[Tensor | None, Tensor | None, Tensor]:
+    if not capture_complete:
+        return None, None, torch.zeros(image.shape[0], device=image.device, dtype=torch.bool)
     dtype = torch.float64 if image.dtype == torch.float64 else torch.float32
     identity = torch.eye(3, device=image.device, dtype=dtype).expand(image.shape[0], -1, -1)
     matrix = identity.clone()
@@ -395,7 +463,10 @@ def audit(
         if key == DataKey.KEYPOINTS or key in _BOX_MODES:
             sources[index] = _snapshot(tensor)
     steps: list[AugmentationAuditStep] = []
-    handles = [module.register_forward_hook(partial(_capture, name=name, steps=steps)) for name, module in leaves]
+    handles = [
+        module.register_forward_hook(partial(_capture, name=name, steps=steps), with_kwargs=True)
+        for name, module in leaves
+    ]
     try:
         outputs = sequence(*args, params=params, data_keys=keys)
     finally:
@@ -407,7 +478,8 @@ def audit(
         raise ValueError("audit requires operations to preserve the image batch dimension and BCHW layout.")
     output_shape = tuple(output_image.shape)
     with torch.no_grad():
-        matrix, inverse, valid = _matrices(steps, image)
+        capture_warnings = _capture_warnings(sequence, steps)
+        matrix, inverse, valid = _matrices(steps, image, capture_complete=not capture_warnings)
         status: Literal["available", "unsupported", "singular"] = (
             "unsupported" if matrix is None else "available" if bool(valid.all()) else "singular"
         )
@@ -424,13 +496,18 @@ def audit(
             )
             for index, source in sources.items()
         ]
-        warnings = [f"{step.name}: {step.unsupported_reason}." for step in steps if step.unsupported_reason]
+        warnings = capture_warnings + [
+            f"{step.name}: {step.unsupported_reason}." for step in steps if step.unsupported_reason
+        ]
         if status == "singular":
             warnings.append("Some composed matrices are singular or nonfinite; inspect the invertible mask.")
         for step in steps:
-            if "Crop" in step.module:
+            if "Crop" in step.module or any(
+                after < before for before, after in zip(step.input_shape[-2:], step.output_shape[-2:])
+            ):
                 warnings.append(
-                    f"{step.name}: cropping may discard image content even when coordinates are invertible."
+                    f"{step.name}: cropping or downsampling may discard image content "
+                    "even when coordinates are invertible."
                 )
         for item in spatial:
             if bool((item.nonfinite > 0).any()):

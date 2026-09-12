@@ -30,9 +30,11 @@ Auditing geometric provenance
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``AugmentationSequential.audit`` executes the ordinary pipeline once and returns
-``(outputs, report)``. It records the actual sampled operation order (including
-repeated operations and nested 2D sequences), parameters, image shapes, flags and
-coordinate matrices. The returned outputs have the same structure and gradients
+``(outputs, report)``. It records captured operation order (including repeated
+operations and nested built-in 2D sequences), parameters, image shapes, effective
+flags (including image-call keyword overrides) and coordinate matrices, and checks
+capture completeness against the sampled execution parameters. The returned
+outputs have the same structure and gradients
 as ``forward``. Reporting has additional snapshot and diagnostic costs; ordinary
 ``forward`` does not enable it.
 
@@ -71,7 +73,8 @@ Interpreting the report
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 * ``matrix`` maps original pixel coordinates to final image coordinates, including
-  ``RandomCrop`` prepadding. ``inverse_matrix`` is its algebraic inverse, with
+  ``RandomCrop`` prepadding when it is part of the returned image's mapping.
+  ``inverse_matrix`` is its algebraic inverse, with
   nonfinite entries for batches that cannot be inverted. ``invertible`` records
   those batches explicitly. Half-precision diagnostics use float32.
 * ``geometry_status="available"`` describes matrix availability, not successful
@@ -92,11 +95,29 @@ Interpreting the report
   image-area coverage or mask alignment.
 * Crop matrices can invert coordinates even though the crop discarded image
   content. The report records this distinction and never evaluates image
-  reconstruction. Interpolation and intensity operations can also lose pixels.
+  reconstruction. A decrease in image height or width also produces a possible
+  sampling/content-loss warning, including for resize operations. These warnings
+  do not cover every kind of information loss: interpolation and intensity
+  operations can also lose pixels without changing image dimensions.
+* Partially applied ``RandomCrop`` mappings follow the returned image branch,
+  not just the label coordinates. A skipped crop can currently leave an image
+  unchanged while padding its labels; its nonzero round-trip error indicates a
+  real inconsistency and is not suppressed. Shape-changing slice crops with
+  unapplied rows have no reliable cached matrix for every returned image row,
+  so their geometry is reported as ``unsupported``.
 * Non-rigid and unknown operations are explicitly unsupported for matrix
   composition. The ``silent`` transformation-matrix mode's identity fallback
   is not treated as evidence of valid correspondence. Supported neighboring
   operations still appear in the per-operation provenance.
+* Captured operations must match the ordered, repeated operations selected by
+  this call's native parameters. If a selected operation bypasses forward hooks,
+  geometry is ``unsupported`` even when other operations were captured; the report
+  does not invent its shape or matrix. Unselected operations do not count as
+  missing. A truly empty pipeline can report an identity mapping.
+* ``RandAugment``, ``AutoAugment`` and ``TrivialAugment`` policies, and custom
+  sequential-container subclasses, are currently opaque to the audit. A selected
+  opaque container makes geometry ``unsupported``; its internal operations are
+  not certified. The ordinary pipeline outputs are still returned.
 
 The API accepts one nonempty BCHW image first, with optional batched masks,
 keypoints and boxes in the usual positional ``data_keys`` forms. Dictionaries,
