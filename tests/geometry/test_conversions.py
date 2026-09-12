@@ -1937,6 +1937,49 @@ class TestQuaternionExpToLog(BaseTester):
         # evaluate function gradient
         self.gradcheck(partial(kornia.geometry.conversions.quaternion_exp_to_log, eps=eps), (quaternion,))
 
+    def test_convention_gradient_is_finite_at_the_acos_boundary_4007(self, device, dtype):
+        # #4007: d(acos)/dw = -1/sqrt(1-w^2) is unbounded at w = +-1, which the identity
+        # quaternion (1,0,0,0) hits exactly; multiplied by its exactly-zero vector part, that
+        # used to give 0 * inf = nan on every backward pass through the single most common
+        # optimization starting point. acos returns -inf at the boundary on every supported torch
+        # version; what differs is clamp's backward -- pass-through on <= 2.9.1, zero on 2.14 --
+        # so it is the torch 2.5.1 leg of the CI matrix that discriminates. Run on base, this
+        # fails under 2.5.1 and passes under 2.14, where clamp already zeroes the -inf before it
+        # reaches the multiply.
+        eps = torch.finfo(dtype).eps
+        fn = partial(kornia.geometry.conversions.quaternion_exp_to_log, eps=eps)
+
+        identity = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype, requires_grad=True)
+        fn(identity).sum().backward()
+        assert bool(torch.isfinite(identity.grad).all()), identity.grad
+
+        antipode = torch.tensor((-1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype, requires_grad=True)
+        fn(antipode).sum().backward()
+        assert bool(torch.isfinite(antipode.grad).all()), antipode.grad
+
+        # non-unit input at the same boundary, with a nonzero vector part: not a rotation, so no
+        # limit argument makes its gradient meaningful, but it must still not be nan/inf.
+        non_unit = torch.tensor((1.0, 0.1, 0.0, 0.0), device=device, dtype=dtype, requires_grad=True)
+        fn(non_unit).sum().backward()
+        assert bool(torch.isfinite(non_unit.grad).all()), non_unit.grad
+
+        # the guard changes no forward value. At the boundary the identity's log is all zeros;
+        # off it the other branch of the torch.where runs and must equal the unguarded expression
+        # exactly -- that is the branch proving the guard is inert away from w = +-1, which an
+        # on-boundary input cannot exercise.
+        expected_identity = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype)
+        self.assert_close(fn(identity.detach()), expected_identity)
+
+        near_boundary = torch.tensor((1.0 - eps, 0.1, 0.0, 0.0), device=device, dtype=dtype)
+        work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        work = near_boundary.to(work_dtype)
+        unguarded = (
+            work[1:4]
+            * work[0:1].clamp(min=-1.0, max=1.0).acos()
+            / work[1:4].norm(p=2, dim=-1, keepdim=True).clamp(min=eps)
+        ).to(dtype)
+        self.assert_close(fn(near_boundary), unguarded)
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         quaternion = torch.tensor((0.0, 0.0, 1.0, 0.0), device=device, dtype=dtype)
         op = kornia.geometry.conversions.quaternion_exp_to_log
@@ -5869,6 +5912,24 @@ class TestEulerFromQuaternion(BaseTester):
     def test_gradcheck(self, device):
         q = Quaternion.random(batch_size=1).to(device, torch.float64)
         self.gradcheck(euler_from_quaternion, (q.w, q.x, q.y, q.z))
+
+    def test_convention_pitch_gradient_is_finite_at_gimbal_lock_4007(self, device, dtype):
+        # #4007: d(asin)/dx = 1/sqrt(1-x^2) is unbounded at x = +-1, which sinp hits exactly at
+        # gimbal lock (pitch = +-pi/2); the guard mirrors quaternion_exp_to_log's own acos
+        # boundary fix. As there, asin's boundary derivative is inf on every supported torch
+        # version and it is clamp's backward that differs, so the torch 2.5.1 leg is the one that
+        # fails on base. w=1, x=0, y=0.5, z=0 gives sinp = 2*(w*y - z*x) = 1.0 exactly.
+        w = torch.tensor(1.0, device=device, dtype=dtype, requires_grad=True)
+        x = torch.tensor(0.0, device=device, dtype=dtype, requires_grad=True)
+        y = torch.tensor(0.5, device=device, dtype=dtype, requires_grad=True)
+        z = torch.tensor(0.0, device=device, dtype=dtype, requires_grad=True)
+
+        _, pitch, _ = euler_from_quaternion(w, x, y, z)
+        self.assert_close(pitch, (kornia.pi / 2.0).to(device=device, dtype=dtype))
+
+        pitch.backward()
+        for name, t in (("w", w), ("x", x), ("y", y), ("z", z)):
+            assert bool(torch.isfinite(t.grad)), f"pitch grad wrt {name} is not finite: {t.grad}"
 
     @pytest.mark.skipif(
         torch_version() in {"2.0.1", "2.1.2", "2.2.2", "2.3.1"} and sys.version_info.minor == 8,
