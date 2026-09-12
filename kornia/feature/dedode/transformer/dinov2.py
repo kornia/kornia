@@ -261,47 +261,16 @@ class DinoVisionTransformer(nn.Module):
 
         return x
 
-    def forward_features_list(self, x_list, masks_list):
-        """Compute transformer features for a list of image tensors.
-
-        Args:
-            x_list: List of input image tensors, each with shape :math:`(B, C, H, W)`.
-            masks_list: List of optional boolean mask tensors matching each image in ``x_list``.
-
-        Returns:
-            List of intermediate feature dictionaries, one per input image tensor.
-        """
-        x = [self.prepare_tokens_with_masks(x, masks) for x, masks in zip(x_list, masks_list)]
-        for blk in self.blocks:
-            x = blk(x)
-
-        all_x = x
-        output = []
-        for x, masks in zip(all_x, masks_list):
-            x_norm = self.norm(x)
-            output.append(
-                {
-                    "x_norm_clstoken": x_norm[:, 0],
-                    "x_norm_patchtokens": x_norm[:, 1:],
-                    "x_prenorm": x,
-                    "masks": masks,
-                }
-            )
-        return output
-
     def forward_features(self, x, masks=None):
         """Compute transformer features for one image tensor.
 
         Args:
-            x: Input image tensor with shape :math:`(B, C, H, W)`, or list of tensors.
+            x: Input image tensor with shape :math:`(B, C, H, W)`.
             masks: Optional boolean mask tensor with shape :math:`(B, N)` or ``None``.
 
         Returns:
             Feature dictionary with keys ``x_norm_clstoken``, ``x_norm_patchtokens``, ``x_prenorm``, and ``masks``.
         """
-        if isinstance(x, list):
-            return self.forward_features_list(x, masks)
-
         x = self.prepare_tokens_with_masks(x, masks)
 
         for blk in self.blocks:

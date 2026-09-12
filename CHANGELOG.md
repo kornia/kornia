@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Optional-dependency extra `kornia[image]` installs Pillow for PIL-backed image input/output,
+  display helpers and `kornia.io.sample`; missing-Pillow errors now name the extra to install.
 * New "Camera and world conventions across the ecosystem" page cataloguing the pixel-centre, axis
   and extrinsics conventions of OpenCV, COLMAP, OpenGL, ARKit, ARCore, PyTorch3D and Direct3D with the
   kornia converter for each, plus the baked `align_corners` rows for the depth and undistortion warps on
