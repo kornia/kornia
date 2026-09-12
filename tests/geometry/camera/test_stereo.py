@@ -464,98 +464,44 @@ class TestStereoCamera(BaseTester):
         self.assert_close(points, expected)
         self.assert_close(reproject_disparity_to_3D(disparity, -q), -expected)
 
-    def test_wart_reproject_disparity_reads_u_from_the_row_index_4269(self, device, dtype):
-        # Wart pin for kornia#4269: the pixel
-        # meshgrid is unbound as ``v, u = torch.unbind(uv, dim=-1)``, but create_meshgrid returns (x, y), so
-        # uv[..., 0] is the COLUMN and uv[..., 1] is the ROW. X is therefore computed from the row index and Y
-        # from the column index -- the opposite of cv2.reprojectImageTo3D, which this function was added
-        # (kornia#2042) to provide. What comes out is the OpenCV answer with the two pixel indices TRANSPOSED:
-        # kornia's value at (row, col) is what cv2.reprojectImageTo3D puts at (col, row), i.e. exactly
-        # X = (row - cx) Z / fx, Y = (col - cy) Z / fy with Z = fx * tx / d. The fy/fx swap in Q rows 0 and 1
-        # compensates for the homogeneous divide, so X is still scaled by 1/fx and Y by 1/fy -- what moved is
-        # only which INDEX feeds which coordinate. The transpose arm below runs on the fy = 50 camera, where
-        # fx != fy, so a reading that swapped the focal lengths as well would not reproduce it.
-        # The swap does NOT cancel on a square image with fx == fy and cx == cy: transposing the index pair is
-        # a no-op only where row == col, so the diagonal agrees with OpenCV and everything else does not (the
-        # square arm below measures a 0.2 gap on a 5 x 5 map, asserted as > 0.1).
-        # Snippet used to generate expected: cam.reproject_disparity_to_3D(full((1, 3, 5, 1), 10.0)) executed
-        # recorded in original commit 1a96bfd1 (torch 2.14.0, cpu float32) -> (row 0, col 2) [-0.2, -0.05, 5.0],
-        # (row 1, col 0) [-0.15, -0.15, 5.0], (row 2, col 4) [-0.1, 0.05, 5.0]; the hand-computed OpenCV answers
-        # for the same three pixels are [-0.1, -0.15, 5.0], [-0.2, -0.1, 5.0] and [0.0, -0.05, 5.0]. On the
-        # fy = 50 camera the whole (1, 3, 5, 3) map equals the transposed OpenCV map to 0.0 (float32, float64,
-        # bfloat16 on cpu and float32 on mps) and to 0.00390625 in float16 (cpu and mps), which is that dtype's
-        # rounding of Z = 5. On the square fx = fy = 100, cx = cy = 3 camera the same map is 0.2 away from the
-        # untransposed OpenCV map in every one of those cells, and its (2, 2) pixel is on the diagonal and
-        # agrees. Every cell (cpu float32/float64/float16/bfloat16, mps float32/float16) reproduces this.
-        # Pins the CURRENT value; NOT a contract; delete when #4269 is repaired.
-        cam = self._asymmetric_stereo(device, dtype)
-        points = cam.reproject_disparity_to_3D(torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype))
-        self.assert_close(points[0, 0, 2], torch.tensor([-0.2, -0.05, 5.0], device=device, dtype=dtype))
-        self.assert_close(points[0, 1, 0], torch.tensor([-0.15, -0.15, 5.0], device=device, dtype=dtype))
-        self.assert_close(points[0, 2, 4], torch.tensor([-0.1, 0.05, 5.0], device=device, dtype=dtype))
-        # the whole map, on a camera with fx = 100 != fy = 50: the OpenCV formula read at (u, v) = (row, col)
-        transposed = self._asymmetric_stereo(device, dtype, fy=50.0).reproject_disparity_to_3D(
-            torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype)
-        )
-        rows = torch.arange(3.0, device=device, dtype=dtype).view(3, 1).expand(3, 5)
-        columns = torch.arange(5.0, device=device, dtype=dtype).view(1, 5).expand(3, 5)
-        depth = torch.full((3, 5), 5.0, device=device, dtype=dtype)
-        self.assert_close(transposed, torch.stack([(rows - 4.0) * 0.05, (columns - 3.0) * 0.1, depth], dim=-1)[None])
-        # fx == fy and cx == cy on a square map does not make it cancel: only the diagonal agrees with OpenCV
-        square_left = torch.tensor(
-            [[[100.0, 0.0, 3.0, 0.0], [0.0, 100.0, 3.0, 0.0], [0.0, 0.0, 1.0, 0.0]]], device=device, dtype=dtype
-        )
-        square_right = square_left.clone()
-        square_right[0, 0, 3] = -50.0
-        square = StereoCamera(square_left, square_right)
-        square_points = square.reproject_disparity_to_3D(torch.full((1, 5, 5, 1), 10.0, device=device, dtype=dtype))
-        square_rows = torch.arange(5.0, device=device, dtype=dtype).view(5, 1).expand(5, 5)
-        square_columns = torch.arange(5.0, device=device, dtype=dtype).view(1, 5).expand(5, 5)
-        square_depth = torch.full((5, 5), 5.0, device=device, dtype=dtype)
-        opencv = torch.stack([(square_columns - 3.0) * 0.05, (square_rows - 3.0) * 0.05, square_depth], dim=-1)[None]
-        self.assert_close(
-            square_points,
-            torch.stack([(square_rows - 3.0) * 0.05, (square_columns - 3.0) * 0.05, square_depth], dim=-1)[None],
-        )
-        assert (square_points - opencv).abs().max().item() > 0.1
-        self.assert_close(square_points[0, 2, 2], opencv[0, 2, 2])
-
-    @pytest.mark.xfail(strict=True, reason="kornia#4269: reproject_disparity_to_3D swaps u and v")
     def test_convention_reproject_disparity_uses_the_column_as_u_4269(self, device, dtype):
-        # Intended contract, asserted as a strict xfail so the repair makes it XPASS and forces this mark out:
-        # u is the COLUMN index and v the ROW index, as in cv2.reprojectImageTo3D --
-        # X = (u - cx) Z / fx, Y = (v - cy) Z / fy, with Z = fx * tx / d. On this fixture (fx = fy = 100,
-        # cx = 4, cy = 3, tx = 0.5, d = 10, so Z = 5) that is [-0.1, -0.15, 5] at (row 0, col 2),
-        # [-0.2, -0.1, 5] at (row 1, col 0) and [0.0, -0.05, 5] at (row 2, col 4).
-        # Settled by #4269's Expected section (unbind as ``u, v``); the fix is focused and welcome as a PR, and
-        # it also has to re-lay _RealTestData's disparity and point cloud as (1, 1, 10, 1) / (1, 1, 10, 3): the
-        # stored literals are correct OpenCV output for a one-row strip and stay as they are.
+        # The contract, repaired by #4269 and an ordinary passing regression since: u is the COLUMN index and
+        # v the ROW index, as in cv2.reprojectImageTo3D -- X = (u - cx) Z / fx, Y = (v - cy) Z / fy, with
+        # Z = fx * tx / d. On this fixture (fx = fy = 100, cx = 4, cy = 3, tx = 0.5, d = 10, so Z = 5) that is
+        # [-0.1, -0.15, 5] at (row 0, col 2), [-0.2, -0.1, 5] at (row 1, col 0) and [0.0, -0.05, 5] at
+        # (row 2, col 4). It was a strict xfail while the two indices were transposed.
         cam = self._asymmetric_stereo(device, dtype)
         points = cam.reproject_disparity_to_3D(torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype))
         self.assert_close(points[0, 0, 2], torch.tensor([-0.1, -0.15, 5.0], device=device, dtype=dtype))
         self.assert_close(points[0, 1, 0], torch.tensor([-0.2, -0.1, 5.0], device=device, dtype=dtype))
         self.assert_close(points[0, 2, 4], torch.tensor([0.0, -0.05, 5.0], device=device, dtype=dtype))
+        # The whole map on a camera with fx = 100 != fy = 50, so a reading that swapped the focal lengths as
+        # well as the indices could not reproduce it. This arm is what the deleted wart pin asserted
+        # transposed.
+        points = self._asymmetric_stereo(device, dtype, fy=50.0).reproject_disparity_to_3D(
+            torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype)
+        )
+        rows = torch.arange(3.0, device=device, dtype=dtype).view(3, 1).expand(3, 5)
+        columns = torch.arange(5.0, device=device, dtype=dtype).view(1, 5).expand(3, 5)
+        depth = torch.full((3, 5), 5.0, device=device, dtype=dtype)
+        opencv = torch.stack([(columns - 4.0) * 0.05, (rows - 3.0) * 0.1, depth], dim=-1)[None]
+        self.assert_close(points, opencv)
 
-    def test_wart_reproject_disparity_x_varies_with_the_row_and_y_with_the_column_4269(self, device, dtype):
-        # Wart pin for kornia#4269: the axis-dependence form of the
-        # same defect, independent of any single pixel's literal. On a constant disparity map, X must vary along
-        # a row (it is a function of the column) and be constant down a column; kornia does the reverse -- X is
-        # constant along row 0 and steps by 0.05 down column 0, while Y steps by 0.05 along row 0. This is the
-        # reproduction that survives any change of fixture, because it asserts which INDEX each output
-        # coordinate depends on rather than a value.
-        # Snippet used to generate expected: slices of cam.reproject_disparity_to_3D(full((1, 3, 5, 1), 10.0))
-        # recorded in original commit 1a96bfd1 (torch 2.14.0, cpu float32) -> X along row 0
-        # [-0.2, -0.2, -0.2, -0.2, -0.2], X down column 0 [-0.2, -0.15, -0.1], Y along row 0
-        # [-0.15, -0.1, -0.05, -0.0, 0.05]. Identical (up to the dtype rounding) in every cell: cpu float32,
-        # float64, float16 and bfloat16, mps float32 and float16.
-        # Pins the CURRENT value; NOT a contract; delete when #4269 is repaired.
+    def test_convention_reproject_disparity_x_varies_with_the_column_4269(self, device, dtype):
+        # The axis-dependence form of the contract, and the one statement that survives any change of fixture
+        # because it asserts which INDEX each output coordinate depends on rather than a literal. On a constant
+        # disparity map X is a function of the column, so it varies along a row and is constant down a column;
+        # Y is the mirror image. This was a wart pin asserting the reverse while the indices were transposed.
         cam = self._asymmetric_stereo(device, dtype)
         points = cam.reproject_disparity_to_3D(torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype))
-        x_along_row = points[0, 0, :, 0]
-        assert bool((x_along_row == x_along_row[0]).all())
-        self.assert_close(x_along_row, torch.full((5,), -0.2, device=device, dtype=dtype))
-        self.assert_close(points[0, :, 0, 0], torch.tensor([-0.2, -0.15, -0.1], device=device, dtype=dtype))
-        self.assert_close(points[0, 0, :, 1], torch.tensor([-0.15, -0.1, -0.05, 0.0, 0.05], device=device, dtype=dtype))
+        # X: steps by 0.05 along a row, constant down a column.
+        self.assert_close(points[0, 0, :, 0], torch.tensor([-0.2, -0.15, -0.1, -0.05, 0.0], device=device, dtype=dtype))
+        x_down_column = points[0, :, 0, 0]
+        assert bool((x_down_column == x_down_column[0]).all())
+        # Y: constant along a row, steps by 0.05 down a column.
+        y_along_row = points[0, 0, :, 1]
+        assert bool((y_along_row == y_along_row[0]).all())
+        self.assert_close(points[0, :, 0, 1], torch.tensor([-0.15, -0.1, -0.05], device=device, dtype=dtype))
 
     def test_wart_stereo_rejects_differing_principal_points_4270(self, device, dtype):
         # Wart pin for kornia#4270: the docs page says "cx may differ between

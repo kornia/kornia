@@ -392,7 +392,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   changes for every non-square input. The real-data regression fixture stored ten points as ten
   rows of one column while its own comment and its ground truth describe one row of ten columns,
   which is why it passed against the swapped code; it is now laid out as the comment says, and
-  the fixed code reproduces the unchanged ground-truth values. (#4269, #4366)
+  the fixed code reproduces the unchanged ground-truth values. #4317's two wart pins for this defect
+  are retired and its strict-xfail convention test is now an ordinary passing regression. (#4269, #4366)
 
 * `RandomRain` with `same_on_batch=True` now samples the same number of rain drops for all samples in the batch. (#4453)
 * `RandomRain` now rejects drop heights equal to the image height and absolute drop widths equal to the image
