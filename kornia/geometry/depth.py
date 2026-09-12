@@ -417,13 +417,6 @@ def warp_frame_depth(
         :class:`~kornia.geometry.depth.DepthWarper` states the mapping in full. Tracked as
         `#4273 <https://github.com/kornia/kornia/issues/4273>`_.
 
-    .. warning::
-        An empty batch (:math:`B = 0`) raises ``ZeroDivisionError`` from ``transform_points`` -- its
-        batch-repeat count is ``0 // 0`` -- before any sampling runs, rather than returning an empty result,
-        although the shape guards on the way in accept it and
-        :func:`~kornia.geometry.depth.depth_to_3d` -- the same unprojection in the other layout -- returns an
-        empty point cloud. Tracked as `#4281 <https://github.com/kornia/kornia/issues/4281>`_.
-
     Args:
         image_src: image tensor in the source frame with shape :math:`(B,D,H,W)`.
         depth_dst: depth tensor in the destination frame with shape :math:`(B,1,H,W)`.
@@ -440,6 +433,16 @@ def warp_frame_depth(
     KORNIA_CHECK_SHAPE(depth_dst, ["B", "1", "H", "W"])
     KORNIA_CHECK_SHAPE(src_trans_dst, ["B", "4", "4"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
+
+    if (
+        image_src.shape[0] == 0
+        and depth_dst.shape[0] == 0
+        and src_trans_dst.shape[0] == 0
+        and camera_matrix.shape[0] == 0
+    ):
+        output_shape = (0, image_src.shape[1], depth_dst.shape[-2], depth_dst.shape[-1])
+        output_zero = image_src.reshape(-1)[:1].sum() * 0.0
+        return output_zero.reshape(1, 1, 1, 1).expand(output_shape)
 
     # unproject source points to camera frame as (B, H, W, 3) directly — avoids two permutes
     points_3d_dst: torch.Tensor = depth_to_3d_v2(depth_dst.squeeze(1), camera_matrix, normalize_points)  # BxHxWx3
@@ -787,10 +790,9 @@ def depth_from_disparity(
         - the depth is ``baseline * focal / disparity``, elementwise: ``baseline`` is the distance between the
           two camera centres and ``focal`` the focal length in pixels, so a disparity of 2 with a baseline of
           0.5 and a focal length of 100 gives a depth of 25.
-        - ``baseline`` and ``focal`` are each a python ``float`` or a tensor of shape :math:`(1,)`. A 0-dim
-          tensor -- what a reduction produces -- and a per-batch-element :math:`(B,)` tensor both raise
-          ``ShapeError``, and a python ``int`` is rejected by the type check, so one value is shared by the
-          whole batch.
+        - ``baseline`` and ``focal`` are each a Python ``int`` or ``float``, a scalar tensor, or a tensor of
+          shape :math:`(1,)`; one value is shared by the whole batch. Per-batch-element :math:`(B,)` tensors
+          with :math:`B > 1` raise ``ShapeError``.
         - ``disparity`` is :math:`(*, H, W)` and the result has its shape. Its sign is not checked, so a
           negative disparity gives a negative depth.
 
@@ -805,9 +807,8 @@ def depth_from_disparity(
 
     Args:
         disparity: Disparity tensor of shape :math:`(*, H, W)`.
-        baseline: a python ``float`` or a tensor of shape :math:`(1,)` containing the distance between the two
-          lenses.
-        focal: a python ``float`` or a tensor of shape :math:`(1,)` containing the focal length.
+        baseline: Distance between the two lenses, as an int, float, or tensor of shape ``()`` or ``(1,)``.
+        focal: Focal length, as an int, float, or tensor of shape ``()`` or ``(1,)``.
 
     Return:
         Depth map of the shape :math:`(*, H, W)`.
@@ -823,18 +824,18 @@ def depth_from_disparity(
     KORNIA_CHECK_IS_TENSOR(disparity, f"Input disparity type is not a torch.Tensor. Got {type(disparity)}.")
     KORNIA_CHECK_SHAPE(disparity, ["*", "H", "W"])
     KORNIA_CHECK(
-        isinstance(baseline, (float, torch.Tensor)),
-        f"Input baseline should be either a float or torch.Tensor. Got {type(baseline)}",
+        isinstance(baseline, (int, float, torch.Tensor)) and not isinstance(baseline, bool),
+        f"Input baseline should be an int, float or torch.Tensor. Got {type(baseline)}",
     )
     KORNIA_CHECK(
-        isinstance(focal, (float, torch.Tensor)),
-        f"Input focal should be either a float or torch.Tensor. Got {type(focal)}",
+        isinstance(focal, (int, float, torch.Tensor)) and not isinstance(focal, bool),
+        f"Input focal should be an int, float or torch.Tensor. Got {type(focal)}",
     )
 
-    if isinstance(baseline, torch.Tensor):
+    if isinstance(baseline, torch.Tensor) and baseline.ndim != 0:
         KORNIA_CHECK_SHAPE(baseline, ["1"])
 
-    if isinstance(focal, torch.Tensor):
+    if isinstance(focal, torch.Tensor) and focal.ndim != 0:
         KORNIA_CHECK_SHAPE(focal, ["1"])
 
     return baseline * focal / (disparity + 1e-8)

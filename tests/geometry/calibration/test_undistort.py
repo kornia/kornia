@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+import kornia.geometry.calibration.undistort as undistort_module
 from kornia.geometry.calibration.distort import distort_points
 from kornia.geometry.calibration.undistort import undistort_image, undistort_points
 from kornia.geometry.grid import create_meshgrid
@@ -74,6 +75,46 @@ class TestUndistortPoints(BaseTester):
         new_K = torch.rand(1, 3, 3, device=device, dtype=dtype)
         pointsu = undistort_points(points, K, distCoeff, new_K)
         assert points.shape == pointsu.shape
+
+    def test_tilt_multi_axis_batch(self, device, dtype):
+        num_points = 5
+        points = torch.rand(2, 3, num_points, 2, device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3).clone()
+        dist = torch.zeros(2, 3, 14, device=device, dtype=dtype)
+        dist[..., 12] = 0.01
+        dist[..., 13] = -0.02
+
+        actual = undistort_points(points, K, dist)
+        expected = torch.stack(
+            [undistort_points(p, k, d) for p, k, d in zip(points.flatten(0, -3), K.flatten(0, -3), dist.flatten(0, -2))]
+        ).reshape(2, 3, num_points, 2)
+
+        assert actual.shape == points.shape
+        self.assert_close(actual, expected)
+
+    def test_export_multi_axis_batch(self, monkeypatch, device, dtype):
+        points = torch.rand(2, 3, 5, 2, device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3).clone()
+        dist = torch.tensor([0.01, -0.02, 0.001, -0.001], device=device, dtype=dtype).expand(2, 3, 4).clone()
+        expected = undistort_points(points, K, dist)
+
+        monkeypatch.setattr(undistort_module, "is_exporting", lambda: True)
+        actual = undistort_points(points, K, dist)
+
+        assert actual.shape == points.shape
+        self.assert_close(actual, expected)
+
+    def test_export_unbatched(self, monkeypatch, device, dtype):
+        points = torch.rand(5, 2, device=device, dtype=dtype)
+        K = torch.eye(3, device=device, dtype=dtype)
+        dist = torch.tensor([0.01, -0.02, 0.001, -0.001], device=device, dtype=dtype)
+        expected = undistort_points(points, K, dist)
+
+        monkeypatch.setattr(undistort_module, "is_exporting", lambda: True)
+        actual = undistort_points(points, K, dist)
+
+        assert actual.shape == points.shape
+        self.assert_close(actual, expected)
 
     @pytest.mark.parametrize(
         "batch_size, num_points, num_distcoeff", [(1, 3, 4), (2, 4, 5), (3, 5, 8), (4, 6, 12), (5, 7, 14)]
@@ -414,37 +455,6 @@ class TestUndistortPoints(BaseTester):
         self.assert_close(residuals[1], residuals[3], atol=1e-3, rtol=1e-5)
         assert residuals[1] > residuals[0] > 1
 
-    @pytest.mark.parametrize("op", [distort_points, undistort_points])
-    @pytest.mark.parametrize("exporting", [False, True])
-    def test_wart_multi_axis_tilt_batch_fails_4324(self, device, dtype, monkeypatch, op, exporting):
-        # Wart pin for kornia#4324: with two leading axes the tilt path fails, and export always takes the tilt
-        # path, including for four zero coefficients. The first assertion is the eager control on the same shapes.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4324 is repaired.
-        points = torch.ones(2, 3, 5, 2, device=device, dtype=dtype)
-        K = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3)
-        dist = torch.zeros(2, 3, 4 if exporting else 14, device=device, dtype=dtype)
-        assert op(points, K, dist).shape == points.shape
-        if exporting:
-            monkeypatch.setattr(f"{op.__module__}.is_exporting", lambda: True)
-        else:
-            dist[..., 12:] = torch.tensor([0.01, 0.02], device=device, dtype=dtype)
-        error = RuntimeError if op is distort_points else ValueError
-        message = "size of tensor" if op is distort_points else "Input batch size must be the same"
-        with pytest.raises(error, match=message):
-            op(points, K, dist)
-
-    def test_wart_unbatched_export_undistort_fails_4324(self, device, dtype, monkeypatch):
-        # Wart pin for kornia#4324: the legacy unbatched form that eager undistort_points accepts is rejected on
-        # the export path, which the four-coefficient vector does not avoid.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4324 is repaired.
-        points = torch.ones(1, 2, device=device, dtype=dtype)
-        K = torch.eye(3, device=device, dtype=dtype)
-        dist = torch.zeros(4, device=device, dtype=dtype)
-        assert undistort_points(points, K, dist).shape == points.shape
-        monkeypatch.setattr(f"{undistort_points.__module__}.is_exporting", lambda: True)
-        with pytest.raises(ValueError, match="Input batch size must be the same"):
-            undistort_points(points, K, dist)
-
     def test_gradcheck(self, device):
         points = torch.rand(1, 8, 2, device=device, dtype=torch.float64, requires_grad=True)
         K = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
@@ -491,21 +501,21 @@ class TestUndistortImage(BaseTester):
         assert imu.shape == (3, 2, 3, 5, 5)
         self.assert_close(imu[0], imu[1])
 
-    @pytest.mark.parametrize("exporting", [False, True])
-    def test_wart_multi_axis_tilt_image_fails_4324(self, device, dtype, monkeypatch, exporting):
-        # Wart pin for kornia#4324: undistort_image inherits the distort_points failure on two leading axes once
-        # the tilt path is taken (non-zero tilt in eager, always under export).
-        # Pins the CURRENT behavior; NOT a contract; delete when #4324 is repaired.
-        image = torch.ones(2, 3, 1, 5, 5, device=device, dtype=dtype)
-        K = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3)
-        dist = torch.zeros(2, 3, 4 if exporting else 14, device=device, dtype=dtype)
-        assert undistort_image(image, K, dist).shape == image.shape
-        if exporting:
-            monkeypatch.setattr(f"{distort_points.__module__}.is_exporting", lambda: True)
-        else:
-            dist[..., 12:] = torch.tensor([0.01, 0.02], device=device, dtype=dtype)
-        with pytest.raises(RuntimeError, match="size of tensor"):
-            undistort_image(image, K, dist)
+    def test_tilt_multi_axis_batch(self, device, dtype):
+        image = torch.rand(2, 3, 1, 5, 6, device=device, dtype=dtype)
+        K = torch.tensor([[3.0, 0.0, 3.0], [0.0, 2.0, 2.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
+        K = K.expand(2, 3, 3, 3).clone()
+        dist = torch.zeros(2, 3, 14, device=device, dtype=dtype)
+        dist[..., 12] = 0.01
+        dist[..., 13] = 0.02
+
+        actual = undistort_image(image, K, dist)
+        expected = torch.stack(
+            [torch.stack([undistort_image(image[i, j], K[i, j], dist[i, j]) for j in range(3)]) for i in range(2)]
+        )
+
+        assert actual.shape == image.shape
+        self.assert_close(actual, expected)
 
     def test_exception(self, device, dtype):
         with pytest.raises(ValueError):

@@ -119,21 +119,10 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
         - the inverse is a fixed number of Gauss-Newton steps rather than a closed form: the step count is not
           a parameter and there is no convergence test, so the round trip through
           :func:`distort_points_kannala_brandt` closes only to the accuracy that iteration has reached. The
-          step count cannot be raised by a caller. In ``float32`` the residual reaches the rounding floor; in
-          ``float64`` it stops at about ``1e-8`` on the normalized plane, because the final radial rescale
-          divides by ``r + 1e-8`` rather than ``r`` and so scales every result by ``1 - 1e-8 / r``. That is the
-          ``float64`` side of `#4308 <https://github.com/kornia/kornia/issues/4308>`_.
-          :func:`~kornia.geometry.camera.undistort_points_affine` is the closed-form contrast.
-        - three small constants guard the Newton start (``1e-16``), Newton denominator (``1e-12``), and final
-          radial rescale (``1e-8``), so a point at the principal point comes back as the origin rather than
-          ``nan`` -- as long as those constants are representable in the dtype of ``params``, which is the
-          dtype the whole body runs in.
-
-    .. warning::
-        All three guard constants underflow to zero in ``float16``. At the principal point the unguarded Newton
-        denominator is one, but the final ``1e-8`` rescale guard then underflows and returns ``nan`` instead of
-        the origin. ``float32``, ``float64`` and ``bfloat16`` are unaffected. Tracked as
-        `#4308 <https://github.com/kornia/kornia/issues/4308>`_.
+          step count cannot be raised by a caller. :func:`~kornia.geometry.camera.undistort_points_affine` is the
+          closed-form contrast.
+        - an exact zero distorted radius is handled structurally and maps to the origin. Nonzero radii use the
+          radius itself for the final radial rescale, without an additive epsilon.
 
     Args:
         distorted_points_in_camera: torch.Tensor representing the points to undistort with shape (..., 2).
@@ -153,7 +142,6 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
     KORNIA_CHECK_SHAPE(params, ["*", "8"])
 
     iters = 10
-    eps = 1e-8
     device = distorted_points_in_camera.device
     out_dtype = distorted_points_in_camera.dtype
 
@@ -175,10 +163,19 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
     un = (x - cx) / fx
     vn = (y - cy) / fy
 
-    rth2 = un * un + vn * vn
-    rth = rth2.sqrt()
+    nonzero_radius = (un != 0) | (vn != 0)
+    safe_un = torch.where(nonzero_radius, un, torch.ones_like(un))
+    safe_vn = torch.where(nonzero_radius, vn, torch.zeros_like(vn))
+    radius_dtype = safe_un.dtype
+    if radius_dtype == torch.float16:
+        safe_un = safe_un.float()
+        safe_vn = safe_vn.float()
+    rth = (safe_un * safe_un + safe_vn * safe_vn).sqrt().to(radius_dtype)
+    rth = torch.where(nonzero_radius, rth, torch.zeros_like(rth))
 
-    th = rth.clamp(min=1e-16).sqrt()
+    safe_rth = torch.where(nonzero_radius, rth, torch.ones_like(rth))
+    th = safe_rth.sqrt()
+    th = torch.where(nonzero_radius, th, torch.zeros_like(th))
 
     # gauss-newton
     for _ in range(iters):
@@ -190,8 +187,9 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: torch.Tensor, pa
         th = th - step
 
     radius_undistorted = th.tan()
-    denom = rth + eps
+    denom = torch.where(nonzero_radius, rth, torch.ones_like(rth))
     mag = radius_undistorted.abs() / denom
+    mag = torch.where(nonzero_radius, mag, torch.ones_like(mag))
     undistorted = torch.stack([mag * un, mag * vn], dim=-1)
 
     return undistorted.to(device=device, dtype=out_dtype)

@@ -22,7 +22,6 @@ import torch
 from torch.distributions import Beta, Uniform
 
 from kornia.core.utils import _extract_device_dtype
-from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
 
@@ -425,50 +424,6 @@ def override_parameters(
         else:
             raise ValueError(f"`{if_none_exist}` is not a valid option.")
     return out
-
-
-def preprocess_boxes(input: Union[torch.Tensor, Boxes], mode: str = "vertices_plus") -> Boxes:
-    r"""Preprocess input boxes.
-
-    Args:
-        input: 2D boxes, shape of :math:`(N, 4, 2)`, :math:`(B, N, 4, 2)` or a list of :math:`(N, 4, 2)`.
-            See below for more details.
-        mode: The format in which the boxes are provided.
-
-            * 'xyxy': boxes are assumed to be in the format ``xmin, ymin, xmax, ymax`` where
-              ``width = xmax - xmin``
-                and ``height = ymax - ymin``. With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
-            * 'xyxy_plus': similar to 'xyxy' mode but where box width and length are defined as
-                ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
-                With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
-            * 'xywh': boxes are assumed to be in the format ``xmin, ymin, width, height`` where
-                ``width = xmax - xmin`` and ``height = ymax - ymin``. With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
-            * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
-                *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. Finally,
-                box width and height are defined as ``width = xmax - xmin`` and ``height = ymax - ymin``.
-                With shape :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
-            * 'vertices_plus': similar to 'vertices' mode but where box width and length are defined as
-                ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
-                With shape :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
-
-    Note:
-        **2D boxes format** is defined as a floating data type torch.Tensor of shape ``Nx4x2`` or ``BxNx4x2``
-        where each box is a `quadrilateral <https://en.wikipedia.org/wiki/Quadrilateral>`_ defined by
-        it's 4 vertices
-        coordinates (A, B, C, D). Coordinates must be in ``x, y`` order. The height and width of a box is defined as
-        ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
-        `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
-
-    """
-    # TODO: We may allow list here.
-    # input is BxNx4x2 or Boxes.
-    if isinstance(input, torch.Tensor):
-        if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
-            raise RuntimeError(f"Only BxNx4x2 torch.Tensor is supported. Got {input.shape}.")
-        input = Boxes.from_tensor(input, mode=mode)
-    if not isinstance(input, Boxes):
-        raise RuntimeError(f"Expect `Boxes` type. Got {type(input)}.")
-    return input
 
 
 def preprocess_keypoints(input: Union[torch.Tensor, Keypoints]) -> Keypoints:
