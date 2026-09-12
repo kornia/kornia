@@ -188,8 +188,12 @@ class Se2(nn.Module):
         so2 = So2.exp(theta)
         z = torch.tensor(0.0, device=v.device, dtype=v.dtype)
         theta_nonzeros = theta != 0.0
-        a = torch.where(theta_nonzeros, so2.z.imag / theta, z)
-        b = torch.where(theta_nonzeros, (1.0 - so2.z.real) / theta, z)
+        # both quotients are 0/0 at theta = 0, and torch.where differentiates the branch it does
+        # not select, so 0 * nan = nan used to reach v.grad at the identity. Divide by a
+        # substituted 1.0 there; the where discards that value.
+        safe_theta = torch.where(theta_nonzeros, theta, torch.ones_like(theta))
+        a = torch.where(theta_nonzeros, so2.z.imag / safe_theta, z)
+        b = torch.where(theta_nonzeros, (1.0 - so2.z.real) / safe_theta, z)
         x = v[..., 0]
         y = v[..., 1]
         t = torch.stack((a * x - b * y, b * x + a * y), -1)

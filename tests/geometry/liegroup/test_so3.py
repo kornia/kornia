@@ -46,9 +46,46 @@ class TestSo3(BaseTester):
     def test_exception(self, device, dtype):
         pass
 
-    # TODO: implement me
     def test_gradcheck(self, device):
-        pass
+        v = torch.tensor([[0.3, -0.4, 0.5]], device=device, dtype=torch.float64)
+        self.gradcheck(lambda x: So3.exp(x).matrix(), (v,))
+        q = torch.tensor([[0.8, 0.2, -0.4, 0.4]], device=device, dtype=torch.float64)
+        q = q / q.norm(dim=-1, keepdim=True)
+        self.gradcheck(lambda x: So3(Quaternion(x)).log(), (q,))
+
+    def test_gradient_is_finite_at_the_identity_4404(self, device, dtype):
+        # #4404: exp's small-angle branch is selected at theta = 0, but torch.where differentiates
+        # the branch it does not select too, and sin(theta / 2) / theta is a 0/0 there -- so
+        # 0 * nan = nan used to reach every component of the gradient at the single most common
+        # input, the identity that pose optimisation starts from. The forward was always correct.
+        v = torch.zeros(1, 3, device=device, dtype=dtype, requires_grad=True)
+        So3.exp(v).matrix().sum().backward()
+        assert bool(torch.isfinite(v.grad).all()), v.grad
+
+        # log is singular the same way at both ends: at the identity through sqrt, the division by
+        # theta and acos(+-1), and at a half turn (real = 0) through the small-angle branch's own
+        # division. Each is in the branch the other case selects.
+        identity = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        So3(Quaternion(identity)).log().sum().backward()
+        assert bool(torch.isfinite(identity.grad).all()), identity.grad
+
+        half_turn = torch.tensor([[0.0, 1.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        So3(Quaternion(half_turn)).log().sum().backward()
+        assert bool(torch.isfinite(half_turn.grad).all()), half_turn.grad
+
+    def test_convention_log_identity_gradient_is_the_on_manifold_limit_4404(self, device, dtype):
+        # The value the guard leaves in place, pinned rather than merely asserted finite: at the
+        # identity log evaluates 2 * vec / real, so d(omega_x)/dq_x = 2 -- exact in every dtype,
+        # which is why this runs on the dtype fixture rather than pinning float64 (MPS cannot hold
+        # float64 at all, and this test's name does not carry the "gradcheck" that conftest skips
+        # on that device). Central differences taken through the ambient 4-space disagree (they
+        # return 0) because a perturbed (1, h, 0, 0) is not a unit quaternion and lands in the
+        # other branch, where acos(1) = 0 kills the result. Along the unit sphere --
+        # q(h) = (sqrt(1 - h^2), h, 0, 0), the only path that stays a rotation -- the difference
+        # quotient is 2.000000017 at h = 1e-4 in float64, which is this value.
+        q = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        So3(Quaternion(q)).log()[0, 0].backward()
+        self.assert_close(q.grad, torch.tensor([[0.0, 2.0, 0.0, 0.0]], device=device, dtype=dtype))
 
     # TODO: implement me
     def test_jit(self, device, dtype):

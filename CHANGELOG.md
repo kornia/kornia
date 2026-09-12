@@ -381,6 +381,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `So3.exp`, `So3.log`, `Se3.exp`, `Se3.log` and `Se2.exp` return finite gradients at the identity,
+  and `So3.log` also at a half turn, instead of `nan` on every dtype. The forward values are unchanged;
+  `torch.where` was differentiating the singular branch it does not select. (#4405)
 * `RandomRain` with `same_on_batch=True` now samples the same number of rain drops for all samples in the batch. (#4453)
 * `RandomRain` now rejects drop heights equal to the image height and absolute drop widths equal to the image
   width with the documented validation error, instead of allowing boundary-sized drops to reach an internal
