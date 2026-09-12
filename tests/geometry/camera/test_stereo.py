@@ -186,6 +186,25 @@ class _SmokeTestData:
 class TestStereoCamera(BaseTester):
     """Test class for :class:`~kornia.geometry.camera.stereo.StereoCamera`"""
 
+    @pytest.mark.parametrize("disparity_shape", [(1, 1, 3, 5), (2, 3, 5, 2)])
+    @pytest.mark.parametrize("entrypoint", ["method", "function"])
+    def test_reproject_disparity_layout_error_4374(self, disparity_shape, entrypoint, device, dtype):
+        left, right = _SmokeTestData._create_stereo_camera(disparity_shape[0], device, dtype, tx_fx=-10)
+        camera = StereoCamera(left, right)
+        disparity = torch.ones(disparity_shape, device=device, dtype=dtype)
+
+        with pytest.raises(StereoException) as exc_info:
+            if entrypoint == "method":
+                camera.reproject_disparity_to_3D(disparity)
+            else:
+                reproject_disparity_to_3D(disparity, camera.Q)
+
+        assert str(exc_info.value).splitlines()[0] == (
+            "Expected 'disparity_tensor' to have channels-last shape (B, H, W, 1) "
+            "with a single channel in the last dimension. "
+            f"Got {disparity.shape}."
+        )
+
     @staticmethod
     def _create_disparity_tensor(batch_size, height, width, max_disparity, device, dtype):
         size = (batch_size, height, width, 1)
@@ -212,6 +231,18 @@ class TestStereoCamera(BaseTester):
 
         assert stereo_camera.Q.shape == (batch_size, 4, 4)
         assert stereo_camera.Q.dtype in (torch.float16, torch.float32, torch.float64)
+
+    def test_empty_batch_4281(self, device, dtype):
+        # Regression for kornia#4281: an empty stereo rig is vacuously valid.
+        left_rectified_camera = torch.zeros(0, 3, 4, device=device, dtype=dtype)
+        right_rectified_camera = torch.zeros(0, 3, 4, device=device, dtype=dtype)
+
+        stereo_camera = StereoCamera(left_rectified_camera, right_rectified_camera)
+
+        assert stereo_camera.batch_size == 0
+        assert stereo_camera.Q.shape == (0, 4, 4)
+        assert stereo_camera.Q.dtype == dtype
+        assert stereo_camera.Q.device == device
 
     def test_stereo_camera_attributes_real(self, batch_size, device, dtype):
         """Test proper setup of the class for real data."""
@@ -294,8 +325,8 @@ class TestStereoCamera(BaseTester):
         # cloud is (B, H, W, 3). The channels-FIRST (B, 1, H, W) layout that the rest of kornia uses for images
         # is rejected, and so is an unbatched (B, H, W). The method's docstring used to say (B, 1, H, W) -- the
         # layout the shared guard rejects -- and now says (B, H, W, 1), matching the module-level function and
-        # the private guard's own docstring. The guard's message still says "dimension 1" for a shape[-1] check
-        # and never names (B, H, W, 1); that is kornia#4374, and the match below is on the current text.
+        # the private guard's own docstring. The message names the required layout and the last-dimension
+        # channel check (regression for kornia#4374).
         # The shape claim carries a value so it cannot pass on a dummy: with fx = 100 and tx = 0.5, a disparity
         # of 10 puts every point at Z = fx * tx / d = 5.
         # Snippet used to generate expected: cam.reproject_disparity_to_3D(full((1, 3, 5, 1), 10.0)) executed
@@ -307,7 +338,7 @@ class TestStereoCamera(BaseTester):
         points = cam.reproject_disparity_to_3D(disparity)
         assert points.shape == (1, 3, 5, 3)
         self.assert_close(points[0, 0, 0, 2], torch.tensor(5.0, device=device, dtype=dtype))
-        with pytest.raises(StereoException, match="to be 1 for as single channeled disparity map"):
+        with pytest.raises(StereoException, match=r"channels-last shape \(B, H, W, 1\)"):
             cam.reproject_disparity_to_3D(torch.full((1, 1, 3, 5), 10.0, device=device, dtype=dtype))
         with pytest.raises(StereoException, match="to have 4 dimensions"):
             cam.reproject_disparity_to_3D(torch.full((1, 3, 5), 10.0, device=device, dtype=dtype))
@@ -562,24 +593,3 @@ class TestStereoCamera(BaseTester):
         assert torch.equal(square.Q, cam.Q)
         with pytest.raises(StereoException, match="to have 3 dimensions"):
             StereoCamera(cam.rectified_left_camera[0], cam.rectified_right_camera[0])
-
-    def test_wart_stereo_rejects_an_empty_batch_4281(self, device, dtype):
-        # Wart pin for kornia#4281: ``torch.all`` of an empty tensor is True, so the
-        # sign guard fires on an empty batch and B = 0 is rejected with a message about a tensor that has no
-        # elements at all. kornia's degenerate-shape convention is empty in, empty out; the non-empty rig on the
-        # same code path is accepted.
-        # The match is on the EMPTY tensor in the message, not on "to be negative", because the all-positive rig
-        # pinned above raises the same sentence -- ``Got tensor([50.])`` -- so a looser match would not tell the
-        # two apart.
-        # Snippet used to generate expected: StereoCamera(zeros(0, 3, 4), zeros(0, 3, 4)) recorded in
-        # original commit 1a96bfd1 (torch 2.14.0) -> StereoException("Expected :math:`T_x * f_x` to be negative. Got
-        # tensor([]).") on cpu float32, "... Got tensor([], dtype=torch.float64)." / "torch.float16" /
-        # "torch.bfloat16" on the other cpu cells and "... Got tensor([], device='mps:0')." on mps -- so the
-        # regex stops before the closing bracket. The all-positive rig raises "... Got tensor([50.])" in the
-        # same cells and does not match it.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4281 is repaired.
-        with pytest.raises(StereoException, match=r"Got tensor\(\[\]"):
-            StereoCamera(
-                torch.zeros(0, 3, 4, device=device, dtype=dtype), torch.zeros(0, 3, 4, device=device, dtype=dtype)
-            )
-        assert self._asymmetric_stereo(device, dtype, batch=2).Q.shape == (2, 4, 4)
