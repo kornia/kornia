@@ -30,21 +30,16 @@ def apply_rotary_pos_emb(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) 
     """Apply rotary positional embeddings.
 
     Args:
-        x: Input tensor of shape (batch, seq_len, head_dim).
-        cos: Cosine component of shape (seq_len, head_dim).
-        sin: Sine component of shape (seq_len, head_dim).
+        x: Query or key tensor with shape :math:`(B, H, N, d)`.
+        cos: Cosine component with shape :math:`(1, 1, N, d / 2)`.
+        sin: Sine component with shape :math:`(1, 1, N, d / 2)`.
 
     Returns:
-        Tensor with rotary embeddings applied.
+        Tensor with rotary embeddings applied and the same shape as ``x``.
     """
-    # x: (batch, seq_len, head_dim)
-    # cos, sin: (seq_len, head_dim) or (1, seq_len, head_dim)
-
-    # rotate_half
-    x1, x2 = x.chunk(2, dim=-1)
-    x_rotated = torch.cat((-x2, x1), dim=-1)
-
-    return (x * cos) + (x_rotated * sin)
+    x_complex = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
+    freqs_cis = torch.complex(cos.float(), sin.float())
+    return torch.view_as_real(x_complex * freqs_cis).flatten(-2).type_as(x)
 
 
 class MoonViTRotaryEmbedding(nn.Module):
@@ -52,6 +47,8 @@ class MoonViTRotaryEmbedding(nn.Module):
 
     def __init__(self, dim: int, theta: float = 10000.0) -> None:
         super().__init__()
+        if dim % 4 != 0:
+            raise ValueError(f"Rotary embedding dimension must be divisible by 4. Got {dim}.")
         self.dim = dim
         self.theta = theta
 
@@ -71,38 +68,18 @@ class MoonViTRotaryEmbedding(nn.Module):
 
         Returns:
             A tuple containing the cosine and sine lookup tables, each with shape
-            :math:`(h * w, D)`, where ``D`` is the per-head rotary embedding dimension.
+            :math:`(h * w, D / 2)`, where ``D`` is the per-head rotary embedding dimension.
         """
-        # dim must be divisible by 2 for 2D RoPE (half for H, half for W)
-        # And each half must be divisible by 2 for complex rotation
-        dim_h = self.dim // 2
-        dim_w = self.dim // 2
-
-        # Generate frequencies
-        inv_freq_h = 1.0 / (self.theta ** (torch.arange(0, dim_h, 2, device=device).float() / dim_h))
-        inv_freq_w = 1.0 / (self.theta ** (torch.arange(0, dim_w, 2, device=device).float() / dim_w))
-
-        # Generate positions
-        seq_h = torch.arange(h, device=device, dtype=inv_freq_h.dtype)
-        seq_w = torch.arange(w, device=device, dtype=inv_freq_w.dtype)
-
-        # Outer product to get (h, dim_h/2) and (w, dim_w/2)
-        freqs_h = torch.outer(seq_h, inv_freq_h)  # (h, dim_h/2)
-        freqs_w = torch.outer(seq_w, inv_freq_w)  # (w, dim_w/2)
-
-        # Repeat h frequencies for each w
-        freqs_h = freqs_h.repeat_interleave(w, dim=0)  # (h*w, dim_h/2)
-
-        # Repeat w frequencies for each h
-        freqs_w = freqs_w.repeat(h, 1)  # (h*w, dim_w/2)
-
-        # Concatenate to get full embeddings
-        emb_h = torch.cat((freqs_h, freqs_h), dim=-1)  # (seq_len, dim_h)
-        emb_w = torch.cat((freqs_w, freqs_w), dim=-1)  # (seq_len, dim_w)
-
-        emb = torch.cat((emb_h, emb_w), dim=-1)  # (seq_len, dim)
-
-        return emb.cos(), emb.sin()
+        flat_pos = torch.arange(h * w, device=device, dtype=torch.float32)
+        x_pos = flat_pos % w
+        y_pos = flat_pos // w
+        dim_range = torch.arange(0, self.dim, 4, device=device, dtype=torch.float32)[: self.dim // 4]
+        frequencies = 1.0 / (self.theta ** (dim_range / self.dim))
+        x_freqs = torch.outer(x_pos, frequencies)
+        y_freqs = torch.outer(y_pos, frequencies)
+        angles = torch.stack((x_freqs, y_freqs), dim=-1).reshape(h * w, self.dim // 2)
+        freqs_cis = torch.polar(torch.ones_like(angles), angles)
+        return freqs_cis.real, freqs_cis.imag
 
 
 class MoonViTAttention(nn.Module):
@@ -145,9 +122,9 @@ class MoonViTAttention(nn.Module):
                 ``B`` is the batch size, ``N`` is the number of flattened image
                 patches, and ``D`` is the hidden size.
             cos: Cosine component of the rotary positional embedding with shape
-                :math:`(N, d)`, where ``d`` is the per-head dimension.
+                :math:`(N, d / 2)`, where ``d = D / H`` is the per-head dimension.
             sin: Sine component of the rotary positional embedding with shape
-                :math:`(N, d)`.
+                :math:`(N, d / 2)`.
             attention_mask: Optional mask broadcastable to the scaled dot-product
                 attention scores. It can be used to prevent selected tokens from
                 attending to one another.
@@ -168,9 +145,9 @@ class MoonViTAttention(nn.Module):
         value = value.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
 
         # Apply RoPE
-        # cos, sin are (seq_len, head_dim) -> reshape to (1, 1, seq_len, head_dim)
-        cos = cos.view(1, 1, seq_len, self.head_dim)
-        sin = sin.view(1, 1, seq_len, self.head_dim)
+        # cos, sin are (seq_len, head_dim / 2) -> reshape for complex-pair rotation
+        cos = cos.view(1, 1, seq_len, self.head_dim // 2)
+        sin = sin.view(1, 1, seq_len, self.head_dim // 2)
 
         query = apply_rotary_pos_emb(query, cos, sin)
         key = apply_rotary_pos_emb(key, cos, sin)
@@ -196,7 +173,12 @@ class MoonViTMLP(nn.Module):
     def __init__(self, config: MoonViTConfig) -> None:
         super().__init__()
         self.fc1 = nn.Linear(config.hidden_size, config.intermediate_size)
-        self.act = nn.GELU()
+        if config.hidden_act == "gelu":
+            self.act = nn.GELU()
+        elif config.hidden_act == "gelu_tanh":
+            self.act = nn.GELU(approximate="tanh")
+        else:
+            raise ValueError(f"Unsupported activation: {config.hidden_act}.")
         self.fc2 = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.dropout_p)
 
@@ -313,8 +295,7 @@ class MoonViT(nn.Module):
             config.num_channels, config.hidden_size, kernel_size=config.patch_size, stride=config.patch_size
         )
 
-        # Initialized for the default image size
-        num_patches = (config.image_size // config.patch_size) ** 2
+        num_patches = config.init_pos_emb_height * config.init_pos_emb_width
         self.pos_embed = nn.Parameter(torch.randn(1, num_patches, config.hidden_size))
 
         self.rope = MoonViTRotaryEmbedding(config.hidden_size // config.num_attention_heads, theta=config.rope_theta)
@@ -341,13 +322,11 @@ class MoonViT(nn.Module):
 
         # Add Absolute Positional Embedding (with interpolation)
         pos_embed = self.pos_embed
-        if x.shape[1] != pos_embed.shape[1]:
+        h_ref = self.config.init_pos_emb_height
+        w_ref = self.config.init_pos_emb_width
+        if (h_patches, w_patches) != (h_ref, w_ref):
             # Interpolate pos_embed to match current resolution
             # pos_embed is (1, N_ref, D) -> (1, D, H_ref, W_ref)
-            h_ref = int(pos_embed.shape[1] ** 0.5)
-            if h_ref * h_ref != pos_embed.shape[1]:
-                raise ValueError("pos_embed shape is not a perfect square, cannot reshape to 2D grid.")
-            w_ref = h_ref
             pos_embed = pos_embed.permute(0, 2, 1).view(1, -1, h_ref, w_ref)
 
             pos_embed = F.interpolate(pos_embed, size=(h_patches, w_patches), mode="bicubic", align_corners=False)
@@ -358,7 +337,7 @@ class MoonViT(nn.Module):
         x = x + pos_embed
 
         # Generate RoPE
-        cos, sin = self.rope(h_patches, w_patches, x.device)  # (N, head_dim)
+        cos, sin = self.rope(h_patches, w_patches, x.device)  # (N, head_dim / 2)
         x = self.encoder(x, cos, sin, attention_mask=attention_mask)
         x = self.norm(x)
 
