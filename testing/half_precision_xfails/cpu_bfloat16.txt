@@ -378,7 +378,6 @@ call	builtins.RuntimeError	tests/geometry/liegroup/test_so2.py::TestSo2::test_ra
 call	builtins.AssertionError	tests/geometry/liegroup/test_so3.py::TestSo3::test_ortho[cpu-bfloat16-2]
 call	builtins.AssertionError	tests/geometry/liegroup/test_so3.py::TestSo3::test_ortho[cpu-bfloat16-5]
 call	builtins.AssertionError	tests/geometry/solvers/test_polynomial_solver.py::TestQuarticSolver::test_random[cpu-bfloat16]
-call	builtins.AssertionError	tests/geometry/solvers/test_polynomial_solver.py::TestQuarticSolver::test_solve_quartic[cpu-bfloat16-coeffs0-expected_solutions0]
 call	builtins.AssertionError	tests/geometry/solvers/test_polynomial_solver.py::TestQuarticSolver::test_solve_quartic[cpu-bfloat16-coeffs3-expected_solutions3]
 call	builtins.AssertionError	tests/geometry/subpix/test_dsnt.py::TestRenderGaussian2d::test_normalized_coordinates[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/subpix/test_dsnt.py::TestRenderGaussian2d::test_pixel_coordinates[cpu-bfloat16]

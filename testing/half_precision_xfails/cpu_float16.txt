@@ -396,7 +396,6 @@ call	builtins.NotImplementedError	tests/geometry/liegroup/test_so2.py::TestSo2::
 call	builtins.NotImplementedError	tests/geometry/liegroup/test_so2.py::TestSo2::test_random[cpu-float16-None]
 call	builtins.AssertionError	tests/geometry/liegroup/test_so3.py::TestSo3::test_ortho[cpu-float16-2]
 call	builtins.AssertionError	tests/geometry/solvers/test_polynomial_solver.py::TestQuarticSolver::test_random[cpu-float16]
-call	builtins.AssertionError	tests/geometry/solvers/test_polynomial_solver.py::TestQuarticSolver::test_solve_quartic[cpu-float16-coeffs0-expected_solutions0]
 call	builtins.AssertionError	tests/geometry/solvers/test_polynomial_solver.py::TestQuarticSolver::test_solve_quartic[cpu-float16-coeffs3-expected_solutions3]
 call	builtins.AssertionError	tests/geometry/subpix/test_spatial_softargmax.py::TestConvQuadInterp3dModule::test_diag[cpu-float16]
 call	builtins.AssertionError	tests/geometry/subpix/test_spatial_softargmax.py::TestConvSoftArgmax2d::test_cold_diag[cpu-float16]

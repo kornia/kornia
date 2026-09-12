@@ -410,7 +410,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   small (a near-biquadratic): `A·y` and `2C` nearly cancel and float32 rounds the difference away
   before dividing by a tiny `R`, returning values that are not roots. `E` is now computed from the
   constant-term identity `E² = y²/4 − D` (only its sign comes from the cross term), which has no
-  cancellation. (#4346, #4375)
+  cancellation. Fourth, the quartic intermediates (resolvent cubic, residual, radicand) were computed
+  in the input dtype, so ordinary coefficient magnitudes made the resolvent's `R²` overflow float16's
+  ~65504 maximum and the solver returned `inf`/`nan` (a seeded 50k-row half-precision sweep produced
+  21,751 non-finite rows). The quartic path now runs in float32 for half inputs and casts the roots
+  back. (#4346, #4375)
 
 * `depth_from_plane_equation` returns a finite depth for a ray exactly parallel to the plane. The
   near-singular guard was `eps * torch.sign(denom)`, and `torch.sign` is zero at zero, so at the exact

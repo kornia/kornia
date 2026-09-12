@@ -488,6 +488,25 @@ class TestQuarticSolver(BaseTester):
         batched = real(solver.solve_quartic(torch.cat([c, neighbours], dim=0))[0])
         self.assert_close(roots, batched, rtol=1e-3, atol=1e-3)
 
+    def test_solve_quartic_half_precision_is_finite_and_correct_4346(self, device):
+        # The Ferrari intermediates (resolvent cubic, residual, radicand) were
+        # computed in the input dtype, so ordinary coefficient magnitudes made the
+        # resolvent's R^2 overflow float16's ~65504 maximum and the solver returned
+        # inf/nan. The quartic path now promotes half inputs to float32. Real roots
+        # are ~5.8215 and ~-1.9559.
+        coeffs = [1.0, -3.923828125, -9.609375, -5.3359375, -17.671875]
+        for dtype in (torch.float16, torch.bfloat16):
+            if device.type == "cuda" and dtype == torch.bfloat16 and not torch.cuda.is_bf16_supported():
+                continue
+            c = torch.tensor([coeffs], device=device, dtype=dtype)
+            roots = solver.solve_quartic(c)[0]
+            assert bool(torch.isfinite(roots).all()), (dtype, roots)
+            real = torch.sort(roots[roots.abs() > 1e-2]).values
+            expected = torch.sort(
+                torch.tensor([-1.9559475580160535, 5.821514881321911], device=device, dtype=dtype)
+            ).values
+            self.assert_close(real, expected, rtol=1e-2, atol=1e-2)
+
     @pytest.mark.parametrize(
         ("dtype", "tol"),
         [
