@@ -1369,7 +1369,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   * **Mix augmentations support bfloat16 inputs.** DType now includes bfloat16, so RandomMosaic, RandomMixUpV2,
   RandomCutMixV2 and RandomJigsaw no longer fail with KeyError: 'BFLOAT16' when given bfloat16 tensors. The
-  affected mix-augmentation tests are now enabled instead of being masked by strict xfails. Bounding-box 
+  affected mix-augmentation tests are now enabled instead of being masked by strict xfails. Bounding-box
   transformations also handle mixed dtypes without failing at the matrix multiplication step. (#4467)
 
 ## :rocket: [0.6.11] - 2022-03-28
