@@ -122,7 +122,7 @@ def unproject_meshgrid(
     points_xyz = convert_points_to_homogeneous(points_xy)  # HxWx3
 
     if normalize_points:
-        points_xyz = F.normalize(points_xyz, dim=-1, p=2)
+        points_xyz = F.normalize(points_xyz, dim=-1, p=2.0)
 
     return points_xyz
 
