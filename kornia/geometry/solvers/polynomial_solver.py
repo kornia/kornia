@@ -325,12 +325,13 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         y_abs**3 + torch.abs(rc_b_exp) * y_abs**2 + torch.abs(rc_c_exp) * y_abs + torch.abs(rc_d_exp),
     )
     # Account for the rounding accumulated by the cubic solve and Horner evaluation in the
-    # actual Ferrari compute dtype. Sixteen eps is still far below a placeholder's O(1) scaled
-    # residual, while avoiding false rejection of genuine float32 roots near the tolerance edge.
+    # actual Ferrari compute dtype. Candidates just outside this threshold are still compared
+    # by their scaled residual below rather than falling back to an unfiltered R^2 ranking.
     residual_tol = max(zero_tol, 16.0 * torch.finfo(y_roots.dtype).eps)
     if coeffs.dtype in (torch.float16, torch.bfloat16):
         residual_tol = max(residual_tol, torch.finfo(coeffs.dtype).eps)
-    valid_y_root = torch.abs(y_residual) <= residual_tol * y_residual_scale
+    scaled_y_residual = torch.abs(y_residual) / y_residual_scale
+    valid_y_root = scaled_y_residual <= residual_tol
 
     # Robust Root Selection: Pick y that maximizes R^2
     A_sq = A * A
@@ -338,10 +339,26 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
 
     ranked_R_sq = torch.where(valid_y_root, R_sq_candidates, torch.full_like(R_sq_candidates, float("-inf")))
     has_valid_y_root = valid_y_root.any(dim=-1, keepdim=True)
-    ranked_R_sq = torch.where(has_valid_y_root, ranked_R_sq, R_sq_candidates)
-    best_idx = torch.argmax(ranked_R_sq, dim=-1, keepdim=True)
+    best_valid_idx = torch.argmax(ranked_R_sq, dim=-1, keepdim=True)
+    best_residual_idx = torch.argmin(scaled_y_residual, dim=-1, keepdim=True)
+    best_idx = torch.where(has_valid_y_root, best_valid_idx, best_residual_idx)
     y = torch.gather(y_roots, -1, best_idx).squeeze(-1)
     R_sq = torch.gather(R_sq_candidates, -1, best_idx).squeeze(-1)
+
+    if coeffs.dtype == torch.float32:
+        # A selected float32 resolvent root can be accurate enough to identify the right candidate
+        # while still leaving enough factorization error to move a quartic root materially. Refine
+        # that already-selected root once; do not refine solve_cubic's zero-placeholder candidates.
+        y_residual_selected = ((y + rc_b) * y + rc_c) * y + rc_d
+        y_derivative = 3.0 * y * y + 2.0 * rc_b * y + rc_c
+        y_derivative_scale = torch.maximum(
+            torch.ones_like(y_derivative),
+            3.0 * torch.abs(y) * torch.abs(y) + 2.0 * torch.abs(rc_b) * torch.abs(y) + torch.abs(rc_c),
+        )
+        refine_y = torch.abs(y_derivative) > torch.finfo(y.dtype).eps * y_derivative_scale
+        safe_y_derivative = torch.where(refine_y, y_derivative, torch.ones_like(y_derivative))
+        y = torch.where(refine_y, y - y_residual_selected / safe_y_derivative, y)
+        R_sq = torch.addcmul(y - B, A, A, value=0.25)
 
     # `clamp(min=0).sqrt()` does not guard the gradient: d(sqrt)/dx is unbounded at 0, and on
     # torch < 2.14 clamp passes the incoming gradient straight through at the bound (#4229), so
@@ -368,7 +385,29 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         torch.zeros_like(E_radicand),
     )
     E_cross_term = A * y - 2.0 * C
-    E = torch.where(E_cross_term < 0, -E_magnitude, E_magnitude)
+    E_constant = torch.where(E_cross_term < 0, -E_magnitude, E_magnitude)
+
+    if coeffs.dtype == torch.float32:
+        # Away from R == 0, the division form satisfies the linear coefficient more accurately;
+        # the constant-term form remains stable near the division singularity. Compare their
+        # normalized Ferrari coefficient reconstruction errors instead of tuning an R threshold.
+        safe_R = torch.where(R > 0, R, torch.ones_like(R))
+        E_division = E_cross_term / (4.0 * safe_R)
+        root_sq_scale = torch.maximum(torch.ones_like(R_sq), A_sq)
+        root_sq_scale = torch.maximum(root_sq_scale, torch.abs(B))
+        root_sq_scale = torch.maximum(root_sq_scale, torch.abs(y))
+        root_scale = torch.sqrt(root_sq_scale)
+
+        division_C_error = torch.abs(0.5 * A * y - 2.0 * R * E_division - C) / (root_sq_scale * root_scale)
+        division_D_error = torch.abs(0.25 * y * y - E_division * E_division - D) / (root_sq_scale * root_sq_scale)
+        constant_C_error = torch.abs(0.5 * A * y - 2.0 * R * E_constant - C) / (root_sq_scale * root_scale)
+        constant_D_error = torch.abs(0.25 * y * y - E_constant * E_constant - D) / (root_sq_scale * root_sq_scale)
+        division_error = torch.maximum(division_C_error, division_D_error)
+        constant_error = torch.maximum(constant_C_error, constant_D_error)
+        use_constant_E = (R == 0) | (constant_error < division_error)
+        E = torch.where(use_constant_E, E_constant, E_division)
+    else:
+        E = E_constant
 
     # Solve two resulting quadratic equations
     # Quad 1: x^2 + (A/2 - R)x + (y/2 - E) = 0
