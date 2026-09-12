@@ -41,10 +41,9 @@ takes to develop kornia, and something a user runs must not need them.
 The allowed set is *derived* from ``pyproject.toml`` and from the ``LazyLoader`` registry rather
 than hardcoded: adding a dependency in the usual place is all it takes to satisfy these tests.
 The literals are the handful of distribution names whose import name differs
-(:data:`DIST_TO_IMPORT`), :data:`CONTRIBUTOR_EXTRAS`, :data:`IMPLICIT_ALLOWED`, the tolerated
-orphans in :data:`LAZY_LOADERS_WITHOUT_DECLARED_DEP` (each with a reason, and checked for
-staleness) and the :data:`AUDIT_EAGER_IMPORTS` canaries. The ``LazyLoader`` registry means the
-module-level instances in ``kornia.core.external``; a loader constructed anywhere else is not seen.
+(:data:`DIST_TO_IMPORT`), :data:`CONTRIBUTOR_EXTRAS`, :data:`IMPLICIT_ALLOWED` and the
+:data:`AUDIT_EAGER_IMPORTS` canaries. The ``LazyLoader`` registry means the module-level instances
+in ``kornia.core.external``; a loader constructed anywhere else is not seen.
 
 Deliberately no ``packaging`` import: it is not a kornia dependency, and this file must pass on a
 bare ``pip install -e ".[dev]"``.
@@ -85,17 +84,6 @@ IMPLICIT_ALLOWED: frozenset[str] = frozenset()
 # Extras that exist for contributors, not for users of the library: nothing a user runs may depend
 # on them, so they do not make a package "declared". Every other extra is user-facing and does.
 CONTRIBUTOR_EXTRAS = frozenset({"dev", "docs"})
-
-# ``LazyLoader`` modules that no user-facing dependency installs, mapped to the reason they are
-# tolerated. Every entry is a package a user can hit at runtime with no documented way to install
-# it, so each one is a bug waiting on a decision rather than a design.
-LAZY_LOADERS_WITHOUT_DECLARED_DEP: dict[str, str] = {
-    "PIL.Image": (
-        "pillow is declared only in the dev/docs extras; ImageModule output_type='pil' and "
-        "kornia.io.sample need it at runtime; which user-facing extra should carry it is an open "
-        "decision (#4261)"
-    ),
-}
 
 # Packages the kornia#4259 audit found ``import kornia`` loading eagerly. None is declared any more, so
 # test 1 forbids importing them from ``kornia/``; the import probe still watches for them as a canary
@@ -237,20 +225,12 @@ def test_every_lazy_loader_module_is_installable():
     declared = _declared_import_names() | IMPLICIT_ALLOWED
     orphans = {name: top for name, top in _lazy_loader_modules().items() if top not in declared}
 
-    unexpected = sorted(set(orphans) - set(LAZY_LOADERS_WITHOUT_DECLARED_DEP))
-    assert not unexpected, (
+    assert not orphans, (
         "kornia.core.external declares LazyLoader(s) whose module no runtime dependency and no "
         "user-facing optional-dependency extra installs, so users have no documented way to get "
         "them: "
-        + ", ".join(f"{name} -> {orphans[name]}" for name in unexpected)
-        + ". Add the package to a user-facing optional-dependencies extra (and pass extra= to the "
-        "LazyLoader), or record it in LAZY_LOADERS_WITHOUT_DECLARED_DEP with a reason."
-    )
-
-    stale = sorted(set(LAZY_LOADERS_WITHOUT_DECLARED_DEP) - set(orphans))
-    assert not stale, (
-        "LAZY_LOADERS_WITHOUT_DECLARED_DEP lists LazyLoader(s) that are now declared (or gone); "
-        "drop the entries: " + ", ".join(stale)
+        + ", ".join(f"{name} -> {top}" for name, top in sorted(orphans.items()))
+        + ". Add the package to a user-facing optional-dependencies extra and pass extra= to the LazyLoader."
     )
 
 

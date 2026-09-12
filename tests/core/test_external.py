@@ -55,6 +55,7 @@ class TestLazyLoaderExtra:
     @pytest.mark.parametrize(
         ("name", "extra"),
         [
+            ("PILImage", "image"),
             ("onnx", "onnx"),
             ("onnxruntime", "onnx"),
             ("diffusers", "sd"),

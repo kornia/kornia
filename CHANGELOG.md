@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Optional-dependency extra `kornia[image]` installs Pillow for PIL-backed image input/output,
+  display helpers and `kornia.io.sample`; missing-Pillow errors now name the extra to install, and the unused
+  `DinoVisionTransformer.forward_features_list` list path has been removed. (#4464)
 * Implemented the exported Brown-Conrady, Kannala-Brandt K3, and Orthographic sensor camera models,
   including distortion/projection plumbing, intrinsic matrices, and batched project/unproject support. (#4284, #4377)
 * New "Camera and world conventions across the ecosystem" page cataloguing the pixel-centre, axis
