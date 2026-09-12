@@ -171,6 +171,41 @@ class TestAugmentationSequential:
 
         reproducibility_test((input, bbox), aug)
 
+    @pytest.mark.parametrize("num_boxes", [1, 2])
+    def test_convention_padded_random_crop_accepts_rank2_bboxes_4244(self, num_boxes, device, dtype):
+        # kornia#4244: RandomCrop's padded path routes bounding boxes through Boxes.pad and
+        # Boxes.unpad. A rank-2 (N, 4) bbox for a single image builds an *unbatched* Boxes
+        # container, which those methods crashed on with "output with shape [1, 4] doesn't match
+        # the broadcast shape [1, 1, 4]". This is the reproducer from the issue's follow-up, and it
+        # is the only public route to that container: a rank-3 (B, N, 4) bbox builds a batched one,
+        # which never crashed. Both box counts are covered because clamp failed differently at N=1
+        # (IndexError) and N=2 (RuntimeError) on the unbatched path.
+        input = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        bbox = torch.tensor([[1.0, 1.0, 4.0, 4.0], [2.0, 2.0, 5.0, 6.0]], device=device, dtype=dtype)[:num_boxes]
+        aug = K.AugmentationSequential(K.RandomCrop((6, 6), padding=1, p=1.0), data_keys=["input", "bbox_xyxy"])
+
+        out_input, out_bbox = aug(input, bbox)
+
+        assert out_input.shape == (1, 3, 6, 6)
+        # the rank of the caller's bbox is preserved on the way out
+        assert out_bbox.shape == (num_boxes, 4)
+        assert torch.isfinite(out_bbox).all()
+
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_padded_random_crop_batched_bboxes(self, batch_size, device, dtype):
+        # The batched (B, N, 4) companion of the pin above. It builds a batched Boxes container,
+        # which always worked, so it passes on either side of the fix and is kept only as a guard
+        # that the rank-2 repair did not disturb the batched route.
+        input = torch.rand(batch_size, 3, 8, 8, device=device, dtype=dtype)
+        bbox = torch.tensor([[[1.0, 1.0, 4.0, 4.0]]], device=device, dtype=dtype).expand(batch_size, -1, -1)
+        aug = K.AugmentationSequential(K.RandomCrop((6, 6), padding=1, p=1.0), data_keys=["input", "bbox_xyxy"])
+
+        out_input, out_bbox = aug(input, bbox)
+
+        assert out_input.shape == (batch_size, 3, 6, 6)
+        assert out_bbox.shape == (batch_size, 1, 4)
+        assert torch.isfinite(out_bbox).all()
+
     def test_random_crops_and_flips(self, device, dtype):
         width, height = 100, 100
         crop_width, crop_height = 3, 3
