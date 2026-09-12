@@ -25,8 +25,16 @@ from .augment import AugmentationSequential
 class ManyToManyAugmentationDispather(nn.Module):
     r"""Dispatches different augmentations to different inputs element-wisely.
 
+    See the Convention block on :class:`~kornia.augmentation.container.AugmentationSequential`.
+
     Args:
         augmentations: a list or a sequence of kornia AugmentationSequential modules.
+
+    Convention:
+        - every member has to be an :class:`~kornia.augmentation.container.AugmentationSequential`; anything else is
+          rejected at construction with ``ValueError``.
+        - the call takes one input bundle per augmentation and returns a list in that order. Each augmentation
+          draws its own parameters, so the members are independent of one another.
 
     Examples:
         >>> import torch
@@ -45,6 +53,12 @@ class ManyToManyAugmentationDispather(nn.Module):
         ...     )
         ... )
         >>> output = aug_list((input_1, mask_1), (input_2, mask_2))
+
+    .. warning::
+        The call is a bare ``zip`` over the inputs and the augmentations, and nothing checks that the two
+        lengths agree: the longer side is truncated silently, so surplus augmentations or surplus inputs
+        simply disappear and only the length of the returned list says so. Tracked in
+        `#4422 <https://github.com/kornia/kornia/issues/4422>`_.
 
     """
 
@@ -74,12 +88,20 @@ class ManyToManyAugmentationDispather(nn.Module):
 class ManyToOneAugmentationDispather(nn.Module):
     r"""Dispatches different augmentations to a single input and returns a list.
 
+    See the Convention block on :class:`~kornia.augmentation.container.AugmentationSequential`.
+
     Same `datakeys` must be applied across different augmentations. By default, with input
     (image, mask), the augmentations must not mess it as (mask, image) to avoid unexpected
     errors. This check can be cancelled with `strict=False` if needed.
 
     Args:
         augmentations: a list or a sequence of kornia AugmentationSequential modules.
+
+    Convention:
+        - the same input payload is broadcast to every augmentation, so the returned list is always as long
+          as the list of augmentations and no input can be dropped.
+        - with ``strict=True``, the default, the members must all declare the same ``data_keys``; a mismatch
+          raises ``RuntimeError`` at construction.
 
     Examples:
         >>> import torch

@@ -29,6 +29,8 @@ from kornia.geometry.keypoints import Keypoints
 class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     r"""GeometricAugmentationBase2D base class for customized geometric augmentation implementations.
 
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
+
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
           element-wise for a batch.
@@ -37,6 +39,26 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
+
+    Convention:
+        - this is the only 2D base that adds an ``inverse``. It inverts the sampled matrix, so it restores
+          keypoints to the coordinates they came from, up to numerical precision. In a container, converting
+          transformed boxes to tensor outputs takes axis-aligned enclosures: a non-axis-aligned rotation
+          can lose the corners needed to recover the original boxes. Retaining a ``Boxes`` object preserves
+          its transformed corners. Inverse resampling cannot recover image or mask information lost through
+          cropping, padding or interpolation.
+        - masks are resampled with nearest interpolation and keep their dtype, ``bool`` included, without
+          introducing intermediate labels; sampling outside the image can also introduce the warp's padding
+          or fill value. This holds whatever ``resample``
+          :class:`~kornia.augmentation.container.AugmentationSequential` was given in ``extra_args``; the
+          ``align_corners`` half of that override does reach the sampler.
+        - a subclass supplies its own :meth:`inverse_transform` -- the base raises ``NotImplementedError`` --
+          while :meth:`compute_inverse_transformation` defaults to inverting the sampled matrix.
+
+    .. warning::
+        The ``resample`` half of an ``extra_args[DataKey.MASK]`` override is discarded here -- masks are
+        always nearest -- while the ``align_corners`` half does reach the sampler. Tracked in
+        `#4419 <https://github.com/kornia/kornia/issues/4419>`_.
 
     """
 

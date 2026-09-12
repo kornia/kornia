@@ -52,8 +52,14 @@ class _BasicAugmentationBase(nn.Module):
     r"""_BasicAugmentationBase base class for customized augmentation implementations.
 
     Plain augmentation base class without the functionality of transformation matrix calculations.
-    By default, the random computations will be happened on CPU with ``torch.get_default_dtype()``.
-    To change this behaviour, please use ``set_rng_device_and_dtype``.
+
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
+
+    ``set_rng_device_and_dtype`` moves the ``p`` / ``p_batch`` gate and rebuilds the parameter generator's
+    samplers. Returned parameters may be cast back to the constructor ranges' device/dtype, or to the
+    call-time default device/dtype for numeric ranges. See :doc:`/get-started/conventions` for the distinction
+    between sampling and returned placement, reproducibility, and the limitations tracked in
+    `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
 
     For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
     implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
@@ -169,6 +175,13 @@ class _BasicAugmentationBase(nn.Module):
 
         Note:
             The generated random numbers are not reproducible across different devices and dtypes.
+
+        .. warning::
+            This updates both the gate and the parameter generator's samplers, but returned parameters
+            can be cast to a different device/dtype; inspecting ``_params`` alone does not reveal where
+            sampling occurred. Some classes fail after moving their samplers to an accelerator. Tracked in
+            `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the
+            :doc:`/get-started/conventions` page describes placement and the affected classes.
 
         """
         self.device = device
