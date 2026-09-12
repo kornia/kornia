@@ -26,6 +26,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import ShapeError
 from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
 
@@ -252,9 +253,10 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
 
 
 def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_points: bool = False) -> torch.Tensor:
-    """Compute the normal surface per pixel.
+    r"""Compute the normal surface per pixel.
 
     Convention:
+        - both spatial dimensions must be at least 2: a surface normal requires two tangent directions.
         - the normal is the cross product of the two spatial gradients of the unprojected point cloud, taken in
           the order ``d/dx`` cross ``d/dy`` and then normalized to unit length, so a fronto-parallel plane gets
           the normal ``(0, 0, 1)``: ``+z`` points **away** from the camera, along the viewing direction, and
@@ -267,13 +269,17 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
           layout, with the three normal components on the channel axis.
 
     Args:
-        depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
+        depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`, with
+            :math:`H \geq 2` and :math:`W \geq 2`.
         camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
         normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
         represented as the Euclidean ray length from the camera position.
 
     Return:
         tensor with a normal surface vector per pixel of the same resolution as the input :math:`(B, 3, H, W)`.
+
+    Raises:
+        ShapeError: if either spatial dimension of ``depth`` is smaller than 2.
 
     Example:
         >>> depth = torch.rand(1, 1, 4, 4)
@@ -286,6 +292,14 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     KORNIA_CHECK_IS_TENSOR(camera_matrix)
     KORNIA_CHECK_SHAPE(depth, ["B", "1", "H", "W"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
+
+    height, width = depth.shape[-2:]
+    if height < 2 or width < 2:
+        raise ShapeError(
+            f"depth_to_normals requires H >= 2 and W >= 2. Got H={height}, W={width}.",
+            actual_shape=list(depth.shape),
+            expected_shape=["B", "1", "H >= 2", "W >= 2"],
+        )
 
     # compute the 3d points from depth; permute to channel-first for spatial_gradient
     xyz: torch.Tensor = depth_to_3d_v2(depth.squeeze(1), camera_matrix, normalize_points).permute(0, 3, 1, 2)  # Bx3xHxW

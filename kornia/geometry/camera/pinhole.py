@@ -61,9 +61,9 @@ class PinholeCamera:
         that remains on :meth:`scale_` and the setters is
         `#4264 <https://github.com/kornia/kornia/issues/4264>`_, the in-place :meth:`scale_` failure on an
         integer ``height`` / ``width`` with a floating-point scale factor
-        `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the batch-size and point-shape limitations
-        `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The behaviour described here is
-        documented as it is; the issues above track the repairs.
+        `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the direct projection limitation for
+        :math:`(B, N, 4, 4)` camera storage `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The behaviour
+        described here is documented as it is; the issues above track the repairs.
 
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`
@@ -399,18 +399,18 @@ class PinholeCamera:
         See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
 
         Convention:
-            - ``point_3d`` must be at least rank 2: an unbatched :math:`(3,)` point raises :class:`IndexError`
-              although the shape below reads :math:`(*, 3)`. An empty point set returns an empty result.
+            - ``point_3d`` must be at least rank 2. An unbatched :math:`(3,)` point raises :class:`ValueError`.
+              An empty point set returns an empty result.
             - a point whose **camera-frame** ``z`` is 0 does not raise: ``K`` is applied first and the
               perspective divide is then skipped, so the result is the undivided ``K (R X + t)``.
 
         .. warning::
-            The unbatched-input contract is `#4266 <https://github.com/kornia/kornia/issues/4266>`_ and the
-            ``z = 0`` answer `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+            The ``z = 0`` answer is tracked in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
         Args:
             point_3d: torch.Tensor containing the 3d points to be projected
-                to the camera plane. The shape of the torch.Tensor can be :math:`(*, 3)`.
+                to the camera plane. The shape of the torch.Tensor can be :math:`(*, 3)` with at least two
+                dimensions.
 
         Returns:
             torch.Tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
@@ -427,6 +427,8 @@ class PinholeCamera:
             tensor([[5.6088, 8.6827]])
 
         """
+        if len(point_3d.shape) < 2:
+            raise ValueError(f"Input must be at least a 2D tensor. Got {point_3d.shape}")
         P = self.intrinsics @ self.extrinsics
         return convert_points_from_homogeneous(transform_points(P, point_3d))
 
@@ -439,7 +441,8 @@ class PinholeCamera:
 
         Args:
             point_2d: torch.Tensor containing the 2d to be projected to
-                world coordinates. The shape of the torch.Tensor can be :math:`(*, 2)`.
+                world coordinates. The shape of the torch.Tensor can be :math:`(*, 2)` with at least two
+                dimensions.
             depth: torch.Tensor containing the depth value of each 2d
                 points. The torch.Tensor shape must be equal to point2d :math:`(*, 1)`.
 
