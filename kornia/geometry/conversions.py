@@ -1135,6 +1135,18 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
         ``0`` and the identity came back ``[nan, nan, nan]``. Tracked in
         `#3966 <https://github.com/kornia/kornia/issues/3966>`_.
 
+    .. note::
+        The backward pass is finite at ``w = +-1`` (``w = 1`` is the identity quaternion, the
+        standard initialisation for pose optimisation), where the forward already returns a
+        correct value: ``acos``'s own derivative is unbounded there -- ``-inf`` on every
+        supported torch version -- and is now guarded before it is differentiated. This used to
+        return ``nan`` for the gradient at the identity, since it multiplied that unbounded
+        derivative by the identity's exactly-zero vector part. On torch 2.14 the defect is masked
+        rather than absent: ``clamp``'s backward returns ``0`` at the closed boundary there
+        instead of passing the gradient through, so the ``-inf`` is killed before it reaches the
+        multiply. That is ``clamp``'s behaviour changing, not ``acos``'s, and this guard does not
+        depend on it. Delivered in `#4228 <https://github.com/kornia/kornia/pull/4228>`_.
+
     Args:
         quaternion: a tensor containing a quaternion to be converted.
           The tensor can be of shape :math:`(*, 4)`.
@@ -1164,9 +1176,23 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
 
     norm_q: torch.Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=eps)
 
-    quaternion_log: torch.Tensor = (
-        quaternion_vector * torch.acos(torch.clamp(quaternion_scalar, min=-1.0, max=1.0)) / norm_q
-    ).to(orig_dtype)
+    # d(acos)/dw = -1/sqrt(1-w^2) is unbounded at w = +-1, and torch returns exactly -inf there
+    # on every supported version -- that has not changed. At w = +-1 the vector part need not be
+    # zero (a non-unit quaternion), so this is not always multiplied away -- w = 1 at the identity
+    # quaternion is the common case where it is, and 0 * inf = nan there, killing every gradient
+    # through this function from its most ordinary input. torch 2.14 masks that: its clamp
+    # backward returns 0 at the closed boundary instead of the pass-through 1.0 of earlier
+    # versions, killing the -inf before it can multiply anything. That is clamp's behaviour
+    # changing, not acos's, and nothing here may depend on it. Route the boundary through .acos()
+    # on a *detached* copy for the value (identical to the unguarded call: acos is continuous at
+    # +-1, only its derivative diverges) and through .acos() on a substituted safe argument for
+    # the gradient, so autograd never differentiates acos at +-1 at all.
+    w_clamped = torch.clamp(quaternion_scalar, min=-1.0, max=1.0)
+    at_boundary = w_clamped.abs() >= 1.0
+    safe_w = torch.where(at_boundary, torch.zeros_like(w_clamped), w_clamped)
+    acos_w = torch.where(at_boundary, w_clamped.detach().acos(), safe_w.acos())
+
+    quaternion_log: torch.Tensor = (quaternion_vector * acos_w / norm_q).to(orig_dtype)
 
     return quaternion_log
 
@@ -1328,6 +1354,17 @@ def euler_from_quaternion(
         gimbal-locked. Tracked in
         `#3953 <https://github.com/kornia/kornia/issues/3953>`_.
 
+    .. note::
+        ``pitch``'s gradient is finite at gimbal lock, including exactly at ``pitch = +-pi/2``.
+        This is a separate concern from the two warnings above, which are about the *value*:
+        ``asin``'s own derivative is unbounded at its domain boundary (``inf`` on every supported
+        torch version), and used to return ``nan`` or ``inf`` there for every quaternion
+        coefficient once anything downstream differentiated through ``pitch``, independent of
+        whether the returned triple itself represented the input rotation. The ``clamp`` above
+        bounds only the *value*; on torch < 2.14 it passes the gradient straight through, while
+        2.14 zeroes it at the boundary and masks the defect.
+        Delivered in `#4228 <https://github.com/kornia/kornia/pull/4228>`_.
+
     Args:
         w: quaternion :math:`q_w` coefficient.
         x: quaternion :math:`q_x` coefficient.
@@ -1350,7 +1387,16 @@ def euler_from_quaternion(
 
     sinp = 2.0 * (w * y - z * x)
     sinp = sinp.clamp(min=-1.0, max=1.0)
-    pitch = sinp.asin()
+    # d(asin)/dx = 1/sqrt(1-x^2) is unbounded at x = +-1 (gimbal lock), returning inf there on
+    # every supported torch version; the clamp above bounds the value only, and passes the
+    # gradient through on torch < 2.14 (2.14 zeroes it at the boundary, masking the defect).
+    # Guard the gradient the same way quaternion_exp_to_log guards its own acos boundary
+    # (delivered in kornia#4228) -- differentiate asin on a substituted safe argument, but take the
+    # value from a detached copy at the real (possibly +-1) argument, so the returned pitch is
+    # unchanged and only the gradient is finite.
+    at_boundary = sinp.abs() >= 1.0
+    safe_sinp = torch.where(at_boundary, torch.zeros_like(sinp), sinp)
+    pitch = torch.where(at_boundary, sinp.detach().asin(), safe_sinp.asin())
 
     siny_cosp = 2.0 * (w * z + x * y)
     cosy_cosp = 1.0 - 2.0 * (yy + z * z)

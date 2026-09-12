@@ -186,6 +186,16 @@ class _SmokeTestData:
 class TestStereoCamera(BaseTester):
     """Test class for :class:`~kornia.geometry.camera.stereo.StereoCamera`"""
 
+    @pytest.mark.parametrize("camera_index", [0, 1])
+    @pytest.mark.parametrize("shape", [(3, 3), (4, 4), (3, 5)])
+    def test_exception_invalid_camera_shape(self, batch_size, device, dtype, camera_index, shape):
+        cameras = list(_SmokeTestData._create_stereo_camera(batch_size, device, dtype, tx_fx=-10))
+        cameras[camera_index] = torch.nn.functional.pad(cameras[camera_index], (0, shape[1] - 4, 0, shape[0] - 3))
+        camera_name = "rectified_left_camera" if camera_index == 0 else "rectified_right_camera"
+
+        with pytest.raises(StereoException, match=f"Expected each '{camera_name}' to be of shape"):
+            StereoCamera(*cameras)
+
     @pytest.mark.parametrize("disparity_shape", [(1, 1, 3, 5), (2, 3, 5, 2)])
     @pytest.mark.parametrize("entrypoint", ["method", "function"])
     def test_reproject_disparity_layout_error_4374(self, disparity_shape, entrypoint, device, dtype):
@@ -568,28 +578,14 @@ class TestStereoCamera(BaseTester):
         self.assert_close(points, torch.zeros(1, 3, 5, 3, device=device, dtype=dtype), atol=0.0, rtol=0.0)
         assert self._asymmetric_stereo(device, dtype).reproject_disparity_to_3D(disparity).abs().max().item() > 0.1
 
-    def test_wart_stereo_accepts_a_four_by_four_pair_4270(self, device, dtype):
-        # Wart pin for kornia#4270: the per-camera shape check compares
-        # ``shape[:1]`` -- the batch dimension alone -- with (3, 4) instead of ``shape[-2:]``, so it can never
-        # fire. Only the rank check does any work: an unbatched (3, 4) pair is rejected for having 2 dimensions
-        # rather than 3, while a (B, 4, 4) pair -- a projection matrix that kept its homogeneous bottom row --
-        # sails through. The extra row is then ignored, and Q comes out (B, 4, 4) and EQUAL to the Q of the
-        # (B, 3, 4) pair, so what is wrong here is the acceptance, not the shape of Q.
-        # Snippet used to generate expected: StereoCamera(left, right) with a [0, 0, 0, 1] row appended to each
-        # camera, recorded in original commit 1a96bfd1 (torch 2.14.0) -> accepted, Q shape (1, 4, 4) and
-        # torch.equal to the (1, 3, 4) pair's Q; the unbatched pair raises StereoException("Expected
-        # 'rectified_left_camera' to have 3 dimensions. Got 2."). Both hold on cpu for float32, float64,
-        # float16 and bfloat16 and on mps for float32 and float16.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4270 is repaired.
+    def test_convention_stereo_rejects_a_four_by_four_pair_4270(self, device, dtype):
         cam = self._asymmetric_stereo(device, dtype)
         bottom = torch.tensor([[[0.0, 0.0, 0.0, 1.0]]], device=device, dtype=dtype)
-        square = StereoCamera(
-            torch.cat([cam.rectified_left_camera, bottom], dim=-2),
-            torch.cat([cam.rectified_right_camera, bottom], dim=-2),
-        )
-        assert square.rectified_left_camera.shape == (1, 4, 4)
-        assert square.Q.shape == (1, 4, 4)
+        with pytest.raises(StereoException, match=r"to be of shape \(3, 4\)"):
+            StereoCamera(
+                torch.cat([cam.rectified_left_camera, bottom], dim=-2),
+                torch.cat([cam.rectified_right_camera, bottom], dim=-2),
+            )
         assert cam.Q.shape == (1, 4, 4)
-        assert torch.equal(square.Q, cam.Q)
         with pytest.raises(StereoException, match="to have 3 dimensions"):
             StereoCamera(cam.rectified_left_camera[0], cam.rectified_right_camera[0])
