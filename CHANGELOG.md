@@ -400,6 +400,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wrapped silently onto a reversed range. Out-of-range bins now name the operation and the
   valid range. Operations that ignore the magnitude entirely keep accepting any bin. (#4447)
 
+* `PinholeCamera.project` now reports rank-1 inputs with the same explicit `ValueError` used by the point-conversion
+  helpers instead of an internal `IndexError`. Refs #4266. (#4450)
 * `pixel2cam` now validates the full `Bx4x4` shape of `intrinsics_inv`, rejecting invalid matrix sizes
   before they cause unrelated transformation errors or return the wrong number of coordinate components. (#4381)
 * `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
