@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ****
 
+## [Unreleased]
+### Fixed
+
+* Align Kimi-VL positional embeddings, rotary embeddings, and projector ordering with Moonshot
+  ([#3968](https://github.com/kornia/kornia/pull/3968)).
+
 
 ## :rocket: [0.6.11] - 2022-03-28
 ### :new:  New Features

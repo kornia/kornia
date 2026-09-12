@@ -24,7 +24,13 @@ import kornia.models.kimi_vl.builder as kimi_vl_builder
 from kornia.models.kimi_vl import KimiVLBuilder, KimiVLConfig, KimiVLModel
 from kornia.models.kimi_vl.config import KimiVLProjectorConfig, MoonViTConfig
 from kornia.models.kimi_vl.model import KimiVLProjector
-from kornia.models.kimi_vl.moonvit import MoonViT, MoonViTAttention, MoonViTEncoder, MoonViTRotaryEmbedding
+from kornia.models.kimi_vl.moonvit import (
+    MoonViT,
+    MoonViTAttention,
+    MoonViTEncoder,
+    MoonViTRotaryEmbedding,
+    apply_rotary_pos_emb,
+)
 
 from testing.base import BaseTester
 
@@ -105,6 +111,29 @@ class TestKimiVLModel(BaseTester):
         output = model(images)
         assert output.shape == (batch_size, 36, config.projector_config.output_dim)
 
+    def test_pretrained_image_size(self, device: torch.device, dtype: torch.dtype) -> None:
+        pretrained_config = kimi_vl_builder._kimi_vl_a3b_instruct_config()
+        image_size = pretrained_config.vision_config.image_size
+        patch_size = pretrained_config.vision_config.patch_size
+        vision_config = MoonViTConfig(
+            image_size=image_size,
+            patch_size=patch_size,
+            init_pos_emb_height=64,
+            init_pos_emb_width=64,
+            hidden_size=8,
+            num_hidden_layers=1,
+            num_attention_heads=1,
+            intermediate_size=16,
+        )
+        projector_config = KimiVLProjectorConfig(input_dim=8, hidden_dim=16, output_dim=8)
+        config = KimiVLConfig(vision_config=vision_config, projector_config=projector_config)
+        model = KimiVLModel(config).to(device, dtype)
+
+        output = model(torch.randn(1, 3, image_size, image_size, device=device, dtype=dtype))
+
+        output_grid_size = image_size // patch_size // model.projector.downsample_ratio
+        assert output.shape == (1, output_grid_size**2, projector_config.output_dim)
+
     def test_attention_mask(self, device, dtype, model, config):
         batch_size = 1
         images = torch.randn(batch_size, 3, 32, 32, device=device, dtype=dtype)
@@ -149,6 +178,60 @@ class TestKimiVLModel(BaseTester):
 
 
 class TestKimiVLComponents(BaseTester):
+    def test_apply_rotary_pos_emb_preserves_float64_precision(self, device):
+        # These values intentionally differ below float32 resolution. Before the
+        # dtype-aware promotion, the identity rotation rounded them before casting
+        # the result back to float64 and failed both checks below.
+        x = torch.tensor(
+            [1.000000001, 2.000000001, 3.000000001, 4.000000001],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        ).view(1, 1, 1, 4)
+        cos = torch.ones(1, 1, 1, 2, device=device, dtype=torch.float64)
+        sin = torch.zeros_like(cos)
+
+        actual = apply_rotary_pos_emb(x, cos, sin)
+
+        self.assert_close(actual, x, rtol=0.0, atol=0.0)
+        assert torch.autograd.gradcheck(lambda value: apply_rotary_pos_emb(value, cos, sin), (x,))
+
+    def test_rotary_pos_emb_2d_expected_values(self, device):
+        # Source: Moonshot Kimi-VL-A3B-Instruct Rope2DPosEmb at revision
+        # 398eede0903cd983a2bfa0cc634e9ac1d843f375. The expected angles below
+        # are derived by hand for a 2x2 row-major grid and theta=100:
+        # [x * 1, y * 1, x * 0.1, y * 0.1].
+        rope = MoonViTRotaryEmbedding(dim=8, theta=100.0)
+        cos, sin = rope(h=2, w=2, device=device)
+        expected_angles = torch.tensor(
+            [
+                [0.0, 0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.1, 0.0],
+                [0.0, 1.0, 0.0, 0.1],
+                [1.0, 1.0, 0.1, 0.1],
+            ],
+            device=device,
+        )
+        expected_cos = expected_angles.cos()
+        expected_sin = expected_angles.sin()
+
+        self.assert_close(cos, expected_cos)
+        self.assert_close(sin, expected_sin)
+
+        x = torch.arange(1.0, 33.0, device=device).view(1, 1, 4, 8)
+        x_pairs = x.view(1, 1, 4, 4, 2)
+        expected = torch.stack(
+            (
+                x_pairs[..., 0] * expected_cos - x_pairs[..., 1] * expected_sin,
+                x_pairs[..., 0] * expected_sin + x_pairs[..., 1] * expected_cos,
+            ),
+            dim=-1,
+        ).flatten(-2)
+
+        actual = apply_rotary_pos_emb(x, cos.view(1, 1, 4, 4), sin.view(1, 1, 4, 4))
+
+        self.assert_close(actual, expected)
+
     def test_moonvit(self, device, dtype, config):
         model = MoonViT(config.vision_config).to(device, dtype)
         batch_size = 2
@@ -209,3 +292,22 @@ class TestKimiVLComponents(BaseTester):
 
         output = model(input_features, h=8, w=8)
         assert output.shape == (batch_size, 16, config.projector_config.output_dim)
+
+    def test_projector_patch_concatenation_order(self, device):
+        # Reference: Moonshot's KimiVLMultiModalProjector at revision
+        # 398eede0903cd983a2bfa0cc634e9ac1d843f375. Values 0..15 form a row-major 2x4 grid
+        # of two-feature patches. When each 2x2 block is merged, the features from each patch must stay
+        # adjacent, with patches ordered top-left, top-right, bottom-left, bottom-right.
+        config = KimiVLProjectorConfig(input_dim=2, hidden_dim=8, output_dim=8)
+        projector = KimiVLProjector(config).to(device)
+        projector.pre_norm = torch.nn.Identity()
+        projector.mlp = torch.nn.Identity()
+        patches = torch.arange(16.0, device=device).view(1, 8, 2)
+        expected = torch.tensor(
+            [[[0.0, 1.0, 2.0, 3.0, 8.0, 9.0, 10.0, 11.0], [4.0, 5.0, 6.0, 7.0, 12.0, 13.0, 14.0, 15.0]]],
+            device=device,
+        )
+
+        actual = projector(patches, h=2, w=4)
+
+        self.assert_close(actual, expected, rtol=0.0, atol=0.0)
