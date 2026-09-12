@@ -430,25 +430,25 @@ class TestRandomMosaic(BaseTester):
 
     def test_partial_batch_passthrough(self, device, dtype):
         torch.manual_seed(76)
-    
+
         f = RandomMosaic(
             p=0.5,
             data_keys=["input", "bbox_xyxy"],
         )
-    
+
         input = torch.randn((12, 3, 6, 8), device=device, dtype=dtype)
         boxes = torch.zeros((12, 2, 4), device=device, dtype=dtype)
-    
+
         output, _ = f(input, boxes)
-    
+
         assert output.shape == input.shape
-    
+
         to_apply = f._params["batch_prob"] > 0.5
         untouched = ~to_apply
-    
+
         if untouched.any():
             self.assert_close(output[untouched], input[untouched])
-    
+
     def test_non_square_default_output_size(self, device, dtype):
         input = torch.randn((4, 3, 6, 8), device=device, dtype=dtype)
 

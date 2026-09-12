@@ -1367,6 +1367,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pixel whose gradient is not exactly zero; a patch with such pixels (a saturated region) loses their `sqrt(eps)`
   contribution, a change of at most `1e-5` per pixel before normalisation.
 
+*  Fix RandomMosaic swapping height and width for non-square inputs. The default output now preserves the 
+   input (H,W) dimensions, and start_ratio_range correctly interprets its values as (x, y) fractions of (W, H). 
+  
 ## :rocket: [0.6.11] - 2022-03-28
 ### :new:  New Features
 
