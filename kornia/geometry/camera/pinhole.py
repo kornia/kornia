@@ -100,7 +100,11 @@ class PinholeCamera:
 
     @staticmethod
     def _check_valid(data_iter: Iterable[torch.Tensor]) -> bool:
-        if not all(data.shape[0] for data in data_iter):
+        data_list = list(data_iter)
+        if not data_list:
+            return True
+        batch_size = data_list[0].shape[0]
+        if not all(data.shape[0] == batch_size for data in data_list):
             raise ValueError("Arguments shapes must match")
         return True
 
@@ -427,6 +431,10 @@ class PinholeCamera:
             tensor([[5.6088, 8.6827]])
 
         """
+        if not isinstance(point_3d, torch.Tensor):
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(point_3d)}")
+        if len(point_3d.shape) < 2:
+            raise ValueError(f"Input must be at least a 2D tensor. Got {point_3d.shape}")
         P = self.intrinsics @ self.extrinsics
         return convert_points_from_homogeneous(transform_points(P, point_3d))
 
@@ -459,6 +467,10 @@ class PinholeCamera:
             tensor([[0.4963, 0.7682, 1.0000]])
 
         """
+        if not isinstance(point_2d, torch.Tensor):
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(point_2d)}")
+        if len(point_2d.shape) < 2:
+            raise ValueError(f"Input must be at least a 2D tensor. Got {point_2d.shape}")
         P = self.intrinsics @ self.extrinsics
         P_inv = _torch_inverse_cast(P)
         return transform_points(P_inv, convert_points_to_homogeneous(point_2d) * depth)

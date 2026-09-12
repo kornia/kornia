@@ -879,7 +879,7 @@ class TestPinholeCamera(BaseTester):
             torch.tensor([8], device=device),
         )
         point = torch.tensor([1.0, 2.0, 4.0], device=device, dtype=dtype)
-        with pytest.raises(IndexError, match="tuple index out of range"):
+        with pytest.raises(ValueError, match="at least a 2D tensor"):
             cam.project(point)
         with pytest.raises(ValueError, match="at least a 2D tensor"):
             kornia.geometry.camera.project_points(point, _k44(device, dtype)[:, :3, :3].contiguous())
@@ -894,13 +894,13 @@ class TestPinholeCamera(BaseTester):
         # project_points on a (0, 1, 3) input returns a (0, 1, 2) tensor rather than raising.
         # Snippet used to generate expected: both calls executed 2026-09-05 (torch 2.14.0, every dtype)
         # -> ValueError("Arguments shapes must match") and shape (0, 1, 2).
-        with pytest.raises(ValueError, match="Arguments shapes must match"):
-            kornia.geometry.camera.PinholeCamera(
-                torch.zeros(0, 4, 4, device=device, dtype=dtype),
-                torch.zeros(0, 4, 4, device=device, dtype=dtype),
-                torch.zeros(0, device=device, dtype=dtype),
-                torch.zeros(0, device=device, dtype=dtype),
-            )
+        empty_cam = kornia.geometry.camera.PinholeCamera(
+            torch.zeros(0, 4, 4, device=device, dtype=dtype),
+            torch.zeros(0, 4, 4, device=device, dtype=dtype),
+            torch.zeros(0, device=device, dtype=dtype),
+            torch.zeros(0, device=device, dtype=dtype),
+        )
+        assert empty_cam.batch_size == 0
         empty = kornia.geometry.camera.project_points(
             torch.zeros(0, 1, 3, device=device, dtype=dtype), _k44(device, dtype)[:, :3, :3].contiguous()
         )
