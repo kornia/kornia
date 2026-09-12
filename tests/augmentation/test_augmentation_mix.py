@@ -430,26 +430,64 @@ class TestRandomMosaic(BaseTester):
 
     def test_partial_batch_passthrough(self, device, dtype):
         torch.manual_seed(76)
-
+    
         f = RandomMosaic(
-            output_size=(32, 32),
             p=0.5,
             data_keys=["input", "bbox_xyxy"],
         )
-
-        input = torch.randn((12, 3, 32, 32), device=device, dtype=dtype)
+    
+        input = torch.randn((12, 3, 6, 8), device=device, dtype=dtype)
         boxes = torch.zeros((12, 2, 4), device=device, dtype=dtype)
-
+    
         output, _ = f(input, boxes)
+    
+        assert output.shape == input.shape
+    
+        to_apply = f._params["batch_prob"] > 0.5
+        untouched = ~to_apply
+    
+        if untouched.any():
+            self.assert_close(output[untouched], input[untouched])
+    
+    def test_non_square_default_output_size(self, device, dtype):
+        input = torch.randn((4, 3, 6, 8), device=device, dtype=dtype)
+
+        f = RandomMosaic(p=1.0)
+
+        output = f(input)
 
         assert output.shape == input.shape
 
-        to_apply = f._params["batch_prob"] > 0.5
-        untouched = ~to_apply
+    def test_start_ratio_range_uses_width_for_x_and_height_for_y(self, device, dtype):
+        input = torch.randn((4, 3, 6, 8), device=device, dtype=dtype)
 
-        if untouched.any():
-            self.assert_close(output[untouched], input[untouched])
+        f = RandomMosaic(
+            p=1.0,
+            start_ratio_range=(0.5, 0.5),
+        )
 
+        f(input)
+
+        top_left = f._params["src"][0, 0]
+
+        expected = torch.tensor([4.0, 3.0], device=device, dtype=dtype)
+
+        self.assert_close(top_left, expected)
+
+    @pytest.mark.parametrize("keepdim", [False, True])
+    def test_unbatched_non_square(self, keepdim, device, dtype):
+        input = torch.randn((1, 6, 8), device=device, dtype=dtype)
+
+        f = RandomMosaic(
+            p=1.0,
+            keepdim=keepdim,
+        )
+
+        output = f(input)
+
+        expected_shape = (1, 6, 8) if keepdim else (1, 1, 6, 8)
+
+        assert output.shape == expected_shape
 
 class TestRandomJigsaw(BaseTester):
     def test_smoke(self, device, dtype):
