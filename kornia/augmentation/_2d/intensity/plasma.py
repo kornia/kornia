@@ -66,6 +66,13 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
             (roughness, "roughness", None, None), (intensity, "intensity", None, None)
         )
 
+    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        B, C, H, W = shape
+        params = super().generate_parameters(shape)
+        roughness = params["roughness"].to(device=self.device, dtype=self.dtype)
+        params["plasma"] = diamond_square((B, C, H, W), roughness, device=self.device, dtype=self.dtype)
+        return params
+
     def apply_transform(
         self,
         image: torch.Tensor,
@@ -73,10 +80,8 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        B, C, H, W = image.shape
-        roughness = params["roughness"].to(image)
         intensity = params["intensity"].to(image).view(-1, 1, 1, 1)
-        brightness_map = 2 * diamond_square((B, C, H, W), roughness, device=image.device, dtype=image.dtype) - 1
+        brightness_map = 2 * params["plasma"].to(image) - 1
         brightness_map = brightness_map * intensity
         return (image + brightness_map).clamp_(0, 1)
 
@@ -119,6 +124,13 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self._param_generator = rg.PlainUniformGenerator((roughness, "roughness", None, None))
 
+    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        B, C, H, W = shape
+        params = super().generate_parameters(shape)
+        roughness = params["roughness"].to(device=self.device, dtype=self.dtype)
+        params["plasma"] = diamond_square((B, C, H, W), roughness, device=self.device, dtype=self.dtype)
+        return params
+
     def apply_transform(
         self,
         image: torch.Tensor,
@@ -126,9 +138,7 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        B, C, H, W = image.shape
-        roughness = params["roughness"].to(image)
-        contrast_map = 4 * diamond_square((B, C, H, W), roughness, device=image.device, dtype=image.dtype)
+        contrast_map = 4 * params["plasma"].to(image)
         return ((image - 0.5) * contrast_map + 0.5).clamp_(0, 1)
 
 
@@ -178,6 +188,13 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
             (shade_quantity, "shade_quantity", None, None),
         )
 
+    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        B, _, H, W = shape
+        params = super().generate_parameters(shape)
+        roughness = params["roughness"].to(device=self.device, dtype=self.dtype)
+        params["plasma"] = diamond_square((B, 1, H, W), roughness, device=self.device, dtype=self.dtype)
+        return params
+
     def apply_transform(
         self,
         image: torch.Tensor,
@@ -185,10 +202,8 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        B, _, H, W = image.shape
-        roughness = params["roughness"].to(image)
         shade_intensity = params["shade_intensity"].to(image).view(-1, 1, 1, 1)
         shade_quantity = params["shade_quantity"].to(image).view(-1, 1, 1, 1)
-        shade_map = diamond_square((B, 1, H, W), roughness, device=image.device, dtype=image.dtype)
+        shade_map = params["plasma"].to(image)
         shade_map = (shade_map < shade_quantity).to(image.dtype) * shade_intensity
         return (image + shade_map).clamp_(0, 1)
