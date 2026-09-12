@@ -110,7 +110,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
     ) -> torch.Tensor:
         input_permute = input.index_select(dim=0, index=params["mixup_pairs"].to(input.device))
 
-        lam = params["mixup_lambdas"].view(-1, 1, 1, 1).expand_as(input).to(input.device)
+        lam = params["mixup_lambdas"].view(-1, 1, 1, 1).expand_as(input).to(input.device ,  dtype=input.dtype)
         inputs = input * (1 - lam) + input_permute * lam
         return inputs
 
