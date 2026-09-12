@@ -29,16 +29,16 @@ __all__ = ["KimiVLModel", "KimiVLProjector"]
 
 
 class KimiVLProjector(nn.Module):
-    """KimiVL Projector with Pixel Unshuffle and MLP."""
+    """KimiVL projector with patch merging and MLP."""
 
     def __init__(self, config: KimiVLProjectorConfig) -> None:
         super().__init__()
         self.downsample_ratio = 2
 
-        # Pre-norm (applied before pixel unshuffle, on the vision encoder output dimension)
+        # Pre-norm (applied before patch merging, on the vision encoder output dimension)
         self.pre_norm = nn.LayerNorm(config.input_dim)
 
-        # After pixel unshuffle, the dimension becomes input_dim * (downsample_ratio ** 2)
+        # Merging each spatial group multiplies the dimension by downsample_ratio**2.
         mlp_input_dim = config.input_dim * (self.downsample_ratio**2)
 
         # MLP

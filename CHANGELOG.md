@@ -1537,6 +1537,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pixel whose gradient is not exactly zero; a patch with such pixels (a saturated region) loses their `sqrt(eps)`
   contribution, a change of at most `1e-5` per pixel before normalisation.
 
+* Align Kimi-VL positional embeddings, rotary embeddings, and projector ordering with Moonshot
+  ([#3968](https://github.com/kornia/kornia/pull/3968)).
+
+
 ## :rocket: [0.6.11] - 2022-03-28
 ### :new:  New Features
 

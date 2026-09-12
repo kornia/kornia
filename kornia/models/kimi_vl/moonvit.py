@@ -37,9 +37,11 @@ def apply_rotary_pos_emb(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) 
     Returns:
         Tensor with rotary embeddings applied and the same shape as ``x``.
     """
-    x_complex = torch.view_as_complex(x.float().reshape(*x.shape[:-1], -1, 2))
-    freqs_cis = torch.complex(cos.float(), sin.float())
-    return torch.view_as_real(x_complex * freqs_cis).flatten(-2).type_as(x)
+    # Complex ops require at least float32; preserve float64 inputs for numerical accuracy.
+    compute_dtype = torch.float64 if x.dtype == torch.float64 else torch.float32
+    x_complex = torch.view_as_complex(x.to(compute_dtype).reshape(*x.shape[:-1], -1, 2))
+    freqs_cis = torch.complex(cos.to(compute_dtype), sin.to(compute_dtype))
+    return torch.view_as_real(x_complex * freqs_cis).flatten(-2).to(x.dtype)
 
 
 class MoonViTRotaryEmbedding(nn.Module):
@@ -234,9 +236,9 @@ class MoonViTLayer(nn.Module):
             x: Token tensor with shape :math:`(B, N, D)`, where ``B`` is the batch
                 size, ``N`` is the number of flattened image patches, and ``D`` is the
                 hidden size.
-            cos: Cosine rotary embedding table with shape :math:`(N, d)`, where ``d``
+            cos: Cosine rotary embedding table with shape :math:`(N, d / 2)`, where ``d``
                 is the per-head attention dimension.
-            sin: Sine rotary embedding table with shape :math:`(N, d)`.
+            sin: Sine rotary embedding table with shape :math:`(N, d / 2)`.
             attention_mask: Optional attention mask forwarded to the self-attention
                 layer.
 
