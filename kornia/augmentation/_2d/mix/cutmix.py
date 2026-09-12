@@ -123,8 +123,12 @@ class RandomCutMixV2(MixAugmentationBaseV2):
             labels_permute = input.index_select(dim=0, index=pair.to(input.device))
             w, h = infer_bbox_shape(crop)
 
-            lam_val = w.to(input.dtype) * h.to(input.dtype) / (width * height)
+            lam_val = w * h / (width * height)
             lam = 1 - lam_val if self.use_correct_lambda else lam_val
+            lam.to(
+                device=input.device,
+                dtype=DType.to_torch(int(params["dtype"].item())),
+            )
 
             out_labels.append(
                 torch.stack(

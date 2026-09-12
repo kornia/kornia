@@ -58,10 +58,15 @@ class TestRandomMixUpV2(BaseTester):
 
         out_image, out_label = f(input, label)
 
+        if dtype == torch.float16:
+            rtol, atol = 1e-3, 1e-3
+        else:
+            rtol, atol = 1e-4, 1e-4
+
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
         self.assert_close(out_label[:, 0], label)
         self.assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
-        self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_label[:, 2], lam, rtol=rtol, atol=atol)
 
     def test_random_mixup_p0(self, device, dtype):
         torch.manual_seed(0)
@@ -377,9 +382,13 @@ class TestRandomMosaic(BaseTester):
             device=device,
             dtype=dtype,
         )
+        if dtype in (torch.float16, torch.bfloat16):
+            rtol, atol = 1e-2, 5e-2
+        else:
+            rtol, atol = 1e-4, 1e-4
 
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        self.assert_close(out_box, expected_box, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_box, expected_box, rtol=rtol, atol=atol)
 
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
     def test_p(self, p, device, dtype):

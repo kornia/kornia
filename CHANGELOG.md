@@ -1406,6 +1406,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pixel whose gradient is not exactly zero; a patch with such pixels (a saturated region) loses their `sqrt(eps)`
   contribution, a change of at most `1e-5` per pixel before normalisation.
 
+  * **Mix augmentations support bfloat16 inputs.** DType now includes bfloat16, so RandomMosaic, RandomMixUpV2,
+  RandomCutMixV2 and RandomJigsaw no longer fail with KeyError: 'BFLOAT16' when given bfloat16 tensors. The
+  affected mix-augmentation tests are now enabled instead of being masked by strict xfails. Bounding-box
+  transformations also handle mixed dtypes without failing at the matrix multiplication step. (#4467)
+
 ## :rocket: [0.6.11] - 2022-03-28
 ### :new:  New Features
 

@@ -108,6 +108,7 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
     FLOAT16 = 1
     FLOAT32 = 2
     FLOAT64 = 3
+    BFLOAT16 = 4
 
     @classmethod
     def get(cls, value: Union[str, int, torch.dtype, torch.Tensor, "DType"]) -> "DType":
@@ -143,6 +144,9 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
 
         elif data == DType.FLOAT64:
             return torch.float64
+
+        elif data == DType.BFLOAT16:
+            return torch.bfloat16
 
         raise ValueError
 
