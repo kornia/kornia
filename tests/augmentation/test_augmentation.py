@@ -4867,6 +4867,28 @@ class TestRandomPlasma:
         out = aug(img)
         assert out.shape == (2, 3, 4, 5)
 
+    @pytest.mark.parametrize(
+        "augmentation_cls",
+        [
+            RandomPlasmaBrightness,
+            RandomPlasmaContrast,
+            RandomPlasmaShadow,
+        ],
+    )
+    def test_params_replay_4445(self, augmentation_cls, device, dtype):
+        torch.manual_seed(0)
+
+        input = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        aug = augmentation_cls(p=1.0).to(device)
+
+        output = aug(input)
+        params = aug._params
+
+        torch.manual_seed(123)
+        replayed = aug(input, params=params)
+
+        assert torch.equal(output, replayed)
+
 
 class TestPlanckianJitter(BaseTester):
     def _get_expected_output_blackbody(self, device, dtype):
