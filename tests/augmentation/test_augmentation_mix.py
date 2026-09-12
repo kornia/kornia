@@ -489,6 +489,7 @@ class TestRandomMosaic(BaseTester):
 
         assert output.shape == expected_shape
 
+
 class TestRandomJigsaw(BaseTester):
     def test_smoke(self, device, dtype):
         f = RandomJigsaw(data_keys=["input"])
