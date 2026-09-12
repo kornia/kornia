@@ -877,9 +877,19 @@ class TestAngleAxisToQuaternion(BaseTester):
     # Pinning the VALUES and not just finiteness is what separates "the NaN is gone" from "the NaN
     # was replaced by the right number": a guard that clamped the radicand to 1e-12 the way
     # axis_angle_to_rotation_matrix does would also be finite here, and wrong by a factor of the
-    # clamp. One table, two cells, because the two functions have independent sqrt guards.
+    # clamp.
+    #
+    # The three quaternion_to_axis_angle rows below w=1 are #4237, not #3949: the #3949 fix's
+    # zero-vector-part branch used the constant 2.0, which is only the w=1 case of the true limit
+    # 2/w (w = cos_theta). w=1 alone could not have caught this -- it is the one point where the
+    # wrong constant and the right formula agree. (-1,0,0,0) is the same rotation as (1,0,0,0) (the
+    # double cover) and used to get the wrong SIGN; w=2 and w=-2 are non-unit "identities", which
+    # this function explicitly permits, and used to get the wrong MAGNITUDE.
     _IDENTITY_GRADIENT_CASES = [
         ("quaternion_to_axis_angle", [1.0, 0.0, 0.0, 0.0], [0.0, 2.0, 2.0, 2.0]),
+        ("quaternion_to_axis_angle", [-1.0, 0.0, 0.0, 0.0], [0.0, -2.0, -2.0, -2.0]),
+        ("quaternion_to_axis_angle", [2.0, 0.0, 0.0, 0.0], [0.0, 1.0, 1.0, 1.0]),
+        ("quaternion_to_axis_angle", [-2.0, 0.0, 0.0, 0.0], [0.0, -1.0, -1.0, -1.0]),
         ("axis_angle_to_quaternion", [0.0, 0.0, 0.0], [0.5, 0.5, 0.5]),
     ]
 
@@ -935,6 +945,54 @@ class TestAngleAxisToQuaternion(BaseTester):
         assert torch.isfinite(batch.grad).all(), f"kornia#3949: {op_name} has a non-finite gradient in a batch"
         self.assert_close(batch.grad[0], torch.tensor(expected_grad, device=device, dtype=torch.float64))
         self.assert_close(batch.grad[1], alone.grad, atol=0.0, rtol=0.0)
+
+    def test_convention_quaternion_to_axis_angle_zero_quaternion_gradient_is_finite_4237(self, device):
+        # #4237's fix replaced the constant k=2.0 at the zero-vector-part branch with the analytic
+        # limit 2/w (w = cos_theta), which introduces a real division that a genuinely-degenerate
+        # all-zero quaternion (0,0,0,0) -- not a valid rotation, w=0 too -- would divide by zero
+        # through. That division is guarded the same way the sin_theta one already is, and `atan2`
+        # is shielded at the same input (atan2(0, 0) has a `nan` backward on torch <= 2.9.1), so
+        # this input keeps returning the same harmless (0,0,0) value and now has a finite gradient
+        # on every supported torch version. The gradient value itself (all-zero) is not claimed to be the
+        # unique "correct" one -- the function has no limit at this point, approached along
+        # different paths -- only that it stays finite and does not regress from before this fix.
+        _skip_if_dtype_unavailable(device, torch.float64)
+        q = torch.tensor([0.0, 0.0, 0.0, 0.0], device=device, dtype=torch.float64, requires_grad=True)
+
+        out = kornia.geometry.conversions.quaternion_to_axis_angle(q)
+        self.assert_close(out, torch.zeros(3, device=device, dtype=torch.float64))
+
+        out.sum().backward()
+        assert q.grad is not None
+        assert torch.isfinite(q.grad).all(), f"kornia#4237: zero quaternion has a non-finite gradient: {q.grad}"
+
+    @pytest.mark.parametrize("grad_dtype_name", ["float16", "float32", "float64"])
+    def test_convention_quaternion_to_axis_angle_near_half_turn_gradient_is_finite_4237(self, device, grad_dtype_name):
+        # The 2/w limit introduced for #4237 is only ever selected on the zero-vector-part branch,
+        # but the division was evaluated for every element, and `2.0 / t` lowers to
+        # `t.reciprocal() * 2`, whose backward is `-grad * result**2`. For a rotation just short of
+        # a half turn `w` is small and non-zero, so `(1/w)**2` overflows to `inf`, and the exact
+        # 0.0 that the unselected branch receives from `torch.where` meets it as `0 * inf` -> nan.
+        # In float16 that is every rotation within ~0.45 degrees of 180 -- ordinary inputs, not
+        # degenerate ones -- so the division is gated on `~pos`, the mask that actually selects it.
+        # The mirror case is a zero vector part with a small `w`, where the branch *is* selected
+        # and `d(2/w)/dw` overflows against an exactly-zero vector component; `2 / w` is detached
+        # for that reason. Both directions are swept here.
+        dtype = getattr(torch, grad_dtype_name)
+        _skip_if_dtype_unavailable(device, dtype)
+        ws = [0.5, 0.05, 3e-3, 1e-4, 0.0]
+        quaternions = [[w, 1.0, 0.0, 0.0] for w in ws] + [[w, 0.0, 0.0, 0.0] for w in ws]
+        quaternions += [[-w, 1.0, 0.0, 0.0] for w in ws] + [[-w, 0.0, 0.0, 0.0] for w in ws]
+
+        q = torch.tensor(quaternions, device=device, dtype=dtype, requires_grad=True)
+        kornia.geometry.conversions.quaternion_to_axis_angle(q).sum().backward()
+
+        assert q.grad is not None
+        finite = torch.isfinite(q.grad).all(dim=-1)
+        assert finite.all(), (
+            f"kornia#4237: non-finite gradient at {[quaternions[i] for i in (~finite).nonzero().flatten().tolist()]}"
+            f" in {grad_dtype_name}: {q.grad[~finite]}"
+        )
 
 
 class TestQuaternionToAngleAxis(BaseTester):
