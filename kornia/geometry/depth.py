@@ -519,20 +519,16 @@ class DepthWarper(nn.Module):
         The frame this class calls ``src``, the one holding the depth, is that function's ``dst``
         (``depth_dst``), and the image this class takes as ``patch_dst`` is that function's ``image_src``;
         reading "dst" as "dst" across the two APIs gives the inverse warp. The two also differ arithmetically:
-        they build the sampling grid by different routes -- :func:`~kornia.geometry.depth.depth_to_3d_v2` and
-        :func:`~kornia.geometry.camera.perspective.project_points` here, ``pixel2cam`` and ``cam2pixel`` there
-        -- so the grid, and with it the resampled image, can differ in the last bits. Where the two grids come
+        :class:`DepthWarper` builds its sampling grid through ``pixel2cam`` and ``cam2pixel``, while
+        :func:`~kornia.geometry.depth.warp_frame_depth` uses :func:`~kornia.geometry.depth.depth_to_3d_v2` and
+        :func:`~kornia.geometry.camera.perspective.project_points`, so the grid, and with it the resampled image,
+        can differ in the last bits. Where the two grids come
         out bit-identical, so do the images. Wherever the transformed points keep a camera-frame ``z`` away
         from zero, the two agree at the working dtype's tolerance in float32 and float64; in float16 and
         bfloat16 the gap is wider than that tolerance, which is why the agreement is claimed for the two
-        single- and double-precision dtypes only. At ``z = 0`` the two split outright, because their two
-        projection routes guard the singularity differently:
-        :func:`~kornia.geometry.camera.perspective.project_points` skips the homogeneous divide when
-        ``abs(z) <= 1e-8``, so :func:`~kornia.geometry.depth.warp_frame_depth` samples ``image_src`` at the
-        undivided ``(x, y)`` and returns image content, while ``cam2pixel`` divides by ``z + 1e-12`` and sends
-        the same pixel to a coordinate of order ``1e12``, far outside the image. That split is one instance of
-        `#4267 <https://github.com/kornia/kornia/issues/4267>`_, the namespace-wide ``z = 0`` conflict. The
-        naming conflict is tracked as `#4273 <https://github.com/kornia/kornia/issues/4273>`_.
+        single- and double-precision dtypes only. Their projection routes now share the same strict
+        ``abs(z) > 1e-8`` divide guard, including at ``z = 0``. The naming conflict is tracked as
+        `#4273 <https://github.com/kornia/kornia/issues/4273>`_.
 
     Args:
         pinhole_dst: the pinhole model for the destination frame.

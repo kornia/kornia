@@ -66,12 +66,9 @@ class TestProjectionZ1(BaseTester):
         )
         self.assert_close(project_points_z1(points), expected)
 
-    def test_project_points_z1_invalid(self, device, dtype):
-        # NOTE: this is a corner case where the depth is 0.0 and the point is at infinity
-        #      the projection is not defined and the function returns inf. The second point
-        #      is behind the camera which is not a valid point and the user should handle it.
+    def test_project_points_z1_singular_and_behind(self, device, dtype):
         points = torch.tensor([[1.0, 2.0, 0.0], [4.0, 5.0, -1.0]], device=device, dtype=dtype)
-        expected = torch.tensor([[float("inf"), float("inf")], [-4.0, -5.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[1.0, 2.0], [-4.0, -5.0]], device=device, dtype=dtype)
         self.assert_close(project_points_z1(points), expected)
 
     def test_unproject_points_z1(self, device, dtype):
@@ -173,36 +170,28 @@ class TestProjectionZ1(BaseTester):
         self._test_jit_project(device, dtype)
         self._test_jit_unproject(device, dtype)
 
-    def test_wart_project_points_z1_zero_depth_is_component_dependent_4267(self, device, dtype):
-        # project_points_z1 divides plainly. Snippet used to generate expected: project_points_z1 applied to the
-        # four points below -> [[inf, -inf], [-inf, inf], [nan, inf], [inf, nan]].
+    def test_project_points_z1_masks_zero_depth_4267(self, device, dtype):
+        # Regression for #4267: zero depth takes the pass-through branch, including zero numerators.
         points = torch.tensor(
             [[1.0, -2.0, 0.0], [-1.0, 2.0, 0.0], [0.0, 2.0, 0.0], [1.0, 0.0, 0.0]],
             device=device,
             dtype=dtype,
         )
         actual = project_points_z1(points)
-        expected_posinf = torch.tensor([[True, False], [False, True], [False, True], [True, False]], device=device)
-        expected_neginf = torch.tensor([[False, True], [True, False], [False, False], [False, False]], device=device)
-        expected_nan = torch.tensor([[False, False], [False, False], [True, False], [False, True]], device=device)
-        assert torch.equal(torch.isposinf(actual), expected_posinf)
-        assert torch.equal(torch.isneginf(actual), expected_neginf)
-        assert torch.equal(torch.isnan(actual), expected_nan)
+        assert bool(torch.isfinite(actual).all())
+        self.assert_close(actual, points[..., :2], atol=0.0, rtol=0.0)
 
-    def test_convention_project_points_z1_differs_below_perspective_epsilon(self, device, dtype):
-        # Snippet used to generate expected: project_points_z1([[1., 2., 1e-9]]) -> [[1e9, 2e9]], while
-        # project_points(..., eye(3)) -> [[1., 2.]] because its homogeneous conversion does not divide when
-        # abs(z) <= 1e-8. float16 is skipped because 1e-9 underflows to zero in that dtype.
-        if dtype == torch.float16:
-            pytest.skip("1e-9 underflows to zero in float16")
-        points = torch.tensor([[1.0, 2.0, 1e-9]], device=device, dtype=dtype)
+    @pytest.mark.parametrize("z", [1e-9, -1e-9, 1e-8, -1e-8])
+    def test_project_points_z1_matches_perspective_mask_4267(self, device, dtype, z):
+        # The strict boundary and sub-threshold values use the same pass-through policy as project_points.
+        points = torch.tensor([[1.0, 2.0, z]], device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
-        expected_z1 = torch.tensor([[1e9, 2e9]], device=device, dtype=dtype)
-        expected_perspective = torch.tensor([[1.0, 2.0]], device=device, dtype=dtype)
-        self.assert_close(project_points_z1(points), expected_z1)
-        self.assert_close(project_points(points, camera_matrix), expected_perspective)
+        expected = torch.tensor([[1.0, 2.0]], device=device, dtype=dtype)
+        self.assert_close(project_points_z1(points), expected, atol=0.0, rtol=0.0)
+        self.assert_close(project_points(points, camera_matrix), expected, atol=0.0, rtol=0.0)
 
-    def test_convention_dx_project_points_z1_matches_autograd(self, device, dtype):
+    @pytest.mark.parametrize("z", [3.0, 0.0, 1e-8, -1e-8])
+    def test_convention_dx_project_points_z1_matches_autograd(self, device, dtype, z):
         # Convention pin: dx_project_points_z1 returns the (..., 2, 3) Jacobian
         # of project_points_z1, laid out d(u, v) / d(x, y, z) -- row-major in the OUTPUT index. Checked against
         # torch.autograd.functional.jacobian at an off-axis point (1, 2, 3) where all six entries differ, so a
@@ -210,11 +199,14 @@ class TestProjectionZ1(BaseTester):
         # Snippet used to generate expected: autograd.functional.jacobian(project_points_z1, [1., 2., 3.])
         # executed 2026-09-05 (torch 2.14.0, cpu and mps) -> max abs difference 1.49e-08 in float32, 0.0 in
         # float64/float16/bfloat16.
-        points = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
+        points = torch.tensor([1.0, 2.0, z], device=device, dtype=dtype)
         analytic = dx_project_points_z1(points)
         numeric = torch.autograd.functional.jacobian(project_points_z1, points)
         assert analytic.shape == (2, 3)
         self.assert_close(analytic, numeric)
+        if not bool(points[-1].abs() > 1e-8):
+            expected = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype)
+            self.assert_close(analytic, expected, atol=0.0, rtol=0.0)
 
 
 class TestProjectionOrthographic(BaseTester):

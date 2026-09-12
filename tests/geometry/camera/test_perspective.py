@@ -66,15 +66,9 @@ class TestProjectPoints(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(points_3d, camera_matrix), op_jit(points_3d, camera_matrix))
 
-    def test_wart_project_points_skips_the_divide_at_z_zero_4267(self, device, dtype):
-        # Wart pin for kornia#4267: convert_points_from_homogeneous masks
-        # |z| <= 1e-8 to a divisor of 1 and project_points applies K AFTER that divide, so a point on the camera
-        # plane projects to fx*x + cx = 104, fy*y + cy = 203 instead of raising or returning inf. Four other
-        # entry points answer differently at the same input: PinholeCamera.project gives [[100, 200]],
-        # project_points_z1 and Z1Projection.project give inf, cam2pixel gives a finite 1e14.
-        # A point BEHIND the camera is projected just as silently: z = -4 gives [[-21, -47]].
-        # Snippet used to generate expected: project_points([[1., 2., 0.]], K3) executed 2026-09-05 (torch 2.14.0,
-        # cpu and mps, every dtype). Pins the CURRENT value; NOT a contract; delete when #4267 is repaired.
+    def test_projection_masks_singular_depth_4267(self, device, dtype):
+        # Regression for #4267: the shared projection policy leaves x/y unchanged when |z| <= 1e-8 before
+        # applying K, while negative depths outside the guard keep their signed perspective division.
         camera_matrix = torch.tensor(
             [[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )

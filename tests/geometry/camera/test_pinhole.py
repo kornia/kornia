@@ -165,23 +165,27 @@ class TestCam2Pixel(BaseTester):
 
         self.gradcheck(kornia.geometry.camera.cam2pixel, (cam_coords_src, proj_mat, eps), atol=atol, rtol=rtol)
 
-    def test_wart_cam2pixel_epsilon_makes_the_singular_divide_finite_4267(self, device, dtype):
-        # Wart pin for kornia#4267: cam2pixel divides by ``z + 1e-12`` instead
-        # of guarding the singularity, so the camera-plane point (1, 2, 0) yields a finite 1e14-scale pixel rather
-        # than inf (project_points_z1) or [[104, 203]] (project_points). The epsilon enters the arithmetic, so it
-        # also biases every finite result below z ~ 1e-10.
-        # Snippet used to generate expected: cam2pixel([[[[1., 2., 0.]]]], _k44(...)) executed 2026-09-05
-        # (torch 2.14.0, cpu and mps) -> float32 [[[[1.00000000376832e14, 2.00000000753664e14]]]].
-        # Pins the CURRENT value; NOT a contract; delete when #4267 is repaired.
-        cam_coords = torch.tensor([[[[1.0, 2.0, 0.0], [1.0, 2.0, 1.0e-12]]]], device=device, dtype=dtype)
-        uv = kornia.geometry.camera.cam2pixel(cam_coords, _k44(device, dtype))
-        if dtype == torch.float16:
-            assert bool(torch.isposinf(uv).all())
-        else:
-            assert bool(torch.isfinite(uv).all())
-            # At z = eps the additive denominator halves the result; a guarded divide would not.
-            expected = torch.tensor([[[[1.0e14, 2.0e14], [5.0e13, 1.0e14]]]], device=device, dtype=dtype)
-            self.assert_close(uv, expected)
+    def test_cam2pixel_uses_guarded_depth_threshold_4267(self, device, dtype):
+        # Regression for #4267: eps selects the branch and is never added to a valid denominator.
+        identity = torch.eye(4, device=device, dtype=dtype)[None]
+        default_guard = torch.tensor([[[[1.0, 2.0, 0.0], [1.0, 2.0, 1.0e-8]]]], device=device, dtype=dtype)
+        guarded = kornia.geometry.camera.cam2pixel(default_guard, identity)
+        assert bool(torch.isfinite(guarded).all())
+        self.assert_close(
+            guarded, torch.tensor([[[[1.0, 2.0], [1.0, 2.0]]]], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        )
+
+        # A representable custom threshold checks both the strict boundary and the non-additive normal branch.
+        custom = torch.tensor([[[[1.0, 2.0, 0.5], [1.0, 2.0, 2.0], [1.0, 2.0, -2.0]]]], device=device, dtype=dtype)
+        custom_uv = kornia.geometry.camera.cam2pixel(custom, identity, eps=0.5)
+        expected_custom = torch.tensor([[[[1.0, 2.0], [0.5, 1.0], [-0.5, -1.0]]]], device=device, dtype=dtype)
+        self.assert_close(custom_uv, expected_custom, atol=0.0, rtol=0.0)
+
+        # The regular audit point is unchanged and a point behind the camera remains finite.
+        regular = torch.tensor([[[[1.0, 2.0, 4.0], [1.0, 2.0, -4.0]]]], device=device, dtype=dtype)
+        regular_uv = kornia.geometry.camera.cam2pixel(regular, _k44(device, dtype))
+        expected_regular = torch.tensor([[[[29.0, 53.0], [-21.0, -47.0]]]], device=device, dtype=dtype)
+        self.assert_close(regular_uv, expected_regular, atol=0.0, rtol=0.0)
 
     @pytest.mark.parametrize("shape", [(), (4, 4), (3, 3), (1, 3, 3), (1, 3, 4), (1, 5, 4), (1, 1, 4, 4)])
     def test_invalid_projection_shape_4266(self, shape, device, dtype):
@@ -921,14 +925,8 @@ class TestPinholeCamera(BaseTester):
                 torch.zeros(batch_sizes[3], device=device, dtype=dtype),
             )
 
-    def test_wart_project_and_project_points_disagree_at_z_zero_4267(self, device, dtype):
-        # Wart pin for kornia#4267: PinholeCamera.project and the free function
-        # project_points are documented as the same projection and agree exactly away from the singularity, but
-        # they apply K on OPPOSITE sides of the masked |z| <= 1e-8 divide, so at z = 0 they return different
-        # answers -- K @ [1, 2, 0] = [100, 200] for the method and fx*x + cx = [104, 203] for the function.
-        # The divergence is the defect, not either value.
-        # Snippet used to generate expected: both calls at (1, 2, 0) and (1, 2, 4) executed 2026-09-05
-        # (torch 2.14.0, cpu and mps, every dtype). NOT a contract; delete when #4267 is repaired.
+    def test_project_matches_project_points_at_singular_depth_4267(self, device, dtype):
+        # Regression for #4267: the container and free-function forms apply K after the same guarded divide.
         cam = kornia.geometry.camera.PinholeCamera(
             _k44(device, dtype),
             _e44(device, dtype),
@@ -937,17 +935,17 @@ class TestPinholeCamera(BaseTester):
         )
         K3 = _k44(device, dtype)[:, :3, :3].contiguous()
         singular = torch.tensor([[1.0, 2.0, 0.0]], device=device, dtype=dtype)
-        self.assert_close(
-            cam.project(singular), torch.tensor([[100.0, 200.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0
-        )
-        self.assert_close(
-            kornia.geometry.camera.project_points(singular, K3),
-            torch.tensor([[104.0, 203.0]], device=device, dtype=dtype),
-            atol=0.0,
-            rtol=0.0,
-        )
+        expected_singular = torch.tensor([[104.0, 203.0]], device=device, dtype=dtype)
+        self.assert_close(cam.project(singular), expected_singular, atol=0.0, rtol=0.0)
+        self.assert_close(kornia.geometry.camera.project_points(singular, K3), expected_singular, atol=0.0, rtol=0.0)
         regular = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
-        self.assert_close(cam.project(regular), kornia.geometry.camera.project_points(regular, K3))
+        expected_regular = torch.tensor([[29.0, 53.0]], device=device, dtype=dtype)
+        self.assert_close(cam.project(regular), expected_regular, atol=0.0, rtol=0.0)
+        self.assert_close(kornia.geometry.camera.project_points(regular, K3), expected_regular, atol=0.0, rtol=0.0)
+        behind = torch.tensor([[1.0, 2.0, -4.0]], device=device, dtype=dtype)
+        expected_behind = torch.tensor([[-21.0, -47.0]], device=device, dtype=dtype)
+        self.assert_close(cam.project(behind), expected_behind, atol=0.0, rtol=0.0)
+        self.assert_close(kornia.geometry.camera.project_points(behind, K3), expected_behind, atol=0.0, rtol=0.0)
 
     def test_convention_from_parameters_fills_every_batch_element_4279(self, device, dtype):
         # Regression pin for #4279: image size must be filled for every camera in the batch.

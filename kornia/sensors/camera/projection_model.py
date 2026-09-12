@@ -23,14 +23,14 @@ from kornia.geometry.camera.projection_orthographic import (
     project_points_orthographic,
     unproject_points_orthographic,
 )
+from kornia.geometry.camera.projection_z1 import project_points_z1
 from kornia.geometry.vector import Vector2, Vector3
 
 
 class Z1Projection:
     """Project 3D points from the camera frame into the canonical $z=1$ plane.
 
-    This performs perspective division by dividing the $x$ and $y$ coordinates
-    by the depth $z$.
+    This uses the same guarded perspective division as :func:`kornia.geometry.camera.project_points_z1`.
     """
 
     def project(self, points: Vector3) -> Vector2:
@@ -38,14 +38,8 @@ class Z1Projection:
 
         Convention:
             - ``points`` is in the **camera frame** and the result is on the normalized :math:`z = 1` plane,
-              not in pixels: the map is ``xy / z``, with no epsilon and no validation. A point on the camera
-              plane (:math:`z = 0`) therefore projects to an infinity instead of raising -- to ``nan`` on an
-              axis whose numerator is zero as well -- and a point behind the camera to a finite coordinate.
-
-        .. warning::
-            That :math:`z = 0` answer is one of several that the projection entry points of kornia give for
-            the same input; they are collected in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
-            The behaviour above is documented as it is.
+              not in pixels. It divides by exactly ``z`` only when ``abs(z) > 1e-8`` and otherwise returns
+              ``(x, y)`` unchanged. Negative depths keep their signed division.
 
         Args:
             points: Vector3 representing the points to project.
@@ -60,14 +54,8 @@ class Z1Projection:
             y: 0.6666666865348816
 
         """
-        xy = points.data[..., :2]
-        z = points.z
-        if len(z.shape):
-            uv = xy / z.unsqueeze(-1)
-        else:
-            # For scalar z, xy is 1-D, so no transpose needed
-            uv = xy * 1 / z
-        return Vector2(uv)
+        _ = points.z  # Preserve the existing Vector3-only input protocol before reading ``data``.
+        return Vector2(project_points_z1(points.data))
 
     def unproject(self, points: Vector2, depth: torch.Tensor | float) -> Vector3:
         """Unproject one or more Vector2 from the canonical z=1 plane into the camera frame.

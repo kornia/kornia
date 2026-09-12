@@ -173,23 +173,16 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(projected, project_points(points, _k3(device, dtype)))
 
     @pytest.mark.parametrize("z", [0.0, 1e-9, -1e-9, 1e-8, -1e-8])
-    def test_wart_projection_differs_from_geometry_at_small_depth_4267(self, device, dtype, z):
-        # Pin the current #4267 policy difference, including the threshold boundary. Retire or update
-        # this pin when that policy is repaired. Geometry skips division at abs(z) <= 1e-8; sensors
-        # divides unconditionally. In float16 these depths underflow to zero, so expect infinities.
+    def test_projection_matches_geometry_at_small_depth_4267(self, device, dtype, z):
+        # Regression for #4267: sensors and geometry share the same strict abs(z) > 1e-8 division guard.
         cam = _pinhole(device, dtype)
         points = torch.tensor([[1.0, 2.0, z]], device=device, dtype=dtype)
         projected = cam.project(Vector3(points)).data
         geometry = project_points(points, _k3(device, dtype))
         expected_geometry = torch.tensor([[104.0, 103.0]], device=device, dtype=dtype)
         self.assert_close(geometry, expected_geometry, atol=0.0, rtol=0.0)
-        assert not torch.equal(projected, geometry)
-        if points[0, 2] == 0:
-            assert torch.isinf(projected).all()
-        else:
-            assert torch.isfinite(projected).all()
-            assert (projected.abs() > 1e9).all()
-            assert (projected.sign() == points[0, 2].sign()).all()
+        self.assert_close(projected, geometry, atol=0.0, rtol=0.0)
+        assert torch.isfinite(projected).all()
 
     def test_convention_unproject_takes_the_camera_frame_z_as_depth(self, device, dtype):
         # Convention pin (audit labels 5d-sc-03, 5d-sc-40; pre-finding P6): the ``depth`` argument of
