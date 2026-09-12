@@ -62,8 +62,7 @@ class PinholeCamera:
         `#4264 <https://github.com/kornia/kornia/issues/4264>`_, the in-place :meth:`scale_` failure on an
         integer ``height`` / ``width`` with a floating-point scale factor
         `#4265 <https://github.com/kornia/kornia/issues/4265>`_, the batch-size and point-shape limitations
-        `#4266 <https://github.com/kornia/kornia/issues/4266>`_, and the rejection of an empty batch
-        (:math:`B = 0`) `#4281 <https://github.com/kornia/kornia/issues/4281>`_. The behaviour described here is
+        `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The behaviour described here is
         documented as it is; the issues above track the repairs.
 
     Args:
@@ -100,7 +99,8 @@ class PinholeCamera:
 
     @staticmethod
     def _check_valid(data_iter: Iterable[torch.Tensor]) -> bool:
-        if not all(data.shape[0] for data in data_iter):
+        batch_sizes = [data.shape[0] for data in data_iter]
+        if not all(batch_size == batch_sizes[0] for batch_size in batch_sizes):
             raise ValueError("Arguments shapes must match")
         return True
 
