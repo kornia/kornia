@@ -27,7 +27,7 @@ predefined routines that automate the processing of masks, bounding boxes, and k
 
 
 Auditing geometric provenance
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``AugmentationSequential.audit`` executes the ordinary pipeline once and returns
 ``(outputs, report)``. It records the actual sampled operation order (including
@@ -68,7 +68,7 @@ an artifact without storing image pixels::
     torch.testing.assert_close(replay_points, points_out)
 
 Interpreting the report
-^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
 
 * ``matrix`` maps original pixel coordinates to final image coordinates, including
   ``RandomCrop`` prepadding. ``inverse_matrix`` is its algebraic inverse, with

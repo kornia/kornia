@@ -72,7 +72,9 @@ class TestAugmentationAudit(BaseTester):
             "ImageSequential_0.RandomVerticalFlip_1",
             "RandomBrightness_1",
         ]
-        self.assert_close(report.matrix, image.new_tensor([[[-1, 0, 9], [0, -1, 7], [0, 0, 1]]]))
+        diagnostic_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        expected = torch.tensor([[[-1, 0, 9], [0, -1, 7], [0, 0, 1]]], device=device, dtype=diagnostic_dtype)
+        self.assert_close(report.matrix, expected)
         assert report.spatial[0].roundtrip_max.item() < 1e-4
 
     def test_repeated_operations_capture_each_matrix(self, device, dtype):
@@ -136,7 +138,11 @@ class TestAugmentationAudit(BaseTester):
         _, tensor_report = aug.audit(image, boxes.to_tensor(mode="vertices_plus"))
         _, object_report = aug.audit(image, boxes)
         assert tensor_report.spatial[0].roundtrip_max.item() > 1
-        assert object_report.spatial[0].roundtrip_max.item() < 1e-4
+        # Half-precision corners are quantized before the float32 diagnostics.
+        # Budget one source-dtype epsilon over the image extent, while retaining
+        # the strict bound for float32/float64 and the >1px envelope-loss check.
+        tolerance = max(1e-4, torch.finfo(dtype).eps * max(image.shape[-2:]))
+        assert object_report.spatial[0].roundtrip_max.item() < tolerance
         assert any("round-trip error" in warning for warning in tensor_report.warnings)
 
     def test_detects_actual_spatial_error(self, device, dtype):
@@ -147,7 +153,8 @@ class TestAugmentationAudit(BaseTester):
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         aug = K.AugmentationSequential(BrokenFlip(p=1), data_keys=["input", "keypoints"])
         _, report = aug.audit(image, image.new_tensor([[[1, 2]]]))
-        self.assert_close(report.spatial[0].roundtrip_max, image.new_tensor([7]))
+        diagnostic_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+        self.assert_close(report.spatial[0].roundtrip_max, torch.tensor([7], device=device, dtype=diagnostic_dtype))
         assert "round-trip error" in report.summary()
 
     def test_nonrigid_silent_identity_is_not_supported(self, device, dtype):
