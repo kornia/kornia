@@ -308,17 +308,13 @@ class TestDepthTo3d(BaseTester):
 
     def test_convention_depth_to_3d_v2_keeps_the_w_one_axis_4278(self, device, dtype):
         # Regression for #4278 (repaired by #4298): a single column retains its width axis and agrees across
-        # layouts, and the two public consumers of unproject_meshgrid that inherited the squeeze --
-        # depth_to_normals and warp_frame_depth -- keep the axis too. At H = 1 the normals' VALUE is
-        # device-dependent (all-zero on cpu, [-1, -1, -1] on mps, nan in float16), so only shapes are asserted
-        # for those two.
+        # layouts. warp_frame_depth also keeps the axis. depth_to_normals requires both spatial dimensions
+        # to be at least 2; its separate convention pin covers that contract.
         camera_matrix = _k_asymmetric(device, dtype)
         depth = torch.full((1, 1, 3, 1), 2.0, device=device, dtype=dtype)
         v2 = depth_to_3d_v2(depth[:, 0], camera_matrix)
         assert v2.shape == (1, 3, 1, 3)
         assert torch.equal(depth_to_3d(depth, camera_matrix).permute(0, 2, 3, 1), v2)
-        assert depth_to_normals(depth, camera_matrix).shape == (1, 3, 3, 1)
-        assert depth_to_normals(depth.transpose(-1, -2).contiguous(), camera_matrix).shape == (1, 3, 1, 3)
         assert warp_frame_depth(depth, depth, _eye4(device, dtype), camera_matrix).shape == (1, 1, 3, 1)
 
     def test_convention_xyz_grid_bypasses_the_camera_matrix(self, device, dtype):
@@ -432,6 +428,52 @@ class TestUnprojectMeshgrid(BaseTester):
 
 
 class TestDepthToNormals(BaseTester):
+    @pytest.mark.parametrize(("height", "width"), [(1, 3), (3, 1), (1, 1), (0, 3), (3, 0), (0, 0)])
+    @pytest.mark.parametrize("normalize_points", [False, True])
+    def test_convention_normals_require_two_spatial_axes_4398(self, height, width, normalize_points, device, dtype):
+        # A surface normal needs two tangent directions, including when depth represents ray length.
+        depth = torch.full((1, 1, height, width), 2.0, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype)[None]
+
+        with pytest.raises(ShapeError, match="H >= 2 and W >= 2") as exc_info:
+            depth_to_normals(depth, camera_matrix, normalize_points)
+
+        assert exc_info.value.actual_shape == list(depth.shape)
+        assert f"H={height}, W={width}" in str(exc_info.value)
+
+    @pytest.mark.parametrize(("height", "width"), [(2, 2), (2, 3), (3, 2)])
+    @pytest.mark.parametrize("normalize_points", [False, True])
+    @pytest.mark.parametrize("camera_batch_size", [1, 2])
+    def test_minimum_spatial_size_plane(self, height, width, normalize_points, camera_batch_size, device, dtype):
+        camera_matrix = torch.tensor(
+            [[[1.0, 0.0, 1.0], [0.0, 2.0, 1.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        ).expand(camera_batch_size, -1, -1)
+        depth = torch.tensor([2.0, 4.0], device=device, dtype=dtype).view(2, 1, 1, 1).expand(2, 1, height, width)
+        if normalize_points:
+            # Ray lengths for the same fronto-parallel planes z=2 and z=4, rather than constant ray lengths.
+            x = torch.arange(width, device=device, dtype=dtype) - 1.0
+            y = (torch.arange(height, device=device, dtype=dtype) - 1.0) / 2.0
+            depth = depth * (x[None, :] ** 2 + y[:, None] ** 2 + 1.0).sqrt()
+
+        normals = depth_to_normals(depth, camera_matrix, normalize_points)
+
+        assert normals.shape == (2, 3, height, width)
+        assert normals.device == depth.device
+        assert normals.dtype == dtype
+        assert torch.isfinite(normals).all()
+        expected = torch.zeros_like(normals)
+        expected[:, 2] = 1.0
+        self.assert_close(normals, expected)
+
+    @pytest.mark.parametrize("normalize_points", [False, True])
+    def test_dynamo_minimum_spatial_size(self, normalize_points, device, dtype, torch_optimizer):
+        depth = torch.full((1, 1, 2, 3), 2.0, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype)[None]
+        expected = depth_to_normals(depth, camera_matrix, normalize_points)
+
+        compiled = torch_optimizer(depth_to_normals, fullgraph=True)
+        self.assert_close(compiled(depth, camera_matrix, normalize_points), expected)
+
     def test_smoke(self, device, dtype):
         depth = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
         camera_matrix = torch.rand(1, 3, 3, device=device, dtype=dtype)
