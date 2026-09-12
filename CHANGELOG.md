@@ -379,6 +379,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `PatchSequential` now augments every patch of every image and runs the complete selected sequence.
+  `same` padding preserves the input spatial size; `valid` crops only the incomplete border without
+  adding it back as zeroes. Both preserve the batch size, and invalid grids and patch counts raise
+  clear errors instead of failing during extraction or silently changing the number of images. Refs #4421.
+
 * `RandAugment`'s `m` guard is exclusive at both ends, but its docstring and its error message
   both named the closed interval `[0, 30]`, so a user who asked for the maximum strength the
   message advertised got an exception saying `30` was in range. Both now read `(0, 30)`; the
