@@ -20,6 +20,7 @@
 This subpackage provides augmentation containers and dispatchers for flexible pipelines.
 """
 
+from kornia.augmentation.container.audit import AugmentationAuditReport, AugmentationAuditStep, SpatialAudit
 from kornia.augmentation.container.augment import AugmentationSequential
 from kornia.augmentation.container.base import ImageSequentialBase
 from kornia.augmentation.container.dispatcher import ManyToManyAugmentationDispather, ManyToOneAugmentationDispather
