@@ -385,6 +385,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returned `(W, H)`. `start_ratio_range` now scales x by width and y by height; it previously scaled
   x by height and y by width. (#4459)
 
+* `RandomThinPlateSpline(scale=0.0)` now generates zero control-point displacement instead of
+  raising an error when constructing a degenerate uniform distribution. (#4463)
 * `RandomRain` with `same_on_batch=True` now samples the same number of rain drops for all samples in the batch. (#4453)
 * `RandomRain` now rejects drop heights equal to the image height and absolute drop widths equal to the image
   width with the documented validation error, instead of allowing boundary-sized drops to reach an internal
@@ -404,6 +406,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wrapped silently onto a reversed range. Out-of-range bins now name the operation and the
   valid range. Operations that ignore the magnitude entirely keep accepting any bin. (#4447)
 
+* `PinholeCamera.project` now reports rank-1 inputs with the same explicit `ValueError` used by the point-conversion
+  helpers instead of an internal `IndexError`. Refs #4266. (#4450)
 * `pixel2cam` now validates the full `Bx4x4` shape of `intrinsics_inv`, rejecting invalid matrix sizes
   before they cause unrelated transformation errors or return the wrong number of coordinate components. (#4381)
 * `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
@@ -443,6 +447,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
   while the implementation preserves ONNX export compatibility. (#4358)
+* `fft_conv` now accepts CPU float16 and bfloat16 inputs by computing the FFTs
+  in float32 and returning the input dtype. (#4394)
 * Corrected stereo disparity validation errors to describe the required channels-last
   `(B, H, W, 1)` layout and report the received shape. (#4380)
 * `CameraModelBase.__init__` now validates `params` against the shape it documents, instead of storing
