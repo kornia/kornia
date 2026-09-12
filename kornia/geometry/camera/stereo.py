@@ -79,16 +79,10 @@ class StereoCamera:
         - the pixels are the integer pixel centres that :func:`~kornia.geometry.grid.create_meshgrid`
           enumerates, described in the Convention block on
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
-
-    .. warning::
-        :meth:`~kornia.geometry.camera.stereo.StereoCamera.reproject_disparity_to_3D` unbinds that pixel grid
-        as ``v, u``, while :func:`~kornia.geometry.grid.create_meshgrid` returns it as ``(x, y)``, so ``X`` is
-        computed from the **row** index and ``Y`` from the column index -- the opposite of
-        ``cv2.reprojectImageTo3D``, whose semantics this function was added to provide. The repository's own
-        real-data test passes only because its fixture lays a one-row, ten-column strip out as ten rows of one
-        column, which the swap cancels; its stored numbers are correct OpenCV output for that strip, so a fix
-        corrects the layout and keeps every literal. Tracked as
-        `#4269 <https://github.com/kornia/kornia/issues/4269>`_.
+        - ``u`` is the **column** index and ``v`` the **row** index, as in ``cv2.reprojectImageTo3D``:
+          :math:`X = (u - c_x) Z / f_x` and :math:`Y = (v - c_y) Z / f_y`. The two were transposed until
+          `#4269 <https://github.com/kornia/kornia/issues/4269>`_, so output changes for any
+          non-square input.
 
     .. warning::
         Several of the constructor guards do not enforce the contract above. A differing ``cx`` is
@@ -399,8 +393,13 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
 
     uv = create_meshgrid(rows, cols, normalized_coordinates=False, device=device, dtype=dtype)
     uv = uv.expand(batch_size, -1, -1, -1)
-    v, u = torch.unbind(uv, dim=-1)
-    v, u = torch.unsqueeze(v, -1), torch.unsqueeze(u, -1)
+    # create_meshgrid(normalized_coordinates=False) returns (x, y), so uv[..., 0] is the
+    # column and uv[..., 1] is the row. u is the column and v the row, as in
+    # cv2.reprojectImageTo3D, whose semantics this function provides (#2042). Unbinding
+    # them the other way round fed the row into u and the column into v, which transposed
+    # the two pixel indices in the result.
+    u, v = torch.unbind(uv, dim=-1)
+    u, v = torch.unsqueeze(u, -1), torch.unsqueeze(v, -1)
     uvd = torch.stack((u, v, disparity_tensor), 1).reshape(batch_size, 3, -1).permute(0, 2, 1)
     points = transform_points(Q_matrix, uvd).reshape(batch_size, rows, cols, 3)
 
