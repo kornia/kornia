@@ -948,12 +948,51 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
     pos: torch.Tensor = sin_squared_theta > 0.0
     safe_sin_squared_theta: torch.Tensor = torch.where(pos, sin_squared_theta, torch.ones_like(sin_squared_theta))
     sin_theta: torch.Tensor = torch.where(pos, torch.sqrt(safe_sin_squared_theta), torch.zeros_like(sin_squared_theta))
-    two_theta: torch.Tensor = 2.0 * torch.where(
+    # `two_theta` only reaches the output through `k_pos`, which `k`'s final `where` selects on
+    # `pos` -- so every element with a zero vector part gets an exact 0.0 gradient here. That is
+    # not enough to make the backward safe: `atan2`'s backward multiplies by
+    # `1 / (sin_theta**2 + cos_theta**2)`, and where that reciprocal is `inf` the masked 0.0
+    # meets it as `0 * inf` -> `nan`, which propagates into the caller's gradient. The reciprocal
+    # is `inf` for the exact-zero quaternion (0/0, `nan` on torch <= 2.9.1 and 0 on 2.14) and
+    # also whenever `w**2` underflows -- `w = 1e-30` in float32, `|w| < 2.4e-4` in float16. So
+    # substitute a 1 into `atan2` across the whole masked branch, not just at `w == 0`; don't
+    # simplify the shield away. The substitution goes through `torch.where`, which hands `atan2`
+    # a contiguous tensor instead of the stride-4 view of the input and can therefore select a
+    # different kernel and move the forward by one ulp -- so the value comes from the unshielded
+    # expression and only the gradient flows through the shielded one.
+    safe_cos_for_atan2: torch.Tensor = torch.where(pos, cos_theta, torch.ones_like(cos_theta))
+    two_theta_shielded: torch.Tensor = 2.0 * torch.where(
+        cos_theta < 0.0, torch.atan2(-sin_theta, -safe_cos_for_atan2), torch.atan2(sin_theta, safe_cos_for_atan2)
+    )
+    two_theta_value: torch.Tensor = 2.0 * torch.where(
         cos_theta < 0.0, torch.atan2(-sin_theta, -cos_theta), torch.atan2(sin_theta, cos_theta)
     )
+    two_theta: torch.Tensor = two_theta_shielded + (two_theta_value.detach() - two_theta_shielded.detach())
 
     k_pos: torch.Tensor = two_theta / torch.where(pos, sin_theta, torch.ones_like(sin_theta))
-    k_neg: torch.Tensor = 2.0 * torch.ones_like(sin_theta)
+    # The zero-vector-part branch's analytic limit is 2/w (w = cos_theta), not the constant 2.0
+    # that implicitly assumed w=1 -- see #4237. That constant gave the wrong sign at the negative
+    # unit identity (-1,0,0,0), which is the same rotation as (1,0,0,0), and the wrong magnitude
+    # at any non-unit "identity" (e.g. w=2), which this function explicitly allows. The division
+    # is gated on the branch that actually selects it, `~pos`, and not merely on `w != 0`: for a
+    # rotation near a half turn `w` is small but non-zero, `(1/w)**2` overflows in the reciprocal
+    # backward, and the 0.0 that this masked branch receives would meet that `inf` as `0 * inf`.
+    # In float16 that is every rotation within ~0.45 degrees of 180. The exact-zero quaternion,
+    # which is not a valid rotation, is left at 0 with a zero gradient; it previously had 2 in
+    # each vector slot and, on torch <= 2.9.1, `nan` in w's.
+    #
+    # `safe_cos_theta` is detached because `k_neg` is only ever multiplied by a vector component
+    # that this branch has already established is zero, so `d(out)/dw = q_i * -2/w**2` is exactly
+    # zero here -- but computing it that way evaluates `-2/w**2`, which overflows to `inf` for
+    # small `w` and turns the exact zero into `0 * inf` -> `nan` (`w = 1e-30` in float32, and
+    # `|w| < 0.0055` in float16, both of which already produce a `nan` here on main). Detaching
+    # returns that exact zero without the intermediate overflow. The only term it discards is
+    # from the corner where a vector component is non-zero but its square underflows to zero, in
+    # which case the discarded value is of order `|v| / w**2` in a regime the forward has already
+    # flushed. The `2 / w` coefficient itself, which is what #4237 is about, is untouched.
+    neg_branch: torch.Tensor = ~pos & (cos_theta != 0.0)
+    safe_cos_theta: torch.Tensor = torch.where(neg_branch, cos_theta, torch.ones_like(cos_theta))
+    k_neg: torch.Tensor = torch.where(neg_branch, 2.0 / safe_cos_theta.detach(), torch.zeros_like(cos_theta))
     k: torch.Tensor = torch.where(pos, k_pos, k_neg)
 
     axis_angle: torch.Tensor = torch.zeros_like(quaternion)[..., :3]
