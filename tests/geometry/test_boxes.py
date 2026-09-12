@@ -280,6 +280,9 @@ class TestBoxes2D(BaseTester):
         # float32 (`.float()`) regardless of the caller's default dtype. They now
         # cast to torch.get_default_dtype(). Pin the fix end to end and restore the
         # global default so the test cannot leak state to siblings.
+        # MPS does not support float64, so skip on MPS.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64; this test exercises the cast under float64")
         old_default = torch.get_default_dtype()
         try:
             torch.set_default_dtype(torch.float64)
@@ -1161,6 +1164,9 @@ class TestBbox3D(BaseTester):
         self.assert_close(w, torch.as_tensor([[11.0, 41.0]], device=device, dtype=dtype))
 
     def test_integer_input_respects_default_dtype_4379(self, device):
+        # MPS does not support float64, so skip on MPS.
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64; this test exercises the cast under float64")
         old_default = torch.get_default_dtype()
         try:
             torch.set_default_dtype(torch.float64)
