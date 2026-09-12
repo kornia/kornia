@@ -379,6 +379,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `depth_to_normals` now raises `ShapeError` when `H < 2` or `W < 2`, since surface normals need two
+  tangent directions. Previously, singleton axes could yield zero or non-finite normals, and empty
+  spatial dimensions failed inside padding. Inputs with both dimensions at least 2 are unchanged. (#4458)
+
 * `RandAugment`'s `m` guard is exclusive at both ends, but its docstring and its error message
   both named the closed interval `[0, 30]`, so a user who asked for the maximum strength the
   message advertised got an exception saying `30` was in range. Both now read `(0, 30)`; the
