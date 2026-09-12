@@ -380,7 +380,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * `RandomThinPlateSpline(scale=0.0)` now generates zero control-point displacement instead of
-  raising an error when constructing a degenerate uniform distribution.
+  raising an error when constructing a degenerate uniform distribution. (#4463)
 
 * `RandAugment`'s `m` guard is exclusive at both ends, but its docstring and its error message
   both named the closed interval `[0, 30]`, so a user who asked for the maximum strength the
