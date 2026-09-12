@@ -18,9 +18,18 @@
 import pytest
 import torch
 
-from kornia.geometry.camera import distort_points_affine
+from kornia.geometry.calibration import distort_points, undistort_points
+from kornia.geometry.camera import (
+    distort_points_affine,
+    distort_points_kannala_brandt,
+    undistort_points_kannala_brandt,
+)
 from kornia.geometry.vector import Vector2
-from kornia.sensors.camera.distortion_model import AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform
+from kornia.sensors.camera.distortion_model import (
+    AffineTransform,
+    BrownConradyTransform,
+    KannalaBrandtK3Transform,
+)
 
 from testing.base import BaseTester
 
@@ -108,32 +117,208 @@ class TestAffineTransform(BaseTester):
         )
 
 
-class TestUnimplementedDistortions(BaseTester):
-    def test_wart_brown_conrady_and_kannala_brandt_transforms_are_placeholders_4284(self, device, dtype):
-        # Wart pin for kornia#4284 (audit labels 5d-sc-24, 5d-sc-25): two of the three distortion models in
-        # ``kornia.sensors.camera.distortion_model`` are bare ``raise NotImplementedError`` placeholders with
-        # an EMPTY message, in both directions -- ``distort`` and ``undistort``.  They are what makes
-        # ``CameraModel(..., BROWN_CONRADY, ...)`` and ``CameraModel(..., KANNALA_BRANDT_K3, ...)``
-        # unusable in BOTH directions (pinned at the model level in
-        # tests/sensors/camera/test_camera_model.py, whose comment records the measured raise sites as
-        # qualified function names -- ``BrownConradyTransform.distort`` / ``.undistort`` and
-        # ``KannalaBrandtK3Transform.distort`` / ``.undistort`` for these four calls).  Working equivalents
-        # already exist next door as ``kornia.geometry.calibration.distort_points`` and
-        # ``kornia.geometry.camera.distort_points_kannala_brandt``.  Parameter vectors of the documented
-        # lengths (12 and 8) are used, so the raise is not a shape rejection in disguise.  The empty message
-        # is asserted rather than described, because #4284's Expected asks at minimum for a message naming
-        # the model: a message-only partial fix must flip this pin.
-        # Snippet used to generate expected: BrownConradyTransform().distort(ones(12), Vector2([[0.5,
-        # 0.25]])) and the three sibling calls executed 2026-09-06 on this worktree (torch 2.14.0) ->
-        # NotImplementedError('') for all four, on cpu for float32, float64, float16 and bfloat16 and on mps
-        # for float32 and float16.
-        # Pins the CURRENT behaviour; NOT a contract; delete when #4284 is repaired.
-        points = Vector2(torch.tensor([[0.5, 0.25]], device=device, dtype=dtype))
-        for transform, length in ((BrownConradyTransform(), 12), (KannalaBrandtK3Transform(), 8)):
-            params = torch.ones(length, device=device, dtype=dtype)
-            for call in (transform.distort, transform.undistort):
-                with pytest.raises(NotImplementedError) as raised:
-                    call(params, points)
-                assert str(raised.value) == ""
-        affine_params = torch.ones(4, device=device, dtype=dtype)
-        assert isinstance(AffineTransform().distort(affine_params, points), Vector2)
+class TestKannalaBrandtK3Transform(BaseTester):
+    def test_distort_matches_geometry(self, device, dtype):
+        distortion = KannalaBrandtK3Transform()
+        points = torch.tensor(
+            [[0.1, 0.2], [-0.3, 0.25]],
+            device=device,
+            dtype=dtype,
+        )
+        params = torch.tensor(
+            [300.0, 320.0, 160.0, 120.0, 0.01, -0.001, 0.0001, -0.00001],
+            device=device,
+            dtype=dtype,
+        )
+
+        expected = distort_points_kannala_brandt(points, params)
+        actual = distortion.distort(params, Vector2(points)).data
+
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+    def test_undistort_matches_geometry(self, device, dtype):
+        distortion = KannalaBrandtK3Transform()
+        normalized = torch.tensor(
+            [[0.1, 0.2], [-0.3, 0.25]],
+            device=device,
+            dtype=dtype,
+        )
+        params = torch.tensor(
+            [300.0, 320.0, 160.0, 120.0, 0.01, -0.001, 0.0001, -0.00001],
+            device=device,
+            dtype=dtype,
+        )
+        distorted = distort_points_kannala_brandt(normalized, params)
+
+        expected = undistort_points_kannala_brandt(distorted, params)
+        actual = distortion.undistort(params, Vector2(distorted)).data
+
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+
+class TestBrownConradyTransform(BaseTester):
+    def test_batched_distort_preserves_batch_shape(self, device, dtype):
+        distortion = BrownConradyTransform()
+
+        points = torch.tensor(
+            [[0.1, 0.2], [-0.2, 0.15]],
+            device=device,
+            dtype=dtype,
+        )
+
+        params = torch.tensor(
+            [
+                [300.0, 320.0, 160.0, 120.0, 0.01, -0.001, 0.0005, -0.0003, 0.0001, -0.0001, 0.00005, -0.00002],
+                [280.0, 300.0, 150.0, 110.0, 0.02, -0.002, 0.0004, -0.0002, 0.0002, -0.0001, 0.00003, -0.00001],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        actual = distortion.distort(params, Vector2(points)).data
+
+        assert actual.shape == points.shape
+
+    def test_batched_undistort_preserves_batch_shape(self, device, dtype):
+        distortion = BrownConradyTransform()
+
+        normalized = torch.tensor(
+            [[0.1, 0.2], [-0.2, 0.15]],
+            device=device,
+            dtype=dtype,
+        )
+
+        params = torch.tensor(
+            [
+                [300.0, 320.0, 160.0, 120.0, 0.01, -0.001, 0.0005, -0.0003, 0.0001, -0.0001, 0.00005, -0.00002],
+                [280.0, 300.0, 150.0, 110.0, 0.02, -0.002, 0.0004, -0.0002, 0.0002, -0.0001, 0.00003, -0.00001],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        distorted = distortion.distort(params, Vector2(normalized)).data
+        actual = distortion.undistort(params, Vector2(distorted)).data
+
+        assert actual.shape == normalized.shape
+
+    def test_distort_matches_calibration(self, device, dtype):
+        distortion = BrownConradyTransform()
+
+        points = torch.tensor(
+            [[0.1, 0.2], [-0.2, 0.15]],
+            device=device,
+            dtype=dtype,
+        )
+
+        params = torch.tensor(
+            [
+                300.0,
+                320.0,
+                160.0,
+                120.0,
+                0.01,
+                -0.001,
+                0.0005,
+                -0.0003,
+                0.0001,
+                -0.0001,
+                0.00005,
+                -0.00002,
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        fx, fy, cx, cy = params[:4]
+
+        K = torch.stack(
+            [
+                torch.stack([fx, torch.zeros_like(fx), cx]),
+                torch.stack([torch.zeros_like(fy), fy, cy]),
+                torch.stack(
+                    [
+                        torch.zeros_like(fx),
+                        torch.zeros_like(fx),
+                        torch.ones_like(fx),
+                    ]
+                ),
+            ]
+        )
+
+        identity = torch.eye(3, device=device, dtype=dtype)
+
+        expected = distort_points(
+            points,
+            K,
+            params[4:],
+            new_K=identity,
+        )
+
+        actual = distortion.distort(params, Vector2(points)).data
+
+        self.assert_close(actual, expected)
+
+    def test_undistort_matches_calibration(self, device, dtype):
+        distortion = BrownConradyTransform()
+
+        normalized = torch.tensor(
+            [[0.1, 0.2], [-0.2, 0.15]],
+            device=device,
+            dtype=dtype,
+        )
+
+        params = torch.tensor(
+            [
+                300.0,
+                320.0,
+                160.0,
+                120.0,
+                0.01,
+                -0.001,
+                0.0005,
+                -0.0003,
+                0.0001,
+                -0.0001,
+                0.00005,
+                -0.00002,
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        fx, fy, cx, cy = params[:4]
+
+        K = torch.stack(
+            [
+                torch.stack([fx, torch.zeros_like(fx), cx]),
+                torch.stack([torch.zeros_like(fy), fy, cy]),
+                torch.stack(
+                    [
+                        torch.zeros_like(fx),
+                        torch.zeros_like(fx),
+                        torch.ones_like(fx),
+                    ]
+                ),
+            ]
+        )
+
+        identity = torch.eye(3, device=device, dtype=dtype)
+
+        distorted = distort_points(
+            normalized,
+            K,
+            params[4:],
+            new_K=identity,
+        )
+
+        expected = undistort_points(
+            distorted,
+            K,
+            params[4:],
+            new_K=identity,
+        )
+
+        actual = distortion.undistort(params, Vector2(distorted)).data
+
+        self.assert_close(actual, expected)

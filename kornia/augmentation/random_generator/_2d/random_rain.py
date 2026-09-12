@@ -70,7 +70,7 @@ class RainGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.drop_width, self.drop_height, self.number_of_drops])
         # self.ksize_factor.expand((batch_size, -1))
-        number_of_drops_factor = _adapted_rsampling((batch_size,), self.number_of_drops_sampler).to(
+        number_of_drops_factor = _adapted_rsampling((batch_size,), self.number_of_drops_sampler, same_on_batch).to(
             device=_device, dtype=torch.long
         )
         drop_height_factor = _adapted_rsampling((batch_size,), self.drop_height_sampler, same_on_batch).to(

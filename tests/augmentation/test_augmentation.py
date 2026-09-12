@@ -5450,10 +5450,53 @@ class TestRandomRain(BaseTester):
 
             assert err_msg in str(errinfo)
 
+    @pytest.mark.parametrize(
+        "drop_height,drop_width,error_message",
+        [
+            (
+                (5, 5),
+                (1, 1),
+                "Height of drop should be greater than zero and less than image height.",
+            ),
+            ((1, 1), (7, 7), "Width of drop should be less than image width."),
+            ((1, 1), (-7, -7), "Width of drop should be less than image width."),
+        ],
+    )
+    def test_drop_size_boundaries(self, drop_height, drop_width, error_message, device, dtype):
+        from kornia.core.exceptions import BaseError
+
+        input_data = torch.zeros(1, 3, 5, 7, device=device, dtype=dtype)
+        aug = RandomRain(p=1.0, drop_height=drop_height, drop_width=drop_width, number_of_drops=(1, 1))
+
+        with pytest.raises(BaseError) as errinfo:
+            aug(input_data)
+
+        assert str(errinfo.value) == error_message
+
+    def test_drop_size_immediately_inside_boundaries(self, device, dtype):
+        input_data = torch.zeros(1, 3, 5, 7, device=device, dtype=dtype)
+        aug = RandomRain(p=1.0, drop_height=(4, 4), drop_width=(6, 6), number_of_drops=(1, 1))
+
+        output_data = aug(input_data)
+
+        assert output_data.shape == input_data.shape
+
     def test_zero_probability(self, device):
         input_data = torch.rand(10, 3, 8, 8, device=device)
         aug = RandomRain(p=0.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
         aug(input_data)
+
+    def test_same_on_batch(self, device, dtype):
+        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(5, 10), same_on_batch=True)
+        input = torch.rand(1, 3, 10, 10, device=device, dtype=dtype).repeat(4, 1, 1, 1)
+        output = aug(input)
+        self.assert_close(output[0], output[1])
+        self.assert_close(output[1], output[2])
+        self.assert_close(output[2], output[3])
+        assert (aug._params["number_of_drops_factor"] == aug._params["number_of_drops_factor"][0]).all()
+        assert (aug._params["drop_height_factor"] == aug._params["drop_height_factor"][0]).all()
+        assert (aug._params["drop_width_factor"] == aug._params["drop_width_factor"][0]).all()
+        self.assert_close(aug._params["coordinates_factor"][0], aug._params["coordinates_factor"][1])
 
 
 class TestMultiprocessing:

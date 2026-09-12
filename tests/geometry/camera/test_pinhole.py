@@ -865,13 +865,7 @@ class TestPinholeCamera(BaseTester):
         points = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)
         self.assert_close(cameras.get_pinhole(1).project(points), cam.project(points))
 
-    def test_wart_project_rejects_an_unbatched_point_with_indexerror_4266(self, device, dtype):
-        # Wart pin for kornia#4266: PinholeCamera.project documents ``(*, 3)``
-        # and raises a bare IndexError("tuple index out of range") on a (3,) point, while the free function
-        # project_points raises ValueError("Input must be at least a 2D tensor") on the same input -- two
-        # exception types for one documented contract, and neither is the documented shape.
-        # Snippet used to generate expected: both calls executed 2026-09-05 (torch 2.14.0, every dtype).
-        # Pins the CURRENT behavior; NOT a contract; delete when #4266 is repaired.
+    def test_project_and_unproject_reject_rank_one_points_4266(self, device, dtype):
         cam = kornia.geometry.camera.PinholeCamera(
             _k44(device, dtype),
             _e44(device, dtype, tx=1.0),
@@ -879,10 +873,19 @@ class TestPinholeCamera(BaseTester):
             torch.tensor([8], device=device),
         )
         point = torch.tensor([1.0, 2.0, 4.0], device=device, dtype=dtype)
-        with pytest.raises(IndexError, match="tuple index out of range"):
+        with pytest.raises(ValueError) as cam_error:
             cam.project(point)
-        with pytest.raises(ValueError, match="at least a 2D tensor"):
+        with pytest.raises(ValueError) as function_error:
             kornia.geometry.camera.project_points(point, _k44(device, dtype)[:, :3, :3].contiguous())
+        assert (
+            str(cam_error.value)
+            == str(function_error.value)
+            == "Input must be at least a 2D tensor. Got torch.Size([3])"
+        )
+
+        point_2d = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        with pytest.raises(ValueError, match=r"Input must be at least a 2D tensor\. Got torch\.Size\(\[2\]\)"):
+            cam.unproject(point_2d, torch.tensor([4.0], device=device, dtype=dtype))
 
     def test_constructor_accepts_an_empty_batch_4281(self, device, dtype):
         # Regression for kornia#4281: a consistent empty camera batch is valid.
