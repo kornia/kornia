@@ -5359,6 +5359,37 @@ class TestRandomRain(BaseTester):
 
             assert err_msg in str(errinfo)
 
+    @pytest.mark.parametrize(
+        "drop_height,drop_width,error_message",
+        [
+            (
+                (5, 5),
+                (1, 1),
+                "Height of drop should be greater than zero and less than image height.",
+            ),
+            ((1, 1), (7, 7), "Width of drop should be less than image width."),
+            ((1, 1), (-7, -7), "Width of drop should be less than image width."),
+        ],
+    )
+    def test_drop_size_boundaries(self, drop_height, drop_width, error_message, device, dtype):
+        from kornia.core.exceptions import BaseError
+
+        input_data = torch.zeros(1, 3, 5, 7, device=device, dtype=dtype)
+        aug = RandomRain(p=1.0, drop_height=drop_height, drop_width=drop_width, number_of_drops=(1, 1))
+
+        with pytest.raises(BaseError) as errinfo:
+            aug(input_data)
+
+        assert str(errinfo.value) == error_message
+
+    def test_drop_size_immediately_inside_boundaries(self, device, dtype):
+        input_data = torch.zeros(1, 3, 5, 7, device=device, dtype=dtype)
+        aug = RandomRain(p=1.0, drop_height=(4, 4), drop_width=(6, 6), number_of_drops=(1, 1))
+
+        output_data = aug(input_data)
+
+        assert output_data.shape == input_data.shape
+
     def test_zero_probability(self, device):
         input_data = torch.rand(10, 3, 8, 8, device=device)
         aug = RandomRain(p=0.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
