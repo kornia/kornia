@@ -381,6 +381,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `RandomMosaic` now preserves `(H, W)` for non-square inputs when `output_size=None`; it previously
+  returned `(W, H)`. `start_ratio_range` now scales x by width and y by height; it previously scaled
+  x by height and y by width. (#4459)
+
 * `RandomThinPlateSpline(scale=0.0)` now generates zero control-point displacement instead of
   raising an error when constructing a degenerate uniform distribution. (#4463)
 * `RandomRain` with `same_on_batch=True` now samples the same number of rain drops for all samples in the batch. (#4453)
