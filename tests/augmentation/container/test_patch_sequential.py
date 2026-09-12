@@ -60,7 +60,7 @@ class TestPatchSequential:
                 **error_param,
             )
 
-    @pytest.mark.parametrize("shape", [(2, 3, 24, 24)])
+    @pytest.mark.parametrize("shape", [(2, 3, 24, 24), (2, 3, 23, 25)])
     @pytest.mark.parametrize("padding", ["same", "valid"])
     @pytest.mark.parametrize("patchwise_apply", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False, None])
@@ -92,7 +92,8 @@ class TestPatchSequential:
         # Colour transforms expect RGB values in [0, 1], not a normally distributed image.
         input = torch.rand(*shape, device=device, dtype=dtype)
         out = seq(input)
-        assert out.shape == input.shape
+        expected_shape = shape if padding == "same" else (*shape[:2], shape[2] // 2 * 2, shape[3] // 2 * 2)
+        assert out.shape == expected_shape
 
         reproducibility_test(input, seq)
 
@@ -327,6 +328,70 @@ class TestPatchSequentialRegression(BaseTester):
         seq = K.PatchSequential(K.RandomHorizontalFlip(p=1), grid_size=(3, 4), padding=padding, patchwise_apply=False)
         seq(torch.ones(2, 3, 7, 10, device=device, dtype=dtype))
         assert tuple(seq._params[0].param.data["forward_input_shape"].tolist()) == patch_shape
+
+    @pytest.mark.parametrize("padding,patch_size", [("same", 3), ("valid", 2)])
+    @pytest.mark.parametrize("patchwise_apply", [True, False])
+    @pytest.mark.parametrize("same_on_batch", [True, False, None])
+    @pytest.mark.parametrize("random_apply", [True, False])
+    def test_image_shape_parameter_replay(
+        self, padding, patch_size, patchwise_apply, same_on_batch, random_apply, device, dtype, monkeypatch
+    ):
+        seq = K.PatchSequential(
+            *[K.RandomAffine(degrees=20, translate=(0.1, 0.2), p=1) for _ in range(6)],
+            grid_size=(2, 3),
+            padding=padding,
+            patchwise_apply=patchwise_apply,
+            same_on_batch=same_on_batch,
+            random_apply=random_apply,
+        )
+        x = torch.arange(210, device=device, dtype=dtype).reshape(2, 3, 5, 7) / 210
+        rng = torch.get_rng_state()
+        image_params = seq.forward_parameters(x.shape)
+        sampled_rng = torch.get_rng_state()
+        torch.set_rng_state(rng)
+        # Independently specified dimensions: 5x7 pads to 6x9 or crops to 4x6 on a 2x3 grid.
+        patch_params = seq.forward_parameters(torch.Size((2, 6, 3, patch_size, patch_size)))
+        assert torch.equal(torch.get_rng_state(), sampled_rng)
+        assert len(image_params) == len(patch_params)
+        for image_item, patch_item in zip(image_params, patch_params):
+            assert image_item.indices == patch_item.indices
+            assert image_item.param.name == patch_item.param.name
+            assert image_item.param.data.keys() == patch_item.param.data.keys()
+            for key in image_item.param.data:
+                self.assert_close(image_item.param.data[key], patch_item.param.data[key], rtol=0, atol=0)
+
+        monkeypatch.setattr(seq, "forward_parameters", lambda _: pytest.fail("Replay must not draw parameters"))
+        out = seq(x, params=image_params)
+        self.assert_close(out, seq(x, params=patch_params), rtol=0, atol=0)
+        assert torch.equal(torch.get_rng_state(), sampled_rng)
+        assert out.shape == ((2, 3, 5, 7) if padding == "same" else (2, 3, 4, 6))
+
+    @pytest.mark.parametrize("grid", [(1, 1), (4, 5)])
+    def test_image_shape_parameters_with_small_image(self, grid, device, dtype):
+        seq = K.PatchSequential(K.RandomHorizontalFlip(p=1), grid_size=grid, patchwise_apply=False)
+        x = torch.arange(12, device=device, dtype=dtype).reshape(2, 1, 2, 3)
+        params = seq.forward_parameters(x.shape)
+        expected = x.flip(-1) if grid == (1, 1) else x
+        self.assert_close(seq(x, params=params), expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("method", ["forward", "compute_padding", "extract_patches"])
+    def test_three_dimensional_input_raises_value_error(self, method, device, dtype):
+        seq = K.PatchSequential(nn.Identity(), grid_size=(2, 2), patchwise_apply=False)
+        kwargs = {"padding": "same"} if method == "compute_padding" else {}
+        with pytest.raises(ValueError, match="Expected image shape"):
+            getattr(seq, method)(torch.ones(3, 4, 4, device=device, dtype=dtype), **kwargs)
+
+    @pytest.mark.parametrize("shape", [(2, 3, 4), (2, 5, 3, 2, 2), (2, 6, 3, 2, 2, 1)])
+    def test_parameters_reject_invalid_shape(self, shape):
+        seq = K.PatchSequential(nn.Identity(), grid_size=(2, 3), patchwise_apply=False)
+        with pytest.raises(ValueError, match=r"Expected.*shape"):
+            seq.forward_parameters(torch.Size(shape))
+
+    @pytest.mark.parametrize("shape", [(2, 3, 1, 2), (2, 3, 0, 4)])
+    def test_image_shape_parameters_reject_empty_valid_patches(self, shape):
+        seq = K.PatchSequential(nn.Identity(), grid_size=(2, 3), padding="valid", patchwise_apply=False)
+        with pytest.raises(ValueError, match="non-empty"):
+            seq.forward_parameters(torch.Size(shape))
 
     def test_noncontiguous_input_is_not_modified(self, device, dtype):
         x = torch.arange(96, device=device, dtype=dtype).reshape(2, 1, 12, 4).transpose(-1, -2)

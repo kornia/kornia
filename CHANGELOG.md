@@ -158,6 +158,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-tree MPS workarounds stay. (#4202)
 
 ### Breaking changes
+* `PatchSequential` now preserves the batch size in both padding modes. `same` preserves the input
+  spatial size and `valid` keeps only the complete, centred grid region. Previously, a `(2,3,8,8)`
+  input on a `(3,3)` grid produced `(2,3,7,7)` with `same` (now `(2,3,8,8)`) and `(2,3,8,8)` with
+  `valid` (now `(2,3,6,6)`). With `valid`, a `(2,3,6,8)` input on a `(4,4)` grid changed the batch
+  size to produce `(3,3,6,6)`; it now produces `(2,3,4,8)`. Geometric children may move temporarily
+  padded zeroes into the retained image. `restore_from_patches` now defaults to `self.grid_size`
+  instead of `(4,4)` and raises `ValueError` for a mismatched patch count instead of inferring a
+  different batch size or failing later in reshape. `forward_parameters` accepts both image
+  `(B,C,H,W)` and patch `(B,N,C,h,w)` shapes; parameter generation now covers `B*N` patch rows rather
+  than `B*C`, so fixed-seed outputs and RNG consumption can change. Refs #4421. (#4460)
+
 * Removed the unused `preprocess_boxes` helper, which had no public export or caller. (#4181, #4321)
 
 * `kornia_rs>=0.1.14` is required; the floor used to be 0.1.9. kornia_rs 0.1.11 relocated its image I/O
@@ -380,9 +391,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * `PatchSequential` now augments every patch of every image and runs the complete selected sequence.
-  `same` padding preserves the input spatial size; `valid` crops only the incomplete border without
-  adding it back as zeroes. Both preserve the batch size, and invalid grids and patch counts raise
-  clear errors instead of failing during extraction or silently changing the number of images. Refs #4421. (#4460)
+  The padding, reconstruction and parameter-generation behaviour changes are listed under
+  *Breaking changes*. Refs #4421. (#4460)
 
 * `RandAugment`'s `m` guard is exclusive at both ends, but its docstring and its error message
   both named the closed interval `[0, 30]`, so a user who asked for the maximum strength the

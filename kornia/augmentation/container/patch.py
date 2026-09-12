@@ -56,6 +56,8 @@ class PatchSequential(ImageSequential):
             border after augmentation, preserving the input spatial size. ``"valid"`` crops the remainder
             before augmentation and keeps the cropped spatial size. Padding and cropping are centred;
             an odd extra pixel is placed on the right or bottom. Both modes preserve the batch size.
+            Geometric transforms can move the temporary zero border into the retained image; removing
+            the added border does not undo that movement.
         same_on_batch: apply the same transformation across the batch.
             If None, it will not overwrite the function-wise settings.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -208,13 +210,22 @@ class PatchSequential(ImageSequential):
             Padding tuple ``(left, right, top, bottom)``. Negative values crop the border.
 
         Raises:
+            ValueError: The input is not four-dimensional, has an empty spatial dimension, or the
+                grid cannot produce non-empty patches in ``"valid"`` mode.
             NotImplementedError: ``padding`` is neither ``"same"`` nor ``"valid"``.
         """
+        return self._compute_padding(input.shape, padding, grid_size)
+
+    def _compute_padding(
+        self, batch_shape: torch.Size, padding: str, grid_size: Optional[Tuple[int, int]] = None
+    ) -> Tuple[int, int, int, int]:
+        """Compute padding from an image shape without allocating a tensor."""
         if grid_size is None:
             grid_size = self.grid_size
         self._validate_grid_size(grid_size)
-        KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
-        height, width = input.shape[-2:]
+        if len(batch_shape) != 4:
+            raise ValueError(f"Expected image shape (B, C, H, W). Got {batch_shape}.")
+        height, width = batch_shape[-2:]
         if height <= 0 or width <= 0:
             raise ValueError("PatchSequential requires non-empty spatial dimensions.")
         if padding == "valid":
@@ -272,7 +283,8 @@ class PatchSequential(ImageSequential):
         if grid_size is None:
             grid_size = self.grid_size
         self._validate_grid_size(grid_size)
-        KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+        if input.ndim != 4:
+            raise ValueError(f"Expected image shape (B, C, H, W). Got {input.shape}.")
         height, width = input.shape[-2:]
         if pad is not None:
             height, width = height + pad[2] + pad[3], width + pad[0] + pad[1]
@@ -328,15 +340,38 @@ class PatchSequential(ImageSequential):
         """Generate patch-level parameters for a forward pass.
 
         Args:
-            batch_shape: Shape ``(B, N, C, h, w)`` of the extracted patch batch, with
-                ``N = grid_size[0] * grid_size[1]``.
+            batch_shape: Image shape ``(B, C, H, W)`` or extracted patch shape ``(B, N, C, h, w)``,
+                with ``N = grid_size[0] * grid_size[1]``. Image shapes are converted to patch shapes
+                using this container's ``grid_size`` and ``padding`` without allocating an image.
 
         Returns:
             List of :class:`PatchParamItem` entries, including patch indices and
             operation params.
+
+        Example:
+            >>> seq = PatchSequential(K.RandomHorizontalFlip(p=1), grid_size=(2, 3), patchwise_apply=False)
+            >>> image = torch.rand(2, 3, 5, 7)
+            >>> params = seq.forward_parameters(image.shape)
+            >>> output = seq(image, params=params)
+            >>> torch.equal(output, seq(image, params=params))
+            True
         """
+        if len(batch_shape) == 4:
+            left, right, top, bottom = self._compute_padding(batch_shape, self.padding)
+            batch, channels, height, width = batch_shape
+            batch_shape = torch.Size(
+                (
+                    batch,
+                    self.grid_size[0] * self.grid_size[1],
+                    channels,
+                    (height + top + bottom) // self.grid_size[0],
+                    (width + left + right) // self.grid_size[1],
+                )
+            )
         if len(batch_shape) != 5 or batch_shape[1] != self.grid_size[0] * self.grid_size[1]:
-            raise ValueError(f"Expected patch shape (B, rows * columns, C, h, w). Got {batch_shape}.")
+            raise ValueError(
+                f"Expected image shape (B, C, H, W) or patch shape (B, rows * columns, C, h, w). Got {batch_shape}."
+            )
         out_param: List[PatchParamItem] = []
         if not self.patchwise_apply:
             params = self.generate_parameters(torch.Size([1, batch_shape[0] * batch_shape[1], *batch_shape[2:]]))
