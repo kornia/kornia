@@ -5395,6 +5395,18 @@ class TestRandomRain(BaseTester):
         aug = RandomRain(p=0.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
         aug(input_data)
 
+    def test_same_on_batch(self, device, dtype):
+        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(5, 10), same_on_batch=True)
+        input = torch.rand(1, 3, 10, 10, device=device, dtype=dtype).repeat(4, 1, 1, 1)
+        output = aug(input)
+        self.assert_close(output[0], output[1])
+        self.assert_close(output[1], output[2])
+        self.assert_close(output[2], output[3])
+        assert (aug._params["number_of_drops_factor"] == aug._params["number_of_drops_factor"][0]).all()
+        assert (aug._params["drop_height_factor"] == aug._params["drop_height_factor"][0]).all()
+        assert (aug._params["drop_width_factor"] == aug._params["drop_width_factor"][0]).all()
+        self.assert_close(aug._params["coordinates_factor"][0], aug._params["coordinates_factor"][1])
+
 
 class TestMultiprocessing:
     torch.manual_seed(0)  # for random reproductibility

@@ -379,6 +379,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `RandomRain` with `same_on_batch=True` now samples the same number of rain drops for all samples in the batch. (#4453)
 * `RandomRain` now rejects drop heights equal to the image height and absolute drop widths equal to the image
   width with the documented validation error, instead of allowing boundary-sized drops to reach an internal
   `IndexError`. (#4451)
