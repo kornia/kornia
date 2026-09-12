@@ -189,7 +189,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         # guarantees |ratio_D_zero| <= 1 (D = Q3 + R^2 <= 0 implies R^2 <= -Q3), but a repeated
         # or near-repeated real root pushes the ratio to exactly that boundary, where the
         # *value* is fine but the *derivative* diverges -- same shape as the acos/asin boundary
-        # in quaternion_exp_to_log/euler_from_quaternion (#4007, fixed in #4228). A plain
+        # in quaternion_exp_to_log/euler_from_quaternion (fixed in #4228). A plain
         # `.clamp(-1, 1)` does not help here: it only guards the value, not the diverging
         # derivative of a value already inside the domain. Route the boundary through `.acos()`
         # on a detached copy for the value and through `.acos()` on a substituted safe argument
@@ -316,7 +316,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     R_sq = torch.gather(R_sq_candidates, -1, best_idx).squeeze(-1)
 
     # `clamp(min=0).sqrt()` does not guard the gradient: d(sqrt)/dx is unbounded at 0, and on
-    # torch < 2.14 clamp passes the incoming gradient straight through at the bound (#4229), so
+    # torch < 2.14 clamp passes the incoming gradient straight through at the bound, as measured in PR #4406, so
     # R_sq == 0 -- a biquadratic such as x^4 - 16 -- gave inf and then nan. Substitute a safe
     # radicand instead, as solve_quadratic above already does, so sqrt is never differentiated at 0.
     # On torch >= 2.14 clamp already zeroes the boundary gradient, so the pins for this guard pass
