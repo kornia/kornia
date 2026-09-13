@@ -407,6 +407,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `RandomBoxBlur`'s `normalized` argument is documented as what it does. It was described as "if True, L1 norm
+  of the kernel is set to 1", but it was forwarded positionally into `kornia.filters.box_blur`'s `separable`
+  parameter: it chooses between the separable and the single 2D pass, and the kernel is L1-normalized either
+  way, so `normalized=False` returns window means, not sums. The call now passes `border_type` and
+  `separable` by keyword; outputs are unchanged. (#4433, #4486)
+
 * `So3.exp`, `So3.log`, `Se3.exp`, `Se3.log` and `Se2.exp` return finite gradients at the identity,
   and `So3.log` also at a half turn, instead of `nan` on every dtype. The forward values are unchanged;
   `torch.where` was differentiating the singular branch it does not select. (#4405)
