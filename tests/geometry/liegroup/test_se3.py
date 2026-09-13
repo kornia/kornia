@@ -64,9 +64,22 @@ class TestSe3(BaseTester):
     def test_exception(self, device, dtype):
         pass
 
-    # TODO: implement me
     def test_gradcheck(self, device):
-        pass
+        v = torch.tensor([[1.0, 2.0, 3.0, 0.3, -0.4, 0.5]], device=device, dtype=torch.float64)
+        self.gradcheck(lambda x: Se3.exp(x).matrix(), (v,))
+
+    def test_gradient_is_finite_at_the_identity_4404(self, device, dtype):
+        # #4404: at omega = 0 the where below returns upsilon, but autograd still walks V, whose
+        # sqrt has an unbounded derivative there and whose terms divide by theta**2 and theta**3.
+        # log has the same defect through its own theta, where clamp_min(1e-12) guards the value
+        # and not the gradient (#4229) and underflows to 0 in float16 besides.
+        v = torch.zeros(1, 6, device=device, dtype=dtype, requires_grad=True)
+        Se3.exp(v).matrix().sum().backward()
+        assert bool(torch.isfinite(v.grad).all()), v.grad
+
+        data = torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        Se3(So3(Quaternion(data[:, :4])), data[:, 4:]).log().sum().backward()
+        assert bool(torch.isfinite(data.grad).all()), data.grad
 
     # TODO: implement me
     def test_jit(self, device, dtype):

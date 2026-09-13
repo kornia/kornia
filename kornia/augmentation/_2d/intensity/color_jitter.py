@@ -45,11 +45,14 @@ class ColorJitter(IntensityAugmentationBase2D):
         contrast: The contrast factor to apply.
         saturation: The saturation factor to apply.
         hue: The hue factor to apply.
-        silence_instantiation_warning: if True, silence the warning at instantiation.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+        order: a fixed application order, as indices into (brightness, contrast, saturation, hue); a subset
+          applies only those. ``None`` (the default) draws a random order on every call. A fixed order makes
+          the transform ``torch.compile`` fullgraph-safe. The parameter generator still draws an ``order``
+          entry into ``_params``, and with a fixed order that entry is ignored, including on replay.
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`

@@ -4778,11 +4778,30 @@ class TestRandomElasticTransform(BaseTester):
                 assert labels_transformed[to_apply].ne(labels[to_apply]).any()
 
 
-class TestRandomBoxBlur:
+class TestRandomBoxBlur(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomBoxBlur(p=1.0)
         assert img.shape == aug(img).shape
+
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_normalized_selects_the_separable_path(self, normalized, device, dtype):
+        from kornia.filters import box_blur
+
+        torch.manual_seed(0)
+        img = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        out = RandomBoxBlur((3, 3), normalized=normalized, p=1.0)(img.clone())
+
+        expected = box_blur(img, (3, 3), border_type="reflect", separable=normalized)
+        torch.testing.assert_close(out, expected, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_output_is_the_window_mean_for_either_setting(self, normalized, device, dtype):
+        torch.manual_seed(0)
+        img = torch.rand(1, 1, 6, 8, device=device, dtype=dtype)
+        out = RandomBoxBlur((3, 3), normalized=normalized, p=1.0)(img.clone())
+
+        self.assert_close(out[0, 0, 2, 2], img[0, 0, 1:4, 1:4].mean())
 
 
 class TestPadTo(BaseTester):
