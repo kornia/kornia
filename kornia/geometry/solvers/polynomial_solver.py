@@ -363,10 +363,13 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
         R_sq = torch.addcmul(y - B, A, A, value=0.25)
 
     # R^2 = A^2 / 4 - B + y can retain cancellation-level roundoff for an exact biquadratic.
-    # Snap only values within half an ulp of the scale of those three terms; this happens before
-    # the guarded sqrt so the exact-zero gradient convention remains unchanged.
+    # Float64 needs a wider four-epsilon budget for cancellation between those terms, while
+    # float32 (including half inputs evaluated in float32) keeps the narrower half-epsilon budget
+    # so genuine small positive R^2 values are not snapped away. This happens before the guarded
+    # sqrt so the exact-zero gradient convention remains unchanged.
     R_sq_scale = torch.maximum(torch.ones_like(R_sq), 0.25 * A_sq + torch.abs(B) + torch.abs(y))
-    R_sq_snap_tol = 0.5 * torch.finfo(R_sq.dtype).eps * R_sq_scale
+    R_sq_snap_multiplier = 4.0 if R_sq.dtype == torch.float64 else 0.5
+    R_sq_snap_tol = R_sq_snap_multiplier * torch.finfo(R_sq.dtype).eps * R_sq_scale
     R_sq = torch.where(torch.abs(R_sq) <= R_sq_snap_tol, torch.zeros_like(R_sq), R_sq)
 
     # `clamp(min=0).sqrt()` does not guard the gradient: d(sqrt)/dx is unbounded at 0, and on

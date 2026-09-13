@@ -634,6 +634,29 @@ class TestQuarticSolver(BaseTester):
         )
         self.assert_close(residuals, torch.zeros_like(residuals), rtol=0.0, atol=2e-5)
 
+    def test_biquadratic_R_sq_relative_snap_float64_issue_literal(self, device, dtype):
+        if dtype != torch.float64:
+            pytest.skip("This regression targets the float64 R^2 cancellation budget.")
+
+        coeffs = torch.tensor([[1.0, 0.0, -4.0, 0.0, -5.0]], device=device, dtype=dtype)
+        expected_real = torch.tensor([-(5.0**0.5), 5.0**0.5], device=device, dtype=dtype)
+
+        roots = solver.solve_quartic(coeffs)
+        assert bool(torch.isfinite(roots).all()), roots
+        assert int(torch.count_nonzero(roots)) == 2, roots
+
+        real_roots = torch.sort(roots[roots != 0]).values
+        self.assert_close(real_roots, expected_real, rtol=1e-12, atol=1e-12)
+
+        residuals = (
+            coeffs[0, 0] * real_roots**4
+            + coeffs[0, 1] * real_roots**3
+            + coeffs[0, 2] * real_roots**2
+            + coeffs[0, 3] * real_roots
+            + coeffs[0, 4]
+        )
+        self.assert_close(residuals, torch.zeros_like(residuals), rtol=0.0, atol=1e-12)
+
     def test_gradcheck(self, device):
         # Use a specific polynomial with distinct roots to ensure gradient stability
         # x^4 - 10x^3 + 35x^2 - 50x + 24 = 0
