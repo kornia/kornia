@@ -49,7 +49,10 @@ class TestCropAndResize(BaseTester):
         )
 
         height, width = 2, 3
-        expected = torch.tensor([[[[6.7222, 7.1667, 7.6111], [9.3889, 9.8333, 10.2778]]]], device=device, dtype=dtype)
+        # The box corners are pixel coordinates, so they pin the sampling geometry regardless of
+        # align_corners: the box spans src x, y in [1, 2] and the 2x3 output samples pixel centers
+        # at x = 1, 1.5, 2 and y = 1, 2 -- the same values the align_corners=True case produces.
+        expected = torch.tensor([[[[6.0, 6.5, 7.0], [10.0, 10.5, 11.0]]]], device=device, dtype=dtype)
 
         boxes = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
 
@@ -266,10 +269,13 @@ class TestCenterCrop(BaseTester):
         expected = op(img, (4, 2))
         self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
-    def test_convention_align_corners_ignored_under_slice_mode(self, device, dtype):
+    def test_convention_align_corners_ignored_for_an_in_bounds_crop(self, device, dtype):
         # CenterCrop2D's align_corners constructor arg has NO effect under the default
-        # cropping_mode='slice' (pure integer-index slicing, no resampling); it only changes the
-        # output under cropping_mode='resample'.
+        # cropping_mode='slice' (pure integer-index slicing, no resampling). Under
+        # cropping_mode='resample' it also has no effect for a crop that samples strictly
+        # in bounds: the crop box is specified in pixel coordinates, so both align_corners
+        # conventions must resolve it to the same pixel centers (#3904). align_corners still
+        # selects grid_sample's convention, which shows up only in out-of-bounds handling.
         inp = torch.arange(0.0, 16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
 
         out_slice_true = kornia.geometry.transform.CenterCrop2D((2, 2), align_corners=True, cropping_mode="slice")(inp)
@@ -284,7 +290,9 @@ class TestCenterCrop(BaseTester):
         out_resample_false = kornia.geometry.transform.CenterCrop2D(
             (2, 2), align_corners=False, cropping_mode="resample"
         )(inp)
-        assert not torch.allclose(out_resample_true, out_resample_false, atol=1e-2, rtol=1e-2)
+        self.assert_close(out_resample_true, out_resample_false, atol=1e-4, rtol=1e-4)
+        # and both agree with the plain integer-index slice of the same region
+        self.assert_close(out_resample_false, inp[:, :, 1:3, 1:3], atol=1e-4, rtol=1e-4)
 
 
 class TestCropByBoxes(BaseTester):

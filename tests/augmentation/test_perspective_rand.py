@@ -104,20 +104,23 @@ class TestRandomPerspective(BaseTester):
         torch.manual_seed(0)
         x_data = torch.rand(1, 2, 4, 5).to(device).type(dtype)
 
+        # RandomPerspective samples with align_corners=False. expected_transform below is the
+        # pixel-space transform and is unaffected by #3904; only the resampling changed, now that
+        # warp_perspective normalizes to the convention grid_sample is actually called with.
         expected_output = torch.tensor(
             [
                 [
                     [
-                        [0.0000, 0.0000, 0.0000, 0.0197, 0.0429],
-                        [0.0000, 0.5632, 0.5322, 0.3677, 0.1430],
-                        [0.0000, 0.3083, 0.4032, 0.1761, 0.0000],
-                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                        [0.1917, 0.3701, 0.1529, 0.0913, 0.2540],
+                        [0.3200, 0.5976, 0.6278, 0.4746, 0.4695],
+                        [0.0854, 0.4027, 0.2665, 0.1858, 0.1531],
+                        [0.0000, 0.2196, 0.0264, 0.0000, 0.0000],
                     ],
                     [
-                        [0.0000, 0.0000, 0.0000, 0.1189, 0.0586],
-                        [0.0000, 0.7087, 0.5420, 0.3995, 0.0863],
-                        [0.0000, 0.2695, 0.5981, 0.5888, 0.0000],
-                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                        [0.2632, 0.4507, 0.3209, 0.5829, 0.3465],
+                        [0.3679, 0.7943, 0.4226, 0.2346, 0.2755],
+                        [0.0746, 0.5083, 0.5565, 0.4573, 0.3209],
+                        [0.0000, 0.0134, 0.0153, 0.0000, 0.0000],
                     ],
                 ]
             ],
