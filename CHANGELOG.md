@@ -413,6 +413,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now rejected with a `ValueError`: it forced `lambda = 1`, built an inverted zero-size box and silently made the
   augmentation an identity. (#4439, #4491)
 
+* Made uncompiled `RandomGaussianIllumination` instances serializable with `pickle` and `torch.save`,
+  preserving parameter replay and the `compile()` execution path after restoring the module. (#4457)
 * The `Args` blocks of `ColorJitter`, `RandomBrightness` and `RandomGaussianBlur` no longer document a
   `silence_instantiation_warning` argument that none of them accepts, and `ColorJitter` now documents its
   `order` argument: a fixed (sub)set of brightness/contrast/saturation/hue indices that makes the transform
