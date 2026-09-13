@@ -31,7 +31,8 @@ class RandomThinPlateSpline(AugmentationBase2D):
     .. image:: _static/img/RandomThinPlateSpline.png
 
     Args:
-        scale: the scale factor to apply to the destination points.
+        scale: the non-negative scale factor to apply to the destination points.
+            Zero leaves the control points unchanged.
         align_corners: Interpolation flag used by ``grid_sample``.
         mode: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
         same_on_batch: apply the same transformation across the batch.
@@ -69,7 +70,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
             "align_corners": align_corners,
             "padding_mode": SamplePadding.get(padding_mode),
         }
-        self.dist = torch.distributions.Uniform(-scale, scale)
+        self.dist = None if scale == 0 else torch.distributions.Uniform(-scale, scale)
 
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         B, _, _, _ = shape
@@ -84,7 +85,9 @@ class RandomThinPlateSpline(AugmentationBase2D):
             dtype=dtype,
         ).expand(B, 5, 2)
 
-        if self.same_on_batch:
+        if self.dist is None:
+            noise = torch.zeros_like(src)
+        elif self.same_on_batch:
             noise = self.dist.rsample((1, 5, 2)).to(device=device, dtype=dtype)
             noise = noise.expand(B, 5, 2)
         else:
