@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Optional-dependency extra `kornia[image]` installs Pillow for PIL-backed image input/output,
+  display helpers and `kornia.io.sample`; missing-Pillow errors now name the extra to install, and the unused
+  `DinoVisionTransformer.forward_features_list` list path has been removed. (#4464)
 * Documented the shared 2D contract of `kornia.augmentation` — the `(B, C, H, W)` float working layout
   and `keepdim`, `p` / `p_batch` / `same_on_batch`, where random parameters are drawn and how `torch.manual_seed`
   and `params=` replay them, what a module serializes, and what `AugmentationSequential` does with each data key

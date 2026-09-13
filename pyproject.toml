@@ -64,6 +64,7 @@ docs = [
   "sphinxcontrib-gtagjs",
   "sphinxcontrib-youtube",
 ]
+image = ["pillow"]
 onnx = ["onnx", "onnxruntime", "onnxscript"]
 sd = ["diffusers", "transformers"]
 
