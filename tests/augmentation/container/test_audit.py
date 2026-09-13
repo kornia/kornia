@@ -106,6 +106,35 @@ class TestAugmentationAudit(BaseTester):
         self.assert_close(report.matrix[1], torch.eye(3, device=device, dtype=report.matrix.dtype))
         assert report.spatial[0].roundtrip_max.max().item() < 1e-4
 
+    @pytest.mark.parametrize("with_identity", [False, True])
+    def test_diagnostics_disable_cpu_autocast(self, with_identity):
+        image = torch.zeros(1, 1, 32, 48)
+        points = torch.tensor([[[20.01, 15.03]]])
+        modules = [torch.nn.Identity()] if with_identity else []
+        aug = K.AugmentationSequential(*modules, data_keys=["input", "keypoints"])
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            outputs, report = aug.audit(image, points)
+        assert torch.equal(outputs[0], image)
+        assert torch.equal(outputs[1], points)
+        assert report.matrix.dtype == torch.float32
+        self.assert_close(report.spatial[0].roundtrip_max, torch.zeros(1))
+        assert not any("round-trip error" in warning for warning in report.warnings)
+
+    def test_shape_changing_mixed_application_is_unsupported(self, device, dtype):
+        image = torch.zeros(2, 1, 8, 10, device=device, dtype=dtype)
+        image[:, 0, 2, 4] = 1
+        points = image.new_tensor([[[4, 2]], [[4, 2]]])
+        resize = K.Resize((4, 5), resample="nearest", p=0.5)
+        params = resize.forward_parameters(image.shape)
+        params["batch_prob"] = image.new_tensor([0, 1])
+        aug = K.AugmentationSequential(resize, data_keys=["input", "keypoints"])
+        outputs, report = aug.audit(image, points, params=[ParamItem("Resize_0", params)])
+        assert outputs[0][0, 0, 1, 2].item() == 1
+        self.assert_close(outputs[1][0], points[0])
+        assert report.geometry_status == "unsupported"
+        assert report.matrix is None and report.inverse_matrix is None
+        assert "mixed-application shape-changing" in report.summary()
+
     @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
     def test_crop_padding_and_content_loss(self, device, dtype, cropping_mode):
         image = torch.rand(2, 1, 6, 8, device=device, dtype=dtype)

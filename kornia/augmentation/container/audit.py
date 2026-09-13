@@ -307,10 +307,23 @@ def _capture(
     matrix = None
     reason = None
     if isinstance(module, (GeometricAugmentationBase2D, IntensityAugmentationBase2D)):
-        # Access before detaching: lazy matrix materialization must preserve ordinary autograd behavior.
-        matrix = _snapshot(module.transform_matrix)
-        if matrix is not None and isinstance(module, RandomCrop):
-            matrix, reason = _crop_matrix(module, matrix, params, flags, image, output)
+        # Hooks inherit the caller's autocast context. Materialize and adjust diagnostic
+        # matrices at their documented precision without changing the ordinary forward.
+        with torch.autocast(device_type=image.device.type, enabled=False):
+            matrix = _snapshot(module.transform_matrix)
+            if matrix is not None and isinstance(module, RandomCrop):
+                matrix, reason = _crop_matrix(module, matrix, params, flags, image, output)
+            elif (
+                matrix is not None
+                and output.shape[-2:] != image.shape[-2:]
+                and not (module.p == 1.0 and module.p_batch == 1.0)
+                and not bool((params["batch_prob"] > 0.5).all())
+            ):
+                # A shape-changing image blend returns the transformed branch for
+                # every row when any row is selected. Matrices and spatial labels
+                # remain blended per row, so they cannot certify the returned image.
+                matrix = None
+                reason = "mixed-application shape-changing operation has no reliable per-row image matrix"
         if matrix is not None and matrix.shape != (image.shape[0], 3, 3):
             matrix = None
             reason = "operation produced a matrix with an unsupported shape"
@@ -477,7 +490,9 @@ def audit(
     if not isinstance(output_image, Tensor) or output_image.ndim != 4 or output_image.shape[0] != image.shape[0]:
         raise ValueError("audit requires operations to preserve the image batch dimension and BCHW layout.")
     output_shape = tuple(output_image.shape)
-    with torch.no_grad():
+    # The forward above intentionally inherits caller autocast. Diagnostics do not:
+    # reduced-precision matrix products can create false round-trip errors.
+    with torch.no_grad(), torch.autocast(device_type=image.device.type, enabled=False):
         capture_warnings = _capture_warnings(sequence, steps)
         matrix, inverse, valid = _matrices(steps, image, capture_complete=not capture_warnings)
         status: Literal["available", "unsupported", "singular"] = (

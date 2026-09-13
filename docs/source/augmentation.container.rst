@@ -76,7 +76,8 @@ Interpreting the report
   ``RandomCrop`` prepadding when it is part of the returned image's mapping.
   ``inverse_matrix`` is its algebraic inverse, with
   nonfinite entries for batches that cannot be inverted. ``invertible`` records
-  those batches explicitly. Half-precision diagnostics use float32.
+  those batches explicitly. Half-precision diagnostics use float32, and diagnostic
+  arithmetic disables an active autocast context after the ordinary forward returns.
 * ``geometry_status="available"`` describes matrix availability, not successful
   spatial alignment. Round trips inverse-map the **actual returned** labels and
   compare them with the source. A pipeline can expose an invertible matrix yet
@@ -105,6 +106,10 @@ Interpreting the report
   real inconsistency and is not suppressed. Shape-changing slice crops with
   unapplied rows have no reliable cached matrix for every returned image row,
   so their geometry is reported as ``unsupported``.
+* Other shape-changing operations can likewise return the transformed image branch
+  for the whole batch when explicit parameters select only some rows, while their
+  matrices and spatial labels remain blended per row. These mixed applications are
+  reported as ``unsupported`` when the cached matrix cannot certify the returned image.
 * Non-rigid and unknown operations are explicitly unsupported for matrix
   composition. The ``silent`` transformation-matrix mode's identity fallback
   is not treated as evidence of valid correspondence. Supported neighboring
