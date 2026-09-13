@@ -307,10 +307,10 @@ def _capture(
     matrix = None
     reason = None
     if isinstance(module, (GeometricAugmentationBase2D, IntensityAugmentationBase2D)):
-        # Hooks inherit the caller's autocast context. Materialize and adjust diagnostic
-        # matrices at their documented precision without changing the ordinary forward.
+        # Materialize lazy matrices in the caller's context so the ordinary spatial
+        # outputs remain identical, then adjust diagnostics outside autocast.
+        matrix = _snapshot(module.transform_matrix)
         with torch.autocast(device_type=image.device.type, enabled=False):
-            matrix = _snapshot(module.transform_matrix)
             if matrix is not None and isinstance(module, RandomCrop):
                 matrix, reason = _crop_matrix(module, matrix, params, flags, image, output)
             elif (

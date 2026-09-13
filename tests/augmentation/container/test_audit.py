@@ -120,6 +120,20 @@ class TestAugmentationAudit(BaseTester):
         self.assert_close(report.spatial[0].roundtrip_max, torch.zeros(1))
         assert not any("round-trip error" in warning for warning in report.warnings)
 
+    def test_outputs_match_forward_under_cpu_autocast_for_lazy_matrix(self):
+        image = torch.rand(2, 3, 32, 48)
+        points = torch.tensor([[[20.01, 15.03], [40.7, 3.3]], [[7.77, 29.1], [33.3, 11.1]]])
+        aug = K.AugmentationSequential(
+            K.RandomResizedCrop((20, 30), scale=(0.5, 1.0)), data_keys=["input", "keypoints"]
+        )
+        with torch.autocast("cpu", dtype=torch.bfloat16):
+            torch.manual_seed(1)
+            expected = aug(image, points)
+            torch.manual_seed(1)
+            actual, _ = aug.audit(image, points)
+        assert torch.equal(actual[0], expected[0])
+        assert torch.equal(actual[1], expected[1])
+
     def test_shape_changing_mixed_application_is_unsupported(self, device, dtype):
         image = torch.zeros(2, 1, 8, 10, device=device, dtype=dtype)
         image[:, 0, 2, 4] = 1
