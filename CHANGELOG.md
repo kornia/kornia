@@ -392,6 +392,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `Rotate`, `ShearX`, `ShearY`, `TranslateX` and `TranslateY` now draw negative magnitudes again under
+  `symmetric_megnitude`. The sampled magnitude was multiplied by a boolean mask rather than a sign, so
+  these five ops only ever ran in the positive direction and were a silent no-op on roughly half of
+  their draws, affecting every `AutoAugment`, `RandAugment` and `TrivialAugment` policy that drew one
+  of them. Magnitudes drawn from a fixed seed change as a result. (#4494, #4495)
 * `PatchSequential` now augments every patch of every image and runs the complete selected sequence.
   The padding, reconstruction and parameter-generation behaviour changes are listed under
   *Breaking changes*. Refs #4421. (#4460)
