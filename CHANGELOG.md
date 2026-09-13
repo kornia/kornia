@@ -458,6 +458,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `PatchSequential` now augments every patch of every image and runs the complete selected sequence.
   The padding, reconstruction and parameter-generation behaviour changes are listed under
   *Breaking changes*. Refs #4421. (#4460)
+* Built-in 2D augmentations with lazy transformation matrices retain input metadata instead of the
+  last image batch, preventing unnecessary tensor lifetime extension and image-sized pickle,
+  deepcopy and torch.save payloads. Custom matrix implementations that read pixels retain their
+  existing lazy behavior. (#4482)
+
 * `RandomMosaic` now preserves `(H, W)` for non-square inputs when `output_size=None`; it previously
   returned `(W, H)`. `start_ratio_range` now scales x by width and y by height; it previously scaled
   x by height and y by width. (#4459)
