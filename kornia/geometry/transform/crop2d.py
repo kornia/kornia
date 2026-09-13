@@ -338,12 +338,15 @@ def crop_by_transform_mat(
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default
 
-    .. warning::
-        With ``align_corners=False`` and an ``out_size`` dimension equal to ``1``, this
-        function silently falls back to the :math:`(B, 2, 3)` :func:`warp_affine` path
-        (dropping the projective row entirely), so two :math:`(B, 3, 3)` matrices that
-        differ only in their third row produce byte-identical output. Tracked in
-        `#3929 <https://github.com/kornia/kornia/issues/3929>`_.
+    .. note::
+        An ``out_size`` dimension equal to ``1`` is handled like any other size under
+        both ``align_corners`` settings: the :math:`(B, 3, 3)` path keeps its projective
+        row and agrees with the :math:`(B, 2, 3)` path for an affine transform. It used
+        to return all-``NaN`` at ``align_corners=True`` and to silently fall back to
+        :func:`warp_affine` at ``align_corners=False``
+        (`#3929 <https://github.com/kornia/kornia/issues/3929>`_); the singleton axis
+        now maps to the centre of the normalized range and the warp normalizes under
+        the same convention it samples with.
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).

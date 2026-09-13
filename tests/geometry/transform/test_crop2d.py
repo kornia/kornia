@@ -370,6 +370,39 @@ class TestCropByTransform(BaseTester):
         patches = kornia.geometry.transform.crop_by_transform_mat(inp, transform, (2, 3))
         self.assert_close(patches, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("out_size", [(1, 3), (3, 1), (1, 1)])
+    def test_convention_one_pixel_output(self, device, dtype, align_corners, out_size):
+        # A 1-pixel output dimension must behave like any other size under both conventions
+        # (#3929). The (B, 3, 3) path used to return all-NaN at align_corners=True (fixed by
+        # #4006's singleton-axis mapping) and, at align_corners=False, to silently fall back to
+        # warp_affine through a correction matrix built for the wrong grid convention, which
+        # gave these pre-fix values on the same input:
+        #   (1, 3): [4.6111, 5.5000, 5.9815]   (3, 1): [5.9444, 9.5000, 12.1204]   (1, 1): [4.1667]
+        # Snippet used to generate expected (pure slicing, no resampling involved):
+        #   inp = torch.arange(16.0).view(1, 1, 4, 4); h, w = out_size
+        #   expected = inp[:, :, 1 : 1 + h, 1 : 1 + w]
+        inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        h, w = out_size
+        expected = inp[:, :, 1 : 1 + h, 1 : 1 + w]
+
+        # translate by (-1, -1): destination pixel (0, 0) reads source pixel (1, 1)
+        transform = torch.tensor(
+            [[[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )  # 1x3x3
+
+        homogeneous = kornia.geometry.transform.crop_by_transform_mat(
+            inp, transform, out_size, align_corners=align_corners
+        )
+        affine = kornia.geometry.transform.crop_by_transform_mat(
+            inp, transform[:, :2], out_size, align_corners=align_corners
+        )
+
+        assert not homogeneous.isnan().any()
+        self.assert_close(homogeneous, expected, rtol=1e-4, atol=1e-4)
+        # the (B, 3, 3) and (B, 2, 3) forms of the same affine transform must agree
+        self.assert_close(homogeneous, affine, rtol=1e-4, atol=1e-4)
+
     def test_gradcheck(self, device):
         inp = torch.randn((1, 1, 3, 3), device=device, dtype=torch.float64)
         transform = torch.tensor(
