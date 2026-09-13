@@ -20,6 +20,7 @@ import torch
 
 import kornia
 import kornia.augmentation as K
+from kornia.core._compat import torch_version_lt
 
 from testing.augmentation.utils import reproducibility_test
 from testing.base import BaseTester
@@ -88,7 +89,10 @@ class TestConventionImageSequential(BaseTester):
         # if_unsupported_ops value in ("raise", "skip", "bogus"), inverse equals hflip(output) exactly
         # (only the flip was undone) and differs from the input.
         # The fix lands in the repair window; do not "correct" this pin here.
-        x = torch.arange(6 * 8, device=device, dtype=dtype).reshape(1, 1, 6, 8).remainder(2).expand(2, 3, -1, -1)
+        if device.type == "mps" and torch_version_lt(2, 6, 0):
+            pytest.skip("torch 2.5.1 MPS inverse of expanded matrices can abort the process")
+        yy, xx = torch.meshgrid(torch.arange(6, device=device), torch.arange(8, device=device), indexing="ij")
+        x = ((yy + xx) % 2).to(dtype).expand(2, 3, 6, 8)
         assert K.ImageSequential(K.RandomHorizontalFlip(p=1.0)).if_unsupported_ops == "raise"
         for mode in ("raise", "skip", "bogus"):
             seq = K.ImageSequential(
@@ -101,13 +105,36 @@ class TestConventionImageSequential(BaseTester):
             self.assert_close(inverted, out.flip(-1))  # only the flip was undone, the blur was skipped
             assert (inverted - x).abs().max().item() > 0.1  # and the round trip is not the input
 
-    @pytest.mark.xfail(strict=True, reason="Tracked in #4423")
+    def test_convention_slice_crop_inverse_raises(self, device, dtype):
+        seq = K.ImageSequential(K.CenterCrop((4, 6), p=1.0))
+        out = seq(torch.rand(1, 3, 6, 8, device=device, dtype=dtype))
+        with pytest.raises(NotImplementedError, match="resample cropping mode"):
+            seq.inverse(out)
+
+    def test_convention_get_transformation_matrix_recomputes_older_params(self, device, dtype):
+        # Module matrices hold only the most recent call. Supplying recorded parameters from an earlier call
+        # therefore requires recompute=True.
+        image = torch.rand(1, 3, 6, 8, device=device, dtype=dtype)
+        seq = K.ImageSequential(K.RandomHorizontalFlip(p=0.5), K.RandomVerticalFlip(p=0.5))
+        torch.manual_seed(1)
+        seq(image)
+        old_params = seq._params
+        torch.manual_seed(101)
+        seq(image)
+        current = seq.get_transformation_matrix(image, old_params)
+        recomputed = seq.get_transformation_matrix(image, old_params, recompute=True)
+        assert current is not None and recomputed is not None
+        assert not torch.equal(current, recomputed)
+
+    @pytest.mark.xfail(strict=True, raises=pytest.fail.Exception, reason="Tracked in #4423")
     def test_convention_if_unsupported_ops_raise_raises_not_implemented(self, device, dtype):
         # Strict xfail (#4423): the intended reading is the argument's own contract - `if_unsupported_ops`
         # defaults to "raise", so inverting a chain that holds a non-invertible plain `nn.Module` must raise
         # `NotImplementedError` rather than silently skip it. This turns XPASS when the repair lands, which
         # is the signal to delete the wart pin above. Executed 2026-09-11 (torch 2.14.0, cpu): inverse returns
         # quietly.
+        if device.type == "mps" and torch_version_lt(2, 6, 0):
+            pytest.skip("torch 2.5.1 MPS inverse of expanded matrices can abort the process")
         x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
         seq = K.ImageSequential(
             K.RandomHorizontalFlip(p=1.0),
@@ -118,9 +145,9 @@ class TestConventionImageSequential(BaseTester):
         with pytest.raises(NotImplementedError):
             seq.inverse(out)
 
-    @pytest.mark.xfail(strict=True, reason="Tracked in #4423")
+    @pytest.mark.xfail(strict=True, raises=pytest.fail.Exception, reason="Tracked in #4423")
     def test_convention_if_unsupported_ops_rejects_invalid_value(self):
         # Strict xfail (#4423): construction accepts only "raise" and "skip". Executed 2026-09-11 (torch
         # 2.14.0, cpu): "bogus" is accepted without validation.
-        with pytest.raises(ValueError, match="if_unsupported_ops"):
+        with pytest.raises(ValueError):
             K.ImageSequential(K.RandomHorizontalFlip(p=1.0), if_unsupported_ops="bogus")

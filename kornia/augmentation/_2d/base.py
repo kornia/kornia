@@ -36,10 +36,8 @@ class AugmentationBase2D(_AugmentationBase):
     might be a better fit.
 
     This class is the anchor for the contract the 2D augmentations of ``kornia.augmentation`` inherit;
-    they point here instead of restating it. The mix classes derive from
-    :class:`~kornia.augmentation.MixAugmentationBaseV2` rather than from this base, and the 3D classes from
-    :class:`~kornia.augmentation.AugmentationBase3D`, but the ``p`` / ``p_batch``, RNG, replay and
-    serialization halves of this block are shared with them through ``_BasicAugmentationBase``.
+    they point here instead of restating it. Mix and 3D augmentation bases have their own public contracts;
+    do not infer this class's probability, RNG, replay, or serialization behavior from their common internals.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -55,30 +53,17 @@ class AugmentationBase2D(_AugmentationBase):
           and an ``(H, W)`` input to ``(1, 1, H, W)``; ``keepdim=True`` restores the input rank on the way out
           and never drops a real batch dimension. The dtype guard accepts ``float16``, ``bfloat16``, ``float32``
           and ``float64`` and raises ``TypeError`` naming those four on an integer tensor. The output keeps the
-          input's device. It keeps the input's dtype too, with two exceptions:
-          :class:`RandomPlanckianJitter` returns ``float32`` for a ``float16`` or ``bfloat16`` input and
-          :class:`RandomMixUpV2` returns ``float32`` for a ``float16`` one. The five image-oriented mix
-          augmentations (:class:`PatchMix`, :class:`RandomCutMixV2`, :class:`RandomJigsaw`,
-          :class:`RandomMixUpV2`, and :class:`RandomMosaic`) do not reach the output at all on ``bfloat16`` --
-          they raise ``KeyError`` downstream of the guard.
-        - any other input rank raises ``ValueError`` naming the three accepted shapes. ``validate_tensor``
-          is stricter than that -- it rejects the legal ``(C, H, W)`` rank with a ``RuntimeError`` -- and
-          ``transform_tensor`` runs first, so ``forward`` never reaches it. Through a container the same
-          user mistake surfaces as a ``RuntimeError`` with a different message instead.
-        - ``p`` is a per-sample Bernoulli and ``p_batch`` a single Bernoulli per call that gates the whole
-          batch, drawn before ``p``: with ``p=1.0, p_batch=0.0`` nothing is applied. ``same_on_batch=True``
-          asks the batch to share one draw; the gate and the transform parameters follow it, while keys that
-          index or pair up the batch stay per sample by construction.
-          ``p_batch`` is part of this base signature and available to custom subclasses, but of the 73 public
-          concrete classes only :class:`RandomHorizontalFlip`, :class:`RandomVerticalFlip`,
-          :class:`RandomTransplantation`, and :class:`RandomTransplantation3D` name it: the rest raise
-          ``TypeError`` on the keyword, except :class:`RandomDissolving`, whose ``**kwargs`` binds it and
-          drops it without a signal.
-        - sampling defaults to the CPU independently of the input device. ``set_rng_device_and_dtype``
-          moves the ``p`` / ``p_batch`` gate and rebuilds the parameter generator's samplers. The returned
-          parameter tensors can still be cast to a different device and dtype, determined by constructor
-          range tensors or, for ordinary numeric ranges, the call-time default device and dtype. Their
-          placement does not identify the sampling backend or precision.
+          input's device. Individual augmentations may have dtype-specific behavior; see their own docs and
+          `#4467 <https://github.com/kornia/kornia/issues/4467>`_.
+        - unsupported ranks and container entry points report validation errors through different paths.
+          Tracked in `#4424 <https://github.com/kornia/kornia/issues/4424>`_.
+        - this base samples ``p`` per sample and uses ``p_batch`` as a call-wide gate. ``same_on_batch=True``
+          shares applicable sampled values across the batch. Concrete constructors need not expose ``p_batch``;
+          see `#4425 <https://github.com/kornia/kornia/issues/4425>`_.
+        - parameter sampling normally uses CPU defaults independently of the image device. Moving RNG state or
+          samplers is incomplete for some generators, and returned parameter placement is a separate concern;
+          see `#4415 <https://github.com/kornia/kornia/issues/4415>`_ and
+          `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
         - reproducibility goes through torch's global generators on the devices used for sampling:
           ``torch.manual_seed`` before the call reproduces the draw for the same backend and dtype.
           There is no per-instance generator; ``generator=`` raises at
@@ -93,40 +78,31 @@ class AugmentationBase2D(_AugmentationBase):
           during application: the three ``RandomPlasma*`` classes draw fractal noise (tracked in
           `#4445 <https://github.com/kornia/kornia/issues/4445>`_), and :class:`RandomDissolving` samples
           VAE latents. Those draws are not stored in ``_params`` and require controlling the global seed too.
-        - ordinary numeric range configurations carry no trainable range parameters. Constructors backed by
-          ``PlainUniformGenerator``, such as :class:`RandomRotation`, can register an ``nn.Parameter`` range
-          and propagate gradients to it. For numeric ranges, the copied sampling-range buffers some classes
-          expose in ``state_dict()`` are inert; re-construct the augmentation to change what it samples.
-          ``pickle`` and ``copy.deepcopy`` carry the last ``_params`` for the ordinary configurations.
+        - range configuration and serialization behavior vary by generator. Some range buffers are inert after
+          ``load_state_dict`` (tracked in `#4428 <https://github.com/kornia/kornia/issues/4428>`_), some
+          augmentations are not picklable (`#4435 <https://github.com/kornia/kornia/issues/4435>`_), and saved
+          state can retain data from the last call (`#4482 <https://github.com/kornia/kornia/issues/4482>`_).
         - an empty batch is an empty output on the classes that accept one, but it is not a package-wide
           guarantee: a minority of the classes raise on ``B = 0``, in several unrelated exception families.
         - rotation-like parameters are in degrees, and a positive angle turns the image counter-clockwise as
           displayed (top-left origin, y pointing down), as :func:`~kornia.geometry.transform.rotate` documents.
           The ``*Affine*`` classes deviate and turn clockwise -- see :class:`RandomAffine` (tracked in
           `#4408 <https://github.com/kornia/kornia/issues/4408>`_).
-        - ``torch.jit.script`` does not support these modules: the ``forward(*args, **kwargs)`` signature of the
-          base is not scriptable. ``torch.compile`` works in its default, graph-break-tolerant mode;
-          ``fullgraph=True`` fails wherever a drawn value reaches a Python-level size or branch: on
-          :class:`RandomCrop`, :class:`RandomResizedCrop`, :class:`LongestMaxSize`,
-          :class:`SmallestMaxSize` and :class:`RandomCrop3D`, on :class:`ColorJiggle`, on
-          :class:`ColorJitter` with its default random adjustment order, and on :class:`RandomSnow`, on the
-          mix classes and on the four sequential containers. :class:`ColorJitter` supports a fixed order such
-          as ``order=(0, 1, 2, 3)``, which can compile whole; :class:`Resize`, :class:`CenterCrop` and
-          :class:`PadTo` compile whole.
+        - ``torch.jit.script`` does not support these modules. ``torch.compile`` commonly works in its default,
+          graph-break-tolerant mode, while ``fullgraph=True`` depends on the augmentation, flags, and input.
 
     .. warning::
-        One wrong input rank raises three different exception types depending on the entry point that sees it.
+        One wrong input rank can raise different exception types depending on the entry point that sees it.
         Tracked in `#4424 <https://github.com/kornia/kornia/issues/4424>`_.
 
     .. warning::
-        ``p_batch`` is documented on the bases but is named by only four concrete constructors, so the
-        randomness model the base page describes is not the one most classes offer. Tracked in
-        `#4425 <https://github.com/kornia/kornia/issues/4425>`_.
+        Concrete constructors expose ``p_batch`` inconsistently, so the base probability model is not a
+        universal constructor contract. Tracked in `#4425 <https://github.com/kornia/kornia/issues/4425>`_.
 
     .. warning::
-        ``set_rng_device_and_dtype`` changes sampling, but returned parameter placement can differ from
-        the sampler placement, and some classes fail after moving their samplers to an accelerator.
-        Tracked in `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
+        ``set_rng_device_and_dtype`` has incomplete sampler migration and may fail during migration on an
+        accelerator. Tracked in `#4415 <https://github.com/kornia/kornia/issues/4415>`_ and
+        `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
 
     .. warning::
         ``forward`` swallows ``generator=`` -- and every other unknown keyword -- without a warning, so a
@@ -183,15 +159,14 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
     Convention:
         - a subclass implements :meth:`compute_transformation`, which returns the ``(B, 3, 3)`` matrix of the
-          sampled transform, and ``apply_transform`` for images. This base's ``apply_transform_mask``,
-          ``apply_transform_box`` and ``apply_transform_keypoint`` still raise ``NotImplementedError``:
-          a custom subclass must implement those handlers, or inherit the matrix-based handlers from
-          :class:`~kornia.augmentation.GeometricAugmentationBase2D`.
-        - the matrix of the last call is readable as ``transform_matrix`` and is built lazily: it is
-          computed on first access for the subclasses whose ``apply_transform`` does not read it. ``pickle``
-          and ``copy.deepcopy`` carry it along with ``_params``.
-        - this base adds no ``inverse``. Among the 2D bases only
-          :class:`~kornia.augmentation.GeometricAugmentationBase2D` has one.
+          sampled transform, and ``apply_transform`` for images. Direct mask, box, and keypoint handlers are
+          incomplete on this base; inherit the geometric base for its matrix-based handlers. Container dispatch
+          recognizes geometric children, so custom rigid subclasses need integration work of their own. See
+          `#4481 <https://github.com/kornia/kornia/issues/4481>`_.
+        - the matrix of the last call is readable as ``transform_matrix``. Subclasses opt into lazy construction
+          with ``_compute_matrix_lazily``; retained state has the serialization limitations in `#4482
+          <https://github.com/kornia/kornia/issues/4482>`_.
+        - this base does not implement an inverse operation.
 
     """
 

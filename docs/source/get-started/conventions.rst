@@ -200,46 +200,65 @@ Color
 Augmentations
 -------------
 
-- One :class:`kornia.augmentation.container.AugmentationSequential` call draws once and
-  applies that draw to registered data types, subject to the non-rigid and
-  mask-list limitations below. ``.inverse()`` applies inverse geometric
-  transforms, recovering keypoint coordinates up to numerical precision.
-  Resampling cannot restore image or mask information lost by the forward
-  warp. Tensor box outputs use axis-aligned enclosures, so a rotation can lose
-  corner information and their inverse need not recover the original boxes.
-  Never augment image and mask through two separate calls — the random draws
-  will differ.
-- That holds for the **rigid** (matrix) augmentations. A non-rigid op has no
-  transform matrix, so the coordinate keys drop out of the draw:
-  :class:`kornia.augmentation.RandomElasticTransform` warps the image and warps
-  a ``mask`` key with it, through the same displacement field, but returns
-  keypoints and boxes unchanged, while
+- Use one :class:`kornia.augmentation.container.AugmentationSequential` call
+  for an image and its annotations. Geometric children that implement the
+  corresponding data-key handlers share their recorded parameters across
+  those inputs. Non-rigid operations, mask lists and dtype conversion have
+  the limitations below; a transform matrix alone does not establish support
+  for every data key.
+- ``.inverse()`` recovers keypoint coordinates up to numerical precision when
+  every geometric step supports inversion. Slice-mode crops raise; use their
+  ``cropping_mode="resample"`` where inversion is needed. Geometric 3D
+  children raise too. Intensity and non-rigid children are skipped, leaving
+  their effects applied. Resampling cannot recover information lost through
+  cropping, padding or interpolation. Tensor box outputs use axis-aligned
+  enclosures, so a rotation can lose the corners needed to restore a box.
+- Non-rigid children do not carry coordinate annotations along with the
+  image. :class:`kornia.augmentation.RandomElasticTransform` warps masks
+  through its displacement field but leaves keypoints and boxes unchanged.
   :class:`kornia.augmentation.RandomThinPlateSpline` and
-  :class:`kornia.augmentation.RandomFisheye` return keypoints and boxes
-  unchanged and raise ``NotImplementedError`` when a ``mask`` key is
-  registered (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
-- Masks use nearest interpolation by default. Put the image before mask inputs,
-  including in dictionary insertion order, so mask conversion uses the image's
-  working dtype. Earlier masks use the previous call's image dtype, or
-  ``float32`` on a fresh container. The container casts every mask
-  output to the last mask argument's dtype (its first element's dtype for a
-  list), so dtype preservation requires a single mask or masks with a common
-  dtype. Mixing an integer semantic mask with a final boolean mask can erase
-  its labels. Direct geometric ``transform_masks`` calls require floating
-  tensors; the container handles the conversion for boolean/integer masks.
-  Nearest interpolation avoids intermediate labels, but out-of-image samples can
-  introduce padding/fill values, such as zero with zero padding, even when that
-  label is absent from the input. Boxes are read and written in the inclusive ``xyxy_plus``
-  convention of :class:`kornia.geometry.boxes.Boxes` — see *Bounding boxes*
-  above — and flips are inclusive about the integer pixel centre,
-  ``x' = W - 1 - x``.
-- Full-batch mask lists can become desynchronized under a mixed per-sample
-  probability gate: a direct geometric child applies the gate at list index
-  ``i`` to the whole tensor at that index. Use separate ``mask`` data keys
-  with a common dtype for separate full-batch masks.
-- A positive ``degrees`` turns the image **counter-clockwise as displayed** on
+  :class:`kornia.augmentation.RandomFisheye` leave coordinates unchanged and
+  raise on masks (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
+  Intensity transformations usually leave masks unchanged, but
+  :class:`kornia.augmentation.RandomErasing` fills the erased mask region with
+  zero.
+- The geometric mask path normally uses nearest interpolation. That avoids
+  interpolating labels only when no other operation changes their values:
+  padding can introduce its fill value, and ``Resize(antialias=True)`` filters
+  masks before sampling, producing fractional labels or changing integer and
+  boolean masks (`#4479 <https://github.com/kornia/kornia/issues/4479>`_).
+- Put the image before masks, including in dictionary insertion order, so
+  conversion uses its working dtype. Earlier masks use the previous image
+  dtype, or ``float32`` on a fresh container. Integer labels outside the
+  working dtype's exact range can change even through a flip; for example,
+  ``2049`` becomes ``2048`` in ``float16``. Every output mask is cast to the
+  last mask argument's dtype (its first element's dtype for a list).
+  A common mask dtype avoids that cross-mask conversion, but does not prevent
+  precision loss during processing. Empty batches with masks can also raise
+  (`#4478 <https://github.com/kornia/kornia/issues/4478>`_). Direct geometric
+  ``transform_masks`` calls require floating tensors; the container converts
+  integer and boolean masks around those calls.
+- Mask lists are not a reliable replacement for separate full-batch tensors.
+  Direct augmentation children use list index ``i`` to select a sample's
+  gate. Full-batch entries can therefore become desynchronized under mixed
+  gates; per-sample entries can fail in warps or reuse the wrong crop window.
+  Prefer separate ``mask`` keys with a common dtype, subject to the precision
+  and filtering limitations above
+  (`#4477 <https://github.com/kornia/kornia/issues/4477>`_).
+- Boxes use the inclusive ``xyxy_plus`` convention of
+  :class:`kornia.geometry.boxes.Boxes` (see *Bounding boxes* above). Flips use
+  integer pixel centres: ``x' = W - 1 - x``.
+- Nested containers can expose missing or stale transformation matrices,
+  even with only rigid children. Do not rely on the outer
+  ``.transform_matrix`` to describe a nested pipeline
+  (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
+- Dictionary keys use raw prefix matching with exceptions for coordinate box
+  names. Unrecognized metadata is removed from the caller's dictionary before
+  being returned in the output. See the container's dictionary guidance and
+  `#4483 <https://github.com/kornia/kornia/issues/4483>`_.
+- A positive ``degrees`` turns the displayed image counter-clockwise with
   :class:`kornia.augmentation.RandomRotation`, matching
-  :func:`kornia.geometry.transform.rotate`, and **clockwise** on
+  :func:`kornia.geometry.transform.rotate`, and clockwise with
   :class:`kornia.augmentation.RandomAffine`
   (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
 
@@ -262,82 +281,79 @@ Augmentations
 Randomness in augmentations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-- Sampling defaults to the **CPU**, independently of the input device. Samplers
-  in ``RandomGeneratorBase`` initialize in ``float32``; the ``p`` / ``p_batch``
-  gate records the default dtype at augmentation construction. Changing
-  ``torch.set_default_dtype`` after construction does not rebuild an existing
-  sampler or change its draw precision.
-- ``set_rng_device_and_dtype`` changes the gate and rebuilds the parameter
-  generator's samplers on the requested device/dtype. **Returned parameter
-  placement is separate from sampling placement**: ``RandomAffine(45., p=1.)``
-  sampling on MPS advances the MPS RNG, yet returns ``angle`` on CPU. Its
-  numeric ranges select the call-time default device/dtype for the returned
-  tensors (normally CPU/float32); tensor-valued ranges select their device/dtype instead. This casting
-  also occurs in ``PlainUniformGenerator``. Other generators can return keys
-  directly on the sampler device, so ``_params`` alone cannot identify the
-  backend or precision used for the draw
-  (`#4426 <https://github.com/kornia/kornia/issues/4426>`_). When moving to an
-  accelerator device, classes that also move some of their returned keys
-  are ``CenterCrop``, ``Resize``, ``LongestMaxSize``, ``SmallestMaxSize``,
-  ``CenterCrop3D``, ``RandomElasticTransform``, ``RandomThinPlateSpline``,
-  ``ColorJitter``, ``RandomChannelDropout``, ``RandomChannelShuffle``,
-  ``RandomGaussianBlur``, ``RandomGaussianIllumination``,
-  ``RandomGaussianNoise`` and ``RandomPlanckianJitter``. On
-  ``RandomShear``, ``RandomLinearIllumination`` and
-  ``RandomLinearCornerIllumination`` the call leaves the module in a state where
-  the next ``forward`` raises ``RuntimeError``.
-- Reproducibility uses the **global generators on the sampling devices**:
-  ``torch.manual_seed`` before the call reproduces the draw with the same
-  backend and dtype; it does not promise matching sequences across devices,
-  dtypes, or PyTorch versions. There is no per-instance ``generator=`` —
-  it raises at construction, and ``forward`` accepts and silently drops it, as
-  it does any other unknown keyword
+- Parameter sampling generally starts on the CPU, independently of the image
+  device. Application-time randomness can instead use the input or model
+  device. Sampling precision depends on the generator, constructor ranges
+  and torch defaults; changing the default dtype does not uniformly update
+  cached samplers.
+- ``set_rng_device_and_dtype`` requests a sampling device and dtype. It
+  updates the gate configuration and asks the parameter generator to rebuild
+  its samplers, but some generators retain internal CPU tensors or ignore
+  the requested precision. A move can fail in the setter itself or during
+  a later forward, depending on the configuration
+  (`#4415 <https://github.com/kornia/kornia/issues/4415>`_,
+  `#4426 <https://github.com/kornia/kornia/issues/4426>`_).
+  Returned parameter placement is separate: an affine without shear can
+  sample angles on MPS and return them on CPU. Numeric ranges or tensor-valued
+  constructor ranges can determine the returned device/dtype, so inspecting
+  ``_params`` alone does not establish where or at what precision draws ran.
+- Reproducibility uses the global generators on the sampling devices.
+  ``torch.manual_seed`` reproduces draws for the same configuration, inputs,
+  backend and dtype; matching across devices or PyTorch versions is not
+  promised. There is no general per-instance ``generator=`` interface.
+  The standard :class:`kornia.augmentation.AugmentationBase2D` forward accepts
+  and ignores unknown keywords, while mix forwards can reject them
   (`#4427 <https://github.com/kornia/kornia/issues/4427>`_).
-- ``params=`` stores the caller's dictionary by reference. A complete generated
-  dictionary is not extended; a dictionary without ``batch_prob`` has an
-  all-true gate inserted into it. Most augmentations replay from the recorded
-  parameters, but ``RandomPlasma*`` draws fractal noise during application
-  (`#4445 <https://github.com/kornia/kornia/issues/4445>`_) and
-  ``RandomDissolving`` samples VAE latents. Those additional draws are not in
-  ``_params``, so their replay also requires controlling the global seed.
-- ``same_on_batch=True`` asks every sample of the batch to share one draw. The
-  ``p`` gate and the transform parameters follow it; keys that index or pair up
-  the batch — ``batch_idx`` and the mix-pairing permutation — stay per sample
-  by construction. ``ColorJiggle`` and ``ColorJitter`` use one ``(4,)`` order
-  permutation shared by the whole batch, regardless of ``same_on_batch``.
-  A handful of classes do not take the argument at all. On
-  ``AugmentationSequential`` the flag is three-state: ``None`` keeps each
-  child's own setting, ``True`` and ``False`` overwrite it.
-- Under a :class:`torch.utils.data.DataLoader` the rule is torch's, not
-  Kornia's: each worker's global CPU generator is seeded ``base_seed +
-  worker_id``, so the workers draw different augmentations and the run is
-  reproducible from the base seed. A ``worker_init_fn`` that reseeds every
-  worker to one fixed value makes them draw the *same* augmentation — the
-  classic duplicated-augmentation bug. See `Randomness in multi-process data
-  loading <https://pytorch.org/docs/stable/notes/randomness.html#dataloader>`_.
-- How many values a class takes out of the generator, and in which order, is
-  observable behaviour: changing it shifts every later draw in a seeded
-  pipeline, so it is a breaking change even when each individual draw is still
-  correctly distributed.
+- On the standard 2D base forward path, ``params=`` stores the caller's
+  dictionary by reference and inserts an all-true gate if ``batch_prob`` is
+  missing. Mix augmentations use a separate forward contract and can require
+  that key. Prefer complete recorded parameters for replay. Parameters do
+  not capture every random draw: ``RandomPlasma*`` draws fractal noise during
+  application (`#4445 <https://github.com/kornia/kornia/issues/4445>`_), and
+  ``RandomDissolving`` samples VAE latents. Replay of those operations also
+  needs control of their application-time random state.
+- ``same_on_batch=True`` shares the standard per-sample gate and sampled
+  transform factors. It does not equate batch-pairing indices, and some
+  application-time draws, including plasma noise, remain independent across
+  samples (`#4445 <https://github.com/kornia/kornia/issues/4445>`_).
+  Color adjustment order is one permutation shared across the batch,
+  independently of this flag. On ``AugmentationSequential``, ``None`` keeps
+  each child's setting, while ``True`` and ``False`` overwrite it.
+- A concrete constructor's ``p`` can configure either the base's per-sample
+  gate or its whole-batch gate. Mix augmentations in particular do not share
+  one probability contract. Check the concrete class rather than inferring
+  its gate from the base signature. Exposing ``p_batch`` is also
+  constructor-dependent (`#4425 <https://github.com/kornia/kornia/issues/4425>`_).
+- Under :class:`torch.utils.data.DataLoader`, each worker's global CPU
+  generator is seeded ``base_seed + worker_id``. Reproducibility also depends
+  on worker configuration and consumption order. A ``worker_init_fn`` that
+  reseeds every worker to the same fixed value duplicates their random
+  streams. See `Randomness in multi-process data loading
+  <https://pytorch.org/docs/stable/notes/randomness.html#dataloader>`_.
+- Changing random draw consumption can shift later draws in a seeded
+  pipeline; reordering draws can change which parameter gets each value.
+  The convention tests compare final RNG states to reference operations,
+  so they check consumption, not assignment of values to parameter keys.
 
 Serializing an augmentation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-- Ordinary numeric range configurations do not create trainable range
-  parameters. Constructors backed by ``PlainUniformGenerator``, such as
-  ``RandomRotation``, also accept ``nn.Parameter`` ranges: these appear in
-  ``named_parameters()`` and ``state_dict()``, and differentiable transforms
-  can propagate gradients to them.
-- With numeric constructor ranges, some classes expose a copied sampling
-  range as a buffer in ``state_dict()``, but ``load_state_dict`` from
-  an instance with a different range changes the buffer and changes neither the
-  draw nor the ``repr``
-  (`#4428 <https://github.com/kornia/kornia/issues/4428>`_). Re-construct the
-  augmentation to change what it samples.
-- For ordinary numeric configurations, ``pickle`` and ``copy.deepcopy`` carry
-  the last ``_params`` and any ``transform_matrix``. Reuse the saved parameters
-  explicitly to replay that draw, subject to the application-time randomness
-  exceptions above; a normal forward call draws fresh parameters.
+- Numeric ranges do not create trainable range parameters. Several
+  constructors, including ``RandomRotation`` and ``RandomAffine``, accept
+  ``nn.Parameter`` ranges that appear in ``named_parameters()`` and
+  ``state_dict()``. Gradients depend on the operation, backend and dtype.
+- Some numeric ranges are copied into buffers, but loading those buffers
+  does not update the cached sampling distributions; ``repr`` may or may not
+  reflect the loaded range. Reconstruct the augmentation to change what it
+  samples (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
+- Pickle and deepcopy can retain recorded parameters and transform state,
+  but support is configuration-dependent. ``RandomGaussianIllumination``
+  cannot currently be pickled
+  (`#4435 <https://github.com/kornia/kornia/issues/4435>`_). Lazy matrix state
+  can retain the last input batch, increasing serialized size until the
+  matrix is read (`#4482 <https://github.com/kornia/kornia/issues/4482>`_).
+  A normal forward draws fresh parameters; replay requires passing the
+  saved parameters and controlling any application-time randomness.
 
 Pitfall checklist
 -----------------
@@ -364,7 +380,7 @@ Quick self-review for generated code, most common first:
 12. Quaternions constructed in XYZW order — Kornia uses WXYZ.
 13. Expecting hue in ``[0, 360]`` or ``[0, 1]`` — ``rgb_to_hsv`` returns
     radians ``[0, 2π)``.
-14. Wrong ``data_keys`` box format — ``"bbox"`` means 4-corner ``(B, 4, 2)``;
+14. Wrong ``data_keys`` box format — ``"bbox"`` means 4-corner ``(B, N, 4, 2)``;
     use ``"bbox_xyxy"``/``"bbox_xywh"`` for coordinate formats.
 15. Assuming one rotation direction across the augmentations — a positive
     ``degrees`` on ``RandomAffine`` turns the image clockwise, on

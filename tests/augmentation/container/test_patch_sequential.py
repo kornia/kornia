@@ -164,6 +164,15 @@ class TestConventionPatchSequential(BaseTester):
         assert self._patch_states(device, dtype, (2, 3), 8, 12) == ["flip"] * 6 + ["same"] * 6
         assert self._patch_states(device, dtype, (2, 2), 8, 8) == ["flip"] * 6 + ["same", "same"]
 
+    def test_wart_patch_sequential_default_mode_only_augments_first_sample_4421(self, device, dtype):
+        # The default (patchwise_apply=True, random_apply=False) omits later samples. With one
+        # patch and two images, its only module flips sample zero and silently leaves sample one unchanged.
+        seq = K.PatchSequential(K.RandomHorizontalFlip(p=1.0), grid_size=(1, 1))
+        image = torch.arange(2 * 8 * 8, device=device, dtype=dtype).reshape(2, 1, 8, 8)
+        output = seq(image)
+        self.assert_close(output[0], image[0].flip(-1))
+        self.assert_close(output[1], image[1])
+
     @staticmethod
     def _patch_states(device, dtype, grid, height, width):
         # Per-patch verdict: was this patch horizontally flipped, left untouched, or neither.
@@ -187,7 +196,7 @@ class TestConventionPatchSequential(BaseTester):
                         states.append("other")
         return states
 
-    @pytest.mark.xfail(strict=True, reason="Tracked in #4421")
+    @pytest.mark.xfail(strict=True, raises=AssertionError, reason="Tracked in #4421")
     def test_convention_patch_sequential_augments_every_patch_row(self, device, dtype):
         # Strict xfail (#4421): the intended reading is the one `PatchSequential`'s own docstring example
         # promises - the grid splits the image into B x n_patches patch rows and the chain is applied to all
@@ -196,6 +205,22 @@ class TestConventionPatchSequential(BaseTester):
         # XPASS when the repair lands, which is the signal to delete the wart pins above.
         # Executed 2026-09-11 (torch 2.14.0, cpu): ['flip'] * 6 + ['same'] * 6.
         assert self._patch_states(device, dtype, (2, 3), 8, 12) == ["flip"] * 12
+
+    @pytest.mark.xfail(strict=True, raises=AssertionError, reason="Tracked in #4421")
+    def test_convention_default_patch_mode_augments_each_sample(self, device, dtype):
+        seq = K.PatchSequential(K.RandomHorizontalFlip(p=1.0), grid_size=(1, 1))
+        image = torch.arange(128, device=device, dtype=dtype).reshape(2, 1, 8, 8)
+        self.assert_close(seq(image), image.flip(-1))
+
+    def test_wart_valid_padding_damages_divisible_grid_4421(self, device, dtype):
+        seq = K.PatchSequential(K.RandomHorizontalFlip(p=1.0), grid_size=(4, 4), padding="valid", patchwise_apply=False)
+        image = torch.ones(1, 1, 224, 224, device=device, dtype=dtype)
+        output = seq(image)
+        assert output.shape == image.shape
+        assert (output == 0).any()
+        assert (output == 1).any()
+        with pytest.raises(RuntimeError):
+            seq(torch.ones(1, 1, 8, 8, device=device, dtype=dtype))
 
     def test_wart_patch_sequential_padding_changes_image_and_batch_size_4421(self, device, dtype):
         # Wart pin (#4421, second half): `padding="same"` is documented as padding the image so that every

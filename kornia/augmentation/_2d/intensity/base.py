@@ -39,15 +39,17 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           to the batch form ``False``.
 
     Convention:
-        - an intensity augmentation moves no pixel, so this base supplies ``compute_transformation``
-          itself and reports the identity matrix; masks, boxes, keypoints and labels pass through untouched.
+        - an intensity augmentation moves no image pixel, so this base supplies ``compute_transformation``
+          itself and reports the identity matrix. Its direct mask and keypoint handlers pass their inputs through,
+          except where a subclass overrides them: :class:`RandomErasing` also erases masks. Direct box dispatch
+          is currently unsupported despite the similarly named plural helpers below; see
+          `#4480 <https://github.com/kornia/kornia/issues/4480>`_.
           A subclass supplies ``apply_transform`` and, where it draws anything, its ``_param_generator``.
         - the matrix is built lazily, on the first read of ``transform_matrix``.
-        - this base adds no ``inverse``. Inside
-          :class:`~kornia.augmentation.container.AugmentationSequential`, ``.inverse()`` therefore leaves an intensity
-          step in place and undoes the geometric steps only.
-        - these classes assume the library-wide ``[0, 1]`` float image value range; where a particular class
-          depends on it, its own block says so.
+        - this base adds no ``inverse``. When
+          :class:`~kornia.augmentation.container.AugmentationSequential.inverse` can run, it skips 2D intensity
+          children and reverses supported geometric children.
+        - these classes assume the library-wide ``[0, 1]`` float image value range.
 
     """
 

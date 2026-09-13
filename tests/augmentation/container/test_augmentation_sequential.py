@@ -681,7 +681,7 @@ class TestConventionAugmentationSequential(BaseTester):
             out = aug(torch.rand(2, 1, 3, 4, device=device, dtype=dtype), empty)
             assert out[1].shape == shape
 
-    def test_wart_mask_lists_desynchronize_mixed_probability_batches(self, device, dtype):
+    def test_wart_mask_lists_desynchronize_mixed_probability_batches_4477(self, device, dtype):
         # A list entry selects one sample's gate, even when that entry contains the whole batch.
         image = torch.arange(24, device=device, dtype=dtype).reshape(2, 1, 3, 4)
         masks = [image.clone(), image.expand(-1, 2, -1, -1).clone()]
@@ -710,7 +710,27 @@ class TestConventionAugmentationSequential(BaseTester):
         with pytest.raises(IndexError, match="index 2 is out of bounds for dimension 0 with size 2"):
             seq(cpu_image, [cpu_image.clone() for _ in range(3)], params=params)
 
-    def test_wart_dictionary_mask_before_image_loses_float64_precision(self):
+    def test_wart_per_sample_mask_lists_fail_warps_and_reuse_crop_window_4477(self, device, dtype):
+        image = torch.arange(16, device=device, dtype=dtype).reshape(1, 1, 4, 4).repeat(2, 1, 1, 1)
+        masks = [image[:1].clone(), image[1:].clone()]
+        warp = K.AugmentationSequential(K.RandomAffine((30.0, 30.0), p=1.0), data_keys=["input", "mask"])
+        with pytest.raises(RuntimeError, match="batch size"):
+            warp(image, masks)
+        crop = K.AugmentationSequential(K.RandomCrop((2, 2), p=1.0), data_keys=["input", "mask"])
+        params = crop.forward_parameters(image.shape)
+        params[0].data["src"] = torch.tensor(
+            [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], [[2.0, 2.0], [3.0, 2.0], [3.0, 3.0], [2.0, 3.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        output, out_masks = crop(image, masks, params=params)
+        self.assert_close(output[0], image[0, :, :2, :2])
+        self.assert_close(output[1], image[1, :, 2:, 2:])
+        self.assert_close(out_masks[0], output[:1])
+        self.assert_close(out_masks[1], output[:1])
+        assert not torch.equal(out_masks[1], output[1:])
+
+    def test_wart_dictionary_mask_before_image_loses_float64_precision_4478(self):
         # On a fresh container, masks preceding the image fall back to float32 before being cast back.
         image = torch.zeros(1, 1, 1, 2, dtype=torch.float64)
         mask = torch.tensor([1.0 + 2**-30, 2.0 + 2**-29], dtype=torch.float64).reshape_as(image)
@@ -723,7 +743,7 @@ class TestConventionAugmentationSequential(BaseTester):
         self.assert_close(image_first({"image": image, "mask": mask})["mask"], expected, rtol=0, atol=0)
 
     @pytest.mark.parametrize("mask_dtypes", [(torch.int64, torch.bool), (torch.bool, torch.int64)])
-    def test_wart_mask_outputs_use_the_last_mask_dtype(self, mask_dtypes, device, dtype):
+    def test_wart_mask_outputs_use_the_last_mask_dtype_4478(self, mask_dtypes, device, dtype):
         image = torch.arange(24, device=device, dtype=dtype).reshape(2, 1, 3, 4)
         labels = torch.tensor([0, 2, 3, 5], device=device).reshape(1, 1, 1, 4).expand(2, 1, 3, 4)
         first, second = (labels.to(mask_dtype) for mask_dtype in mask_dtypes)
@@ -736,7 +756,7 @@ class TestConventionAugmentationSequential(BaseTester):
             assert out_first.unique().tolist() == [False, True]  # integer labels 2, 3 and 5 are lost
 
     @pytest.mark.parametrize("key", ["bbox_xyxy", "bbox_xywh"])
-    def test_wart_suffixed_coordinate_box_dict_keys_expect_vertices(self, key, device, dtype):
+    def test_wart_suffixed_coordinate_box_dict_keys_expect_vertices_4483(self, key, device, dtype):
         image = torch.arange(20, device=device, dtype=dtype).reshape(1, 1, 4, 5)
         boxes = torch.tensor([[[0.0, 0.0, 2.0, 2.0]]], device=device, dtype=dtype)
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
@@ -746,7 +766,7 @@ class TestConventionAugmentationSequential(BaseTester):
         with pytest.raises(ValueError, match="when vertices_plus mode"):
             seq({"image": image, key + "-a": boxes})
 
-    def test_wart_dictionary_class_alias_is_metadata(self):
+    def test_wart_dictionary_class_alias_is_metadata_4483(self):
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
         keys, metadata = seq._read_datakeys_from_dict(("input", "class", "class-a", "label", "label-a"))
         assert keys == [DataKey.INPUT, DataKey.LABEL, DataKey.LABEL]
@@ -762,7 +782,7 @@ class TestConventionAugmentationSequential(BaseTester):
         seq = K.AugmentationSequential(
             K.RandomResizedCrop((2, 2), scale=(1.0, 1.0), ratio=(1.0, 1.0), cropping_mode=cropping_mode, p=1.0),
             data_keys=["input", "mask"],
-            extra_args={DataKey.MASK: {"align_corners": align_corners}},
+            extra_args={DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": align_corners}},
         )
         if cropping_mode == "slice" and align_corners is not None:
             with pytest.raises(ValueError, match="align_corners option can only be set with the interpolating modes"):
@@ -793,16 +813,24 @@ class TestConventionAugmentationSequential(BaseTester):
         bool_mask[:, :, 1:4, 2:6] = True
         assert aug(torch.rand(2, 3, 6, 8, device=device, dtype=dtype), bool_mask)[1].dtype == torch.bool
 
+    def test_wart_resize_antialias_blurs_masks_4479(self, device, dtype):
+        # Resize applies antialiasing before the mask's nearest interpolation, introducing values outside the
+        # input label set. This is a current wart, tracked in #4479.
+        image = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        mask = torch.full((1, 1, 8, 8), 2.0, device=device, dtype=dtype)
+        mask[:, :, :, 4:] = 3.0
+        aug = K.AugmentationSequential(K.Resize((4, 4), antialias=True), data_keys=["input", "mask"])
+        out_mask = aug(image, mask)[1]
+        assert not set(out_mask.unique().tolist()).issubset({2.0, 3.0})
+
     def test_convention_boxes_follow_the_xyxy_plus_convention(self, device, dtype):
         # Convention pin: the container's box arithmetic is `Boxes`' inclusive `xyxy_plus` mode, for a scaling
         # op as well as for a flip - `Boxes.from_tensor(..., mode="xyxy_plus").transform_boxes_(M)` reproduces
         # the container's output exactly, while `mode="xyxy"` (exclusive) does not.
-        # Two asymmetric boxes on a 6x8 image, resized to (3, 4) => M = diag(4/8, 3/6).
+        # Two asymmetric boxes on a 6x8 image, resized to (3, 4) => M = diag(3/7, 2/5) in xyxy_plus space.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu): container
         # [[0.0, 0.0, 1.2857143, 0.8]], [[0.85714293, 0.4, 2.1428573, 1.6]] == xyxy_plus;
         # xyxy gives [[0.0, 0.0, 1.8571429, 1.4]], [[0.85714293, 0.4, 2.7142859, 2.2]].
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the xyxy vs xyxy_plus gap is smaller than the half-precision box tolerance")
         boxes = torch.tensor([[[0.0, 0.0, 3.0, 2.0]], [[2.0, 1.0, 5.0, 4.0]]], device=device, dtype=dtype)
         aug = K.AugmentationSequential(K.Resize((3, 4)), data_keys=["input", "bbox_xyxy"])
         out_boxes = aug(torch.rand(2, 3, 6, 8, device=device, dtype=dtype), boxes.clone())[1]
@@ -836,33 +864,91 @@ class TestConventionAugmentationSequential(BaseTester):
             box_aug = K.AugmentationSequential(K.RandomAffine(degrees=(45.0, 45.0), p=1.0), data_keys=["input", key])
             out_img, out_boxes = box_aug(torch.rand(1, 3, 8, 8, device=device, dtype=dtype), boxes)
             restored_boxes = box_aug.inverse(out_img, out_boxes)[1]
-            assert not torch.allclose(restored_boxes, boxes)
+            assert torch.isfinite(restored_boxes).all()
+            if key == "bbox":
+                restored_corners = restored_boxes[0, 0]
+                original_corners = boxes[0, 0]
+            else:
+                restored_corners = Boxes.from_tensor(restored_boxes, mode="xyxy_plus").to_tensor(mode="vertices_plus")[
+                    0, 0
+                ]
+                original_corners = Boxes.from_tensor(boxes, mode="xyxy_plus").to_tensor(mode="vertices_plus")[0, 0]
+            assert (restored_corners.min(dim=0).values < original_corners.min(dim=0).values - 1).all()
+            assert (restored_corners.max(dim=0).values > original_corners.max(dim=0).values + 1).all()
 
-    def test_wart_nested_non_rigid_silent_matrix_accumulation_is_order_sensitive(self, device, dtype):
-        # Wart pin: `transformation_matrix_mode="silent"` only skips a direct non-rigid child. A nested
-        # sequence containing `RandomElasticTransform` supplies `None` as its matrix: after a rigid child,
-        # accessing the outer matrix raises TypeError, while putting the same nested sequence first returns
-        # the rigid child's matrix. The image forward succeeds in both orders.
-        # This records a current limitation; remove the pin when nested None-matrix handling is repaired.
+    def test_wart_nested_container_matrix_is_order_sensitive_4476(self, device, dtype):
+        # Wart pin (#4476): nesting itself, not a non-rigid child, breaks outer matrix accumulation. A rigid
+        # child followed by a nested rigid sequence raises, while the reverse ordering silently drops the
+        # nested transform. A directly-called nested container can also inject stale state.
         image = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
-        nested_non_rigid = lambda: K.AugmentationSequential(  # noqa: E731
-            K.RandomElasticTransform(p=1.0), data_keys=["input"]
+        nested_rigid = lambda: K.AugmentationSequential(  # noqa: E731
+            K.RandomVerticalFlip(p=1.0), data_keys=["input"]
         )
-        rigid_then_nested = K.AugmentationSequential(
-            K.RandomHorizontalFlip(p=1.0), nested_non_rigid(), data_keys=["input"]
-        )
+        rigid_then_nested = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), nested_rigid(), data_keys=["input"])
         assert rigid_then_nested(image).shape == image.shape
         with pytest.raises(TypeError, match=r"unsupported operand type\(s\) for @: 'NoneType' and 'Tensor'"):
             _ = rigid_then_nested.transform_matrix
 
-        nested_then_rigid = K.AugmentationSequential(
-            nested_non_rigid(), K.RandomHorizontalFlip(p=1.0), data_keys=["input"]
-        )
+        nested_then_rigid = K.AugmentationSequential(nested_rigid(), K.RandomHorizontalFlip(p=1.0), data_keys=["input"])
         assert nested_then_rigid(image).shape == image.shape
         self.assert_close(
             nested_then_rigid.transform_matrix,
             torch.tensor([[[-1.0, 0.0, 7.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype),
         )
+
+        stale_child = K.AugmentationSequential(K.RandomVerticalFlip(p=1.0), data_keys=["input"])
+        stale_child(image)
+        stale_outer = K.AugmentationSequential(stale_child, data_keys=["input"])
+        shorter = image[:, :, :6]
+        stale_outer(shorter)
+        stale = torch.tensor([[[1.0, 0.0, 0.0], [0.0, -1.0, 7.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        self.assert_close(stale_outer.transform_matrix, stale)
+        assert stale_outer.transform_matrix[0, 1, 2].item() != shorter.shape[-2] - 1
+
+    @pytest.mark.parametrize("crop_cls", [K.CenterCrop, K.RandomCrop, K.RandomResizedCrop])
+    def test_convention_slice_crop_inverse_raises(self, crop_cls, device, dtype):
+        seq = K.AugmentationSequential(crop_cls((4, 6), p=1.0), data_keys=["input"])
+        out = seq(torch.rand(1, 3, 6, 8, device=device, dtype=dtype))
+        with pytest.raises(NotImplementedError, match="resample cropping mode"):
+            seq.inverse(out)
+
+    def test_convention_3d_inverse_raises_for_geometry_and_skips_intensity(self, device, dtype):
+        # Enough voxels in two populated histogram bins force an actual equalization in every dtype.
+        image = torch.full((1, 1, 8, 8, 8), 0.2, device=device, dtype=dtype)
+        image[:, :, :4] = 0.7
+        intensity = K.AugmentationSequential(K.RandomEqualize3D(p=1.0), data_keys=["input"])
+        output = intensity(image)
+        assert not torch.equal(output, image)
+        self.assert_close(intensity.inverse(output), output, atol=0, rtol=0)
+        geometric = K.AugmentationSequential(K.RandomHorizontalFlip3D(p=1.0), data_keys=["input"])
+        with pytest.raises(NotImplementedError, match="3d inverse"):
+            geometric.inverse(geometric(image))
+
+    def test_wart_integer_masks_round_through_image_dtype_4478(self, device, dtype):
+        first_inexact = {torch.bfloat16: 257, torch.float16: 2049, torch.float32: 2**24 + 1, torch.float64: 2**53 + 1}
+        label = first_inexact[dtype]
+        image = torch.ones(1, 1, 2, 2, device=device, dtype=dtype)
+        mask = torch.full_like(image, label, dtype=torch.int64)
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        output = seq(image, mask)[1]
+        assert output.dtype == torch.int64
+        assert torch.equal(output, torch.full_like(mask, label - 1))
+
+    def test_wart_empty_batch_with_mask_raises_4478(self, device, dtype):
+        image = torch.empty(0, 1, 2, 2, device=device, dtype=dtype)
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        with pytest.raises(IndexError):
+            seq(image, image.clone())
+
+    def test_wart_dictionary_pops_metadata_and_matches_raw_prefixes_4483(self, device, dtype):
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
+        keys, metadata = seq._read_datakeys_from_dict(("imagenet_id", "maskrcnn_boxes", "labelled_image", "note"))
+        assert keys == [DataKey.INPUT, DataKey.MASK, DataKey.LABEL]
+        assert metadata == ["note"]
+        data = {"image": torch.ones(1, 1, 2, 2, device=device, dtype=dtype), "note": "retained in output"}
+        output = seq(data)
+        assert "note" not in data
+        assert output["note"] == "retained in output"
 
     def test_convention_same_on_batch_none_does_not_override_a_child(self, device, dtype):
         # Convention pin: `AugmentationSequential(same_on_batch=None)` - the default - keeps whatever each
@@ -959,15 +1045,14 @@ class TestConventionAugmentationSequential(BaseTester):
         ).extra_args
         assert replaced == {DataKey.MASK: {"align_corners": True}}
 
-    @pytest.mark.xfail(strict=True, reason="Tracked in #4419")
+    @pytest.mark.xfail(strict=True, raises=AssertionError, reason="Tracked in #4419")
     def test_convention_extra_args_mask_resample_override_is_honoured(self, device, dtype):
         # Strict xfail (#4419): the intended reading is the one `AugmentationSequential`'s own docstring
         # states - `extra_args[DataKey.MASK]` controls how masks are handled, so asking for a bilinear
         # `resample` must reach the sampler and change the mask, exactly as it already does on
         # `RandomElasticTransform`. Today the 2D geometric mask path overwrites `resample` with NEAREST after
         # merging the override, so this XFAILs; it turns XPASS when the repair lands, which is the signal to
-        # delete the wart pin above. Executed 2026-09-11 (torch 2.14.0, cpu): the override moves the mask by
-        # 0.0 on `RandomAffine` and by 0.4567949 on `RandomElasticTransform`.
+        # delete the wart pin above. The affine override currently has no effect.
         def mask_of(factory, extra):
             torch.manual_seed(0)
             aug = K.AugmentationSequential(factory(), data_keys=["input", "mask"], extra_args=extra)
@@ -988,21 +1073,8 @@ class TestConventionAugmentationSequential(BaseTester):
         # nearest - while the keypoints and the boxes stay exactly where they were, and
         # `RandomThinPlateSpline` / `RandomFisheye` raise a bare `NotImplementedError` (no message) on a mask
         # key.
-        # Fixture: a checkerboard mask on a non-square 6x8 frame at `alpha=5`, `sigma=4`, chosen because the
-        # mask move has to be visible at every seed, not on a lucky one. A spatially uniform mask cannot
-        # witness the warp at all - every pixel lands on a pixel of its own value - and the default
-        # `sigma=(32, 32)`, `alpha=(1, 1)` displacement is sub-pixel over a frame this small, so the two
-        # together read as "the mask came back unchanged", which is how the mask half of this wart was first
-        # mis-recorded.
-        # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0), B = 2, 96 mask
-        # pixels, seeds 0-9. This fixture changes 47, 39, 17, 34, 50, 33, 63, 38, 35, 30 pixels on cpu
-        # float32 - never 0, and never 0 either on float64 (16-58), float16 (16-63), bfloat16 (17-63) or mps
-        # float32 (24-54). The old solid (1:4, 2:6) block mask changes 0 pixels at every one of those seeds
-        # at the default alpha and sigma (4-13 at this alpha and sigma), and the checkerboard at the default
-        # alpha and sigma changes 10, 7, 3, 0, 7, 4, 7, 8, 0, 14 - zero on two of ten seeds, a coin flip,
-        # which is why both halves of the fixture are raised here. Image max|move| >= 0.64 and keypoint and
-        # bbox_xyxy deltas exactly 0.0 at every seed and dtype.
-        # The fix lands in the repair window; do not "correct" this pin here.
+        # Seed zero and a checkerboard with a stronger displacement expose both the image and mask warp.
+        # The observed displacement depends on dtype/backend; this fixture does not assert a sweep over seeds.
         torch.manual_seed(0)
         aug = K.AugmentationSequential(
             K.RandomElasticTransform(p=1.0, alpha=(5.0, 5.0), sigma=(4.0, 4.0)),

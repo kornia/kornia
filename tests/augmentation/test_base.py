@@ -16,7 +16,6 @@
 #
 
 import copy
-import inspect
 import pickle
 import re
 from types import SimpleNamespace
@@ -42,7 +41,7 @@ from kornia.filters.dissolving import StableDiffusionDissolving, _DissolvingWrap
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_bilinear_2d_grid_sample_backward, supports_reflect_padding
 
 
 class TestBasicAugmentationBase(BaseTester):
@@ -366,6 +365,25 @@ _STATELESS_REPRESENTATIVES = {
     "AugmentationSequential": lambda: K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0)),
 }
 
+
+def _assert_params_equal(actual, expected) -> None:
+    if isinstance(expected, torch.Tensor):
+        assert isinstance(actual, torch.Tensor)
+        assert torch.equal(actual, expected)
+    elif isinstance(expected, dict):
+        assert isinstance(actual, dict)
+        assert actual.keys() == expected.keys()
+        for key in expected:
+            _assert_params_equal(actual[key], expected[key])
+    elif isinstance(expected, (list, tuple)):
+        assert isinstance(actual, type(expected))
+        assert len(actual) == len(expected)
+        for actual_value, expected_value in zip(actual, expected):
+            _assert_params_equal(actual_value, expected_value)
+    else:
+        assert actual == expected
+
+
 # name -> (constructor, batch shape, reference CPU RNG operations).
 # Compare states against operations on the installed PyTorch rather than version-specific float literals.
 # This pins consumption, not the actual random values or the assignment of values to parameter keys.
@@ -413,6 +431,7 @@ _RNG_FINGERPRINTS = {
     "PatchSequential": (
         lambda: K.PatchSequential(K.RandomAffine(degrees=(10.0, 90.0), p=1.0), grid_size=(2, 2), patchwise_apply=False),
         (4, 3, 6, 8),
+        # Encodes the B*C parameter-row behavior tracked in #4421.
         [("rand", (12,))],
     ),
 }
@@ -434,21 +453,25 @@ class TestConventionAugmentationBase2D(BaseTester):
         assert K.RandomHorizontalFlip(p=1.0)(torch.rand(6, 8, device=device, dtype=dtype)).shape == (1, 1, 6, 8)
         batched = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
         assert K.RandomHorizontalFlip(p=1.0, keepdim=True)(batched).shape == (2, 3, 6, 8)
+        one_batched = torch.rand(1, 3, 6, 8, device=device, dtype=dtype)
+        assert K.RandomHorizontalFlip(p=1.0, keepdim=True)(one_batched).shape == (1, 3, 6, 8)
 
     def test_convention_integer_input_is_rejected(self, device):
         # Convention pin: the dtype policy is enforced - an integer image raises `TypeError` naming the four
         # accepted float dtypes, for `uint8` and `int64` alike.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu):
         # "Expected input of [torch.bfloat16, torch.float16, torch.float32, torch.float64]. Got torch.uint8".
+        expected = r"Expected input of \[torch.bfloat16, torch.float16, torch.float32, torch.float64\]"
         for bad in (torch.uint8, torch.int64):
-            with pytest.raises(TypeError, match="Expected input of"):
+            with pytest.raises(TypeError, match=expected):
                 K.RandomHorizontalFlip(p=1.0)(torch.zeros(1, 1, 4, 4, device=device, dtype=bad))
 
-    def test_wart_wrong_input_rank_raises_three_exception_types_4424(self, device, dtype):
-        # Wart pin (#4424): one user error - the wrong input rank - raises three different exception types
-        # depending on which entry point sees it. The class path raises `ValueError` from `transform_tensor`,
-        # the container path raises `RuntimeError` with a different message, and `validate_tensor`'s own
-        # `RuntimeError` (which also rejects the legal (C, H, W) rank) is unreachable from `forward`.
+    def test_wart_wrong_input_rank_has_entry_point_specific_errors_4424(self, device, dtype):
+        # Wart pin (#4424): one user error can raise different exception types depending on which entry point
+        # sees it. The class path raises `ValueError` from `transform_tensor`, the container path raises
+        # `RuntimeError` with a different message, and `validate_tensor`'s own
+        # `RuntimeError` (which also rejects the legal (C, H, W) rank). `forward` promotes legal unbatched
+        # inputs before validation.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu).
         # The repair window picks one exception type; do not "correct" this pin here.
         x5 = torch.rand(1, 2, 3, 6, 8, device=device, dtype=dtype)
@@ -481,23 +504,61 @@ class TestConventionAugmentationBase2D(BaseTester):
         # batch; a sample is augmented only when both fire. Drawn on the cpu generator, so no device/dtype
         # fixture is involved; seeded inside the test.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu).
-        flip = K.RandomHorizontalFlip  # one of the four public concrete classes that accept `p_batch` (see #4425)
+        flip = K.RandomHorizontalFlip
         assert flip(p=1.0, p_batch=0.0).forward_parameters((4, 3, 6, 8))["batch_prob"].tolist() == [0.0] * 4
         assert flip(p=0.0, p_batch=1.0).forward_parameters((4, 3, 6, 8))["batch_prob"].tolist() == [0.0] * 4
         assert flip(p=1.0, p_batch=1.0).forward_parameters((4, 3, 6, 8))["batch_prob"].tolist() == [1.0] * 4
-        # `p_batch=0.5`: every seed gives an all-0 or an all-1 row - one draw for the batch, seeds 0..7 give
-        # [1,1,1,1], [0,0,0,0], [0,0,0,0], [1,1,1,1], [0,0,0,0], [0,0,0,0], [0,0,0,0], [0,0,0,0].
         batch_rows = []
         for seed in range(8):
             torch.manual_seed(seed)
             batch_rows.append(flip(p=1.0, p_batch=0.5).forward_parameters((4, 3, 6, 8))["batch_prob"].tolist())
-        assert batch_rows == [[1.0] * 4, [0.0] * 4, [0.0] * 4, [1.0] * 4, [0.0] * 4, [0.0] * 4, [0.0] * 4, [0.0] * 4]
-        # `p=0.5` is per sample: seeds 0..3 give [1,0,1,1], [0,1,1,0], [0,1,0,1], [1,1,1,1] - mixed rows exist.
+        assert all(len(set(row)) == 1 for row in batch_rows)
+        assert {row[0] for row in batch_rows} == {0.0, 1.0}
+        # `p=0.5` is per sample: mixed rows exist.
         sample_rows = []
         for seed in range(4):
             torch.manual_seed(seed)
             sample_rows.append(flip(p=0.5).forward_parameters((4, 3, 6, 8))["batch_prob"].tolist())
-        assert sample_rows == [[1.0, 0.0, 1.0, 1.0], [0.0, 1.0, 1.0, 0.0], [0.0, 1.0, 0.0, 1.0], [1.0, 1.0, 1.0, 1.0]]
+        assert any(len(set(row)) > 1 for row in sample_rows)
+
+    def test_convention_p_batch_draw_precedes_the_per_sample_gate(self):
+        torch.manual_seed(3)
+        actual = K.RandomHorizontalFlip(p=0.5, p_batch=0.5).forward_parameters((4, 3, 6, 8))["batch_prob"]
+        actual_state = torch.random.get_rng_state()
+        torch.manual_seed(3)
+        batch_gate = torch.rand(1) < 0.5
+        per_sample_gate = torch.rand(4) < 0.5
+        expected = (batch_gate * per_sample_gate).to(actual.dtype)
+        assert torch.equal(actual, expected)
+        assert torch.equal(actual_state, torch.random.get_rng_state())
+
+    @pytest.mark.parametrize("augmentation_cls", [K.RandomJigsaw, K.RandomMosaic])
+    def test_convention_jigsaw_and_mosaic_use_p_per_sample(self, augmentation_cls):
+        rows = []
+        for seed in range(4):
+            torch.manual_seed(seed)
+            rows.append(augmentation_cls(p=0.5).forward_parameters((4, 3, 6, 8))["batch_prob"].tolist())
+        assert any(len(set(row)) > 1 for row in rows)
+
+    @pytest.mark.parametrize("augmentation_cls", [K.RandomMixUpV2, K.RandomCutMixV2, K.PatchMix])
+    def test_wart_mixup_cutmix_and_patchmix_map_p_to_a_batch_gate_4425(self, augmentation_cls):
+        # Their constructors map `p` to the mix base's batch-wide probability, unlike Jigsaw and Mosaic.
+        rows = []
+        for seed in range(8):
+            torch.manual_seed(seed)
+            kwargs = {"use_correct_lambda": True} if augmentation_cls is K.RandomCutMixV2 else {}
+            params = augmentation_cls(p=0.5, **kwargs).forward_parameters((4, 3, 6, 8))
+            rows.append(params["batch_prob"].tolist())
+        assert all(len(set(row)) == 1 for row in rows)
+        assert {row[0] for row in rows} == {0.0, 1.0}
+
+    @pytest.mark.parametrize(
+        "augmentation_cls", [K.RandomMixUpV2, K.RandomCutMixV2, K.PatchMix, K.RandomJigsaw, K.RandomMosaic]
+    )
+    def test_convention_mix_replay_requires_batch_prob(self, augmentation_cls):
+        kwargs = {"use_correct_lambda": True} if augmentation_cls is K.RandomCutMixV2 else {}
+        with pytest.raises(KeyError, match="batch_prob"):
+            augmentation_cls(p=1.0, **kwargs)(torch.ones(2, 3, 6, 8), params={})
 
     @pytest.mark.parametrize(
         ("augmentation_cls", "shape"),
@@ -523,14 +584,14 @@ class TestConventionAugmentationBase2D(BaseTester):
     def test_convention_transplantation_requires_masks_and_supports_mask_only(
         self, augmentation_cls, spatial_shape, device
     ):
-        # A mask is required to choose the transplant, but images are optional. Each donor has one label, so
-        # p=1 deterministically replaces every acceptor mask with its preceding donor's mask.
-        mask = torch.zeros((2, *spatial_shape), device=device, dtype=torch.int64)
-        mask[1] = 1
+        # A mask is required to choose the transplant, but images are optional. Three donors make the cyclic
+        # donor direction observable: p=1 replaces every acceptor with its preceding donor.
+        mask = torch.arange(3, device=device, dtype=torch.int64).reshape(3, *((1,) * len(spatial_shape)))
+        mask = mask.expand(3, *spatial_shape)
         augmentation = augmentation_cls(p=1.0)
         output = augmentation(mask, data_keys=["mask"])
-        self.assert_close(output, mask.flip(0))
-        image = torch.zeros((2, 3, *spatial_shape), device=device)
+        self.assert_close(output, torch.roll(mask, 1, dims=0))
+        image = torch.zeros((3, 3, *spatial_shape), device=device)
         with pytest.raises(IndexError, match="tuple index out of range"):
             augmentation(image)
 
@@ -563,40 +624,9 @@ class TestConventionAugmentationBase2D(BaseTester):
         if same_on_batch:
             for name in ("brightness_factor", "contrast_factor", "saturation_factor", "hue_factor"):
                 assert params[name].unique().numel() == 1
-
-    def test_wart_p_batch_is_accepted_by_only_four_public_concrete_classes_4425(self):
-        # Wart pin (#4425): `p_batch` is documented on the bases and reaches the constructor of exactly four
-        # public concrete classes: `RandomHorizontalFlip`, `RandomVerticalFlip`, `RandomTransplantation`, and
-        # `RandomTransplantation3D`.
-        # Every other class raises `TypeError`, and `RandomDissolving` swallows it through `**kwargs`.
-        # Snippet used to generate expected: this body, executed 2026-09-13 (torch 2.14.0): 82 public
-        # namespace classes, 9 bases, 73 concrete, accepted by the four classes named above.
-        classes = [
-            (name, augmentation)
-            for name, augmentation in vars(K).items()
-            if not name.startswith("_")
-            and isinstance(augmentation, type)
-            and issubclass(augmentation, _BasicAugmentationBase)
-        ]
-        bases = [
-            (name, augmentation) for name, augmentation in classes if name.endswith(("Base2D", "Base3D", "BaseV2"))
-        ]
-        concrete = [(name, augmentation) for name, augmentation in classes if (name, augmentation) not in bases]
-        accepted = sorted(
-            name for name, augmentation in concrete if "p_batch" in inspect.signature(augmentation.__init__).parameters
-        )
-        assert len(concrete) == 73
-        assert accepted == [
-            "RandomHorizontalFlip",
-            "RandomTransplantation",
-            "RandomTransplantation3D",
-            "RandomVerticalFlip",
-        ]
-        with pytest.raises(TypeError, match="unexpected keyword argument 'p_batch'"):
-            K.RandomAffine(degrees=45.0, p_batch=0.5)
-        assert repr(K.RandomHorizontalFlip(p=1.0, p_batch=0.5)).startswith(
-            "RandomHorizontalFlip(p=1.0, p_batch=0.5, same_on_batch=False)"
-        )
+        else:
+            for name in ("brightness_factor", "contrast_factor", "saturation_factor", "hue_factor"):
+                assert params[name].unique().numel() > 1
 
     def test_convention_global_seed_reproduces_the_draw(self):
         # Convention pin: reproducibility goes through the global torch CPU generator - `torch.manual_seed`
@@ -698,16 +728,54 @@ class TestConventionAugmentationBase2D(BaseTester):
                 float_mask.bool(), augmentation._params, augmentation.flags, transform=augmentation.transform_matrix
             )
 
+    def test_wart_intensity_container_boxes_passthrough_but_direct_dispatch_raises_4480(self, device, dtype):
+        image = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(torch.tensor([[[0.0, 0.0, 2.0, 2.0]]], device=device, dtype=dtype), mode="xyxy")
+        augmentation = K.RandomInvert(p=1.0)
+        augmentation(image)
+        with pytest.raises(NotImplementedError):
+            augmentation.transform_boxes(boxes, augmentation._params, augmentation.flags)
+        container = K.AugmentationSequential(K.RandomInvert(p=1.0), data_keys=["input", "bbox_xyxy"])
+        _, output_boxes = container(image, boxes)
+        self.assert_close(output_boxes.data, boxes.data)
+
+    def test_wart_container_skips_custom_rigid_box_handlers_4481(self, device, dtype):
+        class ShiftBoxes(K.RigidAffineAugmentationBase2D):
+            def compute_transformation(self, input, params, flags):
+                return self.identity_matrix(input)
+
+            def apply_transform(self, input, params, flags, transform=None):
+                return input
+
+            def apply_transform_box(self, input, params, flags, transform=None):
+                return Boxes(input.data + 1, mode=input.mode)
+
+        image = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
+        boxes = Boxes.from_tensor(torch.tensor([[[0.0, 0.0, 2.0, 2.0]]], device=device, dtype=dtype), mode="xyxy")
+        augmentation = ShiftBoxes(p=1.0)
+        direct = augmentation.transform_boxes(boxes, augmentation.forward_parameters(image.shape), augmentation.flags)
+        self.assert_close(direct.data, boxes.data + 1)
+        _, output_boxes = K.AugmentationSequential(augmentation, data_keys=["input", "bbox_xyxy"])(image, boxes)
+        self.assert_close(output_boxes.data, boxes.data)
+
+    def test_convention_random_erasing_also_erases_container_masks(self, device, dtype):
+        image = torch.ones(1, 1, 6, 8, device=device, dtype=dtype)
+        mask = torch.ones_like(image)
+        augmentation = K.AugmentationSequential(
+            K.RandomErasing(scale=(0.5, 0.5), ratio=(1.0, 1.0), value=0.0, p=1.0), data_keys=["input", "mask"]
+        )
+        _, output_mask = augmentation(image, mask)
+        assert torch.count_nonzero(output_mask) < output_mask.numel()
+
     def test_wart_random_plasma_replay_4445(self, device, dtype):
         # Wart pin (#4445): the three `RandomPlasma*`
         # classes draw their fractal noise inside `apply_transform` from the global generator instead of in
         # `generate_parameters`, so `params=` replay is NOT bitwise (RandomDissolving also samples during
         # application). Replaying the same `params=` under
         # the same global seed is reproducible; replaying it without reseeding is not.
-        # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu): replay
-        # max|difference| 0.5715941786766052, two reseeded replays bitwise equal.
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("RandomPlasmaBrightness builds its fractal noise in float32")
+        # A replay without reseeding differs; two replays under the same global seed are bitwise equal.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         aug = K.RandomPlasmaBrightness(p=1.0)
         x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
         torch.manual_seed(0)
@@ -772,11 +840,11 @@ class TestConventionAugmentationBase2D(BaseTester):
         aug(torch.rand(2, 3, 6, 8))
         for clone in (pickle.loads(pickle.dumps(aug)), copy.deepcopy(aug)):  # noqa: S301
             assert isinstance(clone, type(aug))
-            assert len(clone._params) == len(aug._params)
+            _assert_params_equal(clone._params, aug._params)
 
     def test_convention_parameter_valued_ranges_receive_gradients(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("the CPU rotation backward requires float32 or float64")
+        if not supports_bilinear_2d_grid_sample_backward(device, dtype):
+            pytest.skip("grid_sample backward is unavailable for this device/dtype")
         degrees = torch.nn.Parameter(torch.tensor([10.0, 20.0], device=device, dtype=dtype))
         aug = K.RandomRotation(degrees, p=1.0)
         assert dict(aug.named_parameters()) == {"_param_generator.degrees": degrees}
@@ -910,9 +978,9 @@ class TestConventionAugmentationBase2D(BaseTester):
         ],
     )
     def test_wart_zero_batch_raises_in_four_exception_families_4429(self, name, error, message, device, dtype):
-        # Wart pin (#4429): `B = 0` is not uniformly "empty in, empty out" - 20 classes raise on it, in six
-        # exception families. These four are one class per family, all raw internal errors rather than a
-        # validation message.
+        # Wart pin (#4429): `B = 0` is not uniformly "empty in, empty out". These representative
+        # augmentations raise through distinct failure paths; RandomAutoContrast is a deliberate validation
+        # error and the others expose implementation details.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu):
         # RandomCrop IndexError('list index out of range'), LongestMaxSize KeyError('output_size'),
         # RandomAutoContrast ValueError('Invalid input tensor, it is empty.'),
@@ -926,18 +994,33 @@ class TestConventionAugmentationBase2D(BaseTester):
         with pytest.raises(error, match=re.escape(message)):
             builders[name]()(torch.rand(0, 3, 6, 8, device=device, dtype=dtype))
 
-    @pytest.mark.xfail(strict=True, reason="Tracked in #4429")
-    def test_convention_zero_batch_is_empty_in_empty_out(self, device, dtype):
-        # Strict xfail (#4429): the settled convention for a degenerate batch is the #4115 rule - empty in,
-        # empty out - which the flip, the affine, an intensity op and `AugmentationSequential` already follow
-        # (pinned above). This asserts the intended behavior for the 20 classes that raise instead; it XFAILs
-        # today and turns XPASS the moment the repair lands, which is the signal to delete the wart pin above.
-        # Executed 2026-09-11 (torch 2.14.0, cpu): the first builder already raises IndexError.
+    @pytest.mark.parametrize(
+        ("augmentation", "shape"),
+        [
+            pytest.param(
+                lambda: K.RandomCrop((4, 6), p=1.0),
+                (0, 3, 4, 6),
+                marks=pytest.mark.xfail(strict=True, raises=IndexError, reason="Tracked in #4429"),
+            ),
+            pytest.param(
+                lambda: K.LongestMaxSize(16, p=1.0),
+                (0, 3, 12, 16),
+                marks=pytest.mark.xfail(strict=True, raises=KeyError, reason="Tracked in #4429"),
+            ),
+            pytest.param(
+                lambda: K.RandomAutoContrast(p=1.0),
+                (0, 3, 6, 8),
+                marks=pytest.mark.xfail(strict=True, raises=ValueError, reason="Tracked in #4429"),
+            ),
+            pytest.param(
+                lambda: K.Normalize(0.5, 0.5, p=1.0),
+                (0, 3, 6, 8),
+                marks=pytest.mark.xfail(strict=True, raises=RuntimeError, reason="Tracked in #4429"),
+            ),
+        ],
+    )
+    def test_convention_zero_batch_is_empty_in_empty_out(self, augmentation, shape, device, dtype):
+        # Strict xfail (#4429): each listed augmentation must preserve an empty batch with its intended
+        # output geometry. Per-class markers turn an unrelated repair into a failure rather than an XFAIL.
         empty = torch.rand(0, 3, 6, 8, device=device, dtype=dtype)
-        for aug in (
-            K.RandomCrop((4, 6), p=1.0),
-            K.LongestMaxSize(16, p=1.0),
-            K.RandomAutoContrast(p=1.0),
-            K.Normalize(0.5, 0.5, p=1.0),
-        ):
-            assert aug(empty).shape[0] == 0
+        assert augmentation()(empty).shape == shape

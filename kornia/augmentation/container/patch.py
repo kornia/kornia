@@ -59,10 +59,10 @@ class PatchSequential(ImageSequential):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
         patchwise_apply: apply image processing args will be applied patch-wisely.
-            if ``True``, the number of args must be equal to grid number.
+            if ``True`` and ``random_apply=False``, the number of args must equal the grid count.
             if ``False``, the image processing args will be applied as a sequence to all patches.
-        random_apply: randomly select a sublist (order agnostic) of args to
-            apply transformation.
+        random_apply: randomly select children to apply in random order. Selections may repeat when the requested
+            count is larger than the sum of the selection weights.
             If ``int`` (batchwise mode only), a fixed number of transformations will be selected.
             If ``(a,)`` (batchwise mode only), x number of transformations (a <= x <= len(args)) will be selected.
             If ``(a, b)`` (batchwise mode only), x number of transformations (a <= x <= b) will be selected.
@@ -76,15 +76,17 @@ class PatchSequential(ImageSequential):
           no ``data_keys`` and no ``.transform_matrix`` attribute.
         - ``grid_size`` is ``(rows, columns)`` of patches, and the patches are re-assembled into one tensor
           afterwards. With ``patchwise_apply=True`` and ``random_apply=False``, the number of modules must
-          equal the number of patches. ``random_apply=True`` allows a different number of modules.
+          equal the number of patches. ``random_apply=True`` allows a different number of modules. The current
+          patch-row enumeration and padding reconstruction have known defects; see
+          `#4421 <https://github.com/kornia/kornia/issues/4421>`_.
         - the ``padding`` modes are not shape-preserving: ``"same"`` and ``"valid"`` can both change the
           spatial size when the grid does not divide it, and ``"valid"`` can change the batch size as well.
 
     .. warning::
-        The patch parameters are drawn for ``B * C`` rows rather than for ``B * n_patches``, so a ``(1, 1)``
-        grid raises ``IndexError`` for ``C > 1`` and a larger grid can leave the trailing patches unaugmented.
-        ``padding="same"`` shrinks the image instead of padding it, and ``padding="valid"`` can change the
-        batch size or raise. Tracked in `#4421 <https://github.com/kornia/kornia/issues/4421>`_.
+        With ``patchwise_apply=False``, parameters use ``B * C`` rows rather than ``B * n_patches``:
+        ``C > n_patches`` can raise ``IndexError``, while fewer channels can leave trailing patches unchanged.
+        The default per-patch mode can augment only the first sample of a batch. Padding reconstruction
+        can change shape, fill borders with zero, or raise, even for a grid that divides the image. Tracked in `#4421 <https://github.com/kornia/kornia/issues/4421>`_.
 
     .. note::
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.

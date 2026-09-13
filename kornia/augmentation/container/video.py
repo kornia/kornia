@@ -62,7 +62,8 @@ class VideoSequential(ImageSequential):
         - like :class:`~kornia.augmentation.container.ImageSequential`, this container takes image tensors only: it has
           no ``data_keys`` and no ``.transform_matrix`` attribute. Register a ``VideoSequential`` as a child of
           :class:`~kornia.augmentation.container.AugmentationSequential` to augment video masks, boxes and keypoints
-          alongside the clip.
+          alongside the clip. For video boxes, use ``bbox`` vertices with shape ``(B, T, N, 4, 2)``;
+          coordinate keys ``bbox_xyxy`` and ``bbox_xywh`` do not accept ``(B, T, N, 4)`` tensors.
 
     Note:
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.

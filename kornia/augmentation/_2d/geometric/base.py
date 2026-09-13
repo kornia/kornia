@@ -41,20 +41,14 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           to the batch form ``False``.
 
     Convention:
-        - this is the only 2D base that adds an ``inverse``. It inverts the sampled matrix, so it restores
-          keypoints to the coordinates they came from, up to numerical precision. In a container, converting
-          transformed boxes to tensor outputs takes axis-aligned enclosures: a non-axis-aligned rotation
-          can lose the corners needed to recover the original boxes. Retaining a ``Boxes`` object preserves
-          its transformed corners. Inverse resampling cannot recover image or mask information lost through
-          cropping, padding or interpolation.
-        - in :class:`~kornia.augmentation.container.AugmentationSequential`, a single mask or masks with a
-          common dtype are resampled with nearest interpolation and keep that dtype, ``bool`` included, without
-          introducing intermediate labels; see :doc:`/get-started/conventions` for the multi-mask dtype
-          limitation. Sampling outside the image can also introduce the warp's padding or fill value. Direct
-          ``transform_masks`` calls use the image dtype guard and therefore reject ``bool`` masks. The container
-          guarantee holds whatever ``resample``
-          :class:`~kornia.augmentation.container.AugmentationSequential` was given in ``extra_args``; the
-          ``align_corners`` half of that override does reach the sampler.
+        - this base provides a matrix-based ``inverse`` interface. Whether a concrete augmentation can invert a
+          call depends on its implementation and configuration: slice-mode crops, for example, do not support it.
+          Inverse resampling cannot recover image or mask information lost through cropping, padding, or
+          interpolation. Tensor-form boxes may lose rotated corners through axis-aligned enclosure.
+        - container mask processing has dtype- and operator-specific limitations; see
+          `#4478 <https://github.com/kornia/kornia/issues/4478>`_ and
+          `#4479 <https://github.com/kornia/kornia/issues/4479>`_. Direct ``transform_masks`` calls use the
+          image dtype guard and therefore reject ``bool`` masks.
         - a subclass supplies its own :meth:`inverse_transform` -- the base raises ``NotImplementedError`` --
           while :meth:`compute_inverse_transformation` defaults to inverting the sampled matrix.
 
