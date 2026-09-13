@@ -680,6 +680,10 @@ class TestConventionAugmentationSequential(BaseTester):
             empty = torch.rand(*shape, device=device, dtype=dtype)
             out = aug(torch.rand(2, 1, 3, 4, device=device, dtype=dtype), empty)
             assert out[1].shape == shape
+        # `mask` is the one key whose rank changes: (B, H, W) in, (B, 1, H, W) out
+        aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+        out = aug(img, torch.rand(1, 3, 4, device=device, dtype=dtype))
+        assert out[1].shape == (1, 1, 3, 4)
 
     def test_wart_mask_lists_desynchronize_mixed_probability_batches_4477(self, device, dtype):
         # A list entry selects one sample's gate, even when that entry contains the whole batch.
@@ -729,6 +733,36 @@ class TestConventionAugmentationSequential(BaseTester):
         self.assert_close(out_masks[0], output[:1])
         self.assert_close(out_masks[1], output[:1])
         assert not torch.equal(out_masks[1], output[1:])
+
+    def test_wart_mix_children_pass_annotations_through_4493(self, device, dtype):
+        # Wart pin (#4493): the container's mask, box and keypoint handlers have no branch for a mix child, so
+        # those keys come back unchanged next to a mixed image. Called directly, RandomMosaic transforms boxes
+        # and RandomMixUpV2 raises NotImplementedError on a mask; the container hides both. A class key still
+        # raises. Seed 0 on a 16x16 batch: every listed mix applies (a 6x8 fixture can draw an empty cut box).
+        if dtype == torch.bfloat16:
+            pytest.skip("Tracked in #4467: the mix forward path has no bfloat16 DType")
+        image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        boxes = torch.tensor([[[0.0, 0.0, 2.0, 2.0]], [[1.0, 1.0, 3.0, 3.0]]], device=device, dtype=dtype)
+        mask = torch.arange(2, device=device, dtype=dtype).reshape(2, 1, 1, 1).expand(2, 1, 16, 16).clone()
+        keypoints = torch.tensor([[[1.0, 1.0]], [[2.0, 2.0]]], device=device, dtype=dtype)
+        torch.manual_seed(0)
+        container = K.AugmentationSequential(
+            K.RandomMosaic(p=1.0), data_keys=["input", "bbox_xyxy", "mask", "keypoints"]
+        )
+        out_image, out_boxes, out_mask, out_keypoints = container(image, boxes, mask, keypoints)
+        assert not torch.equal(out_image, image)  # the image was mixed
+        self.assert_close(out_boxes, boxes, rtol=0, atol=0)
+        self.assert_close(out_mask, mask, rtol=0, atol=0)
+        self.assert_close(out_keypoints, keypoints, rtol=0, atol=0)
+        torch.manual_seed(0)
+        direct_boxes = K.RandomMosaic(p=1.0, data_keys=["input", "bbox_xyxy"])(image, boxes)[1]
+        assert not torch.equal(direct_boxes, boxes)  # the same draw moves the boxes when called directly
+        with pytest.raises(NotImplementedError):
+            K.RandomMixUpV2(p=1.0)(image, mask, data_keys=["input", "mask"])
+        with pytest.raises(NotImplementedError, match="class labels"):
+            K.AugmentationSequential(K.RandomMixUpV2(p=1.0), data_keys=["input", "class"])(
+                image, torch.tensor([0, 1], device=device)
+            )
 
     def test_wart_dictionary_mask_before_image_loses_float64_precision_4478(self):
         # On a fresh container, masks preceding the image fall back to float32 before being cast back.

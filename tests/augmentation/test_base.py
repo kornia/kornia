@@ -961,6 +961,8 @@ class TestConventionAugmentationBase2D(BaseTester):
         # and an intensity op, and survives `AugmentationSequential`, keeping the (0, C, H, W) shape.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu): (0, 3, 6, 8)
         # from all four.
+        if device.type == "mps" and torch_version_lt(2, 6, 0):
+            pytest.skip("torch 2.5.1 MPS asserts on an empty placeholder tensor inside grid_sample")
         empty = torch.rand(0, 3, 6, 8, device=device, dtype=dtype)
         assert K.RandomHorizontalFlip(p=1.0)(empty).shape == (0, 3, 6, 8)
         assert K.RandomAffine(degrees=(45.0, 45.0), p=1.0)(empty).shape == (0, 3, 6, 8)

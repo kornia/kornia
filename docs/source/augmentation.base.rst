@@ -215,8 +215,7 @@ batch, while `RandomJigsaw` gates individual samples. Mixing classes do not inhe
 
 When ``0 < p_batch < 1``, the base draws a batch Bernoulli before the per-sample gate; endpoints skip the
 Bernoulli draw. With ``p=1.0, p_batch=0.0`` no sample is selected. Only some concrete constructors expose
-``p_batch`` directly; the constructor audit and `#4425 <https://github.com/kornia/kornia/issues/4425>`_
-track that limitation.
+``p_batch`` directly; `#4425 <https://github.com/kornia/kornia/issues/4425>`_ tracks that limitation.
 
 Random Generators
 ^^^^^^^^^^^^^^^^^

@@ -116,8 +116,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``.
           Feeding a coordinate layout under another coordinate key raises ``ValueError`` naming the expected shape.
           ``N = 0`` is
-          accepted on every one of them. A wrong input *rank* raises ``RuntimeError`` here rather than the
-          ``ValueError`` a bare augmentation raises.
+          accepted on every one of them. A ``mask`` is the one key whose rank changes: a ``(B, H, W)`` mask is
+          accepted and returned as ``(B, 1, H, W)``. A wrong input *rank* raises ``RuntimeError`` here rather than
+          the ``ValueError`` a bare augmentation raises.
         - boxes are read and written in the inclusive ``xyxy_plus`` convention of
           :class:`~kornia.geometry.boxes.Boxes`, which is one unit wider per axis than the exclusive ``xyxy``
           of torchvision and COCO. Flips follow the same inclusive, integer-centre rule as
@@ -189,8 +190,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         Tracked in `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
 
     .. note::
-        Mix augmentations (e.g. RandomMixUp, RandomCutMix) can only be working with "input"/"image" data key.
-        It is not clear how to deal with the conversions of masks, bounding boxes and keypoints.
+        Inside this container a mix child (e.g. RandomMixUpV2, RandomCutMixV2, RandomMosaic) mixes the image only.
+        A ``class``/``label`` key raises ``NotImplementedError``, and ``mask``, box and ``keypoints`` keys are
+        returned unchanged, silently desynchronized from the mixed image, even where the class transforms that
+        key when called directly (``RandomMosaic`` boxes). Tracked in
+        `#4493 <https://github.com/kornia/kornia/issues/4493>`_.
 
     .. note::
         See a working example `here <https://www.kornia.org/tutorials/nbs/data_augmentation_sequential.html>`__.

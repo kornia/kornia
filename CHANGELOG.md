@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-* Documented the contract every `kornia.augmentation` class inherits — the `(B, C, H, W)` float working layout
+* Documented the shared 2D contract of `kornia.augmentation` — the `(B, C, H, W)` float working layout
   and `keepdim`, `p` / `p_batch` / `same_on_batch`, where random parameters are drawn and how `torch.manual_seed`
   and `params=` replay them, what a module serializes, and what `AugmentationSequential` does with each data key
   (layouts, the inclusive `xyxy_plus` boxes and integer-centre flips, nearest masks, `extra_args`, `inverse`) —
