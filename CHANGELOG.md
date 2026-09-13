@@ -396,6 +396,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   drawn sub-policy contains a non-geometric operation, instead of silently returning a tensor that still
   carries it -- for a draw with no geometry at all, the input unchanged. Only geometric operations are
   invertible, and the sub-policy is redrawn on every forward pass. (#4456)
+* Fixed `RandomPlasmaBrightness`, `RandomPlasmaContrast`, and `RandomPlasmaShadow` to replay deterministically from stored `params=`. (#4462)
+* `ManyToManyAugmentationDispather` now rejects mismatched numbers of input bundles and
+  augmentations before applying any transformation, instead of silently dropping surplus inputs
+  or skipping augmentations. (#4461)
 * `PatchSequential` now augments every patch of every image and runs the complete selected sequence.
   The padding, reconstruction and parameter-generation behaviour changes are listed under
   *Breaking changes*. Refs #4421. (#4460)
