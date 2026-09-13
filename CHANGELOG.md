@@ -404,6 +404,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `bbox_to_mask3d` now preserves the input dtype in the returned mask, matching `bbox_to_mask`
+  and the `Boxes3D.to_mask` contract: the earlier implementation downcast every result to
+  `float32`, so a `float64` or half-precision box produced a mask that silently lost precision.
+  The mask keeps the input box's dtype end to end. (#4376)
 * Fixed `RandomPlasmaBrightness`, `RandomPlasmaContrast`, and `RandomPlasmaShadow` to replay deterministically from stored `params=`. (#4462)
 * `ManyToManyAugmentationDispather` now rejects mismatched numbers of input bundles and
   augmentations before applying any transformation, instead of silently dropping surplus inputs
