@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Optional-dependency extra `kornia[image]` installs Pillow for PIL-backed image input/output,
+  display helpers and `kornia.io.sample`; missing-Pillow errors now name the extra to install, and the unused
+  `DinoVisionTransformer.forward_features_list` list path has been removed. (#4464)
 * Documented the shared 2D contract of `kornia.augmentation` — the `(B, C, H, W)` float working layout
   and `keepdim`, `p` / `p_batch` / `same_on_batch`, where random parameters are drawn and how `torch.manual_seed`
   and `params=` replay them, what a module serializes, and what `AugmentationSequential` does with each data key
@@ -410,6 +413,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `torch.compile` fullgraph-safe, with the drawn `_params["order"]` entry ignored when it is set.
   (#4437, #4490)
 
+* `kornia.enhance.equalize`, `equalize3d`, `RandomEqualize` and `RandomEqualize3D` raise a `RuntimeError` naming
+  the `[0, 1]` input range for values the 256-bin lookup cannot index, instead of a raw
+  `index 259 is out of bounds for dimension 1 with size 256` from the gather. The check uses
+  `torch._assert_async`, so it adds no device sync and `torch.compile` fullgraph still works, and inputs that
+  equalized before (including values a hair above 1) are unchanged. The docstrings now state the range, the
+  256-bin histogram, and that a 3D volume of at most 255 voxels per channel comes back unchanged.
+  (#4431, #4432, #4489)
+
+* `kornia.contrib.diamond_square` generates fractals with a spatial side below 3 px. A 1 px side raised
+  `ValueError: math domain error` and a 2 px side a `TypeError` from a float in the `torch.rand` size, so
+  `RandomPlasmaBrightness`, `RandomPlasmaContrast` and `RandomPlasmaShadow` failed on such images. A small
+  side is now drawn on the 3 px grid and sliced; outputs for sides of 3 px and more are bit-identical.
+  (#4472, #4488)
+
+* `RandomBoxBlur`'s `normalized` argument is documented as what it does. It was described as "if True, L1 norm
+  of the kernel is set to 1", but it was forwarded positionally into `kornia.filters.box_blur`'s `separable`
+  parameter: it chooses between the separable and the single 2D pass, and the kernel is L1-normalized either
+  way, so `normalized=False` returns window means, not sums. The call now passes `border_type` and
+  `separable` by keyword; outputs are unchanged. (#4433, #4486)
+
+* `So3.exp`, `So3.log`, `Se3.exp`, `Se3.log` and `Se2.exp` return finite gradients at the identity,
+  and `So3.log` also at a half turn, instead of `nan` on every dtype. The forward values are unchanged;
+  `torch.where` was differentiating the singular branch it does not select. (#4405)
+* `ycbcr_to_rgb` now uses the exact inverse of the `rgb_to_ycbcr` coefficients, so an
+  `rgb -> ycbcr -> rgb` round trip is lossless to floating-point precision instead of drifting
+  by ~2.7e-4. The forward transform is unchanged. (#4378)
+* `bbox_to_mask3d` now preserves the input dtype in the returned mask, matching `bbox_to_mask`
+  and the `Boxes3D.to_mask` contract: the earlier implementation downcast every result to
+  `float32`, so a `float64` or half-precision box produced a mask that silently lost precision.
+  The mask keeps the input box's dtype end to end. (#4376)
 * Fixed `RandomPlasmaBrightness`, `RandomPlasmaContrast`, and `RandomPlasmaShadow` to replay deterministically from stored `params=`. (#4462)
 * `ManyToManyAugmentationDispather` now rejects mismatched numbers of input bundles and
   augmentations before applying any transformation, instead of silently dropping surplus inputs
@@ -423,6 +456,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * `RandomThinPlateSpline(scale=0.0)` now generates zero control-point displacement instead of
   raising an error when constructing a degenerate uniform distribution. (#4463)
+* `unproject_meshgrid` now requires camera intrinsics of shape `(B, 3, 3)`, rejecting extra
+  camera axes before they can broadcast across pixel columns and reporting the caller's original shape. (#4383)
+* Correct non-zero sensor tilt in `tilt_projection` and `distort_points` to match OpenCV,
+  restoring forward/inverse round trips and correcting `undistort_image` sampling. (#4384)
+
+* `reproject_disparity_to_3D` (the `StereoCamera` method and the module-level function, which share
+  one body) no longer transposes the two pixel indices. The pixel meshgrid was unbound as
+  `v, u = torch.unbind(uv, dim=-1)`, but `create_meshgrid(normalized_coordinates=False)` returns
+  `(x, y)`, so the column fed `v` and the row fed `u`: `X` was computed from the row and `Y` from
+  the column. Every returned point was the value belonging to its transposed pixel -- kornia's
+  answer at `(row, col)` was what `cv2.reprojectImageTo3D` puts at `(col, row)`, the OpenCV
+  semantics this function was added to provide (#2042). A square rig with `fx == fy` and
+  `cx == cy` agrees only on the diagonal, so the error was silent rather than absent. Output
+  changes at every pixel with `row != col`, square inputs included. The real-data regression
+  fixture stored ten points as ten rows of one column while its own comment and its ground truth
+  describe one row of ten columns,
+  which is why it passed against the swapped code; it is now laid out as the comment says, and
+  the fixed code reproduces the unchanged ground-truth values. #4317's two wart pins for this defect
+  are retired and its strict-xfail convention test is now an ordinary passing regression. (#4269, #4366)
+
 * `RandomRain` with `same_on_batch=True` now samples the same number of rain drops for all samples in the batch. (#4453)
 * `RandomRain` now rejects drop heights equal to the image height and absolute drop widths equal to the image
   width with the documented validation error, instead of allowing boundary-sized drops to reach an internal
@@ -507,6 +560,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the origin, and the exact principal-point path now has finite autograd gradients. The zero-radius decision is
   made from the unsquared normalized coordinates, and the `float16` radius uses `float32` intermediates so its
   squared value does not underflow; nonzero radial rescaling remains epsilon-free. (#4308, #4370)
+* `solve_quartic` now validates Ferrari resolvent candidates with a dtype-aware scaled residual,
+  falls back to the smallest scaled residual when no candidate passes, and keeps the Ferrari `E`
+  factorization away from an ill-conditioned `R` division. Cancellation-level `R^2` is snapped to
+  zero relative to the coefficient scale, and all Ferrari compute dtypes choose between the linear-
+  and constant-term `E` forms by normalized coefficient error; float32 also refines the selected
+  resolvent root once. The gradient-safe zero-radicand path remains intact, preventing half-precision
+  non-finite or dropped roots and full-precision non-roots while preserving the public contract. (#4357)
 
 * `StereoCamera` now rejects projection matrices whose last two dimensions are not `(3, 4)` with a
   `StereoException` naming the invalid camera. Previously, the shape guards never fired, so malformed
@@ -523,6 +583,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transform or map batch broadcasts identically and a mismatched batch is rejected rather than silently
   returning the wrong cardinality. Outputs, autograd links and the documented empty-source policy are unchanged
   on CPU and CUDA. (#4032, #4354)
+* `VideoBoxes.get_boxes_shape()` and `VideoBoxes.to_mask()` no longer raise `TypeError`. Both are
+  inherited from `Boxes` and pass `as_padded_sequence=True` to `to_tensor`, but the `VideoBoxes`
+  override declared only `mode`, so every call on a `VideoBoxes` failed -- including the containers
+  `AugmentationSequential` builds for video box inputs. The override now accepts and forwards the
+  keyword; it only changes a list-backed container, and a `VideoBoxes` built from a
+  `(B, T, N, 4, 2)` tensor is not one, so no working call changes its result. Indexing a
+  `VideoBoxes` still drops `temporal_channel_size`, which is the remaining half of #4249.
+  (#4176, #4365)
 
 * Fixed `unproject_points_z1` depth shape handling for singleton and multi-axis batches,
   accepting both trailing-singleton and flat depth tensors. (#4355)

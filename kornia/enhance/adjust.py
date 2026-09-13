@@ -964,9 +964,15 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     n = shape[0] * shape[1]
     scaled = input.reshape(n, -1) * 255.0  # (N, P)
 
-    # Input is expected in [0, 1] (see the docstring). Out-of-range values are clamped into the
-    # 256-bin range below rather than raising: the previous ``.item()`` range check forced two
-    # device syncs and broke ``torch.compile`` fullgraph for no correctness benefit on valid input.
+    # Input is expected in [0, 1]. The histogram index below is clamped, but the LUT lookup indexes
+    # with the unclamped ``scaled.long()``, which is out of bounds unless ``scaled`` is in (-1, 256).
+    # Check that domain without ``.item()``, so there is no device sync and fullgraph still compiles;
+    # inputs the lookup can index keep working exactly as before.
+    _assert_async_value_check(
+        ((scaled > -1.0) & (scaled < 256.0)).all(),
+        "equalize expects input values in [0, 1]. Scale the image into that range first, "
+        "for example image / 255.0 for 8-bit data.",
+    )
 
     # Per-plane 256-bin histogram matching ``torch.histc(x, 256, 0, 255)`` bin placement.
     bins = torch.clamp((scaled * (256.0 / 255.0)).floor().long(), 0, 255)
@@ -1051,6 +1057,12 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     Returns:
         Equalized image torch.Tensor with shape :math:`(*, C, H, W)`.
 
+    .. note::
+       The input is expected in :math:`[0, 1]`, and each channel is equalized from a 256-bin histogram.
+       Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError``
+       naming the range. The check runs on CPU and CUDA (via ``torch._assert_async``); on MPS it is
+       skipped, as for :func:`adjust_gamma`.
+
     Example:
         >>> x = torch.rand(1, 2, 3, 3)
         >>> equalize(x).shape
@@ -1073,6 +1085,14 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
 
     Returns:
         Equalized volume with shape :math:`(B, C, D, H, W)`.
+
+    .. note::
+       The input is expected in :math:`[0, 1]`, and each channel's whole :math:`(D, H, W)` volume is
+       equalized from one 256-bin histogram. The lookup step is an integer division by 255, so a volume
+       with no more than 255 voxels per channel is returned unchanged; just above that, whether it changes
+       depends on the values. Values the 256-bin lookup cannot index (outside roughly :math:`[0, 1]`)
+       raise a ``RuntimeError`` naming the range. The check runs on CPU and CUDA (via
+       ``torch._assert_async``); on MPS it is skipped.
 
     """
     # Scales each channel independently (each (D, H, W) volume), batched over (B, C).
