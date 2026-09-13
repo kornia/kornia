@@ -201,12 +201,12 @@ class TestBoxes2D(BaseTester):
 
     def test_wart_constructor_and_from_tensor_have_different_integer_policies_4012(self, device):
         # Wart pin for kornia#4012: the constructor rejects integer coordinates,
-        # while from_tensor silently casts them to float32.
+        # while from_tensor silently casts them to the default dtype.
         vertices = torch.tensor([[[1, 2], [4, 2], [4, 3], [1, 3]]], device=device)
         with pytest.raises(ValueError, match="floating point"):
             Boxes(vertices)
         coordinates = torch.tensor([[1, 2, 5, 4]], device=device)
-        assert Boxes.from_tensor(coordinates, mode="xyxy").dtype == torch.float32
+        assert Boxes.from_tensor(coordinates, mode="xyxy").dtype == torch.get_default_dtype()
 
         # A list is padded into a tensor of its first element's dtype before the
         # check, so a mixed-dtype list is judged by its first box alone.
@@ -1636,13 +1636,13 @@ class TestBbox3D(BaseTester):
 
     def test_wart_constructor_and_from_tensor_have_different_integer_policies_4012(self, device):
         # Wart pin for kornia#4012 (its 3D form): the constructor rejects integer coordinates
-        # unless told to cast, while from_tensor silently casts them to float32.
+        # unless told to cast, while from_tensor silently casts them to the default dtype.
         vertices = torch.tensor([[[1, 2, 3]] * 8], device=device)
         with pytest.raises(ValueError, match="floating point"):
             Boxes3D(vertices)
-        assert Boxes3D(vertices, raise_if_not_floating_point=False).dtype == torch.float32
+        assert Boxes3D(vertices, raise_if_not_floating_point=False).dtype == torch.get_default_dtype()
         integer = torch.tensor([[1, 2, 3, 5, 5, 8]], device=device)
-        assert Boxes3D.from_tensor(integer, mode="xyzxyz").dtype == torch.float32
+        assert Boxes3D.from_tensor(integer, mode="xyzxyz").dtype == torch.get_default_dtype()
         assert Boxes3D.from_tensor(integer.to(torch.float16), mode="xyzxyz").dtype == torch.float16
 
     def test_wart_to_tensor_default_mode_ignores_the_stored_label_4251(self, device, dtype):

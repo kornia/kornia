@@ -246,7 +246,7 @@ class Boxes:
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False``. A list input is
           padded into a tensor of its *first* element's dtype before that check, so a mixed-dtype list is accepted
           or rejected by its first box alone and the remaining boxes are cast to that dtype. For a single tensor,
-          :meth:`from_tensor` silently casts integer input to ``float32``. For a list, it converts each element
+          :meth:`from_tensor` silently casts integer input to ``torch.get_default_dtype()``. For a list, it converts each element
           independently and then pads into the first converted element's dtype, recasting the remaining elements.
         - :meth:`merge` concatenates boxes along the box axis and repacks list-backed batch rows so their padding
           remains at the end, while :meth:`index_put` replaces selected coordinates. Both methods are non-mutating
@@ -1080,7 +1080,7 @@ class VideoBoxes(Boxes):
     Convention:
         - :meth:`from_tensor` stores the :math:`(B, T, N, 4, 2)` input unchanged as batched
           :math:`(B \cdot T, N, 4, 2)` ``'vertices_plus'`` data; there is no mode argument, no conversion and no
-          validation, and integer input is cast to ``float32``. Any other rank or last dimensions, and list input,
+          validation, and integer input is cast to ``torch.get_default_dtype()``. Any other rank or last dimensions, and list input,
           raise ``ValueError``.
         - :meth:`to_tensor` accepts every :class:`Boxes` export mode and restores the temporal axis, so
           ``to_tensor('xyxy')`` is :math:`(B, T, N, 4)`. Its default is the stored ``'vertices_plus'`` mode.
@@ -1116,7 +1116,7 @@ class VideoBoxes(Boxes):
             boxes: Box corners with shape :math:`(B, T, N, 4, 2)` in
                 ``vertices_plus`` order (top-left, top-right, bottom-right,
                 bottom-left), stored unchanged; integer input is cast to
-                ``float32``. Lists of tensors are not supported yet.
+                ``torch.get_default_dtype()``. Lists of tensors are not supported yet.
             validate_boxes: Forwarded to ``_boxes_to_quadrilaterals``. The
                 ``vertices_plus`` path used here builds corners directly and
                 performs no size check, so this flag currently has no effect.
@@ -1213,7 +1213,7 @@ class Boxes3D:
           are not positive in the given mode's convention, so ``xmax == xmin`` is rejected in ``'xyzxyz'`` and
           accepted in ``'xyzxyz_plus'``.
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False``;
-          :meth:`from_tensor` silently casts integer input to ``float32``.
+          :meth:`from_tensor` silently casts integer input to ``torch.get_default_dtype()``.
         - :meth:`transform_boxes` leaves the source unchanged and returns a new object labelled
           ``'xyzxyz_plus'``; :meth:`transform_boxes_` rebinds the internal tensor of ``self`` and keeps the label.
 
@@ -1306,7 +1306,7 @@ class Boxes3D:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes3D`.
 
         Args:
-            boxes: 3D boxes, shape of :math:`(N,6)` or :math:`(B,N,6)`; integer input is cast to ``float32``.
+            boxes: 3D boxes, shape of :math:`(N,6)` or :math:`(B,N,6)`; integer input is cast to ``torch.get_default_dtype()``.
             mode: The format in which the 3D boxes are provided, matched case-insensitively.
 
                 * 'xyzxyz': boxes are assumed to be in the format ``xmin, ymin, zmin, xmax, ymax, zmax`` where
