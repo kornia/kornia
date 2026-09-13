@@ -172,6 +172,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-tree MPS workarounds stay. (#4202)
 
 ### Breaking changes
+* `PinholeCamera(...)` now clones its `intrinsics`, `extrinsics`, `height`, and `width` inputs instead of storing
+  the caller's tensors by reference. `scale_()` and the `tx` / `ty` / `tz` setters still mutate the camera in place,
+  but no longer write through to those constructor arguments; code that relied on bidirectional storage aliasing
+  must mutate the camera's tensors explicitly. A camera returned by `PinholeCamerasList.get_pinhole()` is likewise
+  independent of the list's backing storage. (#4264)
+
 * `PatchSequential` now preserves the batch size in both padding modes. `same` preserves the input
   spatial size and `valid` keeps only the complete, centred grid region. Previously, a `(2,3,8,8)`
   input on a `(3,3)` grid produced `(2,3,7,7)` with `same` (now `(2,3,8,8)`) and `(2,3,8,8)` with
@@ -615,10 +621,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   step: a rejected entry is moved aside, the next source is tried, and the discarded source is
   re-fetched once. Without `validate` the behaviour is unchanged. (#4309, #4332)
 
-* `PinholeCamera.scale` no longer shares its `extrinsics` tensor with the source camera. The
-  intrinsics were cloned, the extrinsics were handed to the new object by reference, and the
-  constructor stores what it is given, so `scaled.tx = 7` moved the camera `scale()` was called on.
-  The returned camera's numbers are unchanged. (#4264, #4349)
+* `PinholeCamera.scale` no longer shares its `extrinsics` tensor with the source camera, so
+  `scaled.tx = 7` leaves the camera `scale()` was called on unchanged. The returned camera's numbers are unchanged.
+  (#4264, #4349)
 
 * A fresh transfer that `validate` rejects is now removed even when no other source could have used
   the emptied path -- which is every `download_hf_file` caller, since it passes one URL. Those bytes
