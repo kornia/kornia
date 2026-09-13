@@ -31,7 +31,7 @@ from kornia.augmentation.container import AugmentationSequential
 from kornia.geometry.bbox import bbox_to_mask
 
 from testing.augmentation.utils import reproducibility_test
-from testing.base import BaseTester
+from testing.base import BaseTester, assert_close
 
 
 def _find_all_ops() -> List[OperationBase]:
@@ -264,9 +264,20 @@ def test_inverse_refuses_a_non_invertible_draw(intensity_only, mixed, geometry_o
         with pytest.raises(RuntimeError, match="is not supported"):
             aug.inverse(aug(x))
 
-    # a geometry-only draw still inverts, unchanged
+    # a geometry-only draw still inverts. A ramp is what bilinear resampling reproduces
+    # exactly, so replaying the same draw backwards has to return it -- everywhere except
+    # the pixels the draw pushed out of frame, which the same round trip over ``ones``
+    # marks for us.
     aug = geometry_only()
-    aug.inverse(aug(x))
+    ramp = 0.5 * (
+        torch.linspace(0, 1, 8, device=device, dtype=dtype)[:, None]
+        + torch.linspace(0, 1, 6, device=device, dtype=dtype)
+    ).expand(2, 3, 8, 6)
+    params = aug.forward_parameters(ramp.shape)
+    kept = aug.inverse(aug(torch.ones_like(ramp), params=params), params=params) > 1 - 1e-4
+    assert kept.any(), "the drawn geometry pushed the whole image out of frame"
+    round_trip = aug.inverse(aug(ramp, params=params), params=params)
+    assert_close(round_trip[kept], ramp[kept], rtol=1e-4, atol=1e-4)
 
 
 def test_inverse_without_a_forward_pass_still_reports_missing_params(device, dtype):

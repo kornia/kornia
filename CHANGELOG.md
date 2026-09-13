@@ -379,6 +379,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `AutoAugment`, `RandAugment` and `TrivialAugment` now raise a `RuntimeError` from `inverse` when the
+  drawn sub-policy contains a non-geometric operation, instead of silently returning a tensor that still
+  carries it -- for a draw with no geometry at all, the input unchanged. Only geometric operations are
+  invertible, and the sub-policy is redrawn on every forward pass. (#4456)
 * `pixel2cam` now validates the full `Bx4x4` shape of `intrinsics_inv`, rejecting invalid matrix sizes
   before they cause unrelated transformation errors or return the wrong number of coordinate components. (#4381)
 * `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
