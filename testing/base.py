@@ -197,6 +197,17 @@ def supports_bilinear_2d_grid_sample(device: torch.device, dtype: torch.dtype) -
     return _supports_kernel_probe(_bilinear_2d_grid_sample_op, device.type, dtype)
 
 
+def _bilinear_2d_grid_sample_backward_op(device_type: str, dtype: torch.dtype) -> None:
+    inp = _probe_zeros(device_type, dtype, 1, 1, 2, 2).requires_grad_()
+    grid = _probe_zeros(device_type, dtype, 1, 1, 1, 2).requires_grad_()
+    F.grid_sample(inp, grid, mode="bilinear", align_corners=True).sum().backward()
+
+
+def supports_bilinear_2d_grid_sample_backward(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether 2D bilinear grid sampling supports gradients to both input and grid for this device/dtype."""
+    return _supports_kernel_probe(_bilinear_2d_grid_sample_backward_op, device.type, dtype)
+
+
 def _bicubic_2d_grid_sample_op(device_type: str, dtype: torch.dtype) -> None:
     inp = _probe_zeros(device_type, dtype, 1, 1, 2, 2)
     grid = _probe_zeros(device_type, dtype, 1, 1, 1, 2)
@@ -240,6 +251,15 @@ def supports_nearest_3d_grid_sample(device: torch.device, dtype: torch.dtype) ->
     auto-enable once PyTorch adds the missing interpolation kernel.
     """
     return _supports_kernel_probe(_nearest_3d_grid_sample_op, device.type, dtype)
+
+
+def _reflect_padding_op(device_type: str, dtype: torch.dtype) -> None:
+    F.pad(_probe_zeros(device_type, dtype, 1, 1, 2, 2), (1, 1, 1, 1), mode="reflect")
+
+
+def supports_reflect_padding(device: torch.device, dtype: torch.dtype) -> bool:
+    """Whether this device supports 2D reflection padding for this dtype, probed once per device/dtype."""
+    return _supports_kernel_probe(_reflect_padding_op, device.type, dtype)
 
 
 def _replicate_padding_op(device_type: str, dtype: torch.dtype) -> None:
