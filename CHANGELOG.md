@@ -404,6 +404,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `ycbcr_to_rgb` now uses the exact inverse of the `rgb_to_ycbcr` coefficients, so an
+  `rgb -> ycbcr -> rgb` round trip is lossless to floating-point precision instead of drifting
+  by ~2.7e-4. The forward transform is unchanged. (#4378)
 * `bbox_to_mask3d` now preserves the input dtype in the returned mask, matching `bbox_to_mask`
   and the `Boxes3D.to_mask` contract: the earlier implementation downcast every result to
   `float32`, so a `float64` or half-precision box produced a mask that silently lost precision.
