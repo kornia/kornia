@@ -441,6 +441,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `align_corners=False` offset as a single division, so eager and graph capture agree bit for bit at
   every size rather than differing by one `float32` step at 5 of the first 4999.
   Fixes #3904, #3928, #3929, #4411. (#3945)
+* `RandomCutMixV2` and `CutmixGenerator` document `cut_size` as what it is: the `[min, max]` clamp on the
+  Beta-sampled mixing coefficient `lambda`, where the cut side is `floor(sqrt(1 - lambda) * side)`, so a larger
+  `cut_size` gives a smaller cut. It was described as the "minimum and maximum cut ratio". A minimum of `1.0` is
+  now rejected with a `ValueError`: it forced `lambda = 1`, built an inverted zero-size box and silently made the
+  augmentation an identity. (#4439, #4491)
+
 * Made uncompiled `RandomGaussianIllumination` instances serializable with `pickle` and `torch.save`,
   preserving parameter replay and the `compile()` execution path after restoring the module. (#4457)
 * The `Args` blocks of `ColorJitter`, `RandomBrightness` and `RandomGaussianBlur` no longer document a
