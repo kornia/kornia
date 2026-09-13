@@ -4867,6 +4867,28 @@ class TestRandomPlasma:
         out = aug(img)
         assert out.shape == (2, 3, 4, 5)
 
+    @pytest.mark.parametrize(
+        "augmentation_cls",
+        [
+            RandomPlasmaBrightness,
+            RandomPlasmaContrast,
+            RandomPlasmaShadow,
+        ],
+    )
+    def test_params_replay_4445(self, augmentation_cls, device, dtype):
+        torch.manual_seed(0)
+
+        input = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        aug = augmentation_cls(p=1.0).to(device)
+
+        output = aug(input)
+        params = aug._params
+
+        torch.manual_seed(123)
+        replayed = aug(input, params=params)
+
+        assert torch.equal(output, replayed)
+
 
 class TestPlanckianJitter(BaseTester):
     def _get_expected_output_blackbody(self, device, dtype):
@@ -5544,6 +5566,35 @@ class TestRandomThinPlateSpline(CommonTests):
         diffs = [(params["dst"][0] - params["dst"][j]).abs().sum().item() for j in range(1, 4)]
 
         assert any(d > 0 for d in diffs)
+
+    @pytest.mark.parametrize("batch_size", [0, 1, 4])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_zero_scale_parameters(self, batch_size, same_on_batch, device, dtype):
+        aug = self._augmentation_cls(scale=0.0, same_on_batch=same_on_batch, p=1.0)
+        aug.set_rng_device_and_dtype(device=device, dtype=dtype)
+
+        params = aug.generate_parameters((batch_size, 3, 6, 8))
+
+        assert params["dst"].shape == (batch_size, 5, 2)
+        assert params["dst"].device == device
+        assert params["dst"].dtype == dtype
+        self.assert_close(params["dst"], params["src"], atol=0, rtol=0)
+
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_zero_scale_identity(self, same_on_batch, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
+        # align_corners=False has a separate sampling-grid defect tracked in #3928.
+        aug = self._augmentation_cls(scale=0.0, align_corners=True, same_on_batch=same_on_batch, p=1.0)
+        image = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8) / 48
+        image = image.expand(2, 1, 6, 8).clone().requires_grad_()
+
+        output = aug(image)
+
+        self.assert_close(output, image)
+        self.assert_close(aug(image, params=aug._params), output)
+        output.sum().backward()
+        self.assert_close(image.grad, torch.ones_like(image))
 
     @pytest.mark.slow
     def _test_gradcheck_implementation(self, params):

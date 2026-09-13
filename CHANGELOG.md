@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* Documented the shared 2D contract of `kornia.augmentation` — the `(B, C, H, W)` float working layout
+  and `keepdim`, `p` / `p_batch` / `same_on_batch`, where random parameters are drawn and how `torch.manual_seed`
+  and `params=` replay them, what a module serializes, and what `AugmentationSequential` does with each data key
+  (layouts, the inclusive `xyxy_plus` boxes and integer-centre flips, nearest masks, `extra_args`, `inverse`) —
+  as Convention blocks on the base classes and containers, with the canonical randomness and serialization
+  statements on the Conventions & Pitfalls page and executable pins. The contracts distinguish sampler and
+  returned-parameter placement, trainable range parameters, application-time replay exceptions, padding labels,
+  information lost by rotated tensor boxes, mask-list gates, mixed mask dtypes, dictionary-key exceptions,
+  and the transplantation constructors. Scope corrections and regression tests cover mix-specific contracts,
+  inverse support, mask erasing/filtering/precision, nested matrices, serialization and sampler limitations;
+  the container, `p_batch`,
+  `set_rng_device_and_dtype`, `state_dict` and `B = 0` defects are tracked in dedicated issues. (#4452)
 * Implemented the exported Brown-Conrady, Kannala-Brandt K3, and Orthographic sensor camera models,
   including distortion/projection plumbing, intrinsic matrices, and batched project/unproject support. (#4284, #4377)
 * New "Camera and world conventions across the ecosystem" page cataloguing the pixel-centre, axis
@@ -160,6 +172,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-tree MPS workarounds stay. (#4202)
 
 ### Breaking changes
+* `PatchSequential` now preserves the batch size in both padding modes. `same` preserves the input
+  spatial size and `valid` keeps only the complete, centred grid region. Previously, a `(2,3,8,8)`
+  input on a `(3,3)` grid produced `(2,3,7,7)` with `same` (now `(2,3,8,8)`) and `(2,3,8,8)` with
+  `valid` (now `(2,3,6,6)`). With `valid`, a `(2,3,6,8)` input on a `(4,4)` grid changed the batch
+  size to produce `(3,3,6,6)`; it now produces `(2,3,4,8)`. Geometric children may move temporarily
+  padded zeroes into the retained image. `restore_from_patches` now defaults to `self.grid_size`
+  instead of `(4,4)` and raises `ValueError` for a mismatched patch count instead of inferring a
+  different batch size or failing later in reshape. `forward_parameters` accepts both image
+  `(B,C,H,W)` and patch `(B,N,C,h,w)` shapes; parameter generation now covers `B*N` patch rows rather
+  than `B*C`, so fixed-seed outputs and RNG consumption can change. Refs #4421. (#4460)
+
 * Removed the unused `preprocess_boxes` helper, which had no public export or caller. (#4181, #4321)
 
 * `kornia_rs>=0.1.14` is required; the floor used to be 0.1.9. kornia_rs 0.1.11 relocated its image I/O
@@ -385,6 +408,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the `Boxes3D.to_mask` contract: the earlier implementation downcast every result to
   `float32`, so a `float64` or half-precision box produced a mask that silently lost precision.
   The mask keeps the input box's dtype end to end. (#4376)
+* Fixed `RandomPlasmaBrightness`, `RandomPlasmaContrast`, and `RandomPlasmaShadow` to replay deterministically from stored `params=`. (#4462)
+* `ManyToManyAugmentationDispather` now rejects mismatched numbers of input bundles and
+  augmentations before applying any transformation, instead of silently dropping surplus inputs
+  or skipping augmentations. (#4461)
+* `PatchSequential` now augments every patch of every image and runs the complete selected sequence.
+  The padding, reconstruction and parameter-generation behaviour changes are listed under
+  *Breaking changes*. Refs #4421. (#4460)
+* `RandomMosaic` now preserves `(H, W)` for non-square inputs when `output_size=None`; it previously
+  returned `(W, H)`. `start_ratio_range` now scales x by width and y by height; it previously scaled
+  x by height and y by width. (#4459)
+
+* `RandomThinPlateSpline(scale=0.0)` now generates zero control-point displacement instead of
+  raising an error when constructing a degenerate uniform distribution. (#4463)
 * `RandomRain` with `same_on_batch=True` now samples the same number of rain drops for all samples in the batch. (#4453)
 * `RandomRain` now rejects drop heights equal to the image height and absolute drop widths equal to the image
   width with the documented validation error, instead of allowing boundary-sized drops to reach an internal
@@ -392,7 +428,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `depth_to_normals` now raises `ShapeError` when `H < 2` or `W < 2`, since surface normals need two
   tangent directions. Previously, singleton axes could yield zero or non-finite normals, and empty
   spatial dimensions failed inside padding. Inputs with both dimensions at least 2 are unchanged. (#4458)
-
+* `Boxes.pad`, `Boxes.unpad` and `Boxes.clamp` accept the unbatched `(N, 4, 2)` container the class
+  documents and constructs. All three assumed the batched `(B, N, 4, 2)` indexing: `pad` and `unpad`
+  broadcast the padding as `(B, 1, 1)`, which does not fit the unbatched `(N, 4)` coordinate view and
+  raised `RuntimeError: output with shape [1, 4] doesn't match the broadcast shape [1, 1, 4]`, and `clamp`
+  materialized its bounds with `repeat(1, _data.size(1), 4)` and raised `IndexError: too many indices for
+  tensor of dimension 2`. Adding a leading singleton batch axis to the same boxes made all three work.
+  They now broadcast against whichever rank the container holds and match the singleton-batch result;
+  an unbatched container carries one image, so a per-image tensor with more than one row is rejected.
+  Batched results are byte-identical, including for a non-finite bound: `clamp` stays comparison-based, so
+  a `NaN` bound leaves the coordinate alone rather than propagating into it (closes #4244). (#4372)
 * `RandAugment`'s `m` guard is exclusive at both ends, but its docstring and its error message
   both named the closed interval `[0, 30]`, so a user who asked for the maximum strength the
   message advertised got an exception saying `30` was in range. Both now read `(0, 30)`; the
