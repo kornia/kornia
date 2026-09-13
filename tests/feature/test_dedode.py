@@ -22,6 +22,7 @@ import torch
 
 from kornia.feature.dedode import DeDoDe
 from kornia.feature.dedode.decoder import ConvRefiner
+from kornia.feature.dedode.transformer.dinov2 import DinoVisionTransformer
 from kornia.feature.dedode.transformer.layers import MemEffAttention, NestedTensorBlock
 
 from testing.base import BaseTester
@@ -73,6 +74,29 @@ class TestNestedTensorBlock(BaseTester):
 
         with pytest.raises(TypeError, match="nested-tensor list path was removed"):
             block([x])
+
+
+class TestDinoVisionTransformer(BaseTester):
+    def test_forward_features_tensor(self, device, dtype):
+        model = DinoVisionTransformer(
+            img_size=8,
+            patch_size=4,
+            embed_dim=8,
+            depth=1,
+            num_heads=2,
+            mlp_ratio=2,
+            block_chunks=0,
+        ).to(device, dtype)
+        x = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        masks = torch.zeros(2, 4, device=device, dtype=torch.bool)
+
+        features = model.forward_features(x, masks)
+
+        assert set(features) == {"x_norm_clstoken", "x_norm_patchtokens", "x_prenorm", "masks"}
+        assert features["x_norm_clstoken"].shape == (2, 8)
+        assert features["x_norm_patchtokens"].shape == (2, 4, 8)
+        assert features["x_prenorm"].shape == (2, 5, 8)
+        assert features["masks"] is masks
 
 
 @pytest.mark.skip(reason="DeDoDe is ummaintained")
