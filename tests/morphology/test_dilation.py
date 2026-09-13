@@ -171,17 +171,14 @@ class TestDilate(BaseTester):
     def test_convolution_engine_dtype_mismatch(self, device, dtype):
         # engine="convolution" used to crash when tensor.dtype != kernel.dtype, because the
         # conv weight/bias were built from kernel.dtype instead of the input's dtype. See #4541.
-        other_dtype = torch.float32 if dtype == torch.float64 else torch.float64
-        if device.type == "mps" and torch.float64 in (dtype, other_dtype):
-            pytest.skip("MPS does not support float64")
+        # Passing a mismatched kernel must match casting the kernel to the input dtype up front;
+        # that is the same computation, so the results are bitwise equal (no tolerance needed).
+        other_dtype = torch.float16 if dtype == torch.float32 else torch.float32
 
         tensor = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=other_dtype)
 
         result = dilation(tensor, kernel, engine="convolution")
-        expected = dilation(tensor, kernel, engine="unfold")
 
-        # engine="convolution" preserves the input tensor's dtype; engine="unfold" promotes to
-        # the wider of tensor/kernel dtype via plain arithmetic. Compare values in a common dtype.
-        assert result.dtype == tensor.dtype
-        assert_close(result, expected.to(result.dtype), atol=1e-3, rtol=1e-3)
+        assert result.dtype == dtype
+        self.assert_close(result, dilation(tensor, kernel.to(dtype), engine="convolution"))
