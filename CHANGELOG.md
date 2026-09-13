@@ -378,6 +378,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Clarified that the historical `RandomBoxBlur(normalized=...)` argument selects the box-filter implementation,
+  and made its forwarding to `box_blur(..., separable=...)` explicit: `False` uses one 2D convolution while `True`
+  composes two 1D convolutions. Both paths continue to use L1-normalized kernels. (#XXXX)
 * `pixel2cam` now validates the full `Bx4x4` shape of `intrinsics_inv`, rejecting invalid matrix sizes
   before they cause unrelated transformation errors or return the wrong number of coordinate components. (#4381)
 * `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,

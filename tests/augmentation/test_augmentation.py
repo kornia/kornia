@@ -79,6 +79,7 @@ from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
 from kornia.core._compat import torch_version
 from kornia.core.utils import _torch_inverse_cast
+from kornia.filters import box_blur
 from kornia.geometry import create_meshgrid, transform_points
 
 from testing.augmentation.datasets import DummyMPDataset
@@ -4778,11 +4779,20 @@ class TestRandomElasticTransform(BaseTester):
                 assert labels_transformed[to_apply].ne(labels[to_apply]).any()
 
 
-class TestRandomBoxBlur:
+class TestRandomBoxBlur(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomBoxBlur(p=1.0)
         assert img.shape == aug(img).shape
+
+    @pytest.mark.parametrize("normalized", [False, True])
+    def test_normalized_override_selects_separable(self, normalized, device, dtype):
+        img = torch.rand(2, 3, 7, 9, device=device, dtype=dtype)
+        aug = RandomBoxBlur(kernel_size=(3, 5), normalized=not normalized, p=1.0)
+
+        expected = box_blur(img, (3, 5), separable=normalized)
+
+        self.assert_close(aug(img, normalized=normalized), expected, rtol=0.0, atol=0.0)
 
 
 class TestPadTo(BaseTester):

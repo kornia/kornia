@@ -32,7 +32,8 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``.
-        normalized: if True, L1 norm of the kernel is set to 1.
+        normalized: historical name for choosing the implementation. If False, run one 2D convolution;
+          if True, compose two 1D convolutions. Both implementations use L1-normalized kernels.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -69,4 +70,4 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return box_blur(input, flags["kernel_size"], flags["border_type"], flags["normalized"])
+        return box_blur(input, flags["kernel_size"], flags["border_type"], separable=flags["normalized"])
