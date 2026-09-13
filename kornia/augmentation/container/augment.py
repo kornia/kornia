@@ -93,8 +93,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     ``DataKey.KEYPOINTS`` honours neither. For ``DataKey.MASK`` on a 2D geometric augmentation
                     that uses the base mask path the ``resample`` entry is discarded -- masks are resampled
                     with nearest neighbour whatever it says -- while ``align_corners`` does reach the sampler
-                    and can change the mask wholesale;
-                    :class:`~kornia.augmentation.RandomResizedCrop` rejects it with ``ValueError``.
+                    and can change the mask wholesale. With :class:`~kornia.augmentation.RandomResizedCrop`,
+                    boolean ``align_corners`` overrides raise ``ValueError`` in the default ``cropping_mode='slice'``
+                    mask path; ``cropping_mode='resample'`` accepts them. ``None`` works in both modes.
                     :class:`~kornia.augmentation.RandomElasticTransform` has its own mask path and honours
                     both entries, but requires a ``kornia.constants.Resample`` member rather than a
                     string.
@@ -106,7 +107,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           ``image``, ``mask``, ``bbox``, ``bbox_xyxy``, ``bbox_xywh``, ``keypoints``, ``label`` and ``class``
           (``input`` is an alias of ``image``, ``class`` of ``label``). Any other spelling -- ``boxes``,
           ``points``, ``bboxes``, ``keypoint`` -- raises ``KeyError``. With ``data_keys=None`` the call takes a
-          dict instead, and augments the entries whose key starts with one of those names.
+          dict instead. Dictionary names support prefixes, with two exceptions: ``bbox_xyxy`` and
+          ``bbox_xywh`` must be exact names, since a suffix makes them match ``bbox`` and expect vertices;
+          ``class`` and its prefixes are treated as unrelated metadata, so use ``label`` instead.
         - the layouts are ``(B, C, H, W)`` for images and masks, ``(B, N, 4, 2)`` vertices for ``bbox``,
           ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``.
           Feeding one layout under another key raises ``ValueError`` naming the expected shape. ``N = 0`` is
@@ -118,14 +121,23 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           :func:`~kornia.geometry.transform.hflip`: ``x' = W - 1 - x`` and ``y' = H - 1 - y``, for the image,
           the mask, the keypoints and all three box spellings alike, and ``bbox_xywh`` keeps its ``w`` and
           ``h``. Labels are passed through untouched by a geometric step.
-        - masks are resampled with nearest interpolation and keep their dtype, ``bool`` included, without
-          introducing intermediate labels. Sampling outside the image can also introduce the warp's padding
-          or fill value. A ``mask`` argument may also be a list of ``(B, C, H, W)`` tensors whose channel
-          counts differ; each of them still carries the whole batch.
-        - one call draws once and shares that draw across every registered key -- for the rigid (matrix)
-          augmentations. A non-rigid child has no transform matrix, so the coordinate keys drop out of that
-          draw: :class:`~kornia.augmentation.RandomElasticTransform` warps the image and warps a ``mask``
-          key along with it, through the same displacement field, while the keypoints and the boxes come
+        - masks use nearest interpolation by default, which avoids intermediate labels; sampling outside
+          the image can introduce the warp's padding or fill value. Put the image before the masks, including
+          in dictionary insertion order, so mask conversion uses that image's working dtype. Masks preceding
+          the image use the previous call's image dtype, or ``float32`` on a fresh container. The container
+          casts every mask output to the last mask argument's dtype (the first
+          element's dtype if that argument is a list). A single mask or masks with a common dtype therefore
+          keep that dtype, ``bool`` included. Mixed mask dtypes can lose labels, for example when a final
+          boolean mask makes an integer semantic mask boolean too.
+        - a ``mask`` argument can be a list of tensors with different channel counts, but its batch handling
+          has limitations. For a direct 2D geometric child, list entry ``i`` uses only ``batch_prob[i]`` as
+          its gate. Full-batch tensors in that list can therefore become desynchronized from the image when
+          the gate differs across samples, and a list longer than the batch raises ``IndexError``. Use
+          separate ``mask`` data keys with a common dtype for separate full-batch masks.
+        - one call draws once and shares that draw across registered keys for rigid (matrix) augmentations,
+          subject to the mask-list limitation above. A non-rigid child has no transform matrix, so the coordinate
+          keys drop out of that draw: :class:`~kornia.augmentation.RandomElasticTransform` warps the image and
+          a ``mask`` key through the same displacement field, while the keypoints and the boxes come
           back unchanged; :class:`~kornia.augmentation.RandomThinPlateSpline` and
           :class:`~kornia.augmentation.RandomFisheye` leave keypoints and boxes unchanged too and raise
           ``NotImplementedError`` on a ``mask`` key (see the warning below).
@@ -271,9 +283,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         ... )
         >>> out = aug_list(input, mask, bbox)
 
-    How to use a dictionary as input with AugmentationSequential? The dictionary keys that start with
-    one of the available datakeys will be augmented accordingly. Otherwise, the dictionary item is passed
-    without any augmentation.
+    With ``data_keys=None``, dictionary keys are matched to data-key prefixes. Use the exact keys
+    ``bbox_xyxy`` and ``bbox_xywh`` for coordinate boxes: suffixed versions match ``bbox`` and require
+    vertices instead. Use ``label`` for labels, since ``class`` and its prefixes are treated as unrelated
+    metadata. Unrecognized dictionary items are passed through without augmentation.
 
         >>> import kornia.augmentation as K
         >>> img = torch.randn(1, 3, 256, 256)

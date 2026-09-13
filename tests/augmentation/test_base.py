@@ -356,10 +356,8 @@ class TestDeviceAgnosticAugmentationParameters(BaseTester):
 # either seeded inside the test or made deterministic with `p=1.0` plus a point range such as
 # `degrees=(45.0, 45.0)`.
 
-# Representative constructible augmentations for the statelessness pin. The blanket claim "no augmentation
-# registers a buffer" is false for 16 of the 69 concrete classes (they keep their sampling range in a
-# `_param_generator.*` buffer, see `test_wart_param_generator_range_buffers_are_inert_4428`), so this list
-# is a representative set, not a sweep over the package.
+# Representative constructible augmentations for the statelessness pin. Some other augmentations keep their
+# sampling range in a `_param_generator.*` buffer; see `test_wart_param_generator_range_buffers_are_inert_4428`.
 _STATELESS_REPRESENTATIVES = {
     "RandomHorizontalFlip": lambda: K.RandomHorizontalFlip(p=1.0),
     "RandomAffine": lambda: K.RandomAffine(degrees=(45.0, 45.0), p=1.0),
@@ -483,7 +481,7 @@ class TestConventionAugmentationBase2D(BaseTester):
         # batch; a sample is augmented only when both fire. Drawn on the cpu generator, so no device/dtype
         # fixture is involved; seeded inside the test.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu).
-        flip = K.RandomHorizontalFlip  # one of the two concrete classes that accept `p_batch` (see #4425)
+        flip = K.RandomHorizontalFlip  # one of the four public concrete classes that accept `p_batch` (see #4425)
         assert flip(p=1.0, p_batch=0.0).forward_parameters((4, 3, 6, 8))["batch_prob"].tolist() == [0.0] * 4
         assert flip(p=0.0, p_batch=1.0).forward_parameters((4, 3, 6, 8))["batch_prob"].tolist() == [0.0] * 4
         assert flip(p=1.0, p_batch=1.0).forward_parameters((4, 3, 6, 8))["batch_prob"].tolist() == [1.0] * 4
@@ -500,6 +498,41 @@ class TestConventionAugmentationBase2D(BaseTester):
             torch.manual_seed(seed)
             sample_rows.append(flip(p=0.5).forward_parameters((4, 3, 6, 8))["batch_prob"].tolist())
         assert sample_rows == [[1.0, 0.0, 1.0, 1.0], [0.0, 1.0, 1.0, 0.0], [0.0, 1.0, 0.0, 1.0], [1.0, 1.0, 1.0, 1.0]]
+
+    @pytest.mark.parametrize(
+        ("augmentation_cls", "shape"),
+        [
+            (K.RandomTransplantation, (4, 3, 6, 8)),
+            (K.RandomTransplantation3D, (4, 3, 6, 8, 10)),
+        ],
+    )
+    def test_convention_transplantation_p_batch_gate(self, augmentation_cls, shape):
+        # Both public transplantation classes expose the base's p_batch gate. A zero gate skips the entire
+        # batch even though p would otherwise apply every sample; one applies every sample.
+        for p_batch, expected in ((0.0, 0.0), (1.0, 1.0)):
+            augmentation = augmentation_cls(p=1.0, p_batch=p_batch)
+            assert augmentation.forward_parameters(shape)["batch_prob"].tolist() == [expected] * shape[0]
+
+    @pytest.mark.parametrize(
+        ("augmentation_cls", "spatial_shape"),
+        [
+            (K.RandomTransplantation, (6, 8)),
+            (K.RandomTransplantation3D, (3, 6, 8)),
+        ],
+    )
+    def test_convention_transplantation_requires_masks_and_supports_mask_only(
+        self, augmentation_cls, spatial_shape, device
+    ):
+        # A mask is required to choose the transplant, but images are optional. Each donor has one label, so
+        # p=1 deterministically replaces every acceptor mask with its preceding donor's mask.
+        mask = torch.zeros((2, *spatial_shape), device=device, dtype=torch.int64)
+        mask[1] = 1
+        augmentation = augmentation_cls(p=1.0)
+        output = augmentation(mask, data_keys=["mask"])
+        self.assert_close(output, mask.flip(0))
+        image = torch.zeros((2, 3, *spatial_shape), device=device)
+        with pytest.raises(IndexError, match="tuple index out of range"):
+            augmentation(image)
 
     def test_convention_same_on_batch_collapses_the_draw_to_one_sample(self):
         # Convention pin: `same_on_batch=True` collapses every per-sample draw - the `p` gate included - to a
@@ -518,19 +551,47 @@ class TestConventionAugmentationBase2D(BaseTester):
         angles = K.RandomAffine(degrees=(10.0, 90.0), same_on_batch=False).forward_parameters((4, 3, 6, 8))["angle"]
         assert angles.unique().numel() == 4
 
-    def test_wart_p_batch_is_accepted_by_only_two_concrete_classes_4425(self):
-        # Wart pin (#4425): `p_batch` is documented on the bases and reaches the constructor of exactly two of
-        # the 69 concrete `kornia.augmentation` classes - `RandomHorizontalFlip` and `RandomVerticalFlip`.
+    @pytest.mark.parametrize("augmentation_cls", [K.ColorJiggle, K.ColorJitter])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_convention_color_adjustment_order_is_shared_across_the_batch(self, augmentation_cls, same_on_batch):
+        # The color adjustments have one random permutation per call, independently of same_on_batch. The
+        # individual factors do honor same_on_batch.
+        params = augmentation_cls(0.2, 0.2, 0.2, 0.1, same_on_batch=same_on_batch).forward_parameters((3, 3, 6, 8))
+        order = params["order"]
+        assert order.shape == (4,)
+        assert torch.equal(order.sort().values, torch.arange(4, device=order.device, dtype=order.dtype))
+        if same_on_batch:
+            for name in ("brightness_factor", "contrast_factor", "saturation_factor", "hue_factor"):
+                assert params[name].unique().numel() == 1
+
+    def test_wart_p_batch_is_accepted_by_only_four_public_concrete_classes_4425(self):
+        # Wart pin (#4425): `p_batch` is documented on the bases and reaches the constructor of exactly four
+        # public concrete classes: `RandomHorizontalFlip`, `RandomVerticalFlip`, `RandomTransplantation`, and
+        # `RandomTransplantation3D`.
         # Every other class raises `TypeError`, and `RandomDissolving` swallows it through `**kwargs`.
-        # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0): 78 exported
-        # augmentation classes, 9 bases, 69 concrete, accepted by ['RandomHorizontalFlip', 'RandomVerticalFlip'].
-        classes = [n for n in K.__all__ if isinstance(getattr(K, n, None), type)]
-        classes = [n for n in classes if issubclass(getattr(K, n), _BasicAugmentationBase)]
-        bases = [n for n in classes if n.endswith(("Base2D", "Base3D", "BaseV2"))]
-        concrete = [n for n in classes if n not in bases]
-        accepted = [n for n in concrete if "p_batch" in inspect.signature(getattr(K, n).__init__).parameters]
-        assert len(concrete) == 69
-        assert accepted == ["RandomHorizontalFlip", "RandomVerticalFlip"]
+        # Snippet used to generate expected: this body, executed 2026-09-13 (torch 2.14.0): 82 public
+        # namespace classes, 9 bases, 73 concrete, accepted by the four classes named above.
+        classes = [
+            (name, augmentation)
+            for name, augmentation in vars(K).items()
+            if not name.startswith("_")
+            and isinstance(augmentation, type)
+            and issubclass(augmentation, _BasicAugmentationBase)
+        ]
+        bases = [
+            (name, augmentation) for name, augmentation in classes if name.endswith(("Base2D", "Base3D", "BaseV2"))
+        ]
+        concrete = [(name, augmentation) for name, augmentation in classes if (name, augmentation) not in bases]
+        accepted = sorted(
+            name for name, augmentation in concrete if "p_batch" in inspect.signature(augmentation.__init__).parameters
+        )
+        assert len(concrete) == 73
+        assert accepted == [
+            "RandomHorizontalFlip",
+            "RandomTransplantation",
+            "RandomTransplantation3D",
+            "RandomVerticalFlip",
+        ]
         with pytest.raises(TypeError, match="unexpected keyword argument 'p_batch'"):
             K.RandomAffine(degrees=45.0, p_batch=0.5)
         assert repr(K.RandomHorizontalFlip(p=1.0, p_batch=0.5)).startswith(
@@ -617,6 +678,26 @@ class TestConventionAugmentationBase2D(BaseTester):
             with pytest.raises(NotImplementedError):
                 handler(data, aug._params, aug.flags, transform=aug.transform_matrix)
 
+    def test_convention_direct_geometric_mask_handler_rejects_bool(self, device, dtype):
+        # The container casts bool masks around geometric dispatch. Calling the geometric handler directly
+        # instead takes the image dtype guard, so float masks work while bool masks raise TypeError.
+        augmentation = K.RandomHorizontalFlip(p=1.0)
+        image = torch.ones(2, 1, 3, 4, device=device, dtype=dtype)
+        augmentation(image)
+        float_mask = torch.tensor(
+            [[[[0.0, 1.0, 2.0, 3.0], [4.0, 5.0, 6.0, 7.0], [8.0, 9.0, 10.0, 11.0]]]],
+            device=device,
+            dtype=dtype,
+        ).repeat(2, 1, 1, 1)
+        transformed = augmentation.transform_masks(
+            float_mask, augmentation._params, augmentation.flags, transform=augmentation.transform_matrix
+        )
+        self.assert_close(transformed, float_mask.flip(-1))
+        with pytest.raises(TypeError, match="Expected input of"):
+            augmentation.transform_masks(
+                float_mask.bool(), augmentation._params, augmentation.flags, transform=augmentation.transform_matrix
+            )
+
     def test_wart_random_plasma_replay_4445(self, device, dtype):
         # Wart pin (#4445): the three `RandomPlasma*`
         # classes draw their fractal noise inside `apply_transform` from the global generator instead of in
@@ -680,8 +761,8 @@ class TestConventionAugmentationBase2D(BaseTester):
     def test_convention_augmentations_are_stateless_modules(self, name):
         # These numeric-range configurations have no parameters, buffers or state_dict entries.
         # Parameter-valued ranges are covered separately below. They survive pickle and deepcopy while
-        # carrying its last `_params`. (16 of the 69 concrete classes DO register a range buffer; that
-        # deviation is pinned in `test_wart_param_generator_range_buffers_are_inert_4428`.)
+        # carrying the last `_params`. Other classes register range buffers; that distinction is pinned in
+        # `test_wart_param_generator_range_buffers_are_inert_4428`.
         # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu): 0 state_dict
         # entries, no buffers, no parameters, pickle and deepcopy OK for each representative.
         aug = _STATELESS_REPRESENTATIVES[name]()
@@ -708,7 +789,7 @@ class TestConventionAugmentationBase2D(BaseTester):
         assert torch.count_nonzero(degrees.grad) == 2
 
     def test_wart_param_generator_range_buffers_are_inert_4428(self):
-        # Wart pin (#4428): the 16 classes that keep their sampling range in a `_param_generator.*` buffer
+        # Wart pin (#4428): classes that keep their sampling range in a `_param_generator.*` buffer
         # expose it in `state_dict()` (and, inside a container, under a prefixed key), but the buffer is a
         # dead copy: `load_state_dict` from an instance with a different range changes the buffer and changes
         # neither the draw nor the `repr`, so a `state_dict` round trip is a silent no-op.

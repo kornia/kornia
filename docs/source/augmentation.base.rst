@@ -188,9 +188,11 @@ none of its members has an `inverse`.
 
 .. autoclass:: IntensityAugmentationBase3D
 
-Mix augmentations combine several samples of the batch, so they derive from `_BasicAugmentationBase` directly
-rather than from `AugmentationBase2D`, and each supports its own narrow set of data keys — the image always,
-the class label on some, boxes on `RandomMosaic` — raising ``NotImplementedError`` on the rest.
+Mix augmentations combine several samples of the batch and derive from `_BasicAugmentationBase` through
+`MixAugmentationBaseV2`. Supported data keys vary by class: some accept class labels with images, and
+`RandomMosaic` also accepts boxes. `RandomTransplantation` and
+`RandomTransplantation3D` require at least one segmentation mask, support a mask-only call, and fail when called
+with an image alone.
 
 .. autoclass:: MixAugmentationBaseV2
 
@@ -203,8 +205,9 @@ Kornia supports two types of randomness: element-level randomness `p` and batch-
 as defined in `_BasicAugmentationBase`. Under the hood, operations like `crop` and `resize` are implemented with a fixed
 element-level probability of `p=1` and only keep the batch-level randomness.
 
-`p_batch` is part of the base signature and is available to custom subclasses, but among the shipped classes
-only `RandomHorizontalFlip` and `RandomVerticalFlip` name it in their constructor. The rest raise
+`p_batch` is part of the base signature and is available to custom subclasses, but among the 73 public concrete
+classes only `RandomHorizontalFlip`, `RandomVerticalFlip`, `RandomTransplantation`, and
+`RandomTransplantation3D` name it in their constructor. The rest raise
 ``TypeError`` on the keyword, except `RandomDissolving`, whose ``**kwargs`` binds it and drops it without a
 signal. `p_batch < 1` draws a single Bernoulli per call that gates the whole batch, before the per-sample `p`
 is drawn: with ``p=1.0, p_batch=0.0`` nothing is applied. That gap is tracked in

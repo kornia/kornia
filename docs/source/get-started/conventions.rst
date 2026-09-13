@@ -201,8 +201,8 @@ Augmentations
 -------------
 
 - One :class:`kornia.augmentation.container.AugmentationSequential` call draws once and
-  applies that draw to every registered data type — with the non-rigid
-  exceptions in the next bullet. ``.inverse()`` applies inverse geometric
+  applies that draw to registered data types, subject to the non-rigid and
+  mask-list limitations below. ``.inverse()`` applies inverse geometric
   transforms, recovering keypoint coordinates up to numerical precision.
   Resampling cannot restore image or mask information lost by the forward
   warp. Tensor box outputs use axis-aligned enclosures, so a rotation can lose
@@ -218,13 +218,25 @@ Augmentations
   :class:`kornia.augmentation.RandomFisheye` return keypoints and boxes
   unchanged and raise ``NotImplementedError`` when a ``mask`` key is
   registered (`#4420 <https://github.com/kornia/kornia/issues/4420>`_).
-- Masks are resampled with nearest interpolation and keep their dtype. Nearest
-  interpolation avoids intermediate labels, but out-of-image samples can
+- Masks use nearest interpolation by default. Put the image before mask inputs,
+  including in dictionary insertion order, so mask conversion uses the image's
+  working dtype. Earlier masks use the previous call's image dtype, or
+  ``float32`` on a fresh container. The container casts every mask
+  output to the last mask argument's dtype (its first element's dtype for a
+  list), so dtype preservation requires a single mask or masks with a common
+  dtype. Mixing an integer semantic mask with a final boolean mask can erase
+  its labels. Direct geometric ``transform_masks`` calls require floating
+  tensors; the container handles the conversion for boolean/integer masks.
+  Nearest interpolation avoids intermediate labels, but out-of-image samples can
   introduce padding/fill values, such as zero with zero padding, even when that
   label is absent from the input. Boxes are read and written in the inclusive ``xyxy_plus``
   convention of :class:`kornia.geometry.boxes.Boxes` — see *Bounding boxes*
   above — and flips are inclusive about the integer pixel centre,
   ``x' = W - 1 - x``.
+- Full-batch mask lists can become desynchronized under a mixed per-sample
+  probability gate: a direct geometric child applies the gate at list index
+  ``i`` to the whole tensor at that index. Use separate ``mask`` data keys
+  with a common dtype for separate full-batch masks.
 - A positive ``degrees`` turns the image **counter-clockwise as displayed** on
   :class:`kornia.augmentation.RandomRotation`, matching
   :func:`kornia.geometry.transform.rotate`, and **clockwise** on
@@ -290,9 +302,10 @@ Randomness in augmentations
   ``_params``, so their replay also requires controlling the global seed.
 - ``same_on_batch=True`` asks every sample of the batch to share one draw. The
   ``p`` gate and the transform parameters follow it; keys that index or pair up
-  the batch — ``batch_idx``, the mix-pairing permutation, the jitter ``order``
-  — stay per sample by construction. A handful of classes do not take the
-  argument at all. On
+  the batch — ``batch_idx`` and the mix-pairing permutation — stay per sample
+  by construction. ``ColorJiggle`` and ``ColorJitter`` use one ``(4,)`` order
+  permutation shared by the whole batch, regardless of ``same_on_batch``.
+  A handful of classes do not take the argument at all. On
   ``AugmentationSequential`` the flag is three-state: ``None`` keeps each
   child's own setting, ``True`` and ``False`` overwrite it.
 - Under a :class:`torch.utils.data.DataLoader` the rule is torch's, not

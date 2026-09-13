@@ -47,9 +47,12 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           can lose the corners needed to recover the original boxes. Retaining a ``Boxes`` object preserves
           its transformed corners. Inverse resampling cannot recover image or mask information lost through
           cropping, padding or interpolation.
-        - masks are resampled with nearest interpolation and keep their dtype, ``bool`` included, without
-          introducing intermediate labels; sampling outside the image can also introduce the warp's padding
-          or fill value. This holds whatever ``resample``
+        - in :class:`~kornia.augmentation.container.AugmentationSequential`, a single mask or masks with a
+          common dtype are resampled with nearest interpolation and keep that dtype, ``bool`` included, without
+          introducing intermediate labels; see :doc:`/get-started/conventions` for the multi-mask dtype
+          limitation. Sampling outside the image can also introduce the warp's padding or fill value. Direct
+          ``transform_masks`` calls use the image dtype guard and therefore reject ``bool`` masks. The container
+          guarantee holds whatever ``resample``
           :class:`~kornia.augmentation.container.AugmentationSequential` was given in ``extra_args``; the
           ``align_corners`` half of that override does reach the sampler.
         - a subclass supplies its own :meth:`inverse_transform` -- the base raises ``NotImplementedError`` --

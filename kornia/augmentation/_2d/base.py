@@ -57,8 +57,10 @@ class AugmentationBase2D(_AugmentationBase):
           and ``float64`` and raises ``TypeError`` naming those four on an integer tensor. The output keeps the
           input's device. It keeps the input's dtype too, with two exceptions:
           :class:`RandomPlanckianJitter` returns ``float32`` for a ``float16`` or ``bfloat16`` input and
-          :class:`RandomMixUpV2` returns ``float32`` for a ``float16`` one. The five mix classes do not reach
-          the output at all on ``bfloat16`` -- they raise ``KeyError`` downstream of the guard.
+          :class:`RandomMixUpV2` returns ``float32`` for a ``float16`` one. The five image-oriented mix
+          augmentations (:class:`PatchMix`, :class:`RandomCutMixV2`, :class:`RandomJigsaw`,
+          :class:`RandomMixUpV2`, and :class:`RandomMosaic`) do not reach the output at all on ``bfloat16`` --
+          they raise ``KeyError`` downstream of the guard.
         - any other input rank raises ``ValueError`` naming the three accepted shapes. ``validate_tensor``
           is stricter than that -- it rejects the legal ``(C, H, W)`` rank with a ``RuntimeError`` -- and
           ``transform_tensor`` runs first, so ``forward`` never reaches it. Through a container the same
@@ -67,8 +69,9 @@ class AugmentationBase2D(_AugmentationBase):
           batch, drawn before ``p``: with ``p=1.0, p_batch=0.0`` nothing is applied. ``same_on_batch=True``
           asks the batch to share one draw; the gate and the transform parameters follow it, while keys that
           index or pair up the batch stay per sample by construction.
-          ``p_batch`` is part of this base signature and available to custom subclasses, but of the 69 concrete
-          classes only :class:`RandomHorizontalFlip` and :class:`RandomVerticalFlip` name it: the rest raise
+          ``p_batch`` is part of this base signature and available to custom subclasses, but of the 73 public
+          concrete classes only :class:`RandomHorizontalFlip`, :class:`RandomVerticalFlip`,
+          :class:`RandomTransplantation`, and :class:`RandomTransplantation3D` name it: the rest raise
           ``TypeError`` on the keyword, except :class:`RandomDissolving`, whose ``**kwargs`` binds it and
           drops it without a signal.
         - sampling defaults to the CPU independently of the input device. ``set_rng_device_and_dtype``
@@ -105,16 +108,18 @@ class AugmentationBase2D(_AugmentationBase):
           base is not scriptable. ``torch.compile`` works in its default, graph-break-tolerant mode;
           ``fullgraph=True`` fails wherever a drawn value reaches a Python-level size or branch: on
           :class:`RandomCrop`, :class:`RandomResizedCrop`, :class:`LongestMaxSize`,
-          :class:`SmallestMaxSize` and :class:`RandomCrop3D`, on :class:`ColorJiggle` /
-          :class:`ColorJitter` and :class:`RandomSnow`, on the mix classes and on the four sequential
-          containers. :class:`Resize`, :class:`CenterCrop` and :class:`PadTo` compile whole.
+          :class:`SmallestMaxSize` and :class:`RandomCrop3D`, on :class:`ColorJiggle`, on
+          :class:`ColorJitter` with its default random adjustment order, and on :class:`RandomSnow`, on the
+          mix classes and on the four sequential containers. :class:`ColorJitter` supports a fixed order such
+          as ``order=(0, 1, 2, 3)``, which can compile whole; :class:`Resize`, :class:`CenterCrop` and
+          :class:`PadTo` compile whole.
 
     .. warning::
         One wrong input rank raises three different exception types depending on the entry point that sees it.
         Tracked in `#4424 <https://github.com/kornia/kornia/issues/4424>`_.
 
     .. warning::
-        ``p_batch`` is documented on the bases but is named by only two concrete constructors, so the
+        ``p_batch`` is documented on the bases but is named by only four concrete constructors, so the
         randomness model the base page describes is not the one most classes offer. Tracked in
         `#4425 <https://github.com/kornia/kornia/issues/4425>`_.
 

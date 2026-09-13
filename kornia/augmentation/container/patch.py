@@ -75,7 +75,8 @@ class PatchSequential(ImageSequential):
         - like :class:`~kornia.augmentation.container.ImageSequential`, this container takes image tensors only: it has
           no ``data_keys`` and no ``.transform_matrix`` attribute.
         - ``grid_size`` is ``(rows, columns)`` of patches, and the patches are re-assembled into one tensor
-          afterwards. With ``patchwise_apply=True`` the number of modules has to equal the number of patches.
+          afterwards. With ``patchwise_apply=True`` and ``random_apply=False``, the number of modules must
+          equal the number of patches. ``random_apply=True`` allows a different number of modules.
         - the ``padding`` modes are not shape-preserving: ``"same"`` and ``"valid"`` can both change the
           spatial size when the grid does not divide it, and ``"valid"`` can change the batch size as well.
 
