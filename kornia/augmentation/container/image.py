@@ -54,14 +54,16 @@ class ImageModuleForSequentialMixIn(ImageModuleMixIn):
 class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
     r"""nn.Sequential for creating kornia image processing pipeline.
 
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
+
     Args:
         *args : a list of kornia augmentation and image operation modules.
         same_on_batch: apply the same transformation across the batch.
             If None, it will not overwrite the function-wise settings.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
-        random_apply: randomly select a sublist (order agnostic) of args to
-            apply transformation. The selection probability aligns to the ``random_apply_weights``.
+        random_apply: randomly select children to apply in random order. The selection probability aligns to the
+            ``random_apply_weights`` and selections may repeat when the requested count is larger than their sum.
             If int, a fixed number of transformations will be selected.
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
@@ -69,6 +71,28 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             If False, the whole list of args will be processed as a sequence in original order.
         random_apply_weights: a list of selection weights for each operation. The length shall be as
             same as the number of operations. By default, operations are sampled uniformly.
+        if_unsupported_ops: intended to choose between raising and skipping an uninvertible plain ``nn.Module``.
+            It is neither validated nor enforced, and the inverse path skips such a module under every value.
+
+    Convention:
+        - this container takes image tensors only. It has no ``data_keys``, so masks, boxes and keypoints go
+          through :class:`~kornia.augmentation.container.AugmentationSequential` instead. It also carries no
+          ``.transform_matrix`` attribute: the chained matrix is reachable through
+          ``get_transformation_matrix``, which needs the recorded ``params=`` handed back to it. To use params
+          from an older call, pass ``recompute=True``.
+        - any ``nn.Module`` may sit in the chain next to the augmentations -- the modules of
+          ``kornia.filters``, ``kornia.color`` and ``kornia.enhance`` among them. ``random_apply``
+          samples ordinary members and mix augmentations through separate paths; a mix member's insertion
+          does not honor its ordinary selection weight. Each selected member is recorded in ``_params``, but
+          a plain module records a ``None`` payload: only augmentation members carry a parameter draw to replay.
+        - ``inverse`` skips uninvertible plain ``nn.Module`` members. Augmentation children can still raise,
+          for example a slice-mode crop or a 3D geometric augmentation, while non-rigid augmentation children
+          are left applied; the round trip is not in general the input.
+
+    .. warning::
+        ``if_unsupported_ops`` never fires: a plain ``nn.Module`` in the chain is skipped on the inverse path
+        under every value of the flag, an invalid value included, and nothing is raised or warned. Tracked in
+        `#4423 <https://github.com/kornia/kornia/issues/4423>`_.
 
     .. note::
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
