@@ -431,8 +431,8 @@ _RNG_FINGERPRINTS = {
     "PatchSequential": (
         lambda: K.PatchSequential(K.RandomAffine(degrees=(10.0, 90.0), p=1.0), grid_size=(2, 2), patchwise_apply=False),
         (4, 3, 6, 8),
-        # Encodes the B*C parameter-row behavior tracked in #4421.
-        [("rand", (12,))],
+        # One draw per patch row: B * rows * columns = 4 * 2 * 2 (B * C = 12 before #4460 fixed #4421).
+        [("rand", (16,))],
     ),
 }
 
