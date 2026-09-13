@@ -190,10 +190,21 @@ covers a slightly different extent of the source image.
 
 .. warning::
 
-   :func:`kornia.geometry.transform.remap` is the one exception left: it normalizes its
+   :func:`kornia.geometry.transform.remap` is the 2D exception left: it normalizes its
    pixel maps with the ``align_corners=True`` convention regardless of the flag it passes
    to ``grid_sample``, so with its default (``None``, i.e. ``False``) even an identity
-   pixel map resamples the image. Pass ``align_corners=True`` until this is fixed.
+   pixel map resamples the image, by ``11.25`` on a 4x4 ``arange`` image. Pass
+   ``align_corners=True`` until this is fixed. Tracked in
+   `#4504 <https://github.com/kornia/kornia/issues/4504>`_.
+
+   The 3-D warps are the other exception. ``normal_transform_pixel3d`` and
+   ``normalize_homography3d`` take no ``align_corners`` at all, so
+   :func:`kornia.geometry.transform.warp_affine3d` has the same mismatch at
+   ``align_corners=False`` (`#4503 <https://github.com/kornia/kornia/issues/4503>`_), and
+   :func:`kornia.geometry.transform.warp_perspective3d` is separately wrong under **both**
+   settings because ``create_meshgrid3d`` emits its channels in ``(z, x, y)`` order while
+   ``grid_sample`` reads them as ``(x, y, z)``
+   (`#4502 <https://github.com/kornia/kornia/issues/4502>`_).
 
 Bounding boxes
 --------------

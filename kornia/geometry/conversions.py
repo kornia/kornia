@@ -1980,7 +1980,10 @@ def normalize_homography(
         from. Recorded in
         `#3904 <https://github.com/kornia/kornia/issues/3904>`_.
         :func:`~kornia.geometry.conversions.normalize_homography3d` still has
-        no ``align_corners`` parameter and is corner-aligned unconditionally.
+        no ``align_corners`` parameter and is corner-aligned unconditionally, so
+        :func:`~kornia.geometry.transform.warp_affine3d` keeps this mismatch at
+        ``align_corners=False``. Tracked in
+        `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
