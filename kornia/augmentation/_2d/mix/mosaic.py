@@ -54,7 +54,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         data_keys: the input type sequential for applying augmentations.
             Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints",
             "class", "label".
-        p: probability of applying the transformation for the whole batch.
+        p: probability of applying the transformation to each sample.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``.
         padding_mode: Type of padding. Should be: constant, reflect, replicate.
