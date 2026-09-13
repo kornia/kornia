@@ -62,11 +62,6 @@ def undistort_points(
         convergence region it can enter a two-point cycle, so the answer depends on whether ``num_iters``
         is odd or even and no count converges. Tracked as `#4285 <https://github.com/kornia/kornia/issues/4285>`_.
 
-    .. warning::
-        Non-zero tilt breaks the forward/inverse round trip; see
-        :func:`~kornia.geometry.calibration.tilt_projection` and
-        `#4276 <https://github.com/kornia/kornia/issues/4276>`_ for the explanation.
-
     Args:
         points: Input image points with shape :math:`(*, N, 2)`.
         K: Intrinsic camera matrix with shape :math:`(*, 3, 3)`.
@@ -193,13 +188,6 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         - with every coefficient zero the map is the pixel grid up to floating-point rounding, but the image
           still goes through the bilinear sampler, so the output is equal to the input at the working dtype's
           tolerance and is not bit-identical to it.
-
-    .. warning::
-        The sampling map is built with :func:`~kornia.geometry.calibration.distort_points`, so a non-zero
-        :math:`\tau_x` or :math:`\tau_y` carries the tilt defect tracked in
-        `#4276 <https://github.com/kornia/kornia/issues/4276>`_ into the resampled image, which is visibly
-        different from the untilted one. See :func:`~kornia.geometry.calibration.tilt_projection` for the full
-        explanation.
 
     Args:
         image: Input image with shape :math:`(*, C, H, W)`.

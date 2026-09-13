@@ -10,9 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-* Added opt-in `AugmentationSequential.audit` reports with executed geometric provenance,
+* Added opt-in `kornia.contrib.augmentation_audit` reports with executed geometric provenance,
   native parameter snapshots, out-of-frame diagnostics and actual keypoint/box round-trip
   measurements, including explicit unsupported transforms and JSON export. (#4465)
+* Optional-dependency extra `kornia[image]` installs Pillow for PIL-backed image input/output,
+  display helpers and `kornia.io.sample`; missing-Pillow errors now name the extra to install, and the unused
+  `DinoVisionTransformer.forward_features_list` list path has been removed. (#4464)
+* Documented the shared 2D contract of `kornia.augmentation` — the `(B, C, H, W)` float working layout
+  and `keepdim`, `p` / `p_batch` / `same_on_batch`, where random parameters are drawn and how `torch.manual_seed`
+  and `params=` replay them, what a module serializes, and what `AugmentationSequential` does with each data key
+  (layouts, the inclusive `xyxy_plus` boxes and integer-centre flips, nearest masks, `extra_args`, `inverse`) —
+  as Convention blocks on the base classes and containers, with the canonical randomness and serialization
+  statements on the Conventions & Pitfalls page and executable pins. The contracts distinguish sampler and
+  returned-parameter placement, trainable range parameters, application-time replay exceptions, padding labels,
+  information lost by rotated tensor boxes, mask-list gates, mixed mask dtypes, dictionary-key exceptions,
+  and the transplantation constructors. Scope corrections and regression tests cover mix-specific contracts,
+  inverse support, mask erasing/filtering/precision, nested matrices, serialization and sampler limitations;
+  the container, `p_batch`,
+  `set_rng_device_and_dtype`, `state_dict` and `B = 0` defects are tracked in dedicated issues. (#4452)
 * Implemented the exported Brown-Conrady, Kannala-Brandt K3, and Orthographic sensor camera models,
   including distortion/projection plumbing, intrinsic matrices, and batched project/unproject support. (#4284, #4377)
 * New "Camera and world conventions across the ecosystem" page cataloguing the pixel-centre, axis
@@ -163,6 +178,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-tree MPS workarounds stay. (#4202)
 
 ### Breaking changes
+* `PatchSequential` now preserves the batch size in both padding modes. `same` preserves the input
+  spatial size and `valid` keeps only the complete, centred grid region. Previously, a `(2,3,8,8)`
+  input on a `(3,3)` grid produced `(2,3,7,7)` with `same` (now `(2,3,8,8)`) and `(2,3,8,8)` with
+  `valid` (now `(2,3,6,6)`). With `valid`, a `(2,3,6,8)` input on a `(4,4)` grid changed the batch
+  size to produce `(3,3,6,6)`; it now produces `(2,3,4,8)`. Geometric children may move temporarily
+  padded zeroes into the retained image. `restore_from_patches` now defaults to `self.grid_size`
+  instead of `(4,4)` and raises `ValueError` for a mismatched patch count instead of inferring a
+  different batch size or failing later in reshape. `forward_parameters` accepts both image
+  `(B,C,H,W)` and patch `(B,N,C,h,w)` shapes; parameter generation now covers `B*N` patch rows rather
+  than `B*C`, so fixed-seed outputs and RNG consumption can change. Refs #4421. (#4460)
+
 * Removed the unused `preprocess_boxes` helper, which had no public export or caller. (#4181, #4321)
 
 * `kornia_rs>=0.1.14` is required; the floor used to be 0.1.9. kornia_rs 0.1.11 relocated its image I/O
@@ -384,6 +410,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `RandomCutMixV2` and `CutmixGenerator` document `cut_size` as what it is: the `[min, max]` clamp on the
+  Beta-sampled mixing coefficient `lambda`, where the cut side is `floor(sqrt(1 - lambda) * side)`, so a larger
+  `cut_size` gives a smaller cut. It was described as the "minimum and maximum cut ratio". A minimum of `1.0` is
+  now rejected with a `ValueError`: it forced `lambda = 1`, built an inverted zero-size box and silently made the
+  augmentation an identity. (#4439, #4491)
+
+* Made uncompiled `RandomGaussianIllumination` instances serializable with `pickle` and `torch.save`,
+  preserving parameter replay and the `compile()` execution path after restoring the module. (#4457)
+* The `Args` blocks of `ColorJitter`, `RandomBrightness` and `RandomGaussianBlur` no longer document a
+  `silence_instantiation_warning` argument that none of them accepts, and `ColorJitter` now documents its
+  `order` argument: a fixed (sub)set of brightness/contrast/saturation/hue indices that makes the transform
+  `torch.compile` fullgraph-safe, with the drawn `_params["order"]` entry ignored when it is set.
+  (#4437, #4490)
+
+* `kornia.enhance.equalize`, `equalize3d`, `RandomEqualize` and `RandomEqualize3D` raise a `RuntimeError` naming
+  the `[0, 1]` input range for values the 256-bin lookup cannot index, instead of a raw
+  `index 259 is out of bounds for dimension 1 with size 256` from the gather. The check uses
+  `torch._assert_async`, so it adds no device sync and `torch.compile` fullgraph still works, and inputs that
+  equalized before (including values a hair above 1) are unchanged. The docstrings now state the range, the
+  256-bin histogram, and that a 3D volume of at most 255 voxels per channel comes back unchanged.
+  (#4431, #4432, #4489)
+
+* `kornia.contrib.diamond_square` generates fractals with a spatial side below 3 px. A 1 px side raised
+  `ValueError: math domain error` and a 2 px side a `TypeError` from a float in the `torch.rand` size, so
+  `RandomPlasmaBrightness`, `RandomPlasmaContrast` and `RandomPlasmaShadow` failed on such images. A small
+  side is now drawn on the 3 px grid and sliced; outputs for sides of 3 px and more are bit-identical.
+  (#4472, #4488)
+
+* `RandomBoxBlur`'s `normalized` argument is documented as what it does. It was described as "if True, L1 norm
+  of the kernel is set to 1", but it was forwarded positionally into `kornia.filters.box_blur`'s `separable`
+  parameter: it chooses between the separable and the single 2D pass, and the kernel is L1-normalized either
+  way, so `normalized=False` returns window means, not sums. The call now passes `border_type` and
+  `separable` by keyword; outputs are unchanged. (#4433, #4486)
+
+* `So3.exp`, `So3.log`, `Se3.exp`, `Se3.log` and `Se2.exp` return finite gradients at the identity,
+  and `So3.log` also at a half turn, instead of `nan` on every dtype. The forward values are unchanged;
+  `torch.where` was differentiating the singular branch it does not select. (#4405)
+* `ycbcr_to_rgb` now uses the exact inverse of the `rgb_to_ycbcr` coefficients, so an
+  `rgb -> ycbcr -> rgb` round trip is lossless to floating-point precision instead of drifting
+  by ~2.7e-4. The forward transform is unchanged. (#4378)
+* `bbox_to_mask3d` now preserves the input dtype in the returned mask, matching `bbox_to_mask`
+  and the `Boxes3D.to_mask` contract: the earlier implementation downcast every result to
+  `float32`, so a `float64` or half-precision box produced a mask that silently lost precision.
+  The mask keeps the input box's dtype end to end. (#4376)
+* Fixed `RandomPlasmaBrightness`, `RandomPlasmaContrast`, and `RandomPlasmaShadow` to replay deterministically from stored `params=`. (#4462)
+* `ManyToManyAugmentationDispather` now rejects mismatched numbers of input bundles and
+  augmentations before applying any transformation, instead of silently dropping surplus inputs
+  or skipping augmentations. (#4461)
+* `PatchSequential` now augments every patch of every image and runs the complete selected sequence.
+  The padding, reconstruction and parameter-generation behaviour changes are listed under
+  *Breaking changes*. Refs #4421. (#4460)
+* `RandomMosaic` now preserves `(H, W)` for non-square inputs when `output_size=None`; it previously
+  returned `(W, H)`. `start_ratio_range` now scales x by width and y by height; it previously scaled
+  x by height and y by width. (#4459)
+
+* `RandomThinPlateSpline(scale=0.0)` now generates zero control-point displacement instead of
+  raising an error when constructing a degenerate uniform distribution. (#4463)
+* `unproject_meshgrid` now requires camera intrinsics of shape `(B, 3, 3)`, rejecting extra
+  camera axes before they can broadcast across pixel columns and reporting the caller's original shape. (#4383)
+* Correct non-zero sensor tilt in `tilt_projection` and `distort_points` to match OpenCV,
+  restoring forward/inverse round trips and correcting `undistort_image` sampling. (#4384)
+
+* `reproject_disparity_to_3D` (the `StereoCamera` method and the module-level function, which share
+  one body) no longer transposes the two pixel indices. The pixel meshgrid was unbound as
+  `v, u = torch.unbind(uv, dim=-1)`, but `create_meshgrid(normalized_coordinates=False)` returns
+  `(x, y)`, so the column fed `v` and the row fed `u`: `X` was computed from the row and `Y` from
+  the column. Every returned point was the value belonging to its transposed pixel -- kornia's
+  answer at `(row, col)` was what `cv2.reprojectImageTo3D` puts at `(col, row)`, the OpenCV
+  semantics this function was added to provide (#2042). A square rig with `fx == fy` and
+  `cx == cy` agrees only on the diagonal, so the error was silent rather than absent. Output
+  changes at every pixel with `row != col`, square inputs included. The real-data regression
+  fixture stored ten points as ten rows of one column while its own comment and its ground truth
+  describe one row of ten columns,
+  which is why it passed against the swapped code; it is now laid out as the comment says, and
+  the fixed code reproduces the unchanged ground-truth values. #4317's two wart pins for this defect
+  are retired and its strict-xfail convention test is now an ordinary passing regression. (#4269, #4366)
+
 * `RandomRain` with `same_on_batch=True` now samples the same number of rain drops for all samples in the batch. (#4453)
 * `RandomRain` now rejects drop heights equal to the image height and absolute drop widths equal to the image
   width with the documented validation error, instead of allowing boundary-sized drops to reach an internal
@@ -391,7 +494,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `depth_to_normals` now raises `ShapeError` when `H < 2` or `W < 2`, since surface normals need two
   tangent directions. Previously, singleton axes could yield zero or non-finite normals, and empty
   spatial dimensions failed inside padding. Inputs with both dimensions at least 2 are unchanged. (#4458)
-
+* `Boxes.pad`, `Boxes.unpad` and `Boxes.clamp` accept the unbatched `(N, 4, 2)` container the class
+  documents and constructs. All three assumed the batched `(B, N, 4, 2)` indexing: `pad` and `unpad`
+  broadcast the padding as `(B, 1, 1)`, which does not fit the unbatched `(N, 4)` coordinate view and
+  raised `RuntimeError: output with shape [1, 4] doesn't match the broadcast shape [1, 1, 4]`, and `clamp`
+  materialized its bounds with `repeat(1, _data.size(1), 4)` and raised `IndexError: too many indices for
+  tensor of dimension 2`. Adding a leading singleton batch axis to the same boxes made all three work.
+  They now broadcast against whichever rank the container holds and match the singleton-batch result;
+  an unbatched container carries one image, so a per-image tensor with more than one row is rejected.
+  Batched results are byte-identical, including for a non-finite bound: `clamp` stays comparison-based, so
+  a `NaN` bound leaves the coordinate alone rather than propagating into it (closes #4244). (#4372)
 * `RandAugment`'s `m` guard is exclusive at both ends, but its docstring and its error message
   both named the closed interval `[0, 30]`, so a user who asked for the maximum strength the
   message advertised got an exception saying `30` was in range. Both now read `(0, 30)`; the
@@ -403,6 +515,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wrapped silently onto a reversed range. Out-of-range bins now name the operation and the
   valid range. Operations that ignore the magnitude entirely keep accepting any bin. (#4447)
 
+* `PinholeCamera.project` now reports rank-1 inputs with the same explicit `ValueError` used by the point-conversion
+  helpers instead of an internal `IndexError`. Refs #4266. (#4450)
 * `pixel2cam` now validates the full `Bx4x4` shape of `intrinsics_inv`, rejecting invalid matrix sizes
   before they cause unrelated transformation errors or return the wrong number of coordinate components. (#4381)
 * `Boxes.to_mask` leaves list-padding channels empty, including after coordinate transforms,
@@ -442,6 +556,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `rad2deg` and `deg2rad` now handle integer tensor inputs correctly and preserve
   float64 precision. `angle_to_rotation_matrix` inherits the corrected conversion,
   while the implementation preserves ONNX export compatibility. (#4358)
+* `fft_conv` now accepts CPU float16 and bfloat16 inputs by computing the FFTs
+  in float32 and returning the input dtype. (#4394)
 * Corrected stereo disparity validation errors to describe the required channels-last
   `(B, H, W, 1)` layout and report the received shape. (#4380)
 * `CameraModelBase.__init__` now validates `params` against the shape it documents, instead of storing
@@ -455,6 +571,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the origin, and the exact principal-point path now has finite autograd gradients. The zero-radius decision is
   made from the unsquared normalized coordinates, and the `float16` radius uses `float32` intermediates so its
   squared value does not underflow; nonzero radial rescaling remains epsilon-free. (#4308, #4370)
+* `solve_quartic` now validates Ferrari resolvent candidates with a dtype-aware scaled residual,
+  falls back to the smallest scaled residual when no candidate passes, and keeps the Ferrari `E`
+  factorization away from an ill-conditioned `R` division. Cancellation-level `R^2` is snapped to
+  zero relative to the coefficient scale, and all Ferrari compute dtypes choose between the linear-
+  and constant-term `E` forms by normalized coefficient error; float32 also refines the selected
+  resolvent root once. The gradient-safe zero-radicand path remains intact, preventing half-precision
+  non-finite or dropped roots and full-precision non-roots while preserving the public contract. (#4357)
 
 * `StereoCamera` now rejects projection matrices whose last two dimensions are not `(3, 4)` with a
   `StereoException` naming the invalid camera. Previously, the shape guards never fired, so malformed
@@ -471,6 +594,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transform or map batch broadcasts identically and a mismatched batch is rejected rather than silently
   returning the wrong cardinality. Outputs, autograd links and the documented empty-source policy are unchanged
   on CPU and CUDA. (#4032, #4354)
+* `VideoBoxes.get_boxes_shape()` and `VideoBoxes.to_mask()` no longer raise `TypeError`. Both are
+  inherited from `Boxes` and pass `as_padded_sequence=True` to `to_tensor`, but the `VideoBoxes`
+  override declared only `mode`, so every call on a `VideoBoxes` failed -- including the containers
+  `AugmentationSequential` builds for video box inputs. The override now accepts and forwards the
+  keyword; it only changes a list-backed container, and a `VideoBoxes` built from a
+  `(B, T, N, 4, 2)` tensor is not one, so no working call changes its result. Indexing a
+  `VideoBoxes` still drops `temporal_channel_size`, which is the remaining half of #4249.
+  (#4176, #4365)
 
 * Fixed `unproject_points_z1` depth shape handling for singleton and multi-axis batches,
   accepting both trailing-singleton and flat depth tensors. (#4355)

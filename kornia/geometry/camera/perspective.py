@@ -40,8 +40,7 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
           undivided point, giving ``fx x + cx``. A point behind the camera is projected just as silently.
 
     .. warning::
-        The unbatched-input contract is `#4266 <https://github.com/kornia/kornia/issues/4266>`_ and the ``z = 0`` answer
-        `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        The ``z = 0`` answer is tracked in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
     Args:
         point_3d: tensor containing the 3d points to be projected

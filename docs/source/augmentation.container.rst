@@ -155,8 +155,11 @@ Augmentation Dispatchers
 ------------------------
 Kornia supports two types of augmentation dispatching, namely many-to-many and many-to-one. The former wraps
 different augmentations into one group and lets the user pass as many inputs as there are augmentations, applying
-each augmentation to the corresponding input. The latter applies different augmentations to a single input in order
-to obtain a list of differently transformed outputs.
+each augmentation to the corresponding input; a call with a different number of input bundles than
+augmentations raises ``ValueError`` before any augmentation runs. The latter applies different augmentations to a
+single input in order to obtain a list of differently transformed outputs. Its members must be
+``AugmentationSequential`` instances. With the default ``strict=True``, their ``data_keys`` must match;
+``strict=False`` disables that construction check.
 
 .. note::
    The class names below keep their historical spelling (``Dispather``) for backward compatibility.
@@ -240,10 +243,10 @@ Example using ``AugmentationSequential`` with synchronized transforms::
     img_out, mask_out = aug(img, mask)
     # identical random parameters applied to both tensors
 
-The core distinction: ``AugmentationSequential`` guarantees that random
-augmentation parameters are shared across all specified data keys, maintaining
-geometric consistency. ``ImageSequential`` applies operations independently to
-single image tensors without multi-target awareness.
+``AugmentationSequential`` coordinates supported data-key handlers from one set
+of recorded parameters. Its non-rigid, mask-list and dtype limitations still
+apply; see the class's Convention block. ``ImageSequential`` processes image
+tensors without dispatching auxiliary annotations.
 
 
 PatchSequential
