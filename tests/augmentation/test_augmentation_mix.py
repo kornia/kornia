@@ -300,6 +300,42 @@ class TestRandomCutMixV2(BaseTester):
 
 
 class TestRandomMosaic(BaseTester):
+    def test_non_square_input_preserves_hw_4438(self):
+        torch.manual_seed(0)
+
+        input = torch.rand(4, 3, 6, 8)
+        output = RandomMosaic(p=1.0)(input)
+
+        assert output.shape == (4, 3, 6, 8)
+
+    def test_start_ratio_uses_xy_axes_4438(self):
+        torch.manual_seed(0)
+
+        aug = RandomMosaic(
+            p=1.0,
+            start_ratio_range=(0.5, 0.5),
+        )
+        aug(torch.rand(4, 3, 6, 8))
+
+        top_left = aug._params["src"][0, 0]
+
+        expected = torch.tensor(
+            [4.0, 3.0],
+            device=top_left.device,
+            dtype=top_left.dtype,
+        )
+
+        torch.testing.assert_close(top_left, expected)
+
+    @pytest.mark.parametrize(("keepdim", "expected_shape"), [(False, (1, 1, 6, 8)), (True, (1, 6, 8))])
+    def test_non_square_unbatched_keepdim_4438(self, keepdim, expected_shape):
+        torch.manual_seed(0)
+
+        input = torch.rand(1, 6, 8)
+        output = RandomMosaic(p=1.0, keepdim=keepdim)(input)
+
+        assert output.shape == expected_shape
+
     def test_smoke(self):
         f = RandomMosaic(data_keys=["input", "class"])
         repr = (
