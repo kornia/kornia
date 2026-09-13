@@ -417,6 +417,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * `RandomThinPlateSpline(scale=0.0)` now generates zero control-point displacement instead of
   raising an error when constructing a degenerate uniform distribution. (#4463)
+* Correct non-zero sensor tilt in `tilt_projection` and `distort_points` to match OpenCV,
+  restoring forward/inverse round trips and correcting `undistort_image` sampling. (#4384)
 
 * `reproject_disparity_to_3D` (the `StereoCamera` method and the module-level function, which share
   one body) no longer transposes the two pixel indices. The pixel meshgrid was unbound as
