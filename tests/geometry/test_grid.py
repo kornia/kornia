@@ -297,6 +297,46 @@ def test_pixel_meshgrid_half_dtype_matches_compile(is_3d, grid_dtype):
     assert_close(actual, expected, atol=0.0, rtol=0.0)
 
 
+@pytest.mark.parametrize("grid_dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("is_3d", [False, True], ids=["2d", "3d"])
+def test_normalized_meshgrid_half_dtype_matches_compile(is_3d, grid_dtype, device):
+    """A half-precision normalized grid must not change when it is built under ``torch.compile``.
+
+    Eager evaluates ``(xs / (size - 1) - 0.5) * 2`` as three half-precision ops and rounds after
+    each; inductor computes the chain in float32 and rounds once on store. Eager also materializes
+    the half ramp before the capture branch widens it, while inductor folds that narrow-then-widen
+    round trip away and keeps the exact index, so above ``2 ** p`` the two divided different
+    numerators. Building and normalizing the ramp in float32 and narrowing once removes both, and
+    is a no-op at float32/float64, which never widen.
+
+    The sizes are the first at which the pixel ramps themselves diverge, so the normalized error
+    on top of them is the one under test. At float16 on CUDA a residue of at most one ulp of the
+    coordinate dtype survives, because ATen's and triton's float32 division are not bit-identical;
+    bfloat16's 8-bit significand absorbs it and the CPU kernels agree exactly.
+    """
+
+    class MeshGrid(torch.nn.Module):
+        def forward(self, image):
+            if is_3d:
+                return kornia.geometry.create_meshgrid3d(
+                    image.shape[-3], image.shape[-2], image.shape[-1], True, device=image.device, dtype=image.dtype
+                )
+            return kornia.geometry.create_meshgrid(
+                image.shape[-2], image.shape[-1], True, device=image.device, dtype=image.dtype
+            )
+
+    size = 300 if grid_dtype == torch.bfloat16 else 3000
+    shape = (1, 1, 2, 2, size) if is_3d else (1, 1, 2, size)
+    image = torch.zeros(*shape, dtype=grid_dtype, device=device)
+
+    expected = MeshGrid()(image)
+    actual = torch.compile(MeshGrid(), fullgraph=True)(image)
+
+    assert actual.dtype == expected.dtype == grid_dtype
+    inexact_division = device.type == "cuda" and grid_dtype == torch.float16
+    assert_close(actual, expected, atol=torch.finfo(grid_dtype).eps if inexact_division else 0.0, rtol=0.0)
+
+
 def test_create_meshgrid3d(device, dtype):
     depth, height, width = 5, 4, 6
     normalized_coordinates = False

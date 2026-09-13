@@ -31,20 +31,25 @@ REQUIRED_METADATA = ("timestamp_utc", "git_commit", "platform", "python", "torch
 _ABSOLUTE_PATH = re.compile(r"^(/|\\\\|[A-Za-z]:[\\/])")
 
 
-def validate_result(path: Path) -> list[str]:
-    """Return a list of problems with a committed result file; empty list means valid."""
-    errors: list[str] = []
+def _load_payload(path: Path) -> tuple[dict | None, list[str]]:
+    """Parse a result file down to its ``metadata``/``results`` envelope, or explain why it cannot be."""
     try:
         payload = json.loads(Path(path).read_text())
     except (OSError, json.JSONDecodeError) as exc:
-        return [f"unreadable JSON: {exc}"]
+        return None, [f"unreadable JSON: {exc}"]
     if not isinstance(payload, dict) or set(payload) != {"metadata", "results"}:
-        return [f"top level must be an object with keys metadata/results, got {type(payload).__name__}"]
+        return None, [f"top level must be an object with keys metadata/results, got {type(payload).__name__}"]
+    if not isinstance(payload["metadata"], dict):
+        return None, [f"metadata must be an object, got {type(payload['metadata']).__name__}"]
+    return payload, []
+
+
+def _content_errors(payload: dict, *, require_load: bool) -> list[str]:
+    """Envelope, metadata, privacy and row-type rules shared by release snapshots and artefacts."""
+    errors: list[str] = []
     meta, results = payload["metadata"], payload["results"]
-    if not isinstance(meta, dict):
-        return [f"metadata must be an object, got {type(meta).__name__}"]
     for key in REQUIRED_METADATA:
-        if key not in meta:
+        if key not in meta and (require_load or key != "load"):
             errors.append(f"metadata missing '{key}'")
     load = meta.get("load", {})
     if not isinstance(load, dict) or not all(v is None or isinstance(v, (int, float)) for v in load.values()):
@@ -69,6 +74,33 @@ def validate_result(path: Path) -> list[str]:
                     or (row[key] is not None and not isinstance(row[key], (int, float)))
                 ):
                     errors.append(f"results[{i}].{key} missing or wrong type")
+    return errors
+
+
+def validate_artefact(path: Path) -> list[str]:
+    """Return a list of problems with a committed comparison artefact; empty list means valid.
+
+    A comparison artefact is the raw JSON of a base-versus-branch A/B or a cross-release run, kept
+    next to the report that cites it (``benchmarks/<area>/<name>_results/``). It follows the content
+    rules of a release snapshot -- the envelope, the recorded metadata, the privacy rule and the row
+    types -- but not the release layout: its filename names the compared revision rather than a
+    machine, and it does not sit in a ``<kornia-version>`` directory, because the revision it records
+    is by construction not the current tree. ``load`` is optional because a base revision's harness
+    may predate that field.
+    """
+    payload, errors = _load_payload(path)
+    if payload is None:
+        return errors
+    return _content_errors(payload, require_load=False)
+
+
+def validate_result(path: Path) -> list[str]:
+    """Return a list of problems with a committed result file; empty list means valid."""
+    payload, errors = _load_payload(path)
+    if payload is None:
+        return errors
+    errors = _content_errors(payload, require_load=True)
+    meta = payload["metadata"]
     name = Path(path).name
     parts = name[: -len(".json")].split("--") if name.endswith(".json") else []
     if len(parts) != 3:

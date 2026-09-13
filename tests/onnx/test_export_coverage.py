@@ -132,6 +132,21 @@ def _cases():
             id="distort_points",
         ),
         pytest.param(_Fn(lambda v: kornia.geometry.liegroup.Se3.exp(v).matrix()), (torch.rand(2, 6),), id="Se3.exp"),
+        pytest.param(
+            _Fn(kornia.geometry.depth.depth_from_plane_equation),
+            # A ray exactly parallel to the plane, so the grazing-ray guard is the
+            # branch under export. Selecting the guard's sign with ``torch.copysign``
+            # exports through neither path -- the legacy exporter has no
+            # ``aten::copysign`` and the dynamo one no ONNX function for the
+            # ``prims.signbit`` it decomposes to -- so this pins the comparison form.
+            (
+                torch.tensor([[0.0, 1.0, 0.0]]),
+                torch.tensor([[2.0]]),
+                torch.tensor([[[4.0, 3.0]]]),
+                torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]]),
+            ),
+            id="depth_from_plane_equation_grazing",
+        ),
     ]
 
 

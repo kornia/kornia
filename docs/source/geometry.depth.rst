@@ -13,3 +13,7 @@ kornia.geometry.depth
 .. autofunction:: depth_to_normals
 .. autofunction:: depth_from_plane_equation
 .. autofunction:: warp_frame_depth
+.. autofunction:: depth_warp
+
+.. autoclass:: DepthWarper
+    :members:

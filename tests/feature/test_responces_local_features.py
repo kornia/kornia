@@ -22,6 +22,25 @@ import kornia
 from testing.base import BaseTester
 
 
+def _response_atol(expected: torch.Tensor, dtype: torch.dtype) -> float:
+    r"""Absolute bound for a response map compared against hard-coded expected values.
+
+    A response is a difference of quantities of order 1 -- the blurred image and its derivatives --
+    so its absolute error is set by one ULP at 1.0 (9.8e-4 float16, 3.9e-3 bfloat16) and *not* by the
+    response's own magnitude, which is 0.007-0.28 across these tests. The historical ``atol=1e-4``
+    sits below that floor, so in half precision no implementation can meet it; four of these eight
+    half-precision nodes were manifest entries for exactly that reason.
+
+    Two ULP is that floor with a 2x margin -- the same bound, and the same reasoning, as
+    ``TestALIKED::test_descriptor_normalized``. It is then capped at a twentieth of the largest
+    expected value so that the assertion still discriminates: ``harris_response``'s expected map peaks
+    at 6.9e-3, *below* bfloat16's own two-ULP floor, and an uncapped bound there would be satisfied by
+    an all-zero response. The cap never binds in float32 or float64, and 1e-4 is far above their two
+    ULP, so both keep the original bound exactly.
+    """
+    return min(max(1e-4, 2 * torch.finfo(dtype).eps), expected.abs().max().item() / 20.0)
+
+
 class TestCornerHarris(BaseTester):
     def test_shape(self, device):
         inp = torch.ones(1, 3, 4, 4, device=device)
@@ -126,7 +145,7 @@ class TestCornerHarris(BaseTester):
             / 10.0
         )
         scores = kornia.feature.harris_response(inp, k=0.04)
-        self.assert_close(scores, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(scores, expected, atol=_response_atol(expected, dtype), rtol=1e-4)
 
     def test_gradcheck(self, device):
         k = 0.04
@@ -237,7 +256,7 @@ class TestCornerGFTT(BaseTester):
         ).repeat(2, 1, 1, 1)
         shi_tomasi = kornia.feature.CornerGFTT().to(device)
         scores = shi_tomasi(inp)
-        self.assert_close(scores, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(scores, expected, atol=_response_atol(expected, dtype), rtol=1e-4)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
@@ -307,7 +326,7 @@ class TestBlobHessian(BaseTester):
         ).repeat(2, 1, 1, 1)
         shi_tomasi = kornia.feature.BlobHessian().to(device)
         scores = shi_tomasi(inp)
-        self.assert_close(scores, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(scores, expected, atol=_response_atol(expected, dtype), rtol=1e-4)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
@@ -379,7 +398,7 @@ class TestBlobDoGSingle(BaseTester):
         ).expand(2, 2, 7, 7)
         det = kornia.feature.BlobDoGSingle(1.0, 1.6).to(device)
         scores = det(inp)
-        self.assert_close(scores, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(scores, expected, atol=_response_atol(expected, dtype), rtol=1e-4)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 9, 11

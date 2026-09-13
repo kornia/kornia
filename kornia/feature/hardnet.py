@@ -121,6 +121,10 @@ class HardNet(nn.Module):
         """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
+        # oneDNN's float32 convolutions avoid repeated activation reorders with
+        # channels-last input. Keep CUDA's existing layout, which is faster there.
+        if input.device.type == "cpu" and input.dtype == torch.float32:
+            x_norm = x_norm.to(memory_format=torch.channels_last)
         x_features: torch.Tensor = self.features(x_norm)
         x_out = x_features.view(x_features.size(0), -1)
         # A constant patch drives the features to zero; the default `eps` is not representable in

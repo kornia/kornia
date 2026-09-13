@@ -173,6 +173,24 @@ class TestConvDistanceTransform(BaseTester):
         sample3d = torch.ones(B, C, D, H, W, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.contrib.distance_transform, (sample3d,))
 
+    @pytest.mark.parametrize("shape", [(1, 1, 4, 4), (1, 1, 4, 4, 4)], ids=["2d", "3d"])
+    @pytest.mark.parametrize("has_signal", [False, True], ids=["all-zero", "one-hot"])
+    def test_zero_convolution_has_finite_gradients(self, shape, has_signal, device, dtype):
+        sample = torch.zeros(*shape, device=device, dtype=dtype)
+        if has_signal:
+            sample[(0, 0, *((1,) * (len(shape) - 2)))] = 1.0
+        sample.requires_grad_(True)
+
+        output = kornia.contrib.distance_transform(sample)
+        assert torch.isfinite(output).all()
+        if not has_signal:
+            assert torch.equal(output, torch.zeros_like(output))
+
+        output.sum().backward()
+        assert sample.grad is not None
+        assert sample.grad.shape == sample.shape
+        assert torch.isfinite(sample.grad).all()
+
     def test_loss_grad(self, device, dtype):
         B, C, H, W = 1, 1, 32, 32
         sample1 = torch.rand(B, C, H, W, device=device, dtype=dtype, requires_grad=True)

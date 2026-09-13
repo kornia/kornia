@@ -41,3 +41,20 @@ class TestApplyLinearTransformation(BaseTester):
         assert actual.dtype == torch.float32
         assert actual.is_contiguous()
         self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+    def test_empty_input_autograd(self, device):
+        for shape in ((0, 3, 4, 4), (2, 3, 0, 4), (2, 0, 3, 4, 4)):
+            image = torch.zeros(shape, device=device, dtype=torch.float32, requires_grad=True)
+            kernel = torch.eye(3, device=device, dtype=torch.float32, requires_grad=True)
+            bias = torch.zeros(3, device=device, dtype=torch.float32, requires_grad=True)
+
+            actual = _apply_linear_transformation(image, kernel, bias)
+            actual.sum().backward()
+
+            assert actual.shape == image.shape
+            assert actual.is_contiguous()
+            assert image.grad is not None
+            assert kernel.grad is not None
+            assert bias.grad is not None
+            self.assert_close(kernel.grad, torch.zeros_like(kernel))
+            self.assert_close(bias.grad, torch.zeros_like(bias))

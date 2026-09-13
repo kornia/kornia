@@ -421,21 +421,29 @@ A(
     case(
         "models.segmentation.SegmentationModelsBuilder.build",
         "models.segmentation",
-        lambda d: SegmentationModelsBuilder.build("Unet", "resnet34", encoder_weights=None),
+        SegmentationModelsBuilder.build(
+            torch.nn.Sequential(torch.nn.Conv2d(3, 2, 1), torch.nn.Softmax(dim=1)),
+            {
+                "input_space": "BGR",
+                "input_range": [0, 255],
+                "mean": [0.485, 0.456, 0.406],
+                "std": [0.229, 0.224, 0.225],
+            },
+        ),
         [IMG],
-        note="segmentation_models_pytorch not installed -> ImportError expected; even with it installed the builder "
-        "instantiates abstract SemanticSegmentation (no from_config, no __init__) -> TypeError (kornia bug)",
+        note="builder wraps a user-built network (a 1x1 conv + softmax stand-in here; kornia does not import "
+        "segmentation_models_pytorch) behind the BgrToRgb/rescale/Normalize preprocessing an smp encoder declares",
     )
 )
 A(
     case(
         "models.segmentation.SemanticSegmentation",
         "models.segmentation",
-        lambda d: SemanticSegmentation(
+        SemanticSegmentation(
             model=torch.nn.Identity(), pre_processor=torch.nn.Identity(), post_processor=torch.nn.Identity(), name="x"
         ),
         [IMG],
-        note="KORNIA BUG: abstract class (ModelBase.from_config not implemented) -> cannot be instantiated",
+        note="container with identity model/pre/post: the graph is the input",
     )
 )
 A(case("models.base.ModelBase", "models.base", None, [], skip="abstract base class (from_config abstract)"))
@@ -664,7 +672,6 @@ A(
             model=torch.nn.Identity(), pre_processor=torch.nn.Identity(), post_processor=torch.nn.Identity(), name="x"
         ),
         [IMG],
-        note="KORNIA BUG: abstract (ModelBase.from_config not implemented, no __init__) -> TypeError",
     )
 )
 A(
@@ -673,7 +680,6 @@ A(
         "contrib",
         lambda x: K.contrib.SmallSRBuilder.build("small_sr", pretrained=False),
         [IMG],
-        note="KORNIA BUG: builder instantiates abstract SuperResolution -> TypeError at super_resolution.py:262",
     )
 )
 A(
@@ -682,7 +688,7 @@ A(
         "contrib",
         None,
         [],
-        skip="needs `basicsr` (not installed) and would hit the same abstract SuperResolution TypeError",
+        skip="builds a 17M-parameter Real-ESRGAN generator; too heavy for the survey",
     )
 )
 
@@ -1311,8 +1317,6 @@ A(
         "models.sam cases; default config is vit_h (>500 MB)",
     )
 )
-A(case("contrib.BoxMotTracker", "contrib.wrappers", None, [], skip="`boxmot` not installed; stateful tracker"))
-
 # ============================================================================= kornia.tracking
 A(
     case(
@@ -1329,12 +1333,24 @@ A(
 from kornia.geometry.vector import Vector2, Vector3  # noqa: E402
 from kornia.image import ImageSize  # noqa: E402
 from kornia.sensors.camera import (  # noqa: E402
+    BrownConradyModel,
     CameraModel,
     CameraModelType,
+    KannalaBrandtK3,
+    Orthographic,
     PinholeModel,
 )
 
 _pin = PinholeModel(ImageSize(480, 640), torch.tensor([[328.0, 328.0, 320.0, 240.0]]))
+_bc = BrownConradyModel(
+    ImageSize(480, 640),
+    torch.tensor([328.0, 328.0, 320.0, 240.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+)
+_kb = KannalaBrandtK3(
+    ImageSize(480, 640),
+    torch.tensor([328.0, 328.0, 320.0, 240.0, 0.0, 0.0, 0.0, 0.0]),
+)
+_orth = Orthographic(ImageSize(480, 640), torch.tensor([328.0, 328.0, 320.0, 240.0]))
 _pts3 = torch.tensor([[1.0, 2.0, 5.0], [-0.5, 0.3, 2.0]])
 A(
     case(
@@ -1389,27 +1405,27 @@ A(
     case(
         "sensors.camera.BrownConradyModel.project",
         "sensors.camera",
-        None,
-        [],
-        skip="raises NotImplementedError in kornia (BrownConradyTransform.distort is a stub)",
+        lambda p: _bc.project(Vector3(p)).data,
+        [_pts3],
+        note="zero Brown-Conrady coefficients; params baked",
     )
 )
 A(
     case(
         "sensors.camera.KannalaBrandtK3.project",
         "sensors.camera",
-        None,
-        [],
-        skip="raises NotImplementedError in kornia (KannalaBrandtK3Transform.distort is a stub)",
+        lambda p: _kb.project(Vector3(p)).data,
+        [_pts3],
+        note="zero Kannala-Brandt coefficients; params baked",
     )
 )
 A(
     case(
         "sensors.camera.Orthographic.project",
         "sensors.camera",
-        None,
-        [],
-        skip="raises NotImplementedError in kornia (Orthographic.project is a stub)",
+        lambda p: _orth.project(Vector3(p)).data,
+        [_pts3],
+        note="orthographic projection with affine intrinsics baked",
     )
 )
 A(case("sensors.camera.CameraModelBase/CameraModelType", "sensors.camera", None, [], skip="base class / enum"))

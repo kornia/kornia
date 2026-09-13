@@ -22,6 +22,7 @@ import torch
 
 from kornia.feature.dedode import DeDoDe
 from kornia.feature.dedode.decoder import ConvRefiner
+from kornia.feature.dedode.transformer.layers import MemEffAttention, NestedTensorBlock
 
 from testing.base import BaseTester
 
@@ -43,6 +44,35 @@ class TestConvRefiner(BaseTester):
 
         assert autocast_enabled == [device.type == "cuda"]
         assert not any("device_type of 'cuda'" in str(w.message) for w in caught)
+
+
+class TestMemEffAttention(BaseTester):
+    def test_attn_bias_raises(self, device, dtype):
+        attention = MemEffAttention(dim=8, num_heads=2).to(device, dtype).eval()
+        x = torch.rand(1, 5, 8, device=device, dtype=dtype)
+
+        with pytest.raises(NotImplementedError, match="attn_bias is not supported"):
+            attention(x, attn_bias=torch.zeros(1, 2, 5, 5, device=device, dtype=dtype))
+
+
+class TestNestedTensorBlock(BaseTester):
+    def test_tensor_input(self, device, dtype):
+        block = NestedTensorBlock(dim=8, num_heads=2).to(device, dtype).eval()
+        x = torch.rand(1, 5, 8, device=device, dtype=dtype)
+
+        out = block(x)
+
+        assert out.shape == (1, 5, 8)
+        # the block is a residual one, so the output has to differ from the input by the
+        # attention and feed-forward branches actually having run.
+        assert not torch.allclose(out, x)
+
+    def test_list_input_raises(self, device, dtype):
+        block = NestedTensorBlock(dim=8, num_heads=2).to(device, dtype).eval()
+        x = torch.rand(1, 5, 8, device=device, dtype=dtype)
+
+        with pytest.raises(TypeError, match="nested-tensor list path was removed"):
+            block([x])
 
 
 @pytest.mark.skip(reason="DeDoDe is ummaintained")

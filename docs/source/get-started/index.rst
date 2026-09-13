@@ -40,6 +40,7 @@ Looking for a specific function instead? The :doc:`API reference </api>` documen
    installation
    introduction
    conventions
+   camera-conventions
 
 .. toctree::
    :caption: Why Kornia?

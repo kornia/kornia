@@ -21,6 +21,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  pinned-runner-macos-15:
+    name: Pinned runner availability (macos-15)
+    if: >-
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      github.repository == 'kornia/kornia' &&
+      startsWith(github.workflow_ref, 'kornia/kornia/.github/workflows/scheduled_test_cpu.yml@')
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Confirm macos-15 runner availability
+        run: echo "macos-15 runner is available"
+
+  pinned-runner-windows-2022:
+    name: Pinned runner availability (windows-2022)
+    if: >-
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      github.repository == 'kornia/kornia' &&
+      startsWith(github.workflow_ref, 'kornia/kornia/.github/workflows/scheduled_test_cpu.yml@')
+    runs-on: windows-2022
+    timeout-minutes: 5
+    steps:
+      - name: Confirm windows-2022 runner availability
+        run: echo "windows-2022 runner is available"
+
   check-skip:
     # For scheduled runs, check if only documentation files changed
     # If so, skip the expensive test runs

@@ -103,7 +103,7 @@ def _empty_warp_output_2d(
     align_corners: bool,
     grid_dtype: torch.dtype,
     fill_value: Optional[torch.Tensor] = None,
-    expand_transform_batch: bool = False,
+    transform_batch_broadcast: str = "none",
     allow_fill: bool = True,
     operand: str = "transform",
 ) -> torch.Tensor:
@@ -111,6 +111,12 @@ def _empty_warp_output_2d(
 
     ``operand`` names the second tensor in the error messages. ``remap`` has no ``transform``
     parameter — it delegates here with its stacked maps — so it must not be told about one.
+
+    ``transform_batch_broadcast`` names the caller's singleton-batch rule, so the empty
+    destination broadcasts and rejects exactly as its non-empty path does:
+    ``"none"`` requires equal batches (``warp_perspective``), ``"src_when_larger"`` expands a
+    singleton transform batch only to a source batch above one (``warp_affine``), and ``"src"``
+    expands it to the source batch unconditionally, a zero batch included (``remap``).
     """
     if src.device != transform.device:
         raise RuntimeError(f"Expected src and {operand} on the same device, got {src.device} and {transform.device}.")
@@ -128,24 +134,45 @@ def _empty_warp_output_2d(
         raise RuntimeError(f"Expected src and {operand} with the same dtype, got {src.dtype} and {transform.dtype}.")
     if src.dtype != transform.dtype:
         transform = transform.to(src.dtype)
-    grid_zero = transform.reshape(-1)[:1].sum() * 0.0
-    grid = grid_zero.reshape(1, 1, 1, 1).expand(transform.shape[0], dsize[0], dsize[1], 2)
-    if expand_transform_batch and transform.shape[0] == 1 and src.shape[0] > 1:
-        grid = grid.expand(src.shape[0], -1, -1, -1)
+    # Resolve the output batch before any clamping below hides a mismatch: the stand-ins are
+    # clamped away from zero, so a 0/1 or 1/0 batch pairing would otherwise reach ``grid_sample``
+    # as 1/1 and be silently accepted where the non-empty path broadcasts or rejects it.
+    src_batch = src.shape[0]
+    transform_batch = transform.shape[0]
+    broadcasts_singleton = transform_batch_broadcast == "src" or (
+        transform_batch_broadcast == "src_when_larger" and src_batch > 1
+    )
+    if transform_batch == 1 and broadcasts_singleton:
+        transform_batch = src_batch
+    if transform_batch != src_batch:
+        raise RuntimeError(
+            f"Expected src and {operand} with the same batch size, got {src_batch} and {transform.shape[0]}."
+        )
 
-    # ``grid_sample`` rejects an empty source even when the destination is also empty. Validate
-    # all its other contracts against a connected 1x1 stand-in so the public empty-source policy
-    # remains useful without silently accepting invalid batches, dtypes, devices, or modes.
-    sample_src = src
-    if src.shape[-2] == 0 or src.shape[-1] == 0:
-        src_zero = src.reshape(-1)[:1].sum() * 0.0
-        sample_src = src_zero.reshape(1, 1, 1, 1).expand(src.shape[0], src.shape[1], 1, 1)
+    # ``grid_sample`` must never receive a zero-element operand here. MPS before torch 2.14 raises
+    # ``[srcBuf length] > 0 ... Placeholder tensor is empty!`` for a zero-element grid or batch, even
+    # against a 1x1 source, and kornia supports torch >= 2.0. Sample connected 1x1 stand-ins so the
+    # remaining contracts -- dtype, device, mode and padding_mode -- are still validated by
+    # ``grid_sample`` itself, then expand the sampled result to the empty destination, which keeps
+    # the autograd links to ``src`` and ``transform``. The stand-ins are 1x1 in space rather than
+    # ``dsize``-shaped so the work stays constant: a ``(0, 2_000_000)`` destination must not
+    # materialize two million samples that the empty result then discards.
+    sample_batch = max(src_batch, 1)
+    sample_channels = max(src.shape[1], 1)
+    grid_zero = transform.reshape(-1)[:1].sum() * 0.0
+    grid = grid_zero.reshape(1, 1, 1, 1).expand(sample_batch, 1, 1, 2)
+
+    src_zero = src.reshape(-1)[:1].sum() * 0.0
+    sample_src = src_zero.reshape(1, 1, 1, 1).expand(sample_batch, sample_channels, 1, 1)
 
     if padding_mode == "fill" and allow_fill:
         if fill_value is None:
-            fill_value = torch.zeros(src.shape[1], device=src.device, dtype=src.dtype)
-        return _fill_and_warp(sample_src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
-    return F.grid_sample(sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+            fill_value = torch.zeros(sample_channels, device=src.device, dtype=src.dtype)
+        sampled = _fill_and_warp(sample_src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
+    else:
+        sampled = F.grid_sample(sample_src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
+    out_zero = sampled.reshape(-1)[:1].sum() * 0.0
+    return out_zero.reshape(1, 1, 1, 1).expand(src_batch, src.shape[1], dsize[0], dsize[1])
 
 
 def _empty_warp_output_3d(
@@ -376,7 +403,7 @@ def warp_affine(
             align_corners,
             _matrix_warp_grid_dtype(src, M),
             fill_value,
-            expand_transform_batch=True,
+            transform_batch_broadcast="src_when_larger",
         )
 
     M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
@@ -843,7 +870,7 @@ def remap(
             padding_mode,
             align_corners,
             _remap_grid_dtype(map_xy, normalized_coordinates),
-            expand_transform_batch=True,
+            transform_batch_broadcast="src",
             allow_fill=False,
             operand="map",
         )

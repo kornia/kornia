@@ -157,6 +157,10 @@ jobs:
   # `tests` matrix deselects (KORNIA_TEST_OPTIMIZER=""). Keeps the compile-clean core a
   # defended floor at PR time. Scoped to a single config and `-k dynamo or compile` so the
   # extra CI cost is small (only the compile-marked tests actually build inductor graphs).
+  # The directory list has to name every tree whose compile tests should gate a PR: one it
+  # omits is still collected, but with the `torch_optimizer` fixture deselected, so its
+  # `test_dynamo` cases pass as identity no-ops and a compile regression there reaches
+  # `main` before the post-merge `coverage.yml` dynamo job is the first to compile it.
   dynamo:
     needs: [pre-tests]
     uses: ./.github/workflows/tests.yml
@@ -166,7 +170,7 @@ jobs:
       pytorch-version: '["2.14.0"]'
       pytorch-dtype: float32
       optimizer: inductor
-      pytest-extra: 'tests/augmentation tests/enhance tests/feature tests/filters tests/color tests/geometry tests/losses tests/morphology -k "dynamo or compile"'
+      pytest-extra: 'tests/augmentation tests/enhance tests/feature tests/filters tests/color tests/geometry tests/losses tests/morphology tests/models -k "dynamo or compile"'
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |
@@ -187,7 +191,8 @@ jobs:
   # 664 tests down across every subpackage -- `linalg.inv`, `linalg.solve`, `inv_ex`,
   # `lu_factor_ex` and `F.conv3d` all route through it -- where the same runner on torch
   # 2.9.1 had 200 failures. The blocker is the *virtual* GPU and not macOS 26: a physical M1
-  # on macOS 26.5 compiles those shaders and produces the same 14 failures this leg records.
+  # on macOS 26.5 compiled those shaders in the #4202 comparison. The strict manifest now has
+  # 12 entries after #4185 fixed the two YUV420/YUV422 empty-input failures.
   # The macOS 15 image is Metal 3 and takes the older kernel path, which is the path that
   # works on the runner fleet. Two consequences: no job here exercises the Metal 4 path that
   # users on current macOS run, and when GitHub retires macos-15 this leg stops scheduling

@@ -34,13 +34,13 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from urllib.request import urlopen
 
 import matplotlib as mpl
 
 mpl.use("Agg")  # select the headless backend before pyplot is imported
 
 import matplotlib.pyplot as plt
-import requests
 import torch
 
 import kornia as K
@@ -74,9 +74,8 @@ def knchurch() -> tuple[torch.Tensor, torch.Tensor]:
 
 
 def imagenet_classes() -> list[str]:
-    response = requests.get(IMAGENET_CLASSES, timeout=60)
-    response.raise_for_status()
-    return response.text.strip().splitlines()
+    with urlopen(IMAGENET_CLASSES, timeout=60) as resp:
+        return resp.read().decode().strip().splitlines()
 
 
 def show(ax, img: torch.Tensor, title: str = "") -> None:

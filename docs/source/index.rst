@@ -17,6 +17,13 @@ Kornia: Differentiable Computer Vision for PyTorch
      button.sidebar-toggle.secondary-toggle { display: none !important; }
      /* Room for the two-column hero; the theme caps articles at 960px. */
      .bd-main .bd-content .bd-article-container { max-width: 1240px; }
+     /* Let the full-width bands (sponsor, features) escape the centred column: the article container
+        clips overflow by default, which would confine the bleed to 1240px. The container is already
+        viewport-centred, so visible overflow lets the negative-margin bands reach the viewport edges;
+        clip the outermost (full-width) wrapper so 100vw cannot add a horizontal scrollbar. */
+     .bd-main .bd-content .bd-article-container,
+     .bd-main .bd-content .bd-article-container .bd-article { overflow: visible; }
+     .bd-container { overflow-x: clip; }
      /* The document title provides the semantic H1 and browser title; the hero is its visible presentation. */
      span#kornia-docs-home + h1 {
        border: 0; clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden;
@@ -62,6 +69,12 @@ Kornia: Differentiable Computer Vision for PyTorch
             :outline:
 
             API reference
+
+         .. button-link:: https://kornia.org/playground/
+            :color: secondary
+            :outline:
+
+            Try in browser
 
       .. raw:: html
 
@@ -162,8 +175,16 @@ Kornia: Differentiable Computer Vision for PyTorch
 
 .. raw:: html
 
-   <p class="kornia-sponsor-notice">Considering sponsoring? —
-   <a href="community/sponsor.html">Inquire now</a></p>
+   <div class="kornia-sponsor-band">
+     <p class="kornia-sponsor-band__lead">Kornia is a non-profit building the stack for spatial AI &mdash; from
+     differentiable vision for research to real-time perception on robots &mdash; maintained by a small team and
+     funded by the people who use it.</p>
+     <div class="kornia-sponsor-band__actions">
+       <a class="kornia-btn kornia-btn--primary" href="https://opencollective.com/kornia" target="_blank"
+          rel="noopener"><i class="fa-solid fa-heart" aria-hidden="true"></i> Sponsor on Open Collective</a>
+       <a class="kornia-sponsor-band__link" href="community/sponsor.html">Why sponsor, and the tiers &rarr;</a>
+     </div>
+   </div>
 
 Features
 --------

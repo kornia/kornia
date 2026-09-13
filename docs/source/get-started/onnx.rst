@@ -27,7 +27,7 @@ Quickstart
 
    .. code-block:: bash
 
-      pip install onnx onnxruntime
+      pip install "kornia[onnx]"
 
 2. **Port your own kornia module**
 

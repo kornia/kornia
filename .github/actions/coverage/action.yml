@@ -26,6 +26,10 @@ inputs:
     description: "Whether to continue on error"
     required: false
     default: "false"
+  extra-install:
+    description: "Optional-dependency extra to install alongside dev, e.g. 'sd'"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -45,6 +49,11 @@ runs:
     - name: Install dependencies
       shell: bash
       run: pixi run -e ${{ steps.pixi-env.outputs.name }} install
+
+    - name: Install optional extra ${{ inputs.extra-install }}
+      if: inputs.extra-install != ''
+      shell: bash
+      run: pixi run -e ${{ steps.pixi-env.outputs.name }} uv sync --extra dev --extra ${{ inputs.extra-install }}
 
     - name: Run CPU tests coverage ${{ inputs.pytorch-dtype }}
       continue-on-error: ${{ inputs.continue-on-error == 'true' }}

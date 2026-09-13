@@ -91,6 +91,66 @@ class TestCubicSolver(BaseTester):
         coeffs = torch.tensor([[2.0, 3.0, -11.0, -6.0]], device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(solver.solve_cubic, (coeffs,))
 
+    def test_convention_gradient_is_finite_at_the_acos_boundary_4290(self, device, dtype):
+        # #4290: d(acos)/dx = -1/sqrt(1-x^2) is unbounded at x = +-1. solve_cubic's D<=0
+        # branch computes acos(R / sqrt(-Q3)); the branch condition guarantees the ratio is in
+        # [-1, 1], but a cubic with a repeated or near-repeated root pushes it to exactly that
+        # boundary, where the VALUE is fine but the DERIVATIVE diverges -- same shape as the
+        # acos/asin boundary in quaternion_exp_to_log/euler_from_quaternion (#4007, fixed in
+        # #4228), a different call site not covered by that fix.
+        #
+        # This resolvent cubic comes from kornia's OWN existing double-root quartic fixture
+        # (TestQuarticSolver.test_solve_quartic, "Case 3: Double Roots": (x-2)^2(x-3)(x+1),
+        # coeffs [1, -6, 9, 4, -12]) -- already in the suite, already passes on forward value,
+        # because that test never calls .backward(). It fails immediately if you do.
+        coeffs = torch.tensor([[1.0, -6.0, 9.0, 4.0, -12.0]], device=device, dtype=dtype, requires_grad=True)
+        roots = solver.solve_quartic(coeffs)
+        roots.sum().backward()
+        assert bool(torch.isfinite(coeffs.grad).all()), coeffs.grad
+
+        # The forward value is unaffected by the gradient guard: unchanged, sorted match to the
+        # documented roots -1, 2, 2, 3.
+        expected = torch.tensor([[-1.0, 2.0, 2.0, 3.0]], device=device, dtype=dtype)
+        roots_sorted, _ = torch.sort(roots.detach(), dim=-1)
+        expected_sorted, _ = torch.sort(expected, dim=-1)
+        self.assert_close(roots_sorted, expected_sorted, rtol=1e-3, atol=1e-3)
+
+        # Second, independent repeated-root cubic exercising solve_cubic directly (not via a
+        # quartic's resolvent): (x-1)^2(x-4) = x^3 - 6x^2 + 9x - 4. Verified this lands exactly
+        # at the acos boundary (Q=-1, R=1, Q3=-1, D=Q3+R^2=0, ratio=R/sqrt(-Q3)=1.0 exactly) via
+        # the D<=0 branch (Q != 0, so this is not the separate Q==0-and-R==0 triple-root path).
+        cubic_coeffs = torch.tensor([[1.0, -6.0, 9.0, -4.0]], device=device, dtype=dtype, requires_grad=True)
+        cubic_roots = solver.solve_cubic(cubic_coeffs)
+        cubic_roots.sum().backward()
+        assert bool(torch.isfinite(cubic_coeffs.grad).all()), cubic_coeffs.grad
+
+    def test_convention_gradient_does_not_leak_across_batch_rows_4334(self, device, dtype):
+        # #4334: the D > 0 branch keyed its work off `abs(R) > 1e-16` alone, so it evaluated
+        # sqrt(D) on D < 0 rows too. Those rows are never read back, but `-Q / nan` stays in
+        # the graph and DivBackward0 returns nan, which reaches every coefficient. The result
+        # is that a row differentiates fine alone and gives nan in a mixed batch.
+        three = [1.0, -7.0, 14.0, -8.0]  # (x-1)(x-2)(x-4): D < 0, three real roots, R != 0
+        one = [1.0, 0.0, 1.0, -2.0]  # (x-1)(x^2+x+2): D > 0, one real root, Q != 0
+
+        alone = torch.tensor([three], device=device, dtype=dtype, requires_grad=True)
+        solver.solve_cubic(alone).sum().backward()
+
+        mixed = torch.tensor([three, one], device=device, dtype=dtype, requires_grad=True)
+        solver.solve_cubic(mixed).sum().backward()
+
+        assert bool(torch.isfinite(mixed.grad).all()), mixed.grad
+        # Batching must not change the answer either, not merely keep it finite.
+        self.assert_close(mixed.grad[0], alone.grad[0])
+
+    def test_convention_batched_forward_is_unchanged_by_neighbours_4334(self, device, dtype):
+        # The forward pass was always correct; pin that, so a later fix that repairs the
+        # gradient by perturbing the value is caught here.
+        three = [1.0, -7.0, 14.0, -8.0]
+        one = [1.0, 0.0, 1.0, -2.0]
+        alone = torch.tensor([three], device=device, dtype=dtype)
+        mixed = torch.tensor([three, one], device=device, dtype=dtype)
+        self.assert_close(solver.solve_cubic(mixed)[0], solver.solve_cubic(alone)[0])
+
 
 class TestMultiplyDegOnePoly(BaseTester):
     def test_smoke(self, device, dtype):
@@ -377,3 +437,76 @@ class TestQuarticSolver(BaseTester):
             requires_grad=True,
         )
         self.gradcheck(solver.solve_quartic, (coeffs,), raise_exception=True, fast_mode=True)
+
+    @pytest.mark.parametrize(
+        ("coeffs", "expected", "expected_grad"),
+        [
+            # x^4 - 16 = (x^2-4)(x^2+4): two real roots, +-2. R_sq lands exactly on 0.
+            ([1.0, 0.0, 0.0, 0.0, -16.0], [2.0, -2.0], [0.0, -0.5, 0.0, 0.0, 0.0]),
+            # x^4 - 1 = (x^2-1)(x^2+1): two real roots, +-1. R_sq lands exactly on 0.
+            ([1.0, 0.0, 0.0, 0.0, -1.0], [1.0, -1.0], [0.0, -0.5, 0.0, 0.0, 0.0]),
+            # (x^2+1)(x^2+4): no real roots. R_sq < 0 sends R to the `R approx 0` fallback,
+            # whose own radicand is then exactly 0 -- the second sqrt site.
+            ([1.0, 0.0, 5.0, 0.0, 4.0], None, [0.0, 0.0, 0.0, 0.0, 0.0]),
+        ],
+    )
+    def test_convention_gradient_is_finite_for_a_pure_biquadratic_4229(
+        self, coeffs, expected, expected_grad, device, dtype
+    ):
+        # A quartic with no x^3 and no x^2 term puts R_sq exactly on 0, and
+        # `torch.clamp(R_sq, min=0.0).sqrt()` does not guard that: d(sqrt)/dx is unbounded at 0,
+        # and on torch < 2.14 clamp passes the incoming gradient through at the bound rather
+        # than zeroing it (#4229). kornia supports torch>=2.5.1, so the guard was a no-op on the
+        # older half of the supported range and the backward returned nan. On torch >= 2.14 clamp
+        # already zeroes the boundary gradient, so these pins pass on base on those legs; the
+        # 2.5.1 and 2.9.1 CI legs carry the discrimination.
+        c = torch.tensor([coeffs], device=device, dtype=dtype, requires_grad=True)
+        roots = solver.solve_quartic(c)
+        roots.sum().backward()
+
+        assert bool(torch.isfinite(c.grad).all()), c.grad
+        # Pin the value the guard produces, not just its finiteness: a "detach everything"
+        # pseudo-fix keeps the gradient finite but does not reproduce these numbers. This is a
+        # convention, not a Jacobian -- the forward is discontinuous at exactly these points
+        # (#4346), so there is no finite-difference derivative to pin against.
+        self.assert_close(
+            c.grad[0],
+            torch.tensor(expected_grad, device=device, dtype=dtype),
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        # The forward pass was always correct; pin it, so a fix that repairs the gradient by
+        # moving the value is caught here.
+        if expected is None:
+            # No real roots: every entry is the zero placeholder.
+            self.assert_close(
+                roots.detach()[0],
+                torch.zeros(4, device=device, dtype=dtype),
+                rtol=1e-4,
+                atol=1e-4,
+            )
+        else:
+            real = torch.sort(roots.detach()[0][:2]).values
+            self.assert_close(
+                real,
+                torch.sort(torch.tensor(expected, device=device, dtype=dtype)).values,
+                rtol=1e-4,
+                atol=1e-4,
+            )
+
+    def test_convention_gradient_does_not_leak_across_batch_rows_4334(self, device, dtype):
+        # #4334 through the resolvent cubic: a four-real-root quartic batched with a
+        # two-real-root one took nan gradients from solve_cubic's D > 0 branch.
+        four = [1.0, -10.0, 35.0, -50.0, 24.0]  # (x-1)(x-2)(x-3)(x-4)
+        two = [1.0, 0.0, 0.0, 0.0, -16.0]  # x^4 - 16
+
+        alone = torch.tensor([four], device=device, dtype=dtype, requires_grad=True)
+        solver.solve_quartic(alone).sum().backward()
+
+        mixed = torch.tensor([four, two], device=device, dtype=dtype, requires_grad=True)
+        solver.solve_quartic(mixed).sum().backward()
+
+        # Check row 0 for the cross-batch contamination from #4334. Row 1's separate
+        # zero-radicand gradient convention was fixed in #4339 and is covered above.
+        assert bool(torch.isfinite(mixed.grad[0]).all()), mixed.grad
+        self.assert_close(mixed.grad[0], alone.grad[0])

@@ -195,3 +195,18 @@ KMeans
 
 .. autoclass:: KMeans
     :members:
+
+Super Resolution
+----------------
+
+.. autoclass:: SuperResolution
+    :members:
+
+.. autoclass:: SuperResolutionConfig
+    :members:
+
+.. autoclass:: SmallSRBuilder
+    :members:
+
+.. autoclass:: RRDBNetBuilder
+    :members:

@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, Union
 
 import torch
@@ -22,14 +23,19 @@ from torch import nn
 
 from kornia.config import kornia_config
 from kornia.core.external import PILImage as Image
-from kornia.core.external import basicsr, onnx
+from kornia.core.external import onnx
 from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.models.base import ModelBase
 from kornia.models.processors import OutputRangePostProcessor, ResizePreProcessor
+from kornia.models.rrdbnet import RRDBNet
 from kornia.models.small_sr import SmallSRNetWrapper
 from kornia.onnx.download import CachedDownloader
 
-__all__ = ["RRDBNetBuilder", "SmallSRBuilder", "SuperResolution"]
+__all__ = ["RRDBNetBuilder", "SmallSRBuilder", "SuperResolution", "SuperResolutionConfig"]
+
+# `SmallSRBuilder`'s wrapper resizes every input to this before the network, so the
+# pipeline's output side is always this times `upscale_factor`, whatever `image_size` is.
+_SMALL_SR_INPUT_SIZE = 224
 
 _URLs = {
     "RealESRGAN_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
@@ -40,13 +46,101 @@ _URLs = {
 
 
 # TODO: support patching -> SR -> unpatching pipeline
-class SuperResolution(ModelBase, ONNXExportMixin):
+@dataclass
+class SuperResolutionConfig:
+    """Configuration to construct a :class:`SuperResolution` model.
+
+    The fields mirror the arguments accepted by :class:`RRDBNetBuilder` and
+    :class:`SmallSRBuilder`, so a config can drive either builder.
+
+    Args:
+        model_name: Name of the model variant to build. RRDB variants are
+            ``"RealESRGAN_x4plus"``, ``"RealESRNet_x4plus"``,
+            ``"RealESRGAN_x4plus_anime_6B"`` and ``"RealESRGAN_x2plus"``;
+            the lightweight variant is ``"small_sr"``.
+        pretrained: If ``True``, load pretrained weights for the selected variant.
+        upscale_factor: Integer scale used by the lightweight variant. Ignored by
+            the RRDB variants, whose scale is fixed by ``model_name``.
+        image_size: Optional fixed input size for the lightweight variant. It declares
+            the size fed to the wrapper; it does not change the pre-processor, which
+            always resizes to 224, so the output side stays ``224 * upscale_factor``.
+
+    """
+
+    model_name: str = "small_sr"
+    pretrained: bool = True
+    upscale_factor: int = 3
+    image_size: Optional[int] = None
+
+
+class SuperResolution(ModelBase[SuperResolutionConfig], ONNXExportMixin):
     """SuperResolution is a module that wraps an super resolution model."""
 
     name: str = "super_resolution"
     input_image_size: Optional[int]
     output_image_size: Optional[int]
     pseudo_image_size: Optional[int]
+
+    def __init__(
+        self,
+        model: nn.Module,
+        pre_processor: nn.Module,
+        post_processor: nn.Module,
+        name: Optional[str] = None,
+    ) -> None:
+        """Initialize SuperResolution.
+
+        Args:
+            model: The super-resolution network.
+            pre_processor: Pre-processing module applied to the input images.
+            post_processor: Post-processing module applied to the network output.
+            name: Optional name, used by :meth:`save` for file names.
+
+        """
+        super().__init__()
+        self.model = model.eval()
+        self.pre_processor = pre_processor
+        self.post_processor = post_processor
+        if name is not None:
+            self.name = name
+        # `to_onnx` reads these three; builders overwrite the ones they know.
+        # Without defaults they are annotations only, and export raises
+        # AttributeError.
+        self.input_image_size = None
+        self.output_image_size = None
+        self.pseudo_image_size = None
+
+    @staticmethod
+    def from_config(config: SuperResolutionConfig) -> "SuperResolution":
+        """Build a super-resolution model from a configuration object.
+
+        Dispatches to :class:`SmallSRBuilder` for the lightweight variant and to
+        :class:`RRDBNetBuilder` for the RRDB variants.
+
+        Args:
+            config: Super-resolution configuration. See :class:`SuperResolutionConfig`.
+
+        Returns:
+            A :class:`SuperResolution` wrapper ready for inference.
+
+        Raises:
+            ValueError: If ``config.model_name`` is not a supported variant.
+
+        """
+        if config.model_name.lower() == "small_sr":
+            return SmallSRBuilder.build(
+                model_name=config.model_name,
+                pretrained=config.pretrained,
+                upscale_factor=config.upscale_factor,
+                image_size=config.image_size,
+            )
+        if config.model_name not in _URLs:
+            raise ValueError(
+                f"Model {config.model_name} not found. Please choose from 'small_sr', "
+                "'RealESRGAN_x4plus', 'RealESRNet_x4plus', 'RealESRGAN_x4plus_anime_6B', "
+                "'RealESRGAN_x2plus'."
+            )
+        return RRDBNetBuilder.build(model_name=config.model_name, pretrained=config.pretrained)
 
     @torch.inference_mode()
     def forward(self, images: Union[torch.Tensor, List[torch.Tensor]]) -> Union[torch.Tensor, List[torch.Tensor]]:
@@ -187,21 +281,13 @@ class RRDBNetBuilder:
             ValueError: If ``model_name`` is not one of the supported variants.
         """
         if model_name == "RealESRGAN_x4plus":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
-                num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4
-            )
+            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
         elif model_name == "RealESRNet_x4plus":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
-                num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4
-            )
+            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
         elif model_name == "RealESRGAN_x4plus_anime_6B":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
-                num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4
-            )
+            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4)
         elif model_name == "RealESRGAN_x2plus":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
-                num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=2
-            )
+            model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=2)
         else:
             raise ValueError(
                 f"Model {model_name} not found. Please choose from "
@@ -244,8 +330,9 @@ class SmallSRBuilder:
             upscale_factor: Integer scale used by ``SmallSRNetWrapper``.
                 For example, ``3`` maps an input image of size ``H x W`` to an
                 output image of approximately ``3H x 3W``.
-            image_size: Optional fixed input size. When provided, output metadata is
-                configured as ``image_size * upscale_factor``.
+            image_size: Optional fixed input size. It declares the size fed to the
+                wrapper and does not change the pre-processor, which always resizes to
+                224; the output side is therefore ``224 * upscale_factor``.
 
         Returns:
             A :class:`SuperResolution` instance configured with resizing pre-processing
@@ -261,14 +348,16 @@ class SmallSRBuilder:
 
         sr = SuperResolution(
             model,
-            pre_processor=ResizePreProcessor(224, 224),
+            pre_processor=ResizePreProcessor(_SMALL_SR_INPUT_SIZE, _SMALL_SR_INPUT_SIZE),
             post_processor=nn.Identity(),
             name=model_name,
         )
+        # The pre-processor resizes to `_SMALL_SR_INPUT_SIZE` regardless of `image_size`,
+        # so the wrapper's output side does not depend on the input size.
+        sr.output_image_size = _SMALL_SR_INPUT_SIZE * upscale_factor
         if image_size is None:
-            sr.pseudo_image_size = 224
+            sr.pseudo_image_size = _SMALL_SR_INPUT_SIZE
         else:
             sr.input_image_size = image_size
-            sr.output_image_size = image_size * 3
             sr.pseudo_image_size = image_size
         return sr

@@ -49,8 +49,9 @@ def _apply_linear_transformation(
     # Empirical benchmarks show that einsum is faster on CPU for this specific pattern,
     # while conv2d offers significant speedups on GPU/CUDA.
     # We branch to ensure optimal performance on both devices.
-    # BRANCH 1: CPU (Einsum)
-    if image_compute.device.type == "cpu":
+    # BRANCH 1: CPU and empty tensors (Einsum)
+    # Einsum handles every empty shape and keeps image, kernel, and bias in the graph.
+    if image_compute.device.type == "cpu" or image_compute.numel() == 0:
         out = torch.einsum("oi, ...ihw -> ...ohw", kernel_compute, image_compute)
 
         if bias_compute is not None:

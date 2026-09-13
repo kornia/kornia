@@ -26,8 +26,9 @@ show.
   ``dill``, ``unittest.mock``, …) and hit an object it could not hash.
 * Even from a differently named checkout, ``to_tensorflow()`` segfaulted during transpilation
   whenever ``transformers`` was installed in the same environment — which it was by default for
-  kornia contributors, since both packages shipped in the same ``dev`` extra. The crash happened
-  inside Ivy's Hugging Face integration lookup, which imports ``triton`` as a side effect.
+  kornia contributors, since both packages shipped in the same ``dev`` extra (no longer the case:
+  ``transformers`` moved to the optional ``sd`` extra). The crash happened inside Ivy's Hugging Face
+  integration lookup, which imports ``triton`` as a side effect.
 * With ``transformers`` absent and the environment's ``ruff`` executable on ``PATH`` (Ivy shells
   out to it to format generated code), ``to_tensorflow()`` did transpile and run
   ``rgb_to_grayscale`` correctly.

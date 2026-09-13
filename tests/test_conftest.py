@@ -193,6 +193,67 @@ class TestSkipHalfPrecisionOnCuda:
 
 
 class TestIntegrationLocalHalfPrecision:
+    @pytest.mark.parametrize("teardown_error", [False, True])
+    def test_isolated_item_tears_down_previous_module(self, pytester, monkeypatch, teardown_error):
+        """An isolated item must release parent fixtures before the next module runs (#4149)."""
+        # Load the real isolation plugin in both the parent and its child. The test requests
+        # device_name rather than device, so the protocol runs without requiring a CUDA kernel.
+        monkeypatch.setenv("PYTEST_PLUGINS", "conftest")
+        events = pytester.path / "events.txt"
+        pytester.makepyfile(
+            test_first=f"""
+            import os
+            from pathlib import Path
+            import pytest
+
+            events = Path({str(events)!r})
+            child = bool(os.environ.get("KORNIA_TEST_IN_SUBPROCESS"))
+
+            def record(event):
+                with events.open("a") as stream:
+                    stream.write(event + "\\n")
+
+            @pytest.fixture(scope="module", autouse=True)
+            def module_fixture():
+                record("setup child" if child else "setup parent")
+                yield
+                record("teardown child" if child else "teardown parent")
+                if not child and {teardown_error!r}:
+                    raise RuntimeError("parent finalizer failed")
+
+            def test_normal():
+                record("normal")
+
+            @pytest.fixture
+            def isolated_fixture():
+                assert child, "isolated fixtures must not run in the parent"
+
+            def test_isolated(device_name, dtype_name, isolated_fixture):
+                assert child
+                record("isolated")
+            """,
+            test_next=f"""
+            from pathlib import Path
+
+            def test_next_module():
+                assert Path({str(events)!r}).read_text().splitlines() == [
+                    "setup parent", "normal", "setup child", "isolated",
+                    "teardown child", "teardown parent",
+                ]
+            """,
+        )
+        result = pytester.runpytest_subprocess(
+            "test_first.py",
+            "test_next.py",
+            "--device=cuda",
+            "--dtype=float16",
+            "--isolate-half-precision",
+            "-q",
+        )
+        result.assert_outcomes(passed=3, errors=int(teardown_error))
+        if teardown_error:
+            result.stdout.fnmatch_lines(["*ERROR at teardown of test_isolated*", "*parent finalizer failed*"])
+
     def test_local_half_dtype_lifecycle_with_pytester(self, pytester):
         """Integration test: verify real pytest execution with local half_dtype."""
         test_file = pytester.makepyfile(

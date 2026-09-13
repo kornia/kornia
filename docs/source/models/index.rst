@@ -18,11 +18,11 @@ returns on a real input, and ends with the paper. The builders that construct th
      - Task
      - Venue
      - Licence
-   * - :doc:`RT-DETR <rt_detr>`
+   * - :doc:`RT-DETR <rt_detr>` · `Try in browser <https://kornia.org/playground/models/object-detection-rtdetr/>`__
      - Object detection
      - arXiv 2023
      - Apache-2.0
-   * - :doc:`YuNet <yunet>`
+   * - :doc:`YuNet <yunet>` · `Try in browser <https://kornia.org/playground/models/face-detection-yunet/>`__
      - Face detection
      - IEEE TIP 2021
      - Apache-2.0
@@ -46,15 +46,15 @@ returns on a real input, and ends with the paper. The builders that construct th
      - Image classification backbone (mobile)
      - ICLR 2022
      - --
-   * - :doc:`TinyViT <tiny_vit>`
+   * - :doc:`TinyViT <tiny_vit>` · `Try in browser <https://kornia.org/playground/models/classification-tinyvit/>`__
      - Image classification backbone (small)
      - ECCV 2022
      - --
-   * - :doc:`LoFTR <loftr>`
+   * - :doc:`LoFTR <loftr>` · `Try in browser <https://kornia.org/playground/models/local-features-loftr/>`__
      - Image matching (detector-free)
      - CVPR 2021
      - Apache-2.0
-   * - :doc:`HardNet <hardnet>`
+   * - :doc:`HardNet <hardnet>` · `Try in browser <https://kornia.org/playground/models/local-features-keynet-hardnet/>`__
      - Local feature descriptor
      - NeurIPS 2017
      - MIT
@@ -66,7 +66,7 @@ returns on a real input, and ends with the paper. The builders that construct th
      - Line detection and matching
      - CVPR 2021
      - MIT
-   * - :doc:`DexiNed <dexined>`
+   * - :doc:`DexiNed <dexined>` · `Try in browser <https://kornia.org/playground/models/edges-dexined/>`__
      - Edge detection
      - WACV 2020
      - MIT

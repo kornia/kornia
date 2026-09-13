@@ -89,7 +89,12 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
             0.0 <= fill_value <= 1.0,
             f"Invalid value in `fill_value`. Must be a float between 0 and 1. Got: {fill_value}",
         )
-        self.fill_value = torch.tensor(fill_value)
+        # `fill_value` is fully determined by the constructor arg (derived state, not
+        # learned) -- register as a non-persistent buffer so `.to()` / `.cuda()` /
+        # `.half()` move it through the normal nn.Module machinery instead of leaving
+        # it behind as a plain attribute. persistent=False keeps state_dict() keys
+        # unchanged, same rationale/convention as #4079/#4319.
+        self.register_buffer("fill_value", torch.tensor(fill_value), persistent=False)
 
         KORNIA_CHECK_TYPE(num_drop_channels, int, f"`num_drop_channels` must be an int. Got: {type(num_drop_channels)}")
         KORNIA_CHECK(

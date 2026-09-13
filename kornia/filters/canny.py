@@ -144,8 +144,8 @@ def canny(
         hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, dtype)
 
         while ((edges_old - edges).abs() != 0).any():
-            weak: torch.Tensor = (edges == 0.5).float()
-            strong: torch.Tensor = (edges == 1).float()
+            weak: torch.Tensor = (edges == 0.5).to(dtype)
+            strong: torch.Tensor = (edges == 1).to(dtype)
 
             hysteresis_magnitude: torch.Tensor = F.conv2d(
                 edges, hysteresis_kernels, padding=hysteresis_kernels.shape[-1] // 2

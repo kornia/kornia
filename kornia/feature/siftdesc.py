@@ -22,10 +22,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import _l2_normalize
 from kornia.filters import get_gaussian_kernel2d, spatial_gradient
-from kornia.geometry.conversions import pi
 
 
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:

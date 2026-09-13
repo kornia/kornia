@@ -60,6 +60,8 @@ jobs:
           pytorch-device: ${{ inputs.pytorch-device }}
           pytest-extra: '--runslow -k "slow and not test_dynamo"'
           coverage-artifact: coverage-slow-${{ matrix.pytorch-dtype }}
+          # tests/filters/test_dissolving.py is slow-only and needs kornia[sd]
+          extra-install: sd
 
   dynamo:
     # Run all dynamo (torch.compile) related tests

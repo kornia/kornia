@@ -652,6 +652,19 @@ def _solve_cramer_sym3x3(
         systems (``|det| > eps``).  Outputs for unsolved entries are numerically
         meaningless and should be discarded by the caller.
     """
+    # float16 cannot carry this solve. The determinant is a product of three
+    # second derivatives, so for a [0, 1] response it lands around 1e-4 and
+    # below — still above ``eps``, so ``solved`` admits it. The forward divides
+    # by it once and stays finite, but the backward of ``num / safe_det``
+    # scales by ``1 / safe_det**2``, and that square is not representable in
+    # float16 (finfo.tiny is 6.1e-5), so the gradient becomes inf and reduces
+    # to NaN. bfloat16 keeps float32's exponent range and is unaffected.
+    in_dtype = dxx.dtype
+    if in_dtype == torch.float16:
+        dxx, dyy, dss = dxx.float(), dyy.float(), dss.float()
+        dxy, dxs, dys = dxy.float(), dxs.float(), dys.float()
+        r0, r1, r2 = r0.float(), r1.float(), r2.float()
+
     cf00 = dyy * dss - dys * dys  # cofactor M00
     cf01 = dxy * dss - dys * dxs  # cofactor M01
     cf02 = dxy * dys - dyy * dxs  # cofactor M02
@@ -662,6 +675,9 @@ def _solve_cramer_sym3x3(
     sx = (r0 * cf00 - dxy * (r1 * dss - dys * r2) + dxs * (r1 * dys - dyy * r2)) / safe_det
     sy = (dxx * (r1 * dss - dys * r2) - r0 * cf01 + dxs * (dxy * r2 - r1 * dxs)) / safe_det
     ss = (dxx * (dyy * r2 - r1 * dys) - dxy * (dxy * r2 - r1 * dxs) + r0 * cf02) / safe_det
+
+    if in_dtype == torch.float16:
+        sx, sy, ss = sx.to(in_dtype), sy.to(in_dtype), ss.to(in_dtype)
     return sx, sy, ss, solved
 
 
@@ -1035,7 +1051,7 @@ def iterative_quad_interp3d(
             making the per-candidate gather+solve loop the dominant CPU cost.  Setting
             ``max_candidates = num_features * 5`` (say) dramatically reduces that work
             at the cost of occasionally missing a feature whose response rank would have
-            improved after refinement.
+            improved after refinement.  Must be non-negative; ``0`` refines nothing.
 
     Returns:
         A tuple ``(coords_max, y_max)`` where
@@ -1059,6 +1075,8 @@ def iterative_quad_interp3d(
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
     if input.ndim != 5:
         raise ValueError(f"Invalid input shape, expected BxCxDxHxW. Got: {input.shape}")
+    if max_candidates is not None and max_candidates < 0:
+        raise ValueError(f"max_candidates must be non-negative. Got: {max_candidates}")
 
     B, C, D, H, W = input.shape
     device = input.device
@@ -1092,14 +1110,26 @@ def iterative_quad_interp3d(
     # few hundred features are ultimately needed.  The per-candidate patch gather
     # (random memory access into a multi-MB volume) is cache-miss dominated on CPU;
     # reducing N here gives a proportional speedup of the iteration loop below.
+    # The cap is per image, not over the flattened batch: a global topk would make
+    # one image's refined keypoints depend on which other images share its batch,
+    # so a quiet image next to a high-contrast one would get none. N <= the cap is
+    # the fast path, because then no row can be over it either.
     if max_candidates is not None and N > max_candidates:
         cand_vals = inp[bc_idx, d_idx, h_idx, w_idx]  # (N,) pre-refinement responses
-        _, keep = torch.topk(cand_vals, k=max_candidates)
+        # Sort by response, then stably by row: within each row the candidates
+        # stay in descending-response order, so a positional rank inside the row
+        # is the same ranking the global topk used, taken one image at a time.
+        by_value = torch.argsort(cand_vals, descending=True, stable=True)
+        grouped = by_value[torch.argsort(bc_idx[by_value], stable=True)]
+        counts = torch.bincount(bc_idx, minlength=B * C)
+        row_start = torch.cumsum(counts, 0) - counts
+        rank = torch.arange(N, device=device) - row_start[bc_idx[grouped]]
+        keep = grouped[rank < max_candidates]
         bc_idx = bc_idx[keep]
         d_idx = d_idx[keep]
         h_idx = h_idx[keep]
         w_idx = w_idx[keep]
-        N = max_candidates
+        N = int(keep.shape[0])
 
     patch_offsets = _PATCH_DD.to(device) * HW + _PATCH_DH.to(device) * W + _PATCH_DW.to(device)
 

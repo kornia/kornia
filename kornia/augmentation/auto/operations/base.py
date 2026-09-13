@@ -15,12 +15,11 @@
 # limitations under the License.
 #
 
-from typing import Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import Callable, Dict, List, Optional, Self, Tuple, TypeVar
 
 import torch
 from torch import nn
 from torch.distributions import Bernoulli, RelaxedBernoulli
-from typing_extensions import Self
 
 from kornia.augmentation.base import _AugmentationBase
 
@@ -192,7 +191,9 @@ class OperationBase(nn.Module):
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        batch_prob = params["batch_prob"][(...,) + ((None,) * (len(input.shape) - 1))].to(device=input.device)
+        batch_prob = params["batch_prob"][(...,) + ((None,) * (len(input.shape) - 1))].to(
+            device=input.device, dtype=input.dtype
+        )
 
         return batch_prob * self.op(input, params=params) + (1 - batch_prob) * input
 
