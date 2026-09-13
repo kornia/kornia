@@ -417,6 +417,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * `RandomThinPlateSpline(scale=0.0)` now generates zero control-point displacement instead of
   raising an error when constructing a degenerate uniform distribution. (#4463)
+* `unproject_meshgrid` now requires camera intrinsics of shape `(B, 3, 3)`, rejecting extra
+  camera axes before they can broadcast across pixel columns and reporting the caller's original shape. (#4383)
 * Correct non-zero sensor tilt in `tilt_projection` and `distort_points` to match OpenCV,
   restoring forward/inverse round trips and correcting `undistort_image` sampling. (#4384)
 
