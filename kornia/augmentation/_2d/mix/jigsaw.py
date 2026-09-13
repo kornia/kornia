@@ -32,7 +32,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
     .. image:: _static/img/RandomJigsaw.png
 
     Make Jigsaw puzzles for each image individually. To mix with different images in a
-    batch, referring to :class:`kornia.augmentation.RandomMosic`.
+    batch, referring to :class:`kornia.augmentation.RandomMosaic`.
 
     Args:
         grid: the Jigsaw puzzle grid. e.g. (2, 2) means
@@ -42,7 +42,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
         data_keys: the input type sequential for applying augmentations.
             Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints",
             "class", "label".
-        p: probability of applying the transformation for the whole batch.
+        p: probability of applying the transformation to each sample.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``.
