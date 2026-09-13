@@ -392,6 +392,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Fixed `RandomPlasmaBrightness`, `RandomPlasmaContrast`, and `RandomPlasmaShadow` to replay deterministically from stored `params=`. (#4462)
 * `ManyToManyAugmentationDispather` now rejects mismatched numbers of input bundles and
   augmentations before applying any transformation, instead of silently dropping surplus inputs
   or skipping augmentations. (#4461)
