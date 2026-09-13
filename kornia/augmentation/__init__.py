@@ -107,20 +107,15 @@ from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmenta
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
 from kornia.augmentation.container import (
-    AugmentationAuditReport,
-    AugmentationAuditStep,
     AugmentationSequential,
     ImageSequential,
     ManyToManyAugmentationDispather,
     ManyToOneAugmentationDispather,
     PatchSequential,
-    SpatialAudit,
     VideoSequential,
 )
 
 __all__ = [
-    "AugmentationAuditReport",
-    "AugmentationAuditStep",
     "AugmentationBase2D",
     "AugmentationBase3D",
     "AugmentationSequential",
@@ -204,7 +199,6 @@ __all__ = [
     "RigidAffineAugmentationBase2D",
     "RigidAffineAugmentationBase3D",
     "SmallestMaxSize",
-    "SpatialAudit",
     "VideoSequential",
     "auto",
     "container",

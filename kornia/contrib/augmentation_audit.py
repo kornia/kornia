@@ -33,20 +33,19 @@ from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation._2d.geometric.crop import RandomCrop
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation.container.image import ImageSequential
+from kornia.augmentation.container.ops import DataType
+from kornia.augmentation.container.params import ParamItem
+from kornia.augmentation.container.patch import PatchSequential
+from kornia.augmentation.container.video import VideoSequential
 from kornia.constants import DataKey
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
-from .image import ImageSequential
-from .ops import DataType
-from .params import ParamItem
-from .patch import PatchSequential
-from .video import VideoSequential
-
 if TYPE_CHECKING:
-    from .augment import AugmentationSequential
+    from kornia.augmentation.container.augment import AugmentationSequential
 
-__all__ = ["AugmentationAuditReport", "AugmentationAuditStep", "SpatialAudit"]
+__all__ = ["AugmentationAuditReport", "AugmentationAuditStep", "SpatialAudit", "audit"]
 
 _T = TypeVar("_T")
 _BOX_MODES = {DataKey.BBOX: "vertices_plus", DataKey.BBOX_XYXY: "xyxy_plus", DataKey.BBOX_XYWH: "xywh"}
@@ -198,8 +197,7 @@ class AugmentationAuditReport:
 
 
 def _supported_sequence(module: nn.Module) -> bool:
-    # Import at call time: augment imports the report types from this module.
-    from .augment import AugmentationSequential
+    from kornia.augmentation.container.augment import AugmentationSequential
 
     return type(module) in (ImageSequential, AugmentationSequential)
 
@@ -438,6 +436,29 @@ def audit(
     roundtrip_tolerance: float = 1e-3,
     out_of_frame_tolerance: float = 0.0,
 ) -> tuple[DataType | list[DataType] | dict[str, DataType], AugmentationAuditReport]:
+    """Run an augmentation sequence once and return its outputs plus a geometry audit report.
+
+    The sequence must use one BCHW image first, followed by batched masks, boxes or
+    keypoints described by positional ``data_keys``. ``params`` and ``data_keys``
+    have the same meaning as in :meth:`kornia.augmentation.AugmentationSequential.forward`.
+    Unknown or non-rigid operations run normally and make composed geometry unavailable.
+
+    Reporting is an eager diagnostic operation. It snapshots executed operations and
+    parameters, checks spatial round trips, and never evaluates image reconstruction.
+    The returned outputs retain the ordinary forward structure, values and gradients.
+    Do not audit the same stateful sequence concurrently.
+
+    Args:
+        sequence: The 2D augmentation sequence to execute and inspect.
+        args: Image and optional spatial inputs accepted by the sequence.
+        params: Optional sampled parameters to replay.
+        data_keys: Optional positional data-key override.
+        roundtrip_tolerance: Nonnegative pixel threshold for round-trip warnings.
+        out_of_frame_tolerance: Fraction in ``[0, 1]`` above which an input gets a warning.
+
+    Returns:
+        A pair ``(outputs, report)``. ``outputs`` matches an ordinary forward call.
+    """
     if not math.isfinite(roundtrip_tolerance) or roundtrip_tolerance < 0:
         raise ValueError("roundtrip_tolerance must be finite and nonnegative.")
     if not math.isfinite(out_of_frame_tolerance) or not 0 <= out_of_frame_tolerance <= 1:

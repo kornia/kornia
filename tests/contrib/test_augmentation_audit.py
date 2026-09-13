@@ -22,8 +22,10 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+from kornia import contrib
 from kornia.augmentation.container.params import ParamItem
 from kornia.constants import DataKey, Resample
+from kornia.contrib.augmentation_audit import audit
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -31,11 +33,16 @@ from testing.base import BaseTester
 
 
 class TestAugmentationAudit(BaseTester):
+    def test_contrib_public_api(self):
+        assert contrib.audit is audit
+        assert contrib.AugmentationAuditReport.__module__ == "kornia.contrib.augmentation_audit"
+        assert not hasattr(K.AugmentationSequential, "audit")
+
     def test_flip_and_actual_keypoints(self, device, dtype):
         image = torch.rand(2, 1, 8, 10, device=device, dtype=dtype)
         points = torch.tensor([[[1.0, 2.0], [11.0, 4.0]]], device=device, dtype=dtype).expand(2, -1, -1)
         aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1), data_keys=["input", "keypoints"])
-        outputs, report = aug.audit(image, points)
+        outputs, report = audit(aug, image, points)
         self.assert_close(
             outputs[1], torch.tensor([[[8.0, 2.0], [-2.0, 4.0]]], device=device, dtype=dtype).expand(2, -1, -1)
         )
@@ -53,7 +60,7 @@ class TestAugmentationAudit(BaseTester):
         ordinary = aug(image)
         state = torch.random.get_rng_state()
         torch.manual_seed(123)
-        audited, report = aug.audit(image)
+        audited, report = audit(aug, image)
         self.assert_close(audited, ordinary)
         assert torch.equal(torch.random.get_rng_state(), state)
         self.assert_close(aug(image, params=report.params), audited)
@@ -66,7 +73,7 @@ class TestAugmentationAudit(BaseTester):
             K.RandomBrightness(0.2),
             data_keys=["input", "keypoints"],
         )
-        _, report = aug.audit(image, points)
+        _, report = audit(aug, image, points)
         assert [step.name for step in report.steps] == [
             "ImageSequential_0.RandomHorizontalFlip_0",
             "ImageSequential_0.RandomVerticalFlip_1",
@@ -87,7 +94,7 @@ class TestAugmentationAudit(BaseTester):
         first["translations"] = image.new_tensor([[1, 0]])
         second["translations"] = image.new_tensor([[0, 2]])
         params = [ParamItem("RandomAffine_0", first), ParamItem("RandomAffine_0", second)]
-        outputs, report = aug.audit(image, points, params=params)
+        outputs, report = audit(aug, image, points, params=params)
         assert [step.occurrence for step in report.steps] == [0, 1]
         self.assert_close(report.steps[0].matrix[..., :2, 2], image.new_tensor([[1, 0]]))
         self.assert_close(report.steps[1].matrix[..., :2, 2], image.new_tensor([[0, 2]]))
@@ -101,7 +108,7 @@ class TestAugmentationAudit(BaseTester):
         params = flip.forward_parameters(image.shape)
         params["batch_prob"] = image.new_tensor([1, 0])
         aug = K.AugmentationSequential(flip, data_keys=["input", "keypoints"])
-        outputs, report = aug.audit(image, points, params=[ParamItem("RandomHorizontalFlip_0", params)])
+        outputs, report = audit(aug, image, points, params=[ParamItem("RandomHorizontalFlip_0", params)])
         self.assert_close(outputs[1], image.new_tensor([[[8, 2]], [[1, 2]]]))
         self.assert_close(report.matrix[1], torch.eye(3, device=device, dtype=report.matrix.dtype))
         assert report.spatial[0].roundtrip_max.max().item() < 1e-4
@@ -113,7 +120,7 @@ class TestAugmentationAudit(BaseTester):
         modules = [torch.nn.Identity()] if with_identity else []
         aug = K.AugmentationSequential(*modules, data_keys=["input", "keypoints"])
         with torch.autocast("cpu", dtype=torch.bfloat16):
-            outputs, report = aug.audit(image, points)
+            outputs, report = audit(aug, image, points)
         assert torch.equal(outputs[0], image)
         assert torch.equal(outputs[1], points)
         assert report.matrix.dtype == torch.float32
@@ -130,7 +137,7 @@ class TestAugmentationAudit(BaseTester):
             torch.manual_seed(1)
             expected = aug(image, points)
             torch.manual_seed(1)
-            actual, _ = aug.audit(image, points)
+            actual, _ = audit(aug, image, points)
         assert torch.equal(actual[0], expected[0])
         assert torch.equal(actual[1], expected[1])
 
@@ -142,7 +149,7 @@ class TestAugmentationAudit(BaseTester):
         params = resize.forward_parameters(image.shape)
         params["batch_prob"] = image.new_tensor([0, 1])
         aug = K.AugmentationSequential(resize, data_keys=["input", "keypoints"])
-        outputs, report = aug.audit(image, points, params=[ParamItem("Resize_0", params)])
+        outputs, report = audit(aug, image, points, params=[ParamItem("Resize_0", params)])
         assert outputs[0][0, 0, 1, 2].item() == 1
         self.assert_close(outputs[1][0], points[0])
         assert report.geometry_status == "unsupported"
@@ -157,7 +164,7 @@ class TestAugmentationAudit(BaseTester):
             K.RandomCrop((4, 5), padding=2, cropping_mode=cropping_mode),
             data_keys=["input", "keypoints"],
         )
-        _, report = aug.audit(image, points)
+        _, report = audit(aug, image, points)
         assert report.geometry_status == "available"
         assert report.spatial[0].roundtrip_max.max().item() < 1e-4
         assert any("discard image content" in message for message in report.warnings)
@@ -170,7 +177,7 @@ class TestAugmentationAudit(BaseTester):
         box = Boxes(vertices)
         tensor_mode = {"bbox": "vertices_plus", "bbox_xyxy": "xyxy_plus", "bbox_xywh": "xywh"}[mode]
         aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1), data_keys=["input", mode])
-        _, report = aug.audit(image, box.to_tensor(mode=tensor_mode))
+        _, report = audit(aug, image, box.to_tensor(mode=tensor_mode))
         assert report.spatial[0].metric == "corner_hausdorff"
         assert report.spatial[0].roundtrip_max.item() < 1e-4
 
@@ -178,8 +185,8 @@ class TestAugmentationAudit(BaseTester):
         image = torch.rand(1, 1, 20, 20, device=device, dtype=dtype)
         boxes = Boxes(image.new_tensor([[[[6, 7], [12, 7], [12, 13], [6, 13]]]]))
         aug = K.AugmentationSequential(K.RandomRotation((45, 45), p=1), data_keys=["input", "bbox"])
-        _, tensor_report = aug.audit(image, boxes.to_tensor(mode="vertices_plus"))
-        _, object_report = aug.audit(image, boxes)
+        _, tensor_report = audit(aug, image, boxes.to_tensor(mode="vertices_plus"))
+        _, object_report = audit(aug, image, boxes)
         assert tensor_report.spatial[0].roundtrip_max.item() > 1
         # Half-precision corners are quantized before the float32 diagnostics.
         # Budget one source-dtype epsilon over the image extent, while retaining
@@ -195,7 +202,7 @@ class TestAugmentationAudit(BaseTester):
 
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         aug = K.AugmentationSequential(BrokenFlip(p=1), data_keys=["input", "keypoints"])
-        _, report = aug.audit(image, image.new_tensor([[[1, 2]]]))
+        _, report = audit(aug, image, image.new_tensor([[[1, 2]]]))
         diagnostic_dtype = torch.float64 if dtype == torch.float64 else torch.float32
         self.assert_close(report.spatial[0].roundtrip_max, torch.tensor([7], device=device, dtype=diagnostic_dtype))
         assert "round-trip error" in report.summary()
@@ -204,7 +211,7 @@ class TestAugmentationAudit(BaseTester):
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         aug = K.AugmentationSequential(K.RandomElasticTransform(p=1), data_keys=["input", "keypoints"])
         points = image.new_tensor([[[1, 2]]])
-        outputs, report = aug.audit(image, points)
+        outputs, report = audit(aug, image, points)
         self.assert_close(outputs[1], points)
         assert report.geometry_status == "unsupported"
         assert report.matrix is None and report.inverse_matrix is None
@@ -222,7 +229,7 @@ class TestAugmentationAudit(BaseTester):
 
         image = torch.rand(3, 1, 8, 10, device=device, dtype=dtype)
         aug = K.AugmentationSequential(SingularFlip(p=1))
-        _, report = aug.audit(image)
+        _, report = audit(aug, image)
         assert report.geometry_status == "singular"
         assert report.invertible.tolist() == [True, False, False]
         assert report.inverse_matrix[1:].isnan().all()
@@ -232,7 +239,7 @@ class TestAugmentationAudit(BaseTester):
     def test_empty_spatial_inputs(self, device, dtype, key, shape):
         image = torch.rand(2, 1, 8, 10, device=device, dtype=dtype)
         aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1), data_keys=["input", key])
-        _, report = aug.audit(image, torch.empty(shape, device=device, dtype=dtype))
+        _, report = audit(aug, image, torch.empty(shape, device=device, dtype=dtype))
         assert report.spatial[0].count.tolist() == [0, 0]
         assert report.spatial[0].roundtrip_valid_count.tolist() == [0, 0]
         assert report.spatial[0].roundtrip_max.isnan().all()
@@ -242,7 +249,7 @@ class TestAugmentationAudit(BaseTester):
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         points = image.new_tensor([[[0, 0], [9, 7], [10, 7], [float("nan"), 0]]])
         aug = K.AugmentationSequential(torch.nn.Identity(), data_keys=["input", "keypoints"])
-        _, report = aug.audit(image, points)
+        _, report = audit(aug, image, points)
         item = report.spatial[0]
         assert item.count.item() == 4 and item.out_of_frame.item() == 1 and item.nonfinite.item() == 1
         assert item.out_of_frame_fraction.item() == 0.25 and item.roundtrip_valid_count.item() == 3
@@ -252,7 +259,7 @@ class TestAugmentationAudit(BaseTester):
         image = torch.rand(2, 1, 8, 10, device=device, dtype=dtype, requires_grad=True)
         points = image.new_tensor([[[1, 2]], [[1, 2]]]).requires_grad_()
         aug = K.AugmentationSequential(K.RandomAffine(20, p=1), data_keys=["input", "keypoints"])
-        outputs, report = aug.audit(image, points)
+        outputs, report = audit(aug, image, points)
         audited_grad = torch.autograd.grad(outputs[0].square().sum() + outputs[1].square().sum(), (image, points))
         serialized = report.to_json()
         ordinary = aug(image, points, params=report.params)
@@ -268,7 +275,7 @@ class TestAugmentationAudit(BaseTester):
     def test_mask_metadata_and_data_key_override(self, device, dtype):
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1))
-        outputs, report = aug.audit(image, image.clone(), data_keys=["input", "mask"])
+        outputs, report = audit(aug, image, image.clone(), data_keys=["input", "mask"])
         self.assert_close(outputs[0], outputs[1])
         assert report.inputs[1]["data_key"] == "MASK"
         assert report.configured_extra_args[DataKey.MASK]["resample"] == Resample.NEAREST
@@ -279,7 +286,7 @@ class TestAugmentationAudit(BaseTester):
         aug = K.AugmentationSequential(K.RandomHorizontalFlip())
         state = torch.random.get_rng_state()
         with pytest.raises(ValueError, match="roundtrip_tolerance"):
-            aug.audit(torch.ones(1, 1, 8, 8), roundtrip_tolerance=threshold)
+            audit(aug, torch.ones(1, 1, 8, 8), roundtrip_tolerance=threshold)
         assert torch.equal(state, torch.random.get_rng_state())
         assert aug._params is None
 
@@ -289,7 +296,7 @@ class TestAugmentationAudit(BaseTester):
         state = torch.random.get_rng_state()
         for image in [torch.ones(1, 8, 8), torch.ones(0, 1, 8, 8), {"input": torch.ones(1, 1, 8, 8)}]:
             with pytest.raises(ValueError, match="BCHW"):
-                aug.audit(image)
+                audit(aug, image)
         assert torch.equal(state, torch.random.get_rng_state())
         assert not module._forward_hooks
 
@@ -301,7 +308,7 @@ class TestAugmentationAudit(BaseTester):
         module = FailingModule()
         aug = K.AugmentationSequential(module)
         with pytest.raises(RuntimeError, match="deliberate failure"):
-            aug.audit(torch.ones(1, 1, 8, 8))
+            audit(aug, torch.ones(1, 1, 8, 8))
         assert not module._forward_hooks
 
     def test_reject_shared_aliases_and_video(self):
@@ -310,12 +317,12 @@ class TestAugmentationAudit(BaseTester):
         video = K.AugmentationSequential(K.VideoSequential(K.RandomHorizontalFlip()))
         for aug in (shared, video):
             with pytest.raises(ValueError):
-                aug.audit(torch.ones(1, 1, 8, 8))
+                audit(aug, torch.ones(1, 1, 8, 8))
         assert not module._forward_hooks
 
     def test_empty_pipeline(self, device, dtype):
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
-        output, report = K.AugmentationSequential().audit(image)
+        output, report = audit(K.AugmentationSequential(), image)
         self.assert_close(output, image)
         assert report.steps == [] and report.params == []
         assert report.geometry_status == "available"
@@ -324,7 +331,7 @@ class TestAugmentationAudit(BaseTester):
     def test_random_repeated_sampling(self, device, dtype):
         image = torch.rand(1, 1, 10, 10, device=device, dtype=dtype)
         aug = K.AugmentationSequential(K.RandomAffine(20, p=1), random_apply=3)
-        output, report = aug.audit(image)
+        output, report = audit(aug, image)
         assert [step.occurrence for step in report.steps] == [0, 1, 2]
         assert len(report.params) == 3
         self.assert_close(aug(image, params=report.params), output)
@@ -333,7 +340,7 @@ class TestAugmentationAudit(BaseTester):
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         boxes = image.new_tensor([[[1, 2, 12, 6]]])
         aug = K.AugmentationSequential(K.RandomHorizontalFlip(p=1), data_keys=["input", "bbox_xyxy"])
-        _, report = aug.audit(image, boxes, out_of_frame_tolerance=1)
+        _, report = audit(aug, image, boxes, out_of_frame_tolerance=1)
         assert report.inputs[1]["shape"] == (1, 1, 4)
         assert report.spatial[0].out_of_frame.item() == 1
         assert not any("out-of-frame" in warning for warning in report.warnings)
@@ -350,7 +357,7 @@ class TestAugmentationAudit(BaseTester):
 
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         aug = K.AugmentationSequential(HorizonFlip(p=1), data_keys=["input", "keypoints"])
-        _, report = aug.audit(image, image.new_tensor([[[1, 2]]]))
+        _, report = audit(aug, image, image.new_tensor([[[1, 2]]]))
         assert report.geometry_status == "available"
         assert report.spatial[0].nonfinite.item() == 0
         assert report.spatial[0].roundtrip_valid_count.item() == 0
@@ -358,7 +365,7 @@ class TestAugmentationAudit(BaseTester):
 
     def test_unknown_module_is_unavailable(self, device, dtype):
         aug = K.AugmentationSequential(torch.nn.ReLU())
-        output, report = aug.audit(torch.ones(1, 1, 8, 10, device=device, dtype=dtype))
+        output, report = audit(aug, torch.ones(1, 1, 8, 10, device=device, dtype=dtype))
         assert output.shape == (1, 1, 8, 10)
         assert report.geometry_status == "unsupported"
         assert report.steps[0].unsupported_reason is not None
@@ -371,7 +378,7 @@ class TestAugmentationAudit(BaseTester):
         aug = K.AugmentationSequential(module, data_keys=["input", "bbox"])
         state = torch.random.get_rng_state()
         with pytest.raises(ValueError, match="ragged"):
-            aug.audit(image, spatial)
+            audit(aug, image, spatial)
         assert torch.equal(state, torch.random.get_rng_state())
         assert aug._params is None
         assert not module._forward_hooks
@@ -383,7 +390,7 @@ class TestAugmentationAudit(BaseTester):
 
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         aug = K.AugmentationSequential(BrokenFlip(p=1), data_keys=["input", "keypoints"])
-        _, report = aug.audit(image, image.new_tensor([[[3, 2], [4, 2], [float("nan"), 2]]]))
+        _, report = audit(aug, image, image.new_tensor([[[3, 2], [4, 2], [float("nan"), 2]]]))
         item = report.spatial[0]
         assert item.roundtrip_valid_count.item() == 2
         assert item.roundtrip_mean.item() == 2
@@ -394,8 +401,8 @@ class TestAugmentationAudit(BaseTester):
         aug = K.AugmentationSequential(K.RandomHorizontalFlip(), data_keys=None)
         image = torch.ones(1, 1, 8, 8)
         with pytest.raises(ValueError, match="data_keys"):
-            aug.audit(image)
-        _, report = aug.audit(image, data_keys=["input"])
+            audit(aug, image)
+        _, report = audit(aug, image, data_keys=["input"])
         assert report.geometry_status == "available"
 
     def test_changed_label_cardinality_cannot_broadcast(self, device, dtype):
@@ -407,7 +414,7 @@ class TestAugmentationAudit(BaseTester):
         module = DroppingFlip(p=1)
         aug = K.AugmentationSequential(module, data_keys=["input", "keypoints"])
         with pytest.raises(ValueError, match=r"spatial.*shape"):
-            aug.audit(image, image.new_tensor([[[3, 2], [4, 2]]]))
+            audit(aug, image, image.new_tensor([[[3, 2], [4, 2]]]))
         assert not module._forward_hooks
 
     @pytest.mark.parametrize("policy_name", ["RandAugment", "AutoAugment", "TrivialAugment"])
@@ -421,7 +428,7 @@ class TestAugmentationAudit(BaseTester):
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         points = image.new_tensor([[[2, 3]]])
         aug = K.AugmentationSequential(policy, data_keys=["input", "keypoints"])
-        outputs, report = aug.audit(image, points)
+        outputs, report = audit(aug, image, points)
         assert report.geometry_status == "unsupported"
         assert report.matrix is None and report.inverse_matrix is None
         assert not report.invertible.any()
@@ -439,7 +446,7 @@ class TestAugmentationAudit(BaseTester):
 
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         aug = K.AugmentationSequential(K.RandomVerticalFlip(p=1), BypassFlip(p=1))
-        _, report = aug.audit(image)
+        _, report = audit(aug, image)
         assert [step.name for step in report.steps] == ["RandomVerticalFlip_0"]
         assert report.geometry_status == "unsupported"
         assert "BypassFlip_1" in report.summary()
@@ -456,7 +463,7 @@ class TestAugmentationAudit(BaseTester):
         module = AlternatingFlip(p=1)
         aug = K.AugmentationSequential(module)
         param = ParamItem("AlternatingFlip_0", module.forward_parameters(image.shape))
-        output, report = aug.audit(image, params=[param, deepcopy(param)])
+        output, report = audit(aug, image, params=[param, deepcopy(param)])
         self.assert_close(output, image)
         assert len(report.steps) == 1
         assert report.geometry_status == "unsupported"
@@ -471,7 +478,7 @@ class TestAugmentationAudit(BaseTester):
 
         monkeypatch.setattr(nested, "transform_inputs", reverse)
         aug = K.AugmentationSequential(nested)
-        _, report = aug.audit(torch.rand(1, 1, 8, 10, device=device, dtype=dtype))
+        _, report = audit(aug, torch.rand(1, 1, 8, 10, device=device, dtype=dtype))
         assert [step.module for step in report.steps] == ["RandomVerticalFlip", "RandomHorizontalFlip"]
         assert report.geometry_status == "unsupported"
         assert "order" in report.summary()
@@ -485,7 +492,7 @@ class TestAugmentationAudit(BaseTester):
         child = [torch.nn.Identity()] if with_child else []
         aug = K.AugmentationSequential(HiddenGeometry(*child))
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
-        output, report = aug.audit(image)
+        output, report = audit(aug, image)
         self.assert_close(output, image.flip(-1))
         assert report.geometry_status == "unsupported"
         assert "HiddenGeometry_0" in report.summary()
@@ -495,7 +502,7 @@ class TestAugmentationAudit(BaseTester):
         nested = K.ImageSequential(policy, torch.nn.Identity(), random_apply=1, random_apply_weights=[0.0, 1.0])
         aug = K.AugmentationSequential(nested)
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
-        output, report = aug.audit(image)
+        output, report = audit(aug, image)
         self.assert_close(output, image)
         assert report.geometry_status == "available"
         assert [step.name for step in report.steps] == ["ImageSequential_0.Identity_1"]
@@ -507,7 +514,7 @@ class TestAugmentationAudit(BaseTester):
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
         children = nested.forward_parameters(image.shape)
         params = [ParamItem("ImageSequential_0", [children[0]]), ParamItem("ImageSequential_0", [children[1]])]
-        output, report = aug.audit(image, params=params)
+        output, report = audit(aug, image, params=params)
         self.assert_close(output, image.flip(-1, -2))
         assert report.geometry_status == "available"
         assert [step.module for step in report.steps] == ["RandomHorizontalFlip", "RandomVerticalFlip"]
@@ -516,7 +523,7 @@ class TestAugmentationAudit(BaseTester):
     def test_empty_selected_sequence_stays_available(self, device, dtype, nested):
         aug = K.AugmentationSequential(K.ImageSequential()) if nested else K.AugmentationSequential(torch.nn.ReLU())
         image = torch.rand(1, 1, 8, 10, device=device, dtype=dtype)
-        output, report = aug.audit(image, params=None if nested else [])
+        output, report = audit(aug, image, params=None if nested else [])
         self.assert_close(output, image)
         assert report.steps == [] and report.geometry_status == "available"
         assert not report.warnings
@@ -525,7 +532,7 @@ class TestAugmentationAudit(BaseTester):
     def test_downsampling_content_warning(self, device, dtype, name):
         module = K.Resize((4, 5)) if name == "Resize" else K.LongestMaxSize(5)
         aug = K.AugmentationSequential(module)
-        _, report = aug.audit(torch.rand(1, 1, 8, 10, device=device, dtype=dtype))
+        _, report = audit(aug, torch.rand(1, 1, 8, 10, device=device, dtype=dtype))
         assert report.geometry_status == "available"
         assert any("downsampling" in warning for warning in report.warnings)
         assert not report.image_reconstruction_evaluated
@@ -573,7 +580,7 @@ class TestAugmentationAudit(BaseTester):
             .clone()
         )
         aug = K.AugmentationSequential(module, data_keys=["input", "keypoints", "bbox"])
-        outputs, report = aug.audit(image, points, boxes, params=[ParamItem("RandomCrop_0", params)])
+        outputs, report = audit(aug, image, points, boxes, params=[ParamItem("RandomCrop_0", params)])
         selected = params["batch_prob"] > 0.5
         static = p == 1.0
         all_transformed = static or (size != image.shape[-2:] and bool(selected.any()))
@@ -626,8 +633,8 @@ class TestAugmentationAudit(BaseTester):
         aug = K.AugmentationSequential(
             module, data_keys=["input", "keypoints"], extra_args={DataKey.INPUT: {"cropping_mode": effective}}
         )
-        outputs, report = aug.audit(
-            image, image.new_tensor([[[3, 1]], [[3, 1]]]), params=[ParamItem("RandomCrop_0", params)]
+        outputs, report = audit(
+            aug, image, image.new_tensor([[[3, 1]], [[3, 1]]]), params=[ParamItem("RandomCrop_0", params)]
         )
         assert report.steps[0].flags["cropping_mode"] == effective
         assert module.flags["cropping_mode"] == configured

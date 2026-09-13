@@ -1,7 +1,5 @@
 {
   "kornia.augmentation": [
-    "AugmentationAuditReport",
-    "AugmentationAuditStep",
     "AugmentationBase2D",
     "AugmentationBase3D",
     "AugmentationSequential",
@@ -85,7 +83,6 @@
     "RigidAffineAugmentationBase2D",
     "RigidAffineAugmentationBase3D",
     "SmallestMaxSize",
-    "SpatialAudit",
     "VideoSequential",
     "auto",
     "container"
