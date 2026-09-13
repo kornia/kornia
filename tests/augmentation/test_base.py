@@ -767,27 +767,23 @@ class TestConventionAugmentationBase2D(BaseTester):
         _, output_mask = augmentation(image, mask)
         assert torch.count_nonzero(output_mask) < output_mask.numel()
 
-    def test_wart_random_plasma_replay_4445(self, device, dtype):
-        # Wart pin (#4445): the three `RandomPlasma*`
-        # classes draw their fractal noise inside `apply_transform` from the global generator instead of in
-        # `generate_parameters`, so `params=` replay is NOT bitwise (RandomDissolving also samples during
-        # application). Replaying the same `params=` under
-        # the same global seed is reproducible; replaying it without reseeding is not.
-        # A replay without reseeding differs; two replays under the same global seed are bitwise equal.
+    @pytest.mark.parametrize("plasma_cls", [K.RandomPlasmaBrightness, K.RandomPlasmaContrast, K.RandomPlasmaShadow])
+    def test_convention_random_plasma_replay_is_bitwise(self, plasma_cls, device, dtype):
+        # Convention pin: since #4462 (fixing #4445) the three `RandomPlasma*` classes draw their fractal noise
+        # in `generate_parameters` and store it under `params["plasma"]`, so a `params=` replay is bitwise
+        # without reseeding, while a fresh forward under a different seed draws different noise.
         if not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
-        aug = K.RandomPlasmaBrightness(p=1.0)
+        aug = plasma_cls(p=1.0)
         x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
         torch.manual_seed(0)
         first = aug(x)
         params = aug._params
-        replayed = aug(x, params=params)
-        assert not torch.equal(first, replayed)
+        assert "plasma" in params
         torch.manual_seed(5)
-        one = aug(x, params=params)
+        assert torch.equal(aug(x, params=params), first)
         torch.manual_seed(5)
-        two = aug(x, params=params)
-        assert torch.equal(one, two)
+        assert not torch.equal(aug(x), first)
 
     def test_convention_random_dissolving_replay_needs_the_latent_rng(self, device, dtype):
         # Exercise the real augmentation/filter/encoder path with a lightweight VAE distribution.

@@ -33,8 +33,9 @@ class ManyToManyAugmentationDispather(nn.Module):
     Convention:
         - every member has to be an :class:`~kornia.augmentation.container.AugmentationSequential`; anything else is
           rejected at construction with ``ValueError``.
-        - the call takes one input bundle per augmentation and returns a list in that order. Each augmentation
-          draws its own parameters, so the members are independent of one another.
+        - the call takes one input bundle per augmentation and returns a list in that order; a different number
+          of bundles raises ``ValueError`` before any augmentation runs. Each augmentation draws its own
+          parameters, so the members are independent of one another.
 
     Examples:
         >>> import torch
@@ -53,12 +54,6 @@ class ManyToManyAugmentationDispather(nn.Module):
         ...     )
         ... )
         >>> output = aug_list((input_1, mask_1), (input_2, mask_2))
-
-    .. warning::
-        The call is a bare ``zip`` over the inputs and the augmentations, and nothing checks that the two
-        lengths agree: the longer side is truncated silently, so surplus augmentations or surplus inputs
-        simply disappear and only the length of the returned list says so. Tracked in
-        `#4422 <https://github.com/kornia/kornia/issues/4422>`_.
 
     """
 
@@ -81,7 +76,14 @@ class ManyToManyAugmentationDispather(nn.Module):
 
         Returns:
             Outputs from each augmentation, preserving input order.
+
+        Raises:
+            ValueError: If the number of input bundles differs from the number of augmentations.
         """
+        if len(input) != len(self.augmentations):
+            raise ValueError(
+                f"Expected {len(self.augmentations)} input bundles, one per augmentation, but got {len(input)}."
+            )
         return [aug(*inp) for inp, aug in zip(input, self.augmentations)]
 
 

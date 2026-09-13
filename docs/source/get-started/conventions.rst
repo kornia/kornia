@@ -307,15 +307,14 @@ Randomness in augmentations
 - On the standard 2D base forward path, ``params=`` stores the caller's
   dictionary by reference and inserts an all-true gate if ``batch_prob`` is
   missing. Mix augmentations use a separate forward contract and can require
-  that key. Prefer complete recorded parameters for replay. Parameters do
-  not capture every random draw: ``RandomPlasma*`` draws fractal noise during
-  application (`#4445 <https://github.com/kornia/kornia/issues/4445>`_), and
-  ``RandomDissolving`` samples VAE latents. Replay of those operations also
-  needs control of their application-time random state.
+  that key. Prefer complete recorded parameters for replay. The recorded
+  parameters capture every draw, the ``RandomPlasma*`` noise included, except
+  for ``RandomDissolving``, which samples VAE latents during application.
+  Replaying it also needs control of that application-time random state.
 - ``same_on_batch=True`` shares the standard per-sample gate and sampled
-  transform factors. It does not equate batch-pairing indices, and some
-  application-time draws, including plasma noise, remain independent across
-  samples (`#4445 <https://github.com/kornia/kornia/issues/4445>`_).
+  transform factors. It does not equate batch-pairing indices, and the
+  ``RandomPlasma*`` noise stored in the parameters is drawn independently per
+  sample whatever the flag says.
   Color adjustment order is one permutation shared across the batch,
   independently of this flag. On ``AugmentationSequential``, ``None`` keeps
   each child's setting, while ``True`` and ``False`` overwrite it.

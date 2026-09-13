@@ -234,10 +234,9 @@ configurations fail during the setter or a later forward
 sampling placement: constructor ranges and casts can put a sampled tensor on another device or in another dtype.
 
 See :doc:`/get-started/conventions` for global seeding, worker seeds, consumption order, replay and the limits
-of sampler configuration. Application-time randomness is not always recorded: plasma noise
-(`#4445 <https://github.com/kornia/kornia/issues/4445>`_) and dissolving VAE latents also require controlling
-their random state for replay. The base's keyword and incomplete-parameter handling do not apply uniformly
-to mix augmentations.
+of sampler configuration. Application-time randomness is not always recorded: the dissolving VAE latents
+require controlling their random state for replay. The base's keyword and incomplete-parameter handling do not
+apply uniformly to mix augmentations.
 
 Serialization
 ^^^^^^^^^^^^^

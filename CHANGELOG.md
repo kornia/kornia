@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   information lost by rotated tensor boxes, mask-list gates, mixed mask dtypes, dictionary-key exceptions,
   and the transplantation constructors. Scope corrections and regression tests cover mix-specific contracts,
   inverse support, mask erasing/filtering/precision, nested matrices, serialization and sampler limitations;
-  the container, dispatcher, `p_batch`,
+  the container, `p_batch`,
   `set_rng_device_and_dtype`, `state_dict` and `B = 0` defects are tracked in dedicated issues. (#4452)
 * Implemented the exported Brown-Conrady, Kannala-Brandt K3, and Orthographic sensor camera models,
   including distortion/projection plumbing, intrinsic matrices, and batched project/unproject support. (#4284, #4377)
@@ -404,6 +404,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* Fixed `RandomPlasmaBrightness`, `RandomPlasmaContrast`, and `RandomPlasmaShadow` to replay deterministically from stored `params=`. (#4462)
+* `ManyToManyAugmentationDispather` now rejects mismatched numbers of input bundles and
+  augmentations before applying any transformation, instead of silently dropping surplus inputs
+  or skipping augmentations. (#4461)
 * `PatchSequential` now augments every patch of every image and runs the complete selected sequence.
   The padding, reconstruction and parameter-generation behaviour changes are listed under
   *Breaking changes*. Refs #4421. (#4460)

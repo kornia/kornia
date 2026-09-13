@@ -28,9 +28,8 @@ Augmentation Dispatchers
 ------------------------
 Kornia supports two types of augmentation dispatching, namely many-to-many and many-to-one. The former wraps
 different augmentations into one group and lets the user pass as many inputs as there are augmentations, applying
-each augmentation to the corresponding input; the call zips the two sequences and nothing checks that they are
-the same length, so a mismatch silently drops the surplus
-(`#4422 <https://github.com/kornia/kornia/issues/4422>`_). The latter applies different augmentations to a
+each augmentation to the corresponding input; a call with a different number of input bundles than
+augmentations raises ``ValueError`` before any augmentation runs. The latter applies different augmentations to a
 single input in order to obtain a list of differently transformed outputs. Its members must be
 ``AugmentationSequential`` instances. With the default ``strict=True``, their ``data_keys`` must match;
 ``strict=False`` disables that construction check.

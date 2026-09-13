@@ -74,10 +74,9 @@ class AugmentationBase2D(_AugmentationBase):
         - the last draw is kept in ``_params``; ``forward(x, params=...)`` replaces that dict wholesale rather
           than merging into it and stores the caller's dict by reference. A complete generated dictionary
           is not extended; if ``batch_prob`` is absent, ``forward`` inserts an all-true gate into that same
-          dictionary. Replaying parameters reproduces the output bitwise except for classes that sample
-          during application: the three ``RandomPlasma*`` classes draw fractal noise (tracked in
-          `#4445 <https://github.com/kornia/kornia/issues/4445>`_), and :class:`RandomDissolving` samples
-          VAE latents. Those draws are not stored in ``_params`` and require controlling the global seed too.
+          dictionary. Replaying parameters reproduces the output bitwise, the ``RandomPlasma*`` noise included
+          since it is drawn into ``_params``, except for :class:`RandomDissolving`, which samples VAE latents
+          during application; that draw is not stored and requires controlling the global seed too.
         - range configuration and serialization behavior vary by generator. Some range buffers are inert after
           ``load_state_dict`` (tracked in `#4428 <https://github.com/kornia/kornia/issues/4428>`_), some
           augmentations are not picklable (`#4435 <https://github.com/kornia/kornia/issues/4435>`_), and saved
