@@ -325,6 +325,9 @@ class PinholeCamera:
             - with a floating-point ``scale_factor``, an integer ``height`` / ``width`` is promoted to floating
               point, unlike :meth:`scale_`. An integer factor preserves the integer image-size dtype.
 
+            See :doc:`camera and world conventions </get-started/camera-conventions>` for image resizing and
+            the matching intrinsics scaling convention.
+
         .. warning::
             The ``cx' = s * cx`` rule disagrees with the integer pixel centres the rest of the library
             enumerates; it is tracked as a coordinated repair in
@@ -367,6 +370,9 @@ class PinholeCamera:
               raised, including in the caller's intrinsics tensor: the camera is left partially scaled.
               If ``height`` is integer, both image dimensions are unchanged; if only ``width`` is integer,
               ``height`` has already been scaled too.
+
+            See :doc:`camera and world conventions </get-started/camera-conventions>` for image resizing and
+            the matching intrinsics scaling convention.
 
         .. warning::
             The failure on an integer image size with a floating-point scale factor is tracked in
