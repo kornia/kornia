@@ -3,8 +3,11 @@
 
 .. currentmodule:: kornia.augmentation
 
-Transforms that move pixels. Each one exposes its ``(B, 3, 3)`` transformation matrix, can be inverted, and is
-applied consistently to masks, boxes and keypoints by :class:`~kornia.augmentation.AugmentationSequential`.
+Spatial transformations and erasing operations. Matrix, inverse and annotation support depend on the class
+and configuration. Slice-mode crops reject inversion; non-rigid transforms do not carry boxes or keypoints
+along with the image (`#4420 <https://github.com/kornia/kornia/issues/4420>`_). `RandomErasing` changes image
+and mask values without moving coordinates. See
+:class:`~kornia.augmentation.AugmentationSequential` for the supported data-key paths and their limitations.
 
 .. autoclass:: CenterCrop
 .. autoclass:: PadTo
