@@ -333,7 +333,7 @@ def crop_by_transform_mat(
           by shape — :math:`(B, 2, 3)` takes the cheaper :func:`warp_affine` path,
           while :math:`(B, 3, 3)` takes :func:`warp_perspective` and uses the **full**
           matrix, so a non-trivial third (projective) row changes the output for
-          non-degenerate ``out_size`` (see warning below); :class:`CenterCrop2D` itself
+          non-degenerate ``out_size`` (see note below); :class:`CenterCrop2D` itself
           calls this with a :math:`(B, 2, 3)` transform
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default

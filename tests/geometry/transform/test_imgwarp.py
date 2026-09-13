@@ -558,7 +558,12 @@ class TestWarpAffine(BaseTester):
         expected[..., 1:, 1:] = img_b[..., :2, :3]
 
         img_a = kornia.geometry.warp_affine(img_b, aff_ab, (h, w), align_corners=align_corners)
-        self.assert_close(img_a, expected, atol=1e-4, rtol=1e-4)
+        # No explicit tolerance: BaseTester's dtype-aware defaults are what makes this run at
+        # float16/bfloat16. Normalizing pixel coordinates into [-1, 1] only lands on pixel centres
+        # exactly when the scale is a power of two, so at half precision one convention or the other
+        # drifts depending on the size, and the sibling True-only pins are already half-precision
+        # manifest entries for that reason.
+        self.assert_close(img_a, expected)
 
     def test_rotation_inverse(self, device, dtype):
         h, w = 4, 4
@@ -749,8 +754,11 @@ class TestWarpPerspective(BaseTester):
         out_perspective = kornia.geometry.transform.warp_perspective(img, H, (4, 4), align_corners=align_corners)
         out_affine = kornia.geometry.transform.warp_affine(img, H[:, :2, :], (4, 4), align_corners=align_corners)
 
-        self.assert_close(out_perspective, img, atol=1e-4, rtol=1e-4)
+        # the two warps must agree exactly; the identity-reproduces-input half needs the dtype-aware
+        # default, since align_corners=True normalizes by 2 / (size - 1), which no half dtype can hold
+        # exactly for size 4
         self.assert_close(out_perspective, out_affine, atol=1e-4, rtol=1e-4)
+        self.assert_close(out_perspective, img)
 
     @pytest.mark.parametrize("align_corners", [True, False])
     def test_translation_align_corners(self, align_corners, device, dtype):
@@ -767,7 +775,12 @@ class TestWarpPerspective(BaseTester):
         expected[..., 1:, 1:] = img_b[..., :2, :3]
 
         img_a = kornia.geometry.warp_perspective(img_b, homo_ab, (h, w), align_corners=align_corners)
-        self.assert_close(img_a, expected, atol=1e-4, rtol=1e-4)
+        # No explicit tolerance: BaseTester's dtype-aware defaults are what makes this run at
+        # float16/bfloat16. Normalizing pixel coordinates into [-1, 1] only lands on pixel centres
+        # exactly when the scale is a power of two, so at half precision one convention or the other
+        # drifts depending on the size, and the sibling True-only pins are already half-precision
+        # manifest entries for that reason.
+        self.assert_close(img_a, expected)
 
     def test_rotation_inverse(self, device, dtype):
         h, w = 4, 4

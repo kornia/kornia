@@ -308,9 +308,11 @@ class TestHomographyWarper(BaseTester):
         warper.precompute_warp_grid(dst_homo_src)
         precomputed = warper(patch_src)
 
+        # the cached-vs-direct comparison is the actual subject and is bit-exact in every dtype; the
+        # identity-reproduces-input half takes the dtype-aware default, because the [-1, 1] scale is
+        # not exactly representable at half precision
         self.assert_close(precomputed, direct, atol=1e-4, rtol=1e-4)
-        # an identity homography must reproduce the input under both conventions
-        self.assert_close(direct, patch_src, atol=1e-4, rtol=1e-4)
+        self.assert_close(direct, patch_src)
 
     @pytest.mark.parametrize("batch_shape", [(1, 1, 7, 5), (2, 3, 8, 5), (1, 1, 7, 16)])
     def test_gradcheck(self, batch_shape, device):
@@ -428,7 +430,9 @@ class TestHomographyNormalTransform(BaseTester):
         norm = kornia.geometry.conversions.normalize_homography(homo, (height, width), (height, width), False)
         assert torch.isinf(norm).sum().item() == 0
         restored = kornia.geometry.conversions.denormalize_homography(norm, (height, width), (height, width), False)
-        self.assert_close(restored, homo, atol=1e-4, rtol=1e-4)
+        # dtype-aware default: the round trip multiplies by 2 / size and back, and the True-path sibling
+        # test_normalize_homography_identity is already a half-precision manifest entry for the same reason
+        self.assert_close(restored, homo)
 
     @pytest.mark.parametrize("height,width,depth,expected", [(2, 6, 4, expected_3d_0), (1, 6, 4, expected_3d_1)])
     def test_transform3d(self, height, width, depth, expected, device, dtype):

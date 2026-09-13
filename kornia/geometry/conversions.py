@@ -1970,9 +1970,14 @@ def normalize_homography(
         For equal source and destination sizes an identity homography
         normalizes back to the identity to within a single ``float32`` rounding
         step under either convention — exactly ``0`` at most sizes and
-        ``5.96e-08`` at the rest, with ``4x4`` among the latter; which size
-        lands where is a property of the inverse-and-matmul chain, so read the
-        size you care about rather than a pattern off these. Recorded in
+        ``5.96e-08`` at the rest. *Which* sizes land where differs between the
+        two conventions, because it is a property of the inverse-and-matmul
+        chain rather than of the scale, so read the size you care about rather
+        than a pattern off any list. At the default ``align_corners=True``,
+        swept over equal sizes 2..32, the residual is ``5.96e-08`` at 4, 6, 7,
+        11, 13, 14, 21, 25 and 27 and exactly ``0`` everywhere else; ``4x4`` is
+        in that first group, which is where the ``1.4e-05`` figure above comes
+        from. Recorded in
         `#3904 <https://github.com/kornia/kornia/issues/3904>`_.
         :func:`~kornia.geometry.conversions.normalize_homography3d` still has
         no ``align_corners`` parameter and is corner-aligned unconditionally.
@@ -2036,9 +2041,11 @@ def normal_transform_pixel(
           ``x`` indexing columns and scaled by ``width`` and ``y`` indexing rows
           and scaled by ``height``. The positional argument order is the other
           way round, ``(height, width)``
-        - the mapping is **corner-aligned**: scale ``2 / (size - 1)``, offset
-          ``-1``, so the pixel *centres* ``0`` and ``size - 1`` map to exactly
-          ``-1`` and ``+1``. ``normal_transform_pixel(4, 5)`` has rows
+        - the mapping is **corner-aligned by default**: scale ``2 / (size - 1)``,
+          offset ``-1``, so the pixel *centres* ``0`` and ``size - 1`` map to
+          exactly ``-1`` and ``+1``. ``align_corners=False`` selects the
+          half-pixel mapping instead; see the ``align_corners`` bullet below.
+          ``normal_transform_pixel(4, 5)`` has rows
           ``[0.5, 0.0, -1.0]`` and ``[0.0, 0.6667, -1.0]``, and sends the pixels
           ``(0, 0)``, ``(4, 3)`` and ``(2, 1.5)`` to ``(-1, -1)``, ``(1, 1)``
           and ``(0, 0)``
@@ -2159,11 +2166,15 @@ def normal_transform_pixel(
             ty = 0.0 if height == 1 else -1.0
         else:
             # Half-pixel mapping. It is finite for a size of 1 and lands that pixel on the
-            # centre (scale 2, offset 0), so it needs no singleton special case.
+            # centre (scale 2, offset 0), so it needs no singleton special case. The offset is
+            # written as a single division rather than ``1 / size - 1`` so that the graph-capture
+            # branch below, which evaluates it in float32 instead of Python doubles, rounds once
+            # and stays bit-identical to this one; the two-step form differs by one float32 step
+            # at 5 of the first 4999 sizes.
             sx = 2.0 / width
             sy = 2.0 / height
-            tx = 1.0 / width - 1.0
-            ty = 1.0 / height - 1.0
+            tx = (1.0 - width) / width
+            ty = (1.0 - height) / height
         tr_mat = torch.tensor([[sx, 0.0, tx], [0.0, sy, ty], [0.0, 0.0, 1.0]], device=device, dtype=dtype)
     else:
         # Low-precision floating types cannot represent every practical image size exactly
@@ -2187,10 +2198,11 @@ def normal_transform_pixel(
             tx_t = torch.where(width_t == 1, zero, -one)
             ty_t = torch.where(height_t == 1, zero, -one)
         else:
+            # Single division, matching the scalar branch above bit for bit.
             sx_t = 2.0 / width_t
             sy_t = 2.0 / height_t
-            tx_t = 1.0 / width_t - one
-            ty_t = 1.0 / height_t - one
+            tx_t = (one - width_t) / width_t
+            ty_t = (one - height_t) / height_t
 
         # Construct the matrix in one shot (no in-place mutation).
         tr_mat = torch.stack(
@@ -2214,8 +2226,9 @@ def normal_transform_pixel3d(
         - the 3-D counterpart of
           :func:`~kornia.geometry.conversions.normal_transform_pixel`: same
           corner-aligned ``2 / (size - 1)`` scaling with offset ``-1``, same
-          unconditional application, same ``dtype=None`` /
-          ``torch.get_default_dtype()`` rule, and likewise **never batched**.
+          ``dtype=None`` / ``torch.get_default_dtype()`` rule, and likewise
+          **never batched**. Unlike the 2-D function it has no ``align_corners``
+          parameter, so it applies that scaling unconditionally.
           Singleton axes use the same invertible centre mapping, and zero or
           negative sizes raise ``ValueError``. Only the lines below differ
         - the result has shape :math:`(1, 4, 4)` and acts on homogeneous
@@ -2338,7 +2351,7 @@ def denormalize_homography(
           the same shapes. That function's dtype-pass-through
           (`#3958 <https://github.com/kornia/kornia/issues/3958>`_), int64-handling
           (`#3959 <https://github.com/kornia/kornia/issues/3959>`_ — this
-          function's own clause there) and corner-alignment (`#3904
+          function's own clause there) and ``align_corners`` (`#3904
           <https://github.com/kornia/kornia/issues/3904>`_) warnings apply
           here too. The exception is the closed-form-inverse warning: in eager
           mode this function inverts through ``torch.linalg.inv`` rather than

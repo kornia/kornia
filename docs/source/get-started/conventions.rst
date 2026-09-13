@@ -132,10 +132,10 @@ Transformation matrices and homographies
     b = homography_warp(img, M_norm_inv, (16, 8), align_corners=True)
     assert torch.allclose(a, b, atol=1e-5)
 
-  ``normalize_homography`` takes its own ``align_corners`` (default ``True``),
-  and it must match the one you pass to the warp — the normalized ``[-1, 1]``
-  coordinates mean different things under the two conventions. Above, both are
-  ``True``; note that ``homography_warp`` alone would default to ``False``.
+``normalize_homography`` takes its own ``align_corners`` (default ``True``),
+and it must match the one you pass to the warp — the normalized ``[-1, 1]``
+coordinates mean different things under the two conventions. Above, both are
+``True``; note that ``homography_warp`` alone would default to ``False``.
 
 ``align_corners`` defaults
 --------------------------

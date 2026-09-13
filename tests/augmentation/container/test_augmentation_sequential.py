@@ -1020,9 +1020,18 @@ class TestConventionAugmentationSequential(BaseTester):
         # the `resample` half is overwritten with NEAREST after the override was merged, so asking for
         # bilinear changes nothing. The `align_corners` half of the same dict IS honoured and reaches the
         # sampler, and `RandomElasticTransform`, which has its own mask path, honours both halves.
-        # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu), seed 0, a
-        # (1, 1, 6, 8) mask with a 1-block: RandomAffine resample override max|delta| 0.0, RandomPerspective
-        # align_corners override 1.0.
+        # Snippet used to generate expected: this body, executed 2026-09-13 (torch 2.9.1, cpu), seed 0, a
+        # (1, 1, 6, 8) mask with a 1-block: RandomAffine resample override max|delta| 0.0, RandomAffine
+        # with padding_mode="reflection" align_corners override 1.0.
+        # The align_corners fixture was `RandomPerspective(0.5, p=1.0)` with zero padding until #3945. That
+        # delta was 1.0 only because the two conventions disagreed on in-bounds samples: the sampling grid
+        # was built corner-aligned whatever flag reached grid_sample, so align_corners=True vs False shifted
+        # the mask by half a pixel. #3945 makes the grid follow the flag, so the two now agree wherever the
+        # sample lands inside the image and that delta collapsed to 0.0 (float32, float64, float16 and
+        # bfloat16 alike). They still differ out of bounds, because +/-1 spans a different extent under each
+        # convention, so the fixture moves to a transform that samples outside the frame and a padding_mode
+        # that makes those samples observable. Sweep, seeds 0-9: delta is exactly 1.0 at every seed on cpu
+        # float32, float64, float16 and bfloat16. The resample half of the same fixture stays 0.0.
         # The elastic half uses its own fixture, reusing the #4420 pin's style below: `RandomElasticTransform
         # (alpha=(5.0, 5.0), sigma=(4.0, 4.0), p=1.0)` on a checkerboard mask, same (1, 1, 6, 8), H != W frame,
         # instead of the default alpha/sigma with a solid block. #4382 ("fix: respect align_corners in elastic
@@ -1054,8 +1063,8 @@ class TestConventionAugmentationSequential(BaseTester):
         affine = lambda: K.RandomAffine(degrees=(45.0, 45.0), p=1.0)  # noqa: E731
         assert (mask_of(affine, bilinear) - mask_of(affine, None)).abs().max().item() == 0.0
 
-        perspective = lambda: K.RandomPerspective(0.5, p=1.0)  # noqa: E731
-        assert (mask_of(perspective, align) - mask_of(perspective, None)).abs().max().item() == 1.0
+        reflected = lambda: K.RandomAffine(degrees=(45.0, 45.0), p=1.0, padding_mode="reflection")  # noqa: E731
+        assert (mask_of(reflected, align) - mask_of(reflected, None)).abs().max().item() == 1.0
 
         def elastic_mask_of(extra):
             torch.manual_seed(0)

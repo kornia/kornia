@@ -297,7 +297,10 @@ class TestCenterCrop(BaseTester):
         out_resample_false = kornia.geometry.transform.CenterCrop2D(
             (2, 2), align_corners=False, cropping_mode="resample"
         )(inp)
-        self.assert_close(out_resample_true, out_resample_false, atol=1e-4, rtol=1e-4)
+        # dtype-aware default rather than a fixed 1e-4: align_corners=True normalizes by 2 / (size - 1),
+        # which is 2/3 for this 4x4 input and so is not exactly representable at half precision, leaving
+        # the True result a fraction of a pixel off the exact slice that the False result hits exactly
+        self.assert_close(out_resample_true, out_resample_false)
         # and both agree with the plain integer-index slice of the same region
         self.assert_close(out_resample_false, inp[:, :, 1:3, 1:3], atol=1e-4, rtol=1e-4)
 
@@ -406,9 +409,10 @@ class TestCropByTransform(BaseTester):
         )
 
         assert not homogeneous.isnan().any()
-        self.assert_close(homogeneous, expected, rtol=1e-4, atol=1e-4)
-        # the (B, 3, 3) and (B, 2, 3) forms of the same affine transform must agree
+        # the (B, 3, 3) and (B, 2, 3) forms must agree exactly, which is the subject here; matching the
+        # exact slice takes the dtype-aware default, since align_corners=True normalizes by 2 / (size - 1)
         self.assert_close(homogeneous, affine, rtol=1e-4, atol=1e-4)
+        self.assert_close(homogeneous, expected)
 
     def test_gradcheck(self, device):
         inp = torch.randn((1, 1, 3, 3), device=device, dtype=torch.float64)
