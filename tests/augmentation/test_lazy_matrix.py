@@ -76,6 +76,21 @@ LAZY_OPS = ["hflip", "vflip", "invert", "brightness", "resize", "longest", "smal
 
 
 class TestLazyMatrixState(BaseTester):
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("name", ["hflip", "invert", "longest"])
+    def test_export_with_unread_matrix(self, name):
+        augmentation = make_augmentation(name).eval()
+        input = torch.linspace(0, 1, 2 * 3 * 8 * 10).reshape(2, 3, 8, 10)
+        expected = augmentation(input)
+        # An eager call leaves pending metadata in the module's state. PyTorch 2.5's
+        # non-strict exporter must be able to snapshot it without reading the matrix.
+        assert augmentation._transform_matrix is None
+        assert augmentation._lazy_matrix_args is not None
+        exported = torch.export.export(augmentation, (input,), strict=False).module()
+        self.assert_close(exported(input), expected)
+        other_input = input.flip(-1)
+        self.assert_close(exported(other_input), augmentation(other_input))
+
     @pytest.mark.parametrize("name", LAZY_OPS)
     def test_forward_releases_input_4482(self, name, device, dtype):
         augmentation = make_augmentation(name)

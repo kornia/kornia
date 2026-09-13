@@ -44,7 +44,7 @@ def _input_metadata_only(method: _F) -> _F:
 
 
 class _InputMetadata(NamedTuple):
-    shape: torch.Size
+    shape: Tuple[int, ...]
     dtype: torch.dtype
     device: torch.device
 
@@ -331,7 +331,8 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
                     self.identity_matrix,
                 )
             ):
-                matrix_input = _InputMetadata(in_tensor.shape, in_tensor.dtype, in_tensor.device)
+                # PyTorch 2.5 snapshots torch.Size as a tuple during non-strict export.
+                matrix_input = _InputMetadata(tuple(in_tensor.shape), in_tensor.dtype, in_tensor.device)
             self._commit_state(transform_matrix=None, lazy_matrix_args=(matrix_input, params, flags))
             return self.transform_inputs(in_tensor, params, flags, None)
 
