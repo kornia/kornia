@@ -1487,6 +1487,7 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             (200, 200, 1, torch.tensor([0.0, 1.0]), None),
             (200, 200, 1, None, torch.tensor([-1.0, 1.0])),
             (200, 200, 1, None, torch.tensor([0.0, 2.0])),
+            (200, 200, 1, None, torch.tensor([1.0, 1.0])),
         ],
     )
     @pytest.mark.parametrize("same_on_batch", [True, False])
@@ -1498,6 +1499,23 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
                 beta=(beta.to(device=device, dtype=dtype) if isinstance(beta, (Tensor)) else beta),
                 cut_size=(cut_size.to(device=device, dtype=dtype) if isinstance(cut_size, (Tensor)) else cut_size),
             )(torch.Size([8, 3, height, width]), same_on_batch=same_on_batch)
+
+    def test_a_minimum_cut_size_of_one_is_rejected_by_name_4439(self, device, dtype):
+        # kornia#4439: cut_size clamps lambda, so (1.0, 1.0) forced lambda = 1 and built an inverted,
+        # zero-size box that silently made the augmentation an identity.
+        with pytest.raises(ValueError, match="forces lambda = 1, which cuts nothing"):
+            CutmixGenerator(cut_size=torch.tensor([1.0, 1.0], device=device, dtype=dtype))
+
+    def test_a_larger_cut_size_gives_a_smaller_cut_4439(self, device, dtype):
+        side = []
+        for cut_size in ((0.1, 0.1), (0.9, 0.9)):
+            torch.manual_seed(0)
+            params = CutmixGenerator(cut_size=torch.tensor(cut_size, device=device, dtype=dtype), p=1.0)(
+                torch.Size([4, 3, 60, 80])
+            )
+            box = params["crop_src"][0, 0]
+            side.append(float(box[:, 0].max() - box[:, 0].min()))
+        assert side[0] > side[1]
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
