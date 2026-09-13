@@ -371,6 +371,8 @@ def fft_conv(
     Note:
         - Internally, the function performs zero-padding of the kernel to
           match the input size and uses real-valued FFTs (`rfftn` / `irfftn`).
+        - CPU float16 and bfloat16 inputs use float32 FFTs, with the result
+          cast back to the input dtype.
         - This implementation computes linear convolution via FFT by
           appropriate spatial padding and cropping, avoiding circular
           convolution artifacts.
@@ -439,6 +441,12 @@ def fft_conv(
     input_padded = input_padded.contiguous()
     tmp_kernel = tmp_kernel.contiguous()
 
+    # CPU FFT kernels do not support float16 or bfloat16.
+    is_cpu_half = input.device.type == "cpu" and input.dtype in (torch.float16, torch.bfloat16)
+    if is_cpu_half:
+        input_padded = input_padded.float()
+        tmp_kernel = tmp_kernel.float()
+
     # FFT
     input_fr = torch.fft.rfftn(input_padded, dim=(-2, -1))
     kernel_fr = torch.fft.rfftn(tmp_kernel, s=(padded_h, padded_w), dim=(-2, -1))
@@ -454,7 +462,7 @@ def fft_conv(
     crop_w = padded_w - kw + 1
     output = output[..., :crop_h, :crop_w].contiguous()
 
-    return output
+    return output.to(input.dtype) if is_cpu_half else output
 
 
 def correlate2d(

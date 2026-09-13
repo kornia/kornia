@@ -1333,12 +1333,24 @@ A(
 from kornia.geometry.vector import Vector2, Vector3  # noqa: E402
 from kornia.image import ImageSize  # noqa: E402
 from kornia.sensors.camera import (  # noqa: E402
+    BrownConradyModel,
     CameraModel,
     CameraModelType,
+    KannalaBrandtK3,
+    Orthographic,
     PinholeModel,
 )
 
 _pin = PinholeModel(ImageSize(480, 640), torch.tensor([[328.0, 328.0, 320.0, 240.0]]))
+_bc = BrownConradyModel(
+    ImageSize(480, 640),
+    torch.tensor([328.0, 328.0, 320.0, 240.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+)
+_kb = KannalaBrandtK3(
+    ImageSize(480, 640),
+    torch.tensor([328.0, 328.0, 320.0, 240.0, 0.0, 0.0, 0.0, 0.0]),
+)
+_orth = Orthographic(ImageSize(480, 640), torch.tensor([328.0, 328.0, 320.0, 240.0]))
 _pts3 = torch.tensor([[1.0, 2.0, 5.0], [-0.5, 0.3, 2.0]])
 A(
     case(
@@ -1393,27 +1405,27 @@ A(
     case(
         "sensors.camera.BrownConradyModel.project",
         "sensors.camera",
-        None,
-        [],
-        skip="raises NotImplementedError in kornia (BrownConradyTransform.distort is a stub)",
+        lambda p: _bc.project(Vector3(p)).data,
+        [_pts3],
+        note="zero Brown-Conrady coefficients; params baked",
     )
 )
 A(
     case(
         "sensors.camera.KannalaBrandtK3.project",
         "sensors.camera",
-        None,
-        [],
-        skip="raises NotImplementedError in kornia (KannalaBrandtK3Transform.distort is a stub)",
+        lambda p: _kb.project(Vector3(p)).data,
+        [_pts3],
+        note="zero Kannala-Brandt coefficients; params baked",
     )
 )
 A(
     case(
         "sensors.camera.Orthographic.project",
         "sensors.camera",
-        None,
-        [],
-        skip="raises NotImplementedError in kornia (Orthographic.project is a stub)",
+        lambda p: _orth.project(Vector3(p)).data,
+        [_pts3],
+        note="orthographic projection with affine intrinsics baked",
     )
 )
 A(case("sensors.camera.CameraModelBase/CameraModelType", "sensors.camera", None, [], skip="base class / enum"))

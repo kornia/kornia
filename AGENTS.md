@@ -99,6 +99,15 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 - MPS does not support float64 gradcheck. MPS autocast can also change the effective dtype; inspect nearby tests before changing tolerances or skips.
 - The blocking MPS job runs `--device=mps --dtype=float32 --xfail-known-failures`. Its exact strict-xfail baseline is `testing/known_failure_xfails/mps_float32.txt` and is tracked in #4159. A fix removes its manifest line; a rename or reparametrization updates the node ID; a new failure is fixed or explicitly documented before being added. The manifest contract requires a full-suite run, without `-k` or a partial path.
 - TF32 matmul is disabled by default; `--tf32` enables it. cuDNN convolutions still use PyTorch's TF32 default. Tests marked `tf32` are xfailed at collection unless `--tf32` is passed, and that marker is non-strict, so a default run reports neither their failure nor their recovery.
+- `torch.clamp` is not a portable gradient guard: its derivative **at the bound** passes the incoming gradient
+  through (`1.0`) on torch 2.5.1 and 2.9.1 and returns `0.0` on 2.14.0. Wherever the bound is also the singular
+  point -- `clamp(min=0).sqrt()`, `clamp(-1, 1).acos()`, `clamp(-1, 1).asin()` -- the clamp bounds the value only,
+  so the unbounded derivative still reaches the backward pass as `inf` or `nan` on the older half of the supported
+  range while 2.14 masks it. A floor below the dtype's smallest subnormal is no guard either: `clamp(min=1e-12)`
+  underflows to `0` in `float16`. Substitute a safe argument into the expression that gets differentiated and take
+  the value from a `.detach()`ed copy, or from the other arm of a `torch.where`, instead; that is
+  version-independent by construction. A CPU float32 run on a recent torch does not exercise any of this -- the
+  2.5.1 leg is what discriminates. The measurements and the audit of the pattern are in #4229.
 - Preserve device and dtype rather than creating implicit CPU or default-dtype tensors. Use the injected `device` and `dtype` fixtures in tests.
 
 ## Library preferences

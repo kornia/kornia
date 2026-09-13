@@ -97,11 +97,12 @@ class StereoCamera:
         any rig the constructor accepts. The ``tx * fx < 0`` guard is quantified with ``torch.all``, so a
         batch whose second element has the two cameras the wrong way round is accepted and reprojects that
         element behind the camera. And ``tx = 0`` passes the same guard, collapsing ``Q`` so that every
-        disparity reprojects to the origin with no ``inf`` to notice. The per-camera :math:`(3, 4)` shape check
-        compares ``shape[:1]`` rather than ``shape[-2:]``, so it can never fire and a :math:`(B, 4, 4)` pair
-        is accepted, building the same :math:`(B, 4, 4)` ``Q`` as the :math:`(B, 3, 4)` pair it should have
-        required. Tracked as
-        `#4270 <https://github.com/kornia/kornia/issues/4270>`_.
+        disparity reprojects to the origin with no ``inf`` to notice. These guard issues are tracked as
+        `#4270 <https://github.com/kornia/kornia/issues/4270>`_ and pinned by
+        ``test_wart_stereo_rejects_differing_principal_points_4270``,
+        ``test_wart_stereo_accepts_a_batch_with_one_positive_tx_fx_4270``,
+        ``test_wart_stereo_tx_zero_collapses_every_point_to_the_origin_4270`` in
+        ``tests/geometry/camera/test_stereo.py``.
 
     .. warning::
         The module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` is rendered on
@@ -155,14 +156,15 @@ class StereoCamera:
                 f"Expected 'rectified_right_camera' to have 3 dimension. Got {rectified_right_camera.shape}."
             )
 
-        if rectified_left_camera.shape[:1] == (3, 4):
+        if rectified_left_camera.shape[-2:] != (3, 4):
             raise StereoException(
-                f"Expected each 'rectified_left_camera' to be of shape (3, 4).Got {rectified_left_camera.shape[:1]}."
+                f"Expected each 'rectified_left_camera' to be of shape (3, 4). Got {rectified_left_camera.shape[-2:]}."
             )
 
-        if rectified_right_camera.shape[:1] == (3, 4):
+        if rectified_right_camera.shape[-2:] != (3, 4):
             raise StereoException(
-                f"Expected each 'rectified_right_camera' to be of shape (3, 4).Got {rectified_right_camera.shape[:1]}."
+                "Expected each 'rectified_right_camera' to be of shape (3, 4). "
+                f"Got {rectified_right_camera.shape[-2:]}."
             )
 
         # Ensure same devices for cameras.
