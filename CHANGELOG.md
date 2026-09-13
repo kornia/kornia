@@ -411,6 +411,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   point axis, such as `(0, 4, 4)` transforms with `(0, 5, 3)` points. It used to raise `ZeroDivisionError`
   expanding the transforms (`0 // 0`), and `PinholeCamera.project` inherited the crash for an empty camera
   batch on `(0, N, 3)` points. (#4466, #4487)
+* `RandomCutMixV2` and `CutmixGenerator` document `cut_size` as what it is: the `[min, max]` clamp on the
+  Beta-sampled mixing coefficient `lambda`, where the cut side is `floor(sqrt(1 - lambda) * side)`, so a larger
+  `cut_size` gives a smaller cut. It was described as the "minimum and maximum cut ratio". A minimum of `1.0` is
+  now rejected with a `ValueError`: it forced `lambda = 1`, built an inverted zero-size box and silently made the
+  augmentation an identity. (#4439, #4491)
+
+* Made uncompiled `RandomGaussianIllumination` instances serializable with `pickle` and `torch.save`,
+  preserving parameter replay and the `compile()` execution path after restoring the module. (#4457)
+* The `Args` blocks of `ColorJitter`, `RandomBrightness` and `RandomGaussianBlur` no longer document a
+  `silence_instantiation_warning` argument that none of them accepts, and `ColorJitter` now documents its
+  `order` argument: a fixed (sub)set of brightness/contrast/saturation/hue indices that makes the transform
+  `torch.compile` fullgraph-safe, with the drawn `_params["order"]` entry ignored when it is set.
+  (#4437, #4490)
+
+* `kornia.enhance.equalize`, `equalize3d`, `RandomEqualize` and `RandomEqualize3D` raise a `RuntimeError` naming
+  the `[0, 1]` input range for values the 256-bin lookup cannot index, instead of a raw
+  `index 259 is out of bounds for dimension 1 with size 256` from the gather. The check uses
+  `torch._assert_async`, so it adds no device sync and `torch.compile` fullgraph still works, and inputs that
+  equalized before (including values a hair above 1) are unchanged. The docstrings now state the range, the
+  256-bin histogram, and that a 3D volume of at most 255 voxels per channel comes back unchanged.
+  (#4431, #4432, #4489)
+
+* `kornia.contrib.diamond_square` generates fractals with a spatial side below 3 px. A 1 px side raised
+  `ValueError: math domain error` and a 2 px side a `TypeError` from a float in the `torch.rand` size, so
+  `RandomPlasmaBrightness`, `RandomPlasmaContrast` and `RandomPlasmaShadow` failed on such images. A small
+  side is now drawn on the 3 px grid and sliced; outputs for sides of 3 px and more are bit-identical.
+  (#4472, #4488)
 
 * `RandomBoxBlur`'s `normalized` argument is documented as what it does. It was described as "if True, L1 norm
   of the kernel is set to 1", but it was forwarded positionally into `kornia.filters.box_blur`'s `separable`
