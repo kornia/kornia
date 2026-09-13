@@ -384,9 +384,9 @@ Serializing an augmentation
   reflect the loaded range. Reconstruct the augmentation to change what it
   samples (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
 - Pickle and deepcopy can retain recorded parameters and transform state,
-  but support is configuration-dependent. ``RandomGaussianIllumination``
-  cannot currently be pickled
-  (`#4435 <https://github.com/kornia/kornia/issues/4435>`_). Lazy matrix state
+  but support is configuration-dependent. The ``kornia.augmentation.auto``
+  policies cannot currently be pickled
+  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_). Lazy matrix state
   can retain the last input batch, increasing serialized size until the
   matrix is read (`#4482 <https://github.com/kornia/kornia/issues/4482>`_).
   A normal forward draws fresh parameters; replay requires passing the

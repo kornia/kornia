@@ -78,8 +78,7 @@ class AugmentationBase2D(_AugmentationBase):
           since it is drawn into ``_params``, except for :class:`RandomDissolving`, which samples VAE latents
           during application; that draw is not stored and requires controlling the global seed too.
         - range configuration and serialization behavior vary by generator. Some range buffers are inert after
-          ``load_state_dict`` (tracked in `#4428 <https://github.com/kornia/kornia/issues/4428>`_), some
-          augmentations are not picklable (`#4435 <https://github.com/kornia/kornia/issues/4435>`_), and saved
+          ``load_state_dict`` (tracked in `#4428 <https://github.com/kornia/kornia/issues/4428>`_), and saved
           state can retain data from the last call (`#4482 <https://github.com/kornia/kornia/issues/4482>`_).
         - an empty batch is an empty output on the classes that accept one, but it is not a package-wide
           guarantee: a minority of the classes raise on ``B = 0``, in several unrelated exception families.

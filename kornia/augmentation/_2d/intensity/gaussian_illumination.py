@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
@@ -22,6 +24,22 @@ import torch
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import GaussianIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
+
+
+def _apply_gaussian_illumination(
+    input: torch.Tensor,
+    params: Dict[str, torch.Tensor],
+    flags: Dict[str, Any],
+    transform: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Apply a sampled illumination pattern through a picklable, compilable callable."""
+    # The gradient comes from the generator on CPU.
+    # We must explicitly move it to the input's device before adding.
+    gradient = params["gradient"].to(input.device, input.dtype)
+
+    # Out-of-place add: in-place would mutate the caller's tensor and corrupt
+    # the non-transformed branch, which shares the same input.
+    return input.add(gradient).clamp_(0, 1)
 
 
 class RandomGaussianIllumination(IntensityAugmentationBase2D):
@@ -160,21 +178,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         # Generator of random parameters and masks.
         self._param_generator = GaussianIlluminationGenerator(gain, center, sigma, sign)
 
-        def _apply_transform(
-            input: torch.Tensor,
-            params: Dict[str, torch.Tensor],
-            flags: Dict[str, Any],
-            transform: Optional[torch.Tensor] = None,
-        ) -> torch.Tensor:
-            # The gradient comes from the generator on CPU.
-            # We must explicitly move it to the input's device before adding.
-            gradient = params["gradient"].to(input.device, input.dtype)
-
-            # Out-of-place add: in-place would mutate the caller's tensor and corrupt
-            # the non-transformed branch, which shares the same input.
-            return input.add(gradient).clamp_(0, 1)
-
-        self._fn = _apply_transform
+        self._fn = _apply_gaussian_illumination
 
     def apply_transform(
         self,
@@ -195,7 +199,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         mode: Optional[str] = None,
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
-    ) -> "RandomGaussianIllumination":
+    ) -> RandomGaussianIllumination:
         self._fn = torch.compile(
             self._fn,
             fullgraph=fullgraph,
