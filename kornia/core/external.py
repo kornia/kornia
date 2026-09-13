@@ -160,7 +160,7 @@ class LazyLoader:
 #       may set the module name to `autodoc_mock_imports` in conf.py to avoid undesired
 #       installation of external modules.
 numpy = LazyLoader("numpy", dev_dependency=True)
-PILImage = LazyLoader("PIL.Image", dev_dependency=True)
+PILImage = LazyLoader("PIL.Image", dev_dependency=True, extra="image")
 onnx = LazyLoader("onnx", dev_dependency=True, extra="onnx")
 diffusers = LazyLoader("diffusers", extra="sd")
 onnxruntime = LazyLoader("onnxruntime", extra="onnx")
