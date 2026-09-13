@@ -404,6 +404,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `So3.exp`, `So3.log`, `Se3.exp`, `Se3.log` and `Se2.exp` return finite gradients at the identity,
+  and `So3.log` also at a half turn, instead of `nan` on every dtype. The forward values are unchanged;
+  `torch.where` was differentiating the singular branch it does not select. (#4405)
 * `ycbcr_to_rgb` now uses the exact inverse of the `rgb_to_ycbcr` coefficients, so an
   `rgb -> ycbcr -> rgb` round trip is lossless to floating-point precision instead of drifting
   by ~2.7e-4. The forward transform is unchanged. (#4378)
