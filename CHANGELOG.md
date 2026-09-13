@@ -172,6 +172,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-tree MPS workarounds stay. (#4202)
 
 ### Breaking changes
+* Outputs of `warp_perspective`, `warp_affine`, `homography_warp`, `warp_image_tps` and
+  `crop_by_transform_mat` change when called with `align_corners=False`: they now match the
+  `align_corners=True` result up to out-of-bounds handling instead of carrying a spurious sub-pixel
+  scale and shift. The augmentations that default to `align_corners=False` (`RandomAffine`,
+  `RandomPerspective`, `RandomShear`, `RandomTranslate`, `RandomThinPlateSpline`) therefore sample
+  different pixels; their transform matrices are unchanged. `align_corners=True` call sites are
+  bit-identical. Refs #3904. (#3945)
 * `PatchSequential` now preserves the batch size in both padding modes. `same` preserves the input
   spatial size and `valid` keeps only the complete, centred grid region. Previously, a `(2,3,8,8)`
   input on a `(3,3)` grid produced `(2,3,7,7)` with `same` (now `(2,3,8,8)`) and `(2,3,8,8)` with
@@ -404,6 +411,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `warp_perspective`, `warp_affine`, `homography_warp`, `HomographyWarper` and `warp_image_tps` now
+  build their sampling grid and homography normalization under the same `align_corners` convention
+  they pass to `grid_sample`. Previously the grid was always corner-aligned, so with
+  `align_corners=False` an identity homography did not reproduce its input (max deviation `11.25`
+  on a 4x4 `arange` image) and a whole-pixel translation resampled at fractional offsets;
+  `warp_image_tps` was affected on its default path. `create_meshgrid`, `normal_transform_pixel`,
+  `normalize_homography` and `denormalize_homography` gain an `align_corners` parameter (last,
+  default `True`, so existing calls are unchanged). `crop_by_transform_mat` drops the #3650
+  correction matrix and the 1-pixel `warp_affine` fallback that worked around the mismatch, so
+  1-pixel outputs are exact under both settings. Fixes #3904, #3928, #3929. (#3945)
 * Fixed `RandomPlasmaBrightness`, `RandomPlasmaContrast`, and `RandomPlasmaShadow` to replay deterministically from stored `params=`. (#4462)
 * `ManyToManyAugmentationDispather` now rejects mismatched numbers of input bundles and
   augmentations before applying any transformation, instead of silently dropping surplus inputs

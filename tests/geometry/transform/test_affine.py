@@ -607,6 +607,12 @@ class TestShear(BaseTester):
         # x-shear by 0.5 about the origin: dst[x, y] samples src[x - 0.5 * y, y], so row y=1
         # samples x=-0.5 (half outside, zero padding -> 0.5), row y=2 samples x=-1 (fully
         # outside -> 0), row y=3 samples x=-1.5 and x=-0.5 -> 0, 0.5.
+        # Snippet used to generate expected (identical to the call under test):
+        #   inp = torch.ones(1, 4, 4); shear = torch.tensor([[0.5, 0.0]])
+        #   expected = kornia.geometry.transform.Shear(shear, align_corners=False)(inp)
+        # Pre-#3945 literal from the same snippet, when warp_affine(align_corners=False) still
+        # normalized against a corner-aligned grid (the 0.75 / 0.25 are that sub-pixel artifact):
+        #   [[[0.75, 1.0, 1.0, 1.0], [0.25, 1.0, 1.0, 1.0], [0.0, 0.75, 1.0, 1.0], [0.0, 0.25, 1.0, 1.0]]]
         expected = torch.tensor(
             [[[1.0, 1.0, 1.0, 1.0], [0.5, 1.0, 1.0, 1.0], [0.0, 1.0, 1.0, 1.0], [0.0, 0.5, 1.0, 1.0]]],
             device=device,
@@ -626,6 +632,8 @@ class TestShear(BaseTester):
             dtype=dtype,
         )
         # y-shear by 0.5 about the origin: the transpose of the test_shear_x case above.
+        # Pre-#3945 literal (shear = [[0.0, 0.5]], otherwise the test_shear_x snippet):
+        #   [[[0.75, 0.25, 0.0, 0.0], [1.0, 1.0, 0.75, 0.25], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]]
         expected = torch.tensor(
             [[[1.0, 0.5, 0.0, 0.0], [1.0, 1.0, 1.0, 0.5], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]],
             device=device,
@@ -645,7 +653,8 @@ class TestShear(BaseTester):
             dtype=dtype,
         ).repeat(2, 1, 1, 1)
 
-        # the test_shear_x and test_shear_y expectations, stacked
+        # the test_shear_x and test_shear_y expectations, stacked; the pre-#3945 literals
+        # recorded in those two tests stack the same way
         expected = torch.tensor(
             [
                 [[[1.0, 1.0, 1.0, 1.0], [0.5, 1.0, 1.0, 1.0], [0.0, 1.0, 1.0, 1.0], [0.0, 0.5, 1.0, 1.0]]],
@@ -668,6 +677,7 @@ class TestShear(BaseTester):
             dtype=dtype,
         ).repeat(2, 1, 1, 1)
 
+        # the test_shear_x expectation broadcast over the batch (pre-#3945 literal recorded there)
         expected = torch.tensor(
             [[[[1.0, 1.0, 1.0, 1.0], [0.5, 1.0, 1.0, 1.0], [0.0, 1.0, 1.0, 1.0], [0.0, 0.5, 1.0, 1.0]]]],
             device=device,

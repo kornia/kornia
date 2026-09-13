@@ -52,6 +52,13 @@ class TestCropAndResize(BaseTester):
         # The box corners are pixel coordinates, so they pin the sampling geometry regardless of
         # align_corners: the box spans src x, y in [1, 2] and the 2x3 output samples pixel centers
         # at x = 1, 1.5, 2 and y = 1, 2 -- the same values the align_corners=True case produces.
+        # Snippet used to generate expected (identical to the call under test):
+        #   inp = torch.arange(1.0, 17.0).view(1, 1, 4, 4)
+        #   boxes = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]])
+        #   expected = kornia.geometry.transform.crop_and_resize(inp, boxes, (2, 3), align_corners=False)
+        # Pre-#3945 literal from the same snippet (the #3650 correction matrix reparametrized the
+        # crop for a grid convention warp_perspective did not actually use):
+        #   [[[[6.7222, 7.1667, 7.6111], [9.3889, 9.8333, 10.2778]]]]
         expected = torch.tensor([[[[6.0, 6.5, 7.0], [10.0, 10.5, 11.0]]]], device=device, dtype=dtype)
 
         boxes = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2

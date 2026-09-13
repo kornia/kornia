@@ -181,6 +181,8 @@ class TestWarpImage(BaseTester):
         # nn.grid_sample interpolates the at the edges it seems, so the boundaries have values < 1.
         # Under the default align_corners=False, the outermost output pixel maps back to input
         # pixel 1.75 -- three quarters of the way from the zero at pixel 1 to the one at pixel 2.
+        # Pre-#3945 the same warp gave a border factor of 0.5 (input pixel 1.5): the corner-aligned
+        # grid sampled under grid_sample's half-pixel convention shifted the zoom by a quarter pixel.
         expected[:, :, [0, -1], :] *= 0.75
         expected[:, :, :, [0, -1]] *= 0.75
 

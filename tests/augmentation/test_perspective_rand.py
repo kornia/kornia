@@ -107,6 +107,19 @@ class TestRandomPerspective(BaseTester):
         # RandomPerspective samples with align_corners=False. expected_transform below is the
         # pixel-space transform and is unaffected by #3904; only the resampling changed, now that
         # warp_perspective normalizes to the convention grid_sample is actually called with.
+        # Snippet used to generate expected_output (the call under test, verbatim):
+        #   torch.manual_seed(0); x_data = torch.rand(1, 2, 4, 5)
+        #   aug = kornia.augmentation.RandomPerspective(torch.tensor(0.5), p=0.99999999)
+        #   expected_output = aug(x_data)
+        # Pre-#3945 literal from the same snippet:
+        #   [[[[0.0000, 0.0000, 0.0000, 0.0197, 0.0429],
+        #      [0.0000, 0.5632, 0.5322, 0.3677, 0.1430],
+        #      [0.0000, 0.3083, 0.4032, 0.1761, 0.0000],
+        #      [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
+        #     [[0.0000, 0.0000, 0.0000, 0.1189, 0.0586],
+        #      [0.0000, 0.7087, 0.5420, 0.3995, 0.0863],
+        #      [0.0000, 0.2695, 0.5981, 0.5888, 0.0000],
+        #      [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]]]]
         expected_output = torch.tensor(
             [
                 [

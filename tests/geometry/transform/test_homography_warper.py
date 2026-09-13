@@ -188,6 +188,17 @@ class TestHomographyWarper(BaseTester):
         # built to match align_corners, so the two agree rather than differing by half a pixel (#3904).
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("hardcoded-literal pin only reliable at float32/float64 precision")
+        # Snippet used to generate the pre-#3945 literal (the call under test, verbatim):
+        #   height, width = 4, 5
+        #   patch_src = torch.arange(float(height * width)).view(1, 1, height, width)
+        #   warper = kornia.geometry.transform.HomographyWarper(height, width)  # no align_corners passed
+        #   expected = warper(patch_src, torch.eye(3)[None])
+        # Pre-#3945 literal, i.e. what an *identity* warp returned under the bare default:
+        #   [[[[0.0000, 0.3750, 1.0000, 1.6250, 1.0000],
+        #      [2.0833, 4.9167, 6.1667, 7.4167, 4.0833],
+        #      [5.4167, 11.5833, 12.8333, 14.0833, 7.4167],
+        #      [3.7500, 7.8750, 8.5000, 9.1250, 4.7500]]]]
+        # The corrected expectation is the input itself, so it needs no literal.
         height, width = 4, 5
         patch_src = torch.arange(float(height * width), device=device, dtype=dtype).view(1, 1, height, width)
         dst_homo_src = eye_like(3, patch_src)
