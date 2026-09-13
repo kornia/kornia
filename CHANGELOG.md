@@ -392,6 +392,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `ManyToManyAugmentationDispather` now rejects mismatched numbers of input bundles and
+  augmentations before applying any transformation, instead of silently dropping surplus inputs
+  or skipping augmentations. (#4461)
 * `PatchSequential` now augments every patch of every image and runs the complete selected sequence.
   The padding, reconstruction and parameter-generation behaviour changes are listed under
   *Breaking changes*. Refs #4421. (#4460)
