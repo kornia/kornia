@@ -407,6 +407,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* The `Args` blocks of `ColorJitter`, `RandomBrightness` and `RandomGaussianBlur` no longer document a
+  `silence_instantiation_warning` argument that none of them accepts, and `ColorJitter` now documents its
+  `order` argument: a fixed (sub)set of brightness/contrast/saturation/hue indices that makes the transform
+  `torch.compile` fullgraph-safe, with the drawn `_params["order"]` entry ignored when it is set.
+  (#4437, #4490)
+
 * `kornia.enhance.equalize`, `equalize3d`, `RandomEqualize` and `RandomEqualize3D` raise a `RuntimeError` naming
   the `[0, 1]` input range for values the 256-bin lookup cannot index, instead of a raw
   `index 259 is out of bounds for dimension 1 with size 256` from the gather. The check uses
