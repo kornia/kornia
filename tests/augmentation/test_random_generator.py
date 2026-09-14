@@ -19,7 +19,7 @@ import pytest
 import torch
 from torch import Tensor
 
-from kornia.augmentation import RandomGaussianBlur
+from kornia.augmentation import RandomAffine, RandomGaussianBlur, RandomShear
 from kornia.augmentation.random_generator import (
     AffineGenerator,
     ColorJiggleGenerator,
@@ -855,6 +855,33 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
         assert_close(res["angle"], expected["angle"], rtol=1e-4, atol=1e-4)
         assert_close(res["shear_x"], expected["shear_x"], rtol=1e-4, atol=1e-4)
         assert_close(res["shear_y"], expected["shear_y"], rtol=1e-4, atol=1e-4)
+
+
+class TestShearRangeDeviceDtype:
+    # _range_bound places its result on CPU in the default dtype unless it is told
+    # otherwise, and the shear branches of both generators did not tell it. On a
+    # non-CPU device the stack against the already-placed zero y range raised, so
+    # RandomShear(5.0).to("cuda") failed at construction (#4415). The dtype half of
+    # the same omission is visible on CPU: a 4-tuple shear kept float32 ranges
+    # after a float64 move.
+    @pytest.mark.parametrize("shear", [5.0, (5.0, 10.0), (-5.0, 2.0, 5.0, 10.0)])
+    @pytest.mark.parametrize(
+        "make",
+        [
+            RandomShear,
+            lambda shear: RandomAffine(degrees=0.0, shear=shear),
+        ],
+        ids=["RandomShear", "RandomAffine"],
+    )
+    @pytest.mark.parametrize("target_dtype", [torch.float32, torch.float64])
+    def test_shear_ranges_follow_the_module(self, device, make, shear, target_dtype):
+        generator = make(shear).to(device=device, dtype=target_dtype)._param_generator
+        expected_device = torch.tensor(0.0, device=device).device
+
+        for sampler in (generator.shear_x_sampler, generator.shear_y_sampler):
+            for bound in (sampler.low, sampler.high):
+                assert bound.device == expected_device
+                assert bound.dtype == target_dtype
 
 
 class TestRandomCropGen(RandomGeneratorBaseTests):
