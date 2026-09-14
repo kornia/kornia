@@ -305,6 +305,9 @@ class TestRandomCutMixV2(BaseTester):
             self.assert_close(output[untouched], input[untouched])
 
     def test_random_cutmix_float64_lambda(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+
         torch.manual_seed(76)
         f = RandomCutMixV2(p=1.0, data_keys=["input", "class"])
 
