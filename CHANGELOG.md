@@ -410,7 +410,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `RandomCrop(4)` and `RandomResizedCrop(4)` raise errors that name `size`, the `(height, width)` form it needs and
   the value passed, instead of an `AssertionError` about a `torch.Tensor` shape and a bare
   `TypeError: object of type 'int' has no len()`. The exception types are unchanged, and both classes still reject
-  an `int`. (#4417)
+  an `int`. (#4417, #4512)
 * `RandomCutMixV2` and `CutmixGenerator` document `cut_size` as what it is: the `[min, max]` clamp on the
   Beta-sampled mixing coefficient `lambda`, where the cut side is `floor(sqrt(1 - lambda) * side)`, so a larger
   `cut_size` gives a smaller cut. It was described as the "minimum and maximum cut ratio". A minimum of `1.0` is
