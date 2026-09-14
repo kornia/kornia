@@ -2289,7 +2289,12 @@ def denormalize_homography(
           sizes on their own are **neither necessary nor sufficient**: an ``H``
           with non-dyadic entries at ``2 ** k + 1`` sizes misses in both legs
           in ``float32``, while the ``float64`` identity comes back bitwise
-          through both legs at the non-dyadic ``(4, 5) -> (8, 9)``. What does
+          through ``denormalize_homography(normalize_homography(.))`` at the
+          non-dyadic ``(4, 5) -> (8, 9)``. The reverse leg there misses by a
+          single ulp (``2.22e-16``): genuine ``float64`` normalization
+          constants make ``2 / (size - 1)`` a 53-bit approximation at those
+          sizes, where the float32-rounded constants this function used to
+          build were dyadic when widened and so inverted exactly. What does
           hold is the two halves together: in ``float32`` and ``float64`` a
           dyadic-entried ``H`` at ``2 ** k + 1`` sizes comes back bitwise
           through **both** legs, and that is what the pin relies on. In

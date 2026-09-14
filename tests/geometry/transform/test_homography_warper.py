@@ -425,8 +425,11 @@ class TestHomographyNormalizePrecision(BaseTester):
 
     The oracle is the documented contract of each op, evaluated natively in float64 with the same
     public helper: ``normalize_homography`` chains ``normal_transform_pixel(dst)`` with the inverse
-    of ``normal_transform_pixel(src)``. Sizes are picked so that ``2 / (size - 1)`` is not exactly
-    representable in binary (2/3, 2/5, 2/7), which is what exposes the float32 rounding.
+    of ``normal_transform_pixel(src)``. Every size is picked so that ``2 / (size - 1)`` is not
+    exactly representable in binary -- the 2-D pins use 2/3 and 2/5, the 3-D pin 2/3, 2/5, 2/7 and
+    2/9 across all six axes -- which is what exposes the float32 rounding. A size whose
+    ``size - 1`` is a power of two (2/1, 2/2, 2/4, 2/8 ...) is exact in every dtype and pins
+    nothing here, so do not "simplify" these numbers.
     """
 
     @staticmethod
@@ -463,10 +466,10 @@ class TestHomographyNormalizePrecision(BaseTester):
         f64 = torch.float64
         dst_pix_trans_src_pix = torch.eye(4, device=device, dtype=f64)[None]
 
-        out = kornia.geometry.conversions.normalize_homography3d(dst_pix_trans_src_pix, (2, 4, 5), (3, 8, 9))
+        out = kornia.geometry.conversions.normalize_homography3d(dst_pix_trans_src_pix, (4, 4, 6), (6, 8, 10))
 
-        src_norm = kornia.geometry.conversions.normal_transform_pixel3d(2, 4, 5, device=device, dtype=f64)
-        dst_norm = kornia.geometry.conversions.normal_transform_pixel3d(3, 8, 9, device=device, dtype=f64)
+        src_norm = kornia.geometry.conversions.normal_transform_pixel3d(4, 4, 6, device=device, dtype=f64)
+        dst_norm = kornia.geometry.conversions.normal_transform_pixel3d(6, 8, 10, device=device, dtype=f64)
         expected = dst_norm @ _torch_inverse_cast(src_norm)
         self.assert_close(out, expected, rtol=0.0, atol=1e-15)
 

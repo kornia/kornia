@@ -3635,9 +3635,11 @@ class TestNormalTransformPixel(BaseTester):
         # Python ints rather than tensors. With dtype=None the matrix is built by torch.tensor()
         # from Python floats, so its dtype is torch's AMBIENT default rather than float32
         # unconditionally: changing the process default changes the result. That is the mechanism
-        # behind the float32 constants that leak into float64 homography pipelines (kornia#3958,
-        # pinned in TestNormalizeHomography): normalize_homography calls these helpers without
-        # passing dtype= through, so they materialise at the ambient default and are cast after.
+        # that used to sit behind the float32 constants leaking into float64 homography pipelines
+        # (kornia#3958): normalize_homography called these helpers without passing dtype= through,
+        # so they materialised at the ambient default and were cast after. That is fixed -- the
+        # homography functions now pass device= and dtype= through -- but the helpers' own
+        # dtype=None behaviour is unchanged and is what this pin covers.
         # The dtype fixture is dropped because the claim is about the *absence* of a dtype
         # argument, and the default is read back through torch.get_default_dtype() rather than
         # hardcoded, so the pin says "follows the ambient default" and not "is always float32".
@@ -3661,8 +3663,8 @@ class TestNormalTransformPixel(BaseTester):
             ambient_dtype = normal_transform_pixel(4, 5).dtype
 
         assert ambient_dtype == torch.float64, (
-            "normal_transform_pixel no longer follows the ambient default dtype, so the kornia#3958 "
-            "mechanism pinned in TestNormalizeHomography has changed"
+            "normal_transform_pixel no longer follows the ambient default dtype; its documented "
+            "dtype=None behaviour has changed"
         )
 
     def test_convention_corner_aligned_scale_is_two_over_size_minus_one(self, device):
@@ -4042,11 +4044,11 @@ class TestNormalizeHomography(BaseTester):
     # normal_transform_pixel, whose corner-aligned convention all three inherit.
     # The CONVENTION pins below (composition, direction, round-trip, batching, 3-D) use sizes of
     # the form 2**k + 1 (3, 5, 9, 17) so that every 2/(size - 1) is exact in every dtype and those
-    # pins compare at atol=rtol=0. That also keeps them independent of kornia#3958 (the float32
-    # constants leak, pinned separately below with non-dyadic sizes): a fix for #3958 must not flip
-    # an ordering or direction pin. The exactness invariant is theirs alone -- the bug pins below
-    # deliberately step outside it (the round-trip pin's non-dyadic (4, 5)/(8, 9) legs at
-    # atol=32*eps, the #3960 shape-guard cells), so a new atol=0 pin belongs here
+    # pins compare at atol=rtol=0. That also kept them independent of kornia#3958 (the float32
+    # constants leak, since fixed): the fix did not flip an ordering or direction pin. The
+    # exactness invariant is theirs alone -- the pins that step outside it do so deliberately (the
+    # round-trip pin's non-dyadic (4, 5)/(8, 9) legs at atol=32*eps and its one-ulp reverse-leg
+    # residual, the #3960 shape-guard cells), so a new atol=0 pin belongs here
     # only at these sizes AND with a literal whose intermediates are exact. The invariant also
     # leans on the SHAPE of the normalization matrices -- upper-triangular with power-of-two
     # pivots -- surviving BOTH inverse routes actually in play (the functions do NOT share one):
@@ -4304,10 +4306,21 @@ class TestNormalizeHomography(BaseTester):
     def test_convention_dyadic_sizes_are_not_necessary_for_a_bitwise_round_trip(self, device):
         # The float64 identity survives denormalize(normalize(.)) bitwise at the non-dyadic
         # (4, 5) -> (8, 9) -- the exact size pair where the round-trip pin above has to fall back to
-        # a 32 * eps tolerance for a general H.
-        # The reverse leg (normalize(denormalize(.))) is no longer bitwise exact with genuine
-        # float64 constants because 2/3 and 2/7 are 53-bit approximations; one ulp appears.
-        # The previous bitwise result was an artifact of the float32-rounded constants being dyadic.
+        # a 32 * eps tolerance for a general H. That forward leg alone carries the bullet's "not
+        # necessary" half.
+        # The reverse leg is NOT bitwise and is pinned exactly rather than with a tolerance. Before
+        # #3958 both legs came back bitwise, but that was an artifact of the defect: float32-rounded
+        # constants are dyadic when widened to float64, so the products and the inverse were exact.
+        # With genuine float64 constants 2/3 and 2/7 are 53-bit approximations and exactly one ulp
+        # of 1.0 appears, at reverse[0][1][1] and reverse[0][1][2]. An atol here would discriminate
+        # nothing -- the pre-#3958 residual is 0.0 and would pass any tolerance this one does.
+        # Snippet used to generate expected (torch only, executed on cpu float64, torch 2.9.1):
+        #   I = torch.eye(3, dtype=torch.float64)[None]
+        #   torch.equal(denormalize_homography(normalize_homography(I, (4,5), (8,9)), (4,5), (8,9)), I)
+        #     -> True
+        #   (normalize_homography(denormalize_homography(I, (4,5), (8,9)), (4,5), (8,9)) - I)
+        #     -> nonzero at [0][1][1] and [0][1][2]; max|residual| 2.220446049250313e-16,
+        #        one ulp of 1.0
         _skip_if_dtype_unavailable(device, torch.float64)
         _skip_if_closed_form_inverse_unavailable(device, torch.float64)
         normalize_homography = kornia.geometry.conversions.normalize_homography
@@ -4322,7 +4335,13 @@ class TestNormalizeHomography(BaseTester):
             "non-dyadic (4, 5) -> (8, 9), so denormalize_homography's 'not necessary' half has "
             "lost its counterexample"
         )
-        self.assert_close(reverse, identity, atol=1e-15, rtol=0.0)
+
+        residual = reverse - identity
+        assert residual.abs().max().item() == 2.220446049250313e-16, (
+            "the reverse leg's float64 residual at the non-dyadic (4, 5) -> (8, 9) moved off one "
+            "ulp of 1.0; re-derive denormalize_homography's Convention bullet from the new value "
+            f"(got {residual.abs().max().item()!r})"
+        )
 
     def test_convention_batch_is_per_sample(self, device, dtype):
         # Convention pin: both functions are per-sample -- the result for one batch element does not
@@ -4428,8 +4447,9 @@ class TestNormalizeHomography(BaseTester):
 
     def test_wart_integer_input_raises_or_nans_by_backend_3959(self, device):
         # Wart pin for kornia#3959's homography reach, companion to normalize_homography's
-        # integer-input warning: the normalization matrices are cast to the input's int64 by
-        # .to(input), truncating their scales to zero (the truncation itself is pinned in
+        # integer-input warning: the normalization matrices are built at the input's int64 dtype
+        # (passed through since #3958; previously cast by .to(input)), which truncates their
+        # scales to zero either way (the truncation itself is pinned in
         # test_wart_integer_dtype_truncates_the_scale_to_zero_3959 above), and the downstream
         # failure differs by backend. normalize_homography dies in the FINAL CHAIN MATMUL with a
         # RuntimeError -- the closed-form inverse does not raise, it silently promotes the
