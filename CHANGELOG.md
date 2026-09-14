@@ -407,6 +407,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* A `resample` entry in `AugmentationSequential(extra_args={DataKey.MASK: {...}})` now reaches the mask sampler on
+  2D geometric augmentations that use the base mask path (`RandomAffine`, `RandomRotation`, `RandomPerspective`,
+  `Resize`, the crops and the rest). It used to be merged and then overwritten with nearest on the forward path,
+  though `inverse` already honoured it. Masks still default to nearest when no `resample` is given, including
+  when a user dict leaves it out. (#4419)
 * `RandomCutMixV2` and `CutmixGenerator` document `cut_size` as what it is: the `[min, max]` clamp on the
   Beta-sampled mixing coefficient `lambda`, where the cut side is `floor(sqrt(1 - lambda) * side)`, so a larger
   `cut_size` gives a smaller cut. It was described as the "minimum and maximum cut ratio". A minimum of `1.0` is
