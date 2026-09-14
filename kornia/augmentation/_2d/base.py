@@ -15,7 +15,9 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Tuple
+from __future__ import annotations
+
+from typing import Any, Callable, Dict, NamedTuple, Optional, Tuple, TypeVar, Union
 
 import torch
 from torch import float16, float32, float64
@@ -26,6 +28,33 @@ from kornia.core.ops import eye_like
 from kornia.core.utils import is_autocast_enabled
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
+
+_F = TypeVar("_F", bound=Callable[..., torch.Tensor])
+
+
+def _input_metadata_only(method: _F) -> _F:
+    """Mark an implementation that only reads the input's shape, dtype and device.
+
+    Store the function itself, not a boolean: an override (including a wrapper that
+    copies function attributes) must not inherit another implementation's promise.
+    Overridable callees in the matrix path are checked separately.
+    """
+    method.__dict__["_kornia_input_metadata_only"] = method
+    return method
+
+
+class _InputMetadata(NamedTuple):
+    shape: Tuple[int, ...]
+    dtype: torch.dtype
+    device: torch.device
+
+    def materialize(self) -> torch.Tensor:
+        # These implementations never read pixels. Allocate one element only when
+        # the matrix is requested, preserving the original shape without its storage.
+        return torch.empty((), dtype=self.dtype, device=self.device).expand(self.shape)
+
+
+_LazyMatrixArgs = Tuple[Union[torch.Tensor, _InputMetadata], Dict[str, torch.Tensor], Dict[str, Any]]
 
 
 class AugmentationBase2D(_AugmentationBase):
@@ -78,8 +107,11 @@ class AugmentationBase2D(_AugmentationBase):
           since it is drawn into ``_params``, except for :class:`RandomDissolving`, which samples VAE latents
           during application; that draw is not stored and requires controlling the global seed too.
         - range configuration and serialization behavior vary by generator. Some range buffers are inert after
-          ``load_state_dict`` (tracked in `#4428 <https://github.com/kornia/kornia/issues/4428>`_), and saved
-          state can retain data from the last call (`#4482 <https://github.com/kornia/kornia/issues/4482>`_).
+          ``load_state_dict`` (tracked in `#4428 <https://github.com/kornia/kornia/issues/4428>`_). Built-in lazy
+          matrix state keeps only the input's shape, dtype and device alongside the transformation parameters.
+          Lazy subclasses overriding ``transform_tensor``, ``generate_transformation_matrix``,
+          ``compute_transformation`` or ``identity_matrix`` retain the input until the matrix is read or another
+          forward replaces the state.
         - an empty batch is an empty output on the classes that accept one, but it is not a package-wide
           guarantee: a minority of the classes raise on ``B = 0``, in several unrelated exception families.
         - rotation-like parameters are in degrees, and a positive angle turns the image counter-clockwise as
@@ -126,6 +158,7 @@ class AugmentationBase2D(_AugmentationBase):
         if len(input.shape) != 4:
             raise RuntimeError(f"Expect (B, C, H, W). Got {input.shape}.")
 
+    @_input_metadata_only
     def transform_tensor(
         self, input: torch.Tensor, *, shape: Optional[torch.Tensor] = None, match_channel: bool = True
     ) -> torch.Tensor:
@@ -162,8 +195,11 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
           recognizes geometric children, so custom rigid subclasses need integration work of their own. See
           `#4481 <https://github.com/kornia/kornia/issues/4481>`_.
         - the matrix of the last call is readable as ``transform_matrix``. Subclasses opt into lazy construction
-          with ``_compute_matrix_lazily``; retained state has the serialization limitations in `#4482
-          <https://github.com/kornia/kornia/issues/4482>`_.
+          with ``_compute_matrix_lazily``. Built-in lazy matrices keep only the input's shape, dtype and device
+          alongside the transformation parameters. Lazy subclasses overriding ``transform_tensor``,
+          ``generate_transformation_matrix``, ``compute_transformation`` or ``identity_matrix`` keep the input
+          until the matrix is read or another forward replaces the state; unchanged inherited implementations
+          keep the compact metadata state.
         - this base does not implement an inverse operation.
 
     """
@@ -173,16 +209,18 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     # the image output never reads it, so building it every forward is pure overhead. When True,
     # ``apply_func`` defers the matrix and ``transform_matrix`` computes it on first access.
     _compute_matrix_lazily: bool = False
-    _lazy_matrix_args: Optional[Tuple[torch.Tensor, Dict[str, torch.Tensor], Dict[str, Any]]] = None
+    _lazy_matrix_args: Optional[_LazyMatrixArgs] = None
 
     @property
     def transform_matrix(self) -> Optional[torch.Tensor]:
         if self._transform_matrix is None and self._lazy_matrix_args is not None:
-            in_tensor, params, flags = self._lazy_matrix_args
+            matrix_input, params, flags = self._lazy_matrix_args
+            in_tensor = matrix_input.materialize() if isinstance(matrix_input, _InputMetadata) else matrix_input
             self._transform_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
             self._lazy_matrix_args = None
         return self._transform_matrix
 
+    @_input_metadata_only
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         """Return 3x3 identity matrix."""
         return eye_like(3, input)
@@ -192,6 +230,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     ) -> torch.Tensor:
         raise NotImplementedError
 
+    @_input_metadata_only
     def generate_transformation_matrix(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
@@ -286,7 +325,21 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
             # apply_transform ignores the matrix for these ops, so don't build it here; defer to
             # the first `.transform_matrix` access (e.g. AugmentationSequential propagating to
             # boxes/keypoints/masks). A standalone flip that never reads the matrix skips it.
-            self._commit_state(transform_matrix=None, lazy_matrix_args=(in_tensor, params, flags))
+            matrix_input: Union[torch.Tensor, _InputMetadata] = in_tensor
+            # Check the implementations, not the class: custom overrides may read
+            # pixels even when they inherit the built-in's lazy-computation flag.
+            if all(
+                getattr(method, "_kornia_input_metadata_only", None) is getattr(method, "__func__", method)
+                for method in (
+                    self.transform_tensor,
+                    self.generate_transformation_matrix,
+                    self.compute_transformation,
+                    self.identity_matrix,
+                )
+            ):
+                # PyTorch 2.5 snapshots torch.Size as a tuple during non-strict export.
+                matrix_input = _InputMetadata(tuple(in_tensor.shape), in_tensor.dtype, in_tensor.device)
+            self._commit_state(transform_matrix=None, lazy_matrix_args=(matrix_input, params, flags))
             return self.transform_inputs(in_tensor, params, flags, None)
 
         trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)

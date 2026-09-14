@@ -26,6 +26,7 @@ from kornia.augmentation.utils import (
     _singular_range_check,
     _tuple_range_reader,
 )
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 
 
@@ -213,7 +214,9 @@ class AffineGenerator3D(RandomGeneratorBase):
             translations = torch.zeros((batch_size, 3), device=_device, dtype=_dtype)
 
         # center should be in x,y,z
-        center: torch.Tensor = torch.tensor([width, height, depth], device=_device, dtype=_dtype).view(1, 3) / 2.0 - 0.5
+        center: torch.Tensor = (
+            _constant_tensor([width, height, depth], device=_device, dtype=_dtype).view(1, 3) / 2.0 - 0.5
+        )
         center = center.expand(batch_size, -1)
 
         if self.shears is not None:
@@ -224,7 +227,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             szx = _adapted_rsampling((batch_size,), self.szx_sampler, same_on_batch)
             szy = _adapted_rsampling((batch_size,), self.szy_sampler, same_on_batch)
         else:
-            sxy = sxz = syx = syz = szx = szy = torch.tensor([0] * batch_size, device=_device, dtype=_dtype)
+            sxy = sxz = syx = syz = szx = szy = torch.zeros(batch_size, device=_device, dtype=_dtype)
 
         return {
             "translations": torch.as_tensor(translations, device=_device, dtype=_dtype),
