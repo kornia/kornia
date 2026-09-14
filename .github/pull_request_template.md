@@ -2,6 +2,11 @@
 
 <!-- Explain the problem and the change. A few clear sentences are enough. -->
 
+<!-- For user-visible changes, add changelog.d/<PR>.<type>.md (added, fixed, or breaking).
+Before a PR number exists, use +unique-name.<type>.md and rename it before merging.
+Use PR numbers, not issue numbers: generated links point to pull requests.
+For internal changes without a fragment, explain why and ask for the no-changelog label. -->
+
 ## Related issue or discussion
 
 <!-- Link one if it exists, for example: Fixes #123. This is optional. -->
