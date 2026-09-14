@@ -458,8 +458,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `PatchSequential` now augments every patch of every image and runs the complete selected sequence.
   The padding, reconstruction and parameter-generation behaviour changes are listed under
   *Breaking changes*. Refs #4421. (#4460)
-* Keep keypoints and bounding boxes unchanged when a padded `RandomCrop` is skipped, matching the
-  returned images and masks. (#4485)
+* `RandomCrop` with `padding` or `pad_if_needed` no longer shifts keypoints and bounding boxes by the
+  left/top padding when the crop is skipped; they previously moved while the image and mask stayed
+  unchanged. (#4473, #4485)
 
 * `RandomMosaic` now preserves `(H, W)` for non-square inputs when `output_size=None`; it previously
   returned `(W, H)`. `start_ratio_range` now scales x by width and y by height; it previously scaled
