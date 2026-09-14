@@ -407,6 +407,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `RandomAutoContrast` documents `clip_output` as having no effect: `normalize_min_max` already maps each channel
+  onto `[0, 1]`, so the clamp cannot change a value, including for inputs outside that range. It was described as
+  "if true clip output". A constant channel is documented to come back as zeros. (#4436)
 * `RandomCutMixV2` and `CutmixGenerator` document `cut_size` as what it is: the `[min, max]` clamp on the
   Beta-sampled mixing coefficient `lambda`, where the cut side is `floor(sqrt(1 - lambda) * side)`, so a larger
   `cut_size` gives a smaller cut. It was described as the "minimum and maximum cut ratio". A minimum of `1.0` is
