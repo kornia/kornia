@@ -77,6 +77,8 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
             This generator instance.
         """
         device, dtype, _, _ = torch._C._nn._parse_to(*args, **kwargs)
+        device = self.device if device is None else device
+        dtype = self.dtype if dtype is None else dtype
         self.set_rng_device_and_dtype(device=device, dtype=dtype)
         return self
 

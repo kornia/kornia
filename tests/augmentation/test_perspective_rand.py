@@ -27,12 +27,24 @@ from testing.base import BaseTester
     "make_aug",
     [
         pytest.param(
-            lambda: kornia.augmentation.RandomAffine(degrees=30.0, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0),
+            lambda tensor_range=False: kornia.augmentation.RandomAffine(
+                degrees=torch.tensor(30.0, device="cpu") if tensor_range else 30.0,
+                translate=(0.1, 0.1),
+                scale=(0.8, 1.2),
+                p=1.0,
+            ),
             id="affine",
         ),
-        pytest.param(lambda: kornia.augmentation.RandomPerspective(0.5, p=1.0), id="perspective"),
         pytest.param(
-            lambda: kornia.augmentation.RandomPerspective(0.5, p=1.0, sampling_method="area_preserving"),
+            lambda tensor_range=False: kornia.augmentation.RandomPerspective(
+                torch.tensor(0.5, device="cpu") if tensor_range else 0.5, p=1.0
+            ),
+            id="perspective",
+        ),
+        pytest.param(
+            lambda tensor_range=False: kornia.augmentation.RandomPerspective(
+                torch.tensor(0.5, device="cpu") if tensor_range else 0.5, p=1.0, sampling_method="area_preserving"
+            ),
             id="perspective-area-preserving",
         ),
     ],
@@ -40,17 +52,17 @@ from testing.base import BaseTester
 class TestGeometricParameterDevice(BaseTester):
     @pytest.mark.parametrize("batch_size", [0, 1, 4])
     @pytest.mark.parametrize("same_on_batch", [False, True])
-    def test_numeric_parameters_follow_rng_device(self, make_aug, batch_size, same_on_batch, device, dtype):
+    def test_numeric_parameters_keep_default_placement(self, make_aug, batch_size, same_on_batch, device, dtype):
         aug = make_aug().to(device=device, dtype=dtype)
         aug.same_on_batch = same_on_batch
         params = aug.forward_parameters((batch_size, 3, 8, 9))
         for name, value in params.items():
             if name in ("batch_prob", "forward_input_shape"):
                 continue
-            assert value.device == device, name
+            assert value.device == torch.device("cpu"), name
             # Returned precision remains separate from the sampler's requested precision.
             assert value.dtype == torch.get_default_dtype(), name
-            if same_on_batch and batch_size:
+            if same_on_batch and batch_size > 1 and name not in ("center", "start_points"):
                 self.assert_close(value, value[:1].expand_as(value))
 
     def test_container_move(self, make_aug, device, dtype):
@@ -61,20 +73,69 @@ class TestGeometricParameterDevice(BaseTester):
         assert output.device == device
         assert output.dtype == dtype
         for name, value in aug._params.items():
-            if name not in ("forward_input_shape", "data_keys"):
-                assert value.device == device, name
+            if name not in ("batch_prob", "forward_input_shape", "data_keys"):
+                assert value.device == torch.device("cpu"), name
+
+    @pytest.mark.parametrize("default_dtype", [torch.float32, torch.float64])
+    def test_default_dtype_after_sampler_move(self, make_aug, device, default_dtype):
+        # A float64 default must not force float64 sampling on MPS.
+        aug = make_aug().to(device=device, dtype=torch.float32)
+        original_dtype = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            params = aug.forward_parameters((4, 3, 8, 9))
+            for name, value in params.items():
+                if name not in ("batch_prob", "forward_input_shape"):
+                    assert value.device == torch.device("cpu"), name
+                    assert value.dtype == default_dtype, name
+        finally:
+            torch.set_default_dtype(original_dtype)
+
+    def test_ambient_default_device(self, make_aug, device, dtype):
+        # Sampling stays on CPU while numeric returned parameters follow the default device.
+        original_device = torch.get_default_device()
+        try:
+            torch.set_default_device(device)
+            aug = make_aug()
+            params = aug.forward_parameters((4, 3, 8, 9))
+            assert aug._param_generator.device == torch.device("cpu")
+            for name, value in params.items():
+                if name not in ("batch_prob", "forward_input_shape"):
+                    assert value.device == device, name
+        finally:
+            torch.set_default_device(original_device)
 
     @pytest.mark.parametrize("batch_size", [1, 4])
-    def test_dynamo_numeric_parameters(self, make_aug, batch_size, device, dtype, torch_optimizer):
-        # #4516: compiling only apply_transform with precomputed parameters misses the
-        # CPU constants passed to CUDA kernels by the full parameter-generation graph.
-        aug = make_aug().to(device=device, dtype=dtype)
-        input = torch.rand(batch_size, 3, 16, 19, device=device, dtype=dtype)
-        compiled = torch_optimizer(aug)
-        for _ in range(2):
-            actual = compiled(input)
-            expected = aug(input, params=aug._params)
-            self.assert_close(actual, expected)
+    @pytest.mark.parametrize(
+        "placement",
+        ["unmoved", "moved", "cpu_tensor", "cpu_tensor_unmoved", "default_device", "dtype_only", "container"],
+    )
+    def test_dynamo_parameter_generation(self, make_aug, batch_size, placement, device, dtype, torch_optimizer):
+        # #4516: capture fresh parameter generation and CPU-to-image transfers in one graph.
+        # Replaying precomputed parameters alone does not reproduce the Inductor defect.
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("Inductor regression covers CPU and CUDA")
+        with torch.device(device if placement == "default_device" else "cpu"):
+            aug = make_aug(tensor_range=placement in ("cpu_tensor", "cpu_tensor_unmoved"))
+            if placement in ("moved", "cpu_tensor"):
+                aug.to(device=device, dtype=dtype)
+            elif placement == "dtype_only":
+                aug.to(device).to(dtype)
+            module = aug
+            if placement == "container":
+                module = kornia.augmentation.AugmentationSequential(aug, data_keys=["input"]).to(device, dtype)
+                # Fullgraph captures the tensor pipeline; PIL/NumPy conversion uses Python decorators.
+                module.disable_features = True
+            input = torch.rand(batch_size, 3, 16, 19, device=device, dtype=dtype)
+            compiled = torch_optimizer(module, fullgraph=True)
+            for _ in range(2):
+                actual = compiled(input)
+                expected = aug(input, params=aug._params)
+                self.assert_close(actual, expected)
+                parameter_device = device if placement == "default_device" else torch.device("cpu")
+                for name, value in aug._params.items():
+                    if name not in ("batch_prob", "forward_input_shape", "data_keys"):
+                        assert value.device == parameter_device, name
 
 
 class TestGeometricTensorRangeDevice(BaseTester):
@@ -82,21 +143,21 @@ class TestGeometricTensorRangeDevice(BaseTester):
     def test_affine_tensor_range_keeps_placement(self, range_name, device, dtype):
         ranges = {"degrees": 30.0, "translate": (0.1, 0.1), "scale": (0.8, 1.2), "shear": (0.0, 5.0, 0.0, 5.0)}
         # Any tensor-valued range, including an optional one, controls returned placement.
-        ranges[range_name] = torch.tensor(ranges[range_name], device=device, dtype=dtype)
+        ranges[range_name] = torch.tensor(ranges[range_name], device="cpu", dtype=dtype)
         aug = kornia.augmentation.RandomAffine(**ranges, p=1.0)
-        aug.set_rng_device_and_dtype(torch.device("cpu"), torch.float32)
+        aug.set_rng_device_and_dtype(device, torch.float32)
         params = aug.forward_parameters((4, 3, 8, 9))
         for name, value in params.items():
             if name not in ("batch_prob", "forward_input_shape"):
-                assert value.device == device, name
+                assert value.device == torch.device("cpu"), name
                 assert value.dtype == dtype, name
 
     def test_perspective_tensor_range_keeps_placement(self, device, dtype):
-        aug = kornia.augmentation.RandomPerspective(torch.tensor(0.5, device=device, dtype=dtype), p=1.0)
-        aug.set_rng_device_and_dtype(torch.device("cpu"), torch.float32)
+        aug = kornia.augmentation.RandomPerspective(torch.tensor(0.5, device="cpu", dtype=dtype), p=1.0)
+        aug.set_rng_device_and_dtype(device, torch.float32)
         params = aug.forward_parameters((4, 3, 8, 9))
         for name in ("start_points", "end_points"):
-            assert params[name].device == device
+            assert params[name].device == torch.device("cpu")
             assert params[name].dtype == dtype
 
 

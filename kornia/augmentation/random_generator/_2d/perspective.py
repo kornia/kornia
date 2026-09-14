@@ -46,8 +46,6 @@ class PerspectiveGenerator(RandomGeneratorBase):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU in float32. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
-        With a Python-valued distortion scale, returned parameters use the sampler device and the default
-        floating dtype. A tensor-valued scale instead determines their device and dtype independently.
 
     """
 
@@ -78,16 +76,18 @@ class PerspectiveGenerator(RandomGeneratorBase):
         width = batch_shape[-1]
 
         _device, _dtype = _extract_device_dtype([self.distortion_scale])
-        if not isinstance(self.distortion_scale, torch.Tensor):
-            # Match numeric parameter placement to sampling, as in AffineGenerator.
-            _device = self.rand_val_sampler.low.device
         _common_param_check(batch_size, same_on_batch)
         _check_positive_int_or_traced(height, "height")
         _check_positive_int_or_traced(width, "width")
 
-        start_points: torch.Tensor = torch.tensor(
-            [[[0.0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]]], device=_device, dtype=_dtype
-        ).expand(batch_size, -1, -1)
+        # Stack scalar factories so Inductor retains the CPU-to-CUDA copy. Indexed fills
+        # can still make it reuse the returned CPU corner buffer directly in CUDA kernels.
+        # See https://github.com/pytorch/pytorch/issues/196969.
+        zero = torch.zeros((), device=_device, dtype=_dtype)
+        x = torch.full((), width - 1, device=_device, dtype=_dtype)
+        y = torch.full((), height - 1, device=_device, dtype=_dtype)
+        start_points = torch.stack([zero, zero, x, zero, x, y, zero, y]).view(1, 4, 2)
+        start_points = start_points.expand(batch_size, -1, -1)
 
         # generate random offset not larger than half of the image
         fx = self._distortion_scale * width / 2
@@ -100,7 +100,9 @@ class PerspectiveGenerator(RandomGeneratorBase):
             device=_device, dtype=_dtype
         )
         if self.sampling_method == "basic":
-            pts_norm = torch.tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype)
+            pts_norm = torch.ones((1, 4, 2), device=_device, dtype=_dtype)
+            pts_norm[:, 1:3, 0] = -1
+            pts_norm[:, 2:, 1] = -1
             offset = factor * rand_val * pts_norm
         elif self.sampling_method == "area_preserving":
             offset = 2 * factor * (rand_val - 0.5)

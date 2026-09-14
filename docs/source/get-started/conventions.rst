@@ -293,14 +293,10 @@ Randomness in augmentations
   a later forward, depending on the configuration
   (`#4415 <https://github.com/kornia/kornia/issues/4415>`_,
   `#4426 <https://github.com/kornia/kornia/issues/4426>`_).
-  Returned parameter placement is separate: explicit CPU tensor ranges can
-  make an affine sample angles on an accelerator and return them on CPU.
-  For ``RandomAffine`` and ``RandomPerspective`` with Python-valued ranges,
-  returned parameters follow the configured sampler device, so moving the
-  augmentation to CUDA also keeps those parameters on CUDA. Their returned
-  dtype still follows the default floating dtype; tensor-valued ranges retain
-  their own device and dtype precedence. Inspecting ``_params`` alone does not
-  establish where or at what precision draws ran.
+  Returned parameter placement is separate: an affine without shear can
+  sample angles on MPS and return them on CPU. Numeric ranges or tensor-valued
+  constructor ranges can determine the returned device/dtype, so inspecting
+  ``_params`` alone does not establish where or at what precision draws ran.
 - Reproducibility uses the global generators on the sampling devices.
   ``torch.manual_seed`` reproduces draws for the same configuration, inputs,
   backend and dtype; matching across devices or PyTorch versions is not

@@ -65,8 +65,6 @@ class AffineGenerator(RandomGeneratorBase):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU in float32. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
-        With Python-valued ranges, returned parameters use the sampler device and the default floating dtype.
-        Tensor-valued ranges instead determine the returned device and dtype, independently of the sampler.
 
     """
 
@@ -165,12 +163,7 @@ class AffineGenerator(RandomGeneratorBase):
         height = batch_shape[-2]
         width = batch_shape[-1]
 
-        ranges = [self.degrees, self.translate, self.scale, self.shear]
-        _device, _dtype = _extract_device_dtype(ranges)
-        if not any(isinstance(value, torch.Tensor) for value in ranges):
-            # Keep numeric parameters on the sampling device. A CUDA -> CPU -> CUDA
-            # round trip also exposes Inductor's CPU-constant transfer bug.
-            _device = self.degree_sampler.low.device
+        _device, _dtype = _extract_device_dtype([self.degrees, self.translate, self.scale, self.shear])
         _common_param_check(batch_size, same_on_batch)
         _check_positive_int_or_traced(width, "width")
         _check_positive_int_or_traced(height, "height")
@@ -198,7 +191,13 @@ class AffineGenerator(RandomGeneratorBase):
         else:
             translations = torch.zeros((batch_size, 2), device=_device, dtype=_dtype)
 
-        center: torch.Tensor = torch.tensor([width, height], device=_device, dtype=_dtype).view(1, 2) / 2.0 - 0.5
+        # Tensor factories avoid lifted CPU constants that Inductor can pass to CUDA
+        # kernels without copying when the augmentation later transfers its parameters.
+        # See https://github.com/pytorch/pytorch/issues/196969.
+        center = torch.empty((1, 2), device=_device, dtype=_dtype)
+        center[0, 0] = width
+        center[0, 1] = height
+        center = center / 2.0 - 0.5
         center = center.expand(batch_size, -1)
 
         if self.shear_x_sampler is not None and self.shear_y_sampler is not None:
@@ -207,8 +206,8 @@ class AffineGenerator(RandomGeneratorBase):
             sx = sx.to(device=_device, dtype=_dtype)
             sy = sy.to(device=_device, dtype=_dtype)
         else:
-            sx = torch.tensor([0] * batch_size, device=_device, dtype=_dtype)
-            sy = torch.tensor([0] * batch_size, device=_device, dtype=_dtype)
+            sx = torch.zeros(batch_size, device=_device, dtype=_dtype)
+            sy = torch.zeros(batch_size, device=_device, dtype=_dtype)
 
         return {
             "translations": translations,

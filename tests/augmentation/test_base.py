@@ -190,6 +190,32 @@ class TestAugmentationBase2D(BaseTester):
             self.gradcheck(augmentation, ((input, input_param)))
 
 
+class TestAugmentationPartialTo(BaseTester):
+    @pytest.mark.parametrize("generator_only", [False, True])
+    def test_dtype_only_to_preserves_device(self, device, dtype, generator_only):
+        aug = K.RandomAffine(30.0, p=1.0)
+        module = aug._param_generator if generator_only else aug
+        module.to(device=device, dtype=torch.float32)
+        module.to(dtype=dtype)
+        assert module.device == device
+        assert module.dtype == dtype
+        generator = module if generator_only else module._param_generator
+        assert generator.degree_sampler.low.device == device
+        assert generator.degree_sampler.low.dtype == dtype
+
+    @pytest.mark.parametrize("generator_only", [False, True])
+    def test_device_only_to_preserves_dtype(self, device, dtype, generator_only):
+        aug = K.RandomAffine(30.0, p=1.0)
+        module = aug._param_generator if generator_only else aug
+        module.to(dtype=dtype)
+        module.to(device=device)
+        assert module.device == device
+        assert module.dtype == dtype
+        generator = module if generator_only else module._param_generator
+        assert generator.degree_sampler.low.device == device
+        assert generator.degree_sampler.low.dtype == dtype
+
+
 class TestGeometricAugmentationBase2D:
     @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
     def test_autocast(self, batch_prob, device, dtype):
@@ -901,7 +927,7 @@ class TestConventionAugmentationBase2D(BaseTester):
         finally:
             torch.set_default_dtype(original_dtype)
 
-    def test_convention_set_rng_device_moves_sampling_and_numeric_parameters_4426(self, device):
+    def test_convention_set_rng_device_moves_sampling_before_casting_parameters_4426(self, device):
         aug = K.RandomAffine(degrees=(10.0, 90.0), p=1.0)
         aug.set_rng_device_and_dtype(device, torch.float32)
         assert aug._param_generator.degree_sampler.low.device == device
@@ -923,7 +949,7 @@ class TestConventionAugmentationBase2D(BaseTester):
         if device.type != "cpu":
             assert torch.equal(cpu_before, torch.random.get_rng_state())
         assert params["batch_prob"].device == device
-        assert params["angle"].device == device
+        assert params["angle"].device.type == "cpu"
 
     def test_convention_tensor_ranges_determine_returned_parameter_placement(self, device, dtype):
         degrees = torch.tensor([10.0, 20.0], device=device, dtype=dtype)

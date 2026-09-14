@@ -116,6 +116,8 @@ class _BasicAugmentationBase(nn.Module):
     def to(self, *args: Any, **kwargs: Any) -> "_BasicAugmentationBase":
         r"""Set the device and dtype for the random number generator."""
         device, dtype, _, _ = torch._C._nn._parse_to(*args, **kwargs)
+        device = self.device if device is None else device
+        dtype = self.dtype if dtype is None else dtype
         self.set_rng_device_and_dtype(device, dtype)
         return super().to(*args, **kwargs)
 
