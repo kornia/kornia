@@ -115,17 +115,12 @@ class _BasicAugmentationBase(nn.Module):
 
     def to(self, *args: Any, **kwargs: Any) -> "_BasicAugmentationBase":
         r"""Set the device and dtype for the random number generator."""
-        device, dtype, _, _ = torch._C._nn._parse_to(*args, **kwargs)
-        self.set_rng_device_and_dtype(device, dtype)
+        # Module.to validates arguments before _apply updates the samplers.
         return super().to(*args, **kwargs)
 
     def _apply(self, fn: Callable[[torch.Tensor], torch.Tensor], *args: Any, **kwargs: Any) -> "_BasicAugmentationBase":
-        # nn.Module.to/.cuda/.cpu/.half move children by recursing through `_apply`, not `.to`,
-        # so a container like `AugmentationSequential(...).to("cuda")` never triggers our `to`
-        # override and leaves parameter sampling on CPU — every forward then generates on the
-        # host and copies to the device (measured ~5x slower on GPU pipelines). Mirror the device
-        # and dtype of the moved tensors onto the random generator so container moves behave like
-        # a direct `.to` on the augmentation.
+        # Module migrations recurse through _apply. The generator moves with the children;
+        # also update the augmentation's probability samplers, including in containers.
         out = super()._apply(fn, *args, **kwargs)
         probe = fn(torch.zeros((), device=self.device, dtype=self.dtype))
         dtype = probe.dtype if probe.is_floating_point() else self.dtype

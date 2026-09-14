@@ -747,6 +747,18 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 
 
 class TestRandomAffineGen(RandomGeneratorBaseTests):
+    @pytest.mark.parametrize("range_name", ["degrees", "translate", "scale", "shear"])
+    def test_tensor_range_keeps_placement(self, range_name, device, dtype):
+        ranges = {"degrees": 30.0, "translate": (0.1, 0.1), "scale": (0.8, 1.2), "shear": (0.0, 5.0, 0.0, 5.0)}
+        # Any tensor-valued range, including an optional one, controls returned placement.
+        ranges[range_name] = torch.tensor(ranges[range_name], device="cpu", dtype=dtype)
+        generator = AffineGenerator(**ranges)
+        generator.set_rng_device_and_dtype(device, torch.float32)
+        params = generator((4, 3, 8, 9))
+        for name, value in params.items():
+            assert value.device == torch.device("cpu"), name
+            assert value.dtype == dtype, name
+
     @pytest.mark.parametrize("batch_size", [0, 1, 4])
     @pytest.mark.parametrize("height", [200])
     @pytest.mark.parametrize("width", [300])
