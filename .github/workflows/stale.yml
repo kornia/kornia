@@ -13,6 +13,7 @@ jobs:
   stale:
     name: Stale Pull Requests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/stale@v11
         with:
