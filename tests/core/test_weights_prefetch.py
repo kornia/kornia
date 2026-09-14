@@ -52,8 +52,8 @@ either way.
 ``docs/generate_examples.py`` also fetches one non-checkpoint tensor
 (``knchurch_disk.pt``, the image pair the matching examples are drawn on)
 straight through ``torch.hub.load_state_dict_from_url``. It lands in the same
-``weights/`` cache but comes from no registry, so it is outside this guard as
-well; it is small, single-source and fetched once per docs build.
+``weights/`` cache and is now prefetched along with the reference tensors in
+``conftest.py``. The data fixture registry is guarded below too.
 """
 
 from __future__ import annotations
@@ -68,6 +68,7 @@ from urllib.parse import urlparse
 
 import pytest
 
+from conftest import _TEST_DATA_URLS
 from kornia.feature import affine_shape, defmo, hardnet, hynet, keynet, mkd, orientation, sosnet, tfeat, xfeat
 from kornia.feature import lightglue as lightglue_mod
 from kornia.feature.aliked import aliked
@@ -402,6 +403,18 @@ class TestWeightsPrefetchCoverage:
             + f"\nUpdate MODELS in {_SCRIPT.relative_to(_REPO_ROOT)}."
         )
 
+    @pytest.mark.parametrize("name", sorted(_TEST_DATA_URLS))
+    def test_fixture_data_is_prefetched(self, name: str) -> None:
+        url = _TEST_DATA_URLS[name]
+        cache_name = _pinned_cache_name(url)
+        prefetched = _load_prefetch_script().MODELS
+        assert cache_name in prefetched, f"data fixture {name!r} is missing from CI prefetch"
+        if name == "dexined":
+            # This fixture shares the library's checkpoint, whose mirrors are
+            # checked by test_prefetched_urls_match_the_library above.
+            return
+        assert _as_list(prefetched[cache_name]) == [url], f"data fixture {name!r} prefetch URL has drifted"
+
     def test_exemptions_are_still_reachable(self, monkeypatch) -> None:
         """A stale exemption hides a checkpoint that no longer exists."""
         live = {name for _, name, _ in _iter_checkpoints()}
@@ -436,6 +449,7 @@ class TestWeightsPrefetchCoverage:
         """
         live = {name for _, name, _ in _iter_checkpoints()}
         live |= set(_lightglue_cache_names(monkeypatch).values())
+        live |= {_pinned_cache_name(url) for url in _TEST_DATA_URLS.values()}
         orphaned = sorted(set(_load_prefetch_script().MODELS) - live)
         assert not orphaned, (
             f"CI prefetches {orphaned}, which no registry here accounts for. Add the "

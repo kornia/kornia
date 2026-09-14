@@ -36,6 +36,7 @@ except ImportError:  # pragma: no cover
     from _pytest.runner import CallInfo  # type: ignore[no-redef]
 
 import kornia
+from kornia.core.download import load_state_dict_from_url
 
 from testing.doctest_downloads import DOWNLOAD_ENV_VAR, downloads_allowed, install_download_guard, skip_reason
 from testing.half_precision_ci import (
@@ -1052,14 +1053,15 @@ _DATA_TEST_SHA = {
     "xfeat": "279e95e411f2d3926953dea3842347242190f4da",
 }
 
-# URLs for test data files
+# Pinned raw URLs avoid GitHub blob-page redirects. Keep the CI prefetch list in
+# .github/download-models-weights.py in sync (guarded by test_weights_prefetch.py).
 _TEST_DATA_URLS: dict[str, str] = {
-    "loftr_homo": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['loftr']}/loftr_outdoor_and_homography_data.pt?raw=true",
-    "loftr_fund": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['loftr']}/loftr_indoor_and_fundamental_data.pt?raw=true",
-    "adalam_idxs": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['adalam']}/adalam_test.pt?raw=true",
-    "lightglue_idxs": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['adalam']}/adalam_test.pt?raw=true",
-    "disk_outdoor": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['disk']}/knchurch_disk.pt?raw=true",
-    "xfeat_outdoor": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['xfeat']}/xfeat_reference.pt?raw=true",
+    "loftr_homo": f"https://raw.githubusercontent.com/kornia/data_test/{_DATA_TEST_SHA['loftr']}/loftr_outdoor_and_homography_data.pt",
+    "loftr_fund": f"https://raw.githubusercontent.com/kornia/data_test/{_DATA_TEST_SHA['loftr']}/loftr_indoor_and_fundamental_data.pt",
+    "adalam_idxs": f"https://raw.githubusercontent.com/kornia/data_test/{_DATA_TEST_SHA['adalam']}/adalam_test.pt",
+    "lightglue_idxs": f"https://raw.githubusercontent.com/kornia/data_test/{_DATA_TEST_SHA['adalam']}/adalam_test.pt",
+    "disk_outdoor": f"https://raw.githubusercontent.com/kornia/data_test/{_DATA_TEST_SHA['disk']}/knchurch_disk.pt",
+    "xfeat_outdoor": f"https://raw.githubusercontent.com/kornia/data_test/{_DATA_TEST_SHA['xfeat']}/xfeat_reference.pt",
     "dexined": "https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
 }
 
@@ -1072,4 +1074,4 @@ def data(request):
     """
     if request.param not in _TEST_DATA_URLS:
         raise ValueError(f"Unknown test data: {request.param}. Available: {list(_TEST_DATA_URLS.keys())}")
-    return torch.hub.load_state_dict_from_url(_TEST_DATA_URLS[request.param], map_location=torch.device("cpu"))
+    return load_state_dict_from_url(_TEST_DATA_URLS[request.param], map_location=torch.device("cpu"))

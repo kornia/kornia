@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import sys
+
 import pytest
 import torch
 
@@ -87,7 +89,16 @@ class TestSuperResolutionBuilders(BaseTester):
     @pytest.mark.timeout(120)
     @pytest.mark.parametrize(
         ("builder", "build_kwargs"),
-        [(SmallSRBuilder, {}), (RRDBNetBuilder, {"model_name": "RealESRGAN_x4plus_anime_6B"})],
+        [
+            (SmallSRBuilder, {}),
+            pytest.param(
+                RRDBNetBuilder,
+                {"model_name": "RealESRGAN_x4plus_anime_6B"},
+                marks=pytest.mark.skipif(
+                    sys.platform == "darwin", reason="RRDBNet ONNX export exceeds the 120-second timeout on macOS"
+                ),
+            ),
+        ],
         ids=["SmallSRBuilder", "RRDBNetBuilder"],
     )
     def test_to_onnx_exports(self, builder, build_kwargs):
