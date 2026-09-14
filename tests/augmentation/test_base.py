@@ -901,7 +901,7 @@ class TestConventionAugmentationBase2D(BaseTester):
         finally:
             torch.set_default_dtype(original_dtype)
 
-    def test_convention_set_rng_device_moves_sampling_before_casting_parameters_4426(self, device):
+    def test_convention_set_rng_device_moves_sampling_and_numeric_parameters_4426(self, device):
         aug = K.RandomAffine(degrees=(10.0, 90.0), p=1.0)
         aug.set_rng_device_and_dtype(device, torch.float32)
         assert aug._param_generator.degree_sampler.low.device == device
@@ -923,7 +923,7 @@ class TestConventionAugmentationBase2D(BaseTester):
         if device.type != "cpu":
             assert torch.equal(cpu_before, torch.random.get_rng_state())
         assert params["batch_prob"].device == device
-        assert params["angle"].device.type == "cpu"
+        assert params["angle"].device == device
 
     def test_convention_tensor_ranges_determine_returned_parameter_placement(self, device, dtype):
         degrees = torch.tensor([10.0, 20.0], device=device, dtype=dtype)

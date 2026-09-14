@@ -65,6 +65,8 @@ class AffineGenerator(RandomGeneratorBase):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU in float32. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+        With Python-valued ranges, returned parameters use the sampler device and the default floating dtype.
+        Tensor-valued ranges instead determine the returned device and dtype, independently of the sampler.
 
     """
 
@@ -163,7 +165,12 @@ class AffineGenerator(RandomGeneratorBase):
         height = batch_shape[-2]
         width = batch_shape[-1]
 
-        _device, _dtype = _extract_device_dtype([self.degrees, self.translate, self.scale, self.shear])
+        ranges = [self.degrees, self.translate, self.scale, self.shear]
+        _device, _dtype = _extract_device_dtype(ranges)
+        if not any(isinstance(value, torch.Tensor) for value in ranges):
+            # Keep numeric parameters on the sampling device. A CUDA -> CPU -> CUDA
+            # round trip also exposes Inductor's CPU-constant transfer bug.
+            _device = self.degree_sampler.low.device
         _common_param_check(batch_size, same_on_batch)
         _check_positive_int_or_traced(width, "width")
         _check_positive_int_or_traced(height, "height")

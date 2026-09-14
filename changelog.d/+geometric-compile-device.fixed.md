@@ -1,0 +1,1 @@
+`RandomAffine` and `RandomPerspective` with Python-valued constructor ranges now keep generated parameters on the configured sampler device after `.to(device)` or `set_rng_device_and_dtype`. This avoids CPU round trips and CUDA `torch.compile` failures without requiring tensor-valued constructor arguments. Explicit tensor range placement and returned dtype rules are preserved.

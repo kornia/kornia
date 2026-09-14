@@ -23,6 +23,83 @@ import kornia
 from testing.base import BaseTester
 
 
+@pytest.mark.parametrize(
+    "make_aug",
+    [
+        pytest.param(
+            lambda: kornia.augmentation.RandomAffine(degrees=30.0, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0),
+            id="affine",
+        ),
+        pytest.param(lambda: kornia.augmentation.RandomPerspective(0.5, p=1.0), id="perspective"),
+        pytest.param(
+            lambda: kornia.augmentation.RandomPerspective(0.5, p=1.0, sampling_method="area_preserving"),
+            id="perspective-area-preserving",
+        ),
+    ],
+)
+class TestGeometricParameterDevice(BaseTester):
+    @pytest.mark.parametrize("batch_size", [0, 1, 4])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_numeric_parameters_follow_rng_device(self, make_aug, batch_size, same_on_batch, device, dtype):
+        aug = make_aug().to(device=device, dtype=dtype)
+        aug.same_on_batch = same_on_batch
+        params = aug.forward_parameters((batch_size, 3, 8, 9))
+        for name, value in params.items():
+            if name in ("batch_prob", "forward_input_shape"):
+                continue
+            assert value.device == device, name
+            # Returned precision remains separate from the sampler's requested precision.
+            assert value.dtype == torch.get_default_dtype(), name
+            if same_on_batch and batch_size:
+                self.assert_close(value, value[:1].expand_as(value))
+
+    def test_container_move(self, make_aug, device, dtype):
+        aug = make_aug()
+        sequence = kornia.augmentation.AugmentationSequential(aug, data_keys=["input"]).to(device=device, dtype=dtype)
+        input = torch.rand(2, 3, 8, 9, device=device, dtype=dtype)
+        output = sequence(input)
+        assert output.device == device
+        assert output.dtype == dtype
+        for name, value in aug._params.items():
+            if name not in ("forward_input_shape", "data_keys"):
+                assert value.device == device, name
+
+    @pytest.mark.parametrize("batch_size", [1, 4])
+    def test_dynamo_numeric_parameters(self, make_aug, batch_size, device, dtype, torch_optimizer):
+        # #4516: compiling only apply_transform with precomputed parameters misses the
+        # CPU constants passed to CUDA kernels by the full parameter-generation graph.
+        aug = make_aug().to(device=device, dtype=dtype)
+        input = torch.rand(batch_size, 3, 16, 19, device=device, dtype=dtype)
+        compiled = torch_optimizer(aug)
+        for _ in range(2):
+            actual = compiled(input)
+            expected = aug(input, params=aug._params)
+            self.assert_close(actual, expected)
+
+
+class TestGeometricTensorRangeDevice(BaseTester):
+    @pytest.mark.parametrize("range_name", ["degrees", "translate", "scale", "shear"])
+    def test_affine_tensor_range_keeps_placement(self, range_name, device, dtype):
+        ranges = {"degrees": 30.0, "translate": (0.1, 0.1), "scale": (0.8, 1.2), "shear": (0.0, 5.0, 0.0, 5.0)}
+        # Any tensor-valued range, including an optional one, controls returned placement.
+        ranges[range_name] = torch.tensor(ranges[range_name], device=device, dtype=dtype)
+        aug = kornia.augmentation.RandomAffine(**ranges, p=1.0)
+        aug.set_rng_device_and_dtype(torch.device("cpu"), torch.float32)
+        params = aug.forward_parameters((4, 3, 8, 9))
+        for name, value in params.items():
+            if name not in ("batch_prob", "forward_input_shape"):
+                assert value.device == device, name
+                assert value.dtype == dtype, name
+
+    def test_perspective_tensor_range_keeps_placement(self, device, dtype):
+        aug = kornia.augmentation.RandomPerspective(torch.tensor(0.5, device=device, dtype=dtype), p=1.0)
+        aug.set_rng_device_and_dtype(torch.device("cpu"), torch.float32)
+        params = aug.forward_parameters((4, 3, 8, 9))
+        for name in ("start_points", "end_points"):
+            assert params[name].device == device
+            assert params[name].dtype == dtype
+
+
 class TestRandomPerspective(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 

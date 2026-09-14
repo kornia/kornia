@@ -46,6 +46,8 @@ class PerspectiveGenerator(RandomGeneratorBase):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU in float32. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+        With a Python-valued distortion scale, returned parameters use the sampler device and the default
+        floating dtype. A tensor-valued scale instead determines their device and dtype independently.
 
     """
 
@@ -76,6 +78,9 @@ class PerspectiveGenerator(RandomGeneratorBase):
         width = batch_shape[-1]
 
         _device, _dtype = _extract_device_dtype([self.distortion_scale])
+        if not isinstance(self.distortion_scale, torch.Tensor):
+            # Match numeric parameter placement to sampling, as in AffineGenerator.
+            _device = self.rand_val_sampler.low.device
         _common_param_check(batch_size, same_on_batch)
         _check_positive_int_or_traced(height, "height")
         _check_positive_int_or_traced(width, "width")
