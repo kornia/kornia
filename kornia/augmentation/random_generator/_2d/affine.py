@@ -191,12 +191,12 @@ class AffineGenerator(RandomGeneratorBase):
         else:
             translations = torch.zeros((batch_size, 2), device=_device, dtype=_dtype)
 
-        # Tensor factories avoid lifted CPU constants that Inductor can pass to CUDA
-        # kernels without copying when the augmentation later transfers its parameters.
+        # Stack scalar factories without indexed fills: those also lift CPU constants
+        # that Inductor can reuse in CUDA kernels without copying the parameters.
         # See https://github.com/pytorch/pytorch/issues/196969.
-        center = torch.empty((1, 2), device=_device, dtype=_dtype)
-        center[0, 0] = width
-        center[0, 1] = height
+        center = torch.stack(
+            [torch.full((), width, device=_device, dtype=_dtype), torch.full((), height, device=_device, dtype=_dtype)]
+        ).view(1, 2)
         center = center / 2.0 - 0.5
         center = center.expand(batch_size, -1)
 
