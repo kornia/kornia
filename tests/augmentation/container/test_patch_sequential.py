@@ -435,3 +435,54 @@ class TestPatchSequentialRegression(BaseTester):
         seq(x)
         params = seq._params
         self.gradcheck(lambda value: seq(value, params=params), (x.requires_grad_(),))
+
+
+@pytest.mark.usefixtures("restore_torch_rng")
+class TestConventionPatchSequential(BaseTester):
+    """Convention pins for `PatchSequential` after the #4421 repair (#4460)."""
+
+    def test_convention_random_patch_assignment_allows_fewer_modules_than_patches(self, device, dtype):
+        with pytest.raises(ValueError, match="number of processing modules must be equal with grid size"):
+            K.PatchSequential(K.RandomHorizontalFlip(p=1.0), grid_size=(2, 2), patchwise_apply=True, random_apply=False)
+        seq = K.PatchSequential(
+            K.RandomHorizontalFlip(p=1.0), grid_size=(2, 2), patchwise_apply=True, random_apply=True
+        )
+        image = torch.arange(16, device=device, dtype=dtype).reshape(1, 1, 4, 4)
+        assert seq(image).shape == image.shape
+
+    @staticmethod
+    def _patch_states(device, dtype, grid, height, width):
+        # Per-patch verdict: was this patch horizontally flipped, left untouched, or neither.
+        torch.manual_seed(0)
+        seq = K.PatchSequential(K.RandomHorizontalFlip(p=1.0), grid_size=grid, patchwise_apply=False)
+        x = torch.rand(2, 3, height, width, device=device, dtype=dtype)
+        out = seq(x)
+        patch_h, patch_w = height // grid[0], width // grid[1]
+        states = []
+        for b in range(2):
+            for row in range(grid[0]):
+                for col in range(grid[1]):
+                    rows = slice(row * patch_h, (row + 1) * patch_h)
+                    cols = slice(col * patch_w, (col + 1) * patch_w)
+                    patch_in, patch_out = x[b, :, rows, cols], out[b, :, rows, cols]
+                    if torch.equal(patch_out, patch_in.flip(-1)):
+                        states.append("flip")
+                    elif torch.equal(patch_out, patch_in):
+                        states.append("same")
+                    else:
+                        states.append("other")
+        return states
+
+    def test_convention_patch_sequential_augments_every_patch_row(self, device, dtype):
+        # Convention pin: the grid splits the image into B x n_patches patch rows and the chain is applied to
+        # all of them, for any channel count. Before #4460 the draw was sized B x C, so on a non-square 8x12
+        # image with a (2, 3) grid only the first 6 of the 12 patches were augmented (#4421).
+        assert self._patch_states(device, dtype, (2, 3), 8, 12) == ["flip"] * 12
+        assert self._patch_states(device, dtype, (2, 2), 8, 8) == ["flip"] * 8
+
+    def test_convention_default_patch_mode_augments_each_sample(self, device, dtype):
+        # Convention pin: the default (patchwise_apply=True, random_apply=False) processes every sample.
+        # Before #4460 the single module flipped sample zero and left sample one unchanged (#4421).
+        seq = K.PatchSequential(K.RandomHorizontalFlip(p=1.0), grid_size=(1, 1))
+        image = torch.arange(128, device=device, dtype=dtype).reshape(2, 1, 8, 8)
+        self.assert_close(seq(image), image.flip(-1))

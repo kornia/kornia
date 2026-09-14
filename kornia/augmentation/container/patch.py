@@ -41,6 +41,8 @@ __all__ = ["PatchSequential"]
 class PatchSequential(ImageSequential):
     r"""Container for performing patch-level image data augmentation.
 
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
+
     .. image:: _static/img/PatchSequential.png
 
     PatchSequential breaks input images into patches by a given grid size, which will be resembled back
@@ -65,8 +67,8 @@ class PatchSequential(ImageSequential):
         patchwise_apply: apply image processing args will be applied patch-wisely.
             if ``True`` and ``random_apply=False``, the number of args must equal the number of patches.
             if ``False``, the image processing args will be applied as a sequence to all patches.
-        random_apply: randomly select a sublist (order agnostic) of args to
-            apply transformation.
+        random_apply: randomly select children to apply in random order. Selections may repeat when the requested
+            count is larger than the sum of the selection weights.
             If ``int`` (batchwise mode only), a fixed number of transformations will be selected.
             If ``(a,)`` (batchwise mode only), x number of transformations (a <= x <= len(args)) will be selected.
             If ``(a, b)`` (batchwise mode only), x number of transformations (a <= x <= b) will be selected.
@@ -76,6 +78,8 @@ class PatchSequential(ImageSequential):
             location-wisely.
 
     Convention:
+        - like :class:`~kornia.augmentation.container.ImageSequential`, this container takes image tensors only: it has
+          no ``data_keys`` and no ``.transform_matrix`` attribute.
         - input images have shape ``(B, C, H, W)``. Each image is split into ``N = rows * columns`` patches,
           ordered by row then column. Parameters index the flattened ``B * N`` patch batch.
         - with ``patchwise_apply=True`` and ``random_apply=False``, each module processes its grid location
