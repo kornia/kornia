@@ -28,7 +28,7 @@ within ~5% of the unchunked atlas, and float32/float64 patches are bitwise ident
 call whose grid exceeds the budget splits into several `grid_sample` calls (~1.5x the unbounded atlas latency at
 B=8, N=2000 on CPU inductor, still ~10x faster than the per-level loop it replaces). Both extractors return an
 empty `(B, N, CH, PS, PS)` tensor for `B == 0` or `N == 0` instead of raising from inside `affine_grid` --
-`extract_patches_from_pyramid` with `B == 0` returned the empty result before the batched rewrite below
+`extract_patches_from_pyramid` with `B == 0` returned the empty result before the batched rewrite described under **Bug fixes**
 regressed it; every other empty combination raised on all prior releases. `extract_patches_from_pyramid` now
 also accepts a LAF on a different device than the image, as `extract_patches_simple` always has, and returns
 patches on the image's device; both extractors move the LAF to the image's device up front, so a cross-device

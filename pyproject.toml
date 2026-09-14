@@ -342,29 +342,25 @@ max-statements = 64  # Recommended: 50
 
 # Changelog fragments are assembled only when preparing a release.
 [tool.towncrier]
-package = ""
-name = "Kornia"
 directory = "changelog.d"
 filename = "CHANGELOG.md"
 title_format = "## [{version}] - {project_date}"
 issue_format = "[#{issue}](https://github.com/kornia/kornia/pull/{issue})"
-ignore = []
+# Setting ignore enables strict filename validation; tolerate Finder metadata only.
+ignore = [".DS_Store"]
 issue_pattern = "[0-9]+"
 
 [[tool.towncrier.type]]
 directory = "added"
 name = "Added"
-showcontent = true
 
 [[tool.towncrier.type]]
 directory = "fixed"
 name = "Bug fixes"
-showcontent = true
 
 [[tool.towncrier.type]]
 directory = "breaking"
 name = "Breaking changes"
-showcontent = true
 
 [tool.ty.src]
 include = ["kornia"]

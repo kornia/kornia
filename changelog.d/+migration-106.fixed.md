@@ -7,5 +7,5 @@ the sum of the floors -- is now handed to the levels with the largest fractional
 the quotas always sum to exactly `num_features` and stay spread across scales. #4098's narrower `num_features=1`
 fallback, which handed the request's one slot to the largest-share level when every quota floored to zero, is
 the special case where the shortfall equals `num_features` and is superseded by the general apportionment.
-The apportionment was then removed again by #4222 below, inside this same unreleased window, so no release
+The apportionment was then removed again by #4222, inside this same unreleased window, so no release
 ever carries it; the `num_features=1` behaviour it fixed still holds.

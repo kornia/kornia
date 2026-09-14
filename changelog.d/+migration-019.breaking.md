@@ -1,5 +1,5 @@
 `ellipse_to_laf` no longer raises on a degenerate ellipse. One whose `a` or `c` is `0` after rounding to the input
-dtype makes the matrix being inverted singular; the batched `torch.inverse` it now replaces (see below) failed the
+dtype makes the matrix being inverted singular; the batched `torch.inverse` it now replaces (see **Bug fixes**) failed the
 whole call with `linalg.LinAlgError`, and the closed form returns non-finite values in that LAF instead, leaving
 the other rows of the batch usable. Callers that relied on the exception to reject bad input -- reading
 Oxford-format `.ellipse` files, say -- should test the result with `kornia.feature.laf_is_valid`, since an invalid

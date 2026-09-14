@@ -4,4 +4,4 @@ therefore receive fewer correspondences: identical descriptors sampled at padded
 reported as matches. Three-dimensional `(B, H, W)` masks keep working and are promoted to the detectors'
 `(B, 1, H, W)` form; four-dimensional masks are forwarded unchanged. Because the masks now reach the detector,
 they are subject to its check: a mask that is not at the image's spatial size, which used to be ignored, is
-rejected. A floating-point mask changes meaning in `ScaleSpaceDetector`-based pipelines too, see below.
+rejected. A floating-point mask changes meaning in `ScaleSpaceDetector`-based pipelines too; see the mask semantics entry under **Bug fixes**.
