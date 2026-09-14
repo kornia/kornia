@@ -175,27 +175,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in-tree MPS workarounds stay. (#4202)
 
 ### Breaking changes
-* Outputs of `warp_perspective`, `warp_affine`, `homography_warp`, `HomographyWarper`,
-  `warp_image_tps`, `crop_by_transform_mat` and `shear` change under `align_corners=False`. They now
-  match the `align_corners=True` result up to out-of-bounds handling, instead of carrying a spurious
-  sub-pixel scale and shift. `align_corners=True` call sites are bit-identical.
-
-  **Several of these default to `align_corners=False`, so plain calls that pass no flag change too.**
-  Measured on a 4x5 `arange` image with an identity transform, `float64`, as `max|out - in|`:
-
-  | Call, default arguments | before | after |
-  |---|---|---|
-  | `homography_warp(x, I, (4, 5))` | 14.25 | 1.8e-15 |
-  | `HomographyWarper(4, 5)(x, I)` | 14.25 | 1.8e-15 |
-  | `warp_image_tps(x, pts, kernel, affine)` | 14.25 | 1.8e-15 |
-  | `ImageRegistrator("homography").warp_src_into_dst(x)`, identity model | 14.25 | 0.0 |
-  | `shear(ones(1, 1, 4, 4), [[0.5, 0.0]])`, first row | `0.75, 1, 1, 1` | `1, 1, 1, 1` |
-
-  The augmentations that default to `align_corners=False` (`RandomAffine`, `RandomPerspective`,
-  `RandomShear`, `RandomTranslate`, `RandomThinPlateSpline`) sample different pixels for the same
-  reason; their transform matrices are unchanged. At those defaults an identity transform is now
-  actually the identity: `RandomPerspective(distortion_scale=0.)` goes from 0.734 to 6e-07 and
-  `RandomThinPlateSpline(scale=0.)` from 0.734 to 1.5e-08 on a 6x8 ramp. Refs #3904, #4411. (#3945)
 * `PatchSequential` now preserves the batch size in both padding modes. `same` preserves the input
   spatial size and `valid` keeps only the complete, centred grid region. Previously, a `(2,3,8,8)`
   input on a `(3,3)` grid produced `(2,3,7,7)` with `same` (now `(2,3,8,8)`) and `(2,3,8,8)` with
@@ -428,19 +407,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
-* `warp_perspective`, `warp_affine`, `homography_warp`, `HomographyWarper` and `warp_image_tps` now
-  build their sampling grid and homography normalization under the same `align_corners` convention
-  they pass to `grid_sample`. Previously the grid was always corner-aligned, so with
-  `align_corners=False` an identity homography did not reproduce its input (max deviation `11.25`
-  on a 4x4 `arange` image) and a whole-pixel translation resampled at fractional offsets;
-  `warp_image_tps` was affected on its default path. `create_meshgrid`, `normal_transform_pixel`,
-  `normalize_homography` and `denormalize_homography` gain an `align_corners` parameter (last,
-  default `True`, so existing calls are unchanged). `crop_by_transform_mat` drops the #3650
-  correction matrix and the 1-pixel `warp_affine` fallback that worked around the mismatch, so
-  1-pixel outputs are exact under both settings. `normal_transform_pixel` also writes the
-  `align_corners=False` offset as a single division, so eager and graph capture agree bit for bit at
-  every size rather than differing by one `float32` step at 5 of the first 4999.
-  Fixes #3904, #3928, #3929, #4411. (#3945)
 * `RandomCutMixV2` and `CutmixGenerator` document `cut_size` as what it is: the `[min, max]` clamp on the
   Beta-sampled mixing coefficient `lambda`, where the cut side is `floor(sqrt(1 - lambda) * side)`, so a larger
   `cut_size` gives a smaller cut. It was described as the "minimum and maximum cut ratio". A minimum of `1.0` is
