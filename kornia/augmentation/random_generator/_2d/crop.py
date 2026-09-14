@@ -27,6 +27,7 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _joint_range_check,
 )
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -82,7 +83,7 @@ class CropGenerator(RandomGeneratorBase):
 
         input_size = (batch_shape[-2], batch_shape[-1])
         if not isinstance(self.size, torch.Tensor):
-            size = torch.tensor(self.size, device=_device, dtype=_dtype).repeat(batch_size, 1)
+            size = _constant_tensor(self.size, device=_device, dtype=_dtype).repeat(batch_size, 1)
             if size.shape != torch.Size([batch_size, 2]):
                 raise AssertionError(
                     f"`size` must be a (height, width) pair of integers or a (B, 2) tensor. Got {self.size!r}."
@@ -122,14 +123,14 @@ class CropGenerator(RandomGeneratorBase):
         crop_src = bbox_generator(
             x_start.view(-1).to(device=_device, dtype=_dtype),
             y_start.view(-1).to(device=_device, dtype=_dtype),
-            torch.where(size[:, 1] == 0, torch.tensor(input_size[1], device=_device, dtype=_dtype), size[:, 1]),
-            torch.where(size[:, 0] == 0, torch.tensor(input_size[0], device=_device, dtype=_dtype), size[:, 0]),
+            torch.where(size[:, 1] == 0, torch.full((), input_size[1], device=_device, dtype=_dtype), size[:, 1]),
+            torch.where(size[:, 0] == 0, torch.full((), input_size[0], device=_device, dtype=_dtype), size[:, 0]),
         )
 
         if self.resize_to is None:
             crop_dst = bbox_generator(
-                torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
-                torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
+                torch.zeros(batch_size, device=_device, dtype=_dtype),
+                torch.zeros(batch_size, device=_device, dtype=_dtype),
                 size[:, 1],
                 size[:, 0],
             )
@@ -143,7 +144,7 @@ class CropGenerator(RandomGeneratorBase):
                 and self.resize_to[1] > 0
             ):
                 raise AssertionError(f"`resize_to` must be a tuple of 2 positive integers. Got {self.resize_to}.")
-            crop_dst = torch.tensor(
+            crop_dst = _constant_tensor(
                 [
                     [
                         [0, 0],
@@ -155,9 +156,9 @@ class CropGenerator(RandomGeneratorBase):
                 device=_device,
                 dtype=_dtype,
             ).repeat(batch_size, 1, 1)
-            _output_size = torch.tensor(self.resize_to, device=_device, dtype=torch.long).expand(batch_size, -1)
+            _output_size = _constant_tensor(self.resize_to, device=_device, dtype=torch.long).expand(batch_size, -1)
 
-        _input_size = torch.tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
+        _input_size = _constant_tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
 
         return {"src": crop_src, "dst": crop_dst, "input_size": _input_size, "output_size": _output_size}
 
@@ -251,7 +252,11 @@ class ResizedCropGenerator(CropGenerator):
         rand_tensor = _adapted_rsampling((batch_size, 10), self.rand_sampler, same_on_batch).to(
             device=_device, dtype=_dtype
         )
-        scale_tensor = torch.as_tensor(self.scale, device=_device, dtype=_dtype)
+        scale_tensor = (
+            self.scale.to(device=_device, dtype=_dtype)
+            if isinstance(self.scale, torch.Tensor)
+            else _constant_tensor(self.scale, device=_device, dtype=_dtype)
+        )
         area = (rand_tensor * (scale_tensor[1] - scale_tensor[0]) + scale_tensor[0]) * size[0] * size[1]
         log_ratio = _adapted_rsampling((batch_size, 10), self.log_ratio_sampler, same_on_batch).to(
             device=_device, dtype=_dtype
@@ -279,14 +284,14 @@ class ResizedCropGenerator(CropGenerator):
         in_ratio = float(size[0]) / float(size[1])
         _min = float(self.ratio.min()) if isinstance(self.ratio, torch.Tensor) else min(self.ratio)
         if in_ratio < _min:
-            h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
+            h_ct = torch.full((), size[0], device=_device, dtype=_dtype)
             w_ct = torch.round(h_ct / _min)
         elif in_ratio > _min:
-            w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
+            w_ct = torch.full((), size[1], device=_device, dtype=_dtype)
             h_ct = torch.round(w_ct * _min)
         else:  # whole image
-            h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
-            w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
+            h_ct = torch.full((), size[0], device=_device, dtype=_dtype)
+            w_ct = torch.full((), size[1], device=_device, dtype=_dtype)
         h_ct = h_ct.floor()
         w_ct = w_ct.floor()
 
@@ -355,17 +360,17 @@ def center_crop_generator(
 
     # [y, x] origin
     # top-left, top-right, bottom-right, bottom-left
-    points_src: torch.Tensor = torch.tensor(
+    points_src: torch.Tensor = _constant_tensor(
         [[[start_x, start_y], [end_x, start_y], [end_x, end_y], [start_x, end_y]]], device=device, dtype=torch.long
     ).expand(batch_size, -1, -1)
 
     # [y, x] destination
     # top-left, top-right, bottom-right, bottom-left
-    points_dst: torch.Tensor = torch.tensor(
+    points_dst: torch.Tensor = _constant_tensor(
         [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]], device=device, dtype=torch.long
     ).expand(batch_size, -1, -1)
 
-    _input_size = torch.tensor((height, width), device=device, dtype=torch.long).expand(batch_size, -1)
-    _output_size = torch.tensor(size, device=device, dtype=torch.long).expand(batch_size, -1)
+    _input_size = _constant_tensor((height, width), device=device, dtype=torch.long).expand(batch_size, -1)
+    _output_size = _constant_tensor(size, device=device, dtype=torch.long).expand(batch_size, -1)
 
     return {"src": points_src, "dst": points_dst, "input_size": _input_size, "output_size": _output_size}
