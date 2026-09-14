@@ -308,17 +308,32 @@ def test_inverse_refuses_a_non_invertible_draw(intensity_only, mixed, geometry_o
     # a geometry-only draw still inverts. A ramp is what bilinear resampling reproduces
     # exactly, so replaying the same draw backwards has to return it -- everywhere except
     # the pixels the draw pushed out of frame, which the same round trip over ``ones``
-    # marks for us.
+    # marks for us. Half precision cannot hold that tolerance (``1 - 1e-4`` even rounds to
+    # ``1.0`` there), so the value check runs in float32 or wider; the refusals above keep
+    # the fixture dtype.
     aug = geometry_only()
+    value_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     ramp = 0.5 * (
-        torch.linspace(0, 1, 8, device=device, dtype=dtype)[:, None]
-        + torch.linspace(0, 1, 6, device=device, dtype=dtype)
+        torch.linspace(0, 1, 8, device=device, dtype=value_dtype)[:, None]
+        + torch.linspace(0, 1, 6, device=device, dtype=value_dtype)
     ).expand(2, 3, 8, 6)
     params = aug.forward_parameters(ramp.shape)
     kept = aug.inverse(aug(torch.ones_like(ramp), params=params), params=params) > 1 - 1e-4
     assert kept.any(), "the drawn geometry pushed the whole image out of frame"
     round_trip = aug.inverse(aug(ramp, params=params), params=params)
     assert_close(round_trip[kept], ramp[kept], rtol=1e-4, atol=1e-4)
+
+
+def test_inverse_ignores_an_operation_its_gate_skipped(device, dtype):
+    # an intensity operation whose probability gate skipped every sample left the input
+    # untouched, so the draw is pure geometry and inverts; applied on any row, it refuses
+    x = torch.rand(2, 3, 8, 6, device=device, dtype=dtype)
+    aug = AutoAugment(policy=[[("translate_x", 1.0, 5), ("solarize", 0.0, 5)]])
+    assert aug.inverse(aug(x)).shape == x.shape
+
+    aug = AutoAugment(policy=[[("translate_x", 1.0, 5), ("solarize", 1.0, 5)]])
+    with pytest.raises(RuntimeError, match="applied RandomSolarize"):
+        aug.inverse(aug(x))
 
 
 def test_inverse_without_a_forward_pass_still_reports_missing_params(device, dtype):

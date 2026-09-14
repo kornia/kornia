@@ -121,22 +121,29 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         return True
 
     def _non_invertible_ops(self, params: List[ParamItem]) -> List[str]:
-        """Name every drawn operation that :meth:`inverse` cannot undo.
+        """Name every applied operation that :meth:`inverse` cannot undo.
+
+        An operation whose probability gate skipped every sample left the input untouched, so it does
+        not count.
 
         Args:
             params: Parameters recorded by a forward pass.
 
         Returns:
-            Class names of the drawn operations that are not geometric, in execution order.
+            Class names of the applied operations that are not geometric, in execution order.
         """
         names: List[str] = []
         for (_, module), param in zip(self.get_forward_sequence(params), params):
             subpolicy = cast(PolicySequential, module)
-            subparams = cast(Optional[List[ParamItem]], param.data)
-            for _, operation in subpolicy.get_forward_sequence(subparams):
+            subparams = cast(List[ParamItem], param.data)
+            for (_, operation), subparam in zip(subpolicy.get_forward_sequence(subparams), subparams):
                 operation = cast(OperationBase, operation)
-                if not isinstance(operation.op, GeometricAugmentationBase2D):
-                    names.append(operation.op.__class__.__name__)
+                if isinstance(operation.op, GeometricAugmentationBase2D):
+                    continue
+                batch_prob = cast(Dict[str, torch.Tensor], subparam.data).get("batch_prob")
+                if batch_prob is not None and not batch_prob.any():
+                    continue
+                names.append(operation.op.__class__.__name__)
         return names
 
     def inverse(
