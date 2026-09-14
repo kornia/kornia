@@ -177,14 +177,24 @@ class KMeans:
 
             previous_centers = current_centers.clone()
 
-            for index in range(self.num_clusters):
-                selected = torch.nonzero(cluster_assignment == index).squeeze()
-                selected = torch.index_select(X, 0, selected)
-                # edge case when a certain cluster centre has no points assigned to it
-                # just choose a random point as it's update
-                if selected.shape[0] == 0:
-                    selected = X[torch.randint(len(X), (1,), device=X.device)]
-                current_centers[index] = selected.mean(dim=0)
+            # Vectorized per-cluster mean via a one-hot assignment matrix, instead of looping over
+            # clusters with torch.nonzero/index_select (each iteration's dynamic output shape
+            # forces a host sync). One-hot + matmul routes the reduction through a GEMM kernel;
+            # scatter_add_ into the small (num_clusters, D) destination measured ~100x slower on
+            # MPS for this shape (many threads racing to accumulate into few destination rows).
+            # Tracked in #4533.
+            one_hot = torch.nn.functional.one_hot(cluster_assignment, num_classes=self.num_clusters).to(X.dtype)
+            cluster_sums = one_hot.t() @ X
+            cluster_counts = one_hot.sum(0)
+
+            # edge case when a certain cluster centre has no points assigned to it:
+            # just choose a random point as its update. A random index is drawn for every
+            # cluster unconditionally and masked with torch.where, so the branch never depends
+            # on a data-dependent Python bool (no host sync either way).
+            empty_mask = (cluster_counts == 0).unsqueeze(1)
+            means = cluster_sums / cluster_counts.clamp(min=1).unsqueeze(1)
+            random_points = X[torch.randint(len(X), (self.num_clusters,), device=X.device)]
+            current_centers = torch.where(empty_mask, random_points, means)
 
             # sum of distance of how much the newly computed clusters have moved from their previous positions
             center_shift = torch.sum(torch.sqrt(torch.sum((current_centers - previous_centers) ** 2, dim=1)))
