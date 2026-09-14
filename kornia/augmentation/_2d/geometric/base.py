@@ -115,6 +115,12 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         # Nearest is the mask default, but an explicit ``resample`` wins, matching ``inverse_masks``.
         if "resample" not in kwargs and "resample" in (self.flags if flags is None else flags):
             kwargs["resample"] = Resample.get("nearest")
+
+        # Antialiasing is image-only. Filtering segmentation masks before nearest-neighbour
+        # resampling can introduce values outside the original label set.
+        if "antialias" in (self.flags if flags is None else flags):
+            kwargs["antialias"] = False
+
         return super().transform_masks(input, params, flags, transform=transform, **kwargs)
 
     def apply_transform_mask(

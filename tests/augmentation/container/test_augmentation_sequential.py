@@ -862,15 +862,38 @@ class TestConventionAugmentationSequential(BaseTester):
         bool_mask[:, :, 1:4, 2:6] = True
         assert aug(torch.rand(2, 3, 6, 8, device=device, dtype=dtype), bool_mask)[1].dtype == torch.bool
 
-    def test_wart_resize_antialias_blurs_masks_4479(self, device, dtype):
-        # Resize applies antialiasing before the mask's nearest interpolation, introducing values outside the
-        # input label set. This is a current wart, tracked in #4479.
-        image = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
-        mask = torch.full((1, 1, 8, 8), 2.0, device=device, dtype=dtype)
-        mask[:, :, :, 4:] = 3.0
-        aug = K.AugmentationSequential(K.Resize((4, 4), antialias=True), data_keys=["input", "mask"])
-        out_mask = aug(image, mask)[1]
-        assert not set(out_mask.unique().tolist()).issubset({2.0, 3.0})
+    @pytest.mark.parametrize("mask_dtype", [torch.float32, torch.int64, torch.bool])
+    def test_resize_antialias_preserves_mask_labels_4479(self, mask_dtype, device, dtype):
+        yy, xx = torch.meshgrid(
+            torch.arange(12, device=device),
+            torch.arange(16, device=device),
+            indexing="ij",
+        )
+        blocks = ((yy // 2) + (xx // 2)) % 2
+
+        if mask_dtype == torch.bool:
+            mask = blocks.bool()
+        else:
+            mask = (2 + blocks).to(mask_dtype)
+
+        mask = mask[None, None]
+        image = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+
+        without_antialias = K.AugmentationSequential(
+            K.Resize((6, 8), antialias=False),
+            data_keys=["input", "mask"],
+        )
+        with_antialias = K.AugmentationSequential(
+            K.Resize((6, 8), antialias=True),
+            data_keys=["input", "mask"],
+        )
+
+        expected_mask = without_antialias(image, mask)[1]
+        out_mask = with_antialias(image, mask)[1]
+
+        assert out_mask.dtype == mask_dtype
+        assert torch.equal(out_mask, expected_mask)
+        assert set(out_mask.unique().tolist()) == set(mask.unique().tolist())
 
     def test_convention_boxes_follow_the_xyxy_plus_convention(self, device, dtype):
         # Convention pin: the container's box arithmetic is `Boxes`' inclusive `xyxy_plus` mode, for a scaling
