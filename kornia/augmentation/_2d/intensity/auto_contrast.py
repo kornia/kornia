@@ -28,7 +28,10 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
 
     Args:
         p: probability of applying the transformation.
-        clip_output: if true clip output
+        clip_output: has no effect on the output. The transform is
+          :func:`kornia.enhance.normalize_min_max`, which already maps each sample's channels onto ``[0, 1]``,
+          so clamping to that interval cannot change a value -- including for inputs outside ``[0, 1]``. Kept
+          for signature compatibility.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
@@ -37,7 +40,8 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-        This function internally uses :func:`kornia.enhance.normalize_min_max`
+        This function internally uses :func:`kornia.enhance.normalize_min_max`. A channel with a single value
+        has zero range and is returned as zeros.
 
     """
 

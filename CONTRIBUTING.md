@@ -336,6 +336,22 @@ This section provides guidance for contributing to kornia, with a focus on Pytho
 
 3. **Update Documentation**: When adding new features or changing behavior, update docstrings for public APIs. For documentation contributions, see [Contributing to Documentation](#contributing-to-documentation).
 
+### Changelog entries
+
+For a user-visible change, add a short Markdown file such as `changelog.d/1234.fixed.md`,
+where `1234` is the PR number (not an issue number). Use `added`, `fixed`, or `breaking` for the type.
+Write what changes for the user; breaking changes must describe the old and new behavior.
+Only release PRs edit `CHANGELOG.md`: separate files prevent unrelated PRs
+from conflicting on the same lines.
+
+If the PR number is not known yet, use a unique name such as `+fix-camera-shape.fixed.md`
+and rename it to the PR number before merging. Internal refactors, tests, and CI-only changes can omit
+an entry; explain why in the PR description and ask a maintainer to apply `no-changelog`.
+CI still validates fragment names and rendering when this label is present.
+
+Run `pixi run changelog-preview` to preview the notes without changing any files.
+See [the fragment guide](changelog.d/README.md) for examples and release instructions.
+
 ### Code Quality
 
 1. **Performance Considerations**:

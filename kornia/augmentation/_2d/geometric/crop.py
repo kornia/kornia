@@ -69,6 +69,10 @@ class RandomCrop(GeometricAugmentationBase2D):
         Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
+        ``p`` selects or skips the whole batch; ``same_on_batch`` controls whether selected images share
+        the same crop parameters. When the batch is skipped, the returned images, masks, keypoints, and
+        boxes remain unchanged, including when ``padding`` or ``pad_if_needed`` is set.
+
     Examples:
         >>> import torch
         >>> _ = torch.manual_seed(0)
@@ -186,10 +190,10 @@ class RandomCrop(GeometricAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> Keypoints:
-        """Process keypoints corresponding to the inputs that are no transformation applied."""
-        # For F.pad the keypoints properly.
+        """Pad and transform keypoints without modifying the skipped branch."""
         padding_size = params["padding_size"].to(device=input.device)
-        input = input.pad(padding_size)
+        # pad mutates its input; keep the original coordinates for the non-transform branch.
+        input = input.clone().pad(padding_size)
         return super().apply_transform_keypoint(input=input, params=params, flags=flags, transform=transform)
 
     def apply_transform_box(
@@ -199,10 +203,10 @@ class RandomCrop(GeometricAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> Boxes:
-        """Process keypoints corresponding to the inputs that are no transformation applied."""
-        # For F.pad the boxes properly.
+        """Pad and transform boxes without modifying the skipped branch."""
         padding_size = params["padding_size"]
-        input = input.pad(padding_size)
+        # pad mutates its input; keep the original coordinates for the non-transform branch.
+        input = input.clone().pad(padding_size)
         return super().apply_transform_box(input=input, params=params, flags=flags, transform=transform)
 
     def apply_transform(

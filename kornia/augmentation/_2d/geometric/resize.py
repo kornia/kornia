@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation import random_generator as rg
+from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
 from kornia.core.utils import is_exporting
@@ -66,6 +67,7 @@ class Resize(GeometricAugmentationBase2D):
     # matrix build (which needs a linalg solve) until `.transform_matrix` is read.
     _compute_matrix_lazily = True
 
+    @_input_metadata_only
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:

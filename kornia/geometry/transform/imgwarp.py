@@ -1794,7 +1794,13 @@ def homography_warp3d(
     Convention:
         - input: :math:`(N, C, D, H, W)`; ``dsize`` is ``(d, h, w)``
         - ``src_homo_dst`` is the destination→source homography :math:`(N, 4, 4)`, in normalized
-          :math:`[-1, 1]` coordinates by default (``normalized_coordinates=True``)
+          :math:`[-1, 1]` coordinates by default (``normalized_coordinates=True``), and acts on
+          ``(x, y, z, 1)`` column vectors: ``x`` indexes ``W``, ``y`` indexes ``H``, ``z`` indexes
+          ``D``. That is the order :func:`torch.nn.functional.grid_sample` reads a 5-D grid in, and
+          the order :func:`warp_grid3d` takes. kornia's own 3-D grids and pixel coordinates are
+          ``(d, x, y)`` (see :func:`~kornia.geometry.grid.create_meshgrid3d`), so the sampling grid
+          is reordered here before the homography is applied; nothing else in the module changes
+          its order
         - align_corners: ``False`` by default
         - padding_mode: ``'zeros'`` by default
         - negative output dimensions raise ``ValueError``
@@ -1830,6 +1836,10 @@ def homography_warp3d(
     grid = create_meshgrid3d(
         depth, height, width, normalized_coordinates=normalized_coordinates, device=patch_src.device
     )
+    # ``create_meshgrid3d`` follows kornia's ``(d, x, y)`` convention, which
+    # ``normalize_pixel_coordinates3d`` and ``conv_soft_argmax3d`` rely on. ``warp_grid3d`` and
+    # ``grid_sample`` both read the last axis as ``(x, y, z)``, so the depth channel moves last.
+    grid = grid[..., [1, 2, 0]]
     warped_grid = warp_grid3d(grid, src_homo_dst)
 
     return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)

@@ -80,9 +80,16 @@ class PerspectiveGenerator(RandomGeneratorBase):
         _check_positive_int_or_traced(height, "height")
         _check_positive_int_or_traced(width, "width")
 
-        start_points: torch.Tensor = torch.tensor(
-            [[[0.0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]]], device=_device, dtype=_dtype
-        ).expand(batch_size, -1, -1)
+        # Stack scalar factories without indexed fills: those also lift CPU constants
+        # that Inductor can reuse in CUDA kernels without copying the parameters.
+        # See https://github.com/pytorch/pytorch/issues/196969.
+        zero = torch.zeros((), device=_device, dtype=_dtype)
+        x = torch.full((), width - 1, device=_device, dtype=_dtype)
+        y = torch.full((), height - 1, device=_device, dtype=_dtype)
+        # TL, TR, BR, BL. Subtract before casting: bbox_generator subtracts in the
+        # tensor dtype, which changes large half-precision image coordinates.
+        start_points = torch.stack([zero, zero, x, zero, x, y, zero, y]).view(1, 4, 2)
+        start_points = start_points.expand(batch_size, -1, -1)
 
         # generate random offset not larger than half of the image
         fx = self._distortion_scale * width / 2
@@ -95,7 +102,9 @@ class PerspectiveGenerator(RandomGeneratorBase):
             device=_device, dtype=_dtype
         )
         if self.sampling_method == "basic":
-            pts_norm = torch.tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype)
+            one = torch.ones((), device=_device, dtype=_dtype)
+            neg_one = -one
+            pts_norm = torch.stack([one, one, neg_one, one, neg_one, neg_one, one, neg_one]).view(1, 4, 2)
             offset = factor * rand_val * pts_norm
         elif self.sampling_method == "area_preserving":
             offset = 2 * factor * (rand_val - 0.5)

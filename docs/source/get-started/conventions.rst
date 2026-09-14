@@ -398,11 +398,16 @@ Serializing an augmentation
 - Pickle and deepcopy can retain recorded parameters and transform state,
   but support is configuration-dependent. The ``kornia.augmentation.auto``
   policies cannot currently be pickled
-  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_). Lazy matrix state
-  can retain the last input batch, increasing serialized size until the
-  matrix is read (`#4482 <https://github.com/kornia/kornia/issues/4482>`_).
+  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
   A normal forward draws fresh parameters; replay requires passing the
   saved parameters and controlling any application-time randomness.
+- Built-in lazy matrices keep only the input's shape, dtype and device
+  alongside transformation parameters, so an unread matrix does not keep
+  the image batch in the saved state. A lazy subclass overriding ``transform_tensor``,
+  ``generate_transformation_matrix``, ``compute_transformation`` or
+  ``identity_matrix`` retains the input until the matrix is read or another
+  forward replaces the pending state. Unchanged inherited implementations
+  keep the compact metadata state. See :doc:`/augmentation.base` for details.
 
 Pitfall checklist
 -----------------

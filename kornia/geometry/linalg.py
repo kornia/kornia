@@ -220,8 +220,11 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     points_1 = points_1.reshape(-1, points_1.shape[-2], points_1.shape[-1])
     trans_01 = trans_01.reshape(-1, trans_01.shape[-2], trans_01.shape[-1])
     # We expand trans_01 to match the dimensions needed for bmm. repeats input division is cast
-    # to integer so onnx doesn't record the value as a tensor and get a device mismatch
-    trans_01 = torch.repeat_interleave(trans_01, repeats=int(points_1.shape[0] // trans_01.shape[0]), dim=0)
+    # to integer so onnx doesn't record the value as a tensor and get a device mismatch. An empty
+    # transform batch has nothing to repeat, and the validation above guarantees an empty point
+    # batch alongside it, so skip the division rather than computing ``0 // 0``.
+    repeats = points_1.shape[0] // trans_01.shape[0] if trans_01.shape[0] > 0 else 0
+    trans_01 = torch.repeat_interleave(trans_01, repeats=int(repeats), dim=0)
     # to homogeneous
     points_1_h = convert_points_to_homogeneous(points_1)  # BxNxD+1
     # `torch.bmm` requires both operands to share a scalar type. Callers may pass coordinate
