@@ -23,6 +23,17 @@ import kornia
 
 from testing.base import BaseTester
 
+_RGB_TO_XYZ_KERNEL = (
+    (0.412453, 0.357580, 0.180423),
+    (0.212671, 0.715160, 0.072169),
+    (0.019334, 0.119193, 0.950227),
+)
+_XYZ_TO_RGB_KERNEL = (
+    (3.2404813432005266, -1.5371515162713185, -0.4985363261688878),
+    (-0.9692549499965682, 1.8759900014898907, 0.0415559265582928),
+    (0.0556466391351772, -0.2040413383665112, 1.0573110696453443),
+)
+
 
 class TestRgbToXyz(BaseTester):
     def test_smoke(self, device, dtype):
@@ -107,6 +118,22 @@ class TestRgbToXyz(BaseTester):
 
         self.assert_close(kornia.color.rgb_to_xyz(data), expected)
 
+    @pytest.mark.parametrize("integer_dtype", [torch.int32, torch.int64])
+    def test_integer_input_4053(self, device, integer_dtype):
+        rgb = torch.eye(3).to(device=device, dtype=integer_dtype).unsqueeze(-2)
+        expected = torch.tensor(_RGB_TO_XYZ_KERNEL, device=device, dtype=torch.float32).unsqueeze(-2)
+
+        actual = kornia.color.rgb_to_xyz(rgb)
+
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0.0 if device.type == "cpu" else 1e-3, rtol=0.0)
+
+    def test_float64_kernel_precision_4053(self):
+        rgb = torch.eye(3, dtype=torch.float64).unsqueeze(-2)
+        expected = torch.tensor(_RGB_TO_XYZ_KERNEL, dtype=torch.float64).unsqueeze(-2)
+
+        self.assert_close(kornia.color.rgb_to_xyz(rgb), expected, atol=0.0, rtol=0.0)
+
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         xyz = kornia.color.rgb_to_xyz
@@ -115,13 +142,11 @@ class TestRgbToXyz(BaseTester):
         data_out = xyz(rgb(data))
         self.assert_close(data_out, data)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_xyz, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -220,6 +245,22 @@ class TestXyzToRgb(BaseTester):
 
         self.assert_close(kornia.color.xyz_to_rgb(data), expected, low_tolerance=True)
 
+    @pytest.mark.parametrize("integer_dtype", [torch.int32, torch.int64])
+    def test_integer_input_4053(self, device, integer_dtype):
+        xyz = torch.eye(3).to(device=device, dtype=integer_dtype).unsqueeze(-2)
+        expected = torch.tensor(_XYZ_TO_RGB_KERNEL, device=device, dtype=torch.float32).unsqueeze(-2)
+
+        actual = kornia.color.xyz_to_rgb(xyz)
+
+        assert actual.dtype == torch.float32
+        self.assert_close(actual, expected, atol=0.0 if device.type == "cpu" else 1e-3, rtol=0.0)
+
+    def test_float64_kernel_precision_4053(self):
+        xyz = torch.eye(3, dtype=torch.float64).unsqueeze(-2)
+        expected = torch.tensor(_XYZ_TO_RGB_KERNEL, dtype=torch.float64).unsqueeze(-2)
+
+        self.assert_close(kornia.color.xyz_to_rgb(xyz), expected, atol=0.0, rtol=0.0)
+
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         xyz = kornia.color.rgb_to_xyz
@@ -228,13 +269,11 @@ class TestXyzToRgb(BaseTester):
         data_out = rgb(xyz(data))
         self.assert_close(data_out, data, low_tolerance=True)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.xyz_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)

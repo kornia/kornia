@@ -28,6 +28,7 @@ from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_
 from kornia.geometry import rad2deg
 
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
+from .siftdesc import _gradient_magnitude_orientation
 
 urls: Dict[str, str | list[str]] = {}
 urls["orinet"] = [
@@ -63,6 +64,13 @@ class PatchDominantGradientOrientation(nn.Module):
         num_angular_bins: number of histogram bins.
         eps: for safe division, and arctan.
 
+    Note:
+        Each gradient pixel is accumulated into its two neighbouring histogram bins with
+        ``scatter_add_``. On CUDA that accumulation uses atomics, so two calls on identical input
+        can differ at the ulp level, and a patch whose two strongest bins are nearly tied can
+        return the neighbouring peak. ``torch.use_deterministic_algorithms(True)`` selects the
+        deterministic kernel and restores run-to-run reproducibility.
+
     """
 
     def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, eps: float = 1e-8) -> None:
@@ -75,7 +83,12 @@ class PatchDominantGradientOrientation(nn.Module):
         with torch.no_grad():
             self.angular_smooth.weight[:] = get_gaussian_discrete_kernel1d(5, 1.6)
         sigma: float = float(self.patch_size) / 6.0
-        self.weighting = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
+        # non-persistent: derived from `patch_size`, so it stays out of `state_dict()` but follows `.to()`
+        self.register_buffer(
+            "weighting",
+            get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True),
+            persistent=False,
+        )
 
     def __repr__(self) -> str:
         return (
@@ -98,15 +111,23 @@ class PatchDominantGradientOrientation(nn.Module):
             raise TypeError(
                 f"input shape should be must be [Bx1x{self.patch_size}x{self.patch_size}]. Got {patch.size()}"
             )
-        self.weighting = self.weighting.to(patch.dtype).to(patch.device)
-        self.angular_smooth = self.angular_smooth.to(patch.dtype).to(patch.device)
+        # cast into a local; rebinding `self.weighting` would make the buffer's dtype/device depend on
+        # whichever tensor was passed last, and is a `torch.compile` guard hazard.
+        weighting = self.weighting.to(patch.dtype).to(patch.device)
+        angular_smooth_weight = self.angular_smooth.weight.to(patch.dtype).to(patch.device)
+        angular_smooth_bias = self.angular_smooth.bias
+        if angular_smooth_bias is not None:
+            angular_smooth_bias = angular_smooth_bias.to(patch.dtype).to(patch.device)
         grads: torch.Tensor = self.gradient(patch)
         # unpack the edges
         gx: torch.Tensor = grads[:, :, 0]
         gy: torch.Tensor = grads[:, :, 1]
 
-        mag: torch.Tensor = torch.sqrt(gx * gx + gy * gy + self.eps) * self.weighting
-        ori: torch.Tensor = torch.atan2(gy, gx + self.eps) + 2.0 * pi
+        # float16 is lifted to float32 inside: the squared gradient of a flat patch underflows
+        # and `sqrt(0 + eps)` with an underflowed `eps` is NaN in the backward and, through
+        # `atan2`, in the forward as well. bfloat16 holds both and takes the plain expression.
+        mag, ori = _gradient_magnitude_orientation(gx, gy, self.eps)
+        mag = mag * weighting
 
         o_big = float(self.num_ang_bins) * (ori + 1.0 * pi) / (2.0 * pi)
         bo0_big = torch.floor(o_big)
@@ -115,21 +136,48 @@ class PatchDominantGradientOrientation(nn.Module):
         bo1_big = (bo0_big + 1) % self.num_ang_bins
         wo0_big = (1.0 - wo1_big) * mag
         wo1_big = wo1_big * mag
-        ang_bins_list = []
-        for i in range(self.num_ang_bins):
-            ang_bins_i = F.adaptive_avg_pool2d(
-                (bo0_big == i).to(patch.dtype) * wo0_big + (bo1_big == i).to(patch.dtype) * wo1_big, (1, 1)
+        # Each pixel votes into just two bins. Accumulate those votes directly instead
+        # of scanning the entire patch once per angular bin. Like average pooling,
+        # accumulate half-precision inputs in float32, then divide before casting back.
+        accumulation_dtype = torch.float64 if patch.dtype == torch.float64 else torch.float32
+        ang_bins = torch.zeros(patch.shape[0], self.num_ang_bins, device=patch.device, dtype=accumulation_dtype)
+        # The `%` after the integer conversion only keeps the index in range: a NaN orientation
+        # casts to an arbitrary integer. A patch with NaN pixels returns a finite but arbitrary
+        # angle, as it did before this accumulation; the `max`/`where` below do not propagate NaN.
+        ang_bins.scatter_add_(
+            1, bo0_big.flatten(1).long() % self.num_ang_bins, wo0_big.flatten(1).to(accumulation_dtype)
+        )
+        ang_bins.scatter_add_(
+            1, bo1_big.flatten(1).long() % self.num_ang_bins, wo1_big.flatten(1).to(accumulation_dtype)
+        )
+        ang_bins = (ang_bins / (W * H)).to(patch.dtype).view(-1, 1, self.num_ang_bins)
+        angular_smooth_padding = self.angular_smooth.padding
+        if self.angular_smooth.padding_mode != "zeros":
+            ang_bins = F.pad(
+                ang_bins,
+                (angular_smooth_padding[0], angular_smooth_padding[0]),
+                mode=self.angular_smooth.padding_mode,
             )
-            ang_bins_list.append(ang_bins_i)
-        ang_bins = torch.cat(ang_bins_list, 1).view(-1, 1, self.num_ang_bins)
-        ang_bins = self.angular_smooth(ang_bins).view(-1, self.num_ang_bins)
+            angular_smooth_padding = (0,)
+        ang_bins = F.conv1d(
+            ang_bins,
+            angular_smooth_weight,
+            angular_smooth_bias,
+            self.angular_smooth.stride,
+            angular_smooth_padding,
+            self.angular_smooth.dilation,
+            self.angular_smooth.groups,
+        ).view(-1, self.num_ang_bins)
         values, indices = ang_bins.max(1)
         indices_left = (self.num_ang_bins + indices - 1) % self.num_ang_bins
         indices_right = (indices + 1) % self.num_ang_bins
         left = torch.gather(ang_bins, 1, indices_left.reshape(-1, 1)).reshape(-1)
         center = values
         right = torch.gather(ang_bins, 1, indices_right.reshape(-1, 1)).reshape(-1)
-        c_subpix = 0.5 * (left - right) / (left + right - 2.0 * center)
+        # A flat patch has an empty histogram (a zero-gradient pixel contributes no magnitude), and a
+        # uniform one has no peak: the parabolic refinement is `0 / 0` there, so it is skipped.
+        denom = left + right - 2.0 * center
+        c_subpix = torch.where(denom != 0, 0.5 * (left - right) / denom, torch.zeros_like(denom))
         angle = -((2.0 * pi * (indices.to(patch.dtype) + c_subpix) / float(self.num_ang_bins)) - pi)
         return angle
 
@@ -195,7 +243,9 @@ class OriNet(nn.Module):
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         """Normalize the input by batch."""
-        sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        # `torch.std_mean` decomposes to `prims.sum`, which has no ONNX lowering; the split form is equivalent.
+        mp = torch.mean(x, dim=(-3, -2, -1), keepdim=True)
+        sp = torch.std(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
         # training totally unstable.

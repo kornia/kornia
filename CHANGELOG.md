@@ -4,54 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+Pending changes live in [changelog.d](changelog.d/README.md).
+Run `pixi run changelog-preview` to read the assembled notes.
+
 ****
 
-## Unreleased
-
-### Added
-
-* `testing.precision`: `unrepresentable_sizes`, `assert_capture_matches_eager`, `assert_degenerate_path_parity`
-  for reduced-precision, graph-capture and degenerate-path tests, and `pixi run verify-delta`, which diffs the
-  failing-test *sets* of a branch and its base revision across the cpu, half, MPS and inductor surfaces. (#4034)
-  `verify-delta` refuses to run on a dirty checkout by default, since its automatic scope is `base...HEAD`;
-  `--allow-dirty` requires explicit test paths. It exits non-zero whenever a selected, available surface could
-  not be measured.
-
-### Breaking changes
-
-* The shape guards of `normalize_homography` and `denormalize_homography` now reject everything but a
-  `(3, 3)`/`(B, 3, 3)` matrix, and `normalize_homography3d`'s everything but a `(4, 4)`/`(B, 4, 4)` one (#3999).
-  A rank-4 input used to pass the guard and come back with its rank unchanged —
-  `normalize_homography(eye(3).expand(2, 4, 3, 3), (4, 5), (8, 9))` returned a `(2, 4, 3, 3)` matrix and now raises
-  `ValueError`. A wrong-sized input, such as a `(B, 4, 4)` to the 2-D functions, used to pass the guard and fail
-  later inside `matmul`; it now raises at the guard, and `normalize_homography3d`'s message names `Bx4x4` instead of
-  `Bx3x3`. Unbatched `(3, 3)`/`(4, 4)` matrices are still accepted and still promoted to a leading batch of 1.
-
-  One side effect reaches tracing callers: the rewritten guard evaluates its shape comparison unconditionally, where
-  the old `or`-form short-circuited past it for a rank-3 input, so `torch.jit.trace` of any of the three functions
-  now emits a `TracerWarning` about converting a tensor to a Python boolean that it did not emit before. The guard
-  is a static check and the traced graph is unchanged — the warning is noise, not a correctness signal.
-
-### Bug fixes
-
-* Define singleton pixel axes at normalized center, reject non-positive normalization sizes, preserve empty warp
-  destinations, and deprecate the now-unused `eps` normalization parameters (#4006). The four
-  `{de,}normalize_pixel_coordinates{,3d}` helpers and `normal_transform_pixel{,3d}` now derive their scale from the
-  size directly instead of rounding the size into the coordinate dtype first, so results at non-degenerate sizes can
-  move toward the exact value: by up to one ulp in `float32`/`float64`, but materially more in `float16`/`bfloat16`,
-  where the old code could not represent the size at all (`denormalize_pixel_coordinates` at `bfloat16` and size 3000
-  returns 1496 where it returned 1504).
-
-  A singleton axis previously divided by zero (or by the `eps` substituted for it), so the change is not confined to
-  those helpers: it reaches every operation that normalizes a coordinate frame with a size-1 dimension.
-  `create_meshgrid(1, 4, normalized_coordinates=True)` returned `nan` in the singleton component and now returns `0`;
-  `warp_perspective`, `crop_by_transform_mat`, `homography_warp` and `warp_image_tps` onto a 1-pixel-high destination
-  returned all-`nan` and now return the finite row the 2-pixel control produces; `spatial_soft_argmax2d` and
-  `spatial_expectation2d` on a 1-pixel-high input returned `nan` and now return `0`; and `conv_soft_argmax2d`,
-  `conv_soft_argmax3d` and their `ConvSoftArgmax*` module forms shift by one normalized unit when a kernel or input
-  axis is `1` (`conv_soft_argmax2d` with a `(3, 1)` kernel returned `[-1.6667, -1.0, ...]` and now returns
-  `[-1.0, -0.3333, ...]`).
-
+<!-- towncrier release notes start -->
 
 ## :rocket: [0.6.11] - 2022-03-28
 ### :new:  New Features

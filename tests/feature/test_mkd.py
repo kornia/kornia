@@ -199,7 +199,6 @@ class TestVonMisesKernel(BaseTester):
 
         self.gradcheck(vm_describe, (patches, ps), nondet_tol=1e-4)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 13, 13
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
@@ -251,7 +250,6 @@ class TestEmbedGradients(BaseTester):
 
         self.gradcheck(emb_grads_describe, (patches, ps), nondet_tol=1e-4)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 2, 13, 13
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
@@ -322,7 +320,6 @@ class TestExplicitSpacialEncoding(BaseTester):
 
         self.gradcheck(explicit_spatial_describe, (patches, ps), nondet_tol=1e-4)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 2, 13, 13
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
@@ -383,7 +380,6 @@ class TestWhitening(BaseTester):
 
         self.gradcheck(whitening_describe, (patches, in_dims), nondet_tol=1e-4)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         batch_size, in_dims = 1, 175
         patches = torch.rand(batch_size, in_dims).to(device)
@@ -424,6 +420,37 @@ class TestMKDDescriptor(BaseTester):
         output_dims = min(self.dims[kernel_type], 128)
         assert out.shape == (1, output_dims)
 
+    def test_state_dict_from_before_the_moduledict_loads_strictly(self, device):
+        # The stages used to live in a plain dict, so a saved state dict has no `feats.*` keys.
+        # Those buffers are derived from the constructor arguments, so a strict load fills them in.
+        mkd = MKDDescriptor(patch_size=19, kernel_type="concat", whitening=None).to(device)
+        old = {k: v for k, v in mkd.state_dict().items() if not k.startswith("feats.")}
+        assert len(old) < len(mkd.state_dict())
+        fresh = MKDDescriptor(patch_size=19, kernel_type="concat", whitening=None).to(device)
+        fresh.load_state_dict(old, strict=True)
+        inp = torch.rand(2, 1, 19, 19, device=device)
+        self.assert_close(fresh(inp), mkd(inp))
+        # A saved `feats.*` key is still honoured over the freshly computed buffer.
+        new = mkd.state_dict()
+        key = next(k for k in new if k.startswith("feats."))
+        new[key] = torch.zeros_like(new[key])
+        fresh.load_state_dict(new, strict=True)
+        assert bool((fresh.state_dict()[key] == 0).all())
+
+    def test_partial_stage_state_dict_fails_strictly(self, device):
+        # The legacy fill is for a state dict with *no* `feats.*` keys. One saved by this release
+        # that lost a single stage buffer is a corrupt checkpoint, and a strict load has to say so
+        # rather than silently fill the hole from the live instance.
+        mkd = MKDDescriptor(patch_size=19, kernel_type="concat", whitening=None).to(device)
+        partial = mkd.state_dict()
+        key = next(k for k in partial if k.startswith("feats."))
+        del partial[key]
+        fresh = MKDDescriptor(patch_size=19, kernel_type="concat", whitening=None).to(device)
+        with pytest.raises(RuntimeError, match=key.replace(".", r"\.")):
+            fresh.load_state_dict(partial, strict=True)
+        # non-strict still loads, as it does for any missing key
+        fresh.load_state_dict(partial, strict=False)
+
     @pytest.mark.parametrize("bs", [1, 3, 7])
     def test_batch_shape(self, bs, device):
         mkd = MKDDescriptor(patch_size=19, kernel_type="concat", whitening=None).to(device)
@@ -457,7 +484,6 @@ class TestMKDDescriptor(BaseTester):
         self.gradcheck(mkd_describe, (patches, ps), nondet_tol=1e-4)
 
     @pytest.mark.skip("neither dict, nor nn.ModuleDict works")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         batch_size, channels, ps = 1, 1, 19
         patches = torch.rand(batch_size, channels, ps, ps).to(device)

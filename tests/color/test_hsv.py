@@ -326,13 +326,11 @@ class TestHsvToRgb(BaseTester):
         expected_black = torch.zeros(5, 3, 1, 1, device=device, dtype=dtype)
         self.assert_close(kornia.color.hsv_to_rgb(data_black), expected_black)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.hsv_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)

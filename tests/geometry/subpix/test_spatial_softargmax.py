@@ -661,6 +661,18 @@ class TestConvQuadInterp3d(BaseTester):
         self.assert_close(op(sample)[0], op_opt(sample)[0])
         self.assert_close(op(sample)[1], op_opt(sample)[1])
 
+    def test_float16_backward_is_finite(self, device):
+        # The Hessian determinant is a product of three second derivatives, so for a
+        # [0, 1] response it lands around 1e-4 and below. The forward divides by it
+        # once and stays finite, but the backward scales by 1 / det**2, which float16
+        # cannot represent, so the gradient used to be NaN over part of the volume.
+        # Pinned in float16 specifically: bfloat16 keeps float32's exponent range.
+        torch.manual_seed(0)
+        sample = torch.rand(1, 1, 5, 40, 40, device=device, dtype=torch.float16, requires_grad=True)
+        coords, vals = kornia.geometry.subpix.ConvQuadInterp3d(strict_maxima_bonus=0.0)(sample)
+        grad = torch.autograd.grad(coords.sum() + vals.sum(), sample)[0]
+        assert torch.isfinite(grad).all()
+
     def test_peak_at_center(self, device, dtype):
         # A clear peak at scale=1, h=2, w=2 should return coords close to (1, 2, 2).
         sample = torch.zeros(1, 1, 3, 5, 5, device=device, dtype=dtype)

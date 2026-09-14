@@ -65,7 +65,7 @@ def dilation(
         Dilated image with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/morphology_101.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -158,7 +158,7 @@ def erosion(
         Eroded image with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/morphology_101.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -252,7 +252,7 @@ def opening(
        torch.Tensor: Opened image with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/morphology_101.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -329,7 +329,7 @@ def closing(
        Closed image with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/morphology_101.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -408,7 +408,7 @@ def gradient(
        Gradient image with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/morphology_101.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -476,7 +476,7 @@ def top_hat(
        Top hat transformed image with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/morphology_101.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
@@ -547,7 +547,7 @@ def bottom_hat(
        Top hat transformed image with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/morphology_101.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/morphology_101.html>`__.
 
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)

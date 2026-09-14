@@ -7,12 +7,18 @@
 
 English | [简体中文](README_zh-CN.md)
 
+<p align="center">
+  <a href="https://www.kornia.org/playground/"><img alt="Try in your browser" src="https://img.shields.io/badge/%E2%96%B6%20Try%20in%20your%20browser-F5B301?style=for-the-badge&labelColor=F5B301"></a>
+  <a href="https://www.kornia.org"><img alt="Website" src="https://img.shields.io/badge/Website-0B1A2B?style=for-the-badge"></a>
+  <a href="https://kornia.readthedocs.io"><img alt="Docs" src="https://img.shields.io/badge/Docs-0B1A2B?style=for-the-badge"></a>
+</p>
+
 <!-- prettier-ignore -->
 <a href="https://kornia.readthedocs.io">Docs</a> •
 <a href="https://colab.sandbox.google.com/github/kornia/tutorials/blob/master/nbs/hello_world_tutorial.ipynb">Try it Now</a> •
-<a href="https://kornia.github.io/tutorials/">Tutorials</a> •
+<a href="https://www.kornia.org/tutorials/">Tutorials</a> •
 <a href="https://github.com/kornia/kornia-examples">Examples</a> •
-<a href="https://kornia.github.io//kornia-blog">Blog</a> •
+<a href="https://www.kornia.org/kornia-blog/">Blog</a> •
 <a href="https://discord.gg/HfnywwpBnD">Community</a>
 
 [![PyPI version](https://badge.fury.io/py/kornia.svg)](https://pypi.org/project/kornia)
@@ -55,7 +61,7 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 | **Category**               | **Methods/Models**                                                                                                   |
 |----------------------------|---------------------------------------------------------------------------------------------------------------------|
 | **Image Processing**        | - Color conversions (RGB, Grayscale, HSV, etc.)<br>- Geometric transformations (Affine, Homography, Resizing, etc.)<br>- Filtering (Gaussian blur, Median blur, etc.)<br>- Edge detection (Sobel, Canny, etc.)<br>- Morphological operations (Erosion, Dilation, etc.)                                 |
-| **Augmentation**            | - Random cropping, Erasing<br> - Random geometric transformations (Affine, flipping, Fish Eye, Perspecive, Thin plate spline, Elastic)<br>- Random noises (Gaussian, Median, Motion, Box, Rain, Snow, Salt and Pepper)<br>- Random color jittering (Contrast, Brightness, CLAHE, Equalize, Gamma, Hue, Invert, JPEG, Plasma, Posterize, Saturation, Sharpness, Solarize)<br> - Random MixUp, CutMix, Mosaic, Transplantation, etc.                  |
+| **Augmentation**            | - Random cropping, Erasing<br> - Random geometric transformations (Affine, flipping, Fish Eye, Perspective, Thin plate spline, Elastic)<br>- Random noises (Gaussian, Median, Motion, Box, Rain, Snow, Salt and Pepper)<br>- Random color jittering (Contrast, Brightness, CLAHE, Equalize, Gamma, Hue, Invert, JPEG, Plasma, Posterize, Saturation, Sharpness, Solarize)<br> - Random MixUp, CutMix, Mosaic, Transplantation, etc.                  |
 | **Feature Detection**       | - Detector (Harris, GFTT, Hessian, DoG, KeyNet, DISK and DeDoDe)<br> - Descriptor (SIFT, HardNet, TFeat, HyNet, SOSNet, and LAFDescriptor)<br>- Matching (nearest neighbor, mutual nearest neighbor, geometrically aware matching, AdaLAM LightGlue, and LoFTR)                    |
 | **Geometry**                | - Camera models and calibration<br>- Stereo vision (epipolar geometry, disparity, etc.)<br>- Homography estimation<br>- Depth estimation from disparity<br>- 3D transformations                |
 | **Deep Learning Layers**    | - Custom convolution layers<br>- Recurrent layers for vision tasks<br>- Loss functions (e.g., SSIM, PSNR, etc.)<br>- Vision-specific optimizers                                        |
@@ -82,7 +88,7 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 | `kornia.color` | ⚠️ | ⚠️ | Most conversions work for both; FFT-based ops may fail |
 | `kornia.filters` | ⚠️ | ⚠️ | Basic filters work; FFT-based ops may fail on CUDA |
 | `kornia.enhance` | ⚠️ | ⚠️ | Histogram eq / gamma / ZCA work (linalg ops use cast helpers) |
-| `kornia.morphology` | ✅ | ✅ | Pure conv/pool ops; no dtype restrictions |
+| `kornia.morphology` | ✅ | ✅ | Conv/pool ops; `top_hat` / `bottom_hat` / `gradient` also subtract two dilation/erosion results, so bfloat16 loses ~0.4% relative accuracy — within kornia's own bfloat16 tolerance, though 6 tests override it with a tighter one ([#4081](https://github.com/kornia/kornia/issues/4081)) |
 | `kornia.augmentation` | ⚠️ | ⚠️ | Most ops work; precision-sensitive transforms may be inaccurate |
 | `kornia.geometry.transform` | ⚠️ | ⚠️ | Affine/warp/resize work via cast helpers; thin-plate spline may fail |
 | `kornia.geometry.camera` | ⚠️ | ⚠️ | Pinhole model and most camera ops work; `StereoCamera` accepts both |
@@ -99,16 +105,22 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 
 ✅ Supported &nbsp; ⚠️ Partial &nbsp; ❌ Not supported
 
-**Test results** (commit `6131e98`, 2026-03-21):
+**Test results:**
 
-| Run | Passed | Failed | Skipped | Pass% |
-|-----|-------:|-------:|--------:|------:|
-| CPU float32 *(baseline)* | 7647 | 3 | 3269 | **99.9%** |
-| CUDA float32 *(baseline)* | 7634 | 3 | 3280 | **99.9%** |
-| CPU float16 | 6866 | 747 | 3306 | **90.1%** |
-| CPU bfloat16 | 6838 | 812 | 3269 | **89.3%** |
-| CUDA float16 *(KORNIA_TEST_IN_SUBPROCESS=1)* | 6727 | 643 | 3556 | **91.3%** |
-| CUDA bfloat16 *(KORNIA_TEST_IN_SUBPROCESS=1)* | 6695 | 713 | 3518 | **90.4%** |
+| Run | Passed | Failed | Skipped | Pass% | Measured |
+|-----|-------:|-------:|--------:|------:|----------|
+| CPU float32 *(baseline)* | 8499 | 0 | 3535 | **100.0%** | `4ab79c78`, 2026-08-29 |
+| CPU float16 | 7751 | 689 | 3595 | **91.8%** | `4ab79c78`, 2026-08-29 |
+| CPU bfloat16 | 7794 | 695 | 3545 | **91.8%** | `4ab79c78`, 2026-08-29 |
+| CUDA float32 *(baseline)* | 7634 | 3 | 3280 | **99.9%** | `6131e98`, 2026-03-21 |
+| CUDA float16 *(KORNIA_TEST_IN_SUBPROCESS=1)* | 6727 | 643 | 3556 | **91.3%** | `6131e98`, 2026-03-21 |
+| CUDA bfloat16 *(KORNIA_TEST_IN_SUBPROCESS=1)* | 6695 | 713 | 3518 | **90.4%** | `6131e98`, 2026-03-21 |
+
+Reproduce the two CPU half rows with `pixi run test-half` and the CPU float32 baseline with `pixi run test-f32`
+(`test-half` pins `KORNIA_TEST_DTYPE` to `float16,bfloat16`, so it cannot produce the baseline). The half-precision
+CPU suites run as separate blocking `float16` and `bfloat16` CI jobs with strict manifests for known failures,
+addressing [#4070](https://github.com/kornia/kornia/issues/4070). The historical support-table counts are still
+refreshed by hand with the commands above.
 
 See the [full precision guide](https://kornia.readthedocs.io/en/stable/get-started/precision.html) for details.
 
@@ -123,13 +135,15 @@ Kornia is an open-source project that is developed and maintained by volunteers.
 ## Installation
 
 [![PyPI python](https://img.shields.io/pypi/pyversions/kornia)](https://pypi.org/project/kornia)
-[![pytorch](https://img.shields.io/badge/PyTorch_2.0.0+-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/get-started/locally/)
+[![pytorch](https://img.shields.io/badge/PyTorch_2.5.1+-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/get-started/locally/)
 
 ### From pip
 
   ```bash
   pip install kornia
   ```
+
+Some features (ONNX, Stable Diffusion dissolving) need extra packages; see [Optional extras](https://kornia.readthedocs.io/en/latest/get-started/installation.html#optional-extras).
 
 <details>
   <summary>Other installation options</summary>
@@ -231,25 +245,6 @@ print(outputs)
 onnx_seq.export("chained_model.onnx")
 ```
 </details>
-
-## Multi-framework support
-
-You can now use Kornia with [TensorFlow](https://www.tensorflow.org/), [JAX](https://jax.readthedocs.io/en/latest/index.html), and [NumPy](https://numpy.org/). See [Multi-Framework Support](docs/source/get-started/multi-framework-support.rst) for more details.
-
-```python
-import kornia
-
-tf_kornia = kornia.to_tensorflow()
-```
-
-<p align="center">
-  Powered by
-  <a href="https://github.com/ivy-llc/ivy" target="_blank">
-    <div class="dark-light" style="display: block;" align="center">
-      <img class="dark-light" width="15%" src="https://raw.githubusercontent.com/ivy-llc/assets/refs/heads/main/assets/logos/ivy-long.svg"/>
-    </div>
-  </a>
-</p>
 
 ## Call For Contributors
 

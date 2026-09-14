@@ -23,7 +23,6 @@ import torch.nn.functional as F
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters import filter2d_separable
 from kornia.filters.kernels import get_gaussian_kernel1d
-from kornia.geometry.grid import create_meshgrid
 
 __all__ = ["elastic_transform2d"]
 
@@ -122,9 +121,19 @@ def elastic_transform2d(
     # torch.stack and F.normalize displacement
     disp = torch.cat([disp_x, disp_y], 1).permute(0, 2, 3, 1)
 
-    # Warp image based on displacement matrix
+    # Warp image based on displacement matrix. ``create_meshgrid`` uses the
+    # corner-aligned coordinate convention, while ``grid_sample`` interprets
+    # normalized coordinates according to ``align_corners``. Build the identity
+    # grid with the same convention as the sampler so that zero displacement is
+    # an identity transform for both values of ``align_corners``.
     _, _, h, w = image.shape
-    grid = create_meshgrid(h, w, device=image.device).to(image.dtype)
+    # CPU does not implement ``affine_grid`` for half or bfloat16 tensors. Generate those
+    # coordinate grids in float32 and narrow once; the grid must still match the image dtype
+    # before it is passed to ``grid_sample``.
+    grid_dtype = torch.float32 if image.dtype in (torch.float16, torch.bfloat16) else image.dtype
+    identity = torch.eye(2, 3, device=image.device, dtype=grid_dtype).unsqueeze(0)
+    grid = F.affine_grid(identity, [1, 1, h, w], align_corners=align_corners)
+    grid = grid.to(image.dtype)
     warped = F.grid_sample(
         image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode, padding_mode=padding_mode
     )

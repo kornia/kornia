@@ -19,6 +19,7 @@ import pytest
 import torch
 from torch import Tensor
 
+from kornia.augmentation import RandomGaussianBlur
 from kornia.augmentation.random_generator import (
     AffineGenerator,
     ColorJiggleGenerator,
@@ -31,11 +32,11 @@ from kornia.augmentation.random_generator import (
     PlainUniformGenerator,
     PosterizeGenerator,
     ProbabilityGenerator,
+    RandomGaussianBlurGenerator,
     RectangleEraseGenerator,
     ResizedCropGenerator,
     center_crop_generator,
 )
-from kornia.core._compat import torch_version_ge
 
 from testing.base import assert_close
 
@@ -469,9 +470,11 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             )(torch.Size([8]))
 
     def test_random_gen(self, device, dtype):
-        # TODO(jian): crashes with pytorch 1.10, cuda and fp64
-        if (torch_version_ge(1, 10) and "cuda" in str(device)) or dtype == torch.float64:
-            pytest.skip("AssertionError: cannot reproduce the same result")
+        # The generator documents that samples are not reproducible across devices or dtypes.
+        if device.type != "cpu" or dtype != torch.float32:
+            pytest.skip(
+                "Random parameters are device- and dtype-dependent; expected values were computed on CPU float32"
+            )
         torch.manual_seed(42)
         batch_size = 8
         gen = ColorJitterGenerator(
@@ -549,8 +552,10 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         )
 
     def test_same_on_batch(self, device, dtype):
-        if "cuda" in str(device) or dtype == torch.float64:
-            pytest.skip("AssertionError: cannot reproduce the same result")
+        if device.type != "cpu" or dtype != torch.float32:
+            pytest.skip(
+                "Random parameters are device- and dtype-dependent; expected values were computed on CPU float32"
+            )
         torch.manual_seed(42)
         batch_size = 8
         gen = ColorJitterGenerator(
@@ -1482,6 +1487,7 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             (200, 200, 1, torch.tensor([0.0, 1.0]), None),
             (200, 200, 1, None, torch.tensor([-1.0, 1.0])),
             (200, 200, 1, None, torch.tensor([0.0, 2.0])),
+            (200, 200, 1, None, torch.tensor([1.0, 1.0])),
         ],
     )
     @pytest.mark.parametrize("same_on_batch", [True, False])
@@ -1493,6 +1499,23 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
                 beta=(beta.to(device=device, dtype=dtype) if isinstance(beta, (Tensor)) else beta),
                 cut_size=(cut_size.to(device=device, dtype=dtype) if isinstance(cut_size, (Tensor)) else cut_size),
             )(torch.Size([8, 3, height, width]), same_on_batch=same_on_batch)
+
+    def test_a_minimum_cut_size_of_one_is_rejected_by_name_4439(self, device, dtype):
+        # kornia#4439: cut_size clamps lambda, so (1.0, 1.0) forced lambda = 1 and built an inverted,
+        # zero-size box that silently made the augmentation an identity.
+        with pytest.raises(ValueError, match="forces lambda = 1, which cuts nothing"):
+            CutmixGenerator(cut_size=torch.tensor([1.0, 1.0], device=device, dtype=dtype))
+
+    def test_a_larger_cut_size_gives_a_smaller_cut_4439(self, device, dtype):
+        side = []
+        for cut_size in ((0.1, 0.1), (0.9, 0.9)):
+            torch.manual_seed(0)
+            params = CutmixGenerator(cut_size=torch.tensor(cut_size, device=device, dtype=dtype), p=1.0)(
+                torch.Size([4, 3, 60, 80])
+            )
+            box = params["crop_src"][0, 0]
+            side.append(float(box[:, 0].max() - box[:, 0].min()))
+        assert side[0] > side[1]
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -1554,3 +1577,37 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
         assert res.keys() == expected.keys(), res.keys()
         assert_close(res["mix_pairs"], expected["mix_pairs"], rtol=1e-4, atol=1e-4)
         assert_close(res["crop_src"], expected["crop_src"], rtol=1e-4, atol=1e-4)
+
+
+class TestGaussianBlurGenBufferHygiene:
+    # `sigma` used to be a plain attribute when passed as a Tensor -- invisible to
+    # state_dict() and to Module.to()/.half()/.cuda() (make_samplers compensated with
+    # its own inline `.to()`, so this was never a crash risk, just missing buffer
+    # hygiene). A plain (min, max) tuple of Python floats has no device/dtype and stays
+    # a plain attribute, which is correct.
+    def test_tensor_sigma_is_a_registered_buffer(self, device, dtype):
+        gen = RandomGaussianBlurGenerator(sigma=torch.tensor([0.1, 2.0]))
+        # persistent=False -> visible via named_buffers() but excluded from
+        # state_dict(), as in the buffer fixes #4079 and #4319 (keeps checkpoint
+        # keys unchanged); not every kornia buffer is non-persistent.
+        assert "sigma" in dict(gen.named_buffers())
+        assert "sigma" not in gen.state_dict()
+
+        # RandomGeneratorBase.to() is a special-cased override (see its own "TODO:
+        # refine the logic with module.to()") that only rebuilds sigma_sampler via
+        # make_samplers() -- it never calls nn.Module.to(), so calling it directly on
+        # a standalone generator does NOT exercise the buffer-move machinery this fix
+        # relies on. The real path this fix targets is a PARENT module's .to()/.half(),
+        # which nn.Module recurses into via `_apply()` (not `.to()`) on every
+        # submodule -- including this generator when assigned as `_param_generator`,
+        # exactly how RandomGaussianBlur uses it. Exercise that real path directly.
+        aug = RandomGaussianBlur((3, 3), sigma=torch.tensor([0.1, 2.0]))
+        moved = aug.to(device=device, dtype=dtype)
+        moved_sigma = moved._param_generator.sigma
+        assert moved_sigma.device == torch.tensor(0.0, device=device).device
+        assert moved_sigma.dtype == dtype
+
+    def test_tuple_sigma_stays_a_plain_attribute(self):
+        gen = RandomGaussianBlurGenerator(sigma=(0.1, 2.0))
+        assert "sigma" not in dict(gen.named_buffers())
+        assert gen.sigma == (0.1, 2.0)

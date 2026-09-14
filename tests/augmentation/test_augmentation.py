@@ -15,7 +15,10 @@
 # limitations under the License.
 #
 
+import copy
+import io
 import os
+import pickle
 import sys
 from typing import Any, Dict, Optional, Tuple, Type
 from unittest.mock import patch
@@ -77,7 +80,7 @@ from kornia.augmentation import (
 )
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
-from kornia.core._compat import torch_version, torch_version_le
+from kornia.core._compat import torch_version
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
 
@@ -2113,6 +2116,38 @@ class TestColorJitter(BaseTester):
         self.assert_close(f(input), expected)
         self.assert_close(f(input), expected)
         self.assert_close(f.transform_matrix, expected_transform)
+
+    @pytest.mark.parametrize(
+        "jitter_kwargs,order",
+        [
+            ({"brightness": (1.2, 1.2)}, (0,)),
+            ({"contrast": (1.2, 1.2)}, (1,)),
+            ({"saturation": (1.2, 1.2)}, (2,)),
+            ({"hue": (0.1, 0.1)}, (3,)),
+        ],
+        ids=["brightness", "contrast", "saturation", "hue"],
+    )
+    def test_compile_uses_helpers(self, device, dtype, jitter_kwargs, order):
+        compiled_graphs = []
+
+        def backend(graph_module, _example_inputs):
+            compiled_graphs.append(graph_module)
+            return graph_module.forward
+
+        input = torch.tensor(
+            [[[[0.1, 0.2], [0.3, 0.4]], [[0.2, 0.4], [0.6, 0.8]], [[0.9, 0.7], [0.5, 0.3]]]],
+            device=device,
+            dtype=dtype,
+        )
+        f = ColorJitter(**jitter_kwargs, p=1.0, order=order)
+        params = f.forward_parameters(input.shape)
+        expected = f(input, params=params)
+        assert not torch.equal(expected, input)
+
+        torch._dynamo.reset()
+        f.compile(fullgraph=True, backend=backend)
+        self.assert_close(f(input, params=params), expected)
+        assert len(compiled_graphs) == 1
 
     @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
@@ -4223,6 +4258,92 @@ class TestRandomSaltAndPepperNoise(BaseTester):
 
 
 class TestRandomGaussianIllumination(BaseTester):
+    def _roundtrip(self, aug, serializer):
+        if serializer == "pickle":
+            return pickle.loads(pickle.dumps(aug))  # noqa: S301
+        if serializer == "torch":
+            buffer = io.BytesIO()
+            torch.save(aug, buffer)
+            buffer.seek(0)
+            return torch.load(buffer, weights_only=False)
+        return copy.deepcopy(aug)
+
+    @pytest.mark.parametrize("serializer", ["pickle", "torch", "deepcopy"])
+    @pytest.mark.parametrize("after_forward", [False, True])
+    @pytest.mark.parametrize("shape,keepdim", [((2, 3, 6, 8), False), ((1, 6, 8), True)])
+    def test_serialization_roundtrip(self, device, dtype, serializer, after_forward, shape, keepdim):
+        input = torch.full(shape, 0.5, device=device, dtype=dtype)
+        original = input.clone()
+        aug = RandomGaussianIllumination(gain=0.25, sign=1.0, p=1.0, same_on_batch=True, keepdim=keepdim)
+        if after_forward:
+            aug(input)
+
+        restored = self._roundtrip(aug, serializer)
+        assert isinstance(restored, RandomGaussianIllumination)
+        assert repr(restored) == repr(aug)
+        assert restored.keepdim == aug.keepdim
+        assert restored._params.keys() == aug._params.keys()
+        for key in aug._params:
+            self.assert_close(restored._params[key], aug._params[key])
+
+        # Replay the restored state, rather than passing the original module's saved draw.
+        batch_shape = torch.Size(shape if len(shape) == 4 else (1, *shape))
+        params = copy.deepcopy(restored._params) if after_forward else aug.forward_parameters(batch_shape)
+        expected = aug(input, params=params)
+        actual = restored(input, params=params)
+        self.assert_close(actual, expected)
+        assert actual.shape == input.shape
+        assert actual.device == device
+        assert actual.dtype == dtype
+        assert not torch.equal(actual, input)
+        self.assert_close(input, original, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_input_preserved(self, device, dtype, batch_prob):
+        input = torch.tensor([0.1, 0.4, 0.7, 0.9], device=device, dtype=dtype).reshape(1, 1, 2, 2).repeat(2, 1, 1, 1)
+        original = input.clone()
+        aug = RandomGaussianIllumination(p=0.5)
+        params = aug.forward_parameters(input.shape)
+        # Deliberately keep generator output on CPU, including for accelerator inputs.
+        gradient = torch.tensor([-0.2, 0.2, 0.5, -0.3]).reshape(1, 1, 2, 2).repeat(2, 1, 1, 1)
+        params["gradient"] = gradient
+        params["batch_prob"] = torch.tensor(batch_prob)
+        expected = torch.where(
+            params["batch_prob"].to(device).view(2, 1, 1, 1),
+            (original + gradient.to(device=device, dtype=dtype)).clamp(0, 1),
+            original,
+        )
+        actual = aug(input, params=params)
+        self.assert_close(actual, expected)
+        self.assert_close(input, original, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("serializer", ["pickle", "torch"])
+    def test_compile_after_serialization(self, device, dtype, serializer, torch_optimizer):
+        compiled_graphs = []
+        executions = []
+
+        def backend(graph_module, _example_inputs):
+            compiled_graphs.append(graph_module)
+
+            def execute(*args):
+                executions.append(True)
+                return graph_module.forward(*args)
+
+            return execute
+
+        input = torch.full((2, 3, 6, 8), 0.5, device=device, dtype=dtype)
+        original = input.clone()
+        aug = RandomGaussianIllumination(gain=0.25, sign=1.0, p=1.0)
+        expected = aug(input)
+        restored = self._roundtrip(aug, serializer)
+        params = copy.deepcopy(restored._params)
+        assert restored.compile(fullgraph=True, backend=backend) is restored
+        for _ in range(2):
+            self.assert_close(restored(input, params=params), expected)
+        assert len(compiled_graphs) == 1
+        assert len(executions) == 2
+        self.assert_close(input, original, rtol=0, atol=0)
+
     def _get_expected(self, device, dtype):
         return torch.tensor(
             [
@@ -4303,9 +4424,11 @@ class TestRandomGaussianIllumination(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):
         input_tensor = torch.ones(1, 3, 3, 3, device=device, dtype=dtype) * 0.5
         aug = RandomGaussianIllumination(gain=0.5, p=1.0)
+        params = aug.forward_parameters(input_tensor.shape)
+        expected = aug(input_tensor, params=params)
         aug = aug.compile(fullgraph=True)
-        actual = aug(input_tensor)
-        assert actual.shape == input_tensor.shape
+        actual = aug(input_tensor, params=params)
+        self.assert_close(actual, expected)
 
 
 class TestRandomLinearIllumination(BaseTester):
@@ -4509,6 +4632,25 @@ class TestRandomChannelDropout(BaseTester):
         output_tensor = transform(input_tensor)
         self.assert_close(output_tensor[0], output_tensor[1])
 
+    def test_fill_value_is_a_registered_buffer(self, device, dtype):
+        # `fill_value` used to be a plain attribute -- invisible to state_dict() and to
+        # Module.to()/.half()/.cuda() (apply_transform compensated with its own inline
+        # `.to()`, so this was never a crash risk, just missing buffer hygiene).
+        aug = RandomChannelDropout(fill_value=0.3, p=1.0)
+        # persistent=False -> visible via named_buffers()/.to() but excluded from
+        # state_dict(), as in the buffer fixes #4079 and #4319 (keeps checkpoint
+        # keys unchanged); not every kornia buffer is non-persistent.
+        assert "fill_value" in dict(aug.named_buffers())
+        assert "fill_value" not in aug.state_dict()
+
+        moved = aug.to(device=device, dtype=dtype)
+        assert moved.fill_value.device.type == torch.device(device).type
+        assert moved.fill_value.dtype == dtype
+        # the moved buffer is the value the forward actually fills with
+        out = moved(torch.zeros(1, 3, 8, 8, device=device, dtype=dtype))
+        assert (out == moved.fill_value).any()
+        assert out.max() == moved.fill_value
+
 
 class TestNormalize(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
@@ -4529,7 +4671,7 @@ class TestNormalize(BaseTester):
     )
     def test_random_normalize_different_parameter_types(self, mean, std):
         f = Normalize(mean=mean, std=std, p=1)
-        data = torch.ones(2, 3, 256, 313)
+        data = torch.ones(2, 3, 16, 17)
         if isinstance(mean, float):
             expected = (data - torch.as_tensor(mean)) / torch.as_tensor(std)
         else:
@@ -4727,11 +4869,30 @@ class TestRandomElasticTransform(BaseTester):
                 assert labels_transformed[to_apply].ne(labels[to_apply]).any()
 
 
-class TestRandomBoxBlur:
+class TestRandomBoxBlur(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomBoxBlur(p=1.0)
         assert img.shape == aug(img).shape
+
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_normalized_selects_the_separable_path(self, normalized, device, dtype):
+        from kornia.filters import box_blur
+
+        torch.manual_seed(0)
+        img = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        out = RandomBoxBlur((3, 3), normalized=normalized, p=1.0)(img.clone())
+
+        expected = box_blur(img, (3, 3), border_type="reflect", separable=normalized)
+        torch.testing.assert_close(out, expected, rtol=0.0, atol=0.0)
+
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_output_is_the_window_mean_for_either_setting(self, normalized, device, dtype):
+        torch.manual_seed(0)
+        img = torch.rand(1, 1, 6, 8, device=device, dtype=dtype)
+        out = RandomBoxBlur((3, 3), normalized=normalized, p=1.0)(img.clone())
+
+        self.assert_close(out[0, 0, 2, 2], img[0, 0, 1:4, 1:4].mean())
 
 
 class TestPadTo(BaseTester):
@@ -4815,6 +4976,28 @@ class TestRandomPlasma:
         aug = RandomPlasmaContrast(p=1.0).to(device)
         out = aug(img)
         assert out.shape == (2, 3, 4, 5)
+
+    @pytest.mark.parametrize(
+        "augmentation_cls",
+        [
+            RandomPlasmaBrightness,
+            RandomPlasmaContrast,
+            RandomPlasmaShadow,
+        ],
+    )
+    def test_params_replay_4445(self, augmentation_cls, device, dtype):
+        torch.manual_seed(0)
+
+        input = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        aug = augmentation_cls(p=1.0).to(device)
+
+        output = aug(input)
+        params = aug._params
+
+        torch.manual_seed(123)
+        replayed = aug(input, params=params)
+
+        assert torch.equal(output, replayed)
 
 
 class TestPlanckianJitter(BaseTester):
@@ -5308,10 +5491,53 @@ class TestRandomRain(BaseTester):
 
             assert err_msg in str(errinfo)
 
+    @pytest.mark.parametrize(
+        "drop_height,drop_width,error_message",
+        [
+            (
+                (5, 5),
+                (1, 1),
+                "Height of drop should be greater than zero and less than image height.",
+            ),
+            ((1, 1), (7, 7), "Width of drop should be less than image width."),
+            ((1, 1), (-7, -7), "Width of drop should be less than image width."),
+        ],
+    )
+    def test_drop_size_boundaries(self, drop_height, drop_width, error_message, device, dtype):
+        from kornia.core.exceptions import BaseError
+
+        input_data = torch.zeros(1, 3, 5, 7, device=device, dtype=dtype)
+        aug = RandomRain(p=1.0, drop_height=drop_height, drop_width=drop_width, number_of_drops=(1, 1))
+
+        with pytest.raises(BaseError) as errinfo:
+            aug(input_data)
+
+        assert str(errinfo.value) == error_message
+
+    def test_drop_size_immediately_inside_boundaries(self, device, dtype):
+        input_data = torch.zeros(1, 3, 5, 7, device=device, dtype=dtype)
+        aug = RandomRain(p=1.0, drop_height=(4, 4), drop_width=(6, 6), number_of_drops=(1, 1))
+
+        output_data = aug(input_data)
+
+        assert output_data.shape == input_data.shape
+
     def test_zero_probability(self, device):
         input_data = torch.rand(10, 3, 8, 8, device=device)
         aug = RandomRain(p=0.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
         aug(input_data)
+
+    def test_same_on_batch(self, device, dtype):
+        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(5, 10), same_on_batch=True)
+        input = torch.rand(1, 3, 10, 10, device=device, dtype=dtype).repeat(4, 1, 1, 1)
+        output = aug(input)
+        self.assert_close(output[0], output[1])
+        self.assert_close(output[1], output[2])
+        self.assert_close(output[2], output[3])
+        assert (aug._params["number_of_drops_factor"] == aug._params["number_of_drops_factor"][0]).all()
+        assert (aug._params["drop_height_factor"] == aug._params["drop_height_factor"][0]).all()
+        assert (aug._params["drop_width_factor"] == aug._params["drop_width_factor"][0]).all()
+        self.assert_close(aug._params["coordinates_factor"][0], aug._params["coordinates_factor"][1])
 
 
 class TestMultiprocessing:
@@ -5382,12 +5608,13 @@ class TestRandomJPEG(BaseTester):
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(
-    torch_version_le(2, 0, 1),
-    reason="Test requires distributed tensor support introduced in PyTorch > 2.0.1 for transformers clip model.",
-)
 class TestRandomDissolving(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
+
+    @pytest.fixture(autouse=True)
+    def _needs_diffusers(self):
+        # `diffusers` left the `dev` extra; skip rather than hit the LazyLoader prompt under --runslow.
+        pytest.importorskip("diffusers", reason='`diffusers` is not installed: pip install "kornia[sd]"')
 
     def test_batch_proc(self, device, dtype):
         images = torch.rand(4, 3, 16, 16)
@@ -5449,6 +5676,35 @@ class TestRandomThinPlateSpline(CommonTests):
         diffs = [(params["dst"][0] - params["dst"][j]).abs().sum().item() for j in range(1, 4)]
 
         assert any(d > 0 for d in diffs)
+
+    @pytest.mark.parametrize("batch_size", [0, 1, 4])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_zero_scale_parameters(self, batch_size, same_on_batch, device, dtype):
+        aug = self._augmentation_cls(scale=0.0, same_on_batch=same_on_batch, p=1.0)
+        aug.set_rng_device_and_dtype(device=device, dtype=dtype)
+
+        params = aug.generate_parameters((batch_size, 3, 6, 8))
+
+        assert params["dst"].shape == (batch_size, 5, 2)
+        assert params["dst"].device == device
+        assert params["dst"].dtype == dtype
+        self.assert_close(params["dst"], params["src"], atol=0, rtol=0)
+
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_zero_scale_identity(self, same_on_batch, device, dtype):
+        if dtype == torch.float16:
+            pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
+        # align_corners=False has a separate sampling-grid defect tracked in #3928.
+        aug = self._augmentation_cls(scale=0.0, align_corners=True, same_on_batch=same_on_batch, p=1.0)
+        image = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8) / 48
+        image = image.expand(2, 1, 6, 8).clone().requires_grad_()
+
+        output = aug(image)
+
+        self.assert_close(output, image)
+        self.assert_close(aug(image, params=aug._params), output)
+        output.sum().backward()
+        self.assert_close(image.grad, torch.ones_like(image))
 
     @pytest.mark.slow
     def _test_gradcheck_implementation(self, params):

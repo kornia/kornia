@@ -66,7 +66,7 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] =
     if temperature is None:
         temperature = torch.tensor(1.0)
     temperature = temperature.to(device=input.device, dtype=input.dtype)
-    x = input.view(batch_size, channels, -1)
+    x = input.reshape(batch_size, channels, -1)
 
     x_soft = F.softmax(x * temperature, dim=-1)
 
@@ -107,7 +107,7 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
     pos_x = grid[..., 0].reshape(-1)
     pos_y = grid[..., 1].reshape(-1)
 
-    input_flat = input.view(batch_size, channels, -1)
+    input_flat = input.reshape(batch_size, channels, -1)
 
     # Compute the expectation of the coordinates.
     expected_y = torch.sum(pos_y * input_flat, -1, keepdim=True)

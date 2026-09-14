@@ -91,8 +91,6 @@ class TestClosing(BaseTester):
         assert_close(
             closing(tensor, torch.ones_like(structural_element), structuring_element=structural_element),
             expected,
-            atol=1e-3,
-            rtol=1e-3,
         )
 
     def test_exception(self, device, dtype):
@@ -113,7 +111,6 @@ class TestClosing(BaseTester):
             test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert closing(tensor, test)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = closing
         op_script = torch.jit.script(op)

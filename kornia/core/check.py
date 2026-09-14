@@ -266,10 +266,10 @@ def KORNIA_UNWRAP(maybe_obj: Any, typ: Any) -> Any:
     return cast(typ, maybe_obj)
 
 
-T = TypeVar("T", bound=type)
+_T = TypeVar("_T", bound=type)
 
 
-def KORNIA_CHECK_TYPE(x: Any, typ: T | tuple[T, ...], msg: Optional[str] = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_TYPE(x: Any, typ: _T | tuple[_T, ...], msg: Optional[str] = None, raises: bool = True) -> bool:
     """Check the type of an aribratry variable.
 
     Args:

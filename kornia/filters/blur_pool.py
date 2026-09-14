@@ -247,7 +247,7 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
         This function is tested against https://github.com/adobe/antialiased-cnns.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/filtering_operators.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_operators.html>`__.
 
     Examples:
         >>> input = torch.eye(5)[None, None]
@@ -287,7 +287,7 @@ def max_blur_pool2d(
         This function is tested against https://github.com/adobe/antialiased-cnns.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/filtering_operators.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/filtering_operators.html>`__.
 
     Examples:
         >>> input = torch.eye(5)[None, None]

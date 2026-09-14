@@ -26,7 +26,7 @@ from kornia.core.download import hf_url, load_state_dict_from_url
 
 __all__ = ["YuNet"]
 
-url: Union[str, List[str]] = [
+_url: Union[str, List[str]] = [
     hf_url("yunet", "yunet_final.pth"),
     "https://github.com/kornia/data/raw/main/yunet_final.pth",
 ]
@@ -109,7 +109,7 @@ class YuNet(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = load_state_dict_from_url(url, map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(_url, map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

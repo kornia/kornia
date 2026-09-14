@@ -60,6 +60,8 @@ jobs:
           pytorch-device: ${{ inputs.pytorch-device }}
           pytest-extra: '--runslow -k "slow and not test_dynamo"'
           coverage-artifact: coverage-slow-${{ matrix.pytorch-dtype }}
+          # tests/filters/test_dissolving.py is slow-only and needs kornia[sd]
+          extra-install: sd
 
   dynamo:
     # Run all dynamo (torch.compile) related tests
@@ -116,6 +118,9 @@ jobs:
           restore-keys: ${{ inputs.cache-restore-keys }}
 
       - uses: ./.github/actions/coverage
+        env:
+          MKL_NUM_THREADS: "1"
+          OMP_NUM_THREADS: "1"
         with:
           python-version: ${{ inputs.python-version }}
           pytorch-dtype: ${{ matrix.pytorch-dtype }}
@@ -143,7 +148,7 @@ jobs:
         run: echo "name=py$(echo '${{ inputs.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.10.0
+        uses: prefix-dev/setup-pixi@v0.10.2
         with:
           pixi-version: v0.40.0
           cache: true

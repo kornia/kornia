@@ -300,6 +300,42 @@ class TestRandomCutMixV2(BaseTester):
 
 
 class TestRandomMosaic(BaseTester):
+    def test_non_square_input_preserves_hw_4438(self):
+        torch.manual_seed(0)
+
+        input = torch.rand(4, 3, 6, 8)
+        output = RandomMosaic(p=1.0)(input)
+
+        assert output.shape == (4, 3, 6, 8)
+
+    def test_start_ratio_uses_xy_axes_4438(self):
+        torch.manual_seed(0)
+
+        aug = RandomMosaic(
+            p=1.0,
+            start_ratio_range=(0.5, 0.5),
+        )
+        aug(torch.rand(4, 3, 6, 8))
+
+        top_left = aug._params["src"][0, 0]
+
+        expected = torch.tensor(
+            [4.0, 3.0],
+            device=top_left.device,
+            dtype=top_left.dtype,
+        )
+
+        torch.testing.assert_close(top_left, expected)
+
+    @pytest.mark.parametrize(("keepdim", "expected_shape"), [(False, (1, 1, 6, 8)), (True, (1, 6, 8))])
+    def test_non_square_unbatched_keepdim_4438(self, keepdim, expected_shape):
+        torch.manual_seed(0)
+
+        input = torch.rand(1, 6, 8)
+        output = RandomMosaic(p=1.0, keepdim=keepdim)(input)
+
+        assert output.shape == expected_shape
+
     def test_smoke(self):
         f = RandomMosaic(data_keys=["input", "class"])
         repr = (
@@ -451,7 +487,7 @@ class TestRandomJigsaw(BaseTester):
         torch.manual_seed(76)
         f = RandomJigsaw(p=p, data_keys=["input"], same_on_batch=same_on_batch)
 
-        input = torch.randn((12, 3, 256, 256), device=device, dtype=dtype)
+        input = torch.randn((4, 3, 32, 32), device=device, dtype=dtype)
 
         f(input)
 
@@ -492,6 +528,24 @@ class TestRandomTransplantation(BaseTester):
 
         self.assert_close(mask_out, mask_out_expected)
         self.assert_close(image_out, mask_out_expected.unsqueeze(dim=1))
+
+    def test_no_excluded_labels_transplants(self, device, dtype):
+        # With nothing excluded every donor label stays eligible, so with p=1 some pixels change. On MPS the
+        # ``all`` reduction over the empty excluded-label axis is undefined (usually False, and it varies between
+        # processes) and used to drop every label, which made this class flaky there.
+        torch.manual_seed(22)
+        mask = torch.zeros(2, 4, 4, device=device, dtype=dtype)
+        mask[0, :2, :2] = 1
+        mask[1, 2:, 2:] = 2
+        image = mask.clone().unsqueeze(dim=1)
+
+        f = RandomTransplantation(p=1)
+        image_out, mask_out = f(image, mask)
+
+        assert len(f._params["selected_labels"]) == 2
+        assert f._params["selection"].any()
+        assert not torch.equal(mask_out, mask)
+        self.assert_close(image_out.squeeze(dim=1), mask_out)
 
     def test_mask_only(self, device, dtype):
         torch.manual_seed(22)

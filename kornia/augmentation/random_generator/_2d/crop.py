@@ -256,7 +256,9 @@ class ResizedCropGenerator(CropGenerator):
 
         # torch.argmax is not reproducible across devices: https://github.com/pytorch/pytorch/issues/17738
         # Here, we will select the first occurrence of the duplicated elements.
-        cond_bool, argmax_dim1 = ((cond.cumsum(1) == 1) & cond.bool()).max(1)
+        # ``max`` over an integer (not bool) tensor: ONNX ``ReduceMax`` has no bool overload.
+        cond_bool, argmax_dim1 = ((cond.cumsum(1) == 1) & cond.bool()).int().max(1)
+        cond_bool = cond_bool.bool()
         h_out = h[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
         w_out = w[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
 

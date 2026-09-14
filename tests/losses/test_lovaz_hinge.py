@@ -63,7 +63,6 @@ class TestLovaszHingeLoss(BaseTester):
         loss = criterion(prediction, labels)
         self.assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         dtype = torch.float64
         num_classes = 1

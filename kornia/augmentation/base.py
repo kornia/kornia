@@ -52,8 +52,13 @@ class _BasicAugmentationBase(nn.Module):
     r"""_BasicAugmentationBase base class for customized augmentation implementations.
 
     Plain augmentation base class without the functionality of transformation matrix calculations.
-    By default, the random computations will be happened on CPU with ``torch.get_default_dtype()``.
-    To change this behaviour, please use ``set_rng_device_and_dtype``.
+
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
+
+    ``set_rng_device_and_dtype`` updates RNG-related state, but sampler migration and returned parameter
+    placement are not uniform across generators. See :doc:`/get-started/conventions` and the limitations
+    tracked in `#4415 <https://github.com/kornia/kornia/issues/4415>`_ and
+    `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
 
     For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
     implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
@@ -169,6 +174,13 @@ class _BasicAugmentationBase(nn.Module):
 
         Note:
             The generated random numbers are not reproducible across different devices and dtypes.
+
+        .. warning::
+            This updates both the gate and the parameter generator's samplers, but returned parameters
+            can be cast to a different device/dtype; inspecting ``_params`` alone does not reveal where
+            sampling occurred. Some classes fail after moving their samplers to an accelerator. Tracked in
+            `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the
+            :doc:`/get-started/conventions` page describes placement and the affected classes.
 
         """
         self.device = device
@@ -356,7 +368,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         not onnx-exportable.
         """
         if transformed.shape == not_transformed.shape and transformed.shape[0] == to_apply.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (len(transformed.shape) - 1)))
+            to_apply_expanded = to_apply.view(-1, *([1] * (len(transformed.shape) - 1))).to(transformed.device)
             return torch.where(to_apply_expanded, transformed, not_transformed)
         return transformed if bool(to_apply.any()) else not_transformed
 

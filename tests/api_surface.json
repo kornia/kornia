@@ -88,7 +88,6 @@
     "container"
   ],
   "kornia.color": [
-    "AUTUMN",
     "ApplyColorMap",
     "BgrToGrayscale",
     "BgrToRgb",
@@ -179,8 +178,13 @@
     "ONNXMixin",
     "ONNXRuntimeMixin",
     "TensorWrapper",
+    "download_file_from_url",
+    "download_hf_file",
     "external",
     "eye_like",
+    "hf_url",
+    "load_safetensors",
+    "load_state_dict_from_url",
     "vec_like"
   ],
   "kornia.enhance": [

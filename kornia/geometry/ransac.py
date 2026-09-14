@@ -25,7 +25,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.geometry.epipolar import find_essential, find_fundamental, sampson_epipolar_distance
+from kornia.geometry.epipolar import find_essential, find_fundamental, project_to_essential, sampson_epipolar_distance
 from kornia.geometry.homography import (
     find_homography_dlt,
     find_homography_dlt_iterated,
@@ -308,6 +308,13 @@ class RANSAC(nn.Module):
         model = self.polisher_solver(
             kp1_inl, kp2_inl, torch.ones(1, num_inl, dtype=kp1_inl.dtype, device=kp1_inl.device)
         )
+        # The polisher fits a fundamental matrix via the 8-point DLT, which does not enforce the
+        # essential-matrix constraint (two equal non-zero singular values and a zero singular value).
+        # Project it back onto the essential manifold so that downstream decompose_essential_matrix /
+        # motion_from_essential do not silently fail.
+        # See https://github.com/kornia/kornia/issues/3874
+        if self.model_type == "essential":
+            model = project_to_essential(model)
         return model
 
     def validate_inputs(self, kp1: torch.Tensor, kp2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> None:
@@ -405,4 +412,10 @@ class RANSAC(nn.Module):
                 if (i + 1) * self.batch_size >= new_max_iter:
                     break
         # local optimization with all inliers for better precision
+        # The best model may come from the 5-point minimal solver (find_essential), which is not
+        # guaranteed to return a matrix on the essential manifold. Project the returned model once
+        # instead of projecting every candidate inside the loop, so that model selection is unaffected.
+        # See https://github.com/kornia/kornia/issues/3874
+        if self.model_type == "essential":
+            best_model_total = project_to_essential(best_model_total[None])[0]
         return best_model_total, inliers_best_total

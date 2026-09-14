@@ -19,7 +19,7 @@ For the full self-contained reference with runnable examples, fetch [llms-full.t
 - [Conventions & Pitfalls](https://kornia.readthedocs.io/en/latest/get-started/conventions.html): the canonical conventions reference — read before generating Kornia code
 - [API Stability Policy](https://kornia.readthedocs.io/en/latest/get-started/stability.html): which modules are stable, and how deprecation works
 - [Installation](https://kornia.readthedocs.io/en/latest/get-started/installation.html): pip/conda/source installation
-- [Tutorials](https://kornia.github.io/tutorials/): runnable end-to-end examples
+- [Tutorials](https://www.kornia.org/tutorials/): runnable end-to-end examples
 
 ## Core API
 

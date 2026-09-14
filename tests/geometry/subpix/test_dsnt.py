@@ -80,6 +80,15 @@ class TestSpatialSoftmax2d(BaseTester):
         sums = actual.sum(-1).sum(-1)
         self.assert_close(sums, torch.ones_like(sums))
 
+    def test_non_contiguous(self, device, dtype):
+        input = torch.randn(2, 3, 4, 6, device=device, dtype=dtype).transpose(-2, -1)
+        assert not input.is_contiguous()
+
+        expected = kornia.geometry.subpix.spatial_softmax2d(input.contiguous())
+        actual = kornia.geometry.subpix.spatial_softmax2d(input)
+
+        self.assert_close(actual, expected)
+
     def test_dynamo(self, input, torch_optimizer):
         op = kornia.geometry.subpix.spatial_softmax2d
         op_optimized = torch_optimizer(op)
@@ -107,6 +116,17 @@ class TestSpatialExpectation2d(BaseTester):
         self.assert_close(actual_norm, expected_norm)
         actual_px = kornia.geometry.subpix.spatial_expectation2d(input, False)
         self.assert_close(actual_px, expected_px)
+
+    def test_non_contiguous(self, device, dtype):
+        input = torch.rand(2, 3, 4, 6, device=device, dtype=dtype)
+        input = input / input.sum(dim=(-2, -1), keepdim=True)
+        input = input.transpose(-2, -1)
+        assert not input.is_contiguous()
+
+        expected = kornia.geometry.subpix.spatial_expectation2d(input.contiguous())
+        actual = kornia.geometry.subpix.spatial_expectation2d(input)
+
+        self.assert_close(actual, expected)
 
     @pytest.mark.skip("After the op be optimized the results are not the same")
     def test_dynamo(self, dtype, device, torch_optimizer):

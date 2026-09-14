@@ -77,6 +77,27 @@ def test_negative_destination_raises(op_name, device, dtype):
 
 
 @pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
+def test_empty_destination_blames_an_integral_src_by_name(op_name, device):
+    """``grid_sample`` rejects an integral volume on both paths; the message must name ``src``.
+
+    Scoped away from MPS, whose ``grid_sample`` accepts an integral image and samples it back into
+    ``int64`` instead of rejecting it, so the non-empty half of the pairing does not hold there.
+    """
+    if device.type == "mps":
+        pytest.skip("MPS grid_sample accepts an integral image instead of rejecting it")
+    op = getattr(proj, op_name)
+    matrix_size = (3, 4) if op_name == "warp_affine3d" else (4, 4)
+    src = torch.zeros(1, 2, 3, 4, 5, device=device, dtype=torch.int64)
+    matrix = torch.eye(*matrix_size, device=device).unsqueeze(0)
+
+    # The non-empty path rejects it too, so the empty guard is not stricter.
+    with pytest.raises(RuntimeError) as full:
+        op(src, matrix, (1, 4, 5))
+    with pytest.raises(type(full.value), match="floating point src"):
+        op(src, matrix, (0, 4, 5))
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine3d", "warp_perspective3d"])
 def test_empty_destination_keeps_grid_sample_validation(op_name, device, dtype):
     src = torch.rand(2, 2, 3, 4, 5, device=device, dtype=dtype)
     matrix_size = (3, 4) if op_name == "warp_affine3d" else (4, 4)

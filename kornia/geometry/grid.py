@@ -20,6 +20,8 @@ from typing import Optional
 
 import torch
 
+from kornia.core.utils import is_compiling
+
 
 def create_meshgrid(
     height: int,
@@ -65,15 +67,33 @@ def create_meshgrid(
                   [1., 1.]]]])
 
     """
-    if not torch.jit.is_scripting() and torch.compiler.is_compiling():
-        # ``linspace`` specializes symbolic ``steps`` under export; ``arange`` retains the
-        # dynamic output length. Match ``linspace``'s default floating dtype when none is given.
-        arange_dtype = dtype if dtype is not None else torch.get_default_dtype()
-        xs = torch.arange(width, device=device, dtype=arange_dtype)
-        ys = torch.arange(height, device=device, dtype=arange_dtype)
-    else:
-        xs = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
-        ys = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
+    # Build the pixel ramp with ``arange`` in both eager and capture. ``linspace`` rounds its
+    # endpoint into the coordinate dtype first and fills the upper half of the ramp backwards from
+    # that rounded value, so its step is exactly 1 only while ``size - 1`` is an exactly
+    # representable integer -- ``size <= 2 ** p + 1`` for a ``p``-bit significand. Past that it
+    # lands one ulp off the correctly rounded column index. The bound is 257 in bfloat16 and 2049
+    # in float16, and 2 ** 24 + 1 / 2 ** 53 + 1 in float32/float64, so no non-half grid can move.
+    # Inductor lowers the same call to a per-index computation that rounds correctly, so eager and
+    # compiled grids disagreed by up to one ulp of the width. ``arange`` also retains the dynamic
+    # output length under export, where ``linspace`` specializes symbolic ``steps``. Match
+    # ``linspace``'s default floating dtype when none is given -- read off an empty tensor rather
+    # than via ``torch.get_default_dtype()``, for which TorchScript has no builtin. The empty
+    # tensor takes ``device`` so that the read depends on an argument: a no-input factory call is
+    # constant-folded by TorchScript's optimizing executor after the first run, which would freeze
+    # the ramp at whatever the default dtype happened to be on that call.
+    ramp_dtype = dtype if dtype is not None else torch.empty(0, device=device).dtype
+    # Normalizing at float16/bfloat16 rounds three times in eager -- once per op in
+    # ``(xs / (size - 1) - 0.5) * 2`` -- where inductor computes the chain in float32 and rounds
+    # once on store. Eager also materializes the half ramp before the capture branch widens it,
+    # while inductor folds that narrow-then-widen round trip away and keeps the exact index, so
+    # above ``2 ** p`` the two paths were dividing different numerators. Running the whole
+    # normalization in float32 and narrowing once removes both: the arithmetic is then the same
+    # on every path and only the final rounding is left. float32/float64 and the pixel ramp are
+    # bit-for-bit untouched, since neither widens.
+    widened = normalized_coordinates and ramp_dtype in (torch.float16, torch.bfloat16)
+    work_dtype = torch.float32 if widened else ramp_dtype
+    xs = torch.arange(width, device=device, dtype=work_dtype)
+    ys = torch.arange(height, device=device, dtype=work_dtype)
     # Fix TracerWarning
     # Note: keeping this formula inline avoids the extra tensors and shape checks incurred by
     #       normalize_pixel_coordinates. The two paths use the same singleton-centre policy.
@@ -83,31 +103,23 @@ def create_meshgrid(
     #     base_grid = K.geometry.normalize_pixel_coordinates(base_grid, height, width)
     # return torch.unsqueeze(base_grid.transpose(0, 1), dim=0)
     if normalized_coordinates:
-        if torch.jit.is_tracing() or torch.compiler.is_compiling():
-            # Graph capture needs the tensor form to keep a symbolic size dynamic. Low-precision
-            # floating types cannot represent every practical image size exactly (e.g. bfloat16
-            # rounds 257 to 256 and 299 to 300), so the size arithmetic runs in float32. Divide
-            # against the *unrounded* divisor and round the quotient, which is what eager does
-            # against its Python-int divisor: casting the divisor down first would round it into
-            # the coordinate dtype, which eager never does.
-            work_dtype = torch.float32 if xs.dtype in (torch.float16, torch.bfloat16) else xs.dtype
+        if not torch.jit.is_scripting() and (torch.jit.is_tracing() or is_compiling()):
+            # Graph capture needs the tensor form to keep a symbolic size dynamic. The ramp is
+            # already in ``work_dtype``, so the divisor is exact and the quotient no longer has
+            # to be rounded back down mid-expression.
             width_t = torch.scalar_tensor(width, device=xs.device, dtype=work_dtype)
             height_t = torch.scalar_tensor(height, device=ys.device, dtype=work_dtype)
-            xs_norm = xs.to(work_dtype) / (width_t - 1)
-            ys_norm = ys.to(work_dtype) / (height_t - 1)
-            if xs.is_floating_point():
-                # A widened half type rounds back down here, which is exactly where eager rounds.
-                # An integral grid dtype must instead stay promoted into the default float, as the
-                # eager true-division leaves it.
-                xs_norm = xs_norm.to(xs.dtype)
-                ys_norm = ys_norm.to(ys.dtype)
-            xs = torch.where(width_t > 1, (xs_norm - 0.5) * 2, torch.zeros_like(xs_norm))
-            ys = torch.where(height_t > 1, (ys_norm - 0.5) * 2, torch.zeros_like(ys_norm))
+            xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, xs * 0.0)
+            ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, ys * 0.0)
         else:
             # ``* 0.0`` rather than ``zeros_like`` so that a singleton axis follows the
             # same integer-to-float promotion the non-singleton branch performs.
             xs = (xs / (width - 1) - 0.5) * 2 if width > 1 else xs * 0.0
             ys = (ys / (height - 1) - 0.5) * 2 if height > 1 else ys * 0.0
+    if widened:
+        # The single rounding, after the whole normalization.
+        xs = xs.to(ramp_dtype)
+        ys = ys.to(ramp_dtype)
     # generate grid by stacking coordinates
     base_grid: torch.Tensor = torch.stack(torch.meshgrid([xs, ys], indexing="ij"), dim=-1)  # WxHx2
     return base_grid.permute(1, 0, 2).unsqueeze(0)  # 1xHxWx2
@@ -144,40 +156,34 @@ def create_meshgrid3d(
         grid tensor with shape :math:`(1, D, H, W, 3)`.
 
     """
-    if not torch.jit.is_scripting() and torch.compiler.is_compiling():
-        arange_dtype = dtype if dtype is not None else torch.get_default_dtype()
-        xs = torch.arange(width, device=device, dtype=arange_dtype)
-        ys = torch.arange(height, device=device, dtype=arange_dtype)
-        zs = torch.arange(depth, device=device, dtype=arange_dtype)
-    else:
-        xs = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
-        ys = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
-        zs = torch.linspace(0, depth - 1, depth, device=device, dtype=dtype)
+    # See ``create_meshgrid``: ``arange`` keeps eager and captured pixel ramps identical at
+    # float16/bfloat16, keeps the output length dynamic under export, and reads the default dtype
+    # off a ``device``-bearing empty tensor so TorchScript cannot constant-fold the read.
+    ramp_dtype = dtype if dtype is not None else torch.empty(0, device=device).dtype
+    # See ``create_meshgrid``: a normalized half-precision ramp is built and normalized in
+    # float32 and narrowed once, so eager and captured grids agree.
+    widened = normalized_coordinates and ramp_dtype in (torch.float16, torch.bfloat16)
+    work_dtype = torch.float32 if widened else ramp_dtype
+    xs = torch.arange(width, device=device, dtype=work_dtype)
+    ys = torch.arange(height, device=device, dtype=work_dtype)
+    zs = torch.arange(depth, device=device, dtype=work_dtype)
     # Fix TracerWarning
     if normalized_coordinates:
-        if torch.jit.is_tracing() or torch.compiler.is_compiling():
-            # See ``create_meshgrid``: low-precision dtypes round large sizes, so the size
-            # arithmetic runs in float32 and the quotient, not the divisor, is what gets cast down.
-            work_dtype = torch.float32 if xs.dtype in (torch.float16, torch.bfloat16) else xs.dtype
+        if not torch.jit.is_scripting() and (torch.jit.is_tracing() or is_compiling()):
             width_t = torch.scalar_tensor(width, device=xs.device, dtype=work_dtype)
             height_t = torch.scalar_tensor(height, device=ys.device, dtype=work_dtype)
             depth_t = torch.scalar_tensor(depth, device=zs.device, dtype=work_dtype)
-            xs_norm = xs.to(work_dtype) / (width_t - 1)
-            ys_norm = ys.to(work_dtype) / (height_t - 1)
-            zs_norm = zs.to(work_dtype) / (depth_t - 1)
-            if xs.is_floating_point():
-                # As in ``create_meshgrid``: round a widened half type back down, but leave an
-                # integral grid dtype promoted into the default float.
-                xs_norm = xs_norm.to(xs.dtype)
-                ys_norm = ys_norm.to(ys.dtype)
-                zs_norm = zs_norm.to(zs.dtype)
-            xs = torch.where(width_t > 1, (xs_norm - 0.5) * 2, torch.zeros_like(xs_norm))
-            ys = torch.where(height_t > 1, (ys_norm - 0.5) * 2, torch.zeros_like(ys_norm))
-            zs = torch.where(depth_t > 1, (zs_norm - 0.5) * 2, torch.zeros_like(zs_norm))
+            xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, xs * 0.0)
+            ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, ys * 0.0)
+            zs = torch.where(depth_t > 1, (zs / (depth_t - 1) - 0.5) * 2, zs * 0.0)
         else:
             xs = (xs / (width - 1) - 0.5) * 2 if width > 1 else xs * 0.0
             ys = (ys / (height - 1) - 0.5) * 2 if height > 1 else ys * 0.0
             zs = (zs / (depth - 1) - 0.5) * 2 if depth > 1 else zs * 0.0
+    if widened:
+        xs = xs.to(ramp_dtype)
+        ys = ys.to(ramp_dtype)
+        zs = zs.to(ramp_dtype)
     # generate grid by stacking coordinates
     base_grid = torch.stack(torch.meshgrid([zs, xs, ys], indexing="ij"), dim=-1)  # DxWxHx3
     return base_grid.permute(0, 2, 1, 3).unsqueeze(0)  # 1xDxHxWx3

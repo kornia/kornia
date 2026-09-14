@@ -21,7 +21,7 @@ import torch
 from kornia.feature.lightglue import LightGlue
 from kornia.feature.xfeat import InterpolateSparse2d, XFeat, XFeatModel
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_bicubic_2d_grid_sample, supports_bilinear_2d_grid_sample
 
 # ---------------------------------------------------------------------------
 # XFeatModel backbone tests
@@ -90,14 +90,21 @@ class TestXFeatModel(BaseTester):
 
 class TestInterpolateSparse2d(BaseTester):
     def test_smoke(self, device, dtype):
+        if not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("This device does not support bilinear interpolation for 2D grid_sample")
         interp = InterpolateSparse2d("bilinear").to(device)
         x = torch.rand(1, 32, 8, 8, device=device, dtype=dtype)
         pos = torch.zeros(1, 5, 2, device=device, dtype=dtype)
         out = interp(x, pos, 8, 8)
         assert out.shape == (1, 5, 32)
 
-    def test_cardinality(self, device, dtype):
-        interp = InterpolateSparse2d("bicubic").to(device)
+    @pytest.mark.parametrize("mode", ["bilinear", "bicubic"])
+    def test_cardinality(self, mode, device, dtype):
+        if mode == "bilinear" and not supports_bilinear_2d_grid_sample(device, dtype):
+            pytest.skip("This device does not support bilinear interpolation for 2D grid_sample")
+        if mode == "bicubic" and not supports_bicubic_2d_grid_sample(device, dtype):
+            pytest.skip("This device does not support bicubic interpolation for 2D grid_sample")
+        interp = InterpolateSparse2d(mode).to(device)
         B, C, H, W, N = 2, 16, 32, 48, 20
         x = torch.rand(B, C, H, W, device=device, dtype=dtype)
         pos = torch.rand(B, N, 2, device=device, dtype=dtype) * torch.tensor([W - 1, H - 1], device=device, dtype=dtype)
@@ -219,6 +226,21 @@ class TestXFeat(BaseTester):
         out = model.detectAndCompute(x)
         assert len(out) == 1
         assert out[0]["keypoints"].shape[-1] == 2
+
+    def test_pretrained_uses_kornia_downloader(self, monkeypatch):
+        # Going through kornia.core.download keeps torch.hub's progress line off
+        # stdout, which a bare torch.hub call would leak into doctests (#4005).
+        calls = []
+
+        def fake_download(url, **kwargs):
+            calls.append((url, kwargs))
+            return XFeat().net.state_dict()
+
+        monkeypatch.setattr("kornia.feature.xfeat.load_state_dict_from_url", fake_download)
+        model = XFeat.from_pretrained()
+
+        assert calls == [(XFeat.weights_url, {"file_name": "xfeat.pt"})]
+        assert not model.net.training
 
 
 # ---------------------------------------------------------------------------

@@ -29,6 +29,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
+from kornia.core import load_safetensors
 from kornia.models.kimi_vl import KimiVLConfig, KimiVLModel
 from kornia.models.kimi_vl.config import KimiVLProjectorConfig, MoonViTConfig
 
@@ -45,9 +46,6 @@ def test_kimi_vl_official_weights():
     if not weights_dir:
         pytest.skip("KIMI_VL_WEIGHTS_DIR is not set; skipping test_kimi_vl_official_weights")
 
-    safetensors_torch = pytest.importorskip("safetensors.torch")
-    load_file = safetensors_torch.load_file
-
     index_path = os.path.join(weights_dir, "model.safetensors.index.json")
 
     if not os.path.exists(index_path):
@@ -62,7 +60,7 @@ def test_kimi_vl_official_weights():
     state_dict = {}
     for shard in shards:
         shard_path = os.path.join(weights_dir, shard)
-        shard_weights = load_file(shard_path)
+        shard_weights = load_safetensors(shard_path)
         for k in vision_keys:
             if k in shard_weights:
                 state_dict[k] = shard_weights[k]

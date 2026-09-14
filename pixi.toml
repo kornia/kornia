@@ -10,7 +10,7 @@ platforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64", "win-64"]
 # ------------------------------------------------------------------------------
 
 [dependencies]
-python = ">=3.11,<3.14"
+python = ">=3.11,<3.15"
 uv = "*"
 tombi = "*"
 ty = ">=0.0.9,<0.0.10"
@@ -28,6 +28,7 @@ cuda = { features = ["cuda", "py311"], solve-group = "cuda" }
 py311 = { features = ["py311"], solve-group = "py311" }
 py312 = { features = ["py312"], solve-group = "py312" }
 py313 = { features = ["py313"], solve-group = "py313" }
+py314 = { features = ["py314"], solve-group = "py314" }
 
 # ------------------------------------------------------------------------------
 # Tasks (shared across environments)
@@ -38,28 +39,33 @@ py313 = { features = ["py313"], solve-group = "py313" }
 install = { cmd = "uv sync --extra dev", description = "Install dev dependencies" }
 install-docs = { cmd = "uv sync --extra dev --extra docs", description = "Install dev + docs dependencies" }
 # Tests - use env vars (KORNIA_TEST_DEVICE, KORNIA_TEST_DTYPE, KORNIA_TEST_RUNSLOW)
-test = { cmd = "uv run pytest -v tests/", description = "Run tests (configure via KORNIA_TEST_* env vars)" }
-test-f32 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DTYPE = "float32" } }
-test-f64 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DTYPE = "float64" } }
-test-slow = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_RUNSLOW = "true" } }
-test-quick = { cmd = "uv run pytest -v -m 'not (jit or grad or nn)' tests/" }
-test-half = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DTYPE = "float16,bfloat16" }, description = "Run CPU half-precision tests" }
+test = { cmd = "uv run pytest tests/", description = "Run tests (configure via KORNIA_TEST_* env vars)" }
+test-f32 = { cmd = "uv run pytest tests/", env = { KORNIA_TEST_DTYPE = "float32" } }
+test-f64 = { cmd = "uv run pytest tests/", env = { KORNIA_TEST_DTYPE = "float64" } }
+test-slow = { cmd = "uv run pytest tests/", env = { KORNIA_TEST_RUNSLOW = "true" } }
+test-quick = { cmd = "uv run pytest tests/" }
+test-half = { cmd = "uv run pytest tests/", env = { KORNIA_TEST_DTYPE = "float16,bfloat16" }, description = "Run CPU half-precision tests" }
+test-mps = { cmd = "uv run pytest tests/ --xfail-known-failures", env = { KORNIA_TEST_DEVICE = "mps", KORNIA_TEST_DTYPE = "float32" }, description = "Run blocking MPS float32 tests against the strict known-failure baseline (unset PYTORCH_ENABLE_MPS_FALLBACK)" }
 verify-delta = { cmd = "uv run python -m testing.verify_delta", description = "Diff failing-test sets vs origin/main on cpu/half/mps/inductor (usage: pixi run verify-delta [-- --only 'cpu float32'])" }
-test-module = { cmd = "uv run pytest -v", description = "Run tests for a specific module (usage: pixi run test-module tests/<module_path>, e.g., pixi run test-module tests/contrib/)" }
+test-module = { cmd = "uv run pytest", description = "Run tests for a specific module (usage: pixi run test-module tests/<module_path>, e.g., pixi run test-module tests/contrib/)" }
 # Quality
 lint = { cmd = "uv run pre-commit run ruff-check --all-files && uv run pre-commit run ruff-format --all-files" }
 pre-commit-all = { cmd = "uv run pre-commit run --all-files", description = "Run all repository pre-commit checks" }
 pre-commit-install = { cmd = "uv run pre-commit install", description = "Install the pre-commit Git hook" }
 typecheck = { cmd = "ty check kornia" }
-doctest = { cmd = "uv run pytest -v --doctest-modules kornia/ testing/precision.py" }
+doctest = { cmd = "uv run pytest --doctest-modules kornia/ testing/precision.py", description = "Run docstring examples; examples needing an uncached model checkpoint are skipped" }
+doctest-weights = { cmd = "uv run pytest --doctest-modules kornia/ testing/precision.py", env = { KORNIA_DOCTEST_DOWNLOAD = "1" }, description = "Run docstring examples, downloading pretrained weights when the cache misses (~838 MB cold)" }
 toml-fmt = { cmd = "tombi format", description = "Format TOML files" }
 toml-fmt-check = { cmd = "tombi format --check", description = "Check TOML formatting" }
 # Docs
 build-docs = { cmd = "uv run python -m sphinx -W -b html docs/source docs/build/html", depends-on = [
   "install-docs"
 ] }
+# Changelog tooling is isolated from Kornia's runtime and test dependencies.
+changelog-preview = { cmd = "uv tool run --from towncrier==25.8.0 towncrier build --draft --version Unreleased", description = "Preview pending release notes without changing files" }
+changelog-build = { cmd = "uv tool run --from towncrier==25.8.0 towncrier build --yes", description = "Assemble release notes (requires --version X.Y.Z); stages changelog and removes consumed fragments" }
 # Utility
-clean = { cmd = "find . -type f -name '*.pyc' -delete && find . -type d -name '__pycache__' -delete && rm -rf .venv .venv-py312 .venv-py313" }
+clean = { cmd = "find . -type f -name '*.pyc' -delete && find . -type d -name '__pycache__' -delete && rm -rf .venv .venv-py312 .venv-py313 .venv-py314" }
 
 # ------------------------------------------------------------------------------
 # Restrict CUDA feature to supported platforms only
@@ -73,13 +79,13 @@ platforms = ["linux-64", "linux-aarch64", "win-64"]
 # ------------------------------------------------------------------------------
 
 [feature.cuda.tasks]
-install = { cmd = "uv sync --extra dev && uv pip install --reinstall torch torchvision --index pytorch-cu121", description = "Install dev dependencies (CUDA PyTorch)" }
-install-docs = { cmd = "uv sync --extra dev --extra docs --extra x && uv pip install --reinstall torch torchvision --index pytorch-cu121", description = "Install dev + docs (CUDA PyTorch)" }
+install = { cmd = "uv sync --extra dev && uv pip install --reinstall torch --index pytorch-cu121", description = "Install dev dependencies (CUDA PyTorch)" }
+install-docs = { cmd = "uv sync --extra dev --extra docs && uv pip install --reinstall torch --index pytorch-cu121", description = "Install dev + docs (CUDA PyTorch)" }
 # CUDA test tasks
-test-cuda = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DEVICE = "cuda" }, description = "Run tests on CUDA" }
-test-cuda-f32 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DEVICE = "cuda", KORNIA_TEST_DTYPE = "float32" } }
-test-cuda-f64 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DEVICE = "cuda", KORNIA_TEST_DTYPE = "float64" } }
-test-cuda-half = { cmd = "uv run pytest -v tests/ --isolate-half-precision", env = { KORNIA_TEST_DEVICE = "cuda", KORNIA_TEST_DTYPE = "float16,bfloat16" }, description = "Run half-precision CUDA tests with per-test subprocess isolation" }
+test-cuda = { cmd = "uv run pytest tests/", env = { KORNIA_TEST_DEVICE = "cuda" }, description = "Run tests on CUDA" }
+test-cuda-f32 = { cmd = "uv run pytest tests/", env = { KORNIA_TEST_DEVICE = "cuda", KORNIA_TEST_DTYPE = "float32" } }
+test-cuda-f64 = { cmd = "uv run pytest tests/", env = { KORNIA_TEST_DEVICE = "cuda", KORNIA_TEST_DTYPE = "float64" } }
+test-cuda-half = { cmd = "uv run pytest tests/ --isolate-half-precision", env = { KORNIA_TEST_DEVICE = "cuda", KORNIA_TEST_DTYPE = "float16,bfloat16" }, description = "Run half-precision CUDA tests with per-test subprocess isolation" }
 
 # ------------------------------------------------------------------------------
 # Python version features (for CI matrix)
@@ -99,3 +105,9 @@ python = "3.13.*"
 
 [feature.py313.activation.env]
 UV_PROJECT_ENVIRONMENT = ".venv-py313"
+
+[feature.py314.dependencies]
+python = "3.14.*"
+
+[feature.py314.activation.env]
+UV_PROJECT_ENVIRONMENT = ".venv-py314"

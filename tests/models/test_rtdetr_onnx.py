@@ -21,6 +21,9 @@ import pytest
 
 from kornia.models.rt_detr.model import RTDETR, RTDETRConfig
 
+# Every test in this module must stay device-free: the mark deselects the whole file on non-CPU devices.
+pytestmark = pytest.mark.device_agnostic
+
 
 @pytest.mark.timeout(120)
 def test_rtdetr_to_onnx(tmp_path):

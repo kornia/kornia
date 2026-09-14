@@ -263,8 +263,11 @@ class RandomTransplantation(MixAugmentationBaseV2):
                 current_mask = mask[params["donor_indices"][d]]
                 labels = current_mask.unique()
 
-                # Remove any label which is part of the excluded labels
-                labels = labels[(labels.view(1, -1) != self.excluded_labels.view(-1, 1)).all(dim=0)]
+                # Remove any label which is part of the excluded labels. Skip the reduction when there is nothing
+                # to exclude: on MPS (PyTorch 2.9) ``all`` over an empty axis yields an undefined result, usually
+                # False, where CPU and CUDA return True, and the filter would then discard every label.
+                if self.excluded_labels.numel() > 0:
+                    labels = labels[(labels.view(1, -1) != self.excluded_labels.view(-1, 1)).all(dim=0)]
 
                 if len(labels) > 0:
                     selected_label = labels[torch.randperm(len(labels))[0]]

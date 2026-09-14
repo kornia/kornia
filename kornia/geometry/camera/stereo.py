@@ -19,6 +19,7 @@ from typing import Any
 
 import torch
 
+from kornia.core.utils import is_exporting
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
 
@@ -50,9 +51,60 @@ class StereoException(Exception):
 class StereoCamera:
     """Represent a horizontal stereo camera setup for depth estimation.
 
+    Convention:
+        - the two arguments are the **rectified projection matrices** of the left and the right camera, each of
+          shape :math:`(B, 3, 4)`: ``[[fx, 0, cx, 0], [0, fy, cy, 0], [0, 0, 1, 0]]`` for the left camera, and
+          the same matrix with ``-tx * fx`` in the last column for the right one. The constructor requires the
+          two to be equal outside that last column.
+        - the baseline is read back from that column as ``tx = -P_right[0, 3] / fx``, and :attr:`Q` is built
+          from ``fx``, ``fy``, ``cx_left``, ``cy`` and that ``tx``. Note which focal length sits in which row:
+          ``Q[0, 0]`` carries ``fy`` and ``Q[1, 1]`` carries ``fx``, while the homogeneous divide is by
+          ``-fy * disparity``, so the two cancel and the first output coordinate ends up scaled by ``1 / fx``
+          and the second by ``1 / fy``.
+        - a point cloud is a homogeneous transform by :attr:`Q` followed by the divide by ``W``. When
+          ``abs(W) > 1e-8``, an overall sign on :attr:`Q` cancels, so :attr:`Q` and its negation return the
+          same points. For ``abs(W) <= 1e-8``, the homogeneous conversion returns the numerator unchanged,
+          and the two matrices return opposing values. :attr:`Q` is exactly the matrix written out on the
+          :doc:`/geometry.camera.stereo` page, above this docstring, evaluated at the page's own ``tx``: the
+          page's :math:`P_1` carries ``fx * tx`` in its last column, so that ``tx`` is ``P_right[0, 3] / fx``,
+          which the constructor rejects only when it is **positive** (``tx = 0`` and a batch with one positive
+          product pass, see the second warning below). The :attr:`tx` attribute exposes the negation of that
+          symbol, ``-P_right[0, 3] / fx``; substituting the attribute's value for the page's ``tx`` gives
+          neither :attr:`Q` nor its negation, because the page's last row carries no ``tx`` and does not flip.
+        - a disparity map is channels-**last**, :math:`(B, H, W, 1)`, for
+          :meth:`~kornia.geometry.camera.stereo.StereoCamera.reproject_disparity_to_3D` and for the module-level
+          :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` alike -- the :math:`(B, 1, H, W)`
+          layout the rest of kornia uses for images is rejected -- and the returned point cloud is
+          :math:`(B, H, W, 3)`.
+        - the pixels are the integer pixel centres that :func:`~kornia.geometry.grid.create_meshgrid`
+          enumerates, described in the Convention block on
+          :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
+        - ``u`` is the **column** index and ``v`` the **row** index, as in ``cv2.reprojectImageTo3D``:
+          :math:`X = (u - c_x) Z / f_x` and :math:`Y = (v - c_y) Z / f_y`.
+
+    .. warning::
+        Several of the constructor guards do not enforce the contract above. A differing ``cx`` is
+        **rejected**, even though :attr:`cx_left` and :attr:`cx_right` are exposed separately and
+        ``Q[3, 3]`` carries ``fy * (cx_left - cx_right)`` for exactly that case, so that factor is zero on
+        any rig the constructor accepts. The ``tx * fx < 0`` guard is quantified with ``torch.all``, so a
+        batch whose second element has the two cameras the wrong way round is accepted and reprojects that
+        element behind the camera. And ``tx = 0`` passes the same guard, collapsing ``Q`` so that every
+        disparity reprojects to the origin with no ``inf`` to notice. These guard issues are tracked as
+        `#4270 <https://github.com/kornia/kornia/issues/4270>`_ and pinned by
+        ``test_wart_stereo_rejects_differing_principal_points_4270``,
+        ``test_wart_stereo_accepts_a_batch_with_one_positive_tx_fx_4270``,
+        ``test_wart_stereo_tx_zero_collapses_every_point_to_the_origin_4270`` in
+        ``tests/geometry/camera/test_stereo.py``.
+
+    .. warning::
+        The module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` is rendered on
+        :doc:`/geometry.camera.stereo` but is in no ``__all__``, so it is not reachable as
+        ``kornia.geometry.reproject_disparity_to_3D``. Tracked as
+        `#4275 <https://github.com/kornia/kornia/issues/4275>`_.
+
     Args:
-        rectified_left_camera: The intrinsic matrix for the left camera.
-        rectified_right_camera: The intrinsic matrix for the right camera.
+        rectified_left_camera: The rectified left camera projection matrix of shape :math:`(B, 3, 4)`.
+        rectified_right_camera: The rectified right camera projection matrix of shape :math:`(B, 3, 4)`.
     """
 
     def __init__(self, rectified_left_camera: torch.Tensor, rectified_right_camera: torch.Tensor) -> None:
@@ -96,14 +148,15 @@ class StereoCamera:
                 f"Expected 'rectified_right_camera' to have 3 dimension. Got {rectified_right_camera.shape}."
             )
 
-        if rectified_left_camera.shape[:1] == (3, 4):
+        if rectified_left_camera.shape[-2:] != (3, 4):
             raise StereoException(
-                f"Expected each 'rectified_left_camera' to be of shape (3, 4).Got {rectified_left_camera.shape[:1]}."
+                f"Expected each 'rectified_left_camera' to be of shape (3, 4). Got {rectified_left_camera.shape[-2:]}."
             )
 
-        if rectified_right_camera.shape[:1] == (3, 4):
+        if rectified_right_camera.shape[-2:] != (3, 4):
             raise StereoException(
-                f"Expected each 'rectified_right_camera' to be of shape (3, 4).Got {rectified_right_camera.shape[:1]}."
+                "Expected each 'rectified_right_camera' to be of shape (3, 4). "
+                f"Got {rectified_right_camera.shape[-2:]}."
             )
 
         # Ensure same devices for cameras.
@@ -123,7 +176,10 @@ class StereoCamera:
             )
 
         # Ensure all intrinsics parameters (fx, fy, cx, cy) are the same in both cameras.
-        if not torch.all(torch.eq(rectified_left_camera[..., :, :3], rectified_right_camera[..., :, :3])):
+        # The check reads the data, which graph capture cannot do; skip it under export.
+        if not is_exporting() and not torch.all(
+            torch.eq(rectified_left_camera[..., :, :3], rectified_right_camera[..., :, :3])
+        ):
             raise StereoException(
                 "Expected 'left_rectified_camera' and 'rectified_right_camera' to have"
                 "same parameters except for the last column."
@@ -132,7 +188,7 @@ class StereoCamera:
 
         # Ensure that tx * fx is negative and exists.
         tx_fx = rectified_right_camera[..., 0, 3]
-        if torch.all(torch.gt(tx_fx, 0)):
+        if not is_exporting() and tx_fx.numel() > 0 and torch.all(torch.gt(tx_fx, 0)):
             raise StereoException(f"Expected :math:`T_x * f_x` to be negative. Got {tx_fx}.")
 
     @property
@@ -249,8 +305,10 @@ class StereoCamera:
     def reproject_disparity_to_3D(self, disparity_tensor: torch.Tensor) -> torch.Tensor:
         r"""Reproject the disparity torch.Tensor to a 3D point cloud.
 
+        See the Convention block on :class:`~kornia.geometry.camera.stereo.StereoCamera`.
+
         Args:
-            disparity_tensor: Disparity torch.Tensor of shape :math:`(B, 1, H, W)`.
+            disparity_tensor: Disparity torch.Tensor of shape :math:`(B, H, W, 1)`.
 
         Returns:
             The 3D point cloud of shape :math:`(B, H, W, 3)`
@@ -263,7 +321,7 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor) -> None:
     r"""Ensure correct user provided correct disparity torch.Tensor.
 
     Args:
-        disparity_tensor: The disparity torch.Tensor of shape :math:`(B, 1, H, W)`.
+        disparity_tensor: The disparity torch.Tensor of shape :math:`(B, H, W, 1)`.
 
     """
     if not isinstance(disparity_tensor, torch.Tensor):
@@ -276,7 +334,8 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor) -> None:
 
     if disparity_tensor.shape[-1] != 1:
         raise StereoException(
-            "Expected dimension 1 of 'disparity_tensor' to be 1 for as single channeled disparity map."
+            "Expected 'disparity_tensor' to have channels-last shape (B, H, W, 1) "
+            "with a single channel in the last dimension. "
             f"Got {disparity_tensor.shape}."
         )
 
@@ -313,6 +372,8 @@ def _check_Q_matrix(Q_matrix: torch.Tensor) -> None:
 def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor) -> torch.Tensor:
     r"""Reproject the disparity torch.Tensor to a 3D point cloud.
 
+    See the Convention block on :class:`~kornia.geometry.camera.stereo.StereoCamera`.
+
     Args:
         disparity_tensor: Disparity torch.Tensor of shape :math:`(B, H, W, 1)`.
         Q_matrix: torch.Tensor of Q matrices of shapes :math:`(B, 4, 4)`.
@@ -330,8 +391,13 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
 
     uv = create_meshgrid(rows, cols, normalized_coordinates=False, device=device, dtype=dtype)
     uv = uv.expand(batch_size, -1, -1, -1)
-    v, u = torch.unbind(uv, dim=-1)
-    v, u = torch.unsqueeze(v, -1), torch.unsqueeze(u, -1)
+    # create_meshgrid(normalized_coordinates=False) returns (x, y), so uv[..., 0] is the
+    # column and uv[..., 1] is the row. u is the column and v the row, as in
+    # cv2.reprojectImageTo3D, whose semantics this function provides (#2042). Unbinding
+    # them the other way round fed the row into u and the column into v, which transposed
+    # the two pixel indices in the result.
+    u, v = torch.unbind(uv, dim=-1)
+    u, v = torch.unsqueeze(u, -1), torch.unsqueeze(v, -1)
     uvd = torch.stack((u, v, disparity_tensor), 1).reshape(batch_size, 3, -1).permute(0, 2, 1)
     points = transform_points(Q_matrix, uvd).reshape(batch_size, rows, cols, 3)
 

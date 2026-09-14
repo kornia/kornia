@@ -20,26 +20,42 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
+from kornia.core.utils import is_compiling, is_exporting
+
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
 def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool = False) -> torch.Tensor:
     r"""Estimate the tilt projection matrix or the inverse tilt projection matrix.
 
+    Convention:
+        - the rotation is ``R = Ry(tauy) @ Rx(taux)`` and ``Pz`` is built from the third column of ``R``. Both
+          branches return exactly ``eye(3)`` when ``taux`` and ``tauy`` are zero, which is the case for a
+          ``dist`` vector whose 13th and 14th entries are zero.
+        - ``return_inverse=True`` returns the inverse of ``Pz @ R``. That is the branch
+          :func:`~kornia.geometry.calibration.undistort_points` applies, and it is what reproduces OpenCV's
+          ``undistortPoints`` on this repository's own reference values.
+        - ``return_inverse=False`` returns ``Pz @ R``, matching OpenCV's tilt projection.
+        - Scalar angles return :math:`(3, 3)`. For non-scalar angles, a trailing singleton angle-component
+          axis is consumed and every leading batch dimension is preserved; without that trailing singleton,
+          the full input shape is treated as the batch shape.
+
     Args:
-        taux: Rotation angle in radians around the :math:`x`-axis with shape :math:`(*, 1)`.
-        tauy: Rotation angle in radians around the :math:`y`-axis with shape :math:`(*, 1)`.
+        taux: Rotation angle in radians around the :math:`x`-axis with any shape, matching the other angle.
+        tauy: Rotation angle in radians around the :math:`y`-axis with any shape, matching the other angle.
         return_inverse: False to obtain the tilt projection matrix. True for the inverse matrix.
 
     Returns:
-        torch.Tensor: Inverse tilt projection matrix with shape :math:`(*, 3, 3)`.
+        torch.Tensor: Tilt projection matrix, or the inverse tilt projection matrix when ``return_inverse`` is
+        True, with shape :math:`(3, 3)` for scalar angles or :math:`(*, 3, 3)` for non-scalar angles, where a
+        trailing singleton angle-component axis is omitted from :math:`*`.
 
     """
     if taux.shape != tauy.shape:
         raise ValueError(f"Shape of taux {taux.shape} and tauy {tauy.shape} do not match.")
 
-    ndim: int = taux.dim()
-    taux = taux.reshape(-1)
-    tauy = tauy.reshape(-1)
+    if taux.dim() > 0 and taux.shape[-1] == 1:
+        taux = taux.squeeze(-1)
+        tauy = tauy.squeeze(-1)
 
     cTx = torch.cos(taux)
     sTx = torch.sin(taux)
@@ -48,30 +64,48 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
     zero = torch.zeros_like(cTx)
     one = torch.ones_like(cTx)
 
-    Rx = torch.stack([one, zero, zero, zero, cTx, sTx, zero, -sTx, cTx], -1).reshape(-1, 3, 3)
-    Ry = torch.stack([cTy, zero, -sTy, zero, one, zero, sTy, zero, cTy], -1).reshape(-1, 3, 3)
+    Rx = torch.stack(
+        [
+            torch.stack([one, zero, zero], -1),
+            torch.stack([zero, cTx, sTx], -1),
+            torch.stack([zero, -sTx, cTx], -1),
+        ],
+        -2,
+    )
+    Ry = torch.stack(
+        [
+            torch.stack([cTy, zero, -sTy], -1),
+            torch.stack([zero, one, zero], -1),
+            torch.stack([sTy, zero, cTy], -1),
+        ],
+        -2,
+    )
     R = Ry @ Rx
 
     if return_inverse:
         invR22 = 1 / R[..., 2, 2]
         invPz = torch.stack(
-            [invR22, zero, R[..., 0, 2] * invR22, zero, invR22, R[..., 1, 2] * invR22, zero, zero, one], -1
-        ).reshape(-1, 3, 3)
+            [
+                torch.stack([invR22, zero, R[..., 0, 2] * invR22], -1),
+                torch.stack([zero, invR22, R[..., 1, 2] * invR22], -1),
+                torch.stack([zero, zero, one], -1),
+            ],
+            -2,
+        )
 
         inv_tilt = R.transpose(-1, -2) @ invPz
-        if ndim == 0:
-            inv_tilt = torch.squeeze(inv_tilt)
-
         return inv_tilt
 
     Pz = torch.stack(
-        [R[..., 2, 2], zero, -R[..., 0, 2], zero, R[..., 2, 2], -R[..., 1, 2], zero, zero, one], -1
-    ).reshape(-1, 3, 3)
+        [
+            torch.stack([R[..., 2, 2], zero, -R[..., 0, 2]], -1),
+            torch.stack([zero, R[..., 2, 2], -R[..., 1, 2]], -1),
+            torch.stack([zero, zero, one], -1),
+        ],
+        -2,
+    )
 
-    tilt = Pz @ R.transpose(-1, -2)
-    if ndim == 0:
-        tilt = torch.squeeze(tilt)
-
+    tilt = Pz @ R
     return tilt
 
 
@@ -80,9 +114,26 @@ def distort_points(
 ) -> torch.Tensor:
     r"""Distortion of a set of 2D points based on the lens distortion model.
 
-    Radial :math:`(k_1, k_2, k_3, k_4, k_4, k_6)`,
+    Radial :math:`(k_1, k_2, k_3, k_4, k_5, k_6)`,
     tangential :math:`(p_1, p_2)`, thin prism :math:`(s_1, s_2, s_3, s_4)`, and tilt :math:`(\tau_x, \tau_y)`
     distortion models are considered in this function.
+
+    Convention:
+        - ``points`` are **pixel** coordinates in ``(u, v)`` order and so is the result. Pixel centres lie at
+          integer coordinates: the top-left centre is ``(0, 0)``.
+          :func:`~kornia.geometry.camera.distort_points_affine` and
+          :func:`~kornia.geometry.camera.distort_points_kannala_brandt` are the counterparts that take a point
+          on the normalized :math:`z = 1` plane and a flat parameter vector instead of ``K`` and ``dist``.
+        - ``dist`` is OpenCV's coefficient vector in the order listed under ``Args``. The lengths 4, 5, 8, 12
+          and 14 are accepted and every other length raises :class:`ValueError`; an accepted shorter vector is
+          zero-padded to 14 internally, so a 4-element vector and its 14-element zero padding give the same
+          answer.
+        - ``new_K`` and ``K`` play opposite roles: ``new_K`` maps the incoming pixel onto the normalized
+          plane and ``K`` maps the distorted normalized point back to pixels. ``new_K`` defaults to ``K``.
+        - :func:`~kornia.geometry.calibration.undistort_points` is the inverse map and takes the same
+          coefficient layout, with the two intrinsics in the mirrored roles.
+        - Matching leading dimensions are preserved with or without tilt. Compilation and ONNX export always apply
+          the tilt branch, including for zero tilt, where the resulting projection is the identity.
 
     Args:
         points: Input image points with shape :math:`(*, N, 2)`.
@@ -90,11 +141,14 @@ def distort_points(
         dist: Distortion coefficients
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
-        new_K: Intrinsic camera matrix of the distorted image. By default, it is the same as K but you may additionally
-            scale and shift the result by using a different matrix. Shape: :math:`(*, 3, 3)`. Default: None.
+        new_K: Intrinsic camera matrix used to map the incoming ``points`` from pixels onto the normalized
+            :math:`z = 1` plane -- the opposite of what the argument order suggests, since ``K`` is the one
+            that maps the distorted normalized point back to pixels. By default it is the same as ``K``, in
+            which case both steps use the same camera; a different matrix rescales and shifts the **input**,
+            not the result. Shape: :math:`(*, 3, 3)`. Default: None.
 
     Returns:
-        Undistorted 2D points with shape :math:`(*, N, 2)`.
+        Distorted 2D points with shape :math:`(*, N, 2)`.
 
     Example:
         >>> points = torch.rand(1, 1, 2)
@@ -154,9 +208,13 @@ def distort_points(
         + dist[..., 11:12] * r4
     )
 
-    # Compensate for tilt distortion
-    if torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
-        tilt = tilt_projection(dist[..., 12], dist[..., 13])
+    # Graph capture cannot read the coefficient values on the host. Apply the tilt unconditionally
+    # while compiling or exporting; zero angles give the identity. Keep eager and scripted behavior.
+    capture = is_exporting()
+    if not torch.jit.is_scripting():
+        capture = capture or is_compiling()
+    if capture or torch.any(dist[..., 12] != 0) or torch.any(dist[..., 13] != 0):
+        tilt = tilt_projection(dist[..., 12:13], dist[..., 13:14])
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
         points_untilt = torch.stack([xd, yd, torch.ones_like(xd)], -1) @ tilt.transpose(-2, -1)

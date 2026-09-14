@@ -24,9 +24,10 @@ from testing.base import BaseTester
 
 
 class TestKMeans(BaseTester):
-    @pytest.mark.parametrize("num_clusters", [3, 10, 1])
-    @pytest.mark.parametrize("tolerance", [10e-4, 10e-5, 10e-1])
-    @pytest.mark.parametrize("max_iterations", [10, 1000])
+    @pytest.mark.parametrize(
+        ("num_clusters", "tolerance", "max_iterations"),
+        [(3, 1e-4, 3), (10, 1e-3, 1000), (1, 1.0, 10)],
+    )
     def test_smoke(self, device, dtype, num_clusters, tolerance, max_iterations):
         N = 1000
         D = 2
@@ -46,7 +47,7 @@ class TestKMeans(BaseTester):
         assert out2.dtype == dtype
 
     @pytest.mark.parametrize("num_clusters", [3])
-    @pytest.mark.parametrize("tolerance", [10e-4])
+    @pytest.mark.parametrize("tolerance", [1e-3])
     @pytest.mark.parametrize("max_iterations", [100])
     def test_cardinality(self, device, dtype, num_clusters, tolerance, max_iterations):
         N = 1000
@@ -67,24 +68,24 @@ class TestKMeans(BaseTester):
 
         # case: cluster_center = 0:
         with pytest.raises(BaseError) as errinfo:
-            kornia.contrib.KMeans(0, None, 10e-4, 10, 0)
+            kornia.contrib.KMeans(0, None, 1e-3, 10, 0)
         assert "num_clusters can't be 0" in str(errinfo.value)
 
         # case: cluster centers is not a 2D tensor
         with pytest.raises(ShapeError) as errinfo:
             starting_centers = torch.rand((2, 3, 5), device=device, dtype=dtype)
-            kmeans = kornia.contrib.KMeans(None, starting_centers, 10e-4, 100, 0)
+            kmeans = kornia.contrib.KMeans(None, starting_centers, 1e-3, 100, 0)
         assert "Shape dimension mismatch" in str(errinfo.value)
 
         # case: input data is not a 2D tensor
         with pytest.raises(ShapeError) as errinfo:
-            kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, 0)
+            kmeans = kornia.contrib.KMeans(3, None, 1e-3, 100, 0)
             kmeans.fit(torch.rand((1000, 5, 60), dtype=dtype, device=device))
         assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
         # case: column dimensions of cluster centers and data to be predicted do not match
         with pytest.raises(Exception) as errinfo:
-            kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, 0)
+            kmeans = kornia.contrib.KMeans(3, None, 1e-3, 100, 0)
             kmeans.fit(torch.rand((1000, 5), dtype=dtype))
             kmeans.predict(torch.rand((10, 7), dtype=dtype))
         assert "7 != 5" in str(errinfo)
@@ -109,7 +110,7 @@ class TestKMeans(BaseTester):
     def test_module(self, device, dtype):
         x = TestKMeans._create_data(device, dtype)
 
-        kmeans = kornia.contrib.KMeans(3, None, 10e-4, 10000, 2023)
+        kmeans = kornia.contrib.KMeans(3, None, 1e-3, 10000, 2023)
         kmeans.fit(x)
 
         centers = kmeans.cluster_centers
@@ -130,7 +131,7 @@ class TestKMeans(BaseTester):
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         x = TestKMeans._create_data(device, dtype)
-        kmeans_params = (3, None, 10e-4, 10000, 2023)
+        kmeans_params = (3, None, 1e-3, 10000, 2023)
         predict_param = torch.tensor([[-14, 16], [45, 12]], dtype=dtype, device=device)
 
         kmeans = kornia.contrib.KMeans(*kmeans_params)

@@ -25,45 +25,35 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Image Processing",
   "Topic :: Software Development :: Libraries",
 ]
-dependencies = ["kornia_rs>=0.1.9", "numpy>=1.21", "packaging", "torch>=2.0.0"]
+dependencies = ["kornia_rs>=0.1.14", "numpy>=1.21", "torch>=2.5.1"]
 dynamic = ["version"]
 
 [project.urls]
 "Bug Tracker" = "https://github.com/kornia/kornia/issues"
 Documentation = "https://kornia.readthedocs.io/en/latest"
 Download = "https://github.com/kornia/kornia"
-Homepage = "https://kornia.github.io/"
+Homepage = "https://www.kornia.org/"
 Issues = "https://github.com/kornia/kornia/issues"
 "Source Code" = "https://github.com/kornia/kornia"
 
 [project.optional-dependencies]
 dev = [
   "coverage",
-  "diffusers",
-  "ivy>=1.0.0.0",
-  "numpy<3",
-  "onnx",
-  "onnxruntime",
-  "onnxscript",
+  "kornia[onnx]",
   "pillow",
   "pre-commit",
   "pytest",
-  "pytest-cov",
   "pytest-timeout",
-  "requests",
-  "ruff",
-  "setuptools",  # For torch.compile
-  "transformers<5.6",
+  "setuptools",  # torch.compile / triton on py3.11 + torch 2.5.1, which does not declare it there
 ]
 docs = [
-  "furo",
-  "ivy>=1.0.0.0",
-  "kornia_moons",
+  "pydata-sphinx-theme>=0.21,<0.22",  # _static/css/pydata.css and js/custom.js target theme internals
   "matplotlib",
+  # kornia.core.mixin.onnx annotates public members with ``onnx.ModelProto``; without onnx the
+  # lazy loader prompts on stdin while autodoc resolves them and the build dies. onnxruntime is
+  # not needed: no documented member resolves an ``onnxruntime`` annotation.
   "onnx",
-  "onnxruntime",
-  "opencv-python",
-  "PyYAML>=5.1",
+  "pillow",  # docs/generate_examples.py decodes and writes the generated figures with PIL
   "sphinx",
   "sphinx-autodoc-defaultargs",
   "sphinx-autodoc-typehints",
@@ -74,6 +64,9 @@ docs = [
   "sphinxcontrib-gtagjs",
   "sphinxcontrib-youtube",
 ]
+image = ["pillow"]
+onnx = ["onnx", "onnxruntime", "onnxscript"]
+sd = ["diffusers", "transformers"]
 
 [build-system]
 requires = ["hatchling"]
@@ -90,7 +83,7 @@ build-backend = "hatchling.build"
 
 [tool.codespell]
 ignore-words-list = "ans,hist,laf,cofusion"
-skip = "*.bib,*.ipynb"
+skip = "*.bib,*.ipynb,docs/source/_data/dependents.json"
 
 [tool.coverage.run]
 branch = true
@@ -113,8 +106,10 @@ omit = [
   "kornia/models/vit.py",
   "kornia/models/vit_mobile.py",
   "kornia/models/tiny_vit.py",
-  # Feature model building blocks (vendored architectures)
-  "kornia/feature/adalam/*",
+  # Feature internals (limited-coverage vendored/adapted code; public entry points stay measured)
+  "kornia/feature/adalam/core.py",
+  "kornia/feature/adalam/ransac.py",
+  "kornia/feature/adalam/utils.py",
   "kornia/feature/dedode/transformer/*",
   "kornia/feature/dedode/dedode_models.py",
   "kornia/feature/dedode/vgg.py",
@@ -122,12 +117,9 @@ omit = [
   "kornia/feature/loftr/backbone/*",
   "kornia/feature/loftr/utils/*",
   "kornia/feature/sold2/backbones.py",
-  "kornia/feature/sold2/sold2_detector.py",
-  "kornia/feature/lightglue.py",
-  "kornia/feature/lightglue_onnx/*",
+  "kornia/feature/lightglue_onnx/utils/*",
   "kornia/feature/aliked/deform_conv2d.py",
   "kornia/feature/disk/_unets/*",
-  "kornia/feature/defmo.py",
   # DexiNed vendored architecture (building blocks only; high-level API in kornia/contrib/edge_detection.py is kept)
   "kornia/filters/dexined.py",
   "kornia/models/dexined.py",
@@ -177,14 +169,13 @@ include = ["kornia/", "LICENSE", "README.md"]
 match = '.*\.py'
 
 [tool.pytest.ini_options]
-addopts = "--color=yes -v"
+addopts = "--color=yes"
 filterwarnings = [
   "ignore::DeprecationWarning:onnxscript.converter",
 ]
 markers = [
-  "grad: mark a test as gradcheck test",
-  "jit: mark a test as torchscript test",
-  "nn: mark a test as module test",
+  "device_agnostic: run CPU-only test logic once in a CPU-containing device matrix",
+  "mps_process_abort: aborts the pytest process on MPS on virtualized Apple GPUs (#4204); skipped there unless --run-mps-process-abort",
   "slow: mark test as slow to run",
   "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul precision; xfail by default, run with --tf32 to activate",
 ]
@@ -319,6 +310,14 @@ max-statements = 64  # Recommended: 50
   "D",
 ]  # allow assert, ignore max branches and statements
 "docs/generate_examples.py" = ["C901"]  # Allow too complex function
+"docs/export_support/*" = [
+  "BLE",
+  "E741",
+  "PLC3002",
+  "PLR0911",
+  "S603",
+  "S607",
+]  # survey harness: subprocess workers, inline lambdas that build case inputs
 "kornia/__init__.py" = ["I001"]  # Allow unsorted imports
 "kornia/feature/dedode/*" = [
   "C408",
@@ -340,6 +339,28 @@ max-statements = 64  # Recommended: 50
   "B017",  # Check for Exception since KORNIA_CHECK raises it
   "D",  # Don't enforce documentation rules
 ]  # allow assert, random, ignore BLE, mutable class attr
+
+# Changelog fragments are assembled only when preparing a release.
+[tool.towncrier]
+directory = "changelog.d"
+filename = "CHANGELOG.md"
+title_format = "## [{version}] - {project_date}"
+issue_format = "[#{issue}](https://github.com/kornia/kornia/pull/{issue})"
+# Setting ignore enables strict filename validation; tolerate Finder metadata only.
+ignore = [".DS_Store"]
+issue_pattern = "[0-9]+"
+
+[[tool.towncrier.type]]
+directory = "added"
+name = "Added"
+
+[[tool.towncrier.type]]
+directory = "fixed"
+name = "Bug fixes"
+
+[[tool.towncrier.type]]
+directory = "breaking"
+name = "Breaking changes"
 
 [tool.ty.src]
 include = ["kornia"]

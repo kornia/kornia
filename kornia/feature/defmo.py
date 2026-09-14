@@ -339,7 +339,12 @@ class RenderingDeFMO(nn.Module):
             nn.Conv2d(4, 4, kernel_size=3, stride=1, padding=1, bias=True),
         )
         self.net = model
-        self.times = torch.linspace(0, 1, self.tsr_steps)
+        # `times` is fully determined by `tsr_steps` (derived state, not learned) --
+        # register as a non-persistent buffer so `.to()` / `.cuda()` / `.half()` move
+        # it through the normal nn.Module machinery instead of leaving it behind as a
+        # plain attribute. persistent=False keeps state_dict() keys unchanged, same
+        # rationale/convention as #4079 (SIFTDescriptor.gk et al.).
+        self.register_buffer("times", torch.linspace(0, 1, self.tsr_steps), persistent=False)
 
     def forward(self, latent: torch.Tensor) -> torch.Tensor:
         """Render a temporal RGBA sequence from latent DeFMO features.
@@ -352,7 +357,10 @@ class RenderingDeFMO(nn.Module):
             Tensor with shape :math:`(B, T, 4, H_{out}, W_{out})`, where ``T`` is the
             number of rendered time steps and 4 represents RGBA channels.
         """
-        times = self.times.to(latent.device).unsqueeze(0).repeat(latent.shape[0], 1)
+        # cast into a local rather than relying on the caller having matched dtype --
+        # `.to()` already moved `self.times` to the module's own device/dtype, this
+        # additionally covers a mismatched-precision `latent` without mutating self.
+        times = self.times.to(dtype=latent.dtype, device=latent.device).unsqueeze(0).repeat(latent.shape[0], 1)
         renders = []
         for ki in range(times.shape[1]):
             t_tensor = (

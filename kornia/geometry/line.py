@@ -24,7 +24,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _torch_svd_cast
+from kornia.core.utils import _torch_svd_cast, register_module_state
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
 
@@ -56,8 +56,8 @@ class ParametrizedLine(nn.Module):
 
         """
         super().__init__()
-        self._origin = nn.Parameter(origin)
-        self._direction = nn.Parameter(direction)
+        register_module_state(self, "_origin", origin)
+        register_module_state(self, "_direction", direction)
 
     def __str__(self) -> str:
         return f"Origin: {self.origin}\nDirection: {self.direction}"
@@ -169,13 +169,13 @@ class ParametrizedLine(nn.Module):
             intersection; the function returns lambda ``0`` and the line origin as the point.
 
         """
-        dot_prod = batched_dot_product(plane.normal.data, self.direction.data)
+        dot_prod = batched_dot_product(plane.normal.data, self.direction)
         dot_prod_mask = dot_prod.abs() >= eps
 
         # TODO: add check for dot product
         res_lambda = torch.where(
             dot_prod_mask,
-            -(plane.offset + batched_dot_product(plane.normal.data, self.origin.data)) / dot_prod,
+            -(plane.offset + batched_dot_product(plane.normal.data, self.origin)) / dot_prod,
             torch.zeros_like(dot_prod),
         )
 

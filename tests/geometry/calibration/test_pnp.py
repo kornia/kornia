@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core.exceptions import ShapeError
 from kornia.geometry.calibration.pnp import _mean_isotropic_scale_normalize
 
 from testing.base import BaseTester
@@ -161,6 +162,118 @@ class TestSolvePnpDlt(BaseTester):
         pred_img_points = self._project_to_image(world_points, pred_world_to_cam_4x4, repeated_intrinsics)
 
         self.assert_close(pred_img_points, img_points, atol=1e-3, rtol=1e-3)
+
+    @staticmethod
+    def _convention_world_points(device, dtype):
+        # Six non-coplanar, non-collinear points spread over x, y and z with mixed signs. A planar or collinear set
+        # trips solve_pnp_dlt's own singular-value guard, and a
+        # symmetric set would hide a transposed [R|t].
+        return torch.tensor(
+            [
+                [
+                    [5.0, -5.0, 10.0],
+                    [0.0, 0.0, 11.5],
+                    [2.5, 3.0, 16.0],
+                    [9.0, -2.0, 13.0],
+                    [-4.0, 5.0, 12.0],
+                    [-5.0, 5.0, 11.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_convention_returns_the_world_to_camera_extrinsics(self, device, dtype):
+        # Convention pin: solve_pnp_dlt returns a (B, 3, 4)
+        # [R | t] that maps WORLD points INTO the camera frame -- the same direction as PinholeCamera.extrinsics
+        # and OpenCV's solvePnP rvec/tvec, not the camera pose in the world. Two cases: world points that are
+        # already camera-frame points recover [I | 0], and a camera translated so that cam = world + (1, 0, 0)
+        # recovers t = (+1, 0, 0). A cam-to-world reading would give t = (-1, 0, 0) on the second case, which is
+        # why the identity case alone is not enough.
+        # Snippet used to generate expected: solve_pnp_dlt(W, project_points(W + [1., 0., 0.], K), K) executed
+        # 2026-09-06 at c0b50ad7 (torch 2.14.0, cpu float64) -> [[[1., -0., -0., 1.], [0., 1., -0.,
+        # 0.], [0., 0., 1., 0.]]], max abs error vs [I | (1, 0, 0)] 6.14e-15; the identity case gives [I | 0] to
+        # 8.01e-14.
+        if dtype != torch.float64:
+            pytest.skip("float64-only pin: float32 recovers [R|t] to 1.06e-05 on mps, outside the float32 atol")
+        world_points = self._convention_world_points(device, dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        identity = torch.tensor(
+            [[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]], device=device, dtype=dtype
+        )
+        recovered = kornia.geometry.solve_pnp_dlt(world_points, kornia.geometry.project_points(world_points, K), K)
+        assert recovered.shape == (1, 3, 4)
+        self.assert_close(recovered, identity)
+        shift = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+        shifted = kornia.geometry.solve_pnp_dlt(
+            world_points, kornia.geometry.project_points(world_points + shift, K), K
+        )
+        expected = torch.tensor(
+            [[[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]], device=device, dtype=dtype
+        )
+        self.assert_close(shifted, expected)
+
+    def test_convention_world_to_camera_translation_sign(self, device, dtype):
+        # Convention pin: the tolerance-free half of the pin above covers the
+        # frame-direction claim is covered on every device and not only where float64 exists (mps has none).
+        # A camera translated so that cam = world + (1, 0, 0) gives a world-to-camera [R | t] with t = (+1, 0, 0);
+        # the cam-to-world reading is t = (-1, 0, 0). The assertion is a sign test, not a value test, so it needs
+        # no tolerance and survives the float32 solve on mps, which recovers t only to about 1e-05.
+        # Snippet used to generate expected: solve_pnp_dlt(W, project_points(W + [1., 0., 0.], K), K)[0, :, 3]
+        # executed 2026-09-06 at c0b50ad7 (torch 2.14.0) -> cpu float32
+        # [1.0000005960464478, 3.45e-06, 5.88e-06]; mps float32 [1.0000009536743164, -2.21e-06, -1.06e-05].
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt's shape/dtype validation rejects float16 and bfloat16 (BaseError)")
+        world_points = self._convention_world_points(device, dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        shift = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+        translation = kornia.geometry.solve_pnp_dlt(
+            world_points, kornia.geometry.project_points(world_points + shift, K), K
+        )[0, :, 3]
+        assert translation[0] > 0.5
+        assert abs(translation[1]) < 0.5
+        assert abs(translation[2]) < 0.5
+
+    def test_convention_rejects_4x4_intrinsics(self, device, dtype):
+        # Convention pin: ``intrinsics`` is the (B, 3, 3)
+        # K, and the (B, 4, 4) intrinsics matrix that a PinholeCamera stores is rejected by the shape check
+        # rather than silently truncated to its upper-left block. The positive control is the same call with
+        # that upper-left block passed on its own, which solves: so the rejection is about the shape and not
+        # about the camera.
+        # Snippet used to generate expected: solve_pnp_dlt(W, project_points(W, K), eye(4)[None] with K in the
+        # upper-left 3x3) executed 2026-09-06 at c0b50ad7 (torch 2.14.0) -> ShapeError("Shape
+        # mismatch at dimension 1: expected 3, got 4. | Expected shape: ['B', '3', '3'] | Actual shape:
+        # [1, 4, 4]") on cpu float32 and float64. In float16 and bfloat16 the earlier dtype validation fires
+        # first with a bare BaseError("Validation condition failed"), so those cells are skipped.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt's dtype validation rejects float16 and bfloat16 before the 4x4 shape check")
+        world_points = self._convention_world_points(device, dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        img_points = kornia.geometry.project_points(world_points, K)
+        K_4x4 = torch.eye(4, device=device, dtype=dtype)[None].clone()
+        K_4x4[:, :3, :3] = K
+        with pytest.raises(ShapeError, match="expected 3, got 4"):
+            kornia.geometry.solve_pnp_dlt(world_points, img_points, K_4x4)
+        assert kornia.geometry.solve_pnp_dlt(world_points, img_points, K_4x4[:, :3, :3]).shape == (1, 3, 4)
+
+    def test_convention_planar_world_points_raise(self, device, dtype):
+        # Convention pin: the DLT needs a non-degenerate configuration, and
+        # the function enforces it -- a coplanar point set (the same six points flattened onto z = 5) raises
+        # AssertionError naming the last singular value, rather than returning a silently wrong pose. This is a
+        # documented, validated contract, so it is a convention and not a wart.
+        # Snippet used to generate expected: solve_pnp_dlt(planar, project_points(planar, K), K) executed
+        # 2026-09-06 at c0b50ad7 (torch 2.14.0, cpu float32 and float64) -> AssertionError("The last
+        # singular value of one/more of the elements of the batch is smaller than 0.0001. ..."). In float16 and
+        # bfloat16 the earlier dtype validation fires first, so those cells are skipped.
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("solve_pnp_dlt's dtype validation rejects float16 and bfloat16 before the degeneracy check")
+        world_points = self._convention_world_points(device, dtype)
+        K = torch.tensor([[[100.0, 0.0, 4.0], [0.0, 100.0, 3.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        planar = torch.stack(
+            [world_points[0, :, 0], world_points[0, :, 1], torch.full_like(world_points[0, :, 0], 5.0)], -1
+        )[None]
+        with pytest.raises(AssertionError, match="last singular value"):
+            kornia.geometry.solve_pnp_dlt(planar, kornia.geometry.project_points(planar, K), K)
 
 
 class TestNormalization(BaseTester):

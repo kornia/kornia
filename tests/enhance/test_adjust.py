@@ -46,14 +46,12 @@ class TestInvert(BaseTester):
         out = kornia.enhance.invert(img, torch.tensor(255.0))
         self.assert_close(out, torch.zeros_like(out))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 1, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         max_val = torch.tensor(1.0, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.enhance.invert, (img, max_val))
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -732,7 +730,6 @@ class TestAdjustSigmoid(BaseTester):
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img), op_optimized(img))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 1, 2, 3, 3
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -785,7 +782,6 @@ class TestAdjustLog(BaseTester):
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img), op_optimized(img))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 1, 2, 3, 3
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -889,6 +885,28 @@ class TestEqualize(BaseTester):
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.equalize, (inputs,), fast_mode=False)
 
+    @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
+    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
+        # kornia#4431: an input the 256-bin lookup cannot index used to fail with a raw
+        # "index 259 is out of bounds" from the gather.
+        if device.type != "cpu":
+            pytest.skip("value asserts are synchronous only on CPU (async on CUDA, skipped on MPS)")
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * scale + shift
+        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+            kornia.enhance.equalize(x)
+
+    def test_input_the_lookup_can_index_is_still_accepted(self, device, dtype):
+        # The check covers exactly the values that crashed, so a hair above 1 keeps working.
+        x = torch.linspace(0, 1, 64, device=device, dtype=dtype).reshape(1, 1, 8, 8) * 1.0001
+        assert kornia.enhance.equalize(x).shape == x.shape
+
+    def test_dynamo_fullgraph(self, device, dtype):
+        # The range check must not reintroduce a graph break (#3842 removed an ``.item()`` check).
+        x = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.enhance.equalize, fullgraph=True, backend="eager")
+        self.assert_close(compiled(x), kornia.enhance.equalize(x))
+
     @pytest.mark.skip(reason="args and kwargs in decorator")
     def test_jit(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 3
@@ -912,6 +930,22 @@ class TestEqualize(BaseTester):
 
 
 class TestEqualize3D(BaseTester):
+    @pytest.mark.parametrize("scale, shift", [(1.5, 0.0), (1.0, -0.5)])
+    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
+        # kornia#4432: the 3D path shares the lookup and failed the same way.
+        if device.type != "cpu":
+            pytest.skip("value asserts are synchronous only on CPU (async on CUDA, skipped on MPS)")
+        torch.manual_seed(0)
+        x = torch.rand(1, 1, 5, 7, 9, device=device, dtype=dtype) * scale + shift
+        with pytest.raises(RuntimeError, match=r"expects input values in \[0, 1\]"):
+            kornia.enhance.equalize3d(x)
+
+    def test_at_most_255_voxels_per_channel_is_unchanged(self, device, dtype):
+        # As the docstring states: the lookup step is an integer division by 255.
+        torch.manual_seed(0)
+        x = torch.rand(2, 3, 3, 5, 17, device=device, dtype=dtype) * 0.5
+        self.assert_close(kornia.enhance.equalize3d(x), x)
+
     @pytest.mark.parametrize("shape", [(3, 6, 10, 10), (2, 3, 6, 10, 10), (3, 2, 3, 6, 10, 10)])
     def test_shape_equalize3d(self, shape, device, dtype):
         inputs3d = torch.ones(*shape, device=device, dtype=dtype)
@@ -1067,14 +1101,12 @@ class TestSharpness(BaseTester):
         self.assert_close(TestSharpness.f(inputs, 0.8), expected_08, low_tolerance=True)
         self.assert_close(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13, low_tolerance=True)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(TestSharpness.f, (inputs, 0.8))
 
     @pytest.mark.skip(reason="union type input")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = TestSharpness.f
         op_script = torch.jit.script(TestSharpness.f)
@@ -1157,7 +1189,6 @@ class TestSolarize(BaseTester):
         # TODO(jian): precision is very bad compared to PIL
         self.assert_close(TestSolarize.f(inputs, 0.5), expected, rtol=1e-2, atol=1e-2)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -1165,7 +1196,6 @@ class TestSolarize(BaseTester):
 
     # TODO: implement me
     @pytest.mark.skip(reason="union type input")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = TestSolarize.f
         op_script = torch.jit.script(op)
@@ -1255,7 +1285,6 @@ class TestPosterize(BaseTester):
         self.assert_close(TestPosterize.f(inputs, 8), inputs)
 
     @pytest.mark.skip(reason="IndexError: tuple index out of range")
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -1263,7 +1292,6 @@ class TestPosterize(BaseTester):
 
     # TODO: implement me
     @pytest.mark.skip(reason="union type input")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = TestPosterize.f
         op_script = torch.jit.script(op)

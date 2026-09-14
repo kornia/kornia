@@ -16,10 +16,9 @@
 #
 
 import math
-from typing import Optional, Tuple, Union
+from typing import NotRequired, Optional, Tuple, TypedDict, Union
 
 import torch
-from typing_extensions import NotRequired, TypedDict
 
 from .ransac import ransac
 from .utils import dist_matrix, orientation_diff

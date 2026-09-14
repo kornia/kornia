@@ -1,5 +1,8 @@
-Half-Precision Support
-======================
+Float16 and bfloat16 support
+============================
+
+.. meta::
+   :description: Which Kornia modules support float16 and bfloat16 on CPU and CUDA, known limitations, and the latest half-precision test results.
 
 This page documents which kornia modules support half-precision floating-point dtypes
 (``torch.float16`` and ``torch.bfloat16``) and what limitations to expect.
@@ -21,7 +24,8 @@ This page documents which kornia modules support half-precision floating-point d
      - ⚠️ Partial
      - ⚠️ Partial
      - Basic convolution-based filters (Gaussian, Sobel, Median, Box) work
-       for both dtypes. FFT-based operations (``fft_conv``) may fail on CUDA.
+       for both dtypes. On CPU, ``fft_conv`` computes its FFTs in float32 and
+       returns the input dtype. FFT-based operations may still fail on CUDA.
    * - ``kornia.enhance``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -31,7 +35,11 @@ This page documents which kornia modules support half-precision floating-point d
    * - ``kornia.morphology``
      - ✅ Yes
      - ✅ Yes
-     - Uses only convolution and pooling; no dtype restrictions.
+     - Convolution and pooling; ``top_hat``, ``bottom_hat`` and ``gradient``
+       also subtract two dilation/erosion results, so bfloat16 loses roughly
+       0.4% relative accuracy on them. That is within kornia's own bfloat16
+       tolerance, but six tests override it with a tighter constant and fail;
+       see `issue #4081 <https://github.com/kornia/kornia/issues/4081>`_.
    * - ``kornia.augmentation``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -87,9 +95,12 @@ This page documents which kornia modules support half-precision floating-point d
    * - ``kornia.feature``
      - ⚠️ Partial
      - ⚠️ Partial
-     - Local feature detectors and descriptors (SIFT, HardNet, DISK, DeDoDe)
-       work for inference. Feature *matching* uses a manual ``cdist`` fallback
-       for both half-precision dtypes on CUDA.
+     - Local feature detectors and descriptors (SIFT, HardNet, HyNet, SOSNet,
+       DISK, DeDoDe) work for inference. ``HyNet`` and ``SOSNet`` take their final
+       L2 normalization in float32 for a half-precision input, since
+       ``local_response_norm`` has no CPU half kernel for a 4-D tensor and its
+       ``1e-10`` guard flushes to zero in float16. Feature *matching* uses a manual
+       ``cdist`` fallback for both half-precision dtypes on CUDA.
    * - ``kornia.metrics``
      - ⚠️ Partial
      - ⚠️ Partial
@@ -111,8 +122,14 @@ Legend
 Test Results
 ------------
 
-Measured on commit ``6131e98`` (2026-03-21), full test suite (no ``--runslow``).
-Pass% = passed ÷ (passed + failed); skipped and xfailed tests are excluded.
+Full test suite (no ``--runslow``). Pass% = passed ÷ (passed + failed);
+skipped and xfailed tests are excluded. CPU rows were measured on commit
+``4ab79c78`` (2026-08-29); CUDA rows are still from ``6131e98`` (2026-03-21).
+
+The CPU half-precision suites run as separate blocking ``float16`` and ``bfloat16`` CI jobs with strict manifests
+for known failures, addressing `issue #4070 <https://github.com/kornia/kornia/issues/4070>`_. The historical table
+counts are still refreshed by hand: the two CPU half rows with ``pixi run test-half``, and the CPU float32 baseline
+with ``pixi run test-f32``, since ``test-half`` pins ``KORNIA_TEST_DTYPE`` to ``float16,bfloat16``.
 
 .. list-table::
    :header-rows: 1
@@ -124,25 +141,25 @@ Pass% = passed ÷ (passed + failed); skipped and xfailed tests are excluded.
      - Skipped
      - Pass%
    * - CPU float32 *(baseline)*
-     - 7647
-     - 3
-     - 3269
-     - **99.9%**
+     - 8499
+     - 0
+     - 3535
+     - **100.0%**
+   * - CPU float16
+     - 7751
+     - 689
+     - 3595
+     - **91.8%**
+   * - CPU bfloat16
+     - 7794
+     - 695
+     - 3545
+     - **91.8%**
    * - CUDA float32 *(baseline)*
      - 7634
      - 3
      - 3280
      - **99.9%**
-   * - CPU float16
-     - 6866
-     - 747
-     - 3306
-     - **90.1%**
-   * - CPU bfloat16
-     - 6838
-     - 812
-     - 3269
-     - **89.3%**
    * - CUDA float16 *(KORNIA_TEST_IN_SUBPROCESS=1)*
      - 6727
      - 643
