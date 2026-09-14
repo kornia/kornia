@@ -55,6 +55,70 @@ def _large_masked_inputs(device, dtype):
     return input, target, mask
 
 
+_DISPARITY_METRICS = [
+    kornia.metrics.mean_absolute_disparity_error,
+    kornia.metrics.root_mean_squared_disparity_error,
+    kornia.metrics.mean_bad_pixel_error,
+    kornia.metrics.kitti_d1_error,
+]
+
+
+@pytest.mark.parametrize("metric", _DISPARITY_METRICS, ids=lambda m: m.__name__)
+@pytest.mark.parametrize("int_dtype", [torch.uint8, torch.int32, torch.int64])
+def test_convention_integer_disparity_maps_are_rejected(metric, int_dtype, device):
+    """An integer disparity map must raise rather than return a truncated number.
+
+    The reductions accumulate in float32 and cast back to the map's dtype, which for an integer map
+    truncates the ratio: every metric here returned 0 for a true value of 0.5 before the guard.
+    That is not a hypothetical input, since KITTI ships disparity as a uint16 PNG and
+    ``torch.from_numpy(imread(...))`` hands back an integer tensor, so the failure would show up as
+    a plausible-looking score rather than an error.
+    """
+    target = torch.tensor([10, 10], device=device, dtype=int_dtype)
+    input = torch.tensor([10, 20], device=device, dtype=int_dtype)
+
+    with pytest.raises(BaseError) as errinfo:
+        metric(input, target)
+    assert "floating point" in str(errinfo.value)
+
+    # the same maps as floats still work; the integer path truncated each of these toward zero
+    expected = {
+        kornia.metrics.mean_absolute_disparity_error: 5.0,  # mean(|0|, |10|), truncated to 5
+        kornia.metrics.root_mean_squared_disparity_error: 50.0**0.5,  # sqrt(mean(0, 100)), truncated to 7
+        kornia.metrics.mean_bad_pixel_error: 0.5,  # 1 of 2 pixels over 3 px, truncated to 0
+        kornia.metrics.kitti_d1_error: 0.5,  # 1 of 2 pixels over both thresholds, truncated to 0
+    }[metric]
+    assert metric(input.float(), target.float()).item() == pytest.approx(expected, rel=1e-5)
+
+
+@pytest.mark.parametrize("metric", _DISPARITY_METRICS, ids=lambda m: m.__name__)
+def test_convention_result_dtype_is_the_promoted_one(metric, device):
+    """A mixed-dtype pair returns the promoted dtype, the same for every metric in the module."""
+    target = torch.rand(8, device=device, dtype=torch.float64) * 100.0
+    input = target.clone() + 4.0
+
+    assert metric(input.to(torch.float32), target).dtype == torch.float64
+    assert metric(input.to(torch.float32), target.to(torch.float32)).dtype == torch.float32
+    assert metric(input, target).dtype == torch.float64
+
+
+@pytest.mark.parametrize(
+    "metric", [kornia.metrics.mean_bad_pixel_error, kornia.metrics.kitti_d1_error], ids=lambda m: m.__name__
+)
+def test_convention_indicator_metrics_have_no_gradient(metric, device):
+    """Both indicator metrics are built from comparisons, so they carry no gradient.
+
+    Documented rather than fixed: a counting metric has no useful derivative. The contrast with
+    ``mean_absolute_disparity_error``, which does propagate gradients, is what makes it worth
+    pinning, since the two live in the same module and look interchangeable.
+    """
+    target = torch.rand(8, device=device, dtype=torch.float32) * 100.0
+    input = (target.clone() + 4.0).requires_grad_()
+
+    assert not metric(input, target).requires_grad
+    assert kornia.metrics.mean_absolute_disparity_error(input, target).requires_grad
+
+
 class TestMeanAbsoluteDisparityError(BaseTester):
     def test_smoke(self, device, dtype):
         input = torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
@@ -347,10 +411,17 @@ class TestKittiD1Error(BaseTester):
         )
 
     def test_smoke(self, device, dtype):
-        input = torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
-        target = torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
+        # Scaled to a realistic disparity range on purpose: on maps drawn from [0, 1) the error can
+        # never exceed the 3 px absolute threshold, so the outlier branch would never be taken and
+        # the metric would be a constant 0 whatever the implementation did.
+        input = 100.0 * torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
+        target = 100.0 * torch.rand(2, 1, 4, 5, device=device, dtype=dtype)
         actual = kornia.metrics.kitti_d1_error(input, target)
         assert actual.shape == torch.Size([])
+        assert 0.0 <= actual.item() <= 1.0
+        per_pixel = kornia.metrics.kitti_d1_error(input, target, reduction="none")
+        assert per_pixel.shape == input.shape
+        assert bool((per_pixel > 0).any()), "the outlier branch was never exercised"
 
     def test_metric_mean_reduction(self, device, dtype):
         input, target = self._sample(device, dtype)
@@ -392,6 +463,32 @@ class TestKittiD1Error(BaseTester):
         input = torch.tensor([12.0], device=device, dtype=dtype)
         target = torch.tensor([10.0], device=device, dtype=dtype)
         expected = torch.tensor(0.0, device=device, dtype=dtype)
+        self.assert_close(kornia.metrics.kitti_d1_error(input, target), expected)
+
+    # Snippet used to generate expected (the devkit predicate, evaluate_scene_flow.cpp:13-14,51):
+    #   d_err = fabs(d_gt - d_est) > 3.0 && fabs(d_gt - d_est) / fabs(d_gt) > 0.05
+    #   (10, 13):    err 3.0,  rel 0.300 -> 3.0 > 3.0 is False            -> 0.0
+    #   (100, 105):  err 5.0,  rel 0.050 -> 0.05 > 0.05 is False          -> 0.0
+    #   (78, 82):    err 4.0,  rel 4/78 = 0.05128 > 0.05, 4/82 = 0.04878  -> 1.0
+    #   (-100, -90): err 10.0, rel 10/|-100| = 0.100                      -> 1.0
+    @pytest.mark.parametrize(
+        ("target_value", "input_value", "expected_value"),
+        [(10.0, 13.0, 0.0), (100.0, 105.0, 0.0), (78.0, 82.0, 1.0), (-100.0, -90.0, 1.0)],
+        ids=["abs-exactly-at-threshold", "rel-exactly-at-threshold", "gt-is-the-denominator", "negative-gt"],
+    )
+    def test_convention_boundary_cases(self, target_value, input_value, expected_value, device, dtype):
+        """Pin the two details that distinguish D1 from a near-miss implementation.
+
+        Both comparisons are strict, so a pixel sitting exactly on either threshold is an inlier.
+        Making either one non-strict flips the first two cases. The relative error divides by the
+        **ground truth**, not the prediction: at (78, 82) the two give 0.05128 and 0.04878, which
+        straddle the 0.05 threshold, so swapping the denominator flips that case. The negative pair
+        pins the ``fabs(d_gt)`` in the devkit, since a signed denominator makes the ratio negative
+        and never greater than the threshold.
+        """
+        input = torch.tensor([input_value], device=device, dtype=dtype)
+        target = torch.tensor([target_value], device=device, dtype=dtype)
+        expected = torch.tensor(expected_value, device=device, dtype=dtype)
         self.assert_close(kornia.metrics.kitti_d1_error(input, target), expected)
 
     def test_thresholds(self, device, dtype):

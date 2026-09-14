@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+* `kornia.metrics.kitti_d1_error`, the outlier ratio reported by the KITTI 2015 stereo benchmark.
+  A pixel counts as an outlier only when its absolute disparity error exceeds `abs_threshold`
+  **and** its relative error exceeds `rel_threshold`, both strictly, with the ground truth as the
+  relative denominator. That conjunction is what separates it from `mean_bad_pixel_error`, which
+  applies the absolute criterion alone and so penalises large disparities for errors that are small
+  next to their magnitude. A batch is pooled over every valid pixel, as the devkit accumulates it,
+  rather than averaged per image. Closes #3758. (#3931)
+
 * Optional-dependency extra `kornia[image]` installs Pillow for PIL-backed image input/output,
   display helpers and `kornia.io.sample`; missing-Pillow errors now name the extra to install, and the unused
   `DinoVisionTransformer.forward_features_list` list path has been removed. (#4464)
@@ -406,6 +414,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unnormalize as an exact pixel index. Refs #4030. (#4231)
 
 ### Bug fixes
+
+* The `kornia.metrics` disparity reductions accumulate in `float32` for `float16` and `bfloat16`
+  inputs, so `mean_absolute_disparity_error`, `root_mean_squared_disparity_error` and
+  `mean_bad_pixel_error` no longer return `inf` on an image-sized map. A `float16` sum saturates at
+  65504, and a `bfloat16` sum lost roughly 0.5% over 100k terms. `root_mean_squared_disparity_error`
+  additionally squared in the input dtype, so a 300 px error saturated before any reduction ran;
+  it now squares in the accumulator dtype. Integer disparity maps raise a kornia error naming the
+  dtype instead of reaching the reduction, where the cast back would have truncated the ratio to
+  zero, which matters because KITTI ships disparity as a `uint16` PNG. A mixed-dtype pair now
+  returns the promoted dtype from every metric in the module rather than the dtype of `input`,
+  matching what `mean_absolute_disparity_error` already did. (#3931)
 
 * `RandomCutMixV2` and `CutmixGenerator` document `cut_size` as what it is: the `[min, max]` clamp on the
   Beta-sampled mixing coefficient `lambda`, where the cut side is `floor(sqrt(1 - lambda) * side)`, so a larger

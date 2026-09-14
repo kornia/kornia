@@ -36,6 +36,14 @@ def _check_disparity_inputs(
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_IS_TENSOR(target)
     KORNIA_CHECK_SAME_SHAPE(input, target)
+    # The reductions below accumulate in float32 and cast back to the map dtype. For an integer
+    # map that cast truncates, which would turn a ratio into 0 instead of raising, so reject
+    # integers here. KITTI ships disparity as a uint16 PNG, so this is a realistic input.
+    KORNIA_CHECK(
+        input.is_floating_point() and target.is_floating_point(),
+        "Disparity maps must have a floating point dtype. "
+        f"Got: {input.dtype} and {target.dtype}. Convert them first, for example with `.float()`.",
+    )
 
     if valid_mask is None:
         return None
@@ -190,9 +198,10 @@ def root_mean_squared_disparity_error(
     # Square in float32 for half-precision inputs: a 300 px disparity error already squares to
     # 90000, past the 65504 float16 ceiling, so the per-pixel map would saturate to inf before any
     # reduction happens. The square root brings the value back into range before the cast back.
-    acc_dtype = torch.promote_types(input.dtype, torch.float32)
+    out_dtype = torch.promote_types(input.dtype, target.dtype)
+    acc_dtype = torch.promote_types(out_dtype, torch.float32)
     error = (input.to(acc_dtype) - target.to(acc_dtype)) ** 2
-    return _reduce_disparity_error(error, mask, reduction).sqrt().to(input.dtype)
+    return _reduce_disparity_error(error, mask, reduction).sqrt().to(out_dtype)
 
 
 def mean_bad_pixel_error(
@@ -213,8 +222,10 @@ def mean_bad_pixel_error(
         \text{Bad}_{\tau}(D, D^{gt}) =
         \frac{1}{|\mathcal{V}|}\sum_{p \in \mathcal{V}} [|D_{p} - D^{gt}_{p}| > \tau]
 
-    This corresponds to the bad-pixel percentage reported by the Middlebury and KITTI stereo
-    benchmarks, expressed as a fraction in :math:`[0, 1]` instead of a percentage.
+    This corresponds to the bad-pixel percentage reported by the Middlebury stereo benchmark,
+    expressed as a fraction in :math:`[0, 1]` instead of a percentage. It is **not** the number
+    KITTI reports: that benchmark uses D1, which adds a relative criterion on top of this one.
+    See :func:`kitti_d1_error`.
 
     Args:
         input: the predicted disparity map with arbitrary shape :math:`(*)`.
@@ -231,9 +242,15 @@ def mean_bad_pixel_error(
 
     Return:
         the computed metric as a scalar, or the per-pixel bad-pixel map if ``reduction='none'``.
+        The scalar is a **fraction** in :math:`[0, 1]`, not a percentage, and a batch is **pooled**
+        over every valid pixel of every image rather than averaged per image.
 
     Note:
         If ``valid_mask`` selects no pixels, ``'mean'`` reduction returns ``nan``.
+
+    Note:
+        This is an indicator metric built from comparisons, so it has no useful gradient. The
+        output does not require grad and cannot be used as a loss.
 
     Note:
         Sums are accumulated in ``float32`` for ``float16`` and ``bfloat16`` inputs and the result
@@ -253,7 +270,7 @@ def mean_bad_pixel_error(
 
     """
     mask = _check_disparity_inputs(input, target, valid_mask)
-    bad = ((input - target).abs() > threshold).to(input.dtype)
+    bad = ((input - target).abs() > threshold).to(torch.promote_types(input.dtype, target.dtype))
     return _reduce_disparity_error(bad, mask, reduction)
 
 
@@ -298,14 +315,29 @@ def kitti_d1_error(
 
     Return:
         the computed metric as a scalar, or the per-pixel outlier map if ``reduction='none'``.
+        The scalar is a **fraction** in :math:`[0, 1]`, not a percentage. A batch is **pooled**:
+        every valid pixel of every image contributes equally to one ratio, which is what the KITTI
+        devkit accumulates and what the leaderboard reports. That is not the same as averaging the
+        per-image D1 values, and the two differ whenever the images hold different numbers of valid
+        pixels.
 
     Note:
         If ``valid_mask`` selects no pixels, ``'mean'`` reduction returns ``nan``.
 
     Note:
+        This is an indicator metric built from comparisons, so it has no useful gradient. The
+        output does not require grad and cannot be used as a loss.
+
+    Note:
         Pixels with a zero ground truth disparity yield a non-finite relative error. Because both
         criteria must hold, such pixels are classified by ``abs_threshold`` alone and the output
         stays finite. KITTI marks these pixels as invalid, so prefer passing ``valid_mask``.
+
+    Note:
+        A ``nan`` in either map is counted as an **inlier**, because every comparison against
+        ``nan`` is false and both criteria must hold. The metric therefore stays finite where
+        :func:`mean_absolute_disparity_error` would propagate the ``nan``. Mask non-finite pixels
+        out with ``valid_mask`` rather than relying on either behaviour.
 
     Note:
         Sums are accumulated in ``float32`` for ``float16`` and ``bfloat16`` inputs and the result
@@ -326,5 +358,7 @@ def kitti_d1_error(
     """
     mask = _check_disparity_inputs(input, target, valid_mask)
     error = (input - target).abs()
-    outlier = ((error > abs_threshold) & (error / target.abs() > rel_threshold)).to(input.dtype)
+    outlier = ((error > abs_threshold) & (error / target.abs() > rel_threshold)).to(
+        torch.promote_types(input.dtype, target.dtype)
+    )
     return _reduce_disparity_error(outlier, mask, reduction)
