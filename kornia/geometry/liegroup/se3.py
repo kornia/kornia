@@ -177,14 +177,22 @@ class Se3(nn.Module):
         omega = v[..., 3:]
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
-        theta = batched_dot_product(omega, omega).sqrt()
+        theta_sq = batched_dot_product(omega, omega)
+        nonzero = theta_sq > 0
+        # V is a 0/0 at omega = 0 and its sqrt has an unbounded derivative there, so although the
+        # where below already returns upsilon at the identity, autograd walked V anyway and
+        # 0 * nan = nan reached v.grad. Evaluate both on a substituted theta of 1 there; the
+        # where discards the value, only the gradient changes (kornia#4229's shape).
+        safe_theta_sq = torch.where(nonzero, theta_sq, torch.ones_like(theta_sq))
+        theta = torch.where(nonzero, safe_theta_sq.sqrt(), torch.zeros_like(theta_sq))
+        safe_theta = torch.where(nonzero, theta, torch.ones_like(theta))
         R = So3.exp(omega)
         V = (
             torch.eye(3, device=v.device, dtype=v.dtype)
-            + ((1 - torch.cos(theta)) / (theta**2))[..., None, None] * omega_hat
-            + ((theta - torch.sin(theta)) / (theta**3))[..., None, None] * omega_hat_sq
+            + ((1 - torch.cos(theta)) / (safe_theta**2))[..., None, None] * omega_hat
+            + ((theta - torch.sin(theta)) / (safe_theta**3))[..., None, None] * omega_hat_sq
         )
-        U = torch.where(theta[..., None] != 0.0, (upsilon[..., None, :] * V).sum(-1), upsilon)
+        U = torch.where(nonzero[..., None], (upsilon[..., None, :] * V).sum(-1), upsilon)
         return Se3(R, U)
 
     def log(self) -> torch.Tensor:
@@ -198,17 +206,29 @@ class Se3(nn.Module):
 
         """
         omega = self.r.log()
-        theta = batched_dot_product(omega, omega).clamp_min(1e-12).sqrt()
+        theta_sq = batched_dot_product(omega, omega)
+        nonzero = theta_sq > 0
+        # clamp_min(1e-12) bounds the value, not the gradient: on torch < 2.14 clamp passes the
+        # incoming gradient straight through at its bound, and 1e-12 underflows to 0 in float16
+        # anyway, so sqrt's unbounded derivative at 0 reached v.grad as nan (kornia#4229). Keep
+        # the floor on the branch that is selected -- byte-identical for every theta_sq > 0 --
+        # and take the exact zero elsewhere, where V_inv is the identity and both branches of
+        # the where below agree.
+        safe_theta_sq = torch.where(nonzero, theta_sq.clamp_min(1e-12), torch.ones_like(theta_sq))
+        theta = torch.where(nonzero, safe_theta_sq.sqrt(), torch.zeros_like(theta_sq))
+        safe_theta = torch.where(nonzero, theta, torch.ones_like(theta))
         t = _unwrap(self.t)
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
         V_inv = (
             torch.eye(3, device=omega.device, dtype=omega.dtype)
             - 0.5 * omega_hat
-            + ((1 - theta * torch.cos(theta / 2) / (2 * torch.sin(theta / 2))) / theta.pow(2))[..., None, None]
+            + ((1 - safe_theta * torch.cos(safe_theta / 2) / (2 * torch.sin(safe_theta / 2))) / safe_theta.pow(2))[
+                ..., None, None
+            ]
             * omega_hat_sq
         )
-        t = torch.where(theta[..., None] != 0.0, (t[..., None, :] * V_inv).sum(-1), t)
+        t = torch.where(nonzero[..., None], (t[..., None, :] * V_inv).sum(-1), t)
         return torch.cat((t, omega), -1)
 
     @staticmethod

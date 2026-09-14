@@ -29,7 +29,7 @@ call	builtins.AssertionError	tests/augmentation/container/test_augmentation_sequ
 call	builtins.RuntimeError	tests/augmentation/container/test_patch_sequential.py::TestPatchSequential::test_autocast[cpu-float16]
 call	builtins.AssertionError	tests/augmentation/container/test_sequential_aug.py::TestSequential::test_forward[cpu-float16-10]
 call	builtins.AssertionError	tests/augmentation/container/test_sequential_aug.py::TestSequential::test_forward[cpu-float16-False]
-call	builtins.AssertionError	tests/augmentation/container/test_sequential_aug.py::TestSequential::test_forward[cpu-float16-random_apply3]
+call	builtins.AssertionError	tests/augmentation/container/test_sequential_aug.py::TestSequential::test_forward[cpu-float16-True]
 call	builtins.AssertionError	tests/augmentation/container/test_video_sequential.py::TestVideoSequential::test_against_sequential[cpu-float16-BCTHW-augmentations2]
 call	builtins.AssertionError	tests/augmentation/container/test_video_sequential.py::TestVideoSequential::test_against_sequential[cpu-float16-BTCHW-augmentations2]
 call	builtins.RuntimeError	tests/augmentation/container/test_video_sequential.py::TestVideoSequential::test_autocast[cpu-float16-BCTHW]
