@@ -756,9 +756,9 @@ class TestConventionAugmentationSequential(BaseTester):
         assert not torch.equal(out_boxes, boxes)
         params = seq._params[0].data
         mosaic = K.RandomMosaic(p=1.0)
-        expected = mosaic.transform_boxes(
-            Boxes.from_tensor(boxes, mode="xyxy_plus"), params, mosaic.flags
-        ).to_tensor(mode="xyxy_plus")
+        expected = mosaic.transform_boxes(Boxes.from_tensor(boxes, mode="xyxy_plus"), params, mosaic.flags).to_tensor(
+            mode="xyxy_plus"
+        )
         self.assert_close(out_boxes, expected, rtol=0, atol=0)
 
         # Unsupported annotation keys raise, matching a direct call (no silent passthrough).
