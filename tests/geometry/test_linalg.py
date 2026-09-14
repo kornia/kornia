@@ -63,6 +63,21 @@ class TestTransformPoints(BaseTester):
         assert out.shape == points.shape
         self.assert_close(out, points)
 
+    @pytest.mark.parametrize("num_dims", [2, 3])
+    @pytest.mark.parametrize("points_shape", [(0, 1), (0, 5)])
+    def test_transform_points_empty_batch_with_points(self, num_dims, points_shape, device, dtype):
+        # An empty transform batch with a non-empty point axis divided 0 // 0 while expanding the
+        # transforms (kornia#4466); it must return the same empty shape as a B=1 transform does.
+        points = torch.zeros(*points_shape, num_dims, device=device, dtype=dtype)
+        empty_trans = torch.eye(num_dims + 1, device=device, dtype=dtype).expand(0, -1, -1)
+        single_trans = torch.eye(num_dims + 1, device=device, dtype=dtype)[None]
+
+        out = kgl.transform_points(empty_trans, points)
+
+        assert out.shape == points.shape
+        assert out.dtype == dtype
+        assert out.shape == kgl.transform_points(single_trans, points).shape
+
     def test_gradcheck(self, device):
         # generate input data
         batch_size, num_points, num_dims = 2, 3, 2

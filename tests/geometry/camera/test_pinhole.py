@@ -911,6 +911,16 @@ class TestPinholeCamera(BaseTester):
         )
         assert empty.shape == (0, 1, 2)
 
+    def test_project_an_empty_batch_with_a_point_axis_4466(self, device, dtype):
+        # Regression for kornia#4466: an empty camera batch projected (0, 3) points but raised
+        # ZeroDivisionError on (0, N, 3), inside transform_points.
+        trans = torch.eye(4, device=device, dtype=dtype).expand(0, 4, 4)
+        empty = torch.zeros(0, device=device, dtype=dtype)
+        camera = kornia.geometry.camera.PinholeCamera(trans, trans, empty, empty)
+
+        assert camera.project(torch.zeros(0, 3, device=device, dtype=dtype)).shape == (0, 2)
+        assert camera.project(torch.zeros(0, 1, 3, device=device, dtype=dtype)).shape == (0, 1, 2)
+
     @pytest.mark.parametrize("batch_sizes", [(1, 2, 1, 1), (0, 1, 0, 0)])
     def test_constructor_rejects_mismatched_batch_sizes_4281(self, batch_sizes, device, dtype):
         with pytest.raises(ValueError, match="Arguments shapes must match"):
