@@ -107,8 +107,11 @@ class AugmentationBase2D(_AugmentationBase):
           since it is drawn into ``_params``, except for :class:`RandomDissolving`, which samples VAE latents
           during application; that draw is not stored and requires controlling the global seed too.
         - range configuration and serialization behavior vary by generator. Some range buffers are inert after
-          ``load_state_dict`` (tracked in `#4428 <https://github.com/kornia/kornia/issues/4428>`_), and saved
-          state can retain data from the last call (`#4482 <https://github.com/kornia/kornia/issues/4482>`_).
+          ``load_state_dict`` (tracked in `#4428 <https://github.com/kornia/kornia/issues/4428>`_). Built-in lazy
+          matrix state keeps only the input's shape, dtype and device alongside the transformation parameters.
+          Lazy subclasses overriding ``transform_tensor``, ``generate_transformation_matrix``,
+          ``compute_transformation`` or ``identity_matrix`` retain the input until the matrix is read or another
+          forward replaces the state.
         - an empty batch is an empty output on the classes that accept one, but it is not a package-wide
           guarantee: a minority of the classes raise on ``B = 0``, in several unrelated exception families.
         - rotation-like parameters are in degrees, and a positive angle turns the image counter-clockwise as
@@ -192,8 +195,11 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
           recognizes geometric children, so custom rigid subclasses need integration work of their own. See
           `#4481 <https://github.com/kornia/kornia/issues/4481>`_.
         - the matrix of the last call is readable as ``transform_matrix``. Subclasses opt into lazy construction
-          with ``_compute_matrix_lazily``; retained state has the serialization limitations in `#4482
-          <https://github.com/kornia/kornia/issues/4482>`_.
+          with ``_compute_matrix_lazily``. Built-in lazy matrices keep only the input's shape, dtype and device
+          alongside the transformation parameters. Lazy subclasses overriding ``transform_tensor``,
+          ``generate_transformation_matrix``, ``compute_transformation`` or ``identity_matrix`` keep the input
+          until the matrix is read or another forward replaces the state; unchanged inherited implementations
+          keep the compact metadata state.
         - this base does not implement an inverse operation.
 
     """
