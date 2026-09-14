@@ -307,7 +307,7 @@ class _BasicAugmentationBase(nn.Module):
             params = self.forward_parameters(batch_shape)
 
         if "batch_prob" not in params:
-            params["batch_prob"] = torch.tensor([True] * batch_shape[0])
+            params["batch_prob"] = torch.ones(batch_shape[0], dtype=torch.bool)
 
         params, flags = self._process_kwargs_to_params_and_flags(params, self.flags, **kwargs)
 

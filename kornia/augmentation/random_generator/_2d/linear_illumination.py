@@ -80,11 +80,8 @@ class LinearIlluminationGenerator(RandomGeneratorBase):
         gain_factor = _adapted_rsampling((batch_size, 1, 1, 1), self.gain_sampler, same_on_batch).to(
             device=_device, dtype=_dtype
         )
-        sign = torch.where(
-            _adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch).to(device=_device) >= 0.0,
-            torch.full((), 1, device=_device, dtype=_dtype),
-            torch.full((), -1, device=_device, dtype=_dtype),
-        )
+        sign_positive = _adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch) >= 0.0
+        sign = sign_positive.to(device=_device, dtype=_dtype) * 2 - 1
 
         # Directions (0=lower,1=upper,2=left,3=right), shape [B,1,1,1]
         directions = _adapted_rsampling((batch_size, 1, 1, 1), self.directions_sampler, same_on_batch).to(
@@ -170,11 +167,8 @@ class LinearCornerIlluminationGenerator(RandomGeneratorBase):
         gain_factor = _adapted_rsampling((batch_size, 1, 1, 1), self.gain_sampler, same_on_batch).to(
             device=_device, dtype=_dtype
         )
-        sign = torch.where(
-            _adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch).to(device=_device) >= 0.0,
-            torch.full((), 1, device=_device, dtype=_dtype),
-            torch.full((), -1, device=_device, dtype=_dtype),
-        )
+        sign_positive = _adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch) >= 0.0
+        sign = sign_positive.to(device=_device, dtype=_dtype) * 2 - 1
 
         directions = _adapted_rsampling((batch_size, 1, 1, 1), self.directions_sampler, same_on_batch).to(
             device=_device,

@@ -25,7 +25,7 @@ from kornia.augmentation.utils import (
     _check_positive_int_or_traced,
     _common_param_check,
     _joint_range_check,
-    _range_bound,
+    _shear_bound,
 )
 from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
@@ -69,22 +69,7 @@ class ShearGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        shear = torch.as_tensor(self.shear, device=device, dtype=dtype)
-        if shear.shape == torch.Size([2, 2]):
-            _shear = shear
-        else:
-            _shear = torch.stack(
-                [
-                    _range_bound(
-                        shear if shear.dim() == 0 else shear[:2], "shear-x", 0, (-360, 360), device=device, dtype=dtype
-                    ),
-                    (
-                        torch.tensor([0, 0], device=device, dtype=dtype)
-                        if shear.dim() == 0 or len(shear) == 2
-                        else _range_bound(shear[2:], "shear-y", 0, (-360, 360), device=device, dtype=dtype)
-                    ),
-                ]
-            )
+        _shear = _shear_bound(self.shear, device, dtype)
 
         _joint_range_check(_shear[0], "shear")
         _joint_range_check(_shear[1], "shear")

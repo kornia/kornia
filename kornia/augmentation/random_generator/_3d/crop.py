@@ -199,8 +199,6 @@ def center_crop_generator3d(
     ):
         raise AssertionError(f"Crop size must be smaller than input size. Got ({depth}, {height}, {width}) and {size}.")
 
-    if batch_size == 0:
-        return {"src": torch.zeros([0, 8, 3]), "dst": torch.zeros([0, 8, 3])}
     # unpack input sizes
     dst_d, dst_h, dst_w = size
     src_d, src_h, src_w = (depth, height, width)

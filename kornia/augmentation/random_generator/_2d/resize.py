@@ -77,8 +77,8 @@ class ResizeGenerator(RandomGeneratorBase):
         input_size = h, w = (batch_shape[-2], batch_shape[-1])
 
         src = bbox_generator(
-            torch.full((), 0, device=_device, dtype=_dtype),
-            torch.full((), 0, device=_device, dtype=_dtype),
+            torch.zeros((), device=_device, dtype=_dtype),
+            torch.zeros((), device=_device, dtype=_dtype),
             torch.full((), input_size[1], device=_device, dtype=_dtype),
             torch.full((), input_size[0], device=_device, dtype=_dtype),
         ).repeat(batch_size, 1, 1)
@@ -99,8 +99,8 @@ class ResizeGenerator(RandomGeneratorBase):
             raise AssertionError(f"`resize_to` must be a tuple of 2 positive integers. Got {output_size}.")
 
         dst = bbox_generator(
-            torch.full((), 0, device=_device, dtype=_dtype),
-            torch.full((), 0, device=_device, dtype=_dtype),
+            torch.zeros((), device=_device, dtype=_dtype),
+            torch.zeros((), device=_device, dtype=_dtype),
             torch.full((), output_size[1], device=_device, dtype=_dtype),
             torch.full((), output_size[0], device=_device, dtype=_dtype),
         ).repeat(batch_size, 1, 1)

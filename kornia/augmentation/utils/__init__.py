@@ -46,6 +46,7 @@ from kornia.augmentation.utils.param_validation import (
     _common_param_check,
     _joint_range_check,
     _range_bound,
+    _shear_bound,
     _singular_range_check,
     _tuple_range_reader,
 )
@@ -62,6 +63,7 @@ __all__ = [
     "_joint_range_check",
     "_range_bound",
     "_shape_validation",
+    "_shear_bound",
     "_singular_range_check",
     "_transform_input",
     "_transform_input3d",
