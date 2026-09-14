@@ -11,10 +11,6 @@ Run `pixi run changelog-preview` to read the assembled notes.
 
 <!-- towncrier release notes start -->
 
-* Align Kimi-VL positional embeddings, rotary embeddings, and projector ordering with Moonshot
-  ([#3968](https://github.com/kornia/kornia/pull/3968)).
-
-
 ## :rocket: [0.6.11] - 2022-03-28
 ### :new:  New Features
 
