@@ -115,7 +115,9 @@ class GaussianIlluminationGenerator(RandomGeneratorBase):
 
         center_y = torch.round(height * _adapted_rsampling((batch_size, 1), self.center_sampler, same_on_batch))
 
-        sign = (_adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch) >= 0.0).to(_dtype) * 2 - 1
+        sign = (_adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch) >= 0.0).to(
+            device=_device, dtype=_dtype
+        ) * 2 - 1
 
         # Generate random gaussian for create a 2D gaussian image.
         gauss_x = gaussian(width, sigma_x, mean=center_x, device=_device, dtype=_dtype).unsqueeze(1)

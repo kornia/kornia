@@ -140,7 +140,16 @@ class TestAugmentationConstantTransfer(BaseTester):
             self.assert_close(actual, aug(input, params=params))
 
 
-CONSTANT_DATA = [[], [[], []], [True, False], [257, 2049], [[0, 2048], [256, -1]], [[[1.5, -2.5]]], [0.0, -0.0, 1.0, 1]]
+CONSTANT_DATA = [
+    [],
+    [[], []],
+    [True, False],
+    [257, 2049],
+    [[0, 2048], [256, -1]],
+    [[[1.5, -2.5]]],
+    [0.0, -0.0, 1.0, 1],
+    [[0.0, -0.0], [-0.0, 0.0]],
+]
 
 
 class TestConstantTensor(BaseTester):
@@ -183,6 +192,13 @@ class TestConstantTensor(BaseTester):
         assert targets.count(torch.ops.aten.full.default) == 3
         assert targets.count(torch.ops.aten.stack.default) == 1
         assert torch.ops.aten.lift_fresh_copy.default not in targets
+
+    def test_signed_zeros_fill_once(self, device, dtype):
+        # The fill key keeps the sign, so repeated zeros merge without turning -0.0 into 0.0.
+        data = [[0.0, -0.0], [-0.0, 0.0], [0.0, 1.0]]
+        graph = make_fx(lambda: _constant_tensor(data, device=device, dtype=dtype))().graph
+        targets = [node.target for node in graph.nodes if node.op == "call_function"]
+        assert targets.count(torch.ops.aten.full.default) == 3
 
     def test_dynamo_dynamic_size(self, device, dtype, torch_optimizer):
         if device.type not in ("cpu", "cuda"):

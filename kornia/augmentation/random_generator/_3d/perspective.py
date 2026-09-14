@@ -74,11 +74,11 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         start_points: torch.Tensor = _constant_tensor(
             [
                 [
-                    [0.0, 0, 0],
+                    [0, 0, 0],
                     [width - 1, 0, 0],
                     [width - 1, height - 1, 0],
                     [0, height - 1, 0],
-                    [0.0, 0, depth - 1],
+                    [0, 0, depth - 1],
                     [width - 1, 0, depth - 1],
                     [width - 1, height - 1, depth - 1],
                     [0, height - 1, depth - 1],

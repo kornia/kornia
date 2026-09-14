@@ -70,10 +70,10 @@ def _constant_tensor(
     filled: Dict[Tuple[type, Any], torch.Tensor] = {}
     values: List[torch.Tensor] = []
     for leaf in leaves:
-        # Symbolic sizes stay unmerged because comparing them adds guards. Floating zeros and
-        # NaN are filled per leaf because -0.0 == 0.0 and NaN != NaN.
-        if type(leaf) in (int, bool) or (type(leaf) is float and not math.isnan(leaf) and leaf != 0.0):
-            key = (type(leaf), leaf)
+        # Symbolic sizes stay unmerged because comparing them adds guards. The float key carries
+        # the sign because -0.0 == 0.0; NaN is filled per leaf because NaN != NaN.
+        if type(leaf) in (int, bool) or (type(leaf) is float and not math.isnan(leaf)):
+            key = (type(leaf), leaf, math.copysign(1.0, leaf))
             if key not in filled:
                 filled[key] = torch.full((), leaf, device=device, dtype=dtype)
             values.append(filled[key])
