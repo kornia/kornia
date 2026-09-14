@@ -5313,6 +5313,19 @@ class TestRandomAutoContrast(BaseTester):
         out = aug(x_data)
         assert out.shape == x_data.shape
 
+    @pytest.mark.parametrize(("scale", "shift"), [(1.0, 0.0), (2.0, 0.0), (1.0, -1.0), (0.0, 0.5)])
+    def test_clip_output_does_not_change_the_output(self, scale, shift, device, dtype):
+        # #4436: normalize_min_max already lands in [0, 1], so the documented clamp is a no-op, even for the
+        # out-of-range inputs a caller would reach for it to protect against. The constant image (scale 0)
+        # comes back as zeros either way.
+        torch.manual_seed(0)
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype) * scale + shift
+        clipped = kornia.augmentation.RandomAutoContrast(clip_output=True, p=1.0)(x.clone())
+        unclipped = kornia.augmentation.RandomAutoContrast(clip_output=False, p=1.0)(x.clone())
+        self.assert_close(clipped, unclipped, rtol=0.0, atol=0.0)
+        assert unclipped.min().item() >= 0.0
+        assert unclipped.max().item() <= 1.0
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 5, device=device, dtype=torch.float64)
