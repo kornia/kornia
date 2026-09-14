@@ -515,9 +515,12 @@ class DepthWarper(nn.Module):
         out bit-identical, so do the images. Wherever the transformed points keep a camera-frame ``z`` away
         from zero, the two agree at the working dtype's tolerance in float32 and float64; in float16 and
         bfloat16 the gap is wider than that tolerance, which is why the agreement is claimed for the two
-        single- and double-precision dtypes only. Their projection routes now share the same strict
-        ``abs(z) > 1e-8`` divide guard, including at ``z = 0``. The naming conflict is tracked as
-        `#4273 <https://github.com/kornia/kornia/issues/4273>`_.
+        single- and double-precision dtypes only. Both routes use a guarded perspective divide, but at singular
+        depth the guard is applied on different representations: :func:`warp_frame_depth` guards camera-frame
+        coordinates before intrinsics, while ``cam2pixel`` guards the coordinates after the fused projection
+        matrix. They therefore still differ at ``z = 0`` when the intrinsics have a non-zero principal point;
+        the common singular-depth contract remains tracked in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        The naming conflict is tracked as `#4273 <https://github.com/kornia/kornia/issues/4273>`_.
 
     Args:
         pinhole_dst: the pinhole model for the destination frame.

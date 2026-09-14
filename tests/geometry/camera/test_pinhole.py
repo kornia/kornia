@@ -947,6 +947,64 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(cam.project(behind), expected_behind, atol=0.0, rtol=0.0)
         self.assert_close(kornia.geometry.camera.project_points(behind, K3), expected_behind, atol=0.0, rtol=0.0)
 
+    def test_project_preserves_full_intrinsics_and_rank_four_batching_4475(self, device, dtype):
+        # Regression for #4475 review: regular-depth projection must retain the full 4x4 intrinsics behavior and
+        # associate each camera with the first point axis even when the point tensor has additional leading axes.
+        intrinsics = torch.tensor(
+            [
+                [[100.0, 5.0, 4.0, 7.0], [0.0, 90.0, 3.0, 0.0], [0.0, 0.0, 2.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
+                [[70.0, -3.0, 2.0, -5.0], [1.0, 80.0, -4.0, 0.0], [0.02, 0.0, 1.5, 0.0], [0.0, 0.0, 0.0, 1.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        extrinsics = torch.tensor(
+            [
+                [[1.0, 0.0, 0.0, 0.1], [0.0, 1.0, 0.0, -0.2], [0.0, 0.0, 1.0, 0.3], [0.0, 0.0, 0.0, 1.0]],
+                [[1.0, 0.0, 0.0, -0.3], [0.0, 1.0, 0.0, 0.4], [0.0, 0.0, 1.0, 0.2], [0.0, 0.0, 0.0, 1.0]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        camera = kornia.geometry.camera.PinholeCamera(
+            intrinsics,
+            extrinsics,
+            torch.tensor([8.0, 8.0], device=device, dtype=dtype),
+            torch.tensor([10.0, 10.0], device=device, dtype=dtype),
+        )
+        points = torch.tensor(
+            [
+                [
+                    [[1.0, 2.0, 4.0], [2.0, -1.0, 3.0], [-0.5, 0.25, 2.0]],
+                    [[0.5, 1.5, 5.0], [3.0, 2.0, 6.0], [1.25, -0.75, 2.5]],
+                ],
+                [
+                    [[-1.0, 1.0, 4.5], [0.25, 2.5, 3.5], [2.0, -1.5, 5.5]],
+                    [[1.5, 0.5, 6.5], [-0.25, -2.0, 4.0], [0.75, 1.25, 3.0]],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        actual = camera.project(points)
+        expected = kornia.geometry.convert_points_from_homogeneous(
+            kornia.geometry.transform_points(intrinsics @ extrinsics, points)
+        )
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+    def test_project_preserves_point_dtype_4475(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64 camera tensors")
+        camera = kornia.geometry.camera.PinholeCamera(
+            _k44(device, torch.float64),
+            _e44(device, torch.float64, tx=0.1, ty=-0.2, tz=0.3),
+            torch.ones(1, device=device, dtype=torch.float64),
+            torch.ones(1, device=device, dtype=torch.float64),
+        )
+        points = torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=torch.float32)
+        assert camera.project(points).dtype == points.dtype
+
     def test_convention_from_parameters_fills_every_batch_element_4279(self, device, dtype):
         # Regression pin for #4279: image size must be filled for every camera in the batch.
         cam = self._from_parameters_batch2(device, dtype)

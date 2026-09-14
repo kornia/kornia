@@ -21,7 +21,6 @@ import torch
 
 from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
 from kornia.core.utils import _torch_inverse_cast
-from kornia.geometry.camera.perspective import project_points
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import inverse_transformation, transform_points
 
@@ -404,7 +403,9 @@ class PinholeCamera:
               An empty point set returns an empty result.
             - points are first transformed into the camera frame by the world-to-camera extrinsics. The same
               guarded perspective division as :func:`~kornia.geometry.camera.perspective.project_points` is then
-              applied before ``K``: ``abs(z) <= 1e-8`` leaves ``(x, y)`` unchanged.
+              applied before ``K`` at singular camera depth: ``abs(z) <= 1e-8`` leaves ``(x, y)`` unchanged.
+              Away from that branch, projection retains the full :math:`4 \times 4` intrinsics mapping, including
+              skew and non-canonical third-row/fourth-column entries.
 
         Args:
             point_3d: torch.Tensor containing the 3d points to be projected
@@ -428,8 +429,20 @@ class PinholeCamera:
         """
         if len(point_3d.shape) < 2:
             raise ValueError(f"Input must be at least a 2D tensor. Got {point_3d.shape}")
+
+        # Keep the established full 4x4 projection for regular camera depths. In particular, this preserves
+        # non-canonical intrinsics, transform_points' camera-axis batching, and its point-dtype restoration.
+        P = self.intrinsics @ self.extrinsics
+        regular = convert_points_from_homogeneous(transform_points(P, point_3d))
+
+        # The singular-depth branch keeps this PR's guarded policy: divide camera-frame xy only when z is outside
+        # the guard, then apply the full intrinsics matrix. Computing it separately avoids reducing K to fx/fy/cx/cy.
         point_3d_camera = transform_points(self.extrinsics, point_3d)
-        return project_points(point_3d_camera, self.camera_matrix)
+        point_2d_camera = convert_points_from_homogeneous(point_3d_camera)
+        point_3d_normalized = convert_points_to_homogeneous(point_2d_camera)
+        guarded = convert_points_from_homogeneous(transform_points(self.intrinsics, point_3d_normalized))
+        mask = torch.abs(point_3d_camera[..., 2:3]) > 1e-8
+        return torch.where(mask, regular, guarded)
 
     def unproject(self, point_2d: torch.Tensor, depth: torch.Tensor) -> torch.Tensor:
         r"""Unproject a 2d point in 3d.

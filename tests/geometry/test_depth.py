@@ -980,9 +980,10 @@ class TestDepthWarperConventions(BaseTester):
         self.assert_close(swapped, torch.tensor([0.0, 0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype))
         assert (by_class - swapped).abs().max().item() > 0.5
 
-    def test_warp_frame_depth_and_depth_warper_agree_at_zero_transformed_depth_4267(self, device, dtype):
-        # Regression for #4267: both projection routes now mask z = 0 instead of sending DepthWarper to an
-        # order-1e12 grid coordinate. Check the grid is safe before invoking grid_sample, then pin the common warp.
+    def test_identity_intrinsics_warps_agree_at_zero_transformed_depth_4267(self, device, dtype):
+        # Regression for #4267: with K = I, both routes mask z = 0 without sending DepthWarper to an order-1e12
+        # grid coordinate. This is intentionally identity-intrinsics-only; a principal point still exposes the
+        # unresolved ordering difference between the two projection routes.
         image = torch.arange(1.0, 7.0, device=device, dtype=dtype).view(1, 1, 2, 3)
         depth = torch.ones(1, 1, 2, 3, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype)[None]
