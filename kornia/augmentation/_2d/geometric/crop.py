@@ -73,6 +73,25 @@ class RandomCrop(GeometricAugmentationBase2D):
         the same crop parameters. When the batch is skipped, the returned images, masks, keypoints, and
         boxes remain unchanged, including when ``padding`` or ``pad_if_needed`` is set.
 
+    Convention:
+        See the common input, dtype, probability, parameter-replay, and matrix contract on
+        :class:`~kornia.augmentation.AugmentationBase2D`. ``size`` is an ``(height, width)`` tuple; unlike
+        :class:`CenterCrop`, a bare integer reaches an implementation-level assertion when it is applied. The split
+        is tracked in `#4417 <https://github.com/kornia/kornia/issues/4417>`_. Each selected image samples a crop
+        independently unless ``same_on_batch=True``.
+
+        Explicit ``padding`` is applied before sampling, in ``(left, top, right, bottom)`` order after its scalar
+        or two-value shorthand is expanded. ``pad_if_needed=True`` adds symmetric padding when the requested crop
+        exceeds the input. With it disabled, an oversized requested crop is passed to the crop sampler and becomes
+        an interpolated resize of the input rather than raising; this wart is tracked in
+        `#4414 <https://github.com/kornia/kornia/issues/4414>`_. Slice mode calls ``crop_by_indices`` with that
+        function's bilinear/``align_corners=None`` defaults, ignoring this class's ``resample`` and
+        ``align_corners`` flags. Resample mode uses ``crop_by_transform_mat`` with the configured interpolation and
+        ``align_corners``; it maps constant, replicate, and reflect pre-padding to zero, border, and reflection
+        sampler padding respectively. Only
+        resample mode supports :meth:`inverse`; inverse removes pre-crop padding but cannot restore cropped or
+        interpolated content.
+
     Examples:
         >>> import torch
         >>> _ = torch.manual_seed(0)

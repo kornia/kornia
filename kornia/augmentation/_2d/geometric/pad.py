@@ -44,6 +44,19 @@ class PadTo(GeometricAugmentationBase2D):
     .. note::
         This function internally uses :func:`torch.nn.functional.pad`.
 
+    Convention:
+        See the common input, dtype, probability, parameter-replay, and matrix contract on
+        :class:`~kornia.augmentation.AugmentationBase2D`. This operation always runs and applies its padding on the
+        right and bottom, using ``pad_mode`` and ``pad_value``. A target smaller than the input supplies negative
+        padding to :func:`torch.nn.functional.pad`, which crops those axes instead; a target can consequently pad
+        one axis while cropping the other. This wart is tracked in
+        `#4410 <https://github.com/kornia/kornia/issues/4410>`_.
+
+        :meth:`inverse` slices to the prior input size. It exactly removes right/bottom padding, but after a crop it
+        returns the cropped result unchanged rather than restoring discarded pixels. The transformation matrix is
+        identity, correctly preserving coordinates in the overlapping canvas; canvas extents are carried separately
+        in the input metadata used by :meth:`inverse`.
+
     Examples:
         >>> import torch
         >>> img = torch.tensor([[[[0., 0., 0.],

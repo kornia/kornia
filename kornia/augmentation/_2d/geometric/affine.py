@@ -63,6 +63,19 @@ class RandomAffine(GeometricAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - See :class:`~kornia.augmentation.AugmentationBase2D` for the shared input, sampling, replay, and
+          transformation-matrix contract. Pixel coordinates are ``(x, y)`` with inclusive image corners
+          ``(0, 0)`` and ``(W - 1, H - 1)``; the affine center is ``((W - 1) / 2, (H - 1) / 2)``.
+        - ``degrees``, scale, and shear are sampled independently per selected sample unless ``same_on_batch=True``.
+          ``translate=(a, b)``
+          samples pixel offsets from ``[-a W, a W]`` and ``[-b H, b H]``; positive offsets move content right
+          and down. A positive ``degrees`` value instead rotates the displayed image clockwise, unlike
+          :class:`RandomRotation`; this inherited affine-composer convention is tracked in `#4408
+          <https://github.com/kornia/kornia/issues/4408>`_.
+        - The defaults are bilinear resampling, zero padding, and ``align_corners=False``. The matrix maps input
+          pixel coordinates to output pixel coordinates and is available as :attr:`transform_matrix`.
+
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
 

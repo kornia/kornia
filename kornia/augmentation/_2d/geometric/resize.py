@@ -41,6 +41,19 @@ class Resize(GeometricAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
 
+    Convention:
+        See the common input, dtype, probability, parameter-replay, and matrix contract on
+        :class:`~kornia.augmentation.AugmentationBase2D`. A tuple ``size`` is the exact ``(height, width)`` output.
+        With an integer, ``side`` selects which input side is set to that value while preserving aspect ratio:
+        ``"short"`` is the default and ``"long"`` selects the longest side; the derived side is truncated toward
+        zero. This class uses
+        :func:`kornia.geometry.transform.resize`; ``align_corners`` is forwarded for bilinear and bicubic sampling,
+        and ``antialias`` affects downscaling only. The operation has a fixed, whole-batch resize whenever it is
+        selected.
+
+        :meth:`inverse` resamples to the prior canvas with zero padding through ``crop_by_transform_mat``. It
+        restores the shape but cannot recover values discarded by a resize.
+
     """
 
     def __init__(
@@ -137,6 +150,10 @@ class LongestMaxSize(Resize):
     Args:
         max_size: maximum size of the image after the transformation.
 
+    Convention:
+        See :class:`Resize` for the common resize conventions. This is ``Resize(max_size, side="long")``: its
+        longest output side equals ``max_size`` and the other side is truncated while preserving aspect ratio.
+
     """
 
     def __init__(
@@ -155,6 +172,10 @@ class SmallestMaxSize(Resize):
 
     Args:
         max_size: maximum size of the image after the transformation.
+
+    Convention:
+        See :class:`Resize` for the common resize conventions. This is ``Resize(max_size, side="short")``: its
+        shortest output side equals ``max_size`` and the other side is truncated while preserving aspect ratio.
 
     """
 

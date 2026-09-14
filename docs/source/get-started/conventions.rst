@@ -297,6 +297,14 @@ Randomness in augmentations
   sample angles on MPS and return them on CPU. Numeric ranges or tensor-valued
   constructor ranges can determine the returned device/dtype, so inspecting
   ``_params`` alone does not establish where or at what precision draws ran.
+- Module migration through ``.to(...)`` also updates the augmentation gate
+  and registered parameter generators' sampling configuration, including
+  moves through a container. A dtype-only move preserves the sampling device;
+  a device-only move preserves its dtype. Invalid integer-dtype requests are
+  rejected before changing the samplers. This does not make every generator
+  support every device/dtype, or force returned parameters onto the sampling
+  device: numeric-range ``RandomAffine`` and ``RandomPerspective`` can still
+  return CPU parameters after an accelerator move.
 - Reproducibility uses the global generators on the sampling devices.
   ``torch.manual_seed`` reproduces draws for the same configuration, inputs,
   backend and dtype; matching across devices or PyTorch versions is not

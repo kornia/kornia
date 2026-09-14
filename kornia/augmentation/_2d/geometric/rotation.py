@@ -46,6 +46,14 @@ class RandomRotation(GeometricAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - See :class:`~kornia.augmentation.AugmentationBase2D` for the shared input, sampling, replay, and
+          transformation-matrix contract. Coordinates are inclusive pixel centers, and rotation is about
+          ``((W - 1) / 2, (H - 1) / 2)``.
+        - A positive sampled angle rotates the displayed image counter-clockwise. The default is bilinear
+          resampling with zero padding and ``align_corners=True``; this default differs from several 2D geometric
+          augmentations and is tracked in `#4412 <https://github.com/kornia/kornia/issues/4412>`_.
+
     .. note::
         This function internally uses :func:`kornia.geometry.transform.affine`.
 
@@ -152,6 +160,15 @@ class RandomRotation90(GeometricAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - See :class:`~kornia.augmentation.AugmentationBase2D` for the shared contract. Coordinates are inclusive
+          pixel centers and positive rounded ``times`` values rotate the displayed image counter-clockwise by
+          ``times * 90`` degrees.
+        - ``times`` is sampled from the supplied uniform range and rounded before multiplication by 90. The output
+          retains the input ``(H, W)`` shape, including for non-square images; both behaviors are tracked in
+          `#4409 <https://github.com/kornia/kornia/issues/4409>`_. Its defaults match :class:`RandomRotation`:
+          bilinear resampling, zero padding, and ``align_corners=True``.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.affine`. This version is relatively

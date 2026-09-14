@@ -51,6 +51,19 @@ class CenterCrop(GeometricAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.geometry.transform.crop_by_boxes`.
 
+    Convention:
+        See the common input, dtype, probability, parameter-replay, and matrix contract on
+        :class:`~kornia.augmentation.AugmentationBase2D`. ``size`` accepts an integer for a square crop or an
+        ``(height, width)`` tuple. The fixed centre crop is shared by every selected image in a batch.
+
+        When the crop is selected, ``cropping_mode="slice"`` indexes the input directly and returns a writable view
+        of it; modifying the result therefore modifies the corresponding centre region of the input. This wart is
+        tracked in
+        `#4413 <https://github.com/kornia/kornia/issues/4413>`_. ``cropping_mode="resample"`` uses
+        ``crop_by_transform_mat`` with the configured ``resample`` (bilinear by default), ``align_corners`` (``True``
+        by default), and zero padding. Only resample mode supports
+        :meth:`inverse`; it resamples onto the original canvas with zero padding and cannot restore discarded data.
+
     Examples:
         >>> import torch
         >>> rng = torch.manual_seed(0)

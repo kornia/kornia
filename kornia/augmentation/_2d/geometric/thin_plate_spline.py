@@ -30,11 +30,30 @@ class RandomThinPlateSpline(AugmentationBase2D):
 
     .. image:: _static/img/RandomThinPlateSpline.png
 
+    Convention:
+        See the shared contract on :class:`~kornia.augmentation.AugmentationBase2D`.
+        Five control points use normalized ``(x, y)`` coordinates: ``(-1, -1)``, ``(-1, 1)``,
+        ``(1, -1)``, ``(1, 1)``, and ``(0, 0)``. Each destination coordinate receives uniform
+        noise between ``-scale`` and ``scale``; zero scale leaves these points unchanged.
+        Sampling is bilinear with zero padding and ``align_corners=False`` by default; no
+        interpolation-mode argument is exposed. Output spatial size is unchanged, and there is
+        no ``transform_matrix`` or ``inverse`` interface. Spatial labels in containers have
+        additional limitations; see `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
+
+    .. warning::
+        Unchanged control points do not give an identity image at the default
+        ``align_corners=False`` because the sampling lattice is corner-aligned. Setting
+        ``align_corners=True`` removes this mismatch for float32/float64 inputs, up to numerical precision.
+        The solve has additional dtype limitations documented on
+        :func:`~kornia.geometry.transform.get_tps_transform`. The sampling-grid mismatch is tracked in
+        `#3928 <https://github.com/kornia/kornia/issues/3928>`_ and
+        `#4411 <https://github.com/kornia/kornia/issues/4411>`_.
+
     Args:
         scale: the non-negative scale factor to apply to the destination points.
             Zero leaves the control points unchanged.
         align_corners: Interpolation flag used by ``grid_sample``.
-        mode: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
+        padding_mode: Padding used by ``grid_sample``: 'zeros', 'border' or 'reflection'.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it

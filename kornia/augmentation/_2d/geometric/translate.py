@@ -46,6 +46,14 @@ class RandomTranslate(GeometricAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - See :class:`~kornia.augmentation.AugmentationBase2D` for the shared input, sampling, replay, and
+          transformation-matrix contract. Coordinates are inclusive pixel centers. ``translate_x`` and
+          ``translate_y`` are independently sampled fractions and multiplied by ``W`` and ``H`` respectively;
+          positive values move content right and down. Omitting either range fixes that axis at zero.
+        - The defaults are bilinear resampling, zero padding, and ``align_corners=False``. The matrix maps input
+          pixel coordinates to output pixel coordinates.
+
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
 
