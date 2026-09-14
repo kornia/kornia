@@ -15,19 +15,37 @@
 # limitations under the License.
 #
 
-"""Render docs/source/get-started/performance.rst from benchmarks/results/**.json."""
+"""Render docs/source/get-started/performance.rst from benchmarks/results/**.json.
+
+The same result files feed the landing page: ``render_hero_svg`` draws the CPU-vs-accelerator bar
+chart in the hero's "GPU-accelerated" tab, so the figures there are read from the committed run
+rather than typed in.
+"""
 
 from __future__ import annotations
 
 import json
 import re
 import sys
+from html import escape
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 RESULTS = REPO / "benchmarks" / "results"
 OUT = REPO / "docs" / "source" / "get-started" / "performance.rst"
+HERO_OUT = REPO / "docs" / "source" / "_generated" / "hero-benchmark.html"
 LLMS_FULL = REPO / "docs" / "source" / "_extra" / "llms-full.txt"
+
+# The one comparison the landing page draws: a kornia op at one batch size, CPU against the
+# accelerator of the same machine. ``machine`` is a preference; any machine with both a CPU and an
+# accelerator result set for the latest version is used when that one is absent.
+HERO = {
+    "suite": "augmentation",
+    "machine": "apple-m1",
+    "op": "RandomGaussianBlur",
+    "batch": 32,
+    "backend": "kornia (eager)",
+}
 
 BEGIN, END = "<!-- BENCH:BEGIN -->", "<!-- BENCH:END -->"
 
@@ -50,7 +68,9 @@ albumentations win the single-image uint8 CPU regime and we publish those losses
 
 Reproduce or contribute a machine with::
 
-   python benchmarks/<suite>/flagship.py --device <cpu|cuda|mps> --contribute benchmarks/results
+   python benchmarks/<dir>/<script>.py --device <cpu|cuda|mps> --contribute benchmarks/results
+
+Most suites are a ``flagship.py``; ``benchmarks/README.md`` maps each suite to its script.
 
 """
 
@@ -73,16 +93,46 @@ def latest_version(versions: list[str]) -> str:
     return max(versions, key=_version_key)
 
 
+#: Row fields that identify the measurement rather than the configuration it was taken at.
+MEASUREMENT_FIELDS = frozenset({"op", "backend", "median_us", "iqr_us", "throughput_per_s", "error"})
+
+
+def _extra_config_fields(rows: list[dict]) -> list[str]:
+    """Config fields besides ``batch`` that differ between rows of one result file.
+
+    ``op`` plus ``batch`` identifies a row in a suite that sweeps batch size alone, which is what
+    the flagship suites do; a suite sweeping a second axis (``feature-laf-ops`` varies ``n_lafs``
+    at a fixed batch) would otherwise collapse two configs onto one row and render whichever came
+    last. Fields that are constant across the file -- image size, dtype -- stay out of the label
+    and are already disclosed in the metadata line above the table.
+    """
+    keys = [k for k in dict.fromkeys(k for r in rows for k in r) if k not in MEASUREMENT_FIELDS and k != "batch"]
+    return [k for k in keys if len({repr(r.get(k)) for r in rows}) > 1]
+
+
+def _config_key(row: dict, extra: list[str]) -> tuple:
+    return (row["op"], row["batch"], *(repr(row.get(k)) for k in extra))
+
+
+def _config_label(row: dict, extra: list[str]) -> str:
+    label = f"{row['op']} @ {row['batch']}"
+    if extra:
+        label += " (" + ", ".join(f"{k}={row.get(k)}" for k in extra) + ")"
+    return label
+
+
 def _table(payload: dict) -> str:
     rows = payload["results"]
     backends = list(dict.fromkeys(r["backend"] for r in rows))
+    extra = _extra_config_fields(rows)
     lines = [".. list-table::", "   :header-rows: 1", "", "   * - op @ batch"]
     lines += [f"     - {b}" for b in backends]
-    cells = {(r["op"], r["batch"], r["backend"]): r.get("throughput_per_s") for r in rows}
-    for op, batch in dict.fromkeys((r["op"], r["batch"]) for r in rows):
-        lines.append(f"   * - {op} @ {batch}")
+    cells = {(_config_key(r, extra), r["backend"]): r.get("throughput_per_s") for r in rows}
+    labels = {_config_key(r, extra): _config_label(r, extra) for r in rows}
+    for key in dict.fromkeys(_config_key(r, extra) for r in rows):
+        lines.append(f"   * - {labels[key]}")
         for b in backends:
-            v = cells.get((op, batch, b))
+            v = cells.get((key, b))
             lines.append(f"     - {v:.0f}" if isinstance(v, (int, float)) else "     - —")
     return "\n".join(lines) + "\n"
 
@@ -99,7 +149,8 @@ def render_page(results_root: Path) -> str:
         parts.append(f"\n{suite} — {slug} ({device})\n{'^' * (len(suite) + len(slug) + len(device) + 6)}\n")
         parts.append(
             f"``{meta['platform']}`` — torch {meta['torch']}, kornia {meta['kornia']}, "
-            f"commit ``{meta['git_commit']}``, {meta['timestamp_utc'][:10]}, throughput in items/s\n\n"
+            f"commit ``{meta['git_commit']}``, {meta['timestamp_utc'][:10]}, "
+            f"throughput in {meta.get('units') or 'items/s'}\n\n"
         )
         parts.append(_table(payload))
     older = sorted(set(data) - {version})
@@ -108,13 +159,101 @@ def render_page(results_root: Path) -> str:
     return "\n".join(parts)
 
 
+def _throughput(payload: dict, op: str, batch: int, backend: str) -> float | None:
+    for row in payload["results"]:
+        if row["op"] == op and row["batch"] == batch and row["backend"] == backend:
+            value = row.get("throughput_per_s")
+            return float(value) if isinstance(value, (int, float)) else None
+    return None
+
+
+def hero_figures(results_root: Path) -> dict | None:
+    """CPU and accelerator throughput of the ``HERO`` op from the latest committed result set.
+
+    Returns ``None`` when no machine has both measurements, so the caller can leave the chart out.
+    """
+    data = load_results(results_root)
+    if not data:
+        return None
+    version = latest_version(list(data))
+    by_machine: dict[str, dict[str, dict]] = {}
+    for fname, payload in data[version].items():
+        suite, slug, device = fname[:-5].split("--")
+        if suite == HERO["suite"]:
+            by_machine.setdefault(slug, {})[device] = payload
+    machines = sorted(by_machine, key=lambda slug: (slug != HERO["machine"], slug))
+    for slug in machines:
+        devices = by_machine[slug]
+        accelerators = sorted(device for device in devices if device != "cpu")
+        if "cpu" not in devices or not accelerators:
+            continue
+        cpu = _throughput(devices["cpu"], HERO["op"], HERO["batch"], HERO["backend"])
+        gpu = _throughput(devices[accelerators[0]], HERO["op"], HERO["batch"], HERO["backend"])
+        if cpu is None or gpu is None or cpu <= 0 or gpu <= 0:
+            continue
+        meta = devices[accelerators[0]]["metadata"]
+        return {
+            "machine": slug.replace("-", " ").title(),  # "apple-m1" -> "Apple M1"
+            "device": accelerators[0],
+            "cpu": cpu,
+            "gpu": gpu,
+            "speedup": gpu / cpu,
+            "kornia": meta["kornia"],
+            "torch": meta["torch"],
+        }
+    return None
+
+
+def render_hero_svg(results_root: Path) -> str:
+    """The landing page's CPU-vs-accelerator bar chart, as an HTML fragment; empty when there is no data."""
+    fig = hero_figures(results_root)
+    if fig is None:
+        return ""
+    full, left = 516, 80  # the longer bar spans the chart; the other is scaled to it
+    longest = max(fig["cpu"], fig["gpu"])
+
+    def bar(y: int, value: float, text: str, fill: str, text_class: str) -> str:
+        width = round(full * value / longest)
+        rect = f'<rect x="{left}" y="{y}" width="{width}" height="32" rx="6" class="{fill}"/>'
+        if width == full:  # no room to the right: print the value inside the bar, right-aligned
+            anchor = f'x="{left + width - 12}" y="{y + 23}" class="illo-value {text_class}" text-anchor="end"'
+        else:
+            anchor = f'x="{left + width + 12}" y="{y + 23}" class="illo-value"'
+        return f"{rect}\n    <text {anchor}>{text}</text>"
+
+    faster = "GPU" if fig["gpu"] >= fig["cpu"] else "CPU"
+    ratio = max(fig["gpu"], fig["cpu"]) / min(fig["gpu"], fig["cpu"])
+    speedup = f" · {ratio:.1f}\N{MULTIPLICATION SIGN} faster"
+    cpu_text = f"{fig['cpu']:,.0f} img/s" + (speedup if faster == "CPU" else "")
+    gpu_text = f"{fig['gpu']:,.0f} img/s" + (speedup if faster == "GPU" else "")
+    title = escape(f"{HERO['op']} · batch {HERO['batch']} · {fig['machine']}")
+    label = escape(
+        f"{HERO['op']} at batch {HERO['batch']} on an {fig['machine']}: {fig['cpu']:,.0f} images per second on "
+        f"the CPU, {fig['gpu']:,.0f} on the GPU"
+    )
+    note = escape(f"items/s, eager mode — committed benchmark run, kornia {fig['kornia']} / torch {fig['torch']}")
+    return f"""\
+<div class="kornia-tab-visual">
+  <svg class="kornia-illo" viewBox="0 0 640 220" role="img" aria-label="{label}">
+    <text x="24" y="36" class="illo-title">{title}</text>
+    <text x="24" y="90" class="illo-label">CPU</text>
+    {bar(68, fig["cpu"], cpu_text, "illo-muted", "")}
+    <text x="24" y="152" class="illo-label">GPU</text>
+    {bar(130, fig["gpu"], gpu_text, "illo-primary", "illo-on-primary")}
+    <text x="24" y="204" class="illo-note">{note}</text>
+  </svg>
+</div>
+"""
+
+
 def _digest(results_root: Path) -> str:
     data = load_results(results_root)
     if not data:
         return "- No committed benchmark results yet.\n"
     version = latest_version(list(data))
     lines = [f"- Result set: kornia {version}, committed in `benchmarks/results/{version}/` (per-machine"]
-    lines += ["  snapshots; reproduce with `python benchmarks/<suite>/flagship.py --contribute benchmarks/results`)."]
+    lines += ["  snapshots; reproduce with `python benchmarks/<dir>/<script>.py --contribute benchmarks/results`,"]
+    lines += ["  the script each suite maps to in `benchmarks/README.md`)."]
     for fname, payload in sorted(data[version].items()):
         suite, slug, device = fname[:-5].split("--")
         meta = payload["metadata"]
@@ -124,12 +263,19 @@ def _digest(results_root: Path) -> str:
         best = max(rows, key=lambda r: r["throughput_per_s"])
         kornia_rows = [r for r in rows if r["backend"].startswith("kornia")]
         worst = min(kornia_rows, key=lambda r: r["throughput_per_s"]) if kornia_rows else None
+        extra = _extra_config_fields(rows)
+        units = meta.get("units") or "items/s"
+
+        def _at(row: dict, extra: list[str] = extra) -> str:
+            tail = "".join(f",{k}={row.get(k)}" for k in extra)
+            return f"{row['op']}@{row['batch']}{tail}"
+
         line = (
             f"- {suite} on {slug}/{device} ({meta['timestamp_utc'][:10]}): fastest overall "
-            f"{best['backend']} {best['op']}@{best['batch']} at {best['throughput_per_s']:.0f} items/s"
+            f"{best['backend']} {_at(best)} at {best['throughput_per_s']:.0f} {units}"
         )
         if worst is not None:
-            line += f"; slowest kornia op {worst['op']}@{worst['batch']} at {worst['throughput_per_s']:.0f} items/s"
+            line += f"; slowest kornia op {_at(worst)} at {worst['throughput_per_s']:.0f} {units}"
         lines.append(line + ".")
     return "\n".join(lines) + "\n"
 
@@ -145,6 +291,8 @@ def refresh_llms(llms_path: Path, results_root: Path) -> None:
 
 def main() -> None:
     OUT.write_text(render_page(RESULTS))
+    HERO_OUT.parent.mkdir(exist_ok=True)
+    HERO_OUT.write_text(render_hero_svg(RESULTS))
 
 
 if __name__ == "__main__":

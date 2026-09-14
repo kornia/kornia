@@ -127,7 +127,9 @@ class TestImageRegistrator(BaseTester):
         img1 = torch.rand(1, 1, 64, 64, device=device)
         img2 = torch.rand(1, 1, 32, 32, device=device)
 
-        registrator = ImageRegistrator("similarity", allow_shape_mismatch=True)
+        registrator = ImageRegistrator("similarity", allow_shape_mismatch=True, pyramid_levels=1, num_iterations=1).to(
+            device
+        )
 
         out = registrator.register(img1, img2)
 

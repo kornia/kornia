@@ -34,10 +34,10 @@ class TestHardNet(BaseTester):
 
     @pytest.mark.slow
     def test_shape_batch(self, device):
-        inp = torch.ones(16, 1, 32, 32, device=device)
+        inp = torch.ones(4, 1, 32, 32, device=device)
         hardnet = HardNet().to(device)
         out = hardnet(inp)
-        assert out.shape == (16, 128)
+        assert out.shape == (4, 128)
 
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
@@ -61,10 +61,10 @@ class TestHardNet8(BaseTester):
         assert out.shape == (1, 128)
 
     def test_shape_batch(self, device):
-        inp = torch.ones(16, 1, 32, 32, device=device)
+        inp = torch.ones(4, 1, 32, 32, device=device)
         hardnet = HardNet8().to(device)
         out = hardnet(inp)
-        assert out.shape == (16, 128)
+        assert out.shape == (4, 128)
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):

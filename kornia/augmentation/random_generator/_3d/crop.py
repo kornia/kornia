@@ -22,7 +22,7 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _check_positive_int_or_traced, _common_param_check
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, is_exporting
 from kornia.geometry.bbox import bbox_generator3d
 
 
@@ -92,7 +92,8 @@ class CropGenerator3D(RandomGeneratorBase):
         y_diff = height - size[:, 1] + 1
         z_diff = depth - size[:, 0] + 1
 
-        if (x_diff < 0).any() or (y_diff < 0).any() or (z_diff < 0).any():
+        # The size check reads the data, which graph capture cannot do; skip it under export.
+        if not is_exporting() and ((x_diff < 0).any() or (y_diff < 0).any() or (z_diff < 0).any()):
             raise ValueError(
                 f"input_size {(depth, height, width)} cannot be smaller than crop size {size!s} in any dimension."
             )

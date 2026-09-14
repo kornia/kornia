@@ -12,9 +12,9 @@
 <!-- prettier-ignore -->
 <a href="https://kornia.readthedocs.io">Docs</a> •
 <a href="https://colab.sandbox.google.com/github/kornia/tutorials/blob/master/nbs/hello_world_tutorial.ipynb">Try it Now</a> •
-<a href="https://kornia.github.io/tutorials/">Tutorials</a> •
+<a href="https://www.kornia.org/tutorials/">Tutorials</a> •
 <a href="https://github.com/kornia/kornia-examples">Examples</a> •
-<a href="https://kornia.github.io//kornia-blog">Blog</a> •
+<a href="https://www.kornia.org/kornia-blog/">Blog</a> •
 <a href="https://discord.gg/HfnywwpBnD">Community</a>
 
 [![PyPI version](https://badge.fury.io/py/kornia.svg)](https://pypi.org/project/kornia)
@@ -114,7 +114,7 @@
 
 ## 例子
 
-可以尝试通过这些 [教程](https://kornia.github.io/tutorials/) 来学习和使用这个库。
+可以尝试通过这些 [教程](https://www.kornia.org/tutorials/) 来学习和使用这个库。
 
 <div align="center">
   <a href="https://colab.sandbox.google.com/github/kornia/tutorials/blob/master/nbs/hello_world_tutorial.ipynb" target="_blank">

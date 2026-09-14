@@ -39,15 +39,11 @@ class DeDoDeDescriptor(nn.Module):
     ) -> torch.Tensor:
         """Run this DeDoDe module forward.
 
-        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
-        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
-
         Args:
-            images: Input value used by this method.
+            images: Input image batch with shape :math:`(B, C, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Dense descriptor map with shape :math:`(B, D, H, W)`.
         """
         features, sizes = self.encoder(images)
         context = None

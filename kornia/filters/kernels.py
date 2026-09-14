@@ -159,90 +159,88 @@ def gaussian_discrete_erf(
 
 
 def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
-    """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
-    ax = torch.abs(x)
+    """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
-    out = torch.zeros_like(x)
+    Both polynomial branches are evaluated on the full tensor and merged with ``torch.where`` (instead
+    of boolean-mask indexing) so that the kernel traces without data-dependent control flow.
+    """
+    ax = torch.abs(x)
     idx_a = ax < 3.75
 
-    if idx_a.any():
-        y = (x[idx_a] / 3.75) * (x[idx_a] / 3.75)
-        out[idx_a] = 1.0 + y * (
-            3.5156229 + y * (3.0899424 + y * (1.2067492 + y * (0.2659732 + y * (0.360768e-1 + y * 0.45813e-2))))
-        )
+    # small-argument branch (|x| < 3.75)
+    y = (x / 3.75) * (x / 3.75)
+    out_a = 1.0 + y * (
+        3.5156229 + y * (3.0899424 + y * (1.2067492 + y * (0.2659732 + y * (0.360768e-1 + y * 0.45813e-2))))
+    )
 
-    idx_b = ~idx_a
-    if idx_b.any():
-        y = 3.75 / ax[idx_b]
-        ans = 0.916281e-2 + y * (-0.2057706e-1 + y * (0.2635537e-1 + y * (-0.1647633e-1 + y * 0.392377e-2)))
-        coef = 0.39894228 + y * (0.1328592e-1 + y * (0.225319e-2 + y * (-0.157565e-2 + y * ans)))
-        out[idx_b] = (ax[idx_b].exp() / ax[idx_b].sqrt()) * coef
+    # large-argument branch; clamp keeps the unused lanes finite (|x| = 0 would divide by zero)
+    ax_b = torch.where(idx_a, torch.full_like(ax, 3.75), ax)
+    y = 3.75 / ax_b
+    ans = 0.916281e-2 + y * (-0.2057706e-1 + y * (0.2635537e-1 + y * (-0.1647633e-1 + y * 0.392377e-2)))
+    coef = 0.39894228 + y * (0.1328592e-1 + y * (0.225319e-2 + y * (-0.157565e-2 + y * ans)))
+    out_b = (ax_b.exp() / ax_b.sqrt()) * coef
 
-    return out
+    return torch.where(idx_a, out_a, out_b)
 
 
 def _modified_bessel_1(x: torch.Tensor) -> torch.Tensor:
-    """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
-    ax = torch.abs(x)
+    """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
-    out = torch.zeros_like(x)
+    Branch-free like :func:`_modified_bessel_0`.
+    """
+    ax = torch.abs(x)
     idx_a = ax < 3.75
 
-    if idx_a.any():
-        y = (x[idx_a] / 3.75) * (x[idx_a] / 3.75)
-        ans = 0.51498869 + y * (0.15084934 + y * (0.2658733e-1 + y * (0.301532e-2 + y * 0.32411e-3)))
-        out[idx_a] = ax[idx_a] * (0.5 + y * (0.87890594 + y * ans))
+    # small-argument branch (|x| < 3.75)
+    y = (x / 3.75) * (x / 3.75)
+    ans = 0.51498869 + y * (0.15084934 + y * (0.2658733e-1 + y * (0.301532e-2 + y * 0.32411e-3)))
+    out_a = ax * (0.5 + y * (0.87890594 + y * ans))
 
-    idx_b = ~idx_a
-    if idx_b.any():
-        y = 3.75 / ax[idx_b]
-        ans = 0.2282967e-1 + y * (-0.2895312e-1 + y * (0.1787654e-1 - y * 0.420059e-2))
-        ans = 0.39894228 + y * (-0.3988024e-1 + y * (-0.362018e-2 + y * (0.163801e-2 + y * (-0.1031555e-1 + y * ans))))
-        ans = ans * ax[idx_b].exp() / ax[idx_b].sqrt()
-        out[idx_b] = torch.where(x[idx_b] < 0, -ans, ans)
+    # large-argument branch; clamp keeps the unused lanes finite (|x| = 0 would divide by zero)
+    ax_b = torch.where(idx_a, torch.full_like(ax, 3.75), ax)
+    y = 3.75 / ax_b
+    ans = 0.2282967e-1 + y * (-0.2895312e-1 + y * (0.1787654e-1 - y * 0.420059e-2))
+    ans = 0.39894228 + y * (-0.3988024e-1 + y * (-0.362018e-2 + y * (0.163801e-2 + y * (-0.1031555e-1 + y * ans))))
+    ans = ans * ax_b.exp() / ax_b.sqrt()
+    out_b = torch.where(x < 0, -ans, ans)
 
-    return out
+    return torch.where(idx_a, out_a, out_b)
 
 
 def _modified_bessel_i(n: int, x: torch.Tensor) -> torch.Tensor:
     """Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
     KORNIA_CHECK(n >= 2, "n must be greater than 1.99")
 
+    # I_n(0) = 0 for n >= 1. The zero lanes are computed on a safe placeholder and masked out at the
+    # end instead of being compacted away, so the recurrence has no data-dependent control flow.
     is_zero_mask = torch.isclose(x, torch.tensor(0.0, device=x.device, dtype=x.dtype))
-    if is_zero_mask.all():
-        return x
+    x_nz = torch.where(is_zero_mask, torch.ones_like(x), x)
 
-    x_nz = x[~is_zero_mask]
-
-    batch_size = x_nz.shape[0]
     tox = 2.0 / x_nz.abs()
 
-    ans = torch.zeros(batch_size, device=x.device, dtype=x.dtype)
-    bip = torch.zeros(batch_size, device=x.device, dtype=x.dtype)
-    bi = torch.ones(batch_size, device=x.device, dtype=x.dtype)
+    ans = torch.zeros_like(x)
+    bip = torch.zeros_like(x)
+    bi = torch.ones_like(x)
 
     m = int(2 * (n + int(math.sqrt(40.0 * n))))
     for j in range(m, 0, -1):
         bim = torch.addcmul(bip, tox, bi, value=j)
         bip, bi = bi, bim
 
+        # Rescale only the lanes that grow past 1e10; the other lanes pass through unchanged.
         scale_mask = bi.abs() > 1.0e10
-        if scale_mask.any():
-            factor = torch.where(scale_mask, 1e-10, 1.0)
-            ans *= factor
-            bi *= factor
-            bip *= factor
+        ans = torch.where(scale_mask, ans * 1e-10, ans)
+        bi = torch.where(scale_mask, bi * 1e-10, bi)
+        bip = torch.where(scale_mask, bip * 1e-10, bip)
 
         if j == n:
             ans = bip
 
-    out_nz = ans * _modified_bessel_0(x_nz) / bi
+    out = ans * _modified_bessel_0(x_nz) / bi
     if (n % 2) == 1:
-        out_nz = torch.where(x_nz < 0.0, -out_nz, out_nz)
+        out = torch.where(x_nz < 0.0, -out, out)
 
-    out = torch.zeros_like(x)
-    out[~is_zero_mask] = out_nz
-    return out
+    return torch.where(is_zero_mask, torch.zeros_like(x), out)
 
 
 def gaussian_discrete(

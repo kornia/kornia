@@ -2,12 +2,11 @@ Stereo Camera
 -------------
 
 .. meta::
-   :name: description
-   :content: "The kornia.geometry.camera.stereo module provides functionality for working with a horizontal stereo camera setup. It includes the StereoCamera class, which allows for the conversion of disparity maps into 3D point clouds using the stereo rectification model. This module leverages camera calibration matrices and disparity information to reproject pixels from 2D to 3D space, facilitating tasks such as depth estimation and 3D reconstruction."
+   :description: The kornia.geometry.camera.stereo module provides functionality for working with a horizontal stereo camera setup. It includes the StereoCamera class, which allows for the conversion of disparity maps into 3D point clouds using the stereo rectification model. This module leverages camera calibration matrices and disparity information to reproject pixels from 2D to 3D space, facilitating tasks such as depth estimation and 3D reconstruction.
 
 .. currentmodule:: kornia.geometry.camera.stereo
 
-In this module we provide the :class:`StereoCamera` that contains functionality for working with a horizontal stereo camera setup.
+This module provides the :class:`StereoCamera` class, which contains functionality for working with a horizontal stereo camera setup.
 
 The horizontal stereo camera setup is assumed to be calibrated and rectified such that the setup can be described by two camera matrices:
 
@@ -36,13 +35,13 @@ where:
     * :math:`cy` is the y-coordinate of the principal point in pixels.
     * :math:`tx` is the horizontal baseline in metric units.
 
-These camera matrices are obtained by calibrating your stereo camera setup which can be done `in OpenCV <https://docs.opencv.org/master/d9/d0c/group__calib3d.html#ga91018d80e2a93ade37539f01e6f07de5>`_.
+These camera matrices are obtained by calibrating your stereo camera setup, which can be done `in OpenCV <https://docs.opencv.org/master/d9/d0c/group__calib3d.html#ga91018d80e2a93ade37539f01e6f07de5>`_.
 
-The :class:`StereoCamera` allows you to convert disparity maps to the real world 3D geometry represented by a point cloud.
+The :class:`StereoCamera` allows you to convert disparity maps to real-world 3D geometry represented by a point cloud.
 
 This is done by forming the :math:`Q` matrix.
 
-Using the pinhole camera model to project :math:`[X Y Z 1]` in world coordinates to :math:`uv` pixels in the left and right camera frame respectively:
+Using the pinhole camera model, a point :math:`[X, Y, Z, 1]` in world coordinates projects to pixels :math:`(u, v)` in the left and right camera frames respectively:
 
 .. math::
 
@@ -69,9 +68,9 @@ Using the pinhole camera model to project :math:`[X Y Z 1]` in world coordinates
     1
     \end{bmatrix}
 
-Where :math:`d` is the disparity between pixels in left and right image.
+where :math:`d` is the disparity between the pixels in the left and right images.
 
-Combining these two expressions let us write it as one matrix multiplication
+Combining these two expressions lets us write them as one matrix multiplication:
 
 .. math::
     \begin{bmatrix}
@@ -93,7 +92,7 @@ Combining these two expressions let us write it as one matrix multiplication
     1
     \end{bmatrix}
 
-Now subtract the first from the third row and invert the expression and you'll get:
+Subtracting the first row from the third and inverting the expression gives:
 
 .. math::
     \begin{bmatrix}
@@ -115,7 +114,7 @@ Now subtract the first from the third row and invert the expression and you'll g
     1
     \end{bmatrix}
 
-Where :math:`Q` is
+where :math:`Q` is
 
 .. math::
 
@@ -126,7 +125,9 @@ Where :math:`Q` is
     0       & 0       & -fy & fy * (cx_{left} -cx_{right})
     \end{bmatrix}
 
-Notice here that the x-coordinate for the principal point in the left and right camera :math:`cx` might differ, which is being taken into account here.
+The point cloud is obtained by a homogeneous transform by :math:`Q` followed by the division by :math:`W`. When :math:`|W| > 10^{-8}`, an overall sign on :math:`Q` cancels in that divide, so :math:`Q` and :math:`-Q` give the same points. When :math:`|W| \leq 10^{-8}`, Kornia's homogeneous conversion returns the numerator unchanged, so the two matrices give opposing values. :class:`StereoCamera` builds exactly the matrix above, with :math:`tx = P_1[0, 3] / fx` as :math:`P_1` defines it; its constructor rejects a rig only when that product is positive (a zero product and a batch with one positive product pass; tracked in #4270), so :math:`tx` here is negative on a rig it validates as intended. The class's ``tx`` attribute is the negation of this symbol, :math:`-P_1[0, 3] / fx`. Substituting the attribute's value for :math:`tx` above gives neither the class's :math:`Q` nor its negation, because the last row carries no :math:`tx` and does not flip.
+
+The :math:`Q[3, 3]` term carries :math:`fy * (cx_{left} - cx_{right})` for a setup whose principal points differ in :math:`cx`, but :class:`StereoCamera` rejects such a pair today: its constructor requires the two projection matrices to be equal outside the last column, so :math:`cx_{left} = cx_{right}` and that factor is zero. This is tracked in `#4270 <https://github.com/kornia/kornia/issues/4270>`_.
 
 Assuming :math:`fx = fy` you can further reduce this to:
 
@@ -135,10 +136,10 @@ Assuming :math:`fx = fy` you can further reduce this to:
     1 & 0       & 0   & -cx \\
     0       & 1 & 0   & -cy \\
     0       & 0       & 0   & fx  \\
-    0       & 0       & -1/tx & (cx_{left} -cx_{right} / tx)
+    0       & 0       & -1/tx & (cx_{left} - cx_{right}) / tx
     \end{bmatrix}
 
-But we'll use the general :math:`Q` matrix.
+but the implementation uses the general :math:`Q` matrix.
 
 Using the :math:`Q` matrix we can obtain the 3D points by:
 
@@ -152,9 +153,11 @@ Using the :math:`Q` matrix we can obtain the 3D points by:
     \begin{bmatrix}
     u \\
     v \\
-    disparity(y, v) \\
-    z
+    disparity(u, v) \\
+    1
     \end{bmatrix}
+
+where the Euclidean 3D point is :math:`(X/W, Y/W, Z/W)`.
 
 .. autoclass:: StereoCamera
     :members:

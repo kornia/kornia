@@ -146,6 +146,23 @@ class TestParametrizedLine(BaseTester):
     def test_gradcheck(self, device):
         pass
 
+    def test_derived_state_moves_and_serializes(self, device, dtype):
+        p0 = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
+        p1 = torch.rand(2, device=device, dtype=dtype, requires_grad=True)
+        line = ParametrizedLine.through(p0, p1)
+        assert line.direction.grad_fn is not None
+        assert list(line.state_dict()) == ["_origin", "_direction"]
+        origin = torch.zeros(2, device=device, dtype=dtype)
+        restored = ParametrizedLine(origin, torch.ones(2, device=device, dtype=dtype))
+        restored.load_state_dict(line.state_dict())
+        self.assert_close(restored.direction, line.direction.detach())
+        other = torch.float16 if dtype == torch.float32 else torch.float32  # float64 is unavailable on MPS
+        moved = line.to(other)
+        assert moved.origin.dtype == other and moved.direction.dtype == other
+        assert moved.direction.grad_fn is not None
+        moved.direction.sum().backward()
+        assert p1.grad is not None
+
 
 class TestFitLine(BaseTester):
     @pytest.mark.parametrize("B", (1, 2))

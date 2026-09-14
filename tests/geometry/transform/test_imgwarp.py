@@ -27,15 +27,15 @@ from kornia.core.utils import _torch_inverse_cast
 from testing.base import BaseTester
 
 
-def _skip_if_mps_empty_grid_sample(device):
-    """Skip when a zero-element sampling grid cannot reach ``grid_sample``.
+def _skip_if_mps_lacks_grid_sample_backward(device):
+    """Skip a warp gradient check that MPS cannot run before torch 2.14.
 
-    PyTorch's MPS backend raises ``[srcBuf length] > 0 INTERNAL ASSERT FAILED ... Placeholder
-    tensor is empty!`` for a zero-element ``grid_sample`` argument, so an empty warp destination
-    is unreachable there regardless of how kornia builds it.
+    ``aten::grid_sampler_2d_backward`` is unimplemented on MPS until torch 2.14, so no warp can run
+    its backward pass there, empty destination or not. The forward half of the empty-warp contract
+    runs on every backend in ``test_empty_destination_forward_runs_on_every_backend``.
     """
-    if device.type == "mps":
-        pytest.skip("MPS grid_sample asserts on zero-element tensors")
+    if device.type == "mps" and torch_version_lt(2, 14, 0):
+        pytest.skip("MPS lacks aten::grid_sampler_2d_backward before torch 2.14")
 
 
 class DummyNNModule(torch.nn.Module):
@@ -49,11 +49,88 @@ class DummyNNModule(torch.nn.Module):
 
 
 @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
+@pytest.mark.parametrize("dsize", [(0, 4), (3, 0), (0, 0)])
+@pytest.mark.parametrize("batch", [0, 1, 2])
+def test_empty_destination_forward_runs_on_every_backend(op_name, dsize, batch, device, dtype):
+    """An empty destination must not hand ``grid_sample`` a zero-element operand.
+
+    MPS asserts internally (``[srcBuf length] > 0 ... Placeholder tensor is empty!``) on any
+    zero-element ``grid_sample`` argument before torch 2.14, so the empty destination is built from
+    1x1 stand-ins instead. Forward-only, so it also covers MPS on older torch, where the backward
+    kernel is missing for unrelated reasons.
+    """
+    src = torch.rand(batch, 3, 3, 4, device=device, dtype=dtype)
+    rows = 2 if op_name == "warp_affine" else 3
+    transform = torch.eye(3, device=device, dtype=dtype)[:rows].expand(batch, rows, 3)
+
+    out = getattr(kornia.geometry.transform, op_name)(src, transform, dsize)
+
+    assert out.shape == (batch, 3, *dsize)
+    assert out.numel() == 0
+    assert out.device.type == device.type and out.dtype == dtype
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective", "remap"])
+@pytest.mark.parametrize(("src_batch", "transform_batch"), [(0, 1), (1, 0), (0, 0), (2, 1), (1, 2), (2, 2)])
+def test_empty_destination_matches_nonempty_batch_semantics(op_name, src_batch, transform_batch, device, dtype):
+    """An empty destination broadcasts and rejects batch pairings exactly as the non-empty path.
+
+    The three operations disagree on purpose -- ``warp_perspective`` requires equal batches,
+    ``warp_affine`` expands a singleton matrix only to a source batch above one, and ``remap``
+    expands a singleton map batch to the image batch unconditionally -- so the empty path is
+    pinned against whatever the non-empty call does rather than against a hardcoded expectation.
+    """
+    if device.type == "mps" and 0 in (src_batch, transform_batch) and torch_version_lt(2, 14, 0):
+        pytest.skip("MPS grid_sample asserts on a zero-element batch before torch 2.14")
+
+    def run(empty: bool) -> torch.Tensor:
+        src = torch.rand(src_batch, 2, 3, 4, device=device, dtype=dtype)
+        if op_name == "remap":
+            maps = torch.zeros(transform_batch, 0 if empty else 3, 4, device=device, dtype=dtype)
+            return kornia.geometry.remap(src, maps, maps)
+        rows = 2 if op_name == "warp_affine" else 3
+        transform = torch.eye(3, device=device, dtype=dtype)[:rows].expand(transform_batch, rows, 3)
+        return getattr(kornia.geometry.transform, op_name)(src, transform, (0, 4) if empty else (3, 4))
+
+    try:
+        expected_batch = run(empty=False).shape[0]
+    except RuntimeError:
+        with pytest.raises(RuntimeError):
+            run(empty=True)
+        return
+
+    assert run(empty=True).shape[0] == expected_batch
+
+
+def test_empty_destination_samples_a_constant_1x1_stand_in(device, dtype, monkeypatch):
+    """The sampled stand-in stays 1x1 however large the non-zero side of the destination is.
+
+    The empty result discards whatever was sampled, so materializing ``dsize``-many samples would
+    make an empty warp cost more than a real one -- unbounded, for a result with no elements.
+    """
+    sampled_grids = []
+    real_grid_sample = torch.nn.functional.grid_sample
+
+    def spy(input, grid, **kwargs):
+        sampled_grids.append(tuple(grid.shape))
+        return real_grid_sample(input, grid, **kwargs)
+
+    monkeypatch.setattr(torch.nn.functional, "grid_sample", spy)
+    src = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+    transform = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0)
+
+    out = kornia.geometry.transform.warp_affine(src, transform, (0, 2_000_000))
+
+    assert out.shape == (1, 3, 0, 2_000_000)
+    assert sampled_grids and all(shape == (1, 1, 1, 2) for shape in sampled_grids)
+
+
+@pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
 @pytest.mark.parametrize("dsize", [(0, 4), (3, 0)])
 @pytest.mark.parametrize("align_corners", [True, False])
 @pytest.mark.parametrize("padding_mode", ["zeros", "fill"])
 def test_empty_destination_is_autograd_connected(op_name, dsize, align_corners, padding_mode, device, dtype):
-    _skip_if_mps_empty_grid_sample(device)
+    _skip_if_mps_lacks_grid_sample_backward(device)
     src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype, requires_grad=True)
     if op_name == "warp_affine":
         transform = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
@@ -79,7 +156,7 @@ def test_empty_destination_is_autograd_connected(op_name, dsize, align_corners, 
 
 @pytest.mark.parametrize("op_name", ["warp_affine", "warp_perspective"])
 def test_empty_source_policy(op_name, device, dtype):
-    _skip_if_mps_empty_grid_sample(device)
+    _skip_if_mps_lacks_grid_sample_backward(device)
     src = torch.empty(1, 3, 0, 4, device=device, dtype=dtype, requires_grad=True)
     if op_name == "warp_affine":
         transform = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0).requires_grad_()
@@ -794,7 +871,7 @@ class TestRemap(BaseTester):
 
     @pytest.mark.parametrize("source_empty", [False, True])
     def test_empty_maps_return_autograd_connected_output(self, source_empty, device, dtype):
-        _skip_if_mps_empty_grid_sample(device)
+        _skip_if_mps_lacks_grid_sample_backward(device)
         source_height = 0 if source_empty else 3
         image = torch.empty(1, 2, source_height, 5, device=device, dtype=dtype, requires_grad=True)
         map_x = torch.empty(1, 0, 5, device=device, dtype=dtype, requires_grad=True)
@@ -807,6 +884,18 @@ class TestRemap(BaseTester):
         assert image.grad is not None
         assert map_x.grad is not None
         assert map_y.grad is not None
+
+    @pytest.mark.parametrize("map_shape", [(1, 0, 5), (1, 3, 0)])
+    def test_empty_maps_forward_runs_on_every_backend(self, map_shape, device, dtype):
+        """Empty maps must not hand ``grid_sample`` a zero-element grid."""
+        image = torch.rand(1, 2, 4, 5, device=device, dtype=dtype)
+        map_x = torch.zeros(*map_shape, device=device, dtype=dtype)
+        map_y = torch.zeros(*map_shape, device=device, dtype=dtype)
+
+        output = kornia.geometry.remap(image, map_x, map_y)
+
+        assert output.shape == (1, 2, map_shape[-2], map_shape[-1])
+        assert output.numel() == 0
 
     def test_empty_maps_keep_grid_sample_validation(self, device, dtype):
         image = torch.empty(1, 2, 0, 5, device=device, dtype=dtype)

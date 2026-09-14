@@ -154,6 +154,56 @@ class TestSymmetricTransferError(BaseTester):
         expected = torch.tensor([0.0, 2.0, 10.0], device=device, dtype=dtype)[None]
         self.assert_close(symmetric_transfer_error(pts1, pts2, H), expected, atol=1e-4, rtol=1e-4)
 
+    def test_singular(self, device, dtype):
+        max_num = torch.finfo(dtype).max
+        pts1 = torch.rand(2, 5, 2, device=device, dtype=dtype, requires_grad=True)
+        pts2 = torch.rand(2, 5, 2, device=device, dtype=dtype)
+        H = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).repeat(2, 1, 1)
+        # Make second homography in the batch singular
+        H[1] = 0.0
+        H[1, 0, 0] = 1.0
+
+        for squared in (True, False):
+            err = symmetric_transfer_error(pts1, pts2, H, squared=squared)
+            assert not torch.isnan(err).any()
+            assert torch.isfinite(err[0]).all()
+            expected_singular = torch.full_like(err[1], max_num)
+            self.assert_close(err[1], expected_singular)
+
+        # Check gradient finiteness across mixed batch
+        err = symmetric_transfer_error(pts1, pts2, H)
+        err[0].sum().backward()
+        assert pts1.grad is not None
+        assert not torch.isnan(pts1.grad).any()
+        assert torch.isfinite(pts1.grad[0]).all()
+        assert (pts1.grad[1] == 0.0).all()
+
+    def test_singular_gradient_wrt_homography(self, device, dtype):
+        pts1 = torch.rand(2, 5, 2, device=device, dtype=dtype)
+        pts2 = torch.rand(2, 5, 2, device=device, dtype=dtype)
+        H = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).repeat(2, 1, 1)
+        H[1] = 0.0
+        H[1, 0, 0] = 1.0
+        H.requires_grad_(True)
+
+        symmetric_transfer_error(pts1, pts2, H)[0].sum().backward()
+        assert H.grad is not None
+        assert torch.isfinite(H.grad).all()
+        assert (H.grad[1] == 0.0).all()
+
+    def test_singular_gradient_through_estimated_homography(self, device, dtype):
+        # ``find_homography_dlt_iterated`` differentiates the error through an estimated ``H``, so a
+        # singular intermediate must not poison the gradient of the correspondences that produced it.
+        pts1 = torch.rand(2, 5, 2, device=device, dtype=dtype, requires_grad=True)
+        pts2 = torch.rand(2, 5, 2, device=device, dtype=dtype)
+        eye = torch.eye(3, device=device, dtype=dtype)
+        zeros = torch.zeros(3, 3, device=device, dtype=dtype)
+        H = torch.stack([eye * pts1[0, 0, 0], zeros * pts1[1, 0, 0]])
+
+        symmetric_transfer_error(pts1, pts2, H).sum().backward()
+        assert pts1.grad is not None
+        assert torch.isfinite(pts1.grad).all()
+
 
 class TestFindHomographyDLT(BaseTester):
     def test_smoke(self, device, dtype):
@@ -211,8 +261,45 @@ class TestFindHomographyDLT(BaseTester):
     def test_scaled_fixed_points(self, device, dtype):
         points1 = torch.tensor([[[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]]], device=device, dtype=dtype)
         points2 = points1 * 100
+        for weights in (None, torch.ones(1, 4, device=device, dtype=dtype)):
+            H = find_homography_dlt(points1, points2, weights, "lu")
+            assert torch.isfinite(H).all()
+            self.assert_close(kornia.geometry.transform_points(H, points1), points2, rtol=1e-4, atol=1e-4)
+
+    def test_projective_fixed_points(self, device):
+        # Guards the adaptive gauge itself rather than the Windows/torch-2.14 NaN: for this
+        # configuration the normalized-frame null vector has last component ~-1.3e-16, so a
+        # fixed h33=1 gauge is singular here. It passes against the pre-gauge implementation,
+        # which reached a finite (if badly scaled) answer on every platform but Windows.
+        dtype = torch.float32 if device.type == "mps" else torch.float64
+        points1 = torch.tensor([[[1.0, 1.0], [1.0, -1.0], [-1.0, 1.0], [-1.0, -1.0]]], device=device, dtype=dtype)
+        points2 = torch.tensor([[[1.0, 1.0], [1.0, -1.0], [-1.0, -1.0], [-1.0, 1.0]]], device=device, dtype=dtype)
+
         H = find_homography_dlt(points1, points2, None, "lu")
-        assert not torch.isnan(H).any()
+
+        assert torch.isfinite(H).all()
+        self.assert_close(kornia.geometry.transform_points(H, points1), points2, rtol=1e-4, atol=1e-4)
+
+    def test_zero_weight_minimal_lu(self, device, dtype):
+        # A zero weight zeroes two rows of the design matrix, leaving the retained 8x8 system
+        # singular. The result must stay finite -- a NaN homography propagates silently through
+        # RANSAC verification -- and a healthy batch entry must be unaffected by a degenerate one.
+        points1 = torch.tensor([[[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]]], device=device, dtype=dtype)
+        points2 = points1 * 2.0 + 0.1
+
+        for weights in ([1.0, 1.0, 1.0, 0.0], [1.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]):
+            H = find_homography_dlt(points1, points2, torch.tensor([weights], device=device, dtype=dtype), "lu")
+            assert torch.isfinite(H).all()
+
+        healthy = find_homography_dlt(points1, points2, torch.ones(1, 4, device=device, dtype=dtype), "lu")
+        mixed = find_homography_dlt(
+            points1.repeat(2, 1, 1),
+            points2.repeat(2, 1, 1),
+            torch.tensor([[1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 0.0]], device=device, dtype=dtype),
+            "lu",
+        )
+        assert torch.isfinite(mixed).all()
+        self.assert_close(mixed[0], healthy[0])
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_clean_points_svd(self, batch_size, device, dtype):
@@ -271,6 +358,19 @@ class TestFindHomographyDLT(BaseTester):
         points_dst = torch.rand_like(points_src)
         weights = torch.ones_like(points_src)[..., 0]
         self.gradcheck(find_homography_dlt, (points_src, points_dst, weights, "lu"), rtol=1e-6, atol=1e-6)
+
+    def test_gradcheck_lu_minimal(self, device):
+        points_src = torch.tensor(
+            [[[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]]],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
+        points_dst = torch.tensor(
+            [[[0.1, 0.2], [0.2, 1.4], [1.3, 0.1], [1.1, 1.2]]], device=device, dtype=torch.float64
+        )
+
+        self.gradcheck(find_homography_dlt, (points_src, points_dst, None, "lu"), rtol=1e-6, atol=1e-6)
 
 
 class TestFindHomographyFromLinesDLT(BaseTester):

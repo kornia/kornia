@@ -64,9 +64,22 @@ class TestSe3(BaseTester):
     def test_exception(self, device, dtype):
         pass
 
-    # TODO: implement me
     def test_gradcheck(self, device):
-        pass
+        v = torch.tensor([[1.0, 2.0, 3.0, 0.3, -0.4, 0.5]], device=device, dtype=torch.float64)
+        self.gradcheck(lambda x: Se3.exp(x).matrix(), (v,))
+
+    def test_gradient_is_finite_at_the_identity_4404(self, device, dtype):
+        # #4404: at omega = 0 the where below returns upsilon, but autograd still walks V, whose
+        # sqrt has an unbounded derivative there and whose terms divide by theta**2 and theta**3.
+        # log has the same defect through its own theta, where clamp_min(1e-12) guards the value
+        # and not the gradient (#4229) and underflows to 0 in float16 besides.
+        v = torch.zeros(1, 6, device=device, dtype=dtype, requires_grad=True)
+        Se3.exp(v).matrix().sum().backward()
+        assert bool(torch.isfinite(v.grad).all()), v.grad
+
+        data = torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype, requires_grad=True)
+        Se3(So3(Quaternion(data[:, :4])), data[:, 4:]).log().sum().backward()
+        assert bool(torch.isfinite(data.grad).all()), data.grad
 
     # TODO: implement me
     def test_jit(self, device, dtype):
@@ -311,3 +324,18 @@ class TestSe3(BaseTester):
         i = Se3.identity(batch_size=batch_size, device=device, dtype=dtype)
         self.assert_close(s_in_s.so3.q.data, i.so3.q.data)
         self.assert_close(s_in_s.t, i.t)
+
+    def test_derived_state_moves_and_serializes(self, device, dtype):
+        v = torch.rand(2, 6, device=device, dtype=dtype, requires_grad=True)
+        s = Se3.exp(v)
+        assert s.t.grad_fn is not None
+        assert "_translation" in s.state_dict()
+        restored = Se3(So3.identity(2, device, dtype), torch.zeros(2, 3, device=device, dtype=dtype))
+        assert list(restored.state_dict()) == list(s.state_dict()) == ["_translation"]
+        restored.load_state_dict(s.state_dict())
+        self.assert_close(restored.t, s.t.detach())
+        other = torch.float16 if dtype == torch.float32 else torch.float32  # float64 is unavailable on MPS
+        moved = s.to(other)
+        assert moved.t.dtype == other and moved.t.grad_fn is not None
+        moved.t.sum().backward()
+        assert v.grad is not None

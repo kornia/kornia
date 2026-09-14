@@ -7,12 +7,18 @@
 
 English | [简体中文](README_zh-CN.md)
 
+<p align="center">
+  <a href="https://www.kornia.org/playground/"><img alt="Try in your browser" src="https://img.shields.io/badge/%E2%96%B6%20Try%20in%20your%20browser-F5B301?style=for-the-badge&labelColor=F5B301"></a>
+  <a href="https://www.kornia.org"><img alt="Website" src="https://img.shields.io/badge/Website-0B1A2B?style=for-the-badge"></a>
+  <a href="https://kornia.readthedocs.io"><img alt="Docs" src="https://img.shields.io/badge/Docs-0B1A2B?style=for-the-badge"></a>
+</p>
+
 <!-- prettier-ignore -->
 <a href="https://kornia.readthedocs.io">Docs</a> •
 <a href="https://colab.sandbox.google.com/github/kornia/tutorials/blob/master/nbs/hello_world_tutorial.ipynb">Try it Now</a> •
-<a href="https://kornia.github.io/tutorials/">Tutorials</a> •
+<a href="https://www.kornia.org/tutorials/">Tutorials</a> •
 <a href="https://github.com/kornia/kornia-examples">Examples</a> •
-<a href="https://kornia.github.io//kornia-blog">Blog</a> •
+<a href="https://www.kornia.org/kornia-blog/">Blog</a> •
 <a href="https://discord.gg/HfnywwpBnD">Community</a>
 
 [![PyPI version](https://badge.fury.io/py/kornia.svg)](https://pypi.org/project/kornia)
@@ -112,8 +118,9 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 
 Reproduce the two CPU half rows with `pixi run test-half` and the CPU float32 baseline with `pixi run test-f32`
 (`test-half` pins `KORNIA_TEST_DTYPE` to `float16,bfloat16`, so it cannot produce the baseline). The half-precision
-suite is not run in CI (see [#4070](https://github.com/kornia/kornia/issues/4070)), so these numbers are refreshed
-by hand.
+CPU suites run as separate blocking `float16` and `bfloat16` CI jobs with strict manifests for known failures,
+addressing [#4070](https://github.com/kornia/kornia/issues/4070). The historical support-table counts are still
+refreshed by hand with the commands above.
 
 See the [full precision guide](https://kornia.readthedocs.io/en/stable/get-started/precision.html) for details.
 
@@ -128,13 +135,15 @@ Kornia is an open-source project that is developed and maintained by volunteers.
 ## Installation
 
 [![PyPI python](https://img.shields.io/pypi/pyversions/kornia)](https://pypi.org/project/kornia)
-[![pytorch](https://img.shields.io/badge/PyTorch_2.0.0+-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/get-started/locally/)
+[![pytorch](https://img.shields.io/badge/PyTorch_2.5.1+-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/get-started/locally/)
 
 ### From pip
 
   ```bash
   pip install kornia
   ```
+
+Some features (ONNX, Stable Diffusion dissolving) need extra packages; see [Optional extras](https://kornia.readthedocs.io/en/latest/get-started/installation.html#optional-extras).
 
 <details>
   <summary>Other installation options</summary>
@@ -236,25 +245,6 @@ print(outputs)
 onnx_seq.export("chained_model.onnx")
 ```
 </details>
-
-## Multi-framework support
-
-You can now use Kornia with [TensorFlow](https://www.tensorflow.org/), [JAX](https://jax.readthedocs.io/en/latest/index.html), and [NumPy](https://numpy.org/). See [Multi-Framework Support](docs/source/get-started/multi-framework-support.rst) for more details.
-
-```python
-import kornia
-
-tf_kornia = kornia.to_tensorflow()
-```
-
-<p align="center">
-  Powered by
-  <a href="https://github.com/ivy-llc/ivy" target="_blank">
-    <div class="dark-light" style="display: block;" align="center">
-      <img class="dark-light" width="15%" src="https://raw.githubusercontent.com/ivy-llc/assets/refs/heads/main/assets/logos/ivy-long.svg"/>
-    </div>
-  </a>
-</p>
 
 ## Call For Contributors
 

@@ -75,15 +75,13 @@ class BasicLayer(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run the module forward pass.
+        r"""Run the module forward pass.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input feature map with shape :math:`(B, C_{\text{in}}, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Output feature map with shape :math:`(B, C_{\text{out}}, H', W')`.
         """
         return self.layer(x)
 

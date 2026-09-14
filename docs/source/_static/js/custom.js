@@ -1,19 +1,30 @@
+// Deep-link compatibility: the module landing pages (color.html, feature.html, ...) used to hold
+// every object of their module and now spread them over per-topic subpages. conf.py embeds a
+// {docname: [object names]} map of the moved objects on those pages; a fragment that names one of
+// them is forwarded to its new page, fragment intact. This runs as soon as the script is parsed so
+// the old page is replaced before it renders; fragments not in the map are left alone.
+(function () {
+  const el = document.getElementById("kornia-anchor-redirects");
+  if (!el || !location.hash) return;
+  let name, moved;
+  try {
+    name = decodeURIComponent(location.hash.slice(1));
+    moved = JSON.parse(el.textContent);
+  } catch (e) {
+    return;
+  }
+  if (document.getElementById(name)) return;  // present on this page after all
+  for (const docname in moved) {
+    if (moved[docname].indexOf(name) !== -1) {
+      const root = document.documentElement.getAttribute("data-content_root") || "";
+      location.replace(root + docname + ".html" + location.hash);
+      return;
+    }
+  }
+})();
+
+
 // Based on https://github.com/huggingface/transformers/blob/master/docs/source/_static/js/custom.js
-// TODO (Jian): probably update this by the latest https://buttons.github.io/, which added dark and light mode to align furo theme.
-
-
-function addGithubButton() {
-    const div = `
-        <div class="github-repo" style="margin: auto">
-            <a
-                class="github-button"
-                href="https://github.com/kornia/kornia" data-size="large" data-show-count="true" aria-label="Star kornia/kornia on GitHub">
-                Star
-            </a>
-        </div>
-    `;
-    document.querySelector(".sidebar-brand").insertAdjacentHTML('afterend', div);
-}
 
 /*!
  * github-buttons v2.2.10
@@ -26,17 +37,436 @@ function addGithubButton() {
 function parseGithubButtons (){"use strict";var e=window.document,t=e.location,o=window.encodeURIComponent,r=window.decodeURIComponent,n=window.Math,a=window.HTMLElement,i=window.XMLHttpRequest,l="https://unpkg.com/github-buttons@2.2.10/dist/buttons.html",c=i&&i.prototype&&"withCredentials"in i.prototype,d=c&&a&&a.prototype.attachShadow&&!a.prototype.attachShadow.prototype,s=function(e,t,o){e.addEventListener?e.addEventListener(t,o):e.attachEvent("on"+t,o)},u=function(e,t,o){e.removeEventListener?e.removeEventListener(t,o):e.detachEvent("on"+t,o)},h=function(e,t,o){var r=function(n){return u(e,t,r),o(n)};s(e,t,r)},f=function(e,t,o){var r=function(n){if(t.test(e.readyState))return u(e,"readystatechange",r),o(n)};s(e,"readystatechange",r)},p=function(e){return function(t,o,r){var n=e.createElement(t);if(o)for(var a in o){var i=o[a];null!=i&&(null!=n[a]?n[a]=i:n.setAttribute(a,i))}if(r)for(var l=0,c=r.length;l<c;l++){var d=r[l];n.appendChild("string"==typeof d?e.createTextNode(d):d)}return n}},g=p(e),b=function(e){var t;return function(){t||(t=1,e.apply(this,arguments))}},m="body{margin:0}a{color:#24292e;text-decoration:none;outline:0}.octicon{display:inline-block;vertical-align:text-top;fill:currentColor}.widget{ display:inline-block;overflow:hidden;font-family:-apple-system, BlinkMacSystemFont, \"Segoe UI\", Helvetica, Arial, sans-serif;font-size:0;white-space:nowrap;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none}.btn,.social-count{display:inline-block;height:14px;padding:2px 5px;font-size:11px;font-weight:600;line-height:14px;vertical-align:bottom;cursor:pointer;border:1px solid #c5c9cc;border-radius:0.25em}.btn{background-color:#eff3f6;background-image:-webkit-linear-gradient(top, #fafbfc, #eff3f6 90%);background-image:-moz-linear-gradient(top, #fafbfc, #eff3f6 90%);background-image:linear-gradient(180deg, #fafbfc, #eff3f6 90%);background-position:-1px -1px;background-repeat:repeat-x;background-size:110% 110%;border-color:rgba(27,31,35,0.2);-ms-filter:\"progid:DXImageTransform.Microsoft.Gradient(startColorstr='#FFFAFBFC', endColorstr='#FFEEF2F5')\";*filter:progid:DXImageTransform.Microsoft.Gradient(startColorstr='#FFFAFBFC', endColorstr='#FFEEF2F5')}.btn:active{background-color:#e9ecef;background-image:none;border-color:#a5a9ac;border-color:rgba(27,31,35,0.35);box-shadow:inset 0 0.15em 0.3em rgba(27,31,35,0.15)}.btn:focus,.btn:hover{background-color:#e6ebf1;background-image:-webkit-linear-gradient(top, #f0f3f6, #e6ebf1 90%);background-image:-moz-linear-gradient(top, #f0f3f6, #e6ebf1 90%);background-image:linear-gradient(180deg, #f0f3f6, #e6ebf1 90%);border-color:#a5a9ac;border-color:rgba(27,31,35,0.35);-ms-filter:\"progid:DXImageTransform.Microsoft.Gradient(startColorstr='#FFF0F3F6', endColorstr='#FFE5EAF0')\";*filter:progid:DXImageTransform.Microsoft.Gradient(startColorstr='#FFF0F3F6', endColorstr='#FFE5EAF0')}.social-count{position:relative;margin-left:5px;background-color:#fff}.social-count:focus,.social-count:hover{color:#0366d6}.social-count b,.social-count i{position:absolute;top:50%;left:0;display:block;width:0;height:0;margin:-4px 0 0 -4px;border:solid transparent;border-width:4px 4px 4px 0;_line-height:0;_border-top-color:red !important;_border-bottom-color:red !important;_border-left-color:red !important;_filter:chroma(color=red)}.social-count b{border-right-color:#c5c9cc}.social-count i{margin-left:-3px;border-right-color:#fff}.lg .btn,.lg .social-count{height:16px;padding:5px 10px;font-size:12px;line-height:16px}.lg .social-count{margin-left:6px}.lg .social-count b,.lg .social-count i{margin:-5px 0 0 -5px;border-width:5px 5px 5px 0}.lg .social-count i{margin-left:-4px}\n",v={"mark-github":{width:16,height:16,path:'<path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>'},eye:{width:16,height:16,path:'<path fill-rule="evenodd" d="M8.06 2C3 2 0 8 0 8s3 6 8.06 6C13 14 16 8 16 8s-3-6-7.94-6zM8 12c-2.2 0-4-1.78-4-4 0-2.2 1.8-4 4-4 2.22 0 4 1.8 4 4 0 2.22-1.78 4-4 4zm2-4c0 1.11-.89 2-2 2-1.11 0-2-.89-2-2 0-1.11.89-2 2-2 1.11 0 2 .89 2 2z"/>'},star:{width:14,height:16,path:'<path fill-rule="evenodd" d="M14 6l-4.9-.64L7 1 4.9 5.36 0 6l3.6 3.26L2.67 14 7 11.67 11.33 14l-.93-4.74L14 6z"/>'},"repo-forked":{width:10,height:16,path:'<path fill-rule="evenodd" d="M8 1a1.993 1.993 0 0 0-1 3.72V6L5 8 3 6V4.72A1.993 1.993 0 0 0 2 1a1.993 1.993 0 0 0-1 3.72V6.5l3 3v1.78A1.993 1.993 0 0 0 5 15a1.993 1.993 0 0 0 1-3.72V9.5l3-3V4.72A1.993 1.993 0 0 0 8 1zM2 4.2C1.34 4.2.8 3.65.8 3c0-.65.55-1.2 1.2-1.2.65 0 1.2.55 1.2 1.2 0 .65-.55 1.2-1.2 1.2zm3 10c-.66 0-1.2-.55-1.2-1.2 0-.65.55-1.2 1.2-1.2.65 0 1.2.55 1.2 1.2 0 .65-.55 1.2-1.2 1.2zm3-10c-.66 0-1.2-.55-1.2-1.2 0-.65.55-1.2 1.2-1.2.65 0 1.2.55 1.2 1.2 0 .65-.55 1.2-1.2 1.2z"/>'},"issue-opened":{width:14,height:16,path:'<path fill-rule="evenodd" d="M7 2.3c3.14 0 5.7 2.56 5.7 5.7s-2.56 5.7-5.7 5.7A5.71 5.71 0 0 1 1.3 8c0-3.14 2.56-5.7 5.7-5.7zM7 1C3.14 1 0 4.14 0 8s3.14 7 7 7 7-3.14 7-7-3.14-7-7-7zm1 3H6v5h2V4zm0 6H6v2h2v-2z"/>'},"cloud-download":{width:16,height:16,path:'<path fill-rule="evenodd" d="M9 12h2l-3 3-3-3h2V7h2v5zm3-8c0-.44-.91-3-4.5-3C5.08 1 3 2.92 3 5 1.02 5 0 6.52 0 8c0 1.53 1 3 3 3h3V9.7H3C1.38 9.7 1.3 8.28 1.3 8c0-.17.05-1.7 1.7-1.7h1.3V5c0-1.39 1.56-2.7 3.2-2.7 2.55 0 3.13 1.55 3.2 1.8v1.2H12c.81 0 2.7.22 2.7 2.2 0 2.09-2.25 2.2-2.7 2.2h-2V11h2c2.08 0 4-1.16 4-3.5C16 5.06 14.08 4 12 4z"/>'}},w={},x=function(e,t,o){var r=p(e.ownerDocument),n=e.appendChild(r("style",{type:"text/css"}));n.styleSheet?n.styleSheet.cssText=m:n.appendChild(e.ownerDocument.createTextNode(m));var a,l,d=r("a",{className:"btn",href:t.href,target:"_blank",innerHTML:(a=t["data-icon"],l=/^large$/i.test(t["data-size"])?16:14,a=(""+a).toLowerCase().replace(/^octicon-/,""),{}.hasOwnProperty.call(v,a)||(a="mark-github"),'<svg version="1.1" width="'+l*v[a].width/v[a].height+'" height="'+l+'" viewBox="0 0 '+v[a].width+" "+v[a].height+'" class="octicon octicon-'+a+'" aria-hidden="true">'+v[a].path+"</svg>"),"aria-label":t["aria-label"]||void 0},[" ",r("span",{},[t["data-text"]||""])]);/\.github\.com$/.test("."+d.hostname)?/^https?:\/\/((gist\.)?github\.com\/[^\/?#]+\/[^\/?#]+\/archive\/|github\.com\/[^\/?#]+\/[^\/?#]+\/releases\/download\/|codeload\.github\.com\/)/.test(d.href)&&(d.target="_top"):(d.href="#",d.target="_self");var u,h,g,x,y=e.appendChild(r("div",{className:"widget"+(/^large$/i.test(t["data-size"])?" lg":"")},[d]));/^(true|1)$/i.test(t["data-show-count"])&&"github.com"===d.hostname&&(u=d.pathname.replace(/^(?!\/)/,"/").match(/^\/([^\/?#]+)(?:\/([^\/?#]+)(?:\/(?:(subscription)|(fork)|(issues)|([^\/?#]+)))?)?(?:[\/?#]|$)/))&&!u[6]?(u[2]?(h="/repos/"+u[1]+"/"+u[2],u[3]?(x="subscribers_count",g="watchers"):u[4]?(x="forks_count",g="network"):u[5]?(x="open_issues_count",g="issues"):(x="stargazers_count",g="stargazers")):(h="/users/"+u[1],g=x="followers"),function(e,t){var o=w[e]||(w[e]=[]);if(!(o.push(t)>1)){var r=b(function(){for(delete w[e];t=o.shift();)t.apply(null,arguments)});if(c){var n=new i;s(n,"abort",r),s(n,"error",r),s(n,"load",function(){var e;try{e=JSON.parse(n.responseText)}catch(e){return void r(e)}r(200!==n.status,e)}),n.open("GET",e),n.send()}else{var a=this||window;a._=function(e){a._=null,r(200!==e.meta.status,e.data)};var l=p(a.document)("script",{async:!0,src:e+(/\?/.test(e)?"&":"?")+"callback=_"}),d=function(){a._&&a._({meta:{}})};s(l,"load",d),s(l,"error",d),l.readyState&&f(l,/de|m/,d),a.document.getElementsByTagName("head")[0].appendChild(l)}}}.call(this,"https://api.github.com"+h,function(e,t){if(!e){var n=t[x];y.appendChild(r("a",{className:"social-count",href:t.html_url+"/"+g,target:"_blank","aria-label":n+" "+x.replace(/_count$/,"").replace("_"," ").slice(0,n<2?-1:void 0)+" on GitHub"},[r("b"),r("i"),r("span",{},[(""+n).replace(/\B(?=(\d{3})+(?!\d))/g,",")])]))}o&&o(y)})):o&&o(y)},y=window.devicePixelRatio||1,C=function(e){return(y>1?n.ceil(n.round(e*y)/y*2)/2:n.ceil(e))||0},F=function(e,t){e.style.width=t[0]+"px",e.style.height=t[1]+"px"},k=function(t,r){if(null!=t&&null!=r)if(t.getAttribute&&(t=function(e){for(var t={href:e.href,title:e.title,"aria-label":e.getAttribute("aria-label")},o=["icon","text","size","show-count"],r=0,n=o.length;r<n;r++){var a="data-"+o[r];t[a]=e.getAttribute(a)}return null==t["data-text"]&&(t["data-text"]=e.textContent||e.innerText),t}(t)),d){var a=g("span",{title:t.title||void 0});x(a.attachShadow({mode:"closed"}),t,function(){r(a)})}else{var i=g("iframe",{src:"javascript:0",title:t.title||void 0,allowtransparency:!0,scrolling:"no",frameBorder:0});F(i,[0,0]),i.style.border="none";var c=function(){var a,d=i.contentWindow;try{a=d.document.body}catch(t){return void e.body.appendChild(i.parentNode.removeChild(i))}u(i,"load",c),x.call(d,a,t,function(e){var a=function(e){var t=e.offsetWidth,o=e.offsetHeight;if(e.getBoundingClientRect){var r=e.getBoundingClientRect();t=n.max(t,C(r.width)),o=n.max(o,C(r.height))}return[t,o]}(e);i.parentNode.removeChild(i),h(i,"load",function(){F(i,a)}),i.src=l+"#"+(i.name=function(e){var t=[];for(var r in e){var n=e[r];null!=n&&t.push(o(r)+"="+o(n))}return t.join("&")}(t)),r(i)})};s(i,"load",c),e.body.appendChild(i)}};t.protocol+"//"+t.host+t.pathname===l?x(e.body,function(e){for(var t={},o=e.split("&"),n=0,a=o.length;n<a;n++){var i=o[n];if(""!==i){var l=i.split("=");t[r(l[0])]=null!=l[1]?r(l.slice(1).join("=")):void 0}}return t}(window.name||t.hash.replace(/^#/,""))):function(t){if(/m/.test(e.readyState)||!/g/.test(e.readyState)&&!e.documentElement.doScroll)setTimeout(t);else if(e.addEventListener){var o=b(t);h(e,"DOMContentLoaded",o),h(window,"load",o)}else f(e,/m/,t)}(function(){for(var t=e.querySelectorAll?e.querySelectorAll("a.github-button"):function(){for(var t=[],o=e.getElementsByTagName("a"),r=0,n=o.length;r<n;r++)~(" "+o[r].className+" ").replace(/[ \t\n\f\r]+/g," ").indexOf(" github-button ")&&t.push(o[r]);return t}(),o=0,r=t.length;o<r;o++)!function(e){k(e,function(t){e.parentNode.replaceChild(t,e)})}(t[o])})};
 
 function onLoad() {
-    addGithubButton();
     parseGithubButtons();
 }
 
 window.addEventListener("load", onLoad);
 
 
+
+// pydata theme: split "name — note" sidebar entries into a flex row with the note pushed
+// to the right edge in a muted color (name \hfill note).
 document.addEventListener("DOMContentLoaded", function () {
-  if (typeof iFrameResize === "function") {
-    iFrameResize({}, "#augmentation-tester");
-  } else {
-    console.error("iFrameResize function is not available");
+  document.querySelectorAll(".bd-sidebar-primary a.reference.internal").forEach(function (link) {
+    const text = link.textContent;
+    const idx = text.indexOf(" — ");
+    if (idx === -1) return;
+    link.classList.add("has-sidebar-note");
+    link.textContent = text.slice(0, idx);
+    const note = document.createElement("span");
+    note.className = "sidebar-note";
+    note.textContent = text.slice(idx + 3);
+    link.appendChild(note);
+  });
+});
+
+
+// pydata theme: Sphinx already lists the documented objects of a page in the right
+// "On this page" sidebar. Pages that only carry autosummary link tables (e.g. the
+// color-conversion overview) have no objects of their own, so list the table entries there.
+document.addEventListener("DOMContentLoaded", function () {
+  const tocRoot = document.querySelector("#pst-page-toc-nav > ul");
+  if (!tocRoot) return;
+
+  function entriesFor(sectionEl) {
+    if (sectionEl.querySelector("dl[class*='py'] > dt[id]")) return [];  // native TOC covers it
+    const items = [];
+    sectionEl.querySelectorAll(":scope .autosummary tr > td:first-child a.reference.internal").forEach(function (a) {
+      items.push([a.getAttribute("href"), a.textContent.trim()]);
+    });
+    return items;
   }
+
+  document.querySelectorAll(".bd-article section[id]").forEach(function (sec) {
+    const tocLink = tocRoot.querySelector('a[href="#' + sec.id + '"]');
+    if (!tocLink) return;
+    const items = entriesFor(sec);
+    if (!items.length) return;
+    const ul = document.createElement("ul");
+    ul.className = "nav section-nav flex-column kornia-object-toc";
+    items.forEach(function (pair) {
+      const li = document.createElement("li");
+      li.className = "toc-h3 nav-item toc-entry";
+      const a = document.createElement("a");
+      a.className = "reference internal nav-link";
+      a.href = pair[0];
+      a.textContent = pair[1];
+      li.appendChild(a);
+      ul.appendChild(li);
+    });
+    tocLink.parentElement.appendChild(ul);
+  });
+});
+
+
+// pydata theme: navbar dropdowns, defined by NAVBAR_MENUS in conf.py and embedded in every page
+// as JSON. "Support" and "About" become hover/focus dropdowns; an "Ecosystem" item with a grouped
+// panel is inserted before "About". pydata renders the header nav twice -- in the header and, for
+// narrow viewports, in the primary sidebar -- so both copies are decorated; the sidebar copy shows
+// the menus inline, since there is nothing to hover on a phone.
+document.addEventListener("DOMContentLoaded", function () {
+  // Sphinx stamps the path back to the doc root on every page.
+  const root = document.documentElement.getAttribute("data-content_root") || "";
+  const href = (h) => (h.indexOf("://") !== -1 ? h : root + h + ".html");
+
+  function externalIcon() {
+    const i = document.createElement("i");
+    i.className = "fa-solid fa-arrow-up-right-from-square kornia-external-icon";
+    return i;
+  }
+
+  // Hero buttons that leave the site get the same outbound icon.
+  document.querySelectorAll(".kornia-hero-actions a.sd-btn[href^='http']").forEach(function (a) {
+    a.appendChild(externalIcon());
+  });
+
+  // Landing-page install command: copy on click, flash a check mark for a moment.
+  document.querySelectorAll(".kornia-pip__copy[data-copy]").forEach(function (button) {
+    const icon = button.querySelector("i");
+    button.addEventListener("click", function () {
+      if (!navigator.clipboard) return;
+      navigator.clipboard.writeText(button.getAttribute("data-copy")).then(function () {
+        button.classList.add("is-copied");
+        if (icon) icon.className = "fa-solid fa-check";
+        setTimeout(function () {
+          button.classList.remove("is-copied");
+          if (icon) icon.className = "fa-regular fa-copy";
+        }, 1500);
+      });
+    });
+  });
+
+  // "Why Kornia?" tabs advance on their own like a carousel until the visitor takes over: hovering
+  // or focusing the tab set pauses the cycle, choosing a tab stops it for good. Nothing moves for
+  // visitors who asked for reduced motion, and ticks are skipped while the page is hidden.
+  document.querySelectorAll(".kornia-why-tabs").forEach(function (tabSet) {
+    const inputs = Array.from(tabSet.querySelectorAll(":scope > input[type='radio']"));
+    if (inputs.length < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const PERIOD_MS = 7000;
+    tabSet.style.setProperty("--kornia-tab-period", PERIOD_MS + "ms");
+    let timer = null;
+    let startedAt = 0;
+    let remaining = PERIOD_MS;
+    let paused = false;
+    let stopped = false;
+
+    function advance() {
+      if (document.hidden) {
+        remaining = PERIOD_MS;
+        schedule();
+        return;
+      }
+      const current = inputs.findIndex((input) => input.checked);
+      inputs[(current + 1) % inputs.length].checked = true;
+      remaining = PERIOD_MS;
+      schedule();
+    }
+    function schedule() {
+      startedAt = Date.now();
+      timer = setTimeout(advance, remaining);
+    }
+    function pause() {
+      if (stopped || paused || timer === null) return;
+      paused = true;
+      clearTimeout(timer);
+      remaining = Math.max(200, remaining - (Date.now() - startedAt));
+      tabSet.classList.add("is-paused");
+    }
+    function resume() {
+      if (stopped || !paused) return;
+      paused = false;
+      tabSet.classList.remove("is-paused");
+      schedule();
+    }
+    // Choosing a tab ends the cycle for good. A click always arrives as pointerenter -> change ->
+    // pointerleave, so without ``stopped`` the trailing pointerleave would resume the carousel the
+    // visitor just took over; the same holds for focusin -> change -> focusout on the keyboard.
+    function stop() {
+      stopped = true;
+      paused = false;
+      clearTimeout(timer);
+      timer = null;
+      tabSet.classList.remove("is-autoplaying", "is-paused");
+    }
+
+    tabSet.addEventListener("pointerenter", pause);
+    tabSet.addEventListener("pointerleave", resume);
+    tabSet.addEventListener("focusin", pause);
+    tabSet.addEventListener("focusout", function (e) {
+      if (!tabSet.contains(e.relatedTarget)) resume();
+    });
+    // Setting ``checked`` from script fires no ``change``; a real click or arrow key does.
+    inputs.forEach((input) => input.addEventListener("change", stop));
+    tabSet.classList.add("is-autoplaying");
+    schedule();
+  });
+
+  const menusEl = document.getElementById("kornia-navbar-menus");
+  if (!menusEl) return;
+  let MENUS;
+  try {
+    MENUS = JSON.parse(menusEl.textContent);
+  } catch (e) {
+    return;
+  }
+
+  function decorate(li, link, inline) {
+    li.classList.add("kornia-navbar-dropdown");
+    if (inline) li.classList.add("kornia-navbar-dropdown--inline");
+    const caret = document.createElement("i");
+    caret.className = "fa-solid fa-chevron-down kornia-navbar-dropdown__caret";
+    link.appendChild(caret);
+
+    // Keep the panel's explicit open class and the trigger's ARIA state in sync. The inline sidebar
+    // copy is always expanded, so it announces as such and needs no listeners.
+    link.setAttribute("aria-haspopup", "true");
+    link.setAttribute("aria-expanded", inline ? "true" : "false");
+    if (inline) return;
+    let hovered = false;
+    let focusWithin = false;
+    let dismissed = false;
+    function syncOpenState() {
+      const open = !dismissed && (hovered || focusWithin);
+      li.classList.toggle("is-open", open);
+      link.setAttribute("aria-expanded", String(open));
+    }
+    li.addEventListener("pointerenter", function () {
+      hovered = true;
+      dismissed = false;
+      syncOpenState();
+    });
+    li.addEventListener("pointerleave", function () {
+      hovered = false;
+      syncOpenState();
+    });
+    li.addEventListener("focusin", function () {
+      focusWithin = true;
+      dismissed = false;
+      syncOpenState();
+    });
+    li.addEventListener("focusout", function (e) {
+      if (li.contains(e.relatedTarget)) return;
+      focusWithin = false;
+      dismissed = false;
+      syncOpenState();
+    });
+    // Escape closes the menu and returns focus to its trigger. ``dismissed`` keeps a hovered item
+    // closed until the pointer re-enters or focus leaves and returns.
+    li.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      const active = document.activeElement;
+      if (!li.contains(active)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      link.focus();
+      dismissed = true;
+      syncOpenState();
+    });
+  }
+
+  function menuFrom(items) {
+    const menu = document.createElement("ul");
+    menu.className = "kornia-navbar-dropdown__menu";
+    items.forEach(function (pair) {
+      const item = document.createElement("li");
+      const a = document.createElement("a");
+      a.className = "nav-link";
+      a.textContent = pair[0];
+      if (pair[1]) {
+        a.href = href(pair[1]);
+        if (pair[1].indexOf("://") !== -1) a.appendChild(externalIcon());
+      } else {
+        // no href: renders like its siblings but never gains :visited/:active styling
+        a.textContent = pair[0] + " (coming soon)";
+        a.classList.add("kornia-navbar-dropdown__inert");
+      }
+      item.appendChild(a);
+      menu.appendChild(item);
+    });
+    return menu;
+  }
+
+  function megaPanel(groups) {
+    const panel = document.createElement("div");
+    panel.className = "kornia-navbar-dropdown__menu kornia-navbar-dropdown__menu--mega";
+    Object.keys(groups).forEach(function (name) {
+      const col = document.createElement("div");
+      const title = document.createElement("p");
+      title.className = "kornia-navbar-dropdown__group";
+      title.textContent = name;
+      col.appendChild(title);
+      col.appendChild(menuFrom(groups[name]));
+      panel.appendChild(col);
+    });
+    return panel;
+  }
+
+  document.querySelectorAll("ul.bd-navbar-elements.navbar-nav").forEach(function (nav) {
+    const inline = nav.closest(".bd-sidebar-primary") !== null;
+    let aboutLi = null;
+    nav.querySelectorAll(":scope > li.nav-item > a.nav-link").forEach(function (link) {
+      const name = link.textContent.trim();
+      if (name === "About") aboutLi = link.parentElement;
+      const items = MENUS[name];
+      if (!Array.isArray(items)) return;
+      const li = link.parentElement;
+      decorate(li, link, inline);
+      li.appendChild(menuFrom(items));
+    });
+
+    // Ecosystem has no page of its own: a grouped panel, inserted before About.
+    if (aboutLi && MENUS.Ecosystem) {
+      const li = document.createElement("li");
+      li.className = "nav-item";
+      const link = document.createElement("a");
+      link.className = "nav-link";
+      link.href = "#";
+      // It opens a menu instead of navigating, so announce it as a button rather than as a link
+      // that goes nowhere; ``href`` stays for keyboard focusability.
+      link.setAttribute("role", "button");
+      link.textContent = "Ecosystem";
+      link.addEventListener("click", (e) => e.preventDefault());
+      li.appendChild(link);
+      decorate(li, link, inline);
+      li.appendChild(megaPanel(MENUS.Ecosystem));
+      aboutLi.parentElement.insertBefore(li, aboutLi);
+    }
+  });
+});
+
+
+// Support page (get-started/export-support): a search box and a status filter over the generated
+// tables. Rows that match stay visible; a table, its section heading and its package heading are
+// hidden once every row in them is filtered out, so the page collapses to the hits. Everything
+// works without this script -- the tables are plain HTML -- so the controls start hidden and are
+// only revealed once wired up.
+document.addEventListener("DOMContentLoaded", function () {
+  const controls = document.querySelector(".kornia-compat-controls");
+  if (!controls) return;
+  const input = controls.querySelector("input[type='search']");
+  const select = controls.querySelector("select");
+  const status = controls.querySelector(".kornia-compat-status");
+  const tables = Array.from(document.querySelectorAll("table.kornia-compat-table"));
+  if (!input || !select || !tables.length) return;
+
+  // One record per row: searchable text (operator + configuration), per-column outcome.
+  function outcome(cell) {
+    const span = cell.querySelector("[class*='compat-']");
+    if (!span) return "";
+    const cls = Array.from(span.classList).find((c) => c.indexOf("compat-") === 0) || "";
+    return cls.slice("compat-".length);  // ok | ok-breaks | ok-random | mismatch | fail | na
+  }
+  // The operator cell is rendered from its plain text: a <wbr> after every "_" and "." lets a long
+  // name wrap onto a second line instead of widening the table (a <wbr> is not copied with the
+  // text, so a pasted name stays intact), and the search query is wrapped in <mark>.
+  function renderName(span, text, re) {
+    const marks = [];
+    if (re) {
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        if (m[0]) marks.push([m.index, m.index + m[0].length]);
+        else re.lastIndex += 1;
+      }
+      re.lastIndex = 0;
+    }
+    let html = "";
+    let k = 0;
+    for (let i = 0; i < text.length; i += 1) {
+      if (k < marks.length && i === marks[k][0]) html += "<mark>";
+      const ch = text[i];
+      html += ch === "&" ? "&amp;" : ch === "<" ? "&lt;" : ch === ">" ? "&gt;" : ch;
+      if (k < marks.length && i + 1 === marks[k][1]) { html += "</mark>"; k += 1; }
+      if ((ch === "_" || ch === ".") && i + 1 < text.length) html += "<wbr>";
+    }
+    span.innerHTML = html;
+  }
+
+  const rows = [];
+  tables.forEach(function (table) {
+    table.querySelectorAll("tbody tr").forEach(function (tr) {
+      const cells = tr.children;
+      const nameCell = cells[0];
+      const spans = Array.from(nameCell.querySelectorAll("code .pre")).map((el) => ({ el: el, text: el.textContent }));
+      spans.forEach((s) => renderName(s.el, s.text, null));
+      rows.push({
+        tr: tr,
+        table: table,
+        spans: spans,
+        marked: false,
+        text: nameCell.textContent.toLowerCase(),
+        onnx: outcome(cells[1]),
+        exp: outcome(cells[2]),
+        comp: outcome(cells[3]),
+      });
+    });
+  });
+
+  const failing = (o) => o === "fail" || o === "mismatch";
+  const passing = (o) => o === "ok" || o === "ok-breaks" || o === "ok-random";
+  const PREDICATES = {
+    "all": () => true,
+    "any-fail": (r) => failing(r.onnx) || failing(r.exp) || failing(r.comp),
+    "onnx-fail": (r) => failing(r.onnx),
+    "export-fail": (r) => failing(r.exp),
+    "compile-fail": (r) => failing(r.comp),
+    "compile-breaks": (r) => r.comp === "ok-breaks",
+    "all-ok": (r) => passing(r.onnx) && passing(r.exp) && passing(r.comp),
+  };
+
+  function escapeRe(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function apply() {
+    const query = input.value.trim().toLowerCase();
+    const pred = PREDICATES[select.value] || PREDICATES.all;
+    const re = query ? new RegExp(escapeRe(query), "ig") : null;
+    let shown = 0;
+    const liveTables = new Set();
+    rows.forEach(function (r) {
+      const hit = pred(r) && (!query || r.text.indexOf(query) !== -1);
+      r.tr.classList.toggle("kornia-compat-hidden", !hit);
+      // Underline the query inside the operator cell; re-render only rows whose marks change.
+      const wantMarks = hit && !!re;
+      if (wantMarks || r.marked) {
+        r.spans.forEach((s) => renderName(s.el, s.text, wantMarks ? re : null));
+        r.marked = wantMarks;
+      }
+      if (!hit) return;
+      shown += 1;
+      liveTables.add(r.table);
+    });
+
+    // Collapse empty tables, then every section (package or subsection) with no live table left;
+    // a package section contains its subsections, so its own tables include theirs.
+    tables.forEach(function (t) {
+      const box = t.closest(".pst-scrollable-table-container, .table-wrapper") || t;
+      box.classList.toggle("kornia-compat-empty", !liveTables.has(t));
+    });
+    document.querySelectorAll(".bd-article section").forEach(function (s) {
+      const own = s.querySelectorAll("table.kornia-compat-table");
+      // The page's own section holds the controls: it stays even when nothing matches.
+      if (!own.length || s.contains(controls)) return;
+      const live = Array.from(own).some((t) => liveTables.has(t));
+      s.classList.toggle("kornia-compat-empty", !live);
+    });
+
+    const filtered = query || select.value !== "all";
+    status.textContent = !filtered ? rows.length + " rows"
+      : shown ? "Showing " + shown + " of " + rows.length + " rows"
+      : "No operator matches; names are matched as typed (try a shorter fragment)";
+  }
+
+  let timer = null;
+  input.addEventListener("input", function () {
+    clearTimeout(timer);
+    timer = setTimeout(apply, 120);
+  });
+  select.addEventListener("change", apply);
+  // "?q=warp" deep-links a search; the hash still scrolls to a package.
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("q")) input.value = params.get("q");
+  if (params.get("show") && PREDICATES[params.get("show")]) select.value = params.get("show");
+  controls.hidden = false;
+  apply();
 });

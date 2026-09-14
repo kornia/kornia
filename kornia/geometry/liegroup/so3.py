@@ -25,6 +25,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.tensor_wrapper import _unwrap
 from kornia.geometry.conversions import vector_to_skew_symmetric_matrix
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
@@ -88,10 +89,10 @@ class So3(nn.Module):
         if isinstance(right, So3):
             return So3(self.q * right.q)
         elif isinstance(right, (torch.Tensor, Vector3)):
-            _right_data = right if isinstance(right, torch.Tensor) else right.data
+            _right_data = _unwrap(right)
             KORNIA_CHECK_SHAPE(_right_data, ["*", "3"])
             w = torch.zeros(*right.shape[:-1], 1, device=right.device, dtype=right.dtype)
-            quat = Quaternion(torch.cat((w, right.data), -1))
+            quat = Quaternion(torch.cat((w, _right_data), -1))
             out = (self.q * quat * self.q.conj()).vec
             if isinstance(right, torch.Tensor):
                 return out
@@ -128,7 +129,13 @@ class So3(nn.Module):
         w = torch.cos(theta_half)
         eps = torch.finfo(v.dtype).eps * 1e3
         small_mask = theta <= eps
-        b_large = torch.sin(theta_half) / theta
+        # theta = 0 (the identity, and the standard initialisation for pose optimisation) makes
+        # b_large a 0/0. torch.where differentiates the branch it does not select, so 0 * nan =
+        # nan used to reach every component of v.grad even though the value came from b_small.
+        # Divide by a substituted 1.0 there: the where discards that value, only the gradient
+        # changes.
+        safe_theta = torch.where(small_mask, torch.ones_like(theta), theta)
+        b_large = torch.sin(theta_half) / safe_theta
         b_small = 0.5 - (theta * theta) / 48.0
         b = torch.where(small_mask, b_small, b_large)
         xyz = b * v
@@ -146,12 +153,25 @@ class So3(nn.Module):
                     [0., 0., 0.]])
 
         """
-        theta = batched_dot_product(self.q.vec, self.q.vec).sqrt()
+        vec, real = self.q.vec, self.q.real
+        vec_sq = batched_dot_product(vec, vec)
+        nonzero = vec_sq > 0
+        # Each branch below is singular exactly where the other one is selected, and torch.where
+        # differentiates both: at the identity (vec = 0) sqrt and the division by theta diverge,
+        # and at a half turn (real = 0) the small-angle branch divides by zero. Either way
+        # 0 * inf = nan used to reach every coefficient of a gradient whose value was finite.
+        # Substitute a safe argument into each branch -- the where discards those values, so only
+        # the gradients change.
+        safe_vec_sq = torch.where(nonzero, vec_sq, torch.ones_like(vec_sq))
+        theta = torch.where(nonzero, safe_vec_sq.sqrt(), torch.zeros_like(vec_sq))
+        safe_theta = torch.where(nonzero, theta, torch.ones_like(theta))
+        safe_real = torch.where(nonzero, real, torch.zeros_like(real))
+        safe_real_recip = torch.where(nonzero, torch.ones_like(real), real)
         # NOTE: this differs from https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L33
         omega = torch.where(
-            theta[..., None] != 0,
-            2 * self.q.real[..., None].acos() * self.q.vec / theta[..., None],
-            2 * self.q.vec / self.q.real[..., None],
+            nonzero[..., None],
+            2 * safe_real[..., None].acos() * vec / safe_theta[..., None],
+            2 * vec / safe_real_recip[..., None],
         )
         return omega
 

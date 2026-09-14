@@ -32,7 +32,7 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
         This is an experimental API subject to changes and optimization improvements.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/connected_components.html>`__.
+       See a working example `here <https://www.kornia.org/tutorials/nbs/connected_components.html>`__.
 
     Args:
         image: the binarized input image with shape :math:`(*, 1, H, W)`.

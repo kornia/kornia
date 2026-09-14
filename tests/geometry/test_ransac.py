@@ -25,6 +25,15 @@ from kornia.geometry.epipolar import project_to_essential, sampson_epipolar_dist
 from testing.base import BaseTester
 from testing.casts import dict_to
 
+# RANSAC's batched minimal solvers take the Metal shader compiler down on the paravirtualized GPU
+# of the hosted macOS runners, and the next MPS allocation aborts the pytest process (SIGABRT).
+# The abort site moves between runs — observed inside the 5-point solver and, with that class
+# deselected, later in an unrelated `F.pad` — and SIGABRT carries no exception type, so these
+# cannot be recorded as strict xfails in testing/known_failure_xfails/mps_float32.txt: the process
+# dies and every test after it is lost. conftest skips this module on MPS; real Apple hardware
+# does not abort, so `--run-mps-process-abort` runs it anyway. Tracked in #4204.
+pytestmark = pytest.mark.mps_process_abort
+
 
 class TestRANSACHomography(BaseTester):
     def test_smoke(self, device, dtype):
@@ -405,11 +414,14 @@ class TestRANSACEssential(BaseTester):
         forward() must return an essential matrix even when local optimization does not win and
         the best model is the minimal-solver estimate (find_essential), which is not guaranteed
         to be on the essential manifold. The returned model is projected onto the manifold
-        before being returned, so the constraint holds regardless of which path selects the
-        best model.
+        before being returned, so the constraint holds for the model forward() selects.
+
+        ``batch_size``/``max_iter`` are trimmed for speed, but ``max_lo_iters`` keeps its default
+        so the local-optimization loop still runs: on this input it is entered once per draw and
+        never beats the minimal-solver model, exactly as with the default sampler settings.
         """
         torch.random.manual_seed(0)
-        ransac = RANSAC("essential").to(device=device, dtype=dtype)
+        ransac = RANSAC("essential", batch_size=32, max_iter=1).to(device=device, dtype=dtype)
         for _ in range(5):
             kp1 = torch.rand(20, 2, device=device, dtype=dtype)
             kp2 = torch.rand(20, 2, device=device, dtype=dtype)

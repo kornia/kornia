@@ -51,8 +51,10 @@ class RandAugment(PolicyAugmentBase):
     """Apply RandAugment :cite:`cubuk2020randaugment` augmentation strategies.
 
     Args:
-        n: the number of augmentations to apply sequentially.
-        m: magnitude for all the augmentations, ranged from [0, 30].
+        n: the number of augmentations to apply sequentially. Must be at least ``1`` and at
+            most the number of sub-policies in ``policy``, since they are sampled without
+            replacement.
+        m: magnitude for all the augmentations, ranged from (0, 30) exclusive.
         policy: candidate transformations. If None, a default candidate list will be used.
         transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
                                     attribute.
@@ -79,12 +81,17 @@ class RandAugment(PolicyAugmentBase):
         transformation_matrix_mode: str = "silent",
     ) -> None:
         if m <= 0 or m >= 30:
-            raise ValueError(f"Expect `m` in [0, 30]. Got {m}.")
+            raise ValueError(f"Expect `m` in (0, 30). Got {m}.")
 
         if policy is None:
             _policy = default_policy
         else:
             _policy = policy
+
+        # `rand_selector` samples without replacement, so more operations than there are
+        # sub-policies cannot be honoured, and `n <= 0` silently applies nothing at all.
+        if not 1 <= n <= len(_policy):
+            raise ValueError(f"Expect `n` in [1, {len(_policy)}], the number of sub-policies. Got {n}.")
 
         super().__init__(_policy, transformation_matrix_mode=transformation_matrix_mode)
         self.n = n

@@ -16,12 +16,12 @@
 #
 
 import math
-from typing import List, Optional, Tuple, Union
+from contextlib import nullcontext
+from typing import ContextManager, List, Optional, Tuple, TypedDict, Union
 
 import torch
 import torch.nn.functional as F
 from torch import nn
-from typing_extensions import TypedDict
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.geometry.subpix import (
@@ -33,7 +33,7 @@ from kornia.geometry.subpix import (
 )
 from kornia.geometry.transform import ScalePyramid, pyrdown, resize
 
-from .laf import laf_from_center_scale_ori
+from .laf import laf_from_center_scale_ori, laf_is_filled
 from .orientation import PassLAF
 from .responses import BlobHessian
 
@@ -41,7 +41,7 @@ from .responses import BlobHessian
 #   angles = linspace(0, 2π, n_pts - 1) = linspace(0, 2π, 11) → k * 2π/10 for k=0..10
 #   max|sin| at k=2 and k=3: sin(2π/5) ≈ 0.9511;  max|cos| at k=0: cos(0) = 1.0
 # Used to inline the boundary check in _process_octave for isotropic LAFs (rotmat=eye(2)),
-# avoiding CPU→GPU allocation + bmm every octave.
+# avoiding the basis allocations and the bmm every octave.
 _MAX_ABS_SIN_12: float = math.sin(2 * 2 * math.pi / 10)  # ≈ 0.9511
 
 
@@ -185,6 +185,27 @@ def _zero_unfilled(lafs: torch.Tensor, filled: torch.Tensor) -> torch.Tensor:
     return torch.where(filled.view(filled.shape[0], -1, 1, 1), lafs, torch.zeros_like(lafs))
 
 
+_BUILTIN_SUBPIX = (ConvQuadInterp3d, AdaptiveQuadInterp3d, IterativeQuadInterp3d)
+
+
+def _subpix_dispatch(module: nn.Module) -> Tuple[bool, bool]:
+    """Classify the sub-pixel refiner the detector currently holds.
+
+    Returns ``(is_iterative, batchable)``. ``is_iterative`` means the module is one of the built-in
+    refiners or a subclass, so it accepts ``precomputed_nms_mask``. ``batchable`` means both response
+    signs can be refined in one stacked call: only the exact built-in classes qualify (a subclass may
+    change the per-image semantics), and only without a candidate cap, which
+    :func:`~kornia.geometry.subpix.iterative_quad_interp3d` applies across the whole batch rather
+    than per image. Both flags read through a :func:`torch.compile` wrapper, whether the detector
+    compiled the module itself or the caller passed a compiled one, so the same module is dispatched
+    the same way on every path.
+    """
+    subpix = getattr(module, "_orig_mod", module)
+    is_iterative = isinstance(subpix, _BUILTIN_SUBPIX)
+    batchable = type(subpix) in _BUILTIN_SUBPIX and getattr(subpix, "max_candidates", None) is None
+    return is_iterative, batchable
+
+
 class ScaleSpaceDetector(nn.Module):
     r"""nn.Module for differentiable local feature detection.
 
@@ -212,6 +233,9 @@ class ScaleSpaceDetector(nn.Module):
             which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
         minima_are_also_good: if True, then both response function minima and maxima are detected.
             Useful for symmetric response functions like DoG or Hessian. Default is False.
+            With a built-in ``subpix_module`` both signs are refined in one stacked call, which
+            roughly doubles the peak memory of the refinement step: the response volume and its
+            three coordinate maps are materialised for ``2B`` images at once.
         compile_modules: selects which sub-modules to wrap with :func:`torch.compile`.
             Pass ``True`` to compile every sub-module, ``False`` (default) for none, or a list
             containing any subset of ``["scale_pyr", "resp", "subpix", "ori", "aff"]``.
@@ -249,15 +273,10 @@ class ScaleSpaceDetector(nn.Module):
             if unknown:
                 raise ValueError(f"Unknown module names in compile_modules: {unknown}. Valid: {_all_names}")
 
-        if _compile_set:
-            # Allow torch.compile to keep data-dependent shape ops (torch.where / nonzero)
-            # inside the compiled graph as unbacked symbols, avoiding graph breaks and the
-            # 0/1-specialization recompilations that would otherwise fire whenever an octave
-            # first encounters zero NMS maxima (blurry/extreme-viewpoint images).
-            torch._dynamo.config.capture_dynamic_output_shape_ops = True
+        self._compile_set: frozenset[str] = frozenset(_compile_set)
 
         def _maybe_compile(mod: nn.Module, name: str) -> nn.Module:
-            return torch.compile(mod, dynamic=True) if name in _compile_set else mod
+            return torch.compile(mod, dynamic=True) if name in self._compile_set else mod
 
         if scale_pyr_module is None:
             extra_levels = 3 if scale_space_response else 2
@@ -268,10 +287,6 @@ class ScaleSpaceDetector(nn.Module):
         self.resp = _maybe_compile(resp_module, "resp")
         if subpix_module is None:
             subpix_module = AdaptiveQuadInterp3d(strict_maxima_bonus=0.0, allow_scale_steps=True)
-        # Record before torch.compile wraps the module — isinstance won't match OptimizedModule.
-        self._is_iterative_subpix: bool = isinstance(
-            subpix_module, (ConvQuadInterp3d, AdaptiveQuadInterp3d, IterativeQuadInterp3d)
-        )
         self.subpix = _maybe_compile(subpix_module, "subpix")
         if ori_module is None:
             ori_module = PassLAF()
@@ -283,6 +298,15 @@ class ScaleSpaceDetector(nn.Module):
         # scale_space_response should be True if the response function works on scale space
         # like Difference-of-Gaussians
         self.scale_space_response = scale_space_response
+
+    def _dynamo_config_patch(self, modules: Tuple[str, ...]) -> ContextManager[None]:
+        if self._compile_set.intersection(modules):
+            # Allow torch.compile to keep data-dependent shape ops (torch.where / nonzero)
+            # inside the compiled graph as unbacked symbols, avoiding graph breaks and the
+            # 0/1-specialization recompilations that would otherwise fire whenever an octave
+            # first encounters zero NMS maxima (blurry/extreme-viewpoint images).
+            return torch._dynamo.config.patch(capture_dynamic_output_shape_ops=True)
+        return nullcontext()
 
     def __repr__(self) -> str:
         return (
@@ -296,6 +320,33 @@ class ScaleSpaceDetector(nn.Module):
             f"aff={self.aff.__repr__()})"
         )
 
+    def _refine_minmax(
+        self,
+        response: torch.Tensor,
+        max_mask: torch.Tensor,
+        min_mask: torch.Tensor,
+        is_iterative_subpix: bool,
+        batchable_subpix: bool,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Refine both response signs, batching only independent built-in refiners."""
+        if batchable_subpix:
+            # Keep NMS neighbourhoods separate: merging masks would let extrema
+            # move into the other sign's dilation neighbourhood. The candidate cap
+            # excluded above needs separate calls, since it applies across the whole batch.
+            batch = response.shape[0]
+            coords, values = self.subpix(
+                torch.cat((response, -response), dim=0),
+                precomputed_nms_mask=torch.cat((max_mask, min_mask), dim=0),
+            )
+            return coords[:batch], values[:batch], coords[batch:], values[batch:]
+        if is_iterative_subpix:
+            coord_max, response_max = self.subpix(response, precomputed_nms_mask=max_mask)
+            coord_min, response_min = self.subpix(-response, precomputed_nms_mask=min_mask)
+        else:
+            coord_max, response_max = self.subpix(response)
+            coord_min, response_min = self.subpix(-response)
+        return coord_max, response_max, coord_min, response_min
+
     def _process_octave(
         self,
         octave: torch.Tensor,
@@ -305,6 +356,7 @@ class ScaleSpaceDetector(nn.Module):
         rotmat: torch.Tensor,
         num_levels: int,
         is_iterative_subpix: bool,
+        batchable_subpix: bool,
         px_size: float,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Process one scale-space octave: response → NMS/subpix → top-K → LAF.
@@ -320,9 +372,11 @@ class ScaleSpaceDetector(nn.Module):
 
         # Run response function
         if self.scale_space_response:
-            oct_resp = self.resp(octave, sigmas_oct.view(-1))  # (B, 1, Ldog, H, W)
+            with self._dynamo_config_patch(("resp",)):
+                oct_resp = self.resp(octave, sigmas_oct.view(-1))  # (B, 1, Ldog, H, W)
         else:
-            level_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W), sigmas_oct.view(-1))
+            with self._dynamo_config_patch(("resp",)):
+                level_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W), sigmas_oct.view(-1))
             KORNIA_CHECK(
                 level_resp.dim() == 4
                 and level_resp.shape[0] == B * L
@@ -371,17 +425,15 @@ class ScaleSpaceDetector(nn.Module):
             if mask.is_floating_point():
                 oct_mask = resampled
 
-        if self.minima_are_also_good:
-            if is_iterative_subpix:
+        with self._dynamo_config_patch(("subpix",)):
+            if self.minima_are_also_good:
+                coord_max, response_max, coord_min, response_min = self._refine_minmax(
+                    oct_resp, max_nms_mask, min_nms_mask, is_iterative_subpix, batchable_subpix
+                )
+            elif is_iterative_subpix:
                 coord_max, response_max = self.subpix(oct_resp, precomputed_nms_mask=max_nms_mask)
-                coord_min, response_min = self.subpix(-oct_resp, precomputed_nms_mask=min_nms_mask)
             else:
                 coord_max, response_max = self.subpix(oct_resp)
-                coord_min, response_min = self.subpix(-oct_resp)
-        elif is_iterative_subpix:
-            coord_max, response_max = self.subpix(oct_resp, precomputed_nms_mask=max_nms_mask)
-        else:
-            coord_max, response_max = self.subpix(oct_resp)
 
         # Zero responses at scale border levels so they never reach top-K.
         # (nms3d_minmax already sets the masks False at these positions.)
@@ -397,7 +449,6 @@ class ScaleSpaceDetector(nn.Module):
                 response_min = _weight_scores(response_min, oct_mask)
             take_min_mask = (response_min > response_max) & min_nms_mask
             response_max = torch.where(take_min_mask, response_min, response_max)
-            coord_max = torch.where(take_min_mask.unsqueeze(2), coord_min, coord_max)
             # Candidate positions: original max-NMS plus swapped min-NMS positions.
             cand_mask = max_nms_mask | take_min_mask
         else:
@@ -418,17 +469,16 @@ class ScaleSpaceDetector(nn.Module):
         if B == 1:
             nms_idx = mask_flat[0].nonzero(as_tuple=True)[0]  # (M,)
             resp_cands = resp_flat[0][nms_idx]  # (M,)
-            coord_cands = coord_flat[0][nms_idx]  # (M, 3)
             k_eff = min(num_feats, nms_idx.shape[0])
             # Only NMS candidates are gathered here, so every returned slot is one.
             is_cand = torch.ones(1, k_eff, dtype=torch.bool, device=dev)
             if k_eff > 0:
                 resp_flat_best, local_idx = torch.topk(resp_cands, k=k_eff)
-                max_coords_best = coord_cands[local_idx].unsqueeze(0)  # (1, k_eff, 3)
+                idxs = nms_idx[local_idx].unsqueeze(0)
                 resp_flat_best = resp_flat_best.unsqueeze(0)  # (1, k_eff)
             else:
                 resp_flat_best = resp_flat.new_zeros(1, 0)
-                max_coords_best = coord_flat.new_zeros(1, 0, 3)
+                idxs = nms_idx.new_empty(1, 0)
         else:
             # Batched fallback: mask non-candidates to -inf so they lose top-K to every finite
             # response. (A finite sentinel such as `finfo.min / 2` is not below every finite
@@ -436,11 +486,20 @@ class ScaleSpaceDetector(nn.Module):
             resp_masked = resp_flat.masked_fill(~mask_flat, float("-inf"))
             k_eff = min(num_feats, resp_masked.size(1))
             resp_flat_best, idxs = torch.topk(resp_masked, k=k_eff, dim=1)
-            max_coords_best = torch.gather(coord_flat, 1, idxs.unsqueeze(-1).expand(-1, -1, 3))
             # `topk` cannot rank among the masked-out positions -- they all carry the same
             # `fill` -- so an image with fewer than `num_feats` maxima gets an arbitrary subset
             # of non-candidates back. Carry the candidacy of each selected slot forward.
             is_cand = torch.gather(mask_flat, 1, idxs)
+
+        coord_idxs = idxs.unsqueeze(-1).expand(-1, -1, 3)
+        max_coords_best = torch.gather(coord_flat, 1, coord_idxs)
+        if self.minima_are_also_good:
+            # Merge coordinates only for the selected features, not for every voxel
+            # in the octave (three full image volumes per scale level).
+            coord_min_flat = coord_min.movedim(2, -1).reshape(B, -1, 3)
+            min_coords_best = torch.gather(coord_min_flat, 1, coord_idxs)
+            take_min_best = torch.gather(take_min_mask.reshape(B, -1), 1, idxs)
+            max_coords_best = torch.where(take_min_best.unsqueeze(-1), min_coords_best, max_coords_best)
 
         B, N = resp_flat_best.size()
 
@@ -456,7 +515,9 @@ class ScaleSpaceDetector(nn.Module):
 
         # Inline equivalent of laf_is_inside_image(scale_laf(current_lafs, 0.5), octave[:, 0], 5)
         # for isotropic LAFs (rotmat = eye(2)).  Avoids: scale_laf (torch.cat), and
-        # laf_to_boundary_points (linspace/sin/cos allocations + CPU→GPU transfer + bmm).
+        # laf_to_boundary_points (linspace/sin/cos allocations and their launches, plus a small
+        # host->device copy of the basis).  Since #4217 that op no longer transfers a tensor that
+        # scales with the LAF count, so what is saved here is per-call overhead, not bandwidth.
         # For the axis-aligned isotropic case the 12-pt boundary check reduces to:
         #   max x-extent = max|sin| * half_s;  max y-extent = max|cos| * half_s = half_s
         half_s = current_lafs[:, :, 0, 0] * 0.5
@@ -509,7 +570,8 @@ class ScaleSpaceDetector(nn.Module):
             _check_mask(mask, img)
         dev = img.device
         dtype: torch.dtype = img.dtype
-        sp, sigmas, _ = self.scale_pyr(img)
+        with self._dynamo_config_patch(("scale_pyr",)):
+            sp, sigmas, _ = self.scale_pyr(img)
 
         # ── Hoist loop invariants ────────────────────────────────────────────
         if isinstance(self.scale_pyr.n_levels, torch.Tensor):
@@ -522,7 +584,10 @@ class ScaleSpaceDetector(nn.Module):
                 f"Gotcha {type(self.scale_pyr.n_levels)}"
             )
         rotmat = torch.eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)
-        is_iterative_subpix = self._is_iterative_subpix
+        # Read the live module once per forward, so a refiner swapped in after construction, or a
+        # compiled one passed by the caller, is dispatched consistently on both the single-sign and
+        # the minima-and-maxima path.
+        is_iterative_subpix, batchable_subpix = _subpix_dispatch(self.subpix)
         px_size0 = 0.5 if self.scale_pyr.double_image else 1.0
         px_sizes = [px_size0 * (2.0**i) for i in range(len(sp))]
 
@@ -534,7 +599,15 @@ class ScaleSpaceDetector(nn.Module):
         n_oct = len(sp)
         results: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = [
             self._process_octave(
-                sp[i], sigmas[i], num_feats, mask, rotmat, num_levels, is_iterative_subpix, px_sizes[i]
+                sp[i],
+                sigmas[i],
+                num_feats,
+                mask,
+                rotmat,
+                num_levels,
+                is_iterative_subpix,
+                batchable_subpix,
+                px_sizes[i],
             )
             for i in range(n_oct)
         ]
@@ -608,9 +681,11 @@ class ScaleSpaceDetector(nn.Module):
         # `detect` is the public extension point used by subclasses. Infer occupancy from its
         # zero-LAF padding contract rather than bypassing an override through `_detect`.
         responses, lafs = self.detect(img, self.num_features, mask)
-        filled = lafs.ne(0).any(dim=-1).any(dim=-1)
-        lafs = self.aff(lafs, img)
-        lafs = self.ori(lafs, img)
+        filled = laf_is_filled(lafs)
+        with self._dynamo_config_patch(("aff",)):
+            lafs = self.aff(lafs, img)
+        with self._dynamo_config_patch(("ori",)):
+            lafs = self.ori(lafs, img)
         return _zero_unfilled(lafs, filled), responses
 
 
@@ -644,7 +719,12 @@ class MultiResolutionDetector(nn.Module):
 
     Args:
         model: response function, such as KeyNet or BlobHessian
-        num_features: Number of features to detect.
+        num_features: Number of features to detect. Every pyramid level is searched for this many
+            candidates and the whole set is ranked together, so the result is the ``num_features``
+            highest responses in the image, and the sorted response vector for one value is a prefix
+            of the vector for any larger one. Which detection carries a given response is not pinned
+            when responses tie: ``topk`` breaks a tie by position, and the positions it ranks over
+            depend on ``num_features``.
         conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
         ori_module: for local feature orientation estimation. Default: :class:`~kornia.feature.PassLAF`,
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
@@ -820,7 +900,8 @@ class MultiResolutionDetector(nn.Module):
 
         Returns:
             Tuple containing detection scores and local affine frames, shaped `(1, num_features)` and
-            `(1, num_features, 2, 3)`. The shape holds even when the image yields fewer above-threshold maxima
+            `(1, num_features, 2, 3)`, holding the `num_features` highest responses in the image and sorted by
+            response, descending. The shape holds even when the image yields fewer above-threshold maxima
             than requested: those slots carry a zero response and a zero LAF, and sort after every real detection.
             LAF centres are pixel coordinates cast to the image dtype, so a half-precision image gives centres at
             that dtype's integer resolution: exact up to 256 in bfloat16 and up to 2048 in float16, and coarser
@@ -829,26 +910,16 @@ class MultiResolutionDetector(nn.Module):
         KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])
         if mask is not None:
             _check_mask(mask, img)
-        # Compute points per level
-        num_features_per_level: List[float] = []
-        tmp = 0.0
-        factor_points = self.scale_factor_levels**2
-        levels = self.num_pyramid_levels + self.num_upscale_levels + 1
-        for idx_level in range(levels):
-            tmp += factor_points ** (-1 * (idx_level - self.num_upscale_levels))
-            nf = self.num_features * factor_points ** (-1 * (idx_level - self.num_upscale_levels))
-            num_features_per_level.append(nf)
-        shares: List[float] = [x / tmp for x in num_features_per_level]
-        num_features_per_level = [int(x) for x in shares]
-        # Each quota truncates independently, so a small `num_features` can round the whole
-        # apportionment to zero: with the default configuration that happens at `num_features=1`,
-        # where the six shares are 0.508 .. 0.016. Every level would then be queried for zero
-        # candidates and the result padded with a dummy, on an image full of real maxima. Hand the
-        # one slot to the level with the largest share. This fires only when truncation lost
-        # everything -- an apportionment that already gives out a slot is left exactly as it was.
-        if self.num_features > 0 and sum(num_features_per_level) == 0:
-            num_features_per_level[max(range(len(shares)), key=shares.__getitem__)] = 1
-
+        # Every level is asked for the whole budget, not for a per-level share of it. A share is a
+        # cap on what the level may contribute, and the final global `topk` cannot rank in a
+        # detection that was never requested, so a per-level quota silently returns something other
+        # than the top `num_features` whenever an image's strongest maxima concentrate on one level.
+        # Asking each level for `num_features` is exactly sufficient rather than merely generous:
+        # the m detections a level contributes to the global top-k are necessarily that level's own
+        # top-m, so a request of `num_features` always reaches them. It costs ~1.2x the candidates
+        # the old apportionment carried -- the coarse levels were already asked for a cumulative
+        # prefix of the quotas, close to `num_features` -- which is not measurable next to the
+        # response function and the non-maxima suppression.
         _, _, h, w = img.shape
         img_up = img
         cur_img = img
@@ -856,16 +927,13 @@ class MultiResolutionDetector(nn.Module):
         all_lafs: List[torch.Tensor] = []
         # Extract features from the upper levels
         for idx_level in range(self.num_upscale_levels):
-            nf = num_features_per_level[len(num_features_per_level) - self.num_pyramid_levels - 1 - (idx_level + 1)]
-            num_points_level = int(nf)
-
             # Resize input image
             up_factor = self.scale_factor_levels ** (1 + idx_level)
             nh, nw = int(h * up_factor), int(w * up_factor)
             up_factor_kpts = (float(w) / float(nw), float(h) / float(nh))
             img_up = resize(img_up, (nh, nw), interpolation="bilinear", align_corners=False)
 
-            cur_scores, cur_lafs = self._detect_level(img_up, num_points_level, up_factor_kpts, mask)
+            cur_scores, cur_lafs = self._detect_level(img_up, self.num_features, up_factor_kpts, mask)
 
             all_responses.append(cur_scores.view(1, -1))
             all_lafs.append(cur_lafs)
@@ -879,19 +947,16 @@ class MultiResolutionDetector(nn.Module):
             else:
                 factor = (1.0, 1.0)
 
-            num_points_level = int(num_features_per_level[idx_level])
-            if idx_level > 0 or (self.num_upscale_levels > 0):
-                num_points_level = sum(num_features_per_level[: idx_level + 1 + self.num_upscale_levels])
-
-            cur_scores, cur_lafs = self._detect_level(cur_img, num_points_level, factor, mask)
+            cur_scores, cur_lafs = self._detect_level(cur_img, self.num_features, factor, mask)
             all_responses.append(cur_scores.view(1, -1))
             all_lafs.append(cur_lafs)
         responses = torch.cat(all_responses, 1)
         lafs = torch.cat(all_lafs, 1)
         # The levels can produce fewer slots than requested — a level is capped at its own pixel
-        # count, and the per-level quotas round down, to zero for a small `num_features`. Pad up
-        # so the returned shape is always `num_features`, the same way `ScaleSpaceDetector.detect`
-        # does; the padding is the zero response and zero LAF used everywhere else here.
+        # count, so a deep enough pyramid level runs out of positions before it fills its quota.
+        # Pad up so the returned shape is always `num_features`, the same way
+        # `ScaleSpaceDetector.detect` does; the padding is the zero response and zero LAF used
+        # everywhere else here.
         if lafs.shape[1] < self.num_features:
             pad = self.num_features - lafs.shape[1]
             responses = F.pad(responses, (0, pad))
@@ -928,7 +993,7 @@ class MultiResolutionDetector(nn.Module):
         responses, lafs = self.detect(img, mask)
         # Occupancy comes from `detect`'s zero-LAF padding contract, the same way as in
         # `ScaleSpaceDetector.forward`, so an override of `detect` is honoured as well.
-        filled = lafs.ne(0).any(dim=-1).any(dim=-1)
+        filled = laf_is_filled(lafs)
         lafs = self.aff(lafs, img)
         lafs = self.ori(lafs, img)
         return _zero_unfilled(lafs, filled), responses

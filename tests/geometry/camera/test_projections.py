@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.geometry.camera.perspective import project_points
 from kornia.geometry.camera.projection_orthographic import (
     dx_project_points_orthographic,
     project_points_orthographic,
@@ -100,6 +101,26 @@ class TestProjectionZ1(BaseTester):
         expected = torch.tensor([[2.0, 4.0, 2.0], [9.0, 12.0, 3.0]], device=device, dtype=dtype)
         self.assert_close(unproject_points_z1(points, extension), expected)
 
+    @pytest.mark.parametrize("batch_shape", [(), (0,), (1,), (2,), (1, 2), (2, 3)])
+    @pytest.mark.parametrize("column_depth", [False, True])
+    def test_unproject_depth_shapes_4282(self, device, dtype, batch_shape, column_depth):
+        points = torch.tensor([1.0, 2.0], device=device, dtype=dtype).expand(batch_shape + (2,))
+        depth_shape = batch_shape + (1,) if column_depth else batch_shape
+        depth = torch.full(depth_shape, 3.0, device=device, dtype=dtype)
+        expected = torch.tensor([3.0, 6.0, 3.0], device=device, dtype=dtype).expand(batch_shape + (3,))
+        actual = unproject_points_z1(points, depth)
+        self.assert_close(actual, expected)
+        self.assert_close(project_points_z1(actual), points)
+        self.assert_close(torch.jit.script(unproject_points_z1)(points, depth), expected)
+
+    @pytest.mark.parametrize("column_depth", [False, True])
+    def test_unproject_batched_depth_gradcheck(self, device, column_depth):
+        points = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=torch.float64)
+        depth = torch.tensor([2.0, 3.0], device=device, dtype=torch.float64)
+        if column_depth:
+            depth = depth.unsqueeze(-1)
+        self.gradcheck(unproject_points_z1, (points, depth))
+
     def test_dx_proj_x(self, device, dtype):
         points = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
         expected = torch.tensor(
@@ -151,6 +172,49 @@ class TestProjectionZ1(BaseTester):
     def test_jit(self, device, dtype) -> None:
         self._test_jit_project(device, dtype)
         self._test_jit_unproject(device, dtype)
+
+    def test_wart_project_points_z1_zero_depth_is_component_dependent_4267(self, device, dtype):
+        # project_points_z1 divides plainly. Snippet used to generate expected: project_points_z1 applied to the
+        # four points below -> [[inf, -inf], [-inf, inf], [nan, inf], [inf, nan]].
+        points = torch.tensor(
+            [[1.0, -2.0, 0.0], [-1.0, 2.0, 0.0], [0.0, 2.0, 0.0], [1.0, 0.0, 0.0]],
+            device=device,
+            dtype=dtype,
+        )
+        actual = project_points_z1(points)
+        expected_posinf = torch.tensor([[True, False], [False, True], [False, True], [True, False]], device=device)
+        expected_neginf = torch.tensor([[False, True], [True, False], [False, False], [False, False]], device=device)
+        expected_nan = torch.tensor([[False, False], [False, False], [True, False], [False, True]], device=device)
+        assert torch.equal(torch.isposinf(actual), expected_posinf)
+        assert torch.equal(torch.isneginf(actual), expected_neginf)
+        assert torch.equal(torch.isnan(actual), expected_nan)
+
+    def test_convention_project_points_z1_differs_below_perspective_epsilon(self, device, dtype):
+        # Snippet used to generate expected: project_points_z1([[1., 2., 1e-9]]) -> [[1e9, 2e9]], while
+        # project_points(..., eye(3)) -> [[1., 2.]] because its homogeneous conversion does not divide when
+        # abs(z) <= 1e-8. float16 is skipped because 1e-9 underflows to zero in that dtype.
+        if dtype == torch.float16:
+            pytest.skip("1e-9 underflows to zero in float16")
+        points = torch.tensor([[1.0, 2.0, 1e-9]], device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)
+        expected_z1 = torch.tensor([[1e9, 2e9]], device=device, dtype=dtype)
+        expected_perspective = torch.tensor([[1.0, 2.0]], device=device, dtype=dtype)
+        self.assert_close(project_points_z1(points), expected_z1)
+        self.assert_close(project_points(points, camera_matrix), expected_perspective)
+
+    def test_convention_dx_project_points_z1_matches_autograd(self, device, dtype):
+        # Convention pin: dx_project_points_z1 returns the (..., 2, 3) Jacobian
+        # of project_points_z1, laid out d(u, v) / d(x, y, z) -- row-major in the OUTPUT index. Checked against
+        # torch.autograd.functional.jacobian at an off-axis point (1, 2, 3) where all six entries differ, so a
+        # transposed layout or a swapped (u, v) row fails.
+        # Snippet used to generate expected: autograd.functional.jacobian(project_points_z1, [1., 2., 3.])
+        # executed 2026-09-05 (torch 2.14.0, cpu and mps) -> max abs difference 1.49e-08 in float32, 0.0 in
+        # float64/float16/bfloat16.
+        points = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
+        analytic = dx_project_points_z1(points)
+        numeric = torch.autograd.functional.jacobian(project_points_z1, points)
+        assert analytic.shape == (2, 3)
+        self.assert_close(analytic, numeric)
 
 
 class TestProjectionOrthographic(BaseTester):
@@ -214,6 +278,41 @@ class TestProjectionOrthographic(BaseTester):
         with pytest.raises(ShapeError):
             unproject_points_orthographic(points, extension)
 
+    def test_convention_dx_orthographic_is_the_scalar_du_dx_not_the_full_jacobian(self, device, dtype):
+        # Convention pin: dx_project_points_orthographic returns the single
+        # partial derivative its docstring math states, du/dx = 1, with shape (..., 1) -- NOT the (2, 3)
+        # Jacobian of project_points_orthographic, and NOT the shape its same-named z1 sibling returns. The two
+        # ``dx_*`` functions on this surface therefore mean different things, so the pin asserts the shapes
+        # apart and checks each against torch.autograd.functional.jacobian of the projection it differentiates.
+        # An off-axis point (x != y != z, one negative) is used so a transposed or wrongly indexed Jacobian
+        # changes a literal. Snippet used to generate expected: the four calls below on [1., -2., 4.] executed
+        # 2026-09-05 (torch 2.14.0, cpu and mps, float16/bfloat16/float32/float64) ->
+        # dx_orthographic [1.] shape (1,); jacobian(project_points_orthographic) [[1, 0, 0], [0, 1, 0]] shape
+        # (2, 3); dx_z1 == jacobian(project_points_z1) == [[0.25, 0, -0.0625], [0, 0.25, 0.125]] shape (2, 3).
+        # Every literal is a dyadic rational and matched exactly in every dtype and device tested.
+        points = torch.tensor([1.0, -2.0, 4.0], device=device, dtype=dtype)
+        dx_ortho = dx_project_points_orthographic(points)
+        assert dx_ortho.shape == (1,)
+        self.assert_close(dx_ortho, torch.tensor([1.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        jacobian_ortho = torch.autograd.functional.jacobian(project_points_orthographic, points)
+        assert jacobian_ortho.shape == (2, 3)
+        self.assert_close(
+            jacobian_ortho,
+            torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype),
+            atol=0.0,
+            rtol=0.0,
+        )
+        # dx_project_points_z1, by contrast, IS the full Jacobian of its projection.
+        dx_z1 = dx_project_points_z1(points)
+        assert dx_z1.shape == (2, 3)
+        self.assert_close(dx_z1, torch.autograd.functional.jacobian(project_points_z1, points), atol=0.0, rtol=0.0)
+        self.assert_close(
+            dx_z1,
+            torch.tensor([[0.25, 0.0, -0.0625], [0.0, 0.25, 0.125]], device=device, dtype=dtype),
+            atol=0.0,
+            rtol=0.0,
+        )
+
     def _test_gradcheck_project(self, device):
         points = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float64)
         self.gradcheck(project_points_orthographic, (points,))
@@ -245,3 +344,30 @@ class TestProjectionOrthographic(BaseTester):
     def test_jit(self, device, dtype) -> None:
         self._test_jit_project(device, dtype)
         self._test_jit_unproject(device, dtype)
+
+    def test_convention_orthographic_drops_and_restores_the_z_axis(self, device, dtype):
+        # Convention pin: the orthographic projection drops z and keeps (x, y)
+        # in order -- (1, 2, 3) -> (1, 2), never (1, 3) or (2, 1) -- and the unprojection appends the extension as
+        # the z component, so (1, 2) with extension 3 restores (1, 2, 3) exactly. Distinct x, y and z so every
+        # axis permutation changes the literal.
+        # Snippet used to generate expected: both calls executed 2026-09-05 (torch 2.14.0, cpu and mps, every
+        # dtype) -> [1., 2.] and [1., 2., 3.]; exact, no divide is involved.
+        points_3d = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
+        projected = project_points_orthographic(points_3d)
+        self.assert_close(projected, torch.tensor([1.0, 2.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
+        restored = unproject_points_orthographic(projected, torch.tensor([3.0], device=device, dtype=dtype))
+        self.assert_close(restored, points_3d, atol=0.0, rtol=0.0)
+
+    def test_convention_unproject_points_orthographic_accepts_both_extension_shapes(self, device, dtype):
+        # Convention pin: unproject_points_orthographic compares the
+        # extension's RANK with the points' rank -- the right predicate -- so a (N,) and a (N, 1) extension are
+        # both accepted for N > 1 and give the same answer. Its sibling unproject_points_z1 uses the same
+        # rank-based guard after f4532f39.
+        # Snippet used to generate expected: points [[1, 2], [3, 4]] with extensions [5, 6] and [[5], [6]]
+        # executed 2026-09-05 (torch 2.14.0, cpu and mps, every dtype) -> [[1., 2., 5.], [3., 4., 6.]] for both.
+        points = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[1.0, 2.0, 5.0], [3.0, 4.0, 6.0]], device=device, dtype=dtype)
+        flat = unproject_points_orthographic(points, torch.tensor([5.0, 6.0], device=device, dtype=dtype))
+        column = unproject_points_orthographic(points, torch.tensor([[5.0], [6.0]], device=device, dtype=dtype))
+        self.assert_close(flat, expected, atol=0.0, rtol=0.0)
+        self.assert_close(column, expected, atol=0.0, rtol=0.0)

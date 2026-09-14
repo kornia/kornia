@@ -84,21 +84,23 @@ class TestParamValidation:
             "tensor-2d",
         ],
     )
-    @pytest.mark.parametrize(
-        "device",
-        [
-            torch.device("cpu"),
-            pytest.param(
-                torch.device("cuda"),
-                marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"),
-            ),
-        ],
-    )
     def test_tuple_range_reader_valid(self, input_param, target_size, expected, device):
         """Supported input formats should expand correctly across devices."""
         res = _tuple_range_reader(input_param, target_size, device=device)
         assert res.shape == (target_size, 2)
         torch.testing.assert_close(res, expected.to(device))
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    def test_tuple_range_reader_honours_cuda_device(self):
+        """`_tuple_range_reader` allocates its own tensors, so the CUDA branch needs its own test.
+
+        The `device` fixture above follows `--device`, which is `cpu` in CI and in a default local
+        run, so the cross-product alone would never place the reader on an accelerator.
+        """
+        cuda = torch.device("cuda")
+        res = _tuple_range_reader([(5.0, 10.0), (3.0, 8.0)], 2, device=cuda)
+        assert res.device.type == "cuda"
+        torch.testing.assert_close(res, torch.tensor([[5.0, 10.0], [3.0, 8.0]], device=cuda))
 
     @pytest.mark.parametrize(
         "args, kwargs, expected_exception, match_msg",

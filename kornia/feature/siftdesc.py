@@ -22,10 +22,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import _l2_normalize
 from kornia.filters import get_gaussian_kernel2d, spatial_gradient
-from kornia.geometry.conversions import pi
 
 
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:
@@ -438,7 +438,7 @@ class DenseSIFTDescriptor(nn.Module):
             self.PoolingConv.dilation,
             self.PoolingConv.groups,
         )
-        out = _l2_normalize(out_no_norm, dim=1).clamp_(0, float(self.clipval))
+        out = _l2_normalize(out_no_norm, dim=1).clamp(0, float(self.clipval))
         out = _l2_normalize(out, dim=1)
         if self.rootsift:
             out = _rootsift(out, self.eps)

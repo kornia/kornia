@@ -1,10 +1,14 @@
-Computer Vision Algorithms
-==========================
+:orphan:
 
-Kornia provides a bottom to top granularity for **CURATED** Computer Vision algorithms.
+Applications
+============
 
-In this section, we showcase our high-level API in terms of abstraction for common Computer Vision algorithms
-that can be used across different domains such as Robotics, Industrial applications or for the AR/VR industry.
+.. meta::
+   :description: End-to-end Kornia guides that combine several modules: image augmentation, image matching, stitching, registration, face detection, visual prompting with Segment Anything, and image denoising.
+
+Each guide in this section solves a complete task with Kornia's high-level APIs, combining operators from
+several modules. They are the place to start when you know *what* you want to do; the
+:doc:`API reference </api>` documents each building block.
 
 .. tip::
 
@@ -18,6 +22,6 @@ that can be used across different domains such as Robotics, Industrial applicati
    - Object Detection and Tracking
    - Image classification
 
-.. admonition:: We are looking for contributors !!
+.. admonition:: We are looking for contributors!
 
    If you have a suggestion, proposal, or simply want to help, join our `Discord <https://discord.gg/HfnywwpBnD>`_.

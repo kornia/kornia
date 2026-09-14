@@ -459,15 +459,13 @@ class DeformableConv2d(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run the module forward pass.
+        r"""Run the module forward pass.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input feature map with shape :math:`(B, C_{\text{in}}, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Deformable convolution output with shape :math:`(B, C_{\text{out}}, H', W')`.
         """
         h, w = x.shape[2:]
         max_offset = max(h, w) / 4.0
@@ -540,15 +538,13 @@ class ConvBlock(nn.Module):
         self.bn2 = norm_layer(out_channels)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run the module forward pass.
+        r"""Run the module forward pass.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input feature map with shape :math:`(B, C_{\text{in}}, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Feature map with shape :math:`(B, C_{\text{out}}, H, W)` after two gated conv-BN layers.
         """
         x = self.gate(self.bn1(self.conv1(x)))
         return self.gate(self.bn2(self.conv2(x)))
@@ -592,15 +588,14 @@ class ResBlock(nn.Module):
         self.stride = stride
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Run the module forward pass.
+        r"""Run the module forward pass.
 
         Args:
-            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
-                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            x: Input feature map with shape :math:`(B, C_{\text{in}}, H, W)`.
 
         Returns:
-            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
-            surrounding class.
+            Feature map with shape :math:`(B, C_{\text{out}}, H', W')` after the residual block,
+            where ``H'`` and ``W'`` may differ from the input if ``stride > 1``.
         """
         identity = x
         out = self.gate(self.bn1(self.conv1(x)))

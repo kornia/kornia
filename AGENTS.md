@@ -88,9 +88,26 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 ### Precision and device details
 
 - For focused CPU half-precision coverage, add `--dtype=float16,bfloat16` to a `test-module` run. `pixi run test-half` runs the whole CPU test suite.
+- The blocking Linux CPU half jobs run one dtype at a time with `--verify-known-failures` and an explicit
+  `--known-failure-profile=cpu-float16` or `cpu-bfloat16`, with no optimizer or `--runslow`. Focused file, node, and
+  `-k` runs use `--xfail-known-failures` with the same profile. Profile selection happens before parametrization and
+  deterministically isolates each node's RNG. Delete a manifest line after a fix, update it after a rename or
+  reparametrization, and fix or deliberately document a new failure. `pixi run test-half` is unseeded; a failure seen
+  only there is a test-determinism bug, not a manifest update. See [TESTING.md](TESTING.md) for guarded candidate
+  recording, fresh-process replay, and manual installation.
 - CUDA `float16`/`bfloat16` tests need per-test subprocess isolation; use `pixi run -e cuda test-cuda-half` or pytest's `--isolate-half-precision` option.
 - MPS does not support float64 gradcheck. MPS autocast can also change the effective dtype; inspect nearby tests before changing tolerances or skips.
+- The blocking MPS job runs `--device=mps --dtype=float32 --xfail-known-failures`. Its exact strict-xfail baseline is `testing/known_failure_xfails/mps_float32.txt` and is tracked in #4159. A fix removes its manifest line; a rename or reparametrization updates the node ID; a new failure is fixed or explicitly documented before being added. The manifest contract requires a full-suite run, without `-k` or a partial path.
 - TF32 matmul is disabled by default; `--tf32` enables it. cuDNN convolutions still use PyTorch's TF32 default. Tests marked `tf32` are xfailed at collection unless `--tf32` is passed, and that marker is non-strict, so a default run reports neither their failure nor their recovery.
+- `torch.clamp` is not a portable gradient guard: its derivative **at the bound** passes the incoming gradient
+  through (`1.0`) on torch 2.5.1 and 2.9.1 and returns `0.0` on 2.14.0. Wherever the bound is also the singular
+  point -- `clamp(min=0).sqrt()`, `clamp(-1, 1).acos()`, `clamp(-1, 1).asin()` -- the clamp bounds the value only,
+  so the unbounded derivative still reaches the backward pass as `inf` or `nan` on the older half of the supported
+  range while 2.14 masks it. A floor below the dtype's smallest subnormal is no guard either: `clamp(min=1e-12)`
+  underflows to `0` in `float16`. Substitute a safe argument into the expression that gets differentiated and take
+  the value from a `.detach()`ed copy, or from the other arm of a `torch.where`, instead; that is
+  version-independent by construction. A CPU float32 run on a recent torch does not exercise any of this -- the
+  2.5.1 leg is what discriminates. The measurements and the audit of the pattern are in #4229.
 - Preserve device and dtype rather than creating implicit CPU or default-dtype tensors. Use the injected `device` and `dtype` fixtures in tests.
 
 ## Library preferences
@@ -102,7 +119,7 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 - Keep numerical correctness tests self-contained. For expected values produced by an optional reference library, prefer a hardcoded literal plus the small generation snippet and source. Optional-dependency integration tests, including ONNX tests, may still use `pytest.importorskip`.
 - For a new algorithm, name the source that defines it, such as a paper or a reference implementation in PyTorch, OpenCV, or scikit-image.
 - Public APIs need type hints, docstrings, and exports.
-- `tests/api_surface.json` is a checked-in inventory of the public names of the stable-core modules, and `tests/test_api_surface.py` fails when one of them disappears — the deliberate review moment the stability policy (`docs/source/get-started/stability.rst`) requires. Removing or renaming a public name means editing that JSON in the same change; additions do not fail the test, and `tests.test_api_surface.regenerate()` rewrites the inventory from the live library once new public API has landed.
+- `tests/api_surface.json` inventories the public names of stable-core modules; `tests/test_api_surface.py` rejects their removal until the inventory is updated in the same change. Run `tests.test_api_surface.regenerate()` to regenerate it. Keep tracked module keys (use `[]` when removing every name). The `Import Surface` workflow also checks that each inventory removal corresponds to an actual export removal in the same diff. An inventory edit acknowledges an `__all__` removal only for the exact same module and name. For submodule APIs recorded only under an ancestor package, or APIs absent from the inventory, add the exact module and name to `tests/api_surface_removals.json`, a JSON object mapping module names to lists of removed names (for example, `{"kornia.geometry.boxes": ["Boxes"]}`). Only entries newly added relative to the merge base count, and each must match an actual `__all__` removal in that change; an unrelated source edit or a previously recorded acknowledgement does not count. Explicit acknowledgements do not replace updates to existing inventory entries, the deprecation window, or release notes.
 - The codebase keeps a 120-character line length and Apache 2.0 source headers. Ruff and `ty` enforce the current style and types.
 - JIT-compatible modules have stricter typing constraints. Follow nearby annotations and use `torch.Tensor` directly where TorchScript expects it.
 - For non-JIT modules, use `from __future__ import annotations`.
@@ -110,7 +127,7 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 
 ## Documentation and generated examples
 
-- `CHANGELOG.md` is maintained per change, not at release time. A user-visible change adds an entry under `## Unreleased` citing its PR number, under the Keep a Changelog headings the file already uses (`Added`, `Bug fixes`, `Breaking changes`); a breaking change says what used to happen as well as what happens now.
+- A user-visible change adds a `changelog.d/<PR>.<type>.md` fragment (`added`, `fixed`, or `breaking`), not an edit to `CHANGELOG.md`. See [changelog.d/README.md](changelog.d/README.md) for naming before a PR exists and the release workflow. A breaking change says what used to happen as well as what happens now. Internal changes may omit a fragment with an explanation in the PR and the `no-changelog` label. Release PRs also use that label when consuming fragments. Only release PRs assemble and consume fragments.
 - Add every new public class or function to the corresponding `docs/source/*.rst` page so it appears in the rendered API reference.
 - Some modules document a known defect inline and link its tracking issue; `grep -rn "github.com/kornia/kornia/issues/" kornia/` finds them. That prose is part of the fix's blast radius: **before merging a change that closes one of those issues, run `grep -rnE "#NNNN|issues/NNNN" kornia/ tests/`.** Match the issue number rather than a name or a phrase — the wording varies across `Tracked in #NNNN`, a lowercase `tracked in` clause, a `Note:` block, a runtime error message, an `xfail` `reason=`, a plain comment and a test-name suffix (`test_wart_*_<issue>` and `test_convention_*_<issue>`, where that convention was followed), and a rendered link label can disagree with the URL beneath it. The `#`/`issues/` anchors keep the pattern off float literals. A surviving hit in `kornia/` means the change is incomplete. Hits in `tests/` are the pins that record the documented behavior; each has to be re-checked in the same change — a now-XPASSing strict `xfail` dropped, a wart assertion inverted — but a pin goes on naming its issue afterwards, so a hit there is not by itself a defect. Not every documented issue has a pin, so an empty `tests/` result is an answer rather than a failed search.
 - When adding a feature detector or descriptor, update the `responses` list in `docs/generate_examples.py` and add the matching branch that renders its heatmap or score visualization. Follow the existing `DISK`, `ALIKED`, and `XFeat` examples and preserve the expected `(B, 3, H, W)` image shapes.

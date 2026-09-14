@@ -134,6 +134,58 @@ class TestDistortionAffine(BaseTester):
         self._test_jit_distort(device, dtype)
         self._test_jit_undistort(device, dtype)
 
+    def test_convention_distort_points_affine_takes_normalized_z1_points(self, device, dtype):
+        # Convention pin: distort_points_affine consumes points on the z = 1
+        # NORMALIZED plane and a flat ``[fx, fy, cx, cy]`` parameter vector -- it is the pinhole projection, not a
+        # pixel-to-pixel map. (0.5, 0.25) with fx = fy = 100, cx = 4, cy = 3 therefore lands on
+        # u = 100 * 0.5 + 4 = 54, v = 100 * 0.25 + 3 = 28. cx != cy and x != y, so a transposed reading of either
+        # the point or the parameter vector changes both literals; the batched row uses a second, differently
+        # scaled camera (fx = 200, fy = 50, cx = 6, cy = 2) so a broadcast of element 0 fails too.
+        # Snippet used to generate expected: distort_points_affine(tensor([0.5, 0.25]), tensor([100., 100., 4., 3.]))
+        # executed 2026-09-06 at c0b50ad7 (torch 2.14.0, cpu and mps, every dtype) -> [54., 28.].
+        points = torch.tensor([0.5, 0.25], device=device, dtype=dtype)
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0], device=device, dtype=dtype)
+        self.assert_close(distort_points_affine(points, params), torch.tensor([54.0, 28.0], device=device, dtype=dtype))
+        batched_points = torch.tensor([[0.5, 0.25], [1.0, 1.0]], device=device, dtype=dtype)
+        batched_params = torch.tensor([[100.0, 100.0, 4.0, 3.0], [200.0, 50.0, 6.0, 2.0]], device=device, dtype=dtype)
+        self.assert_close(
+            distort_points_affine(batched_points, batched_params),
+            torch.tensor([[54.0, 28.0], [206.0, 52.0]], device=device, dtype=dtype),
+        )
+
+    def test_convention_undistort_points_affine_is_the_exact_inverse(self, device, dtype):
+        # Convention pin: undistort_points_affine((u, v), params) is the exact inverse of
+        # distort_points_affine -- pixel in, normalized z = 1 point out -- and the round trip recovers the input
+        # bit for bit on this asymmetric camera (atol = rtol = 0). The pair is a genuine forward/inverse duo; the
+        # Kannala-Brandt twin below is iterative and closes only to a tolerance.
+        # Snippet used to generate expected: torch.equal(undistort_points_affine(distort_points_affine(p, par), par), p)
+        # executed 2026-09-06 at c0b50ad7 (torch 2.14.0) -> True on cpu for float32/float64/float16/
+        # bfloat16 and on mps for float32/float16; recovered value [0.5, 0.25].
+        points = torch.tensor([0.5, 0.25], device=device, dtype=dtype)
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0], device=device, dtype=dtype)
+        distorted = distort_points_affine(points, params)
+        self.assert_close(undistort_points_affine(distorted, params), points, atol=0.0, rtol=0.0)
+
+    def test_convention_dx_distort_points_affine_matches_autograd(self, device, dtype):
+        # Convention pin: dx_distort_points_affine returns the (2, 2)
+        # Jacobian of distort_points_affine with respect to the POINT (rows = output components, columns = input
+        # components), byte-identical to torch.autograd.functional.jacobian, and constant in the point because the
+        # map is affine -- diag(fx, fy) = diag(100, 100). This is the control probe for the Kannala-Brandt
+        # Jacobian pinned in TestDistortionKannalaBrandt below, which now also matches the Jacobian of
+        # distort_points_kannala_brandt (kornia#4277, kornia#4368).
+        # Snippet used to generate expected: torch.equal(dx_distort_points_affine(p, par),
+        # torch.autograd.functional.jacobian(lambda q: distort_points_affine(q, par), p)) executed 2026-09-06 on
+        # c0b50ad7 (torch 2.14.0) -> True on cpu (float32/float64/float16/bfloat16) and on mps
+        # (float32/float16); value [[100., 0.], [0., 100.]].
+        points = torch.tensor([0.5, 0.25], device=device, dtype=dtype)
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0], device=device, dtype=dtype)
+        analytic = dx_distort_points_affine(points, params)
+        autograd = torch.autograd.functional.jacobian(lambda q: distort_points_affine(q, params), points)
+        self.assert_close(analytic, autograd, atol=0.0, rtol=0.0)
+        self.assert_close(
+            analytic, torch.tensor([[100.0, 0.0], [0.0, 100.0]], device=device, dtype=dtype), atol=0.0, rtol=0.0
+        )
+
 
 class TestDistortionKannalaBrandt(BaseTester):
     def test_smoke(self, device, dtype) -> None:
@@ -198,8 +250,8 @@ class TestDistortionKannalaBrandt(BaseTester):
         params = torch.tensor([600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4], device=device, dtype=dtype)
         expected = torch.tensor(
             [
-                [1191.5316162109375, 282.3212890625],
-                [282.3212890625, 1615.0135498046875],
+                [1221.1801242852937, 341.6185175810278],
+                [341.6185175810278, 1733.6079006568352],
             ],
             device=device,
             dtype=dtype,
@@ -255,3 +307,140 @@ class TestDistortionKannalaBrandt(BaseTester):
     def test_jit(self, device, dtype) -> None:
         self._test_jit_distort(device, dtype)
         self._test_jit_undistort(device, dtype)
+
+    def test_convention_undistort_points_kannala_brandt_round_trip_closes(self, device, dtype):
+        # Convention pin: unlike the affine pair in
+        # TestDistortionAffine, undistort_points_kannala_brandt is an ITERATIVE inverse (10 Gauss-Newton steps),
+        # so the round trip closes to the dtype tolerance rather than bit for bit. The pin asserts closure at
+        # assert_close's dtype tolerance and deliberately states no error bound; the executed residuals are
+        # recorded, not enforced. The far-off-axis case is the sibling pin below.
+        # Snippet used to generate expected: (undistort_points_kannala_brandt(distort_points_kannala_brandt(p, par),
+        # par) - p).abs().max(), differenced in the working dtype. Removing the additive radial-rescale epsilon
+        # makes the float64 residual reach the Gauss-Newton rounding floor instead of stopping around 1e-8.
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        points = torch.tensor([0.5, 0.25], device=device, dtype=dtype)
+        self.assert_close(
+            undistort_points_kannala_brandt(distort_points_kannala_brandt(points, params), params), points
+        )
+
+    def test_convention_undistort_points_kannala_brandt_closes_far_off_axis(self, device, dtype):
+        # Convention pin: the Gauss-Newton inverse still closes at a normalized radius of
+        # 3 focal lengths, where the fish-eye polynomial is far from linear -- the fixed-point iteration in
+        # kornia.geometry.calibration.undistort_points does NOT (kornia#4285). Closure is asserted at
+        # assert_close's dtype tolerance, with no error bound.
+        # Snippet used to generate expected: (undistort_points_kannala_brandt(distort_points_kannala_brandt(
+        # tensor([3., 0.]), par), par) - tensor([3., 0.])).abs().max(), differenced in the working dtype. The
+        # float64 result now reaches the rounding floor because the final rescale divides by r rather than r + 1e-8.
+        if dtype == torch.bfloat16:
+            pytest.skip("bfloat16: the far-off-axis round trip closes only to 6.25e-02, outside the bfloat16 atol")
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        far = torch.tensor([3.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(undistort_points_kannala_brandt(distort_points_kannala_brandt(far, params), params), far)
+
+    def test_convention_principal_point_undistorts_to_the_origin(self, device, dtype):
+        # Convention pin: an exact zero distorted radius is handled structurally, so the principal point (cx, cy)
+        # undistorts to the EXACT origin without relying on a dtype-dependent epsilon. The assertion is torch.equal,
+        # not assert_close, because the masked zero-radius path is exact rather than approximate.
+        # cx != cy in these params, so the principal point is off the diagonal and a cx/cy swap would move it.
+        # The second, off-centre point is what keeps the pin from being frame-invariant: (54, 28) normalizes to
+        # (0.5, 0.25) and undistorts to a value that changes under either swap -- the same params with cx and cy
+        # exchanged give [0.5507686734199524, 0.2591852843761444] and with fy halved to 50 they give
+        # [0.5658687353134155, 0.5658687353134155].
+        # The body computes in params.dtype and casts back to the points dtype, including the mixed float16-points /
+        # float32-params case pinned below.
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        principal_point = torch.tensor([4.0, 3.0], device=device, dtype=dtype)
+        undistorted = undistort_points_kannala_brandt(principal_point, params)
+        assert torch.equal(undistorted, torch.zeros(2, device=device, dtype=dtype))
+        if dtype == torch.float16:
+            wide_params = params.to(torch.float32)
+            mixed = undistort_points_kannala_brandt(principal_point, wide_params)
+            assert mixed.dtype == dtype
+            assert torch.equal(mixed, torch.zeros(2, device=device, dtype=dtype))
+        off_centre = torch.tensor([54.0, 28.0], device=device, dtype=dtype)
+        self.assert_close(
+            undistort_points_kannala_brandt(off_centre, params),
+            torch.tensor([0.5392647981643677, 0.26963239908218384], device=device, dtype=dtype),
+        )
+
+    def test_convention_nearest_float16_point_is_not_collapsed_4308(self, device, dtype):
+        if device.type != "cpu" or dtype != torch.float16:
+            pytest.skip("CPU float16 near-origin regression")
+        params = torch.tensor([100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        point = torch.tensor([4.00390625, 3.0], device=device, dtype=dtype)
+        undistorted = undistort_points_kannala_brandt(point, params)
+        expected_x = (point[0] - params[2]) / params[0]
+        assert undistorted[0] != 0
+        self.assert_close(undistorted, torch.stack([expected_x, torch.zeros_like(expected_x)]), atol=6e-8, rtol=0.0)
+
+    def test_convention_principal_point_has_finite_gradients_4308(self, device, dtype):
+        params = torch.tensor([100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        principal_point = torch.tensor([4.0, 3.0], device=device, dtype=dtype)
+        point_jacobian = torch.autograd.functional.jacobian(
+            lambda point: undistort_points_kannala_brandt(point, params), principal_point
+        )
+        params_jacobian = torch.autograd.functional.jacobian(
+            lambda camera: undistort_points_kannala_brandt(principal_point, camera), params
+        )
+        expected_point_jacobian = torch.tensor(
+            [[1.0 / params[0], 0.0], [0.0, 1.0 / params[1]]], device=device, dtype=dtype
+        )
+        expected_params_jacobian = torch.zeros(2, 8, device=device, dtype=dtype)
+        expected_params_jacobian[0, 2] = -1.0 / params[0]
+        expected_params_jacobian[1, 3] = -1.0 / params[1]
+        self.assert_close(point_jacobian, expected_point_jacobian)
+        self.assert_close(params_jacobian, expected_params_jacobian)
+
+    def test_convention_float64_round_trip_precision_4308(self, device, dtype):
+        # Regression for kornia#4308: nonzero radii must be rescaled by r itself. An additive 1e-8 denominator
+        # guard biases these representative float64 round trips by about 1e-8, well above the dtype's rounding floor.
+        if dtype != torch.float64:
+            pytest.skip("float64-only precision regression")
+        params = torch.tensor([100.0, 100.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+        points = torch.tensor([[0.5, 0.25], [3.0, 0.0], [0.01, 0.0]], device=device, dtype=dtype)
+        distorted = distort_points_kannala_brandt(points, params)
+        residual = (undistort_points_kannala_brandt(distorted, params) - points).abs().max().item()
+        assert residual < 1e-12
+
+    def test_dx_distort_points_kannala_brandt_affine_branch(self, device, dtype) -> None:
+        # The forward distortion switches to the affine model when radius_sq <= 1e-8.
+        # Its Jacobian must therefore be diag(fx, fy), including exactly at the origin.
+        points = torch.tensor([[0.0, 0.0], [1e-5, 0.0]], device=device, dtype=dtype)
+        params = torch.tensor([100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001], device=device, dtype=dtype)
+
+        expected_single = torch.tensor([[100.0, 0.0], [0.0, 50.0]], device=device, dtype=dtype)
+        expected = torch.stack([expected_single, expected_single])
+
+        self.assert_close(
+            dx_distort_points_kannala_brandt(points, params),
+            expected,
+            atol=0.0,
+            rtol=0.0,
+        )
+
+    def test_convention_dx_distort_points_kannala_brandt_matches_autograd_4277(self, device, dtype):
+        # Regression for #4277: the analytic Kannala-Brandt Jacobian must match
+        # the derivative of distort_points_kannala_brandt with respect to the point.
+        # Asymmetric focal lengths ensure an fx/fy or row/column swap cannot hide.
+        params = torch.tensor(
+            [100.0, 50.0, 4.0, 3.0, 0.1, 0.01, 0.001, 0.0001],
+            device=device,
+            dtype=dtype,
+        )
+        points = torch.tensor([0.5, 0.25], device=device, dtype=dtype)
+
+        analytic = dx_distort_points_kannala_brandt(points, params)
+
+        reference_dtype = dtype
+        if dtype in (torch.float16, torch.bfloat16):
+            reference_dtype = torch.float32
+
+        reference_points = points.to(reference_dtype)
+        reference_params = params.to(reference_dtype)
+
+        autograd = torch.autograd.functional.jacobian(
+            lambda q: distort_points_kannala_brandt(q, reference_params),
+            reference_points,
+        ).to(dtype)
+
+        self.assert_close(analytic, autograd)

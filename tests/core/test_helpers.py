@@ -20,11 +20,14 @@ import torch
 
 from kornia.core.exceptions import DeviceError
 from kornia.core.utils import (
+    _adjugate_closed_form,
     _extract_device_dtype,
     _torch_histc_cast,
     _torch_inverse_cast,
     _torch_solve_cast,
     _torch_svd_cast,
+    is_exporting,
+    register_module_state,
     safe_inverse_with_mask,
     safe_solve_with_mask,
 )
@@ -99,6 +102,90 @@ class TestInverseCast:
         with pytest.raises(RuntimeError):
             x = torch.tensor([[0.0, 0.0], [0.0, 0.0]], device=device, dtype=dtype)
             _ = _torch_inverse_cast(x)
+
+    @pytest.mark.parametrize("n", [2, 3, 4])
+    def test_closed_form_matches_linalg_inv(self, device, dtype, n):
+        # The adjugate formula is what graph capture (trace / dynamo ONNX export) uses in place of
+        # ``aten::linalg_inv``; it has to agree with the eager path on well-conditioned input.
+        torch.manual_seed(0)
+        x = torch.eye(n, device=device, dtype=dtype).expand(2, 3, n, n).clone()
+        x.add_(torch.rand_like(x), alpha=0.5)
+        adj, det = _adjugate_closed_form(x)
+        assert adj.shape == x.shape
+        assert det.shape == x.shape[:-2]
+        tol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
+        x_ref = x.to(torch.float32) if dtype in (torch.float16, torch.bfloat16) else x
+        assert_close(adj / det[..., None, None], torch.linalg.inv(x_ref).to(dtype), atol=tol, rtol=tol)
+        assert_close(det, torch.linalg.det(x_ref).to(dtype), atol=tol, rtol=tol)
+
+    @pytest.mark.parametrize("n", [2, 3, 4])
+    def test_trace_has_no_linalg_inv(self, device, dtype, n):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("tracing under half precision is not a supported surface")
+        x = torch.eye(n, device=device, dtype=dtype).expand(2, n, n).clone()
+        x.add_(torch.rand_like(x), alpha=0.5)
+        traced = torch.jit.trace(_torch_inverse_cast, x)
+        assert "linalg_inv" not in str(traced.graph)
+        assert_close(traced(x), _torch_inverse_cast(x))
+
+    def test_closed_form_rejects_other_shapes(self, device, dtype):
+        with pytest.raises(NotImplementedError):
+            _adjugate_closed_form(torch.eye(5, device=device, dtype=dtype))
+
+
+class TestExportHelpers:
+    def test_is_exporting_eager(self):
+        assert is_exporting() is False
+
+    def test_is_exporting_scripted(self):
+        # The guard is called from TorchScript-compiled functions (matching, calibration); it
+        # must compile and evaluate to False there rather than being an unused stub that raises.
+        assert torch.jit.script(is_exporting)() is False
+
+    def test_is_exporting_falls_back_to_is_compiling(self, monkeypatch):
+        # torch < 2.6 has no ``torch.compiler.is_exporting``; inside a Dynamo trace the guard must
+        # still be true, as it is on newer torch where Dynamo folds the flag to True for
+        # ``torch.compile`` as well.
+        from kornia.core import utils
+
+        monkeypatch.setattr(utils, "_torch_is_exporting", None)
+        assert is_exporting() is False
+        seen = []
+
+        def fn(x):
+            seen.append(is_exporting())
+            return x + 1
+
+        try:
+            torch.compile(fn, backend="eager")(torch.zeros(2))
+        except RuntimeError as e:  # e.g. "Dynamo is not supported on Python 3.13+" on torch 2.5
+            pytest.skip(f"no Dynamo here: {e}")
+        assert seen == [True]
+
+    def test_register_module_state_wraps_leaf(self, device, dtype):
+        m = torch.nn.Module()
+        x = torch.rand(3, device=device, dtype=dtype)
+        register_module_state(m, "x", x)
+        assert isinstance(m.x, torch.nn.Parameter)
+        assert dict(m.named_parameters()).keys() == {"x"}
+        p = torch.nn.Parameter(x.clone())
+        register_module_state(m, "p", p)
+        assert m.p is p
+
+    def test_register_module_state_keeps_history(self, device, dtype):
+        # A tensor with a grad_fn must not be re-rooted as a leaf, or gradients stop at it; it is
+        # a buffer instead so ``.to()`` and ``state_dict()`` still reach it.
+        m = torch.nn.Module()
+        v = torch.rand(3, device=device, dtype=dtype, requires_grad=True)
+        register_module_state(m, "y", v * 2)
+        assert not isinstance(m.y, torch.nn.Parameter)
+        assert dict(m.named_buffers()).keys() == {"y"}
+        assert list(m.state_dict()) == ["y"]
+        other = torch.float16 if dtype == torch.float32 else torch.float32  # float64 is unavailable on MPS
+        moved = m.to(other)
+        assert moved.y.dtype == other
+        moved.y.sum().backward()
+        assert_close(v.grad, torch.full_like(v, 2.0))
 
 
 class TestHistcCast:

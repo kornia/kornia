@@ -1,0 +1,212 @@
+# Oxford graf local-feature benchmark
+
+Measured 2026-09-05. Base `601b5a4a` versus optimized implementation `e8e4ec0f`.
+Original 640×800 images, 4,096 requested features, grayscale float32. The first two
+sections use eager evaluation without autocast or compilation. Pyramid levels, scales, iteration budgets, descriptors,
+weights, matching threshold, and RANSAC settings are identical between revisions.
+
+## GPU speed and quality
+
+RTX 4090, PyTorch 2.14.0+cu130, Python 3.11.14, Kornia 0.9.0rc1, WSL2 Linux.
+Times include extraction of **both** images and SNN matching; they exclude image I/O
+and RANSAC. Each table entry is the mean of the five pair-specific median times.
+The JSON files retain each median and IQR. Quality is mean L1 corner reprojection
+error in pixels against the supplied homography, using the existing benchmark metric.
+
+| Pipeline | Base ms/pair | Optimized ms/pair | Speedup | Mean corner error, base → optimized |
+| --- | ---: | ---: | ---: | ---: |
+| SIFT | 215.9 | 114.5 | 1.89× | 223.640 → 223.640 |
+| SIFT–AffNet–HardNet | 269.4 | 174.1 | 1.55× | 2.183 → 2.183 |
+| KeyNet–HardNet | 131.5 | 126.9 | 1.04× | 5.638 → 5.638 |
+
+KeyNet's roughly 4% GPU gain is smaller than the observed timing spread; it is not
+strong evidence of an end-to-end GPU speedup. SIFT and SIFT–AffNet–HardNet show much
+larger improvements. Match counts, RANSAC inlier counts, and corner errors are identical
+between the two GPU runs for every pair and every pipeline.
+
+| Pair | SIFT error px | SIFT–AffNet–HardNet error px | KeyNet–HardNet error px |
+| --- | ---: | ---: | ---: |
+| 1–2 | 1.381 | 1.325 | 2.029 |
+| 1–3 | 1.506 | 1.216 | 1.428 |
+| 1–4 | 2.777 | 0.860 | 2.531 |
+| 1–5 | 507.132 | 2.624 | 3.700 |
+| 1–6 | 605.405 | 4.891 | 18.500 |
+
+Plain SIFT already fails badly on the two largest viewpoint changes, pairs 1–5 and
+1–6. The optimization preserves those failures; the large mean error is not hidden
+by averaging only successful pairs.
+
+| Pipeline | Base peak extra CUDA MiB | Optimized peak extra CUDA MiB |
+| --- | ---: | ---: |
+| SIFT | 576.0 | 665.8 |
+| SIFT–AffNet–HardNet | 1058.3 | 1058.6 |
+| KeyNet–HardNet | 1057.7 | 1057.7 |
+
+Memory is the maximum extra allocated tensor memory during an extraction-and-match
+call, above already resident images/models/outputs; it excludes RANSAC and allocator
+reserved memory. The SIFT speed improvement trades approximately 90 MiB of extra
+peak memory for fewer refinement launches.
+
+## CPU speed and quality
+
+Intel Core i7-14700K, one CPU thread. The representative 1–2 pair is timed repeatedly;
+all five pairs are still evaluated for quality. Other pairs have `null` timing fields
+in the JSON, meaning deliberately untimed. Each cell below is median ± IQR, in seconds
+for extracting and matching both images.
+
+| Pipeline | Base s/pair | Optimized s/pair | Speedup |
+| --- | ---: | ---: | ---: |
+| SIFT | 3.861 ± 0.022 | 2.856 ± 0.051 | 1.35× |
+| SIFT–AffNet–HardNet | 16.343 ± 0.145 | 12.714 ± 0.080 | 1.29× |
+| KeyNet–HardNet | 16.368 ± 0.031 | 12.887 ± 0.113 | 1.27× |
+
+CPU match counts, inlier counts, and reprojection errors are also identical between
+revisions on every pair. CPU and GPU results differ because their adaptive refinement
+backends and numerical kernels differ; compare each device against its own baseline.
+
+| Pair | SIFT error px | SIFT–AffNet–HardNet error px | KeyNet–HardNet error px |
+| --- | ---: | ---: | ---: |
+| 1–2 | 1.247 | 1.343 | 1.263 |
+| 1–3 | 1.435 | 1.227 | 1.679 |
+| 1–4 | 2.611 | 1.548 | 1.833 |
+| 1–5 | 507.037 | 1.792 | 3.658 |
+| 1–6 | 605.427 | 11.658 | 8.828 |
+
+## Apple Silicon (MPS) speed and quality
+
+Apple M1 (8 GB), macOS 26.5.1, PyTorch 2.14.0, Python 3.11.14, Kornia 0.9.0rc1. Base `1eea5835` versus optimized `f61ea9e4`, measured back to
+back on a quiet machine with the same inputs as the CPU/CUDA runs (identical `input_sha256`).
+Every pair is timed; each table entry is the mean of the five pair-specific medians, as in
+the GPU table. The MPS harness synchronizes with `torch.mps.synchronize` inside the timed
+region and evaluates RANSAC on CPU (its batched SVD aborts the process on MPS, #4201/#4204);
+RANSAC is outside the timed region, so the timings are unaffected. `peak_extra_cuda_bytes`
+is `null` on MPS.
+
+| Pipeline | Base ms/pair | Optimized ms/pair | Speedup | Mean corner error, base → optimized |
+| --- | ---: | ---: | ---: | ---: |
+| SIFT | 1787.8 | 1068.8 | 1.67× | 223.546 → 223.546 |
+| SIFT–AffNet–HardNet | 3066.7 | 2342.2 | 1.31× | 3.741 → 3.741 |
+| KeyNet–HardNet | 2109.5 | 2118.6 | 1.00× | 3.452 → 3.452 |
+
+Match counts, RANSAC inlier counts, and corner errors are identical between the two runs
+for every pair and pipeline. KeyNet–HardNet is unchanged within noise: the channels-last
+conversion is gated to CPU and CUDA, and KeyNet uses OriNet rather than the gradient
+histogram, so on MPS that pipeline sees none of the optimized code paths.
+
+| Pair | SIFT ms, base → optimized | SIFT–AffNet–HardNet ms, base → optimized | KeyNet–HardNet ms, base → optimized |
+| --- | ---: | ---: | ---: |
+| 1–2 | 1770 ± 23 → 1059 ± 10 | 3115 ± 43 → 2353 ± 31 | 2118 ± 33 → 2120 ± 17 |
+| 1–3 | 1789 ± 10 → 1062 ± 18 | 3069 ± 20 → 2344 ± 23 | 2107 ± 6 → 2122 ± 24 |
+| 1–4 | 1778 ± 6 → 1068 ± 6 | 3067 ± 4 → 2338 ± 4 | 2107 ± 6 → 2121 ± 10 |
+| 1–5 | 1791 ± 12 → 1078 ± 2 | 3046 ± 4 → 2343 ± 2 | 2107 ± 17 → 2110 ± 9 |
+| 1–6 | 1812 ± 48 → 1076 ± 10 | 3037 ± 16 → 2334 ± 10 | 2108 ± 18 → 2120 ± 9 |
+
+Median ± IQR. Corner errors per pair:
+
+| Pair | SIFT error px | SIFT–AffNet–HardNet error px | KeyNet–HardNet error px |
+| --- | ---: | ---: | ---: |
+| 1–2 | 1.247 | 1.927 | 1.263 |
+| 1–3 | 1.435 | 1.365 | 1.679 |
+| 1–4 | 2.586 | 1.961 | 1.833 |
+| 1–5 | 507.037 | 1.792 | 3.657 |
+| 1–6 | 605.427 | 11.658 | 8.828 |
+
+## Selective compilation: CUDA
+
+Base `601b5a4a` versus `fb66de1d` (the same optimized library implementation, with a
+compiled benchmark mode). The existing factory compiles the scale-space pyramid,
+response, and subpixel modules, or KeyNet response/NMS, using `dynamic=True` and
+default Inductor settings. Descriptors, orientation, affine adaptation, matching,
+and RANSAC stay eager: this is **not whole-pipeline compilation**. The workload,
+hardware, feature budgets, and quality metric are the same as the eager pair benchmark.
+
+| Pipeline | Base compiled ms/pair | Optimized compiled ms/pair | Speedup | Mean corner error, base → optimized |
+| --- | ---: | ---: | ---: | ---: |
+| SIFT | 94.64 | 71.23 | 1.33× | 223.654 → 223.654 |
+| SIFT–AffNet–HardNet | 158.27 | 132.87 | 1.19× | 2.381 → 2.381 |
+| KeyNet–HardNet | 106.01 | 105.08 | 1.01× | 5.638 → 5.638 |
+
+Entries again average the five pair-specific medians. KeyNet's difference is timing
+noise. Match counts, inliers, feature counts, and corner errors are exactly identical
+between compiled revisions for all pairs. Compilation itself changes some scale-space
+results relative to eager, so eager and compiled quality must be compared separately.
+For example, SIFT–AffNet–HardNet's mean error is 2.381 px compiled versus 2.183 px eager.
+
+Each revision started in a separate process with a fresh `TORCHINDUCTOR_CACHE_DIR`.
+Initial calls are excluded from warmup and steady-state timing, and recorded in JSON.
+SIFT's first extraction-and-match call took 43.42 s on the base and 43.38 s optimized.
+KeyNet's first call took 15.25 s and 16.84 s. SIFT–AffNet–HardNet ran after SIFT and
+reused its already compiled detector graphs: its 0.233/0.209 s initial calls are
+**not independent cold-compilation measurements**. Initial latency includes useful
+execution and initialization as well as compilation, not compiler time alone.
+
+Maximum extra CUDA allocation: SIFT 566.9 → 690.1 MiB; SIFT–AffNet–HardNet
+1058.6 → 1058.6 MiB; KeyNet–HardNet 1057.7 → 1057.7 MiB. All five per-pair
+medians/IQRs and initial-call latencies are retained in the raw files.
+
+```bash
+.venv/bin/python -m benchmarks.feature.local_features --seq /data/graf --device cuda --compile --json graf-compiled.json
+```
+
+No compiled CPU pair comparison was run. The [historical SIFT runtime chart](sift_runtime.md)
+covers CPU eager and compiled runs of the public scale-space SIFT preset at batch one, and
+CUDA batches 1, 4, and 8.
+
+## Implementation
+
+- Accumulate each gradient pixel into its two orientation bins with `scatter_add_`,
+  replacing 36 complete patch scans. Half-precision histograms accumulate in float32.
+- Batch positive and negative response refinement for the built-in subpixel modules.
+  Keep NMS neighborhoods separate, and retain separate calls for custom modules and
+  refiners with a candidate cap. The number of refinement iterations is unchanged.
+- Gather only selected coordinates before merging positive/negative results, avoiding
+  a dense three-coordinate merge over the whole octave.
+- Use channels-last float32 activations inside KeyNet's narrow convolution block on
+  CPU/CUDA, and inside HardNet on CPU. Parameter layouts and checkpoint keys stay intact.
+
+## Reproduction
+
+Data: [Oxford affine graf archive](https://www.robots.ox.ac.uk/~vgg/research/affine/det_eval_files/graf.tar.gz),
+from the [Oxford affine evaluation dataset](https://www.robots.ox.ac.uk/~vgg/research/affine/).
+Archive SHA-256: `999871b945ee968a00a0d5f9af957d1382fb9dae1511cdee9553366817b53b5b`.
+Every input image and homography hash is also recorded in the JSON metadata.
+
+```bash
+.venv/bin/python -m benchmarks.feature.local_features --seq /data/graf --device cuda --json graf-cuda.json
+.venv/bin/python -m benchmarks.feature.local_features --seq /data/graf --device cpu --timing-pairs 2 --json graf-cpu.json
+.venv/bin/python -m benchmarks.feature.local_features --seq /data/graf --device mps --json graf-mps.json
+```
+
+For the base comparison, run the same harness using `runpy.run_path` from the base
+worktree root with the primary checkout's explicit interpreter. Confirm that the
+printed `kornia.__file__` points into that base worktree, not the editable primary
+checkout. Final benchmark processes ran sequentially, without concurrent tests.
+
+The scale-space pipelines use `ScalePyramid(3, 1.6, 32, double_image=True)` with its
+three extra levels, DoG minima/maxima, `AdaptiveQuadInterp3d` defaults, and 32-pixel
+gradient orientation patches. SIFT uses `SIFTDescriptor(32, rootsift=True)`;
+SIFT–AffNet–HardNet adds pretrained AffNet before orientation and pretrained HardNet
+afterwards. KeyNet–HardNet uses the public preset with pretrained OriNet.
+SNN ratio is 0.85. Homography RANSAC uses threshold 2.0, max_iter 10, batch_size 8196,
+confidence 0.9999, and seed 3407. Model construction uses PyTorch seed 0.
+
+The harness uses `benchmarks/common.py` timing and JSON helpers. It expands the timing
+budget to at least five warmup-call durations, so a slow CPU call does not become a
+single measured sample. CPU thread count is one, matching the shared Timer. Matmul TF32 is disabled;
+cuDNN retains its default TF32 setting, recorded in the metadata.
+
+## Raw results
+
+- [Base CUDA](graf_results/base-cuda.json)
+- [Optimized CUDA](graf_results/optimized-cuda.json)
+- [Base CPU](graf_results/base-cpu.json)
+- [Optimized CPU](graf_results/optimized-cpu.json)
+- [Base selectively compiled CUDA](graf_results/base-compiled-cuda.json)
+- [Optimized selectively compiled CUDA](graf_results/optimized-compiled-cuda.json)
+- [Base MPS](graf_results/base-mps.json)
+- [Optimized MPS](graf_results/optimized-mps.json)
+
+These are local benchmark results rather than release-wide performance guarantees. The files
+are comparison artefacts in the sense of `benchmarks/README.md` and are validated by
+`results_schema.validate_artefact` in CI. They were measured before the harness recorded the
+aggregate `load` snapshot; the runs were sequential, with no concurrent workloads.

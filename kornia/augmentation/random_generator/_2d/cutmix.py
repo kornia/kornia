@@ -42,8 +42,10 @@ class CutmixGenerator(RandomGeneratorBase):
         num_mix (int): number of images to mix with. Default is 1.
         beta (torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
             If None, it will be set to 1.
-        cut_size (torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
-            If None, it will be set to [0, 1], which means no restriction.
+        cut_size (torch.Tensor, optional): the ``[min, max]`` clamp, within [0, 1], applied to the
+            Beta-sampled mixing coefficient ``lambda``. The cut side is ``floor(sqrt(1 - lambda) * side)``,
+            so a larger ``cut_size`` gives a *smaller* cut. The minimum must be below 1: at 1, ``lambda`` is
+            always 1 and nothing is cut. If None, it will be set to [0, 1], which means no restriction.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -88,6 +90,12 @@ class CutmixGenerator(RandomGeneratorBase):
             self._cut_size = torch.as_tensor(self.cut_size, device=device, dtype=dtype)
 
         _joint_range_check(self._cut_size, "cut_size", bounds=(0, 1))
+        if float(self._cut_size[0]) >= 1.0:
+            raise ValueError(
+                f"`cut_size` clamps the mixing coefficient lambda, and a minimum of 1 forces lambda = 1, which "
+                f"cuts nothing (cut side = floor(sqrt(1 - lambda) * side)). A larger cut_size gives a smaller "
+                f"cut, so lower the minimum. Got {self._cut_size.tolist()}."
+            )
 
         self.beta_sampler = Beta(self._beta, self._beta)
         self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))

@@ -21,6 +21,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  pinned-runner-macos-15:
+    name: Pinned runner availability (macos-15)
+    if: >-
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      github.repository == 'kornia/kornia' &&
+      startsWith(github.workflow_ref, 'kornia/kornia/.github/workflows/scheduled_test_cpu.yml@')
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Confirm macos-15 runner availability
+        run: echo "macos-15 runner is available"
+
+  pinned-runner-windows-2022:
+    name: Pinned runner availability (windows-2022)
+    if: >-
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      github.repository == 'kornia/kornia' &&
+      startsWith(github.workflow_ref, 'kornia/kornia/.github/workflows/scheduled_test_cpu.yml@')
+    runs-on: windows-2022
+    timeout-minutes: 5
+    steps:
+      - name: Confirm windows-2022 runner availability
+        run: echo "windows-2022 runner is available"
+
   check-skip:
     # For scheduled runs, check if only documentation files changed
     # If so, skip the expensive test runs
@@ -106,18 +130,7 @@ jobs:
       matrix:
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.1.2", "2.2.2", "2.3.1", "2.4.0", "2.5.1", "2.9.1"]
-        exclude:
-          - python-version: "3.12"
-            pytorch-version: "2.1.2"
-          - python-version: "3.13"
-            pytorch-version: "2.1.2"
-          - python-version: "3.13"
-            pytorch-version: "2.2.2"
-          - python-version: "3.13"
-            pytorch-version: "2.3.1"
-          - python-version: "3.13"
-            pytorch-version: "2.4.0"
+        pytorch-version: ["2.5.1", "2.6.0", "2.9.1", "2.14.0"]
 
     uses: ./.github/workflows/tests.yml
     with:
@@ -125,6 +138,26 @@ jobs:
       python-version: '["${{ matrix.python-version }}"]'
       pytorch-version: '["${{ matrix.pytorch-version }}"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
+
+  tests-cpu-half-precision:
+    needs: [check-skip, pre-tests]
+    if: needs.check-skip.outputs.should-skip == 'false'
+    strategy:
+      fail-fast: false
+      matrix:
+        pytorch-dtype: ["float16", "bfloat16"]
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.11"]'
+      pytorch-version: '["2.9.1"]'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      known-failure-profile: cpu-${{ matrix.pytorch-dtype }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |
@@ -140,7 +173,7 @@ jobs:
         os: ["windows-latest"]
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.5.1", "2.9.1"]
+        pytorch-version: ["2.5.1", "2.9.1", "2.14.0"]
         exclude:
           # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on Windows
           - python-version: "3.13"
@@ -187,7 +220,7 @@ jobs:
       matrix:
         pytorch-dtype: ["float32", "float64"]
         python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.5.1", "2.9.1"]
+        pytorch-version: ["2.5.1", "2.9.1", "2.14.0"]
         exclude:
           # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on macOS
           - python-version: "3.13"

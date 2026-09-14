@@ -83,6 +83,19 @@ def solve_pnp_dlt(
     Another bad condition occurs when the camera and the points lie on a
     twisted cubic. However, this function does not check for this condition.
 
+    Convention:
+        - the returned :math:`(B, 3, 4)` matrix is the **world-to-camera** ``[R | t]``: it maps a world point
+          into the camera frame, rather than storing a camera-to-world pose. If the camera frame is the world
+          frame shifted so that ``X_cam = X_world + (1, 0, 0)``, the recovered ``t`` is ``(+1, 0, 0)`` and not
+          ``(-1, 0, 0)``.
+        - ``intrinsics`` is the :math:`(B, 3, 3)` ``K``; the :math:`(B, 4, 4)` matrix that a
+          ``PinholeCamera`` stores is rejected by the shape check.
+        - ``weights`` scales the two rows each point contributes to the linear system. That system is
+          homogeneous, so a uniform ``weights`` leaves the answer unchanged up to rounding, and a zero weight
+          drops that point from the fit.
+        - too few points raise a ``BaseError`` whose message names no argument, while a degenerate
+          ``world_points`` raises :class:`AssertionError` from the singular-value check described above.
+
     Args:
         world_points : A torch.Tensor with shape :math:`(B, N, 3)` representing
           the points in the world space.

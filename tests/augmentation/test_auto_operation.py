@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import copy
 import inspect
 from typing import List
 
@@ -39,11 +40,12 @@ def _find_all_ops() -> List[OperationBase]:
 
 
 def _test_sequential(augment_method, device, dtype):
-    inp = torch.rand(1, 3, 1000, 500, device=device, dtype=dtype)
-    bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
-    keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
+    height, width = 50, 100
+    inp = torch.rand(1, 3, height, width, device=device, dtype=dtype)
+    bbox = torch.tensor([[[35.5, 1], [66, 1], [66, 25], [35.5, 25]]], device=device, dtype=dtype)
+    keypoints = torch.tensor([[[46.5, 11.5], [54.5, 11.6]]], device=device, dtype=dtype)
     mask = bbox_to_mask(
-        torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
+        torch.tensor([[[15.5, 0], [90, 0], [90, 40], [15.5, 40]]], device=device, dtype=dtype), width, height
     )[:, None]
     aug = AugmentationSequential(augment_method, data_keys=["input", "mask", "bbox", "keypoints"])
     out = aug(inp, mask, bbox, keypoints)
@@ -88,6 +90,25 @@ class TestAutoAugment(BaseTester):
     def test_sequential(augment_method, device, dtype):
         _test_sequential(AutoAugment(), device=device, dtype=dtype)
 
+    @pytest.mark.parametrize("magnitude", [10, 11, -1, -2])
+    def test_magnitude_bin_out_of_range_names_the_op(self, magnitude):
+        """A bin indexes two adjacent points, so 9 is the last usable one.
+
+        Over-large bins raised a raw IndexError naming an internal tensor, and negative
+        ones wrapped silently onto a reversed range.
+        """
+        with pytest.raises(ValueError, match=r"Expect magnitude bin for `rotate` in \[0, 9\]"):
+            AutoAugment(policy=[[("rotate", 1.0, magnitude)]])
+
+    @pytest.mark.parametrize("name", ["auto_contrast", "invert", "equalize"])
+    def test_ops_that_ignore_magnitude_are_not_gated(self, name):
+        """These take `_: int` and never index the scale, so any bin stays legal."""
+        AutoAugment(policy=[[(name, 1.0, 10)]])
+
+    def test_magnitude_bin_endpoints_are_accepted(self):
+        AutoAugment(policy=[[("rotate", 1.0, 0)]])
+        AutoAugment(policy=[[("rotate", 1.0, 9)]])
+
 
 class TestRandAugment(BaseTester):
     @pytest.mark.parametrize("policy", [None, [[("translate_y", -0.5, 0.5)]]])
@@ -107,6 +128,14 @@ class TestRandAugment(BaseTester):
         trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
         self.assert_close(trans, aug.transform_matrix)
 
+    def test_transform_mat_repeated_policy(self, device, dtype):
+        aug = RandAugment(n=2, m=10, policy=[[("translate_y", -0.5, 0.5)], [("translate_x", -0.5, 0.5)]])
+        in_tensor = torch.ones(2, 3, 10, 10, device=device, dtype=dtype)
+        for _ in range(3):
+            aug(in_tensor)
+        expected = aug.get_transformation_matrix(in_tensor, params=aug._params, recompute=True)
+        self.assert_close(aug.transform_matrix, expected)
+
     def test_reproduce(self, device, dtype):
         aug = RandAugment(n=3, m=15)
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
@@ -116,6 +145,28 @@ class TestRandAugment(BaseTester):
 
     def test_sequential(augment_method, device, dtype):
         _test_sequential(RandAugment(n=3, m=15), device=device, dtype=dtype)
+
+    @pytest.mark.parametrize("m", [1, 15, 29])
+    def test_m_accepts_the_interval_its_message_names(self, m):
+        """The guard is exclusive at both ends, and the message says so."""
+        RandAugment(n=2, m=m)
+
+    @pytest.mark.parametrize("m", [-1, 0, 30, 31])
+    def test_m_outside_the_open_interval_is_rejected(self, m):
+        with pytest.raises(ValueError, match=r"Expect `m` in \(0, 30\)"):
+            RandAugment(n=2, m=m)
+
+    @pytest.mark.parametrize("n", [0, -1, len(randaug_config) + 1])
+    def test_n_outside_the_policy_length_is_rejected(self, n):
+        """`n=0` applied nothing and `n > len(policy)` was silently clamped."""
+        with pytest.raises(ValueError, match=r"Expect `n` in \[1, 15\]"):
+            RandAugment(n=n, m=10)
+
+    def test_n_is_bounded_by_the_supplied_policy(self):
+        policy = [[("translate_y", -0.5, 0.5)], [("translate_x", -0.5, 0.5)]]
+        RandAugment(n=2, m=10, policy=policy)
+        with pytest.raises(ValueError, match=r"Expect `n` in \[1, 2\]"):
+            RandAugment(n=3, m=10, policy=policy)
 
 
 class TestTrivialAugment(BaseTester):
@@ -133,6 +184,41 @@ class TestTrivialAugment(BaseTester):
         trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
         self.assert_close(trans, aug.transform_matrix)
 
+    def test_transform_mat_repeated_policy(self, device, dtype):
+        aug = TrivialAugment(policy=[[("translate_y", -0.5, 0.5)]])
+        in_tensor = torch.ones(2, 3, 10, 10, device=device, dtype=dtype)
+        params_1 = aug.forward_parameters(in_tensor.shape)
+        params_2 = copy.deepcopy(params_1)
+        params_2[0].data[0].data["translate_y"] += 1.0
+        aug(in_tensor, params=params_1)
+        aug(in_tensor, params=params_2)
+        stale = aug.get_transformation_matrix(in_tensor, params=params_1, recompute=True)
+        expected = aug.get_transformation_matrix(in_tensor, params=params_2, recompute=True)
+        assert not torch.allclose(aug.transform_matrix, stale)
+        self.assert_close(aug.transform_matrix, expected)
+
+    def test_transform_mat_fresh_instance(self):
+        aug = TrivialAugment(policy=[[("translate_y", -0.5, 0.5)]])
+        assert aug.transform_matrix is None
+
+    def test_transform_mat_nested_sequential(self, device, dtype):
+        aug = TrivialAugment(policy=[[("translate_y", -0.5, 0.5)]])
+        seq = AugmentationSequential(aug, data_keys=["input"])
+        in_tensor = torch.ones(2, 3, 10, 10, device=device, dtype=dtype)
+        seq(in_tensor)
+        seq(in_tensor)
+        nested_params = seq._params[0].data
+        expected = aug.get_transformation_matrix(in_tensor, params=nested_params, recompute=True)
+        self.assert_close(aug.transform_matrix, expected)
+        assert aug._params is nested_params
+
+    def test_subpolicy_params_after_forward(self, device, dtype):
+        aug = TrivialAugment(policy=[[("translate_y", -0.5, 0.5)]])
+        subpolicy = next(iter(aug.children()))
+        in_tensor = torch.ones(2, 3, 10, 10, device=device, dtype=dtype)
+        aug(in_tensor)
+        assert subpolicy._params is aug._params[0].data
+
     def test_reproduce(self, device, dtype):
         aug = TrivialAugment()
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
@@ -142,3 +228,31 @@ class TestTrivialAugment(BaseTester):
 
     def test_sequential(augment_method, device, dtype):
         _test_sequential(TrivialAugment(), device=device, dtype=dtype)
+
+
+@pytest.mark.parametrize("low_dtype", [torch.float16, torch.bfloat16])
+def test_operation_preserves_input_dtype(device, low_dtype):
+    # OperationBase.forward gated the op output with a float32 ``batch_prob``
+    # mask, so ``mask * op(x) + (1 - mask) * x`` promoted a float16 / bfloat16
+    # input to float32. float32 / float64 inputs are unaffected (promotion goes
+    # up), which is why this only shows below float32. Covers RandAugment /
+    # AutoAugment / TrivialAugment / AugMix, which all route through this method.
+    # dtype preservation is device-independent; check it on CPU (the auto-augment
+    # RNG state of a freshly built ``_find_all_ops()`` op does not fully follow a
+    # post-hoc ``.to(non-cpu)``).
+    if torch.device(device).type != "cpu":
+        pytest.skip("dtype-preservation check runs on CPU")
+    checked = 0
+    for op in _find_all_ops():
+        x = torch.rand(2, 3, 16, 16, dtype=low_dtype)
+        try:
+            out = op(x)
+        except RuntimeError as e:
+            # some kernels (e.g. grid_sample on older torch) have no half/bfloat16
+            # CPU path -- that is a torch capability gap, not a kornia contract.
+            if "not implemented for" in str(e):
+                continue
+            raise
+        assert out.dtype == low_dtype, f"{type(op).__name__}: {out.dtype} != {low_dtype}"
+        checked += 1
+    assert checked, f"no op could run in {low_dtype} on this build"

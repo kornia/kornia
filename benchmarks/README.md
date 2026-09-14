@@ -12,7 +12,7 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 | [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. |
 | [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL. |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions. |
-| [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) op microbenchmark (base-revision A/B, no cross-library baseline exists). |
+| [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`laf_ops.py`](feature/laf_ops.py) microbenchmarks the shared LAF operations and [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) drills into one of them (both base-revision A/B — no cross-library baseline exists). [`local_features.py`](feature/local_features.py) measures Oxford graf speed and homography corner error for SIFT, SIFT-AffNet-HardNet and KeyNet-HardNet on CPU, CUDA or MPS (`--device cpu --timing-pairs 2` times the representative 1–2 pair and still scores all five); results in [`graf_benchmark.md`](feature/graf_benchmark.md). [`sift_runtime.py`](feature/sift_runtime.py) and [`plot_sift_runtime.py`](feature/plot_sift_runtime.py) chart scale-space SIFT runtime across releases and batch sizes; results in [`sift_runtime.md`](feature/sift_runtime.md). |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |
 
 ## Methodology contract
@@ -94,7 +94,8 @@ One file per run:
 1. Check out the release tag you are measuring.
 2. Quiet the machine: close other applications, mains power, let it cool. Only aggregate load
    numbers (load average, memory) are recorded in the file - never process or app names.
-3. Run each suite with `--contribute`:
+3. Run each suite with `--contribute` (most suites are a `flagship.py`; the directory map above
+   names the script for the ones that are not, such as `feature/laf_ops.py`):
 
        python benchmarks/augmentation/flagship.py --device cuda --contribute benchmarks/results
 
@@ -103,6 +104,20 @@ One file per run:
 4. Commit the file and open a PR. CI validates the schema (`benchmarks/results_schema.py`);
    the docs page and the llms digest regenerate from it automatically at the next docs build
    (`python docs/generate_benchmarks.py --refresh-llms` refreshes the committed digest).
+
+### Comparison artefacts
+
+A base-versus-branch A/B or a cross-release comparison is not a release snapshot: it records a
+revision that is by construction not the current tree, so it does not fit
+`benchmarks/results/<kornia-version>/` and does not feed the docs performance page. Keep such
+raw JSON next to the report that cites it, as `benchmarks/<area>/<name>_results/*.json`
+(for example [`feature/graf_results/`](feature/graf_results/) and
+[`feature/sift_runtime_results/`](feature/sift_runtime_results/)), named by the compared
+revision or series. CI validates them with `results_schema.validate_artefact`: the same
+envelope, metadata, privacy and row-type rules as a release snapshot, without the filename and
+version-directory rules; `load` is optional there because a base revision's harness may predate
+it. The report states what was measured, on which commits, with which command, in the style of
+the sample-results sections below.
 
 ## Sample results — geometry flagship ops
 
@@ -176,6 +191,137 @@ NVIDIA RTX PRO 6000 Blackwell (AMD Turin host):
 - **WSL2 + RTX 4090: inductor failed for all ops** (`InductorError`, reported by the harness's
   compile-failure NOTE rather than silently skipped); eager still led OpenCV by ~23× on
   batch-128 warp_perspective.
+
+## Sample results — feature LAF ops
+
+The full run is committed as
+[`feature-laf-ops--i7-14700k-rtx-4090--cpu.json`](results/0.9.0rc1/feature-laf-ops--i7-14700k-rtx-4090--cpu.json)
+and
+[`feature-laf-ops--i7-14700k-rtx-4090--cuda.json`](results/0.9.0rc1/feature-laf-ops--i7-14700k-rtx-4090--cuda.json),
+so the docs performance page renders it; the tables below are the B=1 N=20000 slice of those
+files. Linux/WSL2 (kernel 6.18, x86_64), Intel i7-14700K + NVIDIA RTX 4090, Python 3.13,
+torch 2.14.0+cu130, CUDA 13.0, kornia 0.9.0rc1, float32, image 256×256, patch size 32,
+14 threads; LAF scales are stratified across all four pyramid levels that a 256×256 image at
+PS=32 provides. Throughput in LAFs/s (higher is better); no cross-library column exists — no
+other library exposes LAFs. Every op compiled on both devices on this stack, so there is no `-`
+cell. Compare columns within one table, never numbers across machines.
+
+`--device cpu --compile`, B=1 N=20000:
+
+| op | kornia (eager) | kornia (compiled) |
+| --- | --: | --: |
+| laf_from_center_scale_ori | 39273029 | **99964263** |
+| make_upright | 33959226 | **122176202** |
+| ellipse_to_laf | 110509852 | **149762253** |
+| laf_to_boundary_points | 3613236 | **9903714** |
+| laf_is_inside_image | 6325084 | **11126178** |
+| extract_patches_simple | **53309** | 27357 |
+| extract_patches_from_pyramid | **37758** | 36983 |
+
+`--device cuda --compile`, B=1 N=20000:
+
+| op | kornia (eager) | kornia (compiled) |
+| --- | --: | --: |
+| laf_from_center_scale_ori | 147968107 | **254559803** |
+| make_upright | 74905012 | **378282785** |
+| ellipse_to_laf | 119929997 | **447807983** |
+| laf_to_boundary_points | 14107628 | **17835708** |
+| laf_is_inside_image | 28078872 | **56037949** |
+| extract_patches_simple | 3499935 | **31880283** |
+| extract_patches_from_pyramid | 2979848 | **25969422** |
+
+Apple M1 (MacBook Air, 8 cores, 4 torch threads), macOS 26.5, Python 3.11, torch 2.9.1,
+kornia 0.9.0rc1, same float32 / 256×256 / PS=32 / stratified-scale workload. Committed as
+[`feature-laf-ops--apple-m1--cpu.json`](results/0.9.0rc1/feature-laf-ops--apple-m1--cpu.json)
+and
+[`feature-laf-ops--apple-m1--mps.json`](results/0.9.0rc1/feature-laf-ops--apple-m1--mps.json).
+Every op compiled on both devices here too. This is a different CPU architecture, thread count
+and torch version from the box above, so it answers "does the finding hold?", not "which box is
+faster?".
+
+`--device cpu --compile`, B=1 N=20000:
+
+| op | kornia (eager) | kornia (compiled) |
+| --- | --: | --: |
+| laf_from_center_scale_ori | 25551758 | **84299262** |
+| make_upright | 25171744 | **108229794** |
+| ellipse_to_laf | 75817885 | **177777778** |
+| laf_to_boundary_points | 838245 | **1078421** |
+| laf_is_inside_image | 4880514 | **9227220** |
+| extract_patches_simple | 40806 | **294408** |
+| extract_patches_from_pyramid | 30084 | **200881** |
+
+`--device mps --compile`, B=1 N=20000:
+
+| op | kornia (eager) | kornia (compiled) |
+| --- | --: | --: |
+| laf_from_center_scale_ori | 13318018 | **22368750** |
+| make_upright | 12793187 | **35554228** |
+| ellipse_to_laf | 14233594 | **39990002** |
+| laf_to_boundary_points | 1282786 | **1874608** |
+| laf_is_inside_image | 2194321 | **4115015** |
+| extract_patches_simple | 88430 | **476392** |
+| extract_patches_from_pyramid | 73561 | **689227** |
+
+Run-to-run spread on that laptop, from two independent full runs of each device: CPU cells move
+by a median of 1.0% (worst 19%, on the cheapest op at the smallest config), MPS cells by a median
+of 7.4% (worst 54%). Treat an MPS difference under ~2× on this class of machine as noise.
+
+The honest reading:
+
+- **Patch extraction still dominates, but only on CPU.** `extract_patches_from_pyramid` runs at
+  ~38k LAFs/s eager on CPU — ~900× below `make_upright` on the same box, so a 20k-keypoint
+  descriptor pass pays ~0.53 s in patch sampling before any descriptor math. On CUDA the same op
+  is ~3.0M LAFs/s eager and ~26M compiled (0.77 ms for those 20k LAFs), only ~25× below the cheap
+  ops. Batched GPU extraction is the regime to be in.
+- **`torch.compile` loses on `extract_patches_simple` on *that* CPU, not on CPUs.** It is a
+  consistent 1.9–2.1× loss in all three configs on the i7-14700K (torch 2.14, 14 threads) and a
+  ~9.1× win for the same op on CUDA — but on the Apple M1 (torch 2.9.1, 4 threads) it is a
+  **7.2× win** (40806 → 294408 LAFs/s), and 6.7× for the pyramid variant. So the regression is a
+  property of that CPU inductor path, not of the op or of compiling for CPU, and a fix should
+  start by bisecting stack against machine rather than reading the kernel. It is not the
+  N-chunking added in #4128: at B=1 N=2000 the sampling grid is ~16 MiB against a 64 MiB budget,
+  so that config takes the single-chunk fast path and still loses.
+- **`laf_to_boundary_points` was the weakest compiled op on CUDA** — 17.8M LAFs/s, below both
+  patch extractors, ~25× below `ellipse_to_laf`, and the least moved by `torch.compile` there
+  (1.26×, against up to 9.1× elsewhere). On CPU it was ~9× slower than the similar-sized
+  `make_upright`. #4217 removed the cause; see the last bullet for what it actually was. The
+  tables above predate that change, as do their `laf_is_inside_image` rows, which share it.
+- **Small N on CUDA is launch-latency bound, not work bound:** at B=1 N=2000 the three cheapest
+  ops all land within 8.2–14.2M LAFs/s regardless of what they compute, ~8.5–11× below their own
+  B=1 N=20000 figures. Read the N=20000 rows for kernel cost and the N=2000 rows for per-call
+  overhead.
+- **Pyramid depth is currently free.** Stratifying the LAF scales across all four levels, instead
+  of leaving every LAF on level 0, moved `extract_patches_from_pyramid` by ~3% — the packed-atlas
+  implementation from #4128 pays for the whole atlas whatever the LAFs select. That is a property
+  of today's code, not of the op: a change that skips unused levels would look free on an
+  all-level-0 workload, which is why the generator stratifies.
+- **`ellipse_to_laf` is now the fastest LAF op measured**, at 110.5M LAFs/s eager on CPU. This
+  benchmark originally recorded it as a hot spot (a batched 2×2 `torch.inverse`, pathological on
+  MPS); the closed-form inverse in #4122 fixed it, and the dedicated A/B lives in
+  [`ellipse_to_laf.py`](feature/ellipse_to_laf.py).
+- **On Apple silicon, MPS is the wrong device for the cheap LAF ops.** Every bookkeeping op is
+  faster in M1 *CPU* eager than in MPS eager — `ellipse_to_laf` by 5.3× (75.8M vs 14.2M LAFs/s),
+  `make_upright` and `laf_from_center_scale_ori` by ~2× — and the gap widens under
+  `torch.compile` (4.4× and 3.8×). MPS only wins where there is real work per LAF: patch
+  extraction, by 2.2–2.4× eager and up to 3.4× compiled. A pipeline that moves LAFs to the GPU
+  for the frame math alone pays for the transfer twice.
+- **`laf_to_boundary_points` was the worst op on every machine measured, and the obvious
+  diagnosis was the wrong one.** It built its 50-point basis with no `device=`, `.expand()`ed it
+  to `(B*N, n_pts, 3)` and only then called `.to(device)`, so every call materialized — and on a
+  GPU transferred — a tensor scaling with the LAF count: ~12 MiB per call at N=20000 for a basis
+  with 50 distinct rows. That is real, and it is a memory problem, not the speed problem: fixing
+  only it measures **1.00× on CPU**. The cost was one gemm-shape cliff. The op appended a constant
+  `[0, 0, 1]` row to every LAF so that it could divide the result by a homogeneous coordinate that
+  is always exactly 1, and torch's CPU batched gemm falls off a fast path at that third row — at
+  B=1 N=20000, `bmm` on a `(B, 3, 3)` operand takes 14.9 ms where `(B, 2, 3)` takes 0.65 ms, 23×
+  for 1.5× the arithmetic, identically at 1, 4 and 8 threads (M=1 0.33 ms, M=2 0.65, M=3 14.87,
+  M=4 16.26). #4217 multiplies by the `(2, 3)` LAF directly. Quiet back-to-back A/B on the M1
+  (torch 2.14.0, 4 threads, B=1 N=20000): `laf_to_boundary_points` 1.07M → 29.6M LAFs/s eager on
+  CPU and 1.77M → 4.27M on MPS; `laf_is_inside_image`, which calls it with `n_pts=12` on every
+  detector forward, 9.75M → 29.0M on CPU and 2.70M → 8.53M on MPS. **The lesson is the method:**
+  the transfer was visible by reading the source and the cliff was only visible by timing the
+  components, so the readable diagnosis got written up first and would have shipped a 1.00× fix.
 
 ## Sample results — augmentation flagship (class API)
 

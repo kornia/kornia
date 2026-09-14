@@ -2,58 +2,32 @@ kornia.image
 ============
 
 .. meta::
-   :name: description
-   :content: "The kornia.image module offers a high-level API designed for processing images in computer vision tasks. It provides functionalities for handling image size, pixel formats, channel orders, and image layouts, streamlining the manipulation of images in deep learning workflows. With a user-friendly interface, this module simplifies image data preprocessing and handling for various computer vision and machine learning tasks."
-
-Module to provide a high level API to process images.
+   :description: The kornia.image module offers a high-level API designed for processing images in computer vision tasks. It provides functionalities for handling image size, pixel formats, channel orders, and image layouts, streamlining the manipulation of images in deep learning workflows. With a user-friendly interface, this module simplifies image data preprocessing and handling for various computer vision and machine learning tasks.
 
 .. currentmodule:: kornia.image
 
-.. autoclass:: ImageSize
-    :members:
-    :undoc-members:
+A high-level API to describe and handle images: a typed image container, drawing primitives, conversions
+between tensors and NumPy arrays, and terminal rendering.
 
-.. autoclass:: PixelFormat
-    :members:
-    :undoc-members:
+.. list-table::
+   :widths: 30 70
 
-.. autoclass:: ChannelsOrder
-    :members:
-    :undoc-members:
+   * - :doc:`image.container`
+     - :class:`Image`, :class:`ImageSize`, :class:`PixelFormat`, :class:`ChannelsOrder` and :class:`ImageLayout`.
+   * - :doc:`image.drawing`
+     - Draw lines, rectangles, convex polygons and points on image tensors.
+   * - :doc:`image.conversion`
+     - Convert between NumPy ``(H, W, C)`` arrays and ``(C, H, W)`` tensors.
+   * - :doc:`image.printing`
+     - Render an image tensor as text in a terminal.
+   * - :doc:`image.utilities`
+     - Grids and shape-preserving decorators.
 
-.. autoclass:: ImageLayout
-   :members:
-   :undoc-members:
+.. toctree::
+   :hidden:
 
-.. autoclass:: Image
-    :members:
-    :undoc-members:
-
-Drawing
--------
-
-.. autofunction:: draw_line
-.. autofunction:: draw_rectangle
-.. autofunction:: draw_convex_polygon
-.. autofunction:: draw_point2d
-
-Image Conversion
-----------------
-
-.. autofunction:: tensor_to_image
-.. autofunction:: image_to_tensor
-.. autofunction:: image_list_to_tensor
-.. autoclass:: ImageToTensor
-
-Image Printing
---------------
-
-.. autofunction:: image_to_string
-.. autofunction:: print_image
-
-Utilities
----------
-
-.. autofunction:: make_grid
-.. autofunction:: perform_keep_shape_image
-.. autofunction:: perform_keep_shape_video
+   image container <image.container>
+   drawing <image.drawing>
+   conversion <image.conversion>
+   printing <image.printing>
+   utilities <image.utilities>

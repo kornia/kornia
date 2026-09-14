@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
@@ -212,7 +213,11 @@ class RandomCrop(GeometricAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         padding_size: Optional[List[int]] = None
-        if "padding_size" in params and isinstance(params["padding_size"], torch.Tensor):
+        if is_exporting():
+            # ``padding_size`` is a function of the input shape (see ``forward_parameters``), so let
+            # ``precrop_padding`` recompute it from the static shape instead of reading the tensor back.
+            padding_size = None
+        elif "padding_size" in params and isinstance(params["padding_size"], torch.Tensor):
             padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().tolist()
         input = self.precrop_padding(input, padding_size, flags)
 

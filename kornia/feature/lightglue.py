@@ -27,17 +27,8 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.download import hf_url, load_state_dict_from_url
+from kornia.core.utils import is_exporting
 from kornia.feature.laf import laf_to_three_points, scale_laf
-
-try:
-    from flash_attn.modules.mha import FlashCrossAttention
-except ModuleNotFoundError:
-    FlashCrossAttention = None
-
-if FlashCrossAttention or hasattr(F, "scaled_dot_product_attention"):
-    FLASH_AVAILABLE = True
-else:
-    FLASH_AVAILABLE = False
 
 
 def math_clamp(x, min_, max_):  # type: ignore
@@ -145,17 +136,8 @@ class Attention(nn.Module):
 
     def __init__(self, allow_flash: bool) -> None:
         super().__init__()
-        if allow_flash and not FLASH_AVAILABLE:
-            warnings.warn(
-                "FlashAttention is not available. For optimal speed, consider installing torch >= 2.0 or flash-attn.",
-                stacklevel=2,
-            )
-        self.enable_flash = allow_flash and FLASH_AVAILABLE
-        self.has_sdp = hasattr(F, "scaled_dot_product_attention")
-        if allow_flash and FlashCrossAttention:
-            self.flash_ = FlashCrossAttention()
-        if self.has_sdp:
-            torch.backends.cuda.enable_flash_sdp(allow_flash)
+        self.allow_flash = allow_flash
+        torch.backends.cuda.enable_flash_sdp(allow_flash)
 
     def forward(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: Optional[torch.Tensor] = None
@@ -175,28 +157,15 @@ class Attention(nn.Module):
         Returns:
             Attention output with shape :math:`(B, H, N_q, D_h)`.
         """
-        if self.enable_flash and q.device.type == "cuda":
+        if self.allow_flash and q.device.type == "cuda":
             # use torch 2.0 scaled_dot_product_attention with flash
-            if self.has_sdp:
-                args = [x.half().contiguous() for x in [q, k, v]]
-                v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)  # type: ignore
-                return v if mask is None else v.nan_to_num()
-            else:
-                KORNIA_CHECK(mask is None)
-                q, k, v = (x.transpose(-2, -3).contiguous() for x in [q, k, v])
-                m = self.flash_(q.half(), torch.stack([k, v], 2).half())
-                return m.transpose(-2, -3).to(q.dtype).clone()
-        elif self.has_sdp:
+            args = [x.half().contiguous() for x in [q, k, v]]
+            v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)  # type: ignore
+            return v if mask is None else v.nan_to_num()
+        else:
             args = [x.contiguous() for x in [q, k, v]]
             v = F.scaled_dot_product_attention(*args, attn_mask=mask)  # type: ignore
             return v if mask is None else v.nan_to_num()
-        else:
-            s = q.shape[-1] ** -0.5
-            sim = torch.einsum("...id,...jd->...ij", q, k) * s
-            if mask is not None:
-                sim.masked_fill(~mask, -float("inf"))
-            attn = F.softmax(sim, -1)
-            return torch.einsum("...ij,...jd->...id", attn, v)
 
 
 class SelfBlock(nn.Module):
@@ -278,7 +247,7 @@ class CrossBlock(nn.Module):
             nn.GELU(),
             nn.Linear(2 * embed_dim, embed_dim),
         )
-        if flash and FLASH_AVAILABLE:
+        if flash:
             self.flash = Attention(True)
         else:
             self.flash = None  # type: ignore
@@ -475,6 +444,12 @@ def filter_matches(scores: torch.Tensor, th: float) -> Tuple[torch.Tensor, torch
     m0 = torch.where(valid0, m0, -1)
     m1 = torch.where(valid1, m1, -1)
     return m0, m1, mscores0, mscores1
+
+
+def _check_keypoints_normalized(kpts: torch.Tensor) -> None:
+    """Check that keypoints lie in [-1, 1]; skipped under export, where reading the data is not possible."""
+    if not is_exporting():
+        KORNIA_CHECK(torch.all(kpts >= -1).item() and torch.all(kpts <= 1).item(), "")  # type: ignore
 
 
 class LightGlue(nn.Module):
@@ -732,8 +707,8 @@ class LightGlue(nn.Module):
 
         kpts0 = normalize_keypoints(kpts0, size0).clone()
         kpts1 = normalize_keypoints(kpts1, size1).clone()
-        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), "")  # type: ignore
-        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), "")  # type: ignore
+        _check_keypoints_normalized(kpts0)
+        _check_keypoints_normalized(kpts1)
         if self.conf.add_scale_ori:
             kpts0 = torch.cat([kpts0] + [data0[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
             if self.conf.scale_coef != 1.0:
@@ -947,7 +922,7 @@ class LightGlue(nn.Module):
             Minimum number of keypoints required for width pruning on that device.
             A negative value disables pruning for the device.
         """
-        if self.conf.flash and FLASH_AVAILABLE and device.type == "cuda":
+        if self.conf.flash and device.type == "cuda":
             return self.pruning_keypoint_thresholds["flash"]
         else:
             return self.pruning_keypoint_thresholds[device.type]

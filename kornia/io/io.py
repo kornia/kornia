@@ -21,12 +21,17 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Union
 
-import kornia_rs
 import torch
+from kornia_rs import io as _rs_io
 
 import kornia
 from kornia.core.check import KORNIA_CHECK
 from kornia.image.utils import image_to_tensor, tensor_to_image
+
+
+def _color_mode(img_np: Any) -> str:
+    """Return the kornia_rs colour mode of an HxWxC array: ``"mono"`` for one channel, ``"rgb"`` otherwise."""
+    return "mono" if img_np.shape[-1] == 1 else "rgb"
 
 
 class ImageLoadType(Enum):
@@ -58,9 +63,9 @@ def _read_png_color_type(path_file: Path) -> int | None:
 
 
 # Map PNG color type byte to kornia_rs read mode.
-# Types not listed here fall through to read_image_any (which handles RGB).
-# Note: color type 4 (Grayscale+Alpha) is intentionally omitted — kornia_rs
-# does not support it, so it falls through to read_image_any as RGB.
+# Types not listed here fall through to ``kornia_rs.io.read_image`` (which handles RGB).
+# Note: color type 4 (Grayscale+Alpha) is intentionally omitted: no kornia_rs
+# release decodes it, so ``read_image`` raises for such a file.
 _PNG_COLOR_TYPE_TO_MODE: dict[int, str] = {
     0: "mono",  # Grayscale
     3: "mono",  # Indexed (palette) — decoded as single channel by kornia_rs
@@ -83,18 +88,18 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
     """
     # read image and return as `np.ndarray` with shape HxWxC
     if path_file.suffix.lower() in [".jpg", ".jpeg"]:
-        img = kornia_rs.read_image_jpegturbo(str(path_file))
+        img = _rs_io.read_image_jpegturbo(str(path_file))
     elif path_file.suffix.lower() == ".png":
         color_type = _read_png_color_type(path_file)
-        # None (truncated/invalid header) intentionally falls through to read_image_any
+        # None (truncated/invalid header) intentionally falls through to read_image
         mode = _PNG_COLOR_TYPE_TO_MODE.get(color_type)
         if mode is None or mode == "rgb":
-            # RGB is the default for read_image_any; use it for unknown types too
-            img = kornia_rs.read_image_any(str(path_file))
+            # RGB is the default of read_image; use it for unknown types too
+            img = _rs_io.read_image(str(path_file))
         else:
-            img = kornia_rs.read_image_png_u8(str(path_file), mode)
+            img = _rs_io.read_image_png_u8(str(path_file), mode)
     else:
-        img = kornia_rs.read_image_any(str(path_file))
+        img = _rs_io.read_image(str(path_file))
 
     # convert the image to torch.Tensor with shape CxHxW
     img_t = image_to_tensor(img, keepdim=True)
@@ -118,11 +123,21 @@ def _to_uint8(image: torch.Tensor) -> torch.Tensor:
 
 
 def _convert_image_type(image: torch.Tensor, desired_type: ImageLoadType) -> torch.Tensor:
-    """Convert a raw CxHxW uint8 image tensor to the desired type."""
+    """Convert a raw CxHxW uint8 image tensor to the desired type.
+
+    ``UNCHANGED`` returns whatever the decoder produced, so a 16-bit PNG or TIFF comes back as ``uint16`` and a
+    float TIFF as ``float32``. Every other load type is defined for 8-bit input; asking for one on a wider
+    decode raises rather than mislabelling it.
+    """
     channels = image.shape[0]
 
     if desired_type == ImageLoadType.UNCHANGED:
         return image
+    if image.dtype != torch.uint8:
+        raise NotImplementedError(
+            f"The file decoded to {image.dtype}, and ImageLoadType.{desired_type.name} is defined for 8-bit images "
+            "only; load it with ImageLoadType.UNCHANGED and convert the tensor yourself."
+        )
 
     # Normalize RGBA to RGB for types that don't need alpha
     if channels == 4 and desired_type != ImageLoadType.RGBA8:
@@ -183,35 +198,33 @@ def load_image(
 
 def _write_uint8_image(path_file: Path, img_np: Any, quality: int) -> None:
     """Write uint8 image to file."""
+    mode = _color_mode(img_np)
     if path_file.suffix.lower() in [".jpg", ".jpeg"]:
-        mode = "mono" if img_np.ndim == 2 or (img_np.ndim == 3 and img_np.shape[-1] == 1) else "rgb"
-        kornia_rs.write_image_jpeg(str(path_file), img_np, mode=mode, quality=quality)
+        _rs_io.write_image_jpeg(str(path_file), img_np, mode=mode, quality=quality)
     elif path_file.suffix.lower() == ".png":
-        mode = "mono" if img_np.ndim == 2 or (img_np.ndim == 3 and img_np.shape[-1] == 1) else "rgb"
-        kornia_rs.write_image_png_u8(str(path_file), img_np, mode=mode)
+        _rs_io.write_image_png_u8(str(path_file), img_np, mode=mode)
     elif path_file.suffix.lower() == ".tiff":
-        mode = "mono" if img_np.ndim == 2 or (img_np.ndim == 3 and img_np.shape[-1] == 1) else "rgb"
-        kornia_rs.write_image_tiff_u8(str(path_file), img_np, mode=mode)
+        _rs_io.write_image_tiff_u8(str(path_file), img_np, mode=mode)
     else:
         raise NotImplementedError(f"Unsupported file extension: {path_file.suffix} for uint8 image")
 
 
 def _write_uint16_image(path_file: Path, img_np: Any) -> None:
     """Write uint16 image to file."""
-    mode = "mono" if img_np.ndim == 2 or (img_np.ndim == 3 and img_np.shape[-1] == 1) else "rgb"
+    mode = _color_mode(img_np)
     if path_file.suffix.lower() == ".png":
-        kornia_rs.write_image_png_u16(str(path_file), img_np, mode=mode)
+        _rs_io.write_image_png_u16(str(path_file), img_np, mode=mode)
     elif path_file.suffix.lower() == ".tiff":
-        kornia_rs.write_image_tiff_u16(str(path_file), img_np, mode=mode)
+        _rs_io.write_image_tiff_u16(str(path_file), img_np, mode=mode)
     else:
         raise NotImplementedError(f"Unsupported file extension: {path_file.suffix} for uint16 image")
 
 
 def _write_float32_image(path_file: Path, img_np: Any) -> None:
     """Write float32 image to file."""
-    mode = "mono" if img_np.ndim == 2 or (img_np.ndim == 3 and img_np.shape[-1] == 1) else "rgb"
+    mode = _color_mode(img_np)
     if path_file.suffix.lower() == ".tiff":
-        kornia_rs.write_image_tiff_f32(str(path_file), img_np, mode=mode)
+        _rs_io.write_image_tiff_f32(str(path_file), img_np, mode=mode)
     else:
         raise NotImplementedError(f"Unsupported file extension: {path_file.suffix} for float32 image")
 
