@@ -408,7 +408,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Bug fixes
 
 * `RandomElasticTransform` documents `alpha` in the order the code applies it, `(x, y)`; it said `(y, x)`, the order
-  `kernel_size` and `sigma` use, so an anisotropic `alpha` warped the other axis from the one documented. (#4418)
+  `kernel_size` and `sigma` use, so an anisotropic `alpha` warped the other axis from the one documented. (#4418, #4510)
 * `RandomCutMixV2` and `CutmixGenerator` document `cut_size` as what it is: the `[min, max]` clamp on the
   Beta-sampled mixing coefficient `lambda`, where the cut side is `floor(sqrt(1 - lambda) * side)`, so a larger
   `cut_size` gives a smaller cut. It was described as the "minimum and maximum cut ratio". A minimum of `1.0` is
