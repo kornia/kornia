@@ -26,6 +26,7 @@ from kornia.contrib.super_resolution import (
     SuperResolution,
     SuperResolutionConfig,
 )
+from kornia.core._compat import torch_version_lt
 
 from testing.base import BaseTester
 
@@ -94,8 +95,12 @@ class TestSuperResolutionBuilders(BaseTester):
             pytest.param(
                 RRDBNetBuilder,
                 {"model_name": "RealESRGAN_x4plus_anime_6B"},
+                # torch < 2.9 defaults ``torch.onnx.export`` to the TorchScript exporter, which walks this
+                # graph in ~130 s on an Apple Silicon Mac and past the budget on the macOS runners; the
+                # dynamo exporter (2.9+) takes ~6 s on the same machine.
                 marks=pytest.mark.skipif(
-                    sys.platform == "darwin", reason="RRDBNet ONNX export exceeds the 120-second timeout on macOS"
+                    sys.platform == "darwin" and torch_version_lt(2, 9, 0),
+                    reason="TorchScript exporter (torch < 2.9) exceeds the 120-second timeout on macOS",
                 ),
             ),
         ],

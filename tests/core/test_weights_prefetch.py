@@ -52,8 +52,11 @@ either way.
 ``docs/generate_examples.py`` also fetches one non-checkpoint tensor
 (``knchurch_disk.pt``, the image pair the matching examples are drawn on)
 straight through ``torch.hub.load_state_dict_from_url``. It lands in the same
-``weights/`` cache and is now prefetched along with the reference tensors in
-``conftest.py``. The data fixture registry is guarded below too.
+``weights/`` cache under the same name as the ``disk_outdoor`` reference tensor
+``conftest.py``'s ``data`` fixture loads, so the prefetch of that fixture's table
+(``testing/reference_data.py``, enumerated in :data:`WEIGHT_REGISTRIES`) serves the
+docs build too -- provided the two copies of the commit hash agree, which
+``test_docs_reference_data_matches_the_fixture_table`` holds them to.
 """
 
 from __future__ import annotations
@@ -68,7 +71,6 @@ from urllib.parse import urlparse
 
 import pytest
 
-from conftest import _TEST_DATA_URLS
 from kornia.feature import affine_shape, defmo, hardnet, hynet, keynet, mkd, orientation, sosnet, tfeat, xfeat
 from kornia.feature import lightglue as lightglue_mod
 from kornia.feature.aliked import aliked
@@ -85,6 +87,8 @@ from kornia.models.efficient_vit import model as efficient_vit
 from kornia.models.rt_detr import model as rt_detr
 from kornia.models.sam import model as sam
 from kornia.models.yunet import model as yunet
+
+from testing import reference_data
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO_ROOT / ".github" / "download-models-weights.py"
@@ -119,6 +123,9 @@ def _load_prefetch_script() -> Any:
 # a second hand-written copy of these modules is exactly the drift this file
 # exists to catch.
 WEIGHT_REGISTRIES: dict[str, tuple[ModuleType, dict[str, Any]]] = {
+    # Not a weight source: the reference tensors conftest.py's ``data`` fixture loads
+    # into the same cache. Listed here so the same two-way guard covers them.
+    "reference_data": (reference_data, reference_data.TEST_DATA_URLS),
     "affine_shape": (affine_shape, affine_shape.urls),
     "orientation": (orientation, orientation.urls),
     "hardnet": (hardnet, hardnet.urls),
@@ -282,6 +289,28 @@ NOT_PREFETCHED: dict[str, str] = {
 }
 
 
+# ``kornia/data_test`` file references. The fixture table spells the raw URL with a
+# literal commit; a docs script spells ``github.com/.../raw/`` or ``blob/`` with the
+# commit either literal or as an f-string field bound by a ``name = "<sha>"`` line.
+_DATA_TEST_URL = re.compile(r"raw\.githubusercontent\.com/kornia/data_test/([0-9a-f]{40})/([^\s\"'?]+)")
+_DATA_TEST_REF = re.compile(r"github\.com/kornia/data_test/(?:raw|blob)/(\{\w+\}|[0-9a-f]{40})/([^\s\"'?]+)")
+_SHA_BINDING = re.compile(r"^\s*(\w+)\s*=\s*[\"']([0-9a-f]{40})[\"']", re.MULTILINE)
+
+
+def _data_test_refs(source: str) -> set[tuple[str, str]]:
+    """Return every ``(commit, file)`` a script fetches from ``kornia/data_test``.
+
+    An f-string field ``{name}`` resolves through the script's own ``name = "<sha>"``
+    binding; one that has no binding is kept verbatim so it fails the comparison
+    rather than vanishing from it.
+    """
+    bindings = dict(_SHA_BINDING.findall(source))
+    return {
+        (bindings.get(ref[1:-1], ref) if ref.startswith("{") else ref, file)
+        for ref, file in _DATA_TEST_REF.findall(source)
+    }
+
+
 # ``download_file_from_url`` and its Hub wrapper ``download_hf_file`` fetch into
 # the same cache without loading what they fetched, so a checkpoint pulled
 # through either is as invisible to the prefetch list as one pulled through
@@ -403,18 +432,6 @@ class TestWeightsPrefetchCoverage:
             + f"\nUpdate MODELS in {_SCRIPT.relative_to(_REPO_ROOT)}."
         )
 
-    @pytest.mark.parametrize("name", sorted(_TEST_DATA_URLS))
-    def test_fixture_data_is_prefetched(self, name: str) -> None:
-        url = _TEST_DATA_URLS[name]
-        cache_name = _pinned_cache_name(url)
-        prefetched = _load_prefetch_script().MODELS
-        assert cache_name in prefetched, f"data fixture {name!r} is missing from CI prefetch"
-        if name == "dexined":
-            # This fixture shares the library's checkpoint, whose mirrors are
-            # checked by test_prefetched_urls_match_the_library above.
-            return
-        assert _as_list(prefetched[cache_name]) == [url], f"data fixture {name!r} prefetch URL has drifted"
-
     def test_exemptions_are_still_reachable(self, monkeypatch) -> None:
         """A stale exemption hides a checkpoint that no longer exists."""
         live = {name for _, name, _ in _iter_checkpoints()}
@@ -449,7 +466,6 @@ class TestWeightsPrefetchCoverage:
         """
         live = {name for _, name, _ in _iter_checkpoints()}
         live |= set(_lightglue_cache_names(monkeypatch).values())
-        live |= {_pinned_cache_name(url) for url in _TEST_DATA_URLS.values()}
         orphaned = sorted(set(_load_prefetch_script().MODELS) - live)
         assert not orphaned, (
             f"CI prefetches {orphaned}, which no registry here accounts for. Add the "
@@ -491,6 +507,29 @@ class TestWeightsPrefetchCoverage:
             f"URLs, so their checkpoints are invisible to every check in this file: "
             f"{unaccounted}. Add the registry to WEIGHT_REGISTRIES, or the module to "
             f"_DOWNLOAD_CALL_ALLOWLIST with the reason it has no registry of its own."
+        )
+
+    def test_docs_reference_data_matches_the_fixture_table(self) -> None:
+        """``docs/generate_examples.py`` spells its own copy of a ``data_test`` commit hash.
+
+        The cache is keyed by basename, so a docs URL that drifts to another
+        revision of the same file is served the fixture's prefetched bytes
+        without a download, silently. Hold every ``data_test`` URL in the docs
+        script to a (commit, file) pair the fixture table pins.
+        """
+        pinned = {
+            (m.group(1), m.group(2))
+            for url in reference_data.TEST_DATA_URLS.values()
+            for m in [_DATA_TEST_URL.search(_as_list(url)[0])]
+            if m is not None
+        }
+        docs = (_REPO_ROOT / "docs" / "generate_examples.py").read_text(encoding="utf-8")
+        refs = _data_test_refs(docs)
+        assert refs, "docs/generate_examples.py no longer fetches from kornia/data_test; retire this check"
+        unpinned = sorted(refs - pinned)
+        assert not unpinned, (
+            f"docs/generate_examples.py fetches data_test files the fixture table does not pin: {unpinned}. "
+            f"Update DATA_TEST_SHA in testing/reference_data.py, or the docs script, so the two agree."
         )
 
     def test_no_entry_is_both_prefetched_and_exempt(self) -> None:
