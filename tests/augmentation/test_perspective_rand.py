@@ -172,6 +172,14 @@ class TestRandomAffine(BaseTester):
         assert aug.inverse(out).shape == x_data.shape
         assert aug.inverse(out, aug._params).shape == x_data.shape
 
+    @pytest.mark.parametrize(
+        "shear",
+        [5.0, (-5.0, 5.0), (-5.0, 2.0, 5.0, 10.0)],
+    )
+    def test_shear_to_device(self, shear, device, dtype):
+        aug = kornia.augmentation.RandomAffine(degrees=0.0, shear=shear)
+        aug.to(device=device, dtype=dtype)
+
     @pytest.mark.parametrize("degrees", [45.0, (-45.0, 45.0), torch.tensor([45.0, 45.0])])
     @pytest.mark.parametrize("translate", [(0.1, 0.1), torch.tensor([0.1, 0.1])])
     @pytest.mark.parametrize(
@@ -220,6 +228,14 @@ class TestRandomShear(BaseTester):
         assert out.shape == x_data.shape
         assert aug.inverse(out).shape == x_data.shape
         assert aug.inverse(out, aug._params).shape == x_data.shape
+
+    @pytest.mark.parametrize(
+        "shear",
+        [5.0, (-5.0, 5.0), (-5.0, 2.0, 5.0, 10.0)],
+    )
+    def test_to_device(self, shear, device, dtype):
+        aug = kornia.augmentation.RandomShear(shear)
+        aug.to(device=device, dtype=dtype)
 
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 5, 7, device=device, dtype=torch.float64)
