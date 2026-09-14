@@ -942,6 +942,31 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
         assert_close(res["dst"], expected["dst"])
 
 
+class TestCropIntSizeMessages:
+    # #4417: `RandomCrop(4)` and `RandomResizedCrop(4)` are rejected (whether to accept an int is the window
+    # decision), but the errors used to be about a torch.Tensor shape and `len()` of an int. They now name the
+    # argument, the expected form and the value passed.
+    def test_random_crop_int_size_names_the_argument(self, device, dtype):
+        from kornia.augmentation import RandomCrop
+
+        x = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+        with pytest.raises(AssertionError, match=r"`size` must be a \(height, width\) pair of integers.*Got 4\."):
+            RandomCrop(4)(x)
+
+    def test_random_crop_tensor_size_message_is_unchanged(self, device, dtype):
+        gen = CropGenerator(torch.tensor([[4, 4, 4]], device=device, dtype=dtype))
+        with pytest.raises(AssertionError, match=r"If `size` is a torch.Tensor, it must be shaped as \(B, 2\)"):
+            gen(torch.Size([1, 1, 8, 8]))
+
+    def test_random_resized_crop_int_size_names_the_argument(self):
+        from kornia.augmentation import RandomResizedCrop
+
+        with pytest.raises(
+            TypeError, match=r"`size` on RandomResizedCrop\) must be a \(height, width\).*Got 4 of type int"
+        ):
+            RandomResizedCrop(4)
+
+
 class TestRandomCropSizeGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_size", [0, 1, 8])
     @pytest.mark.parametrize("size", [(200, 200)])

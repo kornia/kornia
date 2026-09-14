@@ -83,6 +83,10 @@ class CropGenerator(RandomGeneratorBase):
         input_size = (batch_shape[-2], batch_shape[-1])
         if not isinstance(self.size, torch.Tensor):
             size = torch.tensor(self.size, device=_device, dtype=_dtype).repeat(batch_size, 1)
+            if size.shape != torch.Size([batch_size, 2]):
+                raise AssertionError(
+                    f"`size` must be a (height, width) pair of integers or a (B, 2) tensor. Got {self.size!r}."
+                )
         else:
             size = self.size.to(device=_device, dtype=_dtype)
         if size.shape != torch.Size([batch_size, 2]):
@@ -200,6 +204,11 @@ class ResizedCropGenerator(CropGenerator):
         scale: Union[torch.Tensor, Tuple[float, float]],
         ratio: Union[torch.Tensor, Tuple[float, float]],
     ) -> None:
+        if not isinstance(output_size, (tuple, list)):
+            raise TypeError(
+                "`output_size` (`size` on RandomResizedCrop) must be a (height, width) tuple of 2 positive "
+                f"integers. Got {output_size!r} of type {type(output_size).__name__}."
+            )
         if not (
             len(output_size) == 2
             and isinstance(output_size[0], (int,))
