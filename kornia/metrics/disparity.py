@@ -50,16 +50,26 @@ def _check_disparity_inputs(
 
 
 def _reduce_disparity_error(error: torch.Tensor, valid_mask: Optional[torch.Tensor], reduction: str) -> torch.Tensor:
-    """Reduce a per-pixel error map over the valid pixels according to ``reduction``."""
+    """Reduce a per-pixel error map over the valid pixels according to ``reduction``.
+
+    The sums are accumulated in ``float32`` for half-precision inputs. A ``float16`` sum saturates
+    at 65504, so an image-sized map would otherwise reduce to ``inf``, and a ``bfloat16`` sum loses
+    several significant digits over the same number of terms. The result is cast back to the dtype
+    of ``error`` so that the metrics keep returning the dtype of their input.
+    """
+    out_dtype = error.dtype
+    acc_dtype = torch.promote_types(out_dtype, torch.float32)
+
     if valid_mask is not None:
         # Zeroing the invalid pixels keeps the shape static. Indexing with the mask would make the
         # output shape depend on the mask values, which torch.compile cannot trace in a full graph.
-        error = torch.where(valid_mask, error, torch.zeros_like(error))
+        error = torch.where(valid_mask, error, 0)
 
     if reduction == "mean":
-        error = error.mean() if valid_mask is None else error.sum() / valid_mask.sum()
+        count = error.numel() if valid_mask is None else valid_mask.sum()
+        error = (error.sum(dtype=acc_dtype) / count).to(out_dtype)
     elif reduction == "sum":
-        error = error.sum()
+        error = error.sum(dtype=acc_dtype).to(out_dtype)
     elif reduction == "none":
         pass
     else:
@@ -100,6 +110,12 @@ def mean_absolute_disparity_error(
 
     Note:
         If ``valid_mask`` selects no pixels, ``'mean'`` reduction returns ``nan``.
+
+    Note:
+        Sums are accumulated in ``float32`` for ``float16`` and ``bfloat16`` inputs and the result
+        is cast back, so ``'mean'`` stays accurate on image-sized maps. ``'sum'`` returns the input
+        dtype as well, so a ``float16`` total above 65504 still saturates to ``inf`` — reduce with
+        ``'none'`` and sum in a wider dtype if you need totals that large.
 
     Examples:
         >>> input = torch.tensor([[0.0, 1.0], [2.0, 3.0]])
@@ -154,6 +170,11 @@ def root_mean_squared_disparity_error(
     Note:
         If ``valid_mask`` selects no pixels, ``'mean'`` reduction returns ``nan``.
 
+    Note:
+        For ``float16`` and ``bfloat16`` inputs the squared error and its reduction are computed in
+        ``float32`` and only the final value is cast back. Without that, a disparity error above
+        256 px would already saturate the ``float16`` squared error to ``inf``.
+
     Examples:
         >>> input = torch.zeros(2, 2)
         >>> target = torch.tensor([[0.0, 0.0], [0.0, 1.0]])
@@ -166,8 +187,12 @@ def root_mean_squared_disparity_error(
 
     """
     mask = _check_disparity_inputs(input, target, valid_mask)
-    error = (input - target) ** 2
-    return _reduce_disparity_error(error, mask, reduction).sqrt()
+    # Square in float32 for half-precision inputs: a 300 px disparity error already squares to
+    # 90000, past the 65504 float16 ceiling, so the per-pixel map would saturate to inf before any
+    # reduction happens. The square root brings the value back into range before the cast back.
+    acc_dtype = torch.promote_types(input.dtype, torch.float32)
+    error = (input.to(acc_dtype) - target.to(acc_dtype)) ** 2
+    return _reduce_disparity_error(error, mask, reduction).sqrt().to(input.dtype)
 
 
 def mean_bad_pixel_error(
@@ -209,6 +234,12 @@ def mean_bad_pixel_error(
 
     Note:
         If ``valid_mask`` selects no pixels, ``'mean'`` reduction returns ``nan``.
+
+    Note:
+        Sums are accumulated in ``float32`` for ``float16`` and ``bfloat16`` inputs and the result
+        is cast back, so ``'mean'`` stays accurate on image-sized maps. ``'sum'`` returns the input
+        dtype as well, so a ``float16`` count above 65504 still saturates to ``inf`` — reduce with
+        ``'none'`` and sum in a wider dtype if you need counts that large.
 
     Examples:
         >>> input = torch.zeros(2, 2)
@@ -275,6 +306,12 @@ def kitti_d1_error(
         Pixels with a zero ground truth disparity yield a non-finite relative error. Because both
         criteria must hold, such pixels are classified by ``abs_threshold`` alone and the output
         stays finite. KITTI marks these pixels as invalid, so prefer passing ``valid_mask``.
+
+    Note:
+        Sums are accumulated in ``float32`` for ``float16`` and ``bfloat16`` inputs and the result
+        is cast back, so ``'mean'`` stays accurate on image-sized maps. ``'sum'`` returns the input
+        dtype as well, so a ``float16`` count above 65504 still saturates to ``inf`` — reduce with
+        ``'none'`` and sum in a wider dtype if you need counts that large.
 
     Examples:
         >>> input = torch.tensor([1.0, 5.0, 104.0, 20.0])
