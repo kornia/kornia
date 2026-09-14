@@ -27,6 +27,7 @@ from kornia.core.utils import (
     _torch_solve_cast,
     _torch_svd_cast,
     is_exporting,
+    is_mps_tensor_safe,
     register_module_state,
     safe_inverse_with_mask,
     safe_solve_with_mask,
@@ -217,6 +218,33 @@ class TestSvdCast:
         assert s.device == a.device
         assert v.device == a.device
         # Both half dtypes round three factors back before the reconstruction contracts them.
+        tol_val: float = 1e-1 if dtype in (torch.float16, torch.bfloat16) else 1e-3
+        assert_close(a, u @ torch.diag_embed(s) @ v.transpose(-2, -1), atol=tol_val, rtol=tol_val)
+
+    def test_batch_at_mps_ceiling(self, device, dtype, monkeypatch):
+        # 8192 is the first failing size rather than the last working one (#4201), so a batch that
+        # holds exactly 8192 elements has to take the CPU fallback too. 512 * 4 * 4 is the measured
+        # boundary case. Spying on the decomposition itself keeps the check meaningful off MPS,
+        # where it asserts the fallback stays out of the way.
+        torch.manual_seed(0)
+        a = torch.randn(512, 4, 4, device=device, dtype=dtype)
+        assert a.numel() == 8192
+
+        seen = []
+        real_svd = torch.linalg.svd
+
+        def spy_svd(x, *args, **kwargs):
+            seen.append(x.device.type)
+            return real_svd(x, *args, **kwargs)
+
+        monkeypatch.setattr(torch.linalg, "svd", spy_svd)
+        u, s, v = _torch_svd_cast(a)
+
+        expected = "cpu" if is_mps_tensor_safe(a) else a.device.type
+        assert seen == [expected]
+        assert u.device == a.device
+        assert s.device == a.device
+        assert v.device == a.device
         tol_val: float = 1e-1 if dtype in (torch.float16, torch.bfloat16) else 1e-3
         assert_close(a, u @ torch.diag_embed(s) @ v.transpose(-2, -1), atol=tol_val, rtol=tol_val)
 

@@ -291,10 +291,12 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
 
     x = input.to(dtype)
     # torch 2.14's MPS ``linalg.svd`` raises "Failed to created pipeline state object" -- a Metal
-    # shader compilation failure, not memory pressure -- once a batched input holds more than 8192
-    # elements, whatever the per-matrix shape. The bound is inlined rather than named because this
-    # function is scripted (via ``zca_mean``) and TorchScript cannot close over a module global.
-    if is_mps_tensor_safe(x) and x.numel() > 8192:
+    # shader compilation failure, not memory pressure -- once a batched input holds 8192 elements
+    # or more, whatever the per-matrix shape. The bound is inclusive: 8192 is the first failing
+    # size rather than the last working one, measured as ``(511, 4, 4)`` = 8176 passing and
+    # ``(512, 4, 4)`` = 8192 raising. It is inlined rather than named because this function is
+    # scripted (via ``zca_mean``) and TorchScript cannot close over a module global.
+    if is_mps_tensor_safe(x) and x.numel() >= 8192:
         # SVD is per-matrix, so decomposing the whole batch on the CPU gives the same result; the
         # casts back to the MPS device keep the autograd graph intact.
         U, S, Vh = torch.linalg.svd(x.cpu())
