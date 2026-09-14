@@ -340,6 +340,28 @@ max-statements = 64  # Recommended: 50
   "D",  # Don't enforce documentation rules
 ]  # allow assert, random, ignore BLE, mutable class attr
 
+# Changelog fragments are assembled only when preparing a release.
+[tool.towncrier]
+directory = "changelog.d"
+filename = "CHANGELOG.md"
+title_format = "## [{version}] - {project_date}"
+issue_format = "[#{issue}](https://github.com/kornia/kornia/pull/{issue})"
+# Setting ignore enables strict filename validation; tolerate Finder metadata only.
+ignore = [".DS_Store"]
+issue_pattern = "[0-9]+"
+
+[[tool.towncrier.type]]
+directory = "added"
+name = "Added"
+
+[[tool.towncrier.type]]
+directory = "fixed"
+name = "Bug fixes"
+
+[[tool.towncrier.type]]
+directory = "breaking"
+name = "Breaking changes"
+
 [tool.ty.src]
 include = ["kornia"]
 exclude = ["tests", "docs", "conftest.py"]
