@@ -91,15 +91,40 @@ def test_convention_integer_disparity_maps_are_rejected(metric, int_dtype, devic
     assert metric(input.float(), target.float()).item() == pytest.approx(expected, rel=1e-5)
 
 
+def _can_hold(device: torch.device, dtype: torch.dtype) -> bool:
+    """Probe whether a backend can allocate a dtype at all, rather than hardcoding per backend.
+
+    MPS has no float64, so the float32-by-float64 pair below cannot even be built there. Probing
+    at runtime means the wider pair starts being exercised on its own once a backend gains the
+    dtype, instead of staying permanently skipped behind a device name.
+    """
+    try:
+        torch.zeros(1, device=device, dtype=dtype)
+    except (TypeError, RuntimeError, NotImplementedError):
+        return False
+    return True
+
+
 @pytest.mark.parametrize("metric", _DISPARITY_METRICS, ids=lambda m: m.__name__)
 def test_convention_result_dtype_is_the_promoted_one(metric, device):
-    """A mixed-dtype pair returns the promoted dtype, the same for every metric in the module."""
-    target = torch.rand(8, device=device, dtype=torch.float64) * 100.0
-    input = target.clone() + 4.0
+    """A mixed-dtype pair returns the promoted dtype, the same for every metric in the module.
 
-    assert metric(input.to(torch.float32), target).dtype == torch.float64
-    assert metric(input.to(torch.float32), target.to(torch.float32)).dtype == torch.float32
-    assert metric(input, target).dtype == torch.float64
+    float32 by float64 is the pair that regressed: it returned float64 before the half-precision
+    reduction fix and float32 after, while mean_absolute_disparity_error kept returning float64.
+    float16 by float32 makes the same point on a backend that cannot hold float64, so the rule is
+    checked everywhere rather than only where the regression was first measured.
+    """
+    pairs = [(torch.float16, torch.float32, torch.float32)]
+    if _can_hold(device, torch.float64):
+        pairs.append((torch.float32, torch.float64, torch.float64))
+
+    for input_dtype, target_dtype, expected in pairs:
+        target = torch.rand(8, device=device, dtype=target_dtype) * 100.0
+        input = (target + 4.0).to(input_dtype)
+
+        assert metric(input, target).dtype == expected
+        assert metric(input.to(target_dtype), target).dtype == target_dtype
+        assert metric(input, target.to(input_dtype)).dtype == input_dtype
 
 
 @pytest.mark.parametrize(
