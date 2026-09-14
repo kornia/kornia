@@ -22,6 +22,7 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 
 
@@ -70,7 +71,7 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.distortion_scale])
 
-        start_points: torch.Tensor = torch.tensor(
+        start_points: torch.Tensor = _constant_tensor(
             [
                 [
                     [0.0, 0, 0],
@@ -98,7 +99,7 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
             device=_device, dtype=_dtype
         )
 
-        pts_norm = torch.tensor(
+        pts_norm = _constant_tensor(
             [[[1, 1, 1], [-1, 1, 1], [-1, -1, 1], [1, -1, 1], [1, 1, -1], [-1, 1, -1], [-1, -1, -1], [1, -1, -1]]],
             device=_device,
             dtype=_dtype,

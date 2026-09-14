@@ -21,8 +21,35 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 from torch.distributions import Beta, Uniform
 
-from kornia.core.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype, is_compiling
 from kornia.geometry.keypoints import Keypoints
+
+
+def _constant_tensor(
+    data: Union[float, List[Any], Tuple[Any, ...]],
+    *,
+    device: Union[str, torch.device, None] = None,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    """Construct small numeric constants inside the graph, without lifting tensor storage.
+
+    Inductor can reuse a lifted CPU tensor in a CUDA kernel without transferring it
+    (https://github.com/pytorch/pytorch/issues/196969). Scalar factories and stacks
+    avoid that path, including for constants returned alongside CUDA tensors. Indexed
+    scalar writes are unsafe too: tracing lifts their right-hand sides.
+
+    ``data`` contains only Python scalars or rectangular nested lists/tuples, never
+    tensors. Callers choose dtype explicitly and perform coordinate arithmetic before
+    calling this helper when rounding before versus after casting matters.
+    """
+    # Keep eager construction cheap; Dynamo folds this guard during graph capture.
+    if not is_compiling():
+        return torch.tensor(data, device=device, dtype=dtype)
+    if isinstance(data, (tuple, list)):
+        if not data:
+            return torch.empty(0, device=device, dtype=dtype)
+        return torch.stack([_constant_tensor(value, device=device, dtype=dtype) for value in data])
+    return torch.full((), data, device=device, dtype=dtype)
 
 
 def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:

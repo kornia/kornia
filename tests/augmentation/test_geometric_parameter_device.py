@@ -22,7 +22,7 @@ from torch.fx.experimental.proxy_tensor import make_fx
 import kornia
 from kornia.core._compat import torch_version_lt
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 
 @pytest.mark.parametrize(
@@ -52,6 +52,7 @@ from testing.base import BaseTester
     ],
 )
 class TestGeometricParameterDevice(BaseTester):
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_geometry_constants_are_constructed_in_graph(self, make_aug):
         # CPU CI cannot execute the CUDA failure in #4516. Trace the deterministic geometry
         # and reject lifted tensor data, which Inductor may reuse across device transfers.
@@ -59,7 +60,16 @@ class TestGeometricParameterDevice(BaseTester):
         key = (
             "center" if isinstance(generator, kornia.augmentation.random_generator.AffineGenerator) else "start_points"
         )
-        graph = make_fx(lambda: generator((4, 3, 16, 19))[key].to(torch.float64))().graph
+        graphs = []
+
+        def capture(module, inputs):
+            graphs.append(make_fx(module)(*inputs).graph)
+            return module.forward
+
+        torch._dynamo.reset()
+        torch.compile(lambda: generator((4, 3, 16, 19))[key].to(torch.float64), backend=capture, fullgraph=True)()
+        assert len(graphs) == 1
+        graph = graphs[0]
         # Also cover constants used for end_points and indexed scalar fills. Sampler
         # bounds may be captured as attributes, but forward must not lift fresh tensors.
         assert all(node.target != torch.ops.aten.lift_fresh_copy.default for node in graph.nodes)

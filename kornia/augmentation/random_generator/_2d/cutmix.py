@@ -28,6 +28,7 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _joint_range_check,
 )
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -170,5 +171,5 @@ class CutmixGenerator(RandomGeneratorBase):
         return {
             "mix_pairs": mix_pairs.to(device=_device, dtype=torch.long),
             "crop_src": crop_src.floor().to(device=_device, dtype=_dtype),
-            "image_shape": torch.as_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
+            "image_shape": _constant_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
         }

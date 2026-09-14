@@ -22,6 +22,7 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _check_positive_int_or_traced, _common_param_check
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype, is_exporting
 from kornia.geometry.bbox import bbox_generator3d
 
@@ -70,7 +71,7 @@ class CropGenerator3D(RandomGeneratorBase):
         _device, _dtype = _extract_device_dtype([self.size if isinstance(self.size, torch.Tensor) else None])
 
         if not isinstance(self.size, torch.Tensor):
-            size = torch.tensor(self.size, device=_device, dtype=_dtype).repeat(batch_size, 1)
+            size = _constant_tensor(self.size, device=_device, dtype=_dtype).repeat(batch_size, 1)
         else:
             size = self.size.to(device=_device, dtype=_dtype)
         if size.shape != torch.Size([batch_size, 3]):
@@ -118,9 +119,9 @@ class CropGenerator3D(RandomGeneratorBase):
 
         if self.resize_to is None:
             crop_dst = bbox_generator3d(
-                torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
-                torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
-                torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
+                torch.zeros(batch_size, device=_device, dtype=_dtype),
+                torch.zeros(batch_size, device=_device, dtype=_dtype),
+                torch.zeros(batch_size, device=_device, dtype=_dtype),
                 size[:, 2] - 1,
                 size[:, 1] - 1,
                 size[:, 0] - 1,
@@ -136,7 +137,7 @@ class CropGenerator3D(RandomGeneratorBase):
                 and self.resize_to[2] > 0
             ):
                 raise AssertionError(f"`resize_to` must be a tuple of 3 positive integers. Got {self.resize_to}.")
-            crop_dst = torch.tensor(
+            crop_dst = _constant_tensor(
                 [
                     [
                         [0, 0, 0],
@@ -224,7 +225,7 @@ def center_crop_generator3d(
     # top-left-back, top-right-back, bottom-right-back, bottom-left-back
     # Note: DeprecationWarning: an integer is required (got type float).
     # Implicit conversion to integers using __int__ is deprecated, and may be removed in a future version of Python.
-    points_src: torch.Tensor = torch.tensor(
+    points_src: torch.Tensor = _constant_tensor(
         [
             [
                 [int(start_x), int(start_y), int(start_z)],
@@ -244,7 +245,7 @@ def center_crop_generator3d(
     # [x, y, z] destination
     # top-left-front, top-right-front, bottom-right-front, bottom-left-front
     # top-left-back, top-right-back, bottom-right-back, bottom-left-back
-    points_dst: torch.Tensor = torch.tensor(
+    points_dst: torch.Tensor = _constant_tensor(
         [
             [
                 [0, 0, 0],

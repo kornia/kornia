@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _common_param_check
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.geometry.bbox import bbox_generator
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
@@ -76,10 +77,10 @@ class ResizeGenerator(RandomGeneratorBase):
         input_size = h, w = (batch_shape[-2], batch_shape[-1])
 
         src = bbox_generator(
-            torch.tensor(0, device=_device, dtype=_dtype),
-            torch.tensor(0, device=_device, dtype=_dtype),
-            torch.tensor(input_size[1], device=_device, dtype=_dtype),
-            torch.tensor(input_size[0], device=_device, dtype=_dtype),
+            torch.full((), 0, device=_device, dtype=_dtype),
+            torch.full((), 0, device=_device, dtype=_dtype),
+            torch.full((), input_size[1], device=_device, dtype=_dtype),
+            torch.full((), input_size[0], device=_device, dtype=_dtype),
         ).repeat(batch_size, 1, 1)
 
         if isinstance(self.output_size, int):
@@ -98,13 +99,13 @@ class ResizeGenerator(RandomGeneratorBase):
             raise AssertionError(f"`resize_to` must be a tuple of 2 positive integers. Got {output_size}.")
 
         dst = bbox_generator(
-            torch.tensor(0, device=_device, dtype=_dtype),
-            torch.tensor(0, device=_device, dtype=_dtype),
-            torch.tensor(output_size[1], device=_device, dtype=_dtype),
-            torch.tensor(output_size[0], device=_device, dtype=_dtype),
+            torch.full((), 0, device=_device, dtype=_dtype),
+            torch.full((), 0, device=_device, dtype=_dtype),
+            torch.full((), output_size[1], device=_device, dtype=_dtype),
+            torch.full((), output_size[0], device=_device, dtype=_dtype),
         ).repeat(batch_size, 1, 1)
 
-        _input_size = torch.tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
-        _output_size = torch.tensor(output_size, device=_device, dtype=torch.long).expand(batch_size, -1)
+        _input_size = _constant_tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
+        _output_size = _constant_tensor(output_size, device=_device, dtype=torch.long).expand(batch_size, -1)
 
         return {"src": src, "dst": dst, "input_size": _input_size, "output_size": _output_size}

@@ -129,16 +129,18 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         # based on target areas and aspect ratios, rectangle params are computed
         heights = torch.min(
             torch.max(
-                torch.round((target_areas * aspect_ratios) ** (1 / 2)), torch.tensor(1.0, device=_device, dtype=_dtype)
+                torch.round((target_areas * aspect_ratios) ** (1 / 2)),
+                torch.full((), 1.0, device=_device, dtype=_dtype),
             ),
-            torch.tensor(height, device=_device, dtype=_dtype),
+            torch.full((), height, device=_device, dtype=_dtype),
         )
 
         widths = torch.min(
             torch.max(
-                torch.round((target_areas / aspect_ratios) ** (1 / 2)), torch.tensor(1.0, device=_device, dtype=_dtype)
+                torch.round((target_areas / aspect_ratios) ** (1 / 2)),
+                torch.full((), 1.0, device=_device, dtype=_dtype),
             ),
-            torch.tensor(width, device=_device, dtype=_dtype),
+            torch.full((), width, device=_device, dtype=_dtype),
         )
 
         xs_ratio = _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch).to(
@@ -156,5 +158,5 @@ class RectangleEraseGenerator(RandomGeneratorBase):
             "heights": heights.floor(),
             "xs": xs.floor(),
             "ys": ys.floor(),
-            "values": torch.tensor([self.value] * batch_size, device=_device, dtype=_dtype),
+            "values": torch.full((batch_size,), self.value, device=_device, dtype=_dtype),
         }

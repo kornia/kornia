@@ -26,6 +26,7 @@ from kornia.augmentation.utils import (
     _transform_output_shape,
     override_parameters,
 )
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -274,7 +275,7 @@ class _BasicAugmentationBase(nn.Module):
         _params["batch_prob"] = batch_prob
         # Added another input_size parameter for geometric transformations
         # This might be needed for correctly inversing.
-        input_size = torch.tensor(batch_shape, dtype=torch.long)
+        input_size = _constant_tensor(batch_shape, dtype=torch.long)
         _params.update({"forward_input_shape": input_size})
         return _params
 

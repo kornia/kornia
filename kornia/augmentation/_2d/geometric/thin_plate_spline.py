@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.constants import SamplePadding
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
@@ -79,7 +80,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
         dtype = self.dtype
 
         # 5 TPS control points in normalized coordinates
-        src = torch.tensor(
+        src = _constant_tensor(
             [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]],
             device=device,
             dtype=dtype,
