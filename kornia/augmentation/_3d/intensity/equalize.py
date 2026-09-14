@@ -37,7 +37,10 @@ class RandomEqualize3D(IntensityAugmentationBase3D):
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Input tensor must be float and normalized into [0, 1]: values outside it that the 256-bin lookup
+        cannot index raise a ``RuntimeError`` naming the range. This uses :func:`kornia.enhance.equalize3d`,
+        which equalizes each channel's whole volume from one 256-bin histogram, so a volume with no more
+        than 255 voxels per channel is returned unchanged.
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
