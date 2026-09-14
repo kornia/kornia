@@ -271,9 +271,9 @@ def test_operation_preserves_input_dtype(device, low_dtype):
 def test_symmetric_magnitude_negates_rather_than_zeroing(op, factor):
     # ``symmetric_megnitude`` multiplied the magnitude by a bool mask, so half the draws
     # came out as 0 instead of -m: these five ops only ever ran in the positive direction
-    # -- only clockwise, only right, only down -- and were a silent no-op the rest of the
-    # time. They are the only ops that set the flag, so every policy drawing one of them
-    # was affected. Sampling is device-independent, so this runs on CPU.
+    # -- only counter-clockwise, only right, only down -- and were a silent no-op the rest
+    # of the time. They are the only ops that set the flag, and ``RandAugment`` is the only
+    # composer that samples through it. Sampling is device-independent, so this runs on CPU.
     operation = op(None, 1.0)
     torch.manual_seed(42)
     mags = torch.cat([operation.forward_parameters(torch.Size([64, 3, 8, 8]))[factor] for _ in range(8)])
