@@ -57,11 +57,14 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Convention:
-        See the common input, dtype, probability, parameter-replay, and matrix contract on
-        :class:`~kornia.augmentation.AugmentationBase2D`. ``size`` is an ``(height, width)`` tuple. A bare integer
+        See :class:`~kornia.augmentation.AugmentationBase2D` for input, dtype, probability, and replay,
+        :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
+        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
+        ``size`` is an ``(height, width)`` tuple. A bare integer
         is rejected, unlike :class:`CenterCrop`; the sibling split is tracked in
-        `#4417 <https://github.com/kornia/kornia/issues/4417>`_. For each selected image, the parameter generator
-        samples a crop area from ``scale`` and an aspect ratio from ``ratio`` (or shares it with
+        `#4417 <https://github.com/kornia/kornia/issues/4417>`_. Here ``p`` selects or skips the whole batch together.
+        Within a selected batch, the generator samples a crop area from ``scale`` and an aspect ratio from ``ratio``
+        independently for each image (or shares it with
         ``same_on_batch=True``), then produces the requested output size.
 
         Slice mode calls index cropping with the configured interpolation and ``align_corners``; resample mode

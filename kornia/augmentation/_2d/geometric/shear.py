@@ -51,8 +51,10 @@ class RandomShear(GeometricAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - See :class:`~kornia.augmentation.AugmentationBase2D` for the shared input, sampling, replay, and
-          transformation-matrix contract. Pixel coordinates are inclusive, and the shear is centered at
+        - See :class:`~kornia.augmentation.AugmentationBase2D` for input, sampling, and replay,
+          :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
+          :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
+          Pixel coordinates are inclusive, and the shear is centered at
           ``((W - 1) / 2, (H - 1) / 2)``. Positive ``shear_x`` and ``shear_y`` use the same signs as
           :class:`RandomAffine`'s shear parameters.
         - ``shear`` supplies one or two degree ranges for the x and y shears; a scalar or pair supplies only x

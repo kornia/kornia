@@ -52,8 +52,10 @@ class CenterCrop(GeometricAugmentationBase2D):
         This function internally uses :func:`kornia.geometry.transform.crop_by_boxes`.
 
     Convention:
-        See the common input, dtype, probability, parameter-replay, and matrix contract on
-        :class:`~kornia.augmentation.AugmentationBase2D`. ``size`` accepts an integer for a square crop or an
+        See :class:`~kornia.augmentation.AugmentationBase2D` for input, dtype, probability, and replay,
+        :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
+        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
+        ``size`` accepts an integer for a square crop or an
         ``(height, width)`` tuple. The fixed centre crop is shared by every selected image in a batch.
 
         When the crop is selected, ``cropping_mode="slice"`` indexes the input directly and returns a writable view

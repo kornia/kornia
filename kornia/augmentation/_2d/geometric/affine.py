@@ -64,8 +64,10 @@ class RandomAffine(GeometricAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - See :class:`~kornia.augmentation.AugmentationBase2D` for the shared input, sampling, replay, and
-          transformation-matrix contract. Pixel coordinates are ``(x, y)`` with inclusive image corners
+        - See :class:`~kornia.augmentation.AugmentationBase2D` for input, sampling, and replay,
+          :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
+          :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
+          Pixel coordinates are ``(x, y)`` with inclusive image corners
           ``(0, 0)`` and ``(W - 1, H - 1)``; the affine center is ``((W - 1) / 2, (H - 1) / 2)``.
         - ``degrees``, scale, and shear are sampled independently per selected sample unless ``same_on_batch=True``.
           ``translate=(a, b)``

@@ -303,8 +303,13 @@ Randomness in augmentations
   a device-only move preserves its dtype. Invalid integer-dtype requests are
   rejected before changing the samplers. This does not make every generator
   support every device/dtype, or force returned parameters onto the sampling
-  device: numeric-range ``RandomAffine`` and ``RandomPerspective`` can still
-  return CPU parameters after an accelerator move.
+  device. This limitation affects multiple generators, including numeric-range
+  ``RandomAffine``, ``RandomPerspective``, ``RandomRotation``, ``RandomCrop``,
+  and four-value ``RandomShear``: returned transform parameters can remain CPU
+  float32 while ``batch_prob`` is on the accelerator. Some configurations,
+  such as scalar ``RandomShear(10.0).to("cuda")``, can fail during forward
+  (`#4415 <https://github.com/kornia/kornia/issues/4415>`_,
+  `#4426 <https://github.com/kornia/kornia/issues/4426>`_).
 - Reproducibility uses the global generators on the sampling devices.
   ``torch.manual_seed`` reproduces draws for the same configuration, inputs,
   backend and dtype; matching across devices or PyTorch versions is not

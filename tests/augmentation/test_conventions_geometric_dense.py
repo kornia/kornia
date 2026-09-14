@@ -34,6 +34,11 @@ class TestDenseGeometricConventions(BaseTester):
         if not supports_bilinear_2d_grid_sample(device, dtype):
             pytest.skip("2D bilinear grid sampling is unavailable for this device/dtype")
 
+    @staticmethod
+    def require_tps(dtype):
+        if dtype == torch.float16:
+            pytest.skip("TPS kernel epsilon underflows in float16, producing non-finite weights")
+
     @pytest.mark.parametrize("align_corners", [False, True])
     def test_convention_elastic_zero_displacement(self, device, dtype, align_corners):
         image = torch.arange(35, device=device, dtype=dtype).reshape(1, 1, 5, 7) / 35
@@ -97,8 +102,7 @@ class TestDenseGeometricConventions(BaseTester):
 
     @pytest.mark.parametrize("align_corners", [False, True])
     def test_wart_thin_plate_spline_identity_grid_3928(self, device, dtype, align_corners):
-        if dtype == torch.float16:
-            pytest.skip("TPS kernel epsilon underflows in float16, producing non-finite weights")
+        self.require_tps(dtype)
         image = torch.ones(1, 1, 3, 3, device=device, dtype=dtype)
         aug = K.RandomThinPlateSpline(scale=0, align_corners=align_corners, p=1)
         # A corner-aligned identity grid places the outer samples half a pixel
@@ -112,15 +116,14 @@ class TestDenseGeometricConventions(BaseTester):
 
     @pytest.mark.xfail(strict=True, raises=AssertionError, reason="Default TPS identity grid mismatch: #3928")
     def test_convention_thin_plate_spline_zero_scale_identity_3928(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("TPS kernel epsilon underflows in float16, producing non-finite weights")
+        self.require_tps(dtype)
         image = torch.ones(1, 1, 3, 3, device=device, dtype=dtype)
         self.assert_close(K.RandomThinPlateSpline(scale=0, p=1)(image), image)
 
     @pytest.mark.parametrize("kind", ["elastic", "fisheye", "tps"])
     def test_convention_dense_shape_and_matrix_interface(self, device, dtype, kind):
-        if kind == "tps" and dtype == torch.float16:
-            pytest.skip("TPS kernel epsilon underflows in float16, producing non-finite weights")
+        if kind == "tps":
+            self.require_tps(dtype)
         aug = {
             "elastic": lambda: K.RandomElasticTransform(kernel_size=(3, 3), p=1),
             "fisheye": lambda: K.RandomFisheye(

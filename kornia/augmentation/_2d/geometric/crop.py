@@ -74,17 +74,29 @@ class RandomCrop(GeometricAugmentationBase2D):
         boxes remain unchanged, including when ``padding`` or ``pad_if_needed`` is set.
 
     Convention:
-        See the common input, dtype, probability, parameter-replay, and matrix contract on
-        :class:`~kornia.augmentation.AugmentationBase2D`. ``size`` is an ``(height, width)`` tuple; unlike
-        :class:`CenterCrop`, a bare integer reaches an implementation-level assertion when it is applied. The split
-        is tracked in `#4417 <https://github.com/kornia/kornia/issues/4417>`_. Each selected image samples a crop
-        independently unless ``same_on_batch=True``.
+        See :class:`~kornia.augmentation.AugmentationBase2D` for input, dtype, probability, and replay,
+        :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
+        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
+        ``size`` is an ``(height, width)`` tuple; unlike
+        :class:`CenterCrop`, a bare integer raises ``AssertionError`` by default, or ``TypeError`` during padding
+        computation with ``pad_if_needed=True``. The split is tracked in
+        `#4417 <https://github.com/kornia/kornia/issues/4417>`_. Here ``p`` selects or skips the whole batch together.
+        Within a selected batch, each image samples a crop independently unless ``same_on_batch=True``.
 
         Explicit ``padding`` is applied before sampling, in ``(left, top, right, bottom)`` order after its scalar
-        or two-value shorthand is expanded. ``pad_if_needed=True`` adds symmetric padding when the requested crop
-        exceeds the input. With it disabled, an oversized requested crop is passed to the crop sampler and becomes
-        an interpolated resize of the input rather than raising; this wart is tracked in
-        `#4414 <https://github.com/kornia/kornia/issues/4414>`_. Slice mode calls ``crop_by_indices`` with that
+        or two-value shorthand is expanded. ``pad_if_needed=True`` takes the per-side maximum of that padding and
+        the positive crop-minus-input size difference on each axis. Without explicit padding this is symmetric;
+        asymmetric explicit padding can remain asymmetric after the merge.
+
+        With ``pad_if_needed=False``, an oversized request does not raise. Slice mode resizes the available slice
+        to the requested size. Resample mode instead uses a mis-scaled warp that can blend in zero padding; when
+        either axis is oversized, both matrix axes are rescaled, including an axis that would fit. This wart is
+        tracked in `#4414 <https://github.com/kornia/kornia/issues/4414>`_. The same correction compares against the
+        unpadded input even when explicit padding makes the crop fit: slice-mode images then disagree with the
+        matrix-transformed keypoints and boxes, and resample-mode images are also distorted. This explicit-padding
+        defect is tracked in `#4542 <https://github.com/kornia/kornia/issues/4542>`_.
+
+        Slice mode calls ``crop_by_indices`` with that
         function's bilinear/``align_corners=None`` defaults, ignoring this class's ``resample`` and
         ``align_corners`` flags. Resample mode uses ``crop_by_transform_mat`` with the configured interpolation and
         ``align_corners``; it maps constant, replicate, and reflect pre-padding to zero, border, and reflection

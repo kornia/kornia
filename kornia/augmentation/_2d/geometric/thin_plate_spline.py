@@ -43,8 +43,9 @@ class RandomThinPlateSpline(AugmentationBase2D):
     .. warning::
         Unchanged control points do not give an identity image at the default
         ``align_corners=False`` because the sampling lattice is corner-aligned. Setting
-        ``align_corners=True`` removes this mismatch for float32/float64 inputs, up to numerical precision.
-        The solve has additional dtype limitations documented on
+        ``align_corners=True`` removes this mismatch for float32, float64, and bfloat16 inputs, up to numerical
+        precision. Float16 has a separate kernel-epsilon underflow that can produce non-finite weights and NaN
+        output even with ``align_corners=True``. The solve has additional dtype limitations documented on
         :func:`~kornia.geometry.transform.get_tps_transform`. The sampling-grid mismatch is tracked in
         `#3928 <https://github.com/kornia/kornia/issues/3928>`_ and
         `#4411 <https://github.com/kornia/kornia/issues/4411>`_.

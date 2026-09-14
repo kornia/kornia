@@ -189,7 +189,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         ``mask``, box and ``keypoints`` keys to the child's own handlers, using the same parameters as the
         mixed image. Keys the child does not implement raise ``NotImplementedError``, matching a direct call
         (for example ``RandomMosaic`` transforms boxes and refuses masks/keypoints). A ``class``/``label`` key
-        still raises ``NotImplementedError`` from the container.
+        still raises ``NotImplementedError`` from the container. Fixed in
+        `#4493 <https://github.com/kornia/kornia/issues/4493>`_.
 
     .. note::
         See a working example `here <https://www.kornia.org/tutorials/nbs/data_augmentation_sequential.html>`__.

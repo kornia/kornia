@@ -20,7 +20,7 @@ import torch
 
 import kornia.augmentation as K
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_2d_border_padding
 
 
 class TestGeometricCropConventions(BaseTester):
@@ -74,11 +74,90 @@ class TestGeometricCropConventions(BaseTester):
         with pytest.raises(NotImplementedError, match="only applicable for resample"):
             slice_crop.inverse(slice_output)
 
-        torch.manual_seed(0)
+        image = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8)
         nearest = K.RandomCrop((3, 3), resample="nearest", align_corners=False, p=1.0, cropping_mode="resample")
-        nearest_output = nearest(x)
-        left, top = nearest._params["src"][0, 0].to(dtype=torch.long).tolist()
-        self.assert_close(nearest_output, x[..., top : top + 3, left : left + 3])
+        params = nearest.forward_parameters(image.shape)
+        params["src"] = image.new_tensor([[[2, 1], [4, 1], [4, 3], [2, 3]]])
+        self.assert_close(nearest(image, params=params), image[..., 1:4, 2:5])
+
+    @pytest.mark.device_agnostic
+    def test_convention_random_crop_merges_needed_padding_per_side(self):
+        crop = K.RandomCrop((4, 5), padding=(5, 0, 1, 4), pad_if_needed=True)
+        assert crop.compute_padding((1, 1, 2, 3)) == [5, 2, 2, 4]
+
+    @pytest.mark.parametrize(
+        "padding_mode, expected",
+        [
+            ("constant", [[0, 0, 0], [0, 0, 1], [0, 3, 4]]),
+            ("replicate", [[0, 0, 1], [0, 0, 1], [3, 3, 4]]),
+            ("reflect", [[4, 3, 4], [1, 0, 1], [4, 3, 4]]),
+        ],
+    )
+    def test_convention_random_crop_sampler_padding(self, device, dtype, padding_mode, expected):
+        if padding_mode == "replicate" and not supports_2d_border_padding(device):
+            pytest.skip("2D border padding is unavailable on this backend")
+        image = torch.arange(9, device=device, dtype=dtype).reshape(1, 1, 3, 3)
+        crop = K.RandomCrop((3, 3), cropping_mode="resample", padding_mode=padding_mode, align_corners=True, p=1.0)
+        params = crop.forward_parameters(image.shape)
+        # Force sampling beyond the top/left edges, where zeros, border and reflection differ.
+        params["src"] = image.new_tensor([[[-1, -1], [1, -1], [1, 1], [-1, 1]]])
+        self.assert_close(crop(image, params=params), image.new_tensor(expected).reshape_as(image))
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("kind", ["crop", "resized_crop"])
+    def test_convention_random_crops_gate_the_whole_batch(self, kind):
+        crop = K.RandomCrop((3, 4), p=0.5) if kind == "crop" else K.RandomResizedCrop((3, 4), p=0.5)
+        torch.manual_seed(0)
+        gates = [crop.forward_parameters((16, 1, 6, 8))["batch_prob"] for _ in range(16)]
+        assert all(torch.equal(gate, gate[:1].expand_as(gate)) for gate in gates)
+        assert any(gate.all() for gate in gates)
+        assert any(not gate.any() for gate in gates)
+
+    @pytest.mark.parametrize("mode", ["slice", "resample"])
+    def test_wart_random_crop_explicit_padding_scales_matrix_4542(self, device, dtype, mode):
+        image = torch.arange(9, device=device, dtype=dtype).reshape(1, 1, 3, 3) / 8
+        crop = K.RandomCrop((4, 4), padding=1, cropping_mode=mode, p=1.0)
+        seq = K.AugmentationSequential(crop, data_keys=["input", "keypoints", "bbox"])
+        params = seq.forward_parameters(image.shape)
+        params[0].data["src"] = image.new_tensor([[[0, 0], [3, 0], [3, 3], [0, 3]]])
+        points = image.new_tensor([[[2, 2]]])
+        boxes = image.new_tensor([[[[1, 1], [2, 1], [2, 2], [1, 2]]]])
+        output, out_points, out_boxes = seq(image, points, boxes, params=params)
+        self.assert_close(crop.transform_matrix, image.new_tensor([[[4 / 3, 0, 0], [0, 4 / 3, 0], [0, 0, 1]]]))
+        self.assert_close(out_points, image.new_tensor([[[4, 4]]]))
+        self.assert_close(out_boxes, (boxes + 1) * (4 / 3))
+        # Slice mode puts the original (2, 2) pixel at (3, 3); resampling also distorts its value.
+        expected = (
+            [[0, 0, 0, 0], [0, 0, 1, 2], [0, 3, 4, 5], [0, 6, 7, 8]]
+            if mode == "slice"
+            else [[0, 0, 0, 0], [0, 0, 0.375, 0.9375], [0, 1.125, 2, 2.75], [0, 2.8125, 4.25, 5]]
+        )
+        self.assert_close(output, image.new_tensor(expected).reshape(1, 1, 4, 4) / 8)
+
+    @pytest.mark.parametrize("mode", ["slice", "resample"])
+    @pytest.mark.parametrize("size", [(10, 10), (10, 4), (4, 10)])
+    def test_wart_random_crop_oversized_rescales_both_matrix_axes_4414(self, device, dtype, mode, size):
+        image = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8) / 48
+        crop = K.RandomCrop(size, cropping_mode=mode, p=1.0)
+        params = crop.forward_parameters(image.shape)
+        h, w = size
+        left, top = (2, 0) if size == (10, 4) else ((0, 1) if size == (4, 10) else (0, 0))
+        params["src"] = image.new_tensor(
+            [[[left, top], [left + w - 1, top], [left + w - 1, top + h - 1], [left, top + h - 1]]]
+        )
+        output = crop(image, params=params)
+        self.assert_close(crop.transform_matrix, image.new_tensor([[[w / 8, 0, -left], [0, h / 6, -top], [0, 0, 1]]]))
+        # Explicit ramp rows distinguish the slice resize from the mis-scaled, zero-padded warp.
+        rows = {
+            ((10, 10), "slice"): [40, 40.7, 41.5, 42.3, 43.1, 43.9, 44.7, 45.5, 46.3, 47],
+            ((10, 10), "resample"): [24, 24.48, 24.96, 25.44, 25.92, 26.4, 26.88, 27.36, 27.84, 22.56],
+            ((10, 4), "slice"): [2, 3, 4, 5],
+            ((10, 4), "resample"): [4, 6, 0, 0],
+            ((4, 10), "slice"): [8, 8.7, 9.5, 10.3, 11.1, 11.9, 12.7, 13.5, 14.3, 15],
+            ((4, 10), "resample"): [12, 12.8, 13.6, 14.4, 15.2, 16, 16.8, 17.6, 18.4, 15.2],
+        }
+        row = -1 if size == (10, 10) else 0
+        self.assert_close(output[0, 0, row], image.new_tensor(rows[size, mode]) / 48, low_tolerance=True)
 
     def test_wart_random_crop_oversized_without_padding_upscales_4414(self, device, dtype):
         # #4414: a 10x10 crop from a 6x8 input without pad_if_needed is the bilinear 10x10 resize.
@@ -123,6 +202,8 @@ class TestGeometricCropConventions(BaseTester):
         assert K.CenterCrop(4).size == (4, 4)
         with pytest.raises(AssertionError):
             K.RandomCrop(4)(torch.ones(1, 1, 6, 8))  # type: ignore[arg-type]
+        with pytest.raises(TypeError, match="not subscriptable"):
+            K.RandomCrop(4, pad_if_needed=True)(torch.ones(1, 1, 6, 8))  # type: ignore[arg-type]
         with pytest.raises(TypeError):
             K.RandomResizedCrop(4)  # type: ignore[arg-type]
 
@@ -133,14 +214,31 @@ class TestGeometricCropConventions(BaseTester):
         assert exact.inverse(exact(x)).shape == x.shape
         assert K.Resize(4, side="short", p=1.0)(x).shape == (1, 1, 4, 5)
         assert K.Resize(4, side="long", p=1.0)(x).shape == (1, 1, 2, 4)
+        assert K.Resize(4, side="vert", p=1.0)(x).shape == (1, 1, 4, 5)
+        assert K.Resize(4, side="horz", p=1.0)(x).shape == (1, 1, 2, 4)
+        portrait = x.transpose(-1, -2)
+        assert K.Resize(4, side="vert", p=1.0)(portrait).shape == (1, 1, 4, 2)
+        assert K.Resize(4, side="horz", p=1.0)(portrait).shape == (1, 1, 5, 4)
         assert K.LongestMaxSize(4)(x).shape == (1, 1, 2, 4)
         assert K.SmallestMaxSize(4)(x).shape == (1, 1, 4, 5)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("kind", ["resize", "longest"])
+    def test_convention_resize_rejects_a_truncated_zero_dimension(self, kind):
+        aug = K.Resize(4, side="long") if kind == "resize" else K.LongestMaxSize(4)
+        with pytest.raises(AssertionError, match="2 positive integers"):
+            aug(torch.ones(1, 1, 1, 10))
 
     def test_wart_pad_to_smaller_target_crops_and_inverse_is_noop_4410(self, device, dtype):
         # #4410: negative right/bottom padding crops, and the identity matrix leaves inverse unable to restore it.
         x = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8)
         crop = K.PadTo((4, 5), pad_value=9)
-        output = crop(x)
+        seq = K.AugmentationSequential(crop, data_keys=["input", "keypoints", "bbox"])
+        points = x.new_tensor([[[7, 5]]])
+        boxes = x.new_tensor([[[[6, 4], [7, 4], [7, 5], [6, 5]]]])
+        output, out_points, out_boxes = seq(x, points, boxes)
+        self.assert_close(out_points, points)
+        self.assert_close(out_boxes, boxes)
         self.assert_close(output, x[..., :4, :5])
         self.assert_close(crop.inverse(output), output)
         self.assert_close(crop.transform_matrix, torch.eye(3, device=device, dtype=dtype)[None])

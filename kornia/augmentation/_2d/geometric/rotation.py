@@ -47,8 +47,10 @@ class RandomRotation(GeometricAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - See :class:`~kornia.augmentation.AugmentationBase2D` for the shared input, sampling, replay, and
-          transformation-matrix contract. Coordinates are inclusive pixel centers, and rotation is about
+        - See :class:`~kornia.augmentation.AugmentationBase2D` for input, sampling, and replay,
+          :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
+          :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
+          Coordinates are inclusive pixel centers, and rotation is about
           ``((W - 1) / 2, (H - 1) / 2)``.
         - A positive sampled angle rotates the displayed image counter-clockwise. The default is bilinear
           resampling with zero padding and ``align_corners=True``; this default differs from several 2D geometric
@@ -162,9 +164,11 @@ class RandomRotation90(GeometricAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - See :class:`~kornia.augmentation.AugmentationBase2D` for the shared contract. Coordinates are inclusive
-          pixel centers and positive rounded ``times`` values rotate the displayed image counter-clockwise by
-          ``times * 90`` degrees.
+        - See :class:`~kornia.augmentation.AugmentationBase2D` for input, sampling, and replay,
+          :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
+          :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
+          Coordinates are inclusive pixel centers and positive rounded ``times`` values rotate the displayed image
+          counter-clockwise by ``times * 90`` degrees.
         - ``times`` is sampled from the supplied uniform range and rounded before multiplication by 90. The output
           retains the input ``(H, W)`` shape, including for non-square images; both behaviors are tracked in
           `#4409 <https://github.com/kornia/kornia/issues/4409>`_. Its defaults match :class:`RandomRotation`:

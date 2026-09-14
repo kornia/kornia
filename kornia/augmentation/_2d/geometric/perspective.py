@@ -48,8 +48,10 @@ class RandomPerspective(GeometricAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - See :class:`~kornia.augmentation.AugmentationBase2D` for the shared input, sampling, replay, and
-          transformation-matrix contract. The source corners are the inclusive pixel coordinates ``(0, 0)``,
+        - See :class:`~kornia.augmentation.AugmentationBase2D` for input, sampling, and replay,
+          :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
+          :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
+          The source corners are the inclusive pixel coordinates ``(0, 0)``,
           ``(W - 1, 0)``, ``(W - 1, H - 1)``, and ``(0, H - 1)``; :attr:`transform_matrix` maps those source
           coordinates to the sampled destination corners.
         - ``basic`` samples each corner inward by at most ``distortion_scale * (W, H) / 2``. ``area_preserving``
@@ -58,8 +60,10 @@ class RandomPerspective(GeometricAugmentationBase2D):
           every selected sample.
 
     .. warning::
-        With the default ``align_corners=False``, even ``distortion_scale=0`` does not reproduce arbitrary input
-        pixels exactly. This identity-warp defect is tracked in `#4411 <https://github.com/kornia/kornia/issues/4411>`_.
+        With the default ``align_corners=False``, even ``distortion_scale=0`` changes constant and smooth images:
+        a 5-by-7 image of ones has corner values of 0.25 and other border values of 0.5 because the sampler blends
+        in zero padding. Setting ``align_corners=True`` restores identity up to numerical precision. This
+        identity-warp defect is tracked in `#4411 <https://github.com/kornia/kornia/issues/4411>`_.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_pespective`.
