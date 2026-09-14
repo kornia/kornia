@@ -202,9 +202,10 @@ covers a slightly different extent of the source image.
    :func:`kornia.geometry.transform.warp_affine3d` has the same mismatch at
    ``align_corners=False`` (`#4503 <https://github.com/kornia/kornia/issues/4503>`_), and
    :func:`kornia.geometry.transform.warp_perspective3d` is separately wrong under **both**
-   settings because ``create_meshgrid3d`` emits its channels in ``(z, x, y)`` order while
-   ``grid_sample`` reads them as ``(x, y, z)``
-   (`#4502 <https://github.com/kornia/kornia/issues/4502>`_).
+   settings because ``homography_warp3d`` hands the ``(d, x, y)`` grid that
+   ``create_meshgrid3d`` produces straight to ``grid_sample``, which reads a 5-D grid as
+   ``(x, y, z)``; the grid order itself is the documented kornia convention, the conversion is
+   what is missing (`#4502 <https://github.com/kornia/kornia/issues/4502>`_).
 
 Bounding boxes
 --------------
