@@ -303,6 +303,28 @@ class TestRandomCutMixV2(BaseTester):
         if untouched.any():
             self.assert_close(output[untouched], input[untouched])
 
+    def test_random_cutmix_float64_lambda(self, device):
+        torch.manual_seed(76)
+        f = RandomCutMixV2(p=1.0, data_keys=["input", "class"])
+
+        input = torch.stack(
+            [
+                torch.ones(1, 15, 17, device=device, dtype=torch.float64),
+                torch.zeros(1, 15, 17, device=device, dtype=torch.float64),
+            ]
+        )
+        label = torch.tensor([1, 0], device=device, dtype=torch.float64)
+
+        _, out_label = f(input, label)
+
+        expected_lambda = torch.tensor(
+            [0.7647058823529411, 0.5176470588235295],
+            device=device,
+            dtype=torch.float64,
+        )
+
+        self.assert_close(out_label[0, :, 2], expected_lambda, rtol=0.0, atol=0.0)
+
 
 class TestRandomMosaic(BaseTester):
     def test_non_square_input_preserves_hw_4438(self):

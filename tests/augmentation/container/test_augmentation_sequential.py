@@ -735,15 +735,11 @@ class TestConventionAugmentationSequential(BaseTester):
         self.assert_close(out_masks[1], output[:1])
         assert not torch.equal(out_masks[1], output[1:])
 
-    def test_mix_children_dispatch_annotation_keys_4493(self, device, dtype):
-        # Regression (#4493): mix children used to fall through Mask/Box/KeypointSequentialOps to a silent
-        # passthrough, so annotations desynchronized from the mixed image. The container now dispatches to
-        # the child's own handlers: RandomMosaic transforms boxes (container xyxy_plus path), and unsupported
-        # keys raise NotImplementedError as a direct call does. A class key still raises from the container.
-        if dtype == torch.bfloat16:
-            pytest.skip("Tracked in #4467: the mix forward path has no bfloat16 DType")
-        from kornia.geometry.boxes import Boxes
-
+    def test_wart_mix_children_pass_annotations_through_4493(self, device, dtype):
+        # Wart pin (#4493): the container's mask, box and keypoint handlers have no branch for a mix child, so
+        # those keys come back unchanged next to a mixed image. Called directly, RandomMosaic transforms boxes
+        # and RandomMixUpV2 raises NotImplementedError on a mask; the container hides both. A class key still
+        # raises. Seed 0 on a 16x16 batch: every listed mix applies (a 6x8 fixture can draw an empty cut box).
         image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         boxes = torch.tensor([[[0.0, 0.0, 2.0, 2.0]], [[1.0, 1.0, 3.0, 3.0]]], device=device, dtype=dtype)
         mask = torch.arange(2, device=device, dtype=dtype).reshape(2, 1, 1, 1).expand(2, 1, 16, 16).clone()

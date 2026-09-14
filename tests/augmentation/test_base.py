@@ -404,8 +404,6 @@ class TestDeviceAgnosticAugmentationParameters(BaseTester):
         self.assert_close(matrix[1], torch.eye(4, device=device, dtype=dtype))
 
     def test_mix_augmentation_blends_cpu_params_with_accelerator_input(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("RandomMixUpV2 promotes half inputs because mixup_lambdas are float32")
 
         input = torch.arange(24, device=device, dtype=dtype).reshape(2, 3, 2, 2)
         augmentation = RandomMixUpV2(lambda_val=(0.25, 0.25), p=1.0, data_keys=["input"])
