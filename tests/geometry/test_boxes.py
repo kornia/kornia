@@ -220,7 +220,7 @@ class TestBoxes2D(BaseTester):
         # changes the output dtype.
         half = vertices.to(torch.float16)
         assert Boxes.from_tensor([half, vertices], mode="vertices_plus").dtype == torch.float16
-        assert Boxes.from_tensor([vertices, half], mode="vertices_plus").dtype == torch.float32
+        assert Boxes.from_tensor([vertices, half], mode="vertices_plus").dtype == torch.get_default_dtype()
 
     def test_convention_merge_concatenates_batched_boxes_without_mutating_by_default(self, device, dtype):
         first = Boxes.from_tensor(torch.tensor([[[1.0, 2.0, 5.0, 4.0]]], device=device, dtype=dtype))
@@ -300,6 +300,15 @@ class TestBoxes2D(BaseTester):
             transformed = boxes_from.transform_boxes(torch.eye(3, dtype=torch.int64, device=device))
             assert transformed.data.dtype == torch.float64
             assert transformed.data.dtype == boxes_from.data.dtype
+            # Value pin for the _transform_boxes cast: a translation above 2**24 is not
+            # representable in float32, so reverting the cast to `.float()` cannot pass.
+            # Under float64 (the default set above) it is preserved exactly.
+            big = 2**24 + 5
+            translate = torch.tensor([[1, 0, big], [0, 1, big], [0, 0, 1]], dtype=torch.int64, device=device)
+            translated = boxes_from.transform_boxes(translate)
+            assert translated.data.dtype == torch.float64
+            expected = boxes_from.data.to(torch.float64) + big
+            self.assert_close(translated.data, expected, atol=0.0, rtol=0.0)
         finally:
             torch.set_default_dtype(old_default)
 
@@ -1936,7 +1945,7 @@ class TestVideoBoxes(BaseTester):
     def test_convention_from_tensor_stores_vertices_plus_and_restores_the_temporal_axis(self, device, dtype):
         # Convention pin: the (B, T, N, 4, 2) input is stored unchanged as (B * T, N, 4, 2) batched
         # 'vertices_plus' data; every Boxes export mode is available and comes back with the
-        # temporal axis restored; integer input is cast to float32; a transformation matrix must
+        # temporal axis restored; integer input is cast to the default floating dtype; a transformation matrix must
         # carry the flattened batch of B * T matrices.
         boxes = self._sample_video_boxes(device, dtype, batch=2, time=3, n_boxes=1)
         video_boxes = VideoBoxes.from_tensor(boxes)
@@ -1949,7 +1958,7 @@ class TestVideoBoxes(BaseTester):
         assert xyxy.shape == (2, 3, 1, 4)
         expected_xyxy = torch.tensor([1.0, 1.0, 4.0, 4.0], device=device, dtype=dtype).expand(2, 3, 1, 4)
         self.assert_close(xyxy, expected_xyxy, atol=0.0, rtol=0.0)
-        assert VideoBoxes.from_tensor(boxes.to(torch.int64)).dtype == torch.float32
+        assert VideoBoxes.from_tensor(boxes.to(torch.int64)).dtype == torch.get_default_dtype()
         with pytest.raises(ValueError, match="BxTxNx4x2"):
             VideoBoxes.from_tensor(torch.zeros(2, 3, 1, 4, 3, device=device, dtype=dtype))
 

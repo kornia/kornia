@@ -246,8 +246,9 @@ class Boxes:
         - The constructor rejects an integer tensor unless ``raise_if_not_floating_point=False``. A list input is
           padded into a tensor of its *first* element's dtype before that check, so a mixed-dtype list is accepted
           or rejected by its first box alone and the remaining boxes are cast to that dtype. For a single tensor,
-          :meth:`from_tensor` silently casts integer input to
-          ``torch.get_default_dtype()``. For a list, it converts each element
+          :meth:`from_tensor` silently casts integer input to ``torch.get_default_dtype()``. For a list, it
+          converts each element independently and then pads into the first converted element's dtype,
+          recasting the remaining elements.
         - :meth:`merge` concatenates boxes along the box axis and repacks list-backed batch rows so their padding
           remains at the end, while :meth:`index_put` replaces selected coordinates. Both methods are non-mutating
           by default.
@@ -1311,8 +1312,8 @@ class Boxes3D:
         See the Convention block on :class:`~kornia.geometry.boxes.Boxes3D`.
 
         Args:
-            boxes: 3D boxes, shape of :math:`(N,6)` or :math:`(B,N,6)`;
-            integer input is cast to ``torch.get_default_dtype()``.
+            boxes: 3D boxes, shape of :math:`(N,6)` or :math:`(B,N,6)`. Integer input is cast to
+                ``torch.get_default_dtype()``.
             mode: The format in which the 3D boxes are provided, matched case-insensitively.
 
                 * 'xyzxyz': boxes are assumed to be in the format ``xmin, ymin, zmin, xmax, ymax, zmax`` where
