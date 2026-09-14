@@ -56,10 +56,7 @@ so you only pay for the ones you use. If one of the extras below is missing, the
 object tells you which extra to install: by default it offers to install the package for you on the
 terminal (``kornia.config.kornia_config.lazyloader.installation_mode``, ``"ask"``; set it to ``"auto"``
 to install without asking or ``"raise"`` to never install), and in ``"raise"`` mode, or when the offer
-is declined, it raises an ``ImportError`` naming the extra. Pillow is the exception: no feature
-extra covers it -- only the contributor ``dev`` and ``docs`` environments install it -- so its
-message only asks you to install the package
-(`kornia#4261 <https://github.com/kornia/kornia/issues/4261>`_ tracks which extra should carry it).
+is declined, it raises an ``ImportError`` naming the extra.
 
 .. list-table::
    :header-rows: 1
@@ -68,6 +65,9 @@ message only asks you to install the package
    * - Extra
      - What it enables
      - Install command
+   * - ``image``
+     - Pillow-backed PIL input/output and display helpers, plus remote image decoding in :func:`kornia.io.get_sample_images`
+     - ``pip install "kornia[image]"``
    * - ``onnx``
      - :doc:`kornia.onnx </onnx>`, ONNX export of Kornia modules, and :class:`~kornia.feature.OnnxLightGlue`
      - ``pip install "kornia[onnx]"``
@@ -80,11 +80,6 @@ message only asks you to install the package
    * - ``docs``
      - Documentation toolchain, on top of ``dev``
      - ``pip install -e ".[dev,docs]"``
-
-Independently of the extras, the ``visualize`` and ``save`` helpers of the model wrappers need
-`pillow <https://pypi.org/project/pillow/>`_ for ``output_type="pil"``. No feature extra installs
-it, so unless you are in a ``dev`` or ``docs`` environment, install it directly with
-``pip install pillow``.
 
 Next steps
 ----------

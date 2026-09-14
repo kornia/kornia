@@ -99,6 +99,15 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 - MPS does not support float64 gradcheck. MPS autocast can also change the effective dtype; inspect nearby tests before changing tolerances or skips.
 - The blocking MPS job runs `--device=mps --dtype=float32 --xfail-known-failures`. Its exact strict-xfail baseline is `testing/known_failure_xfails/mps_float32.txt` and is tracked in #4159. A fix removes its manifest line; a rename or reparametrization updates the node ID; a new failure is fixed or explicitly documented before being added. The manifest contract requires a full-suite run, without `-k` or a partial path.
 - TF32 matmul is disabled by default; `--tf32` enables it. cuDNN convolutions still use PyTorch's TF32 default. Tests marked `tf32` are xfailed at collection unless `--tf32` is passed, and that marker is non-strict, so a default run reports neither their failure nor their recovery.
+- `torch.clamp` is not a portable gradient guard: its derivative **at the bound** passes the incoming gradient
+  through (`1.0`) on torch 2.5.1 and 2.9.1 and returns `0.0` on 2.14.0. Wherever the bound is also the singular
+  point -- `clamp(min=0).sqrt()`, `clamp(-1, 1).acos()`, `clamp(-1, 1).asin()` -- the clamp bounds the value only,
+  so the unbounded derivative still reaches the backward pass as `inf` or `nan` on the older half of the supported
+  range while 2.14 masks it. A floor below the dtype's smallest subnormal is no guard either: `clamp(min=1e-12)`
+  underflows to `0` in `float16`. Substitute a safe argument into the expression that gets differentiated and take
+  the value from a `.detach()`ed copy, or from the other arm of a `torch.where`, instead; that is
+  version-independent by construction. A CPU float32 run on a recent torch does not exercise any of this -- the
+  2.5.1 leg is what discriminates. The measurements and the audit of the pattern are in #4229.
 - Preserve device and dtype rather than creating implicit CPU or default-dtype tensors. Use the injected `device` and `dtype` fixtures in tests.
 
 ## Library preferences
@@ -118,7 +127,7 @@ when more than one virtualenv is in play: name the interpreter explicitly rather
 
 ## Documentation and generated examples
 
-- `CHANGELOG.md` is maintained per change, not at release time. A user-visible change adds an entry under `## Unreleased` citing its PR number, under the Keep a Changelog headings the file already uses (`Added`, `Bug fixes`, `Breaking changes`); a breaking change says what used to happen as well as what happens now.
+- A user-visible change adds a `changelog.d/<PR>.<type>.md` fragment (`added`, `fixed`, or `breaking`), not an edit to `CHANGELOG.md`. See [changelog.d/README.md](changelog.d/README.md) for naming before a PR exists and the release workflow. A breaking change says what used to happen as well as what happens now. Internal changes may omit a fragment with an explanation in the PR and the `no-changelog` label. Release PRs also use that label when consuming fragments. Only release PRs assemble and consume fragments.
 - Add every new public class or function to the corresponding `docs/source/*.rst` page so it appears in the rendered API reference.
 - Some modules document a known defect inline and link its tracking issue; `grep -rn "github.com/kornia/kornia/issues/" kornia/` finds them. That prose is part of the fix's blast radius: **before merging a change that closes one of those issues, run `grep -rnE "#NNNN|issues/NNNN" kornia/ tests/`.** Match the issue number rather than a name or a phrase — the wording varies across `Tracked in #NNNN`, a lowercase `tracked in` clause, a `Note:` block, a runtime error message, an `xfail` `reason=`, a plain comment and a test-name suffix (`test_wart_*_<issue>` and `test_convention_*_<issue>`, where that convention was followed), and a rendered link label can disagree with the URL beneath it. The `#`/`issues/` anchors keep the pattern off float literals. A surviving hit in `kornia/` means the change is incomplete. Hits in `tests/` are the pins that record the documented behavior; each has to be re-checked in the same change — a now-XPASSing strict `xfail` dropped, a wart assertion inverted — but a pin goes on naming its issue afterwards, so a hit there is not by itself a defect. Not every documented issue has a pin, so an empty `tests/` result is an answer rather than a failed search.
 - When adding a feature detector or descriptor, update the `responses` list in `docs/generate_examples.py` and add the matching branch that renders its heatmap or score visualization. Follow the existing `DISK`, `ALIKED`, and `XFeat` examples and preserve the expected `(B, 3, H, W)` image shapes.

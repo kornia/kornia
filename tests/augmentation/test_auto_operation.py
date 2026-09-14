@@ -90,6 +90,25 @@ class TestAutoAugment(BaseTester):
     def test_sequential(augment_method, device, dtype):
         _test_sequential(AutoAugment(), device=device, dtype=dtype)
 
+    @pytest.mark.parametrize("magnitude", [10, 11, -1, -2])
+    def test_magnitude_bin_out_of_range_names_the_op(self, magnitude):
+        """A bin indexes two adjacent points, so 9 is the last usable one.
+
+        Over-large bins raised a raw IndexError naming an internal tensor, and negative
+        ones wrapped silently onto a reversed range.
+        """
+        with pytest.raises(ValueError, match=r"Expect magnitude bin for `rotate` in \[0, 9\]"):
+            AutoAugment(policy=[[("rotate", 1.0, magnitude)]])
+
+    @pytest.mark.parametrize("name", ["auto_contrast", "invert", "equalize"])
+    def test_ops_that_ignore_magnitude_are_not_gated(self, name):
+        """These take `_: int` and never index the scale, so any bin stays legal."""
+        AutoAugment(policy=[[(name, 1.0, 10)]])
+
+    def test_magnitude_bin_endpoints_are_accepted(self):
+        AutoAugment(policy=[[("rotate", 1.0, 0)]])
+        AutoAugment(policy=[[("rotate", 1.0, 9)]])
+
 
 class TestRandAugment(BaseTester):
     @pytest.mark.parametrize("policy", [None, [[("translate_y", -0.5, 0.5)]]])
@@ -126,6 +145,28 @@ class TestRandAugment(BaseTester):
 
     def test_sequential(augment_method, device, dtype):
         _test_sequential(RandAugment(n=3, m=15), device=device, dtype=dtype)
+
+    @pytest.mark.parametrize("m", [1, 15, 29])
+    def test_m_accepts_the_interval_its_message_names(self, m):
+        """The guard is exclusive at both ends, and the message says so."""
+        RandAugment(n=2, m=m)
+
+    @pytest.mark.parametrize("m", [-1, 0, 30, 31])
+    def test_m_outside_the_open_interval_is_rejected(self, m):
+        with pytest.raises(ValueError, match=r"Expect `m` in \(0, 30\)"):
+            RandAugment(n=2, m=m)
+
+    @pytest.mark.parametrize("n", [0, -1, len(randaug_config) + 1])
+    def test_n_outside_the_policy_length_is_rejected(self, n):
+        """`n=0` applied nothing and `n > len(policy)` was silently clamped."""
+        with pytest.raises(ValueError, match=r"Expect `n` in \[1, 15\]"):
+            RandAugment(n=n, m=10)
+
+    def test_n_is_bounded_by_the_supplied_policy(self):
+        policy = [[("translate_y", -0.5, 0.5)], [("translate_x", -0.5, 0.5)]]
+        RandAugment(n=2, m=10, policy=policy)
+        with pytest.raises(ValueError, match=r"Expect `n` in \[1, 2\]"):
+            RandAugment(n=3, m=10, policy=policy)
 
 
 class TestTrivialAugment(BaseTester):

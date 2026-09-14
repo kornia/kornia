@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.geometry.camera import project_points_orthographic, unproject_points_orthographic
 from kornia.geometry.vector import Vector2, Vector3
 from kornia.sensors.camera.projection_model import OrthographicProjection, Z1Projection
 
@@ -112,40 +113,6 @@ class TestProjection(BaseTester):
 
 
 class TestOrthographicProjection(BaseTester):
-    def test_wart_orthographic_projection_is_a_placeholder_4284(self, device, dtype):
-        # Wart pin for kornia#4284 (audit labels 5d-sc-22, 5d-sc-26): ``OrthographicProjection`` is the
-        # projection half of the ORTHOGRAPHIC camera model and is a bare ``raise NotImplementedError`` with
-        # an EMPTY message in both directions.  It is reachable through the public API --
-        # ``CameraModel(..., CameraModelType.ORTHOGRAPHIC, ...)`` constructs and wires this class in -- so the
-        # model-level project AND unproject raises pinned in tests/sensors/camera/test_camera_model.py both
-        # come from here (the last traceback frame of each is measured as ``OrthographicProjection.project``
-        # and ``OrthographicProjection.unproject`` -- a name rather than a line number, which would rot on
-        # the next edit of that module), not from a distortion placeholder: ORTHOGRAPHIC pairs this
-        # projection with the working ``AffineTransform``, which never fails for it in either direction.
-        # Its ``matrix()`` raises from a third site again,
-        # ``CameraModelBase.matrix``.  A working equivalent already exists next door as
-        # ``kornia.geometry.camera.project_points_orthographic``.  The empty message is asserted rather than
-        # described, because #4284's Expected asks at minimum for a message naming the model: a message-only
-        # partial fix must flip this pin.
-        # Snippet used to generate expected: OrthographicProjection().project(Vector3(tensor([[1., 2., 4.]])))
-        # and .unproject(Vector2(tensor([[0.5, 0.25]])), tensor([2.])) executed 2026-09-06 on this worktree
-        # (torch 2.14.0) -> NotImplementedError('') for both, on cpu for float32, float64, float16 and
-        # bfloat16 and on mps for float32 and float16.
-        # Pins the CURRENT behaviour; NOT a contract; delete when #4284 is repaired.
-        projection = OrthographicProjection()
-        with pytest.raises(NotImplementedError) as raised:
-            projection.project(Vector3(torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype)))
-        assert str(raised.value) == ""
-        with pytest.raises(NotImplementedError) as raised:
-            projection.unproject(
-                Vector2(torch.tensor([[0.5, 0.25]], device=device, dtype=dtype)),
-                torch.tensor([2.0], device=device, dtype=dtype),
-            )
-        assert str(raised.value) == ""
-        assert isinstance(
-            Z1Projection().project(Vector3(torch.tensor([[1.0, 2.0, 4.0]], device=device, dtype=dtype))), Vector2
-        )
-
     def test_unproject_scalar_depth(self, device, dtype):
         """Regression test: scalar depth must preserve device and dtype.
 
@@ -167,3 +134,30 @@ class TestOrthographicProjection(BaseTester):
         # Also verify a vector depth still works unchanged
         out_vec = projection.unproject(points, torch.tensor([4.0], device=device, dtype=dtype))
         self.assert_close(out_vec.data, expected, atol=0.0, rtol=0.0)
+
+    def test_orthographic_project_matches_geometry(self, device, dtype):
+        projection = OrthographicProjection()
+        points = torch.tensor(
+            [[1.0, 2.0, 3.0], [-4.0, 5.0, 7.0]],
+            device=device,
+            dtype=dtype,
+        )
+
+        expected = project_points_orthographic(points)
+        actual = projection.project(Vector3(points)).data
+
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)
+
+    def test_orthographic_unproject_matches_geometry(self, device, dtype):
+        projection = OrthographicProjection()
+        points = torch.tensor(
+            [[1.0, 2.0], [3.0, 4.0]],
+            device=device,
+            dtype=dtype,
+        )
+        depth = torch.tensor([5.0, 6.0], device=device, dtype=dtype)
+
+        expected = unproject_points_orthographic(points, depth)
+        actual = projection.unproject(Vector2(points), depth).data
+
+        self.assert_close(actual, expected, atol=0.0, rtol=0.0)

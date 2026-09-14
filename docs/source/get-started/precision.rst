@@ -24,7 +24,8 @@ This page documents which kornia modules support half-precision floating-point d
      - ⚠️ Partial
      - ⚠️ Partial
      - Basic convolution-based filters (Gaussian, Sobel, Median, Box) work
-       for both dtypes. FFT-based operations (``fft_conv``) may fail on CUDA.
+       for both dtypes. On CPU, ``fft_conv`` computes its FFTs in float32 and
+       returns the input dtype. FFT-based operations may still fail on CUDA.
    * - ``kornia.enhance``
      - ⚠️ Partial
      - ⚠️ Partial

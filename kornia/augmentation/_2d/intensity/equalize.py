@@ -39,7 +39,8 @@ class RandomEqualize(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-        This function internally uses :func:`kornia.enhance.equalize`.
+        This function internally uses :func:`kornia.enhance.equalize`, which expects the input in
+        :math:`[0, 1]` and raises a ``RuntimeError`` naming that range for values it cannot equalize.
 
     Examples:
         >>> rng = torch.manual_seed(0)

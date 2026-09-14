@@ -2,7 +2,7 @@ kornia.sensors.camera
 ======================
 
 .. meta::
-   :description: The `kornia.sensors.camera` module provides tools to define and manipulate various camera models, including the Pinhole model. It allows users to specify distortion and projection types in a differentiable way. Pinhole is the only model that works today; the Brown-Conrady, Kannala-Brandt and orthographic models are exported but not yet implemented. It also enables users to define custom camera models using distortion and projection types.
+   :description: The `kornia.sensors.camera` module provides differentiable Pinhole, Brown-Conrady, Kannala-Brandt K3, and Orthographic camera models, together with reusable distortion and projection components for defining custom camera models.
 
 .. currentmodule:: kornia.sensors.camera
 
@@ -37,7 +37,7 @@ To define a custom camera model based on distortion and projection types, one ca
     cam = CameraModelBase(AffineTransform(), Z1Projection(), ImageSize(480, 640), params)
 
 .. note::
-   Pinhole is the model that works today. :class:`BrownConradyModel`, :class:`KannalaBrandtK3` and :class:`Orthographic` validate their parameters and construct, and then every ``project``, ``unproject`` and ``matrix`` call on them raises ``NotImplementedError``; implementing them is tracked in `#4284 <https://github.com/kornia/kornia/issues/4284>`_.
+   The built-in camera models are Pinhole, Brown-Conrady, Kannala-Brandt K3, and Orthographic.
 
 .. autoclass:: CameraModelBase
     :members:
@@ -68,6 +68,12 @@ Distortions
 .. autoclass:: AffineTransform
     :members:
 
+.. autoclass:: BrownConradyTransform
+    :members:
+
+.. autoclass:: KannalaBrandtK3Transform
+    :members:
+
 
 Projections
 -----------
@@ -75,4 +81,7 @@ Projections
 .. currentmodule:: kornia.sensors.camera.projection_model
 
 .. autoclass:: Z1Projection
+    :members:
+
+.. autoclass:: OrthographicProjection
     :members:

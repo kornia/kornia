@@ -60,6 +60,9 @@ toml-fmt-check = { cmd = "tombi format --check", description = "Check TOML forma
 build-docs = { cmd = "uv run python -m sphinx -W -b html docs/source docs/build/html", depends-on = [
   "install-docs"
 ] }
+# Changelog tooling is isolated from Kornia's runtime and test dependencies.
+changelog-preview = { cmd = "uv tool run --from towncrier==25.8.0 towncrier build --draft --version Unreleased", description = "Preview pending release notes without changing files" }
+changelog-build = { cmd = "uv tool run --from towncrier==25.8.0 towncrier build --yes", description = "Assemble release notes (requires --version X.Y.Z); stages changelog and removes consumed fragments" }
 # Utility
 clean = { cmd = "find . -type f -name '*.pyc' -delete && find . -type d -name '__pycache__' -delete && rm -rf .venv .venv-py312 .venv-py313 .venv-py314" }
 

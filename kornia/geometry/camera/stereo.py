@@ -79,16 +79,8 @@ class StereoCamera:
         - the pixels are the integer pixel centres that :func:`~kornia.geometry.grid.create_meshgrid`
           enumerates, described in the Convention block on
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
-
-    .. warning::
-        :meth:`~kornia.geometry.camera.stereo.StereoCamera.reproject_disparity_to_3D` unbinds that pixel grid
-        as ``v, u``, while :func:`~kornia.geometry.grid.create_meshgrid` returns it as ``(x, y)``, so ``X`` is
-        computed from the **row** index and ``Y`` from the column index -- the opposite of
-        ``cv2.reprojectImageTo3D``, whose semantics this function was added to provide. The repository's own
-        real-data test passes only because its fixture lays a one-row, ten-column strip out as ten rows of one
-        column, which the swap cancels; its stored numbers are correct OpenCV output for that strip, so a fix
-        corrects the layout and keeps every literal. Tracked as
-        `#4269 <https://github.com/kornia/kornia/issues/4269>`_.
+        - ``u`` is the **column** index and ``v`` the **row** index, as in ``cv2.reprojectImageTo3D``:
+          :math:`X = (u - c_x) Z / f_x` and :math:`Y = (v - c_y) Z / f_y`.
 
     .. warning::
         Several of the constructor guards do not enforce the contract above. A differing ``cx`` is
@@ -97,11 +89,12 @@ class StereoCamera:
         any rig the constructor accepts. The ``tx * fx < 0`` guard is quantified with ``torch.all``, so a
         batch whose second element has the two cameras the wrong way round is accepted and reprojects that
         element behind the camera. And ``tx = 0`` passes the same guard, collapsing ``Q`` so that every
-        disparity reprojects to the origin with no ``inf`` to notice. The per-camera :math:`(3, 4)` shape check
-        compares ``shape[:1]`` rather than ``shape[-2:]``, so it can never fire and a :math:`(B, 4, 4)` pair
-        is accepted, building the same :math:`(B, 4, 4)` ``Q`` as the :math:`(B, 3, 4)` pair it should have
-        required. Tracked as
-        `#4270 <https://github.com/kornia/kornia/issues/4270>`_.
+        disparity reprojects to the origin with no ``inf`` to notice. These guard issues are tracked as
+        `#4270 <https://github.com/kornia/kornia/issues/4270>`_ and pinned by
+        ``test_wart_stereo_rejects_differing_principal_points_4270``,
+        ``test_wart_stereo_accepts_a_batch_with_one_positive_tx_fx_4270``,
+        ``test_wart_stereo_tx_zero_collapses_every_point_to_the_origin_4270`` in
+        ``tests/geometry/camera/test_stereo.py``.
 
     .. warning::
         The module-level :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` is rendered on
@@ -155,14 +148,15 @@ class StereoCamera:
                 f"Expected 'rectified_right_camera' to have 3 dimension. Got {rectified_right_camera.shape}."
             )
 
-        if rectified_left_camera.shape[:1] == (3, 4):
+        if rectified_left_camera.shape[-2:] != (3, 4):
             raise StereoException(
-                f"Expected each 'rectified_left_camera' to be of shape (3, 4).Got {rectified_left_camera.shape[:1]}."
+                f"Expected each 'rectified_left_camera' to be of shape (3, 4). Got {rectified_left_camera.shape[-2:]}."
             )
 
-        if rectified_right_camera.shape[:1] == (3, 4):
+        if rectified_right_camera.shape[-2:] != (3, 4):
             raise StereoException(
-                f"Expected each 'rectified_right_camera' to be of shape (3, 4).Got {rectified_right_camera.shape[:1]}."
+                "Expected each 'rectified_right_camera' to be of shape (3, 4). "
+                f"Got {rectified_right_camera.shape[-2:]}."
             )
 
         # Ensure same devices for cameras.
@@ -397,8 +391,13 @@ def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Te
 
     uv = create_meshgrid(rows, cols, normalized_coordinates=False, device=device, dtype=dtype)
     uv = uv.expand(batch_size, -1, -1, -1)
-    v, u = torch.unbind(uv, dim=-1)
-    v, u = torch.unsqueeze(v, -1), torch.unsqueeze(u, -1)
+    # create_meshgrid(normalized_coordinates=False) returns (x, y), so uv[..., 0] is the
+    # column and uv[..., 1] is the row. u is the column and v the row, as in
+    # cv2.reprojectImageTo3D, whose semantics this function provides (#2042). Unbinding
+    # them the other way round fed the row into u and the column into v, which transposed
+    # the two pixel indices in the result.
+    u, v = torch.unbind(uv, dim=-1)
+    u, v = torch.unsqueeze(u, -1), torch.unsqueeze(v, -1)
     uvd = torch.stack((u, v, disparity_tensor), 1).reshape(batch_size, 3, -1).permute(0, 2, 1)
     points = transform_points(Q_matrix, uvd).reshape(batch_size, rows, cols, 3)
 
