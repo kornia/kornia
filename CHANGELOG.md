@@ -407,16 +407,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
-* `warp_perspective3d` and `homography_warp3d` reproduce an identity warp. `homography_warp3d`
-  handed the `(d, x, y)` grid that `create_meshgrid3d` produces straight to `warp_grid3d` and
-  `torch.nn.functional.grid_sample`, both of which read the last axis as `(x, y, z)`, so every
-  voxel was sampled from the wrong place: an identity homography on a 4x4x4 `arange` volume
-  deviated by 45.0 at `align_corners=True` and 55.125 at `False`, and a +1 translation along `x`
-  moved slices instead of columns. The grid is reordered at that call site; `create_meshgrid3d`,
-  `normalize_pixel_coordinates3d` and `conv_soft_argmax3d` keep their documented `(d, x, y)`
-  order and `warp_affine3d`, which builds its grid with `F.affine_grid`, was never affected. The
-  `align_corners=False` identity still deviates after this change; that remaining residual is the
-  3D normalization convention tracked in #4503. Fixes #4502. (#4514)
 * `RandomCutMixV2` and `CutmixGenerator` document `cut_size` as what it is: the `[min, max]` clamp on the
   Beta-sampled mixing coefficient `lambda`, where the cut side is `floor(sqrt(1 - lambda) * side)`, so a larger
   `cut_size` gives a smaller cut. It was described as the "minimum and maximum cut ratio". A minimum of `1.0` is
