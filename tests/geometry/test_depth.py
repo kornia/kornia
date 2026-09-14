@@ -131,6 +131,14 @@ class TestDepthTo3d(BaseTester):
         # test for now that the grid is correct and have homogeneous coords
         self.assert_close(grid[..., 2], torch.ones_like(grid[..., 2]))
 
+    @pytest.mark.parametrize("shape", [(3, 3), (2, 1, 3, 3), (2, 2, 3, 3), (2, 3, 3, 3)])
+    def test_unproject_meshgrid_invalid_camera_rank(self, shape, device, dtype):
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(shape)
+        # An extra camera axis of size W must not broadcast across pixel columns.
+        with pytest.raises(ShapeError) as exc_info:
+            kornia.geometry.unproject_meshgrid(2, 3, camera_matrix, device=device, dtype=dtype)
+        assert f"Actual shape: {list(shape)}" in str(exc_info.value)
+
     @pytest.mark.parametrize(("height", "width"), [(1, 1), (1, 3), (3, 1), (2, 5)])
     def test_unproject_meshgrid_degenerate_sizes(self, height, width, device, dtype):
         # a single-column (W = 1) or single-row (H = 1) grid keeps its own axis
@@ -343,74 +351,6 @@ class TestUnprojectMeshgrid(BaseTester):
         asymmetric = unproject_meshgrid(2, 3, _k_asymmetric(device, dtype, fy=50.0), device=device, dtype=dtype)
         self.assert_close(asymmetric[0, 0, 0], torch.tensor([-0.04, -0.06, 1.0], device=device, dtype=dtype))
         self.assert_close(asymmetric[0, 1, 0], torch.tensor([-0.04, -0.04, 1.0], device=device, dtype=dtype))
-
-    def test_wart_unproject_meshgrid_rejects_unbatched_intrinsics_4271(self, device, dtype):
-        # Wart pin for kornia#4271: the guard is written ["*", "3", "3"],
-        # which admits a bare (3, 3) -- but the body then does ``camera_matrix[:, None, None]``, which on a 2-D
-        # tensor produces a (3, 1, 1, 3) and trips a LATER check whose message describes that shape rather than
-        # the one the caller passed. Singleton extra axes pass through, while non-singleton ones can
-        # either fail or accidentally broadcast against the width. They are not a supported batch layout.
-        # Snippet used to generate expected: unproject_meshgrid(2, 3, K, device=..., dtype=...) at four K
-        # shapes, executed 2026-09-06 at commit 1a96bfd1 (torch 2.14.0) -> (3, 3): ShapeError("Shape mismatch at
-        # dimension 0: expected 3, got 1. ... Actual shape: [3, 1, 1, 3]"); (1, 3, 3): (1, 2, 3, 3);
-        # (2, 1, 3, 3): (2, 1, 2, 3, 3); (2, 2, 3, 3): RuntimeError("The size of tensor a (3) must match the
-        # size of tensor b (2) at non-singleton dimension 3"). All four on cpu for float32, float64, float16
-        # and bfloat16 and on mps for float32 and float16.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4271 is repaired.
-        camera_matrix = _k_asymmetric(device, dtype)
-        with pytest.raises(ShapeError) as errinfo:
-            unproject_meshgrid(2, 3, camera_matrix[0], device=device, dtype=dtype)
-        assert "[3, 1, 1, 3]" in str(errinfo.value)
-        assert unproject_meshgrid(2, 3, camera_matrix, device=device, dtype=dtype).shape == (1, 2, 3, 3)
-        singleton = camera_matrix.expand(2, 3, 3).unsqueeze(1).contiguous()
-        assert singleton.shape == (2, 1, 3, 3)
-        assert unproject_meshgrid(2, 3, singleton, device=device, dtype=dtype).shape == (2, 1, 2, 3, 3)
-        with pytest.raises(RuntimeError, match="must match the size of tensor"):
-            unproject_meshgrid(2, 3, singleton.expand(2, 2, 3, 3).contiguous(), device=device, dtype=dtype)
-
-    def test_wart_unproject_meshgrid_extra_camera_axis_broadcasts_over_columns_4271(self, device, dtype):
-        # Wart pin for kornia#4271: the ["*", "3", "3"] guard admits a (2, 3, 3, 3) camera as readily as a
-        # (2, 1, 3, 3), and an extra axis of size 3 == W then broadcasts against the pixel width instead of
-        # being rejected, so each COLUMN is unprojected with a different cx. The (2, 2, 3, 3) case in the pin
-        # above raises; this one silently succeeds. Neither is a supported layout.
-        # Snippet used to generate expected: unproject_meshgrid(2, 3, K) with K = eye(3).expand(2, 3, 3, 3) and
-        # K[:, :, 0, 2] = [0, 2, 4], executed 2026-09-08 at commit 26ddb21e (torch 2.14.0) -> shape
-        # (2, 1, 2, 3, 3) with row 0 [[0, 0, 1], [-1, 0, 1], [-2, 0, 1]] on cpu for float32, float64, float16
-        # and bfloat16 and on mps for float32 and float16.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4271 is repaired.
-        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, 3, 3, 3).clone()
-        camera_matrix[:, :, 0, 2] = torch.tensor([0.0, 2.0, 4.0], device=device, dtype=dtype)
-        grid = unproject_meshgrid(2, 3, camera_matrix, device=device, dtype=dtype)
-        assert grid.shape == (2, 1, 2, 3, 3)
-        # Each column uses a different cx: u - cx = [0, -1, -2].
-        expected = torch.tensor(
-            [
-                [[0.0, 0.0, 1.0], [-1.0, 0.0, 1.0], [-2.0, 0.0, 1.0]],
-                [[0.0, 1.0, 1.0], [-1.0, 1.0, 1.0], [-2.0, 1.0, 1.0]],
-            ],
-            device=device,
-            dtype=dtype,
-        )
-        self.assert_close(grid, expected.expand(2, 1, 2, 3, 3))
-
-    @pytest.mark.xfail(
-        strict=True, reason="kornia#4271: the guard reports a [3, 1, 1, 3] shape the caller never passed"
-    )
-    def test_convention_unproject_meshgrid_error_names_the_shape_the_caller_passed_4271(self, device, dtype):
-        # Intended contract, asserted as a strict xfail so the repair makes it XPASS and forces this mark out:
-        # whatever unproject_meshgrid decides about (3, 3), the error a caller sees has to name the shape the
-        # caller actually passed. Today it names a (3, 1, 1, 3) built three lines into the body.
-        # Settled by #4271's Expected section, which calls exactly this -- "the guard should reject a bare
-        # (3, 3) at the guard rather than three lines later with a message about a (3, 1, 1, 3) shape the caller
-        # never passed" -- a focused fix, welcome as a PR. #4271 deliberately does NOT settle whether (3, 3) is
-        # then accepted, so this pin asserts only the message, not the acceptance: a repair that accepts (3, 3)
-        # by unsqueezing it passes through the ``try`` and XPASSes just as a repair of the message does.
-        camera_matrix = _k_asymmetric(device, dtype)
-        try:
-            unproject_meshgrid(2, 3, camera_matrix[0], device=device, dtype=dtype)
-        except ShapeError as err:
-            assert "[3, 3]" in str(err)
-            assert "[3, 1, 1, 3]" not in str(err)
 
 
 class TestDepthToNormals(BaseTester):

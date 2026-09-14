@@ -34,20 +34,10 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
         - ``return_inverse=True`` returns the inverse of ``Pz @ R``. That is the branch
           :func:`~kornia.geometry.calibration.undistort_points` applies, and it is what reproduces OpenCV's
           ``undistortPoints`` on this repository's own reference values.
-        - ``return_inverse=False`` returns ``Pz @ R.T``, so the two branches are not inverses of each other.
+        - ``return_inverse=False`` returns ``Pz @ R``, matching OpenCV's tilt projection.
         - Scalar angles return :math:`(3, 3)`. For non-scalar angles, a trailing singleton angle-component
           axis is consumed and every leading batch dimension is preserved; without that trailing singleton,
           the full input shape is treated as the batch shape.
-
-    .. warning::
-        OpenCV's ``computeTiltProjectionMatrix``, which this implementation cites, returns ``Pz @ R`` for the
-        forward branch, and so does the tilt step written out at the top of the ``kornia.geometry.calibration``
-        documentation page; the branch here returns ``Pz @ R.T``. Tracked as
-        `#4276 <https://github.com/kornia/kornia/issues/4276>`_. The consequence is silent while both angles
-        are zero and otherwise makes
-        :func:`~kornia.geometry.calibration.distort_points` and
-        :func:`~kornia.geometry.calibration.undistort_points` stop being inverses. The behaviour is documented
-        as it is by regression tests.
 
     Args:
         taux: Rotation angle in radians around the :math:`x`-axis with any shape, matching the other angle.
@@ -115,7 +105,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
         -2,
     )
 
-    tilt = Pz @ R.transpose(-1, -2)
+    tilt = Pz @ R
     return tilt
 
 
@@ -144,10 +134,6 @@ def distort_points(
           coefficient layout, with the two intrinsics in the mirrored roles.
         - Matching leading dimensions are preserved with or without tilt. Compilation and ONNX export always apply
           the tilt branch, including for zero tilt, where the resulting projection is the identity.
-
-    .. warning::
-        Non-zero tilt uses the forward branch of :func:`tilt_projection` and breaks the inverse round trip;
-        see that function and `#4276 <https://github.com/kornia/kornia/issues/4276>`_ for the explanation.
 
     Args:
         points: Input image points with shape :math:`(*, N, 2)`.

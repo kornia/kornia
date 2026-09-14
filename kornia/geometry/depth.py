@@ -74,22 +74,12 @@ def unproject_meshgrid(
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`: pixel ``(0, 0)`` is centred at ``(0, 0)``.
           ``camera_matrix`` is the :math:`(3, 3)` ``[[fx, 0, cx], [0, fy, cy], [0, 0, 1]]`` of that grid and
           there are no extrinsics, so the rays are in the **camera** frame.
-        - ``camera_matrix`` is batched: the supported form is :math:`(B, 3, 3)`, which returns
-          :math:`(B, H, W, 3)`. Extra leading dimensions are not part of the contract: today a singleton one
-          passes through by accident -- a :math:`(2, 1, 3, 3)` intrinsics returns :math:`(2, 1, H, W, 3)` --
-          and non-singleton ones either raise ``RuntimeError`` or broadcast against the pixel axes (an extra
-          axis matching ``W`` applies different intrinsics to each column); both are the subject of the
-          warning below. An unbatched :math:`(3, 3)` raises ``ShapeError`` (below).
+        - ``camera_matrix`` must have shape :math:`(B, 3, 3)`, which returns
+          :math:`(B, H, W, 3)`. Unbatched matrices and extra leading dimensions raise ``ShapeError``
+          at the input guard, with a message naming the caller's shape.
         - ``normalize_points=True`` returns the unit ray instead of the ray whose ``z`` is 1, which is the form
           :func:`~kornia.geometry.depth.depth_to_3d_v2` needs when its depth is a Euclidean ray length rather
           than a camera-frame ``z``.
-
-    .. warning::
-        The shape guard is written ``["*", "3", "3"]``, so a bare :math:`(3, 3)` ``camera_matrix`` passes it
-        and then raises a ``ShapeError`` further into the body, whose message describes a shape the caller
-        never passed rather than the one it did. The same guard admits non-singleton extra leading dimensions,
-        which then broadcast against the pixel axes instead of being rejected (above). Tracked as
-        `#4271 <https://github.com/kornia/kornia/issues/4271>`_.
 
     Args:
         height: height of image.
@@ -104,7 +94,7 @@ def unproject_meshgrid(
         tensor with a 3d point per pixel, with shape :math:`(B, H, W, 3)`.
 
     """
-    KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
 
     # create base coordinates grid. ``create_meshgrid`` returns ``(1, H, W, 2)``; drop only that leading
     # batch axis. A bare ``squeeze()`` would also drop ``H`` or ``W`` whenever either is 1, and the grid
@@ -153,8 +143,7 @@ def depth_to_3d_v2(
           the **camera** frame.
         - ``camera_matrix`` needs a leading batch dimension: a bare :math:`(3, 3)` passes this function's own
           guard and, when ``xyz_grid`` is not given, is then rejected inside
-          :func:`~kornia.geometry.depth.unproject_meshgrid`
-          (`#4271 <https://github.com/kornia/kornia/issues/4271>`_). When ``xyz_grid`` is given,
+          :func:`~kornia.geometry.depth.unproject_meshgrid`. When ``xyz_grid`` is given,
           ``camera_matrix`` is never read, so any matrix that passes the ``(*, 3, 3)`` guard -- a bare
           :math:`(3, 3)` included -- is silently accepted.
         - ``normalize_points=True`` reads ``depth`` as the Euclidean ray length from the camera centre instead
