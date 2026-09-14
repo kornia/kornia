@@ -29,6 +29,7 @@ from kornia.augmentation import (
     RandomTransplantation,
     RandomTransplantation3D,
 )
+from kornia.geometry.bbox import infer_bbox_shape
 
 from testing.base import BaseTester
 
@@ -317,11 +318,8 @@ class TestRandomCutMixV2(BaseTester):
 
         _, out_label = f(input, label)
 
-        expected_lambda = torch.tensor(
-            [0.7647058823529411, 0.5176470588235295],
-            device=device,
-            dtype=torch.float64,
-        )
+        w, h = infer_bbox_shape(f._params["crop_src"][0])
+        expected_lambda = w.to(torch.float64) * h.to(torch.float64) / (15 * 17)
 
         self.assert_close(out_label[0, :, 2], expected_lambda, rtol=0.0, atol=0.0)
 
