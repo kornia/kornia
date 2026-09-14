@@ -2,6 +2,9 @@
 
 <!-- Explain the problem and the change. A few clear sentences are enough. -->
 
+<!-- For user-visible changes, add changelog.d/<PR>.<type>.md (added, fixed, or breaking).
+For internal changes without a fragment, explain why release notes are unnecessary. -->
+
 ## Related issue or discussion
 
 <!-- Link one if it exists, for example: Fixes #123. This is optional. -->
