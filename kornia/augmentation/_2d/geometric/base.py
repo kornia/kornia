@@ -29,6 +29,8 @@ from kornia.geometry.keypoints import Keypoints
 class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     r"""GeometricAugmentationBase2D base class for customized geometric augmentation implementations.
 
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase2D`.
+
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
           element-wise for a batch.
@@ -37,6 +39,23 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
+
+    Convention:
+        - this base provides a matrix-based ``inverse`` interface. Whether a concrete augmentation can invert a
+          call depends on its implementation and configuration: slice-mode crops, for example, do not support it.
+          Inverse resampling cannot recover image or mask information lost through cropping, padding, or
+          interpolation. Tensor-form boxes may lose rotated corners through axis-aligned enclosure.
+        - container mask processing has dtype- and operator-specific limitations; see
+          `#4478 <https://github.com/kornia/kornia/issues/4478>`_ and
+          `#4479 <https://github.com/kornia/kornia/issues/4479>`_. Direct ``transform_masks`` calls use the
+          image dtype guard and therefore reject ``bool`` masks.
+        - a subclass supplies its own :meth:`inverse_transform` -- the base raises ``NotImplementedError`` --
+          while :meth:`compute_inverse_transformation` defaults to inverting the sampled matrix.
+
+    .. warning::
+        The ``resample`` half of an ``extra_args[DataKey.MASK]`` override is discarded here -- masks are
+        always nearest -- while the ``align_corners`` half does reach the sampler. Tracked in
+        `#4419 <https://github.com/kornia/kornia/issues/4419>`_.
 
     """
 
