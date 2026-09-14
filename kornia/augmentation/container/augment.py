@@ -185,10 +185,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         Tracked in `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
 
     .. note::
-        Inside this container a mix child (e.g. RandomMixUpV2, RandomCutMixV2, RandomMosaic) mixes the image only.
-        A ``class``/``label`` key raises ``NotImplementedError``, and ``mask``, box and ``keypoints`` keys are
-        returned unchanged, silently desynchronized from the mixed image, even where the class transforms that
-        key when called directly (``RandomMosaic`` boxes). Tracked in
+        Inside this container a mix child (e.g. RandomMixUpV2, RandomCutMixV2, RandomMosaic) dispatches
+        ``mask``, box and ``keypoints`` keys to the child's own handlers, using the same parameters as the
+        mixed image. Keys the child does not implement raise ``NotImplementedError``, matching a direct call
+        (for example ``RandomMosaic`` transforms boxes and refuses masks/keypoints). A ``class``/``label`` key
+        still raises ``NotImplementedError`` from the container. Fixed in
         `#4493 <https://github.com/kornia/kornia/issues/4493>`_.
 
     .. note::
