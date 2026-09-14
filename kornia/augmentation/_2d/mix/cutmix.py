@@ -48,8 +48,10 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         num_mix: cut mix times.
         beta: hyperparameter for generating cut size from beta distribution.
             Beta cannot be set to 0 after torch 1.8.0. If None, it will be set to 1.
-        cut_size: controlling the minimum and maximum cut ratio from [0, 1].
-            If None, it will be set to [0, 1], which means no restriction.
+        cut_size: the ``[min, max]`` clamp, within [0, 1], applied to the Beta-sampled mixing coefficient
+            ``lambda``, not the fraction of the image to cut. The cut side is ``floor(sqrt(1 - lambda) * side)``,
+            so a larger ``cut_size`` gives a *smaller* cut, and a minimum of 1 is rejected because it would cut
+            nothing. If None, it will be set to [0, 1], which means no restriction.
         same_on_batch: apply the same transformation across the batch.
             This flag will not maintain permutation order.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it

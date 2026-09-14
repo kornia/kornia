@@ -244,7 +244,7 @@ Several constructors accept ``nn.Parameter`` ranges and can propagate gradients 
 are not necessarily connected to cached samplers after ``load_state_dict``; reconstruct those configurations
 to change their sampling ranges (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
 
-Pickle support is configuration-dependent (`#4435 <https://github.com/kornia/kornia/issues/4435>`_), and
-lazy matrix state can retain the last input batch in a pickle or deepcopy
+The ``kornia.augmentation.auto`` policies cannot be pickled (`#4469 <https://github.com/kornia/kornia/issues/4469>`_),
+and lazy matrix state can retain the last input batch in a pickle or deepcopy
 (`#4482 <https://github.com/kornia/kornia/issues/4482>`_).
 See :doc:`/get-started/conventions` for replay and serialization details.
