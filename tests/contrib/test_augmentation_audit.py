@@ -609,8 +609,8 @@ class TestAugmentationAudit(BaseTester):
             assert report.geometry_status == "available"
             diagnostic_dtype = torch.float64 if dtype == torch.float64 else torch.float32
             self.assert_close(report.matrix[:, :2, 2], image_shift.to(diagnostic_dtype))
-            # Measure against the observed pixel mapping, without requiring the
-            # native crop to preserve any existing label-padding defect.
+            # Measure against the observed pixel mapping. Manually mixed rows can still
+            # return untransformed labels beside a transformed image.
             restored_points = outputs[1][:, 0].to(diagnostic_dtype) - image_shift.to(diagnostic_dtype)
             error = torch.linalg.vector_norm(restored_points - points[:, 0].to(diagnostic_dtype), dim=-1)
             self.assert_close(report.spatial[0].roundtrip_max, error)
@@ -621,6 +621,9 @@ class TestAugmentationAudit(BaseTester):
             self.assert_close(report.spatial[1].roundtrip_max, box_error)
             if bool((error > report.roundtrip_tolerance).any()):
                 assert "round-trip error exceeds" in report.summary()
+            if batch_prob is None or bool(selected.all()) or not bool(selected.any()):
+                # Whole-batch application or skip keeps labels aligned with the image (#4473).
+                self.assert_close(error, torch.zeros_like(error))
 
     @pytest.mark.parametrize("configured, effective", [("resample", "slice"), ("slice", "resample")])
     def test_crop_effective_mode_override(self, device, dtype, configured, effective):

@@ -72,10 +72,12 @@ Interpreting the report
   The report records this distinction and never evaluates image reconstruction.
   Cropping and downsampling emit possible content-loss warnings.
 * Partially applied ``RandomCrop`` mappings follow the returned image branch. A
-  skipped crop can currently leave an image unchanged while padding its labels;
-  the resulting round-trip error records that existing inconsistency. Mixed
-  shape-changing operations are reported as ``unsupported`` when their cached
-  matrices cannot certify every returned image row.
+  crop skipped for the whole batch leaves images and labels unchanged, including
+  with ``padding`` or ``pad_if_needed`` (#4473). Manually supplied parameters that
+  apply the crop to only some rows can still return a transformed image with
+  untransformed labels on the skipped rows; the resulting round-trip error records
+  that inconsistency. Mixed shape-changing operations are reported as
+  ``unsupported`` when their cached matrices cannot certify every returned image row.
 * Non-rigid and unknown operations are explicitly unsupported for matrix
   composition. A transformation-matrix identity fallback is not treated as proof
   of correspondence. Supported neighboring operations remain in the provenance.
