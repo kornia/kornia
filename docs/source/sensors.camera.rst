@@ -7,7 +7,14 @@ kornia.sensors.camera
 .. currentmodule:: kornia.sensors.camera
 
 .. warning::
-   :mod:`kornia.sensors.camera` is an experimental API and is subject to change. Once finished, it will subsume :mod:`kornia.geometry.camera`, although today the two are kept separate by design -- they share the mathematical Pinhole mapping but differ in input types, camera-axis broadcasting, projection rounding, and zero/near-zero depth handling (see the Convention block on :class:`CameraModelBase`), which is recorded in `#4274 <https://github.com/kornia/kornia/issues/4274>`_.
+   :mod:`kornia.sensors.camera` is an experimental, ``Vector``-typed future direction for camera models and is
+   subject to change. All four built-in models listed below are implemented, but :mod:`kornia.geometry.camera`
+   remains part of Kornia's :doc:`Stable core </get-started/stability>` and is not deprecated. Use
+   :mod:`kornia.geometry.camera` when you need the current stability guarantees; choose this module when you
+   intentionally want the experimental camera-model API and can accommodate future changes. The two APIs are kept
+   separate by design and are not drop-in replacements: their Pinhole paths differ in input types, camera-axis
+   broadcasting, projection rounding, and zero/near-zero depth handling (see the Convention block on
+   :class:`CameraModelBase`), as recorded in `#4274 <https://github.com/kornia/kornia/issues/4274>`_.
 
 The objective of :mod:`kornia.sensors.camera` is to express well-known camera models such as Pinhole, Kannala Brandt, and others in terms of distortion and projection types while ensuring differentiability.
 We also aim to equip the user with tools to define custom camera models.
