@@ -842,7 +842,7 @@ def main(argv: list[str] | None = None) -> int:
                     print(
                         f"::error file={report.path}::Removed from __all__: {sorted(tracked)}. If deliberate, "
                         f"drop these names from this module's {INVENTORY_PATH} entry in this PR. "
-                        f"Honor the deprecation window and document the removal in CHANGELOG.md."
+                        f"Honor the deprecation window and document the removal in changelog.d/<PR>.breaking.md."
                     )
                 stale = untracked & old_explicit.get(_module_name(report.path), set())
                 if stale:
@@ -857,7 +857,7 @@ def main(argv: list[str] | None = None) -> int:
                         f"::error file={report.path}::Removed from __all__: {sorted(untracked)}. Add these exact "
                         f"module/name pairs to {REMOVALS_PATH}; they have no exact-module inventory entry. "
                         f"Update affected package inventory entries too, honor the deprecation window, "
-                        f"and document the removal in CHANGELOG.md."
+                        f"and document the removal in changelog.d/<PR>.breaking.md."
                     )
             else:
                 print(f"::notice file={report.path}::Removed from __all__ (exempt, see comment above): {unrecorded}")
