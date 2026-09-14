@@ -407,6 +407,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug fixes
 
+* `AugmentationSequential` dispatches ``mask``, box and ``keypoints`` keys through a mix child's own handlers
+  instead of silently returning them unchanged next to a mixed image. Unsupported keys raise
+  ``NotImplementedError`` as a direct call does; ``RandomMosaic`` boxes are transformed. (#4493)
+
 * `RandomCutMixV2` and `CutmixGenerator` document `cut_size` as what it is: the `[min, max]` clamp on the
   Beta-sampled mixing coefficient `lambda`, where the cut side is `floor(sqrt(1 - lambda) * side)`, so a larger
   `cut_size` gives a smaller cut. It was described as the "minimum and maximum cut ratio". A minimum of `1.0` is
