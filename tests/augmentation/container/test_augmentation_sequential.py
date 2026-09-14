@@ -734,31 +734,46 @@ class TestConventionAugmentationSequential(BaseTester):
         self.assert_close(out_masks[1], output[:1])
         assert not torch.equal(out_masks[1], output[1:])
 
-    def test_wart_mix_children_pass_annotations_through_4493(self, device, dtype):
-        # Wart pin (#4493): the container's mask, box and keypoint handlers have no branch for a mix child, so
-        # those keys come back unchanged next to a mixed image. Called directly, RandomMosaic transforms boxes
-        # and RandomMixUpV2 raises NotImplementedError on a mask; the container hides both. A class key still
-        # raises. Seed 0 on a 16x16 batch: every listed mix applies (a 6x8 fixture can draw an empty cut box).
+    def test_mix_children_dispatch_annotation_keys_4493(self, device, dtype):
+        # Regression (#4493): mix children used to fall through Mask/Box/KeypointSequentialOps to a silent
+        # passthrough, so annotations desynchronized from the mixed image. The container now dispatches to
+        # the child's own handlers: RandomMosaic transforms boxes (container xyxy_plus path), and unsupported
+        # keys raise NotImplementedError as a direct call does. A class key still raises from the container.
         if dtype == torch.bfloat16:
             pytest.skip("Tracked in #4467: the mix forward path has no bfloat16 DType")
+        from kornia.geometry.boxes import Boxes
+
         image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         boxes = torch.tensor([[[0.0, 0.0, 2.0, 2.0]], [[1.0, 1.0, 3.0, 3.0]]], device=device, dtype=dtype)
         mask = torch.arange(2, device=device, dtype=dtype).reshape(2, 1, 1, 1).expand(2, 1, 16, 16).clone()
         keypoints = torch.tensor([[[1.0, 1.0]], [[2.0, 2.0]]], device=device, dtype=dtype)
+
+        # RandomMosaic boxes are transformed inside the container (no longer passthrough).
+        seq = K.AugmentationSequential(K.RandomMosaic(p=1.0), data_keys=["input", "bbox_xyxy"])
         torch.manual_seed(0)
-        container = K.AugmentationSequential(
-            K.RandomMosaic(p=1.0), data_keys=["input", "bbox_xyxy", "mask", "keypoints"]
-        )
-        out_image, out_boxes, out_mask, out_keypoints = container(image, boxes, mask, keypoints)
-        assert not torch.equal(out_image, image)  # the image was mixed
-        self.assert_close(out_boxes, boxes, rtol=0, atol=0)
-        self.assert_close(out_mask, mask, rtol=0, atol=0)
-        self.assert_close(out_keypoints, keypoints, rtol=0, atol=0)
-        torch.manual_seed(0)
-        direct_boxes = K.RandomMosaic(p=1.0, data_keys=["input", "bbox_xyxy"])(image, boxes)[1]
-        assert not torch.equal(direct_boxes, boxes)  # the same draw moves the boxes when called directly
-        with pytest.raises(NotImplementedError):
-            K.RandomMixUpV2(p=1.0)(image, mask, data_keys=["input", "mask"])
+        out_image, out_boxes = seq(image, boxes)
+        assert not torch.equal(out_image, image)
+        assert not torch.equal(out_boxes, boxes)
+        params = seq._params[0].data
+        mosaic = K.RandomMosaic(p=1.0)
+        expected = mosaic.transform_boxes(
+            Boxes.from_tensor(boxes, mode="xyxy_plus"), params, mosaic.flags
+        ).to_tensor(mode="xyxy_plus")
+        self.assert_close(out_boxes, expected, rtol=0, atol=0)
+
+        # Unsupported annotation keys raise, matching a direct call (no silent passthrough).
+        for factory, key, payload in (
+            (lambda: K.RandomMixUpV2(p=1.0), "mask", mask),
+            (lambda: K.RandomMixUpV2(p=1.0), "bbox_xyxy", boxes),
+            (lambda: K.RandomMixUpV2(p=1.0), "keypoints", keypoints),
+            (lambda: K.RandomMosaic(p=1.0), "mask", mask),
+            (lambda: K.RandomMosaic(p=1.0), "keypoints", keypoints),
+            (lambda: K.RandomCutMixV2(p=1.0), "mask", mask),
+            (lambda: K.RandomJigsaw(p=1.0), "mask", mask),
+        ):
+            with pytest.raises(NotImplementedError):
+                K.AugmentationSequential(factory(), data_keys=["input", key])(image, payload)
+
         with pytest.raises(NotImplementedError, match="class labels"):
             K.AugmentationSequential(K.RandomMixUpV2(p=1.0), data_keys=["input", "class"])(
                 image, torch.tensor([0, 1], device=device)
