@@ -410,7 +410,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `RandomShear` and `RandomAffine(shear=...)` can be moved off CPU with a scalar or 2-tuple `shear`. Both generators
   built the x shear range without passing the target device and dtype, so it stayed on CPU in the default dtype and
   `.to("cuda")` raised when it was stacked against the already-placed y range. A 4-tuple `shear` did not raise but
-  kept its ranges on CPU, and in float32 after a float64 move. (#4415)
+  kept its ranges on CPU, and in float32 after a float64 move. (#4415, #4507)
 * `RandomCutMixV2` and `CutmixGenerator` document `cut_size` as what it is: the `[min, max]` clamp on the
   Beta-sampled mixing coefficient `lambda`, where the cut side is `floor(sqrt(1 - lambda) * side)`, so a larger
   `cut_size` gives a smaller cut. It was described as the "minimum and maximum cut ratio". A minimum of `1.0` is
