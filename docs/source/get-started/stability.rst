@@ -106,7 +106,7 @@ Recording a completed deprecation
 ---------------------------------
 
 Once the deprecation window has passed, remove the API and describe the removal
-in ``CHANGELOG.md``. Update any existing entries in ``tests/api_surface.json``
+in a ``changelog.d/<PR>.breaking.md`` fragment. Update any existing entries in ``tests/api_surface.json``
 in the same pull request; keep the module key, using an empty list if necessary.
 The import-surface check verifies that recorded names leave the export surface
 in that change. An inventory edit acknowledges an ``__all__`` removal only for
