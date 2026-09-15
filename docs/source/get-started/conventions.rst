@@ -199,13 +199,13 @@ covers a slightly different extent of the source image.
 
    The 3-D warps are the other exception. ``normal_transform_pixel3d`` and
    ``normalize_homography3d`` take no ``align_corners`` at all, so
-   :func:`kornia.geometry.transform.warp_affine3d` has the same mismatch at
-   ``align_corners=False`` (`#4503 <https://github.com/kornia/kornia/issues/4503>`_), and
-   :func:`kornia.geometry.transform.warp_perspective3d` is separately wrong under **both**
-   settings because ``homography_warp3d`` hands the ``(d, x, y)`` grid that
-   ``create_meshgrid3d`` produces straight to ``grid_sample``, which reads a 5-D grid as
-   ``(x, y, z)``; the grid order itself is the documented kornia convention, the conversion is
-   what is missing (`#4502 <https://github.com/kornia/kornia/issues/4502>`_).
+   :func:`kornia.geometry.transform.warp_affine3d` and
+   :func:`kornia.geometry.transform.warp_perspective3d` normalize with the corner-aligned
+   convention whatever flag they pass to ``grid_sample``, and have the same mismatch at
+   ``align_corners=False``: an identity ``warp_perspective3d`` changes a 4x4x4 ``arange``
+   volume by up to ``55.1`` there, against exactly ``0`` at ``align_corners=True``. Pass
+   ``align_corners=True`` to the 3-D warps until this is fixed. Tracked in
+   `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
 
 Bounding boxes
 --------------
