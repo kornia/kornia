@@ -711,30 +711,39 @@ class TestNoiseAndWeatherConventions(BaseTester):
         )
         assert smaller(image).shape == image.shape
 
-    # Issue #4567: the three integer ranges are float draws truncated to integers, and the generator's
-    # `hi + 1` shift goes through the `bounds` argument that `_range_bound` ignores for a tuple, so the
-    # upper bound is never drawn and a signed `drop_width` truncates both `(-1, 0)` and `(0, 1)` to 0.
+    # The three integer ranges are closed and uniform (the fix for #4567: the sampler covers
+    # ``[lo, hi + 1)`` and the draw is floored, where a truncating cast of a ``[lo, hi)`` draw used to
+    # skip the upper bound and fold ``(-1, 0)`` and ``(0, 1)`` onto ``0``).
     # Snippet used to generate expected:
     #   torch.manual_seed(0)
     #   p = K.RandomRain(number_of_drops=(2, 4), drop_height=(5, 20), drop_width=(-5, 5), p=1.0)
-    #   p = p.forward_parameters((20000, 1, 64, 64))
+    #   p = p.forward_parameters((22000, 1, 64, 64))
     #   for k in ("number_of_drops_factor", "drop_height_factor", "drop_width_factor"):
-    #       print(k, collections.Counter(p[k].flatten().tolist()))
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> drops `{2: 9939, 3: 10061}`, heights `5..19` (about
-    # 1333 each, no 20), widths `-4..4` with `0: 4075` against about 2000 for every other value.
+    #       print(k, sorted(collections.Counter(p[k].flatten().tolist()).items()))
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> drops 2..4, heights 5..20, widths -5..5, every count
+    # within 10% of the uniform expectation (7333, 1375 and 2000).
     @pytest.mark.device_agnostic
-    def test_wart_random_rain_upper_bound_is_never_drawn_4567(self):
+    def test_convention_random_rain_integer_ranges_are_closed_and_uniform(self):
         torch.manual_seed(_FORWARD_SEED)
         aug = K.RandomRain(number_of_drops=(2, 4), drop_height=(5, 20), drop_width=(-5, 5), p=1.0)
-        params = aug.forward_parameters((20000, 1, 64, 64))
-        drops = params["number_of_drops_factor"].flatten()
-        heights = params["drop_height_factor"].flatten()
-        widths = params["drop_width_factor"].flatten()
-        assert (int(drops.min()), int(drops.max())) == (2, 3)
-        assert (int(heights.min()), int(heights.max())) == (5, 19)
-        assert (int(widths.min()), int(widths.max())) == (-4, 4)
-        zeros, ones = int((widths == 0).sum()), int((widths == 1).sum())
-        assert zeros > 1.5 * ones and ones > 1000
+        params = aug.forward_parameters((22000, 1, 64, 64))
+        for key, low, high in (
+            ("number_of_drops_factor", 2, 4),
+            ("drop_height_factor", 5, 20),
+            ("drop_width_factor", -5, 5),
+        ):
+            drawn = params[key].flatten()
+            assert drawn.dtype == torch.long
+            counts = torch.bincount(drawn - low, minlength=high - low + 1)
+            assert (int(drawn.min()), int(drawn.max())) == (low, high), key
+            expected = drawn.numel() / (high - low + 1)
+            assert bool(((counts > 0.9 * expected) & (counts < 1.1 * expected)).all()), (key, counts.tolist())
+
+    # A reversed range is rejected at construction, where the samplers are built.
+    @pytest.mark.device_agnostic
+    def test_convention_random_rain_rejects_a_reversed_range(self):
+        with pytest.raises(ValueError, match="drop_height"):
+            K.RandomRain(number_of_drops=(1, 1), drop_height=(6, 5), drop_width=(1, 1), p=1.0)
 
     # Row 6c-28 in the state #4453 left it (it closed #4448): with ``same_on_batch=True`` every
     # sample of the batch gets the same number of drops, the same drop size and the same coordinates;

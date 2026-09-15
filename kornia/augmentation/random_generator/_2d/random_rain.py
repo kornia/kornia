@@ -24,6 +24,18 @@ from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _
 from kornia.core.utils import _extract_device_dtype
 
 
+def _closed_integer_range(value: tuple[int, int], name: str) -> torch.Tensor:
+    """Return ``[lo, hi + 1]`` as a float tensor for a closed integer range ``(lo, hi)``."""
+    if isinstance(value, torch.Tensor):
+        value = tuple(value.flatten().tolist())
+    if not isinstance(value, (tuple, list)) or len(value) != 2:
+        raise ValueError(f"`{name}` must be a (lower, upper) pair. Got {value}.")
+    lower, upper = value
+    if lower > upper:
+        raise ValueError(f"`{name}` lower bound should be smaller than or equal to its upper bound. Got {value}.")
+    return torch.tensor([float(lower), float(upper) + 1.0])
+
+
 class RainGenerator(RandomGeneratorBase):
     def __init__(
         self, number_of_drops: tuple[int, int], drop_height: tuple[int, int], drop_width: tuple[int, int]
@@ -38,24 +50,11 @@ class RainGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        number_of_drops = _range_bound(
-            self.number_of_drops,
-            "number_of_drops",
-            center=self.number_of_drops[0] / 2 + self.number_of_drops[1] / 2,
-            bounds=(self.number_of_drops[0], self.number_of_drops[1] + 1),
-        ).to(device)
-        drop_height = _range_bound(
-            self.drop_height,
-            "drop_height",
-            center=self.drop_height[0] / 2 + self.drop_height[1] / 2,
-            bounds=(self.drop_height[0], self.drop_height[1] + 1),
-        ).to(device)
-        drop_width = _range_bound(
-            self.drop_width,
-            "drop_width",
-            center=self.drop_width[0] / 2 + self.drop_width[1] / 2,
-            bounds=(self.drop_width[0], self.drop_width[1] + 1),
-        ).to(device)
+        # Each range is a closed integer interval: the sampler covers ``[lo, hi + 1)`` and the forward
+        # floors the draw, so every integer from ``lo`` to ``hi`` is drawn with the same probability.
+        number_of_drops = _closed_integer_range(self.number_of_drops, "number_of_drops").to(device)
+        drop_height = _closed_integer_range(self.drop_height, "drop_height").to(device)
+        drop_width = _closed_integer_range(self.drop_width, "drop_width").to(device)
 
         drop_coordinates = _range_bound((0, 1), "drops_coordinate", center=0.5, bounds=(0, 1)).to(
             device=device, dtype=dtype
@@ -70,14 +69,22 @@ class RainGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.drop_width, self.drop_height, self.number_of_drops])
         # self.ksize_factor.expand((batch_size, -1))
-        number_of_drops_factor = _adapted_rsampling((batch_size,), self.number_of_drops_sampler, same_on_batch).to(
-            device=_device, dtype=torch.long
+        # ``floor`` rather than a truncating integer cast: a signed range such as ``drop_width=(-5, 5)``
+        # would otherwise fold ``(-1, 0)`` and ``(0, 1)`` onto ``0`` and draw it twice as often.
+        number_of_drops_factor = (
+            _adapted_rsampling((batch_size,), self.number_of_drops_sampler, same_on_batch)
+            .floor()
+            .to(device=_device, dtype=torch.long)
         )
-        drop_height_factor = _adapted_rsampling((batch_size,), self.drop_height_sampler, same_on_batch).to(
-            device=_device, dtype=torch.long
+        drop_height_factor = (
+            _adapted_rsampling((batch_size,), self.drop_height_sampler, same_on_batch)
+            .floor()
+            .to(device=_device, dtype=torch.long)
         )
-        drop_width_factor = _adapted_rsampling((batch_size,), self.drop_width_sampler, same_on_batch).to(
-            device=_device, dtype=torch.long
+        drop_width_factor = (
+            _adapted_rsampling((batch_size,), self.drop_width_sampler, same_on_batch)
+            .floor()
+            .to(device=_device, dtype=torch.long)
         )
         coordinates_factor = _adapted_rsampling(
             (batch_size, int(number_of_drops_factor.max().item()) if number_of_drops_factor.numel() > 0 else 0, 2),
