@@ -741,6 +741,7 @@ class TestConventionAugmentationSequential(BaseTester):
         # the child's own handlers: RandomMosaic transforms boxes (container xyxy_plus path), and unsupported
         # keys raise NotImplementedError as a direct call does. A class key still raises from the container.
         from kornia.geometry.boxes import Boxes
+
         image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
         boxes = torch.tensor([[[0.0, 0.0, 2.0, 2.0]], [[1.0, 1.0, 3.0, 3.0]]], device=device, dtype=dtype)
         mask = torch.arange(2, device=device, dtype=dtype).reshape(2, 1, 1, 1).expand(2, 1, 16, 16).clone()
