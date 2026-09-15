@@ -336,14 +336,23 @@ Randomness in augmentations
 - ``set_rng_device_and_dtype`` requests a sampling device and dtype. It
   updates the gate configuration and asks the parameter generator to rebuild
   its samplers, but some generators retain internal CPU tensors or ignore
-  the requested precision. A move can fail in the setter itself or during
-  a later forward, depending on the configuration
-  (`#4415 <https://github.com/kornia/kornia/issues/4415>`_,
-  `#4426 <https://github.com/kornia/kornia/issues/4426>`_).
+  the requested precision
+  (`#4426 <https://github.com/kornia/kornia/issues/4426>`_).
   Returned parameter placement is separate: an affine without shear can
   sample angles on MPS and return them on CPU. Numeric ranges or tensor-valued
   constructor ranges can determine the returned device/dtype, so inspecting
   ``_params`` alone does not establish where or at what precision draws ran.
+- Module migration through ``.to(...)`` also updates the augmentation gate
+  and registered parameter generators' sampling configuration, including
+  moves through a container. A dtype-only move preserves the sampling device;
+  a device-only move preserves its dtype. Invalid integer-dtype requests are
+  rejected before changing the samplers. This does not make every generator
+  support every device/dtype, or force returned parameters onto the sampling
+  device. This limitation affects multiple generators, including numeric-range
+  ``RandomAffine``, ``RandomPerspective``, ``RandomRotation``, ``RandomCrop``,
+  and ``RandomShear`` with scalar, pair, or four-value ranges: returned transform
+  parameters can remain CPU float32 while ``batch_prob`` is on the accelerator
+  (`#4426 <https://github.com/kornia/kornia/issues/4426>`_).
 - Reproducibility uses the global generators on the sampling devices.
   ``torch.manual_seed`` reproduces draws for the same configuration, inputs,
   backend and dtype; matching across devices or PyTorch versions is not

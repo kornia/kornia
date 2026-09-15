@@ -47,6 +47,23 @@ class RandomPerspective(GeometricAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
 
+    Convention:
+        - See :class:`~kornia.augmentation.AugmentationBase2D` for input, sampling, and replay,
+          :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
+          :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
+          The source corners are the inclusive pixel coordinates ``(0, 0)``,
+          ``(W - 1, 0)``, ``(W - 1, H - 1)``, and ``(0, H - 1)``; :attr:`transform_matrix` maps those source
+          coordinates to the sampled destination corners.
+        - ``basic`` samples each corner inward by at most ``distortion_scale * (W, H) / 2``. ``area_preserving``
+          samples each coordinate in both directions over the same extent. Defaults are bilinear resampling, zero
+          padding, and ``align_corners=False``. ``same_on_batch=True`` reuses the sampled destination corners for
+          every selected sample.
+
+        - With ``distortion_scale=0`` and ``H > 1``, ``W > 1``, the image warp is identity up to numerical
+          precision for either ``align_corners`` setting. If either spatial dimension is 1, coincident source
+          corners instead produce a NaN transformation matrix and output even at zero distortion. This limitation
+          is recorded in `#4538 <https://github.com/kornia/kornia/pull/4538#pullrequestreview-5209122169>`_.
+
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_pespective`.
 

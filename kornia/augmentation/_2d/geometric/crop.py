@@ -70,9 +70,37 @@ class RandomCrop(GeometricAugmentationBase2D):
         Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
-        ``p`` selects or skips the whole batch; ``same_on_batch`` controls whether selected images share
-        the same crop parameters. When the batch is skipped, the returned images, masks, keypoints, and
-        boxes remain unchanged, including when ``padding`` or ``pad_if_needed`` is set.
+    Convention:
+        See :class:`~kornia.augmentation.AugmentationBase2D` for input, dtype, probability, and replay,
+        :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
+        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
+        ``size`` is an ``(height, width)`` tuple; unlike
+        :class:`CenterCrop`, a bare integer raises ``AssertionError`` by default, or ``TypeError`` during padding
+        computation with ``pad_if_needed=True``. The split is tracked in
+        `#4417 <https://github.com/kornia/kornia/issues/4417>`_. Here ``p`` selects or skips the whole batch together.
+        Within a selected batch, each image samples a crop independently unless ``same_on_batch=True``.
+        When skipped, images, masks, keypoints, and boxes remain unchanged, even with padding configured.
+
+        Explicit ``padding`` is applied before sampling, in ``(left, top, right, bottom)`` order after its scalar
+        or two-value shorthand is expanded. ``pad_if_needed=True`` takes the per-side maximum of that padding and
+        the positive crop-minus-input size difference on each axis. Without explicit padding this is symmetric;
+        asymmetric explicit padding can remain asymmetric after the merge.
+
+        With ``pad_if_needed=False``, an oversized request does not raise. Slice mode resizes the available slice
+        to the requested size. Resample mode instead uses a mis-scaled warp that can blend in zero padding; when
+        either axis is oversized, both matrix axes are rescaled, including an axis that would fit. This wart is
+        tracked in `#4414 <https://github.com/kornia/kornia/issues/4414>`_. The same correction compares against the
+        unpadded input even when explicit padding makes the crop fit: slice-mode images then disagree with the
+        matrix-transformed keypoints and boxes, and resample-mode images are also distorted. This explicit-padding
+        defect is tracked in `#4542 <https://github.com/kornia/kornia/issues/4542>`_.
+
+        Slice mode calls ``crop_by_indices`` with that
+        function's bilinear/``align_corners=None`` defaults, ignoring this class's ``resample`` and
+        ``align_corners`` flags. Resample mode uses ``crop_by_transform_mat`` with the configured interpolation and
+        ``align_corners``; it maps constant, replicate, and reflect pre-padding to zero, border, and reflection
+        sampler padding respectively. Only
+        resample mode supports :meth:`inverse`; inverse removes pre-crop padding but cannot restore cropped or
+        interpolated content.
 
     Examples:
         >>> import torch
