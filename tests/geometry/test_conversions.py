@@ -4052,11 +4052,13 @@ class TestNormalTransformPixel(BaseTester):
         assert matrix.shape == (1, 3, 3)
         # Asserting the value, not only the dtype and shape: an all-zero matrix is the failure this
         # whole change is about, and it would satisfy both of those.
-        expected = torch.tensor([[0.5, 0.0, -1.0], [0.0, 2.0 / 3.0, -1.0], [0.0, 0.0, 1.0]], device=device)
         # Widening the result rather than narrowing the expectation keeps the complex cell exact
         # (a cast the other way discards the imaginary part and warns), and the tolerance is set
-        # for float8_e4m3fn, where 2/3 is 0.6875.
-        self.assert_close(matrix.to(torch.complex128), expected[None].to(torch.complex128), atol=0.05, rtol=0.05)
+        # for float8_e4m3fn, where 2/3 is 0.6875. The comparison runs on cpu because mps supports
+        # neither float64 nor complex128, and the device is asserted separately.
+        assert matrix.device.type == torch.device(device).type
+        expected = torch.tensor([[[0.5, 0.0, -1.0], [0.0, 2.0 / 3.0, -1.0], [0.0, 0.0, 1.0]]])
+        self.assert_close(matrix.cpu().to(torch.complex128), expected.to(torch.complex128), atol=0.05, rtol=0.05)
 
     def test_convention_integer_dtype_rejection_is_unconditional_3959(self, device):
         # The guard is deliberately NOT a KORNIA_CHECK. KORNIA_CHECK is gated on
