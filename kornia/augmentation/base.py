@@ -173,8 +173,8 @@ class _BasicAugmentationBase(nn.Module):
         .. warning::
             This updates both the gate and the parameter generator's samplers, but returned parameters
             can be cast to a different device/dtype; inspecting ``_params`` alone does not reveal where
-            sampling occurred. Some classes fail after moving their samplers to an accelerator. Tracked in
-            `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the
+            sampling occurred. Some generators also keep internal tensors at their earlier placement or
+            precision. Tracked in `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the
             :doc:`/get-started/conventions` page describes placement and the affected classes.
 
         """

@@ -52,6 +52,10 @@ class RandomHue(IntensityAugmentationBase2D):
           straight to that primitive shifts the hue by a different amount.
         - the result is not clamped, so an input outside ``[0, 1]`` gives an output outside it.
 
+    .. warning::
+        In ``float16`` a black pixel comes back as NaN, because ``rgb_to_hsv``'s ``eps`` underflows
+        there. Tracked in `#4560 <https://github.com/kornia/kornia/issues/4560>`_.
+
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_hue`
 

@@ -42,10 +42,10 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - the output is exactly :func:`kornia.enhance.normalize_min_max` of the input: every channel of
-          every sample is rescaled onto ``[0, 1]`` independently of the other channels and the other
-          samples. This is a rescale, not a clamp, so an input outside ``[0, 1]`` is mapped onto
-          ``[0, 1]`` rather than clipped.
+        - the output is exactly :func:`kornia.enhance.normalize_min_max` of the input: each channel of
+          each sample is rescaled from its own minimum and maximum, independently of the other channels
+          and the other samples, with the constant channel noted below as the exception. This is a
+          rescale, not a clamp, so an input outside ``[0, 1]`` is mapped into range rather than clipped.
 
     .. note::
         This function internally uses :func:`kornia.enhance.normalize_min_max`. A channel with a single value

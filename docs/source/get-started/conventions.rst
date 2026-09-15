@@ -308,8 +308,9 @@ Augmentations
   :func:`kornia.geometry.transform.rotate`, and clockwise with
   :class:`kornia.augmentation.RandomAffine`
   (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
-- The 2D intensity augmentations assume the ``[0, 1]`` float range but do
-  not check it, and they disagree about what happens outside it: some keep
+- The 2D intensity augmentations assume the ``[0, 1]`` float range, and no
+  base-class check validates it on the way in. They disagree about what
+  happens outside that range: some keep
   the output inside ``[0, 1]``, :class:`kornia.augmentation.RandomPlanckianJitter`
   bounds only the upper end, some carry the input's range through, and
   :class:`kornia.augmentation.RandomEqualize` raises. Several return an

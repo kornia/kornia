@@ -45,8 +45,8 @@ class RandomPosterize(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - ``bits`` counts levels, not steps: ``bits=(k, k)`` leaves ``2 ** k`` distinct values, so ``0``
-          gives a constant image and ``8`` the identity. The reduction is a ``uint8`` round trip inside
+        - ``bits=(k, k)`` leaves ``2 ** k`` distinct values, so ``0`` gives a constant image and ``8``
+          the identity. The reduction is a ``uint8`` round trip inside
           :func:`kornia.enhance.posterize`, and the drawn factor is integral.
         - an ``int`` argument is the lower bound of the sampled range ``[x, 8]`` -- the opposite reading
           from :class:`RandomSharpness`, whose scalar argument is an upper bound.

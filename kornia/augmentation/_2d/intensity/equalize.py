@@ -41,13 +41,18 @@ class RandomEqualize(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - among the 2D intensity augmentations this is the one that rejects an input outside ``[0, 1]``.
-          The others either keep their output inside that range or carry the input's range through, so
-          this is the only class on which an unnormalized image raises instead of being transformed.
+        - among the 2D intensity augmentations this is the one that raises on an out-of-``[0, 1]`` input
+          instead of transforming it; the others keep the output inside that range, bound one end, or
+          carry the input's range through. See
+          :class:`~kornia.augmentation.IntensityAugmentationBase2D` for that split.
+        - the rejection is not exactly at the boundary: an input marginally above ``1`` is still
+          admitted, because what is checked is the value the histogram indexes.
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize`, which expects the input in
-        :math:`[0, 1]` and raises a ``RuntimeError`` naming that range for values it cannot equalize.
+        :math:`[0, 1]` and raises a ``RuntimeError`` for values it cannot equalize. Where the value check
+        runs, its message names that range; on MPS the check is skipped by design
+        (``aten::_assert_async`` has no MPS kernel), so a raw indexing error surfaces instead.
 
     Examples:
         >>> rng = torch.manual_seed(0)

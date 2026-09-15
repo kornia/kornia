@@ -48,21 +48,23 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           :class:`~kornia.augmentation.container.AugmentationSequential.inverse` can run, it skips 2D intensity
           children and reverses supported geometric children.
         - these classes assume the library-wide ``[0, 1]`` float image value range, stated under
-          "Image tensors" in :doc:`/get-started/conventions`. Nothing checks it on the way in, so it is a
-          precondition rather than a validated contract.
+          "Image tensors" in :doc:`/get-started/conventions`. No base-class check validates it on the way
+          in, so it is a precondition rather than a validated contract.
         - outside that range the concrete classes split four ways. One group keeps the output inside
           ``[0, 1]`` -- by a clamp, by a ``uint8`` round trip or by rescaling, depending on the class;
           :class:`RandomPlanckianJitter` bounds the upper end only, so a negative input stays negative;
           one group carries the input's range through, so an out-of-range input gives an out-of-range
-          output; and :class:`RandomEqualize` raises a ``RuntimeError`` naming the range it needs. Each
-          class docstring says which of the four it is.
+          output; and :class:`RandomEqualize` raises a ``RuntimeError``. Each class docstring says which
+          of the four it is.
         - the transform factors a concrete class draws are per sample -- one value, or one per channel
           per sample where the class's own docstring says so. :class:`ColorJiggle` and
           :class:`ColorJitter` also draw an application ``order``, and that one order is shared by the
           whole batch.
         - where a class documents bounds for a parameter, an explicit range outside them raises at
           construction. :class:`RandomGamma` is the exception: its non-negativity check lives in
-          :func:`kornia.enhance.adjust_gamma`, so it runs on the forward pass.
+          :func:`kornia.enhance.adjust_gamma`, so it runs on the forward pass. A scalar magnitude is a
+          different case: several classes fit it to the bound instead of raising, tracked in
+          `#4563 <https://github.com/kornia/kornia/issues/4563>`_.
 
     .. warning::
         Several of these classes return an all-zero image for an input whose values are all negative,
