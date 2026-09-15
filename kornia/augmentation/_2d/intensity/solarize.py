@@ -54,6 +54,10 @@ class RandomSolarize(IntensityAugmentationBase2D):
         - the scalar forms are centred, not absolute: a scalar ``thresholds`` is a half-width around
           ``0.5`` and a scalar ``additions`` a half-width around ``0``, so the class defaults centre on
           :func:`kornia.enhance.solarize`'s own default threshold rather than equalling it.
+        - an explicit ``additions`` range is checked against the closed ``[-0.5, 0.5]`` at construction, but
+          :func:`kornia.enhance.solarize` rejects the ends of that interval, so ``additions=(0.5, 0.5)``
+          constructs and then raises a ``RuntimeError`` on the forward pass (where the value check runs;
+          MPS skips it).
 
     .. warning::
         An all-negative input can come back as an all-zero image when the sampled addition does not raise it

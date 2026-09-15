@@ -46,12 +46,16 @@ class ColorJiggle(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - with the default CPU ``float32`` samplers, this class and :class:`ColorJitter` draw the same factors
-          and random application ``order`` from the same seed when their effective sampling bounds match.
-          In particular, scalar ``brightness > 1`` does
-          not match: ColorJiggle draws from ``[0, 2]`` while ColorJitter draws from ``[0, 1 + brightness]``.
-          Only ColorJitter accepts an ``order`` argument that replaces its sampled order with a fixed one.
-          The classes use different primitives for three adjustments: :func:`kornia.enhance.adjust_brightness` against
+        - this class and :class:`ColorJitter` draw the same factor values and the same random application
+          ``order`` from the same seed when their effective sampling bounds match and both modules stay on
+          the CPU. A scalar ``brightness > 1`` does not match: this class draws from ``[0, 2]`` while
+          :class:`ColorJitter` draws from ``[0, 1 + brightness]``. Off the CPU the ``order`` diverges,
+          because this class draws it on the sampler device where :class:`ColorJitter` always draws it on
+          the CPU; and this class returns its factors in the dtype of its constructor arguments
+          (``float32`` for Python floats) where :class:`ColorJitter` keeps the sampler dtype. Only
+          :class:`ColorJitter` accepts an ``order`` argument that replaces its sampled order with a fixed
+          one. The classes use different primitives for three adjustments:
+          :func:`kornia.enhance.adjust_brightness` against
           :func:`kornia.enhance.adjust_brightness_accumulative`,
           :func:`kornia.enhance.adjust_contrast` against
           :func:`kornia.enhance.adjust_contrast_with_mean_subtraction`, and

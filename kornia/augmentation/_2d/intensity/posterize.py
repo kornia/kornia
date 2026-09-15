@@ -33,7 +33,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
 
     Args:
         p: probability of applying the transformation.
-        bits: Integer that ranged from (0, 8], in which 0 gives black image and 8 gives the original.
+        bits: Integer in ``[0, 8]``, in which 0 gives a constant image and 8 gives the original.
             If int x, bits will be generated from (x, 8) then convert to int.
             If tuple (x, y), bits will be generated from (x, y) then convert to int.
         same_on_batch: apply the same transformation across the batch.

@@ -44,7 +44,7 @@ class RandomEqualize(IntensityAugmentationBase2D):
         - this class raises on an out-of-``[0, 1]`` input instead of transforming it. See
           :class:`~kornia.augmentation.IntensityAugmentationBase2D` for the policies used by the other
           intensity augmentations. :class:`RandomClahe` also raises out of range, with a raw indexing error
-          that names neither the class nor the range.
+          that names neither the class nor the range (`#4564 <https://github.com/kornia/kornia/issues/4564>`_).
         - the rejection is not exactly at the boundary: an input marginally above ``1`` is still
           admitted, because what is checked is the value the histogram indexes.
 

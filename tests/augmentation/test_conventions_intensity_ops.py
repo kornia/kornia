@@ -32,21 +32,22 @@ from testing.base import BaseTester
 
 
 @pytest.fixture(autouse=True)
-def _restore_global_rng():
-    # Every pin below seeds the global RNG so its draw is reproducible; fork it so the seeding
-    # cannot shift the draw of any unseeded pre-existing test in this directory.
-    with torch.random.fork_rng(devices=[]):
-        yield
+def _restore_global_rng(restore_torch_rng):
+    # Every pin below seeds the global RNG so its draw is reproducible.  ``torch.manual_seed`` also
+    # reseeds the CUDA and MPS generators, so the root fixture (#4446) snapshots and restores all of
+    # them; ``fork_rng(devices=[])`` would restore the CPU generator only and shift the draw of an
+    # unseeded later test on an accelerator leg.
+    yield
 
 
-# The seed drawn immediately before each construct-and-forward, as ``audit-6c.py::R()`` does it.
+# The seed drawn immediately before each construct-and-forward, as the audit probe did it.
 _FORWARD_SEED = 0
 _FIXTURE_SEED = 1234
 
 
 def _sync(device) -> None:
     # MPS dispatches asynchronously, so a kernel error raised by the forward under test would
-    # otherwise surface inside an unrelated later test (audit-6c.py::sync, audit review C3).
+    # otherwise surface inside an unrelated later test.
     if device.type == "mps":
         torch.mps.synchronize()
 
@@ -276,6 +277,7 @@ class TestBlurConventions(BaseTester):
     #   aug = K.RandomMotionBlur(3, (45.0, 45.0), (0.0, 0.0), p=1.0); print(aug.flags)
     # executed 2026-09-15 (torch 2.14.0, cpu) -> `{'border_type': <BorderType.CONSTANT: 0>,
     # 'resample': <Resample.NEAREST: 0>}`.
+    @pytest.mark.device_agnostic
     def test_convention_random_motion_blur_defaults_are_constant_and_nearest(self):
         aug = K.RandomMotionBlur(3, (45.0, 45.0), (0.0, 0.0), p=1.0)
         assert aug.flags["border_type"] == BorderType.CONSTANT
@@ -312,7 +314,8 @@ class TestBlurConventions(BaseTester):
     # Issue #4559: RandomBoxBlur, RandomGaussianBlur and RandomSharpness let a raw torch error out
     # when the image is smaller than the kernel along an axis, instead of raising a kornia error that
     # names the kernel and the shape.  The two blurs reflect-pad, so they fail as soon as an axis is
-    # shorter than the kernel; RandomSharpness convolves without padding, so it needs the full 3x3.
+    # no longer than the kernel radius (`k // 2`, one pixel for the 3x3 default); RandomSharpness
+    # convolves without padding, so it needs the full 3x3.
     # RandomMedianBlur and RandomMotionBlur accept the same degenerate image, which is what makes the
     # split a defect rather than a package-wide rule.  #4559 leaves two coherent outcomes open (raise
     # a named kornia error, or pad and run), so this is a wart pin on today's behavior, not a strict
@@ -498,7 +501,8 @@ class TestNoiseAndWeatherConventions(BaseTester):
     )
     @pytest.mark.parametrize("keepdim", [False, True])
     def test_convention_intensity_parameter_fields_normalize_chw_shape(self, device, dtype, name, keepdim):
-        image = torch.rand(3, 7, 9, device=device, dtype=dtype)
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(3, 7, 9).to(device=device, dtype=dtype)
         aug, field_name, field_channels = _field_augmentation(name, keepdim=keepdim)
         torch.manual_seed(_FORWARD_SEED)
         out = aug(image)
@@ -524,7 +528,8 @@ class TestNoiseAndWeatherConventions(BaseTester):
     def test_convention_intensity_parameter_fields_keep_original_batch_for_partial_probability(
         self, device, dtype, name
     ):
-        image = torch.rand(4, 3, 7, 9, device=device, dtype=dtype)
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(4, 3, 7, 9).to(device=device, dtype=dtype)
         aug, field_name, field_channels = _field_augmentation(name, p=0.5)
         torch.manual_seed(_FORWARD_SEED)
         out = aug(image)
@@ -535,7 +540,8 @@ class TestNoiseAndWeatherConventions(BaseTester):
         assert torch.equal(out, aug(image, params=aug._params))
 
     def test_convention_gaussian_noise_same_on_batch_shares_one_normalized_field(self, device, dtype):
-        image = torch.rand(4, 3, 7, 9, device=device, dtype=dtype)
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(4, 3, 7, 9).to(device=device, dtype=dtype)
         aug = K.RandomGaussianNoise(mean=0.0, std=1.0, p=1.0, same_on_batch=True)
         torch.manual_seed(_FORWARD_SEED)
         out = aug(image)
@@ -704,6 +710,31 @@ class TestNoiseAndWeatherConventions(BaseTester):
             p=1.0,
         )
         assert smaller(image).shape == image.shape
+
+    # Issue #4567: the three integer ranges are float draws truncated to integers, and the generator's
+    # `hi + 1` shift goes through the `bounds` argument that `_range_bound` ignores for a tuple, so the
+    # upper bound is never drawn and a signed `drop_width` truncates both `(-1, 0)` and `(0, 1)` to 0.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(0)
+    #   p = K.RandomRain(number_of_drops=(2, 4), drop_height=(5, 20), drop_width=(-5, 5), p=1.0)
+    #   p = p.forward_parameters((20000, 1, 64, 64))
+    #   for k in ("number_of_drops_factor", "drop_height_factor", "drop_width_factor"):
+    #       print(k, collections.Counter(p[k].flatten().tolist()))
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> drops `{2: 9939, 3: 10061}`, heights `5..19` (about
+    # 1333 each, no 20), widths `-4..4` with `0: 4075` against about 2000 for every other value.
+    @pytest.mark.device_agnostic
+    def test_wart_random_rain_upper_bound_is_never_drawn_4567(self):
+        torch.manual_seed(_FORWARD_SEED)
+        aug = K.RandomRain(number_of_drops=(2, 4), drop_height=(5, 20), drop_width=(-5, 5), p=1.0)
+        params = aug.forward_parameters((20000, 1, 64, 64))
+        drops = params["number_of_drops_factor"].flatten()
+        heights = params["drop_height_factor"].flatten()
+        widths = params["drop_width_factor"].flatten()
+        assert (int(drops.min()), int(drops.max())) == (2, 3)
+        assert (int(heights.min()), int(heights.max())) == (5, 19)
+        assert (int(widths.min()), int(widths.max())) == (-4, 4)
+        zeros, ones = int((widths == 0).sum()), int((widths == 1).sum())
+        assert zeros > 1.5 * ones and ones > 1000
 
     # Row 6c-28 in the state #4453 left it (it closed #4448): with ``same_on_batch=True`` every
     # sample of the batch gets the same number of drops, the same drop size and the same coordinates;
@@ -1096,7 +1127,7 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
 
 
 def _illumination(name: str, **kwargs):
-    """Point-range constructors for the three *Illumination classes, as ``audit-6c.py::r19`` uses them."""
+    """Point-range constructors for the three *Illumination classes, as the audit probe used them."""
     classes = {
         "RandomGaussianIllumination": K.RandomGaussianIllumination,
         "RandomLinearIllumination": K.RandomLinearIllumination,

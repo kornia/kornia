@@ -313,7 +313,8 @@ Augmentations
   classes use their documented policy: some clamp, rescale, or convert through
   ``uint8``; :class:`kornia.augmentation.RandomPlanckianJitter` clamps only the
   upper end; some do not clamp; and :class:`kornia.augmentation.RandomEqualize`
-  raises. The resulting values also depend on the sampled parameters and image
+  raises where its value check runs (MPS skips the check, and a raw indexing
+  error surfaces instead). The resulting values also depend on the sampled parameters and image
   contents. Several can return an all-zero image for an all-negative input,
   depending on the draw (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
   See :class:`kornia.augmentation.IntensityAugmentationBase2D` and each class's

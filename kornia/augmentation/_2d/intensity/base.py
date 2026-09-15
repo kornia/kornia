@@ -52,7 +52,8 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           in, so it is a precondition rather than a validated contract.
         - outside that range, concrete classes apply their documented policy: some clamp, rescale, or use a
           ``uint8`` conversion; :class:`RandomPlanckianJitter` clamps only the upper end; others do not
-          clamp; and :class:`RandomEqualize` raises a ``RuntimeError``. The resulting values also depend on
+          clamp; and :class:`RandomEqualize` raises a ``RuntimeError`` where its value check runs (on MPS the
+          check is skipped and a raw indexing error surfaces instead). The resulting values also depend on
           the sampled parameters and image contents, so these policies are not an exhaustive classification
           of every out-of-range input. :class:`RandomDissolving` is unmeasured because constructing it
           downloads a Stable Diffusion checkpoint. :class:`RandomClahe` and :class:`RandomJPEG` are not in
@@ -66,10 +67,12 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           ``(B, 1, H, W)``. :class:`ColorJiggle` and :class:`ColorJitter` both draw an application ``order``;
           it is shared by the whole batch. Only :class:`ColorJitter` accepts a fixed ``order`` override.
         - where a class documents bounds for a parameter, an explicit range outside them raises at
-          construction. :class:`RandomGamma` is the exception: its non-negativity checks, for ``gamma``
+          construction, with two exceptions. :class:`RandomGamma`'s non-negativity checks, for ``gamma``
           and for ``gain`` alike, live in :func:`kornia.enhance.adjust_gamma`, so they run on the
-          forward pass. A scalar magnitude is a different case: several classes fit it to the bound
-          instead of raising, tracked in `#4563 <https://github.com/kornia/kornia/issues/4563>`_.
+          forward pass; and :class:`RandomSolarize` admits ``additions`` at the closed bound ``0.5`` at
+          construction, which :func:`kornia.enhance.solarize` then rejects on the forward pass. A scalar
+          magnitude is a different case: several classes fit it to the bound instead of raising, tracked
+          in `#4563 <https://github.com/kornia/kornia/issues/4563>`_.
 
     .. warning::
         Several of these classes can return an all-zero image for an input whose values are all negative,

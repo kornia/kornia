@@ -37,15 +37,16 @@ from testing.base import BaseTester
 
 
 @pytest.fixture(autouse=True)
-def _restore_global_rng():
-    # Every pin below seeds the global RNG so its draw is reproducible; fork it so the seeding
-    # cannot shift the draw of any unseeded pre-existing test in this directory.
-    with torch.random.fork_rng(devices=[]):
-        yield
+def _restore_global_rng(restore_torch_rng):
+    # Every pin below seeds the global RNG so its draw is reproducible.  ``torch.manual_seed`` also
+    # reseeds the CUDA and MPS generators, so the root fixture (#4446) snapshots and restores all of
+    # them; ``fork_rng(devices=[])`` would restore the CPU generator only and shift the draw of an
+    # unseeded later test on an accelerator leg.
+    yield
 
 
-# Constructor arguments are verbatim from the 6c audit probe (``audit-6c.py::mk()``), so the
-# executed literals below are the ones the fact table records.  ``RandomDissolving`` is the one 2D
+# Constructor arguments are verbatim from the 6c audit probe, so the executed literals below are
+# the ones the fact table records.  ``RandomDissolving`` is the one 2D
 # intensity class with no executed row: constructing it can prompt for ``diffusers`` and download
 # a Stable-Diffusion checkpoint, so it is excluded here as it was there.
 _INTENSITY_FACTORIES = {
@@ -154,7 +155,7 @@ _COLLAPSES_ON_NEGATIVE_FIXTURE = (
 )
 
 # Fixture seed for the shared out-of-range images, and the seed drawn immediately before each
-# construct-and-forward, exactly as ``audit-6c.py::r1`` does it.
+# construct-and-forward, exactly as the audit probe did it.
 _FIXTURE_SEED = 1234
 _FORWARD_SEED = 0
 
@@ -170,7 +171,7 @@ def _out_of_range_fixtures(device, dtype) -> dict[str, torch.Tensor]:
 
 def _sync(device) -> None:
     # MPS dispatches asynchronously, so a kernel error raised by the forward under test would
-    # otherwise surface inside an unrelated later test (audit-6c.py::sync, audit review C3).
+    # otherwise surface inside an unrelated later test.
     if device.type == "mps":
         torch.mps.synchronize()
 
@@ -202,7 +203,7 @@ class TestIntensityValueRangeConventions(BaseTester):
     #     `clip_output` flag is dead because `normalize_min_max` already returns `[0, 1]`
     #     (audit row 6c-35, #4436; pinned by test_convention_random_auto_contrast_is_normalize_min_max
     #     and, for the dead flag, by TestRandomAutoContrast::test_clip_output_does_not_change_the_output).
-    # Snippet used to generate expected: audit-6c.py::r1 re-executed on 90650596 as
+    # Snippet used to generate expected (re-executed on 90650596):
     #   torch.manual_seed(1234); base = torch.rand(2, 3, 6, 8)
     #   for x in (base * 2.0, base - 1.0):
     #       for name, ctor in mk(): torch.manual_seed(0); print(name, ctor()(x).aminmax())
@@ -214,8 +215,11 @@ class TestIntensityValueRangeConventions(BaseTester):
         groups = (_BOUNDED_ON_FIXTURES, _UPPER_BOUNDED_ON_FIXTURES, _OUT_OF_RANGE_ON_FIXTURES, _REJECTS_AUDIT_FIXTURES)
         assert tuple(len(group) for group in groups) == (16, 1, 17, 1)
         assert set().union(*groups) == set(_INTENSITY_FACTORIES) and len(_INTENSITY_FACTORIES) == 35
-        if name in _REJECTS_AUDIT_FIXTURES and device.type != "cpu":
-            pytest.skip("value asserts are synchronous only on CPU (invalidate CUDA state, skipped on MPS)")
+        if name in _REJECTS_AUDIT_FIXTURES and device.type == "cuda":
+            # torch._assert_async on a false condition is a device-side assert on CUDA, which poisons
+            # the context for every later test in the process.  On MPS the check is skipped by design
+            # and the raw histogram gather raises instead (an AcceleratorError, a RuntimeError subclass).
+            pytest.skip("CUDA: the value assert is a device-side assert that invalidates the context")
         if dtype == torch.float16 and name in ("ColorJiggle", "ColorJitter"):
             pytest.skip(
                 "float16 only (#4560): the contrast step collapses the [-1, 0] fixture to exact zeros "
@@ -248,6 +252,33 @@ class TestIntensityValueRangeConventions(BaseTester):
             assert any(float(high) > 1 + tol or float(low) < -tol for low, high in ranges.values()), (
                 f"{name} kept the output inside [0, 1] on both out-of-range fixtures"
             )
+
+    # Row 6c-35, the executable half of the first caveat above: `clip_output` is live on both classes.
+    # Snippet used to generate expected:
+    #   x = torch.linspace(0, 1, 48).reshape(1, 1, 6, 8) * 2
+    #   for cls in (K.RandomBrightness, K.RandomContrast):
+    #       print(cls((1.5, 1.5), p=1.0)(x).max(), cls((1.5, 1.5), clip_output=False, p=1.0)(x).max())
+    #   torch.manual_seed(1234); neg = torch.rand(2, 3, 6, 8) - 1
+    #   for cls in (K.RandomBrightness, K.RandomContrast):
+    #       print(cls((1.5, 1.5), clip_output=False, p=1.0)(neg).aminmax())
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> `1 / 2.5` and `1 / 3`; on the negative input the
+    # brightness shift of +0.5 gives `min=-0.471 max=0.498` and the contrast scale
+    # `min=-1.49904 max=-0.00300264`, both unclamped where the default returns zeros.
+    @pytest.mark.parametrize("name", ["RandomBrightness", "RandomContrast"])
+    def test_convention_brightness_and_contrast_clip_output_is_live(self, device, dtype, name):
+        cls = getattr(K, name)
+        ramp = (torch.linspace(0, 1, 48).reshape(1, 1, 6, 8) * 2).to(device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        clipped = cls((1.5, 1.5), p=1.0)(ramp)
+        torch.manual_seed(_FORWARD_SEED)
+        raw = cls((1.5, 1.5), clip_output=False, p=1.0)(ramp)
+        self.assert_close(clipped.max(), clipped.new_tensor(1.0))
+        self.assert_close(raw.max(), raw.new_tensor(2.5 if name == "RandomBrightness" else 3.0))
+        negative = _out_of_range_fixtures(device, dtype)["[-1, 0]"]
+        torch.manual_seed(_FORWARD_SEED)
+        assert float(cls((1.5, 1.5), p=1.0)(negative).min()) >= 0.0
+        torch.manual_seed(_FORWARD_SEED)
+        assert float(cls((1.5, 1.5), clip_output=False, p=1.0)(negative).min()) < 0.0
 
     # Row 6c-01, the audit exclusions the anchor and conventions.rst name: the factories cover
     # the classes this file executes, and the classes they leave out are exactly the
@@ -393,7 +424,7 @@ class TestIntensityValueRangeConventions(BaseTester):
     # 8-bit data.`, the first two return a 64-level image.
     def test_convention_random_equalize_rejects_out_of_range_with_named_range(self, device, dtype):
         if device.type != "cpu":
-            pytest.skip("value asserts are synchronous only on CPU (invalidate CUDA state, skipped on MPS)")
+            pytest.skip("CPU only: on CUDA the value assert is a device-side assert; MPS skips the check")
         ramp = torch.linspace(0, 1, 64).reshape(1, 1, 8, 8).to(device=device, dtype=dtype)
         for image in (ramp * 2.0, ramp - 1.0):
             torch.manual_seed(_FORWARD_SEED)
@@ -619,6 +650,7 @@ class TestIntensityColourConventions(BaseTester):
         assert order.shape == (4, 3)
         identity = torch.arange(3, device=order.device)
         assert not bool((order == identity).all()), "the seeded draw is the identity on every sample"
+        assert not bool((order == order[0]).all()), "the seeded draw is one permutation for every sample"
         for b in range(4):
             for c in range(3):
                 self.assert_close(out[b, c], image[b, int(order[b, c])])
@@ -943,11 +975,12 @@ class TestIntensityColourConventions(BaseTester):
             ("contrast_negative", ValueError),
             ("saturation_negative", ValueError),
             ("hue_above_half", ValueError),
+            ("solarize_additions_at_half", RuntimeError),
         ],
     )
     def test_convention_intensity_constructors_reject_out_of_bounds(self, device, dtype, case, error):
-        if case == "gamma_negative" and device.type != "cpu":
-            pytest.skip("value asserts are synchronous only on CPU (invalidate CUDA state, skipped on MPS)")
+        if case in ("gamma_negative", "solarize_additions_at_half") and device.type != "cpu":
+            pytest.skip("CPU only: on CUDA the value assert is a device-side assert; MPS skips the check")
         factories = {
             "sharpness_negative": lambda: K.RandomSharpness(-1.0, p=1.0),
             "posterize_bits_above_eight": lambda: K.RandomPosterize(bits=9, p=1.0),
@@ -959,6 +992,9 @@ class TestIntensityColourConventions(BaseTester):
             # A scalar `hue` is silently clamped into the bound instead of rejected, so the pin uses
             # the explicit range the audit executed.
             "hue_above_half": lambda: K.RandomHue((0.6, 0.6), p=1.0),
+            # The construction check is the closed [-0.5, 0.5]; kornia.enhance.solarize rejects the
+            # ends on the forward pass, so this one constructs and raises like the gamma case.
+            "solarize_additions_at_half": lambda: K.RandomSolarize((0.5, 0.5), (0.5, 0.5), p=1.0),
         }
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 6, 8).to(device=device, dtype=dtype)
@@ -966,6 +1002,70 @@ class TestIntensityColourConventions(BaseTester):
         with pytest.raises(error):
             # The sync is what surfaces an MPS kernel error inside this block rather than later.
             _sync(factories[case]()(image).device)
+
+    # Issue #4563: a scalar magnitude whose implied range leaves the documented bounds is fitted to
+    # them instead of rejected, where the same range written out raises (pinned one test above).
+    # RandomSharpness is the class that depends on the fit: its scalar form is the centred `[-x, x]`
+    # clamped to `(0, inf)`, which is what makes `sharpness=0.5` mean `[0, 0.5]`.
+    # Snippet used to generate expected:
+    #   print(K.RandomHue(0.7).hue, K.RandomBrightness(3.0).brightness)
+    #   print(K.ColorJiggle(brightness=3.0).forward_parameters((256, 3, 2, 2))["brightness_factor"].aminmax())
+    #   print(K.RandomSharpness(0.5).forward_parameters((2000, 1, 4, 4))["sharpness"].aminmax())
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> `[-0.5, 0.5]`, `[0, 2]`, brightness in
+    # `[0.0072, 1.9945]`, sharpness in `[3.87e-05, 0.5]`.
+    @pytest.mark.device_agnostic
+    def test_wart_scalar_magnitude_is_fitted_to_the_bound_4563(self):
+        assert K.RandomHue(0.7, p=1.0).hue.tolist() == [-0.5, 0.5]
+        assert K.RandomBrightness(3.0, p=1.0).brightness.tolist() == [0.0, 2.0]
+        torch.manual_seed(_FORWARD_SEED)
+        brightness = K.ColorJiggle(brightness=3.0, p=1.0).forward_parameters((256, 3, 2, 2))["brightness_factor"]
+        assert float(brightness.min()) >= 0.0 and float(brightness.max()) <= 2.0
+        assert float(brightness.max()) > 1.5  # the fit is to [0, 2], not to [0, 1 + 3] or to [0, 1]
+        torch.manual_seed(_FORWARD_SEED)
+        sharpness = K.RandomSharpness(0.5, p=1.0).forward_parameters((2000, 1, 4, 4))["sharpness"]
+        assert float(sharpness.min()) >= 0.0 and float(sharpness.max()) <= 0.5
+        assert float(sharpness.min()) < 0.1  # the lower end is the clamped -x, not a centred x / 2
+
+    # Issue #4564: RandomClahe rejects an out-of-[0, 1] input with the raw indexing error of the
+    # histogram gather, naming neither the class nor the range RandomEqualize names (#4489).  CPU only:
+    # on CUDA the out-of-range index is a device-side assert that poisons the context, and on MPS the
+    # error is an AcceleratorError with the backend's own wording.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(1234); x = torch.rand(1, 3, 16, 16) * 2
+    #   torch.manual_seed(0); K.RandomClahe(p=1.0)(x)
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> `RuntimeError: index 430 is out of bounds for
+    # dimension 5 with size 256`.
+    def test_wart_random_clahe_out_of_range_error_is_raw_4564(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("CPU only: a CUDA index error is a device-side assert; MPS raises its own error type")
+        torch.manual_seed(_FIXTURE_SEED)
+        image = (torch.rand(1, 3, 16, 16) * 2).to(device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        with pytest.raises(RuntimeError, match="out of bounds") as info:
+            K.RandomClahe(p=1.0)(image)
+        assert "RandomClahe" not in str(info.value) and "[0, 1]" not in str(info.value)
+
+    # Issue #4560: every class whose path goes through rgb_to_hsv returns NaN for a black pixel in
+    # float16, because the conversion's `eps=1e-8` underflows to 0 there; bfloat16 keeps the exponent
+    # range of float32 and is finite.  Pinned here so the four warnings that cite #4560 have an
+    # executable anchor, and so the skip reasons above stay honest if the NaN ever disappears.
+    # Snippet used to generate expected:
+    #   for dt in (torch.float16, torch.float32, torch.bfloat16):
+    #       print(dt, K.RandomHue((0.1, 0.1), p=1.0)(torch.zeros(1, 3, 4, 4, dtype=dt)).isnan().any())
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> `True`, `False`, `False`; the same for
+    # RandomSaturation((1.5, 1.5)), ColorJiggle(0, 0, 0, (0.1, 0.1)) and ColorJitter(0, 0, 0, (0.1, 0.1)).
+    @pytest.mark.parametrize("name", ["RandomHue", "RandomSaturation", "ColorJiggle", "ColorJitter"])
+    def test_wart_hsv_path_black_pixel_is_nan_in_float16_4560(self, device, dtype, name):
+        factories = {
+            "RandomHue": lambda: K.RandomHue((0.1, 0.1), p=1.0),
+            "RandomSaturation": lambda: K.RandomSaturation((1.5, 1.5), p=1.0),
+            "ColorJiggle": lambda: K.ColorJiggle(0.0, 0.0, 0.0, (0.1, 0.1), p=1.0),
+            "ColorJitter": lambda: K.ColorJitter(0.0, 0.0, 0.0, (0.1, 0.1), p=1.0),
+        }
+        black = torch.zeros(1, 3, 4, 4, device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        out = factories[name]()(black)
+        assert bool(out.isnan().any()) == (dtype == torch.float16)
 
     # Row 6c-46: an unbatched (C, H, W) input is promoted to (1, C, H, W), and `keepdim=True`
     # returns the unbatched shape again.  Checked across four classes of the sub-batch so the claim

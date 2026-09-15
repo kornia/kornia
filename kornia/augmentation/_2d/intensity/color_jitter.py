@@ -60,12 +60,15 @@ class ColorJitter(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - with the default CPU ``float32`` samplers, this class and :class:`ColorJiggle` draw the same factors
-          and random application ``order`` from the same seed when their effective sampling bounds match.
-          In particular, scalar ``brightness > 1`` does
-          not match: ColorJiggle draws from ``[0, 2]`` while ColorJitter draws from ``[0, 1 + brightness]``.
-          Only this class accepts an ``order`` argument that replaces the sampled order with a fixed one.
-          The classes use different primitives for three adjustments:
+        - this class and :class:`ColorJiggle` draw the same factor values and the same random application
+          ``order`` from the same seed when their effective sampling bounds match and both modules stay on
+          the CPU. A scalar ``brightness > 1`` does not match: :class:`ColorJiggle` draws from ``[0, 2]``
+          while this class draws from ``[0, 1 + brightness]``. Off the CPU the ``order`` diverges, because
+          this class always draws it on the CPU where :class:`ColorJiggle` draws it on the sampler device;
+          and this class keeps the sampler dtype for its factors where :class:`ColorJiggle` returns them in
+          the dtype of its constructor arguments (``float32`` for Python floats). Only this class accepts an
+          ``order`` argument that replaces the sampled order with a fixed one. The classes use different
+          primitives for three adjustments:
           :func:`kornia.enhance.adjust_brightness_accumulative` against
           :func:`kornia.enhance.adjust_brightness`,
           :func:`kornia.enhance.adjust_contrast_with_mean_subtraction` against
@@ -75,12 +78,15 @@ class ColorJitter(IntensityAugmentationBase2D):
         - the brightness factor is not re-based here: it reaches
           :func:`kornia.enhance.adjust_brightness_accumulative` as drawn, where :class:`ColorJiggle` and
           :class:`RandomBrightness` subtract ``1`` first.
-        - ``ColorJitter(0, 0, 0, 0)`` is the identity for an input in ``[0, 1]``. Its output policy depends
-          on the enabled operations and their sampled factors; it has no final, general output clamp.
+        - ``ColorJitter(0, 0, 0, 0)`` is the identity for an input in ``[0, 1]`` only. There is no final
+          output clamp, but a scalar ``brightness`` -- the default ``0.0`` included -- always runs the
+          brightness step, whose primitive clamps into ``[0, 1]`` as the contrast and saturation primitives
+          do; only the explicit tuple ``brightness=(0.0, 0.0)`` skips that step and lets an out-of-range
+          value through.
 
     .. warning::
-        An input whose values are all negative can come back as an all-zero image, depending on the
-        enabled operations and their sampled factors. Tracked in
+        With a scalar ``brightness``, the default included, an input whose values are all negative comes
+        back as an all-zero image; only ``brightness=(0.0, 0.0)`` carries the values through. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. warning::

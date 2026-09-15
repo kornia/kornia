@@ -52,7 +52,8 @@ class RandomContrast(IntensityAugmentationBase2D):
           with ``clip_output=False`` an input outside ``[0, 1]`` gives an output outside it.
 
     .. warning::
-        An input whose values are all negative comes back as an all-zero image. Tracked in
+        At the default ``clip_output=True`` an input whose values are all negative comes back as an all-zero
+        image; with ``clip_output=False`` the negative values are carried through. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
