@@ -45,8 +45,9 @@ class RandomThinPlateSpline(AugmentationBase2D):
         setting with float32, float64, and bfloat16 inputs.
 
     .. warning::
-        Float16 has a kernel-epsilon underflow that can produce non-finite weights and NaN output for either
-        ``align_corners`` setting. The solve has additional dtype limitations documented on
+        Float16 has a kernel-epsilon underflow that produces non-finite weights and NaN output for either
+        ``align_corners`` setting; this is tracked in `#4557 <https://github.com/kornia/kornia/issues/4557>`_.
+        The solve has additional dtype limitations documented on
         :func:`~kornia.geometry.transform.get_tps_transform`.
 
     Args:

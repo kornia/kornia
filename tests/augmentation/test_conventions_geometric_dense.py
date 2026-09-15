@@ -37,7 +37,7 @@ class TestDenseGeometricConventions(BaseTester):
     @staticmethod
     def require_tps(dtype):
         if dtype == torch.float16:
-            pytest.skip("TPS kernel epsilon underflows in float16, producing non-finite weights")
+            pytest.skip("#4557: the TPS kernel epsilon underflows in float16, producing non-finite weights")
 
     @pytest.mark.parametrize("align_corners", [False, True])
     def test_convention_elastic_zero_displacement(self, device, dtype, align_corners):
