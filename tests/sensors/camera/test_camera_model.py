@@ -367,8 +367,7 @@ class TestPinholeCamera(BaseTester):
 
 
 class TestCameraModelTypes(BaseTester):
-    # The four CameraModelType members and the parameter-vector contract each one enforces.  Only PINHOLE is
-    # usable; see test_wart_the_three_non_pinhole_models_construct_and_then_raise_4284 below.
+    # The four implemented CameraModelType members and the parameter-vector contract each one enforces.
     _LENGTHS = (
         (CameraModelType.PINHOLE, 4),
         (CameraModelType.BROWN_CONRADY, 12),

@@ -27,8 +27,9 @@ internals; they are kept working on currently supported PyTorch versions, but
 their interfaces and weights may change with their upstreams, and they may be
 frozen or split out rather than grown.
 
-**Experimental** — ``kornia.contrib`` and anything underscore-prefixed or
-absent from the rendered documentation. No stability promise.
+**Experimental** — ``kornia.contrib``, ``kornia.sensors``, and anything
+underscore-prefixed or absent from the rendered documentation. No stability
+promise.
 
 Planned evolution: support tiers
 --------------------------------
