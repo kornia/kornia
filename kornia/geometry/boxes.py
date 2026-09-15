@@ -989,9 +989,7 @@ class Boxes:
         """
         if method == "fast":
             raise NotImplementedError
-        elif method == "warp":
-            pass
-        else:
+        if method != "warp":
             raise NotImplementedError
 
         M: torch.Tensor = eye_like(3, size)
