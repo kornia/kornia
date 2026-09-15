@@ -13,7 +13,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
+# ...
+
+
+"""NaFlex processors module.
+
+This module provides preprocessing utilities and components
+used for handling flexible neural architecture inputs in Kornia.
+"""
+
 from __future__ import annotations
 
 import math
@@ -55,9 +63,17 @@ class NaFlex(nn.Module):
         patch_embedding_fcn: Callable[[Tensor], Tensor],
         position_embedding: Tensor,
     ) -> None:
-        super().__init__()
-        self.patch_embedding_fcn = patch_embedding_fcn
-        self.register_buffer("position_embedding", position_embedding)
+        """Initialize the NaFlex processor.
+
+        Args:
+          patch_embedding_fcn: Function that converts input tensors
+              into patch embeddings.
+          position_embedding: Positional embedding tensor.
+        """
+
+    super().__init__()
+    self.patch_embedding_fcn = patch_embedding_fcn
+    self.register_buffer("position_embedding", position_embedding)
 
     def forward(self, pixel_values: Tensor) -> Tensor:
         r"""Forward pass through NaFlex wrapper.
