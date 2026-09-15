@@ -29,8 +29,9 @@ def create_meshgrid(
     normalized_coordinates: bool = True,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
+    align_corners: bool = True,
 ) -> torch.Tensor:
-    """Generate a coordinate grid for an image.
+    r"""Generate a coordinate grid for an image.
 
     When the flag ``normalized_coordinates`` is set to True, the grid is
     normalized to be in the range :math:`[-1,1]` to be consistent with the pytorch
@@ -38,6 +39,11 @@ def create_meshgrid(
     represented by ``0``, the centre of the normalized range. A zero spatial size
     produces a correspondingly empty grid; this differs from pixel-coordinate
     normalization, where a zero-sized coordinate system is undefined.
+
+    ``grid_sample`` has two such conventions, selected by its own ``align_corners``
+    flag, and ``align_corners`` here picks the matching one. Feeding a grid built
+    under one convention to a ``grid_sample`` call using the other applies a
+    spurious sub-pixel scale and shift, so the two flags must agree.
 
     See :doc:`Conventions & Pitfalls </get-started/conventions>` for the library-wide pixel-centre and
     normalized-coordinate conventions used by this grid.
@@ -50,6 +56,11 @@ def create_meshgrid(
           PyTorch function :py:func:`torch.nn.functional.grid_sample`.
         device: the device on which the grid will be generated.
         dtype: the data type of the generated grid.
+        align_corners: which normalization convention to use when
+          ``normalized_coordinates`` is ``True``. ``True`` maps pixel centers
+          :math:`[0, size-1]` to :math:`[-1, 1]`; ``False`` uses the half-pixel
+          mapping :math:`x_{norm} = (2x + 1) / W - 1`, where :math:`\pm 1` are the
+          outer pixel *edges*. Ignored when ``normalized_coordinates`` is ``False``.
 
     Return:
         grid tensor with shape :math:`(1, H, W, 2)`.
@@ -61,6 +72,13 @@ def create_meshgrid(
         <BLANKLINE>
                  [[-1.,  1.],
                   [ 1.,  1.]]]])
+
+        >>> create_meshgrid(2, 2, align_corners=False)
+        tensor([[[[-0.5000, -0.5000],
+                  [ 0.5000, -0.5000]],
+        <BLANKLINE>
+                 [[-0.5000,  0.5000],
+                  [ 0.5000,  0.5000]]]])
 
         >>> create_meshgrid(2, 2, normalized_coordinates=False)
         tensor([[[[0., 0.],
@@ -112,13 +130,22 @@ def create_meshgrid(
             # to be rounded back down mid-expression.
             width_t = torch.scalar_tensor(width, device=xs.device, dtype=work_dtype)
             height_t = torch.scalar_tensor(height, device=ys.device, dtype=work_dtype)
-            xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, xs * 0.0)
-            ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, ys * 0.0)
-        else:
+            if align_corners:
+                xs = torch.where(width_t > 1, (xs / (width_t - 1) - 0.5) * 2, xs * 0.0)
+                ys = torch.where(height_t > 1, (ys / (height_t - 1) - 0.5) * 2, ys * 0.0)
+            else:
+                # The half-pixel mapping is finite for a singleton axis and lands it on the
+                # centre without a special case: (2 * 0 + 1) / 1 - 1 == 0.
+                xs = (2.0 * xs + 1.0) / width_t - 1.0
+                ys = (2.0 * ys + 1.0) / height_t - 1.0
+        elif align_corners:
             # ``* 0.0`` rather than ``zeros_like`` so that a singleton axis follows the
             # same integer-to-float promotion the non-singleton branch performs.
             xs = (xs / (width - 1) - 0.5) * 2 if width > 1 else xs * 0.0
             ys = (ys / (height - 1) - 0.5) * 2 if height > 1 else ys * 0.0
+        else:
+            xs = (2.0 * xs + 1.0) / width - 1.0
+            ys = (2.0 * ys + 1.0) / height - 1.0
     if widened:
         # The single rounding, after the whole normalization.
         xs = xs.to(ramp_dtype)

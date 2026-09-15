@@ -3618,16 +3618,48 @@ def test_normal_transform_export_crosses_singleton_boundary(is_3d, dtype, runtim
         assert_close(exported(runtime), ExportTransform()(runtime), atol=0.0, rtol=0.0)
 
 
+@pytest.mark.parametrize("align_corners", [True, False])
+@pytest.mark.parametrize("size", [3, 11, 31, 251, 4051])
+@pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
+def test_normal_transform_capture_matches_eager_bitwise(align_corners, size):
+    """Graph capture must reproduce eager's normalization matrix exactly, under either convention.
+
+    Eager evaluates the offset in Python doubles and rounds once on store, while the capture branch
+    evaluates it in float32 so a symbolic size stays dynamic. Writing the ``align_corners=False``
+    offset as ``1 / size - 1`` therefore rounded twice under capture and landed one float32 step
+    away from eager. The five sizes here are exactly those below 5000 where the two forms disagree;
+    writing the offset as the single division ``(1 - size) / size`` makes both paths round once.
+    ``align_corners=True`` never had the defect and is parametrized to keep it that way.
+    """
+
+    class ExportTransform(torch.nn.Module):
+        def forward(self, image):
+            return kornia.geometry.normal_transform_pixel(
+                image.shape[-2], image.shape[-1], device=image.device, align_corners=align_corners
+            )
+
+    example = torch.zeros(1, 1, 4, 2)
+    exported = torch.export.export(
+        ExportTransform(),
+        (example,),
+        dynamic_shapes=({3: torch.export.Dim("width", min=1, max=size + 1)},),
+    ).module()
+
+    runtime = torch.zeros(1, 1, 4, size)
+    assert_close(exported(runtime), ExportTransform()(runtime), atol=0.0, rtol=0.0)
+
+
 class TestNormalTransformPixel(BaseTester):
     # normal_transform_pixel and normal_transform_pixel3d have no test class of their own in this
     # file -- their existing coverage lives in tests/geometry/transform/test_homography_warper.py.
     # The convention pins live here, next to the pixel-coordinate family whose [-1, 1] convention
     # they share (an executed agreement, not a shared-code argument: see
     # test_convention_agrees_with_normalize_pixel_coordinates below).
-    # NOTE: kornia#3904 (reserved) may extend this surface. EVERY literal in this class -- not only
-    # the pins that repeat this line -- is built from the unconditional corner-aligned 2/(size - 1)
-    # constants, so all of them would flip if #3904 made the normalization respect align_corners.
-    # They record current default behavior; none of them is a ratified contract for that choice.
+    # NOTE: kornia#3904 landed and did NOT move any literal here. It gave normal_transform_pixel an
+    # align_corners parameter, but left the default at True, so every literal in this class is still
+    # the corner-aligned 2/(size - 1) one and every bare call still produces it. What would flip them
+    # is a change to that default, not the existence of the parameter. They record current default
+    # behavior; none of them is a ratified contract for that choice.
 
     def test_convention_returns_one_unbatched_matrix_in_the_ambient_default_dtype(self, device):
         # Convention pin: both helpers return exactly one matrix behind a leading axis of 1 --
@@ -4060,13 +4092,14 @@ class TestNormalizeHomography(BaseTester):
     # and needs a tolerance instead.
     # No pin asserts anything about kornia#3962 (no denormalize_homography3d, no
     # ColmapQTVecs_to_ARKitQTVecs) -- a missing symbol is a scope question, not a defect.
-    # NOTE: kornia#3904 (reserved) may extend this surface. EVERY literal in this class -- the
-    # composition, direction, round-trip, batching and 3-D pins as much as the #3957 singleton and
-    # #3958 bug pins, and whether or not the pin repeats this line -- is built from the corner-aligned
-    # 2/(size - 1) constants these three functions inherit from normal_transform_pixel, so a #3904
-    # fix that made the normalization respect align_corners would flip all of them. They record
-    # current default behavior; none of them ratifies that choice as contract. (The #3958 pins would
-    # also flip on a #3958 fix, which is their point; the #3904 exposure is separate and additional.)
+    # NOTE: kornia#3904 landed and moved none of these. normalize_homography and
+    # denormalize_homography now take an align_corners argument and forward it to
+    # normal_transform_pixel, but it defaults to True, so the composition, direction, round-trip,
+    # batching and 3-D pins here -- and the #3957 singleton and #3958 bug pins -- still see the
+    # corner-aligned 2/(size - 1) constants they were written against. normalize_homography3d has no
+    # such argument at all. A change to that default, not the parameter, is what would flip them.
+    # They record current default behavior; none of them ratifies that choice as contract. (The
+    # #3958 pins would also flip on a #3958 fix, which is their point and is separate from this.)
 
     def test_gradcheck(self, device):
         # The three functions are on the warp_perspective path and are differentiable in their
@@ -4137,7 +4170,9 @@ class TestNormalizeHomography(BaseTester):
         # float32 is hardcoded and the dtype fixture dropped: 5.96e-08 IS 2**-24, a float32 rounding
         # step, so the figure is only meaningful in float32 and every other dtype would need its own.
         # NOT a contract that these sizes must keep these residuals -- the class header's #3904 note
-        # covers the whole surface, and a #3904 fix is expected to move both cells.
+        # covers the whole surface. #3904 has since landed and moved neither cell, because it left
+        # the default at align_corners=True; at align_corners=False the two sets differ (4 is exact
+        # there and 3 is not), which is why the warning now quotes the default's figures only.
         # Snippet used to generate expected (torch only, executed on cpu, torch 2.9.1):
         #   I = torch.eye(3)[None]
         #   (normalize_homography(I, (n, n), (n, n)) - I).abs().max()  for n = 4 -> 5.960464477539063e-08
