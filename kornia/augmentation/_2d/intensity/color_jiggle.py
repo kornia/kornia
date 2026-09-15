@@ -48,9 +48,10 @@ class ColorJiggle(IntensityAugmentationBase2D):
     Convention:
         - this class and :class:`ColorJitter` draw the same factor values and the same random application
           ``order`` from the same seed when their effective sampling bounds match and both modules stay on
-          the CPU. A scalar ``brightness > 1`` does not match: this class draws from ``[0, 2]`` while
-          :class:`ColorJitter` draws from ``[0, 1 + brightness]``. Off the CPU the ``order`` diverges,
-          because this class draws it on the sampler device where :class:`ColorJitter` always draws it on
+          the CPU. A scalar ``brightness > 1`` is where they part: this class rejects it, because its
+          bound is ``[0, 2]``, while :class:`ColorJitter` draws from ``[0, 1 + brightness]``. Off the CPU
+          the ``order`` diverges, because this class draws it on the sampler device where
+          :class:`ColorJitter` always draws it on
           the CPU; and this class returns its factors in the dtype of its constructor arguments
           (``float32`` for Python floats) where :class:`ColorJitter` keeps the sampler dtype. Only
           :class:`ColorJitter` takes an ``order`` constructor argument that replaces its sampled order with a
