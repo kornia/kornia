@@ -82,6 +82,9 @@ class StereoCamera:
         - ``u`` is the **column** index and ``v`` the **row** index, as in ``cv2.reprojectImageTo3D``:
           :math:`X = (u - c_x) Z / f_x` and :math:`Y = (v - c_y) Z / f_y`.
 
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the shared intrinsics,
+        depth and integer pixel-centre conventions.
+
     .. warning::
         Several of the constructor guards do not enforce the contract above. A differing ``cx`` is
         **rejected**, even though :attr:`cx_left` and :attr:`cx_right` are exposed separately and

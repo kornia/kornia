@@ -119,6 +119,9 @@ def distort_points(
     distortion models are considered in this function.
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera-intrinsics and
+        integer pixel-centre conventions used here.
+
         - ``points`` are **pixel** coordinates in ``(u, v)`` order and so is the result. Pixel centres lie at
           integer coordinates: the top-left centre is ``(0, 0)``.
           :func:`~kornia.geometry.camera.distort_points_affine` and
