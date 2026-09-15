@@ -112,7 +112,7 @@ covers CUDA or MPS half precision.
 | `kornia.losses` | ⚠️ | ⚠️ | 3 / 4 | Dice averaging overflows to inf/NaN in float16; mutual information range check; bfloat16 Dice weighting and total variation |
 | `kornia.feature` | ✅ | ✅ | 0 / 0 | Matching uses a manual `cdist` fallback for half dtypes; LightGlue's float16 tests are skipped, so that path is unmeasured |
 | `kornia.metrics` | ✅ | ⚠️ | 0 / 1 | bfloat16: `ssim3d` accuracy |
-| `kornia.models` | ⚠️ | ⚠️ | 15 / 7 | EfficientViT (float16) and Kimi-VL MoonViT raise dtype mismatches; bfloat16 RT-DETR RepVGG fusion accuracy |
+| `kornia.models` | ⚠️ | ⚠️ | 9 / 1 | EfficientViT raises dtype mismatches (float16); bfloat16 RT-DETR RepVGG fusion accuracy |
 | `contrib`, `core`, `io`, `onnx`, `sensors`, `tracking`, `utils` | ✅ | ⚠️ | 0 / 3 | bfloat16: histogram matching, `_torch_svd_cast`, camera-model projection |
 
 ✅ No known CPU failures &nbsp; ⚠️ Runs, with known failures (mostly accuracy; notes name the ops that raise)
