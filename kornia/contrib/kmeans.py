@@ -180,21 +180,26 @@ class KMeans:
             # Vectorized per-cluster mean via a one-hot assignment matrix, instead of looping over
             # clusters with torch.nonzero/index_select (each iteration's dynamic output shape
             # forces a host sync). One-hot + matmul routes the reduction through a GEMM kernel;
-            # scatter_add_ into the small (num_clusters, D) destination measured ~100x slower on
+            # scatter_add_ into the small (num_clusters, D) destination measured ~10x slower on
             # MPS for this shape (many threads racing to accumulate into few destination rows).
-            # Tracked in #4533.
-            one_hot = torch.nn.functional.one_hot(cluster_assignment, num_classes=self.num_clusters).to(X.dtype)
-            cluster_sums = one_hot.t() @ X
+            #
+            # Counts stay int64 (exact) and the sum accumulates in at least float32: X.dtype
+            # itself overflows to inf in float16 past 65504, and loses precision in bfloat16,
+            # for perfectly ordinary inputs (e.g. float16 image color quantization).
+            one_hot = torch.nn.functional.one_hot(cluster_assignment, num_classes=self.num_clusters)
             cluster_counts = one_hot.sum(0)
+            work_dtype = torch.float32 if X.dtype in (torch.float16, torch.bfloat16) else X.dtype
+            X_work = X.to(work_dtype)
+            cluster_sums = one_hot.to(work_dtype).t() @ X_work
 
             # edge case when a certain cluster centre has no points assigned to it:
             # just choose a random point as its update. A random index is drawn for every
             # cluster unconditionally and masked with torch.where, so the branch never depends
             # on a data-dependent Python bool (no host sync either way).
             empty_mask = (cluster_counts == 0).unsqueeze(1)
-            means = cluster_sums / cluster_counts.clamp(min=1).unsqueeze(1)
-            random_points = X[torch.randint(len(X), (self.num_clusters,), device=X.device)]
-            current_centers = torch.where(empty_mask, random_points, means)
+            means = cluster_sums / cluster_counts.clamp(min=1).unsqueeze(1).to(work_dtype)
+            random_points = X_work[torch.randint(len(X), (self.num_clusters,), device=X.device)]
+            current_centers = torch.where(empty_mask, random_points, means).to(X.dtype)
 
             # sum of distance of how much the newly computed clusters have moved from their previous positions
             center_shift = torch.sum(torch.sqrt(torch.sum((current_centers - previous_centers) ** 2, dim=1)))
