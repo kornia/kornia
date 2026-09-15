@@ -2121,11 +2121,21 @@ def normal_transform_pixel(
           explicit ``dtype=`` overrides that
 
     .. warning::
-        An integer ``dtype`` truncates the scale instead of raising:
-        ``normal_transform_pixel(4, 5, dtype=torch.int64)`` returns
-        ``[[0, 0, -1], [0, 0, -1], [0, 0, 1]]``, which maps every pixel to the
-        constant ``(-1, -1)``. Tracked in
-        `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
+        An integer ``dtype`` is rejected:
+        ``normal_transform_pixel(4, 5, dtype=torch.int64)`` raises
+        ``ValueError``. The scale ``2 / (size - 1)`` is fractional for every
+        dimension larger than 3 pixels, so an integer dtype would truncate it
+        to ``0`` and return ``[[0, 0, -1], [0, 0, -1], [0, 0, 1]]``, mapping
+        every pixel to the constant ``(-1, -1)``. The accepted dtypes are a
+        property of the function rather than of ``height`` and ``width``: a
+        dimension of 3 pixels or fewer makes the scale integral, and the
+        rejection is uniform rather than depending on the image size. Any
+        floating point dtype, including the ``float8`` formats, and any complex
+        dtype are accepted. The rejection is unconditional — it is not a ``KORNIA_CHECK``, so
+        ``disable_checks()``, ``python -O`` and ``KORNIA_CHECKS=0`` do not
+        switch it off. One clause of
+        `#3959 <https://github.com/kornia/kornia/issues/3959>`_, which stays
+        open for the other functions it covers.
 
     .. note::
         Legacy ``torch.jit.trace`` graphs assume positive runtime sizes because
@@ -2161,6 +2171,34 @@ def normal_transform_pixel(
     """
     if not torch.jit.is_tracing() and (height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got height={height}, width={width}.")
+    # A normalization matrix scales by 2/(size - 1), which is fractional for every
+    # dimension larger than 3 pixels. An integer dtype truncates those scales to 0 and
+    # yields a rank-deficient matrix that maps the whole image to a single point. The
+    # accepted dtypes are a property of the function rather than of height and width, so
+    # the rejection is uniform: a dimension of 3 pixels or fewer makes the scale integral
+    # and would survive, and accepting integers only there would make the domain depend
+    # on the image.
+    # Raised directly rather than through KORNIA_CHECK, which disable_checks(),
+    # python -O and KORNIA_CHECKS=0 all switch off: a domain restriction whose
+    # alternative is silently wrong output cannot be optional.
+    # A zero-element probe rather than dtype.is_floating_point, because TorchScript cannot
+    # access dtype attributes and this runs inside the scripted warp_affine path. The probe
+    # answers for any dtype, including the float8 formats and whatever torch adds next. The
+    # membership test in front of it is a fast path, not the domain, and it carries the
+    # complex dtypes so that a `complex32` call does not emit torch's experimental-ComplexHalf
+    # warning from an allocation the caller never asked for.
+    if dtype is not None and dtype not in (
+        torch.float16,
+        torch.float32,
+        torch.float64,
+        torch.bfloat16,
+        torch.complex32,
+        torch.complex64,
+        torch.complex128,
+    ):
+        probe = torch.empty(0, dtype=dtype)
+        if not (probe.is_floating_point() or probe.is_complex()):
+            raise ValueError(f"dtype must be a floating point or complex type. Got {dtype}.")
     if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-14:
         warnings.warn("`eps` is deprecated and ignored by `normal_transform_pixel`.", FutureWarning, stacklevel=2)
 
@@ -2255,11 +2293,12 @@ def normal_transform_pixel3d(
           grid built for one silently permutes axes when fed to the other
 
     .. warning::
-        The integer-``dtype`` behaviour of
-        :func:`~kornia.geometry.conversions.normal_transform_pixel` applies
-        here per axis: ``normal_transform_pixel3d(2, 4, 5,
-        dtype=torch.int64)`` returns a matrix with diagonal ``[0, 0, 2]``.
-        Tracked in `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
+        As in :func:`~kornia.geometry.conversions.normal_transform_pixel`, an
+        integer ``dtype`` is rejected: ``normal_transform_pixel3d(2, 4, 5,
+        dtype=torch.int64)`` raises ``ValueError`` rather than returning a
+        matrix with diagonal ``[0, 0, 2]``. Unconditional and uniform over
+        sizes, for the reason given there. One clause of
+        `#3959 <https://github.com/kornia/kornia/issues/3959>`_.
 
     .. note::
         Legacy ``torch.jit.trace`` graphs assume positive runtime sizes for the
@@ -2290,6 +2329,23 @@ def normal_transform_pixel3d(
     """
     if not torch.jit.is_tracing() and (depth <= 0 or height <= 0 or width <= 0):
         raise ValueError(f"Input image size must be positive. Got depth={depth}, height={height}, width={width}.")
+    # As in 2-D: an integer dtype truncates the 2/(size - 1) scales to 0 and returns a
+    # rank-deficient matrix, so the dtype is rejected rather than silently truncated, and
+    # uniformly rather than only for the sizes where the scale happens to be integral.
+    # Raised directly, not through KORNIA_CHECK, which python -O and disable_checks()
+    # switch off; the probe and its fast path are as in 2-D.
+    if dtype is not None and dtype not in (
+        torch.float16,
+        torch.float32,
+        torch.float64,
+        torch.bfloat16,
+        torch.complex32,
+        torch.complex64,
+        torch.complex128,
+    ):
+        probe = torch.empty(0, dtype=dtype)
+        if not (probe.is_floating_point() or probe.is_complex()):
+            raise ValueError(f"dtype must be a floating point or complex type. Got {dtype}.")
     if not torch.jit.is_scripting() and not torch.jit.is_tracing() and not is_compiling() and eps != 1e-14:
         warnings.warn("`eps` is deprecated and ignored by `normal_transform_pixel3d`.", FutureWarning, stacklevel=2)
 
