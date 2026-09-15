@@ -310,12 +310,15 @@ class TestBlurConventions(BaseTester):
         }
         for name, make in blurs.items():
             torch.manual_seed(_FORWARD_SEED)
-            with pytest.raises(RuntimeError):
+            # The message is torch's reflect-padding guard, identical on cpu and mps and in every
+            # dtype (measured); a kornia-named error would not be a RuntimeError at all, since
+            # BaseError derives straight from Exception.
+            with pytest.raises(RuntimeError, match="Padding size should be less"):
                 _sync(make()(thin).device)
             torch.manual_seed(_FORWARD_SEED)
             assert make()(small).shape == small.shape, f"{name} should still accept a 2x2 image"
         torch.manual_seed(_FORWARD_SEED)
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError, match="Kernel size can't be greater"):
             _sync(K.RandomSharpness(1.0, p=1.0)(small).device)
         torch.manual_seed(_FORWARD_SEED)
         assert K.RandomSharpness(1.0, p=1.0)(square).shape == square.shape
@@ -407,30 +410,35 @@ class TestNoiseAndWeatherConventions(BaseTester):
         self.assert_close(K.RandomGaussianNoise(mean=2.0, std=0.0, p=1.0)(constant), constant + 2.0)
 
     # Row 6c-27: ``amount`` is the fraction of *pixels* touched, not of scalars -- a chosen pixel is
-    # rewritten in every channel, so the changed mask is identical across channels.  The realised
-    # fraction is fixture- and RNG-bound (0.304167 for amount 0.3 on the fixture below, cpu seed 0),
-    # so only the closeness to ``amount`` is asserted.
+    # rewritten in every channel, so the changed mask is identical across channels -- and
+    # ``salt_vs_pepper`` splits those pixels, 0.25 meaning a quarter of them become salt.  Both
+    # realised fractions are RNG-bound, so each is asserted as a 0.02 band around the requested
+    # value, with the measured digits below.
     # Snippet used to generate expected:
     #   x = torch.full((2, 3, 24, 40), 0.5)
     #   for amount in (0.1, 0.3, 0.6):
     #       torch.manual_seed(0)
     #       y = K.RandomSaltAndPepperNoise(amount=(amount, amount), salt_vs_pepper=(0.25, 0.25), p=1.0)(x)
-    #       print(amount, (y != 0.5).float().mean(), torch.equal((y != 0.5)[:, 0], (y != 0.5)[:, 1]))
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `0.1 -> 0.100000`, `0.3 -> 0.304167`,
-    # `0.6 -> 0.599... ` (0.602083 on a 12x20 fixture), channel masks equal in every case.
+    #       changed = y != 0.5; salt = (y == 1.0).sum(); pepper = (y == 0.0).sum()
+    #       print(amount, changed.float().mean(), salt / (salt + pepper),
+    #             torch.equal(changed[:, 0], changed[:, 1]))
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> changed fraction `0.1 -> 0.101042`,
+    # `0.3 -> 0.304167`, `0.6 -> 0.600521` (errors 0.001042 / 0.004167 / 0.000521) and salt ratio
+    # `0.247423` / `0.246575` / `0.253252` (errors 0.002577 / 0.003425 / 0.003252); channel masks
+    # equal in every case.  The same six numbers come back bit-identical on mps float32.
     @pytest.mark.parametrize("amount", [0.1, 0.3, 0.6])
     def test_convention_random_salt_and_pepper_amount_is_a_pixel_fraction(self, device, dtype, amount):
         image = torch.full((2, 3, 24, 40), 0.5, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomSaltAndPepperNoise(amount=(amount, amount), salt_vs_pepper=(0.25, 0.25), p=1.0)(image)
         changed = out != 0.5
-        assert abs(float(changed.float().mean()) - amount) < 0.08
+        assert abs(float(changed.float().mean()) - amount) < 0.02
         assert torch.equal(changed[:, 0], changed[:, 1])
         assert torch.equal(changed[:, 0], changed[:, 2])
         # salt_vs_pepper splits the touched pixels; 0.25 means a quarter of them go to salt.
         salt = float((out == 1.0).float().sum())
         pepper = float((out == 0.0).float().sum())
-        assert abs(salt / (salt + pepper) - 0.25) < 0.08
+        assert abs(salt / (salt + pepper) - 0.25) < 0.02
 
     # Row 6c-27: the two poles are the literals 1.0 and 0.0, written regardless of the input's range,
     # so on a [0, 2] image the "salt" is darker than the untouched pixels.
@@ -524,28 +532,33 @@ class TestNoiseAndWeatherConventions(BaseTester):
 
     # Rows 6c-28 / 6c-29 in the state #4451 left them (it closed #4434): a drop as tall as the image
     # or as wide as the image is rejected with a kornia error, and one pixel smaller runs.  The guard
-    # is `<=` under a message that says "less than", so the rejected case is the equal one.
+    # is `<=` under a message that says "less than", so the rejected case is the equal one.  The
+    # check lives in the forward, not the constructor -- the drop size is compared against the image
+    # it is given -- so the construction happens outside the `raises` block, the converse of the
+    # RandomSnow pin below, which pins a constructor-time check.
     # Snippet used to generate expected:
     #   z = torch.zeros(1, 1, 12, 30)
     #   for dh in (11, 12):
-    #       torch.manual_seed(0)
-    #       K.RandomRain(number_of_drops=(1, 1), drop_height=(dh, dh), drop_width=(1, 1), p=1.0)(z)
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `11 ok`, `12 -> BaseError: Height of drop should be
-    # greater than zero and less than image height.`; `drop_width` 29 ok and 30 -> `BaseError: Width
-    # of drop should be less than image width.`
+    #       aug = K.RandomRain(number_of_drops=(1, 1), drop_height=(dh, dh), drop_width=(1, 1), p=1.0)
+    #       torch.manual_seed(0); aug(z)
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> construction succeeds in both cases; the forward
+    # gives `11 ok`, `12 -> BaseError: Height of drop should be greater than zero and less than image
+    # height.`; `drop_width` 29 ok and 30 -> `BaseError: Width of drop should be less than image
+    # width.`
     @pytest.mark.parametrize(("drop_height", "drop_width", "message"), [(12, 1, "Height of drop"), (1, 30, "Width of")])
     def test_convention_random_rain_rejects_a_drop_as_large_as_the_image(
         self, device, dtype, drop_height, drop_width, message
     ):
         image = torch.zeros(1, 1, 12, 30, device=device, dtype=dtype)
+        # Constructing an oversized drop is allowed; only the forward, which knows the image, raises.
+        aug = K.RandomRain(
+            number_of_drops=(1, 1),
+            drop_height=(drop_height, drop_height),
+            drop_width=(drop_width, drop_width),
+            p=1.0,
+        )
         torch.manual_seed(_FORWARD_SEED)
         with pytest.raises(Exception, match=message):
-            aug = K.RandomRain(
-                number_of_drops=(1, 1),
-                drop_height=(drop_height, drop_height),
-                drop_width=(drop_width, drop_width),
-                p=1.0,
-            )
             _sync(aug(image).device)
         # One pixel smaller on the same axis runs.
         inside_height, inside_width = min(drop_height, 11), min(drop_width, 29)
@@ -627,19 +640,32 @@ class TestNoiseAndWeatherConventions(BaseTester):
 
 
 class TestIlluminationAndNormalizeConventions(BaseTester):
-    # Row 6c-42: all three *Illumination classes add a signed gradient and then clamp into [0, 1], so
-    # a constant 0.5 image can only darken; the gradient itself is recorded under
-    # ``_params["gradient"]`` with the input's shape.
+    # Row 6c-42: all three *Illumination classes add a gradient whose direction is the drawn ``sign``
+    # -- one draw per sample, from (-1.0, 1.0) by default -- and clamp the sum into [0, 1]
+    # (gaussian_illumination.py:175, linear_illumination.py:131,238).  The gradient is recorded under
+    # ``_params["gradient"]`` with the input's shape.  The clamp is load-bearing on an *in-range*
+    # image as soon as ``gain`` exceeds the headroom: at gain 0.8 on a constant 0.5 the unclamped sum
+    # reaches 1.3 or -0.3, so deleting ``.clamp_(0, 1)`` fails this pin.
     # Snippet used to generate expected:
     #   c = torch.full((2, 3, 7, 9), 0.5)
     #   torch.manual_seed(0); aug = K.RandomGaussianIllumination(gain=(0.5, 0.5), p=1.0); y = aug(c)
-    #   print(y.aminmax(), list(aug._params), aug._params["gradient"].shape)
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `min=1.93119e-05 max=0.5` (Gaussian), `0/0.5`
-    # (Linear), `2.38419e-07/0.5` (LinearCorner), each with `gradient` of shape (2, 3, 7, 9).
+    #   print(y.aminmax(), aug._params["gradient"].aminmax())
+    #   for sign in ((1.0, 1.0), (-1.0, -1.0)):
+    #       torch.manual_seed(0); a = K.RandomGaussianIllumination(gain=(0.8, 0.8), sign=sign, p=1.0)
+    #       y = a(c); raw = c + a._params["gradient"]
+    #       print(sign, y.aminmax(), raw.aminmax(), torch.equal(y, raw.clamp(0, 1)), torch.equal(y, raw))
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> default gain 0.5: `min=1.93119e-05 max=0.5`
+    # (Gaussian), `0/0.5` (Linear), `2.38419e-07/0.5` (LinearCorner), gradient in [-0.5, -0] and
+    # `gradient` of shape (2, 3, 7, 9); at gain 0.8, `sign=(1, 1)` -> out `0.5/1` against an unclamped
+    # `0.5/1.3`, `sign=(-1, -1)` -> out `0/0.5` against an unclamped `-0.3/0.5`, with
+    # `out == (c + gradient).clamp(0, 1)` bitwise and `out != c + gradient` in both directions.
+    # NOTE: the negative direction of the default-``sign`` leg is the draw at this seed and batch
+    # size, not a contract -- at B=1 and B=5 the same seed draws sign +1 and the image brightens --
+    # so the darkening claim is asserted only where ``sign`` is a point range.
     @pytest.mark.parametrize(
         "name", ["RandomGaussianIllumination", "RandomLinearIllumination", "RandomLinearCornerIllumination"]
     )
-    def test_convention_illumination_clamps_to_the_unit_range(self, device, dtype, name):
+    def test_convention_illumination_adds_a_signed_gradient_and_clamps_to_unit_range(self, device, dtype, name):
         aug = _illumination(name)
         constant = torch.full((2, 3, 7, 9), 0.5, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
@@ -647,9 +673,42 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         assert float(out.min()) >= 0.0
         assert float(out.max()) <= 1.0
         assert aug._params["gradient"].shape == constant.shape
-        # One parameter away: the clamp is what makes an out-of-range input collapse, so the
-        # unclamped gradient is visibly non-zero on this fixture.
         assert float(aug._params["gradient"].float().abs().max()) > 0.0
+
+        # `sign` fixes the direction: -1 can only darken, +1 can only brighten.  At gain 0.8 the sum
+        # leaves [0, 1] on this in-range image, so the clamp is what brings it back -- and the output
+        # is the clamped sum bitwise, not the raw one.
+        for sign, low, high in ((-1.0, 0.0, 0.5), (1.0, 0.5, 1.0)):
+            torch.manual_seed(_FORWARD_SEED)
+            clamped_aug = _illumination(name, gain=(0.8, 0.8), sign=(sign, sign))
+            clamped = clamped_aug(constant)
+            gradient = clamped_aug._params["gradient"]
+            if sign > 0:
+                assert float(gradient.float().min()) >= 0.0
+            else:
+                assert float(gradient.float().max()) <= 0.0
+            assert float(clamped.min()) >= low - 1e-3 and float(clamped.max()) <= high + 1e-3
+            raw = constant + gradient.to(device=device, dtype=dtype)
+            self.assert_close(clamped, raw.clamp(0.0, 1.0))
+            assert not torch.equal(clamped, raw), "the clamp did not engage, so this leg proves nothing"
+
+        # One parameter away (B=2 -> B=4, and same_on_batch): with the default range the sign is drawn
+        # per sample, so one batch can hold both directions; same_on_batch=True collapses it to one.
+        # Snippet: torch.manual_seed(0); aug(torch.full((4, 3, 7, 9), 0.5));
+        #   [float(aug._params["gradient"][b].max()) for b in range(4)]
+        # executed 2026-09-15 (torch 2.14.0, cpu) -> `[-0.0, 0.5, -0.0, 0.5]` for RandomLinearIllumination
+        # and `[0.5, 0.5, 0.5, 0.5]` with same_on_batch=True.
+        batch = torch.full((4, 3, 7, 9), 0.5, device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        per_sample = _illumination(name)
+        per_sample(batch)
+        directions = [float(per_sample._params["gradient"][b].float().max()) for b in range(4)]
+        assert any(value > 0.0 for value in directions) and any(value <= 0.0 for value in directions)
+        torch.manual_seed(_FORWARD_SEED)
+        shared = _illumination(name, same_on_batch=True)
+        shared(batch)
+        gradients = shared._params["gradient"]
+        assert all(torch.equal(gradients[0], gradients[b]) for b in range(4))
 
     # Row 6c-41 in the state #4457 left it (it closed #4435): RandomGaussianIllumination used to
     # define its transform as a closure in __init__, which neither pickle nor torch.save could
@@ -682,22 +741,43 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
     # Row 6c-43: the three RandomPlasma* classes clamp into [0, 1], and -- since #4462 closed #4445
     # by recording the sampled fractal under ``_params["plasma"]`` -- replaying a forward with the
     # recorded parameters reproduces the first output bitwise.
+    #
+    # The replay leg runs on a *non-constant* image on purpose.  A constant 0.5 is a fixed point of
+    # the plasma contrast transform, so on that fixture RandomPlasmaContrast returns 0.5 whether or
+    # not `params` is honoured and the replay assertion would hold with #4462 reverted.  The clamp
+    # leg keeps the constant fixture, because that is where audit row 6c-43's literals were read.
     # Snippet used to generate expected:
-    #   c = torch.full((2, 3, 7, 9), 0.5)
-    #   torch.manual_seed(0); aug = K.RandomPlasmaBrightness(p=1.0); y = aug(c)
-    #   print(y.aminmax(), list(aug._params), torch.equal(y, aug(c, params=aug._params)))
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `min=0.370964 max=0.589035` (Brightness),
-    # `0.5/0.5` (Contrast), `0/0.5` (Shadow), `plasma` present in every key list, replay `True`.
+    #   c = torch.full((2, 3, 7, 9), 0.5); torch.manual_seed(1234); x = torch.rand(2, 3, 7, 9)
+    #   torch.manual_seed(0); aug = K.RandomPlasmaBrightness(p=1.0); print(aug(c).aminmax())
+    #   torch.manual_seed(0); aug = K.RandomPlasmaBrightness(p=1.0); y = aug(x)
+    #   print(list(aug._params), torch.equal(y, aug(x, params=aug._params)), (y - x).abs().max())
+    #   torch.manual_seed(0); b = K.RandomPlasmaBrightness(p=1.0); y2 = b(x)
+    #   print("params ignored still equal:", torch.equal(b(x), y2))
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> constant fixture `min=0.370964 max=0.589035`
+    # (Brightness), `0.5/0.5` (Contrast), `0/0.5` (Shadow); random fixture `0/0.98835`, `0/1`,
+    # `0/0.994917` with max|out - in| of 0.129036 / 0.327044 / 0.911523, `plasma` present in every key
+    # list, replay `True` for all three, and "params ignored still equal" `False` for all three.
     @pytest.mark.parametrize("name", ["RandomPlasmaBrightness", "RandomPlasmaContrast", "RandomPlasmaShadow"])
     def test_convention_plasma_clamps_and_replays_from_params(self, device, dtype, name):
-        aug = _plasma(name)
+        # Clamp leg: the audit's own constant fixture and its literals.
         constant = torch.full((2, 3, 7, 9), 0.5, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
-        out = aug(constant)
+        constant_out = _plasma(name)(constant)
+        assert float(constant_out.min()) >= 0.0
+        assert float(constant_out.max()) <= 1.0
+
+        # Replay leg: a seeded non-constant image, which no plasma transform leaves untouched.
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(2, 3, 7, 9).to(device=device, dtype=dtype)
+        aug = _plasma(name)
+        torch.manual_seed(_FORWARD_SEED)
+        out = aug(image)
         assert float(out.min()) >= 0.0
         assert float(out.max()) <= 1.0
         assert "plasma" in aug._params
-        assert torch.equal(aug(constant, params=aug._params), out)
+        # The transform actually moved this fixture, so an identity would not satisfy the replay.
+        assert float((out - image).abs().max()) > 0.05
+        assert torch.equal(aug(image, params=aug._params), out)
 
     # Row 6c-43 in its new state: the `math domain error` the audit saw on a one-pixel axis is gone,
     # so a 1x1 and a 1x8 image now run and keep their shape.
@@ -808,20 +888,29 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         assert torch.equal(cls(mean=0.5, std=0.25, p=0.0)(image), image)
 
     # Row 6c-16: both classes keep their statistics in ``flags`` rather than as buffers, so
-    # ``state_dict()`` is empty and the statistics do not move with ``.to(device)`` or survive a
-    # checkpoint round trip.  (The 6a pin test_convention_augmentations_are_stateless_modules
-    # covers Normalize as one of five stateless representatives; this one adds Denormalize and
-    # names where the statistics actually live.)
+    # ``state_dict()`` is empty and a ``Module.to(...)`` does not reach them -- the statistics are
+    # not carried by the module's own dtype/device machinery and do not survive a checkpoint round
+    # trip.  (The 6a pin test_convention_augmentations_are_stateless_modules covers Normalize as one
+    # of five stateless representatives; this one adds Denormalize and names where the statistics
+    # actually live.)
     # Snippet used to generate expected:
     #   aug = K.Normalize(mean=0.5, std=0.25, p=1.0)
     #   print(list(aug.state_dict()), [n for n, _ in aug.named_buffers()], list(aug.flags))
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `[] [] ['mean', 'std']` for both classes.
+    #   before = aug.flags["mean"].clone(); aug = aug.to(torch.float64)
+    #   print(aug.flags["mean"].dtype, torch.equal(aug.flags["mean"], before))
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> `[] [] ['mean', 'std']` and, after
+    # `.to(torch.float64)`, `torch.float32 True` -- unchanged -- for both classes.
     @pytest.mark.parametrize("cls", [K.Normalize, K.Denormalize])
     def test_convention_normalize_keeps_no_state(self, cls):
         aug = cls(mean=0.5, std=0.25, p=1.0)
         assert list(aug.state_dict()) == []
         assert [name for name, _ in aug.named_buffers()] == []
         assert sorted(aug.flags) == ["mean", "std"]
+        # `.to()` walks parameters and buffers; the statistics are in neither, so it leaves them be.
+        before = aug.flags["mean"].clone()
+        moved = aug.to(torch.float64)
+        assert moved.flags["mean"].dtype == torch.float32
+        assert torch.equal(moved.flags["mean"], before)
 
     # Row 6c-46: an unbatched (C, H, W) input is promoted to (1, C, H, W), and ``keepdim=True``
     # returns the unbatched shape again.  Checked on four classes of this half -- one filter, one
@@ -856,14 +945,15 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         assert factories[name](True)(image).shape == (3, 6, 8)
 
 
-def _illumination(name: str):
+def _illumination(name: str, **kwargs):
     """Point-range constructors for the three *Illumination classes, as ``audit-6c.py::r19`` uses them."""
-    factories = {
-        "RandomGaussianIllumination": lambda: K.RandomGaussianIllumination(gain=(0.5, 0.5), p=1.0),
-        "RandomLinearIllumination": lambda: K.RandomLinearIllumination(gain=(0.5, 0.5), p=1.0),
-        "RandomLinearCornerIllumination": lambda: K.RandomLinearCornerIllumination(gain=(0.5, 0.5), p=1.0),
+    classes = {
+        "RandomGaussianIllumination": K.RandomGaussianIllumination,
+        "RandomLinearIllumination": K.RandomLinearIllumination,
+        "RandomLinearCornerIllumination": K.RandomLinearCornerIllumination,
     }
-    return factories[name]()
+    kwargs.setdefault("gain", (0.5, 0.5))
+    return classes[name](p=1.0, **kwargs)
 
 
 def _plasma(name: str):
