@@ -4016,24 +4016,47 @@ class TestNormalTransformPixel(BaseTester):
         # explicitly asked for, on a function whose whole contract is "give me this dtype", and the
         # matrix feeds torch.jit-scripted warp_affine where a surprise dtype propagates. Rejecting
         # is the narrower change; #3948's own float output is not a dtype the caller named.
-        # Four cells because the guard is a membership test over floating and complex dtypes rather
-        # than a dtype.is_floating_point call (TorchScript cannot reach dtype attributes): a
-        # signed/unsigned, narrow/wide, or bool difference would show up here.
+        # Four cells because the guard asks a zero-element probe whether the dtype is floating or
+        # complex (TorchScript cannot reach dtype attributes): a signed/unsigned, narrow/wide, or
+        # bool difference would show up here. uint8 is the one cell that already raised on base,
+        # with RuntimeError: value cannot be converted to type uint8 without overflow from the
+        # -1.0 offset rather than a silent truncation; it is kept because it pins that the error
+        # is now kornia's own and uniform with the other three.
         # The dtype fixture is dropped because the claim is about the dtype argument itself.
         with pytest.raises(ValueError, match="floating point or complex"):
             kornia.geometry.conversions.normal_transform_pixel(4, 5, device=device, dtype=rejected_dtype)
         with pytest.raises(ValueError, match="floating point or complex"):
             kornia.geometry.conversions.normal_transform_pixel3d(2, 4, 5, device=device, dtype=rejected_dtype)
+        # A 3-pixel image is the case where the scale 2/(size - 1) is integral, so an integer
+        # dtype would have returned the exactly correct matrix on base. The rejection is uniform
+        # over sizes by decision, not by accident, and this cell is what makes that a decision.
+        with pytest.raises(ValueError, match="floating point or complex"):
+            kornia.geometry.conversions.normal_transform_pixel(3, 3, device=device, dtype=rejected_dtype)
 
-    @pytest.mark.parametrize("accepted_dtype", [torch.float16, torch.bfloat16, torch.complex64])
+    @pytest.mark.parametrize(
+        "accepted_dtype",
+        [torch.float16, torch.bfloat16, torch.complex64, getattr(torch, "float8_e4m3fn", None)],
+    )
     def test_convention_non_default_float_and_complex_dtypes_are_accepted_3959(self, device, accepted_dtype):
-        # The guard must reject integers WITHOUT narrowing the accepted set to the three common
-        # floats. Complex is accepted because a complex scale is a well-defined answer -- the
-        # 2-D matrix comes back as [(0.5+0j), 0j, (-1+0j)] -- and because narrowing here would
-        # break a caller that never hit the defect.
+        # The guard must reject integers WITHOUT narrowing the accepted set to the common floats.
+        # Complex is accepted because a complex scale is a well-defined answer, and float8 because
+        # it is an ordinary floating point dtype whose scales round rather than truncate: on base
+        # float8_e4m3fn returned [[0.5, 0, -1], [0, 0.6875, -1], [0, 0, 1]], where 0.6875 is 2/3 in
+        # that format. An allowlist rejected both float8 formats by omission, which is the reason
+        # the guard asks a probe instead. Fetched through getattr because kornia declares
+        # torch>=2.0.0 and the float8 dtypes are newer, in the style of the linalg.cross probe.
+        if accepted_dtype is None:
+            pytest.skip("this torch build has no float8_e4m3fn")
         matrix = kornia.geometry.conversions.normal_transform_pixel(4, 5, device=device, dtype=accepted_dtype)
         assert matrix.dtype == accepted_dtype
         assert matrix.shape == (1, 3, 3)
+        # Asserting the value, not only the dtype and shape: an all-zero matrix is the failure this
+        # whole change is about, and it would satisfy both of those.
+        expected = torch.tensor([[0.5, 0.0, -1.0], [0.0, 2.0 / 3.0, -1.0], [0.0, 0.0, 1.0]], device=device)
+        # Widening the result rather than narrowing the expectation keeps the complex cell exact
+        # (a cast the other way discards the imaginary part and warns), and the tolerance is set
+        # for float8_e4m3fn, where 2/3 is 0.6875.
+        self.assert_close(matrix.to(torch.complex128), expected[None].to(torch.complex128), atol=0.05, rtol=0.05)
 
     def test_convention_integer_dtype_rejection_is_unconditional_3959(self, device):
         # The guard is deliberately NOT a KORNIA_CHECK. KORNIA_CHECK is gated on
