@@ -521,4 +521,3 @@ call	builtins.RuntimeError	tests/models/test_kimi_vl.py::TestKimiVLModel::test_c
 call	builtins.RuntimeError	tests/models/test_kimi_vl.py::TestKimiVLModel::test_cardinality[cpu-bfloat16-4]
 call	builtins.RuntimeError	tests/models/test_kimi_vl.py::TestKimiVLModel::test_variable_resolution[cpu-bfloat16]
 call	builtins.AssertionError	tests/models/test_rt_detr.py::test_regvgg_optimize_for_deployment[cpu-bfloat16]
-call	builtins.AssertionError	tests/sensors/camera/test_camera_model.py::TestPinholeCamera::test_project_unproject[cpu-bfloat16-2]
