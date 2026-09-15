@@ -41,12 +41,10 @@ class RandomEqualize(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - among the classes the four-way split covers, this is the one that raises on an
-          out-of-``[0, 1]`` input instead of transforming it; the others keep the output inside that
-          range, bound one end, or carry the input's range through. See
-          :class:`~kornia.augmentation.IntensityAugmentationBase2D` for the split and for the classes
-          outside it: :class:`RandomClahe` is one of those and raises out of range as well, with a raw
-          indexing error that names neither the class nor the range.
+        - this class raises on an out-of-``[0, 1]`` input instead of transforming it. See
+          :class:`~kornia.augmentation.IntensityAugmentationBase2D` for the policies used by the other
+          intensity augmentations. :class:`RandomClahe` also raises out of range, with a raw indexing error
+          that names neither the class nor the range.
         - the rejection is not exactly at the boundary: an input marginally above ``1`` is still
           admitted, because what is checked is the value the histogram indexes.
 

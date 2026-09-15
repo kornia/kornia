@@ -56,7 +56,8 @@ class RandomGrayscale(IntensityAugmentationBase2D):
         - a three-channel input uses the RGB luminance weights by default; any other channel count
           defaults to an equal weight per channel, which makes the output the plain mean over channels.
           ``rgb_weights`` replaces those defaults.
-        - the result is not clamped, so an input outside ``[0, 1]`` gives an output outside it.
+        - the result is not clamped; its range follows the weighted channel reduction and the supplied
+          ``rgb_weights``.
 
     .. note::
         For 3-channel RGB inputs this uses :func:`kornia.color.rgb_to_grayscale`; multispectral

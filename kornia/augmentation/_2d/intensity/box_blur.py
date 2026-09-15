@@ -48,7 +48,7 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         - ``normalized`` reaches that function as its ``separable`` argument, so it selects the implementation
           rather than a normalization: both settings are L1-normalized means, they agree to float rounding, and
           a constant image survives either. ``border_type`` defaults to ``"reflect"``, as the function does.
-        - the output is not clamped, so an out-of-range input gives an out-of-range output. At the default
+        - the output is not clamped. At the default
           ``border_type="reflect"`` every output value is an average of input values and stays between the
           input's own extremes; ``border_type="constant"`` pads with zeros and can pull a border pixel below
           the input's minimum.

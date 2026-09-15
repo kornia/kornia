@@ -46,9 +46,12 @@ class ColorJiggle(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - this class and :class:`ColorJitter` draw the same parameters from the same seed, the
-          application ``order`` included; they differ only in the primitives they then apply. Three of
-          the four differ: :func:`kornia.enhance.adjust_brightness` against
+        - with the default CPU ``float32`` samplers, this class and :class:`ColorJitter` draw the same factors
+          and random application ``order`` from the same seed when their effective sampling bounds match.
+          In particular, scalar ``brightness > 1`` does
+          not match: ColorJiggle draws from ``[0, 2]`` while ColorJitter draws from ``[0, 1 + brightness]``.
+          Only ColorJitter accepts an ``order`` argument that replaces its sampled order with a fixed one.
+          The classes use different primitives for three adjustments: :func:`kornia.enhance.adjust_brightness` against
           :func:`kornia.enhance.adjust_brightness_accumulative`,
           :func:`kornia.enhance.adjust_contrast` against
           :func:`kornia.enhance.adjust_contrast_with_mean_subtraction`, and
@@ -57,8 +60,8 @@ class ColorJiggle(IntensityAugmentationBase2D):
           :func:`kornia.enhance.adjust_hue`.
         - the brightness factor is re-based exactly as :class:`RandomBrightness` re-bases it:
           ``factor - 1`` is what reaches :func:`kornia.enhance.adjust_brightness`.
-        - ``ColorJiggle(0, 0, 0, 0)`` is the identity, and the composition keeps the output inside
-          ``[0, 1]``.
+        - ``ColorJiggle(0, 0, 0, 0)`` is the identity, including for values outside ``[0, 1]``. A hue-only
+          configuration can also return values outside that interval.
 
     .. warning::
         In ``float16`` a black pixel reaching the hue step comes back as NaN, because

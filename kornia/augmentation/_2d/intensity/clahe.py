@@ -31,9 +31,8 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     .. image:: _static/img/equalize_clahe.png
 
-    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`. This class is
-    outside the four-way out-of-range split recorded there: it raises instead of transforming, and its
-    error is a raw one.
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`. This class raises
+    instead of transforming an out-of-range input, and its error is a raw one.
 
     Args:
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.

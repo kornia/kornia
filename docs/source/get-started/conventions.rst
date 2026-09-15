@@ -309,22 +309,19 @@ Augmentations
   :class:`kornia.augmentation.RandomAffine`
   (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
 - The 2D intensity augmentations assume the ``[0, 1]`` float range, and no
-  base-class check validates it on the way in. They disagree about what
-  happens outside that range: some keep
-  the output inside ``[0, 1]``, :class:`kornia.augmentation.RandomPlanckianJitter`
-  bounds only the upper end, some carry the input's range through, and
-  :class:`kornia.augmentation.RandomEqualize` is the one covered class that
-  raises. Several return an
-  all-zero image for an input whose values are all negative
-  (`#4430 <https://github.com/kornia/kornia/issues/4430>`_). See
-  :class:`kornia.augmentation.IntensityAugmentationBase2D`, and each class's
-  own documentation for which of the four it is. The split does not cover
-  :class:`kornia.augmentation.RandomDissolving`, which is unmeasured because
-  constructing it downloads a Stable Diffusion checkpoint, or
+  base-class check validates it on the way in. Outside that range, individual
+  classes use their documented policy: some clamp, rescale, or convert through
+  ``uint8``; :class:`kornia.augmentation.RandomPlanckianJitter` clamps only the
+  upper end; some do not clamp; and :class:`kornia.augmentation.RandomEqualize`
+  raises. The resulting values also depend on the sampled parameters and image
+  contents. Several can return an all-zero image for an all-negative input,
+  depending on the draw (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
+  See :class:`kornia.augmentation.IntensityAugmentationBase2D` and each class's
+  own documentation. :class:`kornia.augmentation.RandomDissolving` is unmeasured
+  because constructing it downloads a Stable Diffusion checkpoint.
   :class:`kornia.augmentation.RandomClahe` and
-  :class:`kornia.augmentation.RandomJPEG`, which are not in
-  ``kornia.augmentation.__all__``; ``RandomClahe`` raises out of range as well,
-  with a raw indexing error
+  :class:`kornia.augmentation.RandomJPEG` are not in
+  ``kornia.augmentation.__all__``; ``RandomClahe`` raises out of range with a raw indexing error
   (`#4564 <https://github.com/kornia/kornia/issues/4564>`_).
 
 .. code-block:: python
@@ -471,8 +468,8 @@ Quick self-review for generated code, most common first:
     — samplers can draw on an accelerator and cast the returned tensors back to CPU.
 18. Feeding mean/std-normalized or otherwise out-of-``[0, 1]`` tensors
     through an intensity augmentation and expecting the values to pass
-    through — some rescale, some clamp, and several return zeros for an
-    all-negative image.
+    through — some rescale, some clamp, and several can return zeros for an
+    all-negative image depending on the sampled parameters.
 
 .. tip::
 

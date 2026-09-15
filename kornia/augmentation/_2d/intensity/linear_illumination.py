@@ -45,7 +45,9 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - the class draws ``_params["gradient"]``, a tensor of the input's shape, adds it to the image and
+        - the class draws ``_params["gradient"]``, a tensor with the original normalized ``(B, C, H, W)``
+          input shape; a ``(C, H, W)`` input remains batched in stored parameters even when ``keepdim=True``.
+          It adds the field to the image and
           clamps the sum into ``[0, 1]``, so the output stays inside that range even when the input does not.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and fixes the direction of that
           sample's gradient, so one batch can hold both a darkened and a brightened image. A point range such
@@ -56,7 +58,8 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
           original's output under the same seed.
 
     .. warning::
-        An input whose values are all negative comes back as an all-zero image. Tracked in
+        An all-negative input can come back as an all-zero image when the sampled gradient does not raise it
+        above zero; a positive sampled gradient can recover values instead. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
@@ -169,7 +172,9 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - the class draws ``_params["gradient"]``, a tensor of the input's shape, adds it to the image and
+        - the class draws ``_params["gradient"]``, a tensor with the original normalized ``(B, C, H, W)``
+          input shape; a ``(C, H, W)`` input remains batched in stored parameters even when ``keepdim=True``.
+          It adds the field to the image and
           clamps the sum into ``[0, 1]``, so the output stays inside that range even when the input does not.
         - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and fixes the direction of that
           sample's gradient, so one batch can hold both a darkened and a brightened image. A point range such
@@ -180,7 +185,8 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
           original's output under the same seed.
 
     .. warning::
-        An input whose values are all negative comes back as an all-zero image. Tracked in
+        An all-negative input can come back as an all-zero image when the sampled gradient does not raise it
+        above zero; a positive sampled gradient can recover values instead. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::

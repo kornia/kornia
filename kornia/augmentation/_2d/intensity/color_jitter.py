@@ -60,9 +60,13 @@ class ColorJitter(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - this class and :class:`ColorJiggle` draw the same parameters from the same seed, the
-          application ``order`` included; they differ only in the primitives they then apply. Three of
-          the four differ: :func:`kornia.enhance.adjust_brightness_accumulative` against
+        - with the default CPU ``float32`` samplers, this class and :class:`ColorJiggle` draw the same factors
+          and random application ``order`` from the same seed when their effective sampling bounds match.
+          In particular, scalar ``brightness > 1`` does
+          not match: ColorJiggle draws from ``[0, 2]`` while ColorJitter draws from ``[0, 1 + brightness]``.
+          Only this class accepts an ``order`` argument that replaces the sampled order with a fixed one.
+          The classes use different primitives for three adjustments:
+          :func:`kornia.enhance.adjust_brightness_accumulative` against
           :func:`kornia.enhance.adjust_brightness`,
           :func:`kornia.enhance.adjust_contrast_with_mean_subtraction` against
           :func:`kornia.enhance.adjust_contrast`, and
@@ -71,11 +75,12 @@ class ColorJitter(IntensityAugmentationBase2D):
         - the brightness factor is not re-based here: it reaches
           :func:`kornia.enhance.adjust_brightness_accumulative` as drawn, where :class:`ColorJiggle` and
           :class:`RandomBrightness` subtract ``1`` first.
-        - ``ColorJitter(0, 0, 0, 0)`` is the identity, and the composition keeps the output inside
-          ``[0, 1]``.
+        - ``ColorJitter(0, 0, 0, 0)`` is the identity for an input in ``[0, 1]``. Its output policy depends
+          on the enabled operations and their sampled factors; it has no final, general output clamp.
 
     .. warning::
-        An input whose values are all negative comes back as an all-zero image. Tracked in
+        An input whose values are all negative can come back as an all-zero image, depending on the
+        enabled operations and their sampled factors. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. warning::

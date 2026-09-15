@@ -50,21 +50,21 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
         - these classes assume the library-wide ``[0, 1]`` float image value range, stated under
           "Image tensors" in :doc:`/get-started/conventions`. No base-class check validates it on the way
           in, so it is a precondition rather than a validated contract.
-        - outside that range the concrete classes split four ways. One group keeps the output inside
-          ``[0, 1]`` -- by a clamp, by a ``uint8`` round trip or by rescaling, depending on the class;
-          :class:`RandomPlanckianJitter` bounds the upper end only, so a negative input stays negative;
-          one group carries the input's range through, so an out-of-range input gives an out-of-range
-          output; and :class:`RandomEqualize` raises a ``RuntimeError``. Each class docstring says which
-          of the four it is, except :class:`RandomDissolving`, :class:`RandomClahe` and
-          :class:`RandomJPEG`, which the split does not cover: the first is unmeasured, because
-          constructing it downloads a Stable Diffusion checkpoint, and the other two are not in
-          ``kornia.augmentation.__all__``. The last two document their own out-of-range behavior on
-          their own pages.
+        - outside that range, concrete classes apply their documented policy: some clamp, rescale, or use a
+          ``uint8`` conversion; :class:`RandomPlanckianJitter` clamps only the upper end; others do not
+          clamp; and :class:`RandomEqualize` raises a ``RuntimeError``. The resulting values also depend on
+          the sampled parameters and image contents, so these policies are not an exhaustive classification
+          of every out-of-range input. :class:`RandomDissolving` is unmeasured because constructing it
+          downloads a Stable Diffusion checkpoint. :class:`RandomClahe` and :class:`RandomJPEG` are not in
+          ``kornia.augmentation.__all__`` and document their own behavior on their own pages.
         - the scalar factors a concrete class draws are per sample -- one value, or one per channel
           per sample where the class's own docstring says so. Several classes also draw a whole-image
-          field -- ``gaussian_noise``, ``gradient``, ``plasma`` -- which their own blocks document
-          with the input's shape. :class:`ColorJiggle` and :class:`ColorJitter` also draw an
-          application ``order``, and that one order is shared by the whole batch.
+          field -- ``gaussian_noise``, ``gradient``, ``plasma`` -- whose stored shape normally follows the
+          original batched ``(B, C, H, W)`` input shape. A ``(C, H, W)`` input remains batched in
+          those parameters even when ``keepdim=True``. ``gaussian_noise`` instead stores ``(1, C, H, W)``
+          with ``same_on_batch=True``, then expands it at application time; ``RandomPlasmaShadow`` stores
+          ``(B, 1, H, W)``. :class:`ColorJiggle` and :class:`ColorJitter` both draw an application ``order``;
+          it is shared by the whole batch. Only :class:`ColorJitter` accepts a fixed ``order`` override.
         - where a class documents bounds for a parameter, an explicit range outside them raises at
           construction. :class:`RandomGamma` is the exception: its non-negativity checks, for ``gamma``
           and for ``gain`` alike, live in :func:`kornia.enhance.adjust_gamma`, so they run on the
@@ -72,8 +72,9 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           instead of raising, tracked in `#4563 <https://github.com/kornia/kornia/issues/4563>`_.
 
     .. warning::
-        Several of these classes return an all-zero image for an input whose values are all negative,
-        with no warning. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+        Several of these classes can return an all-zero image for an input whose values are all negative,
+        depending on their sampled parameters, with no warning. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     """
 

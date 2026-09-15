@@ -281,6 +281,34 @@ class TestBlurConventions(BaseTester):
         assert aug.flags["border_type"] == BorderType.CONSTANT
         assert aug.flags["resample"] == Resample.NEAREST
 
+    # The four filters do not clamp their result.  A 1.1 impulse is nevertheless attenuated below
+    # one by each supported kernel, while median blur erases this isolated impulse altogether.  The
+    # half-amplitude and negative legs make the range observation a property of the filters rather
+    # than an implicit clamp in the augmentation wrapper.
+    @pytest.mark.parametrize("name", ["RandomBoxBlur", "RandomGaussianBlur", "RandomMedianBlur", "RandomMotionBlur"])
+    def test_convention_filters_attenuate_an_out_of_range_impulse_without_clamping(self, device, dtype, name):
+        factories = {
+            "RandomBoxBlur": lambda: K.RandomBoxBlur((3, 3), p=1.0),
+            "RandomGaussianBlur": lambda: K.RandomGaussianBlur((3, 3), (1.0, 1.0), p=1.0),
+            "RandomMedianBlur": lambda: K.RandomMedianBlur((3, 3), p=1.0),
+            "RandomMotionBlur": lambda: K.RandomMotionBlur(3, (0.0, 0.0), (0.0, 0.0), p=1.0),
+        }
+        make = factories[name]
+
+        impulse = torch.zeros(1, 1, 7, 7, device=device, dtype=dtype)
+        impulse[0, 0, 3, 3] = 1.1
+        out = make()(impulse)
+        assert float(out.min()) >= 0.0
+        assert float(out.max()) <= 1.0
+
+        if name == "RandomMedianBlur":
+            self.assert_close(out, torch.zeros_like(out))
+            return
+
+        half_impulse = impulse * 0.5
+        self.assert_close(out, make()(half_impulse) * 2.0)
+        self.assert_close(make()(-half_impulse), -make()(half_impulse))
+
     # Issue #4559: RandomBoxBlur, RandomGaussianBlur and RandomSharpness let a raw torch error out
     # when the image is smaller than the kernel along an axis, instead of raising a kornia error that
     # names the kernel and the shape.  The two blurs reflect-pad, so they fail as soon as an axis is
@@ -452,6 +480,68 @@ class TestNoiseAndWeatherConventions(BaseTester):
         # std=0 makes the addition exact, which is what pins `mean` as an offset and not a target.
         torch.manual_seed(_FORWARD_SEED)
         self.assert_close(K.RandomGaussianNoise(mean=2.0, std=0.0, p=1.0)(constant), constant + 2.0)
+
+    # Parameter fields use the normalized BCHW shape even when their CHW input is restored by
+    # ``keepdim``.  Gaussian noise samples just one such field for ``same_on_batch=True`` and lets
+    # broadcasting share it with every selected sample.
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "RandomGaussianNoise",
+            "RandomGaussianIllumination",
+            "RandomLinearIllumination",
+            "RandomLinearCornerIllumination",
+            "RandomPlasmaBrightness",
+            "RandomPlasmaContrast",
+            "RandomPlasmaShadow",
+        ],
+    )
+    @pytest.mark.parametrize("keepdim", [False, True])
+    def test_convention_intensity_parameter_fields_normalize_chw_shape(self, device, dtype, name, keepdim):
+        image = torch.rand(3, 7, 9, device=device, dtype=dtype)
+        aug, field_name, field_channels = _field_augmentation(name, keepdim=keepdim)
+        torch.manual_seed(_FORWARD_SEED)
+        out = aug(image)
+        assert out.shape == (image.shape if keepdim else (1, *image.shape))
+        assert aug._params[field_name].shape == (1, field_channels, *image.shape[-2:])
+        assert torch.equal(out, aug(image, params=aug._params))
+
+    # At a partial probability the stored field keeps the original batch length, rather than being
+    # compacted to the selected rows.  ``batch_prob`` identifies which rows were transformed; the
+    # remaining rows pass through unchanged, and the full parameter state still replays exactly.
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "RandomGaussianNoise",
+            "RandomGaussianIllumination",
+            "RandomLinearIllumination",
+            "RandomLinearCornerIllumination",
+            "RandomPlasmaBrightness",
+            "RandomPlasmaContrast",
+            "RandomPlasmaShadow",
+        ],
+    )
+    def test_convention_intensity_parameter_fields_keep_original_batch_for_partial_probability(
+        self, device, dtype, name
+    ):
+        image = torch.rand(4, 3, 7, 9, device=device, dtype=dtype)
+        aug, field_name, field_channels = _field_augmentation(name, p=0.5)
+        torch.manual_seed(_FORWARD_SEED)
+        out = aug(image)
+        selected = aug._params["batch_prob"].bool()
+        assert 0 < int(selected.sum()) < image.shape[0]
+        assert aug._params[field_name].shape == (image.shape[0], field_channels, *image.shape[-2:])
+        assert torch.equal(out[~selected], image[~selected])
+        assert torch.equal(out, aug(image, params=aug._params))
+
+    def test_convention_gaussian_noise_same_on_batch_shares_one_normalized_field(self, device, dtype):
+        image = torch.rand(4, 3, 7, 9, device=device, dtype=dtype)
+        aug = K.RandomGaussianNoise(mean=0.0, std=1.0, p=1.0, same_on_batch=True)
+        torch.manual_seed(_FORWARD_SEED)
+        out = aug(image)
+        noise = aug._params["gaussian_noise"]
+        assert noise.shape == (1, *image.shape[1:])
+        self.assert_close(out, image + noise.to(device=device, dtype=dtype).expand_as(image))
 
     # Row 6c-27: ``amount`` is the fraction of *pixels* touched, not of scalars -- a chosen pixel is
     # rewritten in every channel, so the changed mask is identical across channels -- and
@@ -755,6 +845,21 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         gradients = shared._params["gradient"]
         assert all(torch.equal(gradients[0], gradients[b]) for b in range(4))
 
+    # The all-negative collapse documented for these augmentations is conditional on the sampled
+    # gradient.  With a fixed positive sign and enough gain, a near-zero negative image retains the
+    # positive portion of that gradient after the unit-range clamp.
+    @pytest.mark.parametrize(
+        "name", ["RandomGaussianIllumination", "RandomLinearIllumination", "RandomLinearCornerIllumination"]
+    )
+    def test_convention_positive_illumination_can_lift_an_all_negative_image(self, device, dtype, name):
+        image = torch.full((2, 3, 7, 9), -0.01, device=device, dtype=dtype)
+        aug = _illumination(name, gain=(0.1, 0.1), sign=(1.0, 1.0))
+        torch.manual_seed(_FORWARD_SEED)
+        out = aug(image)
+        assert float(out.min()) >= 0.0
+        assert float(out.max()) <= 1.0
+        assert float(out.max()) > 0.0
+
     # Row 6c-41 in the state #4457 left it (it closed #4435): RandomGaussianIllumination used to
     # define its transform as a closure in __init__, which neither pickle nor torch.save could
     # serialize.  All three classes now round-trip through pickle and deepcopy, and the copy
@@ -1007,6 +1112,36 @@ def _plasma(name: str):
         "RandomPlasmaBrightness": lambda: K.RandomPlasmaBrightness(p=1.0),
         "RandomPlasmaContrast": lambda: K.RandomPlasmaContrast(p=1.0),
         "RandomPlasmaShadow": lambda: K.RandomPlasmaShadow(p=1.0),
+    }
+    return factories[name]()
+
+
+def _field_augmentation(name: str, p: float = 1.0, keepdim: bool = False):
+    """Return a field-producing augmentation, its parameter key, and its field channel count."""
+    factories = {
+        "RandomGaussianNoise": lambda: (
+            K.RandomGaussianNoise(mean=0.0, std=1.0, p=p, keepdim=keepdim),
+            "gaussian_noise",
+            3,
+        ),
+        "RandomGaussianIllumination": lambda: (
+            K.RandomGaussianIllumination(gain=(0.1, 0.1), p=p, keepdim=keepdim),
+            "gradient",
+            3,
+        ),
+        "RandomLinearIllumination": lambda: (
+            K.RandomLinearIllumination(gain=(0.1, 0.1), p=p, keepdim=keepdim),
+            "gradient",
+            3,
+        ),
+        "RandomLinearCornerIllumination": lambda: (
+            K.RandomLinearCornerIllumination(gain=(0.1, 0.1), p=p, keepdim=keepdim),
+            "gradient",
+            3,
+        ),
+        "RandomPlasmaBrightness": lambda: (K.RandomPlasmaBrightness(p=p, keepdim=keepdim), "plasma", 3),
+        "RandomPlasmaContrast": lambda: (K.RandomPlasmaContrast(p=p, keepdim=keepdim), "plasma", 3),
+        "RandomPlasmaShadow": lambda: (K.RandomPlasmaShadow(p=p, keepdim=keepdim), "plasma", 1),
     }
     return factories[name]()
 

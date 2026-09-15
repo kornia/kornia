@@ -46,8 +46,8 @@ def _restore_global_rng():
 
 # Constructor arguments are verbatim from the 6c audit probe (``audit-6c.py::mk()``), so the
 # executed literals below are the ones the fact table records.  ``RandomDissolving`` is the one 2D
-# intensity class with no executed row: constructing it prompts on stdin for ``diffusers`` and its
-# first forward downloads a Stable-Diffusion checkpoint, so it is excluded here as it was there.
+# intensity class with no executed row: constructing it can prompt for ``diffusers`` and download
+# a Stable-Diffusion checkpoint, so it is excluded here as it was there.
 _INTENSITY_FACTORIES = {
     "ColorJiggle": lambda: K.ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0),
     "ColorJitter": lambda: K.ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0),
@@ -86,10 +86,11 @@ _INTENSITY_FACTORIES = {
     "RandomSolarize": lambda: K.RandomSolarize(0.1, 0.1, p=1.0),
 }
 
-# Row 6c-01: the package splits four ways on an input outside [0, 1].  Issue #4430.
-# "Clamps both ends" names the observed output range, not the mechanism: see the caveats in the
-# header comment of test_convention_value_range_policy before citing this group in prose.
-_CLAMPS_BOTH_ENDS = (
+# Row 6c-01: four observed outcomes for these constructor arguments, seeds and fixtures (#4430).
+# These are not class-wide policies: a different input or configuration can change the group.
+# For example, a blur can attenuate an out-of-range impulse into [0, 1], and hue-only ColorJiggle
+# can preserve an out-of-range maximum.
+_BOUNDED_ON_FIXTURES = (
     "ColorJiggle",
     "ColorJitter",
     "RandomAutoContrast",
@@ -108,8 +109,8 @@ _CLAMPS_BOTH_ENDS = (
     "RandomSolarize",
 )
 # Row 6c-04: ``output.clamp(max=1.0)`` only, so a negative input stays negative.
-_CLAMPS_UPPER_END_ONLY = ("RandomPlanckianJitter",)
-_PASSES_RANGE_THROUGH = (
+_UPPER_BOUNDED_ON_FIXTURES = ("RandomPlanckianJitter",)
+_OUT_OF_RANGE_ON_FIXTURES = (
     "Denormalize",
     "Normalize",
     "RandomBoxBlur",
@@ -128,11 +129,11 @@ _PASSES_RANGE_THROUGH = (
     "RandomSaturation",
     "RandomSnow",
 )
-# Row 6c-02, in the state #4489 left it: the only class that rejects the input instead.
-_REJECTS_OUT_OF_RANGE = ("RandomEqualize",)
+# Row 6c-02, in the state #4489 left it: the only audited factory that rejects these fixtures.
+_REJECTS_AUDIT_FIXTURES = ("RandomEqualize",)
 
-# Row 6c-03: nine of the clamping classes do not merely clamp -- a wholly negative input comes back
-# as an all-zero image, with no warning.  Issue #4430.
+# Row 6c-03: these nine factories return zeros for the negative fixture at seed 0 (#4430).
+# Positive illumination or solarize additions can instead lift negative inputs above zero.
 # `RandomPosterize` is deliberately not here.  It reaches zero on some platforms only: its
 # `(x * 255).to(torch.uint8)` conversion saturates a negative float to code 0 on macOS arm64 with
 # torch 2.14.0 (the vectorised path, from 8 elements up) and on MPS, but wraps modulo 256 on Linux
@@ -140,7 +141,7 @@ _REJECTS_OUT_OF_RANGE = ("RandomEqualize",)
 # same input comes back as a full-range posterized image.  The collapse is therefore a property of
 # the running conversion kernel, not of kornia; what holds everywhere is pinned by
 # test_wart_random_posterize_out_of_range_wraps_4430 instead.
-_COLLAPSES_ON_NEGATIVE_INPUT = (
+_COLLAPSES_ON_NEGATIVE_FIXTURE = (
     "ColorJitter",
     "RandomContrast",
     "RandomGaussianIllumination",
@@ -182,12 +183,10 @@ def _run(name: str, image: torch.Tensor) -> torch.Tensor:
 
 
 class TestIntensityValueRangeConventions(BaseTester):
-    # Row 6c-01 (issue #4430): the 35 executable 2D intensity classes split four ways on an input
-    # outside [0, 1] -- 16 keep the output inside [0, 1], 1 bounds the upper end only, 17 pass the
-    # range through and 1 rejects the input.  Membership is the claim; the individual minima and
-    # maxima are fixture-bound and stay in comments.
-    # Three caveats the audit attaches to this row, so that "16 clamp both ends" is not written as
-    # prose without them (executed 2026-09-15, torch 2.14.0, cpu, on this test's own fixtures):
+    # Row 6c-01 (issue #4430): preserve the audit observations for these 35 specific factories
+    # and fixtures. Both the group membership and numerical extrema depend on the configuration
+    # and input; the counterexample tests below and in the ops file pin those qualifications.
+    # Additional mechanism caveats (executed 2026-09-15, torch 2.14.0, cpu):
     #   * `RandomBrightness` and `RandomContrast` are bounded only by their default
     #     `clip_output=True`.  With `clip_output=False` the range is passed through:
     #     `RandomBrightness((1.5, 1.5), clip_output=False)` on `[0, 2]` gives `max=2.496` and
@@ -211,10 +210,12 @@ class TestIntensityValueRangeConventions(BaseTester):
     # max=1`, `RandomSnow in=[0,2] -> min=0.00127578 max=1.996`, `RandomPlanckianJitter
     # in=[-1,0] -> min=-1.41941 max=-0.00200176`.
     @pytest.mark.parametrize("name", sorted(_INTENSITY_FACTORIES))
-    def test_convention_value_range_policy(self, device, dtype, name):
-        groups = (_CLAMPS_BOTH_ENDS, _CLAMPS_UPPER_END_ONLY, _PASSES_RANGE_THROUGH, _REJECTS_OUT_OF_RANGE)
+    def test_convention_value_range_on_audit_fixtures(self, device, dtype, name):
+        groups = (_BOUNDED_ON_FIXTURES, _UPPER_BOUNDED_ON_FIXTURES, _OUT_OF_RANGE_ON_FIXTURES, _REJECTS_AUDIT_FIXTURES)
         assert tuple(len(group) for group in groups) == (16, 1, 17, 1)
         assert set().union(*groups) == set(_INTENSITY_FACTORIES) and len(_INTENSITY_FACTORIES) == 35
+        if name in _REJECTS_AUDIT_FIXTURES and device.type != "cpu":
+            pytest.skip("value asserts are synchronous only on CPU (invalidate CUDA state, skipped on MPS)")
         if dtype == torch.float16 and name in ("ColorJiggle", "ColorJitter"):
             pytest.skip(
                 "float16 only (#4560): the contrast step collapses the [-1, 0] fixture to exact zeros "
@@ -223,10 +224,7 @@ class TestIntensityValueRangeConventions(BaseTester):
                 "float32, float64 and bfloat16 are finite"
             )
         fixtures = _out_of_range_fixtures(device, dtype)
-        if name in _REJECTS_OUT_OF_RANGE:
-            # The message is pinned separately; on MPS the range check is skipped
-            # (kornia/enhance/adjust.py:37-47) and the raw gather raises instead, so only the
-            # rejection itself is device-independent.
+        if name in _REJECTS_AUDIT_FIXTURES:
             for image in fixtures.values():
                 with pytest.raises(RuntimeError):
                     _run(name, image)
@@ -235,24 +233,24 @@ class TestIntensityValueRangeConventions(BaseTester):
         # -1.0, so a tolerance this loose still separates the groups in bfloat16.
         tol = 1e-3
         ranges = {tag: _run(name, image).aminmax() for tag, image in fixtures.items()}
-        if name in _CLAMPS_BOTH_ENDS:
+        if name in _BOUNDED_ON_FIXTURES:
             for tag, (low, high) in ranges.items():
                 assert float(low) >= -tol, f"{name} on {tag} left the lower end unclamped"
                 assert float(high) <= 1 + tol, f"{name} on {tag} left the upper end unclamped"
-        elif name in _CLAMPS_UPPER_END_ONLY:
+        elif name in _UPPER_BOUNDED_ON_FIXTURES:
             for tag, (_, high) in ranges.items():
                 assert float(high) <= 1 + tol, f"{name} on {tag} left the upper end unclamped"
             # The lower end is checked on the fixture that has one: [0, 2] is non-negative anyway.
             negative_min = float(ranges["[-1, 0]"][0])
             assert negative_min < -tol, f"{name} also clamped the lower end (min {negative_min})"
         else:
-            assert name in _PASSES_RANGE_THROUGH
+            assert name in _OUT_OF_RANGE_ON_FIXTURES
             assert any(float(high) > 1 + tol or float(low) < -tol for low, high in ranges.values()), (
                 f"{name} kept the output inside [0, 1] on both out-of-range fixtures"
             )
 
-    # Row 6c-01, the carve-out the anchor and conventions.rst now name: the four-way split is
-    # complete over the classes this file executes, and the classes it leaves out are exactly the
+    # Row 6c-01, the audit exclusions the anchor and conventions.rst name: the factories cover
+    # the classes this file executes, and the classes they leave out are exactly the
     # three named there.  RandomDissolving is excluded by method (constructing it downloads a
     # Stable-Diffusion checkpoint, so it is never constructed here), and RandomClahe / RandomJPEG
     # are outside kornia.augmentation.__all__ -- but all three are importable from
@@ -279,8 +277,8 @@ class TestIntensityValueRangeConventions(BaseTester):
         assert concrete - set(_INTENSITY_FACTORIES) == {"RandomClahe", "RandomDissolving", "RandomJPEG"}
         assert set(_INTENSITY_FACTORIES) - concrete == set()
 
-    # Row 6c-03 (issue #4430): nine of the clamping classes return an all-zero image on a wholly
-    # negative input.  #4430 offers two coherent outcomes (clamp, or reject as RandomEqualize now
+    # Row 6c-03 (issue #4430): nine factories return zeros on this negative fixture at seed 0.
+    # This is not a guarantee for other draws. #4430 offers two outcomes (clamp, or reject as RandomEqualize now
     # does), so this is a wart pin on today's behavior, not a strict xfail on a settled contract.
     # These nine collapse through their own arithmetic, not through a dtype conversion, so the
     # result is the same on every platform, torch version and dtype (`RandomPosterize`, whose
@@ -288,7 +286,7 @@ class TestIntensityValueRangeConventions(BaseTester):
     # Snippet used to generate expected: the r1 snippet above, reading the `in=[-1,0]` rows;
     # executed 2026-09-15 on this worktree under torch 2.14.0 and under torch 2.5.1 (macOS arm64,
     # cpu) -- all nine print `min=0 max=0` in both runs.
-    @pytest.mark.parametrize("name", _COLLAPSES_ON_NEGATIVE_INPUT)
+    @pytest.mark.parametrize("name", _COLLAPSES_ON_NEGATIVE_FIXTURE)
     def test_wart_intensity_negative_input_collapses_to_zero_4430(self, device, dtype, name):
         if dtype == torch.float16 and name == "ColorJitter":
             pytest.skip(
@@ -351,7 +349,7 @@ class TestIntensityValueRangeConventions(BaseTester):
             self.assert_close(out.max(), out.new_tensor(224 / 255))
 
     # Row 6c-05 (issue #4430), the failure the grouping run cannot see: RandomGamma is in
-    # _CLAMPS_BOTH_ENDS on the strength of `gamma=2.0`, but on a negative input `x ** gamma` is NaN
+    # _BOUNDED_ON_FIXTURES on the strength of `gamma=2.0`, but on a negative input `x ** gamma` is NaN
     # for every non-integer gamma and the clamp propagates it.  Only an integer gamma is finite, and
     # of those only an even one keeps a non-zero value -- an odd power keeps the sign and the clamp
     # floors it, which is the all-zero collapse #4430 is about.  #4430 leaves two coherent outcomes
@@ -394,12 +392,8 @@ class TestIntensityValueRangeConventions(BaseTester):
     # input values in [0, 1]. Scale the image into that range first, for example image / 255.0 for
     # 8-bit data.`, the first two return a 64-level image.
     def test_convention_random_equalize_rejects_out_of_range_with_named_range(self, device, dtype):
-        if device.type == "mps":
-            pytest.skip(
-                "MPS only: _assert_async_value_check skips the range check there because "
-                "aten::_assert_async has no MPS kernel (kornia/enhance/adjust.py:37-47), so the raw "
-                "gather raises without naming the range"
-            )
+        if device.type != "cpu":
+            pytest.skip("value asserts are synchronous only on CPU (invalidate CUDA state, skipped on MPS)")
         ramp = torch.linspace(0, 1, 64).reshape(1, 1, 8, 8).to(device=device, dtype=dtype)
         for image in (ramp * 2.0, ramp - 1.0):
             torch.manual_seed(_FORWARD_SEED)
@@ -479,9 +473,9 @@ class TestIntensityColourConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         self.assert_close(cls((1.0, 1.0), p=1.0)(image), image)
 
-    # Rows 6c-07 and 6c-08: ColorJiggle and ColorJitter draw byte-identical parameters from the
-    # same seed -- including the `order` key -- and differ only in the four primitives they call
-    # (adjust_*_accumulative / _with_mean_subtraction / _with_gray_subtraction vs the plain ones).
+    # Rows 6c-07 and 6c-08: with matching effective ranges and default CPU float32 samplers, these
+    # configurations draw byte-identical parameters from the same seed, including the random `order`.
+    # The selected non-identity factors expose the different adjustment primitives.
     # Replaying ColorJitter with ColorJiggle's own parameters reproduces the same gap, which is
     # what rules out a sampling-order difference.  The gap is fixture-bound (max|diff| 0.124188
     # here), so only the inequality is asserted.
@@ -492,7 +486,7 @@ class TestIntensityColourConventions(BaseTester):
     #   print((ya - yb).abs().max(), (ya - b(x, params=a._params)).abs().max())
     # executed 2026-09-15 (torch 2.14.0, cpu) -> `0.124188` twice, with `params equal: True` and
     # the drawn `order` `[0, 3, 2, 1]` on both.
-    def test_convention_color_jiggle_and_jitter_draw_identical_params(self, device, dtype):
+    def test_convention_color_jiggle_and_jitter_matching_ranges_draw_identical_params(self, device, dtype):
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 6, 8).to(device=device, dtype=dtype)
         torch.manual_seed(7)
@@ -507,10 +501,32 @@ class TestIntensityColourConventions(BaseTester):
             assert torch.equal(value, jitter._params[key]), f"{key} differs between the two classes"
         assert float((jiggled - jittered).abs().max()) > 0.05
         # Replaying ColorJitter with ColorJiggle's own parameters reproduces ColorJitter's output,
-        # so the gap above is the four primitives and not the draw.
+        # so the gap for this configuration is in application, not in the draw.
         replayed = jitter(image, params=jiggle._params)
         self.assert_close(replayed, jittered)
         assert float((jiggled - replayed).abs().max()) > 0.05
+
+    @pytest.mark.device_agnostic
+    def test_convention_color_jiggle_and_jitter_have_different_brightness_bounds(self):
+        # Scalar brightness=3 is accepted by both, but yields [0, 2] for Jiggle and [0, 4] for Jitter.
+        torch.manual_seed(7)
+        jiggle_params = K.ColorJiggle(brightness=3.0).forward_parameters((4, 3, 2, 2))
+        torch.manual_seed(7)
+        jitter_params = K.ColorJitter(brightness=3.0).forward_parameters((4, 3, 2, 2))
+        jiggle_brightness = jiggle_params["brightness_factor"]
+        jitter_brightness = jitter_params["brightness_factor"]
+        assert bool(((jiggle_brightness >= 0) & (jiggle_brightness <= 2)).all())
+        assert bool((jitter_brightness > 2).any())
+        self.assert_close(jitter_brightness, 2 * jiggle_brightness, atol=0, rtol=0)
+        for key in jiggle_params.keys() - {"brightness_factor"}:
+            assert torch.equal(jiggle_params[key], jitter_params[key]), key
+
+    @pytest.mark.parametrize("hue", [0.0, (0.1, 0.1)])
+    def test_convention_color_jiggle_can_leave_output_above_unit_range(self, device, dtype, hue):
+        # Disabled brightness/contrast steps do not clamp, and an HSV hue rotation preserves value.
+        image = torch.full((2, 3, 6, 8), 2.0, device=device, dtype=dtype)
+        out = K.ColorJiggle(0.0, 0.0, 0.0, hue, p=1.0)(image)
+        self.assert_close(out, image, atol=0, rtol=0)
 
     # Row 6c-08: both classes are the identity at (0, 0, 0, 0), so the gap above is the primitives
     # and not a stray factor.  Snippet used to generate expected:
@@ -562,6 +578,9 @@ class TestIntensityColourConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         weighted = K.RandomGrayscale(rgb_weights=weights, p=1.0)(red)
         self.assert_close(weighted[0, 0, 0, 0], weighted.new_tensor(1.0))
+        # Channel mixing can put out-of-range input back in range without clamping it.
+        reduced = K.RandomGrayscale(p=1.0)(2 * red)
+        self.assert_close(reduced, torch.full_like(red, 0.598))
 
     # Row 6c-11, one parameter away from the pin above: a non-RGB channel count is not rejected --
     # the channel count is preserved and every channel becomes the plain mean over channels.
@@ -700,6 +719,13 @@ class TestIntensityColourConventions(BaseTester):
         self.assert_close(out, torch.where(shifted < threshold, shifted, 1.0 - shifted))
         if (threshold, addition) == (0.5, 0.25):
             self.assert_close(out.flatten()[1], out.new_tensor(1.0 / 47.0 + 0.25))
+
+    @pytest.mark.parametrize(("addition", "expected"), [(-0.1, 0.0), (0.1, 0.099)])
+    def test_convention_random_solarize_negative_input_depends_on_addition(self, device, dtype, addition, expected):
+        # The seed-0 audit collapse is conditional: a positive addition can lift a negative pixel above zero.
+        image = torch.full((1, 3, 6, 8), -0.001, device=device, dtype=dtype)
+        out = K.RandomSolarize(thresholds=(0.5, 0.5), additions=(addition, addition), p=1.0)(image)
+        self.assert_close(out, torch.full_like(image, expected))
 
     # Row 6c-50: a scalar `thresholds` is a half-width around the function default 0.5, while a
     # scalar `additions` is a symmetric range about zero -- the class default centres on
@@ -920,12 +946,8 @@ class TestIntensityColourConventions(BaseTester):
         ],
     )
     def test_convention_intensity_constructors_reject_out_of_bounds(self, device, dtype, case, error):
-        if case == "gamma_negative" and device.type == "mps":
-            pytest.skip(
-                "MPS only: _assert_async_value_check skips the non-negativity check there because "
-                "aten::_assert_async has no MPS kernel (kornia/enhance/adjust.py:37-47), so a negative "
-                "gamma returns a constant 1 instead of raising"
-            )
+        if case == "gamma_negative" and device.type != "cpu":
+            pytest.skip("value asserts are synchronous only on CPU (invalidate CUDA state, skipped on MPS)")
         factories = {
             "sharpness_negative": lambda: K.RandomSharpness(-1.0, p=1.0),
             "posterize_bits_above_eight": lambda: K.RandomPosterize(bits=9, p=1.0),

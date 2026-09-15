@@ -40,7 +40,7 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
     Convention:
         - ``kernel_size`` is ``(kH, kW)``: the first entry counts rows and the second counts columns, as in
           :func:`kornia.filters.median_blur`.
-        - the output is not clamped, so an out-of-range input gives an out-of-range output. The window is
+        - the output is not clamped. The window is
           zero-padded -- :func:`kornia.filters.median_blur` convolves with ``F.conv2d`` -- so a border median
           is taken over zeros as well as image values, and a border pixel can come back as ``0`` even when no
           input value is near it.

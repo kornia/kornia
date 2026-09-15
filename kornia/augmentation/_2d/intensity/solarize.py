@@ -56,7 +56,8 @@ class RandomSolarize(IntensityAugmentationBase2D):
           :func:`kornia.enhance.solarize`'s own default threshold rather than equalling it.
 
     .. warning::
-        An input whose values are all negative comes back as an all-zero image. Tracked in
+        An all-negative input can come back as an all-zero image when the sampled addition does not raise it
+        above zero; a positive sampled addition can recover values instead. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
