@@ -282,12 +282,6 @@ class TestWarpImage(BaseTester):
     def test_convention_default_padding_mode_zeros(self, device, dtype):
         # warp_image_tps's padding_mode default is 'zeros': grid_sample calls that sample
         # outside bounds fill with 0, not the edge value ('border' would).
-        if dtype == torch.float16:
-            # get_tps_transform's linear solve is numerically unstable in float16 (produces NaN
-            # kernel/affine weights) -- matches this file's pre-existing
-            # test_identity_warp_align_corners float16 failure, unrelated to this convention.
-            pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
-
         src = torch.tensor(
             [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]], device=device, dtype=dtype
         )
@@ -306,8 +300,6 @@ class TestWarpImage(BaseTester):
         # must actually differ from the 'zeros' default. MPS's 2D grid_sample doesn't
         # support 'border' (probed at runtime), so this half is skipped visibly there
         # instead of silently no-op'ing inside an `if` guard.
-        if dtype == torch.float16:
-            pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
         if not supports_2d_border_padding(device):
             pytest.skip("MPS 2D grid_sample lacks 'border' padding")
 
@@ -331,8 +323,6 @@ class TestWarpImage(BaseTester):
         # corner-aligned control points on both sides reproduce the intended warp
         # exactly. Pinned here with a small translation expressed in corner-aligned
         # normalized coordinates against a hardcoded expected output.
-        if dtype == torch.float16:
-            pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
         if dtype == torch.bfloat16:
             pytest.skip("bfloat16 rounding of near-zero boundary values exceeds this test's atol")
 
@@ -358,15 +348,13 @@ class TestWarpImage(BaseTester):
             device=device,
             dtype=dtype,
         )
-        self.assert_close(warped, expected, atol=1e-4, rtol=1e-4)
+        atol, rtol = (5e-3, 1e-3) if dtype == torch.float16 else (1e-4, 1e-4)
+        self.assert_close(warped, expected, atol=atol, rtol=rtol)
 
     def test_convention_corrected_grid_reproduces_identity(self, device, dtype):
         # Keep an old-vs-new conformance pair during the deprecation window:
         # the default preserves the legacy output, while the opt-in corrected
         # grid reproduces an identity under the half-pixel convention.
-        if dtype == torch.float16:
-            pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
-
         src = torch.tensor(
             [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]], device=device, dtype=dtype
         )

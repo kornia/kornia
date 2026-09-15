@@ -51,7 +51,12 @@ def _kernel_distance(squared_distances: torch.Tensor, eps: float = 1e-8) -> torc
     :math: `\log(r) = 1/2 \log(r^2)`, this function takes the squared distance matrix and calculates
     :math: `0.5 r^2 log(r^2)`.
     """
-    # r^2 * log(r) = 1/2 * r^2 * log(r^2)
+    # r^2 * log(r) = 1/2 * r^2 * log(r^2). The default epsilon underflows to
+    # zero in float16, which would turn the mathematically valid 0 * log(eps)
+    # at a control-point match into NaN.
+    if squared_distances.dtype == torch.float16:
+        # Keep the value literal because torch.finfo is not TorchScript-supported.
+        eps = max(eps, 6.103515625e-05)
     return 0.5 * squared_distances * squared_distances.add(eps).log()
 
 
@@ -70,7 +75,8 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
           mapping (``points_src == points_dst``) yields kernel weights and an affine
           that are mathematically zero/identity, realized only up to linear-solver
           (LU) round-off — not bit-exact in general, and the residual size is
-          dtype- and backend-dependent; float16 currently produces NaN weights
+          dtype- and backend-dependent; float16 and bfloat16 inputs are solved in
+          float32 and cast back
         - neither :func:`warp_points_tps` nor :func:`warp_image_tps` calls this
           function — the caller composes them explicitly; whichever tensor is
           passed as this function's **second** positional argument is
@@ -123,25 +129,30 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
         raise ValueError(f"Invalid shape for points_dst, expected BxNx2. Got {points_dst.shape}")
 
     device, dtype = points_src.device, points_src.dtype
+    # The TPS system is small but ill-conditioned in reduced precision. Build and
+    # solve it in float32 for half inputs, while preserving the public result dtype.
+    solve_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+    points_src_solve = points_src.to(solve_dtype)
+    points_dst_solve = points_dst.to(solve_dtype)
     batch_size, num_points = points_src.shape[:2]
 
     # set up and solve linear system
     # [K   P] [w] = [dst]
     # [P^T 0] [a]   [ 0 ]
-    pair_distance: torch.Tensor = _pair_square_euclidean(points_src, points_dst)
+    pair_distance: torch.Tensor = _pair_square_euclidean(points_src_solve, points_dst_solve)
     k_matrix: torch.Tensor = _kernel_distance(pair_distance)
 
-    zero_mat: torch.Tensor = torch.zeros(batch_size, 3, 3, device=device, dtype=dtype)
-    one_mat: torch.Tensor = torch.ones(batch_size, num_points, 1, device=device, dtype=dtype)
-    dest_with_zeros: torch.Tensor = torch.cat((points_dst, zero_mat[:, :, :2]), 1)
-    p_matrix: torch.Tensor = torch.cat((one_mat, points_src), -1)
+    zero_mat: torch.Tensor = torch.zeros(batch_size, 3, 3, device=device, dtype=solve_dtype)
+    one_mat: torch.Tensor = torch.ones(batch_size, num_points, 1, device=device, dtype=solve_dtype)
+    dest_with_zeros: torch.Tensor = torch.cat((points_dst_solve, zero_mat[:, :, :2]), 1)
+    p_matrix: torch.Tensor = torch.cat((one_mat, points_src_solve), -1)
     p_matrix_t: torch.Tensor = torch.cat((p_matrix, zero_mat), 1).transpose(1, 2)
     l_matrix: torch.Tensor = torch.cat((k_matrix, p_matrix), -1)
     l_matrix = torch.cat((l_matrix, p_matrix_t), 1)
 
     weights = _torch_solve_cast(l_matrix, dest_with_zeros)
-    kernel_weights: torch.Tensor = weights[:, :-3]
-    affine_weights: torch.Tensor = weights[:, -3:]
+    kernel_weights: torch.Tensor = weights[:, :-3].to(dtype)
+    affine_weights: torch.Tensor = weights[:, -3:].to(dtype)
 
     return kernel_weights, affine_weights
 
@@ -267,8 +278,10 @@ def warp_image_tps(
           destination/output lattice, while the source/input side follows
           ``align_corners``; this mismatch is preserved temporarily for backward
           compatibility and emits a deprecation warning when ``align_corners=False``
-          - pixel-space (unnormalized) control points on either side silently
-            produce a wrong warp of the correct shape, with no error raised
+          while pixel-space (unnormalized) control points on either side silently
+          produce a wrong warp of the correct shape, with no error raised
+        - float16 and bfloat16 images use float32 for TPS evaluation and image
+          sampling, then cast the result back to the image dtype
         - align_corners: ``False`` by default
         - padding_mode: ``'zeros'`` by default
         - use_correct_grid: ``False`` during the deprecation window; opt in with
@@ -330,6 +343,16 @@ def warp_image_tps(
         raise ValueError(f"Invalid shape for affine_weights, expected BxNx2. Got {affine_weights.shape}")
 
     batch_size, _, h, w = image.shape
+    # Reduced-precision grid_sample can lose more than one ulp of the input image,
+    # and some backends do not implement all half-precision sampling kernels. Do
+    # the grid construction, TPS evaluation, and sampling in float32 for half
+    # inputs, then narrow only the final image. This keeps the corrected convention
+    # numerically meaningful without changing the output dtype contract.
+    compute_dtype = torch.float32 if image.dtype in (torch.float16, torch.bfloat16) else image.dtype
+    image_for_sampling = image.to(compute_dtype)
+    kernel_centers_for_sampling = kernel_centers.to(compute_dtype)
+    kernel_weights_for_sampling = kernel_weights.to(compute_dtype)
+    affine_weights_for_sampling = affine_weights.to(compute_dtype)
     if not align_corners and not use_correct_grid and not torch.jit.is_scripting():
         # Python warnings cannot be captured in a compiled graph. Eager callers
         # receive the migration warning; compiled calls keep the legacy math.
@@ -344,15 +367,17 @@ def warp_image_tps(
             )
 
     if use_correct_grid:
-        identity = torch.eye(2, 3, device=image.device, dtype=image.dtype).unsqueeze(0)
+        identity = torch.eye(2, 3, device=image.device, dtype=compute_dtype).unsqueeze(0)
         coords: torch.Tensor = nn.functional.affine_grid(identity, (1, 1, h, w), align_corners=align_corners)
     else:
-        coords = create_meshgrid(h, w, device=image.device, dtype=image.dtype, normalized_coordinates=True)
+        coords = create_meshgrid(h, w, device=image.device, dtype=compute_dtype, normalized_coordinates=True)
     coords = coords.reshape(-1, 2).expand(batch_size, -1, -1)
-    warped: torch.Tensor = warp_points_tps(coords, kernel_centers, kernel_weights, affine_weights)
+    warped: torch.Tensor = warp_points_tps(
+        coords, kernel_centers_for_sampling, kernel_weights_for_sampling, affine_weights_for_sampling
+    )
     warped = warped.view(-1, h, w, 2)
     warped_image: torch.Tensor = nn.functional.grid_sample(
-        image, warped, padding_mode=padding_mode, align_corners=align_corners
+        image_for_sampling, warped, padding_mode=padding_mode, align_corners=align_corners
     )
 
-    return warped_image
+    return warped_image.to(image.dtype)
