@@ -80,6 +80,8 @@ _INTENSITY_FACTORIES = {
 }
 
 # Row 6c-01: the package splits four ways on an input outside [0, 1].  Issue #4430.
+# "Clamps both ends" names the observed output range, not the mechanism: see the caveats in the
+# header comment of test_convention_value_range_policy before citing this group in prose.
 _CLAMPS_BOTH_ENDS = (
     "ColorJiggle",
     "ColorJitter",
@@ -168,9 +170,23 @@ def _run(name: str, image: torch.Tensor) -> torch.Tensor:
 
 class TestIntensityValueRangeConventions(BaseTester):
     # Row 6c-01 (issue #4430): the 35 executable 2D intensity classes split four ways on an input
-    # outside [0, 1] -- 16 clamp both ends, 1 clamps the upper end only, 17 pass the range through
-    # and 1 rejects the input.  Membership is the claim; the individual minima and maxima are
-    # fixture-bound and stay in comments.
+    # outside [0, 1] -- 16 keep the output inside [0, 1], 1 bounds the upper end only, 17 pass the
+    # range through and 1 rejects the input.  Membership is the claim; the individual minima and
+    # maxima are fixture-bound and stay in comments.
+    # Three caveats the audit attaches to this row, so that "16 clamp both ends" is not written as
+    # prose without them (executed 2026-09-15, torch 2.14.0, cpu, on this test's own fixtures):
+    #   * `RandomBrightness` and `RandomContrast` are bounded only by their default
+    #     `clip_output=True`.  With `clip_output=False` the range is passed through:
+    #     `RandomBrightness((1.5, 1.5), clip_output=False)` on `[0, 2]` gives `max=2.496` and
+    #     `RandomContrast((1.5, 1.5), clip_output=False)` gives `max=2.99399` (audit row 6c-35,
+    #     `R1 RandomBrightness(clip=False) in=[0,2] -> max=2.496`).  The `(clip=False)` variants are
+    #     deliberately outside `_INTENSITY_FACTORIES`, as they were outside the audit's count.
+    #   * `RandomPosterize`'s `[0, 1]` output is a `uint8` round-trip that wraps or floors, not a
+    #     clamp -- see test_wart_random_posterize_out_of_range_wraps_4430 (audit row 6c-38).
+    #   * `RandomAutoContrast` is a per-sample, per-channel min-max rescale, not a clamp: its
+    #     `clip_output` flag is dead because `normalize_min_max` already returns `[0, 1]`
+    #     (audit row 6c-35, #4436; pinned by test_convention_random_auto_contrast_is_normalize_min_max
+    #     and, for the dead flag, by TestRandomAutoContrast::test_clip_output_does_not_change_the_output).
     # Snippet used to generate expected: audit-6c.py::r1 re-executed on 90650596 as
     #   torch.manual_seed(1234); base = torch.rand(2, 3, 6, 8)
     #   for x in (base * 2.0, base - 1.0):
@@ -185,9 +201,9 @@ class TestIntensityValueRangeConventions(BaseTester):
         assert set().union(*groups) == set(_INTENSITY_FACTORIES) and len(_INTENSITY_FACTORIES) == 35
         if dtype == torch.float16 and name in ("ColorJiggle", "ColorJitter"):
             pytest.skip(
-                "float16 only: the contrast step collapses the [-1, 0] fixture to exact zeros and "
-                "adjust_hue's rgb_to_hsv then divides by that zero maximum, giving NaN "
-                "(adjust_hue(torch.zeros(1, 3, 2, 2, dtype=torch.float16), 0.1) is already NaN); "
+                "float16 only (#4560): the contrast step collapses the [-1, 0] fixture to exact zeros "
+                "and rgb_to_hsv's eps=1e-8 then underflows for a black pixel, so adjust_hue returns "
+                "NaN (adjust_hue(torch.zeros(1, 3, 2, 2, dtype=torch.float16), 0.1) is already NaN); "
                 "float32, float64 and bfloat16 are finite"
             )
         fixtures = _out_of_range_fixtures(device, dtype)
@@ -227,12 +243,16 @@ class TestIntensityValueRangeConventions(BaseTester):
     @pytest.mark.parametrize("name", _COLLAPSES_ON_NEGATIVE_INPUT)
     def test_wart_intensity_negative_input_collapses_to_zero_4430(self, device, dtype, name):
         if dtype == torch.float16 and name == "ColorJitter":
-            pytest.skip("float16 only: the collapsed image reaches adjust_hue, whose rgb_to_hsv returns NaN there")
+            pytest.skip(
+                "float16 only (#4560): the collapsed image reaches adjust_hue, whose rgb_to_hsv gives a "
+                "NaN saturation for a black pixel there (eps=1e-8 underflows in float16)"
+            )
         if dtype == torch.float64 and name == "RandomPosterize":
             pytest.skip(
-                "float64 only: posterize's float-to-uint8 conversion of the negative fixture wraps to "
-                "non-zero codes (see test_wart_random_posterize_out_of_range_wraps_4430), so the "
-                "collapse is a float32/float16/bfloat16 observation"
+                "float64 only: posterize's `(x * 255).to(torch.uint8)` wraps the negative fixture to "
+                "non-zero codes instead of saturating to 0 (mechanism measured in "
+                "test_wart_random_posterize_out_of_range_wraps_4430), so the collapse is a "
+                "float32/float16/bfloat16 observation"
             )
         image = _out_of_range_fixtures(device, dtype)["[-1, 0]"]
         assert float(_run(name, image).abs().max()) == 0.0
@@ -249,9 +269,16 @@ class TestIntensityValueRangeConventions(BaseTester):
     def test_wart_random_posterize_out_of_range_wraps_4430(self, device, dtype, scale):
         if dtype == torch.float64 and scale == "[-1, 0]":
             pytest.skip(
-                "float64 only: `(x * 255).to(torch.uint8)` of a value just below zero truncates to 0 in "
-                "float32 but wraps to 255 in float64, so the negative ramp keeps 8 levels there; the "
-                "wrap itself is what this pin records"
+                "float64 only: `(x * 255).to(torch.uint8)` is out of the uint8 domain for a negative x, "
+                "and torch's two conversion paths disagree. The input values are bit-identical in the "
+                "two dtypes (x[254] == -0.003921568393707275 in both, x[254] * 255 == "
+                "-0.9999999403953552 in both), so this is a kernel split, not a value difference: "
+                "measured on ((arange(256, dtype=float32) / 255).to(d) - 1.0) * 255, float32 saturates "
+                "every negative element to code 0 once the tensor reaches 8 elements (1 distinct code) "
+                "while float64 wraps modulo 256 at every size (255 distinct codes, 1..255); below 8 "
+                "elements float32 wraps too, and float16/bfloat16 follow float32. So the negative ramp "
+                "keeps 8 posterize levels in float64 and collapses to a constant 0 elsewhere. The wrap "
+                "itself is what this pin records"
             )
         ramp = (torch.arange(256, dtype=torch.float32) / 255.0).reshape(1, 1, 8, 32).to(device=device, dtype=dtype)
         image = ramp * 2.0 if scale == "[0, 2]" else ramp - 1.0
@@ -506,8 +533,13 @@ class TestIntensityColourConventions(BaseTester):
     #   x = torch.ones(2, 3, 6, 8)
     #   torch.manual_seed(0); a = K.RandomChannelDropout(num_drop_channels=n, fill_value=v, p=1.0)
     #   print(a(x).mean((2, 3)).tolist(), a._params["channel_idx"].tolist())
+    #   torch.manual_seed(0)
+    #   b = K.RandomChannelDropout(num_drop_channels=n, fill_value=v, p=1.0, same_on_batch=True)
+    #   b(x); print(b._params["channel_idx"].tolist())
     # executed 2026-09-15 (torch 2.14.0, cpu) -> default: `[[1, 1, 0], [0, 1, 1]]` with idx
-    # `[[2], [0]]`; n=2, v=0.7: `[[0.7, 1, 0.7], [0.7, 0.7, 1]]` with idx `[[2, 0], [0, 1]]`.
+    # `[[2], [0]]`; n=2, v=0.7: `[[0.7, 1, 0.7], [0.7, 0.7, 1]]` with idx `[[2, 0], [0, 1]]`.  The
+    # two samples therefore differ; `same_on_batch=True` collapses them to `[[2], [2]]` and
+    # `[[2, 0], [2, 0]]`.
     @pytest.mark.parametrize(("num_drop_channels", "fill_value"), [(1, 0.0), (2, 0.7)])
     def test_convention_random_channel_dropout_fills_the_named_channels(
         self, device, dtype, num_drop_channels, fill_value
@@ -524,6 +556,17 @@ class TestIntensityColourConventions(BaseTester):
             for c in range(3):
                 expected = fill_value if c in dropped else 1.0
                 self.assert_close(out[b, c], torch.full_like(out[b, c], expected))
+        # The draw is per sample: validating the output against the reported channel_idx alone would
+        # also pass for an implementation that dropped the same channels across the whole batch.
+        assert index[0].tolist() != index[1].tolist(), "the seeded per-sample draws coincide"
+        torch.manual_seed(_FORWARD_SEED)
+        batched = K.RandomChannelDropout(
+            num_drop_channels=num_drop_channels, fill_value=fill_value, p=1.0, same_on_batch=True
+        )
+        batched(image)
+        shared = batched._params["channel_idx"]
+        assert shared.shape == (2, num_drop_channels)
+        assert shared[0].tolist() == shared[1].tolist()
 
     # Row 6c-40: RandomInvert is `max_val - x`, with no clamp, so an input outside [0, 1] comes
     # back reflected around `max_val` rather than clipped.
@@ -655,9 +698,15 @@ class TestIntensityColourConventions(BaseTester):
     #   x = torch.full((2, 3, 6, 8), 0.5)
     #   torch.manual_seed(0)
     #   a = K.RandomRGBShift(r_shift_limit=1.0, g_shift_limit=0.0, b_shift_limit=0.0, p=1.0)
-    #   print(a(x).mean((2, 3)).tolist(), {k: tuple(v.shape) for k, v in a._params.items()})
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `[[0.492513, 0.5, 0.5], [1, 0.5, 0.5]]` with
-    # `r_shift`, `g_shift`, `b_shift` all of shape `(2,)`.
+    #   p = a.forward_parameters(x.shape)
+    #   print(p["r_shift"].tolist(), {k: tuple(v.shape) for k, v in p.items()})
+    #   print(a(x, params=p).mean((2, 3)).tolist())          # the natural draw
+    #   p["r_shift"] = torch.ones_like(p["r_shift"])         # the injection the pin asserts on
+    #   print(a(x, params=p).mean((2, 3)).tolist())
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> drawn `r_shift [-0.00748682, 0.536444]` (one per
+    # sample, and `g_shift`/`b_shift` both `[0, 0]`), all three of shape `(2,)`; the natural draw
+    # gives `[[0.492513, 0.5, 0.5], [1, 0.5, 0.5]]` and the injected `+1.0` gives
+    # `[[1, 0.5, 0.5], [1, 0.5, 0.5]]`.
     def test_convention_random_rgb_shift_is_per_channel_per_sample(self, device, dtype):
         image = torch.full((2, 3, 6, 8), 0.5, device=device, dtype=dtype)
         aug = K.RandomRGBShift(r_shift_limit=1.0, g_shift_limit=0.0, b_shift_limit=0.0, p=1.0)
@@ -665,6 +714,11 @@ class TestIntensityColourConventions(BaseTester):
         params = aug.forward_parameters(image.shape)
         for key in ("r_shift", "g_shift", "b_shift"):
             assert params[key].shape == (2,), f"{key} is not one shift per sample"
+        # The two samples draw independently, so the shape above is not the whole claim: the seeded
+        # draw is `[-0.00748682, 0.536444]`, and the zero-limit channels stay at exactly 0.
+        assert float(params["r_shift"][0]) != float(params["r_shift"][1])
+        self.assert_close(params["g_shift"], torch.zeros_like(params["g_shift"]), atol=0, rtol=0)
+        self.assert_close(params["b_shift"], torch.zeros_like(params["b_shift"]), atol=0, rtol=0)
         params["r_shift"] = torch.ones_like(params["r_shift"])
         out = aug(image, params=params)
         self.assert_close(out[:, 0], torch.ones_like(out[:, 0]))
