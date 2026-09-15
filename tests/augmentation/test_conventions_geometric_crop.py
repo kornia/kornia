@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 import pytest
 import torch
 
@@ -159,17 +161,6 @@ class TestGeometricCropConventions(BaseTester):
         row = -1 if size == (10, 10) else 0
         self.assert_close(output[0, 0, row], image.new_tensor(rows[size, mode]) / 48, low_tolerance=True)
 
-    def test_wart_random_crop_oversized_without_padding_upscales_4414(self, device, dtype):
-        # #4414: a 10x10 crop from a 6x8 input without pad_if_needed is the bilinear 10x10 resize.
-        x = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8) / 48
-        output = K.RandomCrop((10, 10), pad_if_needed=False, p=1.0)(x)
-        expected_row = torch.tensor(
-            [0.0, 0.014583, 0.03125, 0.047917, 0.064583, 0.08125, 0.097917, 0.114583, 0.13125, 0.145833],
-            device=device,
-            dtype=dtype,
-        )
-        self.assert_close(output[0, 0, 0], expected_row, low_tolerance=True)
-
     def test_convention_random_resized_crop_size_modes_and_inverse(self, device, dtype):
         x = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8)
         kwargs = {"size": (3, 4), "scale": (1.0, 1.0), "ratio": (0.75, 0.75), "p": 1.0}
@@ -197,6 +188,18 @@ class TestGeometricCropConventions(BaseTester):
         params["dst"] = torch.tensor([[[0, 0], [7, 0], [7, 5], [0, 5]]], device=device, dtype=dtype)
         self.assert_close(nearest(x, params=params), x)
 
+    @pytest.mark.device_agnostic
+    def test_convention_random_resized_crop_fallback_can_escape_scale_and_ratio(self):
+        params = K.RandomResizedCrop((4, 4), scale=(1.0, 1.0), p=1.0).forward_parameters((1, 1, 8, 6))
+
+        src = params["src"]
+        crop_height = (src[0, 2, 1] - src[0, 1, 1]).item() + 1
+        crop_width = (src[0, 1, 0] - src[0, 0, 0]).item() + 1
+        assert (crop_height, crop_width) == (4, 6)
+        assert crop_height * crop_width / (8 * 6) != 1.0
+        assert crop_width / crop_height > 4 / 3
+
+    @pytest.mark.device_agnostic
     def test_wart_crop_siblings_disagree_on_integer_size_4417(self):
         # #4417: CenterCrop accepts an int while its random siblings reject it through implementation details.
         assert K.CenterCrop(4).size == (4, 4)

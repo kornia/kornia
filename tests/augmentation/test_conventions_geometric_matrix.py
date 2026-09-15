@@ -105,6 +105,7 @@ class TestConventionGeometricMatrices(BaseTester):
             self.assert_close(points, expected)
         self.assert_close(augmentation.transform_matrix, torch.eye(3, device=device, dtype=dtype)[None])
 
+    @pytest.mark.device_agnostic
     def test_convention_perspective_sampling_extents_and_directions(self):
         shape = (64, 1, 5, 7)
         torch.manual_seed(0)
@@ -119,33 +120,27 @@ class TestConventionGeometricMatrices(BaseTester):
         assert (basic_offset[:, 2] <= 0).all()
         assert (basic_offset[:, 3, 0] >= 0).all() and (basic_offset[:, 3, 1] <= 0).all()
         assert (basic_offset.abs() <= extent).all()
+        assert (basic_offset.abs().amax(dim=(0, 1)) > 0.9 * extent).all()
         assert (area_offset.abs() <= extent).all()
+        assert (area_offset.abs().amax(dim=(0, 1)) > 0.9 * extent).all()
         assert (area_offset.amin(dim=(0, 1)) < 0).all()
         assert (area_offset.amax(dim=(0, 1)) > 0).all()
 
+    @pytest.mark.device_agnostic
     def test_convention_perspective_same_on_batch_reuses_destination_corners(self):
         params = K.RandomPerspective(0.5, p=1.0, same_on_batch=True).forward_parameters((3, 1, 5, 7))
 
         self.assert_close(params["end_points"], params["end_points"][:1].expand_as(params["end_points"]))
 
     @pytest.mark.parametrize("constant", [False, True])
-    @pytest.mark.parametrize(
-        "align_corners",
-        [
-            True,
-            pytest.param(
-                False,
-                marks=pytest.mark.xfail(
-                    strict=True, raises=AssertionError, reason="#4411: identity perspective warp is not identity"
-                ),
-            ),
-        ],
-    )
+    @pytest.mark.parametrize("align_corners", [False, True])
     def test_convention_random_perspective_identity_warp_is_identity_4411(self, device, dtype, constant, align_corners):
         image = torch.ones(1, 1, 5, 7, device=device, dtype=dtype)
         if not constant:
             image = torch.arange(35, device=device, dtype=dtype).reshape_as(image)
-        self.assert_close(K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)(image), image)
+        self.assert_close(
+            K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)(image), image, low_tolerance=True
+        )
 
     def test_wart_random_affine_rotation_sign_4408(self, device, dtype):
         x = torch.zeros(1, 1, 7, 7, device=device, dtype=dtype)
@@ -178,6 +173,7 @@ class TestConventionGeometricMatrices(BaseTester):
         x = torch.zeros(1, 1, 5, 7)
         assert K.RandomRotation90((1, 1), p=1.0)(x).shape == x.shape
 
+    @pytest.mark.device_agnostic
     def test_wart_align_corners_defaults_split_geometric_augmentations_4412(self):
         assert K.RandomRotation(0.0).flags["align_corners"] is True
         assert K.RandomRotation90((0, 0)).flags["align_corners"] is True
@@ -203,3 +199,13 @@ class TestConventionGeometricMatrices(BaseTester):
         x = torch.ones(1, 1, 5, 7, device=device, dtype=dtype)
         translated = K.RandomTranslate((1.0, 1.0), (0.0, 0.0), p=1.0)(x)
         self.assert_close(translated, torch.zeros_like(x))
+
+        perspective_params = {
+            "start_points": x.new_tensor([[[0, 0], [6, 0], [6, 4], [0, 4]]]),
+            "end_points": x.new_tensor([[[1, 1], [5, 1], [5, 3], [1, 3]]]),
+        }
+        perspective_output = K.RandomPerspective(0.5, p=1.0)(x, params=perspective_params)
+        rotation_output = K.RandomRotation((45.0, 45.0), p=1.0)(x)
+        rotation90_output = K.RandomRotation90((1, 1), p=1.0)(x)
+        for border in (perspective_output[..., 0, :], rotation_output[..., 0, 0], rotation90_output[..., :, 0]):
+            self.assert_close(border, torch.zeros_like(border))

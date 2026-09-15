@@ -59,11 +59,8 @@ class RandomPerspective(GeometricAugmentationBase2D):
           padding, and ``align_corners=False``. ``same_on_batch=True`` reuses the sampled destination corners for
           every selected sample.
 
-    .. warning::
-        With the default ``align_corners=False``, even ``distortion_scale=0`` changes constant and smooth images:
-        a 5-by-7 image of ones has corner values of 0.25 and other border values of 0.5 because the sampler blends
-        in zero padding. Setting ``align_corners=True`` restores identity up to numerical precision. This
-        identity-warp defect is tracked in `#4411 <https://github.com/kornia/kornia/issues/4411>`_.
+        - With ``distortion_scale=0``, the image warp is identity up to numerical precision for either
+          ``align_corners`` setting.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_pespective`.

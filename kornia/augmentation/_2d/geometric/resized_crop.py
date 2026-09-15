@@ -63,9 +63,13 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         ``size`` is an ``(height, width)`` tuple. A bare integer
         is rejected, unlike :class:`CenterCrop`; the sibling split is tracked in
         `#4417 <https://github.com/kornia/kornia/issues/4417>`_. Here ``p`` selects or skips the whole batch together.
-        Within a selected batch, the generator samples a crop area from ``scale`` and an aspect ratio from ``ratio``
-        independently for each image (or shares it with
-        ``same_on_batch=True``), then produces the requested output size.
+        Within a selected batch, the generator tries ten candidate crops per image, sampling area fractions from
+        ``scale`` and width/height ratios from ``ratio`` (shared with ``same_on_batch=True``). Rounded candidate
+        dimensions must be positive and strictly smaller than the input on both axes. If no candidate fits,
+        a fallback chooses dimensions by comparing input height/width with ``min(ratio)``, then clamps them to
+        the input size. This fallback can violate both requested ranges: on an 8x6 input, ``scale=(1.0, 1.0)``
+        with the default ratio produces a 4x6 crop, with half the input area and width/height ratio 1.5.
+        The selected crop is resized to the requested output size.
 
         Slice mode calls index cropping with the configured interpolation and ``align_corners``; resample mode
         calls ``crop_by_transform_mat`` with zero padding. Both default to bilinear sampling and

@@ -64,7 +64,8 @@ class CenterCrop(GeometricAugmentationBase2D):
         `#4413 <https://github.com/kornia/kornia/issues/4413>`_. ``cropping_mode="resample"`` uses
         ``crop_by_transform_mat`` with the configured ``resample`` (bilinear by default), ``align_corners`` (``True``
         by default), and zero padding. Only resample mode supports
-        :meth:`inverse`; it resamples onto the original canvas with zero padding and cannot restore discarded data.
+        :meth:`inverse`; it resamples onto the original canvas with zero padding by default and cannot restore discarded
+        data. The inverse call can override ``padding_mode``, for example with ``padding_mode="border"``.
 
     Examples:
         >>> import torch

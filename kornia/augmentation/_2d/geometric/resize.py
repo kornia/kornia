@@ -155,8 +155,10 @@ class LongestMaxSize(Resize):
         max_size: maximum size of the image after the transformation.
 
     Convention:
-        See :class:`Resize` for the common resize conventions. This is ``Resize(max_size, side="long")``: its
-        longest output side equals ``max_size`` and the other side is truncated while preserving aspect ratio.
+        See :class:`Resize` for the common resize conventions. This behaves like
+        ``Resize(max_size, side="long", antialias=False, keepdim=False)``; ``antialias`` and ``keepdim``
+        are not accepted constructor arguments. Its longest output side equals ``max_size`` and the other
+        side is truncated while preserving aspect ratio.
 
     """
 
@@ -178,8 +180,10 @@ class SmallestMaxSize(Resize):
         max_size: maximum size of the image after the transformation.
 
     Convention:
-        See :class:`Resize` for the common resize conventions. This is ``Resize(max_size, side="short")``: its
-        shortest output side equals ``max_size`` and the other side is truncated while preserving aspect ratio.
+        See :class:`Resize` for the common resize conventions. This behaves like
+        ``Resize(max_size, side="short", antialias=False, keepdim=False)``; ``antialias`` and ``keepdim``
+        are not accepted constructor arguments. Its shortest output side equals ``max_size`` and the other
+        side is truncated while preserving aspect ratio.
 
     """
 

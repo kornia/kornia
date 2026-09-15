@@ -87,38 +87,31 @@ class TestDenseGeometricConventions(BaseTester):
         ).reshape_as(image)
         self.assert_close(aug(image), expected)
 
-    def test_convention_tps_control_points_and_noise(self, device, dtype):
+    @pytest.mark.device_agnostic
+    def test_convention_tps_control_points_and_noise_sample_on_cpu(self):
         aug = K.RandomThinPlateSpline(scale=0.2, same_on_batch=True, p=1)
-        aug.set_rng_device_and_dtype(device=device, dtype=dtype)
         params = aug.forward_parameters((2, 1, 5, 7))
-        expected = torch.tensor([[-1, -1], [-1, 1], [1, -1], [1, 1], [0, 0]], device=device, dtype=dtype)
+        expected = torch.tensor([[-1, -1], [-1, 1], [1, -1], [1, 1], [0, 0]], dtype=torch.float32)
+        assert params["src"].device.type == "cpu"
+        assert params["src"].dtype == torch.float32
+        assert params["dst"].device.type == "cpu"
+        assert params["dst"].dtype == torch.float32
         self.assert_close(params["src"], expected.expand(2, 5, 2))
         assert ((params["dst"] - params["src"]).abs() <= 0.201).all()
         self.assert_close(params["dst"][0], params["dst"][1], atol=0, rtol=0)
         zero = K.RandomThinPlateSpline(scale=0, p=1).forward_parameters((2, 1, 5, 7))
+        assert zero["src"].device.type == "cpu"
+        assert zero["src"].dtype == torch.float32
         self.assert_close(zero["src"], zero["dst"], atol=0, rtol=0)
         assert aug.flags["padding_mode"] == SamplePadding.ZEROS
         assert aug.flags["align_corners"] is False
 
     @pytest.mark.parametrize("align_corners", [False, True])
-    def test_wart_thin_plate_spline_identity_grid_3928(self, device, dtype, align_corners):
+    def test_convention_thin_plate_spline_identity_grid_3928(self, device, dtype, align_corners):
         self.require_tps(dtype)
         image = torch.ones(1, 1, 3, 3, device=device, dtype=dtype)
         aug = K.RandomThinPlateSpline(scale=0, align_corners=align_corners, p=1)
-        # A corner-aligned identity grid places the outer samples half a pixel
-        # outside when interpreted with align_corners=False: half weight per axis.
-        expected = (
-            image
-            if align_corners
-            else image.new_tensor([[0.25, 0.5, 0.25], [0.5, 1, 0.5], [0.25, 0.5, 0.25]]).reshape_as(image)
-        )
-        self.assert_close(aug(image), expected)
-
-    @pytest.mark.xfail(strict=True, raises=AssertionError, reason="Default TPS identity grid mismatch: #3928")
-    def test_convention_thin_plate_spline_zero_scale_identity_3928(self, device, dtype):
-        self.require_tps(dtype)
-        image = torch.ones(1, 1, 3, 3, device=device, dtype=dtype)
-        self.assert_close(K.RandomThinPlateSpline(scale=0, p=1)(image), image)
+        self.assert_close(aug(image), image)
 
     @pytest.mark.parametrize("kind", ["elastic", "fisheye", "tps"])
     def test_convention_dense_shape_and_matrix_interface(self, device, dtype, kind):

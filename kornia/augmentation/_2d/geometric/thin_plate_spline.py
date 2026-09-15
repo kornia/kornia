@@ -41,15 +41,13 @@ class RandomThinPlateSpline(AugmentationBase2D):
         no ``transform_matrix`` or ``inverse`` interface. Spatial labels in containers have
         additional limitations; see `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
 
+        With zero scale, the image warp is identity up to numerical precision for either ``align_corners``
+        setting with float32, float64, and bfloat16 inputs.
+
     .. warning::
-        Unchanged control points do not give an identity image at the default
-        ``align_corners=False`` because the sampling lattice is corner-aligned. Setting
-        ``align_corners=True`` removes this mismatch for float32, float64, and bfloat16 inputs, up to numerical
-        precision. Float16 has a separate kernel-epsilon underflow that can produce non-finite weights and NaN
-        output even with ``align_corners=True``. The solve has additional dtype limitations documented on
-        :func:`~kornia.geometry.transform.get_tps_transform`. The sampling-grid mismatch is tracked in
-        `#3928 <https://github.com/kornia/kornia/issues/3928>`_ and
-        `#4411 <https://github.com/kornia/kornia/issues/4411>`_.
+        Float16 has a kernel-epsilon underflow that can produce non-finite weights and NaN output for either
+        ``align_corners`` setting. The solve has additional dtype limitations documented on
+        :func:`~kornia.geometry.transform.get_tps_transform`.
 
     Args:
         scale: the non-negative scale factor to apply to the destination points.

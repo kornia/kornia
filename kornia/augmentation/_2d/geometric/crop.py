@@ -70,10 +70,6 @@ class RandomCrop(GeometricAugmentationBase2D):
         Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
-        ``p`` selects or skips the whole batch; ``same_on_batch`` controls whether selected images share
-        the same crop parameters. When the batch is skipped, the returned images, masks, keypoints, and
-        boxes remain unchanged, including when ``padding`` or ``pad_if_needed`` is set.
-
     Convention:
         See :class:`~kornia.augmentation.AugmentationBase2D` for input, dtype, probability, and replay,
         :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
@@ -83,6 +79,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         computation with ``pad_if_needed=True``. The split is tracked in
         `#4417 <https://github.com/kornia/kornia/issues/4417>`_. Here ``p`` selects or skips the whole batch together.
         Within a selected batch, each image samples a crop independently unless ``same_on_batch=True``.
+        When skipped, images, masks, keypoints, and boxes remain unchanged, even with padding configured.
 
         Explicit ``padding`` is applied before sampling, in ``(left, top, right, bottom)`` order after its scalar
         or two-value shorthand is expanded. ``pad_if_needed=True`` takes the per-side maximum of that padding and
