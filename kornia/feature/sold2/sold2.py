@@ -25,7 +25,6 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.core.utils import dataclass_to_dict, dict_to_dataclass
 from kornia.feature.sold2.structures import DetectorCfg, LineMatcherCfg
-from kornia.geometry.conversions import normalize_pixel_coordinates
 
 from .backbones import SOLD2Net
 from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
@@ -329,7 +328,15 @@ class WunschLineMatcher(nn.Module):
 
 
 def keypoints_to_grid(keypoints: torch.Tensor, img_size: Tuple[int, int]) -> torch.Tensor:
-    """Convert a list of keypoints into a grid in [-1, 1]² that can be used in torch.nn.functional.interpolate.
+    """Convert a list of keypoints into a grid in [-1, 1]² that can be used in torch.nn.functional.grid_sample.
+
+    The normalization is the reference implementation's ``keypoints * 2 / img_size - 1``
+    (cvg/SOLD2, ``sold2/misc/geometry_utils.py``), the convention the pretrained weights were trained
+    with. It pairs with the ``align_corners=False`` sampling in :class:`WunschLineMatcher`: image pixel
+    ``p`` on an axis of size ``S`` lands on descriptor-map coordinate ``p * S_desc / S - 0.5``, so the
+    image pixel at the centre of a descriptor cell reads that cell exactly. It is deliberately not
+    :func:`kornia.geometry.conversions.normalize_pixel_coordinates`, whose corner-aligned mapping
+    ``2p / (S - 1) - 1`` drifts by ``p / (S - 1)`` image pixels toward the far edge under this sampler.
 
     Args:
         keypoints: a torch.Tensor [N, 2] of N keypoints (ij coordinates convention).
@@ -338,7 +345,10 @@ def keypoints_to_grid(keypoints: torch.Tensor, img_size: Tuple[int, int]) -> tor
     """
     KORNIA_CHECK_SHAPE(keypoints, ["N", "2"])
     n_points = len(keypoints)
-    grid_points = normalize_pixel_coordinates(keypoints[:, [1, 0]], img_size[0], img_size[1])
+    xy = keypoints[:, [1, 0]]
+    if not xy.is_floating_point():
+        xy = xy.float()
+    grid_points = torch.stack((xy[:, 0] * 2.0 / img_size[1] - 1.0, xy[:, 1] * 2.0 / img_size[0] - 1.0), dim=-1)
     grid_points = grid_points.view(-1, n_points, 1, 2)
     return grid_points
 
