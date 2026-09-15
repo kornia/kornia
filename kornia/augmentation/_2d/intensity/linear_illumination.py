@@ -29,6 +29,8 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomLinearIllumination.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         gain: Range for the gain factor (intensity) applied to the generated illumination.
         sign: Range for the sign of the distribution. If only one sign is needed,
@@ -41,6 +43,21 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the class draws ``_params["gradient"]``, a tensor of the input's shape, adds it to the image and
+          clamps the sum into ``[0, 1]``, so the output stays inside that range even when the input does not.
+        - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and fixes the direction of that
+          sample's gradient, so one batch can hold both a darkened and a brightened image. A point range such
+          as ``sign=1.0`` fixes the direction for every sample.
+        - the clamp bites on in-range images too: once ``gain`` exceeds the headroom between the image and the
+          bound, the sum is cut there rather than rescaled.
+        - the module pickles, deep-copies and passes through ``torch.save``, and the copy reproduces the
+          original's output under the same seed.
+
+    .. warning::
+        An input whose values are all negative comes back as an all-zero image. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -136,6 +153,8 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomLinearCornerIllumination.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         gain: Range for the gain factor (intensity) applied to the generated illumination.
         sign: Range for the sign of the distribution. If only one sign is needed,
@@ -148,6 +167,21 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the class draws ``_params["gradient"]``, a tensor of the input's shape, adds it to the image and
+          clamps the sum into ``[0, 1]``, so the output stays inside that range even when the input does not.
+        - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and fixes the direction of that
+          sample's gradient, so one batch can hold both a darkened and a brightened image. A point range such
+          as ``sign=1.0`` fixes the direction for every sample.
+        - the clamp bites on in-range images too: once ``gain`` exceeds the headroom between the image and the
+          bound, the sum is cut there rather than rescaled.
+        - the module pickles, deep-copies and passes through ``torch.save``, and the copy reproduces the
+          original's output under the same seed.
+
+    .. warning::
+        An input whose values are all negative comes back as an all-zero image. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         The generated random numbers are not reproducible across different devices and dtypes. By default,

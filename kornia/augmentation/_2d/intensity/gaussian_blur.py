@@ -33,6 +33,8 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomGaussianBlur.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         kernel_size: the size of the kernel.
         sigma: the range for the standard deviation of the kernel.
@@ -47,6 +49,20 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - ``kernel_size`` is ``(kH, kW)``: the first entry counts rows and the second counts columns, as in
+          :func:`kornia.filters.gaussian_blur2d`. An even entry is not rounded up -- the forward pass raises
+          the primitive's own "odd integer" error.
+        - ``sigma`` is drawn once per sample, as a single scalar that is used for both axes, so the blur this
+          class produces is always isotropic; an anisotropic sigma is not reachable through it.
+        - the defaults ``separable=True`` and ``border_type="reflect"`` are the function's own defaults.
+        - the output is never clamped, so an input outside ``[0, 1]`` comes back inside its own range.
+
+    .. warning::
+        An image with a spatial axis no longer than half the kernel size raises a raw torch ``RuntimeError``
+        about the reflect padding rather than a kornia error naming the class or the shape. Tracked in
+        `#4559 <https://github.com/kornia/kornia/issues/4559>`_.
 
     .. note::
         This function internally uses :func:`kornia.filters.gaussian_blur2d`.

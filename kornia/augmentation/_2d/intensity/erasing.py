@@ -29,7 +29,9 @@ class RandomErasing(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomErasing.png
 
-    The operator removes image parts and fills them with zero values at a selected rectangle
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
+    The operator removes image parts and fills them with ``value`` at a selected rectangle
     for each of the images in the batch.
 
     The rectangle will have an area equal to the original image area multiplied by a value uniformly
@@ -48,6 +50,17 @@ class RandomErasing(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - ``scale`` is the fraction of the image *area* the rectangle covers and ``ratio`` is its height over
+          its width, so a ratio above ``1`` erases a tall box and below ``1`` a wide one.
+        - the erased region is the half-open rectangle ``[ys, ys + h) x [xs, xs + w)`` in pixels, recorded as
+          ``_params["ys"]``, ``["xs"]``, ``["heights"]`` and ``["widths"]``.
+        - the erased pixels carry the literal ``value``, which has to lie in ``[0, 1]`` -- the parameter
+          generator rejects anything else at construction. Every other pixel is carried through unclamped, so
+          an input outside ``[0, 1]`` keeps its own range.
+        - inside :class:`~kornia.augmentation.container.AugmentationSequential` a ``mask`` data key is erased
+          in the same rectangle, but the mask is filled with ``0`` whatever ``value`` is.
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.

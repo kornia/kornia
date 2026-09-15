@@ -28,6 +28,8 @@ from kornia.core.check import KORNIA_CHECK
 class RandomSnow(IntensityAugmentationBase2D):
     r"""Generates snow effect on given torch.Tensor image or a batch torch.Tensor images.
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         snow_coefficient: A tuple of floats (lower and upper bound) between 0 and 1 that control
         the amount of snow to add to the image, the larger value corresponds to the more snow.
@@ -40,6 +42,20 @@ class RandomSnow(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the input must have three channels: the effect is computed in HLS, and any other channel count
+          raises on the forward pass.
+        - ``snow_coefficient`` is checked against ``[0, 1]`` at construction, where ``brightness`` must be
+          ``1`` or greater.
+        - one ``snow_coefficient`` and one ``brightness`` are drawn per sample; ``same_on_batch=True``
+          collapses both to a single value for the batch.
+        - the output as a whole is not clamped -- only the light channel of the snow-covered pixels is -- so
+          an input outside ``[0, 1]`` comes back outside it.
+
+    .. warning::
+        An input whose values are all negative comes back as an all-zero image. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     Examples:
         >>> inputs = torch.rand(2, 3, 4, 4)

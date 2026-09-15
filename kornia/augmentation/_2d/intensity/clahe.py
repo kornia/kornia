@@ -31,6 +31,8 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     .. image:: _static/img/equalize_clahe.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
         grid_size: number of tiles to be cropped in each direction (GH, GW).

@@ -28,6 +28,8 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomBoxBlur.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
@@ -39,6 +41,20 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    Convention:
+        - ``kernel_size`` is ``(kH, kW)``: the first entry counts rows and the second counts columns, as in
+          :func:`kornia.filters.box_blur`.
+        - ``normalized`` reaches that function as its ``separable`` argument, so it selects the implementation
+          rather than a normalization: both settings are L1-normalized means, they agree to float rounding, and
+          a constant image survives either. ``border_type`` defaults to ``"reflect"``, as the function does.
+        - the output is never clamped, so an input outside ``[0, 1]`` comes back inside its own range.
+
+    .. warning::
+        An image with a spatial axis no longer than half the kernel size raises a raw torch ``RuntimeError``
+        about the reflect padding rather than a kornia error naming the class or the shape. Tracked in
+        `#4559 <https://github.com/kornia/kornia/issues/4559>`_.
+
     .. note::
         This function internally uses :func:`kornia.filters.box_blur`.
 

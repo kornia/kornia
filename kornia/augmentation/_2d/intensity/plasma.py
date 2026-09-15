@@ -52,6 +52,8 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomPlasmaBrightness.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     This is based on the original paper: TorMentor: Deterministic dynamic-path, data augmentations with fractals.
     See: :cite:`tormentor` for more details.
 
@@ -65,6 +67,13 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    Convention:
+        - the sampled fractal map is recorded as ``_params["plasma"]`` with the input's shape, so a forward
+          replayed with ``params=`` reproduces the first output bitwise.
+        - the result is clamped into ``[0, 1]``, so the output stays inside that range even when the input
+          does not.
+        - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -113,6 +122,8 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomPlasmaContrast.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     This is based on the original paper: TorMentor: Deterministic dynamic-path, data augmentations with fractals.
     See: :cite:`tormentor` for more details.
 
@@ -125,6 +136,13 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    Convention:
+        - the sampled fractal map is recorded as ``_params["plasma"]`` with the input's shape, so a forward
+          replayed with ``params=`` reproduces the first output bitwise.
+        - the result is clamped into ``[0, 1]``, so the output stays inside that range even when the input
+          does not.
+        - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -168,6 +186,8 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomPlasmaShadow.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     This is based on the original paper: TorMentor: Deterministic dynamic-path, data augmentations with fractals.
     See: :cite:`tormentor` for more details.
 
@@ -182,6 +202,18 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    Convention:
+        - the sampled fractal map is recorded as ``_params["plasma"]`` with a single channel, so one shade
+          mask is applied to every channel of a sample; a forward replayed with ``params=`` reproduces the
+          first output bitwise.
+        - the result is clamped into ``[0, 1]``, so the output stays inside that range even when the input
+          does not.
+        - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
+
+    .. warning::
+        An input whose values are all negative comes back as an all-zero image. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     Examples:
         >>> rng = torch.manual_seed(0)

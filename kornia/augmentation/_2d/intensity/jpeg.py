@@ -29,6 +29,8 @@ class RandomJPEG(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomJPEG.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         jpeg_quality: The range of compression rates to be applied.
         p: probability of applying the transformation.

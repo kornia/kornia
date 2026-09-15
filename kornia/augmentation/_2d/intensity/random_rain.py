@@ -29,6 +29,8 @@ from kornia.core.check import KORNIA_CHECK
 class RandomRain(IntensityAugmentationBase2D):
     r"""Add Random Rain to the image.
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         number_of_drops: number of drops per image
@@ -39,6 +41,19 @@ class RandomRain(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - ``drop_height`` runs down rows and ``drop_width`` along columns: both name image axes, not
+          drop-local ones, and a negative ``drop_width`` slants the drop the other way across the columns.
+        - a drop is written as the fixed value ``200 / 255``, not as a function of the image, so on an image
+          outside ``[0, 1]`` the rain can be darker than what it falls on. Every other pixel is carried
+          through unclamped.
+        - both sizes must be strictly smaller than the image on their own axis. A drop as tall as the image,
+          or as wide, raises on the forward pass, where the image shape is known -- constructing it succeeds.
+        - the drawn sizes are truncated to integers, so the default ``drop_height=(5, 20)`` gives heights of
+          ``5`` to ``19``: an image shorter than 20 pixels raises on some seeds and runs on others.
+        - ``same_on_batch=True`` gives every sample of the batch the same drop count, the same drop size and
+          the same coordinates; left at ``False`` each sample draws its own.
 
     Examples:
         >>> rng = torch.manual_seed(0)

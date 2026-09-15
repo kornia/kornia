@@ -29,6 +29,8 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomSaltAndPepperNoise.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         amount: A float or a tuple representing the range for the amount of noise to apply.
         salt_vs_pepper: A float or a tuple representing the range for the ratio of Salt to Pepper noise.
@@ -40,6 +42,15 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - ``amount`` is the fraction of *pixels* rewritten, not of scalars: a chosen pixel is rewritten in
+          every channel, so the changed mask is the same in each one.
+        - ``salt_vs_pepper`` splits those pixels between the two poles, and the poles are the literals
+          ``1.0`` and ``0.0`` whatever the input's range is -- on an image scaled to ``[0, 2]`` the salt is
+          darker than what surrounds it.
+        - the input must have one or three channels; any other channel count raises.
+        - the pixels the masks do not name are carried through unchanged and unclamped.
 
     .. note::
         The `amount` parameter controls the intensity of the noise, while `salt_vs_pepper` controls the ratio

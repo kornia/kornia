@@ -30,6 +30,8 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomMotionBlur.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         kernel_size: motion kernel size (odd and positive).
@@ -52,6 +54,16 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - a positive ``angle`` turns the blur line counter-clockwise as the image is displayed, as in
+          :func:`kornia.filters.motion_blur` and :func:`kornia.filters.get_motion_kernel2d`.
+        - ``direction`` re-weights the kernel along that line: ``0`` spreads the weight evenly, and ``-1`` and
+          ``+1`` pile it at opposite ends. The ends belong to the rotated line, so which side of the image they
+          fall on turns with ``angle`` and is not read off the image axes.
+        - the defaults ``border_type="constant"`` and ``resample="nearest"`` are the function's own defaults.
+        - the output is never clamped, so an input outside ``[0, 1]`` comes back inside its own range.
+        - an image smaller than the kernel is accepted, down to ``1 x 1``.
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
