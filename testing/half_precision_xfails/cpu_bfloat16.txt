@@ -511,4 +511,3 @@ call	builtins.AssertionError	tests/losses/test_total_variation.py::TestTotalVari
 call	builtins.AssertionError	tests/losses/test_total_variation.py::TestTotalVariation::test_tv_on_4d[cpu-bfloat16-pred0-expected0]
 call	builtins.AssertionError	tests/metrics/test_ssim3d.py::TestSSIM3d::test_unit[cpu-bfloat16]
 call	builtins.AssertionError	tests/models/test_rt_detr.py::test_regvgg_optimize_for_deployment[cpu-bfloat16]
-call	builtins.AssertionError	tests/sensors/camera/test_camera_model.py::TestPinholeCamera::test_project_unproject[cpu-bfloat16-2]

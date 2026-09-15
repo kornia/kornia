@@ -94,8 +94,13 @@ class TestPinholeCamera(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_project_unproject(self, device, dtype, batch_size):
         params, image_size = self._make_rand_data(batch_size, device, dtype)
+        # unproject divides by fx / fy and scales by z, so a focal length or a depth drawn near
+        # zero makes the half-precision round trip miss by more than the dtype tolerance. Keep
+        # both in [1, 2): the round-trip property holds there on every draw (#4399).
+        params[:, :2] += 1.0
         cam = CameraModel(image_size, CameraModelType.PINHOLE, params)
         points = torch.rand((batch_size, 3), device=device, dtype=dtype)
+        points[..., 2] += 1.0
         projected = cam.project(Vector3(points))
         unprojected = cam.unproject(projected, points[..., 2])
         self.assert_close(points, unprojected.data)
