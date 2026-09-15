@@ -5720,12 +5720,16 @@ class TestRandomThinPlateSpline(CommonTests):
         assert params["dst"].dtype == dtype
         self.assert_close(params["dst"], params["src"], atol=0, rtol=0)
 
+    @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [False, True])
-    def test_zero_scale_identity(self, same_on_batch, device, dtype):
+    def test_zero_scale_identity(self, same_on_batch, align_corners, device, dtype):
         if dtype == torch.float16:
             pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
-        # align_corners=False has a separate sampling-grid defect tracked in #3928.
-        aug = self._augmentation_cls(scale=0.0, align_corners=True, same_on_batch=same_on_batch, p=1.0)
+        # Both conventions: a zero-scale spline is the identity whichever one the class is built
+        # with, and align_corners=False is the class default. This used to be pinned at True only,
+        # because warp_image_tps built its sampling grid corner-aligned whatever flag reached
+        # grid_sample, so the default path moved the image by half a pixel (#3928, #4411).
+        aug = self._augmentation_cls(scale=0.0, align_corners=align_corners, same_on_batch=same_on_batch, p=1.0)
         image = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8) / 48
         image = image.expand(2, 1, 6, 8).clone().requires_grad_()
 

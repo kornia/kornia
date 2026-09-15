@@ -598,6 +598,10 @@ def resize(
     .. image:: _static/img/resize.png
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for sampling and ``align_corners``
+        conventions. When resizing camera images, see
+        :doc:`camera and world conventions </get-started/camera-conventions>` for matching intrinsics scaling.
+
         - input: :math:`(*, H, W)`; ``size`` is ``(h, w)``
         - align_corners: ``None`` by default (follows ``torch.nn.functional.interpolate``;
           note :func:`warp_perspective`/:func:`rotate` default ``True``)
@@ -788,6 +792,10 @@ class Resize(nn.Module):
     r"""Resize the input torch.Tensor to the given size.
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for sampling and ``align_corners``
+        conventions. When resizing camera images, see
+        :doc:`camera and world conventions </get-started/camera-conventions>` for matching intrinsics scaling.
+
         - align_corners: ``None`` by default, matching :func:`resize`
         - See the convention block of :func:`resize`.
 

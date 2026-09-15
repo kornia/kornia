@@ -146,9 +146,9 @@ precision, so the table says nothing about those backends.
    * - ``kornia.models``
      - ⚠️ Partial
      - ⚠️ Partial
-     - 15 / 7
-     - EfficientViT (float16) and the Kimi-VL MoonViT encoder (both dtypes) raise dtype-mismatch errors;
-       bfloat16 RT-DETR RepVGG deployment fusion misses accuracy.
+     - 9 / 1
+     - float16: EfficientViT raises dtype-mismatch errors. bfloat16: RT-DETR RepVGG deployment fusion misses
+       accuracy.
    * - ``contrib``, ``core``, ``io``, ``onnx``, ``sensors``, ``tracking``, ``utils``
      - ✅ Yes
      - ⚠️ Partial

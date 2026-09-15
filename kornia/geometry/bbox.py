@@ -650,9 +650,7 @@ def bbox_generator3d(
         )
 
     # front
-    bbox = torch.tensor(
-        [[[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]], device=x_start.device, dtype=x_start.dtype
-    ).repeat(x_start.numel(), 1, 1)
+    bbox = torch.zeros((x_start.numel(), 4, 3), device=x_start.device, dtype=x_start.dtype)
 
     bbox[:, :, 0] += x_start.view(-1, 1)
     bbox[:, :, 1] += y_start.view(-1, 1)

@@ -66,15 +66,15 @@ class RandomTranslate(GeometricAugmentationBase2D):
         >>> aug = RandomTranslate((-0.2, 0.2), (-0.1, 0.1), p=1.)
         >>> out = aug(input)
         >>> out, aug.transform_matrix
-        (tensor([[[[0.3403, 0.6439, 0.2920],
-                  [0.1377, 0.3383, 0.5569],
-                  [0.3226, 0.6909, 0.4844]]]]), tensor([[[ 1.0000,  0.0000,  0.1588],
+        (tensor([[[[0.3897, 0.6847, 0.2314],
+                  [0.1384, 0.3297, 0.5771],
+                  [0.3749, 0.7565, 0.4780]]]]), tensor([[[ 1.0000,  0.0000,  0.1588],
                  [ 0.0000,  1.0000, -0.0907],
                  [ 0.0000,  0.0000,  1.0000]]]))
         >>> aug.inverse(out)
-        tensor([[[[0.3565, 0.4839, 0.1922],
-                  [0.2164, 0.4134, 0.3968],
-                  [0.3797, 0.6075, 0.3765]]]])
+        tensor([[[[0.3969, 0.5571, 0.1770],
+                  [0.1930, 0.3910, 0.4591],
+                  [0.4113, 0.6812, 0.4096]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)

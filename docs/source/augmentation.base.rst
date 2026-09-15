@@ -57,8 +57,7 @@ Custom Augmentation Classes
 
 `IntensityAugmentationBase2D` supplies an identity matrix and default passthrough handlers for most annotations.
 Subclasses can override these defaults: `RandomErasing` zero-fills the erased mask region. Direct intensity
-`transform_boxes` calls currently raise because the base's box-handler names do not match the dispatcher
-(`#4480 <https://github.com/kornia/kornia/issues/4480>`_); the container skips intensity transforms for boxes.
+`transform_boxes` calls return the boxes unchanged; the container skips intensity transforms for boxes.
 `GeometricAugmentationBase2D` supplies the dispatch used for geometric coordinate transformations.
 
 For a geometric operation, implement `compute_transformation` and `apply_transform`. Supporting image inversion
