@@ -24,7 +24,14 @@ import torch
 
 import kornia.augmentation as K
 from kornia.core.exceptions import ShapeError
-from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation, normalize_min_max
+from kornia.enhance import (
+    adjust_brightness,
+    adjust_contrast,
+    adjust_hue,
+    adjust_saturation,
+    normalize_min_max,
+    posterize,
+)
 
 from testing.base import BaseTester
 
@@ -124,8 +131,15 @@ _PASSES_RANGE_THROUGH = (
 # Row 6c-02, in the state #4489 left it: the only class that rejects the input instead.
 _REJECTS_OUT_OF_RANGE = ("RandomEqualize",)
 
-# Row 6c-03: ten of the clamping classes do not merely clamp -- a wholly negative input comes back
+# Row 6c-03: nine of the clamping classes do not merely clamp -- a wholly negative input comes back
 # as an all-zero image, with no warning.  Issue #4430.
+# `RandomPosterize` is deliberately not here.  It reaches zero on some platforms only: its
+# `(x * 255).to(torch.uint8)` conversion saturates a negative float to code 0 on macOS arm64 with
+# torch 2.14.0 (the vectorised path, from 8 elements up) and on MPS, but wraps modulo 256 on Linux
+# with torch 2.14.0, on torch 2.5.1 in every dtype and on torch 2.9.1 in the half dtypes, where the
+# same input comes back as a full-range posterized image.  The collapse is therefore a property of
+# the running conversion kernel, not of kornia; what holds everywhere is pinned by
+# test_wart_random_posterize_out_of_range_wraps_4430 instead.
 _COLLAPSES_ON_NEGATIVE_INPUT = (
     "ColorJitter",
     "RandomContrast",
@@ -133,7 +147,6 @@ _COLLAPSES_ON_NEGATIVE_INPUT = (
     "RandomLinearIllumination",
     "RandomLinearCornerIllumination",
     "RandomPlasmaShadow",
-    "RandomPosterize",
     "RandomSnow",
     "RandomSharpness",
     "RandomSolarize",
@@ -181,8 +194,11 @@ class TestIntensityValueRangeConventions(BaseTester):
     #     `RandomContrast((1.5, 1.5), clip_output=False)` gives `max=2.99399` (audit row 6c-35,
     #     `R1 RandomBrightness(clip=False) in=[0,2] -> max=2.496`).  The `(clip=False)` variants are
     #     deliberately outside `_INTENSITY_FACTORIES`, as they were outside the audit's count.
-    #   * `RandomPosterize`'s `[0, 1]` output is a `uint8` round-trip that wraps or floors, not a
-    #     clamp -- see test_wart_random_posterize_out_of_range_wraps_4430 (audit row 6c-38).
+    #   * `RandomPosterize`'s `[0, 1]` output is a `uint8` round-trip, not a clamp: the conversion
+    #     wraps or saturates depending on the platform and torch version, and the output bears no
+    #     relation to the clamped input -- see test_wart_random_posterize_out_of_range_wraps_4430
+    #     (audit row 6c-38).  The `[0, 1]` bound itself holds on every platform, because a `uint8`
+    #     code divided by 255 is in `[0, 1]` however the conversion got there.
     #   * `RandomAutoContrast` is a per-sample, per-channel min-max rescale, not a clamp: its
     #     `clip_output` flag is dead because `normalize_min_max` already returns `[0, 1]`
     #     (audit row 6c-35, #4436; pinned by test_convention_random_auto_contrast_is_normalize_min_max
@@ -263,11 +279,15 @@ class TestIntensityValueRangeConventions(BaseTester):
         assert concrete - set(_INTENSITY_FACTORIES) == {"RandomClahe", "RandomDissolving", "RandomJPEG"}
         assert set(_INTENSITY_FACTORIES) - concrete == set()
 
-    # Row 6c-03 (issue #4430): ten of the clamping classes return an all-zero image on a wholly
+    # Row 6c-03 (issue #4430): nine of the clamping classes return an all-zero image on a wholly
     # negative input.  #4430 offers two coherent outcomes (clamp, or reject as RandomEqualize now
     # does), so this is a wart pin on today's behavior, not a strict xfail on a settled contract.
+    # These nine collapse through their own arithmetic, not through a dtype conversion, so the
+    # result is the same on every platform, torch version and dtype (`RandomPosterize`, whose
+    # collapse is a `uint8`-conversion artifact of one platform, is excluded above).
     # Snippet used to generate expected: the r1 snippet above, reading the `in=[-1,0]` rows;
-    # executed 2026-09-15 (torch 2.14.0, cpu) -- all ten print `min=0 max=0`.
+    # executed 2026-09-15 on this worktree under torch 2.14.0 and under torch 2.5.1 (macOS arm64,
+    # cpu) -- all nine print `min=0 max=0` in both runs.
     @pytest.mark.parametrize("name", _COLLAPSES_ON_NEGATIVE_INPUT)
     def test_wart_intensity_negative_input_collapses_to_zero_4430(self, device, dtype, name):
         if dtype == torch.float16 and name == "ColorJitter":
@@ -275,50 +295,60 @@ class TestIntensityValueRangeConventions(BaseTester):
                 "float16 only (#4560): the collapsed image reaches adjust_hue, whose rgb_to_hsv gives a "
                 "NaN saturation for a black pixel there (eps=1e-8 underflows in float16)"
             )
-        if dtype == torch.float64 and name == "RandomPosterize":
-            pytest.skip(
-                "float64 only: posterize's `(x * 255).to(torch.uint8)` wraps the negative fixture to "
-                "non-zero codes instead of saturating to 0 (mechanism measured in "
-                "test_wart_random_posterize_out_of_range_wraps_4430), so the collapse is a "
-                "float32/float16/bfloat16 observation"
-            )
         image = _out_of_range_fixtures(device, dtype)["[-1, 0]"]
         assert float(_run(name, image).abs().max()) == 0.0
 
-    # Row 6c-38 (issue #4430): RandomPosterize's uint8 round-trip wraps rather than clamps, so an
-    # input above 1 comes back as a full-range posterized image and a negative input as a constant.
+    # Row 6c-38 (issue #4430): RandomPosterize does not clamp an out-of-range input.  It posterizes
+    # the `uint8` round-trip of the raw float, so the output is the posterization of whatever codes
+    # that conversion produced and bears no relation to the clamped input.
+    # What `(x * 255).to(torch.uint8)` does with a value outside `[0, 255]` is a property of the
+    # running kernel, not of kornia, and the platforms disagree: it wraps modulo 256 on Linux with
+    # torch 2.14.0 and on torch 2.5.1/2.9.1, saturates negatives to code 0 on macOS arm64 with
+    # torch 2.14.0 (the vectorised path, from 8 elements up; measured on
+    # `(torch.linspace(-1, -0.004, n) * 255).to(torch.uint8)`, n = 7 gives 7 distinct codes and
+    # n = 8 gives 1), and saturates both ends on MPS.  An earlier revision of this pin asserted the
+    # macOS 2.14 collapse (`len(out.unique()) == 1`) and failed on five CI legs; the round-trip
+    # identity below is what holds on all of them, so the platform-dependent literals are gone.
     # Snippet used to generate expected:
+    #   print((torch.linspace(-1, 0, 48) * 255).to(torch.uint8).unique().numel())  # kernel probe
     #   g = (torch.arange(256, dtype=torch.float32) / 255.0).reshape(1, 1, 8, 32)
     #   for x in (g * 2.0, g - 1.0):
     #       torch.manual_seed(0); y = K.RandomPosterize(bits=(3.0, 3.0), p=1.0)(x)
     #       print(len(y.unique()), y.min().item(), y.max().item())
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `8 0.0 0.8784313797950745` and `1 0.0 0.0`.
+    # executed 2026-09-15 on this worktree (macOS arm64, cpu, float32): probe `1`, then
+    # `8 0.0 0.8784313797950745` and `1 0.0 0.0` under torch 2.14.0; probe `48`, then
+    # `8 0.0 0.8784313797950745` and `8 0.0 0.8784313797950745` under torch 2.5.1.  The probe tells
+    # a reader which of the two behaviours the kernel in front of them has; only the `[0, 2]`
+    # literals, which agree in both runs, are asserted.
     @pytest.mark.parametrize("scale", ["[0, 2]", "[-1, 0]"])
     def test_wart_random_posterize_out_of_range_wraps_4430(self, device, dtype, scale):
-        if dtype == torch.float64 and scale == "[-1, 0]":
-            pytest.skip(
-                "float64 only: `(x * 255).to(torch.uint8)` is out of the uint8 domain for a negative x, "
-                "and torch's two conversion paths disagree. The input values are bit-identical in the "
-                "two dtypes (x[254] == -0.003921568393707275 in both, x[254] * 255 == "
-                "-0.9999999403953552 in both), so this is a kernel split, not a value difference: "
-                "measured on ((arange(256, dtype=float32) / 255).to(d) - 1.0) * 255, float32 saturates "
-                "every negative element to code 0 once the tensor reaches 8 elements (1 distinct code) "
-                "while float64 wraps modulo 256 at every size (255 distinct codes, 1..255); below 8 "
-                "elements float32 wraps too, and float16/bfloat16 follow float32. So the negative ramp "
-                "keeps 8 posterize levels in float64 and collapses to a constant 0 elsewhere. The wrap "
-                "itself is what this pin records"
-            )
         ramp = (torch.arange(256, dtype=torch.float32) / 255.0).reshape(1, 1, 8, 32).to(device=device, dtype=dtype)
         image = ramp * 2.0 if scale == "[0, 2]" else ramp - 1.0
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomPosterize(bits=(3.0, 3.0), p=1.0)(image)
         _sync(image.device)
+        # `bits_factor` is `tensor([3], dtype=torch.int32)` for `bits=(3.0, 3.0)`, and `posterize`
+        # takes the same one-element path for a plain `int`.  `codes` reproduces the first of the
+        # two `uint8` conversions inside `posterize` (kornia/enhance/adjust.py::_right_shift) --
+        # the only one that ever sees an out-of-range value, since the second is handed a
+        # non-negative `codes / 2 ** shift <= 255`.
+        codes = (image * 255).to(torch.uint8)
+        expected = posterize(codes.to(dtype) / 255.0, 3)
+        clamped = posterize(image.clamp(0.0, 1.0), 3)
+        assert torch.equal(out, expected)
+        assert float(out.min()) >= 0.0
+        assert float(out.max()) <= 1.0
+        # A clamp-first implementation would return `clamped`; spelled out so the intent survives
+        # an edit to `expected`.  The guard is a property of the kernel and the fixture, not of
+        # `expected`: a wrapping conversion sends the out-of-range half of the ramp to codes the
+        # clamped input cannot produce, while a saturating one sends them to exactly the clamped
+        # input's codes, which makes the two implementations numerically identical and leaves
+        # nothing to assert.
+        if not torch.equal(codes, (image.clamp(0.0, 1.0) * 255).to(torch.uint8)):
+            assert not torch.equal(out, clamped)
         if scale == "[0, 2]":
             assert len(out.unique()) == 8
             self.assert_close(out.max(), out.new_tensor(224 / 255))
-        else:
-            assert len(out.unique()) == 1
-            assert float(out.max()) == 0.0
 
     # Row 6c-05 (issue #4430), the failure the grouping run cannot see: RandomGamma is in
     # _CLAMPS_BOTH_ENDS on the strength of `gamma=2.0`, but on a negative input `x ** gamma` is NaN

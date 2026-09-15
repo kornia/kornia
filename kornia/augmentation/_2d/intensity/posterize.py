@@ -52,9 +52,10 @@ class RandomPosterize(IntensityAugmentationBase2D):
           from :class:`RandomSharpness`, whose scalar argument is an upper bound.
 
     .. warning::
-        Outside ``[0, 1]`` the ``uint8`` round trip wraps rather than clamps: an input above ``1`` comes
-        back as a full-range posterized image instead of a clipped one, and an all-negative ``float32``
-        input collapses to zeros. Tracked in
+        Outside ``[0, 1]`` the output is the posterized ``uint8`` conversion of the raw float, which
+        wraps or saturates depending on the platform and torch version, and bears no relation to the
+        clamped input: an input above ``1`` can come back as a full-range posterized image instead of a
+        clipped one, and an all-negative input as an all-zero one. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
