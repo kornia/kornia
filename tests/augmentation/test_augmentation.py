@@ -5230,6 +5230,13 @@ class TestPlanckianJitter(BaseTester):
         expected = self._get_expected_output_same_on_batch(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float64])
+    def test_planckian_jitter_preserves_dtype_4574(self, device, dtype):
+        input = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        output = RandomPlanckianJitter(p=1.0)(input)
+
+        assert output.dtype == input.dtype
+
 
 class TestRandomRGBShift(BaseTester):
     def test_smoke(self, device, dtype):
