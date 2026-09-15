@@ -29,6 +29,8 @@ from kornia.core.check import KORNIA_CHECK
 class RandomRain(IntensityAugmentationBase2D):
     r"""Add Random Rain to the image.
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         number_of_drops: number of drops per image
@@ -39,6 +41,27 @@ class RandomRain(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - ``drop_height`` runs down rows and ``drop_width`` along columns: both name image axes, not
+          drop-local ones, and a negative ``drop_width`` slants the drop the other way across the columns.
+        - a drop is written as the fixed value ``200 / 255``, not as a function of the image, so the rain is
+          darker than every pixel above ``200 / 255`` that it falls on, inside ``[0, 1]`` or not. Every other
+          pixel is carried through unclamped.
+        - both sizes must be strictly smaller than the image on their own axis. Once the larger of the two
+          sizes is at least ``2``, a drop of size ``h`` spans ``h + 1`` rows or columns, so a size one short of
+          the image already reaches from edge to edge; a drop whose sizes are both at most ``1`` is a single
+          pixel. A size as large as the image's, or a ``drop_height`` below ``1``, raises on the forward pass,
+          where the image shape is known -- constructing it succeeds.
+        - the drawn sizes and drop count are float draws truncated toward zero, so unless the range is a single
+          point, a positive upper bound is practically never drawn: the default ``drop_height=(5, 20)`` gives
+          heights of ``5`` to ``19`` (an image shorter than 20 pixels raises on some seeds, and on every seed when
+          it is 5 pixels tall or shorter). A negative ``drop_width`` bound rounds toward zero instead: a negative
+          lower bound is practically never drawn while a non-positive upper bound is, and a range from ``-1`` or
+          below to ``1`` or above draws ``0`` twice as often as any other value. Tracked in `#4567
+          <https://github.com/kornia/kornia/issues/4567>`_.
+        - ``same_on_batch=True`` gives every sample of the batch the same drop count, the same drop size and
+          the same coordinates; left at ``False`` each sample draws its own.
 
     Examples:
         >>> rng = torch.manual_seed(0)

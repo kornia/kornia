@@ -31,6 +31,9 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     .. image:: _static/img/equalize_clahe.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`. This class raises
+    instead of transforming an out-of-range input, and its error is a raw one.
+
     Args:
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
         grid_size: number of tiles to be cropped in each direction (GH, GW).
@@ -39,6 +42,20 @@ class RandomClahe(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    .. warning::
+        An input outside ``[0, 1]`` reaches :func:`kornia.enhance.equalize_clahe` unchecked and comes
+        back as a raw torch indexing error that names neither this class nor the range it needs. As for
+        :class:`RandomEqualize`, the rejection is not exactly at the boundary: the failing index is the
+        256-entry lookup indexed with ``(input * 255).long()``, so a value less than one 8-bit code outside
+        ``[0, 1]``, at either end, is still admitted, up to the rounding of ``input * 255`` in the input's
+        dtype. Tracked in
+        `#4564 <https://github.com/kornia/kornia/issues/4564>`_.
+
+    .. warning::
+        ``clip_limit`` is drawn per sample, but the first sample's value is applied to the whole batch.
+        Tracked in `#4572 <https://github.com/kornia/kornia/issues/4572>`_.
+
     .. note::
         This function internally uses :func:`kornia.enhance.equalize_clahe`.
 

@@ -91,8 +91,7 @@ class AugmentationBase2D(_AugmentationBase):
           see `#4425 <https://github.com/kornia/kornia/issues/4425>`_.
         - parameter sampling normally uses CPU defaults independently of the image device. Moving RNG state or
           samplers is incomplete for some generators, and returned parameter placement is a separate concern;
-          see `#4415 <https://github.com/kornia/kornia/issues/4415>`_ and
-          `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
+          see `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
         - reproducibility goes through torch's global generators on the devices used for sampling:
           ``torch.manual_seed`` before the call reproduces the draw for the same backend and dtype.
           There is no per-instance generator; ``generator=`` raises at
@@ -130,8 +129,9 @@ class AugmentationBase2D(_AugmentationBase):
         universal constructor contract. Tracked in `#4425 <https://github.com/kornia/kornia/issues/4425>`_.
 
     .. warning::
-        ``set_rng_device_and_dtype`` has incomplete sampler migration and may fail during migration on an
-        accelerator. Tracked in `#4415 <https://github.com/kornia/kornia/issues/4415>`_ and
+        ``set_rng_device_and_dtype`` has incomplete sampler migration. It rebuilds what it can, but some
+        generators retain internal CPU tensors or ignore the requested precision, and the returned
+        parameters can stay CPU ``float32`` while ``batch_prob`` follows the request. Tracked in
         `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
 
     .. warning::

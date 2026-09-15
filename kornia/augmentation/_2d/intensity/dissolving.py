@@ -27,6 +27,8 @@ from kornia.filters import StableDiffusionDissolving
 class RandomDissolving(IntensityAugmentationBase2D):
     r"""Perform dissolving transformation using StableDiffusion models.
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Based on :cite:`shi2024dissolving`, the dissolving transformation is essentially applying one-step
     reverse diffusion. Our implementation currently supports HuggingFace implementations of SD 1.4, 1.5
     and 2.1. SD 1.X tends to remove more details than SD2.1.
@@ -54,6 +56,12 @@ class RandomDissolving(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         - Output: :math:`(B, C, H, W)`
+
+    .. note::
+        The transform is delegated to ``kornia.filters.StableDiffusionDissolving``, which the constructor
+        builds: instantiating this class needs the optional ``diffusers`` package and, on a cold cache,
+        downloads a Stable Diffusion checkpoint at that point -- the ``from_pretrained`` call is in that
+        class's own constructor, not on the first forward.
 
     """
 

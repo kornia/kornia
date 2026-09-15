@@ -308,6 +308,22 @@ Augmentations
   :func:`kornia.geometry.transform.rotate`, and clockwise with
   :class:`kornia.augmentation.RandomAffine`
   (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+- The 2D intensity augmentations assume the ``[0, 1]`` float range, and no
+  base-class check validates it on the way in. Outside that range, individual
+  classes use their documented policy: some clamp, rescale, or convert through
+  ``uint8``; :class:`kornia.augmentation.RandomPlanckianJitter` clamps only the
+  upper end; some do not clamp; and :class:`kornia.augmentation.RandomEqualize`
+  raises where its value check runs (MPS skips the check, and a raw indexing
+  error surfaces instead). The resulting values also depend on the sampled parameters and image
+  contents. Several can return an all-zero image for an all-negative input,
+  depending on the draw (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
+  See :class:`kornia.augmentation.IntensityAugmentationBase2D` and each class's
+  own documentation. :class:`kornia.augmentation.RandomDissolving` is unmeasured
+  because constructing it downloads a Stable Diffusion checkpoint.
+  :class:`kornia.augmentation.RandomClahe` and
+  :class:`kornia.augmentation.RandomJPEG` are not in
+  ``kornia.augmentation.__all__``; ``RandomClahe`` raises out of range with a raw indexing error
+  (`#4564 <https://github.com/kornia/kornia/issues/4564>`_).
 
 .. code-block:: python
 
@@ -451,6 +467,11 @@ Quick self-review for generated code, most common first:
     a mask along, and the other two raise on a ``mask`` key.
 17. Inferring the augmentation sampling backend from ``_params`` placement
     — samplers can draw on an accelerator and cast the returned tensors back to CPU.
+18. Feeding mean/std-normalized or otherwise out-of-``[0, 1]`` tensors
+    through an intensity augmentation and expecting the values to pass
+    through — some rescale, some clamp, ``RandomEqualize`` and ``RandomClahe``
+    raise, and several can return zeros for an all-negative image depending on
+    the sampled parameters.
 
 .. tip::
 

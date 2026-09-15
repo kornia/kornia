@@ -28,12 +28,27 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomMedianBlur.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         kernel_size: the blurring kernel size.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    Convention:
+        - ``kernel_size`` is ``(kH, kW)``: the first entry counts rows and the second counts columns, as in
+          :func:`kornia.filters.median_blur`.
+        - the output is not clamped. The window is
+          zero-padded -- :func:`kornia.filters.median_blur` convolves with ``F.conv2d`` -- so a border median
+          is taken over zeros as well as image values, and a border pixel can come back as ``0`` even when no
+          input value is near it.
+        - this class has no ``border_type``, and with an odd ``kernel_size`` an image smaller than the kernel
+          is accepted, down to ``1 x 1``; :class:`RandomBoxBlur` and :class:`RandomGaussianBlur` raise at their
+          default ``border_type="reflect"`` once a spatial axis is no longer than half the kernel's extent along
+          it. An even entry in ``kernel_size`` raises a raw reshape error on the forward pass for any image.
+
     .. note::
         This function internally uses :func:`kornia.filters.median_blur`.
 

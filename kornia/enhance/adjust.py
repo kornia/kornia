@@ -275,8 +275,7 @@ def adjust_gamma(
 
     .. note::
        The non-negativity check on ``gamma``/``gain`` runs on CPU and CUDA (via ``torch._assert_async``).
-       On MPS it is skipped: the op has no MPS kernel and its CPU fallback would synchronize the
-       device on every call, so invalid values do not raise there.
+       kornia skips it on MPS by design, so invalid values do not raise there.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
@@ -365,8 +364,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
 
     .. note::
        The non-negativity check on ``factor`` runs on CPU and CUDA (via ``torch._assert_async``).
-       On MPS it is skipped: the op has no MPS kernel and its CPU fallback would synchronize the
-       device on every call, so invalid values do not raise there.
+       kornia skips it on MPS by design, so invalid values do not raise there.
 
     Example:
         >>> import torch
@@ -549,9 +547,9 @@ def adjust_brightness_accumulative(
 
     Args:
         image: Image to be adjusted in the shape of :math:`(*, H, W)`.
-        factor: Brightness adjust factor per element in the batch. It's recommended to
-            bound the factor by [0, 1]. 0 does not modify the input image while any other
-            number modify the brightness.
+        factor: Brightness factor per element in the batch. The image is multiplied by it, so ``1``
+            leaves an image in ``[0, 1]`` unchanged, ``0`` gives a black image and a factor above ``1``
+            brightens it.
         clip_output: Whether to clip output to be in [0,1].
 
     Return:
@@ -723,9 +721,9 @@ def solarize(
         The solarized images with shape :math:`(*, C, H, W)`.
 
     .. note::
-       The range check on ``additions`` runs on CPU and CUDA (via ``torch._assert_async``).
-       On MPS it is skipped: the op has no MPS kernel and its CPU fallback would synchronize the
-       device on every call, so invalid values do not raise there.
+       The range check on ``additions`` runs via ``torch._assert_async`` on the device of ``additions``.
+       kornia skips it for an ``additions`` tensor on MPS, so invalid values do not raise there, but a
+       float, or a CPU tensor, is checked on the CPU and raises for an MPS image too.
 
     Example:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -1591,9 +1589,9 @@ class AdjustBrightnessAccumulative(nn.Module):
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        brightness_factor: Brightness adjust factor per element
-          in the batch. 0 does not modify the input image while any other number modify the
-          brightness.
+        brightness_factor: Brightness factor per element in the batch. The image is multiplied by it and
+          clamped into ``[0, 1]``, so ``1`` leaves an image in ``[0, 1]`` unchanged, ``0`` gives a black image
+          and a factor above ``1`` brightens it.
 
     Shape:
         - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.

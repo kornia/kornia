@@ -58,8 +58,7 @@ class _BasicAugmentationBase(nn.Module):
 
     ``set_rng_device_and_dtype`` updates RNG-related state, but sampler migration and returned parameter
     placement are not uniform across generators. See :doc:`/get-started/conventions` and the limitations
-    tracked in `#4415 <https://github.com/kornia/kornia/issues/4415>`_ and
-    `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
+    tracked in `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
 
     For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
     implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
@@ -174,8 +173,8 @@ class _BasicAugmentationBase(nn.Module):
         .. warning::
             This updates both the gate and the parameter generator's samplers, but returned parameters
             can be cast to a different device/dtype; inspecting ``_params`` alone does not reveal where
-            sampling occurred. Some classes fail after moving their samplers to an accelerator. Tracked in
-            `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the
+            sampling occurred. Some generators also retain internal CPU tensors or ignore the requested
+            precision. Tracked in `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the
             :doc:`/get-started/conventions` page describes placement and the affected classes.
 
         """

@@ -30,6 +30,8 @@ class ColorJiggle(IntensityAugmentationBase2D):
 
     .. image:: _static/img/ColorJiggle.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         brightness: The brightness factor to apply.
@@ -42,6 +44,34 @@ class ColorJiggle(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - this class and :class:`ColorJitter` draw the same factor values and the same random application
+          ``order`` from the same seed when their effective sampling bounds match and both modules stay on
+          the CPU. A scalar ``brightness > 1`` does not match: this class draws from ``[0, 2]`` while
+          :class:`ColorJitter` draws from ``[0, 1 + brightness]``. Off the CPU the ``order`` diverges,
+          because this class draws it on the sampler device where :class:`ColorJitter` always draws it on
+          the CPU; and this class returns its factors in the dtype of its constructor arguments
+          (``float32`` for Python floats) where :class:`ColorJitter` keeps the sampler dtype. Only
+          :class:`ColorJitter` takes an ``order`` constructor argument that replaces its sampled order with a
+          fixed one. The classes use different primitives for three adjustments:
+          :func:`kornia.enhance.adjust_brightness` against
+          :func:`kornia.enhance.adjust_brightness_accumulative`,
+          :func:`kornia.enhance.adjust_contrast` against
+          :func:`kornia.enhance.adjust_contrast_with_mean_subtraction`, and
+          :func:`kornia.enhance.adjust_saturation` against
+          :func:`kornia.enhance.adjust_saturation_with_gray_subtraction`. Both call
+          :func:`kornia.enhance.adjust_hue`.
+        - the brightness factor is re-based as :class:`RandomBrightness` re-bases it:
+          ``factor - 1`` is what reaches :func:`kornia.enhance.adjust_brightness`.
+        - ``ColorJiggle(0, 0, 0, 0)`` is the identity, including for values outside ``[0, 1]``. A hue-only
+          configuration can also return values outside that interval.
+
+    .. warning::
+        In ``float16`` a black pixel reaching the saturation or hue step comes back as NaN, because both
+        steps go through ``rgb_to_hsv``, whose ``eps`` underflows there. The hue step does the same for any
+        pixel whose largest channel is ``0``. Tracked in
+        `#4560 <https://github.com/kornia/kornia/issues/4560>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness`,

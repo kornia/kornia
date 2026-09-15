@@ -32,6 +32,8 @@ class RandomBrightness(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomBrightness.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         brightness: the brightness factor to apply
         clip_output: if true clip output
@@ -42,6 +44,16 @@ class RandomBrightness(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - ``brightness`` is centred on ``1.0``, and the drawn factor is re-based before it is applied:
+          ``factor - 1`` is what reaches :func:`kornia.enhance.adjust_brightness`, whose own identity is
+          ``0.0``. A class factor of ``1.0`` is therefore the identity for an input in ``[0, 1]`` -- the
+          default clamp below still applies to one outside it -- and the same number passed straight to the
+          primitive means something else.
+        - ``clip_output`` is live. Left at its default ``True`` the result is clamped into ``[0, 1]``;
+          with ``clip_output=False`` the raw sum is returned. It can remain outside that interval or
+          move inside it through the brightness shift.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness`

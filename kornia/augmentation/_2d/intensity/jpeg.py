@@ -29,6 +29,10 @@ class RandomJPEG(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomJPEG.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+    :func:`kornia.color.ycbcr_to_rgb` hard-clamps the decoded RGB values to ``[0, 1]``. The codec's final
+    soft-clipping call uses bounds ``[0, 255]`` and leaves those RGB values unchanged.
+
     Args:
         jpeg_quality: The range of compression rates to be applied.
         p: probability of applying the transformation.

@@ -27,6 +27,8 @@ from kornia.enhance import denormalize
 class Denormalize(IntensityAugmentationBase2D):
     r"""Denormalize tensor images with mean and standard deviation.
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     .. math::
         \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
 
@@ -42,6 +44,20 @@ class Denormalize(IntensityAugmentationBase2D):
 
     Return:
         Denormalised tensor with same size as input :math:`(*, C, H, W)`.
+
+    Convention:
+        - ``mean`` and ``std`` accept a float, a per-channel sequence or tensor, or a per-sample ``(B, C)``
+          tensor; a length that is neither ``1`` nor the channel count raises.
+        - ``p`` gates the whole batch rather than each sample: the constructor hard-codes
+          ``same_on_batch=True``, which collapses the per-sample draw to a single one, and it takes no
+          ``same_on_batch`` argument of its own.
+        - the statistics live in ``flags`` rather than in a buffer, so ``state_dict()`` is empty and
+          ``Module.to(...)`` leaves their device and dtype alone.
+        - this class inverts :class:`Normalize` built with the same float, sequence or tensor ``mean`` and
+          ``std``, up to float rounding, when both apply -- each draws its own ``p`` gate. An ``int``
+          statistic, which :class:`Normalize` accepts, raises here on the forward pass
+          (`#4573 <https://github.com/kornia/kornia/issues/4573>`_).
+        - the result is not clamped: it is ``input * std + mean`` whatever range the input is in.
 
     .. note::
         This function internally uses :func:`kornia.enhance.denormalize`.
