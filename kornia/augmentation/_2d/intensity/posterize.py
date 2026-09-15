@@ -29,6 +29,8 @@ class RandomPosterize(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomPosterize.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         bits: Integer that ranged from (0, 8], in which 0 gives black image and 8 gives the original.
@@ -41,6 +43,19 @@ class RandomPosterize(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - ``bits`` counts levels, not steps: ``bits=(k, k)`` leaves ``2 ** k`` distinct values, so ``0``
+          gives a constant image and ``8`` the identity. The reduction is a ``uint8`` round trip inside
+          :func:`kornia.enhance.posterize`, and the drawn factor is integral.
+        - an ``int`` argument is the lower bound of the sampled range ``[x, 8]`` -- the opposite reading
+          from :class:`RandomSharpness`, whose scalar argument is an upper bound.
+
+    .. warning::
+        Outside ``[0, 1]`` the ``uint8`` round trip wraps rather than clamps: an input above ``1`` comes
+        back as a full-range posterized image instead of a clipped one, and an all-negative ``float32``
+        input collapses to zeros. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.posterize`.

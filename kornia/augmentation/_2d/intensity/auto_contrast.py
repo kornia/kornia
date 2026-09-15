@@ -26,18 +26,26 @@ from kornia.enhance import normalize_min_max
 class RandomAutoContrast(IntensityAugmentationBase2D):
     r"""Apply a random auto-contrast of a torch.Tensor image.
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         clip_output: has no effect on the output. The transform is
           :func:`kornia.enhance.normalize_min_max`, which already maps each sample's channels onto ``[0, 1]``,
           so clamping to that interval cannot change a value -- including for inputs outside ``[0, 1]``. Kept
-          for signature compatibility.
+          for signature compatibility. Tracked in `#4436 <https://github.com/kornia/kornia/issues/4436>`_.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the output is exactly :func:`kornia.enhance.normalize_min_max` of the input: every channel of
+          every sample is rescaled onto ``[0, 1]`` independently of the other channels and the other
+          samples. This is a rescale, not a clamp, so an input outside ``[0, 1]`` is mapped onto
+          ``[0, 1]`` rather than clipped.
 
     .. note::
         This function internally uses :func:`kornia.enhance.normalize_min_max`. A channel with a single value

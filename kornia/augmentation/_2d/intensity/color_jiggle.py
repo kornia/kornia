@@ -30,6 +30,8 @@ class ColorJiggle(IntensityAugmentationBase2D):
 
     .. image:: _static/img/ColorJiggle.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         brightness: The brightness factor to apply.
@@ -42,6 +44,26 @@ class ColorJiggle(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - this class and :class:`ColorJitter` draw the same parameters from the same seed, the
+          application ``order`` included; they differ only in the primitives they then apply. Three of
+          the four differ: :func:`kornia.enhance.adjust_brightness` against
+          :func:`kornia.enhance.adjust_brightness_accumulative`,
+          :func:`kornia.enhance.adjust_contrast` against
+          :func:`kornia.enhance.adjust_contrast_with_mean_subtraction`, and
+          :func:`kornia.enhance.adjust_saturation` against
+          :func:`kornia.enhance.adjust_saturation_with_gray_subtraction`. Both call
+          :func:`kornia.enhance.adjust_hue`.
+        - the brightness factor is re-based exactly as :class:`RandomBrightness` re-bases it:
+          ``factor - 1`` is what reaches :func:`kornia.enhance.adjust_brightness`.
+        - ``ColorJiggle(0, 0, 0, 0)`` is the identity, and the composition keeps the output inside
+          ``[0, 1]``.
+
+    .. warning::
+        In ``float16`` a black pixel reaching the hue step comes back as NaN, because
+        ``rgb_to_hsv``'s ``eps`` underflows there. Tracked in
+        `#4560 <https://github.com/kornia/kornia/issues/4560>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness`,

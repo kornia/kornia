@@ -95,6 +95,8 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomPlanckianJitter.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     This is physics based color augmentation, that creates realistic
     variations in chromaticity, this can simulate the illumination
     changes in the scene.
@@ -112,6 +114,19 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the output is clamped at the upper end only, so an input whose values are below ``0`` keeps its
+          negative values while an input above ``1`` is cut back to ``1``. Every other clamping 2D
+          intensity augmentation bounds both ends.
+        - ``mode`` selects the illuminant lookup table, held in the persistent buffer ``pl``, and
+          ``select_from`` narrows that table to the listed rows. The input must have three channels; the
+          red and blue channels are scaled by the selected row and the green channel is left alone.
+
+    .. warning::
+        ``pl``'s shape depends on ``mode``, so a ``state_dict`` saved by an instance built with one mode
+        does not load into an instance built with the other. Tracked in
+        `#4428 <https://github.com/kornia/kornia/issues/4428>`_.
 
     .. note::
         Input torch.Tensor must be float and normalized into [0, 1].

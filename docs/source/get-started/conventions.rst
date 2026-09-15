@@ -308,6 +308,15 @@ Augmentations
   :func:`kornia.geometry.transform.rotate`, and clockwise with
   :class:`kornia.augmentation.RandomAffine`
   (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+- The 2D intensity augmentations assume the ``[0, 1]`` float range but do
+  not check it, and they disagree about what happens outside it: some keep
+  the output inside ``[0, 1]``, :class:`kornia.augmentation.RandomPlanckianJitter`
+  bounds only the upper end, some carry the input's range through, and
+  :class:`kornia.augmentation.RandomEqualize` raises. Several return an
+  all-zero image for an input whose values are all negative
+  (`#4430 <https://github.com/kornia/kornia/issues/4430>`_). See
+  :class:`kornia.augmentation.IntensityAugmentationBase2D`, and each class's
+  own documentation for which of the four it is.
 
 .. code-block:: python
 
@@ -451,6 +460,10 @@ Quick self-review for generated code, most common first:
     a mask along, and the other two raise on a ``mask`` key.
 17. Inferring the augmentation sampling backend from ``_params`` placement
     — samplers can draw on an accelerator and cast the returned tensors back to CPU.
+18. Feeding mean/std-normalized or otherwise out-of-``[0, 1]`` tensors
+    through an intensity augmentation and expecting the values to pass
+    through — some rescale, some clamp, and several return zeros for an
+    all-negative image.
 
 .. tip::
 

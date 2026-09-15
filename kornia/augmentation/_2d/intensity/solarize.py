@@ -29,6 +29,8 @@ class RandomSolarize(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomSolarize.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         thresholds:
@@ -44,6 +46,18 @@ class RandomSolarize(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the addition comes first: the drawn ``additions`` value is added to the whole image and the sum
+          is clamped into ``[0, 1]``, and only then is everything at or above the drawn ``thresholds``
+          replaced by ``1 - value``. Adding after the inversion would move the dark pixels the other way.
+        - the scalar forms are centred, not absolute: a scalar ``thresholds`` is a half-width around
+          ``0.5`` and a scalar ``additions`` a half-width around ``0``, so the class defaults centre on
+          :func:`kornia.enhance.solarize`'s own default threshold rather than equalling it.
+
+    .. warning::
+        An input whose values are all negative comes back as an all-zero image. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.solarize`.

@@ -28,6 +28,8 @@ class RandomEqualize(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomEqualize.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: Probability to equalize an image.
         same_on_batch: apply the same transformation across the batch.
@@ -37,6 +39,11 @@ class RandomEqualize(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - among the 2D intensity augmentations this is the one that rejects an input outside ``[0, 1]``.
+          The others either keep their output inside that range or carry the input's range through, so
+          this is the only class on which an unnormalized image raises instead of being transformed.
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize`, which expects the input in

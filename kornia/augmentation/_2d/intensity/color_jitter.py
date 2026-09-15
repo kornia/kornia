@@ -40,6 +40,8 @@ class ColorJitter(IntensityAugmentationBase2D):
 
     .. image:: _static/img/ColorJitter.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         brightness: The brightness factor to apply.
         contrast: The contrast factor to apply.
@@ -56,6 +58,30 @@ class ColorJitter(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - this class and :class:`ColorJiggle` draw the same parameters from the same seed, the
+          application ``order`` included; they differ only in the primitives they then apply. Three of
+          the four differ: :func:`kornia.enhance.adjust_brightness_accumulative` against
+          :func:`kornia.enhance.adjust_brightness`,
+          :func:`kornia.enhance.adjust_contrast_with_mean_subtraction` against
+          :func:`kornia.enhance.adjust_contrast`, and
+          :func:`kornia.enhance.adjust_saturation_with_gray_subtraction` against
+          :func:`kornia.enhance.adjust_saturation`. Both call :func:`kornia.enhance.adjust_hue`.
+        - the brightness factor is not re-based here: it reaches
+          :func:`kornia.enhance.adjust_brightness_accumulative` as drawn, where :class:`ColorJiggle` and
+          :class:`RandomBrightness` subtract ``1`` first.
+        - ``ColorJitter(0, 0, 0, 0)`` is the identity, and the composition keeps the output inside
+          ``[0, 1]``.
+
+    .. warning::
+        An input whose values are all negative comes back as an all-zero image. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+
+    .. warning::
+        In ``float16`` a black pixel reaching the hue step comes back as NaN, because
+        ``rgb_to_hsv``'s ``eps`` underflows there. Tracked in
+        `#4560 <https://github.com/kornia/kornia/issues/4560>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness_accumulative`,

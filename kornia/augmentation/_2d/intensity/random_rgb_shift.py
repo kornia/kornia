@@ -27,6 +27,8 @@ from kornia.enhance import shift_rgb
 class RandomRGBShift(IntensityAugmentationBase2D):
     """Randomly shift each channel of an image.
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         r_shift_limit: maximum value up to which the shift value can be generated for red channel;
           recommended interval - [0, 1], should always be positive
@@ -38,6 +40,12 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
+
+    Convention:
+        - one shift is drawn per channel per sample, added to that channel, and the sum is clamped into
+          ``[0, 1]`` by :func:`kornia.enhance.shift_rgb`.
+        - each ``*_shift_limit`` is a half-width, not a maximum shift in one direction: that channel's
+          shift is sampled from ``[-limit, limit]``, so a limit of ``0`` leaves the channel untouched.
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1].

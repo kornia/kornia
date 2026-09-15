@@ -32,6 +32,8 @@ class RandomSaturation(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomSaturation.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         saturation: the saturation factor to apply.
@@ -41,6 +43,13 @@ class RandomSaturation(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the drawn factor reaches :func:`kornia.enhance.adjust_saturation` unchanged -- it is not
+          re-based the way :class:`RandomBrightness` re-bases its own -- and ``1.0`` is the identity.
+          That primitive round-trips through HSV, so the identity holds only up to floating-point error,
+          and the error is larger in half precision than in ``float32``.
+        - the result is not clamped, so an input outside ``[0, 1]`` gives an output outside it.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_saturation`
