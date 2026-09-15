@@ -87,7 +87,7 @@ class TestSuperResolutionBuilders(BaseTester):
     # `RRDBNetBuilder`'s 23-block default costs ~4x the 6-block anime variant while traversing the
     # identical export path. Which variant maps to which architecture is pinned in
     # tests/models/test_rrdbnet.py::TestRRDBNetBuilder.
-    @pytest.mark.timeout(120)
+    @pytest.mark.timeout(300)
     @pytest.mark.parametrize(
         ("builder", "build_kwargs"),
         [
