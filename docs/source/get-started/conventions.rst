@@ -273,10 +273,7 @@ Augmentations
   :class:`kornia.augmentation.RandomErasing` fills the erased mask region with
   zero.
 - The geometric mask path normally uses nearest interpolation. That avoids
-  interpolating labels only when no other operation changes their values:
-  padding can introduce its fill value, and ``Resize(antialias=True)`` filters
-  masks before sampling, producing fractional labels or changing integer and
-  boolean masks (`#4479 <https://github.com/kornia/kornia/issues/4479>`_).
+  interpolating labels, but padding can still introduce its fill value.
 - Put the image before masks, including in dictionary insertion order, so
   conversion uses its working dtype. Earlier masks use the previous image
   dtype, or ``float32`` on a fresh container. Integer labels outside the
