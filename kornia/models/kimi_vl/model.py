@@ -29,16 +29,16 @@ __all__ = ["KimiVLModel", "KimiVLProjector"]
 
 
 class KimiVLProjector(nn.Module):
-    """KimiVL Projector with Pixel Unshuffle and MLP."""
+    """KimiVL projector with patch merging and MLP."""
 
     def __init__(self, config: KimiVLProjectorConfig) -> None:
         super().__init__()
         self.downsample_ratio = 2
 
-        # Pre-norm (applied before pixel unshuffle, on the vision encoder output dimension)
+        # Pre-norm (applied before patch merging, on the vision encoder output dimension)
         self.pre_norm = nn.LayerNorm(config.input_dim)
 
-        # After pixel unshuffle, the dimension becomes input_dim * (downsample_ratio ** 2)
+        # Merging each spatial group multiplies the dimension by downsample_ratio**2.
         mlp_input_dim = config.input_dim * (self.downsample_ratio**2)
 
         # MLP
@@ -61,18 +61,20 @@ class KimiVLProjector(nn.Module):
             Projected features (B, N/4, output_dim)
         """
         B, _N, D = x.shape
+        ratio = self.downsample_ratio
 
         # Apply pre-norm
         x = self.pre_norm(x)
 
-        # Reshape to spatial (B, H, W, D) -> (B, D, H, W)
-        x = x.view(B, h, w, D).permute(0, 3, 1, 2)
+        # Reshape the patch grid into spatial groups of ratio x ratio patches.
+        new_height, new_width = h // ratio, w // ratio
+        x = x.view(B, new_height, ratio, new_width, ratio, D)
 
-        # Pixel unshuffle for spatial downsampling -> (B, D*4, H/2, W/2)
-        x = torch.nn.functional.pixel_unshuffle(x, self.downsample_ratio)
+        # Place the output-grid dimensions before the offsets within each group.
+        x = x.permute(0, 1, 3, 2, 4, 5).contiguous()
 
-        # Flatten back -> (B, D*4, N/4) -> (B, N/4, D*4)
-        x = x.flatten(2).transpose(1, 2)
+        # Flatten the output grid and concatenate each group's patch features.
+        x = x.view(B, new_height * new_width, ratio * ratio * D)
 
         # MLP
         x = self.mlp(x)
