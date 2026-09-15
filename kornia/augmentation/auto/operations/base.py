@@ -81,8 +81,10 @@ class OperationBase(nn.Module):
 
         def _random_flip(fn: Callable[[torch.Tensor], torch.Tensor]) -> Callable[[torch.Tensor], torch.Tensor]:
             def f(x: torch.Tensor) -> torch.Tensor:
-                flip = torch.rand((x.shape[0],), device=x.device) > 0.5
-                return fn(x) * flip
+                # a sign, not a mask: multiplying by the bool would zero half the
+                # magnitudes instead of negating them
+                sign = torch.where(torch.rand((x.shape[0],), device=x.device) > 0.5, 1.0, -1.0)
+                return fn(x) * sign.to(x.dtype)
 
             return f
 
