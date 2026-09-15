@@ -142,6 +142,27 @@ class TestTotalVariation(BaseTester):
         actual = kornia.losses.total_variation(pred, reduction=reduction)
         self.assert_close(actual, expected.to(device, dtype), rtol=1e-3, atol=1e-3)
 
+    @pytest.mark.parametrize("layout", ["contiguous", "channels_last", "permuted"])
+    @pytest.mark.parametrize("reduction", ["sum", "mean"])
+    def test_tv_matches_the_two_dim_reduction(self, device, dtype, layout, reduction):
+        # The reduction runs over flatten(-2) rather than dim=(-2, -1); the two must agree
+        # for any memory layout the flatten has to copy, not only a contiguous input.
+        pred = torch.rand(2, 3, 6, 7, device=device, dtype=dtype)
+        if layout == "channels_last":
+            pred = pred.contiguous(memory_format=torch.channels_last)
+        elif layout == "permuted":
+            pred = pred.permute(0, 1, 3, 2)
+
+        dif1 = (pred[..., 1:, :] - pred[..., :-1, :]).abs()
+        dif2 = (pred[..., :, 1:] - pred[..., :, :-1]).abs()
+        if reduction == "sum":
+            expected = dif1.sum(dim=(-2, -1)) + dif2.sum(dim=(-2, -1))
+        else:
+            expected = dif1.mean(dim=(-2, -1)) + dif2.mean(dim=(-2, -1))
+
+        actual = kornia.losses.total_variation(pred, reduction=reduction)
+        self.assert_close(actual, expected)
+
     # Expect TypeError to be raised when non-torch tensors are passed
     @pytest.mark.parametrize("pred", [1, [1, 2]])
     def test_tv_on_invalid_types(self, device, dtype, pred):

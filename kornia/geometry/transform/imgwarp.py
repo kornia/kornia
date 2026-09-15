@@ -223,6 +223,9 @@ def warp_perspective(
         \right )
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for transform direction, pixel centres,
+        normalized coordinates and ``align_corners`` sampling rules.
+
         - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
         - ``M`` is the source→destination **pixel** homography :math:`(B, 3, 3)`
           (contrast :func:`homography_warp`, which by default consumes destination→source normalized)
@@ -345,6 +348,9 @@ def warp_affine(
     where :math:`M^{-1}` is the inverse of the :math:`3 \times 3` homogeneous extension of ``M``.
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for transform direction, pixel centres,
+        normalized coordinates and ``align_corners`` sampling rules.
+
         - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
         - ``M`` is the source→destination **pixel** affine matrix :math:`(B, 2, 3)`
         - coordinates: ``(x, y)``, pixel centers, origin at top-left
@@ -1695,6 +1701,9 @@ def homography_warp(
     See :class:`~kornia.geometry.transform.HomographyWarper` for details.
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for homography direction, normalized
+        coordinates and ``align_corners`` sampling rules.
+
         - input: :math:`(N, C, H, W)`
         - ``src_homo_dst`` is the destination→source homography :math:`(N, 3, 3)`, in normalized
           :math:`[-1, 1]` coordinates by default (``normalized_coordinates=True``), when

@@ -45,6 +45,9 @@ def create_meshgrid(
     under one convention to a ``grid_sample`` call using the other applies a
     spurious sub-pixel scale and shift, so the two flags must agree.
 
+    See :doc:`Conventions & Pitfalls </get-started/conventions>` for the library-wide pixel-centre and
+    normalized-coordinate conventions used by this grid.
+
     Args:
         height: the image height (rows).
         width: the image width (cols).

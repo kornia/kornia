@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -23,6 +24,62 @@ from torch.distributions import Beta, Uniform
 
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.keypoints import Keypoints
+
+
+def _flatten_constant(data: Any, shape: List[int], leaves: List[Any], depth: int = 0) -> None:
+    if isinstance(data, (list, tuple)):
+        if depth == len(shape):
+            shape.append(len(data))
+        for value in data:
+            _flatten_constant(value, shape, leaves, depth + 1)
+    else:
+        leaves.append(data)
+
+
+def _constant_tensor(
+    data: Union[float, List[Any], Tuple[Any, ...]],
+    *,
+    device: Union[str, torch.device, None] = None,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    """Construct small numeric constants inside the graph, without lifting tensor storage.
+
+    Inductor can reuse a lifted CPU tensor in a CUDA kernel without transferring it
+    (https://github.com/pytorch/pytorch/issues/196969). Scalar factories and stacks
+    avoid that path, including for constants returned alongside CUDA tensors. Indexed
+    scalar writes are unsafe too: tracing lifts their right-hand sides.
+
+    Eager execution, Dynamo and ``make_fx`` all run this same construction, which issues
+    no host-device copy. Each distinct Python scalar is filled once and a single stack
+    reuses it, so repeated coordinates such as box corners cost one kernel per value.
+
+    ``data`` contains Python scalars or rectangular nested lists/tuples, never tensors.
+    Other array-likes, such as NumPy arrays, keep ``torch.as_tensor`` semantics. Callers
+    choose dtype explicitly and perform coordinate arithmetic before calling this helper
+    when rounding before versus after casting matters.
+    """
+    if not isinstance(data, (list, tuple)):
+        if isinstance(data, (int, float, torch.SymInt, torch.SymFloat)):
+            return torch.full((), data, device=device, dtype=dtype)
+        return torch.as_tensor(data, device=device, dtype=dtype)
+    shape: List[int] = []
+    leaves: List[Any] = []
+    _flatten_constant(data, shape, leaves)
+    if not leaves:
+        return torch.empty(shape, device=device, dtype=dtype)
+    filled: Dict[Tuple[type, Any], torch.Tensor] = {}
+    values: List[torch.Tensor] = []
+    for leaf in leaves:
+        # Symbolic sizes stay unmerged because comparing them adds guards. The float key carries
+        # the sign because -0.0 == 0.0; NaN is filled per leaf because NaN != NaN.
+        if type(leaf) in (int, bool) or (type(leaf) is float and not math.isnan(leaf)):
+            key = (type(leaf), leaf, math.copysign(1.0, leaf))
+            if key not in filled:
+                filled[key] = torch.full((), leaf, device=device, dtype=dtype)
+            values.append(filled[key])
+        else:
+            values.append(torch.full((), leaf, device=device, dtype=dtype))
+    return torch.stack(values).view(shape)
 
 
 def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:

@@ -394,7 +394,7 @@ class TestRgbToYuv420(BaseTester):
         # Four different colours inside each 2x2 cell, and two cells that must not be mixed, so
         # the chroma of a cell pins the whole box average rather than any one of its pixels. The
         # expected chroma is averaged with an explicit reshape, which does not share the
-        # library's ``unfold`` grouping, so a wrong axis, stride or cell boundary shows up here.
+        # library's pooling, so a wrong axis, stride or cell boundary shows up here.
         # Both cells are chosen to have non-zero chroma -- with ``blue, white / red, green`` the
         # second cell box-averages to (0, 0), where a scale, sign flip or U/V swap confined to
         # that cell would map 0 to 0 and pass.
@@ -410,6 +410,19 @@ class TestRgbToYuv420(BaseTester):
         self.assert_close(uv, expected_uv.to(device=device, dtype=dtype), atol=atol, rtol=0.0)
         # The two cells really do differ, so the assertion above has something to discriminate.
         assert not torch.allclose(uv[:, :, 0], uv[:, :, 1])
+
+    def test_leading_dims_match_per_image(self, device, dtype):
+        # The chroma is pooled over the leading dims folded into one batch; each image must
+        # come back in its own position, matching a call on that image alone.
+        img = _seeded_rand(2, 3, 3, 4, 6, seed=4524).to(device=device, dtype=dtype)
+
+        y, uv = kornia.color.rgb_to_yuv420(img)
+
+        for i in range(img.shape[0]):
+            for j in range(img.shape[1]):
+                y_ij, uv_ij = kornia.color.rgb_to_yuv420(img[i, j])
+                self.assert_close(y[i, j], y_ij)
+                self.assert_close(uv[i, j], uv_ij)
 
     def test_forth_and_back(self, device, dtype):
         # 2x2-constant input, so the chroma subsample-then-upsample is lossless and what is

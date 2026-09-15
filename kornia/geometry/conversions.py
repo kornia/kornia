@@ -1466,6 +1466,9 @@ def normalize_pixel_coordinates(
     r"""Map pixel coordinates so that the first and last pixel of each axis become -1 and 1.
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for the library-wide pixel-centre,
+        normalized-coordinate and ``align_corners`` conventions.
+
         - ``pixel_coordinates`` is :math:`(*, 2)` in ``(x, y)`` order: ``x``
           indexes columns and is scaled by ``width``, ``y`` indexes rows and is
           scaled by ``height``. The positional argument order is the other way
@@ -1564,6 +1567,9 @@ def denormalize_pixel_coordinates(
     The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for the library-wide pixel-centre,
+        normalized-coordinate and ``align_corners`` conventions.
+
         - the inverse of
           :func:`~kornia.geometry.conversions.normalize_pixel_coordinates`,
           ``x = (width - 1) * (x_norm + 1) / 2``, with the same ``(x, y)``
@@ -2520,6 +2526,9 @@ def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torc
     """Normalize points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera intrinsics and
+        pixel-centre conventions used by these coordinates.
+
         - ``point_2d`` is :math:`(*, 2)` in pixel ``(u, v)`` order and
           ``camera_matrix`` is a row-major pinhole :math:`(*, 3, 3)` with
           ``fx = K[0, 0]``, ``fy = K[1, 1]``, ``cx = K[0, 2]``, ``cy = K[1, 2]``
@@ -2565,6 +2574,9 @@ def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matri
     """Denormalize points with intrinsics. Useful for converting normalized camera points back to pixels.
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera intrinsics and
+        pixel-centre conventions used by these coordinates.
+
         - the inverse of
           :func:`~kornia.geometry.conversions.normalize_points_with_intrinsics`,
           which documents the ``K`` layout: ``u = x * fx + cx`` and
@@ -2726,6 +2738,9 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
     Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the graphics/vision camera
+        frames and camera-to-world extrinsics convention.
+
         - the input is a **camera-to-world** pose :math:`(B, 4, 4)`: its 3x3
           block maps camera axes into the world and its last column is the
           camera centre in world coordinates
@@ -2809,6 +2824,9 @@ def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
     Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the graphics/vision camera
+        frames and camera-to-world extrinsics convention.
+
         - the split-argument form of
           :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4`,
           which documents the flip, the two camera frames, the involution and
@@ -2855,6 +2873,9 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: torch.Tensor) -> torch.
     Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the graphics/vision camera
+        frames and camera-to-world extrinsics convention.
+
         - the same map as
           :func:`~kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4`,
           which carries the canonical block: ``diag(1, -1, -1, 1)`` is its own
@@ -2897,6 +2918,9 @@ def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
     Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the graphics/vision camera
+        frames and camera-to-world extrinsics convention.
+
         - the split-argument form of
           :func:`~kornia.geometry.conversions.camtoworld_vision_to_graphics_4x4`
           and, because ``diag(1, -1, -1, 1)`` is its own inverse, bitwise the
@@ -2939,6 +2963,9 @@ def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
     long-url: https://colmap.github.io/format.html#output-format
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for camera-to-world versus
+        world-to-camera extrinsics and camera-centre semantics.
+
         - the returned pair is exactly ``(R^T, -R^T @ t)`` — the **rigid**
           inverse, computed by transposition and never by a matrix inverse. For
           a proper rotation that is the true inverse as a map, and in floating
@@ -3022,6 +3049,9 @@ def worldtocam_to_camtoworld_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
     r"""Convert worldtocam frame used in Colmap to camtoworld.
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for camera-to-world versus
+        world-to-camera extrinsics and camera-centre semantics.
+
         - bitwise the **same function** as
           :func:`~kornia.geometry.conversions.camtoworld_to_worldtocam_Rt`,
           which carries the canonical block: for a proper rotation
@@ -3068,6 +3098,9 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
     Both poses in quaternion representation.
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera frames and
+        extrinsics conventions composed by this conversion.
+
         (every measured figure in this block — the 16-digit "as computed"
         literals included — is a sample of one build, torch 2.9.1 on cpu, not
         a bound; trailing digits and turnover points may move with the

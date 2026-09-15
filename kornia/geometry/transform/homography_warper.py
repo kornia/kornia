@@ -82,6 +82,9 @@ class HomographyWarper(BaseWarper):
         X_{src} = H_{src}^{\{dst\}} * X_{dst}
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for homography direction, normalized
+        coordinates and sampling conventions.
+
         - align_corners: ``False`` by default, matching :func:`homography_warp`
         - See the convention block of :func:`homography_warp`.
 
