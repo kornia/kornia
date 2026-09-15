@@ -388,11 +388,11 @@ class PinholeCamera:
         Convention:
             - ``point_3d`` must be at least rank 2. An unbatched :math:`(3,)` point raises :class:`ValueError`.
               An empty point set returns an empty result.
-            - a point whose **camera-frame** ``z`` is 0 does not raise: ``K`` is applied first and the
-              perspective divide is then skipped, so the result is the undivided ``K (R X + t)``.
-
-        .. warning::
-            The ``z = 0`` answer is tracked in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+            - points are first transformed into the camera frame by the world-to-camera extrinsics. The same
+              guarded perspective division as :func:`~kornia.geometry.camera.perspective.project_points` is then
+              applied before ``K`` at singular camera depth: ``abs(z) <= 1e-8`` leaves ``(x, y)`` unchanged.
+              Away from that branch, projection retains the full :math:`4 \times 4` intrinsics mapping, including
+              skew and non-canonical third-row/fourth-column entries.
 
         Args:
             point_3d: torch.Tensor containing the 3d points to be projected
@@ -416,8 +416,20 @@ class PinholeCamera:
         """
         if len(point_3d.shape) < 2:
             raise ValueError(f"Input must be at least a 2D tensor. Got {point_3d.shape}")
+
+        # Keep the established full 4x4 projection for regular camera depths. In particular, this preserves
+        # non-canonical intrinsics, transform_points' camera-axis batching, and its point-dtype restoration.
         P = self.intrinsics @ self.extrinsics
-        return convert_points_from_homogeneous(transform_points(P, point_3d))
+        regular = convert_points_from_homogeneous(transform_points(P, point_3d))
+
+        # The singular-depth branch keeps this PR's guarded policy: divide camera-frame xy only when z is outside
+        # the guard, then apply the full intrinsics matrix. Computing it separately avoids reducing K to fx/fy/cx/cy.
+        point_3d_camera = transform_points(self.extrinsics, point_3d)
+        point_2d_camera = convert_points_from_homogeneous(point_3d_camera)
+        point_3d_normalized = convert_points_to_homogeneous(point_2d_camera)
+        guarded = convert_points_from_homogeneous(transform_points(self.intrinsics, point_3d_normalized))
+        mask = torch.abs(point_3d_camera[..., 2:3]) > 1e-8
+        return torch.where(mask, regular, guarded)
 
     def unproject(self, point_2d: torch.Tensor, depth: torch.Tensor) -> torch.Tensor:
         r"""Unproject a 2d point in 3d.
@@ -850,7 +862,7 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
 # https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L43
 
 
-def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Transform coordinates in the camera frame to the pixel frame.
 
     See the Convention block on :class:`~kornia.geometry.camera.pinhole.PinholeCamera`.
@@ -859,19 +871,15 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
         - ``dst_proj_src`` is a :math:`(B, 4, 4)` projection matrix — the layout of
           :class:`~kornia.geometry.camera.pinhole.PinholeCamera`, not the :math:`(*, 3, 3)` ``K`` the functional API
           takes — and the result is ``(u, v)`` pixel coordinates in the destination frame.
-        - the perspective division is ``x / (z + eps)`` rather than a guarded divide. With the default ``eps``,
-          a projected coordinate ``x = 100, z = 0`` gives about ``1e14`` in ``float32``, ``float64`` and
-          ``bfloat16``, and ``inf`` in ``float16`` (where ``eps`` rounds to zero). A zero numerator then gives
-          zero in the former dtypes and ``nan`` in ``float16``; ``eps`` also biases small nonzero depths.
-
-    .. warning::
-        The ``z = 0`` answer is tracked in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
+        - after applying ``dst_proj_src``, division uses the homogeneous-coordinate guard shared by the camera
+          projection helpers: ``abs(z) > eps`` divides by exactly ``z`` and ``abs(z) <= eps`` returns ``(x, y)``
+          unchanged. ``eps`` therefore selects the branch without biasing a non-singular result.
 
     Args:
         cam_coords_src: (x, y, z) coordinates defined in the first camera coordinates system. Shape must be BxHxWx3.
         dst_proj_src: the projection matrix between the
           reference and the non reference camera frame. Shape must be Bx4x4.
-        eps: small value to avoid division by zero error.
+        eps: threshold on ``abs(z)`` below which the projected numerator is returned unchanged.
 
     Returns:
         torch.Tensor of shape BxHxWx2 with (u, v) pixel coordinates.
@@ -883,17 +891,7 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
         raise ValueError(f"Input dst_proj_src has to be in the shape of Bx4x4. Got {dst_proj_src.shape}")
     # apply projection matrix to points
     point_coords: torch.Tensor = transform_points(dst_proj_src[:, None], cam_coords_src)
-    x_coord: torch.Tensor = point_coords[..., 0]
-    y_coord: torch.Tensor = point_coords[..., 1]
-    z_coord: torch.Tensor = point_coords[..., 2]
-
-    # compute pixel coordinates
-    u_coord: torch.Tensor = x_coord / (z_coord + eps)
-    v_coord: torch.Tensor = y_coord / (z_coord + eps)
-
-    # torch.stack and return the coordinates, that's the actual flow
-    pixel_coords_dst: torch.Tensor = torch.stack([u_coord, v_coord], dim=-1)
-    return pixel_coords_dst  # BxHxWx2
+    return convert_points_from_homogeneous(point_coords, eps=eps)
 
 
 # layer api
