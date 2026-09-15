@@ -51,7 +51,8 @@ class RandomRain(IntensityAugmentationBase2D):
         - both sizes must be strictly smaller than the image on their own axis. A drop as tall as the image,
           or as wide, raises on the forward pass, where the image shape is known -- constructing it succeeds.
         - the drawn sizes are truncated to integers, so the default ``drop_height=(5, 20)`` gives heights of
-          ``5`` to ``19``: an image shorter than 20 pixels raises on some seeds and runs on others.
+          ``5`` to ``19``: an image shorter than 20 pixels raises on some seeds, and on every seed when it is
+          5 pixels tall or shorter.
         - ``same_on_batch=True`` gives every sample of the batch the same drop count, the same drop size and
           the same coordinates; left at ``False`` each sample draws its own.
 

@@ -48,11 +48,15 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         - ``normalized`` reaches that function as its ``separable`` argument, so it selects the implementation
           rather than a normalization: both settings are L1-normalized means, they agree to float rounding, and
           a constant image survives either. ``border_type`` defaults to ``"reflect"``, as the function does.
-        - the output is never clamped, so an input outside ``[0, 1]`` comes back inside its own range.
+        - the output is not clamped, so an out-of-range input gives an out-of-range output. At the default
+          ``border_type="reflect"`` every output value is an average of input values and stays between the
+          input's own extremes; ``border_type="constant"`` pads with zeros and can pull a border pixel below
+          the input's minimum.
 
     .. warning::
-        An image with a spatial axis no longer than half the kernel size raises a raw torch ``RuntimeError``
-        about the reflect padding rather than a kornia error naming the class or the shape. Tracked in
+        At the default ``border_type="reflect"``, an image with a spatial axis no longer than half the kernel
+        size raises a raw torch ``RuntimeError`` about the padding rather than a kornia error naming the class
+        or the shape; the other border types run on the same image. Tracked in
         `#4559 <https://github.com/kornia/kornia/issues/4559>`_.
 
     .. note::

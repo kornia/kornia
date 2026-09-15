@@ -58,7 +58,7 @@ class RandomErasing(IntensityAugmentationBase2D):
           ``_params["ys"]``, ``["xs"]``, ``["heights"]`` and ``["widths"]``.
         - the erased pixels carry the literal ``value``, which has to lie in ``[0, 1]`` -- the parameter
           generator rejects anything else at construction. Every other pixel is carried through unclamped, so
-          an input outside ``[0, 1]`` keeps its own range.
+          every pixel outside the box keeps the input's range.
         - inside :class:`~kornia.augmentation.container.AugmentationSequential` a ``mask`` data key is erased
           in the same rectangle, but the mask is filled with ``0`` whatever ``value`` is.
 

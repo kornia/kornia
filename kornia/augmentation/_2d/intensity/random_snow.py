@@ -51,7 +51,8 @@ class RandomSnow(IntensityAugmentationBase2D):
         - one ``snow_coefficient`` and one ``brightness`` are drawn per sample; ``same_on_batch=True``
           collapses both to a single value for the batch.
         - the output as a whole is not clamped -- only the light channel of the snow-covered pixels is -- so
-          an input outside ``[0, 1]`` comes back outside it.
+          an input above ``1`` comes back above it. An input whose values are all negative is the exception,
+          in the warning below.
 
     .. warning::
         An input whose values are all negative comes back as an all-zero image. Tracked in

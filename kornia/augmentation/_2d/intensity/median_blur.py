@@ -40,10 +40,13 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
     Convention:
         - ``kernel_size`` is ``(kH, kW)``: the first entry counts rows and the second counts columns, as in
           :func:`kornia.filters.median_blur`.
-        - the filter selects an input value rather than averaging, so nothing is clamped and an input outside
-          ``[0, 1]`` comes back inside its own range.
-        - an image smaller than the kernel is accepted, down to ``1 x 1``, where the two reflect-padding blurs
-          :class:`RandomBoxBlur` and :class:`RandomGaussianBlur` raise.
+        - the output is not clamped, so an out-of-range input gives an out-of-range output. The window is
+          zero-padded -- :func:`kornia.filters.median_blur` convolves with ``F.conv2d`` -- so a border median
+          is taken over zeros as well as image values, and a border pixel can come back as ``0`` even when no
+          input value is near it.
+        - this class has no ``border_type``, and an image smaller than the kernel is accepted, down to
+          ``1 x 1``, where :class:`RandomBoxBlur` and :class:`RandomGaussianBlur` raise at their default
+          ``border_type="reflect"``.
 
     .. note::
         This function internally uses :func:`kornia.filters.median_blur`.

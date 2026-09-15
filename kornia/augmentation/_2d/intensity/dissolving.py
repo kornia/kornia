@@ -57,10 +57,10 @@ class RandomDissolving(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         - Output: :math:`(B, C, H, W)`
 
-    Convention:
-        - the transform is delegated to :class:`kornia.filters.StableDiffusionDissolving`, which the
-          constructor builds: instantiating this class needs the optional ``diffusers`` package and
-          downloads a Stable Diffusion checkpoint on first use.
+    .. note::
+        The transform is delegated to :class:`kornia.filters.StableDiffusionDissolving`, which the constructor
+        builds: instantiating this class needs the optional ``diffusers`` package and downloads a Stable
+        Diffusion checkpoint on first use.
 
     """
 
