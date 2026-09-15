@@ -47,10 +47,9 @@ class RandomSharpness(IntensityAugmentationBase2D):
     Convention:
         - the factor blends between the fully blurred image at ``0`` and the input at ``1``, and values
           above ``1`` sharpen.
-        - a scalar argument is the upper bound of ``[0, x]`` -- the centred ``[-x, x]`` fitted to the
-          non-negative bound (`#4563 <https://github.com/kornia/kornia/issues/4563>`_) -- so the default
-          ``sharpness=0.5`` never reaches the identity and therefore never sharpens -- it blurs by a random
-          amount.
+        - a scalar argument is the upper bound of ``[0, x]`` -- the centred ``[-x, x]`` floored at the
+          non-negative bound -- so the default ``sharpness=0.5`` never reaches the identity and therefore
+          never sharpens -- it blurs by a random amount.
         - the result is kept inside ``[0, 1]``.
 
     .. warning::
