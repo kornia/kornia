@@ -48,7 +48,8 @@ class RandomClahe(IntensityAugmentationBase2D):
         back as a raw torch indexing error that names neither this class nor the range it needs. As for
         :class:`RandomEqualize`, the rejection is not exactly at the boundary: the failing index is the
         256-entry lookup indexed with ``(input * 255).long()``, so a value less than one 8-bit code outside
-        ``[0, 1]``, at either end, is still admitted. Tracked in
+        ``[0, 1]``, at either end, is still admitted, up to the rounding of ``input * 255`` in the input's
+        dtype. Tracked in
         `#4564 <https://github.com/kornia/kornia/issues/4564>`_.
 
     .. warning::

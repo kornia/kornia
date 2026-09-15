@@ -78,7 +78,7 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
 
     .. warning::
         With ``same_on_batch=True`` the scalar draws are shared but the fractal map is not: every sample keeps
-        its own ``_params["plasma"]`` slice, so identical inputs come back different. Tracked in
+        its own ``_params["plasma"]`` slice, so identical inputs can come back different. Tracked in
         `#4570 <https://github.com/kornia/kornia/issues/4570>`_.
 
     .. warning::
@@ -157,7 +157,7 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
 
     .. warning::
         With ``same_on_batch=True`` the scalar draws are shared but the fractal map is not: every sample keeps
-        its own ``_params["plasma"]`` slice, so identical inputs come back different. Tracked in
+        its own ``_params["plasma"]`` slice, so identical inputs can come back different. Tracked in
         `#4570 <https://github.com/kornia/kornia/issues/4570>`_.
 
     .. warning::
@@ -234,7 +234,7 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
 
     .. warning::
         With ``same_on_batch=True`` the scalar draws are shared but the fractal map is not: every sample keeps
-        its own ``_params["plasma"]`` slice, so identical inputs come back different. Tracked in
+        its own ``_params["plasma"]`` slice, so identical inputs can come back different. Tracked in
         `#4570 <https://github.com/kornia/kornia/issues/4570>`_.
 
     .. warning::

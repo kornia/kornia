@@ -56,8 +56,8 @@ class RandomPosterize(IntensityAugmentationBase2D):
         wraps or saturates depending on the platform and torch version, and bears no relation to the
         clamped input: an input above ``1`` can come back as a full-range posterized image instead of a
         clipped one, and an all-negative input as an all-zero one. A sample that draws ``bits=8`` skips the
-        conversion and keeps its out-of-range values, and a scalar ``bits`` below ``8`` draws ``8`` for part
-        of the batch. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+        conversion and keeps its out-of-range values, and a scalar ``bits`` below ``8`` can draw ``8`` for any
+        sample. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.posterize`.

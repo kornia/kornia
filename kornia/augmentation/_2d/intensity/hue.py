@@ -54,11 +54,11 @@ class RandomHue(IntensityAugmentationBase2D):
           straight to that primitive shifts the hue by a different amount.
         - the result is not clamped, so a pixel outside ``[0, 1]`` keeps a channel outside it, up to the
           rounding of the HSV round trip. The exception is a pixel whose largest channel is exactly ``0``,
-          which comes back as zeros.
+          which comes back as zeros, or as NaN in ``float16``.
 
     .. warning::
-        In ``float16`` a black pixel comes back as NaN, because ``rgb_to_hsv``'s ``eps`` underflows
-        there. Tracked in `#4560 <https://github.com/kornia/kornia/issues/4560>`_.
+        In ``float16`` a pixel whose largest channel is ``0`` -- for an input in ``[0, 1]``, a black pixel --
+        comes back as NaN, because ``rgb_to_hsv``'s ``eps`` underflows there. Tracked in `#4560 <https://github.com/kornia/kornia/issues/4560>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_hue`

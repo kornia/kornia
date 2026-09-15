@@ -47,7 +47,8 @@ class RandomEqualize(IntensityAugmentationBase2D):
           that names neither the class nor the range (`#4564 <https://github.com/kornia/kornia/issues/4564>`_).
         - the rejection is not exactly at the boundary: the check guards the 256-entry lookup indexed with
           ``(input * 255).long()``, so a value less than one 8-bit code outside ``[0, 1]``, at either end, is
-          still admitted.
+          still admitted, up to the rounding of ``input * 255`` in the input's dtype: in ``float16``,
+          ``1.00390625`` already raises.
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize`, which expects the input in

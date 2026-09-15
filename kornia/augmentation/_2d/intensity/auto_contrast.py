@@ -43,9 +43,12 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
 
     Convention:
         - the output is exactly :func:`kornia.enhance.normalize_min_max` of the input: each channel of
-          each sample is rescaled from its own minimum and maximum, independently of the other channels
-          and the other samples, with the constant channel noted below as the exception. This is a
-          rescale, not a clamp, so an input outside ``[0, 1]`` is mapped into range rather than clipped.
+          each sample is rescaled from its own minimum and maximum as ``(x - min) / (max - min + 1e-6)``,
+          independently of the other channels and the other samples, with the constant channel noted below as
+          the exception. This is a rescale, not a clamp, so an input outside ``[0, 1]`` is mapped into range
+          rather than clipped. The ``1e-6`` keeps a channel whose range is not large next to it short of ``1``
+          (a range of ``1e-5`` peaks at ``0.909``), and in ``float16`` a channel whose span overflows the
+          dtype comes back with NaN.
 
     .. note::
         This function internally uses :func:`kornia.enhance.normalize_min_max`. A channel with a single value

@@ -78,7 +78,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
           bound, the sum is cut there rather than rescaled.
         - the module pickles, deep-copies and passes through ``torch.save``, and the copy reproduces the
           original's output under the same seed. After ``.compile()``, which swaps in a compiled transform,
-          it no longer pickles or saves.
+          it no longer pickles or passes through ``torch.save``, although it still deep-copies.
 
     .. warning::
         An all-negative input can come back as an all-zero image when the sampled gradient does not raise it

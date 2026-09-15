@@ -55,11 +55,11 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
           minimum.
 
     .. warning::
-        At the default ``border_type="reflect"``, an image with a spatial axis no longer than half the kernel
-        size raises a raw torch ``RuntimeError`` about the padding rather than a kornia error naming the class
-        or the shape. ``"constant"`` and ``"replicate"`` run on the same image; ``"circular"`` raises a
-        padding error of its own, also raw, once the kernel radius exceeds that axis. Tracked in
-        `#4559 <https://github.com/kornia/kornia/issues/4559>`_.
+        At the default ``border_type="reflect"``, an image with a spatial axis no longer than half the kernel's extent
+        along that axis raises a raw torch ``RuntimeError`` about the padding rather than a kornia error naming the
+        class or the shape. ``"constant"`` and ``"replicate"`` run on the same image; ``"circular"`` raises a padding
+        error of its own, also raw, once the kernel radius exceeds that axis. Tracked in `#4559
+        <https://github.com/kornia/kornia/issues/4559>`_.
 
     .. note::
         This function internally uses :func:`kornia.filters.box_blur`.

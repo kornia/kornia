@@ -59,7 +59,11 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           downloads a Stable Diffusion checkpoint. :class:`RandomClahe` and :class:`RandomJPEG` are not in
           ``kornia.augmentation.__all__`` and document their own behavior on their own pages.
         - what this block and the class pages say about an output describes the samples the ``p`` gate
-          transforms; every other sample comes back unchanged.
+          transforms; every other sample comes back with its input values. Below ``p=1`` the transform is
+          still computed for every sample and the gate then selects, so a skipped sample that fails a value
+          check still makes the call raise -- :class:`RandomEqualize` and :class:`RandomClahe` raise for an
+          out-of-range image even at ``p=0.0`` -- and a skipped sample's gradient can be NaN where the
+          transform's derivative is infinite (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
         - the scalar factors a concrete class draws are per sample -- one value, or one per channel
           per sample where the class's own docstring says so. :class:`RandomMotionBlur` is the exception for
           its kernel size, of which one draw serves the whole batch, as its ``Args`` say;
@@ -74,18 +78,21 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           (`#4570 <https://github.com/kornia/kornia/issues/4570>`_); ``RandomPlasmaShadow`` stores
           ``(B, 1, H, W)``. :class:`ColorJiggle` and :class:`ColorJitter` both draw an application ``order``;
           it is shared by the whole batch. Only :class:`ColorJitter` takes a fixed ``order`` constructor
-          argument; on either class a forward ``order=`` keyword, or replayed ``params``, replaces the drawn
-          order for that call.
+          argument. Without one, on either class, an ``order`` tensor passed as a forward keyword, or
+          replayed ``params``, replaces the drawn order for that call; a fixed order ignores both.
         - where a class documents bounds for a parameter, an explicit range outside them usually raises at
           construction. These checks run on the forward pass instead: :class:`RandomGamma`'s non-negativity checks
           on ``gamma`` and ``gain``, which live in :func:`kornia.enhance.adjust_gamma`;
-          :class:`RandomSolarize`'s ``additions`` at the closed bounds ``-0.5`` and ``0.5`` and
-          :class:`RandomGaussianBlur`'s ``sigma`` at ``0``, which the constructors admit and
-          :func:`kornia.enhance.solarize` and :func:`kornia.filters.gaussian_blur2d` reject;
-          :class:`RandomRain`'s drop-size bounds; and a tuple ``kernel_size`` for :class:`RandomMotionBlur`,
-          where a negative range raises there while an even bound never does, because only odd sizes are
-          drawn. A scalar magnitude is a different case: several classes fit it to the bound instead of
-          raising, tracked in `#4563 <https://github.com/kornia/kornia/issues/4563>`_.
+          :class:`RandomSolarize`'s ``additions`` at the closed bounds ``-0.5`` and ``0.5``, and
+          :class:`RandomGaussianBlur`'s ``sigma`` at ``0`` and even ``kernel_size``, which the constructors
+          admit and :func:`kornia.enhance.solarize` and :func:`kornia.filters.gaussian_blur2d` reject;
+          :class:`RandomRain`'s drop-size bounds; a tuple ``kernel_size`` for :class:`RandomMotionBlur` whose
+          drawn odd size is below ``3``, while an even bound never raises, because only odd sizes are drawn;
+          and :class:`RandomChannelDropout`'s ``num_drop_channels`` against the input's channel count.
+          :class:`RandomPlanckianJitter`'s ``select_from`` rejects an index past the table at construction
+          but accepts a negative one, as Python indexing does. A scalar magnitude is a different case: several
+          classes fit it to the bound instead of raising, tracked in
+          `#4563 <https://github.com/kornia/kornia/issues/4563>`_.
 
     .. warning::
         Several of these classes can return an all-zero image for an input whose values are all negative,

@@ -142,6 +142,12 @@ class TestBlurConventions(BaseTester):
         self.assert_close(kept_t, transposed.new_tensor([0, 0, 9, 0, 0, 0, 0]))
         torch.manual_seed(_FORWARD_SEED)
         self.assert_close(K.RandomMedianBlur((1, 5), p=1.0)(transposed)[0, 0].sum(-2), transposed.new_zeros(7))
+        # An even entry is constructed and then fails on any image size, as a raw reshape error
+        # (`shape '[2, 3, 16, 32, 32]' is invalid`, measured on cpu in all four dtypes and on mps float32).
+        torch.manual_seed(_FORWARD_SEED)
+        even = K.RandomMedianBlur((4, 4), p=1.0)
+        with pytest.raises(RuntimeError, match="is invalid for input of size"):
+            _sync(even(torch.rand(2, 3, 32, 32).to(device=device, dtype=dtype)).device)
 
     # Row 6c-20 (issue #4433, closed by #4486, which documents the mapping): RandomBoxBlur's
     # ``normalized`` flag is not a normalization switch -- it is forwarded as box_blur's
@@ -277,6 +283,26 @@ class TestBlurConventions(BaseTester):
         vertical = K.RandomMotionBlur(5, (90.0, 90.0), (direction, direction), p=1.0)(image)
         self.assert_close(vertical[0, 0, :, 3], image.new_tensor(along_col))
 
+    # Row 6c-24, the rotation half of `direction`: the weights are laid on a horizontal line and then
+    # rotated with `resample`, and a "nearest" rotation off the axes drops taps, so the line's length and
+    # its end weights change with the angle -- at 45 degrees and direction +1 the five taps become three.
+    # Snippet used to generate expected:
+    #   x = torch.zeros(1, 1, 9, 9); x[0, 0, 4, 4] = 1.0
+    #   for angle in (0.0, 45.0):
+    #       torch.manual_seed(0); y = K.RandomMotionBlur(5, (angle, angle), (1.0, 1.0), p=1.0)(x)
+    #       print(angle, sorted(y[y > 0].tolist()))
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> `0.0 [0.1, 0.2, 0.3, 0.4]` (the weight-0 end tap is empty)
+    # and `45.0 [0.1667, 0.3333, 0.5]`; the impulse response is the kernel, so these are its taps.
+    def test_convention_random_motion_blur_nearest_rotation_resamples_the_taps(self, device, dtype):
+        image = _impulse(device, dtype, height=9, width=9, row=4, col=4)
+        taps = {}
+        for angle in (0.0, 45.0):
+            torch.manual_seed(_FORWARD_SEED)
+            out = K.RandomMotionBlur(5, (angle, angle), (1.0, 1.0), p=1.0)(image)
+            taps[angle] = out[out.abs() > 1e-3].sort().values
+        self.assert_close(taps[0.0], image.new_tensor([0.1, 0.2, 0.3, 0.4]))
+        self.assert_close(taps[45.0], image.new_tensor([1.0, 2.0, 3.0]) / 6.0)
+
     # Row 6c-24: RandomMotionBlur keeps kornia.filters.motion_blur's defaults, so the class does not
     # quietly change the padding or the interpolation of the kernel rotation.
     # Snippet used to generate expected:
@@ -382,6 +408,21 @@ class TestBlurConventions(BaseTester):
                 _sync(make()(thin).device)
             torch.manual_seed(_FORWARD_SEED)
             assert make()(small).shape == small.shape, f"{name} should still accept a 2x2 image"
+        # The threshold is per axis, half the kernel's extent along that axis: a (7, 3) kernel runs on a
+        # 2-column image (2 > 3 // 2) and raises on a 3-row one (3 <= 7 // 2), in both classes (measured on
+        # cpu in all four dtypes and on mps float32).
+        rectangular = {
+            "RandomBoxBlur": lambda: K.RandomBoxBlur((7, 3), p=1.0),
+            "RandomGaussianBlur": lambda: K.RandomGaussianBlur((7, 3), (1.0, 1.0), p=1.0),
+        }
+        narrow = torch.rand(2, 3, 20, 2).to(device=device, dtype=dtype)
+        short = torch.rand(2, 3, 3, 20).to(device=device, dtype=dtype)
+        for make in rectangular.values():
+            torch.manual_seed(_FORWARD_SEED)
+            assert make()(narrow).shape == narrow.shape
+            torch.manual_seed(_FORWARD_SEED)
+            with pytest.raises(RuntimeError, match="Padding size should be less"):
+                _sync(make()(short).device)
         torch.manual_seed(_FORWARD_SEED)
         with pytest.raises(RuntimeError, match="Kernel size can't be greater"):
             _sync(K.RandomSharpness(1.0, p=1.0)(small).device)
@@ -604,34 +645,37 @@ class TestNoiseAndWeatherConventions(BaseTester):
 
     # Row 6c-27: ``amount`` is the fraction of *pixels* touched, not of scalars -- a chosen pixel is
     # rewritten in every channel, so the changed mask is identical across channels -- and
-    # ``salt_vs_pepper`` splits those pixels, 0.25 meaning a quarter of them become salt.  Both
-    # realised fractions are RNG-bound, so each is asserted as a 0.02 band around the requested
-    # value, with the measured digits below.
+    # ``salt_vs_pepper`` splits those pixels, 0.25 meaning a quarter of them become salt.  Both are
+    # per-pixel Bernoulli draws, so each realised fraction is asserted within five binomial standard
+    # deviations of the requested value: at a fixed band the pin held on seed 0 only by luck (the salt
+    # ratio at amount 0.1 left a 0.02 band on 106 of seeds 0..199).  The image is large enough that five
+    # deviations is still a tight band (0.0086 for the fraction at amount 0.1).
     # Snippet used to generate expected:
-    #   x = torch.full((2, 3, 24, 40), 0.5)
+    #   x = torch.full((2, 3, 96, 160), 0.5)
     #   for amount in (0.1, 0.3, 0.6):
     #       torch.manual_seed(0)
     #       y = K.RandomSaltAndPepperNoise(amount=(amount, amount), salt_vs_pepper=(0.25, 0.25), p=1.0)(x)
-    #       changed = y != 0.5; salt = (y == 1.0).sum(); pepper = (y == 0.0).sum()
-    #       print(amount, changed.float().mean(), salt / (salt + pepper),
-    #             torch.equal(changed[:, 0], changed[:, 1]))
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> changed fraction `0.1 -> 0.101042`,
-    # `0.3 -> 0.304167`, `0.6 -> 0.600521` (errors 0.001042 / 0.004167 / 0.000521) and salt ratio
-    # `0.247423` / `0.246575` / `0.253252` (errors 0.002577 / 0.003425 / 0.003252); channel masks
-    # equal in every case.  The same six numbers come back bit-identical on mps float32.
+    #       changed = (y != 0.5)[:, 0]; salt = (y[:, 0] == 1.0).sum(); pepper = (y[:, 0] == 0.0).sum()
+    #       print(amount, changed.float().mean(), salt / (salt + pepper))
+    # executed 2026-09-15 (torch 2.14.0, cpu float16/bfloat16/float32/float64 and mps float32, identical)
+    # -> errors of -0.78 / -1.92 / -1.19 deviations for the fraction and -1.71 / -0.52 / -0.38 for the
+    # salt ratio; over seeds 0..99 and the three amounts no draw leaves the five-deviation band.
     @pytest.mark.parametrize("amount", [0.1, 0.3, 0.6])
     def test_convention_random_salt_and_pepper_amount_is_a_pixel_fraction(self, device, dtype, amount):
-        image = torch.full((2, 3, 24, 40), 0.5, device=device, dtype=dtype)
+        image = torch.full((2, 3, 96, 160), 0.5, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomSaltAndPepperNoise(amount=(amount, amount), salt_vs_pepper=(0.25, 0.25), p=1.0)(image)
         changed = out != 0.5
-        assert abs(float(changed.float().mean()) - amount) < 0.02
         assert torch.equal(changed[:, 0], changed[:, 1])
         assert torch.equal(changed[:, 0], changed[:, 2])
+        pixels = changed[:, 0].numel()
+        fraction = float(changed[:, 0].float().mean())
+        assert abs(fraction - amount) < 5.0 * (amount * (1.0 - amount) / pixels) ** 0.5
         # salt_vs_pepper splits the touched pixels; 0.25 means a quarter of them go to salt.
-        salt = float((out == 1.0).float().sum())
-        pepper = float((out == 0.0).float().sum())
-        assert abs(salt / (salt + pepper) - 0.25) < 0.02
+        salt = float((out[:, 0] == 1.0).float().sum())
+        pepper = float((out[:, 0] == 0.0).float().sum())
+        touched = salt + pepper
+        assert abs(salt / touched - 0.25) < 5.0 * (0.25 * 0.75 / touched) ** 0.5
 
     # Row 6c-27: the two poles are the literals 1.0 and 0.0, written regardless of the input's range,
     # so on a [0, 2] image the "salt" is darker than the untouched pixels.
@@ -764,19 +808,28 @@ class TestNoiseAndWeatherConventions(BaseTester):
         )
         assert smaller(image).shape == image.shape
 
-    # Row 6c-29, the painted extent: the drop is sampled along `linspace(0, h)`, end point included, so a
-    # drop of size h spans h + 1 rows, and one row short of the image already runs from edge to edge.
+    # Row 6c-29, the painted extent: the drop is sampled along `linspace(0, h, steps=max(h, |w|))`, end point
+    # included, so a drop of size h spans h + 1 rows, and one row short of the image already runs from edge
+    # to edge.  With both sizes at most 1 there is a single step, which is the start point alone, so the
+    # drop is one pixel.
     # Snippet used to generate expected:
-    #   torch.manual_seed(0)
-    #   y = K.RandomRain(number_of_drops=(1, 1), drop_height=(5, 5), drop_width=(0, 0), p=1.0)(torch.zeros(1, 1, 6, 10))
-    #   print(sorted({r for r, _ in (y[0, 0] != 0).nonzero().tolist()}))
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `[0, 1, 2, 3, 5]`.
+    #   x = torch.zeros(1, 1, 6, 10)
+    #   for h, w in ((5, 0), (1, 1), (1, 0)):
+    #       torch.manual_seed(0)
+    #       y = K.RandomRain(number_of_drops=(1, 1), drop_height=(h, h), drop_width=(w, w), p=1.0)(x)
+    #       print((h, w), sorted({r for r, _ in (y[0, 0] != 0).nonzero().tolist()}), int((y != 0).sum()))
+    # executed 2026-09-15 (torch 2.14.0, cpu float16/bfloat16/float32/float64 and mps float32) ->
+    # `[0, 1, 2, 3, 5]`, then a single painted pixel for both `(1, 1)` and `(1, 0)`.
     def test_convention_random_rain_drop_spans_one_row_more_than_its_height(self, device, dtype):
         image = torch.zeros(1, 1, 6, 10, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomRain(number_of_drops=(1, 1), drop_height=(5, 5), drop_width=(0, 0), p=1.0)(image)
         rows, _ = _lit_extent(out[0, 0])
         assert (rows[0], rows[-1]) == (0, 5)
+        for width in (1, 0):
+            torch.manual_seed(_FORWARD_SEED)
+            aug = K.RandomRain(number_of_drops=(1, 1), drop_height=(1, 1), drop_width=(width, width), p=1.0)
+            assert int((aug(image) != 0).sum()) == 1
 
     # Issue #4567: the three integer ranges are float draws truncated to integers, and the generator's
     # `hi + 1` shift goes through the `bounds` argument that `_range_bound` ignores for a tuple, so the
@@ -802,6 +855,16 @@ class TestNoiseAndWeatherConventions(BaseTester):
         assert (int(widths.min()), int(widths.max())) == (-4, 4)
         zeros, ones = int((widths == 0).sum()), int((widths == 1).sum())
         assert zeros > 1.5 * ones and ones > 1000
+        # Truncation is toward zero, so on a range below zero it is the lower bound that is not drawn and
+        # the upper bound that is: `(-5, -1)` draws -4..-1 (about 5000 each out of 20000) and `(-3, 0)`
+        # draws -2..0, so 0 is not doubled there.
+        for bounds, expected in (((-5, -1), (-4, -1)), ((-3, 0), (-2, 0))):
+            torch.manual_seed(_FORWARD_SEED)
+            aug = K.RandomRain(number_of_drops=(1, 1), drop_height=(1, 1), drop_width=bounds, p=1.0)
+            drawn = aug.forward_parameters((20000, 1, 64, 64))["drop_width_factor"].flatten()
+            assert (int(drawn.min()), int(drawn.max())) == expected
+            counts = torch.stack([(drawn == value).sum() for value in range(expected[0], expected[1] + 1)])
+            assert float(counts.max()) < 1.2 * float(counts.min())
 
     # Row 6c-28 in the state #4453 left it (it closed #4448): with ``same_on_batch=True`` every
     # sample of the batch gets the same number of drops, the same drop size and the same coordinates;
@@ -873,18 +936,26 @@ class TestNoiseAndWeatherConventions(BaseTester):
     # Row 6c-32, the clamp: only a covered pixel -- lightness below the drawn coefficient -- has its
     # lightness scaled and clamped.  At coefficient 1 and brightness 2, (1.5, 0, 0) has lightness 0.75, is
     # covered and turns white; (2, 1.5, 1.5) has lightness 1.75, is missed and keeps its values; and
-    # (1.2, -2, -2) has lightness -0.4 and turns black.
+    # (1.2, -2, -2) has lightness -0.4 and turns black.  A missed pixel still makes the unclamped HLS round
+    # trip, which is not the identity at lightness 1: (1.5, 0.5, 0.5) is missed by coefficient 1 and comes
+    # back white (NaN in float16, where `eps` underflows and the saturation is 0 / 0, #4571).
     # Snippet used to generate expected:
-    #   x = torch.tensor([[1.5, 0.0, 0.0], [2.0, 1.5, 1.5], [1.2, -2.0, -2.0]]).T.reshape(1, 3, 1, 3)
+    #   x = torch.tensor([[1.5, 0.0, 0.0], [2.0, 1.5, 1.5], [1.2, -2.0, -2.0], [1.5, 0.5, 0.5]]).T.reshape(1, 3, 1, 4)
     #   torch.manual_seed(0); print(K.RandomSnow(snow_coefficient=(1.0, 1.0), brightness=(2.0, 2.0), p=1.0)(x))
     # executed 2026-09-15 (torch 2.14.0, cpu float32/float64/float16/bfloat16 and mps float32) -> the pixels
-    # `(1, 1, 1)`, `(2, 1.5, 1.5)` and `(0, 0, 0)`.
+    # `(1, 1, 1)`, `(2, 1.5, 1.5)`, `(0, 0, 0)` and `(1, 1, 1)`, the last one `(nan, nan, nan)` in float16.
     def test_convention_random_snow_clamps_only_covered_lightness(self, device, dtype):
-        pixels = torch.tensor([[1.5, 0.0, 0.0], [2.0, 1.5, 1.5], [1.2, -2.0, -2.0]], device=device, dtype=dtype)
+        pixels = torch.tensor(
+            [[1.5, 0.0, 0.0], [2.0, 1.5, 1.5], [1.2, -2.0, -2.0], [1.5, 0.5, 0.5]], device=device, dtype=dtype
+        )
         torch.manual_seed(_FORWARD_SEED)
         aug = K.RandomSnow(snow_coefficient=(1.0, 1.0), brightness=(2.0, 2.0), p=1.0)
-        out = aug(pixels.T.reshape(1, 3, 1, 3).contiguous())[0, :, 0].T
-        self.assert_close(out, pixels.new_tensor([[1.0, 1.0, 1.0], [2.0, 1.5, 1.5], [0.0, 0.0, 0.0]]))
+        out = aug(pixels.T.reshape(1, 3, 1, 4).contiguous())[0, :, 0].T
+        self.assert_close(out[:3], pixels.new_tensor([[1.0, 1.0, 1.0], [2.0, 1.5, 1.5], [0.0, 0.0, 0.0]]))
+        if dtype == torch.float16:
+            assert bool(out[3].isnan().all())
+        else:
+            self.assert_close(out[3], pixels.new_ones(3))
 
     # Issue #4571: rgb_to_hls divides by `max - min + eps` with `eps = 1e-8`, which underflows to 0 in
     # float16, so every achromatic pixel -- black, gray or white -- gets a NaN hue that the HLS round trip
@@ -1016,6 +1087,20 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         buffer = io.BytesIO()
         torch.save(_illumination(name), buffer)
         assert buffer.getbuffer().nbytes > 0
+        # `.compile()` on RandomGaussianIllumination swaps in a compiled transform that neither pickle nor
+        # torch.save can serialize, while deepcopy still works; the linear classes keep pickling.  Nothing
+        # is run, so no compiler is invoked.  Measured on cpu: `PicklingError: Can't pickle <function
+        # _apply_gaussian_illumination ...>` for both, and a deep copy of type RandomGaussianIllumination.
+        compiled = _illumination(name)
+        compiled.compile()
+        assert isinstance(copy.deepcopy(compiled), type(compiled))
+        if name == "RandomGaussianIllumination":
+            with pytest.raises(pickle.PicklingError):
+                pickle.dumps(compiled)
+            with pytest.raises(pickle.PicklingError):
+                torch.save(compiled, io.BytesIO())
+        else:
+            assert len(pickle.dumps(compiled)) > 0
 
     # Row 6c-43: the three RandomPlasma* classes clamp into [0, 1], and -- since #4462 closed #4445
     # by recording the sampled fractal under ``_params["plasma"]`` -- replaying a forward with the
@@ -1059,8 +1144,12 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         assert torch.equal(aug(image, params=aug._params), out)
 
     # Issue #4570: with same_on_batch=True the three RandomPlasma* classes share their scalar draws, but
-    # diamond_square draws one fractal map per sample, so identical inputs come back different.  #3624
+    # diamond_square draws one fractal map per sample, so identical inputs can come back different.  #3624
     # reported this together with RandomGaussianNoise and RandomChannelShuffle, and #3723 fixed only those two.
+    # The maps differ on every draw; the outputs need not.  RandomPlasmaShadow shades a pixel only where its
+    # map is below the shared `shade_quantity`, so a high quantity shades every pixel alike -- on this 0.3
+    # fixture its outputs are identical for 66 of seeds 0..199 (0 for the other two classes) -- and its
+    # output leg is not asserted.
     # Snippet used to generate expected:
     #   torch.manual_seed(0); aug = K.RandomPlasmaBrightness(p=1.0, same_on_batch=True)
     #   y = aug(torch.full((4, 3, 8, 8), 0.3)); print(torch.equal(aug._params["plasma"][0], aug._params["plasma"][1]))
@@ -1075,7 +1164,8 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
             if key not in ("plasma", "forward_input_shape"):
                 assert all(torch.equal(value[0], value[b]) for b in range(4)), f"{key} is not shared"
         assert not torch.equal(aug._params["plasma"][0], aug._params["plasma"][1])
-        assert not torch.equal(out[0], out[1])
+        if name != "RandomPlasmaShadow":
+            assert not torch.equal(out[0], out[1])
 
     # Row 6c-43 in its new state: the `math domain error` the audit saw on a one-pixel axis is gone,
     # so a 1x1 and a 1x8 image now run and keep their shape.

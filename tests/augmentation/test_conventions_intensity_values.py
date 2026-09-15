@@ -25,7 +25,9 @@ import torch
 import kornia.augmentation as K
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.enhance import (
+    AdjustBrightnessAccumulative,
     adjust_brightness,
+    adjust_brightness_accumulative,
     adjust_contrast,
     adjust_hue,
     adjust_saturation,
@@ -34,7 +36,7 @@ from kornia.enhance import (
     posterize,
 )
 
-from testing.base import BaseTester, supports_reflect_padding
+from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
 
 
 @pytest.fixture(autouse=True)
@@ -47,9 +49,10 @@ def _restore_global_rng(restore_torch_rng):
 
 
 # Constructor arguments are verbatim from the 6c audit probe, so the executed literals below are
-# the ones the fact table records.  ``RandomDissolving`` is the one 2D
-# intensity class with no executed row: constructing it can prompt for ``diffusers`` and download
-# a Stable-Diffusion checkpoint, so it is excluded here as it was there.
+# the ones the fact table records.  Three classes on the intensity page have no row here:
+# ``RandomDissolving``, because constructing it can prompt for ``diffusers`` and download a
+# Stable-Diffusion checkpoint, and ``RandomClahe`` and ``RandomJPEG``, which are outside
+# ``kornia.augmentation.__all__`` and are pinned by their own tests below.
 _INTENSITY_FACTORIES = {
     "ColorJiggle": lambda: K.ColorJiggle(0.2, 0.2, 0.2, 0.1, p=1.0),
     "ColorJitter": lambda: K.ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0),
@@ -458,15 +461,20 @@ class TestIntensityValueRangeConventions(BaseTester):
     #       torch.manual_seed(0); K.RandomEqualize(p=1.0)(x)
     # executed 2026-09-15 (torch 2.14.0, cpu) -> the last two raise `RuntimeError: equalize expects
     # input values in [0, 1]. Scale the image into that range first, for example image / 255.0 for
-    # 8-bit data.`, the first two return a 64-level image.
+    # 8-bit data.`, the first two return a 64-level image.  MPS skips the value check, and the same two
+    # inputs raise the raw `gather: index ... is out of bounds` there (an AcceleratorError, which is a
+    # RuntimeError).  The guard compares `input * 255` in the input's dtype, so `1.00390625` (1 + 1/256,
+    # under one code above 1) is admitted in float32 and float64 but rounds onto 256 and raises in float16.
     def test_convention_random_equalize_rejects_out_of_range_with_named_range(self, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("CPU only: on CUDA the value assert is a device-side assert; MPS skips the check")
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
+        # Only kornia's own check names the range; MPS skips it and surfaces torch's gather error.
+        match = r"\[0, 1\]" if device.type == "cpu" else "out of bounds"
         ramp = torch.linspace(0, 1, 64).reshape(1, 1, 8, 8).to(device=device, dtype=dtype)
         for image in (ramp * 2.0, ramp - 1.0):
             torch.manual_seed(_FORWARD_SEED)
-            with pytest.raises(RuntimeError, match=r"\[0, 1\]"):
-                K.RandomEqualize(p=1.0)(image)
+            with pytest.raises(RuntimeError, match=match):
+                _sync(K.RandomEqualize(p=1.0)(image).device)
         # Less than one 8-bit code outside the range is admitted at either end: `ramp - 0.003` has
         # `input * 255 > -1` everywhere, so its lookup index truncates to 0.
         for image in (ramp, ramp * 1.0001, ramp - 0.003):
@@ -474,6 +482,48 @@ class TestIntensityValueRangeConventions(BaseTester):
             out = K.RandomEqualize(p=1.0)(image)
             assert out.shape == image.shape
             assert torch.isfinite(out).all()
+        # bfloat16 cannot represent 1 + 1/256 at all, so that dtype has no row.
+        if dtype in (torch.float16, torch.float32, torch.float64):
+            edge = ramp.clone()
+            edge[0, 0, 0, 0] = 1.00390625
+            torch.manual_seed(_FORWARD_SEED)
+            if dtype == torch.float16:
+                with pytest.raises(RuntimeError, match=match):
+                    _sync(K.RandomEqualize(p=1.0)(edge).device)
+            else:
+                assert K.RandomEqualize(p=1.0)(edge).shape == edge.shape
+
+    # Issue #4576: below p=1 the base computes the transform for the whole batch and then selects the
+    # rows the gate keeps (`_AugmentationBase.transform_inputs`), so a row the gate skips still reaches
+    # the value check and the backward pass.  At p=0.0 RandomEqualize and RandomClahe raise for an image
+    # they never touch, and RandomGamma returns the input values but a NaN gradient where the discarded
+    # power's derivative is infinite.
+    # Snippet used to generate expected:
+    #   g = torch.linspace(0, 1, 1024).reshape(1, 1, 32, 32); x = torch.cat([g, g * 2])
+    #   torch.manual_seed(0); K.RandomEqualize(p=0.0)(x)  # and K.RandomClahe(p=0.0)(x)
+    #   v = torch.tensor([0.0, 0.25, 1.0]).reshape(1, 1, 1, 3).repeat(2, 1, 1, 1).requires_grad_()
+    #   torch.manual_seed(0); y = K.RandomGamma((0.5, 0.5), (1.0, 1.0), p=0.0)(v); y.sum().backward()
+    #   print(torch.equal(y, v), v.grad.flatten().tolist())
+    # executed 2026-09-15 (torch 2.14.0, cpu float16/bfloat16/float32/float64 and mps float32) -> both
+    # classes raise (`equalize expects input values in [0, 1]`, `index ... is out of bounds`), then
+    # `True [nan, 1.0, 1.0, nan, 1.0, 1.0]`.
+    def test_wart_p_gate_computes_the_skipped_samples_4576(self, device, dtype):
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the value asserts are device-side asserts that poison the context")
+        ramp = torch.linspace(0, 1, 1024).reshape(1, 1, 32, 32)
+        image = torch.cat([ramp, ramp * 2.0]).to(device=device, dtype=dtype)
+        for cls in (K.RandomEqualize, K.RandomClahe):
+            torch.manual_seed(_FORWARD_SEED)
+            with pytest.raises(RuntimeError):
+                _sync(cls(p=0.0)(image).device)
+        values = torch.tensor([0.0, 0.25, 1.0]).reshape(1, 1, 1, 3).repeat(2, 1, 1, 1)
+        values = values.to(device=device, dtype=dtype).requires_grad_()
+        torch.manual_seed(_FORWARD_SEED)
+        out = K.RandomGamma((0.5, 0.5), (1.0, 1.0), p=0.0)(values)
+        assert torch.equal(out, values)
+        out.sum().backward()
+        assert bool(values.grad[..., 0].isnan().all())
+        self.assert_close(values.grad[..., 1:], torch.ones_like(values.grad[..., 1:]))
 
 
 class TestIntensityColourConventions(BaseTester):
@@ -659,6 +709,61 @@ class TestIntensityColourConventions(BaseTester):
         above = torch.full((1, 3, 2, 2), 2.0, device=device, dtype=dtype)
         self.assert_close(K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0, order=(1, 2, 3))(above), above)
 
+    # Row 6c-08, the order and channel-count details:
+    # - a fixed constructor `order` ignores a forward `order=` tensor;
+    # - ColorJiggle has no constructor order, and a forward `order=` tensor replaces the drawn one, so
+    #   leaving the hue step out lets a one-channel image through;
+    # - ColorJitter's saturation step (adjust_saturation_with_gray_subtraction) rejects four channels,
+    #   clamps a three-channel image, and returns a one-channel image unchanged.
+    # Snippet used to generate expected:
+    #   x = torch.rand(2, 3, 4, 4); torch.manual_seed(0)
+    #   a = K.ColorJitter(brightness=(0.5, 0.5), order=(1,), p=1.0)
+    #   print(torch.equal(a(x, order=torch.tensor([0])), a(x)))
+    #   print(K.ColorJiggle(hue=0.1, p=1.0)(torch.rand(2, 1, 4, 4), order=torch.tensor([0, 1, 2])).shape)
+    #   s = K.ColorJitter(saturation=(0.5, 0.5), order=(2,), p=1.0)
+    #   print(s(torch.full((2, 1, 3, 3), 2.0)).unique(), s(torch.full((2, 3, 3, 3), 2.0)).unique())
+    #   s(torch.rand(2, 4, 3, 3))
+    # executed 2026-09-15 (torch 2.14.0, cpu float16/bfloat16/float32/float64 and mps float32) -> `True`,
+    # `(2, 1, 4, 4)` (without `order=`: `ValueError: Input size must have a shape of (*, 3, H, W)`),
+    # `[2.]`, `[1.]`, and `ImageError: Not a color or gray tensor.`
+    def test_convention_color_jitter_order_override_and_channel_counts(self, device, dtype):
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(2, 3, 4, 4).to(device=device, dtype=dtype)
+        fixed = K.ColorJitter(brightness=(0.5, 0.5), order=(1,), p=1.0)
+        torch.manual_seed(_FORWARD_SEED)
+        assert torch.equal(fixed(image, order=torch.tensor([0])), fixed(image))
+        assert float((K.ColorJitter(brightness=(0.5, 0.5), p=1.0, order=(0,))(image) - image).abs().max()) > 0.1
+
+        gray = image[:, :1].contiguous()
+        torch.manual_seed(_FORWARD_SEED)
+        with pytest.raises(ValueError, match="shape of"):
+            K.ColorJiggle(hue=0.1, p=1.0)(gray)
+        torch.manual_seed(_FORWARD_SEED)
+        assert K.ColorJiggle(hue=0.1, p=1.0)(gray, order=torch.tensor([0, 1, 2])).shape == gray.shape
+
+        saturation = K.ColorJitter(saturation=(0.5, 0.5), order=(2,), p=1.0)
+        two = torch.full((2, 1, 3, 3), 2.0, device=device, dtype=dtype)
+        self.assert_close(saturation(two), two)
+        self.assert_close(saturation(two.expand(2, 3, 3, 3)), torch.ones_like(two.expand(2, 3, 3, 3)))
+        with pytest.raises(BaseError):
+            saturation(torch.rand(2, 4, 3, 3).to(device=device, dtype=dtype))
+
+    # `adjust_brightness_accumulative`, ColorJitter's brightness primitive, multiplies by the factor and
+    # clamps by default, so its identity factor `1` holds only for an image in [0, 1]; the module form
+    # AdjustBrightnessAccumulative always clamps.
+    # Snippet used to generate expected:
+    #   x = torch.tensor([-0.5, 0.5, 2.0]).reshape(1, 3, 1, 1)
+    #   print(adjust_brightness_accumulative(x, 1.0).flatten(), AdjustBrightnessAccumulative(1.0)(x).flatten())
+    # executed 2026-09-15 (torch 2.14.0, cpu float16/bfloat16/float32/float64 and mps float32) -> `[0, 0.5, 1]`
+    # twice.
+    def test_convention_adjust_brightness_accumulative_one_is_identity_only_in_range(self, device, dtype):
+        values = torch.tensor([-0.5, 0.5, 2.0], device=device, dtype=dtype).reshape(1, 3, 1, 1)
+        expected = values.clamp(0.0, 1.0)
+        self.assert_close(adjust_brightness_accumulative(values, 1.0), expected)
+        self.assert_close(AdjustBrightnessAccumulative(1.0)(values), expected)
+        self.assert_close(adjust_brightness_accumulative(values, 1.0, clip_output=False), values)
+        self.assert_close(adjust_brightness_accumulative(values, 0.0), torch.zeros_like(values))
+
     # Row 6c-10: RandomHue's argument is turns of the hue circle, restricted to the closed [-0.5, 0.5];
     # the class multiplies it by 2*pi before calling kornia.enhance.adjust_hue, which takes radians.
     # Snippet used to generate expected:
@@ -679,7 +784,8 @@ class TestIntensityColourConventions(BaseTester):
     # Row 6c-10, the range half: RandomHue has no clamp, and a hue rotation keeps each pixel's largest and
     # smallest channel values, so a pixel outside [0, 1] keeps a channel outside it.  The exception is a
     # pixel whose largest channel is exactly 0, whose HSV saturation divides by that zero: the round trip
-    # returns zeros (NaN in float16, the #4560 underflow, so that leg is not asserted).
+    # returns zeros, and NaN in float16 (the #4560 underflow, which reaches a zero-max pixel that is not
+    # black as well).
     # Snippet used to generate expected:
     #   x = torch.tensor([[1.5, 0.2, 0.3], [0.5, -0.1, 0.2], [-0.2, -0.5, -0.9], [0.0, -0.5, -0.5]])
     #   torch.manual_seed(0); print(K.RandomHue((0.25, 0.25), p=1.0)(x.reshape(4, 3, 1, 1)).reshape(4, 3))
@@ -691,10 +797,12 @@ class TestIntensityColourConventions(BaseTester):
         out = K.RandomHue((0.25, 0.25), p=1.0)(pixels.reshape(3, 3, 1, 1)).reshape(3, 3)
         self.assert_close(out.amax(1), pixels.amax(1))
         self.assert_close(out.amin(1), pixels.amin(1))
-        if dtype != torch.float16:
-            zero_max = torch.tensor([0.0, -0.5, -0.5], device=device, dtype=dtype).reshape(1, 3, 1, 1)
-            torch.manual_seed(_FORWARD_SEED)
-            collapsed = K.RandomHue((0.25, 0.25), p=1.0)(zero_max)
+        zero_max = torch.tensor([0.0, -0.5, -0.5], device=device, dtype=dtype).reshape(1, 3, 1, 1)
+        torch.manual_seed(_FORWARD_SEED)
+        collapsed = K.RandomHue((0.25, 0.25), p=1.0)(zero_max)
+        if dtype == torch.float16:
+            assert bool(collapsed.isnan().any())
+        else:
             self.assert_close(collapsed, torch.zeros_like(collapsed))
 
     # Row 6c-11: RandomGrayscale keeps the channel count and writes the same value into every
@@ -954,6 +1062,13 @@ class TestIntensityColourConventions(BaseTester):
         border[..., 1:-1, 1:-1] = False
         for factor in (0.0, 2.0):
             assert torch.equal(out[factor][border], image[border])
+        # ... but the final clamp into [0, 1] reaches the copied border too.
+        outside = torch.full((2, 1, 4, 4), 0.5, device=device, dtype=dtype)
+        outside[:, :, 0, 0] = 1.5
+        outside[:, :, 0, 1] = -0.25
+        torch.manual_seed(_FORWARD_SEED)
+        corner = K.RandomSharpness((1.0, 1.0), p=1.0)(outside)[:, 0, 0, :2]
+        self.assert_close(corner, outside.new_tensor([[1.0, 0.0], [1.0, 0.0]]))
 
     # Row 6c-36: a scalar `sharpness` is the UPPER bound of [0, x], so the class default of 0.5
     # never reaches the identity at 1.0 and therefore never sharpens.
@@ -1069,6 +1184,14 @@ class TestIntensityColourConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomPlanckianJitter(p=1.0)(image)
         assert out.dtype == (torch.float32 if dtype in _HALF else dtype)
+        # The output is the promoted dtype of input and table, so casting the module to the input's own
+        # dtype restores it, and a wider cast widens the output.
+        torch.manual_seed(_FORWARD_SEED)
+        assert K.RandomPlanckianJitter(p=1.0).to(device=device, dtype=dtype)(image).dtype == dtype
+        if dtype in _HALF:
+            other = torch.bfloat16 if dtype == torch.float16 else torch.float16
+            torch.manual_seed(_FORWARD_SEED)
+            assert K.RandomPlanckianJitter(p=1.0).to(device=device, dtype=other)(image).dtype == torch.float32
 
     # Row 6c-32/6c-33: the illuminant table is an RGB ratio, so a non-RGB input is rejected rather
     # than broadcast.  Snippet used to generate expected:
@@ -1126,11 +1249,41 @@ class TestIntensityColourConventions(BaseTester):
             for c in range(3):
                 self.assert_close(out[b, c].min(), out.new_tensor(0.0))
                 self.assert_close(out[b, c].max(), out.new_tensor(1.0))
+        # The denominator is `max - min + 1e-6`, so a channel whose range is not large next to 1e-6 stops
+        # short of 1: a range of 1e-5 peaks at 1e-5 / 1.1e-5 = 0.90908 (float32/float64 only; the half
+        # dtypes cannot hold 0.2 + 1e-5 apart from 0.2).
+        if dtype in (torch.float32, torch.float64):
+            narrow = torch.full((1, 1, 2, 2), 0.2, device=device, dtype=dtype)
+            narrow[0, 0, 0, 0] += 1e-5
+            torch.manual_seed(_FORWARD_SEED)
+            peak = K.RandomAutoContrast(p=1.0)(narrow).max()
+            assert abs(float(peak) - 1e-5 / 1.1e-5) < 1e-3
 
-    # Row 6c-45: the documented parameter bounds are enforced.  Seven of the twelve raise at
-    # construction; RandomGamma, RandomSolarize's additions at either closed bound, RandomGaussianBlur's
-    # sigma at 0 and RandomRain's drop height below 1 raise from the forward, so every case is
-    # constructed and run.
+    # RandomJPEG, outside `kornia.augmentation.__all__`, carries one range sentence: `ycbcr_to_rgb`
+    # hard-clamps the decoded RGB into [0, 1], and the codec's final soft clip, with bounds [0, 255], leaves
+    # those values alone.  So an input far outside [0, 1] comes back inside it, and reaches both ends.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(1234); x = torch.rand(2, 3, 32, 32) * 3 - 1
+    #   torch.manual_seed(0); y = K.RandomJPEG(p=1.0)(x); print(y.aminmax(), y.isnan().any())
+    # executed 2026-09-15 (torch 2.14.0, cpu float16/bfloat16/float32/float64 and mps float32) ->
+    # `min=0, max=1`, `False`.
+    def test_convention_random_jpeg_output_is_clamped_to_unit_range(self, device, dtype):
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip("replication_pad2d is unavailable for this device/dtype")
+        torch.manual_seed(_FIXTURE_SEED)
+        image = (torch.rand(2, 3, 32, 32) * 3.0 - 1.0).to(device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        out = K.RandomJPEG(p=1.0)(image)
+        assert out.dtype == dtype
+        assert not bool(out.isnan().any())
+        assert float(out.min()) == 0.0
+        assert float(out.max()) == 1.0
+
+    # Row 6c-45: the documented parameter bounds are enforced, and where: `stage` records whether the
+    # constructor raises or constructs and the forward pass raises, since the anchor's list of forward-time
+    # checks is part of the contract.  Beyond the audit rows, RandomGaussianBlur's even kernel, a
+    # RandomMotionBlur kernel range whose drawn odd size is 1, RandomChannelDropout dropping more channels
+    # than the image has and a RandomPlanckianJitter row past the table are pinned here too.
     # The exception type is what the audit recorded, so the type is the pin and the message is not.
     # Snippet used to generate expected:
     #   ctor()(torch.rand(2, 3, 6, 8))  # for each case below
@@ -1141,25 +1294,33 @@ class TestIntensityColourConventions(BaseTester):
     # of bounds. Expected inside (0, inf)`, `ValueError: saturation out of bounds. Expected inside
     # (0, inf)`, `ValueError: hue out of bounds. Expected inside (-0.5, 0.5)`, `RuntimeError: The addition
     # must be in the open range (-0.5, 0.5).` (for 0.5 and -0.5), `BaseError: sigma must be positive` and
-    # `BaseError: Height of drop should be greater than zero and less than image height.`
+    # `BaseError: Height of drop should be greater than zero and less than image height.`; then
+    # `BaseError: Kernel size must be an odd integer bigger than 0` (Gaussian (4, 4)), `... bigger than 2`
+    # (motion (1, 1)), `BaseError: Invalid value in num_drop_channels` and `IndexError: index 25 is out
+    # of bounds for dimension 0 with size 25`; the last one at construction, the three before it on the
+    # forward pass.
     @pytest.mark.parametrize(
-        ("case", "error"),
+        ("case", "stage", "error"),
         [
-            ("sharpness_negative", ValueError),
-            ("posterize_bits_above_eight", ValueError),
-            ("posterize_bits_negative", ValueError),
-            ("gamma_negative", RuntimeError),
-            ("brightness_above_two", ValueError),
-            ("contrast_negative", ValueError),
-            ("saturation_negative", ValueError),
-            ("hue_above_half", ValueError),
-            ("solarize_additions_at_half", RuntimeError),
-            ("solarize_additions_at_minus_half", RuntimeError),
-            ("gaussian_blur_sigma_zero", BaseError),
-            ("rain_drop_height_zero", BaseError),
+            ("sharpness_negative", "construction", ValueError),
+            ("posterize_bits_above_eight", "construction", ValueError),
+            ("posterize_bits_negative", "construction", ValueError),
+            ("gamma_negative", "forward", RuntimeError),
+            ("brightness_above_two", "construction", ValueError),
+            ("contrast_negative", "construction", ValueError),
+            ("saturation_negative", "construction", ValueError),
+            ("hue_above_half", "construction", ValueError),
+            ("solarize_additions_at_half", "forward", RuntimeError),
+            ("solarize_additions_at_minus_half", "forward", RuntimeError),
+            ("gaussian_blur_sigma_zero", "forward", BaseError),
+            ("gaussian_blur_even_kernel", "forward", BaseError),
+            ("rain_drop_height_zero", "forward", BaseError),
+            ("motion_blur_kernel_range_draws_one", "forward", BaseError),
+            ("channel_dropout_more_than_the_channels", "forward", BaseError),
+            ("planckian_select_past_the_table", "construction", IndexError),
         ],
     )
-    def test_convention_intensity_constructors_reject_out_of_bounds(self, device, dtype, case, error):
+    def test_convention_intensity_constructors_reject_out_of_bounds(self, device, dtype, case, stage, error):
         if case == "gamma_negative" and device.type != "cpu":
             pytest.skip("CPU only: on CUDA the value assert is a device-side assert; MPS skips the check")
         # The solarize check runs on the CPU-drawn additions, so unlike the gamma check it raises for an
@@ -1187,13 +1348,38 @@ class TestIntensityColourConventions(BaseTester):
             "rain_drop_height_zero": lambda: K.RandomRain(
                 number_of_drops=(1, 1), drop_height=(0, 0), drop_width=(1, 1), p=1.0
             ),
+            # The constructor admits an even entry; gaussian_blur2d rejects it on the forward pass.
+            "gaussian_blur_even_kernel": lambda: K.RandomGaussianBlur((4, 4), (1.0, 1.0), p=1.0),
+            # Only odd sizes are drawn, so (1, 1) draws 1, which the motion kernel rejects.
+            "motion_blur_kernel_range_draws_one": lambda: K.RandomMotionBlur((1, 1), 35.0, 0.5, p=1.0),
+            # The bound is the input's channel count, which only the forward pass knows.
+            "channel_dropout_more_than_the_channels": lambda: K.RandomChannelDropout(num_drop_channels=4, p=1.0),
+            # `select_from` indexes the 25-row blackbody table at construction.
+            "planckian_select_past_the_table": lambda: K.RandomPlanckianJitter(select_from=[25], p=1.0),
         }
+        if stage == "construction":
+            with pytest.raises(error):
+                factories[case]()
+            return
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 6, 8).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
+        aug = factories[case]()
         with pytest.raises(error):
             # The sync is what surfaces an MPS kernel error inside this block rather than later.
-            _sync(factories[case]()(image).device)
+            _sync(aug(image).device)
+
+    # Row 6c-45, the bound that never raises: RandomPlanckianJitter's `select_from` is used as a Python
+    # index into its table, so a negative entry down to -25 selects a row from the end instead of being
+    # rejected against the documented `[0-24]`.
+    # Snippet used to generate expected:
+    #   print(torch.equal(K.RandomPlanckianJitter(select_from=[-1]).pl, K.RandomPlanckianJitter(select_from=[24]).pl))
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> `True`.
+    @pytest.mark.device_agnostic
+    def test_convention_random_planckian_jitter_select_from_is_a_python_index(self):
+        assert torch.equal(
+            K.RandomPlanckianJitter(select_from=[-1], p=1.0).pl, K.RandomPlanckianJitter(select_from=[24], p=1.0).pl
+        )
 
     # Issue #4563: a scalar magnitude whose implied range leaves the documented bounds is fitted to
     # them instead of rejected, where the same range written out raises (pinned one test above).
@@ -1219,22 +1405,22 @@ class TestIntensityColourConventions(BaseTester):
         assert float(sharpness.min()) < 0.1  # the lower end is the clamped -x, not a centred x / 2
 
     # Issue #4564: RandomClahe rejects an out-of-[0, 1] input with the raw indexing error of the
-    # histogram gather, naming neither the class nor the range RandomEqualize names (#4489).  CPU only:
-    # on CUDA the out-of-range index is a device-side assert that poisons the context, and on MPS the
-    # error is an AcceleratorError with the backend's own wording.
+    # histogram gather, naming neither the class nor the range RandomEqualize names (#4489).  Not on CUDA,
+    # where the out-of-range index is a device-side assert that poisons the context; on MPS the error is
+    # an AcceleratorError, a RuntimeError subclass, reading `gather: index ... is out of bounds`.
     # Snippet used to generate expected:
     #   torch.manual_seed(1234); x = torch.rand(1, 3, 16, 16) * 2
     #   torch.manual_seed(0); K.RandomClahe(p=1.0)(x)
     # executed 2026-09-15 (torch 2.14.0, cpu) -> `RuntimeError: index 430 is out of bounds for
     # dimension 5 with size 256`.
     def test_wart_random_clahe_out_of_range_error_is_raw_4564(self, device, dtype):
-        if device.type != "cpu":
-            pytest.skip("CPU only: a CUDA index error is a device-side assert; MPS raises its own error type")
+        if device.type == "cuda":
+            pytest.skip("not on CUDA: the index error is a device-side assert that poisons the context")
         torch.manual_seed(_FIXTURE_SEED)
         image = (torch.rand(1, 3, 16, 16) * 2).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         with pytest.raises(RuntimeError, match="out of bounds") as info:
-            K.RandomClahe(p=1.0)(image)
+            _sync(K.RandomClahe(p=1.0)(image).device)
         assert "RandomClahe" not in str(info.value) and "[0, 1]" not in str(info.value)
 
     # Issue #4572: RandomClahe draws `clip_limit_factor` per sample but equalizes the whole batch with
@@ -1267,6 +1453,8 @@ class TestIntensityColourConventions(BaseTester):
     #       print(dt, K.RandomHue((0.1, 0.1), p=1.0)(torch.zeros(1, 3, 4, 4, dtype=dt)).isnan().any())
     # executed 2026-09-15 (torch 2.14.0, cpu) -> `True`, `False`, `False`; the same for
     # RandomSaturation((1.5, 1.5)), ColorJiggle(0, 0, 0, (0.1, 0.1)) and ColorJitter(0, 0, 0, (0.1, 0.1)).
+    # The pixel (0, -0.5, -0.5) is NaN in float16 through the three hue-step configurations and finite
+    # through the two saturation-only ones (measured on cpu in all four dtypes and on mps float32).
     @pytest.mark.parametrize(
         "name", ["RandomHue", "RandomSaturation", "ColorJiggle", "ColorJiggleSaturation", "ColorJitter"]
     )
@@ -1280,10 +1468,14 @@ class TestIntensityColourConventions(BaseTester):
             "ColorJiggleSaturation": lambda: K.ColorJiggle(0.0, 0.0, (1.5, 1.5), 0.0, p=1.0),
             "ColorJitter": lambda: K.ColorJitter(0.0, 0.0, 0.0, (0.1, 0.1), p=1.0),
         }
-        black = torch.zeros(1, 3, 4, 4, device=device, dtype=dtype)
+        # A black pixel, and a pixel whose largest channel is 0 without being black: the hue step divides
+        # by that zero maximum too, while the saturation step's NaN needs `max - min` to be 0 as well.
+        pixels = torch.tensor([[0.0, 0.0, 0.0], [0.0, -0.5, -0.5]], device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
-        out = factories[name]()(black)
-        assert bool(out.isnan().any()) == (dtype == torch.float16)
+        out = factories[name]()(pixels.T.reshape(1, 3, 1, 2))
+        half = dtype == torch.float16
+        hue_path = name not in ("RandomSaturation", "ColorJiggleSaturation")
+        assert out.isnan().any(1)[0, 0].tolist() == [half, half and hue_path]
 
     # Row 6c-46: an unbatched (C, H, W) input is promoted to (1, C, H, W), and `keepdim=True`
     # returns the unbatched shape again.  Checked across four classes of the sub-batch so the claim

@@ -129,8 +129,9 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         `#4428 <https://github.com/kornia/kornia/issues/4428>`_.
 
     .. warning::
-        The table is not cast to the input's dtype, so unless the module itself is cast, a ``float16`` or
-        ``bfloat16`` input comes back as ``float32``. Tracked in
+        The table is not cast to the input's dtype, so the output takes the promoted dtype of the input and
+        the table. With the table left at ``float32``, a ``float16`` or ``bfloat16`` input comes back as
+        ``float32``; casting the module to the input's own dtype keeps it. Tracked in
         `#4574 <https://github.com/kornia/kornia/issues/4574>`_.
 
     .. note::

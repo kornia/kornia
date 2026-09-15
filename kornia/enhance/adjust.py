@@ -548,7 +548,8 @@ def adjust_brightness_accumulative(
     Args:
         image: Image to be adjusted in the shape of :math:`(*, H, W)`.
         factor: Brightness factor per element in the batch. The image is multiplied by it, so ``1``
-            leaves the image unchanged, ``0`` gives a black image and a factor above ``1`` brightens it.
+            leaves an image in ``[0, 1]`` unchanged, ``0`` gives a black image and a factor above ``1``
+            brightens it.
         clip_output: Whether to clip output to be in [0,1].
 
     Return:
@@ -1588,8 +1589,9 @@ class AdjustBrightnessAccumulative(nn.Module):
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        brightness_factor: Brightness factor per element in the batch. The image is multiplied by it,
-          so ``1`` leaves the image unchanged, ``0`` gives a black image and a factor above ``1`` brightens it.
+        brightness_factor: Brightness factor per element in the batch. The image is multiplied by it and
+          clamped into ``[0, 1]``, so ``1`` leaves an image in ``[0, 1]`` unchanged, ``0`` gives a black image
+          and a factor above ``1`` brightens it.
 
     Shape:
         - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.

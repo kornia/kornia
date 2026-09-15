@@ -52,8 +52,11 @@ class RandomSnow(IntensityAugmentationBase2D):
           collapses both to a single value for the batch.
         - the output as a whole is not clamped. Only a snow-covered pixel -- one whose lightness is below the
           drawn ``snow_coefficient`` -- has its lightness scaled by ``brightness`` and clamped into ``[0, 1]``.
-          A pixel above ``1`` that the snow misses therefore comes back above it, while a covered one comes
-          back white once its scaled lightness reaches ``1``, and black when its lightness is negative.
+          A covered pixel comes back white once its scaled lightness reaches ``1``, and black when its
+          lightness is negative. A pixel the snow misses still goes through the HLS round trip unclamped, so
+          one above ``1`` usually comes back above it; but one whose lightness is at or near ``1``, such as
+          ``(1.5, 0.5, 0.5)``, comes back white (NaN in ``float16``, see below), and in half precision a
+          value just above ``1`` can round to ``1``.
 
     .. warning::
         An input whose values are all negative comes back as an all-zero image, and a pixel with negative
@@ -61,8 +64,9 @@ class RandomSnow(IntensityAugmentationBase2D):
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. warning::
-        In ``float16`` every achromatic pixel -- black, gray or white -- comes back as NaN, because
-        ``rgb_to_hls``'s ``eps`` underflows there. Tracked in
+        In ``float16`` every achromatic pixel -- black, gray or white -- comes back as NaN, and so does an
+        out-of-range pixel whose lightness is exactly ``1``, because ``rgb_to_hls``'s ``eps`` underflows
+        there. Tracked in
         `#4571 <https://github.com/kornia/kornia/issues/4571>`_.
 
     Examples:

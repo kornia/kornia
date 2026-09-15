@@ -53,8 +53,8 @@ class ColorJiggle(IntensityAugmentationBase2D):
           because this class draws it on the sampler device where :class:`ColorJitter` always draws it on
           the CPU; and this class returns its factors in the dtype of its constructor arguments
           (``float32`` for Python floats) where :class:`ColorJitter` keeps the sampler dtype. Only
-          :class:`ColorJitter` accepts an ``order`` argument that replaces its sampled order with a fixed
-          one. The classes use different primitives for three adjustments:
+          :class:`ColorJitter` takes an ``order`` constructor argument that replaces its sampled order with a
+          fixed one. The classes use different primitives for three adjustments:
           :func:`kornia.enhance.adjust_brightness` against
           :func:`kornia.enhance.adjust_brightness_accumulative`,
           :func:`kornia.enhance.adjust_contrast` against
@@ -69,7 +69,8 @@ class ColorJiggle(IntensityAugmentationBase2D):
 
     .. warning::
         In ``float16`` a black pixel reaching the saturation or hue step comes back as NaN, because both
-        steps go through ``rgb_to_hsv``, whose ``eps`` underflows there. Tracked in
+        steps go through ``rgb_to_hsv``, whose ``eps`` underflows there. The hue step does the same for any
+        pixel whose largest channel is ``0``. Tracked in
         `#4560 <https://github.com/kornia/kornia/issues/4560>`_.
 
     .. note::
