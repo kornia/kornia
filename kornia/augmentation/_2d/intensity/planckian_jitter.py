@@ -194,7 +194,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])
         # Index with the tensor itself: `.tolist()` reads the data, which graph capture cannot do. The buffer
         # follows the module's device, so it is not re-assigned here.
-        coeffs = self.pl.to(device=input.device)[params["idx"].long()]
+        coeffs = self.pl.to(input)[params["idx"].long()]
 
         r_w = coeffs[:, 0][..., None, None]
         b_w = coeffs[:, 1][..., None, None]
