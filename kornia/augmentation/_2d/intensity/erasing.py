@@ -53,9 +53,10 @@ class RandomErasing(IntensityAugmentationBase2D):
 
     Convention:
         - ``scale`` is the fraction of the image *area* the rectangle targets and ``ratio`` is its height over
-          its width, so a ratio above ``1`` erases a tall box and below ``1`` a wide one. The box is rounded
-          to whole pixels and clipped to the image, so the erased area can miss the target: ``scale=0.25``
-          with ``ratio=3`` on a ``10 x 20`` image erases ``10 x 4 = 40`` pixels of the 50 asked for.
+          its width, so a ratio above ``1`` targets a tall box and below ``1`` a wide one. The box is rounded
+          to whole pixels and clipped to the image, so the erased area and shape can miss the target:
+          ``scale=(0.25, 0.25)`` with ``ratio=(3.0, 3.0)`` on a ``10 x 20`` image erases ``10 x 4 = 40`` pixels
+          of the 50 asked for.
         - the erased region is the half-open rectangle ``[ys, ys + h) x [xs, xs + w)`` in pixels, recorded as
           ``_params["ys"]``, ``["xs"]``, ``["heights"]`` and ``["widths"]``.
         - the erased pixels carry the literal ``value``, which has to lie in ``[0, 1]`` -- the parameter

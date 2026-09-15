@@ -54,13 +54,14 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         - ``kernel_size`` is ``(kH, kW)``: the first entry counts rows and the second counts columns, as in
           :func:`kornia.filters.gaussian_blur2d`. An even entry is not rounded up -- the forward pass raises
           the primitive's own "odd integer" error.
-        - ``sigma`` is drawn once per sample, as a single scalar used for both axes. The standard deviations
-          therefore match even when a rectangular ``kernel_size`` gives the filter different spatial support.
+        - ``sigma`` is drawn once per sample, as a single scalar used for both axes. Both axes get that sigma
+          even when a rectangular ``kernel_size`` gives them different supports, and a support short enough to
+          truncate the Gaussian narrows the blur along its axis.
         - the defaults ``separable=True`` and ``border_type="reflect"`` are the function's own defaults.
-        - the output is not clamped. At the default
-          ``border_type="reflect"`` every output value is an average of input values and stays between the
-          input's own extremes; ``border_type="constant"`` pads with zeros and can pull a border pixel below
-          the input's minimum.
+        - the output is not clamped. At the default ``border_type="reflect"`` every output value is a weighted
+          average of input values and stays between the input's own extremes, up to the rounding of the kernel
+          weights; ``border_type="constant"`` pads with zeros and can pull a border pixel below the input's
+          minimum.
 
     .. warning::
         At the default ``border_type="reflect"``, an image with a spatial axis no longer than half the kernel

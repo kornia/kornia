@@ -49,9 +49,10 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
           input shape; a ``(C, H, W)`` input remains batched in stored parameters even when ``keepdim=True``.
           It adds the field to the image and
           clamps the sum into ``[0, 1]``, so the output stays inside that range even when the input does not.
-        - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and fixes the direction of that
-          sample's gradient, so one batch can hold both a darkened and a brightened image. A point range such
-          as ``sign=1.0`` fixes the direction for every sample.
+        - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
+          is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
+          a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample. The
+          edge where the gradient is strongest is drawn separately, per sample.
         - the clamp bites on in-range images too: once ``gain`` exceeds the headroom between the image and the
           bound, the sum is cut there rather than rescaled.
         - the module pickles, deep-copies and passes through ``torch.save``, and the copy reproduces the
@@ -176,9 +177,10 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
           input shape; a ``(C, H, W)`` input remains batched in stored parameters even when ``keepdim=True``.
           It adds the field to the image and
           clamps the sum into ``[0, 1]``, so the output stays inside that range even when the input does not.
-        - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and fixes the direction of that
-          sample's gradient, so one batch can hold both a darkened and a brightened image. A point range such
-          as ``sign=1.0`` fixes the direction for every sample.
+        - ``sign`` is drawn per sample, from ``(-1.0, 1.0)`` by default, and only whether the draw is negative
+          is used: it decides whether that sample's gradient darkens or brightens, so one batch can hold both
+          a darkened and a brightened image. A point range such as ``sign=1.0`` brightens every sample. The
+          corner where the gradient is strongest is drawn separately, per sample.
         - the clamp bites on in-range images too: once ``gain`` exceeds the headroom between the image and the
           bound, the sum is cut there rather than rescaled.
         - the module pickles, deep-copies and passes through ``torch.save``, and the copy reproduces the

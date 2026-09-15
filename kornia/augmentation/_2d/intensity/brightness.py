@@ -48,8 +48,9 @@ class RandomBrightness(IntensityAugmentationBase2D):
     Convention:
         - ``brightness`` is centred on ``1.0``, and the drawn factor is re-based before it is applied:
           ``factor - 1`` is what reaches :func:`kornia.enhance.adjust_brightness`, whose own identity is
-          ``0.0``. A class factor of ``1.0`` is therefore the identity, and the same number passed
-          straight to the primitive means something else.
+          ``0.0``. A class factor of ``1.0`` is therefore the identity for an input in ``[0, 1]`` -- the
+          default clamp below still applies to one outside it -- and the same number passed straight to the
+          primitive means something else.
         - ``clip_output`` is live. Left at its default ``True`` the result is clamped into ``[0, 1]``;
           with ``clip_output=False`` the raw sum is returned. It can remain outside that interval or
           move inside it through the brightness shift.

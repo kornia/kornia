@@ -54,8 +54,10 @@ class Normalize(IntensityAugmentationBase2D):
           ``same_on_batch`` argument of its own.
         - the statistics live in ``flags`` rather than in a buffer, so ``state_dict()`` is empty and
           ``Module.to(...)`` leaves their device and dtype alone.
-        - :class:`Denormalize` built with the same ``mean`` and ``std`` inverts this class, up to float
-          rounding.
+        - :class:`Denormalize` built with the same float, sequence or tensor ``mean`` and ``std`` inverts this
+          class, up to float rounding, when both apply -- each draws its own ``p`` gate. An ``int`` statistic,
+          which this class accepts, makes :class:`Denormalize` raise on the forward pass
+          (`#4573 <https://github.com/kornia/kornia/issues/4573>`_).
         - the result is not clamped: moving an image out of ``[0, 1]`` is what this class is for.
 
     .. note::

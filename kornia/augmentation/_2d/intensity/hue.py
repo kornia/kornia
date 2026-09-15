@@ -52,7 +52,9 @@ class RandomHue(IntensityAugmentationBase2D):
         - the drawn shift is in turns of the hue circle, and the class multiplies it by ``2 * pi`` before
           calling :func:`kornia.enhance.adjust_hue`, which takes radians. Passing the same number
           straight to that primitive shifts the hue by a different amount.
-        - the result is not clamped, so an input outside ``[0, 1]`` gives an output outside it.
+        - the result is not clamped, so a pixel outside ``[0, 1]`` keeps a channel outside it, up to the
+          rounding of the HSV round trip. The exception is a pixel whose largest channel is exactly ``0``,
+          which comes back as zeros.
 
     .. warning::
         In ``float16`` a black pixel comes back as NaN, because ``rgb_to_hsv``'s ``eps`` underflows

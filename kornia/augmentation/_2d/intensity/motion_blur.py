@@ -58,18 +58,21 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
     Convention:
         - a positive ``angle`` turns the blur line counter-clockwise as the image is displayed, as in
           :func:`kornia.filters.motion_blur` and :func:`kornia.filters.get_motion_kernel2d`.
-        - ``direction`` re-weights the kernel along that line: ``0`` spreads the weight evenly, and ``-1`` and
-          ``+1`` pile it at opposite ends. The ends belong to the rotated line, so which side of the image they
-          fall on turns with ``angle`` and is not read off the image axes.
+        - ``direction`` re-weights the kernel along that line before it is rotated: ``0`` spreads the weight
+          evenly, and ``-1`` and ``+1`` pile it at opposite ends; a ``"bilinear"`` or ``"bicubic"`` rotation then
+          redistributes it. The ends belong to the rotated line, so which side of the image they fall on turns
+          with ``angle`` and is not read off the image axes.
         - the defaults ``border_type="constant"`` and ``resample="nearest"`` are the function's own defaults.
-        - the output is not clamped. At the default
-          ``border_type="constant"`` the padding is zeros, so a border pixel is blended with ``0`` and can
-          fall below the input's own minimum; ``border_type="reflect"`` keeps the result between the input's
-          extremes.
+        - the output is not clamped. At the default ``border_type="constant"`` the padding is zeros, so a
+          border pixel is blended with ``0`` and can fall below the input's own minimum. With
+          ``border_type="reflect"`` the result stays between the input's extremes, up to rounding, at
+          ``resample="nearest"`` or ``"bilinear"``; a ``"bicubic"`` rotation gives the kernel negative weights,
+          and the result can overshoot both extremes.
         - an image smaller than the kernel is accepted, down to ``1 x 1``, at ``border_type="constant"``
-          and ``"replicate"``. ``"reflect"`` raises there as the two padding blurs do, and ``"circular"``
-          raises a padding error of its own once the kernel radius exceeds a spatial axis. Both are raw
-          torch errors, tracked in `#4559 <https://github.com/kornia/kornia/issues/4559>`_.
+          and ``"replicate"``. ``"reflect"`` raises once a spatial axis is no longer than half the kernel
+          size, as the two padding blurs do, and ``"circular"`` raises a padding error of its own once the
+          kernel radius exceeds a spatial axis. Both are raw torch errors, tracked in
+          `#4559 <https://github.com/kornia/kornia/issues/4559>`_.
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.

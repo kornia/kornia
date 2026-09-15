@@ -46,9 +46,14 @@ class RandomClahe(IntensityAugmentationBase2D):
     .. warning::
         An input outside ``[0, 1]`` reaches :func:`kornia.enhance.equalize_clahe` unchecked and comes
         back as a raw torch indexing error that names neither this class nor the range it needs. As for
-        :class:`RandomEqualize`, the rejection is not exactly at the boundary: what indexes the
-        histogram is the scaled value, so an input marginally outside is still admitted. Tracked in
+        :class:`RandomEqualize`, the rejection is not exactly at the boundary: the failing index is the
+        256-entry lookup indexed with ``(input * 255).long()``, so a value less than one 8-bit code outside
+        ``[0, 1]``, at either end, is still admitted. Tracked in
         `#4564 <https://github.com/kornia/kornia/issues/4564>`_.
+
+    .. warning::
+        ``clip_limit`` is drawn per sample, but the first sample's value is applied to the whole batch.
+        Tracked in `#4572 <https://github.com/kornia/kornia/issues/4572>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize_clahe`.

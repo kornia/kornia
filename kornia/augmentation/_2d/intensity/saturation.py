@@ -46,12 +46,14 @@ class RandomSaturation(IntensityAugmentationBase2D):
 
     Convention:
         - the drawn factor reaches :func:`kornia.enhance.adjust_saturation` unchanged -- it is not
-          re-based the way :class:`RandomBrightness` re-bases its own -- and ``1.0`` is the identity.
-          That primitive round-trips through HSV, so the identity holds only up to floating-point error,
-          and the error is larger in half precision than in ``float32``.
+          re-based the way :class:`RandomBrightness` re-bases its own -- and ``1.0`` is the identity for a
+          pixel with no negative channel. That primitive round-trips through HSV, so the identity holds only
+          up to floating-point error, and the error is larger in half precision than in ``float32``.
         - there is no final RGB clamp, but the primitive clamps the HSV saturation component into
-          ``[0, 1]``. An out-of-range RGB input can remain outside that interval or be mapped into it:
-          ``(-0.1, 0.5, 0.5)`` becomes ``(0.0, 0.5, 0.5)`` even at a factor of ``1.0``.
+          ``[0, 1]``. An out-of-range RGB input can remain outside that interval or be mapped into it. At a
+          factor of ``1.0`` a pixel above ``1`` with no negative channel comes back unchanged, while a pixel
+          with a negative channel does not: ``(-0.1, 0.5, 0.5)`` becomes ``(0.0, 0.5, 0.5)``, and an
+          all-negative pixel becomes gray at its largest channel.
 
     .. warning::
         In ``float16`` a black pixel comes back as NaN, because ``rgb_to_hsv``'s ``eps`` underflows

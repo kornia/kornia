@@ -50,13 +50,20 @@ class RandomSnow(IntensityAugmentationBase2D):
           ``1`` or greater.
         - one ``snow_coefficient`` and one ``brightness`` are drawn per sample; ``same_on_batch=True``
           collapses both to a single value for the batch.
-        - the output as a whole is not clamped -- only the light channel of the snow-covered pixels is -- so
-          an input above ``1`` comes back above it. An input whose values are all negative is the exception,
-          in the warning below.
+        - the output as a whole is not clamped. Only a snow-covered pixel -- one whose lightness is below the
+          drawn ``snow_coefficient`` -- has its lightness scaled by ``brightness`` and clamped into ``[0, 1]``.
+          A pixel above ``1`` that the snow misses therefore comes back above it, while a covered one comes
+          back white once its scaled lightness reaches ``1``, and black when its lightness is negative.
 
     .. warning::
-        An input whose values are all negative comes back as an all-zero image. Tracked in
+        An input whose values are all negative comes back as an all-zero image, and a pixel with negative
+        lightness comes back black in any image. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+
+    .. warning::
+        In ``float16`` every achromatic pixel -- black, gray or white -- comes back as NaN, because
+        ``rgb_to_hls``'s ``eps`` underflows there. Tracked in
+        `#4571 <https://github.com/kornia/kornia/issues/4571>`_.
 
     Examples:
         >>> inputs = torch.rand(2, 3, 4, 4)

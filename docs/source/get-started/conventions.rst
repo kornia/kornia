@@ -469,8 +469,9 @@ Quick self-review for generated code, most common first:
     — samplers can draw on an accelerator and cast the returned tensors back to CPU.
 18. Feeding mean/std-normalized or otherwise out-of-``[0, 1]`` tensors
     through an intensity augmentation and expecting the values to pass
-    through — some rescale, some clamp, and several can return zeros for an
-    all-negative image depending on the sampled parameters.
+    through — some rescale, some clamp, ``RandomEqualize`` and ``RandomClahe``
+    raise, and several can return zeros for an all-negative image depending on
+    the sampled parameters.
 
 .. tip::
 

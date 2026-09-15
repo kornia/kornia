@@ -78,16 +78,21 @@ class ColorJitter(IntensityAugmentationBase2D):
         - the brightness factor is not re-based here: it reaches
           :func:`kornia.enhance.adjust_brightness_accumulative` as drawn, where :class:`ColorJiggle` and
           :class:`RandomBrightness` subtract ``1`` first.
-        - ``ColorJitter(0, 0, 0, 0)`` is the identity for an input in ``[0, 1]`` only. There is no final
-          output clamp, but a scalar ``brightness`` -- the default ``0.0`` included -- always runs the
-          brightness step, whose primitive clamps into ``[0, 1]`` as the contrast and saturation primitives
-          do; only the explicit tuple ``brightness=(0.0, 0.0)`` skips that step and lets an out-of-range
-          value through.
+        - with the random ``order``, ``ColorJitter(0, 0, 0, 0)`` is the identity only for a three-channel
+          input in ``[0, 1]``. Every step in the order is computed even when its result is then discarded, so
+          the hue step rejects any other channel count, and the brightness step is applied whenever any drawn
+          brightness factor is not ``0`` -- for every scalar ``brightness``, including the default ``0.0``,
+          which draws ``1``. Its primitive clamps into ``[0, 1]``, as the contrast and saturation primitives
+          do, although there is no final output clamp. The explicit tuple ``brightness=(0.0, 0.0)``, or a
+          fixed ``order`` without index ``0``, skips the brightness step; with the other factors at their
+          defaults, either lets an out-of-range value through.
 
     .. warning::
-        With a scalar ``brightness``, the default included, an input whose values are all negative comes
-        back as an all-zero image; only ``brightness=(0.0, 0.0)`` carries the values through. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+        An input whose values are all negative can come back as an all-zero image: the brightness, contrast
+        and saturation steps each clamp into ``[0, 1]``, and a scalar ``brightness``, the default included,
+        runs the brightness step unless a fixed ``order`` leaves it out. The collapse depends on the draw: a
+        contrast or saturation factor above ``1`` applied before the brightness step can lift part of the
+        image above zero first. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. warning::
         In ``float16`` a black pixel reaching the hue step comes back as NaN, because

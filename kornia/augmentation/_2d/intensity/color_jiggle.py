@@ -62,14 +62,14 @@ class ColorJiggle(IntensityAugmentationBase2D):
           :func:`kornia.enhance.adjust_saturation` against
           :func:`kornia.enhance.adjust_saturation_with_gray_subtraction`. Both call
           :func:`kornia.enhance.adjust_hue`.
-        - the brightness factor is re-based exactly as :class:`RandomBrightness` re-bases it:
+        - the brightness factor is re-based as :class:`RandomBrightness` re-bases it:
           ``factor - 1`` is what reaches :func:`kornia.enhance.adjust_brightness`.
         - ``ColorJiggle(0, 0, 0, 0)`` is the identity, including for values outside ``[0, 1]``. A hue-only
           configuration can also return values outside that interval.
 
     .. warning::
-        In ``float16`` a black pixel reaching the hue step comes back as NaN, because
-        ``rgb_to_hsv``'s ``eps`` underflows there. Tracked in
+        In ``float16`` a black pixel reaching the saturation or hue step comes back as NaN, because both
+        steps go through ``rgb_to_hsv``, whose ``eps`` underflows there. Tracked in
         `#4560 <https://github.com/kornia/kornia/issues/4560>`_.
 
     .. note::

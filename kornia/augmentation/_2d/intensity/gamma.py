@@ -49,9 +49,9 @@ class RandomGamma(IntensityAugmentationBase2D):
           :class:`RandomBrightness` and :class:`RandomContrast` this class has no ``clip_output`` escape
           hatch for keeping a value the power produced outside ``[0, 1]``.
         - ``gamma`` must be non-negative. The check lives inside :func:`kornia.enhance.adjust_gamma` and
-          so runs on the forward pass, not at construction. On MPS it is skipped by design
-          (``aten::_assert_async`` has no MPS kernel), so a negative ``gamma`` is evaluated using the same
-          power, gain and clamp formula above. Its output depends on both the input and ``gain``.
+          so runs on the forward pass, not at construction. kornia skips that check for an MPS image, so there
+          a negative ``gamma`` is evaluated using the same power, gain and clamp formula above. Its output
+          depends on both the input and ``gain``.
 
     .. warning::
         On an input with negative values the power itself is NaN unless ``gamma`` is an integer, and the

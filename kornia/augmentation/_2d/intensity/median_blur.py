@@ -45,8 +45,8 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
           is taken over zeros as well as image values, and a border pixel can come back as ``0`` even when no
           input value is near it.
         - this class has no ``border_type``, and an image smaller than the kernel is accepted, down to
-          ``1 x 1``, where :class:`RandomBoxBlur` and :class:`RandomGaussianBlur` raise at their default
-          ``border_type="reflect"``.
+          ``1 x 1``; :class:`RandomBoxBlur` and :class:`RandomGaussianBlur` raise at their default
+          ``border_type="reflect"`` once a spatial axis is no longer than half the kernel size.
 
     .. note::
         This function internally uses :func:`kornia.filters.median_blur`.

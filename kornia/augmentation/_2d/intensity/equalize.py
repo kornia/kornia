@@ -45,14 +45,15 @@ class RandomEqualize(IntensityAugmentationBase2D):
           :class:`~kornia.augmentation.IntensityAugmentationBase2D` for the policies used by the other
           intensity augmentations. :class:`RandomClahe` also raises out of range, with a raw indexing error
           that names neither the class nor the range (`#4564 <https://github.com/kornia/kornia/issues/4564>`_).
-        - the rejection is not exactly at the boundary: an input marginally above ``1`` is still
-          admitted, because what is checked is the value the histogram indexes.
+        - the rejection is not exactly at the boundary: the check guards the 256-entry lookup indexed with
+          ``(input * 255).long()``, so a value less than one 8-bit code outside ``[0, 1]``, at either end, is
+          still admitted.
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize`, which expects the input in
         :math:`[0, 1]` and raises a ``RuntimeError`` for values it cannot equalize. Where the value check
-        runs, its message names that range; on MPS the check is skipped by design
-        (``aten::_assert_async`` has no MPS kernel), so a raw indexing error surfaces instead.
+        runs, its message names that range; kornia skips the check for an MPS image, so a raw indexing
+        error surfaces there instead.
 
     Examples:
         >>> rng = torch.manual_seed(0)

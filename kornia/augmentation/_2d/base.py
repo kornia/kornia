@@ -130,7 +130,7 @@ class AugmentationBase2D(_AugmentationBase):
 
     .. warning::
         ``set_rng_device_and_dtype`` has incomplete sampler migration. It rebuilds what it can, but some
-        generators keep internal tensors at their earlier placement or precision, and the returned
+        generators retain internal CPU tensors or ignore the requested precision, and the returned
         parameters can stay CPU ``float32`` while ``batch_prob`` follows the request. Tracked in
         `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
 

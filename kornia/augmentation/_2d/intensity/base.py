@@ -58,21 +58,34 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           of every out-of-range input. :class:`RandomDissolving` is unmeasured because constructing it
           downloads a Stable Diffusion checkpoint. :class:`RandomClahe` and :class:`RandomJPEG` are not in
           ``kornia.augmentation.__all__`` and document their own behavior on their own pages.
+        - what this block and the class pages say about an output describes the samples the ``p`` gate
+          transforms; every other sample comes back unchanged.
         - the scalar factors a concrete class draws are per sample -- one value, or one per channel
-          per sample where the class's own docstring says so. Several classes also draw a whole-image
-          field -- ``gaussian_noise``, ``gradient``, ``plasma`` -- whose stored shape normally follows the
-          original batched ``(B, C, H, W)`` input shape. A ``(C, H, W)`` input remains batched in
-          those parameters even when ``keepdim=True``. ``gaussian_noise`` instead stores ``(1, C, H, W)``
-          with ``same_on_batch=True``, then expands it at application time; ``RandomPlasmaShadow`` stores
+          per sample where the class's own docstring says so. :class:`RandomMotionBlur` is the exception for
+          its kernel size, of which one draw serves the whole batch, as its ``Args`` say;
+          :class:`RandomClahe` draws ``clip_limit`` per sample but applies the first sample's to the whole
+          batch (`#4572 <https://github.com/kornia/kornia/issues/4572>`_); and :class:`RandomDissolving`
+          hard-codes ``same_on_batch=True``. Several classes also draw a whole-image field --
+          ``gaussian_noise``, ``gradient``, ``plasma``, and :class:`RandomSaltAndPepperNoise`'s boolean
+          ``mask_salt`` and ``mask_pepper`` -- whose stored shape normally follows the original batched
+          ``(B, C, H, W)`` input shape. A ``(C, H, W)`` input remains batched in those parameters even when
+          ``keepdim=True``. ``gaussian_noise`` instead stores ``(1, C, H, W)`` with ``same_on_batch=True``,
+          then expands it at application time, while the plasma classes keep one map per sample even then
+          (`#4570 <https://github.com/kornia/kornia/issues/4570>`_); ``RandomPlasmaShadow`` stores
           ``(B, 1, H, W)``. :class:`ColorJiggle` and :class:`ColorJitter` both draw an application ``order``;
-          it is shared by the whole batch. Only :class:`ColorJitter` accepts a fixed ``order`` override.
-        - where a class documents bounds for a parameter, an explicit range outside them raises at
-          construction, with two exceptions. :class:`RandomGamma`'s non-negativity checks, for ``gamma``
-          and for ``gain`` alike, live in :func:`kornia.enhance.adjust_gamma`, so they run on the
-          forward pass; and :class:`RandomSolarize` admits ``additions`` at the closed bound ``0.5`` at
-          construction, which :func:`kornia.enhance.solarize` then rejects on the forward pass. A scalar
-          magnitude is a different case: several classes fit it to the bound instead of raising, tracked
-          in `#4563 <https://github.com/kornia/kornia/issues/4563>`_.
+          it is shared by the whole batch. Only :class:`ColorJitter` takes a fixed ``order`` constructor
+          argument; on either class a forward ``order=`` keyword, or replayed ``params``, replaces the drawn
+          order for that call.
+        - where a class documents bounds for a parameter, an explicit range outside them usually raises at
+          construction. These checks run on the forward pass instead: :class:`RandomGamma`'s non-negativity checks
+          on ``gamma`` and ``gain``, which live in :func:`kornia.enhance.adjust_gamma`;
+          :class:`RandomSolarize`'s ``additions`` at the closed bounds ``-0.5`` and ``0.5`` and
+          :class:`RandomGaussianBlur`'s ``sigma`` at ``0``, which the constructors admit and
+          :func:`kornia.enhance.solarize` and :func:`kornia.filters.gaussian_blur2d` reject;
+          :class:`RandomRain`'s drop-size bounds; and a tuple ``kernel_size`` for :class:`RandomMotionBlur`,
+          where a negative range raises there while an even bound never does, because only odd sizes are
+          drawn. A scalar magnitude is a different case: several classes fit it to the bound instead of
+          raising, tracked in `#4563 <https://github.com/kornia/kornia/issues/4563>`_.
 
     .. warning::
         Several of these classes can return an all-zero image for an input whose values are all negative,

@@ -28,7 +28,7 @@ import kornia.augmentation as K
 from kornia.constants import BorderType, Resample
 from kornia.filters import box_blur
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
 
 
 @pytest.fixture(autouse=True)
@@ -81,6 +81,8 @@ class TestBlurConventions(BaseTester):
     # col [3], and on the transposed 9x7 image rows [1..5] col [2] and row [3] cols [0..4].
     @pytest.mark.parametrize("name", ["RandomBoxBlur", "RandomGaussianBlur"])
     def test_convention_blur_kernel_size_is_height_then_width(self, device, dtype, name):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         factories = {
             "RandomBoxBlur": lambda ks: K.RandomBoxBlur(ks, p=1.0),
             "RandomGaussianBlur": lambda ks: K.RandomGaussianBlur(ks, (1.0, 1.0), p=1.0),
@@ -154,6 +156,8 @@ class TestBlurConventions(BaseTester):
     # executed 2026-09-15 (torch 2.14.0, cpu) -> `True True 1.19209e-07`, and
     # `"normalized" in inspect.signature(box_blur).parameters` is False.
     def test_convention_random_box_blur_normalized_selects_separable_box_blur(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 7, 9).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
@@ -181,6 +185,8 @@ class TestBlurConventions(BaseTester):
     # executed 2026-09-15 (torch 2.14.0, cpu) -> `torch.Size([4])`, `[0.996257, 1.268222, 0.588477,
     # 0.632030]`, `{'kernel_size': (3, 3), 'separable': True, 'border_type': <BorderType.REFLECT: 1>}`.
     def test_convention_random_gaussian_blur_draws_one_sigma_per_sample(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(4, 3, 7, 9).to(device=device, dtype=dtype)
         aug = K.RandomGaussianBlur((3, 3), (0.5, 1.5), p=1.0)
@@ -283,12 +289,38 @@ class TestBlurConventions(BaseTester):
         assert aug.flags["border_type"] == BorderType.CONSTANT
         assert aug.flags["resample"] == Resample.NEAREST
 
+    # Row 6c-24, the resampling caveat: the kernel's weights are laid on a line and then rotated, so
+    # with ``border_type="reflect"`` a "nearest" or "bilinear" rotation keeps them non-negative and the
+    # output inside the input's extremes, while "bicubic" gives the kernel negative lobes that overshoot
+    # both extremes at an edge.
+    # Snippet used to generate expected:
+    #   x = torch.zeros(1, 1, 15, 15); x[..., 7:] = 1.0
+    #   for rs in ("nearest", "bilinear", "bicubic"):
+    #       torch.manual_seed(0)
+    #       aug = K.RandomMotionBlur(5, (80., 80.), (1., 1.), border_type="reflect", resample=rs, p=1.)
+    #       print(rs, aug(x).aminmax())
+    # executed 2026-09-15 (torch 2.14.0, cpu and mps float32) -> `0 / 1`, `0 / 1`, `-0.0573 / 1.0285`.
+    def test_convention_random_motion_blur_reflect_bound_depends_on_resample(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        edge = torch.zeros(1, 1, 15, 15, device=device, dtype=dtype)
+        edge[..., 7:] = 1.0
+        for resample in ("nearest", "bilinear"):
+            torch.manual_seed(_FORWARD_SEED)
+            out = K.RandomMotionBlur(5, (80.0, 80.0), (1.0, 1.0), border_type="reflect", resample=resample, p=1.0)(edge)
+            assert float(out.min()) >= -1e-3 and float(out.max()) <= 1.0 + 1e-3, resample
+        torch.manual_seed(_FORWARD_SEED)
+        out = K.RandomMotionBlur(5, (80.0, 80.0), (1.0, 1.0), border_type="reflect", resample="bicubic", p=1.0)(edge)
+        assert float(out.min()) < -0.02 and float(out.max()) > 1.02
+
     # The four filters do not clamp their result.  A 1.1 impulse is nevertheless attenuated below
     # one by each supported kernel, while median blur erases this isolated impulse altogether.  The
     # half-amplitude and negative legs make the range observation a property of the filters rather
     # than an implicit clamp in the augmentation wrapper.
     @pytest.mark.parametrize("name", ["RandomBoxBlur", "RandomGaussianBlur", "RandomMedianBlur", "RandomMotionBlur"])
     def test_convention_filters_attenuate_an_out_of_range_impulse_without_clamping(self, device, dtype, name):
+        if name in ("RandomBoxBlur", "RandomGaussianBlur") and not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         factories = {
             "RandomBoxBlur": lambda: K.RandomBoxBlur((3, 3), p=1.0),
             "RandomGaussianBlur": lambda: K.RandomGaussianBlur((3, 3), (1.0, 1.0), p=1.0),
@@ -331,6 +363,8 @@ class TestBlurConventions(BaseTester):
     # greater than actual input size`; on (2, 3, 2, 2) only RandomSharpness raises; on (2, 3, 3, 3)
     # all five run; RandomMedianBlur and RandomMotionBlur run on every shape.
     def test_wart_blur_and_sharpness_reject_images_smaller_than_kernel_4559(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
         torch.manual_seed(_FIXTURE_SEED)
         thin = torch.rand(2, 3, 1, 8).to(device=device, dtype=dtype)
         small = torch.rand(2, 3, 2, 2).to(device=device, dtype=dtype)
@@ -377,6 +411,8 @@ class TestBlurConventions(BaseTester):
     # the `"constant"`/`"replicate"` legs return the input shape.  The boundary is the radius, not the
     # kernel: `(9, 9)` circular runs at H=4 and raises at H=3; motion `k=5` runs at 2x2.
     def test_wart_circular_padding_rejects_images_smaller_than_kernel_radius_4559(self, device, dtype):
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip("replication_pad2d is unavailable for this device/dtype")
         torch.manual_seed(_FIXTURE_SEED)
         one = torch.rand(2, 3, 1, 1).to(device=device, dtype=dtype)
         thin = torch.rand(2, 3, 3, 12).to(device=device, dtype=dtype)
@@ -405,8 +441,9 @@ class TestBlurConventions(BaseTester):
 
 
 class TestNoiseAndWeatherConventions(BaseTester):
-    # Row 6c-25: RandomErasing's ``scale`` is the exact area fraction of the erased box and ``ratio``
-    # is height / width, so ratio 2.0 gives a tall box and 0.5 a wide one; the box is the half-open
+    # Row 6c-25: RandomErasing's ``scale`` is the target area fraction of the erased box -- met exactly
+    # by these two fixtures, which need no rounding -- and ``ratio`` is height / width, so ratio 2.0
+    # gives a tall box and 0.5 a wide one; the box is the half-open
     # rectangle [ys, ys + h) x [xs, xs + w) named by ``_params``, and ``value`` is the literal fill.
     # Snippet used to generate expected:
     #   x = torch.ones(1, 1, 10, 20)
@@ -434,6 +471,22 @@ class TestNoiseAndWeatherConventions(BaseTester):
         assert rows == list(range(y_start, y_start + height))
         assert cols == list(range(x_start, x_start + width))
         self.assert_close(out[erased], out.new_full((50,), value))
+
+    # Row 6c-25, the rounding caveat the class block states with these numbers: the target box for
+    # scale 0.25 and ratio 3 on a 10x20 image is about 12.2 x 4.1, which is rounded to 12 x 4 and then
+    # clipped to the 10-row image, so 40 of the 50 requested pixels are erased.
+    # Snippet used to generate expected:
+    #   for seed in range(200):
+    #       torch.manual_seed(seed); aug = K.RandomErasing(scale=(0.25, 0.25), ratio=(3.0, 3.0), p=1.0)
+    #       y = aug(torch.ones(1, 1, 10, 20)); print((y != 1).sum(), aug._params["heights"], aug._params["widths"])
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> `40`, `[10.]`, `[4.]` on every one of the 200 seeds.
+    def test_convention_random_erasing_box_is_rounded_and_clipped(self, device, dtype):
+        image = torch.ones(1, 1, 10, 20, device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        aug = K.RandomErasing(scale=(0.25, 0.25), ratio=(3.0, 3.0), p=1.0)
+        out = aug(image)
+        assert (int(aug._params["heights"][0]), int(aug._params["widths"][0])) == (10, 4)
+        assert int((out != 1.0).sum()) == 40
 
     # Row 6c-25 and the 6a anchor's claim that RandomErasing erases masks: routed through
     # AugmentationSequential with a ``mask`` data key the mask is erased in the same box, but it is
@@ -711,6 +764,20 @@ class TestNoiseAndWeatherConventions(BaseTester):
         )
         assert smaller(image).shape == image.shape
 
+    # Row 6c-29, the painted extent: the drop is sampled along `linspace(0, h)`, end point included, so a
+    # drop of size h spans h + 1 rows, and one row short of the image already runs from edge to edge.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(0)
+    #   y = K.RandomRain(number_of_drops=(1, 1), drop_height=(5, 5), drop_width=(0, 0), p=1.0)(torch.zeros(1, 1, 6, 10))
+    #   print(sorted({r for r, _ in (y[0, 0] != 0).nonzero().tolist()}))
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> `[0, 1, 2, 3, 5]`.
+    def test_convention_random_rain_drop_spans_one_row_more_than_its_height(self, device, dtype):
+        image = torch.zeros(1, 1, 6, 10, device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        out = K.RandomRain(number_of_drops=(1, 1), drop_height=(5, 5), drop_width=(0, 0), p=1.0)(image)
+        rows, _ = _lit_extent(out[0, 0])
+        assert (rows[0], rows[-1]) == (0, 5)
+
     # Issue #4567: the three integer ranges are float draws truncated to integers, and the generator's
     # `hi + 1` shift goes through the `bounds` argument that `_range_bound` ignores for a tuple, so the
     # upper bound is never drawn and a signed `drop_width` truncates both `(-1, 0)` and `(0, 1)` to 0.
@@ -802,6 +869,37 @@ class TestNoiseAndWeatherConventions(BaseTester):
         shared(image)
         for key in ("snow_coefficient", "brightness"):
             assert len(set(shared._params[key].flatten().tolist())) == 1
+
+    # Row 6c-32, the clamp: only a covered pixel -- lightness below the drawn coefficient -- has its
+    # lightness scaled and clamped.  At coefficient 1 and brightness 2, (1.5, 0, 0) has lightness 0.75, is
+    # covered and turns white; (2, 1.5, 1.5) has lightness 1.75, is missed and keeps its values; and
+    # (1.2, -2, -2) has lightness -0.4 and turns black.
+    # Snippet used to generate expected:
+    #   x = torch.tensor([[1.5, 0.0, 0.0], [2.0, 1.5, 1.5], [1.2, -2.0, -2.0]]).T.reshape(1, 3, 1, 3)
+    #   torch.manual_seed(0); print(K.RandomSnow(snow_coefficient=(1.0, 1.0), brightness=(2.0, 2.0), p=1.0)(x))
+    # executed 2026-09-15 (torch 2.14.0, cpu float32/float64/float16/bfloat16 and mps float32) -> the pixels
+    # `(1, 1, 1)`, `(2, 1.5, 1.5)` and `(0, 0, 0)`.
+    def test_convention_random_snow_clamps_only_covered_lightness(self, device, dtype):
+        pixels = torch.tensor([[1.5, 0.0, 0.0], [2.0, 1.5, 1.5], [1.2, -2.0, -2.0]], device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        aug = K.RandomSnow(snow_coefficient=(1.0, 1.0), brightness=(2.0, 2.0), p=1.0)
+        out = aug(pixels.T.reshape(1, 3, 1, 3).contiguous())[0, :, 0].T
+        self.assert_close(out, pixels.new_tensor([[1.0, 1.0, 1.0], [2.0, 1.5, 1.5], [0.0, 0.0, 0.0]]))
+
+    # Issue #4571: rgb_to_hls divides by `max - min + eps` with `eps = 1e-8`, which underflows to 0 in
+    # float16, so every achromatic pixel -- black, gray or white -- gets a NaN hue that the HLS round trip
+    # spreads to all three channels.  bfloat16 keeps the exponent range of float32 and is finite.
+    # Snippet used to generate expected:
+    #   for dt in (torch.float16, torch.bfloat16, torch.float32):
+    #       torch.manual_seed(0); print(dt, K.RandomSnow(p=1.0)(torch.full((1, 3, 2, 2), 0.5, dtype=dt)).isnan().any())
+    # executed 2026-09-15 (torch 2.14.0, cpu; mps float16 as well) -> `True`, `False`, `False`, and the
+    # same for the constants 0.0 and 1.0.
+    @pytest.mark.parametrize("value", [0.0, 0.5, 1.0])
+    def test_wart_random_snow_achromatic_pixel_is_nan_in_float16_4571(self, device, dtype, value):
+        gray = torch.full((1, 3, 2, 2), value, device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        out = K.RandomSnow(p=1.0)(gray)
+        assert bool(out.isnan().any()) == (dtype == torch.float16)
 
 
 class TestIlluminationAndNormalizeConventions(BaseTester):
@@ -960,6 +1058,25 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         assert float((out - image).abs().max()) > 0.05
         assert torch.equal(aug(image, params=aug._params), out)
 
+    # Issue #4570: with same_on_batch=True the three RandomPlasma* classes share their scalar draws, but
+    # diamond_square draws one fractal map per sample, so identical inputs come back different.  #3624
+    # reported this together with RandomGaussianNoise and RandomChannelShuffle, and #3723 fixed only those two.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(0); aug = K.RandomPlasmaBrightness(p=1.0, same_on_batch=True)
+    #   y = aug(torch.full((4, 3, 8, 8), 0.3)); print(torch.equal(aug._params["plasma"][0], aug._params["plasma"][1]))
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> `False` for all three classes, with the outputs differing too.
+    @pytest.mark.parametrize("name", ["RandomPlasmaBrightness", "RandomPlasmaContrast", "RandomPlasmaShadow"])
+    def test_wart_plasma_same_on_batch_draws_one_map_per_sample_4570(self, device, dtype, name):
+        image = torch.full((4, 3, 8, 8), 0.3, device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        aug = getattr(K, name)(p=1.0, same_on_batch=True)
+        out = aug(image)
+        for key, value in aug._params.items():
+            if key not in ("plasma", "forward_input_shape"):
+                assert all(torch.equal(value[0], value[b]) for b in range(4)), f"{key} is not shared"
+        assert not torch.equal(aug._params["plasma"][0], aug._params["plasma"][1])
+        assert not torch.equal(out[0], out[1])
+
     # Row 6c-43 in its new state: the `math domain error` the audit saw on a one-pixel axis is gone,
     # so a 1x1 and a 1x8 image now run and keep their shape.
     # Snippet used to generate expected:
@@ -1029,6 +1146,22 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         with pytest.raises(ValueError, match="do not match"):
             _sync(cls(mean=mean, std=std, p=1.0)(image).device)
 
+    # Issue #4573: Normalize wraps an `int` mean or std into a tensor, Denormalize wraps only a `float`, so
+    # the pair built with `mean=0, std=255` cannot round-trip: Denormalize reaches kornia.enhance.denormalize
+    # with a bare int and fails there on the forward pass.
+    # Snippet used to generate expected:
+    #   x = torch.rand(2, 3, 4, 4); y = K.Normalize(mean=0, std=255, p=1.0)(x); K.Denormalize(mean=0, std=255, p=1.0)(y)
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> `AttributeError: 'int' object has no attribute 'shape'`.
+    @pytest.mark.device_agnostic
+    def test_wart_denormalize_rejects_the_int_statistics_normalize_accepts_4573(self):
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(2, 3, 4, 4)
+        normalized = K.Normalize(mean=0, std=255, p=1.0)(image)
+        self.assert_close(normalized, image / 255)
+        with pytest.raises(AttributeError, match="shape"):
+            K.Denormalize(mean=0, std=255, p=1.0)(normalized)
+        self.assert_close(K.Denormalize(mean=0.0, std=255.0, p=1.0)(normalized), image)
+
     # Rows 6c-17 and 6c-18: Normalize and Denormalize hard-code ``same_on_batch=True`` (normalize.py
     # and denormalize.py, `super().__init__(p=p, same_on_batch=True, keepdim=keepdim)`), so the
     # constructor has no ``same_on_batch`` argument at all and ``p`` gates the whole batch together
@@ -1081,6 +1214,7 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
     #   print(aug.flags["mean"].dtype, torch.equal(aug.flags["mean"], before))
     # executed 2026-09-15 (torch 2.14.0, cpu) -> `[] [] ['mean', 'std']` and, after
     # `.to(torch.float64)`, `torch.float32 True` -- unchanged -- for both classes.
+    @pytest.mark.device_agnostic
     @pytest.mark.parametrize("cls", [K.Normalize, K.Denormalize])
     def test_convention_normalize_keeps_no_state(self, cls):
         aug = cls(mean=0.5, std=0.25, p=1.0)

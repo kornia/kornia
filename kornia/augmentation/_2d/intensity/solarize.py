@@ -56,12 +56,13 @@ class RandomSolarize(IntensityAugmentationBase2D):
           :func:`kornia.enhance.solarize`'s own default threshold rather than equalling it.
         - an explicit ``additions`` range is checked against the closed ``[-0.5, 0.5]`` at construction, but
           :func:`kornia.enhance.solarize` rejects the ends of that interval, so ``additions=(0.5, 0.5)``
-          constructs and then raises a ``RuntimeError`` on the forward pass (where the value check runs;
-          MPS skips it).
+          constructs and then raises a ``RuntimeError`` on the forward pass. The check runs on the device
+          of the drawn ``additions`` -- the CPU by default -- so it raises for an MPS image too.
 
     .. warning::
         An all-negative input can come back as an all-zero image when the sampled addition does not raise it
-        above zero; a positive sampled addition can recover values instead. Tracked in
+        above zero; a positive sampled addition can recover values instead, and a drawn threshold of ``0``
+        inverts the clamped zeros into an all-ones image. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::

@@ -45,9 +45,9 @@ class RandomPosterize(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
-        - ``bits=(k, k)`` leaves ``2 ** k`` distinct values, so ``0`` gives a constant image and ``8``
-          the identity. The reduction is a ``uint8`` round trip inside
-          :func:`kornia.enhance.posterize`, and the drawn factor is integral.
+        - ``bits=(k, k)`` with ``k < 8`` leaves at most ``2 ** k`` distinct values, so ``0`` gives a constant
+          image; the reduction is a ``uint8`` round trip inside :func:`kornia.enhance.posterize`. A sample
+          that draws ``8`` is returned unchanged, without the round trip. The drawn factor is integral.
         - an ``int`` argument is the lower bound of the sampled range ``[x, 8]`` -- the opposite reading
           from :class:`RandomSharpness`, whose scalar argument is an upper bound.
 
@@ -55,8 +55,9 @@ class RandomPosterize(IntensityAugmentationBase2D):
         Outside ``[0, 1]`` the output is the posterized ``uint8`` conversion of the raw float, which
         wraps or saturates depending on the platform and torch version, and bears no relation to the
         clamped input: an input above ``1`` can come back as a full-range posterized image instead of a
-        clipped one, and an all-negative input as an all-zero one. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+        clipped one, and an all-negative input as an all-zero one. A sample that draws ``bits=8`` skips the
+        conversion and keeps its out-of-range values, and a scalar ``bits`` below ``8`` draws ``8`` for part
+        of the batch. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.posterize`.
