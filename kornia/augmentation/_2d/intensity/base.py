@@ -55,16 +55,21 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           :class:`RandomPlanckianJitter` bounds the upper end only, so a negative input stays negative;
           one group carries the input's range through, so an out-of-range input gives an out-of-range
           output; and :class:`RandomEqualize` raises a ``RuntimeError``. Each class docstring says which
-          of the four it is.
-        - the transform factors a concrete class draws are per sample -- one value, or one per channel
-          per sample where the class's own docstring says so. :class:`ColorJiggle` and
-          :class:`ColorJitter` also draw an application ``order``, and that one order is shared by the
-          whole batch.
+          of the four it is, except :class:`RandomDissolving`, :class:`RandomClahe` and
+          :class:`RandomJPEG`, which the split does not cover: the first is unmeasured, because
+          constructing it downloads a Stable Diffusion checkpoint, and the other two are not in
+          ``kornia.augmentation.__all__``. The last two document their own out-of-range behavior on
+          their own pages.
+        - the scalar factors a concrete class draws are per sample -- one value, or one per channel
+          per sample where the class's own docstring says so. Several classes also draw a whole-image
+          field -- ``gaussian_noise``, ``gradient``, ``plasma`` -- which their own blocks document
+          with the input's shape. :class:`ColorJiggle` and :class:`ColorJitter` also draw an
+          application ``order``, and that one order is shared by the whole batch.
         - where a class documents bounds for a parameter, an explicit range outside them raises at
-          construction. :class:`RandomGamma` is the exception: its non-negativity check lives in
-          :func:`kornia.enhance.adjust_gamma`, so it runs on the forward pass. A scalar magnitude is a
-          different case: several classes fit it to the bound instead of raising, tracked in
-          `#4563 <https://github.com/kornia/kornia/issues/4563>`_.
+          construction. :class:`RandomGamma` is the exception: its non-negativity checks, for ``gamma``
+          and for ``gain`` alike, live in :func:`kornia.enhance.adjust_gamma`, so they run on the
+          forward pass. A scalar magnitude is a different case: several classes fit it to the bound
+          instead of raising, tracked in `#4563 <https://github.com/kornia/kornia/issues/4563>`_.
 
     .. warning::
         Several of these classes return an all-zero image for an input whose values are all negative,

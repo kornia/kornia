@@ -59,8 +59,9 @@ class RandomDissolving(IntensityAugmentationBase2D):
 
     .. note::
         The transform is delegated to :class:`kornia.filters.StableDiffusionDissolving`, which the constructor
-        builds: instantiating this class needs the optional ``diffusers`` package and downloads a Stable
-        Diffusion checkpoint on first use.
+        builds: instantiating this class needs the optional ``diffusers`` package and, on a cold cache,
+        downloads a Stable Diffusion checkpoint at that point -- the ``from_pretrained`` call is in that
+        class's own constructor, not on the first forward.
 
     """
 

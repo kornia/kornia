@@ -66,8 +66,10 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
           ``border_type="constant"`` the padding is zeros, so a border pixel is blended with ``0`` and can
           fall below the input's own minimum; ``border_type="reflect"`` keeps the result between the input's
           extremes.
-        - an image smaller than the kernel is accepted, down to ``1 x 1``, at every ``border_type`` except
-          ``"reflect"``, which raises there as the two padding blurs do.
+        - an image smaller than the kernel is accepted, down to ``1 x 1``, at ``border_type="constant"``
+          and ``"replicate"``. ``"reflect"`` raises there as the two padding blurs do, and ``"circular"``
+          raises a padding error of its own once the kernel radius exceeds a spatial axis. Both are raw
+          torch errors, tracked in `#4559 <https://github.com/kornia/kornia/issues/4559>`_.
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.

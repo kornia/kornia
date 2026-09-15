@@ -29,7 +29,11 @@ class RandomJPEG(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomJPEG.png
 
-    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`. This class is
+    outside the four-way out-of-range split recorded there:
+    :func:`kornia.enhance.jpeg_codec_differentiable` soft-clips the coded image into its own range, so an
+    input on either side of ``[0, 1]`` still comes back inside it (measured, on an above-range and a
+    below-range input).
 
     Args:
         jpeg_quality: The range of compression rates to be applied.

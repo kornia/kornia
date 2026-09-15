@@ -313,11 +313,19 @@ Augmentations
   happens outside that range: some keep
   the output inside ``[0, 1]``, :class:`kornia.augmentation.RandomPlanckianJitter`
   bounds only the upper end, some carry the input's range through, and
-  :class:`kornia.augmentation.RandomEqualize` raises. Several return an
+  :class:`kornia.augmentation.RandomEqualize` is the one covered class that
+  raises. Several return an
   all-zero image for an input whose values are all negative
   (`#4430 <https://github.com/kornia/kornia/issues/4430>`_). See
   :class:`kornia.augmentation.IntensityAugmentationBase2D`, and each class's
-  own documentation for which of the four it is.
+  own documentation for which of the four it is. The split does not cover
+  :class:`kornia.augmentation.RandomDissolving`, which is unmeasured because
+  constructing it downloads a Stable Diffusion checkpoint, or
+  :class:`kornia.augmentation.RandomClahe` and
+  :class:`kornia.augmentation.RandomJPEG`, which are not in
+  ``kornia.augmentation.__all__``; ``RandomClahe`` raises out of range as well,
+  with a raw indexing error
+  (`#4564 <https://github.com/kornia/kornia/issues/4564>`_).
 
 .. code-block:: python
 

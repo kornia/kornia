@@ -328,6 +328,50 @@ class TestBlurConventions(BaseTester):
             torch.manual_seed(_FORWARD_SEED)
             assert make()(thin).shape == thin.shape
 
+    # Issue #4559, the same family one border type over: ``border_type="circular"`` has a padding
+    # failure of its own.  torch's circular pad refuses to wrap more than once, so it raises as soon
+    # as the kernel radius (kernel_size // 2) exceeds the axis it pads -- which is a strictly smaller
+    # image than the reflect guard needs, and is why the docstrings cannot say the non-reflect border
+    # types run on every image.  ``"constant"`` and ``"replicate"`` do run there.  The message is
+    # torch's, not kornia's, so this is the same wart as the pin above and #4559's two outcomes
+    # (raise a named kornia error, or pad and run) leave it a wart pin rather than a strict xfail.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(1234); one = torch.rand(2, 3, 1, 1); thin = torch.rand(2, 3, 3, 12)
+    #   for bt in ("constant", "reflect", "replicate", "circular"):
+    #       torch.manual_seed(0); K.RandomMotionBlur(k, (45., 45.), (0., 0.), border_type=bt, p=1.)(one)
+    #       torch.manual_seed(0); K.RandomBoxBlur((9, 9), border_type=bt, p=1.)(thin)
+    # executed 2026-09-15 (torch 2.14.0, cpu float32/float64/float16/bfloat16 and mps float32, all
+    # identical) -> motion `k=5` on 1x1 and both `(9, 9)` blurs on H=3 raise `RuntimeError: Padding
+    # value causes wrapping around more than once.`, while motion `k=3` on 1x1 (radius 1, axis 1) and
+    # the `"constant"`/`"replicate"` legs return the input shape.  The boundary is the radius, not the
+    # kernel: `(9, 9)` circular runs at H=4 and raises at H=3; motion `k=5` runs at 2x2.
+    def test_wart_circular_padding_rejects_images_smaller_than_kernel_radius_4559(self, device, dtype):
+        torch.manual_seed(_FIXTURE_SEED)
+        one = torch.rand(2, 3, 1, 1).to(device=device, dtype=dtype)
+        thin = torch.rand(2, 3, 3, 12).to(device=device, dtype=dtype)
+
+        # Motion blur: radius 2 exceeds a 1-pixel axis and raises; radius 1 does not and runs, so
+        # the failure is the radius rather than "smaller than the kernel".
+        torch.manual_seed(_FORWARD_SEED)
+        with pytest.raises(RuntimeError, match="wrapping around"):
+            _sync(K.RandomMotionBlur(5, (45.0, 45.0), (0.0, 0.0), border_type="circular", p=1.0)(one).device)
+        torch.manual_seed(_FORWARD_SEED)
+        assert K.RandomMotionBlur(3, (45.0, 45.0), (0.0, 0.0), border_type="circular", p=1.0)(one).shape == one.shape
+
+        # The two padding blurs, at a kernel whose radius exceeds the short axis: circular raises
+        # where constant and replicate run, which is the pair of legs the #4559 warnings name.
+        blurs = {
+            "RandomBoxBlur": lambda border: K.RandomBoxBlur((9, 9), border_type=border, p=1.0),
+            "RandomGaussianBlur": lambda border: K.RandomGaussianBlur((9, 9), (1.0, 1.0), border_type=border, p=1.0),
+        }
+        for name, make in blurs.items():
+            torch.manual_seed(_FORWARD_SEED)
+            with pytest.raises(RuntimeError, match="wrapping around"):
+                _sync(make("circular")(thin).device)
+            for border in ("constant", "replicate"):
+                torch.manual_seed(_FORWARD_SEED)
+                assert make(border)(thin).shape == thin.shape, f"{name} at {border} should accept a 3-row image"
+
 
 class TestNoiseAndWeatherConventions(BaseTester):
     # Row 6c-25: RandomErasing's ``scale`` is the exact area fraction of the erased box and ``ratio``
@@ -642,7 +686,8 @@ class TestNoiseAndWeatherConventions(BaseTester):
 class TestIlluminationAndNormalizeConventions(BaseTester):
     # Row 6c-42: all three *Illumination classes add a gradient whose direction is the drawn ``sign``
     # -- one draw per sample, from (-1.0, 1.0) by default -- and clamp the sum into [0, 1]
-    # (gaussian_illumination.py:175, linear_illumination.py:131,238).  The gradient is recorded under
+    # (`_apply_gaussian_illumination`, and `RandomLinearIllumination.apply_transform` /
+    # `RandomLinearCornerIllumination.apply_transform`).  The gradient is recorded under
     # ``_params["gradient"]`` with the input's shape.  The clamp is load-bearing on an *in-range*
     # image as soon as ``gain`` exceeds the headroom: at gain 0.8 on a constant 0.5 the unclamped sum
     # reaches 1.3 or -0.3, so deleting ``.clamp_(0, 1)`` fails this pin.

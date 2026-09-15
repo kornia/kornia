@@ -31,7 +31,9 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     .. image:: _static/img/equalize_clahe.png
 
-    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`. This class is
+    outside the four-way out-of-range split recorded there: it raises instead of transforming, and its
+    error is a raw one.
 
     Args:
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
@@ -41,6 +43,14 @@ class RandomClahe(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    .. warning::
+        An input outside ``[0, 1]`` reaches :func:`kornia.enhance.equalize_clahe` unchecked and comes
+        back as a raw torch indexing error that names neither this class nor the range it needs. As for
+        :class:`RandomEqualize`, the rejection is not exactly at the boundary: what indexes the
+        histogram is the scaled value, so an input marginally outside is still admitted. Tracked in
+        `#4564 <https://github.com/kornia/kornia/issues/4564>`_.
+
     .. note::
         This function internally uses :func:`kornia.enhance.equalize_clahe`.
 

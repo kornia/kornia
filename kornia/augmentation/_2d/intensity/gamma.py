@@ -53,8 +53,9 @@ class RandomGamma(IntensityAugmentationBase2D):
 
     .. warning::
         On an input with negative values the power itself is NaN unless ``gamma`` is an integer, and the
-        clamp does not remove the NaN. Tracked in
-        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+        clamp does not remove the NaN. At an integer ``gamma`` the output is finite instead, and at the
+        class default ``gamma=1.0`` the clamp floors the negative product, so every negative value comes
+        back as ``0``. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_gamma`

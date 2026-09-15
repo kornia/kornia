@@ -235,6 +235,34 @@ class TestIntensityValueRangeConventions(BaseTester):
                 f"{name} kept the output inside [0, 1] on both out-of-range fixtures"
             )
 
+    # Row 6c-01, the carve-out the anchor and conventions.rst now name: the four-way split is
+    # complete over the classes this file executes, and the classes it leaves out are exactly the
+    # three named there.  RandomDissolving is excluded by method (constructing it downloads a
+    # Stable-Diffusion checkpoint, so it is never constructed here), and RandomClahe / RandomJPEG
+    # are outside kornia.augmentation.__all__ -- but all three are importable from
+    # kornia.augmentation and the last two are rendered on augmentation.intensity.rst, so a new
+    # intensity class would falsify the anchor sentence silently without this census.
+    # Snippet used to generate expected:
+    #   base = K.IntensityAugmentationBase2D
+    #   print(sorted(n for n, o in vars(K).items() if isinstance(o, type) and issubclass(o, base)
+    #                and o is not base and o.__module__.startswith("kornia.augmentation._2d.intensity")))
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> 38 concrete classes, 35 of them the keys of
+    # _INTENSITY_FACTORIES and the other three `['RandomClahe', 'RandomDissolving', 'RandomJPEG']`.
+    @pytest.mark.device_agnostic
+    def test_convention_intensity_split_carve_outs_are_exactly_three(self):
+        base = K.IntensityAugmentationBase2D
+        concrete = {
+            name
+            for name, obj in vars(K).items()
+            if isinstance(obj, type)
+            and issubclass(obj, base)
+            and obj is not base
+            and obj.__module__.startswith("kornia.augmentation._2d.intensity")
+        }
+        assert len(concrete) == 38
+        assert concrete - set(_INTENSITY_FACTORIES) == {"RandomClahe", "RandomDissolving", "RandomJPEG"}
+        assert set(_INTENSITY_FACTORIES) - concrete == set()
+
     # Row 6c-03 (issue #4430): ten of the clamping classes return an all-zero image on a wholly
     # negative input.  #4430 offers two coherent outcomes (clamp, or reject as RandomEqualize now
     # does), so this is a wart pin on today's behavior, not a strict xfail on a settled contract.
@@ -291,6 +319,38 @@ class TestIntensityValueRangeConventions(BaseTester):
         else:
             assert len(out.unique()) == 1
             assert float(out.max()) == 0.0
+
+    # Row 6c-05 (issue #4430), the failure the grouping run cannot see: RandomGamma is in
+    # _CLAMPS_BOTH_ENDS on the strength of `gamma=2.0`, but on a negative input `x ** gamma` is NaN
+    # for every non-integer gamma and the clamp propagates it.  Only an integer gamma is finite, and
+    # of those only an even one keeps a non-zero value -- an odd power keeps the sign and the clamp
+    # floors it, which is the all-zero collapse #4430 is about.  #4430 leaves two coherent outcomes
+    # open (clamp, or reject), so this is a wart pin on today's behavior, not a strict xfail.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(1234); neg = torch.rand(2, 3, 6, 8) - 1.0
+    #   for gamma in (0.5, 1.0, 1.5, 2.0, 3.0):
+    #       torch.manual_seed(0); y = K.RandomGamma((gamma, gamma), (1.0, 1.0), p=1.0)(neg)
+    #       print(gamma, bool(y.isnan().any()), bool(y.isnan().all()), y.nan_to_num().abs().max())
+    # executed 2026-09-15 (torch 2.14.0) on cpu float32/float64/float16/bfloat16 and mps float32,
+    # identical on every leg -> `0.5` and `1.5` NaN in every element; `1.0`, `2.0` and `3.0` finite,
+    # with max|out| `0` at gamma 1.0 and 3.0 and `0.998725` at gamma 2.0 (`0.999023` in float16,
+    # `1` in bfloat16, so only the inequality is asserted).  The fixture has no exact zero
+    # (its maximum is -0.00200176 in float32), so the NaN is every element, not almost every one.
+    @pytest.mark.parametrize(("gamma", "nan_expected"), [(0.5, True), (1.5, True), (2.0, False), (3.0, False)])
+    def test_wart_random_gamma_negative_input_is_nan_4430(self, device, dtype, gamma, nan_expected):
+        image = _out_of_range_fixtures(device, dtype)["[-1, 0]"]
+        assert float(image.max()) < 0.0, "the fixture must be strictly negative for the power to be NaN"
+        torch.manual_seed(_FORWARD_SEED)
+        out = K.RandomGamma((gamma, gamma), (1.0, 1.0), p=1.0)(image)
+        _sync(image.device)
+        if nan_expected:
+            assert bool(out.isnan().all()), f"gamma={gamma} on a negative input should be NaN throughout"
+        else:
+            assert bool(out.isfinite().all()), f"an integer gamma={gamma} should stay finite"
+            # The even power is the control: it is the one integer gamma that survives the clamp,
+            # and it is the value `_INTENSITY_FACTORIES` uses -- which is what hides the NaN there.
+            non_zero = float(out.abs().max()) > 0.0
+            assert non_zero is (gamma == 2.0), f"gamma={gamma} gave max|out| {float(out.abs().max())}"
 
     # Row 6c-02 in the state #4489 left it (#4431 closed): RandomEqualize is the one 2D intensity
     # class that rejects an out-of-range input, and its message names the [0, 1] range it needs.
@@ -569,7 +629,9 @@ class TestIntensityColourConventions(BaseTester):
         assert shared[0].tolist() == shared[1].tolist()
 
     # Row 6c-40: RandomInvert is `max_val - x`, with no clamp, so an input outside [0, 1] comes
-    # back reflected around `max_val` rather than clipped.
+    # back subtracted from `max_val` rather than clipped.  That is a reflection about `max_val / 2`,
+    # not about `max_val`: `invert(torch.tensor([2.0]), torch.tensor(1.0))` is `-1.0`, where a
+    # reflection around `max_val` would give `0.0` (executed 2026-09-15, torch 2.14.0, cpu).
     # Snippet used to generate expected:
     #   g = torch.linspace(0, 2, 48).reshape(1, 1, 6, 8)
     #   torch.manual_seed(0); y = K.RandomInvert(max_val=m, p=1.0)(g); print(y.aminmax())
@@ -584,14 +646,21 @@ class TestIntensityColourConventions(BaseTester):
         self.assert_close(out.max(), out.new_tensor(expected_range[1]))
 
     # Row 6c-39: `additions` is added to the whole image first and the sum is clamped into [0, 1];
-    # only then is everything at or above `thresholds` inverted.  The order matters: adding after
-    # the inversion would move the dark pixels the other way.
+    # only then is everything at or above `thresholds` inverted.  The order matters for the pixels
+    # the inversion touches, not for the dark ones: adding after the inversion would give `1 - g + a`
+    # where adding first gives `1 - g - a`, so it is the inverted (bright) pixels that move the other
+    # way, by `2 * addition`.  Every pixel more than `addition` below the threshold is identical
+    # under both orders, and only the band `[threshold - addition, threshold)` changes bucket.
     # Snippet used to generate expected:
     #   g = torch.linspace(0, 1, 48).reshape(1, 1, 6, 8)
     #   torch.manual_seed(0); y = K.RandomSolarize((t, t), (a, a), p=1.0)(g)
     #   z = (g + a).clamp(0, 1); print((y - torch.where(z < t, z, 1.0 - z)).abs().max(), y.aminmax())
+    #   w = (torch.where(g < t, g, 1.0 - g) + a).clamp(0, 1); print((y - w).abs().max())
     # executed 2026-09-15 (torch 2.14.0, cpu) -> formula diff `0` for every pair below, and
-    # threshold=0.5 addition=0.25 sends the input 0.0212766 to 0.271277.
+    # threshold=0.5 addition=0.25 sends the input 0.0212766 to 0.271277.  Against the other order at
+    # that pair, max|diff| is `0.5` (= 2 * addition), reached on every pixel at or above the
+    # threshold; the two agree exactly below `t - a = 0.25` and the first differing element is
+    # g=0.255319, which is in the band that changes bucket.
     @pytest.mark.parametrize(("threshold", "addition"), [(0.5, 0.0), (0.5, 0.25), (0.0, 0.0)])
     def test_convention_random_solarize_adds_before_inverting(self, device, dtype, threshold, addition):
         ramp = torch.linspace(0, 1, 48).reshape(1, 1, 6, 8).to(device=device, dtype=dtype)
