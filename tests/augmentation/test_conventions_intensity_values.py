@@ -539,17 +539,20 @@ class TestIntensityColourConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_color_jiggle_and_jitter_have_different_brightness_bounds(self):
-        # Scalar brightness=3 is accepted by both, but yields [0, 2] for Jiggle and [0, 4] for Jitter.
+        # A scalar brightness above 1 overshoots ColorJiggle's [0, 2] bound and is rejected there, while
+        # ColorJitter, bounded by (0, inf), reads it as [0, 1 + brightness].
+        with pytest.raises(ValueError, match="brightness out of bounds"):
+            K.ColorJiggle(brightness=1.5)
         torch.manual_seed(7)
-        jiggle_params = K.ColorJiggle(brightness=3.0).forward_parameters((4, 3, 2, 2))
-        torch.manual_seed(7)
-        jitter_params = K.ColorJitter(brightness=3.0).forward_parameters((4, 3, 2, 2))
-        jiggle_brightness = jiggle_params["brightness_factor"]
-        jitter_brightness = jitter_params["brightness_factor"]
-        assert bool(((jiggle_brightness >= 0) & (jiggle_brightness <= 2)).all())
+        jitter_brightness = K.ColorJitter(brightness=1.5).forward_parameters((256, 3, 2, 2))["brightness_factor"]
+        assert bool(((jitter_brightness >= 0) & (jitter_brightness <= 2.5)).all())
         assert bool((jitter_brightness > 2).any())
-        self.assert_close(jitter_brightness, 2 * jiggle_brightness, atol=0, rtol=0)
-        for key in jiggle_params.keys() - {"brightness_factor"}:
+        # At a scalar within both bounds the two draw the same factors from the same seed.
+        torch.manual_seed(7)
+        jiggle_params = K.ColorJiggle(brightness=0.5).forward_parameters((4, 3, 2, 2))
+        torch.manual_seed(7)
+        jitter_params = K.ColorJitter(brightness=0.5).forward_parameters((4, 3, 2, 2))
+        for key in jiggle_params:
             assert torch.equal(jiggle_params[key], jitter_params[key]), key
 
     @pytest.mark.parametrize("hue", [0.0, (0.1, 0.1)])
@@ -975,6 +978,9 @@ class TestIntensityColourConventions(BaseTester):
             ("contrast_negative", ValueError),
             ("saturation_negative", ValueError),
             ("hue_above_half", ValueError),
+            ("hue_scalar_above_half", ValueError),
+            ("brightness_scalar_above_two", ValueError),
+            ("solarize_scalar_threshold_above_half", ValueError),
             ("solarize_additions_at_half", RuntimeError),
         ],
     )
@@ -989,9 +995,11 @@ class TestIntensityColourConventions(BaseTester):
             "brightness_above_two": lambda: K.RandomBrightness((3.0, 3.0), p=1.0),
             "contrast_negative": lambda: K.RandomContrast((-1.0, -1.0), p=1.0),
             "saturation_negative": lambda: K.RandomSaturation((-1.0, -1.0), p=1.0),
-            # A scalar `hue` is silently clamped into the bound instead of rejected, so the pin uses
-            # the explicit range the audit executed.
             "hue_above_half": lambda: K.RandomHue((0.6, 0.6), p=1.0),
+            # The scalar forms overshoot the same bounds and raise the same error since #4563.
+            "hue_scalar_above_half": lambda: K.RandomHue(0.6, p=1.0),
+            "brightness_scalar_above_two": lambda: K.RandomBrightness(3.0, p=1.0),
+            "solarize_scalar_threshold_above_half": lambda: K.RandomSolarize(2.0, 0.1, p=1.0),
             # The construction check is the closed [-0.5, 0.5]; kornia.enhance.solarize rejects the
             # ends on the forward pass, so this one constructs and raises like the gamma case.
             "solarize_additions_at_half": lambda: K.RandomSolarize((0.5, 0.5), (0.5, 0.5), p=1.0),
@@ -1003,28 +1011,40 @@ class TestIntensityColourConventions(BaseTester):
             # The sync is what surfaces an MPS kernel error inside this block rather than later.
             _sync(factories[case]()(image).device)
 
-    # Issue #4563: a scalar magnitude whose implied range leaves the documented bounds is fitted to
-    # them instead of rejected, where the same range written out raises (pinned one test above).
-    # RandomSharpness is the class that depends on the fit: its scalar form is the centred `[-x, x]`
-    # clamped to `(0, inf)`, which is what makes `sharpness=0.5` mean `[0, 0.5]`.
+    # A scalar magnitude is ``center ± x`` floored at the parameter's lower bound and rejected past its
+    # upper bound (the fix for #4563; the upper end used to be clamped silently, so RandomHue(0.7)
+    # sampled from [-0.5, 0.5]).  RandomSharpness is the class that depends on the floor: its scalar
+    # form is the centred `[-x, x]` floored at 0, which is what makes `sharpness=0.5` mean `[0, 0.5]`.
     # Snippet used to generate expected:
-    #   print(K.RandomHue(0.7).hue, K.RandomBrightness(3.0).brightness)
-    #   print(K.ColorJiggle(brightness=3.0).forward_parameters((256, 3, 2, 2))["brightness_factor"].aminmax())
+    #   for ctor in (lambda: K.RandomHue(0.7), lambda: K.RandomBrightness(3.0), lambda: K.ColorJiggle(brightness=1.5)):
+    #       try: ctor(); print("ok")
+    #       except ValueError as e: print(e)
+    #   print(K.RandomContrast(1.5).contrast, K.RandomBrightness(0.5).brightness)
     #   print(K.RandomSharpness(0.5).forward_parameters((2000, 1, 4, 4))["sharpness"].aminmax())
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `[-0.5, 0.5]`, `[0, 2]`, brightness in
-    # `[0.0072, 1.9945]`, sharpness in `[3.87e-05, 0.5]`.
+    #   print(K.RandomJPEG(50.0)._param_generator.jpeg_quality_sampler.low)
+    # executed 2026-09-15 (torch 2.14.0, cpu) -> `hue out of bounds. Expected inside (-0.5, 0.5), got
+    # tensor([-0.7000,  0.7000]).`, `brightness out of bounds ... (0.0, 2.0), got tensor([-2., 4.])`,
+    # `brightness out of bounds ... (0, 2), got tensor([-0.5000,  2.5000])`; `[0, 2.5]`, `[0.5, 1.5]`;
+    # sharpness in `[3.87e-05, 0.5]`; jpeg low `1`.
     @pytest.mark.device_agnostic
-    def test_wart_scalar_magnitude_is_fitted_to_the_bound_4563(self):
-        assert K.RandomHue(0.7, p=1.0).hue.tolist() == [-0.5, 0.5]
-        assert K.RandomBrightness(3.0, p=1.0).brightness.tolist() == [0.0, 2.0]
-        torch.manual_seed(_FORWARD_SEED)
-        brightness = K.ColorJiggle(brightness=3.0, p=1.0).forward_parameters((256, 3, 2, 2))["brightness_factor"]
-        assert float(brightness.min()) >= 0.0 and float(brightness.max()) <= 2.0
-        assert float(brightness.max()) > 1.5  # the fit is to [0, 2], not to [0, 1 + 3] or to [0, 1]
+    def test_convention_scalar_magnitude_floors_low_and_rejects_high(self):
+        for ctor in (
+            lambda: K.RandomHue(0.7, p=1.0),
+            lambda: K.RandomBrightness(3.0, p=1.0),
+            lambda: K.ColorJiggle(brightness=1.5, p=1.0),
+            lambda: K.RandomSolarize(2.0, 0.1, p=1.0),
+            lambda: K.RandomMotionBlur(3, 45.0, 2.0, p=1.0),
+        ):
+            with pytest.raises(ValueError, match="out of bounds"):
+                ctor()
+        assert K.RandomContrast(1.5, p=1.0).contrast.tolist() == [0.0, 2.5]
+        assert K.RandomBrightness(0.5, p=1.0).brightness.tolist() == [0.5, 1.5]
         torch.manual_seed(_FORWARD_SEED)
         sharpness = K.RandomSharpness(0.5, p=1.0).forward_parameters((2000, 1, 4, 4))["sharpness"]
         assert float(sharpness.min()) >= 0.0 and float(sharpness.max()) <= 0.5
-        assert float(sharpness.min()) < 0.1  # the lower end is the clamped -x, not a centred x / 2
+        assert float(sharpness.min()) < 0.1  # the lower end is the floored -x, not a centred x / 2
+        jpeg = K.RandomJPEG(50.0, p=1.0)._param_generator
+        assert (float(jpeg.jpeg_quality_sampler.low), float(jpeg.jpeg_quality_sampler.high)) == (1.0, 100.0)
 
     # Issue #4564: RandomClahe rejects an out-of-[0, 1] input with the raw indexing error of the
     # histogram gather, naming neither the class nor the range RandomEqualize names (#4489).  CPU only:

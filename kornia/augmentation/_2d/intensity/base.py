@@ -71,8 +71,9 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           and for ``gain`` alike, live in :func:`kornia.enhance.adjust_gamma`, so they run on the
           forward pass; and :class:`RandomSolarize` admits ``additions`` at the closed bound ``0.5`` at
           construction, which :func:`kornia.enhance.solarize` then rejects on the forward pass. A scalar
-          magnitude is a different case: several classes fit it to the bound instead of raising, tracked
-          in `#4563 <https://github.com/kornia/kornia/issues/4563>`_.
+          magnitude ``x`` means ``center ± x``: its lower end is floored at the parameter's lower bound, so
+          a non-negative parameter reads ``contrast=1.5`` as ``[0, 2.5]``, and an upper end past the bound
+          raises the same error the explicit range does.
 
     .. warning::
         Several of these classes can return an all-zero image for an input whose values are all negative,

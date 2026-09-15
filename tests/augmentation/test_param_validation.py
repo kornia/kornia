@@ -130,6 +130,9 @@ class TestParamValidation:
             ((10, 5), 0, None, "joint", ValueError, "should be smaller than"),
             ("invalid", 0, (-10, 10), "singular", TypeError, None),
             ((-10.0, 10.0), 0, (-5, 5), "singular", ValueError, "param out of bounds"),
+            (10.0, 0, (-5, 5), "singular", ValueError, "param out of bounds"),
+            (0.6, 0, (-0.5, 0.5), "joint", ValueError, "param out of bounds"),
+            (3.0, 1.0, (0, 2), "joint", ValueError, "param out of bounds"),
         ],
     )
     def test_range_bound_errors(self, factor, center, bounds, check, expected_exception, match_msg):
@@ -145,7 +148,9 @@ class TestParamValidation:
         "factor, center, bounds, check, expected",
         [
             (10.0, 0, (-10, 10), "singular", torch.tensor([-10.0, 10.0], dtype=torch.float32)),
-            (10.0, 0, (-5, 5), "singular", torch.tensor([-5.0, 5.0], dtype=torch.float32)),
+            (1.5, 1.0, (0, float("inf")), "joint", torch.tensor([0.0, 2.5], dtype=torch.float32)),
+            (0.5, 0.0, (0, float("inf")), "joint", torch.tensor([0.0, 0.5], dtype=torch.float32)),
+            (50.0, 50.0, (1, 100), "joint", torch.tensor([1.0, 100.0], dtype=torch.float32)),
             (0.2, 1.0, (0, 2), "singular", torch.tensor([0.8, 1.2], dtype=torch.float32)),
             ((5.0, 10.0), 0, None, "singular", torch.tensor([5.0, 10.0], dtype=torch.float32)),
             ([-5.0, 5.0], 0, (-10, 10), "singular", torch.tensor([-5.0, 5.0], dtype=torch.float32)),
@@ -153,8 +158,10 @@ class TestParamValidation:
             ((10.0, 5.0), 0, None, "singular", torch.tensor([10.0, 5.0], dtype=torch.float32)),
         ],
         ids=[
-            "float-clamp-full",
-            "float-clamp-partial",
+            "float-symmetric-full",
+            "float-floored-at-zero",
+            "float-floored-at-zero-center-zero",
+            "float-floored-at-lower-bound",
             "float-center-offset",
             "tuple-input",
             "list-input",
