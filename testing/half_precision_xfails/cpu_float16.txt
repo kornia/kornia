@@ -469,6 +469,7 @@ call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestWar
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestWarpAffine3d::test_rotate_y[cpu-float16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestWarpAffine3d::test_rotate_y_large[cpu-float16]
 call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestWarpAffine3d::test_rotate_z[cpu-float16]
+call	builtins.AssertionError	tests/geometry/transform/test_imgwarp3d.py::TestWarpPerspective3d::test_convention_identity_reproduces_input[cpu-float16-dsize2-False]
 call	builtins.AssertionError	tests/geometry/transform/test_thin_plate_spline.py::TestWarpImage::test_identity_warp_align_corners[cpu-float16-1]
 call	builtins.AssertionError	tests/image/test_draw.py::TestFillConvexPolygon::test_batch_color_no_batch[cpu-float16]
 call	builtins.AssertionError	tests/image/test_draw.py::TestFillConvexPolygon::test_batch_variable_size[cpu-float16]
