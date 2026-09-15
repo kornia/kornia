@@ -22,6 +22,7 @@ This subpackage provides community-contributed and experimental features.
 
 from kornia.models.tiny_vit import TinyViT
 
+from .augmentation_audit import AugmentationAuditReport, AugmentationAuditStep, SpatialAudit, audit
 from .connected_components import connected_components
 from .diamond_square import diamond_square
 from .distance_transform import DistanceTransform, distance_transform
@@ -42,6 +43,8 @@ from .object_detection import ObjectDetector, RTDETRDetectorBuilder
 from .super_resolution import RRDBNetBuilder, SmallSRBuilder, SuperResolution, SuperResolutionConfig
 
 __all__ = [
+    "AugmentationAuditReport",
+    "AugmentationAuditStep",
     "CombineTensorPatches",
     "DistanceTransform",
     "EdgeDetector",
@@ -54,9 +57,11 @@ __all__ = [
     "RRDBNetBuilder",
     "RTDETRDetectorBuilder",
     "SmallSRBuilder",
+    "SpatialAudit",
     "SuperResolution",
     "SuperResolutionConfig",
     "TinyViT",
+    "audit",
     "combine_tensor_patches",
     "compute_padding",
     "connected_components",

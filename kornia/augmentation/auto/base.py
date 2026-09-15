@@ -20,6 +20,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 import torch
 from torch import nn
 
+from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.base import ImageSequentialBase, TransformMatrixMinIn
@@ -118,6 +119,65 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
             if not module.is_intensity_only():
                 return False
         return True
+
+    def _non_invertible_ops(self, params: List[ParamItem]) -> List[str]:
+        """Name every applied operation that :meth:`inverse` cannot undo.
+
+        An operation whose probability gate skipped every sample left the input untouched, so it does
+        not count.
+
+        Args:
+            params: Parameters recorded by a forward pass.
+
+        Returns:
+            Class names of the applied operations that are not geometric, in execution order.
+        """
+        names: List[str] = []
+        for (_, module), param in zip(self.get_forward_sequence(params), params):
+            subpolicy = cast(PolicySequential, module)
+            subparams = cast(List[ParamItem], param.data)
+            for (_, operation), subparam in zip(subpolicy.get_forward_sequence(subparams), subparams):
+                operation = cast(OperationBase, operation)
+                if isinstance(operation.op, GeometricAugmentationBase2D):
+                    continue
+                batch_prob = cast(Dict[str, torch.Tensor], subparam.data).get("batch_prob")
+                if batch_prob is not None and not batch_prob.any():
+                    continue
+                names.append(operation.op.__class__.__name__)
+        return names
+
+    def inverse(
+        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
+        """Undo the drawn sub-policy, or refuse when it cannot be undone.
+
+        Only geometric operations are invertible. A policy draw that contains an intensity operation is
+        not round-trippable, and inverting it would return a tensor that still carries that operation --
+        for a draw with no geometry at all, the input unchanged. This raises instead, as
+        :meth:`kornia.augmentation.MixAugmentationBaseV2.inverse` already does for the mix classes.
+
+        Args:
+            input: Tensor produced by a forward pass.
+            params: Parameters used during that forward pass. Defaults to the cached ones.
+            extra_args: Optional per-input-type overrides.
+
+        Returns:
+            The inverse-transformed tensor.
+
+        Raises:
+            RuntimeError: The drawn sub-policy contains a non-invertible operation.
+        """
+        if params is None:
+            params = self._params
+        if params is not None:
+            non_invertible = self._non_invertible_ops(params)
+            if non_invertible:
+                raise RuntimeError(
+                    f"Inverse for {self.__class__.__name__} is not supported: the drawn sub-policy applied "
+                    f"{', '.join(non_invertible)}, which cannot be inverted. Only geometric operations are "
+                    "invertible, and the sub-policy is redrawn on every forward pass."
+                )
+        return super().inverse(input, params, extra_args=extra_args)
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         """Generate per-module parameters for one policy forward pass.

@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional
 
 from torch import Tensor
 
-from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
+from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D, _input_metadata_only
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -40,10 +40,8 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
 
     Convention:
         - an intensity augmentation moves no image pixel, so this base supplies ``compute_transformation``
-          itself and reports the identity matrix. Its direct mask and keypoint handlers pass their inputs through,
-          except where a subclass overrides them: :class:`RandomErasing` also erases masks. Direct box dispatch
-          is currently unsupported despite the similarly named plural helpers below; see
-          `#4480 <https://github.com/kornia/kornia/issues/4480>`_.
+          itself and reports the identity matrix. Its direct mask, box and keypoint handlers pass their inputs
+          through, except where a subclass overrides them: :class:`RandomErasing` also erases masks.
           A subclass supplies ``apply_transform`` and, where it draws anything, its ``_param_generator``.
         - the matrix is built lazily, on the first read of ``transform_matrix``.
         - this base adds no ``inverse``. When
@@ -58,6 +56,7 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
     # `.transform_matrix` is read, saving an eye_like + blend on every forward.
     _compute_matrix_lazily = True
 
+    @_input_metadata_only
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
@@ -71,12 +70,12 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
     ) -> Tensor:
         return input
 
-    def apply_non_transform_boxes(
+    def apply_non_transform_box(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Boxes:
         return input
 
-    def apply_transform_boxes(
+    def apply_transform_box(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Boxes:
         return input

@@ -24,6 +24,7 @@ permissions:
 jobs:
   tutorials:
     runs-on: ${{ inputs.os }}
+    timeout-minutes: 60
     continue-on-error: true
     strategy:
       fail-fast: ${{ inputs.fail-fast }}

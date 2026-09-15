@@ -49,6 +49,7 @@ jobs:
     # For scheduled runs, check if only documentation files changed
     # If so, skip the expensive test runs
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       should-skip: ${{ steps.check.outputs.should-skip }}
     steps:
@@ -93,6 +94,7 @@ jobs:
 
   pre-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [check-skip]
     if: needs.check-skip.outputs.should-skip == 'false'
     outputs:

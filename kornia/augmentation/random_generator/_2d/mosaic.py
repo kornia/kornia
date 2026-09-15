@@ -22,6 +22,7 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -104,7 +105,7 @@ class MosaicGenerator(RandomGeneratorBase):
             start_corner_x.clone().fill_(input_sizes[1]),
             start_corner_y.clone().fill_(input_sizes[0]),
         )
-        crop_dst = torch.tensor(
+        crop_dst = _constant_tensor(
             [[[0, 0], [input_sizes[1] - 1, 0], [input_sizes[1] - 1, input_sizes[0] - 1], [0, input_sizes[0] - 1]]],
             device=_device,
             dtype=_dtype,
@@ -116,7 +117,7 @@ class MosaicGenerator(RandomGeneratorBase):
         if batch_size == 0:
             batch_shapes = torch.zeros([0, 3], device=_device, dtype=torch.long)
         else:
-            batch_shapes = torch.stack([torch.as_tensor(batch_shape[1:], device=_device) for _ in range(batch_size)])
+            batch_shapes = _constant_tensor(batch_shape[1:], device=_device, dtype=torch.long).repeat(batch_size, 1)
         return {
             "permutation": mosiac_ids.to(device=_device, dtype=torch.long),
             "src": crop_src,

@@ -747,6 +747,18 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 
 
 class TestRandomAffineGen(RandomGeneratorBaseTests):
+    @pytest.mark.parametrize("range_name", ["degrees", "translate", "scale", "shear"])
+    def test_tensor_range_keeps_placement(self, range_name, device, dtype):
+        ranges = {"degrees": 30.0, "translate": (0.1, 0.1), "scale": (0.8, 1.2), "shear": (0.0, 5.0, 0.0, 5.0)}
+        # Any tensor-valued range, including an optional one, controls returned placement.
+        ranges[range_name] = torch.tensor(ranges[range_name], device="cpu", dtype=dtype)
+        generator = AffineGenerator(**ranges)
+        generator.set_rng_device_and_dtype(device, torch.float32)
+        params = generator((4, 3, 8, 9))
+        for name, value in params.items():
+            assert value.device == torch.device("cpu"), name
+            assert value.dtype == dtype, name
+
     @pytest.mark.parametrize("batch_size", [0, 1, 4])
     @pytest.mark.parametrize("height", [200])
     @pytest.mark.parametrize("width", [300])
@@ -940,6 +952,31 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
         assert res.keys() == expected.keys()
         assert_close(res["src"], expected["src"])
         assert_close(res["dst"], expected["dst"])
+
+
+class TestCropIntSizeMessages:
+    # #4417: `RandomCrop(4)` and `RandomResizedCrop(4)` are rejected (whether to accept an int is the window
+    # decision), but the errors used to be about a torch.Tensor shape and `len()` of an int. They now name the
+    # argument, the expected form and the value passed.
+    def test_random_crop_int_size_names_the_argument(self, device, dtype):
+        from kornia.augmentation import RandomCrop
+
+        x = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+        with pytest.raises(AssertionError, match=r"`size` must be a \(height, width\) pair of integers.*Got 4\."):
+            RandomCrop(4)(x)
+
+    def test_random_crop_tensor_size_message_is_unchanged(self, device, dtype):
+        gen = CropGenerator(torch.tensor([[4, 4, 4]], device=device, dtype=dtype))
+        with pytest.raises(AssertionError, match=r"If `size` is a torch.Tensor, it must be shaped as \(B, 2\)"):
+            gen(torch.Size([1, 1, 8, 8]))
+
+    def test_random_resized_crop_int_size_names_the_argument(self):
+        from kornia.augmentation import RandomResizedCrop
+
+        with pytest.raises(
+            TypeError, match=r"`size` on RandomResizedCrop\) must be a \(height, width\).*Got 4 of type int"
+        ):
+            RandomResizedCrop(4)
 
 
 class TestRandomCropSizeGen(RandomGeneratorBaseTests):

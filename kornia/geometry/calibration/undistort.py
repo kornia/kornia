@@ -42,6 +42,9 @@ def undistort_points(
     distortion models are considered in this function.
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera-intrinsics and
+        integer pixel-centre conventions used here.
+
         - ``points`` are **pixel** coordinates in ``(u, v)`` order and so is the result. Pixel centres lie at
           integer coordinates: the top-left centre is ``(0, 0)``.
         - ``dist`` follows the coefficient layout documented on
@@ -175,6 +178,10 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
     distortion models are considered in this function.
 
     Convention:
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for pixel centres and camera
+        intrinsics, and :doc:`Conventions & Pitfalls </get-started/conventions>` for sampling and
+        ``align_corners`` guidance.
+
         - The leading dimensions of ``image`` (everything in front of ``C, H, W``), of ``K`` (in front of its
           :math:`3 \times 3` block) and of ``dist`` (in front of its ``n`` coefficients) must match exactly.
           They may be empty, a single batch axis, or several axes deep, including with non-zero tilt and under

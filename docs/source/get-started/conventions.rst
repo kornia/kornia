@@ -132,6 +132,11 @@ Transformation matrices and homographies
     b = homography_warp(img, M_norm_inv, (16, 8), align_corners=True)
     assert torch.allclose(a, b, atol=1e-5)
 
+``normalize_homography`` takes its own ``align_corners`` (default ``True``),
+and it must match the one you pass to the warp — the normalized ``[-1, 1]``
+coordinates mean different things under the two conventions. Above, both are
+``True``; note that ``homography_warp`` alone would default to ``False``.
+
 ``align_corners`` defaults
 --------------------------
 
@@ -148,7 +153,7 @@ with ``torch.nn.functional.interpolate``/``grid_sample``, pass
      - ``True``
    * - ``resize``
      - ``None`` (PyTorch's per-mode default)
-   * - ``homography_warp``
+   * - ``homography_warp``, ``elastic_transform2d``
      - ``False``
    * - ``undistort_image``
      - ``True``
@@ -156,6 +161,51 @@ with ``torch.nn.functional.interpolate``/``grid_sample``, pass
      - ``True``
    * - ``DepthWarper`` / ``depth_warp``
      - ``True`` (default)
+   * - ``remap``
+     - ``None`` (resolved to ``False`` internally)
+
+The flag selects only how Kornia normalizes coordinates for ``grid_sample``
+(``True``: pixel *centers* 0 and ``size-1`` sit at ``±1``; ``False``: the outer
+pixel *edges* do). Transforms you pass in are pixel-space either way, so a warp
+that should be an identity is one under both settings, and ``warp_affine`` and
+``warp_perspective`` agree with each other:
+
+.. code-block:: python
+
+    import torch
+    from kornia.geometry.transform import get_perspective_transform, warp_affine, warp_perspective
+
+    img = torch.arange(16.0).view(1, 1, 4, 4)
+    pts = torch.tensor([[[0.0, 0.0], [3.0, 0.0], [3.0, 3.0], [0.0, 3.0]]])
+    M = get_perspective_transform(pts, pts)  # identity
+
+    for align_corners in (True, False):
+        a = warp_affine(img, M[:, :2, :], (4, 4), align_corners=align_corners)
+        p = warp_perspective(img, M, (4, 4), align_corners=align_corners)
+        assert torch.allclose(a, img, atol=1e-4)
+        assert torch.allclose(p, img, atol=1e-4)
+
+Where the two settings genuinely differ is out-of-bounds sampling, since ``±1``
+covers a slightly different extent of the source image.
+
+.. warning::
+
+   :func:`kornia.geometry.transform.remap` is the 2D exception left: it normalizes its
+   pixel maps with the ``align_corners=True`` convention regardless of the flag it passes
+   to ``grid_sample``, so with its default (``None``, i.e. ``False``) even an identity
+   pixel map resamples the image, by ``11.25`` on a 4x4 ``arange`` image. Pass
+   ``align_corners=True`` until this is fixed. Tracked in
+   `#4504 <https://github.com/kornia/kornia/issues/4504>`_.
+
+   The 3-D warps are the other exception. ``normal_transform_pixel3d`` and
+   ``normalize_homography3d`` take no ``align_corners`` at all, so
+   :func:`kornia.geometry.transform.warp_affine3d` and
+   :func:`kornia.geometry.transform.warp_perspective3d` normalize with the corner-aligned
+   convention whatever flag they pass to ``grid_sample``, and have the same mismatch at
+   ``align_corners=False``: an identity ``warp_perspective3d`` changes a 4x4x4 ``arange``
+   volume by up to ``55.1`` there, against exactly ``0`` at ``align_corners=True``. Pass
+   ``align_corners=True`` to the 3-D warps until this is fixed. Tracked in
+   `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
 
 Bounding boxes
 --------------
@@ -348,11 +398,16 @@ Serializing an augmentation
 - Pickle and deepcopy can retain recorded parameters and transform state,
   but support is configuration-dependent. The ``kornia.augmentation.auto``
   policies cannot currently be pickled
-  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_). Lazy matrix state
-  can retain the last input batch, increasing serialized size until the
-  matrix is read (`#4482 <https://github.com/kornia/kornia/issues/4482>`_).
+  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
   A normal forward draws fresh parameters; replay requires passing the
   saved parameters and controlling any application-time randomness.
+- Built-in lazy matrices keep only the input's shape, dtype and device
+  alongside transformation parameters, so an unread matrix does not keep
+  the image batch in the saved state. A lazy subclass overriding ``transform_tensor``,
+  ``generate_transformation_matrix``, ``compute_transformation`` or
+  ``identity_matrix`` retains the input until the matrix is read or another
+  forward replaces the pending state. Unchanged inherited implementations
+  keep the compact metadata state. See :doc:`/augmentation.base` for details.
 
 Pitfall checklist
 -----------------

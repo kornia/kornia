@@ -52,10 +52,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         - a subclass supplies its own :meth:`inverse_transform` -- the base raises ``NotImplementedError`` --
           while :meth:`compute_inverse_transformation` defaults to inverting the sampled matrix.
 
-    .. warning::
-        The ``resample`` half of an ``extra_args[DataKey.MASK]`` override is discarded here -- masks are
-        always nearest -- while the ``align_corners`` half does reach the sampler. Tracked in
-        `#4419 <https://github.com/kornia/kornia/issues/4419>`_.
+    Note:
+        Masks are resampled with nearest neighbour whatever ``resample`` the augmentation uses for images,
+        unless ``resample`` is passed explicitly to :meth:`transform_masks` or :meth:`inverse_masks` --
+        which is what ``extra_args[DataKey.MASK]`` does in a container. An explicit value is honoured in
+        both directions.
 
     """
 
@@ -103,6 +104,19 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """Process masks corresponding to the inputs that are no transformation applied."""
         return input
 
+    def transform_masks(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+        **kwargs: Any,
+    ) -> torch.Tensor:
+        # Nearest is the mask default, but an explicit ``resample`` wins, matching ``inverse_masks``.
+        if "resample" not in kwargs and "resample" in (self.flags if flags is None else flags):
+            kwargs["resample"] = Resample.get("nearest")
+        return super().transform_masks(input, params, flags, transform=transform, **kwargs)
+
     def apply_transform_mask(
         self,
         input: torch.Tensor,
@@ -113,17 +127,13 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """Process masks corresponding to the inputs that are transformed.
 
         Note:
-            Convert "resample" arguments to "nearest" by default.
+            Uses ``flags["resample"]`` as given; :meth:`transform_masks` supplies "nearest" when the caller
+            did not choose one.
             Normalize "align_corners" from None to False to match PyTorch's default behavior.
 
         """
-        resample_method: Optional[Resample] = None
         align_corners_was_none: bool = False
         original_align_corners: Optional[bool] = None
-
-        if "resample" in flags:
-            resample_method = flags["resample"]
-            flags["resample"] = Resample.get("nearest")
 
         # When align_corners=None is in flags (from extra_args), use the module's default
         # This ensures masks use the same align_corners value as inputs for consistency
@@ -145,9 +155,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
                 flags["align_corners"] = self.flags.get("align_corners", False)
 
         output = self.apply_transform(input, params, flags, transform)
-
-        if resample_method is not None:
-            flags["resample"] = resample_method
 
         # Restore align_corners if it was modified
         if align_corners_was_none:

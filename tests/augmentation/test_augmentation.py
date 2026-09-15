@@ -4814,6 +4814,23 @@ class TestRandomElasticTransform(BaseTester):
         aug = RandomElasticTransform(p=1.0)
         assert img.shape == aug(img).shape
 
+    def test_alpha_is_x_then_y(self, device, dtype):
+        # #4418: `alpha` is (x, y), unlike `kernel_size` and `sigma`, which are (y, x). The image is constant
+        # down each column, so a vertical displacement cannot change it and a horizontal one must.
+        img = torch.arange(8, device=device, dtype=dtype).repeat(6, 1).reshape(1, 1, 6, 8)
+        noise = torch.ones(1, 2, 6, 8, device=device, dtype=dtype)
+        params = {"noise": noise, "batch_prob": torch.tensor([True], device=device)}
+
+        def warp(alpha):
+            aug = RandomElasticTransform(
+                kernel_size=(3, 3), sigma=(1.0, 1.0), alpha=alpha, padding_mode="border", p=1.0
+            )
+            return aug(img, params=params)
+
+        still = warp((0.0, 0.0))
+        self.assert_close(warp((0.0, 4.0)), still)
+        assert (warp((4.0, 0.0)) - still).abs().max().item() > 1.0
+
     def test_same_on_batch(self, device, dtype):
         f = RandomElasticTransform(p=1.0, same_on_batch=True)
         input = torch.eye(3, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1)
@@ -5296,6 +5313,19 @@ class TestRandomAutoContrast(BaseTester):
         out = aug(x_data)
         assert out.shape == x_data.shape
 
+    @pytest.mark.parametrize(("scale", "shift"), [(1.0, 0.0), (2.0, 0.0), (1.0, -1.0), (0.0, 0.5)])
+    def test_clip_output_does_not_change_the_output(self, scale, shift, device, dtype):
+        # #4436: normalize_min_max already lands in [0, 1], so the documented clamp is a no-op, even for the
+        # out-of-range inputs a caller would reach for it to protect against. The constant image (scale 0)
+        # comes back as zeros either way.
+        torch.manual_seed(0)
+        x = torch.rand(2, 3, 6, 8, device=device, dtype=dtype) * scale + shift
+        clipped = kornia.augmentation.RandomAutoContrast(clip_output=True, p=1.0)(x.clone())
+        unclipped = kornia.augmentation.RandomAutoContrast(clip_output=False, p=1.0)(x.clone())
+        self.assert_close(clipped, unclipped, rtol=0.0, atol=0.0)
+        assert unclipped.min().item() >= 0.0
+        assert unclipped.max().item() <= 1.0
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 5, device=device, dtype=torch.float64)
@@ -5690,12 +5720,16 @@ class TestRandomThinPlateSpline(CommonTests):
         assert params["dst"].dtype == dtype
         self.assert_close(params["dst"], params["src"], atol=0, rtol=0)
 
+    @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [False, True])
-    def test_zero_scale_identity(self, same_on_batch, device, dtype):
+    def test_zero_scale_identity(self, same_on_batch, align_corners, device, dtype):
         if dtype == torch.float16:
             pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
-        # align_corners=False has a separate sampling-grid defect tracked in #3928.
-        aug = self._augmentation_cls(scale=0.0, align_corners=True, same_on_batch=same_on_batch, p=1.0)
+        # Both conventions: a zero-scale spline is the identity whichever one the class is built
+        # with, and align_corners=False is the class default. This used to be pinned at True only,
+        # because warp_image_tps built its sampling grid corner-aligned whatever flag reached
+        # grid_sample, so the default path moved the image by half a pixel (#3928, #4411).
+        aug = self._augmentation_cls(scale=0.0, align_corners=align_corners, same_on_batch=same_on_batch, p=1.0)
         image = torch.arange(48, device=device, dtype=dtype).reshape(1, 1, 6, 8) / 48
         image = image.expand(2, 1, 6, 8).clone().requires_grad_()
 

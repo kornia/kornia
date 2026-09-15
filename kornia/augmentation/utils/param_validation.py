@@ -103,6 +103,29 @@ def _range_bound(
     return factor_bound
 
 
+def _shear_bound(
+    shear: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float, float]],
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    r"""Return the x- and y-axis shear ranges as a (2, 2) tensor on ``device`` in ``dtype``.
+
+    A float or an (a, b) pair only shears along the x axis, (a, b, c, d) also gives a y-axis
+    range, and a (2, 2) tensor already holds both ranges.
+    """
+    shear = torch.as_tensor(shear, device=device, dtype=dtype)
+    if shear.shape == torch.Size([2, 2]):
+        return shear
+    shear_x = _range_bound(
+        shear if shear.dim() == 0 else shear[:2], "shear-x", 0, (-360, 360), device=device, dtype=dtype
+    )
+    if shear.dim() == 0 or len(shear) == 2:
+        shear_y = torch.zeros(2, device=device, dtype=dtype)
+    else:
+        shear_y = _range_bound(shear[2:], "shear-y", 0, (-360, 360), device=device, dtype=dtype)
+    return torch.stack([shear_x, shear_y])
+
+
 def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[Tuple[float, float]] = None) -> None:
     """Check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]."""
     if bounds is None:

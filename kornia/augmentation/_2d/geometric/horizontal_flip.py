@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 # from torch import Tensor (use torch.Tensor instead)
+from kornia.augmentation._2d.base import _input_metadata_only
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.geometry.transform import hflip
 
@@ -77,6 +78,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
     # it until `.transform_matrix` is read (see RigidAffineAugmentationBase2D).
     _compute_matrix_lazily = True
 
+    @_input_metadata_only
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
