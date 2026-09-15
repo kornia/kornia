@@ -67,7 +67,13 @@ class LinearIlluminationGenerator(RandomGeneratorBase):
         sign = _range_bound(self.sign, "sign", bounds=(-1.0, 1.0), center=0.0).to(device, dtype)
         self.sign_sampler = UniformDistribution(sign[0], sign[1], validate_args=False)
 
-        self.directions_sampler = UniformDistribution(0, 4, validate_args=False)
+        # Draw the directions on the sampler device but always in float32: on MPS, half-precision
+        # ``torch.rand`` can return exactly 1.0, which would truncate to the invalid direction 4.
+        self.directions_sampler = UniformDistribution(
+            torch.tensor(0.0, device=device, dtype=torch.float32),
+            torch.tensor(4.0, device=device, dtype=torch.float32),
+            validate_args=False,
+        )
 
     def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         r"""Generate random 2D Gaussian illumination patterns."""
@@ -155,7 +161,13 @@ class LinearCornerIlluminationGenerator(RandomGeneratorBase):
         sign = _range_bound(self.sign, "sign", bounds=(-1.0, 1.0), center=0.0).to(device, dtype)
         self.sign_sampler = UniformDistribution(sign[0], sign[1], validate_args=False)
 
-        self.directions_sampler = UniformDistribution(0, 4, validate_args=False)
+        # Draw the directions on the sampler device but always in float32: on MPS, half-precision
+        # ``torch.rand`` can return exactly 1.0, which would truncate to the invalid direction 4.
+        self.directions_sampler = UniformDistribution(
+            torch.tensor(0.0, device=device, dtype=torch.float32),
+            torch.tensor(4.0, device=device, dtype=torch.float32),
+            validate_args=False,
+        )
 
     def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         r"""Generate random 2D Gaussian illumination patterns."""

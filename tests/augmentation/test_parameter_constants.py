@@ -29,7 +29,7 @@ from kornia.augmentation.utils.helpers import _constant_tensor
 from testing.base import BaseTester
 
 # Numeric constructor inputs deliberately keep the generated parameters on CPU, except for the
-# illumination generators, which follow the device and dtype their samplers were built for.
+# resize and illumination generators, which follow the device and dtype the generator was moved to.
 # Include both branches which construct destination corners in crop generators.
 GENERATORS = [
     pytest.param(lambda: rg.AffineGenerator(30.0), (4, 3, 16, 19), id="affine"),
@@ -244,6 +244,15 @@ class TestIlluminationPlacement(BaseTester):
         params = generator((4, 3, 16, 19))
         assert params["gradient"].device == device
         assert params["gradient"].dtype == dtype
+
+    @pytest.mark.parametrize("generator_class", [rg.LinearIlluminationGenerator, rg.LinearCornerIlluminationGenerator])
+    def test_directions_sampler(self, generator_class):
+        # The meta device makes the placement observable without an accelerator. The directions stay
+        # float32 because MPS half-precision ``torch.rand`` can return 1.0, which truncates to direction 4.
+        generator = generator_class((0.1, 0.2), (-1.0, 1.0)).to(device="meta", dtype=torch.float16)
+        assert generator.directions_sampler.low.device.type == "meta"
+        assert generator.directions_sampler.high.device.type == "meta"
+        assert generator.directions_sampler.low.dtype == torch.float32
 
 
 class TestResizedCropNumpyScale(BaseTester):
