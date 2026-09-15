@@ -3650,6 +3650,29 @@ def test_normal_transform_capture_matches_eager_bitwise(align_corners, size):
     assert_close(exported(runtime), ExportTransform()(runtime), atol=0.0, rtol=0.0)
 
 
+@pytest.mark.parametrize("align_corners", [True, False])
+@pytest.mark.parametrize("size", [3, 11, 31, 251, 4051])
+@pytest.mark.skipif(not dynamic_export_is_available(), reason=DYNAMIC_EXPORT_UNAVAILABLE_REASON)
+def test_normal_transform3d_capture_matches_eager_bitwise(align_corners, size):
+    """The 3-D twin of the test above (#4503): the same single-division offset, the same sizes."""
+
+    class ExportTransform(torch.nn.Module):
+        def forward(self, volume):
+            return kornia.geometry.normal_transform_pixel3d(
+                volume.shape[-3], volume.shape[-2], volume.shape[-1], device=volume.device, align_corners=align_corners
+            )
+
+    example = torch.zeros(1, 1, 2, 4, 2)
+    exported = torch.export.export(
+        ExportTransform(),
+        (example,),
+        dynamic_shapes=({4: torch.export.Dim("width", min=1, max=size + 1)},),
+    ).module()
+
+    runtime = torch.zeros(1, 1, 2, 4, size)
+    assert_close(exported(runtime), ExportTransform()(runtime), atol=0.0, rtol=0.0)
+
+
 class TestNormalTransformPixel(BaseTester):
     # normal_transform_pixel and normal_transform_pixel3d have no test class of their own in this
     # file -- their existing coverage lives in tests/geometry/transform/test_homography_warper.py.

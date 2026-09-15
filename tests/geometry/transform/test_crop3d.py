@@ -29,8 +29,19 @@ class TestCropAndResize3D(BaseTester):
         inp = torch.arange(0.0, 64.0, device=device, dtype=dtype).view(1, 1, 4, 4, 4)
 
         depth, height, width = 2, 2, 2
+        # The boxes are voxel coordinates, so they pin the sampling geometry regardless of
+        # align_corners: the default (False) now returns the same voxels as align_corners=True,
+        # which test_crop_batch pins for the same boxes on its first sample (#4503).
+        # Snippet used to generate expected (identical to the call under test):
+        #   inp = torch.arange(64.0).view(1, 1, 4, 4, 4)
+        #   boxes = torch.tensor([[[0, 0, 1], [3, 0, 1], [3, 2, 1], [0, 2, 1],
+        #                          [0, 0, 3], [3, 0, 3], [3, 2, 3], [0, 2, 3]]], dtype=torch.float32)
+        #   expected = kornia.geometry.transform.crop_and_resize3d(inp, boxes, (2, 2, 2))
+        # Pre-#4503 literal from the same snippet, when the 3D normalization was corner-aligned
+        # whatever flag reached grid_sample and the default path therefore resampled off-centre:
+        #   [[[[[25.1667, 27.1667], [30.5000, 32.5000]], [[46.5000, 48.5000], [51.8333, 53.8333]]]]]
         expected = torch.tensor(
-            [[[[[25.1667, 27.1667], [30.5000, 32.5000]], [[46.5000, 48.5000], [51.8333, 53.8333]]]]],
+            [[[[[16.0, 19.0], [24.0, 27.0]], [[48.0, 51.0], [56.0, 59.0]]]]],
             device=device,
             dtype=dtype,
         )
@@ -78,10 +89,18 @@ class TestCropAndResize3D(BaseTester):
     def test_gradcheck(self, device):
         img = torch.arange(0.0, 64.0, device=device, dtype=torch.float64).view(1, 1, 4, 4, 4)
 
-        boxes = torch.tensor(
-            [[[0, 0, 1], [3, 0, 1], [3, 2, 1], [0, 2, 1], [0, 0, 3], [3, 0, 3], [3, 2, 3], [0, 2, 3]]],
-            device=device,
-            dtype=torch.float64,
+        # Fractional corners on purpose. Trilinear sampling is not differentiable where a sample
+        # lands exactly on a voxel centre, and with integer corners every sample does, under either
+        # align_corners setting, so the numerical and analytical Jacobians disagree there. Before
+        # #4503 this gradcheck passed with integer corners only because the default path sampled
+        # off-centre by mistake.
+        boxes = (
+            torch.tensor(
+                [[[0, 0, 1], [3, 0, 1], [3, 2, 1], [0, 2, 1], [0, 0, 3], [3, 0, 3], [3, 2, 3], [0, 2, 3]]],
+                device=device,
+                dtype=torch.float64,
+            )
+            + 0.25
         )  # 1x8x3
 
         self.gradcheck(kornia.geometry.transform.crop_and_resize3d, (img, boxes, (4, 3, 2)))
@@ -160,14 +179,20 @@ class TestCenterCrop3D(BaseTester):
 
     def test_convention_align_corners_default_is_true(self, device, dtype):
         # center_crop3d's align_corners default is True, not merely a value that every existing
-        # test happens to pass explicitly: omitting the kwarg must equal align_corners=True and
-        # differ from align_corners=False.
+        # test happens to pass explicitly. The default is pinned on the signature, because the
+        # two settings no longer differ on an in-bounds crop: the crop box is given in voxel
+        # coordinates, so both conventions resolve it to the same voxel centres (#4503). They
+        # still differ in out-of-bounds handling only. Both must equal the plain integer slice.
+        import inspect
+
+        assert inspect.signature(kornia.geometry.transform.center_crop3d).parameters["align_corners"].default is True
         inp = torch.arange(0.0, 343.0, device=device, dtype=dtype).view(1, 1, 7, 7, 7)
         out_default = kornia.geometry.transform.center_crop3d(inp, (3, 3, 3))
         out_true = kornia.geometry.transform.center_crop3d(inp, (3, 3, 3), align_corners=True)
         out_false = kornia.geometry.transform.center_crop3d(inp, (3, 3, 3), align_corners=False)
         self.assert_close(out_default, out_true, rtol=1e-2, atol=1e-2)
-        assert not torch.allclose(out_default, out_false, atol=1e-2, rtol=1e-2)
+        self.assert_close(out_true, out_false, rtol=1e-2, atol=1e-2)
+        self.assert_close(out_false, inp[:, :, 2:5, 2:5, 2:5], rtol=1e-2, atol=1e-2)
 
 
 class TestCropByBoxes3D(BaseTester):
@@ -341,10 +366,13 @@ class TestCropByBoxes3D(BaseTester):
     def test_convention_align_corners_default_is_false(self, device, dtype):
         # crop_by_boxes3d's align_corners default is False -- every other dedicated test in
         # this class passes align_corners=True explicitly, so the default itself was never
-        # exercised until now. Also pins the docstring's "inclusive coordinates" consequence
-        # with the same fixture: the box extent (1, 1, 1)..(2, 2, 2) reproduces the exact
-        # integer-voxel slice only under align_corners=True -- the align_corners=False
-        # default interpolates instead.
+        # exercised until now. The default is pinned on the signature. The box extent
+        # (1, 1, 1)..(2, 2, 2) reproduces the exact integer-voxel slice under BOTH settings now:
+        # before #4503 the False default interpolated off-centre, because the 3D normalization
+        # was corner-aligned whatever flag reached grid_sample.
+        import inspect
+
+        assert inspect.signature(kornia.geometry.transform.crop_by_boxes3d).parameters["align_corners"].default is False
         vol = torch.arange(64.0, device=device, dtype=dtype).view(1, 1, 4, 4, 4)
         src_box = torch.tensor(
             [
@@ -385,9 +413,8 @@ class TestCropByBoxes3D(BaseTester):
         out_false = kornia.geometry.transform.crop_by_boxes3d(vol, src_box, dst_box, align_corners=False)
 
         self.assert_close(out_default, out_false, rtol=1e-2, atol=1e-2)
-        assert not torch.allclose(out_default, out_true, atol=1e-2, rtol=1e-2)
         self.assert_close(out_true, expected_slice, rtol=1e-2, atol=1e-2)
-        assert not torch.allclose(out_default, expected_slice, atol=1e-2, rtol=1e-2)
+        self.assert_close(out_default, expected_slice, rtol=1e-2, atol=1e-2)
 
     def test_convention_crop_by_transform_mat3d_direct(self, device, dtype):
         # crop_by_transform_mat3d has no direct test anywhere in this file -- it is only ever

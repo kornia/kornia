@@ -197,15 +197,12 @@ covers a slightly different extent of the source image.
    ``align_corners=True`` until this is fixed. Tracked in
    `#4504 <https://github.com/kornia/kornia/issues/4504>`_.
 
-   The 3-D warps are the other exception. ``normal_transform_pixel3d`` and
-   ``normalize_homography3d`` take no ``align_corners`` at all, so
-   :func:`kornia.geometry.transform.warp_affine3d` and
-   :func:`kornia.geometry.transform.warp_perspective3d` normalize with the corner-aligned
-   convention whatever flag they pass to ``grid_sample``, and have the same mismatch at
-   ``align_corners=False``: an identity ``warp_perspective3d`` changes a 4x4x4 ``arange``
-   volume by up to ``55.1`` there, against exactly ``0`` at ``align_corners=True``. Pass
-   ``align_corners=True`` to the 3-D warps until this is fixed. Tracked in
-   `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
+   The 3-D warps are consistent. ``normal_transform_pixel3d``, ``normalize_homography3d``
+   and ``create_meshgrid3d`` take the same ``align_corners`` as their 2-D counterparts, with
+   the same ``True`` default, and :func:`kornia.geometry.transform.warp_affine3d`,
+   :func:`kornia.geometry.transform.warp_perspective3d` and
+   :func:`kornia.geometry.transform.homography_warp3d` forward their own flag, so an identity
+   warp reproduces the input under either setting.
 
 Bounding boxes
 --------------
