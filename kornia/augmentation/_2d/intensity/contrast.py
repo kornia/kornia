@@ -49,11 +49,12 @@ class RandomContrast(IntensityAugmentationBase2D):
         - the drawn factor reaches :func:`kornia.enhance.adjust_contrast` unchanged -- it is not re-based
           the way :class:`RandomBrightness` re-bases its own -- and ``1.0`` is the identity.
         - ``clip_output`` is live. Left at its default ``True`` the result is clamped into ``[0, 1]``;
-          with ``clip_output=False`` an input outside ``[0, 1]`` gives an output outside it.
+          with ``clip_output=False`` the raw product is returned. Multiplying an out-of-range input can
+          leave it outside that interval or bring it inside.
 
     .. warning::
         At the default ``clip_output=True`` an input whose values are all negative comes back as an all-zero
-        image; with ``clip_output=False`` the negative values are carried through. Tracked in
+        image; with ``clip_output=False`` negative products are not clipped. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::

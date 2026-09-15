@@ -280,6 +280,20 @@ class TestIntensityValueRangeConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         assert float(cls((1.5, 1.5), clip_output=False, p=1.0)(negative).min()) < 0.0
 
+    @pytest.mark.parametrize(
+        ("name", "factor", "value", "expected"),
+        [("RandomBrightness", 1.5, -0.1, 0.4), ("RandomContrast", 0.5, 1.5, 0.75)],
+    )
+    def test_convention_unclipped_arithmetic_can_bring_input_into_range(
+        self, device, dtype, name, factor, value, expected
+    ):
+        # No clamp does not imply an out-of-range output: -0.1 + (1.5 - 1) = 0.4;
+        # 1.5 * 0.5 = 0.75. These complement the out-of-range outputs above.
+        image = torch.full((1, 3, 2, 2), value, device=device, dtype=dtype)
+        aug = getattr(K, name)((factor, factor), clip_output=False, p=1.0)
+        out = aug(image)
+        self.assert_close(out, torch.full_like(image, expected))
+
     # Row 6c-01, the audit exclusions the anchor and conventions.rst name: the factories cover
     # the classes this file executes, and the classes they leave out are exactly the
     # three named there.  RandomDissolving is excluded by method (constructing it downloads a
@@ -454,6 +468,25 @@ class TestIntensityColourConventions(BaseTester):
         raw = gain * ramp**gamma
         self.assert_close(out, raw.clamp(0.0, 1.0))
         assert float((out - raw).abs().max()) > unclamped_gap / 2
+
+    @pytest.mark.parametrize(("gain", "expected"), [(1.0, [1.0, 1.0, 1.0]), (0.1, [0.5, 0.2, 0.125])])
+    def test_convention_random_gamma_negative_exponent_on_mps_depends_on_gain(self, device, dtype, gain, expected):
+        if device.type != "mps":
+            pytest.skip("MPS only: CPU rejects negative gamma; CUDA would invalidate the context with a device assert")
+        # MPS skips the value check. At gamma=-1 the output is clamp(gain / input, 0, 1):
+        # gain=1 saturates every pixel here, while gain=0.1 preserves three distinct values.
+        image = torch.tensor([0.2, 0.5, 0.8], device=device, dtype=dtype).reshape(1, 3, 1, 1)
+        out = K.RandomGamma((-1.0, -1.0), (gain, gain), p=1.0)(image)
+        self.assert_close(out, image.new_tensor(expected).reshape_as(image))
+
+    def test_convention_random_saturation_clamps_hsv_without_a_final_rgb_clamp(self, device, dtype):
+        # Clamping HSV saturation removes the first pixel's negative RGB channel even at factor=1.
+        # The second pixel keeps its maximum of 1.5, which a final RGB clamp would remove.
+        # Its zero hue avoids amplifying half-precision hue round-trip error at that larger value.
+        image = torch.tensor([[-0.1, 0.5, 0.5], [1.5, 0.0, 0.0]], device=device, dtype=dtype).reshape(2, 3, 1, 1)
+        out = K.RandomSaturation((1.0, 1.0), p=1.0)(image)
+        expected = image.new_tensor([[0.0, 0.5, 0.5], [1.5, 0.0, 0.0]]).reshape_as(image)
+        self.assert_close(out, expected)
 
     # Rows 6c-06 and 6c-49: RandomBrightness re-bases its factor -- it passes `factor - 1` to
     # kornia.enhance.adjust_brightness, whose identity is 0.0 -- while RandomContrast and
