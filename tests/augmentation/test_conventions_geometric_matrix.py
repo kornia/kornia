@@ -142,6 +142,19 @@ class TestConventionGeometricMatrices(BaseTester):
             K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)(image), image, low_tolerance=True
         )
 
+    @pytest.mark.parametrize("size", [(1, 7), (5, 1), (1, 1)])
+    @pytest.mark.parametrize("align_corners", [False, True])
+    def test_wart_random_perspective_singleton_dimensions_4538(self, device, dtype, size, align_corners):
+        height, width = size
+        image = torch.arange(height * width, device=device, dtype=dtype).reshape(1, 1, height, width)
+        augmentation = K.RandomPerspective(0.0, align_corners=align_corners, p=1.0)
+
+        output = augmentation(image)
+
+        # Coincident source corners make the perspective solve degenerate, even without distortion.
+        assert torch.isnan(augmentation.transform_matrix).all()
+        assert torch.isnan(output).all()
+
     def test_wart_random_affine_rotation_sign_4408(self, device, dtype):
         x = torch.zeros(1, 1, 7, 7, device=device, dtype=dtype)
         x[..., 1, 4] = 1

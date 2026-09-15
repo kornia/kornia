@@ -59,8 +59,10 @@ class RandomPerspective(GeometricAugmentationBase2D):
           padding, and ``align_corners=False``. ``same_on_batch=True`` reuses the sampled destination corners for
           every selected sample.
 
-        - With ``distortion_scale=0``, the image warp is identity up to numerical precision for either
-          ``align_corners`` setting.
+        - With ``distortion_scale=0`` and ``H > 1``, ``W > 1``, the image warp is identity up to numerical
+          precision for either ``align_corners`` setting. If either spatial dimension is 1, coincident source
+          corners instead produce a NaN transformation matrix and output even at zero distortion. This limitation
+          is recorded in `#4538 <https://github.com/kornia/kornia/pull/4538#pullrequestreview-5209122169>`_.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_pespective`.
