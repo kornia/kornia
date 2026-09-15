@@ -1,0 +1,1 @@
+- `RandomRain` now draws `number_of_drops`, `drop_height` and `drop_width` uniformly over their closed integer ranges: the upper bound used to be unreachable (`drop_height=(5, 20)` gave 5 to 19) and a signed `drop_width` drew `0` twice as often as any other value (#4567).

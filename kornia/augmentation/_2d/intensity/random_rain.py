@@ -50,11 +50,10 @@ class RandomRain(IntensityAugmentationBase2D):
           through unclamped.
         - both sizes must be strictly smaller than the image on their own axis. A drop as tall as the image,
           or as wide, raises on the forward pass, where the image shape is known -- constructing it succeeds.
-        - the drawn sizes and drop count are float draws truncated to integers, and the draw never reaches the
-          upper bound: the default ``drop_height=(5, 20)`` gives heights of ``5`` to ``19`` (an image shorter
-          than 20 pixels raises on some seeds, and on every seed when it is 5 pixels tall or shorter), and a
-          signed ``drop_width`` draws ``0`` twice as often as any other value. Tracked in
-          `#4567 <https://github.com/kornia/kornia/issues/4567>`_.
+        - the three integer ranges are closed and uniform: the default ``drop_height=(5, 20)`` draws every
+          height from ``5`` to ``20`` with the same probability, and a signed ``drop_width`` such as the
+          default ``(-5, 5)`` gives ``0`` no more weight than any other value. An image 20 pixels tall or
+          shorter therefore raises on some seeds, and on every seed when it is 5 pixels tall or shorter.
         - ``same_on_batch=True`` gives every sample of the batch the same drop count, the same drop size and
           the same coordinates; left at ``False`` each sample draws its own.
 
@@ -65,7 +64,7 @@ class RandomRain(IntensityAugmentationBase2D):
         >>> rain(input)
         tensor([[[[0.4963, 0.7843, 0.0885, 0.1320, 0.3074],
                   [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
-                  [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
+                  [0.3489, 0.4017, 0.7843, 0.1689, 0.2939],
                   [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
                   [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
 
