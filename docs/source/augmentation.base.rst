@@ -57,8 +57,7 @@ Custom Augmentation Classes
 
 `IntensityAugmentationBase2D` supplies an identity matrix and default passthrough handlers for most annotations.
 Subclasses can override these defaults: `RandomErasing` zero-fills the erased mask region. Direct intensity
-`transform_boxes` calls currently raise because the base's box-handler names do not match the dispatcher
-(`#4480 <https://github.com/kornia/kornia/issues/4480>`_); the container skips intensity transforms for boxes.
+`transform_boxes` calls return the boxes unchanged; the container skips intensity transforms for boxes.
 `GeometricAugmentationBase2D` supplies the dispatch used for geometric coordinate transformations.
 
 For a geometric operation, implement `compute_transformation` and `apply_transform`. Supporting image inversion
@@ -244,7 +243,20 @@ Several constructors accept ``nn.Parameter`` ranges and can propagate gradients 
 are not necessarily connected to cached samplers after ``load_state_dict``; reconstruct those configurations
 to change their sampling ranges (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
 
-The ``kornia.augmentation.auto`` policies cannot be pickled (`#4469 <https://github.com/kornia/kornia/issues/4469>`_),
-and lazy matrix state can retain the last input batch in a pickle or deepcopy
-(`#4482 <https://github.com/kornia/kornia/issues/4482>`_).
+The ``kornia.augmentation.auto`` policies cannot be pickled (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
+
+The built-in 2D intensity augmentations, flips, ``Resize`` (including ``LongestMaxSize`` and
+``SmallestMaxSize``), and slice-mode ``RandomResizedCrop`` compute their transformation matrix
+only when it is requested. Their pending matrix state keeps the input's shape, dtype and device
+alongside the transformation parameters, without retaining the image tensor itself. Consequently,
+``pickle``, ``copy.deepcopy`` and ``torch.save`` of these modules do not carry the last image batch
+merely because its matrix has not yet been read. Parameters remain available for replay, including
+their existing gradient connections.
+
+Custom lazy subclasses may use pixel values in ``transform_tensor``, ``generate_transformation_matrix``,
+``compute_transformation`` or ``identity_matrix``. Overriding any of these four methods keeps the
+original input-based lazy behavior, retaining the input until the matrix is read or another forward
+replaces the pending state. Inheriting unchanged built-in implementations preserves their compact
+metadata state; an override does not implicitly promise that it can operate without pixel data.
+
 See :doc:`/get-started/conventions` for replay and serialization details.

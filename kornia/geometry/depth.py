@@ -81,6 +81,9 @@ def unproject_meshgrid(
           :func:`~kornia.geometry.depth.depth_to_3d_v2` needs when its depth is a Euclidean ray length rather
           than a camera-frame ``z``.
 
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for pixel centres,
+        camera-frame depth and the intrinsics convention used by these rays.
+
     Args:
         height: height of image.
         width: width of image.
@@ -112,7 +115,7 @@ def unproject_meshgrid(
     points_xyz = convert_points_to_homogeneous(points_xy)  # HxWx3
 
     if normalize_points:
-        points_xyz = F.normalize(points_xyz, dim=-1, p=2)
+        points_xyz = F.normalize(points_xyz, dim=-1, p=2.0)
 
     return points_xyz
 
@@ -151,6 +154,9 @@ def depth_to_3d_v2(
         - passing ``xyz_grid`` skips the grid construction and uses the given rays instead; the two forms give
           the same result when ``xyz_grid`` is what
           :func:`~kornia.geometry.depth.unproject_meshgrid` returns for the same camera.
+
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the pixel-centre,
+        camera-frame depth and intrinsics conventions used here.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(*, H, W)`.
@@ -212,6 +218,9 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
           of as ``z``, so the returned point has that norm rather than that ``z``.
         - an integer ``depth`` map is promoted through arithmetic with ``camera_matrix``: with floating-point
           intrinsics the point cloud follows their dtype (for example, ``float32`` or ``float64``).
+
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the pixel-centre,
+        camera-frame depth and intrinsics conventions used here.
 
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
@@ -413,6 +422,9 @@ def warp_frame_depth(
           can be nonzero; samples whose entire interpolation footprint is outside return 0.
         - the result carries ``image_src``'s channel count, whatever it is: the output is :math:`(B, D, H, W)`.
 
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera-frame,
+        depth and intrinsics conventions composed by this warp.
+
     .. warning::
         :class:`~kornia.geometry.depth.DepthWarper` performs the same warp under the **opposite** naming: the
         frame this function calls ``dst`` (the one holding the depth) is that class's ``src``, and the image it
@@ -502,6 +514,9 @@ class DepthWarper(nn.Module):
         - :func:`~kornia.geometry.depth.depth_warp` is the functional form of this class -- it builds one,
           calls :meth:`compute_projection_matrix` and forwards -- and returns a result equal to it bit for bit.
           It exposes ``align_corners`` only; ``mode`` and ``padding_mode`` keep their defaults there.
+
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for the camera/world-frame,
+        intrinsics and pixel-centre conventions used by this class.
 
     .. warning::
         :func:`~kornia.geometry.depth.warp_frame_depth` performs the same warp under the **opposite** naming.

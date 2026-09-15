@@ -83,6 +83,9 @@ permissions:
 jobs:
   tests:
     runs-on: ${{ inputs.os }}
+    # Hang guard: norms are ~6–15m (ubuntu), ~25m (MPS), ~61m (hosted macOS CPU).
+    # Keep well under GitHub's 6h default so a wedged test fails as a timeout.
+    timeout-minutes: ${{ inputs.device == 'mps' && 45 || startsWith(inputs.os, 'macos') && 90 || 45 }}
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:

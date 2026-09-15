@@ -91,9 +91,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     merging into it, so an override that omits a key drops that key's default. An empty dict
                     is falsy and restores the default. ``DataKey.IMAGE`` honours both entries and
                     ``DataKey.KEYPOINTS`` honours neither. For ``DataKey.MASK`` on a 2D geometric augmentation
-                    that uses the base mask path the ``resample`` entry is discarded -- masks are resampled
-                    with nearest neighbour whatever it says. ``align_corners`` is handler-dependent: some warps
-                    honor it, but resize mask paths replace it as well (see #4419).
+                    that uses the base mask path the ``resample`` entry is honoured in both directions, and a
+                    dict without one resamples masks with nearest neighbour. ``align_corners`` is
+                    handler-dependent: some warps honor it, but resize mask paths replace it.
                     With :class:`~kornia.augmentation.RandomResizedCrop`,
                     boolean ``align_corners`` overrides raise ``ValueError`` in the default ``cropping_mode='slice'``
                     mask path; ``cropping_mode='resample'`` accepts them. ``None`` works in both modes.
@@ -177,11 +177,6 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           ``.transform_matrix`` at ``None`` whatever the chain.
 
     .. warning::
-        The base 2D geometric mask path discards the ``resample`` half of an ``extra_args[DataKey.MASK]``
-        override. Custom mask paths, including ``RandomElasticTransform``, may honor it instead. Tracked in
-        `#4419 <https://github.com/kornia/kornia/issues/4419>`_.
-
-    .. warning::
         A non-rigid child silently desynchronizes the coordinate data keys:
         :class:`~kornia.augmentation.RandomElasticTransform` warps the image **and** a ``mask`` key with it,
         but returns keypoints and boxes unchanged, and
@@ -190,10 +185,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         Tracked in `#4420 <https://github.com/kornia/kornia/issues/4420>`_.
 
     .. note::
-        Inside this container a mix child (e.g. RandomMixUpV2, RandomCutMixV2, RandomMosaic) mixes the image only.
-        A ``class``/``label`` key raises ``NotImplementedError``, and ``mask``, box and ``keypoints`` keys are
-        returned unchanged, silently desynchronized from the mixed image, even where the class transforms that
-        key when called directly (``RandomMosaic`` boxes). Tracked in
+        Inside this container a mix child (e.g. RandomMixUpV2, RandomCutMixV2, RandomMosaic) dispatches
+        ``mask``, box and ``keypoints`` keys to the child's own handlers, using the same parameters as the
+        mixed image. Keys the child does not implement raise ``NotImplementedError``, matching a direct call
+        (for example ``RandomMosaic`` transforms boxes and refuses masks/keypoints). A ``class``/``label`` key
+        still raises ``NotImplementedError`` from the container. Fixed in
         `#4493 <https://github.com/kornia/kornia/issues/4493>`_.
 
     .. note::

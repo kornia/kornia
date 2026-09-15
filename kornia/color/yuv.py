@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from kornia.color.utils import _apply_linear_transformation
@@ -101,10 +102,17 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
     yuvimage = rgb_to_yuv(image)
 
-    return (
-        yuvimage[..., :1, :, :],
-        yuvimage[..., 1:3, :, :].unfold(-2, 2, 2).unfold(-2, 2, 2).mean((-1, -2)),
-    )
+    # A 2x2 box mean. avg_pool2d computes it directly; a mean over two unfolded window
+    # dims gives the same values but is several times slower, most of all on MPS.
+    uv = yuvimage[..., 1:3, :, :]
+    leading = list(uv.shape[:-3])
+    batch = 1
+    for size in leading:
+        batch *= size
+    height, width = uv.shape[-2], uv.shape[-1]
+    uv = F.avg_pool2d(uv.reshape([batch, 2, height, width]), 2)
+
+    return yuvimage[..., :1, :, :], uv.reshape(leading + [2, height // 2, width // 2])
 
 
 def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:

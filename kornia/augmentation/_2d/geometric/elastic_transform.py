@@ -31,11 +31,11 @@ class RandomElasticTransform(AugmentationBase2D):
     .. image:: _static/img/RandomElasticTransform.png
 
     Args:
-        kernel_size: the size of the Gaussian kernel.
+        kernel_size: the size of the Gaussian kernel, in the y and x directions, respectively.
         sigma: The standard deviation of the Gaussian in the y and x directions,
           respectively. Larger sigma results in smaller pixel displacements.
         alpha: The scaling factor that controls the intensity of the deformation
-          in the y and x directions, respectively.
+          in the x and y directions, respectively -- the opposite order to ``kernel_size`` and ``sigma``.
         align_corners: Interpolation flag used by `grid_sample`.
         resample: Interpolation mode used by `grid_sample`. Either 'nearest' (0) or 'bilinear' (1).
         padding_mode: The padding used by ```grid_sample```. Either 'torch.zeros', 'border' or 'refection'.

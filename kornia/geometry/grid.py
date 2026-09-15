@@ -39,6 +39,9 @@ def create_meshgrid(
     produces a correspondingly empty grid; this differs from pixel-coordinate
     normalization, where a zero-sized coordinate system is undefined.
 
+    See :doc:`Conventions & Pitfalls </get-started/conventions>` for the library-wide pixel-centre and
+    normalized-coordinate conventions used by this grid.
+
     Args:
         height: the image height (rows).
         width: the image width (cols).

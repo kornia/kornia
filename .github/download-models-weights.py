@@ -46,6 +46,25 @@ logger = logging.getLogger(__name__)
 
 # Format: "<cache filename>": "<url>" | ["<primary url>", "<fallback url>"]
 MODELS: dict[str, "str | list[str]"] = {
+    # Reference tensors used by conftest.py's data fixture. Prefetch these once
+    # before the matrix so every job does not download them on a cold cache.
+    "loftr_outdoor_and_homography_data.pt": (
+        "https://raw.githubusercontent.com/kornia/data_test/"
+        "cb8f42bf28b9f347df6afba5558738f62a11f28a/loftr_outdoor_and_homography_data.pt"
+    ),
+    "loftr_indoor_and_fundamental_data.pt": (
+        "https://raw.githubusercontent.com/kornia/data_test/"
+        "cb8f42bf28b9f347df6afba5558738f62a11f28a/loftr_indoor_and_fundamental_data.pt"
+    ),
+    "adalam_test.pt": (
+        "https://raw.githubusercontent.com/kornia/data_test/f7d8da661701424babb64850e03c5e8faec7ea62/adalam_test.pt"
+    ),
+    "knchurch_disk.pt": (
+        "https://raw.githubusercontent.com/kornia/data_test/8b98f44abbe92b7a84631ed06613b08fee7dae14/knchurch_disk.pt"
+    ),
+    "xfeat_reference.pt": (
+        "https://raw.githubusercontent.com/kornia/data_test/279e95e411f2d3926953dea3842347242190f4da/xfeat_reference.pt"
+    ),
     # -- detectors, descriptors and orientation estimators -------------------
     # AffNet + OriNet: LAFAffNetShapeEstimator / LAFOrienter, and every composite
     # built on them (GFTTAffNetHardNet, KeyNetHardNet, KeyNetAffNetHardNet).

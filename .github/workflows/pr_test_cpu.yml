@@ -16,6 +16,7 @@ concurrency:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       run-tests: ${{ steps.filter.outputs.run-tests }}
     steps:
@@ -51,6 +52,7 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.run-tests == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     outputs:
       hash: ${{ steps.hashid.outputs.weights-hash }}
     steps:
@@ -228,6 +230,7 @@ jobs:
     needs: [changes, pre-tests, tests, tests-mps, half-precision, dynamo, typecheck]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: check for failures
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
