@@ -23,12 +23,19 @@ import pickle
 
 import pytest
 import torch
+from torch.distributions import Distribution
 
 import kornia.augmentation as K
 from kornia.constants import BorderType, Resample
 from kornia.filters import box_blur
 
-from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
+from testing.base import (
+    DYNAMO_UNAVAILABLE_REASON,
+    BaseTester,
+    dynamo_is_available,
+    supports_reflect_padding,
+    supports_replicate_padding,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -1087,12 +1094,40 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         buffer = io.BytesIO()
         torch.save(_illumination(name), buffer)
         assert buffer.getbuffer().nbytes > 0
-        # `.compile()` on RandomGaussianIllumination swaps in a compiled transform that neither pickle nor
-        # torch.save can serialize, while deepcopy still works; the linear classes keep pickling.  Nothing
-        # is run, so no compiler is invoked.  Measured on cpu: `PicklingError: Can't pickle <function
-        # _apply_gaussian_illumination ...>` for both, and a deep copy of type RandomGaussianIllumination.
+
+    # `.compile()` on RandomGaussianIllumination swaps in a compiled transform that neither pickle nor
+    # torch.save can serialize, while deepcopy still works; the linear classes keep pickling.  Measured
+    # on cpu: `PicklingError: Can't pickle <function _apply_gaussian_illumination ...>` for both, and a
+    # deep copy of type RandomGaussianIllumination.
+    #
+    # This leg is separate from the pickle pin above because calling ``torch.compile`` is not free even
+    # when nothing is run through it, so it must not ride along on an ordinary test:
+    #   * its first statement raises ``RuntimeError: Dynamo is not supported on Python 3.13+`` on
+    #     torch<2.6, i.e. the call fails before any compilation is attempted; and
+    #   * where it succeeds, Dynamo's one-time init calls
+    #     ``torch.distributions.Distribution.set_default_validate_args(False)`` process-wide and never
+    #     restores it, stripping argument validation from every later test in the same process.  The
+    #     cpu-float16 known-failure manifest records 108
+    #     ``TestRandomCutMixGen::test_valid_param_combinations`` nodes that fail only because
+    #     ``beta=1e-15`` underflows to 0 in float16 and ``Beta(0, 0)`` rejects it; unvalidated they
+    #     XPASS and the strict manifest gate goes red.
+    #
+    # ``compile`` in the test name is load-bearing, not decorative: ``pytest_collection_modifyitems``
+    # drops any test whose name contains "compile" or "dynamo" unless ``KORNIA_TEST_OPTIMIZER`` is set,
+    # which is what confines both hazards to the dynamo job.  Renaming it without that substring would
+    # put ``torch.compile`` back into every CPU leg.  The skipif and the validate-args restore cover the
+    # dynamo job itself, where conftest's session warm-up is skipped under ``KORNIA_TEST_IN_SUBPROCESS``.
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+    @pytest.mark.parametrize(
+        "name", ["RandomGaussianIllumination", "RandomLinearIllumination", "RandomLinearCornerIllumination"]
+    )
+    def test_convention_compiled_illumination_pickling(self, device, dtype, name):
         compiled = _illumination(name)
-        compiled.compile()
+        validate_args = Distribution._validate_args
+        try:
+            compiled.compile()
+        finally:
+            Distribution.set_default_validate_args(validate_args)
         assert isinstance(copy.deepcopy(compiled), type(compiled))
         if name == "RandomGaussianIllumination":
             with pytest.raises(pickle.PicklingError):
