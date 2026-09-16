@@ -130,12 +130,6 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         does not load into an instance built with the other. Tracked in
         `#4428 <https://github.com/kornia/kornia/issues/4428>`_.
 
-    .. warning::
-        The table is not cast to the input's dtype, so the output takes the promoted dtype of the input and
-        the table. With the table left at ``float32``, a ``float16`` or ``bfloat16`` input comes back as
-        ``float32``; casting the module to the input's own dtype keeps it. Tracked in
-        `#4574 <https://github.com/kornia/kornia/issues/4574>`_.
-
     .. note::
         Input torch.Tensor must be float and normalized into [0, 1].
 
@@ -215,8 +209,8 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])
-        # Index with the tensor itself: `.tolist()` reads the data, which graph capture cannot do. The buffer
-        # follows the module's device, so it is not re-assigned here.
+        # Index with the tensor itself: `.tolist()` reads the data, which graph capture cannot do. Cast the
+        # buffer to the input so both device and dtype follow the input for the channel-wise multiplication.
         coeffs = self.pl.to(input)[params["idx"].long()]
 
         r_w = coeffs[:, 0][..., None, None]
