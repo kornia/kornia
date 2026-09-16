@@ -2190,6 +2190,18 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         # evaluate function gradient
         self.gradcheck(kornia.geometry.conversions.axis_angle_to_rotation_matrix, (axis_angle,))
 
+    def test_convention_gradient_is_finite_near_the_identity(self, device, dtype):
+        # Small angles take the Taylor branch, but torch.where still backpropagates through the discarded
+        # Rodrigues branch, whose sqrt(theta2) had a `clamp(min=1e-12)` floor. In float16 that floor is 0,
+        # so the gradient was nan at the identity and wherever theta2 underflows (1e-4 below).
+        # At the identity d(sum R)/dv is the sum of the skew matrix [v]x, which is 0.
+        axis_angle = torch.tensor(
+            [[0.0, 0.0, 0.0], [1e-4, 0.0, 0.0], [0.0, 5e-4, 2e-4]], device=device, dtype=dtype, requires_grad=True
+        )
+        kornia.geometry.conversions.axis_angle_to_rotation_matrix(axis_angle).sum().backward()
+        assert bool(torch.isfinite(axis_angle.grad).all()), axis_angle.grad
+        self.assert_close(axis_angle.grad[0], torch.zeros(3, device=device, dtype=dtype))
+
     def test_axis_angle_to_rotation_matrix(self, device, dtype, atol, rtol):
         rmat_1 = torch.tensor(
             (

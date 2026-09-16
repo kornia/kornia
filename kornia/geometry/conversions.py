@@ -441,7 +441,7 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Input size must be a (*, 3) tensor. Got {axis_angle.shape}")
 
     def _compute_rotation_matrix(axis_angle: torch.Tensor, theta2: torch.Tensor) -> torch.Tensor:
-        theta = torch.sqrt(theta2.clamp(min=1e-12))  # clamping to ensure no nan gradients
+        theta = torch.sqrt(theta2)
         wxyz = axis_angle / theta.unsqueeze(-1)  # (*, 3)
         wx, wy, wz = wxyz.unbind(dim=-1)  # (*,)
 
@@ -507,13 +507,15 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
         return rot
 
     theta2 = (axis_angle * axis_angle).sum(dim=-1)
+    mask = theta2 > 1e-6
 
-    rot_normal = _compute_rotation_matrix(axis_angle, theta2)  # (*,3,3)
+    # Rows on the Taylor branch feed the discarded Rodrigues branch a stand-in theta2 of 1, so its backward never
+    # differentiates sqrt at 0. A clamp floor is no guard here: 1e-12 underflows to 0 in float16.
+    safe_theta2 = torch.where(mask, theta2, torch.ones_like(theta2))
+    rot_normal = _compute_rotation_matrix(axis_angle, safe_theta2)  # (*,3,3)
     rot_taylor = _compute_rotation_matrix_taylor(axis_angle)  # (*,3,3)
 
-    mask = (theta2 > 1e-6)[..., None, None]  # shape (*,1,1)
-
-    rotation_matrix = torch.where(mask, rot_normal, rot_taylor)
+    rotation_matrix = torch.where(mask[..., None, None], rot_normal, rot_taylor)
 
     return rotation_matrix
 
