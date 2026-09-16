@@ -1,0 +1,1 @@
+`draw_line` no longer draws a pixel one row or column off where the line passes exactly through a pixel centre: the minor coordinate is now rounded in integer arithmetic, so a float step landing just above an exact integer no longer rounds it up. It also builds every line's coordinates on the image's device instead of in Python loops over 0-d tensors.

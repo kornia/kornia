@@ -126,81 +126,33 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     p2 = p2.to(image.device).to(torch.int64)
     color = color.to(image)
 
-    x1, y1 = p1[..., 0], p1[..., 1]
-    x2, y2 = p2[..., 0], p2[..., 1]
-    dx = x2 - x1
-    dy = y2 - y1
+    p1 = p1.reshape(-1, 2)
+    p2 = p2.reshape(-1, 2)
+    x1, y1 = p1[:, 0:1], p1[:, 1:2]
+    dx = p2[:, 0:1] - x1
+    dy = p2[:, 1:2] - y1
     dx_sign = torch.sign(dx)
     dy_sign = torch.sign(dy)
     dx, dy = torch.abs(dx), torch.abs(dy)
-    dx_zero_mask = dx == 0
-    dy_zero_mask = dy == 0
-    dx_gt_dy_mask = (dx > dy) & ~(dx_zero_mask | dy_zero_mask)
-    rest_mask = ~(dx_zero_mask | dy_zero_mask | dx_gt_dy_mask)
 
-    dx_zero_x_coords, dx_zero_y_coords = [], []
-    dy_zero_x_coords, dy_zero_y_coords = [], []
-    dx_gt_dy_x_coords, dx_gt_dy_y_coords = [], []
-    rest_x_coords, rest_y_coords = [], []
+    # Every line steps one pixel at a time along its major axis and places the minor coordinate at
+    # ceil(t * minor / major), so all lines share one (B, L) grid of steps t = 0..L-1 and a mask
+    # trims each line to its own major + 1 pixels. The ceiling is taken in integers: a float step
+    # lands just above an exact integer quotient and rounds it up a pixel. A vertical or horizontal
+    # line has minor = 0, and a single point has major = 0, which the clamp keeps from dividing by 0.
+    x_major = dx > dy
+    major = torch.where(x_major, dx, dy)
+    minor = torch.where(x_major, dy, dx)
+    num_steps = int(major.max()) + 1
+    t = torch.arange(num_steps, device=image.device).unsqueeze(0)
+    divisor = major.clamp_min(1)
+    t_minor = torch.div(t * minor + divisor - 1, divisor, rounding_mode="floor")
+    x_coords = x1 + dx_sign * torch.where(x_major, t, t_minor)
+    y_coords = y1 + dy_sign * torch.where(x_major, t_minor, t)
+    on_line = t <= major
 
-    if dx_zero_mask.any():
-        dx_zero_x_coords = [
-            x for x_i, dy_i in zip(x1[dx_zero_mask], dy[dx_zero_mask]) for x in x_i.repeat(int(dy_i.item() + 1))
-        ]
-        dx_zero_y_coords = [
-            y
-            for y_i, s, dy_ in zip(y1[dx_zero_mask], dy_sign[dx_zero_mask], dy[dx_zero_mask])
-            for y in (y_i + s * torch.arange(0, dy_ + 1, 1, device=image.device))
-        ]
-
-    if dy_zero_mask.any():
-        dy_zero_x_coords = [
-            x
-            for x_i, s, dx_i in zip(x1[dy_zero_mask], dx_sign[dy_zero_mask], dx[dy_zero_mask])
-            for x in (x_i + s * torch.arange(0, dx_i + 1, 1, device=image.device))
-        ]
-        dy_zero_y_coords = [
-            y for y_i, dx_i in zip(y1[dy_zero_mask], dx[dy_zero_mask]) for y in y_i.repeat(int(dx_i.item() + 1))
-        ]
-
-    if dx_gt_dy_mask.any():
-        dx_gt_dy_x_coords = [
-            x
-            for x_i, s, dx_i in zip(x1[dx_gt_dy_mask], dx_sign[dx_gt_dy_mask], dx[dx_gt_dy_mask])
-            for x in (x_i + s * torch.arange(0, dx_i + 1, 1, device=image.device))
-        ]
-        dx_gt_dy_y_coords = [
-            y
-            for y_i, s, dx_i, dy_i in zip(
-                y1[dx_gt_dy_mask], dy_sign[dx_gt_dy_mask], dx[dx_gt_dy_mask], dy[dx_gt_dy_mask]
-            )
-            for y in (
-                y_i + s * torch.arange(0, dy_i + 1, dy_i / dx_i, device=image.device)[: int(dx_i.item()) + 1].ceil()
-            )
-        ]
-    if rest_mask.any():
-        rest_x_coords = [
-            x
-            for x_i, s, dx_i, dy_ in zip(x1[rest_mask], dx_sign[rest_mask], dx[rest_mask], dy[rest_mask])
-            for x in (
-                x_i + s * torch.arange(0, dx_i + 1, dx_i / dy_, device=image.device)[: int(dy_.item()) + 1].ceil()
-            )
-        ]
-        rest_y_coords = [
-            y
-            for y_i, s, dy_i in zip(y1[rest_mask], dy_sign[rest_mask], dy[rest_mask])
-            for y in (y_i + s * torch.arange(0, dy_i + 1, 1, device=image.device))
-        ]
-    x_coords = torch.clamp(
-        torch.tensor(dx_zero_x_coords + dy_zero_x_coords + dx_gt_dy_x_coords + rest_x_coords).long(),
-        min=0,
-        max=image.shape[-1] - 1,
-    )
-    y_coords = torch.clamp(
-        torch.tensor(dx_zero_y_coords + dy_zero_y_coords + dx_gt_dy_y_coords + rest_y_coords).long(),
-        min=0,
-        max=image.shape[-2] - 1,
-    )
+    x_coords = torch.clamp(x_coords[on_line], min=0, max=image.shape[-1] - 1)
+    y_coords = torch.clamp(y_coords[on_line], min=0, max=image.shape[-2] - 1)
     image[:, y_coords, x_coords] = color.view(-1, 1)
     return image
 
