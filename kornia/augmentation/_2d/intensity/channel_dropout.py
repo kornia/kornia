@@ -29,6 +29,8 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomChannelDropout.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         num_drop_channels: Number of channels to drop randomly. Default is 1.
         fill_value: Value to fill the dropped channels with. Default is 0.0.
@@ -40,6 +42,19 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(C, H, W)` or :math:`(B, C, H, W)`
+
+    Convention:
+        - the channels named by the drawn ``channel_idx`` are overwritten with the literal ``fill_value``,
+          which has to be a ``float`` in ``[0, 1]``: this class's own ``__init__`` rejects anything outside
+          the bounds, and an ``int`` such as ``0`` on type. ``ChannelDropoutGenerator`` never sees
+          ``fill_value`` -- unlike :class:`RandomErasing`, whose ``value`` guard does live in its generator,
+          and which accepts an ``int`` ``value`` (`#4606 <https://github.com/kornia/kornia/issues/4606>`_).
+          Every other channel is left exactly as it came in, so the
+          input's value range is carried through.
+        - the dropped channels are drawn independently per sample; ``same_on_batch=True`` collapses the
+          draw to one set of channels for the whole batch.
+        - ``fill_value`` is held in a non-persistent buffer, so ``.to(...)`` moves and casts it while
+          ``state_dict()`` gains no key for it.
 
     .. note::
         If `num_drop_channels` is set to 1, it means that for each image in the batch,
