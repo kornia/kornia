@@ -135,3 +135,33 @@ def test_tensor_to_image_contiguous(device, dtype):
 
     image = kornia.image.tensor_to_image(tensor, force_contiguous=True)
     assert image.flags["C_CONTIGUOUS"]
+
+@pytest.mark.parametrize(
+    "op, kwargs",
+    [
+        (kornia.enhance.normalize_min_max, {}),
+        (kornia.enhance.posterize, {"bits": 4}),
+        (kornia.enhance.sharpness, {"factor": 1.0}),
+        (kornia.enhance.equalize, {}),
+    ],
+)
+def test_perform_keep_shape_image_non_contiguous(op, kwargs):
+    tensor = torch.rand(2, 2, 3, 8, 6).transpose(0, 1)
+    assert not tensor.is_contiguous()
+
+    result = op(tensor, **kwargs)
+    expected = op(tensor.contiguous(), **kwargs)
+
+    assert result.shape == expected.shape
+    assert_close(result, expected)
+
+
+def test_perform_keep_shape_video_non_contiguous():
+    tensor = torch.rand(2, 2, 3, 4, 8, 6).transpose(0, 1)
+    assert not tensor.is_contiguous()
+
+    result = kornia.enhance.equalize3d(tensor)
+    expected = kornia.enhance.equalize3d(tensor.contiguous())
+
+    assert result.shape == expected.shape
+    assert_close(result, expected)
