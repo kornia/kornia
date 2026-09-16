@@ -308,6 +308,36 @@ Augmentations
   :func:`kornia.geometry.transform.rotate`, and clockwise with
   :class:`kornia.augmentation.RandomAffine`
   (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+- The 2D intensity augmentations assume the ``[0, 1]`` float range, and no
+  base-class check validates it on the way in. Outside that range, individual
+  classes use their documented policy: some clamp, rescale, or convert through
+  ``uint8``; :class:`kornia.augmentation.RandomPlanckianJitter` clamps only the
+  upper end; some do not clamp; and :class:`kornia.augmentation.RandomEqualize`
+  raises where its value check runs (MPS skips the check; torch ``2.14`` raises a
+  raw indexing error instead, and ``2.5.1`` and ``2.9.1`` return silently). The resulting values also depend on the sampled parameters and image
+  contents. Several return an all-zero image for an all-negative input: on a
+  constant ``-1.0`` image most of them do so on every draw, while nearer zero the
+  sampled parameters decide more often, and
+  :class:`kornia.augmentation.RandomSolarize` does the same when every input value
+  is at least ``1.5``. Values between ``1`` and ``1.5`` can instead produce nonzero
+  output after a negative addition (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
+  These policies are not an exhaustive classification: a further outcome is
+  NaN, which :class:`kornia.augmentation.RandomGamma` produces for a negative
+  input whenever the drawn ``gamma`` is not an integer (``gamma=(1.5, 1.5)`` on a
+  strictly negative image is NaN in every element, while the integral ``(2.0, 2.0)``
+  is finite).
+  See :class:`kornia.augmentation.IntensityAugmentationBase2D` and each class's
+  own documentation. :class:`kornia.augmentation.RandomDissolving` is unmeasured
+  because constructing it needs the optional ``diffusers`` package and, on a cold
+  cache, downloads a Stable Diffusion checkpoint.
+  :class:`kornia.augmentation.RandomClahe` and
+  :class:`kornia.augmentation.RandomJPEG` are importable and documented but absent
+  from ``kornia.augmentation.__all__``, so they are outside the audited set above;
+  ``RandomClahe`` raises out of range with a raw indexing error
+  (`#4564 <https://github.com/kornia/kornia/issues/4564>`_) and ``RandomJPEG``
+  clamps the decoded RGB output into ``[0, 1]``. The decoding can produce intermediate
+  values even when every input value is negative or every input value is above ``1``;
+  such images need not become solid black or white.
 
 .. code-block:: python
 
@@ -379,6 +409,9 @@ Randomness in augmentations
   one probability contract. Check the concrete class rather than inferring
   its gate from the base signature. Exposing ``p_batch`` is also
   constructor-dependent (`#4425 <https://github.com/kornia/kornia/issues/4425>`_).
+  The gate selects after the transform has been computed for the whole batch,
+  so a skipped sample can still raise or carry a NaN gradient
+  (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
 - Under :class:`torch.utils.data.DataLoader`, each worker's global CPU
   generator is seeded ``base_seed + worker_id``. Reproducibility also depends
   on worker configuration and consumption order. A ``worker_init_fn`` that
@@ -451,6 +484,14 @@ Quick self-review for generated code, most common first:
     a mask along, and the other two raise on a ``mask`` key.
 17. Inferring the augmentation sampling backend from ``_params`` placement
     — samplers can draw on an accelerator and cast the returned tensors back to CPU.
+18. Feeding mean/std-normalized or otherwise out-of-``[0, 1]`` tensors
+    through an intensity augmentation and expecting the values to pass
+    through — some rescale, some clamp, ``RandomEqualize`` and ``RandomClahe``
+    raise, and several return zeros for an all-negative image -- on every draw
+    for a constant ``-1.0`` image, on some draws nearer zero -- while
+    ``RandomSolarize`` returns zeros when every
+    input value is at least ``1.5``. Its output for values between ``1`` and ``1.5``
+    depends on the addition.
 
 .. tip::
 

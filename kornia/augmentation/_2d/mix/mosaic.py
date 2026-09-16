@@ -131,8 +131,10 @@ class RandomMosaic(MixAugmentationBaseV2):
         for i in range(flags["mosaic_grid"][0]):
             for j in range(flags["mosaic_grid"][1]):
                 _offset = offset.clone()
-                _offset[idx, 0] = batch_shapes_idx[:, -2] * i - src_box_idx[:, 0, 0]
-                _offset[idx, 1] = batch_shapes_idx[:, -1] * j - src_box_idx[:, 0, 1]
+                # _compose_images concatenates the i loop along the width and the j loop along
+                # the height, so tile (i, j) starts at x = W * i, y = H * j.
+                _offset[idx, 0] = batch_shapes_idx[:, -1] * i - src_box_idx[:, 0, 0]
+                _offset[idx, 1] = batch_shapes_idx[:, -2] * j - src_box_idx[:, 0, 1]
                 _box = input.clone()
                 _idx = i * flags["mosaic_grid"][1] + j
                 _box._data[params["permutation"][:, 0]] = _box._data[params["permutation"][:, _idx]]

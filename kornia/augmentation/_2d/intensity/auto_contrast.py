@@ -26,18 +26,34 @@ from kornia.enhance import normalize_min_max
 class RandomAutoContrast(IntensityAugmentationBase2D):
     r"""Apply a random auto-contrast of a torch.Tensor image.
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         clip_output: has no effect on the output. The transform is
           :func:`kornia.enhance.normalize_min_max`, which already maps each sample's channels onto ``[0, 1]``,
           so clamping to that interval cannot change a value -- including for inputs outside ``[0, 1]``. Kept
-          for signature compatibility.
+          for signature compatibility. Tracked in `#4436 <https://github.com/kornia/kornia/issues/4436>`_.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the output is exactly :func:`kornia.enhance.normalize_min_max` of the input: each channel of
+          each sample is rescaled from its own minimum and maximum as ``(x - min) / (max - min + 1e-6)``,
+          independently of the other channels and the other samples, with the constant channel noted below as
+          the exception. This is a rescale, not a clamp, so an input outside ``[0, 1]`` is mapped into range
+          rather than clipped. The ``1e-6`` keeps a channel whose range is not large next to it short of ``1``
+          (a range of ``1e-5`` peaks at ``0.909``), and in ``float16`` a channel whose span overflows the
+          dtype loses the whole channel: ``max - min`` saturates to ``inf``, so the maximum comes back NaN
+          (``inf / inf``) and every other element comes back exactly ``0`` (a finite numerator over ``inf``).
+          ``[-60000, 60000, 0, 1]`` in ``float16`` returns ``[0, nan, 0, 0]``.
+
+        - non-contiguous input, such as a ``transpose``d or ``permute``d image, produces the same
+          values as its contiguous copy.
 
     .. note::
         This function internally uses :func:`kornia.enhance.normalize_min_max`. A channel with a single value
