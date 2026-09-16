@@ -136,6 +136,10 @@ class TestRgbToHls(BaseTester):
         expected[..., 2, :, :].fill_(0.0)
         assert torch.isfinite(output).all(), "hls-achromatic-oracle: nonfinite output"
         self.assert_close(output, expected)
+        if requires_grad:
+            output.sum().backward()
+            assert input_data.grad is not None
+            assert torch.isfinite(input_data.grad).all(), "hls-achromatic-oracle: nonfinite backward gradient"
         assert output.shape == input_data.shape
         assert output.device == input_data.device
         assert output.dtype == input_data.dtype
