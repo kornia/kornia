@@ -223,12 +223,12 @@ class RandomCrop(GeometricAugmentationBase2D):
             needs_scale = (h_out > padded_h) | (w_out > padded_w)
             scale_w = torch.where(
                 needs_scale,
-                w_out / padded_w.to(dtype=transform.dtype),
+                torch.full_like(padded_w, w_out, dtype=transform.dtype) / padded_w.to(dtype=transform.dtype),
                 torch.ones_like(padded_w, dtype=transform.dtype),
             )
             scale_h = torch.where(
                 needs_scale,
-                h_out / padded_h.to(dtype=transform.dtype),
+                torch.full_like(padded_h, h_out, dtype=transform.dtype) / padded_h.to(dtype=transform.dtype),
                 torch.ones_like(padded_h, dtype=transform.dtype),
             )
             transform[:, 0, 0] *= scale_w
