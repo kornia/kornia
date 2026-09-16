@@ -5569,6 +5569,14 @@ class TestRandomRain(BaseTester):
         assert (aug._params["drop_width_factor"] == aug._params["drop_width_factor"][0]).all()
         self.assert_close(aug._params["coordinates_factor"][0], aug._params["coordinates_factor"][1])
 
+    def test_construction_ignores_the_ambient_default_device(self):
+        # The sampler bounds are built on the generator's own device.  A bare `torch.tensor` follows
+        # `torch.set_default_device` instead, which puts them on the ambient device and then moves them
+        # straight back -- and under a `meta` context the move raises `Cannot copy out of meta tensor`.
+        with torch.device("meta"):
+            aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
+        assert aug._param_generator.drop_height_sampler.high.device == torch.device("cpu")
+
 
 class TestMultiprocessing:
     torch.manual_seed(0)  # for random reproductibility
