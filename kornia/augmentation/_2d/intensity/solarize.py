@@ -60,14 +60,14 @@ class RandomSolarize(IntensityAugmentationBase2D):
           of the drawn ``additions`` -- the CPU by default -- so it raises for an MPS image too.
 
     .. warning::
-        An input entirely outside ``[0, 1]`` collapses, at either end. An all-negative input can come back
+        An input entirely outside ``[0, 1]`` can collapse at either end. An all-negative input can come back
         as an all-zero image when the sampled addition does not raise it above zero; a positive sampled
         addition can recover values instead, and a drawn threshold of ``0`` inverts the clamped zeros into
-        an all-ones image. At the other end there is nothing draw-dependent about it: ``clamp(x + a, 0, 1)``
+        an all-ones image. At the upper end, ``clamp(x + a, 0, 1)``
         sends every ``x >= 1.5`` to exactly ``1.0`` for any admissible ``a``, and the inversion then returns
-        ``1 - 1.0 == 0``, so an input drawn from ``[1.5, 3.0]`` is an all-zero image on every draw. This is
-        the only one of the 35 audited classes whose output collapses to zeros for an all-above-``1``
-        input; :class:`RandomJPEG`, which is outside that set, clamps such an input to ones. Tracked in
+        ``1 - 1.0 == 0``, so an input drawn from ``[1.5, 3.0]`` is an all-zero image on every draw.
+        Values between ``1`` and ``1.5`` can instead produce nonzero output after a negative addition:
+        ``x=1.1``, ``additions=(-0.4, -0.4)`` and ``thresholds=(0.5, 0.5)`` give ``0.3``. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::

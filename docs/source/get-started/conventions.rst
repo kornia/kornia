@@ -317,8 +317,9 @@ Augmentations
   error surfaces instead). The resulting values also depend on the sampled parameters and image
   contents. Several return an all-zero image for an all-negative input, most of
   them on every draw rather than only on some, and
-  :class:`kornia.augmentation.RandomSolarize` does the same for an all-above-``1``
-  input (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
+  :class:`kornia.augmentation.RandomSolarize` does the same when every input value
+  is at least ``1.5``. Values between ``1`` and ``1.5`` can instead produce nonzero
+  output after a negative addition (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
   These policies are not an exhaustive classification: a further outcome is
   NaN, which :class:`kornia.augmentation.RandomGamma` produces for a negative
   input whenever the drawn ``gamma`` is not an integer (``gamma=(1.5, 1.5)`` on a
@@ -333,8 +334,9 @@ Augmentations
   from ``kornia.augmentation.__all__``, so they are outside the audited set above;
   ``RandomClahe`` raises out of range with a raw indexing error
   (`#4564 <https://github.com/kornia/kornia/issues/4564>`_) and ``RandomJPEG``
-  clamps, returning zeros for an all-negative image and ones for an all-above-``1``
-  one.
+  clamps the decoded RGB output into ``[0, 1]``. The decoding can produce intermediate
+  values even when every input value is negative or every input value is above ``1``;
+  such images need not become solid black or white.
 
 .. code-block:: python
 
@@ -482,8 +484,9 @@ Quick self-review for generated code, most common first:
     through an intensity augmentation and expecting the values to pass
     through — some rescale, some clamp, ``RandomEqualize`` and ``RandomClahe``
     raise, and several return zeros for an all-negative image -- mostly on every
-    draw, not only on some -- while ``RandomSolarize`` returns zeros for an
-    all-above-``1`` image as well.
+    draw, not only on some -- while ``RandomSolarize`` returns zeros when every
+    input value is at least ``1.5``. Its output for values between ``1`` and ``1.5``
+    depends on the addition.
 
 .. tip::
 

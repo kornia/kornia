@@ -106,9 +106,10 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
         Several of these classes return an all-zero image for an input whose values are all negative, with no
         warning. It is mostly not draw-dependent: on an all ``-1.0`` image at the audited constructor
         arguments, 15 of the 17 that collapse do so on every one of five seeds, and only
-        :class:`ColorJiggle` and :class:`RandomPlasmaContrast` depend on the draw. The upper end is not
-        symmetric -- :class:`RandomSolarize` is the only class that also collapses an all-above-``1`` input,
-        and it does so unconditionally. Tracked in
+        :class:`ColorJiggle` and :class:`RandomPlasmaContrast` depend on the draw. At the upper end,
+        :class:`RandomSolarize` returns zeros when every input value is at least ``1.5``, for every
+        admissible addition. Values between ``1`` and ``1.5`` can instead produce nonzero output after
+        a negative addition. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     """

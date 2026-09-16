@@ -1055,6 +1055,14 @@ class TestIntensityColourConventions(BaseTester):
         out = K.RandomSolarize(thresholds=(0.5, 0.5), additions=(addition, addition), p=1.0)(image)
         self.assert_close(out, torch.full_like(image, expected))
 
+    @pytest.mark.parametrize(("addition", "expected"), [(-0.4, 0.3), (0.0, 0.0)])
+    def test_convention_random_solarize_above_one_depends_on_addition(self, device, dtype, addition, expected):
+        # Being above 1 is insufficient for unconditional collapse: a negative addition can bring
+        # the value below 1 before inversion. At 1.1 - 0.4, the result is 1 - 0.7 = 0.3.
+        image = torch.full((1, 3, 6, 8), 1.1, device=device, dtype=dtype)
+        out = K.RandomSolarize(thresholds=(0.5, 0.5), additions=(addition, addition), p=1.0)(image)
+        self.assert_close(out, torch.full_like(image, expected))
+
     # The #4430 collapse has an upper-end twin that the audit fixtures cannot see: `[0, 2]` is not
     # entirely above 1, so `RandomSolarize(p=1.0)` on it returns 151 distinct values.  An input drawn
     # from `[1.5, 3.0]` is all-zero on EVERY draw, because `clamp(x + a, 0, 1)` sends every `x >= 1.5`
@@ -1066,7 +1074,7 @@ class TestIntensityColourConventions(BaseTester):
     # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> `True` on all five seeds for
     # RandomSolarize and on none of the other 34 factories.
     @pytest.mark.parametrize("seed", [0, 1, 2, 3, 4])
-    def test_wart_random_solarize_all_above_one_collapses_on_every_draw_4430(self, device, dtype, seed):
+    def test_wart_random_solarize_at_least_one_point_five_collapses_on_every_draw_4430(self, device, dtype, seed):
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.empty(2, 3, 6, 8).uniform_(1.5, 3.0).to(device=device, dtype=dtype)
         torch.manual_seed(seed)
@@ -1395,6 +1403,27 @@ class TestIntensityColourConventions(BaseTester):
         assert not bool(out.isnan().any())
         assert float(out.min()) == 0.0
         assert float(out.max()) == 1.0
+
+    @pytest.mark.parametrize("negative", [True, False])
+    def test_convention_random_jpeg_out_of_range_input_need_not_be_solid(self, device, dtype, negative):
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip("replication_pad2d is unavailable for this device/dtype")
+        # A nonconstant grayscale field distinguishes clamping the decoded image from clamping
+        # the input. Keep its values away from the endpoints even after conversion to bfloat16.
+        torch.manual_seed(_FIXTURE_SEED)
+        field = (torch.rand(1, 1, 32, 32) * 2.0 + 0.03125).expand(1, 3, -1, -1).contiguous()
+        image = (-field if negative else 1.0 + field).to(device=device, dtype=dtype)
+        assert bool((image < 0.0).all()) if negative else bool((image > 1.0).all())
+        aug = K.RandomJPEG(jpeg_quality=(50.0, 50.0), p=1.0)
+        out = aug(image)
+        assert bool(torch.isfinite(out).all())
+        assert float(out.min()) >= 0.0 and float(out.max()) <= 1.0
+        # CPU/MPS float32 at quality 50: negative input peaks near 0.04625; positive input bottoms
+        # near 0.95154. The half dtypes differ, but each keeps values strictly inside the range.
+        assert bool(((out > 0.0) & (out < 1.0)).any())
+        # Quantization can also give a constant black input small positive values, so the range
+        # assertion alone would not catch a misplaced input clamp.
+        assert not torch.equal(out, aug(image.clamp(0.0, 1.0)))
 
     # Row 6c-45: the documented parameter bounds are enforced, and where: `stage` records whether the
     # constructor raises or constructs and the forward pass raises, since the anchor's list of forward-time
