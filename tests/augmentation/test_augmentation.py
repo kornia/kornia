@@ -4754,6 +4754,43 @@ class TestDenormalize(BaseTester):
         self.assert_close(f1(inputs), inputs)
         self.assert_close(f1.transform_matrix, identity)
 
+    @pytest.mark.parametrize(
+        "mean, std",
+        [
+            (0, 255),
+            (2, 0.5),
+            (0.25, 4),
+        ],
+    )
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_integer_statistics_affine_and_normalize_inverse(self, device, dtype, mean, std, batched):
+        values = torch.tensor(
+            [
+                [
+                    [0.125, 0.5],
+                    [0.75, 1.25],
+                ],
+                [
+                    [1.5, 2.25],
+                    [3.0, 4.5],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        inputs = values.unsqueeze(0).repeat(2, 1, 1, 1) if batched else values
+        expected = inputs * std + mean
+
+        output = Denormalize(mean=mean, std=std, p=1.0, keepdim=True)(inputs)
+        assert output.shape == inputs.shape
+        assert output.device == inputs.device
+        assert output.dtype == inputs.dtype
+        self.assert_close(output, expected)
+
+        normalized = Normalize(mean=mean, std=std, p=1.0, keepdim=True)(inputs)
+        recovered = Denormalize(mean=mean, std=std, p=1.0, keepdim=True)(normalized)
+        self.assert_close(recovered, inputs)
+
     def test_batch_random_denormalize(self, device, dtype):
         f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
         f1 = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
