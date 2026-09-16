@@ -78,8 +78,8 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
         torch.add(maxc, minc, out=l_)  # l = max + min
         torch.sub(maxc, minc, out=s)  # s = max - min
 
-    # Use finite unit denominators for exact achromatic colors. This keeps the
-    # hue intermediates defined without biasing nonzero chroma or lightness.
+    # Use unit divisors when chroma or the lightness denominator is zero.
+    # Preserve the epsilon-adjusted calculation for nonzero denominators.
     chroma_denominator = torch.where(s == 0, torch.ones_like(s), s + eps)
     im = image / chroma_denominator.unsqueeze(-3)
 

@@ -162,6 +162,20 @@ class TestRgbToHls(BaseTester):
         ext_rand_slice = (torch.rand((1, 3, 32, 32), dtype=dtype, device=device) >= 0.5).float()
         assert not kornia.color.rgb_to_hls(ext_rand_slice).isnan().any()
 
+    # Independent oracle for RGB=(0.2, 0.5, 0.4): chroma=0.3, lightness=0.35,
+    # and green-max hue=((0.4-0.2)/(0.3+eps)+2)*pi/3, saturation=0.3/(0.7+eps).
+    @pytest.mark.parametrize(
+        ("eps", "expected"),
+        [
+            (0.0, [2.792526803190927, 0.35, 0.4285714285714286]),
+            (0.1, [2.617993877991494, 0.35, 0.375]),
+        ],
+    )
+    def test_eps_sweep_uses_both_safe_denominators(self, device, dtype, eps, expected):
+        image = torch.tensor([[[[0.2]], [[0.5]], [[0.4]]]], device=device, dtype=dtype)
+        actual = kornia.color.rgb_to_hls(image, eps=eps)
+        self.assert_close(actual, image.new_tensor(expected).reshape(1, 3, 1, 1))
+
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)

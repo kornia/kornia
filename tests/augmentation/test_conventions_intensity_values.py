@@ -443,15 +443,15 @@ class TestIntensityValueRangeConventions(BaseTester):
         image = torch.full((2, 3, 6, 8), -1.0, device=device, dtype=dtype)
         every, some = [], []
         for name in sorted(_INTENSITY_FACTORIES):
-            if name == "RandomEqualize" or (dtype == torch.float16 and name in ("ColorJitter", "RandomSnow")):
-                continue  # raises out of range; float16 ColorJitter (#4560) and RandomSnow (#4571) are NaN there
+            if name == "RandomEqualize" or (dtype == torch.float16 and name == "ColorJitter"):
+                continue  # raises out of range; float16 ColorJitter (#4560) is NaN there
             if name in ("RandomBoxBlur", "RandomGaussianBlur") and not supports_reflect_padding(device, dtype):
                 continue  # torch 2.5.1 has no half reflection_pad2d on the CPU
             zeros = sum(float(_run(name, image, seed=seed).abs().max()) == 0.0 for seed in range(5))
             (every if zeros == 5 else some if zeros else []).append(name)
         expected = set(self._COLLAPSES_ON_CONSTANT_MINUS_ONE)
         if dtype == torch.float16:
-            expected -= {"ColorJitter", "RandomSnow"}
+            expected -= {"ColorJitter"}
         assert set(every) == expected
         assert set(some) <= {"ColorJiggle", "RandomPlasmaContrast"}
         # The two constant-image artefacts do not collapse the non-constant audit fixture on any of 20 seeds.

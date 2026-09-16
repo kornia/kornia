@@ -1178,7 +1178,7 @@ class TestNoiseAndWeatherConventions(BaseTester):
     # trip, which is not the identity at either singular lightness: (1.5, 0.5, 0.5) has lightness exactly 1,
     # where `2 - max - min` vanishes, and comes back white; (2, -2, -2) has lightness exactly 0, where
     # `max + min` vanishes, and comes back black although it is neither all-negative nor negative in
-    # lightness.  Both are NaN in float16, where `eps` underflows and the saturation is 0 / 0 (#4571).
+    # lightness.  The guarded denominators make both endpoints finite in every supported dtype.
     # The coefficient is 0.9, not 1.0, and (1.8, 0, 0) is the last row: coverage is `lightness < coefficient`
     # at random_snow.py:118, so the only pixel that can tell `<` from `<=` is one whose lightness equals the
     # coefficient exactly.  At coefficient 1.0 that pixel was (1.5, 0.5, 0.5) -- but it is also the lightness-1
@@ -1192,9 +1192,9 @@ class TestNoiseAndWeatherConventions(BaseTester):
     #   x = torch.tensor([[1.5, 0.0, 0.0], [2.0, 1.5, 1.5], [1.2, -2.0, -2.0], [1.5, 0.5, 0.5],
     #                     [2.0, -2.0, -2.0], [1.7999999523162842, 0.0, 0.0]]).T.reshape(1, 3, 1, 6)
     #   torch.manual_seed(0); print(K.RandomSnow(snow_coefficient=(0.9, 0.9), brightness=(2.0, 2.0), p=1.0)(x))
-    # executed 2026-09-16 (torch 2.14.0, cpu float32/float64/float16/bfloat16 and mps float32) -> the pixels
+    # executed 2026-09-16 (torch 2.9.1, cpu float32/float64/float16/bfloat16) -> the pixels
     # `(1, 1, 1)`, `(2, 1.5, 1.5)`, `(0, 0, 0)`, `(1, 1, 1)`, `(0, 0, 0)` and the boundary pixel unchanged;
-    # rows 3 and 4 are `(nan, nan, nan)` in float16.
+    # rows 3 and 4 are finite white and black in every supported dtype.
     def test_convention_random_snow_clamps_only_covered_lightness(self, device, dtype):
         pixels = torch.tensor(
             [
@@ -1214,12 +1214,8 @@ class TestNoiseAndWeatherConventions(BaseTester):
         self.assert_close(out[:3], pixels.new_tensor([[1.0, 1.0, 1.0], [2.0, 1.5, 1.5], [0.0, 0.0, 0.0]]))
         # Lightness exactly at the coefficient is missed, so the pixel survives the round trip unchanged.
         self.assert_close(out[5], pixels[5])
-        if dtype == torch.float16:
-            assert bool(out[3].isnan().all())
-            assert bool(out[4].isnan().all())
-        else:
-            self.assert_close(out[3], pixels.new_ones(3))
-            self.assert_close(out[4], pixels.new_zeros(3))
+        self.assert_close(out[3], pixels.new_ones(3))
+        self.assert_close(out[4], pixels.new_zeros(3))
 
     # The singular region at lightness 1 has the width of rgb_to_hls's eps = 1e-8: a lightness 2e-7 off
     # comes back close to its input in float32 and float64 (half precision rounds it onto the point), while
@@ -1232,7 +1228,7 @@ class TestNoiseAndWeatherConventions(BaseTester):
     # `[-82271062.5, 82271064.5, 82271064.5]`.
     def test_convention_random_snow_singularity_has_eps_width(self, device, dtype):
         if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("half precision: 1.5 + 4e-7 rounds onto the singular point (float16 is NaN there, #4571)")
+            pytest.skip("half precision: 1.5 + 4e-7 rounds onto the singular point")
 
         def run(lightness: float) -> torch.Tensor:
             pixel = torch.tensor([2 * lightness - 0.5, 0.5, 0.5], dtype=torch.float64).reshape(1, 3, 1, 1)
@@ -1246,19 +1242,20 @@ class TestNoiseAndWeatherConventions(BaseTester):
             self.assert_close(run(1 + 1e-8), near.new_tensor([2.0, 0.0, 0.0]))
             assert float(run(1 + 5e-9).abs().min()) > 1e6
 
-    # float16, so every achromatic pixel -- black, gray or white -- gets a NaN hue that the HLS round trip
-    # spreads to all three channels.  bfloat16 keeps the exponent range of float32 and is finite.
+    # Every achromatic pixel -- black, gray or white -- stays finite through the HLS round trip.
     # Snippet used to generate expected:
     #   for dt in (torch.float16, torch.bfloat16, torch.float32):
-    #       torch.manual_seed(0); print(dt, K.RandomSnow(p=1.0)(torch.full((1, 3, 2, 2), 0.5, dtype=dt)).isnan().any())
-    # executed 2026-09-15 (torch 2.14.0, cpu; mps float16 as well) -> `True`, `False`, `False`, and the
-    # same for the constants 0.0 and 1.0.
+    #       torch.manual_seed(0); y = K.RandomSnow(p=1.0)(torch.full((1, 3, 2, 2), 0.5, dtype=dt))
+    #       print(dt, torch.isfinite(y).all())
+    # current CPU run -> True for float16, bfloat16 and float32, and the same for constants 0.0 and 1.0.
     @pytest.mark.parametrize("value", [0.0, 0.5, 1.0])
-    def test_wart_random_snow_achromatic_pixel_is_nan_in_float16_4571(self, device, dtype, value):
+    def test_convention_random_snow_achromatic_pixel_is_finite(self, device, dtype, value):
         gray = torch.full((1, 3, 2, 2), value, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomSnow(p=1.0)(gray)
-        assert bool(out.isnan().any()) == (dtype == torch.float16)
+        assert bool(torch.isfinite(out).all())
+        expected = gray.new_full(gray.shape, value)
+        self.assert_close(out, expected)
 
     # The channel-count precondition is a class-by-class contract, so it is pinned as one table rather
     # than per class: five of these were documented before this batch and five were not, and the split
