@@ -89,10 +89,11 @@ class RandomCrop(GeometricAugmentationBase2D):
         With ``pad_if_needed=False``, an oversized request does not raise. Slice mode resizes the available slice
         to the requested size. Resample mode instead uses a mis-scaled warp that can blend in zero padding; when
         either axis is oversized, both matrix axes are rescaled, including an axis that would fit. This wart is
-        tracked in `#4414 <https://github.com/kornia/kornia/issues/4414>`_. The same correction compares against the
-        unpadded input even when explicit padding makes the crop fit: slice-mode images then disagree with the
-        matrix-transformed keypoints and boxes, and resample-mode images are also distorted. This explicit-padding
-        defect is tracked in `#4542 <https://github.com/kornia/kornia/issues/4542>`_.
+        tracked in `#4414 <https://github.com/kornia/kornia/issues/4414>`_. With explicit padding, the transform
+        dimensions include the pre-crop padded canvas, so a crop that fits after padding avoids a spurious scale
+        correction while retaining its sampled translation. The no-padding oversized behavior tracked in
+        `#4414 <https://github.com/kornia/kornia/issues/4414>`_ remains
+        unchanged.
 
         Slice mode calls ``crop_by_indices`` with that
         function's bilinear/``align_corners=None`` defaults, ignoring this class's ``resample`` and
@@ -201,9 +202,13 @@ class RandomCrop(GeometricAugmentationBase2D):
             dst = params["dst"].to(input)
             transform: torch.Tensor = get_perspective_transform(src, dst)
 
-            # Fast scaling correction when output exceeds input and padding disabled
+            # Fast scaling correction when output exceeds the available canvas.
+            # Explicit pre-crop padding is part of that canvas; preserve #4414 when no padding is used.
             if not flags.get("pad_if_needed", False):
                 h, w = input.shape[-2:]
+                padding = self.compute_padding(tuple(input.shape), flags)
+                h += padding[2] + padding[3]
+                w += padding[0] + padding[1]
                 h_out, w_out = flags["size"]
                 if h_out > h or w_out > w:
                     transform[:, 0, 0] *= w_out / w

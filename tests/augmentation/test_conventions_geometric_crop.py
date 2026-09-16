@@ -116,7 +116,7 @@ class TestGeometricCropConventions(BaseTester):
         assert any(not gate.any() for gate in gates)
 
     @pytest.mark.parametrize("mode", ["slice", "resample"])
-    def test_wart_random_crop_explicit_padding_scales_matrix_4542(self, device, dtype, mode):
+    def test_random_crop_explicit_padding_preserves_matrix_4542(self, device, dtype, mode):
         image = torch.arange(9, device=device, dtype=dtype).reshape(1, 1, 3, 3) / 8
         crop = K.RandomCrop((4, 4), padding=1, cropping_mode=mode, p=1.0)
         seq = K.AugmentationSequential(crop, data_keys=["input", "keypoints", "bbox"])
@@ -125,16 +125,41 @@ class TestGeometricCropConventions(BaseTester):
         points = image.new_tensor([[[2, 2]]])
         boxes = image.new_tensor([[[[1, 1], [2, 1], [2, 2], [1, 2]]]])
         output, out_points, out_boxes = seq(image, points, boxes, params=params)
-        self.assert_close(crop.transform_matrix, image.new_tensor([[[4 / 3, 0, 0], [0, 4 / 3, 0], [0, 0, 1]]]))
-        self.assert_close(out_points, image.new_tensor([[[4, 4]]]))
-        self.assert_close(out_boxes, (boxes + 1) * (4 / 3))
-        # Slice mode puts the original (2, 2) pixel at (3, 3); resampling also distorts its value.
-        expected = (
-            [[0, 0, 0, 0], [0, 0, 1, 2], [0, 3, 4, 5], [0, 6, 7, 8]]
-            if mode == "slice"
-            else [[0, 0, 0, 0], [0, 0, 0.375, 0.9375], [0, 1.125, 2, 2.75], [0, 2.8125, 4.25, 5]]
-        )
+        self.assert_close(crop.transform_matrix, image.new_tensor([[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]))
+        self.assert_close(out_points, image.new_tensor([[[3, 3]]]))
+        self.assert_close(out_boxes, boxes + 1)
+        expected = [[0, 0, 0, 0], [0, 0, 1, 2], [0, 3, 4, 5], [0, 6, 7, 8]]
         self.assert_close(output, image.new_tensor(expected).reshape(1, 1, 4, 4) / 8)
+
+    @pytest.mark.parametrize("mode", ["slice", "resample"])
+    def test_random_crop_explicit_asymmetric_padding_replays_and_skips_4542(self, device, dtype, mode):
+        image = torch.arange(9, device=device, dtype=dtype).reshape(1, 1, 3, 3) / 8
+        padding = (2, 1, 1, 2)
+        crop = K.RandomCrop((4, 4), padding=padding, cropping_mode=mode, p=1.0)
+        seq = K.AugmentationSequential(crop, data_keys=["input", "keypoints", "bbox"])
+        params = seq.forward_parameters(image.shape)
+        params[0].data["src"] = image.new_tensor([[[0, 0], [3, 0], [3, 3], [0, 3]]])
+        points = image.new_tensor([[[2, 2]]])
+        boxes = image.new_tensor([[[[1, 1], [2, 1], [2, 2], [1, 2]]]])
+        output, out_points, out_boxes = seq(image, points, boxes, params=params)
+        expected = image.new_tensor([[0, 0, 0, 0], [0, 0, 0, 1], [0, 0, 3, 4], [0, 0, 6, 7]]).reshape(1, 1, 4, 4) / 8
+        self.assert_close(crop.transform_matrix, image.new_tensor([[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]))
+        self.assert_close(output, expected)
+        self.assert_close(out_points, image.new_tensor([[[4, 3]]]))
+        self.assert_close(out_boxes, boxes + image.new_tensor([2, 1]))
+        replay, replay_points, replay_boxes = seq(image, points, boxes, params=params)
+        self.assert_close(replay, output)
+        self.assert_close(replay_points, out_points)
+        self.assert_close(replay_boxes, out_boxes)
+
+        skip = K.AugmentationSequential(
+            K.RandomCrop((4, 4), padding=padding, cropping_mode=mode, p=0.0),
+            data_keys=["input", "keypoints", "bbox"],
+        )
+        skipped, skipped_points, skipped_boxes = skip(image, points, boxes)
+        self.assert_close(skipped, image)
+        self.assert_close(skipped_points, points)
+        self.assert_close(skipped_boxes, boxes)
 
     @pytest.mark.parametrize("mode", ["slice", "resample"])
     @pytest.mark.parametrize("size", [(10, 10), (10, 4), (4, 10)])
