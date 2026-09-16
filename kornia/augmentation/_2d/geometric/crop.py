@@ -202,17 +202,37 @@ class RandomCrop(GeometricAugmentationBase2D):
             dst = params["dst"].to(input)
             transform: torch.Tensor = get_perspective_transform(src, dst)
 
-            # Fast scaling correction when output exceeds the available canvas.
-            # Explicit pre-crop padding is part of that canvas; preserve #4414 when no padding is used.
-            if not flags.get("pad_if_needed", False):
+            # Scale against the canvas represented by the effective replay parameters.
+            # During export, retain the static-shape path rather than reading padding_size back to host.
+            padding_size = params.get("padding_size")
+            if is_exporting() or not isinstance(padding_size, torch.Tensor):
                 h, w = input.shape[-2:]
-                padding = self.compute_padding(tuple(input.shape), flags)
+                padding = self.compute_padding(tuple(input.shape))
                 h += padding[2] + padding[3]
                 w += padding[0] + padding[1]
                 h_out, w_out = flags["size"]
                 if h_out > h or w_out > w:
                     transform[:, 0, 0] *= w_out / w
                     transform[:, 1, 1] *= h_out / h
+                return transform
+
+            padding_size = padding_size.to(device=input.device)
+            padded_h = input.shape[-2] + padding_size[:, 2] + padding_size[:, 3]
+            padded_w = input.shape[-1] + padding_size[:, 0] + padding_size[:, 1]
+            h_out, w_out = flags["size"]
+            needs_scale = (h_out > padded_h) | (w_out > padded_w)
+            scale_w = torch.where(
+                needs_scale,
+                w_out / padded_w.to(dtype=transform.dtype),
+                torch.ones_like(padded_w, dtype=transform.dtype),
+            )
+            scale_h = torch.where(
+                needs_scale,
+                h_out / padded_h.to(dtype=transform.dtype),
+                torch.ones_like(padded_h, dtype=transform.dtype),
+            )
+            transform[:, 0, 0] *= scale_w
+            transform[:, 1, 1] *= scale_h
 
             return transform
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
