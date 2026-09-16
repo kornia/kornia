@@ -404,9 +404,6 @@ class TestDeviceAgnosticAugmentationParameters(BaseTester):
         self.assert_close(matrix[1], torch.eye(4, device=device, dtype=dtype))
 
     def test_mix_augmentation_blends_cpu_params_with_accelerator_input(self, device, dtype):
-        if dtype in (torch.float16, torch.bfloat16):
-            pytest.skip("RandomMixUpV2 promotes half inputs because mixup_lambdas are float32")
-
         input = torch.arange(24, device=device, dtype=dtype).reshape(2, 3, 2, 2)
         augmentation = RandomMixUpV2(lambda_val=(0.25, 0.25), p=1.0, data_keys=["input"])
         params = self._cpu_partial_batch_params(augmentation, input)
@@ -799,13 +796,15 @@ class TestConventionAugmentationBase2D(BaseTester):
                 float_mask.bool(), augmentation._params, augmentation.flags, transform=augmentation.transform_matrix
             )
 
-    def test_wart_intensity_container_boxes_passthrough_but_direct_dispatch_raises_4480(self, device, dtype):
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_intensity_boxes_pass_through_direct_dispatch_and_container_4480(self, device, dtype, p):
         image = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
         boxes = Boxes.from_tensor(torch.tensor([[[0.0, 0.0, 2.0, 2.0]]], device=device, dtype=dtype), mode="xyxy")
-        augmentation = K.RandomInvert(p=1.0)
+        augmentation = K.RandomInvert(p=p)
         augmentation(image)
-        with pytest.raises(NotImplementedError):
-            augmentation.transform_boxes(boxes, augmentation._params, augmentation.flags)
+        direct = augmentation.transform_boxes(boxes, augmentation._params, augmentation.flags)
+        assert direct.mode == boxes.mode
+        self.assert_close(direct.data, boxes.data)
         container = K.AugmentationSequential(K.RandomInvert(p=1.0), data_keys=["input", "bbox_xyxy"])
         _, output_boxes = container(image, boxes)
         self.assert_close(output_boxes.data, boxes.data)

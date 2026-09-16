@@ -125,9 +125,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           :func:`~kornia.geometry.transform.hflip`: ``x' = W - 1 - x`` and ``y' = H - 1 - y``, for the image,
           the mask, the keypoints and all three box spellings alike, and ``bbox_xywh`` keeps its ``w`` and
           ``h``. Labels are passed through untouched by a geometric step.
-        - mask resampling normally uses nearest interpolation, but this does not guarantee label preservation.
-          ``Resize(antialias=True)`` filters masks before sampling and can change labels
-          (`#4479 <https://github.com/kornia/kornia/issues/4479>`_); padding can introduce a fill value.
+        - mask resampling normally uses nearest interpolation, but this does not guarantee label preservation:
+          padding can introduce a fill value.
           Put the image before the masks, including
           in dictionary insertion order, so mask conversion uses that image's working dtype. Masks preceding
           the image use the previous call's image dtype, or ``float32`` on a fresh container. The container

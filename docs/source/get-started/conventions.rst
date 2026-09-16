@@ -132,6 +132,11 @@ Transformation matrices and homographies
     b = homography_warp(img, M_norm_inv, (16, 8), align_corners=True)
     assert torch.allclose(a, b, atol=1e-5)
 
+``normalize_homography`` takes its own ``align_corners`` (default ``True``),
+and it must match the one you pass to the warp — the normalized ``[-1, 1]``
+coordinates mean different things under the two conventions. Above, both are
+``True``; note that ``homography_warp`` alone would default to ``False``.
+
 ``align_corners`` defaults
 --------------------------
 
@@ -148,7 +153,7 @@ with ``torch.nn.functional.interpolate``/``grid_sample``, pass
      - ``True``
    * - ``resize``
      - ``None`` (PyTorch's per-mode default)
-   * - ``homography_warp``
+   * - ``homography_warp``, ``elastic_transform2d``
      - ``False``
    * - ``undistort_image``
      - ``True``
@@ -156,6 +161,51 @@ with ``torch.nn.functional.interpolate``/``grid_sample``, pass
      - ``True``
    * - ``DepthWarper`` / ``depth_warp``
      - ``True`` (default)
+   * - ``remap``
+     - ``None`` (resolved to ``False`` internally)
+
+The flag selects only how Kornia normalizes coordinates for ``grid_sample``
+(``True``: pixel *centers* 0 and ``size-1`` sit at ``±1``; ``False``: the outer
+pixel *edges* do). Transforms you pass in are pixel-space either way, so a warp
+that should be an identity is one under both settings, and ``warp_affine`` and
+``warp_perspective`` agree with each other:
+
+.. code-block:: python
+
+    import torch
+    from kornia.geometry.transform import get_perspective_transform, warp_affine, warp_perspective
+
+    img = torch.arange(16.0).view(1, 1, 4, 4)
+    pts = torch.tensor([[[0.0, 0.0], [3.0, 0.0], [3.0, 3.0], [0.0, 3.0]]])
+    M = get_perspective_transform(pts, pts)  # identity
+
+    for align_corners in (True, False):
+        a = warp_affine(img, M[:, :2, :], (4, 4), align_corners=align_corners)
+        p = warp_perspective(img, M, (4, 4), align_corners=align_corners)
+        assert torch.allclose(a, img, atol=1e-4)
+        assert torch.allclose(p, img, atol=1e-4)
+
+Where the two settings genuinely differ is out-of-bounds sampling, since ``±1``
+covers a slightly different extent of the source image.
+
+.. warning::
+
+   :func:`kornia.geometry.transform.remap` is the 2D exception left: it normalizes its
+   pixel maps with the ``align_corners=True`` convention regardless of the flag it passes
+   to ``grid_sample``, so with its default (``None``, i.e. ``False``) even an identity
+   pixel map resamples the image, by ``11.25`` on a 4x4 ``arange`` image. Pass
+   ``align_corners=True`` until this is fixed. Tracked in
+   `#4504 <https://github.com/kornia/kornia/issues/4504>`_.
+
+   The 3-D warps are the other exception. ``normal_transform_pixel3d`` and
+   ``normalize_homography3d`` take no ``align_corners`` at all, so
+   :func:`kornia.geometry.transform.warp_affine3d` and
+   :func:`kornia.geometry.transform.warp_perspective3d` normalize with the corner-aligned
+   convention whatever flag they pass to ``grid_sample``, and have the same mismatch at
+   ``align_corners=False``: an identity ``warp_perspective3d`` changes a 4x4x4 ``arange``
+   volume by up to ``55.1`` there, against exactly ``0`` at ``align_corners=True``. Pass
+   ``align_corners=True`` to the 3-D warps until this is fixed. Tracked in
+   `#4503 <https://github.com/kornia/kornia/issues/4503>`_.
 
 Bounding boxes
 --------------
@@ -223,10 +273,7 @@ Augmentations
   :class:`kornia.augmentation.RandomErasing` fills the erased mask region with
   zero.
 - The geometric mask path normally uses nearest interpolation. That avoids
-  interpolating labels only when no other operation changes their values:
-  padding can introduce its fill value, and ``Resize(antialias=True)`` filters
-  masks before sampling, producing fractional labels or changing integer and
-  boolean masks (`#4479 <https://github.com/kornia/kornia/issues/4479>`_).
+  interpolating labels, but padding can still introduce its fill value.
 - Put the image before masks, including in dictionary insertion order, so
   conversion uses its working dtype. Earlier masks use the previous image
   dtype, or ``float32`` on a fresh container. Integer labels outside the
@@ -261,6 +308,36 @@ Augmentations
   :func:`kornia.geometry.transform.rotate`, and clockwise with
   :class:`kornia.augmentation.RandomAffine`
   (`#4408 <https://github.com/kornia/kornia/issues/4408>`_).
+- The 2D intensity augmentations assume the ``[0, 1]`` float range, and no
+  base-class check validates it on the way in. Outside that range, individual
+  classes use their documented policy: some clamp, rescale, or convert through
+  ``uint8``; :class:`kornia.augmentation.RandomPlanckianJitter` clamps only the
+  upper end; some do not clamp; and :class:`kornia.augmentation.RandomEqualize`
+  raises where its value check runs (MPS skips the check; torch ``2.14`` raises a
+  raw indexing error instead, and ``2.5.1`` and ``2.9.1`` return silently). The resulting values also depend on the sampled parameters and image
+  contents. Several return an all-zero image for an all-negative input: on a
+  constant ``-1.0`` image most of them do so on every draw, while nearer zero the
+  sampled parameters decide more often, and
+  :class:`kornia.augmentation.RandomSolarize` does the same when every input value
+  is at least ``1.5``. Values between ``1`` and ``1.5`` can instead produce nonzero
+  output after a negative addition (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
+  These policies are not an exhaustive classification: a further outcome is
+  NaN, which :class:`kornia.augmentation.RandomGamma` produces for a negative
+  input whenever the drawn ``gamma`` is not an integer (``gamma=(1.5, 1.5)`` on a
+  strictly negative image is NaN in every element, while the integral ``(2.0, 2.0)``
+  is finite).
+  See :class:`kornia.augmentation.IntensityAugmentationBase2D` and each class's
+  own documentation. :class:`kornia.augmentation.RandomDissolving` is unmeasured
+  because constructing it needs the optional ``diffusers`` package and, on a cold
+  cache, downloads a Stable Diffusion checkpoint.
+  :class:`kornia.augmentation.RandomClahe` and
+  :class:`kornia.augmentation.RandomJPEG` are importable and documented but absent
+  from ``kornia.augmentation.__all__``, so they are outside the audited set above;
+  ``RandomClahe`` raises out of range with a raw indexing error
+  (`#4564 <https://github.com/kornia/kornia/issues/4564>`_) and ``RandomJPEG``
+  clamps the decoded RGB output into ``[0, 1]``. The decoding can produce intermediate
+  values even when every input value is negative or every input value is above ``1``;
+  such images need not become solid black or white.
 
 .. code-block:: python
 
@@ -289,14 +366,23 @@ Randomness in augmentations
 - ``set_rng_device_and_dtype`` requests a sampling device and dtype. It
   updates the gate configuration and asks the parameter generator to rebuild
   its samplers, but some generators retain internal CPU tensors or ignore
-  the requested precision. A move can fail in the setter itself or during
-  a later forward, depending on the configuration
-  (`#4415 <https://github.com/kornia/kornia/issues/4415>`_,
-  `#4426 <https://github.com/kornia/kornia/issues/4426>`_).
+  the requested precision
+  (`#4426 <https://github.com/kornia/kornia/issues/4426>`_).
   Returned parameter placement is separate: an affine without shear can
   sample angles on MPS and return them on CPU. Numeric ranges or tensor-valued
   constructor ranges can determine the returned device/dtype, so inspecting
   ``_params`` alone does not establish where or at what precision draws ran.
+- Module migration through ``.to(...)`` also updates the augmentation gate
+  and registered parameter generators' sampling configuration, including
+  moves through a container. A dtype-only move preserves the sampling device;
+  a device-only move preserves its dtype. Invalid integer-dtype requests are
+  rejected before changing the samplers. This does not make every generator
+  support every device/dtype, or force returned parameters onto the sampling
+  device. This limitation affects multiple generators, including numeric-range
+  ``RandomAffine``, ``RandomPerspective``, ``RandomRotation``, ``RandomCrop``,
+  and ``RandomShear`` with scalar, pair, or four-value ranges: returned transform
+  parameters can remain CPU float32 while ``batch_prob`` is on the accelerator
+  (`#4426 <https://github.com/kornia/kornia/issues/4426>`_).
 - Reproducibility uses the global generators on the sampling devices.
   ``torch.manual_seed`` reproduces draws for the same configuration, inputs,
   backend and dtype; matching across devices or PyTorch versions is not
@@ -323,6 +409,9 @@ Randomness in augmentations
   one probability contract. Check the concrete class rather than inferring
   its gate from the base signature. Exposing ``p_batch`` is also
   constructor-dependent (`#4425 <https://github.com/kornia/kornia/issues/4425>`_).
+  The gate selects after the transform has been computed for the whole batch,
+  so a skipped sample can still raise or carry a NaN gradient
+  (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
 - Under :class:`torch.utils.data.DataLoader`, each worker's global CPU
   generator is seeded ``base_seed + worker_id``. Reproducibility also depends
   on worker configuration and consumption order. A ``worker_init_fn`` that
@@ -395,6 +484,14 @@ Quick self-review for generated code, most common first:
     a mask along, and the other two raise on a ``mask`` key.
 17. Inferring the augmentation sampling backend from ``_params`` placement
     — samplers can draw on an accelerator and cast the returned tensors back to CPU.
+18. Feeding mean/std-normalized or otherwise out-of-``[0, 1]`` tensors
+    through an intensity augmentation and expecting the values to pass
+    through — some rescale, some clamp, ``RandomEqualize`` and ``RandomClahe``
+    raise, and several return zeros for an all-negative image -- on every draw
+    for a constant ``-1.0`` image, on some draws nearer zero -- while
+    ``RandomSolarize`` returns zeros when every
+    input value is at least ``1.5``. Its output for values between ``1`` and ``1.5``
+    depends on the addition.
 
 .. tip::
 

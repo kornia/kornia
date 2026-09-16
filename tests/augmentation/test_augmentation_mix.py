@@ -29,6 +29,7 @@ from kornia.augmentation import (
     RandomTransplantation,
     RandomTransplantation3D,
 )
+from kornia.geometry.bbox import infer_bbox_shape
 
 from testing.base import BaseTester
 
@@ -58,10 +59,15 @@ class TestRandomMixUpV2(BaseTester):
 
         out_image, out_label = f(input, label)
 
+        if dtype == torch.float16:
+            rtol, atol = 1e-3, 1e-3
+        else:
+            rtol, atol = 1e-4, 1e-4
+
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
         self.assert_close(out_label[:, 0], label)
         self.assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
-        self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_label[:, 2], lam, rtol=rtol, atol=atol)
 
     def test_random_mixup_p0(self, device, dtype):
         torch.manual_seed(0)
@@ -298,6 +304,28 @@ class TestRandomCutMixV2(BaseTester):
         if untouched.any():
             self.assert_close(output[untouched], input[untouched])
 
+    def test_random_cutmix_float64_lambda(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+
+        torch.manual_seed(76)
+        f = RandomCutMixV2(p=1.0, data_keys=["input", "class"])
+
+        input = torch.stack(
+            [
+                torch.ones(1, 15, 17, device=device, dtype=torch.float64),
+                torch.zeros(1, 15, 17, device=device, dtype=torch.float64),
+            ]
+        )
+        label = torch.tensor([1, 0], device=device, dtype=torch.float64)
+
+        _, out_label = f(input, label)
+
+        w, h = infer_bbox_shape(f._params["crop_src"][0])
+        expected_lambda = w.to(torch.float64) * h.to(torch.float64) / (15 * 17)
+
+        self.assert_close(out_label[0, :, 2], expected_lambda, rtol=0.0, atol=0.0)
+
 
 class TestRandomMosaic(BaseTester):
     def test_non_square_input_preserves_hw_4438(self):
@@ -438,9 +466,13 @@ class TestRandomMosaic(BaseTester):
             device=device,
             dtype=dtype,
         )
+        if dtype in (torch.float16, torch.bfloat16):
+            rtol, atol = 1e-2, 5e-2
+        else:
+            rtol, atol = 1e-4, 1e-4
 
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        self.assert_close(out_box, expected_box, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_box, expected_box, rtol=rtol, atol=atol)
 
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
     def test_p(self, p, device, dtype):

@@ -39,6 +39,9 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
         - a point with ``z = 0`` does not raise: the perspective divide is skipped and ``K`` is applied to the
           undivided point, giving ``fx x + cx``. A point behind the camera is projected just as silently.
 
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for camera-frame coordinates,
+        intrinsics and the pixel-centre convention.
+
     .. warning::
         The ``z = 0`` answer is tracked in `#4267 <https://github.com/kornia/kornia/issues/4267>`_.
 
@@ -82,6 +85,9 @@ def unproject_points(
           :meth:`~kornia.geometry.camera.pinhole.PinholeCamera.unproject` is the world-frame counterpart.
         - ``depth`` is the camera-frame ``z`` of the result. With ``normalize=True`` it is read as the
           Euclidean ray length instead, so the result has that norm and a smaller ``z``.
+
+        See :doc:`camera and world conventions </get-started/camera-conventions>` for camera-frame depth,
+        intrinsics and the pixel-centre convention.
 
     Args:
         point_2d: tensor containing the 2d points to be projected to

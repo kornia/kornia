@@ -96,7 +96,7 @@ covers CUDA or MPS half precision.
 | `kornia.filters` | ⚠️ | ⚠️ | 18 / 9 | Accuracy misses in Canny magnitudes, discrete Gaussian kernels and Otsu; on CPU `fft_conv` runs its FFTs in float32 |
 | `kornia.enhance` | ✅ | ⚠️ | 0 / 2 | bfloat16: `DiffJPEG` and ZCA accuracy |
 | `kornia.morphology` | ✅ | ✅ | 0 / 0 | |
-| `kornia.augmentation` | ⚠️ | ⚠️ | 205 / 83 | float16: 108 entries are `CutmixGenerator`, whose Dirichlet sampling rejects float16 parameters; bfloat16: `RandomJigsaw`, `RandomCutMixV2`, `RandomMixUpV2` and `RandomMosaic` raise `KeyError: 'BFLOAT16'` ([#4467](https://github.com/kornia/kornia/issues/4467)) |
+| `kornia.augmentation` | ⚠️ | ⚠️ | 200 / 56 | float16: 108 entries are `CutmixGenerator`, whose Dirichlet sampling rejects float16 parameters; bfloat16: mostly 3D-augmentation gradient checks (28 of 56 entries are `RandomMotionBlur3D`/`RandomRotation3D` backward) |
 | `kornia.geometry.transform` | ⚠️ | ⚠️ | 43 / 58 | Accuracy misses in rotation matrices, affine/perspective warps, the homography warper and 3D crops |
 | `kornia.geometry.camera` | ⚠️ | ⚠️ | 13 / 23 | Pinhole `cam2pixel`/`pixel2cam` consistency, distortion round trips, `StereoCamera` reprojection; 12 bfloat16 entries are a test-side dtype assertion |
 | `kornia.geometry.calibration` | ⚠️ | ⚠️ | 13 / 12 | `solve_pnp_dlt` rejects half inputs (float32/float64 only); `undistort_points` misses its OpenCV reference values |
@@ -112,7 +112,7 @@ covers CUDA or MPS half precision.
 | `kornia.losses` | ⚠️ | ⚠️ | 3 / 4 | Dice averaging overflows to inf/NaN in float16; mutual information range check; bfloat16 Dice weighting and total variation |
 | `kornia.feature` | ✅ | ✅ | 0 / 0 | Matching uses a manual `cdist` fallback for half dtypes; LightGlue's float16 tests are skipped, so that path is unmeasured |
 | `kornia.metrics` | ✅ | ⚠️ | 0 / 1 | bfloat16: `ssim3d` accuracy |
-| `kornia.models` | ⚠️ | ⚠️ | 15 / 7 | EfficientViT (float16) and Kimi-VL MoonViT raise dtype mismatches; bfloat16 RT-DETR RepVGG fusion accuracy |
+| `kornia.models` | ⚠️ | ⚠️ | 9 / 1 | EfficientViT raises dtype mismatches (float16); bfloat16 RT-DETR RepVGG fusion accuracy |
 | `contrib`, `core`, `io`, `onnx`, `sensors`, `tracking`, `utils` | ✅ | ⚠️ | 0 / 3 | bfloat16: histogram matching, `_torch_svd_cast`, camera-model projection |
 
 ✅ No known CPU failures &nbsp; ⚠️ Runs, with known failures (mostly accuracy; notes name the ops that raise)

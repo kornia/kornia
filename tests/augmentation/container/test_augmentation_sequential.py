@@ -28,6 +28,7 @@ from kornia.constants import BorderType, DataKey, Resample
 from kornia.core._compat import torch_version_lt
 from kornia.geometry.bbox import bbox_to_mask
 from kornia.geometry.boxes import Boxes
+from kornia.geometry.transform import resize
 
 from testing.augmentation.utils import reproducibility_test
 from testing.base import BaseTester, assert_close
@@ -739,8 +740,6 @@ class TestConventionAugmentationSequential(BaseTester):
         # passthrough, so annotations desynchronized from the mixed image. The container now dispatches to
         # the child's own handlers: RandomMosaic transforms boxes (container xyxy_plus path), and unsupported
         # keys raise NotImplementedError as a direct call does. A class key still raises from the container.
-        if dtype == torch.bfloat16:
-            pytest.skip("Tracked in #4467: the mix forward path has no bfloat16 DType")
         from kornia.geometry.boxes import Boxes
 
         image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
@@ -862,15 +861,68 @@ class TestConventionAugmentationSequential(BaseTester):
         bool_mask[:, :, 1:4, 2:6] = True
         assert aug(torch.rand(2, 3, 6, 8, device=device, dtype=dtype), bool_mask)[1].dtype == torch.bool
 
-    def test_wart_resize_antialias_blurs_masks_4479(self, device, dtype):
-        # Resize applies antialiasing before the mask's nearest interpolation, introducing values outside the
-        # input label set. This is a current wart, tracked in #4479.
-        image = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
-        mask = torch.full((1, 1, 8, 8), 2.0, device=device, dtype=dtype)
-        mask[:, :, :, 4:] = 3.0
-        aug = K.AugmentationSequential(K.Resize((4, 4), antialias=True), data_keys=["input", "mask"])
+    @pytest.mark.parametrize("mask_dtype", [torch.float32, torch.int64, torch.bool])
+    def test_resize_antialias_preserves_mask_labels_4479(self, mask_dtype, device, dtype):
+        yy, xx = torch.meshgrid(
+            torch.arange(12, device=device),
+            torch.arange(16, device=device),
+            indexing="ij",
+        )
+        blocks = ((yy // 2) + (xx // 2)) % 2
+
+        if mask_dtype == torch.bool:
+            mask = blocks.bool()
+        else:
+            mask = (2 + blocks).to(mask_dtype)
+
+        mask = mask[None, None]
+        image = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+
+        without_antialias = K.AugmentationSequential(
+            K.Resize((6, 8), antialias=False),
+            data_keys=["input", "mask"],
+        )
+        with_antialias = K.AugmentationSequential(
+            K.Resize((6, 8), antialias=True),
+            data_keys=["input", "mask"],
+        )
+
+        expected_mask = without_antialias(image, mask)[1]
+        out_image, out_mask = with_antialias(image, mask)
+        expected_image = resize(image, (6, 8), "bilinear", align_corners=True, antialias=True)
+
+        assert out_mask.dtype == mask_dtype
+        assert torch.equal(out_mask, expected_mask)
+        assert set(out_mask.unique().tolist()) == set(mask.unique().tolist())
+        self.assert_close(out_image, expected_image)
+
+    def test_resize_mask_explicit_antialias_override_4479(self, device, dtype):
+        yy, xx = torch.meshgrid(
+            torch.arange(12, device=device),
+            torch.arange(16, device=device),
+            indexing="ij",
+        )
+        mask = (((yy // 2) + (xx // 2)) % 2).to(dtype)[None, None]
+        image = torch.rand(1, 3, 12, 16, device=device, dtype=dtype)
+
+        aug = K.AugmentationSequential(
+            K.Resize((6, 8), antialias=True),
+            data_keys=["input", "mask"],
+            extra_args={
+                DataKey.MASK: {
+                    "resample": Resample.BILINEAR,
+                    "align_corners": True,
+                    "antialias": True,
+                }
+            },
+        )
+
         out_mask = aug(image, mask)[1]
-        assert not set(out_mask.unique().tolist()).issubset({2.0, 3.0})
+        expected = resize(mask, (6, 8), "bilinear", align_corners=True, antialias=True)
+        without_antialias = resize(mask, (6, 8), "bilinear", align_corners=True, antialias=False)
+
+        self.assert_close(out_mask, expected)
+        assert not torch.equal(out_mask, without_antialias)
 
     def test_convention_boxes_follow_the_xyxy_plus_convention(self, device, dtype):
         # Convention pin: the container's box arithmetic is `Boxes`' inclusive `xyxy_plus` mode, for a scaling
@@ -1035,8 +1087,18 @@ class TestConventionAugmentationSequential(BaseTester):
         # NEAREST after merging the override, so asking for bilinear changed nothing on `RandomAffine`, while
         # the `align_corners` half of the same dict was honoured. `RandomElasticTransform`, which has its own
         # mask path, honours both halves.
-        # Snippet used to generate expected: this body, executed 2026-09-11 (torch 2.14.0, cpu), seed 0, a
-        # (1, 1, 6, 8) mask with a 1-block: RandomPerspective align_corners override 1.0.
+        # Snippet used to generate expected: this body, executed 2026-09-14 (torch 2.9.1, cpu), seed 0, a
+        # (1, 1, 6, 8) mask with a 1-block: RandomAffine with padding_mode="reflection" align_corners
+        # override 1.0.
+        # The align_corners fixture was `RandomPerspective(0.5, p=1.0)` with zero padding until #3945. That
+        # delta was 1.0 only because the two conventions disagreed on in-bounds samples: the sampling grid
+        # was built corner-aligned whatever flag reached grid_sample, so align_corners=True vs False shifted
+        # the mask by half a pixel. #3945 makes the grid follow the flag, so the two now agree wherever the
+        # sample lands inside the image and that delta collapsed to 0.0 (float32, float64, float16 and
+        # bfloat16 alike). They still differ out of bounds, because +/-1 spans a different extent under each
+        # convention, so the fixture moves to a transform that samples outside the frame and a padding_mode
+        # that makes those samples observable. Sweep, seeds 0-9: delta is exactly 1.0 at every seed on cpu
+        # float32, float64, float16 and bfloat16.
         # The elastic half uses its own fixture, reusing the #4420 pin's style below: `RandomElasticTransform
         # (alpha=(5.0, 5.0), sigma=(4.0, 4.0), p=1.0)` on a checkerboard mask, same (1, 1, 6, 8), H != W frame,
         # instead of the default alpha/sigma with a solid block. #4382 ("fix: respect align_corners in elastic
@@ -1067,8 +1129,8 @@ class TestConventionAugmentationSequential(BaseTester):
         affine = lambda: K.RandomAffine(degrees=(45.0, 45.0), p=1.0)  # noqa: E731
         assert (mask_of(affine, bilinear) - mask_of(affine, None)).abs().max().item() > 0.0
 
-        perspective = lambda: K.RandomPerspective(0.5, p=1.0)  # noqa: E731
-        assert (mask_of(perspective, align) - mask_of(perspective, None)).abs().max().item() == 1.0
+        reflected = lambda: K.RandomAffine(degrees=(45.0, 45.0), p=1.0, padding_mode="reflection")  # noqa: E731
+        assert (mask_of(reflected, align) - mask_of(reflected, None)).abs().max().item() == 1.0
 
         def elastic_mask_of(extra):
             torch.manual_seed(0)

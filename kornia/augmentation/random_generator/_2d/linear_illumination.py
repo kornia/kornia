@@ -21,7 +21,6 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
-from kornia.core.utils import _extract_device_dtype
 from kornia.enhance.normalize import normalize_min_max
 
 
@@ -68,13 +67,19 @@ class LinearIlluminationGenerator(RandomGeneratorBase):
         sign = _range_bound(self.sign, "sign", bounds=(-1.0, 1.0), center=0.0).to(device, dtype)
         self.sign_sampler = UniformDistribution(sign[0], sign[1], validate_args=False)
 
-        self.directions_sampler = UniformDistribution(0, 4, validate_args=False)
+        # Draw the directions on the sampler device but always in float32: on MPS, half-precision
+        # ``torch.rand`` can return exactly 1.0, which would truncate to the invalid direction 4.
+        self.directions_sampler = UniformDistribution(
+            torch.tensor(0.0, device=device, dtype=torch.float32),
+            torch.tensor(4.0, device=device, dtype=torch.float32),
+            validate_args=False,
+        )
 
     def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         r"""Generate random 2D Gaussian illumination patterns."""
         batch_size, channels, height, width = batch_shape
         _common_param_check(batch_size, same_on_batch)
-        _device, _dtype = _extract_device_dtype([self.gain, self.sign])
+        _device, _dtype = self.device, self.dtype
 
         # Random gain and sign
         gain_factor = _adapted_rsampling((batch_size, 1, 1, 1), self.gain_sampler, same_on_batch).to(
@@ -156,13 +161,19 @@ class LinearCornerIlluminationGenerator(RandomGeneratorBase):
         sign = _range_bound(self.sign, "sign", bounds=(-1.0, 1.0), center=0.0).to(device, dtype)
         self.sign_sampler = UniformDistribution(sign[0], sign[1], validate_args=False)
 
-        self.directions_sampler = UniformDistribution(0, 4, validate_args=False)
+        # Draw the directions on the sampler device but always in float32: on MPS, half-precision
+        # ``torch.rand`` can return exactly 1.0, which would truncate to the invalid direction 4.
+        self.directions_sampler = UniformDistribution(
+            torch.tensor(0.0, device=device, dtype=torch.float32),
+            torch.tensor(4.0, device=device, dtype=torch.float32),
+            validate_args=False,
+        )
 
     def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         r"""Generate random 2D Gaussian illumination patterns."""
         batch_size, channels, height, width = batch_shape
         _common_param_check(batch_size, same_on_batch)
-        _device, _dtype = _extract_device_dtype([self.gain, self.sign])
+        _device, _dtype = self.device, self.dtype
 
         gain_factor = _adapted_rsampling((batch_size, 1, 1, 1), self.gain_sampler, same_on_batch).to(
             device=_device, dtype=_dtype
