@@ -1,0 +1,1 @@
+`equalize_clahe`, and so `RandomClahe`, builds every tile histogram with one `bincount` instead of one `torch.histc` call per tile, which is 192 kernel launches for a 256x256 RGB image on the default 8x8 grid. The histograms, and the output, are bit-identical to before.
