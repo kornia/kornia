@@ -110,8 +110,6 @@ class TestRgbToHls(BaseTester):
         self.assert_close(kornia.color.rgb_to_hls(data), expected, low_tolerance=True)
 
     def test_nan_rgb_to_hls(self, device, dtype):
-        if dtype == torch.float16:
-            pytest.skip("not work for half-precision")
         data = torch.ones(2, 3, 5, 5, device=device, dtype=dtype)
 
         # OpenCV
@@ -124,6 +122,36 @@ class TestRgbToHls(BaseTester):
             dim=1,
         )
         self.assert_close(kornia.color.rgb_to_hls(data), expected)
+
+    @pytest.mark.parametrize("gray_level", [0.0, 0.25, 0.5, 1.0])
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
+    @pytest.mark.parametrize("requires_grad", [False, True])
+    def test_achromatic_values_are_finite_and_canonical(self, device, dtype, gray_level, shape, requires_grad):
+        input_data = torch.full(shape, gray_level, device=device, dtype=dtype)
+        input_data.requires_grad_(requires_grad)
+        output = kornia.color.rgb_to_hls(input_data)
+        expected = torch.empty_like(output)
+        expected[..., 0, :, :].fill_(0.0)
+        expected[..., 1, :, :].fill_(gray_level)
+        expected[..., 2, :, :].fill_(0.0)
+        assert torch.isfinite(output).all(), "hls-achromatic-oracle: nonfinite output"
+        self.assert_close(output, expected)
+        assert output.shape == input_data.shape
+        assert output.device == input_data.device
+        assert output.dtype == input_data.dtype
+
+    @pytest.mark.parametrize("gray_level", [0.0, 0.25, 0.5, 1.0])
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
+    def test_achromatic_round_trip_is_finite(self, device, dtype, gray_level, shape):
+        input_data = torch.full(shape, gray_level, device=device, dtype=dtype)
+        hls = kornia.color.rgb_to_hls(input_data)
+        output = kornia.color.hls_to_rgb(hls)
+        assert torch.isfinite(hls).all(), "hls-roundtrip-oracle: nonfinite HLS"
+        assert torch.isfinite(output).all(), "hls-roundtrip-oracle: nonfinite RGB"
+        self.assert_close(output, input_data)
+        assert output.shape == input_data.shape
+        assert output.device == input_data.device
+        assert output.dtype == input_data.dtype
 
     def test_nan_random_extreme_values(self, device, dtype):
         # generate extreme colors randomly

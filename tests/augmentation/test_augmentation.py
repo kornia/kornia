@@ -5406,6 +5406,25 @@ class TestRandomSnow(BaseTester):
         output_data = aug(input_data)
         assert output_data.shape == input_data.shape
 
+    def test_gray_patch_is_finite_and_replayed(self, device, dtype):
+        input_data = torch.full((1, 3, 4, 4), 0.25, device=device, dtype=dtype)
+        input_data[:, 0, 2:, 2:] = 0.9
+        input_data[:, 1, 2:, 2:] = 0.2
+        input_data[:, 2, 2:, 2:] = 0.4
+        aug = RandomSnow(snow_coefficient=(0.5, 0.5), brightness=(2.0, 2.0), p=1.0)
+        params = aug.forward_parameters(input_data.shape)
+        params["snow_coefficient"].fill_(0.5)
+        params["brightness"].fill_(2.0)
+        output_data = aug(input_data, params=params)
+        assert torch.isfinite(output_data).all(), "random-snow-gray-oracle: nonfinite output"
+        expected_gray = torch.full_like(output_data[..., :2, :2], 0.5)
+        self.assert_close(output_data[..., :2, :2], expected_gray)
+        replayed = aug(input_data, params=params)
+        self.assert_close(replayed, output_data)
+        assert output_data.shape == input_data.shape
+        assert output_data.device == input_data.device
+        assert output_data.dtype == input_data.dtype
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         input_data = torch.rand(1, 3, 6, 8, device=device, dtype=torch.float64)
