@@ -29,6 +29,8 @@ class RandomSolarize(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomSolarize.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         thresholds:
@@ -44,6 +46,31 @@ class RandomSolarize(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the addition comes first: the drawn ``additions`` value is added to the whole image and the sum
+          is clamped into ``[0, 1]``, and only then is everything at or above the drawn ``thresholds``
+          replaced by ``1 - value``.
+        - the scalar forms are centred, not absolute: a scalar ``thresholds`` is a half-width around
+          ``0.5`` and a scalar ``additions`` a half-width around ``0``, so the class defaults centre on
+          :func:`kornia.enhance.solarize`'s own default threshold rather than equalling it.
+        - an explicit ``additions`` range is checked against the closed ``[-0.5, 0.5]`` at construction, but
+          :func:`kornia.enhance.solarize` rejects the ends of that interval, so ``additions=(0.5, 0.5)``
+          constructs and then raises a ``RuntimeError`` on the forward pass, and a wider range can draw an
+          endpoint exactly, about once in ``2**24`` samples
+          (`#4605 <https://github.com/kornia/kornia/issues/4605>`_). The check runs on the device
+          of the drawn ``additions`` -- the CPU by default -- so it raises for an MPS image too.
+
+    .. warning::
+        An input entirely outside ``[0, 1]`` can collapse at either end. An all-negative input can come back
+        as an all-zero image when the sampled addition does not raise it above zero; a positive sampled
+        addition can recover values instead, and a drawn threshold of ``0`` inverts the clamped zeros into
+        an all-ones image. At the upper end, ``clamp(x + a, 0, 1)``
+        sends every ``x >= 1.5`` to exactly ``1.0`` for any admissible ``a``, and the inversion then returns
+        ``1 - 1.0 == 0``, so an input drawn from ``[1.5, 3.0]`` is an all-zero image on every draw.
+        Values between ``1`` and ``1.5`` can instead produce nonzero output after a negative addition:
+        ``x=1.1``, ``additions=(-0.4, -0.4)`` and ``thresholds=(0.5, 0.5)`` give ``0.3``. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.solarize`.
