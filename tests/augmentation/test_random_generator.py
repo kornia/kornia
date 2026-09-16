@@ -37,6 +37,7 @@ from kornia.augmentation.random_generator import (
     ResizedCropGenerator,
     center_crop_generator,
 )
+from kornia.augmentation.random_generator.base import UniformDistribution
 
 from testing.base import assert_close
 
@@ -1305,6 +1306,15 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
         assert_close(res["ksize_factor"], expected["ksize_factor"], rtol=1e-4, atol=1e-4)
         assert_close(res["angle_factor"], expected["angle_factor"], rtol=1e-4, atol=1e-4)
         assert_close(res["direction_factor"], expected["direction_factor"], rtol=1e-4, atol=1e-4)
+
+    def test_kernel_size_draw_rounded_onto_the_open_end_stays_in_range_4599(self, device, dtype):
+        # The half-size sampler is uniform on [lo, hi + 1); a float32 draw can round onto hi + 1 itself.
+        gen = MotionBlurGenerator(
+            kernel_size=(3, 5), angle=torch.tensor([0.0, 0.0]), direction=torch.tensor([0.0, 0.0])
+        )
+        gen.set_rng_device_and_dtype(device, dtype)
+        gen.ksize_sampler = UniformDistribution(3.0, 3.0, validate_args=False)
+        assert gen(torch.Size([4]))["ksize_factor"].tolist() == [5, 5, 5, 5]
 
 
 class TestRandomPosterizeGen(RandomGeneratorBaseTests):

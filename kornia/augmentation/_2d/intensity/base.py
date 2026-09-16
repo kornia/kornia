@@ -93,11 +93,9 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           admit and :func:`kornia.enhance.solarize` and :func:`kornia.filters.gaussian_blur2d` reject;
           :class:`RandomMedianBlur`'s even ``kernel_size``, which raises a raw torch error the same way;
           :class:`RandomRain`'s drop-size bounds; a tuple ``kernel_size`` for :class:`RandomMotionBlur` whose
-          drawn odd size is below ``3`` -- an even bound is rounded up to the next odd size rather than
-          rejected, and that rounding can leave the requested range, so ``(4, 4)`` draws ``5`` and ``(2, 2)``
-          draws ``3``, while ``(0, 2)`` raises because the odd size it rounds to is ``1``. That same
-          truncation means the range's upper bound is practically never drawn -- ``kernel_size=(3, 5)`` is a
-          constant ``3`` (`#4599 <https://github.com/kornia/kornia/issues/4599>`_);
+          drawn odd size is below ``3`` -- a range that holds no odd size is rounded up to the next odd size
+          rather than rejected, which leaves the requested range, so ``(4, 4)`` draws ``5`` and ``(2, 2)``
+          draws ``3``, while ``(0, 2)`` raises because the only odd size it holds is ``1``;
           and :class:`RandomChannelDropout`'s ``num_drop_channels`` against the input's channel count.
           :class:`RandomPlanckianJitter`'s ``select_from`` rejects an index past the table at construction
           but accepts a negative one, as Python indexing does. A scalar magnitude is a different case: several
