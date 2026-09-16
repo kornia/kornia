@@ -655,6 +655,9 @@ def bbox_generator3d(
     bbox[:, :, 0] += x_start.view(-1, 1)
     bbox[:, :, 1] += y_start.view(-1, 1)
     bbox[:, :, 2] += z_start.view(-1, 1)
+    # NOTE: bbox_generator3d makes boxes 1 unit too big per axis (start + size instead of
+    # start + size - 1), unlike bbox_generator. Tracked in #4018; do not fix until the batch
+    # window (#4020).
     bbox[:, 1, 0] += width.view(-1)
     bbox[:, 2, 0] += width.view(-1)
     bbox[:, 2, 1] += height.view(-1)
