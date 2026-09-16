@@ -1769,29 +1769,67 @@ class TestIntensityColourConventions(BaseTester):
         assert float(sharpness.min()) >= 0.0 and float(sharpness.max()) <= 0.5
         assert float(sharpness.min()) < 0.1  # the lower end is the clamped -x, not a centred x / 2
 
-    # Issue #4564: RandomClahe rejects an out-of-[0, 1] input with the raw indexing error of the
-    # histogram gather, naming neither the class nor the range RandomEqualize names (#4489).  Not on CUDA,
-    # where the out-of-range index is a device-side assert that poisons the context; on MPS the error is
-    # an AcceleratorError, a RuntimeError subclass, reading `gather: index ... is out of bounds`.
+    # RandomClahe rejects an out-of-[0, 1] input with a message naming `equalize_clahe` and the range
+    # (the fix for #4564; the raw indexing error of the histogram gather used to be all a caller got).
+    # Not on CUDA, where an out-of-range index is a device-side assert that poisons the context.  On MPS
+    # the check is SKIPPED BY DESIGN -- `_assert_async_value_check` returns early there, because
+    # materializing the condition would drain the queued stream -- so MPS keeps the old behaviour and the
+    # pin keeps its two torch legs: 2.14 raises the raw `gather` error (#4600), 2.5.1 returns silently.
     # Snippet used to generate expected:
     #   torch.manual_seed(1234); x = torch.rand(1, 3, 16, 16) * 2
     #   torch.manual_seed(0); K.RandomClahe(p=1.0)(x)
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `RuntimeError: index 430 is out of bounds for
-    # dimension 5 with size 256`.
-    def test_wart_random_clahe_out_of_range_error_is_raw_4564(self, device, dtype):
+    # executed 2026-09-16 (torch 2.14.0) -> cpu `RuntimeError: equalize_clahe expects input values in
+    # [0, 1]. Scale the image into that range first, ...`; mps `AcceleratorError: gather: index 487 is
+    # out of bounds for dimension 5 with size 256`.
+    def test_convention_random_clahe_out_of_range_error_names_the_range_4564(self, device, dtype):
         if device.type == "cuda":
             pytest.skip("not on CUDA: the index error is a device-side assert that poisons the context")
         torch.manual_seed(_FIXTURE_SEED)
         image = (torch.rand(1, 3, 16, 16) * 2).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
-        if device.type == "mps" and not torch_version_ge(2, 14):
-            # 2.5.1 leaves the MPS gather unchecked: the call returns an in-range image as if valid.
-            out = K.RandomClahe(p=1.0)(image)
-            assert float(out.min()) >= 0.0 and float(out.max()) <= 1.0
+        if device.type == "mps":
+            # The value check is skipped on MPS, so the outcome is torch's, not kornia's.
+            if not torch_version_ge(2, 14):
+                out = K.RandomClahe(p=1.0)(image)
+                assert float(out.min()) >= 0.0 and float(out.max()) <= 1.0
+            else:
+                with pytest.raises(RuntimeError, match="out of bounds"):
+                    _sync(K.RandomClahe(p=1.0)(image).device)
             return
-        with pytest.raises(RuntimeError, match="out of bounds") as info:
+        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]") as info:
             _sync(K.RandomClahe(p=1.0)(image).device)
-        assert "RandomClahe" not in str(info.value) and "[0, 1]" not in str(info.value)
+        # `match` alone would be satisfied by a message that never mentions how to fix it.
+        assert "image / 255.0" in str(info.value)
+
+    # The rejection is one 8-bit code wide either side of [0, 1], not exactly at the bound: the guard is
+    # the 256-entry lookup indexed with `(input * 255).long()`, so the admitted band is
+    # `(-1/255, 1 + 1/255)`.  Without this leg a `>=`/`<=` widening of the check survives every other pin.
+    # Snippet used to generate expected:
+    #   for v in (1.0, 0.0, 1 + 0.5/255, 1 + 1.5/255, -0.5/255, -1.5/255):
+    #       img = torch.full((1, 1, 16, 16), 0.5); img[0, 0, 0, 0] = v; equalize_clahe(img)
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> admitted, admitted, admitted, RAISES, admitted, RAISES.
+    @pytest.mark.parametrize(
+        ("value", "admitted"),
+        [
+            (1.0, True),
+            (0.0, True),
+            (1.0 + 0.5 / 255, True),
+            (1.0 + 1.5 / 255, False),
+            (-0.5 / 255, True),
+            (-1.5 / 255, False),
+        ],
+    )
+    def test_convention_random_clahe_admitted_band_is_one_code_wide(self, device, dtype, value, admitted):
+        if device.type in ("cuda", "mps"):
+            pytest.skip("the value check runs on the CPU only: CUDA poisons the context, MPS skips it")
+        image = torch.full((1, 1, 16, 16), 0.5, device=device, dtype=dtype)
+        image[0, 0, 0, 0] = value
+        torch.manual_seed(_FORWARD_SEED)
+        if admitted:
+            assert K.RandomClahe(p=1.0)(image).isfinite().all()
+        else:
+            with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+                K.RandomClahe(p=1.0)(image)
 
     # Divisibility is not the axis that decides whether `grid_size` works: a SQUARE grid is padded up to
     # a whole number of tiles, so it works whether or not it divides the image.  `_compute_tiles` is
