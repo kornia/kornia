@@ -53,7 +53,8 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
         - outside that range, concrete classes apply their documented policy: some clamp, rescale, or use a
           ``uint8`` conversion; :class:`RandomPlanckianJitter` clamps only the upper end; others do not
           clamp; and :class:`RandomEqualize` raises a ``RuntimeError`` where its value check runs (on MPS the
-          check is skipped and a raw indexing error surfaces instead). The resulting values also depend on
+          check is skipped: torch ``2.14`` raises a raw indexing error instead, and ``2.5.1`` and ``2.9.1``
+          return silently). The resulting values also depend on
           the sampled parameters and image contents, so these policies are not an exhaustive classification
           of every out-of-range input. :class:`RandomDissolving` is unmeasured because constructing it needs
           the optional ``diffusers`` package and, on a cold cache, downloads a Stable Diffusion checkpoint.
@@ -86,7 +87,8 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
         - where a class documents bounds for a parameter, an explicit range outside them usually raises at
           construction. These checks run on the forward pass instead: :class:`RandomGamma`'s non-negativity checks
           on ``gamma`` and ``gain``, which live in :func:`kornia.enhance.adjust_gamma`;
-          :class:`RandomSolarize`'s ``additions`` at the closed bounds ``-0.5`` and ``0.5``, and
+          :class:`RandomSolarize`'s ``additions`` at the closed bounds ``-0.5`` and ``0.5``
+          (`#4605 <https://github.com/kornia/kornia/issues/4605>`_), and
           :class:`RandomGaussianBlur`'s ``sigma`` at ``0`` and even ``kernel_size``, which the constructors
           admit and :func:`kornia.enhance.solarize` and :func:`kornia.filters.gaussian_blur2d` reject;
           :class:`RandomMedianBlur`'s even ``kernel_size``, which raises a raw torch error the same way;
@@ -94,7 +96,7 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           drawn odd size is below ``3`` -- an even bound is rounded up to the next odd size rather than
           rejected, and that rounding can leave the requested range, so ``(4, 4)`` draws ``5`` and ``(2, 2)``
           draws ``3``, while ``(0, 2)`` raises because the odd size it rounds to is ``1``. That same
-          truncation means the range's upper bound is never drawn at all -- ``kernel_size=(3, 5)`` is a
+          truncation means the range's upper bound is practically never drawn -- ``kernel_size=(3, 5)`` is a
           constant ``3`` (`#4599 <https://github.com/kornia/kornia/issues/4599>`_);
           and :class:`RandomChannelDropout`'s ``num_drop_channels`` against the input's channel count.
           :class:`RandomPlanckianJitter`'s ``select_from`` rejects an index past the table at construction
@@ -104,9 +106,13 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
 
     .. warning::
         Several of these classes return an all-zero image for an input whose values are all negative, with no
-        warning. It is mostly not draw-dependent: on an all ``-1.0`` image at the audited constructor
-        arguments, 15 of the 17 that collapse do so on every one of five seeds, and only
-        :class:`ColorJiggle` and :class:`RandomPlasmaContrast` depend on the draw. At the upper end,
+        warning. On a constant ``-1.0`` image at the audited constructor arguments, 17 classes collapse, 15
+        of them on every one of five seeds, and only :class:`ColorJiggle` and :class:`RandomPlasmaContrast`
+        depend on the draw; two of the 15 are artefacts of the constant image rather than of its sign
+        (:class:`Denormalize` maps ``-1`` to exactly ``0`` at the audited ``mean=std=0.5``, and
+        :class:`RandomAutoContrast` returns zeros for any constant image). Nearer zero the draw decides more
+        often: on the audit fixture drawn from ``[-1, 0)``, 5 of the 12 collapsing classes do so on every
+        one of 100 seeds and the other 7 on some. At the upper end,
         :class:`RandomSolarize` returns zeros when every input value is at least ``1.5``, for every
         admissible addition. Values between ``1`` and ``1.5`` can instead produce nonzero output after
         a negative addition. Tracked in

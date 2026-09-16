@@ -88,7 +88,9 @@ class AugmentationBase2D(_AugmentationBase):
           Tracked in `#4424 <https://github.com/kornia/kornia/issues/4424>`_.
         - this base samples ``p`` per sample and uses ``p_batch`` as a call-wide gate. ``same_on_batch=True``
           shares applicable sampled values across the batch. Concrete constructors need not expose ``p_batch``;
-          see `#4425 <https://github.com/kornia/kornia/issues/4425>`_.
+          see `#4425 <https://github.com/kornia/kornia/issues/4425>`_. The gate selects after the transform
+          has been computed for the whole batch, so a sample it skips can still raise or carry a NaN gradient
+          (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
         - parameter sampling normally uses CPU defaults independently of the image device. Moving RNG state or
           samplers is incomplete for some generators, and returned parameter placement is a separate concern;
           see `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
@@ -130,8 +132,9 @@ class AugmentationBase2D(_AugmentationBase):
 
     .. warning::
         ``set_rng_device_and_dtype`` has incomplete sampler migration. It rebuilds what it can, but some
-        generators retain internal CPU tensors or ignore the requested precision, and the returned
-        parameters can stay CPU ``float32`` while ``batch_prob`` follows the request. Tracked in
+        generators retain internal CPU tensors or ignore the requested precision, some generator/device
+        combinations can still fail during forward, and the returned parameters can stay CPU ``float32``
+        while ``batch_prob`` follows the request. Tracked in
         `#4426 <https://github.com/kornia/kornia/issues/4426>`_.
 
     .. warning::

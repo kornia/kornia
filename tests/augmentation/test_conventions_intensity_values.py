@@ -24,6 +24,7 @@ import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.random_generator import RectangleEraseGenerator
+from kornia.core._compat import torch_version_ge
 from kornia.core.exceptions import BaseError, ImageError, ShapeError
 from kornia.enhance import (
     AdjustBrightnessAccumulative,
@@ -246,7 +247,13 @@ class TestIntensityValueRangeConventions(BaseTester):
         fixtures = _out_of_range_fixtures(device, dtype)
         if name in _REJECTS_AUDIT_FIXTURES:
             # The rejection has to be the VALUE check, not any RuntimeError: on the CPU the message
-            # names the range, and on MPS the check is skipped so the raw gather error surfaces (#4600).
+            # names the range, and on MPS the check is skipped so the raw gather error surfaces (#4600) --
+            # from torch 2.14; 2.5.1 and 2.9.1 leave the MPS gather unchecked and return silently.
+            if device.type == "mps" and not torch_version_ge(2, 14):
+                for image in fixtures.values():
+                    out = _run(name, image)
+                    assert bool(torch.isfinite(out).all())
+                return
             rejection = r"\[0, 1\]" if device.type == "cpu" else "out of bounds"
             for image in fixtures.values():
                 with pytest.raises(RuntimeError, match=rejection):
@@ -269,7 +276,6 @@ class TestIntensityValueRangeConventions(BaseTester):
         moved = False
         for seed in range(8):
             for image in fixtures.values():
-                torch.manual_seed(seed)
                 if not torch.equal(_run(name, image, seed=seed), image):
                     moved = True
                     break
@@ -280,6 +286,13 @@ class TestIntensityValueRangeConventions(BaseTester):
             for tag, (low, high) in ranges.items():
                 assert float(low) >= -tol, f"{name} on {tag} left the lower end unclamped"
                 assert float(high) <= 1 + tol, f"{name} on {tag} left the upper end unclamped"
+            # Reach: the bound is [0, 1], not a narrower interval that would also satisfy the above (a clamp
+            # into [0, 0.5] left every bounded class green).  Every bounded class reaches 0 on the negative
+            # fixture; on [0, 2] all reach 1 except RandomPosterize (252/255 after the uint8 round trip)
+            # and RandomSolarize (inverted above its threshold).
+            assert float(ranges["[-1, 0]"][0]) <= tol, f"{name} on [-1, 0] does not reach 0"
+            if name not in ("RandomPosterize", "RandomSolarize"):
+                assert float(ranges["[0, 2]"][1]) >= 1 - tol, f"{name} on [0, 2] does not reach 1"
         elif name in _UPPER_BOUNDED_ON_FIXTURES:
             for tag, (_, high) in ranges.items():
                 assert float(high) <= 1 + tol, f"{name} on {tag} left the upper end unclamped"
@@ -385,6 +398,64 @@ class TestIntensityValueRangeConventions(BaseTester):
             )
         image = _out_of_range_fixtures(device, dtype)["[-1, 0]"]
         assert float(_run(name, image, seed=0).abs().max()) == 0.0
+
+    # The anchor's census (issue #4430): on a constant `-1.0` image at the audited constructor arguments,
+    # 17 factories collapse, 15 of them on every one of seeds 0..4 and only ColorJiggle and
+    # RandomPlasmaContrast on some.  Two of the 15 are artefacts of the constant image rather than of
+    # its sign -- Denormalize maps -1 to exactly 0 at mean=std=0.5 and RandomAutoContrast returns zeros
+    # for any constant image -- so neither collapses on the `[-1, 0)` audit fixture, where the draw
+    # decides for 7 of the 12 that do.  The seeds are literal so a reseed of the file cannot turn the
+    # census red for a reason that is not a regression.
+    # Snippet used to generate expected:
+    #   img = torch.full((2, 3, 6, 8), -1.0)
+    #   for name, f in sorted(_INTENSITY_FACTORIES.items()):
+    #       n = 0
+    #       for s in range(5):
+    #           torch.manual_seed(s)
+    #           try: n += float(f()(img).abs().max()) == 0.0
+    #           except RuntimeError: pass
+    #       print(name, n)
+    # executed 2026-09-16 (torch 2.14.0, cpu, float32) -> 5 for the fifteen names below, 2 for
+    # ColorJiggle, 1 for RandomPlasmaContrast, 0 for the rest; RandomEqualize raises.
+    _COLLAPSES_ON_CONSTANT_MINUS_ONE = (
+        "ColorJitter",
+        "Denormalize",
+        "RandomAutoContrast",
+        "RandomBrightness",
+        "RandomContrast",
+        "RandomGaussianIllumination",
+        "RandomLinearCornerIllumination",
+        "RandomLinearIllumination",
+        "RandomPlasmaBrightness",
+        "RandomPlasmaShadow",
+        "RandomPosterize",
+        "RandomRGBShift",
+        "RandomSharpness",
+        "RandomSnow",
+        "RandomSolarize",
+    )
+
+    def test_wart_intensity_constant_negative_collapse_census_4430(self, device, dtype):
+        image = torch.full((2, 3, 6, 8), -1.0, device=device, dtype=dtype)
+        every, some = [], []
+        for name in sorted(_INTENSITY_FACTORIES):
+            if name == "RandomEqualize" or (dtype == torch.float16 and name in ("ColorJitter", "RandomSnow")):
+                continue  # raises out of range; float16 ColorJitter (#4560) and RandomSnow (#4571) are NaN there
+            if name in ("RandomBoxBlur", "RandomGaussianBlur") and not supports_reflect_padding(device, dtype):
+                continue  # torch 2.5.1 has no half reflection_pad2d on the CPU
+            zeros = sum(float(_run(name, image, seed=seed).abs().max()) == 0.0 for seed in range(5))
+            (every if zeros == 5 else some if zeros else []).append(name)
+        expected = set(self._COLLAPSES_ON_CONSTANT_MINUS_ONE)
+        if dtype == torch.float16:
+            expected -= {"ColorJitter", "RandomSnow"}
+        assert set(every) == expected
+        assert set(some) <= {"ColorJiggle", "RandomPlasmaContrast"}
+        # The two constant-image artefacts do not collapse the non-constant audit fixture on any of 20 seeds.
+        fixture = _out_of_range_fixtures(device, dtype)["[-1, 0]"]
+        for name in ("Denormalize", "RandomAutoContrast"):
+            assert all(float(_run(name, fixture, seed=seed).abs().max()) > 0.0 for seed in range(20))
+        assert float(_run("RandomAutoContrast", torch.full_like(image, 0.5)).abs().max()) == 0.0
+        self.assert_close(_run("Denormalize", torch.full_like(image, -0.5)), torch.full_like(image, 0.25))
 
     # Row 6c-38 (issue #4430): RandomPosterize does not clamp an out-of-range input.  It posterizes
     # the `uint8` round-trip of the raw float, so the output is the posterization of whatever codes
@@ -503,11 +574,15 @@ class TestIntensityValueRangeConventions(BaseTester):
     def test_convention_random_equalize_rejects_out_of_range_with_named_range(self, device, dtype):
         if device.type == "cuda":
             pytest.skip("not on CUDA: the value assert is a device-side assert that poisons the context")
-        # Only kornia's own check names the range; MPS skips it and surfaces torch's gather error.
+        # Only kornia's own check names the range; MPS skips it and surfaces torch's gather error from
+        # torch 2.14 (2.5.1 and 2.9.1 leave the MPS gather unchecked and return the image silently).
         match = r"\[0, 1\]" if device.type == "cpu" else "out of bounds"
         ramp = torch.linspace(0, 1, 64).reshape(1, 1, 8, 8).to(device=device, dtype=dtype)
         for image in (ramp * 2.0, ramp - 1.0):
             torch.manual_seed(_FORWARD_SEED)
+            if device.type == "mps" and not torch_version_ge(2, 14):
+                assert bool(torch.isfinite(K.RandomEqualize(p=1.0)(image)).all())
+                continue
             with pytest.raises(RuntimeError, match=match):
                 _sync(K.RandomEqualize(p=1.0)(image).device)
         # Less than one 8-bit code outside the range is admitted at either end: `ramp - 0.003` has
@@ -552,6 +627,11 @@ class TestIntensityValueRangeConventions(BaseTester):
             # It has to be the value check that fires, not merely some RuntimeError: the claim is that
             # the transform ran on a sample `p=0.0` was supposed to skip.
             gate_rejection = r"\[0, 1\]|out of bounds" if device.type == "cpu" else "out of bounds"
+            if device.type == "mps" and not torch_version_ge(2, 14):
+                # The transform still runs on the skipped samples, but 2.5.1 leaves the MPS gather
+                # unchecked, so the out-of-range rows come back silently instead of raising.
+                assert bool(torch.isfinite(cls(p=0.0)(image)).all())
+                continue
             with pytest.raises(RuntimeError, match=gate_rejection):
                 _sync(cls(p=0.0)(image).device)
         values = torch.tensor([0.0, 0.25, 1.0]).reshape(1, 1, 1, 3).repeat(2, 1, 1, 1)
@@ -736,6 +816,38 @@ class TestIntensityColourConventions(BaseTester):
         image = torch.rand(2, 3, 6, 8).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         self.assert_close(cls(0.0, 0.0, 0.0, 0.0, p=1.0)(image), image)
+
+    # Issue #4430, the ColorJiggle half: which steps run decides whether the collapse is draw-dependent.
+    # The all-zero default is the identity; contrast-only collapses on every draw; brightness-only and the
+    # audit's four-factor configuration on some; hue-only never.  Literal seeds, as for the census above.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(1234); neg = torch.rand(2, 3, 6, 8) - 1.0
+    #   for args in ((0, 0.3, 0, 0), (0.3, 0, 0, 0), (0.2, 0.2, 0.2, 0.1), (0, 0, 0, 0.1)):
+    #       n = 0
+    #       for s in range(20):
+    #           torch.manual_seed(s); n += float(K.ColorJiggle(*args, p=1.0)(neg).abs().max()) == 0.0
+    #       print(args, n)
+    # executed 2026-09-16 (torch 2.14.0, cpu, float32) -> 20, 7, 7, 0; `ColorJiggle(p=1.0)(neg)` equals `neg`.
+    @pytest.mark.parametrize(
+        ("args", "lo", "hi"),
+        [
+            ((0.0, 0.3, 0.0, 0.0), 20, 20),
+            ((0.3, 0.0, 0.0, 0.0), 1, 19),
+            ((0.2, 0.2, 0.2, 0.1), 1, 19),
+            ((0.0, 0.0, 0.0, 0.1), 0, 0),
+        ],
+    )
+    def test_convention_color_jiggle_negative_collapse_depends_on_which_steps_run(self, device, dtype, args, lo, hi):
+        if dtype == torch.float16 and args[3] > 0.0:
+            pytest.skip("float16 only (#4560): the hue step returns NaN for a black pixel")
+        torch.manual_seed(_FIXTURE_SEED)
+        image = (torch.rand(2, 3, 6, 8) - 1.0).to(device=device, dtype=dtype)
+        assert torch.equal(K.ColorJiggle(p=1.0)(image), image)
+        zeros = 0
+        for seed in range(20):
+            torch.manual_seed(seed)
+            zeros += float(K.ColorJiggle(*args, p=1.0)(image).abs().max()) == 0.0
+        assert lo <= zeros <= hi
 
     # Issue #4430, the ColorJitter half: the all-negative collapse depends on the drawn order.  The
     # brightness step, which the default scalar brightness runs, clamps what is still negative to zero,
@@ -1259,6 +1371,28 @@ class TestIntensityColourConventions(BaseTester):
         out = K.RandomRGBShift(r_shift_limit=0.0, g_shift_limit=0.0, b_shift_limit=0.0, p=1.0)(image.contiguous())
         self.assert_close(out, image.clamp(0.0, 1.0))
 
+    # Issue #4430, the RandomRGBShift half: the clamp on the sum makes a constant image at or below
+    # `-limit` all-zero on every draw, and one between `-limit` and 0 on the draws whose shift does not
+    # lift it.  Literal seeds, as for the census above.
+    # Snippet used to generate expected:
+    #   for v in (-0.5, -0.3):
+    #       n = 0
+    #       for s in range(100):
+    #           torch.manual_seed(s)
+    #           n += float(K.RandomRGBShift(p=1.0)(torch.full((2, 3, 6, 8), v)).abs().max()) == 0.0
+    #       print(v, n)
+    # executed 2026-09-16 (torch 2.14.0, cpu, float32) -> `-0.5 100`, `-0.3 24`.
+    def test_wart_random_rgb_shift_at_or_below_minus_limit_collapses_on_every_draw_4430(self, device, dtype):
+        zeros = {}
+        for value in (-0.5, -0.3):
+            image = torch.full((2, 3, 6, 8), value, device=device, dtype=dtype)
+            zeros[value] = 0
+            for seed in range(100):
+                torch.manual_seed(seed)
+                zeros[value] += float(K.RandomRGBShift(p=1.0)(image).abs().max()) == 0.0
+        assert zeros[-0.5] == 100
+        assert 5 <= zeros[-0.3] <= 50
+
     # Row 6c-33: `pl` is a persistent buffer holding the illuminant table the mode selects -- 25
     # rows for blackbody, 23 for CIED -- and `select_from` narrows the table itself.
     # Snippet used to generate expected:
@@ -1439,7 +1573,7 @@ class TestIntensityColourConventions(BaseTester):
     # `ValueError: brightness out of bounds. Expected inside (0.0, 2.0)`, `ValueError: contrast out
     # of bounds. Expected inside (0, inf)`, `ValueError: saturation out of bounds. Expected inside
     # (0, inf)`, `ValueError: hue out of bounds. Expected inside (-0.5, 0.5)`, `RuntimeError: The addition
-    # must be in the open range (-0.5, 0.5).` (for 0.5 and -0.5), `BaseError: sigma must be positive` and
+    # must be in the open range (-0.5, 0.5).` (for 0.5 and -0.5; #4605), `BaseError: sigma must be positive` and
     # `BaseError: Height of drop should be greater than zero and less than image height.`; then
     # `BaseError: Kernel size must be an odd integer bigger than 0` (Gaussian (4, 4)), `... bigger than 2`
     # (motion (1, 1)), `BaseError: Invalid value in num_drop_channels` and `IndexError: index 25 is out
@@ -1646,6 +1780,11 @@ class TestIntensityColourConventions(BaseTester):
         torch.manual_seed(_FIXTURE_SEED)
         image = (torch.rand(1, 3, 16, 16) * 2).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
+        if device.type == "mps" and not torch_version_ge(2, 14):
+            # 2.5.1 leaves the MPS gather unchecked: the call returns an in-range image as if valid.
+            out = K.RandomClahe(p=1.0)(image)
+            assert float(out.min()) >= 0.0 and float(out.max()) <= 1.0
+            return
         with pytest.raises(RuntimeError, match="out of bounds") as info:
             _sync(K.RandomClahe(p=1.0)(image).device)
         assert "RandomClahe" not in str(info.value) and "[0, 1]" not in str(info.value)

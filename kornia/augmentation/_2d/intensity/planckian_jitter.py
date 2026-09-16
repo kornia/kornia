@@ -119,7 +119,9 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         - the red and blue channels are scaled by the selected row of the illuminant table and the green
           channel is not scaled. The result is then clamped at the upper end only, so negative values stay
           negative while any value the scaling leaves above ``1``, green included, is cut back to ``1``. Every
-          other clamping 2D intensity augmentation bounds both ends.
+          other 2D intensity augmentation whose clamp reaches the whole output bounds both ends;
+          :class:`RandomSnow` clamps only the pixels the snow covers, so it bounds the lower end of an
+          all-negative image and not the upper end of one above ``1``.
         - ``mode`` selects the illuminant lookup table, held in the persistent buffer ``pl``, and
           ``select_from`` narrows that table to the listed rows. The input must have three channels.
 

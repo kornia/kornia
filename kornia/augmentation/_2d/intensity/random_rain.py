@@ -57,13 +57,18 @@ class RandomRain(IntensityAugmentationBase2D):
           painted cells have gaps inside that span -- ``drop_height=5`` with ``drop_width=0`` on a ``6 x 10``
           image paints rows ``[0, 1, 2, 3, 5]``. A size as large as the image's, or a ``drop_height`` below
           ``1``, raises on the forward pass, where the image shape is known -- constructing it succeeds.
+        - a drop's start coordinate is scaled by ``H - h - 1`` rather than ``H - h``, so the last row and
+          the last column of the image are never painted unless the drop is exactly one short of the image
+          on that axis; a single-pixel drop never reaches the last two rows. Tracked in
+          `#4604 <https://github.com/kornia/kornia/issues/4604>`_.
         - the drawn sizes and drop count are float draws truncated toward zero, so unless the range is a single
           point, a positive upper bound is practically never drawn: the default ``drop_height=(5, 20)`` gives
           heights of ``5`` to ``19`` (an image shorter than 20 pixels raises on some seeds, and on every seed when
           it is 5 pixels tall or shorter). A negative ``drop_width`` bound rounds toward zero instead: a negative
           lower bound is practically never drawn while a non-positive upper bound is, and a range from ``-1`` or
-          below to ``1`` or above draws ``0`` twice as often as any other value -- or always, at ``(-1, 1)``
-          exactly, where ``0`` is the only value the range can produce. Tracked in `#4567
+          below to ``1`` or above draws ``0`` twice as often as any other value -- or practically always at
+          ``(-1, 1)`` exactly, where only an exact ``-1.0`` draw, one ``float32`` value in ``2**24``, escapes
+          the truncation to ``0``. Tracked in `#4567
           <https://github.com/kornia/kornia/issues/4567>`_.
         - ``same_on_batch=True`` gives every sample of the batch the same drop count, the same drop size and
           the same coordinates; left at ``False`` each sample draws its own.

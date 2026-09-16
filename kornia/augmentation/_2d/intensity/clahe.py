@@ -56,9 +56,11 @@ class RandomClahe(IntensityAugmentationBase2D):
         256-entry lookup indexed with ``(input * 255).long()``, so a value less than one 8-bit code outside
         ``[0, 1]``, at either end, is still admitted, up to the rounding of ``input * 255`` in the input's
         dtype. Tracked in
-        `#4564 <https://github.com/kornia/kornia/issues/4564>`_. On MPS the value check is skipped
-        altogether, as for :class:`RandomEqualize`, so the raw gather error is all the caller gets
-        (`#4600 <https://github.com/kornia/kornia/issues/4600>`_).
+        `#4564 <https://github.com/kornia/kornia/issues/4564>`_. Unlike :class:`RandomEqualize`, CLAHE has
+        no value check on any device, so the raw error is what every caller gets on the CPU. On MPS the
+        outcome depends on torch: ``2.14`` raises the raw ``gather`` error
+        (`#4600 <https://github.com/kornia/kornia/issues/4600>`_), while ``2.5.1`` leaves the gather
+        unchecked and returns an in-range image as if the input had been valid.
 
     .. warning::
         ``clip_limit`` is drawn per sample, but the first sample's value is applied to the whole batch.

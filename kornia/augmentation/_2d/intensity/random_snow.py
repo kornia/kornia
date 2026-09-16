@@ -59,8 +59,10 @@ class RandomSnow(IntensityAugmentationBase2D):
           lightness exactly ``1``, where ``2 - max - min`` is zero and ``(1.5, 0.5, 0.5)`` comes back white,
           and its mirror at lightness exactly ``0``, where ``max + min`` is zero and ``(2.0, -2.0, -2.0)``
           comes back black. Both are NaN in ``float16`` (see below). The collapse is at the point, not around
-          it: ``(1.4, 0.5, 0.5)`` and a lightness a hair off ``1`` come back close to their input. In half
-          precision a value just above ``1`` can round onto the singular point.
+          it: ``(1.4, 0.5, 0.5)`` and a lightness more than about ``1e-7`` off ``1`` come back close to their
+          input. Within ``rgb_to_hls``'s ``eps`` of ``1e-8`` of the point, which only ``float64`` can
+          represent, they do not: a lightness of ``1 + 1e-8`` comes back as ``(2, 0, 0)`` and ``1 + 5e-9`` as
+          values of order ``1e8``. In half precision a value just above ``1`` can round onto the singular point.
 
     .. warning::
         An input whose values are all negative comes back as an all-zero image, and a pixel whose lightness is
@@ -93,7 +95,7 @@ class RandomSnow(IntensityAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         KORNIA_CHECK(all(0 <= el <= 1 for el in snow_coefficient), "Snow coefficient values must be between 0 and 1.")
-        KORNIA_CHECK(all(1 <= el for el in brightness), "Brightness values must be greater than 1.")
+        KORNIA_CHECK(all(1 <= el for el in brightness), "Brightness values must be 1 or greater.")
 
         self._param_generator = rg.PlainUniformGenerator(
             (snow_coefficient, "snow_coefficient", 0.5, (0.0, 1.0)), (brightness, "brightness", None, None)

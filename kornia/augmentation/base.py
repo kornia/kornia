@@ -174,8 +174,9 @@ class _BasicAugmentationBase(nn.Module):
             This updates both the gate and the parameter generator's samplers, but returned parameters
             can be cast to a different device/dtype; inspecting ``_params`` alone does not reveal where
             sampling occurred. Some generators also retain internal CPU tensors or ignore the requested
-            precision. Tracked in `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the
-            :doc:`/get-started/conventions` page describes placement and the affected classes.
+            precision, and some generator/device combinations can still fail during forward. Tracked in
+            `#4426 <https://github.com/kornia/kornia/issues/4426>`_; the :doc:`/get-started/conventions`
+            page describes placement and the affected classes.
 
         """
         self.device = device

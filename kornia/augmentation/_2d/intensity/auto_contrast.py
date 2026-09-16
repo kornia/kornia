@@ -55,7 +55,7 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
     .. warning::
         A non-contiguous input -- anything :meth:`torch.Tensor.view` cannot reshape, such as a
         ``transpose``d or ``permute``d view -- raises a raw ``RuntimeError: view size is not compatible
-        with input tensor's size and stride`` from :func:`kornia.enhance.normalize`, naming neither this
+        with input tensor's size and stride`` from :func:`kornia.enhance.normalize_min_max`, naming neither this
         class nor the fix (``.contiguous()``). Tracked in
         `#4577 <https://github.com/kornia/kornia/issues/4577>`_.
 

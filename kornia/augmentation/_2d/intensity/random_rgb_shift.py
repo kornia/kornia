@@ -52,6 +52,12 @@ class RandomRGBShift(IntensityAugmentationBase2D):
           limit is a non-negative scalar: a negative one raises a named ``ValueError`` and a tuple raises a raw
           ``TypeError: bad operand type for unary -: 'tuple'`` at construction.
 
+    .. warning::
+        Because the sum is clamped, an input whose values are all at or below ``-limit`` comes back as an
+        all-zero image on every draw: at the default limits of ``0.5``, a constant ``-0.5`` image is zeros on
+        100 of 100 seeds, and a constant ``-0.3`` one on 24 of 100, depending on the drawn shifts. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+
     Note:
         Input torch.Tensor must be float and normalized into [0, 1].
 

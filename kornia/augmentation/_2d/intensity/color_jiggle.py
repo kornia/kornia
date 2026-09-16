@@ -78,8 +78,9 @@ class ColorJiggle(IntensityAugmentationBase2D):
     .. warning::
         The brightness and contrast primitives clip into ``[0, 1]`` by default, so an input whose values are
         all negative can come back as an all-zero image, depending on the drawn factors and on which steps
-        run: a contrast-only configuration collapses it for every draw, the default four-factor one for some
-        draws, and a hue-only one never. Tracked in
+        run: a contrast-only configuration collapses it for every draw, a brightness-only one or a
+        four-factor one such as ``(0.2, 0.2, 0.2, 0.1)`` for some draws, and a hue-only one never (the
+        all-zero default is the identity). Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. warning::

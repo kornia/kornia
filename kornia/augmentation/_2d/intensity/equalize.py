@@ -53,11 +53,12 @@ class RandomEqualize(IntensityAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.enhance.equalize`, which expects the input in
         :math:`[0, 1]` and raises a ``RuntimeError`` for values it cannot equalize. Where the value check
-        runs, its message names that range; kornia skips the check for an MPS image, so a raw indexing
-        error surfaces there instead (``AcceleratorError: gather: index 260 is out of bounds for dimension
-        with size 256``). That MPS gap is what `#4431 <https://github.com/kornia/kornia/issues/4431>`_ left
-        behind when it was closed, and is tracked in
-        `#4600 <https://github.com/kornia/kornia/issues/4600>`_.
+        runs, its message names that range; kornia skips the check for an MPS image, and what happens
+        there depends on torch: from ``2.14`` the lookup raises a raw indexing error
+        (``AcceleratorError: gather: index 260 is out of bounds for dimension with size 256``), while
+        ``2.5.1`` and ``2.9.1`` leave the MPS gather unchecked and return an out-of-range image silently.
+        That MPS gap is what `#4431 <https://github.com/kornia/kornia/issues/4431>`_ left behind when it
+        was closed, and is tracked in `#4600 <https://github.com/kornia/kornia/issues/4600>`_.
 
     Examples:
         >>> rng = torch.manual_seed(0)

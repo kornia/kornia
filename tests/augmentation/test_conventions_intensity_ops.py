@@ -28,7 +28,7 @@ from torch.distributions import Distribution
 import kornia.augmentation as K
 from kornia.constants import BorderType, Resample
 from kornia.core.exceptions import BaseError, ImageError, ShapeError
-from kornia.filters import box_blur
+from kornia.filters import box_blur, motion_blur
 
 from testing.base import (
     DYNAMO_UNAVAILABLE_REASON,
@@ -130,6 +130,47 @@ class TestBlurConventions(BaseTester):
     # executed 2026-09-15 (torch 2.14.0, cpu) -> `(1, 5)` keeps row sums
     # [0, 0, 0, 9, 0, 0, 0] and `(5, 1)` gives [0, 0, 0, 0, 0, 0, 0]; with the bar on row 2 the
     # surviving sum moves to index 2, and on the transposed 9x7 bar the roles of the two kernels swap.
+    def test_convention_median_blur_border_median_is_over_zero_padding(self, device, dtype):
+        # A constant-ones image: the 3x3 window at a corner holds 5 zeros and 4 ones, so the corner comes
+        # back 0 while an edge pixel (3 zeros, 6 ones) stays 1.  Replicate padding would return 1 at both.
+        # Snippet used to generate expected:
+        #   torch.manual_seed(0); y = K.RandomMedianBlur((3, 3), p=1.0)(torch.ones(1, 1, 4, 4)); print(y[0, 0, 0, :2])
+        #   torch.manual_seed(0); print(K.RandomMedianBlur((5, 5), p=1.0)(torch.ones(1, 1, 6, 6))[0, 0, 0])
+        # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> `[0., 1.]`; `[0., 0., 1., 1., 0., 0.]`.
+        ones = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        out = K.RandomMedianBlur((3, 3), p=1.0)(ones)
+        assert float(out[0, 0, 0, 0]) == 0.0 and float(out[0, 0, 0, 1]) == 1.0
+        assert float(out[0, 0, 1, 1]) == 1.0
+        # 5x5 on a 6x6 image: the top row's window holds 3 image rows, so 15 ones at columns 2 and 3
+        # (median 1) but 12 at columns 1 and 4 and 9 at the corners (median 0).
+        torch.manual_seed(_FORWARD_SEED)
+        wide = K.RandomMedianBlur((5, 5), p=1.0)(torch.ones(1, 1, 6, 6, device=device, dtype=dtype))
+        self.assert_close(wide[0, 0, 0], ones.new_tensor([0.0, 0.0, 1.0, 1.0, 0.0, 0.0]))
+
+    def test_convention_box_blur_even_kernel_is_accepted_and_off_centre(self, device, dtype):
+        # Snippet used to generate expected:
+        #   imp = torch.zeros(1, 1, 7, 9); imp[0, 0, 3, 4] = 1.0
+        #   for ks in ((2, 2), (4, 4), (3, 4)):
+        #       torch.manual_seed(0); nz = K.RandomBoxBlur(ks, p=1.0)(imp)[0, 0].nonzero()
+        #       print(ks, nz[:, 0].unique().tolist(), nz[:, 1].unique().tolist())
+        # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> `[2, 3] [3, 4]`, `[1, 2, 3, 4] [2, 3, 4, 5]`,
+        # `[2, 3, 4] [2, 3, 4, 5]`; each output sums to 1.
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        impulse = torch.zeros(1, 1, 7, 9, device=device, dtype=dtype)
+        impulse[0, 0, 3, 4] = 1.0
+        for kernel_size, rows, cols in (
+            ((2, 2), [2, 3], [3, 4]),
+            ((4, 4), [1, 2, 3, 4], [2, 3, 4, 5]),
+            ((3, 4), [2, 3, 4], [2, 3, 4, 5]),
+        ):
+            torch.manual_seed(_FORWARD_SEED)
+            out = K.RandomBoxBlur(kernel_size, p=1.0)(impulse)
+            lit = out[0, 0].nonzero()
+            assert lit[:, 0].unique().tolist() == rows and lit[:, 1].unique().tolist() == cols
+            self.assert_close(out.sum(), impulse.sum())
+
     def test_convention_median_blur_kernel_size_is_height_then_width(self, device, dtype):
         bar = torch.zeros(1, 1, 7, 9, device=device, dtype=dtype)
         bar[0, 0, 3, :] = 1.0
@@ -216,6 +257,10 @@ class TestBlurConventions(BaseTester):
         assert sigma.shape == (4,)
         assert len(set(sigma.flatten().tolist())) == 4
         assert float(sigma.min()) >= 0.5 and float(sigma.max()) <= 1.5
+        # Reach, not only containment: a draw shrunk to `[0.5, 0.6]` satisfies the bounds above.
+        torch.manual_seed(_FORWARD_SEED)
+        many = aug.forward_parameters((256, 3, 7, 9))["sigma"]
+        assert float(many.min()) < 0.6 and float(many.max()) > 1.4
         assert aug.flags["separable"] is True
         assert aug.flags["border_type"] == BorderType.REFLECT
         assert aug.flags["kernel_size"] == (3, 3)
@@ -332,7 +377,9 @@ class TestBlurConventions(BaseTester):
     # Issue #4599: `kernel_size` is drawn once per SAMPLE and then one entry -- the one at a uniformly
     # drawn `_params["idx"]`, not the first -- is applied to the whole batch; and because the draw is
     # `UniformDistribution(ks[0] // 2, ks[1] // 2)` truncated with `.int()`, the range's upper bound is
-    # never reached.  `(3, 5)` is therefore a constant 3.
+    # practically never reached.  `(3, 5)` is therefore a constant 3 -- "practically": as for RandomRain
+    # below, the float32 draw rounds onto the bound about once in 2**24 (seed 204 draws one 5 in 50000),
+    # so the pin is that the bound is vanishingly rare, not impossible.
     # Snippet used to generate expected:
     #   import collections
     #   for ks in ((3, 5), (3, 7), (5, 11)):
@@ -347,9 +394,11 @@ class TestBlurConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         aug = K.RandomMotionBlur(kernel_size, (0.0, 0.0), (0.0, 0.0), p=1.0)
         factors = aug.forward_parameters((20000, 1, 8, 8))["ksize_factor"]
-        assert sorted(set(factors.tolist())) == drawn
-        # The requested upper bound is odd and admissible, and it is simply absent.
+        assert sorted(set(factors[factors != kernel_size[1]].tolist())) == drawn
+        # The requested upper bound is odd and admissible, and it is practically absent: at most a rounding
+        # handful of 20000 draws, where a uniform draw over the odd sizes would give thousands.
         assert kernel_size[1] % 2 == 1 and kernel_size[1] not in drawn
+        assert int((factors == kernel_size[1]).sum()) < 5
 
     # Issue #4599, the other half: the per-sample draw is real, and a random index selects which one
     # the batch gets -- so `_params["ksize_factor"]` holds B different values while one kernel is used.
@@ -368,6 +417,42 @@ class TestBlurConventions(BaseTester):
         assert picked == set(range(6))
         # And the draw really is per sample: a constant `ksize_factor` would make `idx` immaterial.
         assert distinct > 60
+        # The kernel that is applied is the one at `idx`, not the first sample's: `_params` alone cannot
+        # see that (`kernel_size_list[0]` in apply_transform left this pin green), so compare the output
+        # with the functional at `ksize_factor[idx]` on seeds where that differs from `ksize_factor[0]`.
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(6, 3, 8, 8)
+        checked = 0
+        for seed in range(8):
+            torch.manual_seed(seed)
+            aug = K.RandomMotionBlur((3, 21), (-45.0, 45.0), (-1.0, 1.0), p=1.0)
+            out = aug(image)
+            params = aug._params
+            idx = int(params["idx"][0])
+            applied, first = int(params["ksize_factor"][idx]), int(params["ksize_factor"][0])
+            reference = motion_blur(
+                image,
+                applied,
+                params["angle_factor"],
+                params["direction_factor"],
+                border_type="constant",
+                mode="nearest",
+            )
+            assert torch.equal(out, reference)
+            if applied != first:
+                assert not torch.equal(
+                    out,
+                    motion_blur(
+                        image,
+                        first,
+                        params["angle_factor"],
+                        params["direction_factor"],
+                        border_type="constant",
+                        mode="nearest",
+                    ),
+                )
+                checked += 1
+        assert checked >= 3
 
     # Row 6c-24, the resampling caveat: the kernel's weights are laid on a line and then rotated, so
     # with ``border_type="reflect"`` a "nearest" or "bilinear" rotation keeps them non-negative and the
@@ -977,6 +1062,28 @@ class TestNoiseAndWeatherConventions(BaseTester):
             counts = torch.stack([(drawn == value).sum() for value in range(expected[0], expected[1] + 1)])
             assert float(counts.max()) < 1.2 * float(counts.min())
 
+    # Issue #4604: the start coordinate is scaled by `H - h - 1`, so the last row and column are never
+    # painted unless the drop is one short of the image on that axis.  Literal seeds, as for the other
+    # census pins: the claim is over the union of 300 draws, not one.
+    # Snippet used to generate expected: the reproduction in #4604.
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> rows `[0, 1, 2, 3]`, cols `[0, ..., 8]` on `6 x 10`;
+    # `drop_height=(5, 5)`, `drop_width=(9, 9)` paints rows 0..5 and cols 0..9.
+    def test_wart_random_rain_never_paints_the_last_row_or_column_4604(self, device, dtype):
+        image = torch.zeros(1, 3, 6, 10, device=device, dtype=dtype)
+        rows, cols = set(), set()
+        for seed in range(300):
+            torch.manual_seed(seed)
+            out = K.RandomRain(number_of_drops=(20, 20), drop_height=(1, 1), drop_width=(0, 0), p=1.0)(image)
+            lit = (out[0, 0] != 0).nonzero()
+            rows |= set(lit[:, 0].tolist())
+            cols |= set(lit[:, 1].tolist())
+        assert sorted(rows) == [0, 1, 2, 3] and sorted(cols) == list(range(9))
+        # One short of the image on both axes is the only case that reaches the far edge.
+        torch.manual_seed(_FORWARD_SEED)
+        out = K.RandomRain(number_of_drops=(1, 1), drop_height=(5, 5), drop_width=(9, 9), p=1.0)(image)
+        lit = (out[0, 0] != 0).nonzero()
+        assert int(lit[:, 0].max()) == 5 and int(lit[:, 1].max()) == 9
+
     # Row 6c-28 in the state #4453 left it (it closed #4448): with ``same_on_batch=True`` every
     # sample of the batch gets the same number of drops, the same drop size and the same coordinates;
     # with the default False each sample draws its own count.
@@ -1048,11 +1155,16 @@ class TestNoiseAndWeatherConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         aug = K.RandomSnow(snow_coefficient=(0.2, 0.8), brightness=(1.5, 3.0), p=1.0)
         aug(image)
+        torch.manual_seed(_FORWARD_SEED)
+        many = aug.forward_parameters((256, 3, 7, 9))
         for key, low, high in (("snow_coefficient", 0.2, 0.8), ("brightness", 1.5, 3.0)):
             drawn = aug._params[key].flatten()
             assert drawn.shape == (4,)
             assert len(set(drawn.tolist())) == 4
             assert float(drawn.min()) >= low and float(drawn.max()) <= high
+            # Reach, not only containment: a draw shrunk to the lower half of the range satisfies the above.
+            width = high - low
+            assert float(many[key].min()) < low + 0.1 * width and float(many[key].max()) > high - 0.1 * width
         torch.manual_seed(_FORWARD_SEED)
         shared = K.RandomSnow(snow_coefficient=(0.2, 0.8), brightness=(1.5, 3.0), p=1.0, same_on_batch=True)
         shared(image)
@@ -1109,7 +1221,31 @@ class TestNoiseAndWeatherConventions(BaseTester):
             self.assert_close(out[3], pixels.new_ones(3))
             self.assert_close(out[4], pixels.new_zeros(3))
 
-    # Issue #4571: rgb_to_hls divides by `max - min + eps` with `eps = 1e-8`, which underflows to 0 in
+    # The singular region at lightness 1 has the width of rgb_to_hls's eps = 1e-8: a lightness 2e-7 off
+    # comes back close to its input in float32 and float64 (half precision rounds it onto the point), while
+    # 1 + 1e-8 and 1 + 5e-9, which only float64 resolves, come back as (2, 0, 0) and as values of order 1e8.
+    # Snippet used to generate expected:
+    #   for L in (1 + 2e-7, 1 + 1e-8, 1 + 5e-9):
+    #       x = torch.tensor([2 * L - 0.5, 0.5, 0.5], dtype=torch.float64).reshape(1, 3, 1, 1)
+    #       torch.manual_seed(0); print(L, K.RandomSnow(p=1.0)(x).flatten().tolist())
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `[1.5263, 0.4737, 0.4737]` (same at 1e-7), `[2.0, -0.0, -0.0]`,
+    # `[-82271062.5, 82271064.5, 82271064.5]`.
+    def test_convention_random_snow_singularity_has_eps_width(self, device, dtype):
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("half precision: 1.5 + 4e-7 rounds onto the singular point (float16 is NaN there, #4571)")
+
+        def run(lightness: float) -> torch.Tensor:
+            pixel = torch.tensor([2 * lightness - 0.5, 0.5, 0.5], dtype=torch.float64).reshape(1, 3, 1, 1)
+            pixel = pixel.to(device=device, dtype=dtype)
+            torch.manual_seed(_FORWARD_SEED)
+            return K.RandomSnow(snow_coefficient=(0.9, 0.9), brightness=(2.0, 2.0), p=1.0)(pixel).flatten()
+
+        near = run(1 + 2e-7)
+        assert float(near[0]) > 1.4 and float((near - near.new_tensor([1.5, 0.5, 0.5])).abs().max()) < 0.1
+        if dtype == torch.float64:
+            self.assert_close(run(1 + 1e-8), near.new_tensor([2.0, 0.0, 0.0]))
+            assert float(run(1 + 5e-9).abs().min()) > 1e6
+
     # float16, so every achromatic pixel -- black, gray or white -- gets a NaN hue that the HLS round trip
     # spreads to all three channels.  bfloat16 keeps the exponent range of float32 and is finite.
     # Snippet used to generate expected:
@@ -1182,7 +1318,8 @@ class TestNoiseAndWeatherConventions(BaseTester):
 
     # The degenerate signed range: `(-1, 1)` satisfies the block's "draws 0 twice as often as any other
     # value" but has no other value to be twice as often as -- truncation toward zero maps the whole
-    # interval onto 0.
+    # interval onto 0, except an exact -1.0 draw (rand returning 0.0, one float32 value in 2**24, which a
+    # 2**20 batch at seed 1 does produce), so the pin is "practically always", as for the upper bounds.
     # Snippet used to generate expected:
     #   g = RainGenerator(number_of_drops=(5, 6), drop_height=(2, 3), drop_width=(-1, 1))
     #   torch.manual_seed(0); print(set(g((40000, 3, 64, 64))["drop_width_factor"].flatten().tolist()))
@@ -1192,7 +1329,8 @@ class TestNoiseAndWeatherConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         degenerate = K.RandomRain(number_of_drops=(5, 6), drop_height=(2, 3), drop_width=(-1, 1), p=1.0)
         drawn = degenerate.forward_parameters((20000, 1, 64, 64))["drop_width_factor"].flatten()
-        assert set(drawn.tolist()) == {0.0}
+        assert set(drawn.tolist()) <= {-1.0, 0.0}
+        assert float((drawn == 0).float().mean()) > 0.999
         # One step wider and the doubling the block describes is visible again.
         torch.manual_seed(_FORWARD_SEED)
         wider = K.RandomRain(number_of_drops=(5, 6), drop_height=(2, 3), drop_width=(-2, 2), p=1.0)
@@ -1605,8 +1743,11 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         view = image.transpose(2, 3)
         assert not view.is_contiguous()
         torch.manual_seed(_FORWARD_SEED)
-        with pytest.raises(RuntimeError, match="view size is not compatible"):
+        with pytest.raises(RuntimeError, match="view size is not compatible") as excinfo:
             _sync(factories[name]()(view).device)
+        # The frame that reshapes is `normalize` for Normalize and `normalize_min_max` for
+        # RandomAutoContrast, which never calls `normalize`; the class warnings name that function.
+        assert excinfo.traceback[-1].name == {"Normalize": "normalize", "RandomAutoContrast": "normalize_min_max"}[name]
         # The same values, made contiguous, go through -- so it is the layout and not the numbers.
         torch.manual_seed(_FORWARD_SEED)
         assert factories[name]()(view.contiguous()).shape == view.shape

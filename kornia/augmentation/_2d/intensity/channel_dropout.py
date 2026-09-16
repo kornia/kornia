@@ -48,7 +48,8 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
           which has to be a ``float`` in ``[0, 1]``: this class's own ``__init__`` rejects anything outside
           the bounds, and an ``int`` such as ``0`` on type. ``ChannelDropoutGenerator`` never sees
           ``fill_value`` -- unlike :class:`RandomErasing`, whose ``value`` guard does live in its generator,
-          and which accepts an ``int`` ``value``. Every other channel is left exactly as it came in, so the
+          and which accepts an ``int`` ``value`` (`#4606 <https://github.com/kornia/kornia/issues/4606>`_).
+          Every other channel is left exactly as it came in, so the
           input's value range is carried through.
         - the dropped channels are drawn independently per sample; ``same_on_batch=True`` collapses the
           draw to one set of channels for the whole batch.

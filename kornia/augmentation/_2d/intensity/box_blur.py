@@ -44,7 +44,10 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
 
     Convention:
         - ``kernel_size`` is ``(kH, kW)``: the first entry counts rows and the second counts columns, as in
-          :func:`kornia.filters.box_blur`.
+          :func:`kornia.filters.box_blur`. An even entry is accepted and centres the window half a pixel toward
+          the top-left rather than raising -- a ``(2, 2)`` window on an impulse spreads it over the impulse's
+          own row and column and the one before each -- where :class:`RandomGaussianBlur` and
+          :class:`RandomMedianBlur` raise on the forward pass.
         - ``normalized`` reaches that function as its ``separable`` argument, so it selects the implementation
           rather than a normalization: both settings are L1-normalized means, they agree to float rounding, and
           a constant image survives either up to the rounding of the kernel weights. ``border_type`` defaults

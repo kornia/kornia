@@ -56,7 +56,9 @@ class RandomSolarize(IntensityAugmentationBase2D):
           :func:`kornia.enhance.solarize`'s own default threshold rather than equalling it.
         - an explicit ``additions`` range is checked against the closed ``[-0.5, 0.5]`` at construction, but
           :func:`kornia.enhance.solarize` rejects the ends of that interval, so ``additions=(0.5, 0.5)``
-          constructs and then raises a ``RuntimeError`` on the forward pass. The check runs on the device
+          constructs and then raises a ``RuntimeError`` on the forward pass, and a wider range can draw an
+          endpoint exactly, about once in ``2**24`` samples
+          (`#4605 <https://github.com/kornia/kornia/issues/4605>`_). The check runs on the device
           of the drawn ``additions`` -- the CPU by default -- so it raises for an MPS image too.
 
     .. warning::

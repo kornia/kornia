@@ -313,10 +313,11 @@ Augmentations
   classes use their documented policy: some clamp, rescale, or convert through
   ``uint8``; :class:`kornia.augmentation.RandomPlanckianJitter` clamps only the
   upper end; some do not clamp; and :class:`kornia.augmentation.RandomEqualize`
-  raises where its value check runs (MPS skips the check, and a raw indexing
-  error surfaces instead). The resulting values also depend on the sampled parameters and image
-  contents. Several return an all-zero image for an all-negative input, most of
-  them on every draw rather than only on some, and
+  raises where its value check runs (MPS skips the check; torch ``2.14`` raises a
+  raw indexing error instead, and ``2.5.1`` and ``2.9.1`` return silently). The resulting values also depend on the sampled parameters and image
+  contents. Several return an all-zero image for an all-negative input: on a
+  constant ``-1.0`` image most of them do so on every draw, while nearer zero the
+  sampled parameters decide more often, and
   :class:`kornia.augmentation.RandomSolarize` does the same when every input value
   is at least ``1.5``. Values between ``1`` and ``1.5`` can instead produce nonzero
   output after a negative addition (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
@@ -408,6 +409,9 @@ Randomness in augmentations
   one probability contract. Check the concrete class rather than inferring
   its gate from the base signature. Exposing ``p_batch`` is also
   constructor-dependent (`#4425 <https://github.com/kornia/kornia/issues/4425>`_).
+  The gate selects after the transform has been computed for the whole batch,
+  so a skipped sample can still raise or carry a NaN gradient
+  (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
 - Under :class:`torch.utils.data.DataLoader`, each worker's global CPU
   generator is seeded ``base_seed + worker_id``. Reproducibility also depends
   on worker configuration and consumption order. A ``worker_init_fn`` that
@@ -483,8 +487,9 @@ Quick self-review for generated code, most common first:
 18. Feeding mean/std-normalized or otherwise out-of-``[0, 1]`` tensors
     through an intensity augmentation and expecting the values to pass
     through — some rescale, some clamp, ``RandomEqualize`` and ``RandomClahe``
-    raise, and several return zeros for an all-negative image -- mostly on every
-    draw, not only on some -- while ``RandomSolarize`` returns zeros when every
+    raise, and several return zeros for an all-negative image -- on every draw
+    for a constant ``-1.0`` image, on some draws nearer zero -- while
+    ``RandomSolarize`` returns zeros when every
     input value is at least ``1.5``. Its output for values between ``1`` and ``1.5``
     depends on the addition.
 

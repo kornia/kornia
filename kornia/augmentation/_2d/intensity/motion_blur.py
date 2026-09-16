@@ -66,8 +66,9 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         - the defaults ``border_type="constant"`` and ``resample="nearest"`` are the function's own defaults.
         - ``kernel_size`` is drawn once per sample into ``_params["ksize_factor"]``, and the whole batch is
           then blurred with the single entry at ``_params["idx"]``, an index drawn uniformly over the batch.
-          The draw truncates a float, so the range's upper bound is never reached: ``kernel_size=(3, 5)``
-          is a constant ``3`` and ``(3, 7)`` draws only ``3`` and ``5``. An even bound is separately rounded
+          The draw truncates a float, so the range's upper bound is practically never reached -- only when
+          the ``float32`` draw rounds onto it, about once in ``2**24`` -- and ``kernel_size=(3, 5)`` is a
+          constant ``3`` while ``(3, 7)`` draws only ``3`` and ``5``. An even bound is separately rounded
           **up** out of the requested range, so ``(4, 4)`` draws ``5``. Tracked in
           `#4599 <https://github.com/kornia/kornia/issues/4599>`_.
         - the output is not clamped. At the default ``border_type="constant"`` the padding is zeros, so a
