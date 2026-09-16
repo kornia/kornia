@@ -136,6 +136,7 @@ def test_tensor_to_image_contiguous(device, dtype):
     image = kornia.image.tensor_to_image(tensor, force_contiguous=True)
     assert image.flags["C_CONTIGUOUS"]
 
+
 @pytest.mark.parametrize(
     "op, kwargs",
     [
