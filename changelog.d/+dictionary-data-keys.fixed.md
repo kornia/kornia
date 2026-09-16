@@ -1,0 +1,1 @@
+`AugmentationSequential` preserves input dictionaries and their metadata, recognizes `class` aliases, and keeps the coordinate format of suffixed bounding-box keys. Dictionary data-key names now require an exact match or an underscore/hyphen suffix, so unrelated names such as `imagenet_id` are no longer treated as images.

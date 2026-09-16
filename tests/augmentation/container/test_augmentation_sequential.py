@@ -804,21 +804,22 @@ class TestConventionAugmentationSequential(BaseTester):
             assert out_first.unique().tolist() == [False, True]  # integer labels 2, 3 and 5 are lost
 
     @pytest.mark.parametrize("key", ["bbox_xyxy", "bbox_xywh"])
-    def test_wart_suffixed_coordinate_box_dict_keys_expect_vertices_4483(self, key, device, dtype):
+    @pytest.mark.parametrize("suffix", ["", "_2", "-a"])
+    def test_dictionary_coordinate_box_keys_4483(self, key, suffix, device, dtype):
         image = torch.arange(20, device=device, dtype=dtype).reshape(1, 1, 4, 5)
         boxes = torch.tensor([[[0.0, 0.0, 2.0, 2.0]]], device=device, dtype=dtype)
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
-        output = seq({"image": image, key: boxes})
+        output = seq({"image": image, key + suffix: boxes})
         expected = [2.0, 0.0, 4.0, 2.0] if key == "bbox_xyxy" else [3.0, 0.0, 2.0, 2.0]
-        self.assert_close(output[key], torch.tensor([[expected]], device=device, dtype=dtype))
-        with pytest.raises(ValueError, match="when vertices_plus mode"):
-            seq({"image": image, key + "-a": boxes})
+        self.assert_close(output[key + suffix], torch.tensor([[expected]], device=device, dtype=dtype))
+        restored = seq.inverse(output)
+        self.assert_close(restored[key + suffix], boxes)
 
-    def test_wart_dictionary_class_alias_is_metadata_4483(self):
+    def test_dictionary_class_alias_4483(self):
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
         keys, metadata = seq._read_datakeys_from_dict(("input", "class", "class-a", "label", "label-a"))
-        assert keys == [DataKey.INPUT, DataKey.LABEL, DataKey.LABEL]
-        assert metadata == ["class", "class-a"]
+        assert keys == [DataKey.INPUT, DataKey.LABEL, DataKey.LABEL, DataKey.LABEL, DataKey.LABEL]
+        assert metadata == []
 
     @pytest.mark.parametrize("cropping_mode", ["slice", "resample"])
     @pytest.mark.parametrize("align_corners", [None, False, True])
@@ -1041,15 +1042,44 @@ class TestConventionAugmentationSequential(BaseTester):
         with pytest.raises(IndexError):
             seq(image, image.clone())
 
-    def test_wart_dictionary_pops_metadata_and_matches_raw_prefixes_4483(self, device, dtype):
+    def test_dictionary_preserves_metadata_and_input_4483(self, device, dtype):
         seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
-        keys, metadata = seq._read_datakeys_from_dict(("imagenet_id", "maskrcnn_boxes", "labelled_image", "note"))
-        assert keys == [DataKey.INPUT, DataKey.MASK, DataKey.LABEL]
-        assert metadata == ["note"]
-        data = {"image": torch.ones(1, 1, 2, 2, device=device, dtype=dtype), "note": "retained in output"}
+        metadata = {"imagenet_id": 7, "maskrcnn_boxes": "unchanged", "labelled_image": None, "note": "retained"}
+        image = torch.arange(4, device=device, dtype=dtype).reshape(1, 1, 2, 2)
+        data = {"note": metadata["note"], "image": image, **metadata}
+        original = dict(data)
         output = seq(data)
-        assert "note" not in data
-        assert output["note"] == "retained in output"
+        assert data.keys() == original.keys()
+        for key, value in original.items():
+            assert data[key] is value
+        self.assert_close(output["image"], image.flip(-1))
+        for key, value in metadata.items():
+            assert output[key] is value
+        restored = seq.inverse(output)
+        self.assert_close(restored["image"], image)
+        for key, value in metadata.items():
+            assert restored[key] is value
+            assert output[key] is value
+
+    def test_dictionary_key_boundaries_4483(self):
+        seq = K.AugmentationSequential(data_keys=None)
+        names = ("image", "IMAGE-left", "input_2", "mask_2", "keypoints-right", "bbox_xyxy_2", "bbox_xywh-a", "bbox_2")
+        keys, metadata = seq._read_datakeys_from_dict(names)
+        assert keys == [
+            DataKey.INPUT,
+            DataKey.INPUT,
+            DataKey.INPUT,
+            DataKey.MASK,
+            DataKey.KEYPOINTS,
+            DataKey.BBOX_XYXY,
+            DataKey.BBOX_XYWH,
+            DataKey.BBOX,
+        ]
+        assert metadata == []
+        names = ("imagenet_id", "maskrcnn_boxes", "labelled_image", "keypoint", "classification", "inputsize")
+        keys, metadata = seq._read_datakeys_from_dict(names)
+        assert keys == []
+        assert metadata == list(names)
 
     def test_convention_same_on_batch_none_does_not_override_a_child(self, device, dtype):
         # Convention pin: `AugmentationSequential(same_on_batch=None)` - the default - keeps whatever each
