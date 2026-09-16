@@ -69,6 +69,24 @@ def test_gaussian(window_size, sigma, mean, expected, device, dtype):
     assert_close(result, expected, atol=1e-4, rtol=1e-4)
 
 
+@pytest.mark.parametrize(
+    "window_size, sigma, mean, expected",
+    [
+        # exp underflows at every sample, which used to normalise as 0 / 0
+        (4, 0.02, None, torch.tensor([[0.0, 0.5, 0.5, 0.0]])),
+        (5, 0.02, 0.0, torch.tensor([[1.0, 0.0, 0.0, 0.0, 0.0]])),
+        (1, 0.05, 1.0, torch.tensor([[1.0]])),
+        (4, 0.0, None, torch.tensor([[0.0, 0.5, 0.5, 0.0]])),
+        (5, 0.0, None, torch.tensor([[0.0, 0.0, 1.0, 0.0, 0.0]])),
+    ],
+)
+def test_gaussian_narrow_sigma(window_size, sigma, mean, expected, device, dtype):
+    expected = expected.to(device=device, dtype=dtype)
+    result = gaussian(window_size, sigma, mean=mean, device=device, dtype=dtype)
+    assert not result.isnan().any()
+    assert_close(result, expected, atol=1e-4, rtol=1e-4)
+
+
 @pytest.mark.parametrize("window_size", [5, 11])
 @pytest.mark.parametrize("sigma", [1.5, 5.0])
 def test_get_gaussian_kernel1d_float(window_size, sigma, device, dtype):

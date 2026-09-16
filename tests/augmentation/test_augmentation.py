@@ -4378,6 +4378,17 @@ class TestRandomGaussianIllumination(BaseTester):
         assert input_tensor.shape == res.shape
         self.assert_close(res, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.parametrize("size", [1, 2, 3, 4, 8])
+    @pytest.mark.parametrize("sigma", [0.0, 0.001, 0.01])
+    def test_narrow_sigma_not_nan(self, size, sigma, device, dtype):
+        torch.manual_seed(0)
+        input_tensor = torch.rand(2, 3, size, size, device=device, dtype=dtype)
+        aug = RandomGaussianIllumination(sigma=(sigma, sigma), p=1.0)
+        res = aug(input_tensor)
+        assert not res.isnan().any()
+        assert res.min() >= 0.0
+        assert res.max() <= 1.0
+
     def test_exception(self, device, dtype):
         with pytest.raises(ValueError, match="sign must be a tuple or a float"):
             RandomGaussianIllumination(sign=3)

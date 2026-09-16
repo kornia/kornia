@@ -115,9 +115,16 @@ def gaussian(
     if window_size % 2 == 0:
         x = x + 0.5
 
-    gauss = torch.exp(-x.pow(2.0) / (2 * sigma.pow(2.0)))
+    # Normalise in log space: exp(-x^2 / 2sigma^2) / sum(...) underflows to 0 / 0 once sigma is small
+    # relative to the distance between the mean and its nearest sample. Measuring from that sample
+    # keeps its logit at 0, so the kernel degrades to an impulse there instead of NaN.
+    dist = x.pow(2.0)
+    dist = dist - dist.amin(-1, keepdim=True)
+    logits = -dist / (2 * sigma.pow(2.0))
+    impulse = torch.where(dist == 0, 0.0, float("-inf")).to(logits)
+    logits = torch.where(sigma > 0, logits, impulse)
 
-    return gauss / gauss.sum(-1, keepdim=True)
+    return logits.softmax(-1)
 
 
 def gaussian_discrete_erf(
