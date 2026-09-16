@@ -1840,20 +1840,20 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         with pytest.raises(ValueError, match="do not match"):
             _sync(cls(mean=mean, std=std, p=1.0)(image).device)
 
-    # Issue #4573: Normalize wraps an `int` mean or std into a tensor, Denormalize wraps only a `float`, so
-    # the pair built with `mean=0, std=255` cannot round-trip: Denormalize reaches kornia.enhance.denormalize
-    # with a bare int and fails there on the forward pass.
+    # Issue #4573: Normalize and Denormalize both accept integer scalar statistics, so the pair
+    # built with ``mean=0, std=255`` round-trips.
     # Snippet used to generate expected:
-    #   x = torch.rand(2, 3, 4, 4); y = K.Normalize(mean=0, std=255, p=1.0)(x); K.Denormalize(mean=0, std=255, p=1.0)(y)
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `AttributeError: 'int' object has no attribute 'shape'`.
+    #   x = torch.rand(2, 3, 4, 4); y = K.Normalize(mean=0, std=255, p=1.0)(x)
+    #   z = K.Denormalize(mean=0, std=255, p=1.0)(y)
+    #   torch.testing.assert_close(z, x)
+    # executed 2026-09-16 (torch 2.5.1, cpu).
     @pytest.mark.device_agnostic
-    def test_wart_denormalize_rejects_the_int_statistics_normalize_accepts_4573(self):
+    def test_convention_denormalize_accepts_the_int_statistics_normalize_accepts_4573(self):
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 4, 4)
         normalized = K.Normalize(mean=0, std=255, p=1.0)(image)
         self.assert_close(normalized, image / 255)
-        with pytest.raises(AttributeError, match="shape"):
-            K.Denormalize(mean=0, std=255, p=1.0)(normalized)
+        self.assert_close(K.Denormalize(mean=0, std=255, p=1.0)(normalized), image)
         self.assert_close(K.Denormalize(mean=0.0, std=255.0, p=1.0)(normalized), image)
 
     # Rows 6c-17 and 6c-18: Normalize and Denormalize hard-code ``same_on_batch=True`` (normalize.py
