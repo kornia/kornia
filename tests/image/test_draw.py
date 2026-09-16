@@ -255,27 +255,6 @@ class TestDrawLine(BaseTester):
         )
         self.assert_close(img, img_mask)
 
-    def test_draw_line_passes_through_its_exact_lattice_points(self, dtype, device):
-        # The segment from (0, 0) to (117, 18) passes exactly through (13k, 2k). The minor coordinate
-        # is ceil(t * 18 / 117), and a float step landed just above the exact integer at some of
-        # these points, which rounded the pixel up a row: (26, 5) instead of (26, 4).
-        img = torch.zeros(1, 19, 118, dtype=dtype, device=device)
-        img = draw_line(img, torch.tensor([0, 0]), torch.tensor([117, 18]), torch.tensor([1.0]))
-        for k in range(10):
-            assert img[0, 2 * k, 13 * k] == 1.0, (13 * k, 2 * k)
-            assert img[0, :, 13 * k].sum() == 1.0, 13 * k
-
-    def test_draw_lines_batched_matches_drawing_each_line(self, dtype, device):
-        # One batch mixing a vertical, a horizontal, a single point and both slope regimes.
-        p1 = torch.tensor([[3, 1], [0, 9], [5, 5], [1, 2], [30, 0], [7, 18]])
-        p2 = torch.tensor([[3, 17], [31, 9], [5, 5], [29, 11], [2, 19], [26, 3]])
-        color = torch.tensor([1.0, 2.0])
-        batched = draw_line(torch.zeros(2, 20, 32, dtype=dtype, device=device), p1, p2, color)
-        expected = torch.zeros(2, 20, 32, dtype=dtype, device=device)
-        for a, b in zip(p1, p2):
-            expected = draw_line(expected, a, b, color)
-        self.assert_close(batched, expected, rtol=0.0, atol=0.0)
-
     @pytest.mark.parametrize(
         "p1", [torch.tensor([-1, 0]), torch.tensor([0, -1]), torch.tensor([8, 0]), torch.tensor([0, 8])]
     )
@@ -332,6 +311,27 @@ class TestDrawLine(BaseTester):
         assert "Input points must be 2D points with shape (2, ) or (B, 2) and must have the same batch sizes." == str(
             excinfo.value
         )
+
+    def test_draw_line_passes_through_its_exact_lattice_points(self, dtype, device):
+        # The segment from (0, 0) to (117, 18) passes exactly through (13k, 2k). The minor coordinate
+        # is ceil(t * 18 / 117), and a float step landed just above the exact integer at some of
+        # these points, which rounded the pixel up a row: (26, 5) instead of (26, 4).
+        img = torch.zeros(1, 19, 118, dtype=dtype, device=device)
+        img = draw_line(img, torch.tensor([0, 0]), torch.tensor([117, 18]), torch.tensor([1.0]))
+        for k in range(10):
+            assert img[0, 2 * k, 13 * k] == 1.0, (13 * k, 2 * k)
+            assert img[0, :, 13 * k].sum() == 1.0, 13 * k
+
+    def test_draw_lines_batched_matches_drawing_each_line(self, dtype, device):
+        # One batch mixing a vertical, a horizontal, a single point and both slope regimes.
+        p1 = torch.tensor([[3, 1], [0, 9], [5, 5], [1, 2], [30, 0], [7, 18]])
+        p2 = torch.tensor([[3, 17], [31, 9], [5, 5], [29, 11], [2, 19], [26, 3]])
+        color = torch.tensor([1.0, 2.0])
+        batched = draw_line(torch.zeros(2, 20, 32, dtype=dtype, device=device), p1, p2, color)
+        expected = torch.zeros(2, 20, 32, dtype=dtype, device=device)
+        for a, b in zip(p1, p2):
+            expected = draw_line(expected, a, b, color)
+        self.assert_close(batched, expected, rtol=0.0, atol=0.0)
 
 
 class TestDrawRectangle(BaseTester):
