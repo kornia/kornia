@@ -1720,16 +1720,21 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         self.assert_close(K.Denormalize(mean=mean, std=std, p=1.0)(normalized), image)
 
-    # Issue #4577: `normalize` reshapes with `Tensor.view`, so a non-contiguous input raises a raw torch
-    # error naming neither the class nor the fix.  `RandomAutoContrast` reaches `normalize_min_max` and
-    # fails the same way.
+    # A non-contiguous input goes through unchanged (the fix for #4577: `normalize` reshaped with
+    # `Tensor.view`, which raises for a view it cannot reshape; `normalize_min_max` did the same, and
+    # `RandomAutoContrast` reaches it without ever calling `normalize`).  The pin asserts the VALUES
+    # match the contiguous result, not merely that the call returns: a `reshape` on a transposed view
+    # reads the elements in a different order, so a wrong fix would return the right shape with the
+    # wrong data and a shape-only assertion would pass.
     # Snippet used to generate expected:
     #   x = torch.rand(2, 3, 8, 8).transpose(2, 3)
-    #   torch.manual_seed(0); K.Normalize(mean=torch.tensor([0.5]), std=torch.tensor([0.5]), p=1.0)(x)
-    # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> `RuntimeError: view size is not
-    # compatible with input tensor's size and stride`; `.contiguous()` on the same view succeeds.
+    #   torch.manual_seed(0); a = K.Normalize(mean=torch.tensor([0.5]), std=torch.tensor([0.5]), p=1.0)(x)
+    #   torch.manual_seed(0); b = K.Normalize(mean=torch.tensor([0.5]), std=torch.tensor([0.5]), p=1.0)(x.contiguous())
+    #   print(torch.equal(a, b))
+    # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> `True`, and the same for
+    # RandomAutoContrast; on main both raise `RuntimeError: view size is not compatible`.
     @pytest.mark.parametrize("name", ["Normalize", "RandomAutoContrast"])
-    def test_wart_non_contiguous_input_raises_a_raw_view_error_4577(self, device, dtype, name):
+    def test_convention_non_contiguous_input_matches_the_contiguous_result_4577(self, device, dtype, name):
         factories = {
             "Normalize": lambda: K.Normalize(
                 mean=torch.tensor([0.5], device=device, dtype=dtype),
@@ -1743,14 +1748,37 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         view = image.transpose(2, 3)
         assert not view.is_contiguous()
         torch.manual_seed(_FORWARD_SEED)
-        with pytest.raises(RuntimeError, match="view size is not compatible") as excinfo:
-            _sync(factories[name]()(view).device)
-        # The frame that reshapes is `normalize` for Normalize and `normalize_min_max` for
-        # RandomAutoContrast, which never calls `normalize`; the class warnings name that function.
-        assert excinfo.traceback[-1].name == {"Normalize": "normalize", "RandomAutoContrast": "normalize_min_max"}[name]
-        # The same values, made contiguous, go through -- so it is the layout and not the numbers.
+        out = factories[name]()(view)
         torch.manual_seed(_FORWARD_SEED)
-        assert factories[name]()(view.contiguous()).shape == view.shape
+        expected = factories[name]()(view.contiguous())
+        assert out.shape == view.shape
+        # Element-for-element, not shape-for-shape: this is what a transposed view can get wrong.
+        assert torch.equal(out, expected), name
+
+    # The same holds for a `permute`d view and for a sliced (strided) one, which have different stride
+    # patterns from a plain transpose -- a fix that special-cased one layout would pass the pin above.
+    # `expand_channel` is deliberately the odd one out: a stride-0 expanded view is non-contiguous but
+    # `Tensor.view` CAN reshape it, so that leg already passed before the fix.  It is a non-regression
+    # guard, not a discriminator -- the other two are what fail on main.
+    @pytest.mark.parametrize("layout", ["permute", "slice", "expand_channel"])
+    def test_convention_non_contiguous_layouts_all_normalize_4577(self, device, dtype, layout):
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(2, 3, 8, 8).to(device=device, dtype=dtype)
+        view = {
+            "permute": lambda: image.permute(0, 1, 3, 2),
+            "slice": lambda: image[:, :, ::2, :],
+            "expand_channel": lambda: image[:, :1].expand(-1, 3, -1, -1),
+        }[layout]()
+        assert not view.is_contiguous()
+        aug = K.Normalize(
+            mean=torch.tensor([0.5], device=device, dtype=dtype),
+            std=torch.tensor([0.5], device=device, dtype=dtype),
+            p=1.0,
+        )
+        torch.manual_seed(_FORWARD_SEED)
+        out = aug(view)
+        torch.manual_seed(_FORWARD_SEED)
+        assert torch.equal(out, aug(view.contiguous())), layout
 
     # Row 6c-16: a ``(B, C)`` statistic is applied per SAMPLE.  The pins above use one fixture for all
     # six forms, and their thresholds cannot tell a per-sample application from a row-0 or batch-mean
