@@ -32,7 +32,8 @@ class RandomClahe(IntensityAugmentationBase2D):
     .. image:: _static/img/equalize_clahe.png
 
     Args:
-        clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
+        clip_limit: lower and upper bounds for the contrast-limiting threshold. A value is sampled for each image,
+            or once and shared across the batch when ``same_on_batch=True``. If 0 clipping is disabled.
         grid_size: number of tiles to be cropped in each direction (GH, GW).
         slow_and_differentiable: flag to select implementation
         same_on_batch: apply the same transformation across the batch.
@@ -84,5 +85,13 @@ class RandomClahe(IntensityAugmentationBase2D):
         flags: dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        clip_limit = float(params["clip_limit_factor"][0])
-        return equalize_clahe(input, clip_limit, flags["grid_size"], flags["slow_and_differentiable"])
+        clip_limits = params["clip_limit_factor"]
+        if bool(torch.all(clip_limits == clip_limits[0])):
+            return equalize_clahe(input, float(clip_limits[0]), flags["grid_size"], flags["slow_and_differentiable"])
+
+        return torch.stack(
+            [
+                equalize_clahe(image, float(clip_limit), flags["grid_size"], flags["slow_and_differentiable"])
+                for image, clip_limit in zip(input, clip_limits)
+            ]
+        )
