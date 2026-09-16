@@ -396,8 +396,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         """Return identity matrix."""
         if self.contains_3d_augmentation:
             return eye_like(4, input)
-        else:
-            return eye_like(3, input)
+
+        return eye_like(3, input)
 
     def inverse(  # type: ignore[override]
         self,
@@ -705,8 +705,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 new_arg.append(a_new)
             return new_arg
 
-        else:
-            arg = arg.to(self.input_dtype) if self.input_dtype else arg.to(torch.float)
+        arg = arg.to(self.input_dtype) if self.input_dtype else arg.to(torch.float)
         return arg
 
     def _postproc_mask(self, arg: MaskDataType) -> MaskDataType:
@@ -717,8 +716,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 new_arg.append(a_new)
             return new_arg
 
-        else:
-            arg = arg.to(self.mask_dtype) if self.mask_dtype else arg.to(torch.float)
+        arg = arg.to(self.mask_dtype) if self.mask_dtype else arg.to(torch.float)
         return arg
 
     def _preproc_boxes(self, arg: DataType, dcate: DataKey) -> Boxes:
@@ -732,10 +730,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
         if isinstance(arg, Boxes):
             return arg
-        elif self.contains_video_sequential:
+        if self.contains_video_sequential:
             arg = cast(torch.Tensor, arg)
             return VideoBoxes.from_tensor(arg)
-        elif self.contains_3d_augmentation:
+        if self.contains_3d_augmentation:
             raise NotImplementedError("3D box handlers are not yet supported.")
         else:
             arg = cast(torch.Tensor, arg)
@@ -756,8 +754,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # TODO: handle 3d scenarios
         if isinstance(in_arg, Boxes):
             return out_arg
-        else:
-            return out_arg.to_tensor(mode=mode)
+
+        return out_arg.to_tensor(mode=mode)
 
     def _preproc_keypoints(self, arg: DataType, dcate: DataKey) -> Keypoints:
         dtype = None
@@ -773,7 +771,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 arg = arg.float()
             video_result = VideoKeypoints.from_tensor(arg)
             return video_result.type(dtype) if dtype else video_result
-        elif self.contains_3d_augmentation:
+        if self.contains_3d_augmentation:
             raise NotImplementedError("3D keypoint handlers are not yet supported.")
         elif isinstance(arg, Keypoints):
             return arg
@@ -791,5 +789,5 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     ) -> Union[torch.Tensor, List[torch.Tensor], Keypoints]:
         if isinstance(in_arg, Keypoints):
             return out_arg
-        else:
-            return out_arg.to_tensor()
+
+        return out_arg.to_tensor()
