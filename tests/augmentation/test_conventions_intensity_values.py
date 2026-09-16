@@ -287,11 +287,15 @@ class TestIntensityValueRangeConventions(BaseTester):
                 assert float(low) >= -tol, f"{name} on {tag} left the lower end unclamped"
                 assert float(high) <= 1 + tol, f"{name} on {tag} left the upper end unclamped"
             # Reach: the bound is [0, 1], not a narrower interval that would also satisfy the above (a clamp
-            # into [0, 0.5] left every bounded class green).  Every bounded class reaches 0 on the negative
-            # fixture; on [0, 2] all reach 1 except RandomPosterize (252/255 after the uint8 round trip)
-            # and RandomSolarize (inverted above its threshold).
-            assert float(ranges["[-1, 0]"][0]) <= tol, f"{name} on [-1, 0] does not reach 0"
-            if name not in ("RandomPosterize", "RandomSolarize"):
+            # into [0, 0.5] left every bounded class green).  The classes whose draw is fixed by the factory
+            # reach 0 on the negative fixture and 1 on [0, 2]; the exceptions are what the draw can do after
+            # the clamp, measured over seeds 0..199: ColorJiggle's hue-only draws leave the negative minimum
+            # above 0 (24/200) and a brightness factor below 1 pulls the [0, 2] maximum back under 1 for
+            # ColorJiggle (54/200) and ColorJitter (53/200); RandomPosterize tops out at 252/255 after the
+            # uint8 round trip and RandomSolarize inverts everything above its threshold (200/200 each).
+            if name != "ColorJiggle":
+                assert float(ranges["[-1, 0]"][0]) <= tol, f"{name} on [-1, 0] does not reach 0"
+            if name not in ("ColorJiggle", "ColorJitter", "RandomPosterize", "RandomSolarize"):
                 assert float(ranges["[0, 2]"][1]) >= 1 - tol, f"{name} on [0, 2] does not reach 1"
         elif name in _UPPER_BOUNDED_ON_FIXTURES:
             for tag, (_, high) in ranges.items():
