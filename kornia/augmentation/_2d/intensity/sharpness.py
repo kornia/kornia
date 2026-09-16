@@ -25,13 +25,20 @@ from kornia.enhance import sharpness
 
 
 class RandomSharpness(IntensityAugmentationBase2D):
-    r"""Sharpen given torch.Tensor image or a batch of torch.Tensor images randomly.
+    r"""Blend a random amount of a ``3 x 3`` smoothed copy with the image.
+
+    A drawn factor above ``1`` sharpens and a factor below ``1`` blurs; the default
+    ``sharpness=0.5`` draws from ``[0, 0.5]`` and therefore only ever blurs.
 
     .. image:: _static/img/RandomSharpness.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
-        sharpness: factor of sharpness strength. Must be above 0.
+        sharpness: the blend factor between the blurred image and the input. If ``sharpness`` is a single
+            non-negative number ``x``, the factor is sampled from ``[0, x]``; a tuple gives the range
+            directly.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
@@ -39,6 +46,25 @@ class RandomSharpness(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the factor blends between the fully blurred image at ``0`` and the input at ``1``, and values
+          above ``1`` sharpen. The one-pixel border is copied from the input at every factor, so it is never
+          blurred or sharpened, although the final clamp into ``[0, 1]`` applies to it as to the rest.
+        - a scalar argument is the upper bound of ``[0, x]`` -- the centred ``[-x, x]`` fitted to the
+          non-negative bound (`#4563 <https://github.com/kornia/kornia/issues/4563>`_) -- so the default
+          ``sharpness=0.5`` never reaches the identity and therefore never sharpens -- it blurs by a random
+          amount.
+        - the result is kept inside ``[0, 1]``.
+
+    .. warning::
+        An input whose values are all negative comes back as an all-zero image. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+
+    .. warning::
+        An image with a side smaller than the ``3 x 3`` smoothing kernel raises a raw torch
+        ``RuntimeError`` about the padded input size rather than a kornia error naming the class.
+        Tracked in `#4559 <https://github.com/kornia/kornia/issues/4559>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.sharpness`.

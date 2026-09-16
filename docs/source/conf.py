@@ -50,7 +50,7 @@ try:
         except ValueError as e:
             msg = str(e).lower()
             if "no signature found for builtin" in msg or "pybind11" in msg:
-                return  # leave docstring unchanged
+                return None  # leave docstring unchanged
             raise
 
     sphinx_autodoc_defaultargs.process_docstring = _safe_process_docstring

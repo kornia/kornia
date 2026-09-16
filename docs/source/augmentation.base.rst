@@ -227,9 +227,8 @@ Random Reproducibility
 ^^^^^^^^^^^^^^^^^^^^^^
 Parameter sampling generally starts on CPU, independently of the image device. ``set_rng_device_and_dtype``
 requests new sampler placement and precision, but not every internal tensor follows that request, and some
-configurations fail during the setter or a later forward
-(`#4415 <https://github.com/kornia/kornia/issues/4415>`_,
-`#4426 <https://github.com/kornia/kornia/issues/4426>`_). Returned parameter placement is separate from
+generator/device combinations can still fail during forward
+(`#4426 <https://github.com/kornia/kornia/issues/4426>`_). Returned parameter placement is separate from
 sampling placement: constructor ranges and casts can put a sampled tensor on another device or in another dtype.
 
 See :doc:`/get-started/conventions` for global seeding, worker seeds, consumption order, replay and the limits

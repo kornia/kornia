@@ -740,8 +740,6 @@ class TestConventionAugmentationSequential(BaseTester):
         # passthrough, so annotations desynchronized from the mixed image. The container now dispatches to
         # the child's own handlers: RandomMosaic transforms boxes (container xyxy_plus path), and unsupported
         # keys raise NotImplementedError as a direct call does. A class key still raises from the container.
-        if dtype == torch.bfloat16:
-            pytest.skip("Tracked in #4467: the mix forward path has no bfloat16 DType")
         from kornia.geometry.boxes import Boxes
 
         image = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
