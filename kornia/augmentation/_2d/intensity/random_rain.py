@@ -57,10 +57,8 @@ class RandomRain(IntensityAugmentationBase2D):
           painted cells have gaps inside that span -- ``drop_height=5`` with ``drop_width=0`` on a ``6 x 10``
           image paints rows ``[0, 1, 2, 3, 5]``. A size as large as the image's, or a ``drop_height`` below
           ``1``, raises on the forward pass, where the image shape is known -- constructing it succeeds.
-        - a drop's start coordinate is scaled by ``H - h - 1`` rather than ``H - h``, so the last row and
-          the last column of the image are never painted unless the drop is exactly one short of the image
-          on that axis; a single-pixel drop never reaches the last two rows. Tracked in
-          `#4604 <https://github.com/kornia/kornia/issues/4604>`_.
+        - a drop's start is uniform over every position that keeps the whole drop inside the image, so every
+          row and column, the last ones included, can be painted.
         - the drawn sizes and drop count are float draws truncated toward zero, so unless the range is a single
           point, a positive upper bound is practically never drawn: the default ``drop_height=(5, 20)`` gives
           heights of ``5`` to ``19`` (an image shorter than 20 pixels raises on some seeds, and on every seed when
@@ -127,19 +125,20 @@ class RandomRain(IntensityAugmentationBase2D):
             height_of_drop: int = int(params["drop_height_factor"][i])
             width_of_drop: int = int(params["drop_width_factor"][i])
 
-            # Generate start coordinates for each drop
-            random_y_coords = coordinates_of_drops[:, 0] * (image.shape[2] - height_of_drop - 1)
-            if width_of_drop > 0:
-                random_x_coords = coordinates_of_drops[:, 1] * (image.shape[3] - width_of_drop - 1)
-            else:
-                random_x_coords = coordinates_of_drops[:, 1] * (image.shape[3] + width_of_drop - 1) - width_of_drop
-
-            coords = torch.cat([random_y_coords[None], random_x_coords[None]], dim=0).to(image.device, dtype=torch.long)
-
             # Generate how our drop will look like into the image
             size_of_line: int = max(height_of_drop, abs(width_of_drop))
             x = torch.linspace(start=0, end=height_of_drop, steps=size_of_line, dtype=torch.long).to(image.device)
             y = torch.linspace(start=0, end=width_of_drop, steps=size_of_line, dtype=torch.long).to(image.device)
+
+            # A drop may start anywhere its far end stays inside the image. The far end is the line's last
+            # offset, which is 0 for a single-pixel drop. The clamp keeps a draw that rounds up to 1.0 (half
+            # precision) on the last admissible start.
+            last_dy, last_dx = int(x[-1]), int(y[-1])
+            rows, cols = image.shape[2] - last_dy, image.shape[3] - abs(last_dx)
+            random_y_coords = (coordinates_of_drops[:, 0] * rows).long().clamp(max=rows - 1)
+            random_x_coords = (coordinates_of_drops[:, 1] * cols).long().clamp(max=cols - 1) + max(-last_dx, 0)
+
+            coords = torch.stack([random_y_coords, random_x_coords]).to(image.device)
             # Draw lines
             for k in range(x.shape[0]):
                 modeified_img[i, :, coords[0] + x[k], coords[1] + y[k]] = 200 / 255

@@ -1062,27 +1062,23 @@ class TestNoiseAndWeatherConventions(BaseTester):
             counts = torch.stack([(drawn == value).sum() for value in range(expected[0], expected[1] + 1)])
             assert float(counts.max()) < 1.2 * float(counts.min())
 
-    # Issue #4604: the start coordinate is scaled by `H - h - 1`, so the last row and column are never
-    # painted unless the drop is one short of the image on that axis.  Literal seeds, as for the other
-    # census pins: the claim is over the union of 300 draws, not one.
-    # Snippet used to generate expected: the reproduction in #4604.
-    # executed 2026-09-16 (torch 2.14.0, cpu) -> rows `[0, 1, 2, 3]`, cols `[0, ..., 8]` on `6 x 10`;
-    # `drop_height=(5, 5)`, `drop_width=(9, 9)` paints rows 0..5 and cols 0..9.
-    def test_wart_random_rain_never_paints_the_last_row_or_column_4604(self, device, dtype):
+    # Issue #4604: a drop starts anywhere that keeps it inside the image, so every row and column is painted,
+    # for a single pixel and for drops slanting either way.  Literal seeds, as for the other census pins: the
+    # claim is over the union of 300 draws, not one.  Before the fix the single-pixel case painted rows
+    # `[0, 1, 2, 3]` and cols `[0, ..., 8]` on `6 x 10`.
+    @pytest.mark.parametrize("drop_height, drop_width", [(1, 0), (2, 2), (2, -2)])
+    def test_convention_random_rain_paints_every_row_and_column_4604(self, device, dtype, drop_height, drop_width):
         image = torch.zeros(1, 3, 6, 10, device=device, dtype=dtype)
+        aug = K.RandomRain(
+            number_of_drops=(20, 20), drop_height=(drop_height, drop_height), drop_width=(drop_width, drop_width), p=1.0
+        )
         rows, cols = set(), set()
         for seed in range(300):
             torch.manual_seed(seed)
-            out = K.RandomRain(number_of_drops=(20, 20), drop_height=(1, 1), drop_width=(0, 0), p=1.0)(image)
-            lit = (out[0, 0] != 0).nonzero()
+            lit = (aug(image)[0, 0] != 0).nonzero()
             rows |= set(lit[:, 0].tolist())
             cols |= set(lit[:, 1].tolist())
-        assert sorted(rows) == [0, 1, 2, 3] and sorted(cols) == list(range(9))
-        # One short of the image on both axes is the only case that reaches the far edge.
-        torch.manual_seed(_FORWARD_SEED)
-        out = K.RandomRain(number_of_drops=(1, 1), drop_height=(5, 5), drop_width=(9, 9), p=1.0)(image)
-        lit = (out[0, 0] != 0).nonzero()
-        assert int(lit[:, 0].max()) == 5 and int(lit[:, 1].max()) == 9
+        assert sorted(rows) == list(range(6)) and sorted(cols) == list(range(10))
 
     # Row 6c-28 in the state #4453 left it (it closed #4448): with ``same_on_batch=True`` every
     # sample of the batch gets the same number of drops, the same drop size and the same coordinates;
