@@ -31,7 +31,8 @@ class RandomJPEG(IntensityAugmentationBase2D):
 
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
     :func:`kornia.color.ycbcr_to_rgb` hard-clamps the decoded RGB values to ``[0, 1]``. The codec's final
-    soft-clipping call uses bounds ``[0, 255]`` and leaves those RGB values unchanged.
+    soft-clipping call uses bounds ``[0, 255]`` and leaves those RGB values unchanged. The input must have
+    three channels: the codec works in YCbCr, and any other channel count raises a ``ShapeError``.
 
     Args:
         jpeg_quality: The range of compression rates to be applied.

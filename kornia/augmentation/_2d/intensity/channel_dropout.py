@@ -44,7 +44,10 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         - Output: :math:`(C, H, W)` or :math:`(B, C, H, W)`
 
     Convention:
-        - the channels named by the drawn ``channel_idx`` are overwritten with ``fill_value``; every other
+        - the channels named by the drawn ``channel_idx`` are overwritten with the literal ``fill_value``,
+          which has to be a ``float`` in ``[0, 1]``: the parameter generator rejects anything outside the
+          bounds at construction, and an ``int`` such as ``0`` is rejected on type, where
+          :class:`RandomErasing` accepts an ``int`` ``value``. Every other
           channel is left exactly as it came in, so the input's value range is carried through.
         - the dropped channels are drawn independently per sample; ``same_on_batch=True`` collapses the
           draw to one set of channels for the whole batch.

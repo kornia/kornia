@@ -153,8 +153,14 @@ class TestBlurConventions(BaseTester):
         # (`shape '[2, 3, 16, 32, 32]' is invalid`, measured on cpu in all four dtypes and on mps float32).
         torch.manual_seed(_FORWARD_SEED)
         even = K.RandomMedianBlur((4, 4), p=1.0)
+        large = torch.rand(2, 3, 32, 32).to(device=device, dtype=dtype)
         with pytest.raises(RuntimeError, match="is invalid for input of size"):
-            _sync(even(torch.rand(2, 3, 32, 32).to(device=device, dtype=dtype)).device)
+            _sync(even(large).device)
+        # Below the kernel the zero-padded image is too small for F.conv2d, which raises before the view:
+        # the claim is "raises for every image", not "raises the same error for every image".
+        small = torch.rand(2, 3, 1, 1).to(device=device, dtype=dtype)
+        with pytest.raises(RuntimeError, match="Kernel size can't be greater than actual input size"):
+            _sync(even(small).device)
 
     # Row 6c-20 (issue #4433, closed by #4486, which documents the mapping): RandomBoxBlur's
     # ``normalized`` flag is not a normalization switch -- it is forwarded as box_blur's
@@ -396,8 +402,11 @@ class TestBlurConventions(BaseTester):
     # greater than actual input size`; on (2, 3, 2, 2) only RandomSharpness raises; on (2, 3, 3, 3)
     # all five run; RandomMedianBlur and RandomMotionBlur run on every shape.
     def test_wart_blur_and_sharpness_reject_images_smaller_than_kernel_4559(self, device, dtype):
-        if not supports_reflect_padding(device, dtype):
-            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        # The skip is scoped to the legs that actually reflect-pad.  RandomSharpness fails through
+        # F.conv2d, and RandomMedianBlur and RandomMotionBlur run on a 1x8 image with no reflect padding
+        # at all, so skipping the whole test where reflection_pad2d is missing -- the torch 2.5.1 float16
+        # leg -- would drop three legs of #4559 for a reason that does not apply to them.
+        reflect_ok = supports_reflect_padding(device, dtype)
         torch.manual_seed(_FIXTURE_SEED)
         thin = torch.rand(2, 3, 1, 8).to(device=device, dtype=dtype)
         small = torch.rand(2, 3, 2, 2).to(device=device, dtype=dtype)
@@ -407,6 +416,8 @@ class TestBlurConventions(BaseTester):
             "RandomGaussianBlur": lambda: K.RandomGaussianBlur((3, 3), (1.0, 1.0), p=1.0),
         }
         for name, make in blurs.items():
+            if not reflect_ok:
+                continue
             torch.manual_seed(_FORWARD_SEED)
             # The message is torch's reflect-padding guard, identical on cpu and mps and in every
             # dtype (measured); a kornia-named error would not be a RuntimeError at all, since
@@ -425,6 +436,8 @@ class TestBlurConventions(BaseTester):
         narrow = torch.rand(2, 3, 20, 2).to(device=device, dtype=dtype)
         short = torch.rand(2, 3, 3, 20).to(device=device, dtype=dtype)
         for make in rectangular.values():
+            if not reflect_ok:
+                continue
             torch.manual_seed(_FORWARD_SEED)
             assert make()(narrow).shape == narrow.shape
             torch.manual_seed(_FORWARD_SEED)
@@ -486,6 +499,37 @@ class TestBlurConventions(BaseTester):
             for border in ("constant", "replicate"):
                 torch.manual_seed(_FORWARD_SEED)
                 assert make(border)(thin).shape == thin.shape, f"{name} at {border} should accept a 3-row image"
+
+    # The constant-border claim is directional, and a positive fixture cannot tell "pulled toward 0" from
+    # "pulled below the minimum".  On an all-negative image zero padding pushes the border ABOVE the
+    # maximum and nothing ever falls below the minimum, so both fixtures are checked.
+    # Snippet used to generate expected:
+    #   neg = torch.full((1, 1, 7, 7), -1.0)
+    #   torch.manual_seed(0); print(K.RandomBoxBlur((3, 3), border_type="constant", p=1.0)(neg).aminmax())
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> box max -0.4444, gaussian max -0.5270, motion max -0.6667,
+    # each with min -1.0.
+    @pytest.mark.parametrize("name", ["RandomBoxBlur", "RandomGaussianBlur", "RandomMotionBlur"])
+    def test_convention_constant_border_pulls_the_border_toward_zero(self, device, dtype, name):
+        factories = {
+            "RandomBoxBlur": lambda: K.RandomBoxBlur((3, 3), border_type="constant", p=1.0),
+            "RandomGaussianBlur": lambda: K.RandomGaussianBlur((3, 3), (1.0, 1.0), border_type="constant", p=1.0),
+            "RandomMotionBlur": lambda: K.RandomMotionBlur(3, (0.0, 0.0), (0.0, 0.0), border_type="constant", p=1.0),
+        }
+        positive = torch.full((1, 1, 7, 7), 1.0, device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        low, high = factories[name]()(positive).aminmax()
+        assert float(low) < 1.0 and float(high) <= 1.0 + 1e-3, "a positive image is pulled below its minimum"
+        negative = torch.full((1, 1, 7, 7), -1.0, device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        low, high = factories[name]()(negative).aminmax()
+        assert float(high) > -1.0, "a negative image is pulled above its maximum, not below its minimum"
+        assert float(low) >= -1.0 - 1e-3
+
+
+# Twice float32(0.9): the snow coefficient is drawn in float32 whatever the image dtype, so this is the
+# red channel whose HLS lightness equals the drawn coefficient exactly in float16, bfloat16, float32 and
+# float64 alike.  It is what makes the coverage comparison's `<` distinguishable from `<=`.
+_SNOW_BOUNDARY_RED = 1.7999999523162842
 
 
 class TestNoiseAndWeatherConventions(BaseTester):
@@ -629,8 +673,11 @@ class TestNoiseAndWeatherConventions(BaseTester):
     def test_convention_intensity_parameter_fields_keep_original_batch_for_partial_probability(
         self, device, dtype, name
     ):
+        # B is 16, not 4: at p=0.5 an all-or-nothing draw has probability 2 * 2 ** -B, which is 12.5% at
+        # B=4 -- this node failed on 28 of seeds 0..199 and only _FORWARD_SEED kept it green.  At B=16 it is
+        # 3e-5.
         torch.manual_seed(_FIXTURE_SEED)
-        image = torch.rand(4, 3, 7, 9).to(device=device, dtype=dtype)
+        image = torch.rand(16, 3, 7, 9).to(device=device, dtype=dtype)
         aug, field_name, field_channels = _field_augmentation(name, p=0.5)
         torch.manual_seed(_FORWARD_SEED)
         out = aug(image)
@@ -857,9 +904,13 @@ class TestNoiseAndWeatherConventions(BaseTester):
         drops = params["number_of_drops_factor"].flatten()
         heights = params["drop_height_factor"].flatten()
         widths = params["drop_width_factor"].flatten()
-        assert (int(drops.min()), int(drops.max())) == (2, 3)
-        assert (int(heights.min()), int(heights.max())) == (5, 19)
-        assert (int(widths.min()), int(widths.max())) == (-4, 4)
+        # "Practically never", not never: `lo + (hi - lo) * u` with u = 1 - 2**-24 rounds onto `hi` in
+        # float32 for the top handful of the 2**24 representable draws, so over 20000 draws the bound
+        # appears with probability about 0.2% per seed -- seed 80 draws a 4 here.  The pin is that the
+        # bound is vanishingly rare, not that it is impossible; the lower bound is always drawn.
+        assert int(drops.min()) == 2 and int(drops.max()) <= 4 and int((drops == 4).sum()) < 5
+        assert int(heights.min()) == 5 and int(heights.max()) <= 20 and int((heights == 20).sum()) < 5
+        assert int(widths.min()) == -4 and int(widths.max()) <= 5 and int((widths == 5).sum()) < 5
         zeros, ones = int((widths == 0).sum()), int((widths == 1).sum())
         assert zeros > 1.5 * ones and ones > 1000
         # Truncation is toward zero, so on a range below zero it is the lower bound that is not drawn and
@@ -941,28 +992,54 @@ class TestNoiseAndWeatherConventions(BaseTester):
             assert len(set(shared._params[key].flatten().tolist())) == 1
 
     # Row 6c-32, the clamp: only a covered pixel -- lightness below the drawn coefficient -- has its
-    # lightness scaled and clamped.  At coefficient 1 and brightness 2, (1.5, 0, 0) has lightness 0.75, is
+    # lightness scaled and clamped.  At coefficient 0.9 and brightness 2, (1.5, 0, 0) has lightness 0.75, is
     # covered and turns white; (2, 1.5, 1.5) has lightness 1.75, is missed and keeps its values; and
     # (1.2, -2, -2) has lightness -0.4 and turns black.  A missed pixel still makes the unclamped HLS round
-    # trip, which is not the identity at lightness 1: (1.5, 0.5, 0.5) is missed by coefficient 1 and comes
-    # back white (NaN in float16, where `eps` underflows and the saturation is 0 / 0, #4571).
+    # trip, which is not the identity at either singular lightness: (1.5, 0.5, 0.5) has lightness exactly 1,
+    # where `2 - max - min` vanishes, and comes back white; (2, -2, -2) has lightness exactly 0, where
+    # `max + min` vanishes, and comes back black although it is neither all-negative nor negative in
+    # lightness.  Both are NaN in float16, where `eps` underflows and the saturation is 0 / 0 (#4571).
+    # The coefficient is 0.9, not 1.0, and (1.8, 0, 0) is the last row: coverage is `lightness < coefficient`
+    # at random_snow.py:118, so the only pixel that can tell `<` from `<=` is one whose lightness equals the
+    # coefficient exactly.  At coefficient 1.0 that pixel was (1.5, 0.5, 0.5) -- but it is also the lightness-1
+    # singularity, which comes back white either way, so flipping the comparison left every pin in this file
+    # green.  The last row is not singular and sits exactly on the boundary: its red channel is
+    # `2 * float32(0.9)`, not 1.8, because the coefficient is drawn in float32 whatever the image dtype --
+    # with a plain 1.8 a float64 image computes a lightness a hair above the float32 coefficient and the
+    # mutant survives on that leg.  Missed it keeps its values; covered it would be scaled by 2 and clamped
+    # to white.
     # Snippet used to generate expected:
-    #   x = torch.tensor([[1.5, 0.0, 0.0], [2.0, 1.5, 1.5], [1.2, -2.0, -2.0], [1.5, 0.5, 0.5]]).T.reshape(1, 3, 1, 4)
-    #   torch.manual_seed(0); print(K.RandomSnow(snow_coefficient=(1.0, 1.0), brightness=(2.0, 2.0), p=1.0)(x))
-    # executed 2026-09-15 (torch 2.14.0, cpu float32/float64/float16/bfloat16 and mps float32) -> the pixels
-    # `(1, 1, 1)`, `(2, 1.5, 1.5)`, `(0, 0, 0)` and `(1, 1, 1)`, the last one `(nan, nan, nan)` in float16.
+    #   x = torch.tensor([[1.5, 0.0, 0.0], [2.0, 1.5, 1.5], [1.2, -2.0, -2.0], [1.5, 0.5, 0.5],
+    #                     [2.0, -2.0, -2.0], [1.7999999523162842, 0.0, 0.0]]).T.reshape(1, 3, 1, 6)
+    #   torch.manual_seed(0); print(K.RandomSnow(snow_coefficient=(0.9, 0.9), brightness=(2.0, 2.0), p=1.0)(x))
+    # executed 2026-09-16 (torch 2.14.0, cpu float32/float64/float16/bfloat16 and mps float32) -> the pixels
+    # `(1, 1, 1)`, `(2, 1.5, 1.5)`, `(0, 0, 0)`, `(1, 1, 1)`, `(0, 0, 0)` and the boundary pixel unchanged;
+    # rows 3 and 4 are `(nan, nan, nan)` in float16.
     def test_convention_random_snow_clamps_only_covered_lightness(self, device, dtype):
         pixels = torch.tensor(
-            [[1.5, 0.0, 0.0], [2.0, 1.5, 1.5], [1.2, -2.0, -2.0], [1.5, 0.5, 0.5]], device=device, dtype=dtype
+            [
+                [1.5, 0.0, 0.0],
+                [2.0, 1.5, 1.5],
+                [1.2, -2.0, -2.0],
+                [1.5, 0.5, 0.5],
+                [2.0, -2.0, -2.0],
+                [_SNOW_BOUNDARY_RED, 0.0, 0.0],
+            ],
+            device=device,
+            dtype=dtype,
         )
         torch.manual_seed(_FORWARD_SEED)
-        aug = K.RandomSnow(snow_coefficient=(1.0, 1.0), brightness=(2.0, 2.0), p=1.0)
-        out = aug(pixels.T.reshape(1, 3, 1, 4).contiguous())[0, :, 0].T
+        aug = K.RandomSnow(snow_coefficient=(0.9, 0.9), brightness=(2.0, 2.0), p=1.0)
+        out = aug(pixels.T.reshape(1, 3, 1, 6).contiguous())[0, :, 0].T
         self.assert_close(out[:3], pixels.new_tensor([[1.0, 1.0, 1.0], [2.0, 1.5, 1.5], [0.0, 0.0, 0.0]]))
+        # Lightness exactly at the coefficient is missed, so the pixel survives the round trip unchanged.
+        self.assert_close(out[5], pixels[5])
         if dtype == torch.float16:
             assert bool(out[3].isnan().all())
+            assert bool(out[4].isnan().all())
         else:
             self.assert_close(out[3], pixels.new_ones(3))
+            self.assert_close(out[4], pixels.new_zeros(3))
 
     # Issue #4571: rgb_to_hls divides by `max - min + eps` with `eps = 1e-8`, which underflows to 0 in
     # float16, so every achromatic pixel -- black, gray or white -- gets a NaN hue that the HLS round trip
@@ -978,6 +1055,80 @@ class TestNoiseAndWeatherConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomSnow(p=1.0)(gray)
         assert bool(out.isnan().any()) == (dtype == torch.float16)
+
+    # The channel-count precondition is a class-by-class contract, so it is pinned as one table rather
+    # than per class: five of these were documented before this batch and five were not, and the split
+    # between "1 or 3" and "3 only" is the part a reader gets wrong.
+    # Snippet used to generate expected:
+    #   for c in (1, 2, 4): torch.manual_seed(0); factory()(torch.rand(2, c, 32, 32))
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> RandomRain and RandomSaltAndPepperNoise accept C=1 and
+    # reject C=2/C=4 with `Number of color channels should be 1 or 3.`; ColorJiggle, RandomHue,
+    # RandomSaturation, RandomJPEG, RandomPlanckianJitter, RandomRGBShift and RandomSnow reject all three.
+    @pytest.mark.parametrize(
+        ("name", "accepts_one"),
+        [
+            ("ColorJiggle", False),
+            ("RandomHue", False),
+            ("RandomSaturation", False),
+            ("RandomJPEG", False),
+            ("RandomPlanckianJitter", False),
+            ("RandomRGBShift", False),
+            ("RandomSnow", False),
+            ("RandomRain", True),
+            ("RandomSaltAndPepperNoise", True),
+        ],
+    )
+    def test_convention_intensity_channel_count_preconditions(self, device, dtype, name, accepts_one):
+        if name == "RandomJPEG" and not supports_replicate_padding(device, dtype):
+            # The 3-channel baseline call below needs the codec's replication padding, which torch 2.5.1
+            # has no `Half` kernel for ("replication_pad2d" not implemented for 'Half').  The rejection
+            # this test pins happens before that, but the baseline would fail for an unrelated reason.
+            pytest.skip("replication_pad2d is unavailable for this device/dtype")
+        factories = {
+            "ColorJiggle": lambda: K.ColorJiggle(0.0, 0.0, 0.2, 0.0, p=1.0),
+            "RandomHue": lambda: K.RandomHue((-0.2, 0.2), p=1.0),
+            "RandomSaturation": lambda: K.RandomSaturation((0.7, 1.3), p=1.0),
+            "RandomJPEG": lambda: K.RandomJPEG((50.0, 90.0), p=1.0),
+            "RandomPlanckianJitter": lambda: K.RandomPlanckianJitter(p=1.0),
+            "RandomRGBShift": lambda: K.RandomRGBShift(p=1.0),
+            "RandomSnow": lambda: K.RandomSnow(p=1.0),
+            "RandomRain": lambda: K.RandomRain(number_of_drops=(2, 3), drop_height=(2, 3), drop_width=(1, 2), p=1.0),
+            "RandomSaltAndPepperNoise": lambda: K.RandomSaltAndPepperNoise(p=1.0),
+        }
+        torch.manual_seed(_FIXTURE_SEED)
+        three = torch.rand(2, 3, 32, 32).to(device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        assert factories[name]()(three).shape == three.shape, f"{name} must accept a 3-channel image"
+        for channels in (1, 2, 4):
+            torch.manual_seed(_FIXTURE_SEED)
+            image = torch.rand(2, channels, 32, 32).to(device=device, dtype=dtype)
+            torch.manual_seed(_FORWARD_SEED)
+            if channels == 1 and accepts_one:
+                assert factories[name]()(image).shape == image.shape
+                continue
+            with pytest.raises(Exception):
+                _sync(factories[name]()(image).device)
+
+    # The degenerate signed range: `(-1, 1)` satisfies the block's "draws 0 twice as often as any other
+    # value" but has no other value to be twice as often as -- truncation toward zero maps the whole
+    # interval onto 0.
+    # Snippet used to generate expected:
+    #   g = RainGenerator(number_of_drops=(5, 6), drop_height=(2, 3), drop_width=(-1, 1))
+    #   torch.manual_seed(0); print(set(g((40000, 3, 64, 64))["drop_width_factor"].flatten().tolist()))
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `{0}`, against `{-1, 0, 1}` for `(-2, 2)`.
+    @pytest.mark.device_agnostic
+    def test_convention_random_rain_symmetric_unit_width_range_is_constant_zero(self):
+        torch.manual_seed(_FORWARD_SEED)
+        degenerate = K.RandomRain(number_of_drops=(5, 6), drop_height=(2, 3), drop_width=(-1, 1), p=1.0)
+        drawn = degenerate.forward_parameters((20000, 1, 64, 64))["drop_width_factor"].flatten()
+        assert set(drawn.tolist()) == {0.0}
+        # One step wider and the doubling the block describes is visible again.
+        torch.manual_seed(_FORWARD_SEED)
+        wider = K.RandomRain(number_of_drops=(5, 6), drop_height=(2, 3), drop_width=(-2, 2), p=1.0)
+        widths = wider.forward_parameters((20000, 1, 64, 64))["drop_width_factor"].flatten()
+        assert set(widths.tolist()) == {-1.0, 0.0, 1.0}
+        zeros, ones = int((widths == 0).sum()), int((widths == 1).sum())
+        assert zeros > 1.5 * ones
 
 
 class TestIlluminationAndNormalizeConventions(BaseTester):
@@ -1040,17 +1191,20 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         #   [float(aug._params["gradient"][b].max()) for b in range(4)]
         # executed 2026-09-15 (torch 2.14.0, cpu) -> `[-0.0, 0.5, -0.0, 0.5]` for RandomLinearIllumination
         # and `[0.5, 0.5, 0.5, 0.5]` with same_on_batch=True.
-        batch = torch.full((4, 3, 7, 9), 0.5, device=device, dtype=dtype)
+        # B is 16, not 4: "one batch holds both directions" fails when every sample draws the same sign,
+        # which is 2 * 2 ** -B -- 12.5% at B=4, and this leg failed on 29 of seeds 0..199.  At B=16 it is 3e-5.
+        batch_size = 16
+        batch = torch.full((batch_size, 3, 7, 9), 0.5, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         per_sample = _illumination(name)
         per_sample(batch)
-        directions = [float(per_sample._params["gradient"][b].float().max()) for b in range(4)]
+        directions = [float(per_sample._params["gradient"][b].float().max()) for b in range(batch_size)]
         assert any(value > 0.0 for value in directions) and any(value <= 0.0 for value in directions)
         torch.manual_seed(_FORWARD_SEED)
         shared = _illumination(name, same_on_batch=True)
         shared(batch)
         gradients = shared._params["gradient"]
-        assert all(torch.equal(gradients[0], gradients[b]) for b in range(4))
+        assert all(torch.equal(gradients[0], gradients[b]) for b in range(batch_size))
 
     # The all-negative collapse documented for these augmentations is conditional on the sampled
     # gradient.  With a fixed positive sign and enough gain, a near-zero negative image retains the
@@ -1091,9 +1245,37 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         cloned = copy.deepcopy(_illumination(name))
         assert torch.equal(cloned(constant), expected)
         # torch.save is what #4435 reported: it pickles the module, so it failed for the same reason.
+        # `nbytes > 0` would hold for any object, so the round trip is reloaded and run instead.
         buffer = io.BytesIO()
         torch.save(_illumination(name), buffer)
-        assert buffer.getbuffer().nbytes > 0
+        buffer.seek(0)
+        torch.manual_seed(_FORWARD_SEED)
+        reloaded = torch.load(buffer, weights_only=False)
+        assert torch.equal(reloaded(constant), expected)
+
+    # Issue #4589: the constructor's own check admits `0 <= sigma <= 1`, but filters.kernels.gaussian
+    # normalizes by `gauss.sum()`, which underflows to zero at sigma 0, so the kernel is 0 / 0 and the
+    # whole output is NaN.  An even-length axis carries a half-pixel offset, so no sample sits at the mean
+    # and a small non-zero sigma does it too -- 4x4 is NaN at sigma 0.01 where 3x3 is not.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(0); print(K.RandomGaussianIllumination(p=1.0, sigma=0.0)(torch.rand(1, 3, 4, 4)))
+    # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> every element NaN; the default
+    # sigma=(0.2, 1.0) is finite over 200 seeds at sizes 1..4.  The even/odd leg needs `center` pinned:
+    # with the drawn centre the odd size is NaN on some draws too, and with centre 0.5 a 4x4 image is NaN
+    # at sigma 0.005 on all 30 seeds tried while 3x3 and 5x5 are finite on all of them.
+    @pytest.mark.parametrize("size", [3, 4])
+    def test_wart_random_gaussian_illumination_zero_sigma_is_nan_4589(self, device, dtype, size):
+        image = torch.full((1, 3, size, size), 0.5, device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        assert bool(K.RandomGaussianIllumination(p=1.0, sigma=0.0)(image).isnan().all())
+        # The even axis loses the on-grid sample to the half-pixel offset, so it is NaN at a small
+        # non-zero sigma that the odd one survives.
+        torch.manual_seed(_FORWARD_SEED)
+        small = K.RandomGaussianIllumination(p=1.0, sigma=(0.005, 0.005), center=(0.5, 0.5))(image)
+        assert bool(small.isnan().all()) is (size % 2 == 0)
+        # The documented default is unaffected, so the wart is the admitted extreme and not the class.
+        torch.manual_seed(_FORWARD_SEED)
+        assert bool(K.RandomGaussianIllumination(p=1.0)(image).isfinite().all())
 
     # `.compile()` on RandomGaussianIllumination swaps in a compiled transform that neither pickle nor
     # torch.save can serialize, while deepcopy still works; the linear classes keep pickling.  Measured
@@ -1121,6 +1303,7 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
     @pytest.mark.parametrize(
         "name", ["RandomGaussianIllumination", "RandomLinearIllumination", "RandomLinearCornerIllumination"]
     )
+    @pytest.mark.device_agnostic
     def test_convention_compiled_illumination_pickling(self, device, dtype, name):
         compiled = _illumination(name)
         validate_args = Distribution._validate_args
@@ -1128,7 +1311,13 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
             compiled.compile()
         finally:
             Distribution.set_default_validate_args(validate_args)
-        assert isinstance(copy.deepcopy(compiled), type(compiled))
+        # `isinstance(deepcopy(x), type(x))` holds unless __deepcopy__ is overridden, so the copy is run:
+        # deepcopy survives .compile() where pickle does not, and the copy still transforms.
+        constant = torch.full((2, 3, 7, 9), 0.5)
+        torch.manual_seed(_FORWARD_SEED)
+        cloned = copy.deepcopy(compiled)
+        assert isinstance(cloned, type(compiled))
+        assert cloned(constant).shape == constant.shape
         if name == "RandomGaussianIllumination":
             with pytest.raises(pickle.PicklingError):
                 pickle.dumps(compiled)
@@ -1165,9 +1354,12 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         assert float(constant_out.min()) >= 0.0
         assert float(constant_out.max()) <= 1.0
 
-        # Replay leg: a seeded non-constant image, which no plasma transform leaves untouched.
+        # Replay leg: a seeded non-constant image, which no plasma transform leaves untouched.  The image
+        # is 4x3x32x32, not 2x3x7x9: on the small one the largest deviation fell below the 0.05 floor on 3
+        # of seeds 0..199 (RandomPlasmaShadow twice, RandomPlasmaBrightness once).  Over 200 seeds at this
+        # size the smallest deviation observed was 0.0601, against a floor of 0.03.
         torch.manual_seed(_FIXTURE_SEED)
-        image = torch.rand(2, 3, 7, 9).to(device=device, dtype=dtype)
+        image = torch.rand(4, 3, 32, 32).to(device=device, dtype=dtype)
         aug = _plasma(name)
         torch.manual_seed(_FORWARD_SEED)
         out = aug(image)
@@ -1175,7 +1367,7 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         assert float(out.max()) <= 1.0
         assert "plasma" in aug._params
         # The transform actually moved this fixture, so an identity would not satisfy the replay.
-        assert float((out - image).abs().max()) > 0.05
+        assert float((out - image).abs().max()) > 0.03
         assert torch.equal(aug(image, params=aug._params), out)
 
     # Issue #4570: with same_on_batch=True the three RandomPlasma* classes share their scalar draws, but

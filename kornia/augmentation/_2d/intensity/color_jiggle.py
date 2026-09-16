@@ -66,6 +66,21 @@ class ColorJiggle(IntensityAugmentationBase2D):
           ``factor - 1`` is what reaches :func:`kornia.enhance.adjust_brightness`.
         - ``ColorJiggle(0, 0, 0, 0)`` is the identity, including for values outside ``[0, 1]``. A hue-only
           configuration can also return values outside that interval.
+        - a step whose drawn factor is neutral is skipped rather than computed and discarded, where
+          :class:`ColorJitter` evaluates every step under a ``torch.where``. So the channel count only has to
+          suit the steps that actually run: the saturation and hue steps need three channels, but
+          ``ColorJiggle(0, 0, 0, 0)`` and a brightness- or contrast-only configuration accept any channel
+          count, including the ``C = 1`` and ``C = 4`` on which :class:`ColorJitter` raises.
+        - the ``[0, 2]`` bound is not only a clamp on a scalar: an explicit ``brightness`` range reaching
+          above ``2``, such as ``(0.0, 3.0)``, is rejected at construction with
+          ``brightness out of bounds. Expected inside (0, 2)``, where :class:`ColorJitter` accepts it.
+
+    .. warning::
+        The brightness and contrast primitives clip into ``[0, 1]`` by default, so an input whose values are
+        all negative can come back as an all-zero image, depending on the drawn factors and on which steps
+        run: a contrast-only configuration collapses it for every draw, the default four-factor one for some
+        draws, and a hue-only one never. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. warning::
         In ``float16`` a black pixel reaching the saturation or hue step comes back as NaN, because both

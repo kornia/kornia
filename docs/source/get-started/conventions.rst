@@ -319,7 +319,8 @@ Augmentations
   depending on the draw (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
   See :class:`kornia.augmentation.IntensityAugmentationBase2D` and each class's
   own documentation. :class:`kornia.augmentation.RandomDissolving` is unmeasured
-  because constructing it downloads a Stable Diffusion checkpoint.
+  because constructing it needs the optional ``diffusers`` package and, on a cold
+  cache, downloads a Stable Diffusion checkpoint.
   :class:`kornia.augmentation.RandomClahe` and
   :class:`kornia.augmentation.RandomJPEG` are not in
   ``kornia.augmentation.__all__``; ``RandomClahe`` raises out of range with a raw indexing error

@@ -27,8 +27,11 @@ Modules
 -------
 
 .. autoclass:: AdjustBrightness
+.. autoclass:: AdjustBrightnessAccumulative
 .. autoclass:: AdjustContrast
+.. autoclass:: AdjustContrastWithMeanSubtraction
 .. autoclass:: AdjustSaturation
+.. autoclass:: AdjustSaturationWithGraySubtraction
 .. autoclass:: AdjustHue
 .. autoclass:: AdjustGamma
 .. autoclass:: AdjustSigmoid

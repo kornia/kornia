@@ -54,9 +54,16 @@ class RandomErasing(IntensityAugmentationBase2D):
     Convention:
         - ``scale`` is the fraction of the image *area* the rectangle targets and ``ratio`` is its height over
           its width, so a ratio above ``1`` targets a tall box and below ``1`` a wide one. The box is rounded
-          to whole pixels and clipped to the image, so the erased area and shape can miss the target:
-          ``scale=(0.25, 0.25)`` with ``ratio=(3.0, 3.0)`` on a ``10 x 20`` image erases ``10 x 4 = 40`` pixels
-          of the 50 asked for.
+          to whole pixels and then clamped to ``[1, H] x [1, W]`` -- a floor as well as a ceiling, so it is
+          never empty and never larger than the image -- and the erased area and shape can miss the target in
+          either direction: ``scale=(0.25, 0.25)`` with ``ratio=(3.0, 3.0)`` on a ``10 x 20`` image erases
+          ``10 x 4 = 40`` pixels of the 50 asked for, while ``scale=(0.0, 0.0)`` still erases one pixel and a
+          ``1 x 1`` image is always erased in full.
+        - when ``ratio`` straddles ``1`` the draw is not uniform over the interval: the generator builds one
+          sampler for ``[ratio[0], 1]`` and one for ``[1, ratio[1]]`` and picks between them with a fair coin,
+          so tall and wide boxes are equally likely whatever the two sub-intervals' widths. At the default
+          ``ratio=(0.3, 3.3)`` half the boxes are taller than wide, where a uniform draw would give about
+          ``77%``. A ``ratio`` that does not straddle ``1`` takes the single-sampler branch.
         - the erased region is the half-open rectangle ``[ys, ys + h) x [xs, xs + w)`` in pixels, recorded as
           ``_params["ys"]``, ``["xs"]``, ``["heights"]`` and ``["widths"]``.
         - the erased pixels carry the literal ``value``, which has to lie in ``[0, 1]`` -- the parameter

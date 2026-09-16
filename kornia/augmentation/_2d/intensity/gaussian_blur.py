@@ -60,8 +60,8 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         - the defaults ``separable=True`` and ``border_type="reflect"`` are the function's own defaults.
         - the output is not clamped. At the default ``border_type="reflect"`` every output value is a weighted
           average of input values and stays between the input's own extremes, up to the rounding of the kernel
-          weights; ``border_type="constant"`` pads with zeros and can pull a border pixel below the input's
-          minimum.
+          weights; ``border_type="constant"`` pads with zeros, which pulls a border pixel toward ``0``: below
+          the input's minimum for a positive image, and above its maximum for a negative one.
 
     .. warning::
         At the default ``border_type="reflect"``, an image with a spatial axis no longer than half the kernel's extent

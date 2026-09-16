@@ -33,7 +33,9 @@ class RandomPosterize(IntensityAugmentationBase2D):
 
     Args:
         p: probability of applying the transformation.
-        bits: Integer in ``[0, 8]``, in which 0 gives a constant image and 8 gives the original.
+        bits: number of high bits to keep, in ``[0, 8]``, in which 0 gives a constant image and 8 gives the
+            original. A non-integral argument is accepted; the drawn factor is rounded to an integer, half to
+            even, so ``2.5`` gives ``2`` and ``3.5`` gives ``4``.
             If int x, bits will be generated from (x, 8) then convert to int.
             If tuple (x, y), bits will be generated from (x, y) then convert to int.
         same_on_batch: apply the same transformation across the batch.
@@ -47,7 +49,11 @@ class RandomPosterize(IntensityAugmentationBase2D):
     Convention:
         - ``bits=(k, k)`` with ``k < 8`` leaves at most ``2 ** k`` distinct values, so ``0`` gives a constant
           image; the reduction is a ``uint8`` round trip inside :func:`kornia.enhance.posterize`. A sample
-          that draws ``8`` is returned unchanged, without the round trip. The drawn factor is integral.
+          that draws ``8`` is returned unchanged, without the round trip. The drawn factor is integral: a
+          non-integral ``bits`` is rounded half to even.
+        - the round trip is a step function, so a posterized sample carries no gradient. The output still has
+          ``requires_grad=True``, but the gradient with respect to the input is identically ``0`` below
+          ``bits=8``; at ``bits=8``, which skips the round trip, it is the identity.
         - an ``int`` argument is the lower bound of the sampled range ``[x, 8]`` -- the opposite reading
           from :class:`RandomSharpness`, whose scalar argument is an upper bound.
 

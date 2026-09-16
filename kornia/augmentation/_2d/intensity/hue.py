@@ -49,6 +49,8 @@ class RandomHue(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - the input must have three channels: the shift is computed in HSV, and any other channel count raises
+          a ``ValueError`` on the forward pass.
         - the drawn shift is in turns of the hue circle, and the class multiplies it by ``2 * pi`` before
           calling :func:`kornia.enhance.adjust_hue`, which takes radians. Passing the same number
           straight to that primitive shifts the hue by a different amount.

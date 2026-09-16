@@ -38,9 +38,10 @@ def _assert_async_value_check(cond: torch.Tensor, msg: str) -> None:
     """Validate a tensor condition without graph breaks or hidden device syncs.
 
     ``torch._assert_async`` keeps the check fullgraph-compilable (a Python ``if tensor: raise``
-    would break the graph), but ``aten::_assert_async`` has no MPS kernel — the CPU fallback
-    materializes ``cond`` and drains the queued stream on every call, so on MPS the check is
-    skipped instead.
+    would break the graph), but materializing ``cond`` on MPS would drain the queued stream on
+    every call, so kornia skips the check there by design. The skip is this device check, not a
+    missing kernel: torch 2.5.1 had no ``aten::_assert_async`` MPS kernel, torch 2.14 registers
+    one, and the check is skipped on MPS either way.
     """
     if cond.device.type == "mps":
         return

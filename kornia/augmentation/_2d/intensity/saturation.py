@@ -45,6 +45,8 @@ class RandomSaturation(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - the input must have three channels: the scaling is computed in HSV, and any other channel count
+          raises a ``ValueError`` on the forward pass.
         - the drawn factor reaches :func:`kornia.enhance.adjust_saturation` unchanged -- it is not
           re-based the way :class:`RandomBrightness` re-bases its own -- and ``1.0`` is the identity for a
           pixel with no negative channel. That primitive round-trips through HSV, so the identity holds only

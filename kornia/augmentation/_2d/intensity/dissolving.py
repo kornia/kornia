@@ -30,8 +30,9 @@ class RandomDissolving(IntensityAugmentationBase2D):
     See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
 
     Based on :cite:`shi2024dissolving`, the dissolving transformation is essentially applying one-step
-    reverse diffusion. Our implementation currently supports HuggingFace implementations of SD 1.4, 1.5
-    and 2.1. SD 1.X tends to remove more details than SD2.1.
+    reverse diffusion. Our implementation currently supports the HuggingFace implementations of SD 1.4, SD 1.5
+    and SD XL; any other ``version`` raises a bare ``NotImplementedError``. SD 1.X tends to remove more details
+    than SD XL.
 
     .. list-table:: Title
         :widths: 32 32 32
@@ -46,7 +47,7 @@ class RandomDissolving(IntensityAugmentationBase2D):
 
     Args:
         p: probability of applying the transformation.
-        version: the version of the stable diffusion model.
+        version: the version of the stable diffusion model. Options: ``"1.4"``, ``"1.5"``, ``"xl"``.
         step_range: the step range of the diffusion model steps. Higher the step, stronger
                     the dissolving effects.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it

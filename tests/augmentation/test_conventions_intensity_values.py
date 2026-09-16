@@ -23,6 +23,7 @@ import pytest
 import torch
 
 import kornia.augmentation as K
+from kornia.augmentation.random_generator import RectangleEraseGenerator
 from kornia.core.exceptions import BaseError, ShapeError
 from kornia.enhance import (
     AdjustBrightnessAccumulative,
@@ -181,8 +182,8 @@ def _sync(device) -> None:
         torch.mps.synchronize()
 
 
-def _run(name: str, image: torch.Tensor) -> torch.Tensor:
-    torch.manual_seed(_FORWARD_SEED)
+def _run(name: str, image: torch.Tensor, seed: int | None = None) -> torch.Tensor:
+    torch.manual_seed(_FORWARD_SEED if seed is None else seed)
     out = _INTENSITY_FACTORIES[name]()(image)
     _sync(image.device)
     return out
@@ -246,7 +247,27 @@ class TestIntensityValueRangeConventions(BaseTester):
         # A clamped output is exactly 0.0 or 1.0, and the pass-through outputs sit near 2.0 or
         # -1.0, so a tolerance this loose still separates the groups in bfloat16.
         tol = 1e-3
-        ranges = {tag: _run(name, image).aminmax() for tag, image in fixtures.items()}
+        outputs = {tag: _run(name, image) for tag, image in fixtures.items()}
+        ranges = {tag: out.aminmax() for tag, out in outputs.items()}
+        # Both fixtures are already outside [0, 1], so the _OUT_OF_RANGE_ON_FIXTURES branch below is
+        # satisfied by the identity: replacing RandomInvert.apply_transform with `return input` left its
+        # parametrization green.  Require the class to actually change a fixture, which is what makes "the
+        # range is passed through" a claim about the transform rather than about the input.
+        # The check is over several draws, not the one _FORWARD_SEED picks, because a neutral draw is
+        # legitimate for some classes: RandomChannelShuffle draws the identity permutation about one time
+        # in six, and RandomSaltAndPepperNoise's mask can select no pixel on a 6x8 image -- each returned
+        # its input on about 11 of seeds 0..199.  An implementation that is the identity moves nothing on
+        # any seed, so the weaker claim still catches it.
+        moved = False
+        for seed in range(8):
+            for tag, image in fixtures.items():
+                torch.manual_seed(seed)
+                if not torch.equal(_run(name, image, seed=seed), image):
+                    moved = True
+                    break
+            if moved:
+                break
+        assert moved, f"{name} returned the audit fixtures unchanged on every seed tried"
         if name in _BOUNDED_ON_FIXTURES:
             for tag, (low, high) in ranges.items():
                 assert float(low) >= -tol, f"{name} on {tag} left the lower end unclamped"
@@ -745,8 +766,9 @@ class TestIntensityColourConventions(BaseTester):
         two = torch.full((2, 1, 3, 3), 2.0, device=device, dtype=dtype)
         self.assert_close(saturation(two), two)
         self.assert_close(saturation(two.expand(2, 3, 3, 3)), torch.ones_like(two.expand(2, 3, 3, 3)))
-        with pytest.raises(BaseError):
-            saturation(torch.rand(2, 4, 3, 3).to(device=device, dtype=dtype))
+        four_channel = torch.rand(2, 4, 3, 3).to(device=device, dtype=dtype)
+        with pytest.raises(BaseError, match="Not a color or gray tensor"):
+            saturation(four_channel)
 
     # `adjust_brightness_accumulative`, ColorJitter's brightness primitive, multiplies by the factor and
     # clamps by default, so its identity factor `1` holds only for an image in [0, 1]; the module form
@@ -915,8 +937,15 @@ class TestIntensityColourConventions(BaseTester):
                 expected = fill_value if c in dropped else 1.0
                 self.assert_close(out[b, c], torch.full_like(out[b, c], expected))
         # The draw is per sample: validating the output against the reported channel_idx alone would
-        # also pass for an implementation that dropped the same channels across the whole batch.
-        assert index[0].tolist() != index[1].tolist(), "the seeded per-sample draws coincide"
+        # also pass for an implementation that dropped the same channels across the whole batch.  Two
+        # samples coincide by chance with probability 1/3 (n=1) or 1/6 (n=2) -- this assertion failed on
+        # 64 of seeds 0..199 at B=2 -- so the distinctness is checked over a wider batch instead.
+        torch.manual_seed(_FORWARD_SEED)
+        wide = K.RandomChannelDropout(num_drop_channels=num_drop_channels, fill_value=fill_value, p=1.0)
+        wide(torch.ones(8, 3, 6, 8, device=device, dtype=dtype))
+        wide_index = wide._params["channel_idx"]
+        assert wide_index.shape == (8, num_drop_channels)
+        assert len({tuple(row) for row in wide_index.tolist()}) > 1, "the seeded per-sample draws coincide"
         torch.manual_seed(_FORWARD_SEED)
         batched = K.RandomChannelDropout(
             num_drop_channels=num_drop_channels, fill_value=fill_value, p=1.0, same_on_batch=True
@@ -1004,6 +1033,13 @@ class TestIntensityColourConventions(BaseTester):
         assert float(params["additions"].min()) >= -0.1
         assert float(params["additions"].max()) <= 0.1
         assert float(params["additions"].max()) > 0.0 > float(params["additions"].min())
+        # A half-width of 0.05 instead of 0.1 satisfies every bound above, so also require the draw to
+        # reach the documented half-width.  Over 256 draws each of these fails with probability
+        # 0.9 ** 256 ~ 2e-12 when the half-width is right.
+        assert float(params["thresholds"].max()) > 0.58
+        assert float(params["thresholds"].min()) < 0.42
+        assert float(params["additions"].max()) > 0.09
+        assert float(params["additions"].min()) < -0.09
 
     # Row 6c-37: `bits=(k, k)` leaves exactly 2**k distinct levels on a 256-level ramp, so k=0 is a
     # constant image and k=8 is the identity.
@@ -1084,6 +1120,12 @@ class TestIntensityColourConventions(BaseTester):
         assert drawn.shape == (256,)
         assert float(drawn.min()) >= 0.0
         assert float(drawn.max()) <= 0.5
+        # Containment alone cannot see a shrunk range: moving the generator's centre from 0.0 to -0.25
+        # makes RandomSharpness(0.5) draw [0, 0.25], which satisfies every bound above.  Require the draw
+        # to reach the documented bound.  Over 256 draws a true upper bound of 0.5 fails this with
+        # probability 0.9 ** 256 ~ 2e-12.
+        assert float(drawn.max()) > 0.45
+        assert float(drawn.min()) < 0.05
 
     # Row 6c-34: one additive shift per channel per sample, clamped into [0, 1] by
     # kornia.enhance.shift_rgb.  The shift is replaced by an explicit +1.0 on red so the clamp is
@@ -1299,28 +1341,93 @@ class TestIntensityColourConventions(BaseTester):
     # (motion (1, 1)), `BaseError: Invalid value in num_drop_channels` and `IndexError: index 25 is out
     # of bounds for dimension 0 with size 25`; the last one at construction, the three before it on the
     # forward pass.
+    # `match` is part of the pin, not decoration: without it a case can be satisfied by a different
+    # error of the same class.  `bits=9` is the example -- a scalar becomes the range [9, 8], so it trips
+    # the "lo > hi" arm and says nothing about the documented (0, 8] upper bound; widening that bound to
+    # (0, 16) left every pin in this file green until `posterize_bits_range_above_eight` was added.
     @pytest.mark.parametrize(
-        ("case", "stage", "error"),
+        ("case", "stage", "error", "match"),
         [
-            ("sharpness_negative", "construction", ValueError),
-            ("posterize_bits_above_eight", "construction", ValueError),
-            ("posterize_bits_negative", "construction", ValueError),
-            ("gamma_negative", "forward", RuntimeError),
-            ("brightness_above_two", "construction", ValueError),
-            ("contrast_negative", "construction", ValueError),
-            ("saturation_negative", "construction", ValueError),
-            ("hue_above_half", "construction", ValueError),
-            ("solarize_additions_at_half", "forward", RuntimeError),
-            ("solarize_additions_at_minus_half", "forward", RuntimeError),
-            ("gaussian_blur_sigma_zero", "forward", BaseError),
-            ("gaussian_blur_even_kernel", "forward", BaseError),
-            ("rain_drop_height_zero", "forward", BaseError),
-            ("motion_blur_kernel_range_draws_one", "forward", BaseError),
-            ("channel_dropout_more_than_the_channels", "forward", BaseError),
-            ("planckian_select_past_the_table", "construction", IndexError),
+            (
+                "sharpness_negative",
+                "construction",
+                ValueError,
+                r"If sharpness is a single number, it must be non negative",
+            ),
+            ("posterize_bits_above_eight", "construction", ValueError, r"bits\[0\] should be smaller than bits\[1\]"),
+            (
+                "posterize_bits_range_above_eight",
+                "construction",
+                ValueError,
+                r"bits out of bounds\. Expected inside \(0, 8\)",
+            ),
+            ("posterize_bits_negative", "construction", ValueError, r"bits out of bounds\. Expected inside \(0, 8\)"),
+            ("gamma_negative", "forward", RuntimeError, r"Gamma must be non-negative"),
+            (
+                "brightness_above_two",
+                "construction",
+                ValueError,
+                r"brightness out of bounds\. Expected inside \(0\.0, 2\.0\)",
+            ),
+            ("contrast_negative", "construction", ValueError, r"contrast out of bounds\. Expected inside \(0, inf\)"),
+            (
+                "saturation_negative",
+                "construction",
+                ValueError,
+                r"saturation out of bounds\. Expected inside \(0, inf\)",
+            ),
+            ("hue_above_half", "construction", ValueError, r"hue out of bounds\. Expected inside \(-0\.5, 0\.5\)"),
+            (
+                "solarize_additions_at_half",
+                "forward",
+                RuntimeError,
+                r"The addition must be in the open range \(-0\.5, 0\.5\)",
+            ),
+            (
+                "solarize_additions_at_minus_half",
+                "forward",
+                RuntimeError,
+                r"The addition must be in the open range \(-0\.5, 0\.5\)",
+            ),
+            ("gaussian_blur_sigma_zero", "forward", BaseError, r"sigma must be positive"),
+            ("gaussian_blur_even_kernel", "forward", BaseError, r"Kernel size must be an odd integer bigger than 0"),
+            ("median_blur_even_kernel", "forward", RuntimeError, r"is invalid for input of size"),
+            ("rain_drop_height_zero", "forward", BaseError, r"Height of drop should be greater than zero"),
+            (
+                "motion_blur_kernel_range_draws_one",
+                "forward",
+                BaseError,
+                r"Kernel size must be an odd integer bigger than 2",
+            ),
+            (
+                "motion_blur_even_bound_rounds_up",
+                "forward",
+                BaseError,
+                r"Kernel size must be an odd integer bigger than 2",
+            ),
+            ("channel_dropout_more_than_the_channels", "forward", BaseError, r"Invalid value in .num_drop_channels."),
+            (
+                "channel_dropout_fill_value_above_one",
+                "construction",
+                BaseError,
+                r"Invalid value in .fill_value.\. Must be a float between 0 and 1",
+            ),
+            (
+                "color_jiggle_brightness_range_above_two",
+                "construction",
+                ValueError,
+                r"brightness out of bounds\. Expected inside \(0, 2\)",
+            ),
+            ("rgb_shift_tuple_limit", "construction", TypeError, r"bad operand type for unary -: 'tuple'"),
+            (
+                "planckian_select_past_the_table",
+                "construction",
+                IndexError,
+                r"index 25 is out of bounds for dimension 0 with size 25",
+            ),
         ],
     )
-    def test_convention_intensity_constructors_reject_out_of_bounds(self, device, dtype, case, stage, error):
+    def test_convention_intensity_constructors_reject_out_of_bounds(self, device, dtype, case, stage, error, match):
         if case == "gamma_negative" and device.type != "cpu":
             pytest.skip("CPU only: on CUDA the value assert is a device-side assert; MPS skips the check")
         # The solarize check runs on the CPU-drawn additions, so unlike the gamma check it raises for an
@@ -1356,16 +1463,29 @@ class TestIntensityColourConventions(BaseTester):
             "channel_dropout_more_than_the_channels": lambda: K.RandomChannelDropout(num_drop_channels=4, p=1.0),
             # `select_from` indexes the 25-row blackbody table at construction.
             "planckian_select_past_the_table": lambda: K.RandomPlanckianJitter(select_from=[25], p=1.0),
+            # A scalar `bits=9` becomes the range [9, 8] and trips the "lo > hi" arm, so the documented
+            # (0, 8] upper bound needs an explicit range to be pinned at all.
+            "posterize_bits_range_above_eight": lambda: K.RandomPosterize(bits=(3.0, 9.0), p=1.0),
+            # An even entry raises a raw reshape error from median_blur's view, not a kornia check.
+            "median_blur_even_kernel": lambda: K.RandomMedianBlur((4, 4), p=1.0),
+            # An even bound is rounded up to the next odd size, so (0, 2) draws 1 and the kernel rejects it.
+            "motion_blur_even_bound_rounds_up": lambda: K.RandomMotionBlur((0, 2), 35.0, 0.5, p=1.0),
+            # `fill_value` is bounded to [0, 1] at construction, unlike RandomErasing's `value` type check.
+            "channel_dropout_fill_value_above_one": lambda: K.RandomChannelDropout(fill_value=2.0, p=1.0),
+            # ColorJiggle's brightness bound is (0, 2); ColorJitter accepts the same range.
+            "color_jiggle_brightness_range_above_two": lambda: K.ColorJiggle(brightness=(0.0, 3.0), p=1.0),
+            # Each *_shift_limit must be a scalar; a tuple dies on the unary minus that builds the range.
+            "rgb_shift_tuple_limit": lambda: K.RandomRGBShift((0.1, 0.5), p=1.0),
         }
         if stage == "construction":
-            with pytest.raises(error):
+            with pytest.raises(error, match=match):
                 factories[case]()
             return
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 6, 8).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         aug = factories[case]()
-        with pytest.raises(error):
+        with pytest.raises(error, match=match):
             # The sync is what surfaces an MPS kernel error inside this block rather than later.
             _sync(aug(image).device)
 
@@ -1434,15 +1554,20 @@ class TestIntensityColourConventions(BaseTester):
     # executed 2026-09-15 (torch 2.14.0, cpu) -> `[20.1021, 30.8448]`, `False True`.
     @pytest.mark.device_agnostic
     def test_wart_random_clahe_applies_the_first_clip_limit_to_the_batch_4572(self):
+        # B is 8, not 2: two draws from (0.5, 40.0) land within 1.0 of each other about 5% of the time,
+        # and at B=2 this node failed on 12 of seeds 0..199.  Over 8 draws the spread was at least 9.4 on
+        # every one of those seeds, and the sample farthest from the first is the one that shows the wart.
         torch.manual_seed(_FIXTURE_SEED)
-        image = torch.rand(2, 1, 32, 32) ** 3
+        image = torch.rand(8, 1, 32, 32) ** 3
         torch.manual_seed(_FORWARD_SEED)
         aug = K.RandomClahe(clip_limit=(0.5, 40.0), grid_size=(2, 2), p=1.0)
         out = aug(image)
         clip = aug._params["clip_limit_factor"]
-        assert abs(float(clip[0]) - float(clip[1])) > 1.0
-        assert torch.equal(out[1:], equalize_clahe(image[1:], float(clip[0]), (2, 2)))
-        assert not torch.equal(out[1:], equalize_clahe(image[1:], float(clip[1]), (2, 2)))
+        far = int((clip - clip[0]).abs().argmax())
+        assert abs(float(clip[far]) - float(clip[0])) > 1.0
+        # The whole batch is equalized with the first sample's clip limit, not with its own.
+        assert torch.equal(out[far : far + 1], equalize_clahe(image[far : far + 1], float(clip[0]), (2, 2)))
+        assert not torch.equal(out[far : far + 1], equalize_clahe(image[far : far + 1], float(clip[far]), (2, 2)))
 
     # Issue #4560: every class whose path goes through rgb_to_hsv returns NaN for a black pixel in
     # float16, because the conversion's `eps=1e-8` underflows to 0 there; bfloat16 keeps the exponent
@@ -1498,3 +1623,118 @@ class TestIntensityColourConventions(BaseTester):
         assert factories[name](False)(image).shape == (1, 3, 6, 8)
         torch.manual_seed(_FORWARD_SEED)
         assert factories[name](True)(image).shape == (3, 6, 8)
+
+    # Differentiability is a family-wide property, so it is pinned as one sweep: RandomClahe is the only
+    # class of the 35 whose default output leaves the autograd graph, and RandomPosterize the only one
+    # whose gradient is identically zero while still reporting requires_grad.
+    # Snippet used to generate expected:
+    #   x = (torch.rand(2, 3, 16, 16) * 0.8 + 0.1).requires_grad_()
+    #   o = K.RandomClahe(p=1.0)(x); print(o.requires_grad, o.grad_fn)
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `False None`, and `True` with
+    # slow_and_differentiable=True; RandomPosterize gives requires_grad True with x.grad.abs().sum() 0.0
+    # below bits=8 and 1536.0 (= 2*3*16*16, the identity) at bits=8.
+    @pytest.mark.device_agnostic
+    def test_convention_random_clahe_is_differentiable_only_when_asked(self):
+        image = (torch.rand(2, 3, 16, 16) * 0.8 + 0.1).requires_grad_()
+        torch.manual_seed(_FORWARD_SEED)
+        fast = K.RandomClahe(p=1.0)(image)
+        assert not fast.requires_grad and fast.grad_fn is None
+        torch.manual_seed(_FORWARD_SEED)
+        slow = K.RandomClahe(p=1.0, slow_and_differentiable=True)(image)
+        assert slow.requires_grad
+        slow.sum().backward()
+        assert image.grad is not None and float(image.grad.abs().sum()) > 0.0
+
+    # The uint8 round trip is a step function, so the gradient below bits=8 is structurally zero even
+    # though requires_grad stays True; bits=8 skips the round trip and is the identity.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(("bits", "expected"), [(0, 0.0), (3, 0.0), (7, 0.0), (8, 1536.0)])
+    def test_convention_random_posterize_gradient_is_zero_below_eight_bits(self, bits, expected):
+        image = (torch.rand(2, 3, 16, 16) * 0.8 + 0.1).requires_grad_()
+        torch.manual_seed(_FORWARD_SEED)
+        out = K.RandomPosterize((bits, bits), p=1.0)(image)
+        assert out.requires_grad, "the output keeps requires_grad whatever the gradient is"
+        out.sum().backward()
+        assert float(image.grad.abs().sum()) == expected
+
+    # A non-integral `bits` is accepted and rounded half to even, which the "Integer" wording hid.
+    # Snippet used to generate expected:
+    #   for b in (2.5, 3.5, 0.4, 0.6):
+    #       torch.manual_seed(0); a = K.RandomPosterize((b, b), p=1.0); a(torch.rand(1, 3, 16, 16))
+    #       print(b, a._params["bits_factor"].tolist())
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `2`, `4`, `0`, `1`.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(("bits", "drawn"), [(2.5, 2), (3.5, 4), (0.4, 0), (0.6, 1)])
+    def test_convention_random_posterize_rounds_a_float_bits_half_to_even(self, bits, drawn):
+        torch.manual_seed(_FORWARD_SEED)
+        aug = K.RandomPosterize((bits, bits), p=1.0)
+        aug(torch.rand(1, 3, 16, 16))
+        assert [int(v) for v in aug._params["bits_factor"].tolist()] == [drawn]
+
+    # ColorJiggle skips a step whose drawn factor is neutral, where ColorJitter evaluates every step
+    # under a torch.where.  So the channel count only has to suit the steps that actually run.
+    # Snippet used to generate expected:
+    #   for c in (1, 3, 4): torch.manual_seed(0); K.ColorJiggle(0, 0, 0, 0, p=1.0)(torch.rand(2, c, 5, 5))
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> all three accepted on ColorJiggle, C=1 and C=4 rejected
+    # on ColorJitter; a saturation- or hue-only ColorJiggle rejects C=1 and C=4 as well.
+    @pytest.mark.parametrize("channels", [1, 3, 4])
+    def test_convention_color_jiggle_skips_neutral_steps(self, device, dtype, channels):
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(2, channels, 5, 5).to(device=device, dtype=dtype)
+        for factors in ((0.0, 0.0, 0.0, 0.0), (0.2, 0.0, 0.0, 0.0), (0.0, 0.2, 0.0, 0.0)):
+            torch.manual_seed(_FORWARD_SEED)
+            assert K.ColorJiggle(*factors, p=1.0)(image).shape == image.shape
+        # The steps that do run still need three channels.
+        for factors in ((0.0, 0.0, 0.2, 0.0), (0.0, 0.0, 0.0, 0.1)):
+            torch.manual_seed(_FORWARD_SEED)
+            if channels == 3:
+                assert K.ColorJiggle(*factors, p=1.0)(image).shape == image.shape
+            else:
+                with pytest.raises(ValueError, match="shape of"):
+                    K.ColorJiggle(*factors, p=1.0)(image)
+        # ColorJitter computes every step, so the neutral configuration raises where ColorJiggle does not.
+        torch.manual_seed(_FORWARD_SEED)
+        if channels == 3:
+            assert K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0)(image).shape == image.shape
+        else:
+            with pytest.raises(Exception):
+                K.ColorJitter(0.0, 0.0, 0.0, 0.0, p=1.0)(image)
+
+    # The erasing box is clamped from BELOW as well as above, so it is never empty: scale=(0, 0) still
+    # erases one pixel and a 1x1 image is always erased in full.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(0); a = K.RandomErasing(scale=(0.0, 0.0), ratio=(1.0, 1.0), p=1.0)
+    #   o = a(torch.ones(1, 1, 10, 10)); print(int((o == 0).sum()), a._params["heights"].tolist())
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `1 [1.0]`, and `1 [1.0]` for a 1x1 image.
+    @pytest.mark.device_agnostic
+    def test_convention_random_erasing_box_is_never_empty(self):
+        torch.manual_seed(_FORWARD_SEED)
+        degenerate = K.RandomErasing(scale=(0.0, 0.0), ratio=(1.0, 1.0), p=1.0)
+        out = degenerate(torch.ones(1, 1, 10, 10))
+        assert int((out == 0).sum()) == 1
+        assert degenerate._params["heights"].tolist() == [1.0]
+        assert degenerate._params["widths"].tolist() == [1.0]
+        torch.manual_seed(_FORWARD_SEED)
+        single = K.RandomErasing(p=1.0)(torch.ones(1, 1, 1, 1))
+        assert float(single.sum()) == 0.0
+
+    # When `ratio` straddles 1 the draw is a 50/50 mixture of [ratio[0], 1] and [1, ratio[1]], not uniform
+    # over the interval, so tall and wide boxes are equally likely whatever the sub-intervals' widths.
+    # A single-point range cannot see this -- it needs the ratio of the two branch populations.
+    # Snippet used to generate expected:
+    #   g = RectangleEraseGenerator(scale=(0.25, 0.25), ratio=(0.3, 3.3))
+    #   g.set_rng_device_and_dtype(torch.device("cpu"), torch.float32)
+    #   torch.manual_seed(0); p = g((200000, 3, 400, 400))
+    #   print((p["heights"] > p["widths"]).float().mean())
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `0.4987`, against `(3.3 - 1) / (3.3 - 0.3) = 0.7667` for a
+    # uniform draw; ratio=(1.0, 3.3) takes the single-sampler branch and gives 0.998.
+    @pytest.mark.device_agnostic
+    def test_convention_random_erasing_straddling_ratio_is_a_fair_mixture(self):
+        generator = RectangleEraseGenerator(scale=(0.25, 0.25), ratio=(0.3, 3.3))
+        generator.set_rng_device_and_dtype(torch.device("cpu"), torch.float32)
+        torch.manual_seed(_FORWARD_SEED)
+        params = generator((200000, 3, 400, 400))
+        tall = float((params["heights"] > params["widths"]).float().mean())
+        assert abs(tall - 0.5) < 0.01, "the straddling draw is a fair coin between the two sub-intervals"
+        uniform = (3.3 - 1.0) / (3.3 - 0.3)
+        assert abs(tall - uniform) > 0.2, "a uniform draw over the interval would be far from a fair coin"

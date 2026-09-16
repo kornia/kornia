@@ -37,7 +37,9 @@ class RandomClahe(IntensityAugmentationBase2D):
     Args:
         clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
         grid_size: number of tiles to be cropped in each direction (GH, GW).
-        slow_and_differentiable: flag to select implementation
+        slow_and_differentiable: selects the implementation. At the default ``False`` the fast path breaks the
+            autograd graph -- the output has ``requires_grad=False`` and no ``grad_fn``, which no other 2D
+            intensity augmentation does -- so set it to ``True`` to keep the class differentiable.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -55,6 +57,13 @@ class RandomClahe(IntensityAugmentationBase2D):
     .. warning::
         ``clip_limit`` is drawn per sample, but the first sample's value is applied to the whole batch.
         Tracked in `#4572 <https://github.com/kornia/kornia/issues/4572>`_.
+
+    .. warning::
+        ``grid_size`` is unvalidated past its positivity check in the same way the value range is: a grid that
+        does not tile the image raises a raw ``IndexError`` (``shape mismatch: indexing tensors could not be
+        broadcast together``), and an image too small for the grid a raw ``RuntimeError`` from the padding --
+        at the default ``grid_size=(8, 8)`` the smallest admissible square image is ``9 x 9``, and ``8 x 8``
+        raises. A grid larger than the image gets the named ``ValueError`` instead.
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize_clahe`.

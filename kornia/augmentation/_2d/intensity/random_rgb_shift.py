@@ -42,11 +42,15 @@ class RandomRGBShift(IntensityAugmentationBase2D):
           to the batch form ``False``.
 
     Convention:
-        - one shift is drawn per channel per sample, added to that channel, and the sum is clamped into
-          ``[0, 1]`` by :func:`kornia.enhance.shift_rgb`.
+        - the input must have exactly three channels, which :func:`kornia.enhance.shift_rgb` checks; any
+          other channel count raises an ``ImageError``. The class draws three named shifts per sample --
+          ``_params["r_shift"]``, ``["g_shift"]`` and ``["b_shift"]``, each of shape ``(B,)`` -- adds each to
+          its channel, and the sum is clamped into ``[0, 1]`` by :func:`kornia.enhance.shift_rgb`.
         - each ``*_shift_limit`` is a half-width, not a maximum shift in one direction: that channel's
           shift is sampled from ``[-limit, limit]``, so a limit of ``0`` adds nothing to the channel. The
-          clamp still applies, so such a channel comes back unchanged only if it was inside ``[0, 1]``.
+          clamp still applies, so such a channel comes back unchanged only if it was inside ``[0, 1]``. Each
+          limit is a non-negative scalar: a negative one raises a named ``ValueError`` and a tuple raises a raw
+          ``TypeError: bad operand type for unary -: 'tuple'`` at construction.
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1].

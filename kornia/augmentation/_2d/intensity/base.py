@@ -55,9 +55,10 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           clamp; and :class:`RandomEqualize` raises a ``RuntimeError`` where its value check runs (on MPS the
           check is skipped and a raw indexing error surfaces instead). The resulting values also depend on
           the sampled parameters and image contents, so these policies are not an exhaustive classification
-          of every out-of-range input. :class:`RandomDissolving` is unmeasured because constructing it
-          downloads a Stable Diffusion checkpoint. :class:`RandomClahe` and :class:`RandomJPEG` are not in
-          ``kornia.augmentation.__all__`` and document their own behavior on their own pages.
+          of every out-of-range input. :class:`RandomDissolving` is unmeasured because constructing it needs
+          the optional ``diffusers`` package and, on a cold cache, downloads a Stable Diffusion checkpoint.
+          :class:`RandomClahe` and :class:`RandomJPEG` are not in ``kornia.augmentation.__all__`` and document
+          their own behavior on their own pages.
         - what this block and the class pages say about an output describes the samples the ``p`` gate
           transforms; every other sample comes back with its input values. Below ``p=1`` the transform is
           still computed for every sample and the gate then selects, so a skipped sample that fails a value
@@ -86,8 +87,11 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           :class:`RandomSolarize`'s ``additions`` at the closed bounds ``-0.5`` and ``0.5``, and
           :class:`RandomGaussianBlur`'s ``sigma`` at ``0`` and even ``kernel_size``, which the constructors
           admit and :func:`kornia.enhance.solarize` and :func:`kornia.filters.gaussian_blur2d` reject;
+          :class:`RandomMedianBlur`'s even ``kernel_size``, which raises a raw torch error the same way;
           :class:`RandomRain`'s drop-size bounds; a tuple ``kernel_size`` for :class:`RandomMotionBlur` whose
-          drawn odd size is below ``3``, while an even bound never raises, because only odd sizes are drawn;
+          drawn odd size is below ``3`` -- an even bound is rounded up to the next odd size rather than
+          rejected, and that rounding can leave the requested range, so ``(4, 4)`` draws ``5`` and ``(2, 2)``
+          draws ``3``, while ``(0, 2)`` raises because the odd size it rounds to is ``1``;
           and :class:`RandomChannelDropout`'s ``num_drop_channels`` against the input's channel count.
           :class:`RandomPlanckianJitter`'s ``select_from`` rejects an index past the table at construction
           but accepts a negative one, as Python indexing does. A scalar magnitude is a different case: several

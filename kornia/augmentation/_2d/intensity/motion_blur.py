@@ -65,7 +65,8 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
           side of the image they fall on turns with ``angle`` and is not read off the image axes.
         - the defaults ``border_type="constant"`` and ``resample="nearest"`` are the function's own defaults.
         - the output is not clamped. At the default ``border_type="constant"`` the padding is zeros, so a
-          border pixel is blended with ``0`` and can fall below the input's own minimum. With
+          border pixel is blended with ``0`` and pulled toward it: below the input's own minimum for a
+          positive image, and above its maximum for a negative one. With
           ``border_type="reflect"`` the result stays between the input's extremes, up to rounding, at
           ``resample="nearest"`` or ``"bilinear"``; a ``"bicubic"`` rotation gives the kernel negative weights,
           and the result can overshoot both extremes.

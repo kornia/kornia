@@ -47,7 +47,10 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
         - this class has no ``border_type``, and with an odd ``kernel_size`` an image smaller than the kernel
           is accepted, down to ``1 x 1``; :class:`RandomBoxBlur` and :class:`RandomGaussianBlur` raise at their
           default ``border_type="reflect"`` once a spatial axis is no longer than half the kernel's extent along
-          it. An even entry in ``kernel_size`` raises a raw reshape error on the forward pass for any image.
+          it. An even entry in ``kernel_size`` raises on the forward pass for every image, but not always with
+          the same error: a raw reshape error once the zero-padded image is at least as large as the kernel, and
+          torch's ``Kernel size can't be greater than actual input size`` from ``F.conv2d`` below that -- an even
+          ``4 x 4`` kernel raises the reshape error at ``2 x 2`` and the conv2d error at ``1 x 1``.
 
     .. note::
         This function internally uses :func:`kornia.filters.median_blur`.

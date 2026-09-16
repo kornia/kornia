@@ -55,6 +55,12 @@ class RandomBrightness(IntensityAugmentationBase2D):
           with ``clip_output=False`` the raw sum is returned. It can remain outside that interval or
           move inside it through the brightness shift.
 
+    .. warning::
+        At the default ``clip_output=True`` an input whose values are all negative comes back as an all-zero
+        image whenever the drawn shift does not lift it above zero. At the class default
+        ``brightness=(1.0, 1.0)`` the shift is ``0``, so it always does. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness`
 

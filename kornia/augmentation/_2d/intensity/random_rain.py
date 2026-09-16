@@ -43,6 +43,7 @@ class RandomRain(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Convention:
+        - the input must have one or three channels; any other channel count raises on the forward pass.
         - ``drop_height`` runs down rows and ``drop_width`` along columns: both name image axes, not
           drop-local ones, and a negative ``drop_width`` slants the drop the other way across the columns.
         - a drop is written as the fixed value ``200 / 255``, not as a function of the image, so the rain is
@@ -58,7 +59,8 @@ class RandomRain(IntensityAugmentationBase2D):
           heights of ``5`` to ``19`` (an image shorter than 20 pixels raises on some seeds, and on every seed when
           it is 5 pixels tall or shorter). A negative ``drop_width`` bound rounds toward zero instead: a negative
           lower bound is practically never drawn while a non-positive upper bound is, and a range from ``-1`` or
-          below to ``1`` or above draws ``0`` twice as often as any other value. Tracked in `#4567
+          below to ``1`` or above draws ``0`` twice as often as any other value -- or always, at ``(-1, 1)``
+          exactly, where ``0`` is the only value the range can produce. Tracked in `#4567
           <https://github.com/kornia/kornia/issues/4567>`_.
         - ``same_on_batch=True`` gives every sample of the batch the same drop count, the same drop size and
           the same coordinates; left at ``False`` each sample draws its own.
