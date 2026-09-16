@@ -27,6 +27,7 @@ from kornia.core.utils import (
     _torch_solve_cast,
     _torch_svd_cast,
     is_exporting,
+    _torch_linalg_svdvals,
     is_mps_tensor_safe,
     register_module_state,
     safe_inverse_with_mask,
@@ -208,7 +209,7 @@ class TestSvdCast:
         assert_close(a, u @ torch.diag_embed(s) @ v.transpose(-2, -1), atol=tol_val, rtol=tol_val)
 
     def test_batch_above_mps_ceiling(self, device, dtype):
-        # torch 2.14's MPS SVD raises above 8192 input elements (#4201), far below the hypothesis
+        # torch 2.14's MPS SVD raises at 8192 input elements or more (#4201), far below the hypothesis
         # count RANSAC's batched minimal solvers use; 1000 * 3 * 3 = 9000 elements clears it.
         torch.manual_seed(0)
         a = torch.randn(1000, 3, 3, device=device, dtype=dtype)
@@ -220,6 +221,29 @@ class TestSvdCast:
         # Both half dtypes round three factors back before the reconstruction contracts them.
         tol_val: float = 1e-1 if dtype in (torch.float16, torch.bfloat16) else 1e-3
         assert_close(a, u @ torch.diag_embed(s) @ v.transpose(-2, -1), atol=tol_val, rtol=tol_val)
+
+    def test_svdvals_at_mps_ceiling(self, device, dtype, monkeypatch):
+        # svdvals shares the 8192-element ceiling with svd (#4201), and feeds
+        # solve_pnp_dlt. 512 4x4 matrices is exactly the boundary.
+        torch.manual_seed(0)
+        a = torch.randn(512, 4, 4, device=device, dtype=dtype)
+        assert a.numel() == 8192
+
+        seen = []
+        real = torch.linalg.svdvals
+
+        def spy(x, *args, **kwargs):
+            seen.append(x.device.type)
+            return real(x, *args, **kwargs)
+
+        monkeypatch.setattr(torch.linalg, "svdvals", spy)
+        s = _torch_linalg_svdvals(a)
+
+        assert s.device == a.device
+        assert s.shape == (512, 4)
+        if a.device.type == "mps":
+            assert seen == ["cpu"], "an 8192-element MPS batch must take the CPU fallback"
+        assert torch.isfinite(s).all()
 
     def test_batch_at_mps_ceiling(self, device, dtype, monkeypatch):
         # 8192 is the first failing size rather than the last working one (#4201), so a batch that

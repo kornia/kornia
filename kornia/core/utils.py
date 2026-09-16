@@ -320,8 +320,17 @@ def _torch_linalg_svdvals(input: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
     dtype = _normalize_to_float32_or_float64(input.dtype)
 
-    # Since kornia requires torch>=2.5.1, we can always use torch.linalg.svdvals
-    out = torch.linalg.svdvals(input.to(dtype))
+    x = input.to(dtype)
+    # ``svdvals`` shares the shader-compilation ceiling documented in
+    # ``_torch_svd_cast``: on torch 2.14's MPS backend a batched input holding
+    # 8192 elements or more fails to build its Metal pipeline state. This path
+    # reaches ``solve_pnp_dlt``, which raised for any batch large enough to
+    # cross it.
+    if is_mps_tensor_safe(x) and x.numel() >= 8192:
+        out = torch.linalg.svdvals(x.cpu()).to(x.device)
+    else:
+        # Since kornia requires torch>=2.5.1, we can always use torch.linalg.svdvals
+        out = torch.linalg.svdvals(x)
     return out.to(input.dtype)
 
 

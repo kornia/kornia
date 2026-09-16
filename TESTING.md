@@ -316,10 +316,13 @@ threshold is inclusive and it is the first failing size, not the last working on
 `(511, 4, 4)` = 8176 passes, `(512, 4, 4)` = 8192 raises. A single unbatched matrix is unaffected
 at any size: `(1, 128, 128)` holds 16384 elements and succeeds, because torch stages a lone large
 matrix on the CPU (`matrix too large to stage in MPS threadgroup memory ... falling back to CPU`).
-That ceiling is why `RANSAC`'s batched minimal solvers still raise on MPS
-([#4201](https://github.com/kornia/kornia/issues/4201)). It is *not* why they are absent from the
-baseline below -- see the next section: they are skipped, because they abort the process before
-they can raise.
+That ceiling is why `RANSAC`'s batched minimal solvers used to raise on MPS
+([#4201](https://github.com/kornia/kornia/issues/4201)). `_torch_svd_cast` and
+`_torch_linalg_svdvals` now route such batches through the CPU, so the fundamental and
+homography solvers no longer hit it; `find_essential` still raises, for an unrelated
+reason -- `run_5point` calls `torch.linalg.eigvals`, which has no MPS kernel. The ceiling
+is *not* why those solvers are absent from the baseline below -- see the next section:
+they are skipped, because they abort the process before they can raise.
 
 **How Kornia handles these automatically.** The test infrastructure in `conftest.py` and `testing/base.py` skips known-unsupported test classes at collection time so you don't need per-test guards for the common cases:
 
