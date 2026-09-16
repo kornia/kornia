@@ -110,7 +110,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           ``points``, ``bboxes``, ``keypoint`` -- raises ``KeyError``. With ``data_keys=None`` the call takes a
           dict instead. Dictionary names match these same names, optionally followed by an underscore or
           hyphen suffix, with the longest name taking precedence. Unrecognized names (for example,
-          ``imagenet_id``) are returned unchanged as metadata. The input dictionary is not modified.
+          ``imagenet_id``, ``images``, ``masks``, ``labels``, ``bboxes``, ``inputs`` and ``keypoint``) are
+          returned unchanged as metadata, without a warning; unlike positional mode, dict mode does not
+          reject these names. Use recognized names such as ``mask_2`` and ``keypoints`` for augmentation.
+          ``class`` and ``class_id`` route to labels, not metadata, and inherit label limitations (including
+          unsupported label-changing mix augmentations). A coordinate-box name must be followed by ``_``
+          or ``-`` to retain its format: ``bbox_xyxy2`` instead matches ``bbox`` and requires vertex boxes.
+          The input dictionary is not modified.
         - the layouts are ``(B, C, H, W)`` for images and masks, ``(B, N, 4, 2)`` vertices for ``bbox``,
           ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``.
           Feeding a coordinate layout under another coordinate key raises ``ValueError`` naming the expected shape.
@@ -290,7 +296,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     With ``data_keys=None``, dictionary keys match data-key names case-insensitively, optionally followed
     by an underscore or hyphen suffix (for example, ``image_2`` or ``bbox_xyxy-left``). The longest matching
-    name wins, so suffixed coordinate boxes retain their coordinate format. ``input`` and ``class`` are
+    name wins, so coordinate boxes with an underscore/hyphen suffix retain their coordinate format.
+    Without that separator, ``bbox_xyxy2`` matches ``bbox`` and requires vertex boxes. ``input`` and ``class`` are
     aliases of ``image`` and ``label``. Unrecognized items are returned without augmentation, and the
     caller's dictionary is left intact.
 
