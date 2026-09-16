@@ -43,7 +43,8 @@ def crop_and_resize3d(
           ``z`` anchored at the top-left of the first depth slice (``z = 0``); an
           integer-cornered box reproduces the exact integer-voxel slice under either
           ``align_corners`` setting, since the box is given in voxel coordinates
-        - align_corners: ``False`` by default; it only changes out-of-bounds handling
+        - align_corners: ``False`` by default; it changes nothing on an in-bounds box, since the box is
+          given in voxel coordinates
 
     Args:
         tensor: the 3D volume tensor with shape (B, C, D, H, W).
