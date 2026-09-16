@@ -260,7 +260,7 @@ class TestIntensityValueRangeConventions(BaseTester):
         # any seed, so the weaker claim still catches it.
         moved = False
         for seed in range(8):
-            for tag, image in fixtures.items():
+            for image in fixtures.values():
                 torch.manual_seed(seed)
                 if not torch.equal(_run(name, image, seed=seed), image):
                     moved = True
@@ -1542,6 +1542,28 @@ class TestIntensityColourConventions(BaseTester):
         with pytest.raises(RuntimeError, match="out of bounds") as info:
             _sync(K.RandomClahe(p=1.0)(image).device)
         assert "RandomClahe" not in str(info.value) and "[0, 1]" not in str(info.value)
+
+    def test_convention_random_clahe_pads_non_divisible_image_dimensions(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        image = torch.linspace(0, 1, 100, device=device, dtype=dtype).reshape(1, 1, 10, 10)
+        out = K.RandomClahe(grid_size=(3, 3), p=1.0)(image)
+        assert out.shape == image.shape
+        assert bool(out.isfinite().all())
+        assert not torch.equal(out, image)
+
+    @pytest.mark.parametrize("grid_size,size", [((4, 5), 20), ((3, 5), 30)])
+    def test_convention_random_clahe_rectangular_grid_fails_even_with_exact_tiling(
+        self, device, dtype, grid_size, size
+    ):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("reflection_pad2d is unavailable for this device/dtype")
+        image = torch.linspace(0, 1, size * size, device=device, dtype=dtype).reshape(1, 1, size, size)
+        # The lookup-index shapes cannot broadcast for a rectangular grid; this is a host-side
+        # shape check, not an out-of-bounds CUDA index assertion. Both grids divide the image,
+        # and (3, 5) also rules out a mismatch between odd and even grid dimensions as the cause.
+        with pytest.raises(IndexError, match="shape mismatch: indexing tensors could not be broadcast together"):
+            K.RandomClahe(grid_size=grid_size, p=1.0)(image)
 
     # Issue #4572: RandomClahe draws `clip_limit_factor` per sample but equalizes the whole batch with
     # the first sample's value (`float(params["clip_limit_factor"][0])`).

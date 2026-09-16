@@ -1256,7 +1256,7 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
     # Issue #4589: the constructor's own check admits `0 <= sigma <= 1`, but filters.kernels.gaussian
     # normalizes by `gauss.sum()`, which underflows to zero at sigma 0, so the kernel is 0 / 0 and the
     # whole output is NaN.  An even-length axis carries a half-pixel offset, so no sample sits at the mean
-    # and a small non-zero sigma does it too -- 4x4 is NaN at sigma 0.01 where 3x3 is not.
+    # and a small non-zero sigma does it too -- with center 0.5, 4x4 is NaN at sigma 0.005 where 3x3 is not.
     # Snippet used to generate expected:
     #   torch.manual_seed(0); print(K.RandomGaussianIllumination(p=1.0, sigma=0.0)(torch.rand(1, 3, 4, 4)))
     # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> every element NaN; the default
@@ -1270,9 +1270,13 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         assert bool(K.RandomGaussianIllumination(p=1.0, sigma=0.0)(image).isnan().all())
         # The even axis loses the on-grid sample to the half-pixel offset, so it is NaN at a small
         # non-zero sigma that the odd one survives.
-        torch.manual_seed(_FORWARD_SEED)
-        small = K.RandomGaussianIllumination(p=1.0, sigma=(0.005, 0.005), center=(0.5, 0.5))(image)
-        assert bool(small.isnan().all()) is (size % 2 == 0)
+        for sigma in (0.005, 0.01):
+            torch.manual_seed(_FORWARD_SEED)
+            small = K.RandomGaussianIllumination(p=1.0, sigma=(sigma, sigma), center=(0.5, 0.5))(image)
+            if sigma == 0.005 and size % 2 == 0:
+                assert bool(small.isnan().all())
+            else:
+                assert bool(small.isfinite().all())
         # The documented default is unaffected, so the wart is the admitted extreme and not the class.
         torch.manual_seed(_FORWARD_SEED)
         assert bool(K.RandomGaussianIllumination(p=1.0)(image).isfinite().all())

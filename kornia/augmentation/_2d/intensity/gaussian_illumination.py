@@ -90,12 +90,15 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. warning::
-        A ``sigma`` at or near ``0``, which the constructor admits, makes the whole output NaN in every dtype.
+        With the default samplers, a ``sigma`` at or near ``0``, which the constructor admits, can make the
+        whole output NaN in any input dtype.
         :func:`kornia.filters.kernels.gaussian` normalizes by ``gauss.sum()``, which underflows to zero there,
         so the kernel is ``0 / 0``. ``sigma=0.0`` does it at any size; because an even-length axis carries a
-        half-pixel offset, no sample sits at the mean and a small non-zero ``sigma`` does it too -- a ``4 x 4``
-        image is NaN at ``sigma=0.01`` where a ``3 x 3`` one is not. The default ``sigma=(0.2, 1.0)`` is
-        unaffected. Tracked in `#4589 <https://github.com/kornia/kornia/issues/4589>`_.
+        half-pixel offset, a small non-zero ``sigma`` can do it too: with ``center=(0.5, 0.5)`` and
+        ``sigma=(0.005, 0.005)``, a ``4 x 4`` image is NaN where a ``3 x 3`` one is finite. Both sizes are
+        finite at ``sigma=(0.01, 0.01)`` with that center; a randomly drawn center can also make the odd-sized
+        image NaN. The default ``sigma=(0.2, 1.0)`` is unaffected. Tracked in
+        `#4589 <https://github.com/kornia/kornia/issues/4589>`_.
 
     .. note::
         The generated random numbers are not reproducible across different devices and dtypes. By default,

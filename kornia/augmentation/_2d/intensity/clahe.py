@@ -59,9 +59,11 @@ class RandomClahe(IntensityAugmentationBase2D):
         Tracked in `#4572 <https://github.com/kornia/kornia/issues/4572>`_.
 
     .. warning::
-        ``grid_size`` is unvalidated past its positivity check in the same way the value range is: a grid that
-        does not tile the image raises a raw ``IndexError`` (``shape mismatch: indexing tensors could not be
-        broadcast together``), and an image too small for the grid a raw ``RuntimeError`` from the padding --
+        ``grid_size`` is unvalidated past its positivity check in the same way the value range is: a rectangular
+        grid such as ``(4, 5)`` on a ``20 x 20`` image raises a raw ``IndexError`` (``shape mismatch: indexing
+        tensors could not be broadcast together``), even though both grid dimensions divide the image exactly.
+        Non-divisible image dimensions are padded: ``grid_size=(3, 3)`` works on a ``10 x 10`` image.
+        An image too small for the grid raises a raw ``RuntimeError`` from the padding --
         at the default ``grid_size=(8, 8)`` the smallest admissible square image is ``9 x 9``, and ``8 x 8``
         raises. A grid larger than the image gets the named ``ValueError`` instead.
 
