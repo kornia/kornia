@@ -330,8 +330,10 @@ class TestDistortPoints(BaseTester):
     def test_jit(self, device, dtype):
         # A random K has fx, fy < 1, and with random coefficients the distortion polynomial
         # overflows float16 on some draws, so eager and scripted both return nan and cannot be
-        # compared (#4400). A real camera and small coefficients keep every draw finite.
-        points = torch.rand(1, 1, 2, device=device, dtype=dtype)
+        # compared (#4400). A real camera and small coefficients keep every draw finite. The
+        # points span 100 px so the normalized radius reaches about 1 and k1 and k2 still move
+        # the output past the tolerance; points in [0, 1) px would leave only p1 and p2 visible.
+        points = 100 * torch.rand(1, 1, 2, device=device, dtype=dtype)
         K = _k_asymmetric(device, dtype)
         new_K = _k_asymmetric(device, dtype)
         distCoeff = 0.1 * torch.rand(1, 4, device=device, dtype=dtype)
