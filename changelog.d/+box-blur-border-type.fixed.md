@@ -1,0 +1,1 @@
+`RandomBoxBlur` accepts the same `border_type` spellings as `RandomGaussianBlur` and `RandomMotionBlur`: a `BorderType`, its integer value or an upper-case name no longer raises, and an unknown name is rejected when the augmentation is constructed.
