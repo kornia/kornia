@@ -1,0 +1,1 @@
+`kornia.filters.kernels.gaussian` no longer returns NaN when every sample underflows, which a small `sigma` (or `sigma = 0`) on a short window caused. It returns the unit-impulse limit instead, so `RandomGaussianIllumination` produces a finite image for every `sigma` its constructor accepts.

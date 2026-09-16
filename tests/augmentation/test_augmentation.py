@@ -4258,6 +4258,14 @@ class TestRandomSaltAndPepperNoise(BaseTester):
 
 
 class TestRandomGaussianIllumination(BaseTester):
+    @pytest.mark.parametrize("sigma", [0.0, 0.001, 0.02])
+    @pytest.mark.parametrize("size", [1, 2, 3, 4, 8, 32])
+    def test_a_small_sigma_it_admits_returns_a_finite_image_4589(self, sigma, size, device, dtype):
+        torch.manual_seed(0)
+        img = torch.rand(4, 3, size, size, device=device, dtype=dtype)
+        out = RandomGaussianIllumination(sigma=sigma, p=1.0)(img)
+        assert torch.isfinite(out).all()
+
     def _roundtrip(self, aug, serializer):
         if serializer == "pickle":
             return pickle.loads(pickle.dumps(aug))  # noqa: S301

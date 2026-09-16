@@ -115,7 +115,15 @@ def gaussian(
     if window_size % 2 == 0:
         x = x + 0.5
 
-    gauss = torch.exp(-x.pow(2.0) / (2 * sigma.pow(2.0)))
+    # Measure the squared distance from the nearest sample rather than from the mean. The shift
+    # cancels in the normalization, but the nearest sample now always weighs exp(0) = 1, so a
+    # small sigma (or a mean far off the grid) cannot underflow every sample to 0 and divide 0 / 0.
+    # At sigma == 0 the nearest samples would be 0 / 0 as well; they are set to 0, which is the
+    # unit-impulse limit of the kernel.
+    dist = x.pow(2.0)
+    dist = dist - dist.min(-1, keepdim=True)[0]
+    exponent = (dist / (2 * sigma.pow(2.0))).masked_fill(dist == 0, 0.0)
+    gauss = torch.exp(-exponent)
 
     return gauss / gauss.sum(-1, keepdim=True)
 

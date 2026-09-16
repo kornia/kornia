@@ -69,6 +69,25 @@ def test_gaussian(window_size, sigma, mean, expected, device, dtype):
     assert_close(result, expected, atol=1e-4, rtol=1e-4)
 
 
+@pytest.mark.parametrize(
+    "window_size, sigma, mean, expected",
+    [
+        # Every sample used to underflow to 0 here, and the normalization divided 0 / 0 (#4589).
+        (4, 0.02, None, [0.0, 0.5, 0.5, 0.0]),
+        (8, 1e-4, None, [0.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0]),
+        (5, 0.05, 0.0, [1.0, 0.0, 0.0, 0.0, 0.0]),
+        (4, 1.0, 40.0, [0.0, 0.0, 0.0, 1.0]),
+        # At sigma == 0 the kernel is the unit-impulse limit instead of nan.
+        (5, 0.0, None, [0.0, 0.0, 1.0, 0.0, 0.0]),
+        (4, 0.0, None, [0.0, 0.5, 0.5, 0.0]),
+        (1, 0.0, None, [1.0]),
+    ],
+)
+def test_gaussian_does_not_underflow_to_nan_4589(window_size, sigma, mean, expected, device, dtype):
+    result = gaussian(window_size, sigma, mean=mean, device=device, dtype=dtype)
+    assert_close(result, torch.tensor([expected], device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+
+
 @pytest.mark.parametrize("window_size", [5, 11])
 @pytest.mark.parametrize("sigma", [1.5, 5.0])
 def test_get_gaussian_kernel1d_float(window_size, sigma, device, dtype):
