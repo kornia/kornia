@@ -2692,6 +2692,25 @@ class TestRectangleRandomErasing(BaseTester):
             expected[:, y : y + box_height, x : x + box_width] = params["values"][index].to(input)
             assert torch.equal(output[index], expected)
 
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("parameter_dtype,image_size", [(torch.bfloat16, 299), (torch.float16, 2051)])
+    def test_half_precision_erasing_positions_are_nonnegative_for_rounded_extents(self, parameter_dtype, image_size):
+        scale = torch.tensor([1.0, 1.0], dtype=parameter_dtype)
+        ratio = torch.tensor([1.0, 1.0], dtype=parameter_dtype)
+        augmentation = RandomErasing(scale=scale, ratio=ratio, same_on_batch=True, p=1.0)
+        input = torch.ones((4, 1, image_size, image_size), dtype=parameter_dtype)
+
+        torch.manual_seed(0)
+        params = augmentation.forward_parameters(input.shape)
+        assert bool((params["xs"] >= 0).all())
+        assert bool((params["ys"] >= 0).all())
+        assert torch.equal(params["xs"], params["xs"][0].expand_as(params["xs"]))
+        assert torch.equal(params["ys"], params["ys"][0].expand_as(params["ys"]))
+
+        output = augmentation(input, params=params)
+        assert torch.equal(output[0], output[1])
+        assert torch.equal(output, torch.zeros_like(output))
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         torch.manual_seed(0)
         input = torch.rand(2, 3, 11, 7, device=device, dtype=dtype)

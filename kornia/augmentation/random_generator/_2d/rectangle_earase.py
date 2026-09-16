@@ -161,6 +161,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
                 max_start,
                 _constant_tensor(torch.finfo(_dtype).max, device=_device, dtype=position_dtype),
             )
+            max_start = torch.clamp(max_start, min=0)
             mantissa_bits = 10 if _dtype == torch.float16 else 7
             clamped_start = torch.clamp(max_start, min=1)
             exponent = torch.floor(torch.log2(clamped_start))
