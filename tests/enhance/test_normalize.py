@@ -14,11 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-from kornia.enhance import normalize, normalize_min_max
 import pytest
 import torch
 
 import kornia
+from kornia.enhance import normalize, normalize_min_max
 
 from testing.base import BaseTester
 
@@ -164,7 +164,7 @@ class TestNormalize(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_exception(self, device, dtype):
         pass
-    
+
     def test_non_contiguous(self, device, dtype):
         data = torch.rand(2, 3, 8, 6, device=device, dtype=dtype).transpose(-1, -2)
         mean = torch.tensor([0.5, 0.5, 0.5], device=device, dtype=dtype)
@@ -172,6 +172,7 @@ class TestNormalize(BaseTester):
 
         out = normalize(data, mean, std)
         assert out.shape == data.shape
+
 
 class TestDenormalize(BaseTester):
     def test_smoke(self, device, dtype):
