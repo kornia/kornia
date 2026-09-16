@@ -26,16 +26,27 @@ from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _
 from kornia.core.utils import _extract_device_dtype
 
 
-def _closed_integer_range(value: Union[tuple[int, int], list[int], torch.Tensor], name: str) -> torch.Tensor:
-    """Return the half-open sampler bounds ``[lo, hi + 1]`` for a closed integer range ``(lo, hi)``."""
+def _closed_integer_range(
+    value: Union[tuple[int, int], list[int], torch.Tensor], name: str, device: torch.device
+) -> torch.Tensor:
+    """Return the half-open sampler bounds ``[lo, hi + 1)`` for a closed integer range ``(lo, hi)``."""
     if isinstance(value, torch.Tensor):
         value = tuple(value.flatten().tolist())
     if not isinstance(value, (tuple, list)) or len(value) != 2:
         raise ValueError(f"`{name}` must be a (lower, upper) pair. Got {value}.")
     lower, upper = value
+    # Whole numbers only.  This is also what disposes of ``nan`` and ``inf``, which are neither greater
+    # nor smaller than the other bound and would sail through an ordering test into the sampler, and of
+    # a fractional pair, which the clamp below draws worse than the truncation it replaces:
+    # ``(0.5, 2.5)`` covers ``[0.5, 3.5)``, and folding the ``3`` back onto ``2.5`` leaves the cast to
+    # ``torch.long`` to truncate it to ``2``, which then takes half the draws against a quarter before.
+    if not (float(lower).is_integer() and float(upper).is_integer()):
+        raise ValueError(f"`{name}` must be a pair of whole numbers. Got {value}.")
     if lower > upper:
         raise ValueError(f"`{name}`[0] should be smaller than or equal to `{name}`[1]. Got {value}.")
-    return torch.tensor([float(lower), float(upper) + 1.0])
+    # Built on ``device`` explicitly: a bare ``torch.tensor`` follows an ambient ``torch.set_default_device``
+    # instead, which allocates the bounds on that device and, under a ``meta`` one, cannot move them back.
+    return torch.tensor([float(lower), float(upper) + 1.0], device=device)
 
 
 def _draw_closed_integer(
@@ -69,9 +80,9 @@ class RainGenerator(RandomGeneratorBase):
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         # Each range is a closed integer interval: the sampler covers ``[lo, hi + 1)`` and ``forward``
         # floors the draw, so every integer from ``lo`` to ``hi`` is drawn with the same probability.
-        number_of_drops = _closed_integer_range(self.number_of_drops, "number_of_drops").to(device)
-        drop_height = _closed_integer_range(self.drop_height, "drop_height").to(device)
-        drop_width = _closed_integer_range(self.drop_width, "drop_width").to(device)
+        number_of_drops = _closed_integer_range(self.number_of_drops, "number_of_drops", device)
+        drop_height = _closed_integer_range(self.drop_height, "drop_height", device)
+        drop_width = _closed_integer_range(self.drop_width, "drop_width", device)
 
         drop_coordinates = _range_bound((0, 1), "drops_coordinate", center=0.5, bounds=(0, 1)).to(
             device=device, dtype=dtype
@@ -85,7 +96,6 @@ class RainGenerator(RandomGeneratorBase):
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.drop_width, self.drop_height, self.number_of_drops])
-        # self.ksize_factor.expand((batch_size, -1))
         number_of_drops_factor = _draw_closed_integer(batch_size, self.number_of_drops_sampler, same_on_batch, _device)
         drop_height_factor = _draw_closed_integer(batch_size, self.drop_height_sampler, same_on_batch, _device)
         drop_width_factor = _draw_closed_integer(batch_size, self.drop_width_sampler, same_on_batch, _device)

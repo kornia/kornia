@@ -62,10 +62,13 @@ class RandomRain(IntensityAugmentationBase2D):
           on that axis; a single-pixel drop never reaches the last two rows. Tracked in
           `#4604 <https://github.com/kornia/kornia/issues/4604>`_.
         - the three integer ranges are closed and uniform: every integer from the lower to the upper bound
-          is drawn with the same probability, so the default ``drop_height=(5, 20)`` reaches ``20`` (an image
-          20 pixels tall or shorter raises on some seeds, and on every seed when it is 5 pixels tall or
-          shorter) and the default ``drop_width=(-5, 5)`` gives ``0`` no more weight than any other value.
-          A range whose lower bound is above its upper bound raises ``ValueError`` at construction.
+          is drawn with the same probability, so the default ``drop_height=(5, 20)`` reaches ``20``, the
+          default ``drop_width=(-5, 5)`` reaches ``-5`` and ``5``, and ``0`` carries no more weight than
+          any other width. Both upper bounds are live against the size rule above, which they were not
+          when they were practically never drawn: with the defaults an image 20 pixels tall, or 5 pixels
+          wide, now raises on some seeds -- and on every seed once it is 5 pixels tall or shorter, where
+          no drawable height is legal. A range that is reversed, fractional or non-finite raises
+          ``ValueError`` at construction.
         - ``same_on_batch=True`` gives every sample of the batch the same drop count, the same drop size and
           the same coordinates; left at ``False`` each sample draws its own.
 

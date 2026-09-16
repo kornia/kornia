@@ -1035,8 +1035,11 @@ class TestNoiseAndWeatherConventions(BaseTester):
     #   for k in ("number_of_drops_factor", "drop_height_factor", "drop_width_factor"):
     #       print(k, sorted(collections.Counter(p[k].flatten().tolist()).items()))
     # executed 2026-09-16 (torch 2.14.0, cpu) -> drops 2..4 (7298, 7349, 7353), heights 5..20 (1301 to
-    # 1455) and widths -5..5 (1906 to 2090), every count within 10% of the uniform expectation (7333,
-    # 1375 and 2000).
+    # 1455) and widths -5..5 (1906 to 2090), every count within 6% of the uniform expectation (7333,
+    # 1375 and 2000).  The pin allows 15%, not 10%: the 16-bin height is the tight one, where 22000
+    # draws put 10% at 3.8 sigma and 1 of seeds 0..99 exceeds it (max deviation 10.7%), against 5.7
+    # sigma and 0 of 100 at 15%.  What the tolerance has to separate is a factor of two, not a few
+    # percent -- truncation gave `0` twice its share -- so the wider band loses no mutation.
     @pytest.mark.device_agnostic
     def test_convention_random_rain_integer_ranges_are_closed_and_uniform(self):
         torch.manual_seed(_FORWARD_SEED)
@@ -1052,7 +1055,7 @@ class TestNoiseAndWeatherConventions(BaseTester):
             assert (int(drawn.min()), int(drawn.max())) == (low, high), key
             counts = torch.bincount(drawn - low, minlength=high - low + 1)
             expected = drawn.numel() / (high - low + 1)
-            assert bool(((counts > 0.9 * expected) & (counts < 1.1 * expected)).all()), (key, counts.tolist())
+            assert bool(((counts > 0.85 * expected) & (counts < 1.15 * expected)).all()), (key, counts.tolist())
 
     # The excluded end point of the half-open sampler range is clamped back, not drawn: for the largest
     # value `torch.rand` can return, `lo + u * (hi + 1 - lo)` rounds up onto `hi + 1` in float32
@@ -1084,6 +1087,35 @@ class TestNoiseAndWeatherConventions(BaseTester):
         ranges[name] = (6, 5)
         with pytest.raises(ValueError, match=name):
             K.RandomRain(p=1.0, **ranges)
+
+    # The ranges are integer ranges, so a bound that is not a whole number is rejected at construction
+    # too -- including `nan` and `inf`, which an ordering test alone does not catch (they are neither
+    # greater nor smaller than the other bound, so `drop_height=(nan, 5)` used to reach the sampler and
+    # draw a silent `0`), and a fractional pair, which the clamp draws more unevenly than the truncation
+    # it replaces: `(0.5, 2.5)` gave `{0: 25%, 1: 50%, 2: 25%}` and would give `{0: 17%, 1: 33%, 2: 50%}`.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("bounds", [(0.5, 2.5), (1, 2.5), (float("nan"), 5), (5, float("nan")), (1, float("inf"))])
+    @pytest.mark.parametrize("name", ["number_of_drops", "drop_height", "drop_width"])
+    def test_convention_random_rain_rejects_a_fractional_or_non_finite_range(self, name, bounds):
+        ranges = {"number_of_drops": (1, 1), "drop_height": (1, 1), "drop_width": (1, 1)}
+        ranges[name] = bounds
+        with pytest.raises(ValueError, match=name):
+            K.RandomRain(p=1.0, **ranges)
+        # Integral floats are the same range written another way, and stay accepted.
+        ranges[name] = (1.0, 2.0)
+        K.RandomRain(p=1.0, **ranges)
+
+    # The pair itself is validated: a range that is not two values, whatever its length, is rejected
+    # rather than silently indexed, and a tensor range is accepted as the old `_range_bound` accepted it.
+    @pytest.mark.device_agnostic
+    def test_convention_random_rain_validates_the_range_pair(self):
+        for bad in ((1, 2, 3), (1,), 5):
+            with pytest.raises(ValueError, match="drop_height"):
+                K.RandomRain(p=1.0, drop_height=bad)
+        torch.manual_seed(_FORWARD_SEED)
+        aug = K.RandomRain(p=1.0, number_of_drops=(1, 1), drop_height=torch.tensor([2, 4]), drop_width=(1, 1))
+        drawn = aug.forward_parameters((2000, 1, 64, 64))["drop_height_factor"]
+        assert sorted(set(drawn.flatten().tolist())) == [2, 3, 4]
 
     # Issue #4604: the start coordinate is scaled by `H - h - 1`, so the last row and column are never
     # painted unless the drop is one short of the image on that axis.  Literal seeds, as for the other
@@ -1352,7 +1384,10 @@ class TestNoiseAndWeatherConventions(BaseTester):
     # `{-2: 3941, -1: 4083, 0: 4075, 1: 3976, 2: 3925}`.
     @pytest.mark.device_agnostic
     def test_convention_random_rain_symmetric_signed_width_range_is_uniform(self):
-        for low, high in ((-1, 1), (-2, 2)):
+        # `(-5, -1)` and `(-3, 0)` come from the wart pin this replaces: on a range that never crosses
+        # zero, truncation toward zero drops the LOWER bound instead of the upper, so they are the cases
+        # where `floor` and the old cast differ and a half-fixed draw would still show.
+        for low, high in ((-1, 1), (-2, 2), (-5, -1), (-3, 0)):
             torch.manual_seed(_FORWARD_SEED)
             aug = K.RandomRain(number_of_drops=(5, 6), drop_height=(2, 3), drop_width=(low, high), p=1.0)
             drawn = aug.forward_parameters((20000, 1, 64, 64))["drop_width_factor"].flatten()
