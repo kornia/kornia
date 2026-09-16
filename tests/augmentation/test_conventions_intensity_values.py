@@ -1427,13 +1427,23 @@ class TestIntensityColourConventions(BaseTester):
         out = aug(image)
         red_gain, blue_gain = (float(value) for value in aug.pl[0])
         scaled = torch.stack([image[:, 0] * red_gain, image[:, 1], image[:, 2] * blue_gain], dim=1)
-        # Compared in the input's dtype: the coefficient table follows the input dtype.
-        self.assert_close(out.to(dtype), scaled.clamp(max=1.0))
+        # The coefficient table follows the input dtype, so the output is already in it and the
+        # comparison needs no cast.
+        self.assert_close(out, scaled.clamp(max=1.0))
         assert float(out[0, 1, 0, 0]) == 1.0 and float(out[0, 2, 0, 0]) < 0.01
         assert bool((out[..., 1] < 0).all())
 
-    # Issue #4574: the coefficient table follows the input dtype, so half-precision inputs do not get
-    # promoted to float32. A module cast to a wider dtype also does not widen the output beyond the input.
+    # Issue #4574: the coefficient table follows the input dtype, so half-precision inputs are no
+    # longer promoted to float32, and a module cast does not decide the output dtype either.
+    # Snippet used to generate expected:
+    #   for dt in (torch.float16, torch.bfloat16):
+    #       other = torch.bfloat16 if dt == torch.float16 else torch.float16
+    #       torch.manual_seed(0); x = torch.rand(2, 3, 4, 4).to(dt)
+    #       torch.manual_seed(0); a = K.RandomPlanckianJitter(p=1.0)(x).dtype
+    #       torch.manual_seed(0); b = K.RandomPlanckianJitter(p=1.0).to(dtype=other)(x).dtype
+    #       print(dt, a, b)
+    # executed 2026-09-17 (torch 2.14.0, cpu) -> `float16 float16 float16` and `bfloat16 bfloat16
+    # bfloat16`; on `30dfbf711`, this PR's base, both columns were `float32` for both inputs.
     def test_convention_random_planckian_jitter_preserves_dtype_4574(self, device, dtype):
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 4, 4).to(device=device, dtype=dtype)
@@ -1443,6 +1453,18 @@ class TestIntensityColourConventions(BaseTester):
         assert out.dtype == dtype
         assert out.device == image.device
 
+        if dtype in _HALF:
+            # A module cast to the *other* half dtype returned float32 before the fix, because the
+            # table's dtype decided the promotion; it now follows the input like every other cast.
+            other = torch.bfloat16 if dtype == torch.float16 else torch.float16
+            torch.manual_seed(_FORWARD_SEED)
+            assert K.RandomPlanckianJitter(p=1.0).to(device=device, dtype=other)(image).dtype == dtype
+
+    # Issue #4574, the wider direction: a module cast wider than the input does not widen the output.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(0); x = torch.rand(2, 3, 4, 4)
+    #   torch.manual_seed(0); print(K.RandomPlanckianJitter(p=1.0).to(dtype=torch.float64)(x).dtype)
+    # executed 2026-09-17 (torch 2.14.0, cpu) -> `float32`; on `30dfbf711` it was `float64`.
     def test_convention_random_planckian_jitter_wider_module_dtype_4574(self, device):
         if device.type == "mps":
             pytest.skip("MPS does not support float64")
