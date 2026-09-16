@@ -21,6 +21,7 @@ import pytest
 import torch
 
 from kornia.feature import LoFTR
+from kornia.feature.loftr.utils.fine_matching import FineMatching
 from kornia.geometry import resize
 
 from testing.base import BaseTester
@@ -107,3 +108,32 @@ class TestLoFTR(BaseTester):
         out_jit = model_jit(sample)
         for k, v in out.items():
             self.assert_close(v, out_jit[k])
+
+
+class TestFineMatching(BaseTester):
+    def test_convention_std_gradient_is_finite_on_a_peaked_heatmap_4229(self, device, dtype):
+        # A heatmap peaked on one cell has zero variance. `std` was sqrt(clamp(var, min=1e-10)): in float16 the
+        # floor is 0, and torch < 2.14 passes clamp's gradient through at the bound, so sqrt'(0) = inf reached
+        # the features as nan. torch 2.14 zeroes clamp's gradient at the bound, so on 2.14 this passes on the
+        # old code too; the torch 2.5.1 / 2.9.1 legs are the ones that discriminate.
+        M, W, C = 4, 5, 8
+        center = W * W // 2
+        feat_f0 = torch.zeros(M, W * W, C, device=device, dtype=dtype)
+        feat_f1 = torch.zeros(M, W * W, C, device=device, dtype=dtype)
+        feat_f0[:, center, 0] = 30.0
+        feat_f1[:, center, 0] = 30.0
+        feat_f1.requires_grad_(True)
+        data = {
+            "hw0_i": (40, 40),
+            "hw0_f": (20, 20),
+            "mkpts0_c": torch.zeros(M, 2, device=device, dtype=dtype),
+            "mkpts1_c": torch.zeros(M, 2, device=device, dtype=dtype),
+            "mconf": torch.ones(M, device=device, dtype=dtype),
+            "b_ids": torch.zeros(M, dtype=torch.long, device=device),
+        }
+        FineMatching()(feat_f0, feat_f1, data)
+        std = data["expec_f"][:, 2]
+        std.sum().backward()
+        assert bool(torch.isfinite(feat_f1.grad).all()), feat_f1.grad
+        # The value is unchanged: sqrt of the floor as represented in the input dtype.
+        self.assert_close(std, torch.full_like(std, 1e-10).sqrt())
