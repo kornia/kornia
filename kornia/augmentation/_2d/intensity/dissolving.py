@@ -46,10 +46,10 @@ class RandomDissolving(IntensityAugmentationBase2D):
 
         * - SD 1.4
           - SD 1.5
-          - SD xl
-        * - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
-          - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
-          - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-2.1.png
+          - SD XL
+        * - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
+          - .. figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
+          - SD XL example image pending — see kornia#4601
 
     Args:
         p: probability of applying the transformation.
