@@ -4903,7 +4903,7 @@
       "export_detail": "",
       "graph_breaks": 0,
       "name": "transform.warp_points_tps[at_centers]",
-      "note": "query points == kernel centers (zero distance) -> exercises the eps guard in _kernel_distance",
+      "note": "query points == kernel centers (zero distance) -> exercises zero-distance handling in _kernel_distance",
       "onnx": "mismatch",
       "onnx_detail": "runs, but the result differs from eager: out0: NaN pattern differs (torch 0, ort 10 NaNs)",
       "operator": "warp_points_tps",

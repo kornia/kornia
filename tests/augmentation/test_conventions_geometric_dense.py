@@ -117,6 +117,9 @@ class TestDenseGeometricConventions(BaseTester):
             "tps": lambda: K.RandomThinPlateSpline(scale=0, p=1),
         }[kind]()
         image = torch.ones(2, 1, 5, 7, device=device, dtype=dtype)
-        assert aug(image).shape == image.shape
+        output = aug(image)
+        assert output.shape == image.shape
+        if kind == "tps":
+            assert torch.isfinite(output).all()
         assert not hasattr(aug, "transform_matrix")
         assert not hasattr(aug, "inverse")
