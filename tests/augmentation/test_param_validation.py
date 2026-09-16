@@ -20,6 +20,7 @@ from typing import cast
 import pytest
 import torch
 
+import kornia.augmentation as K
 from kornia.augmentation.utils.param_validation import (
     _common_param_check,
     _range_bound,
@@ -130,9 +131,13 @@ class TestParamValidation:
             ((10, 5), 0, None, "joint", ValueError, "should be smaller than"),
             ("invalid", 0, (-10, 10), "singular", TypeError, None),
             ((-10.0, 10.0), 0, (-5, 5), "singular", ValueError, "param out of bounds"),
-            (10.0, 0, (-5, 5), "singular", ValueError, "param out of bounds"),
-            (0.6, 0, (-0.5, 0.5), "joint", ValueError, "param out of bounds"),
-            (3.0, 1.0, (0, 2), "joint", ValueError, "param out of bounds"),
+            # The scalar rows name the whole message on purpose. The reported tensor is the unclamped
+            # `[center - x, center + x]`, which only the scalar branch's own raise produces: with that raise gone
+            # the trailing `_joint_range_check` / `_singular_range_check` still rejects the same inputs,
+            # but reports the lower end already floored (`[-5., 10.]`, `[-0.5000, 0.6000]`, `[0., 4.]`).
+            (10.0, 0, (-5, 5), "singular", ValueError, r"param out of bounds\. .*got tensor\(\[-10\.,  10\.\]\)"),
+            (0.6, 0, (-0.5, 0.5), "joint", ValueError, r"param out of bounds\. .*got tensor\(\[-0\.6000,  0\.6000\]\)"),
+            (3.0, 1.0, (0, 2), "joint", ValueError, r"param out of bounds\. .*got tensor\(\[-2\.,  4\.\]\)"),
         ],
     )
     def test_range_bound_errors(self, factor, center, bounds, check, expected_exception, match_msg):
@@ -173,3 +178,30 @@ class TestParamValidation:
         """Valid inputs should produce the expected bounded range."""
         res = _range_bound(factor, "param", center=center, bounds=bounds, check=check)
         torch.testing.assert_close(res, expected)
+
+    # `_range_bound` is shared, so rejecting a scalar past the upper bound (#4563) reaches the geometric
+    # classes as well as the intensity ones, and each reports the unclamped `[center - x, center + x]`.
+    # The 3D `degrees`, `shears` and `angle` arguments read their scalar through `_tuple_range_reader`
+    # instead, which has no bound of its own, so they are deliberately not covered here.
+    # Snippet used to generate expected:
+    #   for ctor in (lambda: K.RandomRotation(400.0), lambda: K.RandomShear(400.0),
+    #                lambda: K.RandomTranslate(2.0, 0.1), lambda: K.RandomRotation90(5),
+    #                lambda: K.RandomAffine(30.0, translate=2.0)):
+    #       try: ctor()
+    #       except ValueError as e: print(e)
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> the five messages pinned below.
+    @pytest.mark.parametrize(
+        "ctor, match_msg",
+        [
+            (lambda: K.RandomRotation(400.0), r"degrees out of bounds\. .*got tensor\(\[-400\.,  400\.\]\)"),
+            (lambda: K.RandomShear(400.0), r"shear-x out of bounds\. .*got tensor\(\[-400\.,  400\.\]\)"),
+            (lambda: K.RandomTranslate(2.0, 0.1), r"translate_x out of bounds\. .*got tensor\(\[-2\.,  2\.\]\)"),
+            (lambda: K.RandomRotation90(5), r"times out of bounds\. .*got tensor\(\[-5\.,  5\.\]\)"),
+            (lambda: K.RandomAffine(30.0, translate=2.0), r"translate out of bounds\. .*got tensor\(\[-2\.,  2\.\]\)"),
+        ],
+        ids=["rotation-degrees", "shear", "translate", "rotation90-times", "affine-translate"],
+    )
+    def test_geometric_scalar_magnitude_past_the_upper_bound_raises(self, ctor, match_msg):
+        """A scalar that overshoots a geometric parameter's bound is rejected at construction."""
+        with pytest.raises(ValueError, match=match_msg):
+            ctor()

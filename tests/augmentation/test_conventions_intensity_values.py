@@ -1671,23 +1671,27 @@ class TestIntensityColourConventions(BaseTester):
                 IndexError,
                 r"index 25 is out of bounds for dimension 0 with size 25",
             ),
+            # The scalar rows name the reported tensor as well as the bound: it is the unclamped
+            # `[center - x, center + x]`, which only `_range_bound`'s own scalar raise produces.  The
+            # trailing `_joint_range_check` rejects the same inputs with the lower end already floored
+            # (`[-0.5000, 0.6000]`, `[0., 4.]`, `[0.0000, 2.5000]`), so a bound-only regex passes either way.
             (
                 "hue_scalar_above_half",
                 "construction",
                 ValueError,
-                r"hue out of bounds\. Expected inside \(-0\.5, 0\.5\)",
+                r"hue out of bounds\. Expected inside \(-0\.5, 0\.5\), got tensor\(\[-0\.6000,  0\.6000\]\)",
             ),
             (
                 "brightness_scalar_above_two",
                 "construction",
                 ValueError,
-                r"brightness out of bounds\. Expected inside \(0\.0, 2\.0\)",
+                r"brightness out of bounds\. Expected inside \(0\.0, 2\.0\), got tensor\(\[-2\.,  4\.\]\)",
             ),
             (
                 "solarize_scalar_threshold_above_half",
                 "construction",
                 ValueError,
-                r"thresholds out of bounds\. Expected inside \(0\.0, 1\.0\)",
+                r"thresholds out of bounds\. Expected inside \(0\.0, 1\.0\), got tensor\(\[-1\.5000,  2\.5000\]\)",
             ),
         ],
     )
@@ -1774,26 +1778,42 @@ class TestIntensityColourConventions(BaseTester):
     # sampled from [-0.5, 0.5]).  RandomSharpness is the class that depends on the floor: its scalar
     # form is the centred `[-x, x]` floored at 0, which is what makes `sharpness=0.5` mean `[0, 0.5]`.
     # Snippet used to generate expected:
-    #   for ctor in (lambda: K.RandomHue(0.7), lambda: K.RandomBrightness(3.0), lambda: K.ColorJiggle(brightness=1.5)):
+    #   for ctor in (lambda: K.RandomHue(0.7), lambda: K.RandomBrightness(3.0),
+    #                lambda: K.ColorJiggle(brightness=1.5), lambda: K.RandomSolarize(2.0, 0.1),
+    #                lambda: K.RandomMotionBlur(3, 45.0, 2.0), lambda: K.RandomJPEG(90.0)):
     #       try: ctor(); print("ok")
     #       except ValueError as e: print(e)
     #   print(K.RandomContrast(1.5).contrast, K.RandomBrightness(0.5).brightness)
     #   print(K.RandomSharpness(0.5).forward_parameters((2000, 1, 4, 4))["sharpness"].aminmax())
     #   print(K.RandomJPEG(50.0)._param_generator.jpeg_quality_sampler.low)
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `hue out of bounds. Expected inside (-0.5, 0.5), got
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `hue out of bounds. Expected inside (-0.5, 0.5), got
     # tensor([-0.7000,  0.7000]).`, `brightness out of bounds ... (0.0, 2.0), got tensor([-2., 4.])`,
-    # `brightness out of bounds ... (0, 2), got tensor([-0.5000,  2.5000])`; `[0, 2.5]`, `[0.5, 1.5]`;
-    # sharpness in `[3.87e-05, 0.5]`; jpeg low `1`.
+    # `brightness out of bounds ... (0, 2), got tensor([-0.5000,  2.5000])`, `thresholds out of bounds ...
+    # (0.0, 1.0), got tensor([-1.5000,  2.5000])`, `direction out of bounds ... (-1, 1), got
+    # tensor([-2., 2.])`, `jpeg_quality out of bounds ... (1, 100), got tensor([-40., 140.])`;
+    # `[0, 2.5]`, `[0.5, 1.5]`; sharpness in `[3.87e-05, 0.5]`; jpeg low `1`.
     @pytest.mark.device_agnostic
     def test_convention_scalar_magnitude_floors_low_and_rejects_high(self):
-        for ctor in (
-            lambda: K.RandomHue(0.7, p=1.0),
-            lambda: K.RandomBrightness(3.0, p=1.0),
-            lambda: K.ColorJiggle(brightness=1.5, p=1.0),
-            lambda: K.RandomSolarize(2.0, 0.1, p=1.0),
-            lambda: K.RandomMotionBlur(3, 45.0, 2.0, p=1.0),
+        for ctor, message in (
+            (lambda: K.RandomHue(0.7, p=1.0), r"hue out of bounds\. .*got tensor\(\[-0\.7000,  0\.7000\]\)"),
+            (lambda: K.RandomBrightness(3.0, p=1.0), r"brightness out of bounds\. .*got tensor\(\[-2\.,  4\.\]\)"),
+            (
+                lambda: K.ColorJiggle(brightness=1.5, p=1.0),
+                r"brightness out of bounds\. .*got tensor\(\[-0\.5000,  2\.5000\]\)",
+            ),
+            (
+                lambda: K.RandomSolarize(2.0, 0.1, p=1.0),
+                r"thresholds out of bounds\. .*got tensor\(\[-1\.5000,  2\.5000\]\)",
+            ),
+            (
+                lambda: K.RandomMotionBlur(3, 45.0, 2.0, p=1.0),
+                r"direction out of bounds\. .*got tensor\(\[-2\.,  2\.\]\)",
+            ),
+            (lambda: K.RandomJPEG(90.0, p=1.0), r"jpeg_quality out of bounds\. .*got tensor\(\[-40\., 140\.\]\)"),
         ):
-            with pytest.raises(ValueError, match="out of bounds"):
+            # Each regex names the parameter and the unclamped `[center - x, center + x]`, so it can only be
+            # satisfied by `_range_bound`'s scalar raise and not by the trailing range check behind it.
+            with pytest.raises(ValueError, match=message):
                 ctor()
         assert K.RandomContrast(1.5, p=1.0).contrast.tolist() == [0.0, 2.5]
         assert K.RandomBrightness(0.5, p=1.0).brightness.tolist() == [0.5, 1.5]
