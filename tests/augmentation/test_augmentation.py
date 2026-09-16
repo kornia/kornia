@@ -79,7 +79,7 @@ from kornia.augmentation import (
     SmallestMaxSize,
 )
 from kornia.augmentation._2d.base import AugmentationBase2D
-from kornia.constants import Resample, pi
+from kornia.constants import BorderType, Resample, pi
 from kornia.core._compat import torch_version
 from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry import create_meshgrid, transform_points
@@ -4891,6 +4891,21 @@ class TestRandomBoxBlur(BaseTester):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomBoxBlur(p=1.0)
         assert img.shape == aug(img).shape
+
+    @pytest.mark.parametrize("border_type", ["reflect", "REFLECT", 1, BorderType.REFLECT])
+    def test_border_type_spellings(self, border_type, device, dtype):
+        from kornia.filters import box_blur
+
+        torch.manual_seed(0)
+        img = torch.rand(1, 1, 9, 9, device=device, dtype=dtype)
+        out = RandomBoxBlur((3, 3), border_type=border_type, p=1.0)(img.clone())
+
+        expected = box_blur(img, (3, 3), border_type="reflect")
+        self.assert_close(out, expected)
+
+    def test_border_type_invalid(self):
+        with pytest.raises(KeyError):
+            RandomBoxBlur((3, 3), border_type="bogus")
 
     @pytest.mark.parametrize("normalized", [True, False])
     def test_normalized_selects_the_separable_path(self, normalized, device, dtype):
