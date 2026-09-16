@@ -5,6 +5,7 @@ Kernels
 
 Kernel generators, useful with the :doc:`filters.filtering_api` or to inspect what a filter applies.
 
+.. autofunction:: gaussian
 .. autofunction:: get_gaussian_kernel1d
 .. autofunction:: get_gaussian_erf_kernel1d
 .. autofunction:: get_gaussian_discrete_kernel1d

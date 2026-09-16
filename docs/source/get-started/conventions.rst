@@ -315,16 +315,26 @@ Augmentations
   upper end; some do not clamp; and :class:`kornia.augmentation.RandomEqualize`
   raises where its value check runs (MPS skips the check, and a raw indexing
   error surfaces instead). The resulting values also depend on the sampled parameters and image
-  contents. Several can return an all-zero image for an all-negative input,
-  depending on the draw (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
+  contents. Several return an all-zero image for an all-negative input, most of
+  them on every draw rather than only on some, and
+  :class:`kornia.augmentation.RandomSolarize` does the same for an all-above-``1``
+  input (`#4430 <https://github.com/kornia/kornia/issues/4430>`_).
+  These policies are not an exhaustive classification: a further outcome is
+  NaN, which :class:`kornia.augmentation.RandomGamma` produces for a negative
+  input whenever the drawn ``gamma`` is not an integer (``gamma=(1.5, 1.5)`` on a
+  strictly negative image is NaN in every element, while the integral ``(2.0, 2.0)``
+  is finite).
   See :class:`kornia.augmentation.IntensityAugmentationBase2D` and each class's
   own documentation. :class:`kornia.augmentation.RandomDissolving` is unmeasured
   because constructing it needs the optional ``diffusers`` package and, on a cold
   cache, downloads a Stable Diffusion checkpoint.
   :class:`kornia.augmentation.RandomClahe` and
-  :class:`kornia.augmentation.RandomJPEG` are not in
-  ``kornia.augmentation.__all__``; ``RandomClahe`` raises out of range with a raw indexing error
-  (`#4564 <https://github.com/kornia/kornia/issues/4564>`_).
+  :class:`kornia.augmentation.RandomJPEG` are importable and documented but absent
+  from ``kornia.augmentation.__all__``, so they are outside the audited set above;
+  ``RandomClahe`` raises out of range with a raw indexing error
+  (`#4564 <https://github.com/kornia/kornia/issues/4564>`_) and ``RandomJPEG``
+  clamps, returning zeros for an all-negative image and ones for an all-above-``1``
+  one.
 
 .. code-block:: python
 
@@ -471,8 +481,9 @@ Quick self-review for generated code, most common first:
 18. Feeding mean/std-normalized or otherwise out-of-``[0, 1]`` tensors
     through an intensity augmentation and expecting the values to pass
     through — some rescale, some clamp, ``RandomEqualize`` and ``RandomClahe``
-    raise, and several can return zeros for an all-negative image depending on
-    the sampled parameters.
+    raise, and several return zeros for an all-negative image -- mostly on every
+    draw, not only on some -- while ``RandomSolarize`` returns zeros for an
+    all-above-``1`` image as well.
 
 .. tip::
 

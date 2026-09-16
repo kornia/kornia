@@ -34,6 +34,12 @@ class RandomDissolving(IntensityAugmentationBase2D):
     and SD XL; any other ``version`` raises a bare ``NotImplementedError``. SD 1.X tends to remove more details
     than SD XL.
 
+    .. note::
+        The table below does not render: its cells are missing the ``..`` directive marker, so Sphinx
+        prints ``figure:: https://...`` as text, and the ``SD xl`` column still points at the SD 2.1
+        image because ``dslv-sd-xl.png`` is a 404 in the ``kornia/data`` repository. Tracked in
+        `#4601 <https://github.com/kornia/kornia/issues/4601>`_.
+
     .. list-table:: Title
         :widths: 32 32 32
         :header-rows: 1

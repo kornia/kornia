@@ -90,14 +90,20 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     .. warning::
-        With the default samplers, a ``sigma`` at or near ``0``, which the constructor admits, can make the
-        whole output NaN in any input dtype.
-        :func:`kornia.filters.kernels.gaussian` normalizes by ``gauss.sum()``, which underflows to zero there,
-        so the kernel is ``0 / 0``. ``sigma=0.0`` does it at any size; because an even-length axis carries a
-        half-pixel offset, a small non-zero ``sigma`` can do it too: with ``center=(0.5, 0.5)`` and
-        ``sigma=(0.005, 0.005)``, a ``4 x 4`` image is NaN where a ``3 x 3`` one is finite. Both sizes are
-        finite at ``sigma=(0.01, 0.01)`` with that center; a randomly drawn center can also make the odd-sized
-        image NaN. The default ``sigma=(0.2, 1.0)`` is unaffected. Tracked in
+        A ``sigma`` at or near ``0``, which the constructor admits, can make the whole output NaN.
+        :func:`kornia.filters.gaussian` normalizes by ``gauss.sum()``, which underflows to zero there, so
+        the kernel is ``0 / 0``. ``sigma=0.0`` does it at any size. Above zero it is the kernel's
+        **absolute** width that decides -- ``sigma`` times the axis length, since ``sigma`` is relative --
+        and not the axis length on its own. With ``center=(0.5, 0.5)`` an even axis puts its nearest sample
+        half a pixel off the mean, so the kernel underflows once ``sigma * axis`` falls below about
+        ``0.034``: a ``4 x 4`` image at ``sigma=(0.005, 0.005)`` is NaN, and so is a ``64 x 64`` one at
+        ``sigma=(0.0005, 0.0005)``, while ``8 x 8`` and larger are finite at ``0.005``. An odd axis whose
+        rounded center lands on the grid keeps a sample at the mean and is finite at every positive
+        ``sigma``; the default ``center=(0.1, 0.9)`` can miss the grid only on a ``1``- or ``3``-pixel axis,
+        which is why a drawn center makes a ``3 x 3`` image NaN on some seeds but never a ``5 x 5`` one.
+        The threshold follows the **parameter** dtype, which is ``float32`` whatever the image dtype, so
+        after ``set_rng_device_and_dtype(device, torch.float64)`` the ``4 x 4`` case at ``sigma=0.005`` is
+        finite and ``0.003`` is not. The default ``sigma=(0.2, 1.0)`` is unaffected. Tracked in
         `#4589 <https://github.com/kornia/kornia/issues/4589>`_.
 
     .. note::

@@ -25,7 +25,10 @@ from kornia.enhance import sharpness
 
 
 class RandomSharpness(IntensityAugmentationBase2D):
-    r"""Sharpen given torch.Tensor image or a batch of torch.Tensor images randomly.
+    r"""Blend a random amount of a ``3 x 3`` smoothed copy with the image.
+
+    A drawn factor above ``1`` sharpens and a factor below ``1`` blurs; the default
+    ``sharpness=0.5`` draws from ``[0, 0.5]`` and therefore only ever blurs.
 
     .. image:: _static/img/RandomSharpness.png
 

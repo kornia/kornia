@@ -27,6 +27,7 @@ from torch.distributions import Distribution
 
 import kornia.augmentation as K
 from kornia.constants import BorderType, Resample
+from kornia.core.exceptions import BaseError, ImageError, ShapeError
 from kornia.filters import box_blur
 
 from testing.base import (
@@ -328,6 +329,46 @@ class TestBlurConventions(BaseTester):
         assert aug.flags["border_type"] == BorderType.CONSTANT
         assert aug.flags["resample"] == Resample.NEAREST
 
+    # Issue #4599: `kernel_size` is drawn once per SAMPLE and then one entry -- the one at a uniformly
+    # drawn `_params["idx"]`, not the first -- is applied to the whole batch; and because the draw is
+    # `UniformDistribution(ks[0] // 2, ks[1] // 2)` truncated with `.int()`, the range's upper bound is
+    # never reached.  `(3, 5)` is therefore a constant 3.
+    # Snippet used to generate expected:
+    #   import collections
+    #   for ks in ((3, 5), (3, 7), (5, 11)):
+    #       torch.manual_seed(0)
+    #       v = K.RandomMotionBlur(ks, (0., 0.), (0., 0.), p=1.).forward_parameters((20000, 1, 8, 8))
+    #       print(ks, sorted(collections.Counter(v["ksize_factor"].tolist())))
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `[3]`, `[3, 5]`, `[5, 7, 9]`; `idx` over 400 seeds at
+    # B = 6 lands on every row (`{0: 67, 1: 71, 2: 66, 3: 57, 4: 83, 5: 56}`).
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(("kernel_size", "drawn"), [((3, 5), [3]), ((3, 7), [3, 5]), ((5, 11), [5, 7, 9])])
+    def test_wart_random_motion_blur_upper_bound_is_never_drawn_4599(self, kernel_size, drawn):
+        torch.manual_seed(_FORWARD_SEED)
+        aug = K.RandomMotionBlur(kernel_size, (0.0, 0.0), (0.0, 0.0), p=1.0)
+        factors = aug.forward_parameters((20000, 1, 8, 8))["ksize_factor"]
+        assert sorted(set(factors.tolist())) == drawn
+        # The requested upper bound is odd and admissible, and it is simply absent.
+        assert kernel_size[1] % 2 == 1 and kernel_size[1] not in drawn
+
+    # Issue #4599, the other half: the per-sample draw is real, and a random index selects which one
+    # the batch gets -- so `_params["ksize_factor"]` holds B different values while one kernel is used.
+    @pytest.mark.device_agnostic
+    def test_wart_random_motion_blur_applies_one_randomly_indexed_kernel_size_4599(self):
+        picked = set()
+        distinct = 0
+        for seed in range(64):
+            torch.manual_seed(seed)
+            params = K.RandomMotionBlur((3, 21), (0.0, 0.0), (0.0, 0.0), p=1.0).forward_parameters((6, 3, 8, 8))
+            assert params["ksize_factor"].shape == (6,)
+            assert params["idx"].shape == (1,)
+            picked.add(int(params["idx"][0]))
+            distinct += len(set(params["ksize_factor"].tolist())) > 1
+        # Every row of the batch can be the one applied, so it is not "the first sample's".
+        assert picked == set(range(6))
+        # And the draw really is per sample: a constant `ksize_factor` would make `idx` immaterial.
+        assert distinct > 60
+
     # Row 6c-24, the resampling caveat: the kernel's weights are laid on a line and then rotated, so
     # with ``border_type="reflect"`` a "nearest" or "bilinear" rotation keeps them non-negative and the
     # output inside the input's extremes, while "bicubic" gives the kernel negative lobes that overshoot
@@ -376,6 +417,12 @@ class TestBlurConventions(BaseTester):
 
         if name == "RandomMedianBlur":
             self.assert_close(out, torch.zeros_like(out))
+            # The linearity legs below are unreachable for median blur, so this branch carried no
+            # evidence against a clamp at all: appending `.clamp(0, 1)` to its apply_transform leaves it
+            # green.  A negative plateau has a negative median and must come back negative.
+            negative = torch.full((1, 1, 7, 7), -0.5, device=device, dtype=dtype)
+            torch.manual_seed(_FORWARD_SEED)
+            assert float(make()(negative).min()) < -0.4, "the wrapper clamped the median into [0, 1]"
             return
 
         half_impulse = impulse * 0.5
@@ -517,13 +564,19 @@ class TestBlurConventions(BaseTester):
         }
         positive = torch.full((1, 1, 7, 7), 1.0, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
-        low, high = factories[name]()(positive).aminmax()
+        positive_out = factories[name]()(positive)
+        low, high = positive_out.aminmax()
         assert float(low) < 1.0 and float(high) <= 1.0 + 1e-3, "a positive image is pulled below its minimum"
         negative = torch.full((1, 1, 7, 7), -1.0, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
-        low, high = factories[name]()(negative).aminmax()
+        negative_out = factories[name]()(negative)
+        low, high = negative_out.aminmax()
         assert float(high) > -1.0, "a negative image is pulled above its maximum, not below its minimum"
         assert float(low) >= -1.0 - 1e-3
+        # Toward *zero*, and not toward some other constant: for a kernel whose weights sum to one a
+        # border pixel is `s * x + (1 - s) * v`, so `out(+1) + out(-1)` is `2 * (1 - s) * v` and vanishes
+        # only at `v = 0`.  Padding with 0.5 instead satisfies every bound above and is caught only here.
+        self.assert_close(positive_out + negative_out, torch.zeros_like(positive_out), atol=1e-6, rtol=0)
 
 
 # Twice float32(0.9): the snow coefficient is drawn in float32 whatever the image dtype, so this is the
@@ -935,8 +988,13 @@ class TestNoiseAndWeatherConventions(BaseTester):
     #       aug(torch.zeros(4, 1, 12, 30)); print(sob, aug._params["number_of_drops_factor"].tolist())
     # executed 2026-09-15 (torch 2.14.0, cpu) -> `True [25, 25, 25, 25]` and `False [25, 38, 5, 7]`.
     def test_convention_random_rain_same_on_batch_draws_one_drop_count(self, device, dtype):
-        image = torch.zeros(4, 1, 12, 30, device=device, dtype=dtype)
+        # B is 16, not 4: `drop_height=(1, 3)` truncates to {1, 2}, so "the unshared draw differs across
+        # the batch" is a `2 * 2 ** -B` event -- 29 of seeds 0..199 coincide at B=4, 3 at B=8 and none
+        # at B=16.
+        batch_size = 16
+        image = torch.zeros(batch_size, 1, 12, 30, device=device, dtype=dtype)
         drawn = {}
+        shared = {}
         for same_on_batch in (True, False):
             torch.manual_seed(_FORWARD_SEED)
             aug = K.RandomRain(
@@ -944,9 +1002,19 @@ class TestNoiseAndWeatherConventions(BaseTester):
             )
             aug(image)
             drawn[same_on_batch] = aug._params["number_of_drops_factor"].flatten().tolist()
+            shared[same_on_batch] = aug._params
         assert len(set(drawn[True])) == 1
-        assert len(drawn[True]) == 4
+        assert len(drawn[True]) == batch_size
         assert len(set(drawn[False])) > 1
+        # The sentence claims three things, not one: the drop SIZES and the COORDINATES are shared too.
+        # A generator that passed `same_on_batch=False` to the size or coordinate sampler would leave the
+        # drop-count assertions above untouched.
+        for key in ("drop_height_factor", "drop_width_factor"):
+            assert len(set(shared[True][key].flatten().tolist())) == 1, key
+            assert len(set(shared[False][key].flatten().tolist())) > 1, key
+        coordinates = shared[True]["coordinates_factor"]
+        assert all(torch.equal(coordinates[0], coordinates[row]) for row in range(1, batch_size))
+        assert not torch.equal(shared[False]["coordinates_factor"][0], shared[False]["coordinates_factor"][1])
 
     # Row 6c-32: RandomSnow is an RGB-only operator -- it rejects any other channel count -- and its
     # ``snow_coefficient`` is validated against [0, 1] at construction rather than at the forward.
@@ -1064,21 +1132,24 @@ class TestNoiseAndWeatherConventions(BaseTester):
     # executed 2026-09-16 (torch 2.14.0, cpu) -> RandomRain and RandomSaltAndPepperNoise accept C=1 and
     # reject C=2/C=4 with `Number of color channels should be 1 or 3.`; ColorJiggle, RandomHue,
     # RandomSaturation, RandomJPEG, RandomPlanckianJitter, RandomRGBShift and RandomSnow reject all three.
+    # The rejection TYPE and message are part of the contract: with a bare ``pytest.raises(Exception)``
+    # a class that started failing for an unrelated reason would still satisfy this table.  The five
+    # message families below were executed on 2026-09-16 (torch 2.14.0, cpu) at C in (1, 2, 4).
     @pytest.mark.parametrize(
-        ("name", "accepts_one"),
+        ("name", "accepts_one", "error", "match"),
         [
-            ("ColorJiggle", False),
-            ("RandomHue", False),
-            ("RandomSaturation", False),
-            ("RandomJPEG", False),
-            ("RandomPlanckianJitter", False),
-            ("RandomRGBShift", False),
-            ("RandomSnow", False),
-            ("RandomRain", True),
-            ("RandomSaltAndPepperNoise", True),
+            ("ColorJiggle", False, ValueError, r"Input size must have a shape of \(\*, 3, H, W\)"),
+            ("RandomHue", False, ValueError, r"Input size must have a shape of \(\*, 3, H, W\)"),
+            ("RandomSaturation", False, ValueError, r"Input size must have a shape of \(\*, 3, H, W\)"),
+            ("RandomJPEG", False, ShapeError, r"Shape mismatch at dimension 0: expected 3, got"),
+            ("RandomPlanckianJitter", False, ShapeError, r"Shape mismatch at dimension 0: expected 3, got"),
+            ("RandomRGBShift", False, ImageError, r"Not a color tensor"),
+            ("RandomSnow", False, BaseError, r"Number of color channels should be 3\."),
+            ("RandomRain", True, BaseError, r"Number of color channels should be 1 or 3\."),
+            ("RandomSaltAndPepperNoise", True, BaseError, r"Number of color channels should be 1 or 3\."),
         ],
     )
-    def test_convention_intensity_channel_count_preconditions(self, device, dtype, name, accepts_one):
+    def test_convention_intensity_channel_count_preconditions(self, device, dtype, name, accepts_one, error, match):
         if name == "RandomJPEG" and not supports_replicate_padding(device, dtype):
             # The 3-channel baseline call below needs the codec's replication padding, which torch 2.5.1
             # has no `Half` kernel for ("replication_pad2d" not implemented for 'Half').  The rejection
@@ -1106,7 +1177,7 @@ class TestNoiseAndWeatherConventions(BaseTester):
             if channels == 1 and accepts_one:
                 assert factories[name]()(image).shape == image.shape
                 continue
-            with pytest.raises(Exception):
+            with pytest.raises(error, match=match):
                 _sync(factories[name]()(image).device)
 
     # The degenerate signed range: `(-1, 1)` satisfies the block's "draws 0 twice as often as any other
@@ -1205,6 +1276,18 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         shared(batch)
         gradients = shared._params["gradient"]
         assert all(torch.equal(gradients[0], gradients[b]) for b in range(batch_size))
+        # The blocks also say the EDGE (or corner) the gradient is strongest at is drawn per sample.
+        # Nothing above reads it: an implementation that collapsed all four directions to one would
+        # still pass every assertion so far, because the sign and the magnitude would be unchanged.
+        # The brightest cell of each sample's gradient names its direction, so more than one distinct
+        # location across a batch of 16 is the claim.  `RandomGaussianIllumination` draws a centre
+        # rather than an edge, and it is covered by the same reading.
+        # Snippet used to generate expected:
+        #   torch.manual_seed(0); a = _illumination(name); a(torch.full((16, 3, 7, 9), 0.5))
+        #   g = a._params["gradient"].flatten(1).abs(); print(len(set(g.argmax(1).tolist())))
+        # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> at least 2 for each of the three.
+        flat = per_sample._params["gradient"].flatten(1).float().abs()
+        assert len(set(flat.argmax(1).tolist())) > 1, "the strongest-gradient location is not drawn per sample"
 
     # The all-negative collapse documented for these augmentations is conditional on the sampled
     # gradient.  With a fixed positive sign and enough gain, a near-zero negative image retains the
@@ -1277,6 +1360,41 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
                 assert bool(small.isnan().all())
             else:
                 assert bool(small.isfinite().all())
+        # Evenness is not the variable: `sigma` is relative, so it is `sigma * axis` -- the kernel's
+        # absolute width -- that underflows, at about 0.034 in the float32 the parameters are drawn in.
+        # An `8 x 8` image is finite at the sigma that kills `4 x 4`, and a `64 x 64` one dies at a
+        # proportionally smaller sigma.  The even/odd leg above runs only at sizes 3 and 4 and cannot
+        # see either half.
+        # Snippet used to generate expected:
+        #   for n, sg in ((4, 0.005), (8, 0.005), (8, 0.002), (64, 0.0005), (64, 0.00055)):
+        #       torch.manual_seed(0)
+        #       K.RandomGaussianIllumination(p=1.0, sigma=(sg, sg), center=(0.5, 0.5))(
+        #           torch.full((1, 3, n, n), 0.5))
+        # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes -- the parameters are float32 in
+        # every one of them) -> NaN, finite, NaN, NaN, finite.  `n * sigma` is 0.020, 0.040, 0.016,
+        # 0.032 and 0.035 respectively, so the cut is on the product and not on `n`.
+        for axis, small_sigma, nan_expected in ((4, 0.005, True), (8, 0.005, False), (8, 0.002, True)):
+            square = torch.full((1, 3, axis, axis), 0.5, device=device, dtype=dtype)
+            torch.manual_seed(_FORWARD_SEED)
+            out = K.RandomGaussianIllumination(p=1.0, sigma=(small_sigma, small_sigma), center=(0.5, 0.5))(square)
+            assert bool(out.isnan().all()) is nan_expected, (axis, small_sigma)
+        # The parameter dtype, not the image dtype, sets the threshold: float64 parameters move it.
+        # MPS has no float64, so this leg is CPU/CUDA only.
+        if device.type != "mps":
+            wide = torch.full((1, 3, 4, 4), 0.5, device=device, dtype=dtype)
+            for param_sigma, nan_expected in ((0.005, False), (0.003, True)):
+                aug = K.RandomGaussianIllumination(p=1.0, sigma=(param_sigma, param_sigma), center=(0.5, 0.5))
+                aug.set_rng_device_and_dtype(device, torch.float64)
+                torch.manual_seed(_FORWARD_SEED)
+                assert bool(aug(wide).isnan().all()) is nan_expected, param_sigma
+        # And with the DRAWN centre an odd axis is safe from 5 up, where 1 and 3 are not.
+        for odd, safe in ((3, False), (5, True), (7, True)):
+            hits = 0
+            for seed in range(16):
+                torch.manual_seed(seed)
+                odd_image = torch.full((1, 3, odd, odd), 0.5, device=device, dtype=dtype)
+                hits += bool(K.RandomGaussianIllumination(p=1.0, sigma=(0.005, 0.005))(odd_image).isnan().any())
+            assert (hits == 0) is safe, (odd, hits)
         # The documented default is unaffected, so the wart is the admitted extreme and not the class.
         torch.manual_seed(_FORWARD_SEED)
         assert bool(K.RandomGaussianIllumination(p=1.0)(image).isfinite().all())
@@ -1308,7 +1426,7 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         "name", ["RandomGaussianIllumination", "RandomLinearIllumination", "RandomLinearCornerIllumination"]
     )
     @pytest.mark.device_agnostic
-    def test_convention_compiled_illumination_pickling(self, device, dtype, name):
+    def test_convention_compiled_illumination_pickling(self, name):
         compiled = _illumination(name)
         validate_args = Distribution._validate_args
         try:
@@ -1433,6 +1551,16 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         out = cls(mean=mean, std=std, p=1.0)(image)
         assert out.shape == image.shape
         assert float((out - image).abs().max()) > moved
+        if form == "tensorB3":
+            # Even with distinct rows the threshold above cannot tell a per-sample application from a
+            # row-0 one, so assert the exact field: replacing `mean` with `mean[0]` inside
+            # kornia.enhance.normalize (or denormalize) leaves every other assertion here green.
+            stats = torch.arange(1, 13, device=device, dtype=dtype).reshape(4, 3) / 10.0
+            field = stats[..., None, None]
+            torch.manual_seed(_FORWARD_SEED)
+            per_sample = cls(mean=stats, std=stats, p=1.0)(image)
+            expected = image * field + field if cls is K.Denormalize else (image - field) / field
+            self.assert_close(per_sample, expected)
 
     # Row 6c-16: Denormalize is Normalize's inverse, and the round trip is checked against a forward
     # that actually moved the tensor (max abs change 1.99809 on this fixture) so the identity cannot
@@ -1453,6 +1581,53 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         assert float((normalized - image).abs().max()) > 1.0
         torch.manual_seed(_FORWARD_SEED)
         self.assert_close(K.Denormalize(mean=mean, std=std, p=1.0)(normalized), image)
+
+    # Issue #4577: `normalize` reshapes with `Tensor.view`, so a non-contiguous input raises a raw torch
+    # error naming neither the class nor the fix.  `RandomAutoContrast` reaches `normalize_min_max` and
+    # fails the same way.
+    # Snippet used to generate expected:
+    #   x = torch.rand(2, 3, 8, 8).transpose(2, 3)
+    #   torch.manual_seed(0); K.Normalize(mean=torch.tensor([0.5]), std=torch.tensor([0.5]), p=1.0)(x)
+    # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> `RuntimeError: view size is not
+    # compatible with input tensor's size and stride`; `.contiguous()` on the same view succeeds.
+    @pytest.mark.parametrize("name", ["Normalize", "RandomAutoContrast"])
+    def test_wart_non_contiguous_input_raises_a_raw_view_error_4577(self, device, dtype, name):
+        factories = {
+            "Normalize": lambda: K.Normalize(
+                mean=torch.tensor([0.5], device=device, dtype=dtype),
+                std=torch.tensor([0.5], device=device, dtype=dtype),
+                p=1.0,
+            ),
+            "RandomAutoContrast": lambda: K.RandomAutoContrast(p=1.0),
+        }
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(2, 3, 8, 8).to(device=device, dtype=dtype)
+        view = image.transpose(2, 3)
+        assert not view.is_contiguous()
+        torch.manual_seed(_FORWARD_SEED)
+        with pytest.raises(RuntimeError, match="view size is not compatible"):
+            _sync(factories[name]()(view).device)
+        # The same values, made contiguous, go through -- so it is the layout and not the numbers.
+        torch.manual_seed(_FORWARD_SEED)
+        assert factories[name]()(view.contiguous()).shape == view.shape
+
+    # Row 6c-16: a ``(B, C)`` statistic is applied per SAMPLE.  The pins above use one fixture for all
+    # six forms, and their thresholds cannot tell a per-sample application from a row-0 or batch-mean
+    # one, so this row gives two identical samples different statistics and reads the two results.
+    # Snippet used to generate expected:
+    #   x = torch.full((2, 1, 2, 2), 0.5)
+    #   m = torch.tensor([[0.0], [0.5]]); s = torch.tensor([[1.0], [0.25]])
+    #   torch.manual_seed(0); print(K.Normalize(mean=m, std=s, p=1.0)(x))
+    # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> sample 0 comes back `0.5`
+    # throughout and sample 1 comes back `0.0` throughout.
+    def test_convention_normalize_applies_a_per_sample_statistic_to_its_own_sample(self, device, dtype):
+        image = torch.full((2, 1, 2, 2), 0.5, device=device, dtype=dtype)
+        mean = torch.tensor([[0.0], [0.5]], device=device, dtype=dtype)
+        std = torch.tensor([[1.0], [0.25]], device=device, dtype=dtype)
+        torch.manual_seed(_FORWARD_SEED)
+        out = K.Normalize(mean=mean, std=std, p=1.0)(image)
+        self.assert_close(out[0], torch.full_like(out[0], 0.5))
+        self.assert_close(out[1], torch.zeros_like(out[1]))
 
     # Row 6c-16: a mean or std whose length is neither 1 nor the channel count is rejected.
     # Snippet used to generate expected: the last line of the snippet above; executed 2026-09-15
@@ -1651,7 +1826,17 @@ def _statistics(form: str, device, dtype):
             torch.tensor([0.2, 0.25, 0.3], device=device, dtype=dtype),
         )
     assert form == "tensorB3"
+    # Distinct rows: a per-sample statistic whose rows are all equal is indistinguishable from the
+    # scalar form, so an implementation that read row 0 or the batch mean would pass unnoticed.
     return (
-        torch.full((4, 3), 0.5, device=device, dtype=dtype),
-        torch.full((4, 3), 0.25, device=device, dtype=dtype),
+        torch.tensor(
+            [[0.40, 0.50, 0.60], [0.45, 0.55, 0.65], [0.35, 0.45, 0.55], [0.50, 0.60, 0.70]],
+            device=device,
+            dtype=dtype,
+        ),
+        torch.tensor(
+            [[0.20, 0.25, 0.30], [0.22, 0.27, 0.32], [0.18, 0.23, 0.28], [0.25, 0.30, 0.35]],
+            device=device,
+            dtype=dtype,
+        ),
     )

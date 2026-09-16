@@ -48,7 +48,16 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
           the exception. This is a rescale, not a clamp, so an input outside ``[0, 1]`` is mapped into range
           rather than clipped. The ``1e-6`` keeps a channel whose range is not large next to it short of ``1``
           (a range of ``1e-5`` peaks at ``0.909``), and in ``float16`` a channel whose span overflows the
-          dtype comes back with NaN.
+          dtype loses the whole channel: ``max - min`` saturates to ``inf``, so the maximum comes back NaN
+          (``inf / inf``) and every other element comes back exactly ``0`` (a finite numerator over ``inf``).
+          ``[-60000, 60000, 0, 1]`` in ``float16`` returns ``[0, nan, 0, 0]``.
+
+    .. warning::
+        A non-contiguous input -- anything :meth:`torch.Tensor.view` cannot reshape, such as a
+        ``transpose``d or ``permute``d view -- raises a raw ``RuntimeError: view size is not compatible
+        with input tensor's size and stride`` from :func:`kornia.enhance.normalize`, naming neither this
+        class nor the fix (``.contiguous()``). Tracked in
+        `#4577 <https://github.com/kornia/kornia/issues/4577>`_.
 
     .. note::
         This function internally uses :func:`kornia.enhance.normalize_min_max`. A channel with a single value

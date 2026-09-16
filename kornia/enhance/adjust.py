@@ -667,7 +667,7 @@ def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_out
 def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5) -> torch.Tensor:
     r"""For each pixel in the image, select the pixel if the value is less than the threshold.
 
-    Otherwise, subtract 1.0 from the pixel.
+    Otherwise, replace it with ``1.0 - value``.
 
     Args:
         input: image or batched images to solarize.
@@ -701,12 +701,15 @@ def solarize(
     thresholds: Union[float, torch.Tensor] = 0.5,
     additions: Optional[Union[float, torch.Tensor]] = None,
 ) -> torch.Tensor:
-    r"""For each pixel in the image less than threshold.
+    r"""Add an amount to every pixel, clamp, then invert the pixels at or above a threshold.
 
     .. image:: _static/img/solarize.png
 
-    We add 'addition' amount to it and then clip the pixel value to be between 0 and 1.0.
-    The value of 'addition' is between -0.5 and 0.5.
+    ``additions`` is added to the **whole** image and the sum is clamped into ``[0, 1]``; only then is each
+    pixel compared against ``thresholds``, and every pixel at or above it is replaced by ``1 - value``.
+    The addition is therefore applied on both sides of the threshold, and it can move a pixel across it:
+    with ``thresholds=0.5`` and ``additions=0.2``, ``[0.1, 0.4, 0.6, 0.9]`` comes back as
+    ``[0.3, 0.4, 0.2, 0.0]``. The value of 'addition' is between -0.5 and 0.5.
 
     Args:
         input: image torch.Tensor with shapes like :math:`(*, C, H, W)` to solarize.
@@ -786,7 +789,9 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         input: image torch.Tensor with shape :math:`(*, C, H, W)` to posterize.
         bits: number of high bits. Must be in range [0, 8].
             If int or one element torch.Tensor, input will be posterized by this bits.
-            If 1-d torch.Tensor, input will be posterized element-wisely, len(bits) == input.shape[-3].
+            If 1-d torch.Tensor, input will be posterized sample-wise, len(bits) == input.shape[0]
+            -- one value per sample in the batch, not per channel; any other length raises
+            ``Batch size must be equal between bits and input``.
             If n-d torch.Tensor, input will be posterized element-channel-wisely,
             bits.shape == input.shape[:len(bits.shape)]
 
@@ -877,7 +882,9 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
 
     Args:
         input: image torch.Tensor with shape :math:`(*, C, H, W)` to sharpen.
-        factor: factor of sharpness strength. Must be above 0.
+        factor: blend factor between the smoothed copy and the input. ``0`` returns the smoothed image,
+            ``1`` returns the input, and a factor above ``1`` sharpens. It is not validated: ``0`` and
+            negative factors are accepted and extrapolate past the smoothed image.
             If float or one element torch.Tensor, input will be sharpened by the same factor across the whole batch.
             If 1-d torch.Tensor, input will be sharpened element-wisely, len(factor) == len(input).
 

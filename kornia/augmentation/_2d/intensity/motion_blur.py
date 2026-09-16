@@ -64,6 +64,12 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
           ``"bilinear"`` or ``"bicubic"`` also spread weight off the line. The ends belong to the rotated line, so which
           side of the image they fall on turns with ``angle`` and is not read off the image axes.
         - the defaults ``border_type="constant"`` and ``resample="nearest"`` are the function's own defaults.
+        - ``kernel_size`` is drawn once per sample into ``_params["ksize_factor"]``, and the whole batch is
+          then blurred with the single entry at ``_params["idx"]``, an index drawn uniformly over the batch.
+          The draw truncates a float, so the range's upper bound is never reached: ``kernel_size=(3, 5)``
+          is a constant ``3`` and ``(3, 7)`` draws only ``3`` and ``5``. An even bound is separately rounded
+          **up** out of the requested range, so ``(4, 4)`` draws ``5``. Tracked in
+          `#4599 <https://github.com/kornia/kornia/issues/4599>`_.
         - the output is not clamped. At the default ``border_type="constant"`` the padding is zeros, so a
           border pixel is blended with ``0`` and pulled toward it: below the input's own minimum for a
           positive image, and above its maximum for a negative one. With
@@ -73,8 +79,10 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         - an image smaller than the kernel is accepted, down to ``1 x 1``, at ``border_type="constant"``
           and ``"replicate"``. ``"reflect"`` raises once a spatial axis is no longer than half the kernel
           size along it, as the two padding blurs do, and ``"circular"`` raises a padding error of its own once the
-          kernel radius exceeds a spatial axis. Both are raw torch errors, tracked in
-          `#4559 <https://github.com/kornia/kornia/issues/4559>`_.
+          kernel radius exceeds a spatial axis. Both are raw torch errors of the kind
+          `#4559 <https://github.com/kornia/kornia/issues/4559>`_ tracks, although that issue is scoped to the
+          three classes that raise at their *defaults* and names this one as accepting the same images --
+          which it does, at the default ``border_type="constant"``.
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.

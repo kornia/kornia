@@ -50,10 +50,13 @@ class RandomRain(IntensityAugmentationBase2D):
           darker than every pixel above ``200 / 255`` that it falls on, inside ``[0, 1]`` or not. Every other
           pixel is carried through unclamped.
         - both sizes must be strictly smaller than the image on their own axis. Once the larger of the two
-          sizes is at least ``2``, a drop of size ``h`` spans ``h + 1`` rows or columns, so a size one short of
-          the image already reaches from edge to edge; a drop whose sizes are both at most ``1`` is a single
-          pixel. A size as large as the image's, or a ``drop_height`` below ``1``, raises on the forward pass,
-          where the image shape is known -- constructing it succeeds.
+          sizes is at least ``2``, a drop of size ``h`` spans ``h + 1`` rows or columns end to end, so a size
+          one short of the image already reaches from edge to edge; a drop whose sizes are both at most ``1``
+          is a single pixel. ``span`` is an extent, not a count: the drop is a ``linspace`` of
+          ``max(drop_height, abs(drop_width))`` steps truncated to integers, so when the two sizes differ the
+          painted cells have gaps inside that span -- ``drop_height=5`` with ``drop_width=0`` on a ``6 x 10``
+          image paints rows ``[0, 1, 2, 3, 5]``. A size as large as the image's, or a ``drop_height`` below
+          ``1``, raises on the forward pass, where the image shape is known -- constructing it succeeds.
         - the drawn sizes and drop count are float draws truncated toward zero, so unless the range is a single
           point, a positive upper bound is practically never drawn: the default ``drop_height=(5, 20)`` gives
           heights of ``5`` to ``19`` (an image shorter than 20 pixels raises on some seeds, and on every seed when

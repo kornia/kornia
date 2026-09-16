@@ -66,10 +66,12 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           out-of-range image even at ``p=0.0`` -- and a skipped sample's gradient can be NaN where the
           transform's derivative is infinite (`#4576 <https://github.com/kornia/kornia/issues/4576>`_).
         - the scalar factors a concrete class draws are per sample -- one value, or one per channel
-          per sample where the class's own docstring says so. :class:`RandomMotionBlur` is the exception for
-          its kernel size, of which one draw serves the whole batch, as its ``Args`` say;
-          :class:`RandomClahe` draws ``clip_limit`` per sample but applies the first sample's to the whole
-          batch (`#4572 <https://github.com/kornia/kornia/issues/4572>`_); and :class:`RandomDissolving`
+          per sample where the class's own docstring says so. Two classes draw per sample and then
+          apply one draw to the whole batch. :class:`RandomMotionBlur` fills ``_params["ksize_factor"]`` with
+          one kernel size per sample and blurs the batch with the one at ``_params["idx"]``, an index drawn
+          uniformly over the batch rather than the first sample's; :class:`RandomClahe` draws ``clip_limit``
+          per sample and applies the first sample's
+          (`#4572 <https://github.com/kornia/kornia/issues/4572>`_); and :class:`RandomDissolving`
           hard-codes ``same_on_batch=True``. Several classes also draw a whole-image field --
           ``gaussian_noise``, ``gradient``, ``plasma``, and :class:`RandomSaltAndPepperNoise`'s boolean
           ``mask_salt`` and ``mask_pepper`` -- whose stored shape normally follows the original batched
@@ -91,7 +93,9 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           :class:`RandomRain`'s drop-size bounds; a tuple ``kernel_size`` for :class:`RandomMotionBlur` whose
           drawn odd size is below ``3`` -- an even bound is rounded up to the next odd size rather than
           rejected, and that rounding can leave the requested range, so ``(4, 4)`` draws ``5`` and ``(2, 2)``
-          draws ``3``, while ``(0, 2)`` raises because the odd size it rounds to is ``1``;
+          draws ``3``, while ``(0, 2)`` raises because the odd size it rounds to is ``1``. That same
+          truncation means the range's upper bound is never drawn at all -- ``kernel_size=(3, 5)`` is a
+          constant ``3`` (`#4599 <https://github.com/kornia/kornia/issues/4599>`_);
           and :class:`RandomChannelDropout`'s ``num_drop_channels`` against the input's channel count.
           :class:`RandomPlanckianJitter`'s ``select_from`` rejects an index past the table at construction
           but accepts a negative one, as Python indexing does. A scalar magnitude is a different case: several
@@ -99,8 +103,12 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           `#4563 <https://github.com/kornia/kornia/issues/4563>`_.
 
     .. warning::
-        Several of these classes can return an all-zero image for an input whose values are all negative,
-        depending on their sampled parameters, with no warning. Tracked in
+        Several of these classes return an all-zero image for an input whose values are all negative, with no
+        warning. It is mostly not draw-dependent: on an all ``-1.0`` image at the audited constructor
+        arguments, 15 of the 17 that collapse do so on every one of five seeds, and only
+        :class:`ColorJiggle` and :class:`RandomPlasmaContrast` depend on the draw. The upper end is not
+        symmetric -- :class:`RandomSolarize` is the only class that also collapses an all-above-``1`` input,
+        and it does so unconditionally. Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
     """

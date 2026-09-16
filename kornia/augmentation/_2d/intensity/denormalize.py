@@ -37,7 +37,6 @@ class Denormalize(IntensityAugmentationBase2D):
     Args:
         mean: Mean for each channel.
         std: Standard deviations for each channel.
-        same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
@@ -50,7 +49,8 @@ class Denormalize(IntensityAugmentationBase2D):
           tensor; a length that is neither ``1`` nor the channel count raises.
         - ``p`` gates the whole batch rather than each sample: the constructor hard-codes
           ``same_on_batch=True``, which collapses the per-sample draw to a single one, and it takes no
-          ``same_on_batch`` argument of its own.
+          ``same_on_batch`` argument of its own -- the ``Args`` entry that claimed one was part of
+          `#4496 <https://github.com/kornia/kornia/issues/4496>`_ and is removed here.
         - the statistics live in ``flags`` rather than in a buffer, so ``state_dict()`` is empty and
           ``Module.to(...)`` leaves their device and dtype alone.
         - this class inverts :class:`Normalize` built with the same float, sequence or tensor ``mean`` and

@@ -48,8 +48,10 @@ class RandomGamma(IntensityAugmentationBase2D):
         - the output is ``clamp(gain * input ** gamma, 0, 1)``. The clamp is not optional, so unlike
           :class:`RandomBrightness` and :class:`RandomContrast` this class has no ``clip_output`` escape
           hatch for keeping a value the power produced outside ``[0, 1]``.
-        - ``gamma`` must be non-negative. The check lives inside :func:`kornia.enhance.adjust_gamma` and
-          so runs on the forward pass, not at construction. kornia skips that check for an MPS image, so there
+        - ``gamma`` and ``gain`` must both be non-negative, and neither is bounded at construction: both
+          checks live inside :func:`kornia.enhance.adjust_gamma` and so run on the forward pass. A negative
+          ``gain`` raises ``Gain must be non-negative``, exactly as a negative ``gamma`` raises
+          ``Gamma must be non-negative``. kornia skips that check for an MPS image, so there
           a negative ``gamma`` is evaluated using the same power, gain and clamp formula above. Its output
           depends on both the input and ``gain``.
 

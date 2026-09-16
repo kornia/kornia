@@ -35,7 +35,11 @@ class RandomClahe(IntensityAugmentationBase2D):
     instead of transforming an out-of-range input, and its error is a raw one.
 
     Args:
-        clip_limit: threshold value for contrast limiting. If 0 clipping is disabled.
+        clip_limit: the ``(low, high)`` range the per-sample contrast-limiting threshold is drawn from.
+            Unlike :func:`kornia.enhance.equalize_clahe`'s scalar argument of the same name this must be a
+            two-element tuple -- a scalar raises ``ValueError: `center` and `bounds` cannot be None for
+            single number`` at construction -- and ``(0.0, 0.0)`` is what disables clipping. The bound is
+            unvalidated below zero: ``(-1.0, -1.0)`` is accepted and behaves exactly like ``(0.0, 0.0)``.
         grid_size: number of tiles to be cropped in each direction (GH, GW).
         slow_and_differentiable: selects the implementation. At the default ``False`` the fast path breaks the
             autograd graph -- the output has ``requires_grad=False`` and no ``grad_fn``, which no other 2D
@@ -52,20 +56,26 @@ class RandomClahe(IntensityAugmentationBase2D):
         256-entry lookup indexed with ``(input * 255).long()``, so a value less than one 8-bit code outside
         ``[0, 1]``, at either end, is still admitted, up to the rounding of ``input * 255`` in the input's
         dtype. Tracked in
-        `#4564 <https://github.com/kornia/kornia/issues/4564>`_.
+        `#4564 <https://github.com/kornia/kornia/issues/4564>`_. On MPS the value check is skipped
+        altogether, as for :class:`RandomEqualize`, so the raw gather error is all the caller gets
+        (`#4600 <https://github.com/kornia/kornia/issues/4600>`_).
 
     .. warning::
         ``clip_limit`` is drawn per sample, but the first sample's value is applied to the whole batch.
         Tracked in `#4572 <https://github.com/kornia/kornia/issues/4572>`_.
 
     .. warning::
-        ``grid_size`` is unvalidated past its positivity check in the same way the value range is: a rectangular
-        grid such as ``(4, 5)`` on a ``20 x 20`` image raises a raw ``IndexError`` (``shape mismatch: indexing
-        tensors could not be broadcast together``), even though both grid dimensions divide the image exactly.
-        Non-divisible image dimensions are padded: ``grid_size=(3, 3)`` works on a ``10 x 10`` image.
-        An image too small for the grid raises a raw ``RuntimeError`` from the padding --
-        at the default ``grid_size=(8, 8)`` the smallest admissible square image is ``9 x 9``, and ``8 x 8``
-        raises. A grid larger than the image gets the named ``ValueError`` instead.
+        ``grid_size`` is unvalidated past its positivity check in the same way the value range is, and only a
+        **square** grid works. Any ``grid_size`` whose two entries differ raises a raw ``IndexError``
+        (``shape mismatch: indexing tensors could not be broadcast together``) on every image, whether or not
+        the grid tiles it: ``(4, 5)`` fails on a ``20 x 20`` image that both entries divide exactly, and so
+        does ``(1, 2)`` on a ``10 x 10`` one. Reported in
+        `#2531 <https://github.com/kornia/kornia/issues/2531>`_. Divisibility is a separate axis: a square
+        grid that does not tile the image is padded instead, so ``grid_size=(3, 3)`` works on a ``10 x 10``
+        image, and because :func:`kornia.enhance.equalize_clahe` rounds the tile up to an even size an
+        exactly dividing grid can still pad. An image too small for the grid raises a raw ``RuntimeError``
+        from the padding -- at the default ``grid_size=(8, 8)`` the smallest admissible square image is
+        ``9 x 9``, and ``8 x 8`` raises. A grid larger than the image gets the named ``ValueError`` instead.
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize_clahe`.
