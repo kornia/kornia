@@ -759,9 +759,9 @@ def solarize(
             additions = torch.as_tensor(additions)
 
         _assert_async_value_check(
-            ((additions < 0.5) & (additions > -0.5)).all(),
-            "The addition must be in the open range (-0.5, 0.5). Clamp it first: min(max(additions, -0.49), 0.49) "
-            "for floats, additions.clamp(-0.49, 0.49) for tensors.",
+            ((additions <= 0.5) & (additions >= -0.5)).all(),
+            "The addition must be in the closed range [-0.5, 0.5]. Clamp it first: min(max(additions, -0.5), 0.5) "
+            "for floats, additions.clamp(-0.5, 0.5) for tensors.",
         )
 
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:

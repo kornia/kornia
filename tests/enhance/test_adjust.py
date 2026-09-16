@@ -1162,6 +1162,24 @@ class TestSolarize(BaseTester):
         with pytest.raises(TypeError):
             assert TestSolarize.f(img, 0.8, 1)
 
+    @pytest.mark.parametrize("addition", [0.5, -0.5])
+    def test_additions_closed_range_4605(self, device, dtype, addition):
+        # RandomSolarize admits the closed [-0.5, 0.5], and its sampler can draw an endpoint exactly.
+        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        shifted = (img + addition).clamp(0.0, 1.0)
+        expected = torch.where(shifted >= 0.5, 1.0 - shifted, shifted)
+        self.assert_close(TestSolarize.f(img, 0.5, addition), expected)
+        per_sample = torch.tensor([addition, 0.0], device=device, dtype=dtype)
+        self.assert_close(TestSolarize.f(img, 0.5, per_sample)[0], expected[0])
+
+    @pytest.mark.parametrize("addition", [0.5001, -0.5001])
+    def test_additions_outside_closed_range_raise_4605(self, device, addition):
+        if device.type != "cpu":
+            pytest.skip("CPU only: the value check is an async device assert elsewhere")
+        img = torch.rand(2, 3, 4, 5, device=device)
+        with pytest.raises(RuntimeError, match=r"closed range \[-0\.5, 0\.5\]"):
+            TestSolarize.f(img, 0.5, addition)
+
     # TODO: add better cases
     def test_value(self, device, dtype):
         torch.manual_seed(0)
