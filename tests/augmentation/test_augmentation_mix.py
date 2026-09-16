@@ -29,6 +29,7 @@ from kornia.augmentation import (
     RandomTransplantation,
     RandomTransplantation3D,
 )
+from kornia.geometry.bbox import infer_bbox_shape
 
 from testing.base import BaseTester
 
@@ -58,10 +59,15 @@ class TestRandomMixUpV2(BaseTester):
 
         out_image, out_label = f(input, label)
 
+        if dtype == torch.float16:
+            rtol, atol = 1e-3, 1e-3
+        else:
+            rtol, atol = 1e-4, 1e-4
+
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
         self.assert_close(out_label[:, 0], label)
         self.assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
-        self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_label[:, 2], lam, rtol=rtol, atol=atol)
 
     def test_random_mixup_p0(self, device, dtype):
         torch.manual_seed(0)
@@ -298,6 +304,28 @@ class TestRandomCutMixV2(BaseTester):
         if untouched.any():
             self.assert_close(output[untouched], input[untouched])
 
+    def test_random_cutmix_float64_lambda(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+
+        torch.manual_seed(76)
+        f = RandomCutMixV2(p=1.0, data_keys=["input", "class"])
+
+        input = torch.stack(
+            [
+                torch.ones(1, 15, 17, device=device, dtype=torch.float64),
+                torch.zeros(1, 15, 17, device=device, dtype=torch.float64),
+            ]
+        )
+        label = torch.tensor([1, 0], device=device, dtype=torch.float64)
+
+        _, out_label = f(input, label)
+
+        w, h = infer_bbox_shape(f._params["crop_src"][0])
+        expected_lambda = w.to(torch.float64) * h.to(torch.float64) / (15 * 17)
+
+        self.assert_close(out_label[0, :, 2], expected_lambda, rtol=0.0, atol=0.0)
+
 
 class TestRandomMosaic(BaseTester):
     def test_non_square_input_preserves_hw_4438(self):
@@ -335,6 +363,31 @@ class TestRandomMosaic(BaseTester):
         output = RandomMosaic(p=1.0, keepdim=keepdim)(input)
 
         assert output.shape == expected_shape
+
+    @pytest.mark.parametrize("shape", [(8, 8), (6, 8), (8, 6), (4, 12)])
+    def test_boxes_follow_tile_content_on_non_square_input_4468(self, device, dtype, shape):
+        # _compose_images puts tile (i, j) at x = W * i, y = H * j; the box offsets used H for x
+        # and W for y, which only agree on a square input. The crop starts at each tile's centre
+        # and every patch straddles that centre, so all four copies of each patch stay partly in
+        # view and no box is clamped away: every output box must lie on marked pixels.
+        torch.manual_seed(0)
+        height, width = shape
+        cx, cy = width // 2, height // 2
+        batch_size = 3
+        image = torch.zeros(batch_size, 1, height, width, device=device, dtype=dtype)
+        for k in range(batch_size):
+            image[k, 0, cy - 1 : cy + 1, cx - 1 : cx + 1] = k + 1
+        boxes = torch.tensor([[[cx - 1.0, cy - 1.0, cx + 1.0, cy + 1.0]]] * batch_size, device=device, dtype=dtype)
+        aug = RandomMosaic(p=1.0, start_ratio_range=(0.5, 0.5), data_keys=["input", "bbox_xyxy"])
+
+        out_image, out_boxes = aug(image, boxes)
+
+        assert out_boxes.shape == (batch_size, 4, 4)
+        for n in range(batch_size):
+            for x1, y1, x2, y2 in out_boxes[n].round().long().tolist():
+                region = out_image[n, 0, y1:y2, x1:x2]
+                assert region.numel() > 0, (n, (x1, y1, x2, y2))
+                assert bool((region > 0).all()), (n, (x1, y1, x2, y2), out_image[n, 0])
 
     def test_smoke(self):
         f = RandomMosaic(data_keys=["input", "class"])
@@ -413,9 +466,13 @@ class TestRandomMosaic(BaseTester):
             device=device,
             dtype=dtype,
         )
+        if dtype in (torch.float16, torch.bfloat16):
+            rtol, atol = 1e-2, 5e-2
+        else:
+            rtol, atol = 1e-4, 1e-4
 
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        self.assert_close(out_box, expected_box, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_box, expected_box, rtol=rtol, atol=atol)
 
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
     def test_p(self, p, device, dtype):
