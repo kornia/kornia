@@ -91,9 +91,9 @@ class RandomCrop(GeometricAugmentationBase2D):
         either axis is oversized, both matrix axes are rescaled, including an axis that would fit. This wart is
         tracked in `#4414 <https://github.com/kornia/kornia/issues/4414>`_. With explicit padding, the transform
         dimensions include the pre-crop padded canvas, so a crop that fits after padding avoids a spurious scale
-        correction while retaining its sampled translation. The no-padding oversized behavior tracked in
-        `#4414 <https://github.com/kornia/kornia/issues/4414>`_ remains
-        unchanged.
+        correction while retaining its sampled translation. The no-padding oversized behavior tracked in #4414 remains
+        unchanged. With explicit padding, ``RandomCrop((10, 10), padding=1)`` on a 3-by-3 input scales against the
+        padded canvas, changing ``10/3`` to ``10/5``.
 
         Slice mode calls ``crop_by_indices`` with that
         function's bilinear/``align_corners=None`` defaults, ignoring this class's ``resample`` and

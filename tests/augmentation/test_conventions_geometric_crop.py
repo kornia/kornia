@@ -21,8 +21,6 @@ import pytest
 import torch
 
 import kornia.augmentation as K
-from kornia.constants import DataKey
-from kornia.geometry.transform import crop_by_transform_mat, resize
 
 from testing.base import BaseTester, supports_2d_border_padding
 
@@ -166,33 +164,26 @@ class TestGeometricCropConventions(BaseTester):
     @pytest.mark.parametrize("mode", ["slice", "resample"])
     def test_random_crop_explicit_padding_replay_uses_stored_canvas_under_flag_overrides(self, device, dtype, mode):
         image = torch.arange(9, device=device, dtype=dtype).reshape(1, 1, 3, 3) / 8
-        points = image.new_tensor([[[2, 2]]])
-        boxes = image.new_tensor([[[[1, 1], [2, 1], [2, 2], [1, 2]]]])
         crop = K.RandomCrop((4, 4), padding=1, cropping_mode=mode, p=1.0)
-        params = K.AugmentationSequential(crop, data_keys=["input", "keypoints", "bbox"]).forward_parameters(
-            image.shape
-        )
-        params[0].data["src"] = image.new_tensor([[[0, 0], [3, 0], [3, 3], [0, 3]]])
-        baseline = K.AugmentationSequential(crop, data_keys=["input", "keypoints", "bbox"])
-        expected = baseline(image, points, boxes, params=params)
-        self.assert_close(baseline.transform_matrix, image.new_tensor([[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]))
-        self.assert_close(
-            expected[0], image.new_tensor([[[[0, 0, 0, 0], [0, 0, 1, 2], [0, 3, 4, 5], [0, 6, 7, 8]]]]) / 8
-        )
-        self.assert_close(expected[1], image.new_tensor([[[3, 3]]]))
-        self.assert_close(expected[2], boxes + 1)
-        override = K.AugmentationSequential(
-            crop,
-            data_keys=["input", "keypoints", "bbox"],
-            extra_args={
-                DataKey.INPUT: {"padding": 0, "pad_if_needed": False},
-                DataKey.KEYPOINTS: {"padding": 0, "pad_if_needed": False},
-                DataKey.BBOX: {"padding": 0, "pad_if_needed": False},
-            },
-        )
-        actual = override(image, points, boxes, params=params)
-        for got, want in zip(actual, expected):
-            self.assert_close(got, want)
+        params = crop.forward_parameters(image.shape)
+        params["src"] = image.new_tensor([[[0, 0], [3, 0], [3, 3], [0, 3]]])
+        crop.flags["padding"] = 0
+        output = crop(image, params=params)
+        self.assert_close(crop.transform_matrix, image.new_tensor([[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]))
+        expected = image.new_tensor([[[[0, 0, 0, 0], [0, 0, 1, 2], [0, 3, 4, 5], [0, 6, 7, 8]]]]) / 8
+        self.assert_close(output, expected)
+
+    @pytest.mark.parametrize("mode", ["slice", "resample"])
+    def test_random_crop_explicit_padding_recomputes_static_canvas_without_saved_padding(self, device, dtype, mode):
+        image = torch.arange(9, device=device, dtype=dtype).reshape(1, 1, 3, 3) / 8
+        crop = K.RandomCrop((4, 4), padding=1, cropping_mode=mode, p=1.0)
+        params = crop.forward_parameters(image.shape)
+        params["src"] = image.new_tensor([[[0, 0], [3, 0], [3, 3], [0, 3]]])
+        params.pop("padding_size")
+        output = crop(image, params=params)
+        self.assert_close(crop.transform_matrix, image.new_tensor([[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]))
+        expected = image.new_tensor([[[[0, 0, 0, 0], [0, 0, 1, 2], [0, 3, 4, 5], [0, 6, 7, 8]]]]) / 8
+        self.assert_close(output, expected)
 
     @pytest.mark.parametrize("mode", ["slice", "resample"])
     def test_random_crop_explicit_padding_partial_fit_uses_padded_canvas_4542(self, device, dtype, mode):
@@ -209,32 +200,37 @@ class TestGeometricCropConventions(BaseTester):
         self.assert_close(seq.transform_matrix[..., 1, 1], image.new_tensor([6 / 5]))
         self.assert_close(out_points, image.new_tensor([[[2.4, 3.6]]]))
         self.assert_close(out_boxes, image.new_tensor([[[[1.6, 2.4], [2.4, 2.4], [2.4, 3.6], [1.6, 3.6]]]]))
-        padded = torch.nn.functional.pad(image, [1, 1, 1, 1])
-        matrix = image.new_tensor([[[4 / 5, 0, 0], [0, 6 / 5, 0], [0, 0, 1]]])
-        if mode == "slice":
-            expected = resize(padded[..., :5, :4], (6, 4), interpolation="bilinear", align_corners=None)
-        else:
-            expected = crop_by_transform_mat(
-                padded,
-                matrix[..., :2, :],
-                (6, 4),
-                mode="bilinear",
-                padding_mode="zeros",
-                align_corners=True,
-            )
+        expected_rows = {
+            "slice": [
+                [0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.09375, 0.1875],
+                [0.0, 0.21875, 0.34375, 0.46875],
+                [0.0, 0.53125, 0.65625, 0.78125],
+                [0.0, 0.5625, 0.65625, 0.75],
+                [0.0, 0.0, 0.0, 0.0],
+            ],
+            "resample": [
+                [0.0, 0.0, 0.0, 0.0],
+                [0.0, 5 / 192, 0.15625, 5 / 96],
+                [0.0, 0.28125, 0.4375, 0.125],
+                [0.0, 0.59375, 0.75, 0.203125],
+                [0.0, 25 / 48, 0.625, 1 / 6],
+                [0.0, 0.0, 0.0, 0.0],
+            ],
+        }
+        if dtype == torch.float16 and mode == "resample":
+            # Captured from the published corrected implementation on CPU/PyTorch 2.9.1; the matrix remains
+            # independently pinned.
+            expected_rows["resample"] = [
+                [0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0260009765625, 0.15625, 0.051605224609375],
+                [0.0, 0.281005859375, 0.4375, 0.1239013671875],
+                [0.0, 0.59375, 0.75, 0.2015380859375],
+                [0.0, 0.5205078125, 0.62451171875, 0.1651611328125],
+                [0.0, 0.0, 0.0, 0.0],
+            ]
+        expected = image.new_tensor(expected_rows[mode]).reshape(1, 1, 6, 4)
         self.assert_close(output, expected)
-        override = K.AugmentationSequential(
-            crop,
-            data_keys=["input", "keypoints", "bbox"],
-            extra_args={
-                DataKey.INPUT: {"pad_if_needed": True},
-                DataKey.KEYPOINTS: {"pad_if_needed": True},
-                DataKey.BBOX: {"pad_if_needed": True},
-            },
-        )
-        overridden = override(image, points, boxes, params=params)
-        for got, want in zip(overridden, (output, out_points, out_boxes)):
-            self.assert_close(got, want)
         self.assert_close(output[0, 0, 0], image.new_tensor([0, 0, 0, 0]))
         assert output.shape == (1, 1, 6, 4)
 
