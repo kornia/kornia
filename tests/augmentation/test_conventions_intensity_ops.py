@@ -1249,7 +1249,7 @@ class TestNoiseAndWeatherConventions(BaseTester):
     #       print(dt, torch.isfinite(y).all())
     # current CPU run -> True for float16, bfloat16 and float32, and the same for constants 0.0 and 1.0.
     @pytest.mark.parametrize("value", [0.0, 0.5, 1.0])
-    def test_convention_random_snow_achromatic_pixel_is_finite(self, device, dtype, value):
+    def test_convention_random_snow_achromatic_pixel_is_finite_4571(self, device, dtype, value):
         gray = torch.full((1, 3, 2, 2), value, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomSnow(p=1.0)(gray)

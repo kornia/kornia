@@ -144,6 +144,18 @@ class TestRgbToHls(BaseTester):
         assert output.device == input_data.device
         assert output.dtype == input_data.dtype
 
+    @pytest.mark.parametrize(
+        ("rgb", "expected"),
+        [
+            ([1.5, 0.5, 0.5], [0.0, 1.0, 1.0]),
+            ([2.0, -2.0, -2.0], [0.0, 0.0, 4.0]),
+        ],
+    )
+    def test_out_of_range_zero_lightness_denominator_values(self, device, dtype, rgb, expected):
+        image = torch.tensor(rgb, device=device, dtype=dtype).reshape(1, 3, 1, 1)
+        actual = kornia.color.rgb_to_hls(image)
+        self.assert_close(actual, image.new_tensor(expected).reshape(1, 3, 1, 1))
+
     @pytest.mark.parametrize("gray_level", [0.0, 0.25, 0.5, 1.0])
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
     def test_achromatic_round_trip_is_finite(self, device, dtype, gray_level, shape):
