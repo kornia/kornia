@@ -19,6 +19,7 @@ import pytest
 import torch
 import torch.nn.functional as F
 
+from kornia.core.check import ShapeError
 from kornia.feature.sold2 import SOLD2, SOLD2_detector
 from kornia.feature.sold2.sold2 import keypoints_to_grid
 
@@ -100,15 +101,18 @@ class TestKeypointsToGrid(BaseTester):
         assert grid.device == kp.device
 
     def test_exception(self, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError, match=r"Expected shape: \['N', '2'\]"):
             keypoints_to_grid(torch.zeros(3, 3, device=device, dtype=dtype), (32, 64))
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError, match=r"Expected shape: \['N', '2'\]"):
             keypoints_to_grid(torch.zeros(1, 3, 2, device=device, dtype=dtype), (32, 64))
 
-    def test_integer_keypoints_are_promoted(self, device):
+    def test_integer_keypoints_follow_the_default_dtype(self, device):
+        # Integer keypoints promote through the float arithmetic to the ambient default dtype, the
+        # dtype grid_sample will expect for a descriptor map built under the same default, and the
+        # values are the reference ones (0 -> -1, the half size -> 0).
         kp = torch.tensor([[0, 0], [16, 32]], device=device, dtype=torch.int64)
         grid = keypoints_to_grid(kp, (32, 64))
-        assert grid.is_floating_point()
+        assert grid.dtype == torch.get_default_dtype()
         self.assert_close(grid[0, :, 0], torch.tensor([[-1.0, -1.0], [0.0, 0.0]], device=device))
 
     def test_convention_matches_reference_normalization_4554(self, device, dtype):
@@ -133,11 +137,13 @@ class TestKeypointsToGrid(BaseTester):
         # (79.5, 12.026), i.e. half a descriptor pixel past the last centre at the far edge.
         self.assert_close(reads, expected)
 
-    def test_convention_cell_centre_reads_its_own_descriptor_4554(self, device, dtype):
-        # Under the reference normalization the image pixel at the centre of a descriptor cell
-        # (g * (i + 0.5), g * (j + 0.5)) lands exactly on descriptor (i, j), so sampling with the
-        # matcher's align_corners=False returns that descriptor untouched. Power-of-two sizes keep
-        # every coordinate exact at half precision.
+    def test_convention_cell_keypoint_reads_its_own_descriptor_4554(self, device, dtype):
+        # Under the reference normalization image pixel p reads descriptor coordinate p / g - 0.5, so
+        # the keypoint (g * (i + 0.5), g * (j + 0.5)) lands exactly on descriptor (i, j) and sampling
+        # with the matcher's align_corners=False returns that descriptor untouched. (That keypoint is
+        # half an image pixel past the centre of cell (i, j) under kornia's pixel-centre convention,
+        # which is the constant offset from the half-pixel mapping the docstring records.)
+        # Power-of-two sizes keep every coordinate exact at half precision.
         H, W, g = 32, 64, 8
         hd, wd = H // g, W // g
         desc = torch.rand(1, 5, hd, wd, device=device, dtype=dtype)
