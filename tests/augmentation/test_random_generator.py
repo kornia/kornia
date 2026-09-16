@@ -1257,6 +1257,18 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         assert generator.uniform_sampler.low.device == device
         assert generator.uniform_sampler.high.device == device
 
+    @pytest.mark.parametrize("parameter_dtype", [torch.float16, torch.bfloat16])
+    def test_half_position_sampler_uses_selected_device(self, device, parameter_dtype):
+        generator = RectangleEraseGenerator(
+            scale=torch.tensor((0.25, 0.25), device=device, dtype=parameter_dtype),
+            ratio=torch.tensor((1.0, 1.0), device=device, dtype=parameter_dtype),
+        )
+        generator.set_rng_device_and_dtype(device, parameter_dtype)
+        assert generator.uniform_sampler.low.dtype == torch.float32
+        assert generator.uniform_sampler.high.dtype == torch.float32
+        assert generator.uniform_sampler.low.device == device
+        assert generator.uniform_sampler.high.device == device
+
     def test_tuple_positions_stay_in_bounds(self, device):
         if device.type != "cpu":
             pytest.skip("This control records CPU sampler parity.")

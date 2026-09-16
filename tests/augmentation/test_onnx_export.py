@@ -93,6 +93,26 @@ def _erasing() -> torch.nn.Module:
     return K.RandomErasing(p=1.0)
 
 
+@pytest.mark.parametrize(
+    "parameter_dtype,image_dtype",
+    [
+        (torch.float16, torch.float32),
+        (torch.float16, torch.float16),
+        (torch.bfloat16, torch.float32),
+    ],
+    ids=["float16-params-float32-image", "float16-params-float16-image", "bfloat16-params-float32-image"],
+)
+@pytest.mark.device_agnostic
+def test_onnx_export_random_erasing_tensor_parameters(parameter_dtype, image_dtype) -> None:
+    module = K.RandomErasing(
+        scale=torch.tensor((0.25, 0.25), dtype=parameter_dtype),
+        ratio=torch.tensor((1.0, 1.0), dtype=parameter_dtype),
+        p=1.0,
+    )
+    size = _try_export(module, torch.randn(2, 3, 16, 16, dtype=image_dtype))
+    assert size > 0
+
+
 def _posterize() -> torch.nn.Module:
     return K.RandomPosterize(3, p=1.0)
 

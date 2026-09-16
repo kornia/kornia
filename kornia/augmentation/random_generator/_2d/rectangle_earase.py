@@ -26,6 +26,7 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _joint_range_check,
 )
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["RectangleEraseGenerator"]
@@ -151,16 +152,28 @@ class RectangleEraseGenerator(RandomGeneratorBase):
                 return output
 
             max_start = (
-                torch.as_tensor(limit, device=_device, dtype=position_dtype)
+                _constant_tensor(limit, device=_device, dtype=position_dtype)
                 - size.to(device=_device, dtype=position_dtype)
             ).floor()
-            max_start_output = max_start.to(device=_device, dtype=_dtype).detach()
-            max_start_as_working = max_start_output.to(dtype=position_dtype)
-            max_start_output = torch.where(
-                max_start_as_working > max_start,
-                torch.nextafter(max_start_output, torch.zeros_like(max_start_output)),
-                max_start_output,
+            # Coordinates are nonnegative integers. Deliberately round the bound down
+            # to the output format's local representable integer grid.
+            max_start = torch.minimum(
+                max_start,
+                _constant_tensor(torch.finfo(_dtype).max, device=_device, dtype=position_dtype),
             )
+            mantissa_bits = 10 if _dtype == torch.float16 else 7
+            clamped_start = torch.clamp(max_start, min=1)
+            exponent = torch.floor(torch.log2(clamped_start))
+            power = torch.pow(
+                _constant_tensor(2.0, device=_device, dtype=position_dtype),
+                exponent,
+            )
+            exponent = torch.where(power > clamped_start, exponent - 1, exponent)
+            quantum = torch.pow(
+                _constant_tensor(2.0, device=_device, dtype=position_dtype),
+                torch.clamp(exponent - mantissa_bits, min=0),
+            )
+            max_start_output = (torch.floor(max_start / quantum) * quantum).to(device=_device, dtype=_dtype).detach()
             return torch.minimum(torch.maximum(output, torch.zeros_like(output)), max_start_output)
 
         return {
