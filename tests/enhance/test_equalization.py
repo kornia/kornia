@@ -121,6 +121,29 @@ class TestEqualization(BaseTester):
         # equalize_clahe is only a function
         pass
 
+    @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
+    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
+        # kornia#4564: the tile-LUT gather used to fail with a raw
+        # "index ... is out of bounds for dimension 5 with size 256".
+        if device.type != "cpu":
+            pytest.skip("value asserts are synchronous only on CPU (async on CUDA, skipped on MPS)")
+        torch.manual_seed(0)
+        x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * scale + shift
+        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+            enhance.equalize_clahe(x)
+
+    def test_input_the_lookup_can_index_is_still_accepted(self, device, dtype):
+        # The check covers exactly the domain the gather can index, so a hair above 1 keeps working.
+        x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 1.0001
+        assert enhance.equalize_clahe(x).shape == x.shape
+
+    def test_dynamo_fullgraph(self, device, dtype):
+        # The range check must not introduce a graph break.
+        x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype)
+        torch._dynamo.reset()
+        compiled = torch.compile(enhance.equalize_clahe, fullgraph=True, backend="eager")
+        self.assert_close(compiled(x), enhance.equalize_clahe(x))
+
     @pytest.fixture()
     def img(self, device, dtype):
         height, width = 20, 20

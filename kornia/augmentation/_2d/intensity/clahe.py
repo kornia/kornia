@@ -40,7 +40,9 @@ class RandomClahe(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     .. note::
-        This function internally uses :func:`kornia.enhance.equalize_clahe`.
+        This function internally uses :func:`kornia.enhance.equalize_clahe`, which expects the input in
+        :math:`[0, 1]` and raises a ``RuntimeError`` naming that range for values its 256-bin lookup
+        cannot index.
 
     Examples:
         >>> img = torch.rand(1, 10, 20)
