@@ -42,6 +42,15 @@ class TestNormalize(BaseTester):
         f = kornia.enhance.Normalize(mean, std)
         self.assert_close(f(data), expected)
 
+    def test_non_contiguous(self, device, dtype):
+        data = torch.rand(2, 3, 8, 6, device=device, dtype=dtype).transpose(-1, -2)
+        assert not data.is_contiguous()
+        mean = torch.tensor([0.5, 0.4, 0.3], device=device, dtype=dtype)
+        std = torch.tensor([0.2, 0.3, 0.4], device=device, dtype=dtype)
+
+        expected = kornia.enhance.normalize(data.contiguous(), mean, std)
+        self.assert_close(kornia.enhance.normalize(data, mean, std), expected)
+
     def test_broadcast_normalize(self, device, dtype):
         # prepare input data
         data = torch.ones(2, 3, 1, 1, device=device, dtype=dtype)
@@ -393,6 +402,12 @@ class TestNormalizeMinMax(BaseTester):
     def test_cardinality(self, device, dtype, input_shape):
         x = torch.rand(input_shape, device=device, dtype=dtype)
         assert kornia.enhance.normalize_min_max(x).shape == input_shape
+
+    def test_non_contiguous(self, device, dtype):
+        x = torch.rand(2, 3, 8, 6, device=device, dtype=dtype).transpose(-1, -2)
+        assert not x.is_contiguous()
+        expected = kornia.enhance.normalize_min_max(x.contiguous())
+        self.assert_close(kornia.enhance.normalize_min_max(x), expected)
 
     @pytest.mark.parametrize("min_val, max_val", [(1.0, 2.0), (2.0, 3.0), (5.0, 20.0), (40.0, 1000.0)])
     def test_range(self, device, dtype, min_val, max_val):
