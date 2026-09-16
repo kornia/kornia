@@ -5376,7 +5376,7 @@ class TestRandomSnow(BaseTester):
 
     def _get_exception_test_data(self, device, dtype):
         err_msg_sw_coef = "Snow coefficient values must be between 0 and 1."
-        err_msg_brght_coef = "Brightness values must be greater than 1."
+        err_msg_brght_coef = "Brightness values must be 1 or greater."
         err_msg_wrong_ch = "Number of color channels should be 3."
         err_msg_wrong_sh = "Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W)."
 

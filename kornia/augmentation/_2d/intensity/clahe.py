@@ -31,15 +31,57 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     .. image:: _static/img/equalize_clahe.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`. This class raises
+    instead of transforming an out-of-range input, and its error is a raw one.
+
     Args:
-        clip_limit: lower and upper bounds for the contrast-limiting threshold. A value is sampled for each image,
-            or once and shared across the batch when ``same_on_batch=True``. If 0 clipping is disabled.
+        clip_limit: the ``(low, high)`` range the per-sample contrast-limiting threshold is drawn from.
+            A value is drawn for each image, or once and shared across the batch when ``same_on_batch=True``.
+            Unlike :func:`kornia.enhance.equalize_clahe`'s scalar argument of the same name this must be a
+            two-element tuple -- a scalar raises ``ValueError: `center` and `bounds` cannot be None for
+            single number`` at construction -- and ``(0.0, 0.0)`` is what disables clipping. The bound is
+            unvalidated below zero: ``(-1.0, -1.0)`` is accepted and behaves exactly like ``(0.0, 0.0)``.
         grid_size: number of tiles to be cropped in each direction (GH, GW).
-        slow_and_differentiable: flag to select implementation
+        slow_and_differentiable: selects the implementation. At the default ``False`` the fast path breaks the
+            autograd graph -- the output has ``requires_grad=False`` and no ``grad_fn``, which no other 2D
+            intensity augmentation does -- so set it to ``True`` to keep the class differentiable.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    .. warning::
+        An input outside ``[0, 1]`` reaches :func:`kornia.enhance.equalize_clahe` unchecked and comes
+        back as a raw torch indexing error that names neither this class nor the range it needs. As for
+        :class:`RandomEqualize`, the rejection is not exactly at the boundary: the failing index is the
+        256-entry lookup indexed with ``(input * 255).long()``, so a value less than one 8-bit code outside
+        ``[0, 1]``, at either end, is still admitted, up to the rounding of ``input * 255`` in the input's
+        dtype. Tracked in
+        `#4564 <https://github.com/kornia/kornia/issues/4564>`_. Unlike :class:`RandomEqualize`, CLAHE has
+        no value check on any device, so the raw error is what every caller gets on the CPU. On MPS the
+        outcome depends on torch: ``2.14`` raises the raw ``gather`` error
+        (`#4600 <https://github.com/kornia/kornia/issues/4600>`_), while ``2.5.1`` leaves the gather
+        unchecked and returns an in-range image as if the input had been valid.
+
+    Convention:
+        - ``clip_limit`` is drawn per sample and each image is equalized with its own draw. When every
+          draw is equal -- which ``same_on_batch=True`` guarantees, and an unlucky batch can produce on
+          its own -- the batch takes a single :func:`kornia.enhance.equalize_clahe` call instead of one
+          per image; the result is the same either way.
+
+    .. warning::
+        ``grid_size`` is unvalidated past its positivity check in the same way the value range is, and only a
+        **square** grid works. Any ``grid_size`` whose two entries differ raises a raw ``IndexError``
+        (``shape mismatch: indexing tensors could not be broadcast together``) on every image, whether or not
+        the grid tiles it: ``(4, 5)`` fails on a ``20 x 20`` image that both entries divide exactly, and so
+        does ``(1, 2)`` on a ``10 x 10`` one. Reported in
+        `#2531 <https://github.com/kornia/kornia/issues/2531>`_. Divisibility is a separate axis: a square
+        grid that does not tile the image is padded instead, so ``grid_size=(3, 3)`` works on a ``10 x 10``
+        image, and because :func:`kornia.enhance.equalize_clahe` rounds the tile up to an even size an
+        exactly dividing grid can still pad. An image too small for the grid raises a raw ``RuntimeError``
+        from the padding -- at the default ``grid_size=(8, 8)`` the smallest admissible square image is
+        ``9 x 9``, and ``8 x 8`` raises. A grid larger than the image gets the named ``ValueError`` instead.
+
     .. note::
         This function internally uses :func:`kornia.enhance.equalize_clahe`.
 

@@ -38,9 +38,10 @@ def _assert_async_value_check(cond: torch.Tensor, msg: str) -> None:
     """Validate a tensor condition without graph breaks or hidden device syncs.
 
     ``torch._assert_async`` keeps the check fullgraph-compilable (a Python ``if tensor: raise``
-    would break the graph), but ``aten::_assert_async`` has no MPS kernel — the CPU fallback
-    materializes ``cond`` and drains the queued stream on every call, so on MPS the check is
-    skipped instead.
+    would break the graph), but materializing ``cond`` on MPS would drain the queued stream on
+    every call, so kornia skips the check there by design. The skip is this device check, not a
+    missing kernel: torch 2.5.1 had no ``aten::_assert_async`` MPS kernel, torch 2.14 registers
+    one, and the check is skipped on MPS either way.
     """
     if cond.device.type == "mps":
         return
@@ -275,8 +276,7 @@ def adjust_gamma(
 
     .. note::
        The non-negativity check on ``gamma``/``gain`` runs on CPU and CUDA (via ``torch._assert_async``).
-       On MPS it is skipped: the op has no MPS kernel and its CPU fallback would synchronize the
-       device on every call, so invalid values do not raise there.
+       kornia skips it on MPS by design, so invalid values do not raise there.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
@@ -365,8 +365,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
 
     .. note::
        The non-negativity check on ``factor`` runs on CPU and CUDA (via ``torch._assert_async``).
-       On MPS it is skipped: the op has no MPS kernel and its CPU fallback would synchronize the
-       device on every call, so invalid values do not raise there.
+       kornia skips it on MPS by design, so invalid values do not raise there.
 
     Example:
         >>> import torch
@@ -549,9 +548,9 @@ def adjust_brightness_accumulative(
 
     Args:
         image: Image to be adjusted in the shape of :math:`(*, H, W)`.
-        factor: Brightness adjust factor per element in the batch. It's recommended to
-            bound the factor by [0, 1]. 0 does not modify the input image while any other
-            number modify the brightness.
+        factor: Brightness factor per element in the batch. The image is multiplied by it, so ``1``
+            leaves an image in ``[0, 1]`` unchanged, ``0`` gives a black image and a factor above ``1``
+            brightens it.
         clip_output: Whether to clip output to be in [0,1].
 
     Return:
@@ -668,7 +667,7 @@ def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_out
 def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5) -> torch.Tensor:
     r"""For each pixel in the image, select the pixel if the value is less than the threshold.
 
-    Otherwise, subtract 1.0 from the pixel.
+    Otherwise, replace it with ``1.0 - value``.
 
     Args:
         input: image or batched images to solarize.
@@ -702,12 +701,15 @@ def solarize(
     thresholds: Union[float, torch.Tensor] = 0.5,
     additions: Optional[Union[float, torch.Tensor]] = None,
 ) -> torch.Tensor:
-    r"""For each pixel in the image less than threshold.
+    r"""Add an amount to every pixel, clamp, then invert the pixels at or above a threshold.
 
     .. image:: _static/img/solarize.png
 
-    We add 'addition' amount to it and then clip the pixel value to be between 0 and 1.0.
-    The value of 'addition' is between -0.5 and 0.5.
+    ``additions`` is added to the **whole** image and the sum is clamped into ``[0, 1]``; only then is each
+    pixel compared against ``thresholds``, and every pixel at or above it is replaced by ``1 - value``.
+    The addition is therefore applied on both sides of the threshold, and it can move a pixel across it:
+    with ``thresholds=0.5`` and ``additions=0.2``, ``[0.1, 0.4, 0.6, 0.9]`` comes back as
+    ``[0.3, 0.4, 0.2, 0.0]``. The value of 'addition' is between -0.5 and 0.5.
 
     Args:
         input: image torch.Tensor with shapes like :math:`(*, C, H, W)` to solarize.
@@ -723,9 +725,9 @@ def solarize(
         The solarized images with shape :math:`(*, C, H, W)`.
 
     .. note::
-       The range check on ``additions`` runs on CPU and CUDA (via ``torch._assert_async``).
-       On MPS it is skipped: the op has no MPS kernel and its CPU fallback would synchronize the
-       device on every call, so invalid values do not raise there.
+       The range check on ``additions`` runs via ``torch._assert_async`` on the device of ``additions``.
+       kornia skips it for an ``additions`` tensor on MPS, so invalid values do not raise there, but a
+       float, or a CPU tensor, is checked on the CPU and raises for an MPS image too.
 
     Example:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -787,7 +789,9 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         input: image torch.Tensor with shape :math:`(*, C, H, W)` to posterize.
         bits: number of high bits. Must be in range [0, 8].
             If int or one element torch.Tensor, input will be posterized by this bits.
-            If 1-d torch.Tensor, input will be posterized element-wisely, len(bits) == input.shape[-3].
+            If 1-d torch.Tensor, input will be posterized sample-wise, len(bits) == input.shape[0]
+            -- one value per sample in the batch, not per channel; any other length raises
+            ``Batch size must be equal between bits and input``.
             If n-d torch.Tensor, input will be posterized element-channel-wisely,
             bits.shape == input.shape[:len(bits.shape)]
 
@@ -878,7 +882,9 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
 
     Args:
         input: image torch.Tensor with shape :math:`(*, C, H, W)` to sharpen.
-        factor: factor of sharpness strength. Must be above 0.
+        factor: blend factor between the smoothed copy and the input. ``0`` returns the smoothed image,
+            ``1`` returns the input, and a factor above ``1`` sharpens. It is not validated: ``0`` and
+            negative factors are accepted and extrapolate past the smoothed image.
             If float or one element torch.Tensor, input will be sharpened by the same factor across the whole batch.
             If 1-d torch.Tensor, input will be sharpened element-wisely, len(factor) == len(input).
 
@@ -1591,9 +1597,9 @@ class AdjustBrightnessAccumulative(nn.Module):
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        brightness_factor: Brightness adjust factor per element
-          in the batch. 0 does not modify the input image while any other number modify the
-          brightness.
+        brightness_factor: Brightness factor per element in the batch. The image is multiplied by it and
+          clamped into ``[0, 1]``, so ``1`` leaves an image in ``[0, 1]`` unchanged, ``0`` gives a black image
+          and a factor above ``1`` brightens it.
 
     Shape:
         - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.

@@ -28,6 +28,8 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomBoxBlur.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
@@ -39,6 +41,32 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    Convention:
+        - ``kernel_size`` is ``(kH, kW)``: the first entry counts rows and the second counts columns, as in
+          :func:`kornia.filters.box_blur`. An even entry is accepted and centres the window half a pixel toward
+          the top-left rather than raising -- a ``(2, 2)`` window on an impulse spreads it over the impulse's
+          own row and column and the one before each -- where :class:`RandomGaussianBlur` and
+          :class:`RandomMedianBlur` raise on the forward pass.
+        - ``normalized`` reaches that function as its ``separable`` argument, so it selects the implementation
+          rather than a normalization: both settings are L1-normalized means, they agree to float rounding, and
+          a constant image survives either up to the rounding of the kernel weights. ``border_type`` defaults
+          to ``"reflect"``, as the function does, but ``normalized=True`` does **not** match
+          :func:`kornia.filters.box_blur`'s own ``separable=False``, so the default class output differs from
+          the default function output in the last bits -- about ``1.2e-07`` on a ``[0, 1]`` image. Where
+          :class:`RandomGaussianBlur` passes its function's own defaults through, this one does not.
+        - the output is not clamped. At the default ``border_type="reflect"`` every output value is a weighted
+          average of input values and stays between the input's own extremes, up to the rounding of the kernel
+          weights; ``border_type="constant"`` pads with zeros, which pulls a border pixel toward ``0``: below
+          the input's minimum for a positive image, and above its maximum for a negative one.
+
+    .. warning::
+        At the default ``border_type="reflect"``, an image with a spatial axis no longer than half the kernel's extent
+        along that axis raises a raw torch ``RuntimeError`` about the padding rather than a kornia error naming the
+        class or the shape. ``"constant"`` and ``"replicate"`` run on the same image; ``"circular"`` raises a padding
+        error of its own, also raw, once the kernel radius exceeds that axis. Tracked in `#4559
+        <https://github.com/kornia/kornia/issues/4559>`_.
+
     .. note::
         This function internally uses :func:`kornia.filters.box_blur`.
 
