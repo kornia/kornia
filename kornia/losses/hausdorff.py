@@ -64,16 +64,15 @@ class _HausdorffERLossBase(nn.Module):
 
         kernel = torch.as_tensor(self.kernel, device=pred.device, dtype=pred.dtype)
         eroded = torch.zeros_like(bound, device=pred.device, dtype=pred.dtype)
-        mask = torch.ones_like(bound, device=pred.device, dtype=torch.bool)
 
         # Same padding, assuming kernel is odd and square (cube) shaped.
         padding = (kernel.size(-1) - 1) // 2
         for k in range(self.k):
             # compute convolution with kernel
             dilation = self.conv(bound, weight=kernel, padding=padding, groups=1)
-            # apply soft thresholding at 0.5 and F.normalize
-            erosion = dilation - 0.5
-            erosion[erosion < 0] = 0
+            # apply soft thresholding at 0.5 and F.normalize. clamp_min is one kernel with the
+            # same values and gradient as zeroing the negatives through a boolean index.
+            erosion = (dilation - 0.5).clamp_min(0)
 
             # image-wise differences for 2D images
             erosion_max = self.max_pool(erosion)
@@ -86,8 +85,8 @@ class _HausdorffERLossBase(nn.Module):
             #           erosion_max[to_norm] - erosion_min[to_norm])
             _range = erosion_max - erosion_min
             _to_norm = _range != 0
-            _erosion_to_fill = (erosion - erosion_min) / torch.where(_to_norm, _range, torch.ones_like(_range))
-            erosion = torch.where(mask * _to_norm, _erosion_to_fill, erosion)
+            _erosion_to_fill = (erosion - erosion_min) / torch.where(_to_norm, _range, 1.0)
+            erosion = torch.where(_to_norm, _erosion_to_fill, erosion)
 
             # save erosion and add to loss
             eroded = eroded + erosion * (k + 1) ** self.alpha
