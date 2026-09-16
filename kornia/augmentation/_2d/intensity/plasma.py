@@ -82,11 +82,6 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
 
     .. warning::
-        With ``same_on_batch=True`` the scalar draws are shared but the fractal map is not: every sample keeps
-        its own ``_params["plasma"]`` slice, so identical inputs can come back different. Tracked in
-        `#4570 <https://github.com/kornia/kornia/issues/4570>`_.
-
-    .. warning::
         An all-negative input can come back as an all-zero image when the sampled brightness map does not raise
         it above zero. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
@@ -161,11 +156,6 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
 
     .. warning::
-        With ``same_on_batch=True`` the scalar draws are shared but the fractal map is not: every sample keeps
-        its own ``_params["plasma"]`` slice, so identical inputs can come back different. Tracked in
-        `#4570 <https://github.com/kornia/kornia/issues/4570>`_.
-
-    .. warning::
         An all-negative input can come back as an all-zero image, depending on the sampled contrast map.
         Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
@@ -236,11 +226,6 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         - the result is clamped into ``[0, 1]``, so the output stays inside that range even when the input
           does not.
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
-
-    .. warning::
-        With ``same_on_batch=True`` the scalar draws are shared but the fractal map is not: every sample keeps
-        its own ``_params["plasma"]`` slice, so identical inputs can come back different. Tracked in
-        `#4570 <https://github.com/kornia/kornia/issues/4570>`_.
 
     .. warning::
         At the default non-positive ``shade_intensity``, an input whose values are all negative comes back as
