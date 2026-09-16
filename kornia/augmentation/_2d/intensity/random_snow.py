@@ -28,10 +28,12 @@ from kornia.core.check import KORNIA_CHECK
 class RandomSnow(IntensityAugmentationBase2D):
     r"""Generates snow effect on given torch.Tensor image or a batch torch.Tensor images.
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         snow_coefficient: A tuple of floats (lower and upper bound) between 0 and 1 that control
         the amount of snow to add to the image, the larger value corresponds to the more snow.
-        brightness: A tuple of floats (lower and upper bound) greater than 1 that controls the
+        brightness: A tuple of floats (lower and upper bound) of ``1`` or greater that controls the
         brightness of the snow.
         same_on_batch: If True, apply the same transformation to each image in a batch. Default: False.
         p: Probability of applying the transformation. Default: 0.5.
@@ -40,6 +42,39 @@ class RandomSnow(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - the input must have three channels: the effect is computed in HLS, and any other channel count
+          raises on the forward pass.
+        - ``snow_coefficient`` is checked against ``[0, 1]`` at construction, where ``brightness`` must be
+          ``1`` or greater.
+        - one ``snow_coefficient`` and one ``brightness`` are drawn per sample; ``same_on_batch=True``
+          collapses both to a single value for the batch.
+        - the output as a whole is not clamped. Only a snow-covered pixel -- one whose lightness is below the
+          drawn ``snow_coefficient`` -- has its lightness scaled by ``brightness`` and clamped into ``[0, 1]``.
+          A covered pixel comes back white once its scaled lightness reaches ``1``, and black when its
+          lightness is zero or negative. A pixel the snow misses still goes through the HLS round trip
+          unclamped, so one above ``1`` usually comes back above it. The two exceptions are the pixels where
+          ``rgb_to_hls``'s saturation denominator vanishes, which collapse whether the snow covers them or not:
+          lightness exactly ``1``, where ``2 - max - min`` is zero and ``(1.5, 0.5, 0.5)`` comes back white,
+          and its mirror at lightness exactly ``0``, where ``max + min`` is zero and ``(2.0, -2.0, -2.0)``
+          comes back black. Both are NaN in ``float16`` (see below). The collapse is at the point, not around
+          it: ``(1.4, 0.5, 0.5)`` and a lightness more than about ``1e-7`` off ``1`` come back close to their
+          input. Within ``rgb_to_hls``'s ``eps`` of ``1e-8`` of the point, which only ``float64`` can
+          represent, they do not: a lightness of ``1 + 1e-8`` comes back as ``(2, 0, 0)`` and ``1 + 5e-9`` as
+          values of order ``1e8``. In half precision a value just above ``1`` can round onto the singular point.
+
+    .. warning::
+        An input whose values are all negative comes back as an all-zero image, and a pixel whose lightness is
+        zero or negative comes back black in any image -- including an out-of-range pixel such as
+        ``(2.0, -2.0, -2.0)``, which is neither all-negative nor has a negative lightness. Tracked in
+        `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
+
+    .. warning::
+        In ``float16`` every achromatic pixel -- black, gray or white -- comes back as NaN, and so does an
+        out-of-range pixel whose lightness is exactly ``0`` or exactly ``1``, because ``rgb_to_hls``'s ``eps``
+        underflows there. Tracked in
+        `#4571 <https://github.com/kornia/kornia/issues/4571>`_.
 
     Examples:
         >>> inputs = torch.rand(2, 3, 4, 4)
@@ -60,7 +95,7 @@ class RandomSnow(IntensityAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         KORNIA_CHECK(all(0 <= el <= 1 for el in snow_coefficient), "Snow coefficient values must be between 0 and 1.")
-        KORNIA_CHECK(all(1 <= el for el in brightness), "Brightness values must be greater than 1.")
+        KORNIA_CHECK(all(1 <= el for el in brightness), "Brightness values must be 1 or greater.")
 
         self._param_generator = rg.PlainUniformGenerator(
             (snow_coefficient, "snow_coefficient", 0.5, (0.0, 1.0)), (brightness, "brightness", None, None)
