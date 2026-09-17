@@ -183,7 +183,7 @@ class TestRgbToHls(BaseTester):
             (0.1, [2.617993877991494, 0.35, 0.375]),
         ],
     )
-    def test_eps_sweep_uses_both_safe_denominators(self, device, dtype, eps, expected):
+    def test_eps_is_added_to_both_nonzero_denominators(self, device, dtype, eps, expected):
         image = torch.tensor([[[[0.2]], [[0.5]], [[0.4]]]], device=device, dtype=dtype)
         actual = kornia.color.rgb_to_hls(image, eps=eps)
         self.assert_close(actual, image.new_tensor(expected).reshape(1, 3, 1, 1))

@@ -35,7 +35,9 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
 
     Args:
         image: RGB image to be converted to HLS with shape :math:`(*, 3, H, W)`.
-        eps: epsilon value to avoid div by zero.
+        eps: bias added to the chroma and lightness denominators before dividing. The zero
+            denominators themselves are handled by a safe-substitution guard, so ``eps`` is not
+            what keeps the result finite and ``eps=0`` is well defined.
 
     Returns:
         HLS version of the image with shape :math:`(*, 3, H, W)`.
