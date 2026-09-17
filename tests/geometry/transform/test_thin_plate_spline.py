@@ -69,6 +69,8 @@ class TestTransformParameters(BaseTester):
 
     @pytest.mark.parametrize("grad_dtype", [torch.float32, torch.float64])
     def test_kernel_distance_zero_gradient(self, device, grad_dtype):
+        if device.type == "mps" and grad_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         squared_distances = torch.tensor([0.0, 1.0], device=device, dtype=grad_dtype, requires_grad=True)
         grad = torch.autograd.grad(_kernel_distance(squared_distances).sum(), squared_distances)[0]
         assert torch.isfinite(grad).all()
