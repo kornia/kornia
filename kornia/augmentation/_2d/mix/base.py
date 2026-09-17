@@ -226,7 +226,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             in_tensor: torch.Tensor = input[in_tensor_idx]
             in_tensor = self.transform_tensor(in_tensor)
             self._params = self.forward_parameters(in_tensor.shape)
-            self._params.update({"dtype": torch.tensor(DType.get(in_tensor.dtype).value)})
+            self._params.update({"dtype": torch.full((), DType.get(in_tensor.dtype).value, dtype=torch.long)})
         else:
             self._params = params
 

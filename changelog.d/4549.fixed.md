@@ -1,0 +1,1 @@
+Calling `transform_boxes` directly on a 2D intensity augmentation returns the boxes unchanged instead of raising `NotImplementedError`: `IntensityAugmentationBase2D` now defines its box pass-through handlers under the names the dispatcher calls.

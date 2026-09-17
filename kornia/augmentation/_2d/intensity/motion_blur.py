@@ -30,6 +30,8 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomMotionBlur.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         p: probability of applying the transformation.
         kernel_size: motion kernel size (odd and positive).
@@ -52,6 +54,36 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Convention:
+        - a positive ``angle`` turns the blur line counter-clockwise as the image is displayed, as in
+          :func:`kornia.filters.motion_blur` and :func:`kornia.filters.get_motion_kernel2d`.
+        - ``direction`` re-weights the kernel along that line before it is rotated: ``0`` spreads the weight evenly, and
+          ``-1`` and ``+1`` pile it at opposite ends. The rotation then resamples the kernel with ``resample``:
+          ``"nearest"`` can drop or duplicate taps, so the line's length and end weights change with ``angle``, and
+          ``"bilinear"`` or ``"bicubic"`` also spread weight off the line. The ends belong to the rotated line, so which
+          side of the image they fall on turns with ``angle`` and is not read off the image axes.
+        - the defaults ``border_type="constant"`` and ``resample="nearest"`` are the function's own defaults.
+        - ``kernel_size`` is drawn once per sample into ``_params["ksize_factor"]``, and the whole batch is
+          then blurred with the single entry at ``_params["idx"]``, an index drawn uniformly over the batch.
+          The draw truncates a float, so the range's upper bound is practically never reached -- only when
+          the ``float32`` draw rounds onto it, about once in ``2**24`` -- and ``kernel_size=(3, 5)`` is a
+          constant ``3`` while ``(3, 7)`` draws only ``3`` and ``5``. An even bound is separately rounded
+          **up** out of the requested range, so ``(4, 4)`` draws ``5``. Tracked in
+          `#4599 <https://github.com/kornia/kornia/issues/4599>`_.
+        - the output is not clamped. At the default ``border_type="constant"`` the padding is zeros, so a
+          border pixel is blended with ``0`` and pulled toward it: below the input's own minimum for a
+          positive image, and above its maximum for a negative one. With
+          ``border_type="reflect"`` the result stays between the input's extremes, up to rounding, at
+          ``resample="nearest"`` or ``"bilinear"``; a ``"bicubic"`` rotation gives the kernel negative weights,
+          and the result can overshoot both extremes.
+        - an image smaller than the kernel is accepted, down to ``1 x 1``, at ``border_type="constant"``
+          and ``"replicate"``. ``"reflect"`` raises once a spatial axis is no longer than half the kernel
+          size along it, as the two padding blurs do, and ``"circular"`` raises a padding error of its own once the
+          kernel radius exceeds a spatial axis. Both are raw torch errors of the kind
+          `#4559 <https://github.com/kornia/kornia/issues/4559>`_ tracks, although that issue is scoped to the
+          three classes that raise at their *defaults* and names this one as accepting the same images --
+          which it does, at the default ``border_type="constant"``.
 
     Note:
         Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
@@ -102,7 +134,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         params = super().generate_parameters(batch_shape)
-        params["idx"] = torch.tensor([0]) if batch_shape[0] == 0 else torch.randint(batch_shape[0], (1,))
+        params["idx"] = torch.zeros(1, dtype=torch.long) if batch_shape[0] == 0 else torch.randint(batch_shape[0], (1,))
         return params
 
     def apply_transform(

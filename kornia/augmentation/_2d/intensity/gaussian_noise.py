@@ -28,6 +28,8 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomGaussianNoise.png
 
+    See the Convention block on :class:`~kornia.augmentation.IntensityAugmentationBase2D`.
+
     Args:
         mean: The mean of the gaussian distribution.
         std: The standard deviation of the gaussian distribution.
@@ -35,6 +37,15 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
+    Convention:
+        - the noise is additive and recorded in full: the output is the input plus
+          ``_params["gaussian_noise"]``, a tensor with the original normalized ``(B, C, H, W)`` input shape,
+          so ``mean`` offsets the image rather than naming the mean the output should have. A
+          ``(C, H, W)`` input remains batched in the stored parameters even when ``keepdim=True``. With
+          ``same_on_batch=True``, the stored field has shape ``(1, C, H, W)`` and is expanded across the
+          input batch during application.
+        - nothing is clamped, so an input already inside ``[0, 1]`` can leave it in either direction.
 
     Examples:
         >>> rng = torch.manual_seed(0)

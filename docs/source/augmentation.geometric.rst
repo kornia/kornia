@@ -23,6 +23,7 @@ and mask values without moving coordinates. See
 .. autoclass:: RandomRotation
 .. autoclass:: RandomShear
 .. autoclass:: RandomThinPlateSpline
+.. autoclass:: RandomTranslate
 .. autoclass:: RandomVerticalFlip
 
 Resize

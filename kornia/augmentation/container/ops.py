@@ -150,8 +150,7 @@ class AugmentationSequentialOps:
             if isinstance(self.data_keys, list):
                 return self.data_keys
             raise ValueError("nn.Sequential ops needs data keys to be able to process.")
-        else:
-            return [DataKey.get(inp) for inp in data_keys]
+        return [DataKey.get(inp) for inp in data_keys]
 
     def _get_op(self, data_key: DataKey) -> Type[SequentialOpsInterface[Any]]:
         """Return the corresponding operation given a data key."""
@@ -427,6 +426,12 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         elif isinstance(module, K.RandomTransplantation):
             input = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.MASK], **extra_args)
 
+        elif isinstance(module, K.MixAugmentationBaseV2):
+            # Dispatch to the mix child's own mask handler. Unsupported children
+            # raise NotImplementedError from apply_transform_mask (matching a
+            # direct call) instead of silently returning the mask unchanged.
+            input = module.transform_mask(input, cls.get_instance_module_param(param), module.flags)
+
         elif isinstance(module, (_AugmentationBase)):
             input = module.transform_masks(
                 input, params=cls.get_instance_module_param(param), flags=module.flags, **extra_args
@@ -587,6 +592,12 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
                 "The support for 3d box operations are not yet supported. You are welcome to file a PR in our repo."
             )
 
+        elif isinstance(module, K.MixAugmentationBaseV2):
+            # Dispatch to the mix child's own box handler (e.g. RandomMosaic).
+            # Unsupported children raise NotImplementedError from
+            # apply_transform_boxes, matching a direct call.
+            _input = module.transform_boxes(_input, cls.get_instance_module_param(param), module.flags)
+
         elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             _input = module.transform_boxes(
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
@@ -684,6 +695,13 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
                 "The support for 3d keypoint operations are not yet supported. "
                 "You are welcome to file a PR in our repo."
             )
+
+        elif isinstance(module, K.MixAugmentationBaseV2):
+            # Dispatch to the mix child's own keypoint handler. Unsupported
+            # children raise NotImplementedError from apply_transform_keypoint
+            # (matching a direct call) instead of silently returning keypoints.
+            out = module.transform_keypoint(_input.data, cls.get_instance_module_param(param), module.flags)
+            _input = Keypoints(out, raise_if_not_floating_point=False)
 
         elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             _input = module.transform_keypoints(

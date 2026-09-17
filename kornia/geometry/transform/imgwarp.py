@@ -223,6 +223,9 @@ def warp_perspective(
         \right )
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for transform direction, pixel centres,
+        normalized coordinates and ``align_corners`` sampling rules.
+
         - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
         - ``M`` is the source→destination **pixel** homography :math:`(B, 3, 3)`
           (contrast :func:`homography_warp`, which by default consumes destination→source normalized)
@@ -288,7 +291,9 @@ def warp_perspective(
         )
 
     # we F.normalize the 3x3 transformation matrix and convert to 3x4
-    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M, (H, W), (h_out, w_out))  # Bx3x3
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
+        M, (H, W), (h_out, w_out), align_corners=align_corners
+    )  # Bx3x3
 
     # Closed-form 3x3 inverse (pure arithmetic) instead of ``torch.linalg.inv``: numerically
     # equivalent for these well-conditioned transforms, and it runs where the LAPACK/cusolver
@@ -298,7 +303,9 @@ def warp_perspective(
 
     # Substitutes F.affine_grid (which only handles the affine 2x3 case) by applying the full 3x3
     # projective transform to every grid point directly.
-    grid = create_meshgrid(h_out, w_out, normalized_coordinates=True, device=src.device).to(src.dtype)
+    grid = create_meshgrid(
+        h_out, w_out, normalized_coordinates=True, device=src.device, align_corners=align_corners
+    ).to(src.dtype)
     if torch.jit.is_tracing():
         # Under tracing/ONNX use the reference transform_points path (its op set exports cleanly).
         grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid.expand(B, h_out, w_out, 2))
@@ -341,6 +348,9 @@ def warp_affine(
     where :math:`M^{-1}` is the inverse of the :math:`3 \times 3` homogeneous extension of ``M``.
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for transform direction, pixel centres,
+        normalized coordinates and ``align_corners`` sampling rules.
+
         - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
         - ``M`` is the source→destination **pixel** affine matrix :math:`(B, 2, 3)`
         - coordinates: ``(x, y)``, pixel centers, origin at top-left
@@ -407,7 +417,7 @@ def warp_affine(
         )
 
     M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
-    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M_3x3, (H, W), dsize)
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M_3x3, (H, W), dsize, align_corners=align_corners)
 
     # Closed-form 3x3 inverse (see warp_perspective) — cusolver-free, so affine warps run on the
     # Jetson wheel where ``torch.linalg.inv`` dlopen-fails.
@@ -1691,6 +1701,9 @@ def homography_warp(
     See :class:`~kornia.geometry.transform.HomographyWarper` for details.
 
     Convention:
+        See :doc:`Conventions & Pitfalls </get-started/conventions>` for homography direction, normalized
+        coordinates and ``align_corners`` sampling rules.
+
         - input: :math:`(N, C, H, W)`
         - ``src_homo_dst`` is the destination→source homography :math:`(N, 3, 3)`, in normalized
           :math:`[-1, 1]` coordinates by default (``normalized_coordinates=True``), when
@@ -1745,7 +1758,12 @@ def homography_warp(
     if normalized_homography:
         height, width = dsize
         grid = create_meshgrid(
-            height, width, normalized_coordinates=normalized_coordinates, device=patch_src.device, dtype=patch_src.dtype
+            height,
+            width,
+            normalized_coordinates=normalized_coordinates,
+            device=patch_src.device,
+            dtype=patch_src.dtype,
+            align_corners=align_corners,
         )
         warped_grid = warp_grid(grid, src_homo_dst)
 

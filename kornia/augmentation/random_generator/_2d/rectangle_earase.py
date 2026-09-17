@@ -26,6 +26,7 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _joint_range_check,
 )
+from kornia.augmentation.utils.helpers import _constant_tensor
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["RectangleEraseGenerator"]
@@ -90,9 +91,10 @@ class RectangleEraseGenerator(RandomGeneratorBase):
             )
         else:
             self.ratio_sampler = UniformDistribution(ratio[0], ratio[1], validate_args=False)
+        position_sampler_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
         self.uniform_sampler = UniformDistribution(
-            torch.tensor(0, device=device, dtype=dtype),
-            torch.tensor(1, device=device, dtype=dtype),
+            torch.tensor(0, device=device, dtype=position_sampler_dtype),
+            torch.tensor(1, device=device, dtype=position_sampler_dtype),
             validate_args=False,
         )
 
@@ -127,34 +129,58 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         aspect_ratios = aspect_ratios.to(device=_device, dtype=_dtype)
 
         # based on target areas and aspect ratios, rectangle params are computed
-        heights = torch.min(
-            torch.max(
-                torch.round((target_areas * aspect_ratios) ** (1 / 2)), torch.tensor(1.0, device=_device, dtype=_dtype)
-            ),
-            torch.tensor(height, device=_device, dtype=_dtype),
-        )
+        heights = torch.round((target_areas * aspect_ratios) ** (1 / 2)).clamp(1.0, height)
+        widths = torch.round((target_areas / aspect_ratios) ** (1 / 2)).clamp(1.0, width)
 
-        widths = torch.min(
-            torch.max(
-                torch.round((target_areas / aspect_ratios) ** (1 / 2)), torch.tensor(1.0, device=_device, dtype=_dtype)
-            ),
-            torch.tensor(width, device=_device, dtype=_dtype),
-        )
-
+        position_dtype = torch.promote_types(self.uniform_sampler.low.dtype, _dtype)
+        if position_dtype in (torch.float16, torch.bfloat16):
+            position_dtype = torch.float32
         xs_ratio = _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
+            device=_device, dtype=position_dtype
         )
         ys_ratio = _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
+            device=_device, dtype=position_dtype
         )
 
-        xs = xs_ratio * (width - widths + 1)
-        ys = ys_ratio * (height - heights + 1)
+        xs = xs_ratio * (width - widths.to(dtype=position_dtype) + 1)
+        ys = ys_ratio * (height - heights.to(dtype=position_dtype) + 1)
+
+        def _cast_position(position: torch.Tensor, size: torch.Tensor, limit: int) -> torch.Tensor:
+            floored = position.floor()
+            output = floored.to(device=_device, dtype=_dtype)
+            if _dtype not in (torch.float16, torch.bfloat16):
+                return output
+
+            max_start = (
+                _constant_tensor(limit, device=_device, dtype=position_dtype)
+                - size.to(device=_device, dtype=position_dtype)
+            ).floor()
+            # Coordinates are nonnegative integers. Deliberately round the bound down
+            # to the output format's local representable integer grid.
+            max_start = torch.minimum(
+                max_start,
+                _constant_tensor(torch.finfo(_dtype).max, device=_device, dtype=position_dtype),
+            )
+            max_start = torch.clamp(max_start, min=0)
+            mantissa_bits = 10 if _dtype == torch.float16 else 7
+            clamped_start = torch.clamp(max_start, min=1)
+            exponent = torch.floor(torch.log2(clamped_start))
+            power = torch.pow(
+                _constant_tensor(2.0, device=_device, dtype=position_dtype),
+                exponent,
+            )
+            exponent = torch.where(power > clamped_start, exponent - 1, exponent)
+            quantum = torch.pow(
+                _constant_tensor(2.0, device=_device, dtype=position_dtype),
+                torch.clamp(exponent - mantissa_bits, min=0),
+            )
+            max_start_output = (torch.floor(max_start / quantum) * quantum).to(device=_device, dtype=_dtype).detach()
+            return torch.minimum(torch.maximum(output, torch.zeros_like(output)), max_start_output)
 
         return {
             "widths": widths.floor(),
             "heights": heights.floor(),
-            "xs": xs.floor(),
-            "ys": ys.floor(),
-            "values": torch.tensor([self.value] * batch_size, device=_device, dtype=_dtype),
+            "xs": _cast_position(xs, widths, width),
+            "ys": _cast_position(ys, heights, height),
+            "values": torch.full((batch_size,), self.value, device=_device, dtype=_dtype),
         }

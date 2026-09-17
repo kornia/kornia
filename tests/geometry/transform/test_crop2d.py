@@ -49,7 +49,17 @@ class TestCropAndResize(BaseTester):
         )
 
         height, width = 2, 3
-        expected = torch.tensor([[[[6.7222, 7.1667, 7.6111], [9.3889, 9.8333, 10.2778]]]], device=device, dtype=dtype)
+        # The box corners are pixel coordinates, so they pin the sampling geometry regardless of
+        # align_corners: the box spans src x, y in [1, 2] and the 2x3 output samples pixel centers
+        # at x = 1, 1.5, 2 and y = 1, 2 -- the same values the align_corners=True case produces.
+        # Snippet used to generate expected (identical to the call under test):
+        #   inp = torch.arange(1.0, 17.0).view(1, 1, 4, 4)
+        #   boxes = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]])
+        #   expected = kornia.geometry.transform.crop_and_resize(inp, boxes, (2, 3), align_corners=False)
+        # Pre-#3945 literal from the same snippet (the #3650 correction matrix reparametrized the
+        # crop for a grid convention warp_perspective did not actually use):
+        #   [[[[6.7222, 7.1667, 7.6111], [9.3889, 9.8333, 10.2778]]]]
+        expected = torch.tensor([[[[6.0, 6.5, 7.0], [10.0, 10.5, 11.0]]]], device=device, dtype=dtype)
 
         boxes = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
 
@@ -266,10 +276,13 @@ class TestCenterCrop(BaseTester):
         expected = op(img, (4, 2))
         self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
-    def test_convention_align_corners_ignored_under_slice_mode(self, device, dtype):
+    def test_convention_align_corners_ignored_for_an_in_bounds_crop(self, device, dtype):
         # CenterCrop2D's align_corners constructor arg has NO effect under the default
-        # cropping_mode='slice' (pure integer-index slicing, no resampling); it only changes the
-        # output under cropping_mode='resample'.
+        # cropping_mode='slice' (pure integer-index slicing, no resampling). Under
+        # cropping_mode='resample' it also has no effect for a crop that samples strictly
+        # in bounds: the crop box is specified in pixel coordinates, so both align_corners
+        # conventions must resolve it to the same pixel centers (#3904). align_corners still
+        # selects grid_sample's convention, which shows up only in out-of-bounds handling.
         inp = torch.arange(0.0, 16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
 
         out_slice_true = kornia.geometry.transform.CenterCrop2D((2, 2), align_corners=True, cropping_mode="slice")(inp)
@@ -284,7 +297,12 @@ class TestCenterCrop(BaseTester):
         out_resample_false = kornia.geometry.transform.CenterCrop2D(
             (2, 2), align_corners=False, cropping_mode="resample"
         )(inp)
-        assert not torch.allclose(out_resample_true, out_resample_false, atol=1e-2, rtol=1e-2)
+        # dtype-aware default rather than a fixed 1e-4: align_corners=True normalizes by 2 / (size - 1),
+        # which is 2/3 for this 4x4 input and so is not exactly representable at half precision, leaving
+        # the True result a fraction of a pixel off the exact slice that the False result hits exactly
+        self.assert_close(out_resample_true, out_resample_false)
+        # and both agree with the plain integer-index slice of the same region
+        self.assert_close(out_resample_false, inp[:, :, 1:3, 1:3], atol=1e-4, rtol=1e-4)
 
 
 class TestCropByBoxes(BaseTester):
@@ -361,6 +379,40 @@ class TestCropByTransform(BaseTester):
 
         patches = kornia.geometry.transform.crop_by_transform_mat(inp, transform, (2, 3))
         self.assert_close(patches, expected, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("out_size", [(1, 3), (3, 1), (1, 1)])
+    def test_convention_one_pixel_output(self, device, dtype, align_corners, out_size):
+        # A 1-pixel output dimension must behave like any other size under both conventions
+        # (#3929). The (B, 3, 3) path used to return all-NaN at align_corners=True (fixed by
+        # #4006's singleton-axis mapping) and, at align_corners=False, to silently fall back to
+        # warp_affine through a correction matrix built for the wrong grid convention, which
+        # gave these pre-fix values on the same input:
+        #   (1, 3): [4.6111, 5.5000, 5.9815]   (3, 1): [5.9444, 9.5000, 12.1204]   (1, 1): [4.1667]
+        # Snippet used to generate expected (pure slicing, no resampling involved):
+        #   inp = torch.arange(16.0).view(1, 1, 4, 4); h, w = out_size
+        #   expected = inp[:, :, 1 : 1 + h, 1 : 1 + w]
+        inp = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        h, w = out_size
+        expected = inp[:, :, 1 : 1 + h, 1 : 1 + w]
+
+        # translate by (-1, -1): destination pixel (0, 0) reads source pixel (1, 1)
+        transform = torch.tensor(
+            [[[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )  # 1x3x3
+
+        homogeneous = kornia.geometry.transform.crop_by_transform_mat(
+            inp, transform, out_size, align_corners=align_corners
+        )
+        affine = kornia.geometry.transform.crop_by_transform_mat(
+            inp, transform[:, :2], out_size, align_corners=align_corners
+        )
+
+        assert not homogeneous.isnan().any()
+        # the (B, 3, 3) and (B, 2, 3) forms must agree exactly, which is the subject here; matching the
+        # exact slice takes the dtype-aware default, since align_corners=True normalizes by 2 / (size - 1)
+        self.assert_close(homogeneous, affine, rtol=1e-4, atol=1e-4)
+        self.assert_close(homogeneous, expected)
 
     def test_gradcheck(self, device):
         inp = torch.randn((1, 1, 3, 3), device=device, dtype=torch.float64)

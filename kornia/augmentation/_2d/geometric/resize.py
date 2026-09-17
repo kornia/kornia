@@ -41,6 +41,23 @@ class Resize(GeometricAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
 
+    Convention:
+        See :class:`~kornia.augmentation.AugmentationBase2D` for input, dtype, probability, and replay,
+        :class:`~kornia.augmentation.RigidAffineAugmentationBase2D` for transformation matrices, and
+        :class:`~kornia.augmentation.GeometricAugmentationBase2D` for inverse behavior.
+        A tuple ``size`` is the exact ``(height, width)`` output.
+        With an integer, ``side`` selects which input side is set to that value while preserving aspect ratio:
+        ``"short"`` (the default) selects the shortest side, ``"long"`` the longest, ``"vert"`` the height, and
+        ``"horz"`` the width. The derived side is truncated toward zero; if it becomes zero, the resize raises
+        ``AssertionError`` (for example, ``Resize(4, side="long")`` or ``LongestMaxSize(4)`` on a 1-by-10 image).
+        This class uses
+        :func:`kornia.geometry.transform.resize`; ``align_corners`` is forwarded for bilinear and bicubic sampling,
+        and ``antialias`` affects downscaling only. The operation has a fixed, whole-batch resize whenever it is
+        selected.
+
+        :meth:`inverse` resamples to the prior canvas with zero padding through ``crop_by_transform_mat``. It
+        restores the shape but cannot recover values discarded by a resize.
+
     """
 
     def __init__(
@@ -137,6 +154,12 @@ class LongestMaxSize(Resize):
     Args:
         max_size: maximum size of the image after the transformation.
 
+    Convention:
+        See :class:`Resize` for the common resize conventions. This behaves like
+        ``Resize(max_size, side="long", antialias=False, keepdim=False)``; ``antialias`` and ``keepdim``
+        are not accepted constructor arguments. Its longest output side equals ``max_size`` and the other
+        side is truncated while preserving aspect ratio.
+
     """
 
     def __init__(
@@ -155,6 +178,12 @@ class SmallestMaxSize(Resize):
 
     Args:
         max_size: maximum size of the image after the transformation.
+
+    Convention:
+        See :class:`Resize` for the common resize conventions. This behaves like
+        ``Resize(max_size, side="short", antialias=False, keepdim=False)``; ``antialias`` and ``keepdim``
+        are not accepted constructor arguments. Its shortest output side equals ``max_size`` and the other
+        side is truncated while preserving aspect ratio.
 
     """
 
