@@ -59,15 +59,14 @@ class RandomRain(IntensityAugmentationBase2D):
           ``1``, raises on the forward pass, where the image shape is known -- constructing it succeeds.
         - a drop's start is uniform over every position that keeps the whole drop inside the image, so every
           row and column, the last ones included, can be painted.
-        - the drawn sizes and drop count are float draws truncated toward zero, so unless the range is a single
-          point, a positive upper bound is practically never drawn: the default ``drop_height=(5, 20)`` gives
-          heights of ``5`` to ``19`` (an image shorter than 20 pixels raises on some seeds, and on every seed when
-          it is 5 pixels tall or shorter). A negative ``drop_width`` bound rounds toward zero instead: a negative
-          lower bound is practically never drawn while a non-positive upper bound is, and a range from ``-1`` or
-          below to ``1`` or above draws ``0`` twice as often as any other value -- or practically always at
-          ``(-1, 1)`` exactly, where only an exact ``-1.0`` draw, one ``float32`` value in ``2**24``, escapes
-          the truncation to ``0``. Tracked in `#4567
-          <https://github.com/kornia/kornia/issues/4567>`_.
+        - the three integer ranges are closed and uniform: every integer from the lower to the upper bound
+          is drawn with the same probability, so the default ``drop_height=(5, 20)`` reaches ``20``, the
+          default ``drop_width=(-5, 5)`` reaches ``-5`` and ``5``, and ``0`` carries no more weight than
+          any other width. Both upper bounds are live against the size rule above, which they were not
+          when they were practically never drawn: with the defaults an image 20 pixels tall, or 5 pixels
+          wide, now raises on some seeds -- and on every seed once it is 5 pixels tall or shorter, where
+          no drawable height is legal. A range that is reversed, fractional or non-finite raises
+          ``ValueError`` at construction.
         - ``same_on_batch=True`` gives every sample of the batch the same drop count, the same drop size and
           the same coordinates; left at ``False`` each sample draws its own.
 
@@ -78,7 +77,7 @@ class RandomRain(IntensityAugmentationBase2D):
         >>> rain(input)
         tensor([[[[0.4963, 0.7843, 0.0885, 0.1320, 0.3074],
                   [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
-                  [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
+                  [0.3489, 0.4017, 0.7843, 0.1689, 0.2939],
                   [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
                   [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
 

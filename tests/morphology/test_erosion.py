@@ -154,3 +154,18 @@ class TestErode(BaseTester):
         expected = op(tensor, kernel)
 
         assert_close(actual, expected)
+
+    def test_convolution_engine_dtype_mismatch(self, device, dtype):
+        # engine="convolution" used to crash when tensor.dtype != kernel.dtype, because the
+        # conv weight/bias were built from kernel.dtype instead of the input's dtype. See #4541.
+        # Passing a mismatched kernel must match casting the kernel to the input dtype up front;
+        # that is the same computation, so the results are bitwise equal (no tolerance needed).
+        other_dtype = torch.float16 if dtype == torch.float32 else torch.float32
+
+        tensor = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=other_dtype)
+
+        result = erosion(tensor, kernel, engine="convolution")
+
+        assert result.dtype == dtype
+        self.assert_close(result, erosion(tensor, kernel.to(dtype), engine="convolution"))
