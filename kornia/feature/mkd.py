@@ -385,7 +385,7 @@ class ExplicitSpacialEncoding(nn.Module):
         """
         if not isinstance(x, torch.Tensor):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
-        if not ((len(x.shape) == 4) | (x.shape[1] == self.in_dims)):
+        if not ((len(x.shape) == 4) and (x.shape[1] == self.in_dims)):
             raise ValueError(f"Invalid input shape, we expect Bx{self.in_dims}xHxW. Got: {x.shape}")
         # output[b, c * d_emb + e] = sum_hw x[b, c, h, w] * emb[e, h, w]: every (c, e)
         # pair in the row-major order of get_kron_order, which `emb2` / `idx1` spell as a
