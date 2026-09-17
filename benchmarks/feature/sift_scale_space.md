@@ -1,106 +1,119 @@
-# Dedicated scale-space SIFT on Oxford graf
+# Specialized top-K scale-space SIFT on Oxford graf
 
-`SIFTFeatureScaleSpace(descriptor_backend="pyramid")` remains a sparse local
-feature pipeline. It uses the same DoG detector, feature budget, masks, responses,
-and frame centres as the default patch path. It retains the detector's actual
-Gaussian pyramid and octave/layer provenance through feature selection. The
-nearest refined Gaussian layer supplies gradients; the continuously refined scale
-sets the integration support. No descriptor-owned pyramid is built.
+`SIFTFeatureScaleSpace(descriptor_backend="pyramid")` is a sparse local feature
+pipeline with a dedicated SIFT detector and descriptor. It ranks valid strict DoG
+extrema by absolute refined response and retains the top K: **no contrast
+threshold and no edge rejection**, including during candidate generation. Masks
+and zero padding preserve the requested output budget. The default patch path
+still uses the generic detector and is unchanged.
 
-Gradients are computed once per used Gaussian layer and sampled directly for
-orientation and description. Used layers are batched into a gradient atlas per
-octave, with sampling clamped within each layer to prevent boundary leakage.
-Equivalent dense angular weights and matrix multiplication accumulate descriptor
-votes, reducing GPU scatter overhead. The SIFT-specific implementation uses a 36-bin
-orientation histogram, a 4×4×8 descriptor, Gaussian weighting, trilinear spatial
-and angular voting, clipping, and RootSIFT normalization. Orientation support is
-4.5 sigma with a 1.5-sigma Gaussian; descriptor cell width is 3 sigma with a
-6-sigma Gaussian. These constants follow
+The optimized path builds one six-level Gaussian pyramid with three intervals per
+octave, cached separable kernels, precise image doubling, and integer octave
+decimation. Strict spatial NMS on the three searchable layers precedes sparse
+cross-scale comparisons and iterative 3-D quadratic refinement. This avoids
+refining the full response volume. Converged integer layers and continuously
+refined scales survive top-K selection and supply descriptor provenance and
+support sizes respectively. No descriptor-owned pyramid is built.
+
+Gradients are computed once per used Gaussian layer and shared by orientation and
+description. Used layers form an atlas per octave, with sampling clamped inside
+each layer. A 36-bin orientation histogram and 4×4×8 descriptor use Gaussian
+weights, rotated spatial sampling, trilinear voting, clipping, and RootSIFT.
+Orientation support is 4.5 sigma with a 1.5-sigma Gaussian; descriptor cell width
+is 3 sigma with a 6-sigma Gaussian, following
 [OpenCV SIFT](https://github.com/opencv/opencv/blob/4.x/modules/features2d/src/sift.simd.hpp).
-Fixed 19×19/41×41 quadrature grids and bilinear gradient sampling differ from
-OpenCV's integer-pixel integration. One dominant orientation is retained per
-feature. The rotated spatial grid and pulled-back gradient directions both account
-for orientation. Magnitude and angle are evaluated after gradient interpolation,
-avoiding interpolation across the angular wraparound. This is distinct from the
-[generic DenseSIFT-histogram backend](dense_sift.md).
+Fixed 19×19/41×41 sampling grids differ from integer-pixel OpenCV integration.
+One dominant orientation is retained per detection. Magnitude and angle are
+computed after gradient interpolation to avoid angular wraparound artifacts.
+This is separate from the [generic DenseSIFT-histogram backend](dense_sift.md).
 
-## Protocol
+## Protocol and reproduction
 
-Original Oxford graf 640×800 PPM images 1–6, Pillow grayscale float32, batch one,
-4,096 requested detections, RootSIFT, no affine adaptation or compilation. CPU uses
-one thread on Apple M1; MPS is explicitly synchronized. CUDA is unavailable.
-The public feature module's entire forward pass is timed, including detection,
-pyramid construction, orientation, and description. Image loading, matching, and
-RANSAC are excluded. Each image has a warmed median and IQR from `time_us`, with
-at least max(1 second, five warm-call durations) of repeated timing.
+Oxford graf 640×800 PPM images 1–6, Pillow grayscale float32, batch one, 4,096
+requested detections, RootSIFT, no affine adaptation or compilation. Apple M1,
+macOS 26.5.1, Python 3.11.14, PyTorch 2.14.0. CPU uses one thread; MPS is explicitly
+synchronized. The entire public feature forward is timed, including detection,
+pyramid construction, orientation, and description. Loading, matching, and RANSAC
+are excluded. Each image uses a warmed median and IQR from `time_us`, with at least
+max(1 second, five warm-call durations) of repeated timing.
 
-All five pairs use SNN ratio 0.8. A correct match has forward ground-truth transfer
-Euclidean error at most 3 px. Homography RANSAC uses seed 3407, 2 px inlier threshold,
+Every pair uses SNN ratio 0.8; correct matches have forward ground-truth transfer
+Euclidean error at most 3 px. Homography RANSAC uses seed 3407, 2 px threshold,
 10 iterations, batch size 8196, confidence 0.9999, and default local refinement.
-Corner error is mean L1 transfer error against the supplied homography over all
-four image corners. MPS extraction/matching uses CPU RANSAC. Large errors are
-retained: consensus count alone does not establish a correct homography.
+Corner error is mean L1 transfer error against ground truth over four corners.
+MPS extraction/matching uses CPU RANSAC. Consensus count alone does not establish
+a correct homography.
 
-The pre-PR baseline is `5be74dc9f`. Both baseline and branch use the same benchmark
-harness, run as a module from the measured checkout with an explicit interpreter
-and an asserted `kornia.__file__`. Raw JSON records versions, machine/load details,
-input and source hashes, feature counts, per-image medians/IQRs, and all quality
-results. The branch retains the default patch path for an additional same-revision
-comparison. Results are algorithm alternatives, not numerically equivalent
-implementations.
-
-## Reproduction
+The before/after comparison measures the previous shared-pyramid implementation
+at `deba6b45d` and the specialized detector at `4a8c7472f`, using the same protocol
+and public API. Each run asserts the imported checkout. Raw JSON contains source
+and input hashes, versions, load metadata, per-image timings, feature counts, and
+quality metrics; it is kept outside the repository as requested.
 
 ```bash
 .venv/bin/python -m benchmarks.feature.sift_scale_space \
-  --seq /path/to/graf --expected-checkout "$PWD" --device cpu \
-  --json /tmp/sift-scale-space-cpu.json
+  --seq /path/to/graf --expected-checkout "$PWD" --methods pyramid \
+  --device cpu --json /tmp/sift-scale-space-cpu.json
 ```
 
-Use `--device mps` for MPS, `--methods patch` in the base checkout, and
-`--quality-only` to skip repeated timing. Copy this harness and `dense_sift.py`
-(the common RANSAC scoring helper) into the base checkout before running.
+Run from each measured checkout with an explicit interpreter. Use `--device mps`
+for MPS, `--methods patch` for the default pipeline, or `--quality-only` to omit
+timing. Both measured revisions already contain the harness.
 
-## Results
+## End-to-end speed
 
-Mean of the six per-image medians, milliseconds per image (lower is better):
+Mean of six per-image medians, milliseconds per image (lower is better):
 
-| Device | Base patch (`5be74dc9f`) | Branch patch | Specialized pyramid | Speedup |
+| Device | Previous shared pyramid | Specialized detector | Speedup |
+| --- | ---: | ---: | ---: |
+| CPU | 1486.40 | 1119.63 | 1.33× |
+| MPS | 648.26 | 586.31 | 1.11× |
+
+Per-image median / IQR in milliseconds; all runs return 4,096 filled features:
+
+| Image | CPU before | CPU after | MPS before | MPS after |
 | --- | ---: | ---: | ---: | ---: |
-| CPU, one thread | 2155.72 | 2159.27 | 1553.24 | 1.39× vs base |
-| MPS | not measured | 679.72 | 767.88 | 0.89× vs branch patch |
+| 1 | 1484.09 / 18.07 | 1106.50 / 3.96 | 649.52 / 14.40 | 597.92 / 13.12 |
+| 2 | 1474.38 / 10.34 | 1109.93 / 8.58 | 661.59 / 10.05 | 579.25 / 22.16 |
+| 3 | 1478.44 / 10.19 | 1120.50 / 6.49 | 651.26 / 8.58 | 594.51 / 11.82 |
+| 4 | 1482.98 / 4.29 | 1123.10 / 13.00 | 648.92 / 18.22 | 573.80 / 15.17 |
+| 5 | 1500.76 / 7.70 | 1124.40 / 3.04 | 633.35 / 12.77 | 585.82 / 15.17 |
+| 6 | 1497.76 / 7.18 | 1133.36 / 1.55 | 644.92 / 3.16 | 586.56 / 8.67 |
 
-The specialized path improves CPU throughput. MPS remains slower than patch
-extraction, despite batching gradients and histogram integration. The opt-in
-backend is not a universal speedup. The base and branch patch paths have identical
-CPU match and RANSAC records.
+## CPU matching and homography recovery
 
-### CPU matching and homography recovery
+| Pair | Before correct / matches | After correct / matches | Before / after precision | Before / after RANSAC inliers | Before / after corner L1 (px) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1-2 | 1706/1919 | 1655/1839 | 88.90% / 89.99% | 1554 / 1563 | 0.88 / 1.26 |
+| 1-3 | 690/1005 | 688/1040 | 68.66% / 66.15% | 617 / 616 | 1.20 / 2.10 |
+| 1-4 | 177/365 | 167/342 | 48.49% / 48.83% | 152 / 140 | 2.13 / 1.73 |
+| 1-5 | 21/148 | 33/174 | 14.19% / 18.97% | 22 / 22 | 482.11 / 3.46 |
+| 1-6 | 3/124 | 3/136 | 2.42% / 2.21% | 12 / 9 | 4605.24 / 396.75 |
 
-| Pair | Patch correct / matches | Pyramid correct / matches | Patch precision | Pyramid precision | Patch / pyramid RANSAC inliers | Patch / pyramid corner L1 (px) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1-2 | 1467/1651 | 1706/1919 | 88.86% | 88.90% | 1340 / 1554 | 0.98 / 0.88 |
-| 1-3 | 481/706 | 690/1005 | 68.13% | 68.66% | 420 / 617 | 1.58 / 1.20 |
-| 1-4 | 118/223 | 177/365 | 52.91% | 48.49% | 92 / 152 | 1.87 / 2.13 |
-| 1-5 | 12/101 | 21/148 | 11.88% | 14.19% | 18 / 22 | 472.69 / 482.11 |
-| 1-6 | 1/61 | 3/124 | 1.64% | 2.42% | 12 / 12 | 617.19 / 4605.24 |
+## MPS matching and homography recovery
 
-More correct matches do not guarantee higher precision or successful geometry.
-The specialized path has lower precision on 1–4; both paths fail homography
-recovery on the hardest viewpoint pairs 1–5 and 1–6. The large corner errors are
-part of the result and are not removed from the comparison. Graf was used during
-development, so these are not held-out quality results.
+| Pair | Before correct / matches | After correct / matches | Before / after precision | Before / after RANSAC inliers | Before / after corner L1 (px) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1-2 | 1706/1919 | 1655/1839 | 88.90% / 89.99% | 1555 / 1563 | 0.88 / 1.26 |
+| 1-3 | 690/1005 | 688/1040 | 68.66% / 66.15% | 617 / 616 | 1.20 / 2.10 |
+| 1-4 | 178/366 | 167/342 | 48.63% / 48.83% | 149 / 140 | 3.15 / 1.73 |
+| 1-5 | 22/149 | 33/174 | 14.77% / 18.97% | 21 / 22 | 472.96 / 3.46 |
+| 1-6 | 3/124 | 3/136 | 2.42% / 2.21% | 12 / 9 | 4605.24 / 396.75 |
 
-### MPS matching and homography recovery
+On CPU, the new detector recovers graf 1–5 at 3.46 px corner error versus
+482.11 px before, while 1–6 still fails. CPU precision improves on 1–2, 1–4,
+and 1–5, but falls on 1–3 and 1–6; correct-match counts decrease on 1–2 through
+1–4. The detector changes keypoints and is not numerically equivalent to the
+previous generic detector. Graf was used during development and
+is not a held-out quality evaluation. Failed homographies remain in the tables.
 
-| Pair | Patch correct / matches | Pyramid correct / matches | Patch precision | Pyramid precision | Patch / pyramid RANSAC inliers | Patch / pyramid corner L1 (px) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1-2 | 1467/1650 | 1706/1919 | 88.91% | 88.90% | 1355 / 1555 | 1.30 / 0.88 |
-| 1-3 | 481/706 | 690/1005 | 68.13% | 68.66% | 420 / 617 | 1.58 / 1.20 |
-| 1-4 | 119/224 | 178/366 | 53.12% | 48.63% | 94 / 149 | 3.44 / 3.15 |
-| 1-5 | 12/101 | 22/149 | 11.88% | 14.77% | 18 / 21 | 472.69 / 472.96 |
-| 1-6 | 1/61 | 3/124 | 1.64% | 2.42% | 12 / 12 | 617.19 / 4605.24 |
+For context, the earlier pre-PR patch baseline (`5be74dc9f`) measured 2155.72 ms on
+CPU; same-revision patch extraction before this detector change measured
+2159.27 ms on CPU and 679.72 ms on MPS. These older measurements are not the fresh
+before/after comparison above. Patch CPU correct-match counts for pairs 1–2
+through 1–6 were 1467, 481, 118, 12, 1, with corner errors 0.98, 1.58, 1.87,
+472.69, 617.19 px respectively. The patch implementation remains unchanged.
 
-Raw JSON measurements are kept outside the repository; use the reproduction command to generate them.
-
-Measured code revision: `8c55c89b6` (CPU) and `8c55c89b6-dirty` (MPS); source SHA-256 records distinguish any documentation-only working-tree changes. CUDA and older supported PyTorch versions were not tested.
+CUDA, older supported PyTorch versions, and whole-pipeline compilation were not
+validated. The sparse descriptor head executes eagerly; optional compilation
+covers the specialized pyramid and/or sparse refinement only.
