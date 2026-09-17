@@ -338,3 +338,22 @@ class TestEqualization(BaseTester):
         out = enhance.equalize_clahe(img, clip_limit, grid_size, slow_and_differentiable)
         out_t = enhance.equalize_clahe(img.transpose(-2, -1), clip_limit, grid_size[::-1], slow_and_differentiable)
         self.assert_close(out_t, out.transpose(-2, -1))
+
+    def test_clahe_transpose_equivariance_4632(self):
+        torch.manual_seed(28)
+        img = torch.rand(1, 1, 12, 12, dtype=torch.float32)
+
+        output = enhance.equalize_clahe(
+            img,
+            clip_limit=40.0,
+            grid_size=(2, 2),
+            slow_and_differentiable=True,
+        )
+        output_transposed = enhance.equalize_clahe(
+            img.transpose(-2, -1),
+            clip_limit=40.0,
+            grid_size=(2, 2),
+            slow_and_differentiable=True,
+        ).transpose(-2, -1)
+
+        self.assert_close(output, output_transposed, low_tolerance=True)
