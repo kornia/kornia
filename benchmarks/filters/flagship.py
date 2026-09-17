@@ -43,6 +43,10 @@ domains differ, so that row compares regimes, not identical outputs. kornia's ca
 grayscale internally per its definition; the OpenCV canny loop therefore includes ``cv2.cvtColor``
 (sobel runs per-channel in both). Throughput is img/s.
 
+The ``box_blur`` row explicitly uses ``separable=False`` to preserve its historical baseline.
+The additional ``box_blur_separable`` row measures ``box_blur(..., separable=True)`` (the default)
+with the same 5x5 kernel and input; the other libraries' baselines appear in ``box_blur``.
+
 Usage:
     python benchmarks/filters/flagship.py --batches 1,8,32 --size 256 --device cpu
     python benchmarks/filters/flagship.py --device cuda --compile --json filters_cuda.json
@@ -183,13 +187,15 @@ def build_ops(
     row["PIL"] = (lambda: [pil.fromarray(im).filter(pilf.MedianFilter(5)) for im in imgs_u8]) if pil else None
     ops["median_blur"] = row
 
-    row = kornia_row("box_blur", lambda: KF.box_blur(batch_f, (5, 5)))
+    row = kornia_row("box_blur", lambda: KF.box_blur(batch_f, (5, 5), separable=False))
     row["opencv"] = (lambda: [cv2.blur(im, (5, 5)) for im in imgs_u8]) if cv2 else None
     row["albumentations"] = alb(A.Blur(blur_limit=(5, 5), p=1.0)) if A else None
     row["torchvision v2"] = None
     row["kornia-rs"] = None
     row["PIL"] = (lambda: [pil.fromarray(im).filter(pilf.BoxBlur(2)) for im in imgs_u8]) if pil else None
     ops["box_blur"] = row
+
+    ops["box_blur_separable"] = kornia_row("box_blur_separable", lambda: KF.box_blur(batch_f, (5, 5), separable=True))
 
     row = kornia_row("canny", lambda: KF.canny(batch_f))
     row["opencv"] = (

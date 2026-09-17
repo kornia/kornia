@@ -27,7 +27,7 @@ from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
 
 
 def box_blur(
-    input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect", separable: bool = False
+    input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect", separable: bool = True
 ) -> torch.Tensor:
     r"""Blur an image using the box filter.
 
@@ -49,7 +49,9 @@ def box_blur(
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
-        separable: run as composition of two 1d-convolutions.
+        separable: run as composition of two 1d-convolutions. Default: ``True``.
+          Set to ``False`` to use a single 2d-convolution. Floating-point rounding and
+          performance differ between the two paths; small kernels can be faster with ``False``.
 
     Returns:
         the blurred torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -97,7 +99,14 @@ class BoxBlur(nn.Module):
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        separable: run as composition of two 1d-convolutions.
+        separable: run as composition of two 1d-convolutions. Default: ``True``.
+          Set to ``False`` to use a single 2d-convolution. Floating-point rounding and
+          performance differ between the two paths; small kernels can be faster with ``False``.
+
+    Note:
+        The separable module stores ``kernel_x`` and ``kernel_y`` buffers instead of ``kernel``.
+        To load a state dictionary saved with the previous non-separable default, construct
+        the module with ``separable=False``.
 
     Returns:
         the blurred input torch.Tensor.
@@ -116,7 +125,7 @@ class BoxBlur(nn.Module):
     """
 
     def __init__(
-        self, kernel_size: tuple[int, int] | int, border_type: str = "reflect", separable: bool = False
+        self, kernel_size: tuple[int, int] | int, border_type: str = "reflect", separable: bool = True
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
@@ -125,12 +134,12 @@ class BoxBlur(nn.Module):
 
         if separable:
             ky, kx = _unpack_2d_ks(self.kernel_size)
-            self.register_buffer("kernel_y", get_box_kernel1d(ky))
-            self.register_buffer("kernel_x", get_box_kernel1d(kx))
+            self.register_buffer("kernel_y", get_box_kernel1d(ky).clone())
+            self.register_buffer("kernel_x", get_box_kernel1d(kx).clone())
             self.kernel_y: torch.Tensor
             self.kernel_x: torch.Tensor
         else:
-            self.register_buffer("kernel", get_box_kernel2d(kernel_size))
+            self.register_buffer("kernel", get_box_kernel2d(kernel_size).clone())
             self.kernel: torch.Tensor
 
     def __repr__(self) -> str:

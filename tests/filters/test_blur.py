@@ -32,13 +32,47 @@ class TestBoxBlur(BaseTester):
         actual = bb(data)
         assert actual.shape == (1, 1, 10, 10)
 
-    @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
+    @pytest.mark.parametrize("kernel_size", [1, 5, (3, 5), (2, 4), (3, 1)])
     @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_separable(self, batch_size, kernel_size, device, dtype):
+    @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
+    def test_separable(self, batch_size, kernel_size, border_type, device, dtype):
         data = torch.randn(batch_size, 3, 10, 10, device=device, dtype=dtype)
-        out1 = box_blur(data, kernel_size, separable=False)
-        out2 = box_blur(data, kernel_size, separable=True)
+        out1 = box_blur(data, kernel_size, border_type, separable=False)
+        out2 = box_blur(data, kernel_size, border_type, separable=True)
         self.assert_close(out1, out2)
+        self.assert_close(box_blur(data, kernel_size, border_type), out2, rtol=0, atol=0)
+
+    def test_default_module(self, device, dtype):
+        data = torch.rand(1, 3, 10, 10, device=device, dtype=dtype)
+        blur = BoxBlur((3, 5)).to(device=device, dtype=dtype)
+        assert blur.separable is True
+        assert set(blur.state_dict()) == {"kernel_x", "kernel_y"}
+        explicit = BoxBlur((3, 5), separable=True).to(device=device, dtype=dtype)
+        explicit.load_state_dict(blur.state_dict())
+        self.assert_close(blur(data), explicit(data), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("separable", [False, True])
+    def test_state_dict(self, separable, device, dtype):
+        data = torch.rand(1, 3, 10, 10, device=device, dtype=dtype)
+        original = BoxBlur((3, 5), separable=separable).to(device=device, dtype=dtype)
+        restored = BoxBlur((3, 5), separable=separable).to(device=device, dtype=dtype)
+        restored.load_state_dict(original.state_dict())
+        self.assert_close(restored(data), original(data), rtol=0, atol=0)
+
+    @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
+    def test_separable_gradient(self, border_type, device, dtype):
+        data = torch.randn(1, 2, 8, 9, device=device, dtype=dtype, requires_grad=True)
+        weights = torch.randn_like(data)
+        expected = box_blur(data, (3, 5), border_type, separable=False)
+        actual = box_blur(data, (3, 5), border_type)
+        expected_grad = torch.autograd.grad(expected, data, weights)[0]
+        actual_grad = torch.autograd.grad(actual, data, weights)[0]
+        # Two half-precision passes round separately, including repeated border contributions.
+        if dtype in (torch.float16, torch.bfloat16):
+            tolerance = 2 * torch.finfo(dtype).eps
+            self.assert_close(actual_grad, expected_grad, atol=tolerance, rtol=tolerance)
+        else:
+            self.assert_close(actual_grad, expected_grad)
 
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     def test_separable_module(self, kernel_size, device, dtype):
@@ -135,11 +169,12 @@ class TestBoxBlur(BaseTester):
         assert actual.is_contiguous()
 
     @pytest.mark.parametrize("kernel_size", [(3, 3), 5, (5, 7)])
-    def test_gradcheck(self, kernel_size, device):
+    @pytest.mark.parametrize("separable", [False, True])
+    def test_gradcheck(self, kernel_size, separable, device):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         fast_mode = "cpu" in str(device)  # Disable fast mode for GPU
-        self.gradcheck(box_blur, (img, kernel_size), fast_mode=fast_mode)
+        self.gradcheck(box_blur, (img, kernel_size, "reflect", separable), fast_mode=fast_mode)
 
     @pytest.mark.parametrize("kernel_size", [(3, 3), 5, (5, 7)])
     @pytest.mark.parametrize("batch_size", [1, 2])
