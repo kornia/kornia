@@ -1777,16 +1777,9 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         self.assert_close(K.Denormalize(mean=mean, std=std, p=1.0)(normalized), image)
 
-    # Issue #4577: `normalize` reshapes with `Tensor.view`, so a non-contiguous input raises a raw torch
-    # error naming neither the class nor the fix.  `RandomAutoContrast` reaches `normalize_min_max` and
-    # fails the same way.
-    # Snippet used to generate expected:
-    #   x = torch.rand(2, 3, 8, 8).transpose(2, 3)
-    #   torch.manual_seed(0); K.Normalize(mean=torch.tensor([0.5]), std=torch.tensor([0.5]), p=1.0)(x)
-    # executed 2026-09-16 (torch 2.14.0, cpu, all four dtypes) -> `RuntimeError: view size is not
-    # compatible with input tensor's size and stride`; `.contiguous()` on the same view succeeds.
+    # Issue #4577: normalization preserves image values across contiguous and strided layouts.
     @pytest.mark.parametrize("name", ["Normalize", "RandomAutoContrast"])
-    def test_wart_non_contiguous_input_raises_a_raw_view_error_4577(self, device, dtype, name):
+    def test_convention_non_contiguous_input_matches_contiguous_4577(self, device, dtype, name):
         factories = {
             "Normalize": lambda: K.Normalize(
                 mean=torch.tensor([0.5], device=device, dtype=dtype),
@@ -1800,14 +1793,11 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         view = image.transpose(2, 3)
         assert not view.is_contiguous()
         torch.manual_seed(_FORWARD_SEED)
-        with pytest.raises(RuntimeError, match="view size is not compatible") as excinfo:
-            _sync(factories[name]()(view).device)
-        # The frame that reshapes is `normalize` for Normalize and `normalize_min_max` for
-        # RandomAutoContrast, which never calls `normalize`; the class warnings name that function.
-        assert excinfo.traceback[-1].name == {"Normalize": "normalize", "RandomAutoContrast": "normalize_min_max"}[name]
-        # The same values, made contiguous, go through -- so it is the layout and not the numbers.
+        actual = factories[name]()(view)
         torch.manual_seed(_FORWARD_SEED)
-        assert factories[name]()(view.contiguous()).shape == view.shape
+        expected = factories[name]()(view.contiguous())
+        assert actual.shape == view.shape
+        self.assert_close(actual, expected)
 
     # Row 6c-16: a ``(B, C)`` statistic is applied per SAMPLE.  The pins above use one fixture for all
     # six forms, and their thresholds cannot tell a per-sample application from a row-0 or batch-mean
