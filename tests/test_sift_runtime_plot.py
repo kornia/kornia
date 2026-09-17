@@ -187,3 +187,62 @@ def test_reject_invalid_output_counts(tmp_path: Path, document: dict[str, Any], 
     document["results"][0]["features_per_image"] = counts
     with pytest.raises(ValueError, match="count"):
         sift_plot.describe_outputs([write_document(tmp_path, document)])
+
+
+@pytest.fixture
+def scale_space_metadata(document):
+    metadata = document["metadata"]
+    metadata.update(
+        device="cpu",
+        platform="test-platform",
+        machine="test-machine",
+        matching_ratio=0.8,
+        precision_threshold_px=3.0,
+        rootsift=True,
+        compile=False,
+        quality_only=False,
+        ransac_corner_metric="mean L1 corner transfer error against GT in pixels",
+        ransac={
+            "model": "homography",
+            "seed": 3407,
+            "inlier_threshold_px": 2.0,
+            "max_iter": 10,
+            "batch_size": 8196,
+            "confidence": 0.9999,
+        },
+    )
+    return metadata
+
+
+def test_scale_space_hardware_label_is_derived(tmp_path, scale_space_metadata):
+    path = tmp_path / "measurement.json"
+    path.write_text(json.dumps({"metadata": scale_space_metadata}))
+    assert sift_plot.scale_space_environment([path]) == "test-machine (CPU model not recorded)"
+    assert sift_plot.scale_space_environment([path], "Specified CPU") == "Specified CPU"
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [("num_features", 2048), ("matching_ratio", 0.9), ("compile", True), ("torch_num_threads", 8), ("device", "cuda")],
+)
+def test_scale_space_rejects_mislabeled_protocol(tmp_path, scale_space_metadata, key, value):
+    scale_space_metadata[key] = value
+    path = tmp_path / "measurement.json"
+    path.write_text(json.dumps({"metadata": scale_space_metadata}))
+    with pytest.raises(ValueError):
+        sift_plot.scale_space_environment([path])
+
+
+def test_scale_space_rejects_different_ransac_or_inputs(tmp_path, scale_space_metadata):
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+    first.write_text(json.dumps({"metadata": scale_space_metadata}))
+    scale_space_metadata["ransac"]["seed"] = 1
+    second.write_text(json.dumps({"metadata": scale_space_metadata}))
+    with pytest.raises(ValueError, match="RANSAC"):
+        sift_plot.scale_space_environment([first, second])
+    scale_space_metadata["ransac"]["seed"] = 3407
+    scale_space_metadata["input_sha256"] = "different-inputs"
+    second.write_text(json.dumps({"metadata": scale_space_metadata}))
+    with pytest.raises(ValueError, match="input_sha256"):
+        sift_plot.scale_space_environment([first, second])

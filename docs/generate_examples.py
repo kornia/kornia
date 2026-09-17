@@ -765,6 +765,7 @@ def main():
             index = xy[:, 1].clamp(0, h - 1) * w + xy[:, 0].clamp(0, w - 1)
             heatmap[0, 0].scatter_add_(0, index, scores[0, valid].abs())
             out = K.color.grayscale_to_rgb(F.max_pool2d(heatmap.view(1, 1, h, w), 5, stride=1, padding=2))
+            img_in = K.color.grayscale_to_rgb(img_in)
         elif fn_name == "SIFTDescriptorFromPyramid":
             # A regular LAF grid turns the sparse descriptor into a compact score map:
             # show distance to the centre descriptor on the same RGB canvas as other examples.

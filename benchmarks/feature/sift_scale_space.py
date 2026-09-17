@@ -29,6 +29,9 @@ Timing excludes image I/O, matching, and RANSAC. Matching uses SNN ratio 0.8;
 quality is forward ground-truth transfer precision at three pixels and the
 existing fixed-seed Graf homography RANSAC corner metric. MPS runs RANSAC on
 CPU because MPS batched SVD is unsafe; it remains outside the timed region.
+Optional ``--methods opencv --device cpu`` measures native uint8 CPU SIFT with
+standard rejection filters plus NumPy RootSIFT; input conversion and conversion
+of returned keypoints to Torch tensors are excluded. It shares the grayscale input and matching/RANSAC protocol.
 """
 
 from __future__ import annotations
@@ -88,11 +91,19 @@ def main() -> None:
     parser.add_argument("--expected-checkout", type=Path, required=True)
     parser.add_argument("--device", choices=("cpu", "mps", "cuda"), default="cpu")
     parser.add_argument("--nf", type=int, default=4096)
-    parser.add_argument("--methods", nargs="+", choices=("patch", "pyramid"), default=["patch", "pyramid"])
+    parser.add_argument("--methods", nargs="+", choices=("patch", "pyramid", "opencv"), default=["patch", "pyramid"])
     parser.add_argument("--min-run-time", type=float, default=1.0)
     parser.add_argument("--quality-only", action="store_true")
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args()
+    if "opencv" in args.methods:
+        if args.device != "cpu":
+            parser.error("OpenCV SIFT is a CPU baseline; run --methods opencv --device cpu")
+        if importlib.util.find_spec("cv2") is None:
+            raise SystemExit("SKIP: the OpenCV baseline requires optional opencv-python")
+        import cv2
+
+        cv2.setNumThreads(1)
 
     imported_root = Path(kornia.__file__).resolve().parents[1]
     print(f"# interpreter: {sys.executable}\n# kornia: {kornia.__file__}", flush=True)
@@ -118,7 +129,7 @@ def main() -> None:
         descriptor_backends=args.methods,
         timing=(
             "entire SIFTFeatureScaleSpace forward (detection + orientation + description); "
-            "I/O, matching and RANSAC excluded"
+            "or native uint8 OpenCV detectAndCompute + RootSIFT; I/O, matching and RANSAC excluded"
         ),
         min_run_time=args.min_run_time,
         quality_only=args.quality_only,
@@ -137,6 +148,8 @@ def main() -> None:
         ransac_corner_metric="mean L1 corner transfer error against GT in pixels",
         image_conversion="Pillow RGB to L",
         compile=False,
+        opencv_regime="uint8 CPU detectAndCompute + NumPy RootSIFT; input/keypoint-to-Torch conversion excluded",
+        opencv_parameters={"nOctaveLayers": 3, "contrastThreshold": 0.04, "edgeThreshold": 10, "sigma": 1.6},
         cudnn_allow_tf32=torch.backends.cudnn.allow_tf32,
         cudnn_benchmark=torch.backends.cudnn.benchmark,
         input_sha256={path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths + homographies},
@@ -160,38 +173,65 @@ def main() -> None:
     rows: list[dict] = []
     for method in args.methods:
         torch.manual_seed(0)
-        model = _build(method, args.nf, device)
+        model = (
+            cv2.SIFT_create(nfeatures=args.nf, nOctaveLayers=3, contrastThreshold=0.04, edgeThreshold=10, sigma=1.6)
+            if method == "opencv"
+            else _build(method, args.nf, device)
+        )
         outputs: list[tuple[torch.Tensor, torch.Tensor]] = []
         print(f"# {method}: {model!r}", flush=True)
         for index, image in enumerate(images, 1):
+            if method == "opencv":
+                pixels = image[0, 0].mul(255).round().to(torch.uint8).numpy()
+
+                def run(pixels=pixels, model=model):
+                    keypoints, desc = model.detectAndCompute(pixels, None)
+                    if desc is None:
+                        desc = np.empty((0, 128), dtype=np.float32)
+                    desc = np.sqrt(desc / (np.abs(desc).sum(axis=1, keepdims=True) + 1e-8))
+                    return keypoints, desc
+
+            else:
+
+                def run(image=image, model=model):
+                    return model(image)
+
             sync()
             start = time.perf_counter()
-            lafs, _responses, descriptors = model(image)
+            extracted = run()
             sync()
             warm_seconds = time.perf_counter() - start
-            filled = KF.laf_is_filled(lafs)[0]
-            lafs = lafs[:, filled]
-            descriptors = descriptors[:, filled]
+            if method == "opencv":
+                keypoints, desc = extracted
+                points = torch.tensor([kp.pt for kp in keypoints], dtype=torch.float32).reshape(-1, 2)
+                descriptors = torch.from_numpy(desc)[None]
+                filled = torch.ones(len(keypoints), dtype=torch.bool)
+            else:
+                lafs, _responses, descriptors = extracted
+                filled = KF.laf_is_filled(lafs)[0]
+                lafs = lafs[:, filled]
+                descriptors = descriptors[:, filled]
+                points = KF.get_laf_center(lafs)[0]
             if not torch.isfinite(descriptors).all():
                 raise RuntimeError(f"Nonfinite descriptors for {method}, image {index}")
             median, iqr = float("nan"), float("nan")
             if not args.quality_only:
                 median, iqr = time_us(
-                    lambda image=image, model=model: model(image),
+                    run,
                     min_run_time=max(args.min_run_time, 5.0 * warm_seconds),
                     sync=sync if device.type == "mps" else None,
                 )
                 if not math.isfinite(median):
                     raise RuntimeError(f"Timing failed for {method}, image {index}")
-            outputs.append((KF.get_laf_center(lafs)[0], descriptors[0]))
+            outputs.append((points, descriptors[0]))
             row = {
-                "op": "SIFTFeatureScaleSpace",
+                "op": "OpenCVSIFT" if method == "opencv" else "SIFTFeatureScaleSpace",
                 "backend": method,
                 "batch": 1,
                 "image": index,
                 "height": image.shape[-2],
                 "width": image.shape[-1],
-                "dtype": "float32",
+                "dtype": "uint8" if method == "opencv" else "float32",
                 "features": int(filled.sum()),
                 "median_us": median,
                 "iqr_us": iqr,

@@ -67,6 +67,49 @@ Run from each measured checkout with an explicit interpreter. Use `--device mps`
 for MPS, `--methods patch` for the default pipeline, or `--quality-only` to omit
 timing. Both measured revisions already contain the harness.
 
+## Comparison figure
+
+![Graf homography error, RANSAC inliers, and SIFT extraction runtime](sift_scale_space.svg)
+
+The geometry panels use CPU results and a logarithmic error axis to retain failed
+homographies. This evaluates DoG + RootSIFT, not the DoG + AffNet + HardNet pipeline
+in the reference figure. Runtime is the mean of six per-image medians. No CUDA or
+compiled results are inferred from CPU/MPS measurements.
+
+OpenCV 5.0.0 (`opencv-python-headless==5.0.0.93`) uses one CPU thread, the same
+Pillow grayscale pixels as uint8, and `SIFT_create(nfeatures=4096, nOctaveLayers=3,
+contrastThreshold=0.04, edgeThreshold=10, sigma=1.6)`. Its standard contrast/edge
+rejection and multiple orientations differ from the Kornia top-K pipeline.
+Timing includes native `detectAndCompute` and NumPy RootSIFT normalization;
+input conversion and conversion of returned keypoints to Torch tensors are excluded. Matching and RANSAC use the
+same Kornia protocol as the other series. Kornia inputs are float tensors.
+
+OpenCV mean runtime: **149.58 ms/image**. Actual feature
+counts for images 1–6: 2676, 3065, 3508, 3663, 3920, 4096
+(Kornia: 4,096 each). This is a requested-budget comparison, not equal actual
+feature counts. OpenCV per-image median / IQR (ms): 132.74 / 12.41, 136.66 / 7.56, 142.53 / 8.88, 162.35 / 14.76, 156.14 / 14.89, 167.08 / 14.17.
+
+| Pair | OpenCV correct / matches | Precision | RANSAC inliers | Corner L1 (px) |
+| --- | ---: | ---: | ---: | ---: |
+| 1-2 | 1081/1192 | 90.69% | 1049 | 1.21 |
+| 1-3 | 466/703 | 66.29% | 422 | 2.68 |
+| 1-4 | 92/176 | 52.27% | 85 | 1.83 |
+| 1-5 | 8/90 | 8.89% | 7 | 535.39 |
+| 1-6 | 0/45 | 0.00% | 6 | 905.11 |
+
+Regenerate the OpenCV data and figure without committing raw logs:
+
+```bash
+.venv/bin/python -m benchmarks.feature.sift_scale_space \
+  --seq /path/to/graf --expected-checkout "$PWD" --methods opencv \
+  --device cpu --json /tmp/opencv-cpu.json
+.venv/bin/python benchmarks/feature/plot_sift_runtime.py --scale-space \
+  --inputs /tmp/before-cpu.json /tmp/after-cpu.json /tmp/opencv-cpu.json \
+           /tmp/before-mps.json /tmp/after-mps.json \
+  --labels Previous Specialized OpenCV Previous Specialized --cpu-label "Apple M1" \
+  --output /tmp/sift-comparison
+```
+
 ## End-to-end speed
 
 Mean of six per-image medians, milliseconds per image (lower is better):
