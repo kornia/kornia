@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -39,6 +40,8 @@ class RandomCutMixV2(MixAugmentationBaseV2):
 
     The implementation referred to the following repository: `https://github.com/clovaai/CutMix-PyTorch
     <https://github.com/clovaai/CutMix-PyTorch>`_.
+
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
 
     Args:
         height: the width of the input image.
@@ -67,7 +70,17 @@ class RandomCutMixV2(MixAugmentationBaseV2):
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
         - Adjusted image, shape of :math:`(B, C, H, W)`.
-        - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, num_mix, 3)`.
+        - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(num_mix, B, 3)`.
+
+    Convention:
+        - With ``data_keys=["input", "class"]``, the class output is ``(num_mix, B, 3)``. Its last axis holds
+          the original label, the label selected by that mix's permutation, and the area fraction returned as
+          lambda. Labels are cast to the image dtype. ``use_correct_lambda=True`` returns ``1 - cut_area / image_area``;
+          the compatibility default returns ``cut_area / image_area`` and emits a deprecation warning.
+        - ``p`` is a batch-wide gate. At ``p=0`` the image is unchanged and each class row contains the original
+          label twice with lambda zero. The current ``cut_size`` interpretation and its rejection of a minimum of
+          ``1`` are described in its argument above; this is the repaired behavior from
+          `#4439 <https://github.com/kornia/kornia/issues/4439>`_.
 
     Note:
         This implementation would randomly cutmix images in a batch. Ideally, the larger batch size would be preferred.

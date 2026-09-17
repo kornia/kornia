@@ -61,6 +61,14 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
+    Convention:
+        See :class:`~kornia.augmentation.IntensityAugmentationBase3D` for the shared 3D intensity contract.
+
+        - ``angle`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. Its
+          default resampling is nearest-neighbour, unlike the geometric 3D defaults.
+        - the selected ``kernel_size`` is one odd scalar applied to all three spatial axes. This class fixes
+          ``p_batch=1``; its ``p`` remains the per-sample gate.
+
     Examples:
         >>> import torch
         >>> rng = torch.manual_seed(0)

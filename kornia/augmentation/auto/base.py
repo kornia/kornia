@@ -35,7 +35,24 @@ SUBPOLICY_CONFIG = List[OP_CONFIG]
 
 
 class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
-    """Policy-based image augmentation."""
+    """Base class for policy-based image augmentations.
+
+    Convention:
+        - a concrete policy selects one or more :class:`PolicySequential` children for each forward call and
+          records that selected path, including every operation parameter dictionary, in ``_params``. Passing
+          that list to ``forward(input, params=...)`` selects the recorded children rather than drawing a new
+          path and reproduces their output.
+        - the selected operations run in their policy order. When matrix computation is enabled, their geometric
+          transformation matrices compose in that same execution order; a policy containing only intensity
+          operations has the identity matrix.
+          ``inverse`` reverses a geometry-only selected path and raises ``RuntimeError`` when an applied
+          intensity operation cannot be undone.
+        - input normalization, random-number generation, parameter placement, replay, and serialization follow
+          the canonical augmentation contract in :doc:`/get-started/conventions`. This base does not expose a
+          per-instance generator.
+
+    Concrete policies define how they select children and interpret policy magnitudes.
+    """
 
     def __init__(self, policy: List[SUBPOLICY_CONFIG], transformation_matrix_mode: str = "silence") -> None:
         policies = self.compose_policy(policy)

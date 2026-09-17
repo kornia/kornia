@@ -72,6 +72,15 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - ``degrees`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. A
+          positive affine angle has the opposite displayed rotation direction from :class:`RandomRotation3D`
+          and the other rotation entry points, tracked in `#4408 <https://github.com/kornia/kornia/issues/4408>`_.
+        - the default is bilinear resampling with ``align_corners=False``. With zero rotation, zero translation,
+          unit scale, and zero shear, it reproduces the input at that setting.
+
     Examples:
         >>> import torch
         >>> rng = torch.manual_seed(0)

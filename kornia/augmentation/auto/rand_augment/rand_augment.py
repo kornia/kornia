@@ -50,6 +50,15 @@ default_policy: List[SUBPOLICY_CONFIG] = [
 class RandAugment(PolicyAugmentBase):
     """Apply RandAugment :cite:`cubuk2020randaugment` augmentation strategies.
 
+    See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
+
+    Convention:
+        - selects ``n`` distinct one-operation candidate sub-policies uniformly without replacement, then
+          applies them in the order drawn. ``n`` must be in ``[1, len(policy)]``.
+        - ``m`` must be strictly between ``0`` and ``30``. For every magnitude-bearing selected operation it
+          sets a per-row magnitude to ``m / 30`` of that operation's configured interval. Symmetric operations
+          independently choose a positive or negative sign for each row.
+
     Args:
         n: the number of augmentations to apply sequentially. Must be at least ``1`` and at
             most the number of sub-policies in ``policy``, since they are sampled without

@@ -32,6 +32,8 @@ __all__ = ["MosaicGenerator"]
 class MosaicGenerator(RandomGeneratorBase):
     r"""Generate mixup indexes and lambdas for a batch of inputs.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomMosaic`.
+
     Args:
         output_size: the output torch.Tensor width and height after mosaicing.
         mosaic_grid: the number of images and image arrangement. e.g. (2, 2) means

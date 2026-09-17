@@ -19,4 +19,16 @@ from kornia.augmentation._3d.base import RigidAffineAugmentationBase3D
 
 
 class IntensityAugmentationBase3D(RigidAffineAugmentationBase3D):
-    pass
+    r"""Base class for 3D intensity augmentations.
+
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase3D`.
+
+    Convention:
+        - these augmentations leave voxel coordinates in place and record an identity ``(B, 4, 4)`` matrix.
+          They still have no direct ``inverse`` method; a container skips them on its inverse path.
+        - their image-value requirements are class-specific. In particular, :class:`RandomEqualize3D` documents
+          ``[0, 1]`` as its intended range and qualifies its device-specific validation.
+
+    """
+
+    pass  # noqa: PIE790 - keep the non-docstring class body unchanged in this conventions audit.

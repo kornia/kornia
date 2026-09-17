@@ -1,0 +1,219 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+import pytest
+import torch
+
+import kornia.augmentation as K
+from kornia.constants import DType
+
+from testing.base import BaseTester
+
+
+class TestMixConventions(BaseTester):
+    def test_convention_mix_base_has_no_matrix_or_inverse(self):
+        aug = K.RandomMixUpV2()
+        with pytest.raises(RuntimeError, match="Transformation matrices"):
+            _ = aug.transform_matrix
+        with pytest.raises(RuntimeError, match="Inverse"):
+            aug.inverse()
+
+    @pytest.mark.parametrize(
+        ("factory", "shape"),
+        [
+            (lambda: K.RandomMixUpV2(p=1.0), (2, 3, 8, 12)),
+            (lambda: K.RandomCutMixV2(p=1.0, use_correct_lambda=True), (2, 3, 8, 12)),
+            (lambda: K.PatchMix(p=1.0, patch_size=2), (2, 3, 8, 12)),
+            (lambda: K.RandomJigsaw(p=1.0, grid=(2, 3)), (2, 3, 8, 12)),
+            (lambda: K.RandomMosaic(p=1.0), (2, 3, 8, 12)),
+        ],
+    )
+    def test_convention_image_rank_is_promoted_and_keepdim_restores_it(self, factory, shape, device, dtype):
+        # MixAugmentationBaseV2 accepts CHW images, forwards an NCHW batch to the operation, and the same
+        # operation restores CHW only when keepdim=True. The Jigsaw dimensions divide its 2x3 grid exactly.
+        for input_shape, batch_shape in ((shape[2:], (1, 1, *shape[2:])), (shape[1:], (1, *shape[1:])), (shape, shape)):
+            image = torch.rand(input_shape, device=device, dtype=dtype)
+            torch.manual_seed(7)
+            assert factory()(image).shape == batch_shape
+            aug = factory()
+            aug.keepdim = True
+            torch.manual_seed(7)
+            assert aug(image).shape == input_shape
+
+    def test_convention_mixup_class_rows_describe_the_image_mix(self, device, dtype):
+        image = torch.stack(
+            [torch.zeros(1, 4, 4, device=device, dtype=dtype), torch.ones(1, 4, 4, device=device, dtype=dtype)]
+        )
+        labels = torch.tensor([4, 9], device=device)
+        aug = K.RandomMixUpV2(lambda_val=(0.25, 0.25), p=1.0, data_keys=["input", "class"])
+        output, mixed_labels = aug(image, labels)
+
+        pairs = aug._params["mixup_pairs"].to(device)
+        expected = image * 0.75 + image.index_select(0, pairs) * 0.25
+        self.assert_close(output, expected)
+        assert mixed_labels.shape == (2, 3)
+        self.assert_close(mixed_labels[:, 0], labels.to(dtype))
+        self.assert_close(mixed_labels[:, 1], labels.index_select(0, pairs).to(dtype))
+        self.assert_close(mixed_labels[:, 2], torch.full((2,), 0.25, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("num_mix", [1, 2])
+    def test_convention_cutmix_class_axis_is_num_mix_then_batch(self, num_mix, device, dtype):
+        image = torch.rand(3, 1, 8, 8, device=device, dtype=dtype)
+        labels = torch.tensor([2, 5, 7], device=device)
+        aug = K.RandomCutMixV2(
+            num_mix=num_mix, cut_size=(0.5, 0.5), p=1.0, data_keys=["input", "class"], use_correct_lambda=True
+        )
+        _, mixed_labels = aug(image, labels)
+
+        assert mixed_labels.shape == (num_mix, 3, 3)
+        self.assert_close(mixed_labels[:, :, 0], labels.to(dtype).expand(num_mix, -1))
+        for mix, pairs in enumerate(aug._params["mix_pairs"].to(device)):
+            self.assert_close(mixed_labels[mix, :, 1], labels.index_select(0, pairs).to(dtype))
+
+    @pytest.mark.parametrize(("use_correct_lambda", "expected_lambda"), [(False, 0.25), (True, 0.75)])
+    def test_convention_cutmix_lambda_is_the_configured_area_fraction(
+        self, use_correct_lambda, expected_lambda, device, dtype
+    ):
+        image = torch.zeros(2, 1, 4, 4, device=device, dtype=dtype)
+        labels = torch.tensor([2, 5], device=device)
+        crop = torch.tensor([[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]])
+        params = {
+            "batch_prob": torch.ones(2),
+            "mix_pairs": torch.tensor([[1, 0]]),
+            "crop_src": crop.repeat(1, 2, 1, 1),
+            "image_shape": torch.tensor([4, 4]),
+            "dtype": torch.tensor(DType.get(dtype).value),
+        }
+        aug = K.RandomCutMixV2(data_keys=["input", "class"], use_correct_lambda=use_correct_lambda)
+        _, mixed_labels = aug(image, labels, params=params)
+
+        self.assert_close(mixed_labels[0, :, 2], torch.full((2,), expected_lambda, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize(
+        ("factory", "label_shape"),
+        [
+            (lambda: K.RandomMixUpV2(p=0.0, data_keys=["input", "class"]), (3, 3)),
+            (lambda: K.RandomCutMixV2(p=0.0, data_keys=["input", "class"], use_correct_lambda=True), (1, 3, 3)),
+        ],
+    )
+    def test_convention_mix_class_batch_gate_returns_identity_labels(self, factory, label_shape, device, dtype):
+        image = torch.rand(3, 1, 8, 8, device=device, dtype=dtype)
+        labels = torch.tensor([2, 5, 7], device=device)
+        output, mixed_labels = factory()(image, labels)
+
+        self.assert_close(output, image)
+        assert mixed_labels.shape == label_shape
+        expected_labels = labels.to(dtype).expand(label_shape[:-1])
+        self.assert_close(mixed_labels[..., 0], expected_labels)
+        self.assert_close(mixed_labels[..., 1], expected_labels)
+        self.assert_close(mixed_labels[..., 2], torch.zeros(label_shape[:-1], device=device, dtype=dtype))
+
+    def test_convention_jigsaw_same_on_batch_shares_the_patch_permutation(self, device, dtype):
+        image = torch.rand(3, 1, 8, 12, device=device, dtype=dtype)
+        aug = K.RandomJigsaw(grid=(2, 3), p=1.0, same_on_batch=True)
+        aug(image)
+
+        permutation = aug._params["permutation"]
+        assert torch.equal(permutation, permutation[0].expand_as(permutation))
+
+    def test_convention_jigsaw_permutation_is_laid_out_by_columns(self, device, dtype):
+        image = torch.zeros(1, 1, 4, 4, device=device, dtype=dtype)
+        image[:, :, :2, :2] = 1
+        image[:, :, :2, 2:] = 2
+        image[:, :, 2:, :2] = 3
+        image[:, :, 2:, 2:] = 4
+        params = {"batch_prob": torch.ones(1), "permutation": torch.tensor([[3, 2, 1, 0]])}
+        output = K.RandomJigsaw(grid=(2, 2), p=1.0)(image, params=params)
+
+        expected = torch.tensor(
+            [[[[4, 4, 2, 2], [4, 4, 2, 2], [3, 3, 1, 1], [3, 3, 1, 1]]]], device=device, dtype=dtype
+        )
+        self.assert_close(output, expected)
+
+    def test_convention_mosaic_uses_height_width_and_xy_start_ratio(self, device, dtype):
+        image = torch.rand(3, 1, 6, 8, device=device, dtype=dtype)
+        aug = K.RandomMosaic(output_size=(4, 10), start_ratio_range=(0.5, 0.5), p=1.0)
+        output = aug(image)
+
+        assert output.shape == (3, 1, 4, 10)
+        top_left = aug._params["src"][0, 0]
+        self.assert_close(top_left, torch.tensor([4.0, 3.0], device=top_left.device, dtype=top_left.dtype))
+
+    def test_convention_mosaic_grid_first_axis_is_width(self, device, dtype):
+        image = torch.arange(6, device=device, dtype=dtype).view(6, 1, 1, 1)
+        aug = K.RandomMosaic(mosaic_grid=(2, 3), p=1.0)
+        composed = aug._compose_images(image, {"permutation": torch.arange(6).view(1, 6)}, aug.flags)
+
+        assert composed.shape == (1, 1, 3, 2)
+        self.assert_close(composed[0, 0], torch.tensor([[0, 3], [1, 4], [2, 5]], device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("data_key", ["bbox", "bbox_xyxy", "bbox_xywh"])
+    def test_convention_mosaic_supports_each_documented_box_key(self, data_key, device, dtype):
+        image = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
+        if data_key == "bbox":
+            boxes = torch.tensor([[[[1.0, 1.0], [4.0, 1.0], [4.0, 4.0], [1.0, 4.0]]]] * 4, device=device, dtype=dtype)
+        elif data_key == "bbox_xyxy":
+            boxes = torch.tensor([[[1.0, 1.0, 4.0, 4.0]]] * 4, device=device, dtype=dtype)
+        else:
+            boxes = torch.tensor([[[1.0, 1.0, 3.0, 3.0]]] * 4, device=device, dtype=dtype)
+        output, output_boxes = K.RandomMosaic(p=1.0, data_keys=["input", data_key])(image, boxes)
+
+        assert output.shape == image.shape
+        assert output_boxes.shape[0] == image.shape[0]
+
+    @pytest.mark.parametrize(
+        ("factory", "extra", "error"),
+        [
+            (lambda: K.RandomMixUpV2(p=1.0), "mask", NotImplementedError),
+            (lambda: K.RandomCutMixV2(p=1.0, use_correct_lambda=True), "mask", NotImplementedError),
+            (lambda: K.PatchMix(p=1.0, patch_size=2), "class", NotImplementedError),
+            (lambda: K.RandomJigsaw(p=1.0, grid=(2, 2)), "class", NotImplementedError),
+            (lambda: K.RandomMosaic(p=1.0), "mask", NotImplementedError),
+        ],
+    )
+    def test_convention_unsupported_data_keys_raise(self, factory, extra, error, device, dtype):
+        image = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+        annotation = torch.ones_like(image) if extra == "mask" else torch.tensor([0, 1], device=device)
+        with pytest.raises(error):
+            factory()(image, annotation, data_keys=["input", extra])
+
+    def test_convention_patchmix_lam_does_not_weight_the_replacement(self, device, dtype):
+        # The generator records a Beta sample as `lam`, but PatchMix copies a full square patch. The fixed
+        # coordinates and permutation make the written pixels independent of that recorded value.
+        image = torch.stack(
+            [torch.zeros(1, 4, 4, device=device, dtype=dtype), torch.ones(1, 4, 4, device=device, dtype=dtype)]
+        )
+        aug = K.PatchMix(patch_size=2, p=1.0)
+        params = {
+            "batch_prob": torch.ones(2),
+            "mix_pairs": torch.tensor([1, 0]),
+            "patch_coords": torch.tensor([[1, 1], [1, 1]]),
+            "lam": torch.tensor([0.125, 0.875]),
+            "dtype": torch.tensor(6),
+        }
+        output = aug(image, params=params)
+
+        expected = image.clone()
+        expected[0, :, 1:3, 1:3] = 1
+        expected[1, :, 1:3, 1:3] = 0
+        self.assert_close(output, expected)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("dtype", [torch.uint8, torch.int64])
+    def test_convention_mix_rejects_integer_images(self, dtype):
+        with pytest.raises(TypeError, match="float16"):
+            K.RandomMixUpV2(p=1.0)(torch.ones(2, 1, 4, 4, dtype=dtype))

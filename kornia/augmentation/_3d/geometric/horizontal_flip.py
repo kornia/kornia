@@ -41,6 +41,12 @@ class RandomHorizontalFlip3D(GeometricAugmentationBase3D):
         Additionally, this function accepts another transformation torch.tensor(:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - flips the width ``W`` axis (tensor axis ``-1``, coordinate ``x``). Its matrix maps ``x`` to
+          ``W - 1 - x`` using inclusive voxel coordinates.
+
     Examples:
         >>> import torch
         >>> x = torch.eye(3).repeat(3, 1, 1)

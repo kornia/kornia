@@ -47,6 +47,22 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         data_keys: the input type sequential for applying augmentations.
             Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints", "class", "label".
 
+    Convention:
+        - Sampling, replay, and serialization follow the augmentation-wide randomness and serialization contracts
+          in :doc:`/get-started/conventions`.
+        - Image inputs are floating tensors of shape ``(H, W)``, ``(C, H, W)``, or ``(B, C, H, W)``. They are
+          promoted to ``(B, C, H, W)`` before a mix operation; ``keepdim=True`` restores the rank of an unbatched
+          input. The base accepts ``float16``, ``bfloat16``, ``float32``, and ``float64`` only.
+        - A mix operation is not geometric: it has neither a transformation matrix nor an inverse. Its
+          ``transform_matrix`` and ``inverse`` accessors raise ``RuntimeError``.
+        - ``data_keys`` chooses which positional inputs are dispatched. It does not promise that every concrete
+          mix augmentation implements every key: unsupported masks, boxes, keypoints, or classes raise
+          ``NotImplementedError`` (or a class-specific error). The concrete class blocks state the supported
+          non-image keys.
+        - ``batch_prob`` is sampled with the subclass parameters and gates the final image result. A selected
+          image uses the mixed result and an unselected image keeps its input values. The label and box handlers
+          use the same gate. When no sample is selected, the image transform is skipped.
+
     """
 
     def __init__(

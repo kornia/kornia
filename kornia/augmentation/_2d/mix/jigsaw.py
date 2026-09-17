@@ -34,6 +34,8 @@ class RandomJigsaw(MixAugmentationBaseV2):
     Make Jigsaw puzzles for each image individually. To mix with different images in a
     batch, referring to :class:`kornia.augmentation.RandomMosaic`.
 
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
     Args:
         grid: the Jigsaw puzzle grid. e.g. (2, 2) means
             each output will mix image patches in a 2x2 grid.
@@ -46,6 +48,16 @@ class RandomJigsaw(MixAugmentationBaseV2):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``.
+
+    Convention:
+        - ``grid=(rows, columns)`` partitions each image independently. Both image dimensions must be exactly
+          divisible by their corresponding grid entries; otherwise the current reshape raises a ``RuntimeError``.
+          The output has the input's spatial shape when this holds. The sampled permutation is laid into the
+          destination grid by columns: for a ``2 x 2`` grid, entries ``[0, 2]`` become the top row and entries
+          ``[1, 3]`` the bottom row.
+        - ``p`` is a per-sample gate. With ``same_on_batch=True`` each sample uses the same patch permutation;
+          with it false, each sample receives an independently drawn permutation. This class implements image
+          mixing only; requesting another data key reaches the base's unsupported handler.
 
     Examples:
         >>> jigsaw = RandomJigsaw((4, 4))

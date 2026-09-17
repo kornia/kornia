@@ -30,6 +30,8 @@ __all__ = ["MixupGenerator"]
 class MixupGenerator(RandomGeneratorBase):
     r"""Generate mixup indexes and lambdas for a batch of inputs.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomMixUpV2`.
+
     Args:
         lambda_val (torch.Tensor, optional): min-max strength for mixup images, ranged from [0., 1.].
             If None, it will be set to tensor([0., 1.]), which means no restrictions.

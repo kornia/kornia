@@ -19,4 +19,15 @@ from kornia.augmentation._3d.base import RigidAffineAugmentationBase3D
 
 
 class GeometricAugmentationBase3D(RigidAffineAugmentationBase3D):
-    pass
+    r"""Base class for 3D geometric augmentations.
+
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase3D`.
+
+    Convention:
+        - subclasses record a source-to-destination ``(B, 4, 4)`` voxel-coordinate matrix. Coordinates are
+          ordered ``(x, y, z)``, while volume tensor axes are ``(D, H, W)``.
+        - the matrix is useful for forward bookkeeping only: this base provides no 3D inverse implementation.
+
+    """
+
+    pass  # noqa: PIE790 - keep the non-docstring class body unchanged in this conventions audit.

@@ -62,6 +62,14 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - ``size`` and the output shape are ordered ``(D, H, W)``. A scalar ``padding`` expands to every side;
+          three values expand as ``(left/right, top/bottom, front/back)``, and six are passed to
+          :func:`torch.nn.functional.pad` as ``(left, right, top, bottom, front, back)`` before the crop is drawn.
+        - its ``p`` is a call-wide gate. Defaults are bilinear resampling and ``align_corners=True``.
+
     Examples:
         >>> import torch
         >>> rng = torch.manual_seed(0)

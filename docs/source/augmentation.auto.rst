@@ -41,6 +41,10 @@ This module contains common data augmentation policies that can improve the accu
 
    .. automethod:: inverse
 
+.. autoclass:: PolicyAugmentBase
+
+.. autoclass:: PolicySequential
+
 Augmentation Search Methods
 ---------------------------
 

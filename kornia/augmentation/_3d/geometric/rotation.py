@@ -60,6 +60,14 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - ``degrees`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. Unlike
+          :class:`RandomAffine3D`, a positive angle follows the displayed rotation convention used by the
+          other rotation entry points.
+        - the default interpolation is bilinear with ``align_corners=False``; zero angles reproduce the input.
+
     Examples:
         >>> import torch
         >>> rng = torch.manual_seed(0)

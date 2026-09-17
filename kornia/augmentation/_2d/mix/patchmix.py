@@ -30,7 +30,9 @@ class PatchMix(MixAugmentationBaseV2):
     .. image:: _static/img/PatchMix.png
 
     Replaces a random patch in each image of a batch with the corresponding
-    region from a randomly chosen different image in the batch.
+    region from a randomly chosen batch image, which can be the same image.
+
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
 
     Implementation for `CutMix: Regularization Strategy to Train Strong
     Classifiers with Localizable Features` :cite:`yun2019cutmix`.
@@ -43,6 +45,13 @@ class PatchMix(MixAugmentationBaseV2):
         same_on_batch: Apply the same transformation across the batch.
         keepdim: Whether to keep the output shape the same as input ``True``
             or broadcast it to the batch form ``False``.
+
+    Convention:
+        - ``patch_size`` is the side length in pixels of a square patch. Each output sample copies that rectangle
+          from its paired input at the same sampled top-left coordinate; the output image retains its input shape.
+          The sampled ``lam`` is stored in ``_params`` but is not used to blend the image or produce labels.
+        - ``p`` is a batch-wide gate. This class implements image input only; requesting a class, mask, box, or
+          keypoint key reaches the base's unsupported handler.
 
     Examples:
         >>> aug = PatchMix(alpha=1.0, patch_size=4)
