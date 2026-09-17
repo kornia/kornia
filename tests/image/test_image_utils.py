@@ -177,10 +177,7 @@ def test_perform_keep_shape_image_non_contiguous(device, dtype, op, kwargs):
         result = op(tensor, **kwargs)
 
         expected = torch.stack(
-            [
-                torch.stack([op(tensor[i, j], **kwargs) for j in range(tensor.shape[1])])
-                for i in range(tensor.shape[0])
-            ]
+            [torch.stack([op(tensor[i, j], **kwargs) for j in range(tensor.shape[1])]) for i in range(tensor.shape[0])]
         )
 
     assert result.shape == expected.shape
@@ -195,9 +192,7 @@ def test_perform_keep_shape_video_non_contiguous(device, dtype):
 
     expected = torch.stack(
         [
-            torch.stack(
-                [kornia.enhance.equalize3d(tensor[i, j]) for j in range(tensor.shape[1])]
-            )
+            torch.stack([kornia.enhance.equalize3d(tensor[i, j]) for j in range(tensor.shape[1])])
             for i in range(tensor.shape[0])
         ]
     )

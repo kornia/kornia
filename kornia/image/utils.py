@@ -341,6 +341,7 @@ def perform_keep_shape_video(f: Callable[..., torch.Tensor]) -> Callable[..., to
     The input is reshaped to `(B, C, D, H, W)`, the function is applied, and the output is reshaped back to the original
     shape.
     """
+
     @wraps(f)
     def _wrapper(input: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
         if not isinstance(input, torch.Tensor):
