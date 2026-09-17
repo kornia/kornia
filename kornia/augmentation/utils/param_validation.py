@@ -185,10 +185,16 @@ def _tuple_range_reader(
     target_size: int,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
+    name: str = "input_range",
+    bounds: Optional[Tuple[float, float]] = None,
 ) -> torch.Tensor:
     """Given target_size, it will generate the corresponding (target_size, 2) range torch.Tensor.
 
     This is for element-wise params.
+
+    Every read range is checked against ``bounds``, when given, the way :func:`_range_bound` checks
+    the 2D scalar and explicit forms, so a 3D angle past one turn raises at construction instead of
+    being sampled (#4617). ``name`` only names the parameter in that error.
 
     Example:
     >>> degree = torch.tensor([0.2, 0.3])
@@ -259,5 +265,9 @@ def _tuple_range_reader(
             "If not pass a torch.tensor, it must be float, (float, float) for isotropic operation or a tuple of "
             f"{target_size} floats or {target_size} (float, float) for independent operation. Got {input_range}."
         )
+
+    if bounds is not None:
+        for row in input_range_tmp:
+            _joint_range_check(row, name, bounds)
 
     return input_range_tmp
