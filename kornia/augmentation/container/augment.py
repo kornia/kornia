@@ -735,9 +735,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             return VideoBoxes.from_tensor(arg)
         if self.contains_3d_augmentation:
             raise NotImplementedError("3D box handlers are not yet supported.")
-        else:
-            arg = cast(torch.Tensor, arg)
-            return Boxes.from_tensor(arg, mode=mode)
+        arg = cast(torch.Tensor, arg)
+        return Boxes.from_tensor(arg, mode=mode)
 
     def _postproc_boxes(
         self, in_arg: DataType, out_arg: Boxes, dcate: DataKey
@@ -773,16 +772,15 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             return video_result.type(dtype) if dtype else video_result
         if self.contains_3d_augmentation:
             raise NotImplementedError("3D keypoint handlers are not yet supported.")
-        elif isinstance(arg, Keypoints):
+        if isinstance(arg, Keypoints):
             return arg
-        else:
-            arg = cast(torch.Tensor, arg)
-            if not torch.is_floating_point(arg):
-                dtype = arg.dtype
-                arg = arg.float()
-            # TODO: Add List[torch.Tensor] in the future.
-            result = Keypoints.from_tensor(arg)
-            return result.type(dtype) if dtype else result
+        arg = cast(torch.Tensor, arg)
+        if not torch.is_floating_point(arg):
+            dtype = arg.dtype
+            arg = arg.float()
+        # TODO: Add List[torch.Tensor] in the future.
+        result = Keypoints.from_tensor(arg)
+        return result.type(dtype) if dtype else result
 
     def _postproc_keypoint(
         self, in_arg: DataType, out_arg: Keypoints, dcate: DataKey
