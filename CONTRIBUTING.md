@@ -21,7 +21,7 @@ The rest of this guide contains practical and technical guidance so nobody has t
 - Read your own contribution and stay part of the conversation about it. You do not need perfect English or an immediate answer; we care that questions and technical concerns are treated seriously.
 - If you are contributing as part of an application, remember that we read the work and review conversation, not pull request counts.
 - Keep project decisions and review discussions in public GitHub issues, discussions, or pull requests so others can find and learn from them.
-- Pull requests are marked stale after 15 quiet days and may be closed 7 days later to keep the queue usable. Comment or push an update to keep yours active; maintainers can add `pinned` when a pull request should remain open without activity. This is housekeeping, not a judgment: reopen one or make a new pull request whenever you want to continue.
+- Pull requests are marked stale after 15 quiet days to keep the queue usable. **We do not close pull requests for inactivity** — the label is a triage signal and nothing else, and it clears itself as soon as you comment or push. Maintainers can add `pinned` when a pull request should be exempt from the sweep entirely. A quiet pull request is often waiting on us, so take the label as a nudge to ping us, not as a deadline.
 
 ## Ways to Contribute
 
