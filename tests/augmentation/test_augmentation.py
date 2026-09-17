@@ -4608,11 +4608,12 @@ class TestRandomChannelDropout(BaseTester):
         ):
             RandomChannelDropout(num_drop_channels=num_drop_channels, p=1.0)(input_tensor)
 
-        fill_value = 2.0
-        with pytest.raises(
-            BaseError, match=f"Invalid value in `fill_value`. Must be a float between 0 and 1. Got: {fill_value}"
-        ):
-            RandomChannelDropout(fill_value=fill_value)
+        # an out-of-range int is rejected on the bound just like a float
+        for fill_value in (2.0, 2, -1):
+            with pytest.raises(
+                BaseError, match=f"Invalid value in `fill_value`. Must be a number between 0 and 1. Got: {fill_value}"
+            ):
+                RandomChannelDropout(fill_value=fill_value)
 
         fill_value = "1"
         with pytest.raises(TypeCheckError, match=f"`fill_value` must be an int or a float. Got: {type(fill_value)}"):

@@ -46,7 +46,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
     Convention:
         - the channels named by the drawn ``channel_idx`` are overwritten with the literal ``fill_value``,
           which has to be an ``int`` or a ``float`` in ``[0, 1]``: this class's own ``__init__`` rejects
-          anything outside the bounds, and anything that is not a number on type. As with
+          anything outside the bounds, and anything that is not a Python ``int`` or ``float`` on type. As with
           :class:`RandomErasing`'s ``value``, ``0`` and ``1`` are accepted, and so are ``False`` and ``True``.
           ``ChannelDropoutGenerator`` never sees ``fill_value`` -- unlike :class:`RandomErasing`, whose
           ``value`` guard does live in its generator. Every other channel is left exactly as it came in, so the
@@ -102,7 +102,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         KORNIA_CHECK_TYPE(fill_value, (int, float), f"`fill_value` must be an int or a float. Got: {type(fill_value)}")
         KORNIA_CHECK(
             0.0 <= fill_value <= 1.0,
-            f"Invalid value in `fill_value`. Must be a float between 0 and 1. Got: {fill_value}",
+            f"Invalid value in `fill_value`. Must be a number between 0 and 1. Got: {fill_value}",
         )
         # `fill_value` is fully determined by the constructor arg (derived state, not
         # learned) -- register as a non-persistent buffer so `.to()` / `.cuda()` /
