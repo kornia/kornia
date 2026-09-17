@@ -67,11 +67,11 @@ class StereoCamera:
           and the two matrices return opposing values. :attr:`Q` is exactly the matrix written out on the
           :doc:`/geometry.camera.stereo` page, above this docstring, evaluated at the page's own ``tx``: the
           page's :math:`P_1` carries ``fx * tx`` in its last column, so that ``tx`` is ``P_right[0, 3] / fx``,
-          which the constructor requires to be strictly **negative** for every rig in the batch: zero, a
-          degenerate baseline, and positive, the cameras swapped, both raise. The :attr:`tx` attribute exposes the
-          negation of that
-          symbol, ``-P_right[0, 3] / fx``; substituting the attribute's value for the page's ``tx`` gives
-          neither :attr:`Q` nor its negation, because the page's last row carries no ``tx`` and does not flip.
+          which the constructor requires to be strictly **negative** for every rig in the batch; a zero product
+          (a degenerate baseline) and a positive one (the cameras swapped) both raise. The :attr:`tx` attribute
+          exposes the negation of that symbol, ``-P_right[0, 3] / fx``; substituting the attribute's value for
+          the page's ``tx`` gives neither :attr:`Q` nor its negation, because the page's last row carries no
+          ``tx`` and does not flip.
         - a disparity map is channels-**last**, :math:`(B, H, W, 1)`, for
           :meth:`~kornia.geometry.camera.stereo.StereoCamera.reproject_disparity_to_3D` and for the module-level
           :func:`~kornia.geometry.camera.stereo.reproject_disparity_to_3D` alike -- the :math:`(B, 1, H, W)`
@@ -183,10 +183,12 @@ class StereoCamera:
                 f"Got {rectified_left_camera[..., :, :3]} and {rectified_right_camera[..., :, :3]}."
             )
 
-        # Ensure every rig in the batch has a real baseline in the expected direction. The right camera's last
-        # column is -tx * fx, so it must be strictly negative: zero means coincident cameras, which collapses Q and
-        # sends every disparity to the origin, and positive means the two cameras are swapped. The quantifier is
-        # ``any``, so one bad rig cannot hide behind good ones, and an empty batch stays vacuously valid.
+        # Reject every rig whose baseline is zero or points the wrong way. The right camera's last column is
+        # -tx * fx, so it must be strictly negative: zero means coincident cameras, which collapses Q and sends
+        # every disparity to the origin, and positive means the two cameras are swapped. The quantifier is
+        # ``any``, so one bad rig cannot hide behind good ones, and an empty batch stays vacuously valid. Neither
+        # comparison screens non-finite input: ``nan`` fails both of them and ``-inf`` is negative, so both are
+        # still accepted, exactly as they were before these checks were tightened.
         # The check reads the data, which graph capture cannot do; skip it under export.
         tx_fx = rectified_right_camera[..., 0, 3]
         if not is_exporting():
