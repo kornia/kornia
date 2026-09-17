@@ -1,5 +1,8 @@
 # Shared quadratic interpolation: CPU/CUDA A/B
 
+For the consolidated device comparison and current figures, see the [SIFT benchmark summary](../feature/sift_summary.md).
+Raw measurements are linked to commit `efb04dbf`; they are intentionally absent from the PR file diff.
+
 The change groups finite differences and four Cramer determinants into shared tensor operations on CUDA float32/float64. CPU, MPS and reduced-precision inputs keep the scalar paths. It also reaches the default patch-descriptor `SIFTFeatureScaleSpace` pipeline. Public `SIFTDescriptor` pooling is unchanged; this report does not measure the multiresolution `SIFTFeature` pipeline.
 
 Measured 2026-09-17 on an NVIDIA GeForce RTX 4090 and Intel Core i7-14700K (WSL2), torch 2.14.0+cu130, Python 3.11.14, eager float32 inference. Base is **`40bcf122`**; the optimized tree is that revision plus the shared-interpolation patch. Both record `-dirty` because the same benchmark harness changes were installed in both trees. Full source/input SHA256 hashes are in the raw metadata.
@@ -17,12 +20,12 @@ Repeat with `--device cpu --threads 1` and `--device cpu --threads 14`, then rev
 
 | Raw artifacts | Run 1 | Run 2 |
 |---|---|---|
-| quad, CUDA / 1 thread | [base](quad_interp_results/quad-base-cuda-t1-r1.json) / [opt](quad_interp_results/quad-opt-cuda-t1-r1.json) | [base](quad_interp_results/quad-base-cuda-t1-r2.json) / [opt](quad_interp_results/quad-opt-cuda-t1-r2.json) |
-| quad, CPU / 1 thread | [base](quad_interp_results/quad-base-cpu-t1-r1.json) / [opt](quad_interp_results/quad-opt-cpu-t1-r1.json) | [base](quad_interp_results/quad-base-cpu-t1-r2.json) / [opt](quad_interp_results/quad-opt-cpu-t1-r2.json) |
-| quad, CPU / 14 threads | [base](quad_interp_results/quad-base-cpu-t14-r1.json) / [opt](quad_interp_results/quad-opt-cpu-t14-r1.json) | [base](quad_interp_results/quad-base-cpu-t14-r2.json) / [opt](quad_interp_results/quad-opt-cpu-t14-r2.json) |
-| sift, CUDA / 1 thread | [base](quad_interp_results/sift-base-cuda-t1-r1.json) / [opt](quad_interp_results/sift-opt-cuda-t1-r1.json) | [base](quad_interp_results/sift-base-cuda-t1-r2.json) / [opt](quad_interp_results/sift-opt-cuda-t1-r2.json) |
-| sift, CPU / 1 thread | [base](quad_interp_results/sift-base-cpu-t1-r1.json) / [opt](quad_interp_results/sift-opt-cpu-t1-r1.json) | [base](quad_interp_results/sift-base-cpu-t1-r2.json) / [opt](quad_interp_results/sift-opt-cpu-t1-r2.json) |
-| sift, CPU / 14 threads | [base](quad_interp_results/sift-base-cpu-t14-r1.json) / [opt](quad_interp_results/sift-opt-cpu-t14-r1.json) | [base](quad_interp_results/sift-base-cpu-t14-r2.json) / [opt](quad_interp_results/sift-opt-cpu-t14-r2.json) |
+| quad, CUDA / 1 thread | [base](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/quad-base-cuda-t1-r1.json) / [opt](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/quad-opt-cuda-t1-r1.json) | [base](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/quad-base-cuda-t1-r2.json) / [opt](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/quad-opt-cuda-t1-r2.json) |
+| quad, CPU / 1 thread | [base](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/quad-base-cpu-t1-r1.json) / [opt](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/quad-opt-cpu-t1-r1.json) | [base](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/quad-base-cpu-t1-r2.json) / [opt](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/quad-opt-cpu-t1-r2.json) |
+| quad, CPU / 14 threads | [base](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/quad-base-cpu-t14-r1.json) / [opt](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/quad-opt-cpu-t14-r1.json) | [base](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/quad-base-cpu-t14-r2.json) / [opt](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/quad-opt-cpu-t14-r2.json) |
+| sift, CUDA / 1 thread | [base](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/sift-base-cuda-t1-r1.json) / [opt](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/sift-opt-cuda-t1-r1.json) | [base](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/sift-base-cuda-t1-r2.json) / [opt](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/sift-opt-cuda-t1-r2.json) |
+| sift, CPU / 1 thread | [base](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/sift-base-cpu-t1-r1.json) / [opt](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/sift-opt-cpu-t1-r1.json) | [base](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/sift-base-cpu-t1-r2.json) / [opt](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/sift-opt-cpu-t1-r2.json) |
+| sift, CPU / 14 threads | [base](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/sift-base-cpu-t14-r1.json) / [opt](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/sift-opt-cpu-t14-r1.json) | [base](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/sift-base-cpu-t14-r2.json) / [opt](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/sift-opt-cpu-t14-r2.json) |
 
 ## Public interpolation latency
 
@@ -117,15 +120,15 @@ This follow-up holds the current default `SIFTFeatureScaleSpace` object and graf
 
 | Device / threads | Round | Base ms (IQR) → optimized ms (IQR) | CUDA peak base → optimized, MiB |
 |---|---:|---|---:|
-| [CUDA / 1 thread](quad_interp_results/control-cuda-t1.json) | 1 | 60.210 (13.177) → 54.922 (3.786) | 650.135 → 650.542 |
-| [CUDA / 1 thread](quad_interp_results/control-cuda-t1.json) | 2 | 57.359 (8.891) → 55.243 (10.069) | 650.135 → 650.542 |
-| [CUDA / 1 thread](quad_interp_results/control-cuda-t1.json) | 3 | 57.246 (11.736) → 57.200 (10.096) | 650.135 → 650.542 |
-| [CPU / 1 thread](quad_interp_results/control-cpu-t1.json) | 1 | 1846.969 (11.796) → 1824.844 (16.541) | — |
-| [CPU / 1 thread](quad_interp_results/control-cpu-t1.json) | 2 | 1871.556 (16.323) → 1808.286 (17.962) | — |
-| [CPU / 1 thread](quad_interp_results/control-cpu-t1.json) | 3 | 1889.926 (27.459) → 1848.887 (18.384) | — |
-| [CPU / 14 threads](quad_interp_results/control-cpu-t14.json) | 1 | 475.144 (21.725) → 443.949 (13.555) | — |
-| [CPU / 14 threads](quad_interp_results/control-cpu-t14.json) | 2 | 440.840 (13.239) → 511.707 (24.111) | — |
-| [CPU / 14 threads](quad_interp_results/control-cpu-t14.json) | 3 | 491.179 (10.728) → 537.949 (15.543) | — |
+| [CUDA / 1 thread](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/control-cuda-t1.json) | 1 | 60.210 (13.177) → 54.922 (3.786) | 650.135 → 650.542 |
+| [CUDA / 1 thread](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/control-cuda-t1.json) | 2 | 57.359 (8.891) → 55.243 (10.069) | 650.135 → 650.542 |
+| [CUDA / 1 thread](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/control-cuda-t1.json) | 3 | 57.246 (11.736) → 57.200 (10.096) | 650.135 → 650.542 |
+| [CPU / 1 thread](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/control-cpu-t1.json) | 1 | 1846.969 (11.796) → 1824.844 (16.541) | — |
+| [CPU / 1 thread](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/control-cpu-t1.json) | 2 | 1871.556 (16.323) → 1808.286 (17.962) | — |
+| [CPU / 1 thread](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/control-cpu-t1.json) | 3 | 1889.926 (27.459) → 1848.887 (18.384) | — |
+| [CPU / 14 threads](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/control-cpu-t14.json) | 1 | 475.144 (21.725) → 443.949 (13.555) | — |
+| [CPU / 14 threads](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/control-cpu-t14.json) | 2 | 440.840 (13.239) → 511.707 (24.111) | — |
+| [CPU / 14 threads](https://github.com/kornia/kornia/blob/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/geometry/quad_interp_results/control-cpu-t14.json) | 3 | 491.179 (10.728) → 537.949 (15.543) | — |
 
 Control allocation includes the entire SIFT forward and returned outputs, measured separately above resident model/input tensors. The interpolation-only allocation table above has a narrower scope.
 

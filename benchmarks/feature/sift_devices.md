@@ -1,5 +1,8 @@
 # SIFT on Intel CPU and CUDA
 
+For the consolidated device comparison and current figures, see the [SIFT benchmark summary](sift_summary.md).
+Raw measurements are linked to commit `efb04dbf`; they are intentionally absent from the PR file diff.
+
 PR #4638 measured on Intel Core i7-14700K + NVIDIA RTX 4090, WSL2, Python 3.11.14, PyTorch 2.14.0+cu130, CUDA runtime 13.0, oneDNN enabled. Measurements: 2026-09-17.
 
 ## Do the earlier optimizations transfer?
@@ -97,4 +100,4 @@ Run from each measured worktree root with the same explicit Pixi-selected interp
 # Use --methods patch for the default-backend comparison.
 ```
 
-Raw measurements: [`sift_device_results/`](sift_device_results/). `before`, `middle`, and `head` name the three historical stages above; `base-final` and `opt` name the fresh A/B. `r1`/`r2` are separate full runs. Control files hold same-process component comparisons. The initial `extra` files cover resized Graf, batch two and checkerboard inputs before/after the historical optimizations. Per-image IQRs describe timing spread, not confidence intervals.
+Raw measurements: [`sift_device_results/`](https://github.com/kornia/kornia/tree/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/feature/sift_device_results/). `before`, `middle`, and `head` name the three historical stages above; `base-final` and `opt` name the fresh A/B. `r1`/`r2` are separate full runs. Control files hold same-process component comparisons. The initial `extra` files cover resized Graf, batch two and checkerboard inputs before/after the historical optimizations. Per-image IQRs describe timing spread, not confidence intervals.

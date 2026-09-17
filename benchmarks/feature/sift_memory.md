@@ -1,5 +1,8 @@
 # SIFT follow-up: fewer copies and bounded sparse buffers
 
+For the consolidated device comparison and current figures, see the [SIFT benchmark summary](sift_summary.md).
+Raw measurements are linked to commit `efb04dbf`; they are intentionally absent from the PR file diff.
+
 This pass reviews PR #4638 at `bc7909746f96bf3e9acb61fd368dc95ce0bca37f`, **after** the optimizations in the [previous report](sift_scale_space.md). It measures the full public `SIFTFeatureScaleSpace(4096, descriptor_backend="pyramid")` call. The feature budget, six Gaussian levels, 19×19/41×41 integration support, one dominant orientation and top-K policy are preserved.
 
 ## Runtime
@@ -79,7 +82,7 @@ CUDA, large full-resolution batches, held-out quality, training-memory usage and
 
 ## Reproduction and provenance
 
-The [raw result files](sift_memory_results/) retain versions, source/input hashes, medians, IQRs and every quality row. Before library sources are the exact reviewed head; the new benchmark harnesses are copied into that worktree. Both before and after metadata may therefore say `bc7909746-dirty`: library SHA256 values distinguish the revisions. After hashes match the final library files. CPU timing and allocation profiles are stored separately.
+The [raw result files](https://github.com/kornia/kornia/tree/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/feature/sift_memory_results/) retain versions, source/input hashes, medians, IQRs and every quality row. Before library sources are the exact reviewed head; the new benchmark harnesses are copied into that worktree. Both before and after metadata may therefore say `bc7909746-dirty`: library SHA256 values distinguish the revisions. After hashes match the final library files. CPU timing and allocation profiles are stored separately.
 
 Run from each measured checkout root, using the same explicit interpreter. Both scripts print `sys.executable` and `kornia.__file__` and enforce the expected checkout. Copy the two harness files into the before checkout before invoking them there.
 

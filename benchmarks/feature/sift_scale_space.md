@@ -1,5 +1,8 @@
 # Specialized top-K SIFT: correctness review and optimization
 
+For the consolidated device comparison and current figures, see the [SIFT benchmark summary](sift_summary.md).
+Raw measurements are linked to commit `efb04dbf`; they are intentionally absent from the PR file diff.
+
 This historical pass compares PR #4638 head `3172b5f1001140f638bfa2c3934633d2be6b9851` with optimized revision `bc7909746f96bf3e9acb61fd368dc95ce0bca37f`. See the [subsequent memory-focused review and optimization](sift_memory.md) for current results. The default patch backend is unchanged. All measurements time the entire public `SIFTFeatureScaleSpace(4096, descriptor_backend="pyramid")` forward, including detection, orientation, and RootSIFT.
 
 ## Results
@@ -11,7 +14,7 @@ Apple M1, macOS 26.5.1, Python 3.11.14, PyTorch 2.14.0; Oxford graf images 1–6
 | CPU | 1201.12 | 794.80 | 1.51× |
 | MPS | 622.61 | 587.22 | 1.06× |
 
-![Graf quality and extraction runtime](sift_scale_space.svg)
+![Historical Graf quality and extraction runtime](https://raw.githubusercontent.com/kornia/kornia/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/feature/sift_scale_space.svg)
 
 The OpenCV 5.0.0 CPU series is retained from the earlier PR measurement on this machine, using native uint8 SIFT plus NumPy RootSIFT and its default contrast/edge rejection. Its 2,676–4,096 returned features are an equal requested budget, not equal actual work. It is contextual; the speedup table uses only the fresh reviewed/optimized A/B runs. CPU geometry is shown in the figure; failed homographies remain visible.
 
@@ -56,7 +59,7 @@ Each cell is median ± IQR in milliseconds. IQR is timing spread, not a confiden
 
 ## Reproduction and provenance
 
-Raw files are tracked in [`sift_scale_space_results/`](sift_scale_space_results/). Each includes source and input SHA256 hashes, versions, aggregate load, counts, timings, and matching/RANSAC rows. Before runs are from the exact reviewed head; after runs record its dirty working-tree revision plus the hashes of the measured implementation. Those source hashes identify the historical measured implementations; the current follow-up is linked above. Report/plot edits happen after timing.
+Raw files are archived at the pre-cleanup commit in [`sift_scale_space_results/`](https://github.com/kornia/kornia/tree/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/feature/sift_scale_space_results/). Each includes source and input SHA256 hashes, versions, aggregate load, counts, timings, and matching/RANSAC rows. Before runs are from the exact reviewed head; after runs record its dirty working-tree revision plus the hashes of the measured implementation. Those source hashes identify the historical measured implementations; the current follow-up is linked above. Report/plot edits happen after timing.
 
 The harness verifies `kornia.__file__` against `--expected-checkout`; run as a module from each checkout with the same explicit interpreter. It uses `benchmarks.common.time_us`, at least max(1 second, five warm-call durations) of repeated timing, and MPS synchronization inside the timed call. CUDA, large batches, held-out datasets, and compiled end-to-end speed have not been benchmarked.
 
@@ -67,12 +70,14 @@ The harness verifies `kornia.__file__` against `--expected-checkout`; run as a m
   --device cpu --json /tmp/sift-before-cpu.json
 # Repeat with --device mps and distinct output paths.
 
+# Restore historical inputs outside the checkout before plotting:
+git archive efb04dbf9c85e4cf71625cc2467bd5243b0c803c benchmarks/feature/sift_scale_space_results | tar -x -C /tmp
 .venv/bin/python benchmarks/feature/plot_sift_runtime.py --scale-space \
-  --inputs benchmarks/feature/sift_scale_space_results/before-cpu.json \
-           benchmarks/feature/sift_scale_space_results/after-cpu.json \
-           benchmarks/feature/sift_scale_space_results/opencv-cpu.json \
-           benchmarks/feature/sift_scale_space_results/before-mps.json \
-           benchmarks/feature/sift_scale_space_results/after-mps.json \
+  --inputs /tmp/benchmarks/feature/sift_scale_space_results/before-cpu.json \
+           /tmp/benchmarks/feature/sift_scale_space_results/after-cpu.json \
+           /tmp/benchmarks/feature/sift_scale_space_results/opencv-cpu.json \
+           /tmp/benchmarks/feature/sift_scale_space_results/before-mps.json \
+           /tmp/benchmarks/feature/sift_scale_space_results/after-mps.json \
   --labels "Reviewed PR" "Optimized" "OpenCV" "Reviewed PR" "Optimized" \
   --cpu-label "Apple M1" --output /tmp/sift-optimized
 ```

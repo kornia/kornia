@@ -1,5 +1,8 @@
 # Shared-pyramid SIFT on Oxford graf
 
+For the consolidated device comparison and current figures, see the [SIFT benchmark summary](sift_summary.md).
+Raw measurements are linked to commit `efb04dbf`; they are intentionally absent from the PR file diff.
+
 This report covers the generic LAF extraction backend. The dedicated
 `SIFTFeatureScaleSpace` backend now shares the detector Gaussian pyramid; see
 [its end-to-end results](sift_scale_space.md).
@@ -98,7 +101,7 @@ The affine 1–5 pair drops from 136 to 40 correct matches. Keep the patch path 
 the default; this dense option is useful only when that CPU speed/quality tradeoff
 fits the application.
 
-The historical raw measurements are retained in [`dense_sift_results/`](dense_sift_results/), including measurement-time source hashes and per-image IQRs. The commands below regenerate them; the unused-octave optimization in this follow-up has not been retimed for this generic backend.
+The historical raw measurements are retained in [`dense_sift_results/`](https://github.com/kornia/kornia/tree/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks/feature/dense_sift_results/), including measurement-time source hashes and per-image IQRs. The commands below regenerate them; the unused-octave optimization in this follow-up has not been retimed for this generic backend.
 
 ## RANSAC homography evaluation
 
