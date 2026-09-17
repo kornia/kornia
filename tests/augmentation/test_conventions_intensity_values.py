@@ -1430,32 +1430,33 @@ class TestIntensityColourConventions(BaseTester):
         out = aug(image)
         red_gain, blue_gain = (float(value) for value in aug.pl[0])
         scaled = torch.stack([image[:, 0] * red_gain, image[:, 1], image[:, 2] * blue_gain], dim=1)
-        # Compared in the input's dtype: the output is float32 for a half input (#4574, pinned below).
+        # Explicit .to(dtype) here is a no-op since the fix for #4574 (below): the output already
+        # matches the input's own dtype.
         self.assert_close(out.to(dtype), scaled.clamp(max=1.0))
         assert float(out[0, 1, 0, 0]) == 1.0 and float(out[0, 2, 0, 0]) < 0.01
         assert bool((out[..., 1] < 0).all())
 
-    # Issue #4574: the `pl` table is float32 unless the module is cast, and apply_transform multiplies the
-    # red and blue channels by it without casting, so a half-precision input comes back float32; a float64
-    # input keeps its dtype, and so does a half input once the module is cast with `.half()`.
+    # Fixed for #4574: apply_transform now casts the `pl` table to the input's own dtype before
+    # indexing it, rather than only to its device, so the output always matches the input's dtype --
+    # regardless of what dtype (if any) the module itself has separately been cast to.
     # Snippet used to generate expected:
     #   for dt in (torch.float16, torch.bfloat16, torch.float64):
     #       torch.manual_seed(0); print(dt, K.RandomPlanckianJitter(p=1.0)(torch.rand(2, 3, 4, 4).to(dt)).dtype)
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `float32`, `float32`, `float64`.
-    def test_wart_random_planckian_jitter_half_input_comes_back_float32_4574(self, device, dtype):
+    #   torch.manual_seed(0)
+    #   print(K.RandomPlanckianJitter(p=1.0).to(dtype=torch.bfloat16)(torch.rand(2, 3, 4, 4).half()).dtype)
+    # executed 2026-09-17 (torch 2.14.0, cpu) -> `float16`, `bfloat16`, `float64`; `float16`.
+    def test_convention_random_planckian_jitter_output_dtype_matches_input_4574(self, device, dtype):
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 4, 4).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomPlanckianJitter(p=1.0)(image)
-        assert out.dtype == (torch.float32 if dtype in _HALF else dtype)
-        # The output is the promoted dtype of input and table, so casting the module to the input's own
-        # dtype restores it, and a wider cast widens the output.
-        torch.manual_seed(_FORWARD_SEED)
-        assert K.RandomPlanckianJitter(p=1.0).to(device=device, dtype=dtype)(image).dtype == dtype
+        assert out.dtype == dtype
+        # Casting the module to some OTHER dtype first makes no difference: the table is re-cast to
+        # the input's dtype on every forward call.
         if dtype in _HALF:
             other = torch.bfloat16 if dtype == torch.float16 else torch.float16
             torch.manual_seed(_FORWARD_SEED)
-            assert K.RandomPlanckianJitter(p=1.0).to(device=device, dtype=other)(image).dtype == torch.float32
+            assert K.RandomPlanckianJitter(p=1.0).to(device=device, dtype=other)(image).dtype == dtype
 
     # Row 6c-32/6c-33: the illuminant table is an RGB ratio, so a non-RGB input is rejected rather
     # than broadcast.  Snippet used to generate expected:
