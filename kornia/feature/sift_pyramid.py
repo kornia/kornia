@@ -13,9 +13,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# limitations under the License.
+#
 
-"""Sparse SIFT features assembled from shared DenseSIFT image-pyramid maps."""
+"""Pyramid-based SIFT extraction at sparse local affine frames."""
 
 from __future__ import annotations
 
@@ -40,8 +40,14 @@ from .laf import (
 from .siftdesc import _dense_sift_histograms_from_gradients, _rootsift, get_sift_pooling_kernel
 
 
-class DenseSIFTFeature(nn.Module):
-    """Orient and describe LAFs using one shared DenseSIFT Gaussian pyramid.
+class SIFTDescriptorFromPyramid(nn.Module):
+    """Extract sparse SIFT descriptors from a shared image-gradient pyramid.
+
+    This module does not detect keypoints or return a dense descriptor map.
+    ``forward(image, lafs)`` describes the supplied, already oriented LAFs.
+    :meth:`orient_and_describe` additionally assigns their orientation while
+    sharing one pyramid between orientation assignment and description. The
+    pyramid belongs to this descriptor; it is not reused from the detector.
 
     The module combines the shared histogram maps of `VLFeat DSIFT
     <https://www.vlfeat.org/api/dsift.html>`_ with orientation-relative spatial and
@@ -67,12 +73,10 @@ class DenseSIFTFeature(nn.Module):
         rootsift: If ``True``, apply RootSIFT after clipping and normalization.
         clipval: Descriptor clipping threshold.
         orientation_bins: Number of bins for dominant-orientation assignment.
-        upright: Keep the supplied LAF orientation instead of assigning one.
 
     Shape:
         - image: :math:`(B, 1, H, W)`
         - lafs: :math:`(B, N, 2, 3)` in image pixel coordinates
-        - output LAFs: :math:`(B, N, 2, 3)`
         - descriptors: :math:`(B, N, num_ang_bins * num_spatial_bins^2)`
     """
 
@@ -84,7 +88,6 @@ class DenseSIFTFeature(nn.Module):
         rootsift: bool = True,
         clipval: float = 0.2,
         orientation_bins: int = 36,
-        upright: bool = False,
     ) -> None:
         super().__init__()
         if num_ang_bins < 2 or orientation_bins < 2 or num_spatial_bins < 1 or spatial_bin_size < 1:
@@ -97,7 +100,6 @@ class DenseSIFTFeature(nn.Module):
         self.rootsift = rootsift
         self.clipval = clipval
         self.orientation_bins = orientation_bins
-        self.upright = upright
         self.eps = 1e-10
         pooling = get_sift_pooling_kernel(spatial_bin_size).reshape(1, 1, spatial_bin_size, spatial_bin_size)
         self.register_buffer("descriptor_pooling_kernel", pooling)
@@ -259,12 +261,28 @@ class DenseSIFTFeature(nn.Module):
             return _rootsift(desc.reshape(-1, desc.shape[-1]), self.eps).reshape_as(desc)
         return desc
 
-    def forward(self, image: torch.Tensor, lafs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Assign orientations and compute descriptors from a shared image pyramid.
+    def forward(self, image: torch.Tensor, lafs: torch.Tensor) -> torch.Tensor:
+        """Describe supplied oriented frames without detecting or reorienting them.
+
+        Args:
+            image: Grayscale floating-point image of shape ``(B, 1, H, W)``.
+            lafs: Already oriented pixel-coordinate frames of shape ``(B, N, 2, 3)``.
+
+        Returns:
+            Sparse descriptors of shape ``(B, N, num_ang_bins * num_spatial_bins**2)``,
+            with the image dtype and device. Invalid frames receive zero descriptors.
+        """
+        return self.orient_and_describe(image, lafs, upright=True)[1]
+
+    def orient_and_describe(
+        self, image: torch.Tensor, lafs: torch.Tensor, upright: bool = False
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Orient and describe sparse frames, building the extraction pyramid once.
 
         Args:
             image: Grayscale floating-point image of shape ``(B, 1, H, W)``.
             lafs: Pixel-coordinate frames of shape ``(B, N, 2, 3)``.
+            upright: Preserve the supplied frame orientations rather than estimating them.
 
         Returns:
             Oriented frames in the input LAF dtype and descriptors in the image
@@ -300,7 +318,7 @@ class DenseSIFTFeature(nn.Module):
                 )
             )
         levels = self._select_levels(safe_lafs, len(pyramid))
-        if self.upright:
+        if upright:
             oriented_lafs = safe_lafs
         else:
             angles = self._orientation(pyramid, histograms, safe_lafs, levels)

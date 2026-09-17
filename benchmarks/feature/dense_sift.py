@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Shared-pyramid DenseSIFT versus patch SIFT on fixed Oxford graf detections.
+"""Pyramid-based versus patch-based sparse SIFT extraction on fixed graf detections.
 
 Run from the measured checkout root using ``python -m benchmarks.feature.dense_sift``.
 Image loading, detection and matching are excluded from orientation+description
@@ -161,7 +161,7 @@ def main() -> None:
     )
     meta["implementation_sha256"] = {
         name: hashlib.sha256(path.read_bytes()).hexdigest()
-        for name in ("dense_sift.py", "siftdesc.py", "integrated.py", "laf.py", "orientation.py")
+        for name in ("sift_pyramid.py", "siftdesc.py", "integrated.py", "laf.py", "orientation.py")
         if (path := Path(kornia.__file__).parent / "feature" / name).is_file()
     }
     print(versions_line(meta), flush=True)
@@ -191,10 +191,10 @@ def main() -> None:
                 oriented = orienter(laf, img)
                 return oriented, descriptor(img, oriented)
         else:
-            model = KF.DenseSIFTFeature(rootsift=True).to(device).eval()
+            model = KF.SIFTDescriptorFromPyramid(rootsift=True).to(device).eval()
 
             def run(img, laf, model=model):
-                return model(img, laf)
+                return model.orient_and_describe(img, laf)
 
         outputs = []
         for i, (img, laf) in enumerate(zip(images, frames), 1):

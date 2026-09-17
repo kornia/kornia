@@ -16,7 +16,7 @@
 #
 
 import warnings
-from typing import ClassVar, Dict, List, Optional, Tuple, Union
+from typing import ClassVar, Dict, List, Literal, Optional, Tuple, Union
 
 import torch
 from torch import nn
@@ -29,7 +29,6 @@ from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
 
 from .affine_shape import LAFAffNetShapeEstimator
-from .dense_sift import DenseSIFTFeature
 from .hardnet import HardNet
 from .keynet import KeyNetDetector
 from .laf import (
@@ -50,6 +49,7 @@ from .scale_space_detector import (
     ScaleSpaceDetector,
     get_default_detector_config,
 )
+from .sift_pyramid import SIFTDescriptorFromPyramid
 from .siftdesc import SIFTDescriptor
 
 
@@ -165,7 +165,7 @@ class LocalFeature(nn.Module):
 
     """
 
-    def __init__(self, detector: nn.Module, descriptor: LAFDescriptor, scaling_coef: float = 1.0) -> None:
+    def __init__(self, detector: nn.Module, descriptor: nn.Module, scaling_coef: float = 1.0) -> None:
         super().__init__()
         self.detector = detector
         self.descriptor = descriptor
@@ -213,12 +213,33 @@ class LocalFeature(nn.Module):
         return (lafs, responses, descs)
 
 
-class SIFTFeature(LocalFeature):
+class _SIFTFeature(LocalFeature):
+    """Compose a sparse SIFT detector with a patch or pyramid extraction backend."""
+
+    def __init__(self, detector: nn.Module, descriptor: nn.Module, upright: bool) -> None:
+        super().__init__(detector, descriptor)
+        self.upright = upright
+
+    def forward(
+        self, img: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Return sparse LAFs, detector responses, and one descriptor per LAF."""
+        if not isinstance(self.descriptor, SIFTDescriptorFromPyramid):
+            return super().forward(img, mask)
+        lafs, responses = self.detector(img, mask)
+        lafs = scale_laf(lafs, self.scaling_coef)
+        gray_image = rgb_to_grayscale(img) if img.shape[1] == 3 else img
+        lafs, descriptors = self.descriptor.orient_and_describe(gray_image, lafs, upright=self.upright)
+        return lafs, responses, descriptors
+
+
+class SIFTFeature(_SIFTFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
 
-    Set ``dense_sift=True`` to opt into :class:`DenseSIFTFeature`: it assigns
-    orientation and describes the detector's unoriented LAFs from shared pyramid
-    histograms. The default retains the patch-wise descriptor pipeline.
+    ``descriptor_backend="pyramid"`` uses :class:`SIFTDescriptorFromPyramid` for
+    orientation and description at the detector's sparse LAFs. Detection and the
+    feature budget are unchanged. The default ``"patch"`` backend retains the
+    existing patch-wise pipeline.
 
     Using `kornia.feature.MultiResolutionDetector` without blur pyramid Still not as good as OpenCV/VLFeat because of
     https://github.com/kornia/kornia/pull/884,
@@ -234,8 +255,10 @@ class SIFTFeature(LocalFeature):
         config: Optional[Detector_config] = None,
         compile_model: bool = False,
         score_threshold: float = 0.0,
-        dense_sift: bool = False,
+        descriptor_backend: Literal["patch", "pyramid"] = "patch",
     ) -> None:
+        if descriptor_backend not in ("patch", "pyramid"):
+            raise ValueError(f"Unknown SIFT descriptor backend: {descriptor_backend!r}")
         patch_size: int = 41
         if device is None:
             device = torch.device("cpu")
@@ -245,40 +268,30 @@ class SIFTFeature(LocalFeature):
             BlobDoGSingle(1.0, 1.6),
             num_features,
             config,
-            ori_module=PassLAF() if upright or dense_sift else LAFOrienter(19),
+            ori_module=PassLAF() if upright or descriptor_backend == "pyramid" else LAFOrienter(19),
             aff_module=PassLAF(),
             compile_model=compile_model,
             score_threshold=score_threshold,
         ).to(device)
-        patch_descriptor: nn.Module
-        if dense_sift:
-            patch_descriptor = nn.Identity()
+        descriptor: nn.Module
+        if descriptor_backend == "pyramid":
+            descriptor = SIFTDescriptorFromPyramid(rootsift=rootsift).to(device)
         else:
-            patch_descriptor = SIFTDescriptor(patch_size=patch_size, rootsift=rootsift)
-        descriptor = LAFDescriptor(patch_descriptor, patch_size=patch_size, grayscale_descriptor=True).to(device)
-        super().__init__(detector, descriptor)
-        self.dense_sift_feature: Optional[DenseSIFTFeature]
-        self.dense_sift_feature = (
-            DenseSIFTFeature(rootsift=rootsift, upright=upright).to(device) if dense_sift else None
-        )
-
-    def forward(
-        self, img: torch.Tensor, mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Detect features and optionally use shared-pyramid DenseSIFT description."""
-        if self.dense_sift_feature is None:
-            return super().forward(img, mask)
-        lafs, responses = self.detector(img, mask)
-        lafs = scale_laf(lafs, self.scaling_coef)
-        gray_image = rgb_to_grayscale(img) if img.shape[1] == 3 else img
-        oriented_lafs, descriptors = self.dense_sift_feature(gray_image, lafs)
-        return oriented_lafs, responses, descriptors
+            descriptor = LAFDescriptor(
+                SIFTDescriptor(patch_size=patch_size, rootsift=rootsift),
+                patch_size=patch_size,
+                grayscale_descriptor=True,
+            ).to(device)
+        super().__init__(detector, descriptor, upright)
 
 
-class SIFTFeatureScaleSpace(LocalFeature):
+class SIFTFeatureScaleSpace(_SIFTFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
 
-    Using `kornia.feature.ScaleSpaceDetector` with blur pyramid.
+    Using `kornia.feature.ScaleSpaceDetector` with blur pyramid. Select
+    ``descriptor_backend="pyramid"`` to use :class:`SIFTDescriptorFromPyramid`
+    for sparse orientation and description. It builds its own extraction pyramid;
+    the detector's scale-space construction and feature budget are unchanged.
 
     Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
     """
@@ -290,7 +303,10 @@ class SIFTFeatureScaleSpace(LocalFeature):
         rootsift: bool = True,
         device: Union[str, torch.device, None] = None,
         compile_modules: Union[bool, List[str]] = False,
+        descriptor_backend: Literal["patch", "pyramid"] = "patch",
     ) -> None:
+        if descriptor_backend not in ("patch", "pyramid"):
+            raise ValueError(f"Unknown SIFT descriptor backend: {descriptor_backend!r}")
         if device is None:
             device = torch.device("cpu")
         patch_size: int = 41
@@ -299,16 +315,22 @@ class SIFTFeatureScaleSpace(LocalFeature):
             resp_module=BlobDoG(),
             subpix_module=ConvQuadInterp3d(strict_maxima_bonus=0.0),
             scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
-            ori_module=PassLAF() if upright else LAFOrienter(19),
+            ori_module=PassLAF() if upright or descriptor_backend == "pyramid" else LAFOrienter(19),
             scale_space_response=True,
             minima_are_also_good=True,
             mr_size=6.0,
             compile_modules=compile_modules,
         ).to(device)
-        descriptor = LAFDescriptor(
-            SIFTDescriptor(patch_size=patch_size, rootsift=rootsift), patch_size=patch_size, grayscale_descriptor=True
-        ).to(device)
-        super().__init__(detector, descriptor)
+        descriptor: nn.Module
+        if descriptor_backend == "pyramid":
+            descriptor = SIFTDescriptorFromPyramid(rootsift=rootsift).to(device)
+        else:
+            descriptor = LAFDescriptor(
+                SIFTDescriptor(patch_size=patch_size, rootsift=rootsift),
+                patch_size=patch_size,
+                grayscale_descriptor=True,
+            ).to(device)
+        super().__init__(detector, descriptor, upright)
 
 
 class GFTTAffNetHardNet(LocalFeature):

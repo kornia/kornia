@@ -24,7 +24,6 @@ from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, Patc
 from .aliked import ALIKED, ALIKEDFeatures
 from .dedode import DeDoDe
 from .defmo import DeFMO
-from .dense_sift import DenseSIFTFeature
 from .disk import DISK, DISKFeatures
 from .hardnet import HardNet, HardNet8
 from .hynet import TLU, FilterResponseNorm2d, HyNet
@@ -93,6 +92,7 @@ from .responses import (
     hessian_response,
 )
 from .scale_space_detector import MultiResolutionDetector, PassLAF, ScaleSpaceDetector
+from .sift_pyramid import SIFTDescriptorFromPyramid
 from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
@@ -115,7 +115,6 @@ __all__ = [
     "DeDoDe",
     "DeFMO",
     "DenseSIFTDescriptor",
-    "DenseSIFTFeature",
     "DescriptorMatcher",
     "FilterResponseNorm2d",
     "GFTTAffNetHardNet",
@@ -146,6 +145,7 @@ __all__ = [
     "PatchAffineShapeEstimator",
     "PatchDominantGradientOrientation",
     "SIFTDescriptor",
+    "SIFTDescriptorFromPyramid",
     "SIFTFeature",
     "SIFTFeatureScaleSpace",
     "SOLD2_detector",

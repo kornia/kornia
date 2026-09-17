@@ -6,8 +6,8 @@ Descriptors
 .. autoclass:: DenseSIFTDescriptor
    :members: get_gradient_histograms
 
-.. autoclass:: DenseSIFTFeature
-   :members: forward
+.. autoclass:: SIFTDescriptorFromPyramid
+   :members: forward, orient_and_describe
 
 .. autoclass:: SIFTDescriptor
 .. autoclass:: MKDDescriptor

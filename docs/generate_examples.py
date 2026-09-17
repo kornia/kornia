@@ -720,7 +720,7 @@ def main():
         "DISK",
         "ALIKED",
         "XFeat",
-        "DenseSIFTFeature",
+        "SIFTDescriptorFromPyramid",
     ]
     # ITERATE OVER THE TRANSFORMS
     for fn_name in responses:
@@ -753,7 +753,7 @@ def main():
             out = torch.nn.functional.interpolate(out, img_outdoor.shape[-2:], mode="bilinear", align_corners=False)
             out = K.color.grayscale_to_rgb(out)
             img_in = img_outdoor
-        elif fn_name == "DenseSIFTFeature":
+        elif fn_name == "SIFTDescriptorFromPyramid":
             # A regular LAF grid turns the sparse descriptor into a compact score map:
             # show distance to the centre descriptor on the same RGB canvas as other examples.
             h, w = img_kornia.shape[-2:]
@@ -763,7 +763,7 @@ def main():
             xy = torch.stack([xx, yy], dim=-1).reshape(1, -1, 2)
             scale = torch.full((*xy.shape[:2], 1, 1), 6.0, device=xy.device, dtype=xy.dtype)
             lafs = K.feature.laf_from_center_scale_ori(xy, scale)
-            _, desc = K.feature.DenseSIFTFeature().eval()(K.color.rgb_to_grayscale(img_kornia), lafs)
+            desc = K.feature.SIFTDescriptorFromPyramid().eval()(K.color.rgb_to_grayscale(img_kornia), lafs)
             centre = desc[:, desc.shape[1] // 2 : desc.shape[1] // 2 + 1]
             out = (desc - centre).square().sum(-1).sqrt().reshape(1, 1, yy.shape[0], yy.shape[1])
             out = F.interpolate(out, (h, w), mode="bilinear", align_corners=False)

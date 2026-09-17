@@ -282,9 +282,9 @@ class TestSIFTFeature(BaseTester):
         sift = SIFTFeature()
         assert sift is not None
 
-    def test_dense_sift_opt_in(self, device, dtype):
+    def test_pyramid_sift_opt_in(self, device, dtype):
         image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
-        lafs, responses, descriptors = SIFTFeature(2, dense_sift=True).to(device, dtype)(image)
+        lafs, responses, descriptors = SIFTFeature(2, descriptor_backend="pyramid").to(device, dtype)(image)
         assert lafs.shape == (1, 2, 2, 3)
         assert responses.shape == (1, 2)
         assert descriptors.shape == (1, 2, 128)
@@ -511,3 +511,49 @@ class TestLocalFeatureMatcher(BaseTester):
         out_jit = model_jit(inputs)
         for k, v in out.items():
             self.assert_close(v, out_jit[k])
+
+
+class TestSIFTPyramidBackend(BaseTester):
+    @pytest.mark.parametrize("preset", [kornia.feature.SIFTFeature, kornia.feature.SIFTFeatureScaleSpace])
+    @pytest.mark.parametrize("upright", [False, True])
+    def test_sparse_output_and_real_descriptor(self, device, dtype, preset, upright):
+        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        feature = preset(num_features=3, upright=upright, descriptor_backend="pyramid").to(device, dtype).eval()
+        assert isinstance(feature.descriptor, kornia.feature.SIFTDescriptorFromPyramid)
+        lafs, responses, descriptors = feature(image)
+        assert lafs.shape == (1, 3, 2, 3)
+        assert responses.shape == (1, 3)
+        assert descriptors.shape == (1, 3, 128)
+        self.assert_close(descriptors, feature.descriptor(image, lafs))
+
+    @pytest.mark.parametrize("preset", [kornia.feature.SIFTFeature, kornia.feature.SIFTFeatureScaleSpace])
+    def test_detector_responses_and_centers_are_unchanged(self, device, dtype, preset):
+        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        patch = preset(num_features=3, upright=True).to(device, dtype).eval()
+        pyramid = preset(num_features=3, descriptor_backend="pyramid").to(device, dtype).eval()
+        patch_lafs, patch_responses, _ = patch(image)
+        pyramid_lafs, pyramid_responses, _ = pyramid(image)
+        self.assert_close(get_laf_center(patch_lafs), get_laf_center(pyramid_lafs))
+        self.assert_close(patch_responses, pyramid_responses)
+
+    @pytest.mark.parametrize("preset", [kornia.feature.SIFTFeature, kornia.feature.SIFTFeatureScaleSpace])
+    def test_invalid_backend(self, preset):
+        with pytest.raises(ValueError, match="descriptor backend"):
+            preset(descriptor_backend="unknown")
+
+    def test_generic_local_feature_preserves_frames_and_forwards_mask(self, device, dtype):
+        image = torch.rand(1, 1, 40, 40, device=device, dtype=dtype)
+        lafs = torch.tensor([[[[6.0, 2.0, 20.0], [-2.0, 6.0, 20.0]]]], device=device, dtype=dtype)
+        mask = torch.ones_like(image)
+
+        class Detector(nn.Module):
+            def forward(self, image, received_mask):
+                assert received_mask is mask
+                return lafs, image.new_ones(1, 1)
+
+        descriptor = kornia.feature.SIFTDescriptorFromPyramid().to(device, dtype)
+        feature = LocalFeature(Detector(), descriptor)
+        returned, responses, descriptors = feature(image, mask)
+        self.assert_close(returned, lafs)
+        self.assert_close(responses, image.new_ones(1, 1))
+        self.assert_close(descriptors, descriptor(image, lafs))

@@ -1,6 +1,6 @@
 # Shared-pyramid SIFT on Oxford graf
 
-`DenseSIFTFeature` is an opt-in approximation for orienting and describing existing
+`SIFTDescriptorFromPyramid` is an opt-in extraction backend for existing sparse
 similarity or affine LAFs. It shares DenseSIFT angular histograms across keypoints
 at each Gaussian-pyramid octave, samples orientation support from those maps,
 rotates the spatial descriptor grid, and remaps angular bins through the LAF's
@@ -15,6 +15,16 @@ support for both stages; the baseline descriptor independently selects its
 41-pixel support. Image-space pooled cells approximate a rotated/sheared footprint,
 and gradient angular binning is interpolated a second time during affine remapping.
 These differences mean descriptor equivalence is not expected.
+
+The public architecture remains sparse detector → orientation → descriptor.
+Both SIFT presets own a real `.descriptor` module and preserve their existing
+feature-count/mask/response contracts. `SIFTDescriptorFromPyramid.forward` returns
+only one descriptor per supplied LAF; `orient_and_describe` shares extraction work
+when orientation assignment is also needed. Dense histogram maps are internal
+intermediates, not detected features or a public dense-output feature pipeline.
+The extraction pyramid is built separately from the detector's scale space.
+The raw benchmark series named `dense` records this pyramid extraction backend;
+its old filenames and measurement-time source hashes are retained for provenance.
 
 ## Protocol
 
@@ -166,10 +176,14 @@ for the MPS similarity run; omit both for CPU similarity):
 import kornia.feature as KF
 
 # Existing similarity or affine detector frames:
-oriented_lafs, descriptors = KF.DenseSIFTFeature()(gray_image, lafs)
+descriptor = KF.SIFTDescriptorFromPyramid()
+oriented_lafs, descriptors = descriptor.orient_and_describe(gray_image, lafs)
+# Describe already-oriented LAFs directly:
+descriptors = descriptor(gray_image, oriented_lafs)
 
-# Convenience DoG pipeline; the default remains dense_sift=False:
-features = KF.SIFTFeature(num_features=4096, dense_sift=True)
+# Sparse DoG pipelines; detection is unchanged and the default backend is "patch":
+features = KF.SIFTFeature(num_features=4096, descriptor_backend="pyramid")
+scale_space_features = KF.SIFTFeatureScaleSpace(num_features=4096, descriptor_backend="pyramid")
 lafs, responses, descriptors = features(gray_image)
 ```
 
@@ -210,3 +224,11 @@ validated in this session. The full documentation image-generation job was not r
 RANSAC follow-up validation: synthetic homography recovery with outliers, the
 non-square mean-L1 corner convention, insufficient matches, failed estimates,
 nonfinite projections, and benchmark artifact schemas: 7 tests passed.
+
+Architecture follow-up: both sparse SIFT presets expose `descriptor_backend` and
+own a functional sparse descriptor. CPU float32/float64 architecture/descriptor
+checks: 43 passed; CPU half types: 25 passed; MPS float32: 22 passed, 1 skipped;
+API/RANSAC/artifact checks: 154 passed. Pre-refactor descriptor/preset fixtures
+were bitwise unchanged. Re-running both methods on all five affine graf pairs
+reproduced every match-count, precision, RANSAC-inlier, and corner-error record
+exactly; the original measured artifacts remain intact.
