@@ -9,14 +9,15 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 | Directory | Contents |
 | --- | --- |
 | [`augmentation/`](augmentation/) | Cross-library augmentation benchmarks — [`flagship.py`](augmentation/flagship.py) (class-API, parameter sampling included, vs torchvision v2/albumentations/OpenCV/PIL) plus pipeline/per-op scripts; see its [README](augmentation/README.md). |
-| [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. [`quad_interp.py`](geometry/quad_interp.py) measures shared quadratic interpolation; [CPU/CUDA A/B results](geometry/quad_interp.md) include the default scale-space SIFT pipeline. |
+| [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. |
 | [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL. [`gaussian_cpu.py`](filters/gaussian_cpu.py): Gaussian blur and scale-pyramid base/branch timing and numerical comparisons; [report](filters/gaussian_cpu.md). |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions. |
-| [`feature/`](feature/) | [SIFT device speedups and quality](feature/sift_summary.md) consolidates PR #4638 results on Apple M1, Intel CPU and CUDA. Local-feature detector benchmarks incl. quality (matching) metrics; [`laf_ops.py`](feature/laf_ops.py) microbenchmarks the shared LAF operations and [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) drills into one of them (both base-revision A/B — no cross-library baseline exists). [`local_features.py`](feature/local_features.py) measures Oxford graf speed and homography corner error for SIFT, SIFT-AffNet-HardNet and KeyNet-HardNet on CPU, CUDA or MPS (`--device cpu --timing-pairs 2` times the representative 1–2 pair and still scores all five); results in [`graf_benchmark.md`](feature/graf_benchmark.md). [`sift_runtime.py`](feature/sift_runtime.py) and [`plot_sift_runtime.py`](feature/plot_sift_runtime.py) chart scale-space SIFT runtime across releases and batch sizes; results in [`sift_runtime.md`](feature/sift_runtime.md). [`dense_sift.py`](feature/dense_sift.py) compares shared-pyramid SIFT with patch SIFT on fixed graf similarity and affine frames; [speed and precision results](feature/dense_sift.md). [`sift_scale_space.py`](feature/sift_scale_space.py) benchmarks the dedicated shared-detector-pyramid SIFT pipeline end to end, including matching and RANSAC quality; [results](feature/sift_scale_space.md). The [follow-up memory report](feature/sift_memory.md) measures allocation reductions and correctness fixes, with [`sift_memory.py`](feature/sift_memory.py) checking checkerboard and small-batch cases. |
+| [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`laf_ops.py`](feature/laf_ops.py) microbenchmarks the shared LAF operations and [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) drills into one of them (both base-revision A/B — no cross-library baseline exists). [`local_features.py`](feature/local_features.py) measures Oxford graf speed and homography corner error for SIFT, SIFT-AffNet-HardNet and KeyNet-HardNet on CPU, CUDA or MPS (`--device cpu --timing-pairs 2` times the representative 1–2 pair and still scores all five); results in [`graf_benchmark.md`](feature/graf_benchmark.md). [`sift_runtime.py`](feature/sift_runtime.py) and [`plot_sift_runtime.py`](feature/plot_sift_runtime.py) chart scale-space SIFT runtime across releases and batch sizes; results in [`sift_runtime.md`](feature/sift_runtime.md). |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |
 
-The [Intel CPU and CUDA SIFT report](feature/sift_devices.md) checks how the specialized pipeline's
-optimizations transfer across devices and measures its CUDA-specific refinement follow-up.
+[`feature/sift_scale_space.py`](feature/sift_scale_space.py) compares complete SIFT
+extraction, matching and homography quality on CPU, CUDA or MPS;
+[device results and usage](feature/sift_summary.md).
 
 ## Methodology contract
 
@@ -122,10 +123,8 @@ version-directory rules; `load` is optional there because a base revision's harn
 it. The report states what was measured, on which commits, with which command, in the style of
 the sample-results sections below.
 
-PR #4638 intentionally archives its 109 SIFT comparison JSONs in Git history instead of
-including them in the final file diff. Its [summary](feature/sift_summary.md) and detailed
-reports link to the immutable archive commit; the figure script reads those Git objects
-directly. This keeps the measurements reproducible without retaining raw runs in the checkout.
+PR #4638 keeps its historical measurements in an [immutable archive](https://github.com/kornia/kornia/tree/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks),
+with figures embedded in the PR description. Local reruns should write JSON outside the checkout.
 
 ## Sample results — geometry flagship ops
 

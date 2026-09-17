@@ -24,7 +24,7 @@ import torch
 
 pytest.importorskip("PIL")
 
-from benchmarks.feature.dense_sift import homography_quality
+from benchmarks.feature.sift_scale_space import homography_quality
 from kornia.geometry import transform_points
 
 
@@ -48,7 +48,7 @@ def test_insufficient_matches_has_no_fake_zero_error():
 
 
 def test_corner_metric_uses_non_square_pixel_extents_and_mean_l1(monkeypatch):
-    import benchmarks.feature.dense_sift as benchmark
+    import benchmarks.feature.sift_scale_space as benchmark
 
     # On a 21-wide, 11-high image, corner L1 errors are 0, 2, 4, 2.
     estimate = torch.diag(torch.tensor([1.1, 1.2, 1.0]))
@@ -61,7 +61,7 @@ def test_corner_metric_uses_non_square_pixel_extents_and_mean_l1(monkeypatch):
 
 @pytest.mark.parametrize("inliers,status", [(0, "failed_estimate"), (4, "nonfinite_projection")])
 def test_failed_geometry_retains_null_error(monkeypatch, inliers, status):
-    import benchmarks.feature.dense_sift as benchmark
+    import benchmarks.feature.sift_scale_space as benchmark
 
     # The denominator is x: the two left-hand corners project to infinity.
     estimate = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]])

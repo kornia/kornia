@@ -51,16 +51,51 @@ import torch
 
 import kornia
 import kornia.feature as KF
-from kornia.geometry import transform_points
+from kornia.geometry import RANSAC, transform_points
 
 if importlib.util.find_spec("PIL") is None:
     raise SystemExit("SKIP: this benchmark requires the optional Pillow package")
 from PIL import Image
 
-from benchmarks.feature.dense_sift import homography_quality
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common import collect_load_metrics, run_metadata, save_json, time_us, versions_line
+
+
+def homography_quality(
+    source: torch.Tensor, target: torch.Tensor, ground_truth: torch.Tensor, height: int, width: int
+) -> dict:
+    """Estimate a homography with the existing graf benchmark RANSAC protocol.
+
+    RANSAC consensus is not ground-truth accuracy: a wrong model can have many
+    inliers, so retain its corner error even when large. Failed estimates have
+    a null error, never a misleading zero.
+    """
+    result = {"ransac_inliers": 0, "ransac_corner_error_px": None, "ransac_status": "insufficient_matches"}
+    if source.shape[0] < 4:
+        return result
+    ransac = RANSAC("homography", inl_th=2.0, max_iter=10, batch_size=8196, confidence=0.9999, seed=3407)
+    estimate, mask = ransac(source, target)
+    inliers = int(mask.sum())
+    result["ransac_inliers"] = inliers
+    result["ransac_status"] = "failed_estimate"
+    if inliers < 4 or not torch.isfinite(estimate).all():
+        return result
+    corners = source.new_tensor([[0, 0], [0, height - 1], [width - 1, height - 1], [width - 1, 0]])
+    # Use explicit homogeneous division to reject a corner at infinity. This
+    # matches the original graf L1 metric for finite homography projections.
+    homogeneous = torch.cat([corners, torch.ones_like(corners[:, :1])], dim=-1)
+    prediction = homogeneous @ estimate.T
+    reference = homogeneous @ ground_truth.reshape(3, 3).to(source).T
+    if (prediction[:, 2].abs() <= 1e-8).any() or (reference[:, 2].abs() <= 1e-8).any():
+        result["ransac_status"] = "nonfinite_projection"
+        return result
+    distance = (prediction[:, :2] / prediction[:, 2:] - reference[:, :2] / reference[:, 2:]).abs().sum(-1)
+    if not torch.isfinite(distance).all():
+        result["ransac_status"] = "nonfinite_projection"
+        return result
+    result["ransac_corner_error_px"] = distance.mean().item()
+    result["ransac_status"] = "estimated"
+    return result
 
 
 def _image_path(seq: Path, index: int) -> Path:
@@ -195,7 +230,6 @@ def main() -> None:
             str(path.relative_to(imported_root)): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in (
                 Path(__file__),
-                Path(__file__).with_name("dense_sift.py"),
                 Path(kornia.__file__).parent / "feature" / "integrated.py",
                 Path(kornia.__file__).parent / "feature" / "scale_space_detector.py",
                 Path(kornia.__file__).parent / "feature" / "sift" / "scale_space.py",

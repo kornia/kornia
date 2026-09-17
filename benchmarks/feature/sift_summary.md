@@ -1,20 +1,35 @@
-# SIFT: device speedups and matching quality
+# SIFT pipeline benchmark
 
-PR #4638 adds `SIFTFeatureScaleSpace(descriptor_backend="pyramid")`: one Gaussian
-pyramid shared by detection, orientation and RootSIFT description. The default remains
-`descriptor_backend="patch"`. The new detector ranks strict DoG extrema by absolute
-response and takes top-K, without contrast or edge rejection; the two backends therefore
-have different matching quality even at the same requested feature count.
+[`sift_scale_space.py`](sift_scale_space.py) compares the public patch and pyramid
+`SIFTFeatureScaleSpace` backends on an Oxford-format six-image sequence, including
+matching and homography quality. It supports CPU, CUDA and MPS, explicit thread counts,
+optional OpenCV SIFT, quality-only runs and separate CPU tensor-allocation profiling.
+The default library backend remains `patch`.
 
-## What got faster, on which device?
+## Usage
 
-![Device speedups with explicit revision baselines](sift_speedups.png)
+Run from each measured checkout root with the same Pixi-selected interpreter:
 
-Every row below is a measured comparison **within this PR**, not a comparison with main
-or a released Kornia version. Ratios are before / after; below 1× means slower. Separate
-measurement sessions have different baselines: do not multiply the stage ratios into a
-claimed cumulative speedup. These figures summarize existing measurements, not a new run
-on the merged PR head.
+```bash
+python -m benchmarks.feature.sift_scale_space \
+  --seq /path/to/graf --expected-checkout "$PWD" \
+  --device cpu --threads 1 --methods patch pyramid --json /tmp/sift-cpu.json
+# Use --device cuda or --device mps for accelerators.
+# Use --methods opencv --device cpu for the optional native uint8 OpenCV baseline.
+# --quality-only skips timing; --profile-memory profiles CPU allocations separately.
+```
+
+For revision comparisons, run the same script and `benchmarks/common.py` in both
+checkouts and reverse revision order. The script verifies the imported checkout and
+records versions, source/input hashes, feature counts, timing medians/IQRs and quality.
+CPU profiling measures PyTorch tensor allocations, not RSS or DRAM traffic.
+Keep generated JSON outside the repository.
+
+## Recorded device results
+
+These are optimization stages **within PR #4638**, not comparisons with main or a release.
+Each row has its own measured baseline. Ratios are before / after; below 1× means slower.
+Do not multiply ratios from separate measurement sessions into a cumulative speedup.
 
 | Backend / optimization stage | Hardware / execution | Before → after (ms/image) | Speedup | Library revisions |
 | --- | --- | ---: | ---: | --- |
@@ -32,71 +47,33 @@ on the merged PR head.
 | Default patch / shared interpolation | Intel i7-14700K CPU, 14 threads | 466.52 → 478.94 | 0.974× | `40bcf122` → `fa3d732c` |
 | Default patch / shared interpolation | NVIDIA RTX 4090 CUDA | 59.50 → 57.03 | 1.043× | `40bcf122` → `fa3d732c` |
 
-The CPU improvements come from specialized Gaussian filtering, bounded sparse
-neighbour/refinement buffers, smaller descriptor chunks and fewer copies. MPS benefits
-from atlas layout and separable pooling. CUDA benefits from packed finite differences,
-Cramer solves and separable descriptor pooling. Sharing the interpolation optimization
-also gives default patch SIFT a modest CUDA gain. CPU arithmetic is unchanged in that
-last pass; the separate-process losses above are retained, and no CPU gain is claimed.
+Graf images 1–6, 640×800 grayscale, batch one, FP32 RootSIFT, 4,096 returned features/image,
+eager full forward including pyramid construction and allocations. Timings exclude I/O,
+transfers, matching, RANSAC and profiling. Values average six warmed per-image medians;
+Intel/CUDA uses two reversed-order runs, Apple one run per revision. IQR describes spread,
+not confidence. Apple: M1, macOS 26.5.1, PyTorch 2.14.0. Intel/NVIDIA: i7-14700K / RTX 4090,
+WSL2, PyTorch 2.14.0+cu130, TF32 disabled, CUDA host one thread. Both use Python 3.11.14.
 
-Additional measured regimes:
+CUDA pyramid batch two additionally measured **140.19 → 97.41 ms/batch (1.44×)** in one run
+per revision. Apple memory changes reduced peak live CPU tensor allocations by **20% on
+Graf and 73% on checkerboard**. CUDA pyramid peak extra tensor allocation remained ~238 MiB.
+The last shared-interpolation pass retains CPU arithmetic; its measured CPU losses remain
+in the table and establish no CPU speedup.
 
-- CUDA pyramid, full-resolution batch two: **140.19 → 97.41 ms/batch (1.44×)** for the
-  CUDA pass. This is one run per revision, not the repeated batch-one matrix.
-- Apple M1 memory pass: Graf peak live CPU tensor allocation **198.60 → 158.68 MiB
-  (20.1% less)**; checkerboard **347.97 → 95.62 MiB (72.5% less)**.
-- CUDA pyramid peak extra tensor allocation stays about **238 MiB**. Default patch
-  SIFT in the shared-interpolation comparison uses about **650 MiB**; these are separate
-  forwards with the allocation scopes documented in their reports, not total device RAM.
-- Native FP16/BF16 CPU/CUDA forwards are covered, but **no half-precision speedup is
-  established**. No end-to-end compiled, held-out-quality or larger-batch claim is made.
+## Quality and limits
 
-## Runtime versus quality
+Default patch SIFT remains faster on CUDA (~57 versus ~79 ms in separate latest sessions).
+Pyramid finds more correct Graf matches and recovers pair 1–5; **both fail pair 1–6**.
+Matching uses SNN ratio 0.8, a 3 px correct-match threshold, and homography RANSAC with
+2 px threshold and seed 3407; corner error is mean L1 discrepancy against ground truth.
+All quality rows are unchanged by the CUDA/shared-interpolation passes. The first CPU
+pass changed correct-match counts by at most one, with both better and worse corner errors.
 
-Default patch SIFT is still faster on CUDA: its latest measurement is **57.03 ms/image**,
-versus **78.99 ms/image** for pyramid SIFT, from separate sessions. The earlier direct
-backend comparison also favored patch (62.08 versus 102.49 ms before the CUDA pass).
-Pyramid SIFT finds more correct Graf matches and recovers pair 1–5; **both fail pair 1–6**.
+Graf informed development and is not held out. Native FP16/BF16 forwards were checked,
+but no half-precision speedup is established. Larger batches and end-to-end compiled
+performance are unverified. MPS was not rerun for the CUDA follow-ups. These are archived
+measurements, not new measurements of the merged PR head.
 
-![CUDA correct matches and homography corner error](sift_quality.png)
-
-The chart uses the latest recorded patch and pyramid quality rows. All matching/RANSAC
-rows are unchanged by the CUDA and shared-interpolation passes. The first Apple CPU pass
-changed correct-match counts by at most one per pair, with corner errors improving on
-some pairs and worsening on others. Graf informed development and is not held out.
-
-## Protocol and reproducibility
-
-Oxford Graf images 1–6, 640×800 grayscale, batch one unless stated, FP32 RootSIFT,
-4,096 returned features per image, eager inference. Entire public forward is timed,
-including pyramid construction and allocations; loading, transfers, matching, RANSAC
-and profiling are excluded. Timings are means of six warmed per-image medians. Intel/CUDA
-uses two runs in reversed revision order; each Apple comparison uses one run per revision.
-Per-image IQRs are in the detailed reports; they describe spread, not confidence intervals.
-
-Apple: M1, macOS 26.5.1, Python 3.11.14, PyTorch 2.14.0, CPU one thread, synchronized MPS.
-Intel/NVIDIA: i7-14700K / RTX 4090, WSL2, Python 3.11.14, PyTorch 2.14.0+cu130,
-CUDA 13.0, CPU 1/14 threads as labeled, CUDA host one thread, TF32 disabled.
-Matching: SNN ratio 0.8, correct-match threshold 3 px. RANSAC: 2 px threshold,
-seed 3407; corner error is mean L1 discrepancy against ground truth.
-
-The **109 raw benchmark JSONs are removed from the PR diff**. Their original contents,
-including source/input hashes and IQRs, remain accessible at immutable archive commit
-[`efb04dbf`](https://github.com/kornia/kornia/tree/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks).
-All detailed reports link to that archive. Keep local reruns outside the source tree.
-
-Regenerate both figures directly from archived Git objects, without restoring JSON files:
-
-```bash
-# If the archive commit is absent from a shallow clone:
-git fetch origin efb04dbf9c85e4cf71625cc2467bd5243b0c803c
-# Use the Pixi-selected project environment (with matplotlib installed):
-python benchmarks/feature/plot_sift_summary.py
-```
-
-Detailed methodology, controls, regressions and reproduction commands:
-[initial Apple pass](sift_scale_space.md), [Apple memory pass](sift_memory.md),
-[Intel/CUDA pyramid](sift_devices.md), [shared interpolation](../geometry/quad_interp.md),
-[native half precision](../geometry/quad_interp_half.md).
-The [generic pyramid descriptor experiment](dense_sift.md) is a separate historical API
-comparison and is excluded from these specialized-pipeline speedups.
+Figures live in the [PR description](https://github.com/kornia/kornia/pull/4638).
+Historical raw measurements, per-image IQRs, controls, detailed reports and one-off scripts
+remain available in the [archive](https://github.com/kornia/kornia/tree/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks).
