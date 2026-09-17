@@ -135,13 +135,14 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
 
 
 def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
-    r"""Histogram every tile over ``[0, 1]`` in one pass, matching a per-tile ``torch.histc``.
+    r"""Histogram every tile over ``[0, 1]`` in one pass, matching a per-tile CPU ``torch.histc``.
 
-    Each value's bin index is offset by ``tile * bins`` so one ``bincount`` counts all tiles, instead
-    of one ``histc`` launch per tile. The index is computed as ``histc`` computes it, in the same
-    float32/float64 promotion as ``_torch_histc_cast``: ``floor(x * bins)``, with ``x == 1`` in the
-    last bin. Values outside ``[0, 1]`` and NaN are not counted, which ``histc`` also skips; they go to
-    one extra overflow slot that is dropped, so there is no data-dependent shape.
+    One ``scatter_add_`` counts all tiles, instead of one ``histc`` launch per tile, and keeps a static
+    output shape so the function stays a single dynamo graph. The index is computed as ``histc``
+    computes it, in the same float32/float64 promotion as ``_torch_histc_cast``: ``floor(x * bins)``,
+    with ``x == 1`` in the last bin. Values outside ``[0, 1]`` and NaN are not counted, which the CPU
+    ``histc`` also skips; they go to one extra overflow column per tile that is dropped. (``histc`` on
+    MPS counts values marginally outside ``[0, 1]``, so there this matches CPU rather than MPS.)
 
     Args:
         tiles: flattened tiles. (T, P)
@@ -155,12 +156,12 @@ def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
     x = tiles.to(_normalize_to_float32_or_float64(tiles.dtype))
     # clamp keeps [0, 1] unchanged and NaN as NaN, so the comparison is False exactly where histc skips.
     in_range = x.clamp(0, 1) == x
-    # int32 holds every offset index (num_tiles * bins) and is cheaper to build and count than int64.
-    idx = (x * bins).to(torch.int32).clamp_(0, bins - 1)
-    idx += torch.arange(0, num_tiles * bins, bins, device=x.device, dtype=torch.int32).unsqueeze(1)
-    idx = torch.where(in_range, idx, num_tiles * bins)
-    counts = torch.bincount(idx.view(-1), minlength=num_tiles * bins + 1)[: num_tiles * bins]
-    return counts.view(num_tiles, bins).to(tiles.dtype)
+    idx = (x * bins).to(torch.int64).clamp_(0, bins - 1)
+    # this mask is what drops out-of-range values; without it they land in the first or last bin
+    idx = torch.where(in_range, idx, bins)
+    counts = torch.zeros(num_tiles, bins + 1, dtype=x.dtype, device=x.device)
+    counts.scatter_add_(1, idx, torch.ones_like(x))
+    return counts[:, :bins].to(tiles.dtype)
 
 
 def _compute_luts(
