@@ -75,8 +75,10 @@ def _range_bound(
     A scalar ``factor`` is a magnitude around ``center``: the range is ``[center - factor, center + factor]``
     with its lower end floored at ``bounds[0]`` (a non-negative parameter reads ``contrast=1.5`` as
     ``[0, 2.5]``, the way torchvision does), and an upper end past ``bounds[1]`` raises the same
-    ``ValueError`` the explicit range would. A pair is taken as the range itself and checked against
-    ``bounds`` with ``check``.
+    ``ValueError`` the explicit range would. The scalar must be finite: ``inf``, ``nan``, and a finite
+    magnitude too large to represent in ``dtype`` (which converts to ``inf``) all raise ``ValueError``,
+    while a negative value reports "must be non negative" from the earlier check. A pair is taken as the
+    range itself and checked against ``bounds`` with ``check``.
     """
     if device is None:
         device = torch.device("cpu")
