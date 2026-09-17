@@ -99,7 +99,5 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        _check_filter_min_size(
-            "RandomBoxBlur", input, flags["kernel_size"], border_type=str(flags["border_type"])
-        )
+        _check_filter_min_size("RandomBoxBlur", input, flags["kernel_size"], border_type=str(flags["border_type"]))
         return box_blur(input, flags["kernel_size"], border_type=flags["border_type"], separable=flags["normalized"])

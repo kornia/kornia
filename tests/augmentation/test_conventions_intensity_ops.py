@@ -604,9 +604,7 @@ class TestBlurConventions(BaseTester):
     # value causes wrapping around more than once.`, while motion `k=3` on 1x1 (radius 1, axis 1) and
     # the `"constant"`/`"replicate"` legs return the input shape.  The boundary is the radius, not the
     # kernel: `(9, 9)` circular runs at H=4 and raises at H=3; motion `k=5` runs at 2x2.
-    def test_convention_circular_padding_rejects_images_smaller_than_kernel_radius_4559(
-        self, device, dtype
-    ):
+    def test_convention_circular_padding_rejects_images_smaller_than_kernel_radius_4559(self, device, dtype):
         if not supports_replicate_padding(device, dtype):
             pytest.skip("replication_pad2d is unavailable for this device/dtype")
         torch.manual_seed(_FIXTURE_SEED)
