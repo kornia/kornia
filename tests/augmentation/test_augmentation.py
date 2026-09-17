@@ -4674,15 +4674,32 @@ class TestRandomChannelDropout(BaseTester):
         ):
             RandomChannelDropout(num_drop_channels=num_drop_channels, p=1.0)(input_tensor)
 
-        fill_value = 2.0
-        with pytest.raises(
-            BaseError, match=f"Invalid value in `fill_value`. Must be a float between 0 and 1. Got: {fill_value}"
-        ):
+        # an out-of-range int is rejected on the bound just like a float
+        for fill_value in (2.0, 2, -1):
+            with pytest.raises(
+                BaseError, match=f"Invalid value in `fill_value`. Must be a number between 0 and 1. Got: {fill_value}"
+            ):
+                RandomChannelDropout(fill_value=fill_value)
+
+        fill_value = "1"
+        with pytest.raises(TypeCheckError, match=f"`fill_value` must be an int or a float. Got: {type(fill_value)}"):
             RandomChannelDropout(fill_value=fill_value)
 
-        fill_value = 1
-        with pytest.raises(TypeCheckError, match=f"`fill_value` must be a float. Got: {type(fill_value)}"):
-            RandomChannelDropout(fill_value=fill_value)
+    @pytest.mark.parametrize(("fill_value", "as_float"), [(0, 0.0), (1, 1.0), (True, 1.0)])
+    def test_int_fill_value_matches_float_4606(self, fill_value, as_float, device, dtype):
+        # RandomErasing accepts an int `value`; an int `fill_value` used to be rejected on type here.
+        input_tensor = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        torch.manual_seed(0)
+        out_int = RandomChannelDropout(fill_value=fill_value, p=1.0)(input_tensor)
+        torch.manual_seed(0)
+        out_float = RandomChannelDropout(fill_value=as_float, p=1.0)(input_tensor)
+        assert out_int.dtype == dtype
+        self.assert_close(out_int, out_float, rtol=0.0, atol=0.0)
+
+    def test_int_fill_value_buffer_follows_module_casts_4606(self, device):
+        aug = RandomChannelDropout(fill_value=1, p=1.0)
+        assert aug.fill_value.dtype == torch.float32
+        assert aug.to(device).half().fill_value.dtype == torch.float16
 
     @pytest.mark.parametrize("channel_shape, batch_shape", [(3, 1), (1, 1), (5, 5)])
     def test_cardinality(self, batch_shape, channel_shape, device, dtype):
