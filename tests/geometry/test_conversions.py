@@ -1256,6 +1256,29 @@ class TestRotationMatrixToQuaternion(BaseTester):
 
         self.assert_close(actual, expected)
 
+    def test_float16_gradient_eye3_4623(self, device):
+        # Issue #4623: float16 gradient of rotation_matrix_to_quaternion at eye(3) must be finite and value-correct.
+        matrix_f64 = torch.eye(3, device=device, dtype=torch.float64, requires_grad=True)
+        kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix_f64).sum().backward()
+        expected_grad = matrix_f64.grad.to(dtype=torch.float16)
+
+        matrix_f16 = torch.eye(3, device=device, dtype=torch.float16, requires_grad=True)
+        kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix_f16).sum().backward()
+        assert torch.isfinite(matrix_f16.grad).all()
+        self.assert_close(matrix_f16.grad, expected_grad, atol=1e-3, rtol=1e-3)
+
+    def test_float16_gradient_diag180_4623(self, device):
+        # Issue #4623: float16 gradient of rotation_matrix_to_quaternion at 180° rot (diag(1,-1,-1)) must be finite.
+        diag_val = torch.tensor([1.0, -1.0, -1.0], device=device)
+        matrix_f64 = torch.diag(diag_val.to(dtype=torch.float64)).requires_grad_(True)
+        kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix_f64).sum().backward()
+        expected_grad = matrix_f64.grad.to(dtype=torch.float16)
+
+        matrix_f16 = torch.diag(diag_val.to(dtype=torch.float16)).requires_grad_(True)
+        kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix_f16).sum().backward()
+        assert torch.isfinite(matrix_f16.grad).all()
+        self.assert_close(matrix_f16.grad, expected_grad, atol=1e-3, rtol=1e-3)
+
     def test_convention_w_is_not_canonicalised_to_non_negative(self, device, dtype):
         # Convention pin: rotation_matrix_to_quaternion picks ONE of the two quaternions that
         # represent the input rotation, and the rule is NOT "return w >= 0". The branch is selected
@@ -1698,6 +1721,13 @@ class TestQuaternionToRotationMatrix(BaseTester):
         out = kornia.geometry.conversions.normalize_quaternion(torch.zeros(4, device=device, dtype=dtype), eps=0.0)
 
         assert torch.isnan(out).all(), "kornia#3952: the eps=0 division by the zero norm is no longer NaN"
+
+    def test_float16_gradient_normalize_quaternion_zeros4_4623(self, device):
+        # Issue #4623: float16 gradient of normalize_quaternion at zeros(4) must be finite and zero.
+        q_f16 = torch.zeros(4, device=device, dtype=torch.float16, requires_grad=True)
+        kornia.geometry.conversions.normalize_quaternion(q_f16).sum().backward()
+        assert torch.isfinite(q_f16.grad).all()
+        self.assert_close(q_f16.grad, torch.zeros(4, device=device, dtype=torch.float16), atol=1e-3, rtol=1e-3)
 
     def test_wart_zero_quaternion_becomes_the_identity_matrix_3952(self, device, dtype):
         # Wart pin for the downstream consequence of kornia#3952: because normalize_quaternion
@@ -2483,6 +2513,17 @@ class TestRotationMatrixToAngleAxis(BaseTester):
         rotation_matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion=quaternion)
         # evaluate function gradient
         self.gradcheck(kornia.geometry.conversions.rotation_matrix_to_axis_angle, (rotation_matrix,))
+
+    def test_float16_gradient_eye3_4623(self, device):
+        # Issue #4623: rotation_matrix_to_axis_angle inherits finite float16 gradient at eye(3).
+        matrix_f64 = torch.eye(3, device=device, dtype=torch.float64, requires_grad=True)
+        kornia.geometry.conversions.rotation_matrix_to_axis_angle(matrix_f64).sum().backward()
+        expected_grad = matrix_f64.grad.to(dtype=torch.float16)
+
+        matrix_f16 = torch.eye(3, device=device, dtype=torch.float16, requires_grad=True)
+        kornia.geometry.conversions.rotation_matrix_to_axis_angle(matrix_f16).sum().backward()
+        assert torch.isfinite(matrix_f16.grad).all()
+        self.assert_close(matrix_f16.grad, expected_grad, atol=1e-3, rtol=1e-3)
 
     def test_rotation_matrix_to_axis_angle(self, device, dtype, atol, rtol):
         rmat_1 = torch.tensor(

@@ -1,0 +1,1 @@
+Fixed `rotation_matrix_to_quaternion`, `rotation_matrix_to_axis_angle`, and `normalize_quaternion` to return finite gradients in `float16` near their previous singular/overflow points, matching the substitution pattern applied in #4613.
