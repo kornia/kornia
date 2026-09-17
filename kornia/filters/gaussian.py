@@ -30,18 +30,21 @@ from kornia.core.utils import is_autocast_enabled, is_compiling
 from .filter import filter2d, filter2d_separable
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
 
+# This build capability is immutable; querying it inside forward breaks Dynamo
+# full-graph capture. Cache it without changing any backend settings.
+_HAS_MKLDNN = torch.backends.mkldnn.is_available()
+
 
 def _gaussian_blur2d_cpu_eligible(input: torch.Tensor) -> bool:
     """Select large native-precision images without an accelerated CPU convolution backend."""
-    # Preserve convolution's autocast and export behaviour, and leave oneDNN's
+    # Preserve convolution's autocast and legacy tracing behaviour, and leave oneDNN's
     # optimized CPU kernels alone. Small images are faster in one convolution;
     # convolution also avoids a long chain of slice-backward operations.
     return (
-        not is_compiling()
-        and not torch.jit.is_tracing()
+        not torch.jit.is_tracing()
         and input.device.type == "cpu"
         and input.dtype in (torch.float32, torch.float64)
-        and not torch.backends.mkldnn.is_available()
+        and not _HAS_MKLDNN
         and not is_autocast_enabled()
         and not (torch.is_grad_enabled() and input.requires_grad)
         and input.is_contiguous()
