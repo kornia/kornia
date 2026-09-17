@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _check_filter_min_size
 from kornia.filters import box_blur
 
 
@@ -60,12 +61,11 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
           weights; ``border_type="constant"`` pads with zeros, which pulls a border pixel toward ``0``: below
           the input's minimum for a positive image, and above its maximum for a negative one.
 
-    .. warning::
-        At the default ``border_type="reflect"``, an image with a spatial axis no longer than half the kernel's extent
-        along that axis raises a raw torch ``RuntimeError`` about the padding rather than a kornia error naming the
-        class or the shape. ``"constant"`` and ``"replicate"`` run on the same image; ``"circular"`` raises a padding
-        error of its own, also raw, once the kernel radius exceeds that axis. Tracked in `#4559
-        <https://github.com/kornia/kornia/issues/4559>`_.
+    .. note::
+        The padding sets a minimum image size. At the default ``border_type="reflect"`` each spatial axis must be
+        longer than the kernel's radius along it, and ``"circular"`` needs at least that radius; both raise a
+        ``ValueError`` naming the class, the kernel and the input shape. ``"constant"`` and ``"replicate"`` invent
+        their padding and run down to a single pixel.
 
     .. note::
         This function internally uses :func:`kornia.filters.box_blur`.
@@ -99,4 +99,7 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
+        _check_filter_min_size(
+            "RandomBoxBlur", input, flags["kernel_size"], border_type=str(flags["border_type"])
+        )
         return box_blur(input, flags["kernel_size"], border_type=flags["border_type"], separable=flags["normalized"])
