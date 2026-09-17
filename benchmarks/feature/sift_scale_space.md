@@ -60,3 +60,47 @@ implementations.
 Use `--device mps` for MPS, `--methods patch` in the base checkout, and
 `--quality-only` to skip repeated timing. Copy this harness and `dense_sift.py`
 (the common RANSAC scoring helper) into the base checkout before running.
+
+## Results
+
+Mean of the six per-image medians, milliseconds per image (lower is better):
+
+| Device | Base patch (`5be74dc9f`) | Branch patch | Specialized pyramid | Speedup |
+| --- | ---: | ---: | ---: | ---: |
+| CPU, one thread | 2155.72 | 2159.27 | 1553.24 | 1.39× vs base |
+| MPS | not measured | 679.72 | 767.88 | 0.89× vs branch patch |
+
+The specialized path improves CPU throughput. MPS remains slower than patch
+extraction, despite batching gradients and histogram integration. The opt-in
+backend is not a universal speedup. The base and branch patch paths have identical
+CPU match and RANSAC records.
+
+### CPU matching and homography recovery
+
+| Pair | Patch correct / matches | Pyramid correct / matches | Patch precision | Pyramid precision | Patch / pyramid RANSAC inliers | Patch / pyramid corner L1 (px) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1-2 | 1467/1651 | 1706/1919 | 88.86% | 88.90% | 1340 / 1554 | 0.98 / 0.88 |
+| 1-3 | 481/706 | 690/1005 | 68.13% | 68.66% | 420 / 617 | 1.58 / 1.20 |
+| 1-4 | 118/223 | 177/365 | 52.91% | 48.49% | 92 / 152 | 1.87 / 2.13 |
+| 1-5 | 12/101 | 21/148 | 11.88% | 14.19% | 18 / 22 | 472.69 / 482.11 |
+| 1-6 | 1/61 | 3/124 | 1.64% | 2.42% | 12 / 12 | 617.19 / 4605.24 |
+
+More correct matches do not guarantee higher precision or successful geometry.
+The specialized path has lower precision on 1–4; both paths fail homography
+recovery on the hardest viewpoint pairs 1–5 and 1–6. The large corner errors are
+part of the result and are not removed from the comparison. Graf was used during
+development, so these are not held-out quality results.
+
+### MPS matching and homography recovery
+
+| Pair | Patch correct / matches | Pyramid correct / matches | Patch precision | Pyramid precision | Patch / pyramid RANSAC inliers | Patch / pyramid corner L1 (px) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1-2 | 1467/1650 | 1706/1919 | 88.91% | 88.90% | 1355 / 1555 | 1.30 / 0.88 |
+| 1-3 | 481/706 | 690/1005 | 68.13% | 68.66% | 420 / 617 | 1.58 / 1.20 |
+| 1-4 | 119/224 | 178/366 | 53.12% | 48.63% | 94 / 149 | 3.44 / 3.15 |
+| 1-5 | 12/101 | 22/149 | 11.88% | 14.77% | 18 / 21 | 472.69 / 472.96 |
+| 1-6 | 1/61 | 3/124 | 1.64% | 2.42% | 12 / 12 | 617.19 / 4605.24 |
+
+Raw results: [base-cpu.json](sift_scale_space_results/base-cpu.json), [shared-cpu.json](sift_scale_space_results/shared-cpu.json), [shared-mps.json](sift_scale_space_results/shared-mps.json).
+
+Measured code revision: `8c55c89b6` (CPU) and `8c55c89b6-dirty` (MPS); source SHA-256 records distinguish any documentation-only working-tree changes. CUDA and older supported PyTorch versions were not tested.
