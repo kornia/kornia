@@ -432,17 +432,13 @@ class TestIntensityValueRangeConventions(BaseTester):
         image = torch.full((2, 3, 6, 8), -1.0, device=device, dtype=dtype)
         every, some = [], []
         for name in sorted(_INTENSITY_FACTORIES):
-            if name == "RandomEqualize" or (dtype == torch.float16 and name == "RandomSnow"):
-                continue  # raises out of range; float16 RandomSnow (#4571) is NaN there
+            if name == "RandomEqualize":
+                continue
             if name in ("RandomBoxBlur", "RandomGaussianBlur") and not supports_reflect_padding(device, dtype):
                 continue  # torch 2.5.1 has no half reflection_pad2d on the CPU
             zeros = sum(float(_run(name, image, seed=seed).abs().max()) == 0.0 for seed in range(5))
             (every if zeros == 5 else some if zeros else []).append(name)
         expected = set(self._COLLAPSES_ON_CONSTANT_MINUS_ONE)
-        if dtype == torch.float16:
-            # RandomSnow alone is still NaN here (#4571); ColorJitter collapses like every other dtype
-            # since the #4560 guard, so it must stay IN the expected set rather than be excused from it.
-            expected -= {"RandomSnow"}
         assert set(every) == expected
         assert set(some) <= {"ColorJiggle", "RandomPlasmaContrast"}
         # The two constant-image artefacts do not collapse the non-constant audit fixture on any of 20 seeds.
@@ -1665,7 +1661,7 @@ class TestIntensityColourConventions(BaseTester):
                 "channel_dropout_fill_value_above_one",
                 "construction",
                 BaseError,
-                r"Invalid value in .fill_value.\. Must be a float between 0 and 1",
+                r"Invalid value in .fill_value.\. Must be a number between 0 and 1",
             ),
             (
                 "color_jiggle_brightness_range_above_two",
@@ -1751,7 +1747,7 @@ class TestIntensityColourConventions(BaseTester):
             "median_blur_even_kernel": lambda: K.RandomMedianBlur((4, 4), p=1.0),
             # An even bound is rounded up to the next odd size, so (0, 2) draws 1 and the kernel rejects it.
             "motion_blur_even_bound_rounds_up": lambda: K.RandomMotionBlur((0, 2), 35.0, 0.5, p=1.0),
-            # `fill_value` is bounded to [0, 1] at construction, unlike RandomErasing's `value` type check.
+            # `fill_value` is bounded to [0, 1] in __init__; RandomErasing bounds `value` alike, in its generator.
             "channel_dropout_fill_value_above_one": lambda: K.RandomChannelDropout(fill_value=2.0, p=1.0),
             # ColorJiggle's brightness bound is (0, 2); ColorJitter accepts the same range.
             "color_jiggle_brightness_range_above_two": lambda: K.ColorJiggle(brightness=(0.0, 3.0), p=1.0),
@@ -1915,35 +1911,38 @@ class TestIntensityColourConventions(BaseTester):
         torch.manual_seed(_FORWARD_SEED)
         assert K.RandomClahe(p=1.0)(torch.rand(1, 1, 9, 9, device=device, dtype=dtype)).shape == (1, 1, 9, 9)
 
-    # Issue #2531: every NON-square `grid_size` raises, on every image, whether or not it tiles.  The
-    # `(4, 5)` / `20 x 20` row is the exactly dividing case, `(1, 2)` / `10 x 10` the one that pads, and
-    # `(3, 5)` / `30 x 30` rules out a mismatch between odd and even grid entries as the cause.
+    # Issue #2531: a NON-square `grid_size` works like a square one, and each axis is tiled on its own.
+    # The `(4, 5)` / `20 x 20` row pads 4 rows and no columns although both entries divide the image,
+    # `(1, 2)` / `10 x 10` pads 2 columns only, and `(3, 5)` / `30 x 30` pads nothing.  As in the square
+    # test above, the pre-padded image run through the same call and cropped back reproduces the output
+    # bitwise, which pins the padding of each axis separately.  Values are checked against an exact
+    # reference in `tests/enhance/test_equalization.py`.
     # Snippet used to generate expected:
-    #   import itertools
-    #   for gh, gw in itertools.product(range(1, 7), repeat=2):
-    #       for h, w in ((24, 24), (30, 30), (24, 30), (35, 42), (60, 60)):
-    #           torch.manual_seed(0); K.RandomClahe(grid_size=(gh, gw), p=1.0)(torch.rand(1, 1, h, w))
-    # executed 2026-09-16 (torch 2.14.0, cpu) -> all 150 rows follow `raises == (gh != gw)`; a further
-    # 40 random non-square grids from {1,2,3,4,5,7,8,9,12,16}^2 over three image shapes raised in
-    # 120/120 cases and the 30 square controls all passed.
+    #   for gs, n, pad in (((4, 5), 20, (4, 0)), ((3, 5), 30, (0, 0)), ((1, 2), 10, (0, 2))):
+    #       x = torch.linspace(0, 1, n * n).reshape(1, 1, n, n)
+    #       torch.manual_seed(0); out = K.RandomClahe(grid_size=gs, p=1.0)(x)
+    #       p = torch.nn.functional.pad(x, [0, pad[1], 0, pad[0]], mode="reflect")
+    #       torch.manual_seed(0); print(torch.equal(out, K.RandomClahe(grid_size=gs, p=1.0)(p)[..., :n, :n]))
+    # executed 2026-09-17 (torch 2.14.0, cpu, all four dtypes) -> `True` for all three rows; before the
+    # fix each row raised `IndexError: shape mismatch: indexing tensors could not be broadcast together`.
     @pytest.mark.parametrize(
-        ("grid_size", "size", "pads"), [((4, 5), 20, True), ((3, 5), 30, False), ((1, 2), 10, True)]
+        ("grid_size", "size", "pad"), [((4, 5), 20, (4, 0)), ((3, 5), 30, (0, 0)), ((1, 2), 10, (0, 2))]
     )
-    def test_wart_random_clahe_non_square_grid_always_raises_2531(self, device, dtype, grid_size, size, pads):
-        if pads and not supports_reflect_padding(device, dtype):
-            # A padding row would die of "reflection_pad2d not implemented for 'Half'" on the torch 2.5.1
-            # floor before reaching the lookup; the `(3, 5)` row pads nothing, so it keeps the pin alive
-            # on every dtype.
+    def test_convention_random_clahe_non_square_grid_works_2531(self, device, dtype, grid_size, size, pad):
+        pad_rows, pad_cols = pad
+        if (pad_rows or pad_cols) and not supports_reflect_padding(device, dtype):
             pytest.skip("reflection_pad2d is unavailable for this device/dtype")
-        if device.type == "cuda":
-            # The broadcast of the lookup indices is computed on the host, so this should raise before
-            # any kernel launches -- but that is untested on CUDA, and being wrong here poisons the
-            # context for every later test, exactly as the #4564 pin above guards against.
-            pytest.skip("not on CUDA: the raise site ahead of the device-side lookup is unverified there")
         image = torch.linspace(0, 1, size * size, device=device, dtype=dtype).reshape(1, 1, size, size)
         torch.manual_seed(_FORWARD_SEED)
-        with pytest.raises(IndexError, match="shape mismatch: indexing tensors could not be broadcast together"):
-            K.RandomClahe(grid_size=grid_size, p=1.0)(image)
+        out = K.RandomClahe(grid_size=grid_size, p=1.0)(image)
+        assert out.shape == image.shape
+        assert bool(out.isfinite().all())
+        assert not torch.equal(out, image)
+        if pad_rows or pad_cols:
+            padded = torch.nn.functional.pad(image, [0, pad_cols, 0, pad_rows], mode="reflect")
+            torch.manual_seed(_FORWARD_SEED)
+            reference = K.RandomClahe(grid_size=grid_size, p=1.0)(padded)[..., :size, :size]
+            assert torch.equal(out, reference)
 
     # Issue #4572: RandomClahe draws `clip_limit_factor` per sample but equalizes the whole batch with
     # the first sample's value (`float(params["clip_limit_factor"][0])`).

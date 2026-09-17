@@ -385,12 +385,17 @@ class ExplicitSpacialEncoding(nn.Module):
         """
         if not isinstance(x, torch.Tensor):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
-        if not ((len(x.shape) == 4) | (x.shape[1] == self.in_dims)):
+        if not ((len(x.shape) == 4) and (x.shape[1] == self.in_dims)):
             raise ValueError(f"Invalid input shape, we expect Bx{self.in_dims}xHxW. Got: {x.shape}")
-        idx1 = torch.jit.annotate(torch.Tensor, self.idx1)
-        emb1 = torch.index_select(x, 1, idx1)
-        output = emb1 * self.emb2
-        output = output.sum(dim=(2, 3))
+        # output[b, c * d_emb + e] = sum_hw x[b, c, h, w] * emb[e, h, w]: every (c, e)
+        # pair in the row-major order of get_kron_order, which `emb2` / `idx1` spell as a
+        # gather. One matmul computes the same contraction without materialising the
+        # (B, in_dims * d_emb, H, W) product of that gather. The two buffers are kept so
+        # existing state dicts still load.
+        emb = torch.jit.annotate(torch.Tensor, self.emb)
+        dtype = torch.promote_types(x.dtype, emb.dtype)
+        output = torch.matmul(x.flatten(2).to(dtype), emb.flatten(2).transpose(1, 2).to(dtype))
+        output = output.flatten(1)
         if self.do_l2:
             output = _l2_normalize(output, dim=1)
         return output
