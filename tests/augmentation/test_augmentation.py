@@ -5448,6 +5448,25 @@ class TestPlanckianJitter(BaseTester):
         expected = self._get_expected_output_same_on_batch(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    def test_planckian_jitter_preserves_dtype_4574(self, device, dtype):
+        input = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        output = RandomPlanckianJitter(p=1.0)(input)
+
+        assert output.dtype == input.dtype
+        assert output.device == input.device
+
+    # The half dtypes are named rather than taken from the fixture so the preservation is
+    # exercised on the default float32 leg too, not only on the two half-precision jobs.
+    @pytest.mark.parametrize("half_dtype", [torch.float16, torch.bfloat16])
+    def test_planckian_jitter_preserves_half_dtype_on_any_leg_4574(self, device, half_dtype):
+        if device.type == "mps" and half_dtype is torch.bfloat16:
+            pytest.skip("bfloat16 support on MPS is incomplete")
+        input = torch.rand(2, 3, 4, 4, device=device, dtype=half_dtype)
+        output = RandomPlanckianJitter(p=1.0)(input)
+
+        assert output.dtype == half_dtype
+        assert output.device == input.device
+
 
 class TestRandomRGBShift(BaseTester):
     def test_smoke(self, device, dtype):
