@@ -102,6 +102,15 @@ class TestEqualization(BaseTester):
         with pytest.raises(TypeError):
             enhance.equalize_clahe([1, 2, 3])
 
+    def test_clahe_preserves_out_of_range_fast_path(self):
+        x = torch.linspace(0, 1, 64).reshape(1, 1, 8, 8)
+        x.view(-1)[0] = 1.0000001
+
+        y = enhance.equalize_clahe(x, 40.0, (1, 1))
+
+        assert y.sum().item() == pytest.approx(32.87843322753906)
+        assert y.max().item() == pytest.approx(1.0)
+
     @pytest.mark.parametrize("grid_size", [(2, 2), (2, 3), (3, 2)])
     def test_gradcheck(self, device, grid_size):
         torch.random.manual_seed(4)
@@ -330,13 +339,11 @@ class TestEqualization(BaseTester):
     @pytest.mark.parametrize("grid_size", [(1, 2), (2, 3), (3, 4), (2, 6), (6, 2)])
     def test_clahe_non_square_grid_transpose(self, grid_size, slow_and_differentiable, device, dtype):
         # Transposing the image and the grid transposes the output. Every grid tiles 12 x 24 without padding.
-        # The slow path runs unclipped: below float64 its clip step can turn a rounding residue of the soft
-        # histogram sum into a whole count, which moves the output under transposition on square grids too.
-        clip_limit = 0.0 if slow_and_differentiable else 40.0
+        # Clipping must preserve transpose equivariance for both the fast and slow differentiable paths.
         torch.manual_seed(2531)
         img = torch.rand(1, 2, 12, 24, device=device, dtype=dtype)
-        out = enhance.equalize_clahe(img, clip_limit, grid_size, slow_and_differentiable)
-        out_t = enhance.equalize_clahe(img.transpose(-2, -1), clip_limit, grid_size[::-1], slow_and_differentiable)
+        out = enhance.equalize_clahe(img, 40.0, grid_size, slow_and_differentiable)
+        out_t = enhance.equalize_clahe(img.transpose(-2, -1), 40.0, grid_size[::-1], slow_and_differentiable)
         self.assert_close(out_t, out.transpose(-2, -1))
 
     def test_clahe_transpose_equivariance_4632(self):

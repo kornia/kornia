@@ -173,8 +173,11 @@ def _compute_luts(
 
     if clip > 0.0:
         max_val: float = max(clip * pixels // num_bins, 1)
-        clipped: torch.Tensor = torch.relu(histos - max_val).sum(1)
+        if diff:
+            clipped: torch.Tensor = torch.relu(histos - max_val).sum(1)
         histos.clamp_(max=max_val)
+        if not diff:
+            clipped = pixels - histos.sum(1)
         residual: torch.Tensor = torch.remainder(clipped, num_bins)
         redist: torch.Tensor = (clipped - residual).div(num_bins)
         histos += redist[None].transpose(0, 1)
