@@ -398,9 +398,9 @@ Randomness in augmentations
   for ``RandomDissolving``, which samples VAE latents during application.
   Replaying it also needs control of that application-time random state.
 - ``same_on_batch=True`` shares the standard per-sample gate and sampled
-  transform factors. It does not equate batch-pairing indices, and the
-  ``RandomPlasma*`` noise stored in the parameters is drawn independently per
-  sample whatever the flag says.
+  transform factors. It does not equate batch-pairing indices. For
+  ``RandomPlasma*``, the stored noise map is sampled once and expanded
+  across the batch when this flag is enabled.
   Color adjustment order is one permutation shared across the batch,
   independently of this flag. On ``AugmentationSequential``, ``None`` keeps
   each child's setting, while ``True`` and ``False`` overwrite it.

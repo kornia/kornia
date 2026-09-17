@@ -78,8 +78,8 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           ``mask_salt`` and ``mask_pepper`` -- whose stored shape normally follows the original batched
           ``(B, C, H, W)`` input shape. A ``(C, H, W)`` input remains batched in those parameters even when
           ``keepdim=True``. ``gaussian_noise`` instead stores ``(1, C, H, W)`` with ``same_on_batch=True``,
-          then expands it at application time, while the plasma classes keep one map per sample even then
-          (`#4570 <https://github.com/kornia/kornia/issues/4570>`_); ``RandomPlasmaShadow`` stores
+          then expands it at application time, while the plasma classes with ``same_on_batch=True`` store an
+          expanded ``(B, C, H, W)`` view with shared storage for the batch; ``RandomPlasmaShadow`` stores
           ``(B, 1, H, W)``. :class:`ColorJiggle` and :class:`ColorJitter` both draw an application ``order``;
           it is shared by the whole batch. Only :class:`ColorJitter` takes a fixed ``order`` constructor
           argument. Without one, on either class, an ``order`` tensor passed as a forward keyword, or

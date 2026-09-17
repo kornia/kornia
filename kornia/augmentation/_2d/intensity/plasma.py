@@ -30,6 +30,7 @@ def _generate_plasma(
     device: torch.device,
     dtype: torch.dtype,
     channels: Optional[int] = None,
+    same_on_batch: bool = False,
 ) -> torch.Tensor:
     if len(shape) == 4:
         batch_size, shape_channels, height, width = shape
@@ -40,7 +41,11 @@ def _generate_plasma(
         raise ValueError(f"Expected a 3D or 4D shape. Got {shape}.")
 
     num_channels = shape_channels if channels is None else channels
-    return diamond_square((batch_size, num_channels, height, width), roughness, device=device, dtype=dtype)
+    share_map = same_on_batch and batch_size > 1
+    map_batch_size = 1 if share_map else batch_size
+    map_roughness = roughness[:1] if share_map else roughness
+    plasma = diamond_square((map_batch_size, num_channels, height, width), map_roughness, device=device, dtype=dtype)
+    return plasma.expand(batch_size, -1, -1, -1) if share_map else plasma
 
 
 def _plasma_for_input(plasma: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
@@ -77,11 +82,6 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
 
     .. warning::
-        With ``same_on_batch=True`` the scalar draws are shared but the fractal map is not: every sample keeps
-        its own ``_params["plasma"]`` slice, so identical inputs can come back different. Tracked in
-        `#4570 <https://github.com/kornia/kornia/issues/4570>`_.
-
-    .. warning::
         An all-negative input can come back as an all-zero image when the sampled brightness map does not raise
         it above zero. Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
@@ -111,7 +111,7 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         params = super().generate_parameters(shape)
         roughness = params["roughness"].to(device=self.device, dtype=self.dtype)
-        params["plasma"] = _generate_plasma(shape, roughness, self.device, self.dtype)
+        params["plasma"] = _generate_plasma(shape, roughness, self.device, self.dtype, same_on_batch=self.same_on_batch)
         return params
 
     def apply_transform(
@@ -156,11 +156,6 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
 
     .. warning::
-        With ``same_on_batch=True`` the scalar draws are shared but the fractal map is not: every sample keeps
-        its own ``_params["plasma"]`` slice, so identical inputs can come back different. Tracked in
-        `#4570 <https://github.com/kornia/kornia/issues/4570>`_.
-
-    .. warning::
         An all-negative input can come back as an all-zero image, depending on the sampled contrast map.
         Tracked in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
@@ -187,7 +182,7 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         params = super().generate_parameters(shape)
         roughness = params["roughness"].to(device=self.device, dtype=self.dtype)
-        params["plasma"] = _generate_plasma(shape, roughness, self.device, self.dtype)
+        params["plasma"] = _generate_plasma(shape, roughness, self.device, self.dtype, same_on_batch=self.same_on_batch)
         return params
 
     def apply_transform(
@@ -233,11 +228,6 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         - a one-pixel spatial axis is accepted, down to a ``1 x 1`` image.
 
     .. warning::
-        With ``same_on_batch=True`` the scalar draws are shared but the fractal map is not: every sample keeps
-        its own ``_params["plasma"]`` slice, so identical inputs can come back different. Tracked in
-        `#4570 <https://github.com/kornia/kornia/issues/4570>`_.
-
-    .. warning::
         At the default non-positive ``shade_intensity``, an input whose values are all negative comes back as
         an all-zero image; a positive ``shade_intensity``, which the constructor accepts, can lift it. Tracked
         in `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
@@ -271,7 +261,9 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         params = super().generate_parameters(shape)
         roughness = params["roughness"].to(device=self.device, dtype=self.dtype)
-        params["plasma"] = _generate_plasma(shape, roughness, self.device, self.dtype, channels=1)
+        params["plasma"] = _generate_plasma(
+            shape, roughness, self.device, self.dtype, channels=1, same_on_batch=self.same_on_batch
+        )
         return params
 
     def apply_transform(

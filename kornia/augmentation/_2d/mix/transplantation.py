@@ -352,5 +352,5 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
         if len(outputs) == 1:
             return outputs[0]
-        else:
-            return outputs
+
+        return outputs
