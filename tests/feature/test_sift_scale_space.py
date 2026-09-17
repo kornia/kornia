@@ -318,7 +318,13 @@ class TestSharedSIFTScaleSpace(BaseTester):
         lafs = torch.tensor([[[[1.0, 0, 3], [0, 1.0, 3]]]], device=device, dtype=torch.float64)
         ids = torch.zeros(1, 1, device=device, dtype=torch.long)
         module = _SIFTScaleSpaceDescriptor()
-        self.gradcheck(lambda image: module([image], lafs, ids, ids, upright=True)[1], (image,))
+        # CUDA grid sampling accumulates repeated pixel contributions atomically.
+        # Repeated float64 backward differs by ~6e-16 on both SIFT implementations.
+        self.gradcheck(
+            lambda image: module([image], lafs, ids, ids, upright=True)[1],
+            (image,),
+            nondet_tol=1e-12 if device.type == "cuda" else 0.0,
+        )
 
     def test_specialized_detector_does_not_use_generic_detection(self, device, dtype, monkeypatch):
         from kornia.feature import ScaleSpaceDetector
@@ -394,6 +400,44 @@ def _quadratic_dog(
 
 
 class TestSIFTScaleSpaceDetector(BaseTester):
+    @pytest.mark.parametrize("case", ["random", "quadratic", "singular", "outside"])
+    def test_cuda_refinement_matches_reference(self, device, dtype, case):
+        if device.type not in ("cpu", "cuda"):
+            pytest.skip("CUDA implementation; CPU checks its arithmetic against the reference")
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("the specialized detector promotes reduced precision before refinement")
+        generator = torch.Generator().manual_seed(23)
+        dog = torch.rand(1, 5, 32, 32, generator=generator, dtype=dtype)
+        index = torch.arange(24)
+        b, s, y, x = index * 0, index % 5, (index * 3) % 32, (index * 7) % 32
+        if case == "quadratic":
+            dog = _quadratic_dog(torch.device("cpu"), dtype)
+            s, y, x = index * 0 + 2, index % 3 + 9, index % 4 + 10
+        elif case == "singular":
+            dog.zero_()
+        elif case == "outside":
+            # The eager implementation exits before reading these NaNs. Extra
+            # fixed-trip CUDA iterations must not introduce NaNs in backward.
+            dog.fill_(float("nan"))
+            s = index * 0 - 1
+        reference_image = dog.clone().requires_grad_()
+        image = dog.to(device).requires_grad_()
+        detector = _SIFTScaleSpaceDetector(24, nn.Identity())
+        expected = detector._refine(reference_image, b, s, y, x)
+        actual = detector._refine_cuda(image, *(value.to(device) for value in (b, s, y, x)))
+        for value, reference in zip(actual, expected):
+            self.assert_close(value, reference.to(device), rtol=0, atol=0)
+        if case == "quadratic":
+            assert actual[-1].all()
+        weights = torch.linspace(0.1, 1.0, index.numel(), dtype=dtype)
+        reference_loss = sum((value * weights).sum() for value in expected[4:7]) + reference_image[..., :0].sum()
+        loss = sum((value * weights.to(device)).sum() for value in actual[4:7]) + image[..., :0].sum()
+        reference_loss.backward()
+        loss.backward()
+        assert image.grad is not None and reference_image.grad is not None
+        assert torch.isfinite(image.grad).all()
+        self.assert_close(image.grad, reference_image.grad.to(device))
+
     def test_dynamo_refinement(self, device, dtype, torch_optimizer):
         dog = _quadratic_dog(device, dtype)
         detector = _SIFTScaleSpaceDetector(1, _FixedPyramid(dog))

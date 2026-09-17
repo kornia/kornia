@@ -242,10 +242,76 @@ class _SIFTScaleSpaceDetector(nn.Module):
         )
         return dog.reshape(-1)[center[:, None] + offsets].reshape(-1, 3, 3, 3)
 
+    def _refine_cuda(
+        self, dog: torch.Tensor, b: torch.Tensor, s: torch.Tensor, y: torch.Tensor, x: torch.Tensor
+    ) -> tuple[torch.Tensor, ...]:
+        """Pack independent fits to reduce CUDA launches without changing Cramer arithmetic."""
+        d, h, w = dog.shape[1:]
+        coords = torch.stack((x, y, s), 1)
+        alive = torch.ones_like(s, dtype=torch.bool)
+        shifts = dog.new_zeros((s.numel(), 3))
+        lower = coords.new_tensor((5, 5, 1))
+        upper = coords.new_tensor((w - 5, h - 5, d - 1))
+        address_upper = coords.new_tensor((w - 2, h - 2, d - 2))
+        # Columns: x/y/s positive neighbour, negative neighbour, and four mixed-derivative terms.
+        sample_indices = coords.new_tensor((14, 16, 22, 12, 10, 4, 17, 23, 25, 15, 21, 19, 11, 5, 7, 9, 3, 1))
+        # Each row is a row-major 3x3 matrix. The first is H; the remaining
+        # three replace successive columns of H with the right-hand side.
+        matrix_indices = coords.new_tensor(
+            (
+                (0, 3, 4, 3, 1, 5, 4, 5, 2),
+                (6, 3, 4, 7, 1, 5, 8, 5, 2),
+                (0, 6, 4, 3, 7, 5, 4, 8, 2),
+                (0, 3, 6, 3, 1, 7, 4, 5, 8),
+            )
+        ).flatten()
+        offsets = coords.new_tensor(
+            [ds * h * w + dy * w + dx for ds in (-1, 0, 1) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
+        )
+        for _ in range(5):
+            alive = alive & ((coords >= lower) & (coords < upper)).all(1)
+            coords = torch.minimum(coords.clamp_min(1), address_upper)
+            # Fixed trip count: no alive.any()/move.any() synchronization. A
+            # converged row stays at its integer center and reproduces its fit.
+            x, y, s = coords.unbind(1)
+            center = ((b * d + s) * h + y) * w + x
+            values = dog.reshape(-1)[center[:, None] + offsets]
+            # Dead rows may keep gathering, unlike the eager all-dead early exit.
+            # Clear them before arithmetic so discarded NaNs cannot enter backward.
+            values = torch.where(alive[:, None], values, torch.zeros_like(values))
+            plus, minus, cross_a, cross_b, cross_c, cross_d = (
+                values.index_select(1, sample_indices).reshape(-1, 6, 3).unbind(1)
+            )
+            gradient = (plus - minus) * 0.5
+            diagonal = plus + minus - 2 * values[:, 13:14]
+            mixed = (cross_a - cross_b - cross_c + cross_d) * 0.25
+            system = torch.cat((diagonal, mixed, -gradient), 1)
+            normalizer = system.abs().amax(1, keepdim=True).clamp_min(torch.finfo(dog.dtype).tiny)
+            system = system / normalizer
+            m00, m01, m02, m10, m11, m12, m20, m21, m22 = (
+                system.index_select(1, matrix_indices).reshape(-1, 4, 9).unbind(2)
+            )
+            determinants = m00 * (m11 * m22 - m12 * m21) - m01 * (m10 * m22 - m12 * m20) + m02 * (m10 * m21 - m11 * m20)
+            det = determinants[:, 0:1]
+            solved = det.abs() > 1e-7
+            shifts = determinants[:, 1:] / torch.where(solved, det, torch.ones_like(det))
+            alive = alive & solved[:, 0] & torch.isfinite(shifts).all(1)
+            move = alive & (shifts.abs() >= 0.5).any(1)
+            coords = coords + torch.where(move[:, None], shifts.round().long(), torch.zeros_like(coords))
+        converged = alive & (shifts.abs() < 0.5).all(1)
+        converged = converged & ((coords >= lower) & (coords < upper)).all(1)
+        shifts = torch.where(converged[:, None], shifts, torch.zeros_like(shifts))
+        coords = torch.minimum(coords.clamp_min(1), address_upper)
+        x, y, s = coords.unbind(1)
+        sx, sy, ss = shifts.unbind(1)
+        return b, s, y, x, sx, sy, ss, converged
+
     def _refine(
         self, dog: torch.Tensor, b: torch.Tensor, s: torch.Tensor, y: torch.Tensor, x: torch.Tensor
     ) -> tuple[torch.Tensor, ...]:
         """Iterative, sparse 3-D quadratic fit around strict DoG extrema."""
+        if dog.device.type == "cuda" and dog.dtype in (torch.float32, torch.float64):
+            return self._refine_cuda(dog, b, s, y, x)
         d, h, w = dog.shape[1:]
         alive = torch.ones_like(s, dtype=torch.bool)
         shift_x = torch.zeros_like(s, dtype=dog.dtype)
@@ -571,7 +637,7 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
     ) -> torch.Tensor:
         mag, angle, xx, yy = self._sample_gradients(gradients, lafs, layer_indices, level_height, 41)
         spatial_weights = None
-        if mag.device.type == "mps":
+        if mag.device.type in ("mps", "cuda"):
             bins = torch.arange(4, device=mag.device, dtype=mag.dtype)
             spatial_weights = (1.0 - (2.5 * xx[:41, None] + 1.5 - bins).abs()).clamp_min(0.0)
         desc = self._descriptor_histograms(mag, angle, xx, yy, spatial_weights)
@@ -606,8 +672,8 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         angular_weights.scatter_(-1, lower.unsqueeze(-1), (weighted * (1.0 - fraction)).unsqueeze(-1))
         angular_weights.scatter_add_(-1, (lower + 1).bitwise_and(7).unsqueeze(-1), (weighted * fraction).unsqueeze(-1))
         if spatial_weights is not None:
-            # On the square integration grid the triangular spatial weights
-            # separate. Pool rows, then columns; the intermediate is only
+            # On CUDA and MPS the triangular spatial weights separate on the
+            # square integration grid. Pool rows, then columns; the intermediate is only
             # (B,N,4,size,8), instead of multiplying each sample into 16 cells.
             size = spatial_weights.shape[0]
             rows = spatial_weights.T @ angular_weights.reshape(b, n, size, size * 8)

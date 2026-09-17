@@ -1,0 +1,107 @@
+{
+  "metadata": {
+    "albumentations": null,
+    "device": "cpu",
+    "git_commit": "7547be2c-dirty",
+    "kornia": "0.9.0rc1",
+    "kornia_rs": "0.1.14",
+    "load": {
+      "cpu_count": 28,
+      "load_avg_15m": 1.7724609375,
+      "load_avg_1m": 1.36083984375,
+      "load_avg_5m": 1.99658203125,
+      "mem_available_bytes": null,
+      "mem_total_bytes": null
+    },
+    "machine": "x86_64",
+    "methodology": "Same process, same image; actual revision classes installed in public SIFTFeatureScaleSpace; three shuffled rounds; head-convolution-pyramid is an ablation, not a committed revision",
+    "numpy": "2.4.0",
+    "opencv": "4.11.0",
+    "pillow": "12.3.0",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python": "3.11.14",
+    "source_sha256": {
+      "head": "cf2516c064783b2d3cbbbc517ada098f9bf7277918fe3891f3f6579e5459190f",
+      "opt": "9049ac8b04ab8d7f047902c3de1d4a2d3f64ec9c75b51b047c3ddf6be7ca6fed"
+    },
+    "timer_num_threads": 14,
+    "timestamp_utc": "2026-09-17T18:17:05+00:00",
+    "torch": "2.14.0+cu130",
+    "torch_num_threads": 14,
+    "torchvision": null
+  },
+  "results": [
+    {
+      "backend": "head",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 16907.03300118912,
+      "median_us": 239001.45899824565,
+      "op": "SIFTFeatureScaleSpace",
+      "round": 0,
+      "throughput_per_s": 4.18407487632676,
+      "width": 800
+    },
+    {
+      "backend": "opt",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 18255.551000038395,
+      "median_us": 241299.3549987732,
+      "op": "SIFTFeatureScaleSpace",
+      "round": 0,
+      "throughput_per_s": 4.144229892388582,
+      "width": 800
+    },
+    {
+      "backend": "head",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 7853.525003156392,
+      "median_us": 234789.16100066272,
+      "op": "SIFTFeatureScaleSpace",
+      "round": 1,
+      "throughput_per_s": 4.25914039531483,
+      "width": 800
+    },
+    {
+      "backend": "opt",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 16364.756997063523,
+      "median_us": 236460.0500004599,
+      "op": "SIFTFeatureScaleSpace",
+      "round": 1,
+      "throughput_per_s": 4.229044187371419,
+      "width": 800
+    },
+    {
+      "backend": "opt",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 6285.719998231798,
+      "median_us": 229815.31400000677,
+      "op": "SIFTFeatureScaleSpace",
+      "round": 2,
+      "throughput_per_s": 4.351320121338696,
+      "width": 800
+    },
+    {
+      "backend": "head",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 20046.94100105553,
+      "median_us": 239876.84099847684,
+      "op": "SIFTFeatureScaleSpace",
+      "round": 2,
+      "throughput_per_s": 4.168805941572116,
+      "width": 800
+    }
+  ]
+}

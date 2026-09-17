@@ -1,0 +1,109 @@
+{
+  "metadata": {
+    "albumentations": null,
+    "cuda_device": "NVIDIA GeForce RTX 4090",
+    "cuda_version": "13.0",
+    "device": "cuda",
+    "git_commit": "7547be2c-dirty",
+    "kornia": "0.9.0rc1",
+    "kornia_rs": "0.1.14",
+    "load": {
+      "cpu_count": 28,
+      "load_avg_15m": 2.0498046875,
+      "load_avg_1m": 5.1767578125,
+      "load_avg_5m": 2.82470703125,
+      "mem_available_bytes": null,
+      "mem_total_bytes": null
+    },
+    "machine": "x86_64",
+    "methodology": "Same process, same image; actual revision classes installed in public SIFTFeatureScaleSpace; three shuffled rounds; head-convolution-pyramid is an ablation, not a committed revision",
+    "numpy": "2.4.0",
+    "opencv": "4.11.0",
+    "pillow": "12.3.0",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python": "3.11.14",
+    "source_sha256": {
+      "head": "cf2516c064783b2d3cbbbc517ada098f9bf7277918fe3891f3f6579e5459190f",
+      "opt": "9049ac8b04ab8d7f047902c3de1d4a2d3f64ec9c75b51b047c3ddf6be7ca6fed"
+    },
+    "timer_num_threads": 1,
+    "timestamp_utc": "2026-09-17T18:17:25+00:00",
+    "torch": "2.14.0+cu130",
+    "torch_num_threads": 1,
+    "torchvision": null
+  },
+  "results": [
+    {
+      "backend": "head",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 16355.71399856417,
+      "median_us": 102568.46400079667,
+      "op": "SIFTFeatureScaleSpace",
+      "round": 0,
+      "throughput_per_s": 9.749585408554356,
+      "width": 800
+    },
+    {
+      "backend": "opt",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 16653.491252327512,
+      "median_us": 71209.10049889062,
+      "op": "SIFTFeatureScaleSpace",
+      "round": 0,
+      "throughput_per_s": 14.043148881168344,
+      "width": 800
+    },
+    {
+      "backend": "head",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 21878.61950005754,
+      "median_us": 111505.64400122676,
+      "op": "SIFTFeatureScaleSpace",
+      "round": 1,
+      "throughput_per_s": 8.968155907776277,
+      "width": 800
+    },
+    {
+      "backend": "opt",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 22841.526502816123,
+      "median_us": 87374.41099947318,
+      "op": "SIFTFeatureScaleSpace",
+      "round": 1,
+      "throughput_per_s": 11.444998467640938,
+      "width": 800
+    },
+    {
+      "backend": "opt",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 4707.173000497278,
+      "median_us": 71745.3370016301,
+      "op": "SIFTFeatureScaleSpace",
+      "round": 2,
+      "throughput_per_s": 13.938188066177448,
+      "width": 800
+    },
+    {
+      "backend": "head",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 8285.781500489975,
+      "median_us": 102378.03250129218,
+      "op": "SIFTFeatureScaleSpace",
+      "round": 2,
+      "throughput_per_s": 9.767720433457034,
+      "width": 800
+    }
+  ]
+}

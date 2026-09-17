@@ -119,6 +119,7 @@ def main() -> None:
     parser.add_argument("--seq", type=Path, required=True)
     parser.add_argument("--expected-checkout", type=Path, required=True)
     parser.add_argument("--device", choices=("cpu", "mps", "cuda"), default="cpu")
+    parser.add_argument("--threads", type=int, default=1, help="CPU threads, including inside timed calls")
     parser.add_argument("--nf", type=int, default=4096)
     parser.add_argument("--methods", nargs="+", choices=("patch", "pyramid", "opencv"), default=["patch", "pyramid"])
     parser.add_argument("--min-run-time", type=float, default=1.0)
@@ -126,6 +127,8 @@ def main() -> None:
     parser.add_argument("--profile-memory", action="store_true", help="Profile CPU tensor allocations outside timing")
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args()
+    if args.threads < 1:
+        parser.error("--threads must be positive")
     if args.profile_memory and (args.device != "cpu" or "opencv" in args.methods):
         parser.error("--profile-memory supports PyTorch CPU methods only")
     if "opencv" in args.methods:
@@ -135,15 +138,16 @@ def main() -> None:
             raise SystemExit("SKIP: the OpenCV baseline requires optional opencv-python")
         import cv2
 
-        cv2.setNumThreads(1)
+        cv2.setNumThreads(args.threads)
 
     imported_root = Path(kornia.__file__).resolve().parents[1]
     print(f"# interpreter: {sys.executable}\n# kornia: {kornia.__file__}", flush=True)
     if imported_root != args.expected_checkout.resolve():
         raise RuntimeError(f"Wrong Kornia checkout: {imported_root}")
     torch.manual_seed(0)
-    torch.set_num_threads(1)
+    torch.set_num_threads(args.threads)
     torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
     device = torch.device(args.device)
     sync = {"cuda": torch.cuda.synchronize, "mps": torch.mps.synchronize}.get(device.type, lambda: None)
     ransac_device = torch.device("cpu") if device.type == "mps" else device
@@ -164,6 +168,7 @@ def main() -> None:
             "or native uint8 OpenCV detectAndCompute + RootSIFT; I/O, matching and RANSAC excluded"
         ),
         min_run_time=args.min_run_time,
+        timer_num_threads=args.threads,
         quality_only=args.quality_only,
         profile_memory=args.profile_memory,
         matching_ratio=0.8,
@@ -253,6 +258,7 @@ def main() -> None:
                     run,
                     min_run_time=max(args.min_run_time, 5.0 * warm_seconds),
                     sync=sync if device.type == "mps" else None,
+                    num_threads=args.threads,
                 )
                 if not math.isfinite(median):
                     raise RuntimeError(f"Timing failed for {method}, image {index}")

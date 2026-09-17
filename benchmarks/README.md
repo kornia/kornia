@@ -15,6 +15,9 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 | [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`laf_ops.py`](feature/laf_ops.py) microbenchmarks the shared LAF operations and [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) drills into one of them (both base-revision A/B — no cross-library baseline exists). [`local_features.py`](feature/local_features.py) measures Oxford graf speed and homography corner error for SIFT, SIFT-AffNet-HardNet and KeyNet-HardNet on CPU, CUDA or MPS (`--device cpu --timing-pairs 2` times the representative 1–2 pair and still scores all five); results in [`graf_benchmark.md`](feature/graf_benchmark.md). [`sift_runtime.py`](feature/sift_runtime.py) and [`plot_sift_runtime.py`](feature/plot_sift_runtime.py) chart scale-space SIFT runtime across releases and batch sizes; results in [`sift_runtime.md`](feature/sift_runtime.md). [`dense_sift.py`](feature/dense_sift.py) compares shared-pyramid SIFT with patch SIFT on fixed graf similarity and affine frames; [speed and precision results](feature/dense_sift.md). [`sift_scale_space.py`](feature/sift_scale_space.py) benchmarks the dedicated shared-detector-pyramid SIFT pipeline end to end, including matching and RANSAC quality; [results](feature/sift_scale_space.md). The [follow-up memory report](feature/sift_memory.md) measures allocation reductions and correctness fixes, with [`sift_memory.py`](feature/sift_memory.py) checking checkerboard and small-batch cases. |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |
 
+The [Intel CPU and CUDA SIFT report](feature/sift_devices.md) checks how the specialized pipeline's
+optimizations transfer across devices and measures its CUDA-specific refinement follow-up.
+
 ## Methodology contract
 
 Every benchmark here must follow the same rules (utilities in [`common.py`](common.py)):
