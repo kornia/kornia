@@ -56,9 +56,9 @@ class PinholeCamera:
     .. warning::
         :meth:`scale` and :meth:`scale_` rescale the principal point as ``cx' = s * cx`` — the half-pixel rule —
         which disagrees with the integer pixel centres above; it is tracked as a coordinated repair in
-        `#4263 <https://github.com/kornia/kornia/issues/4263>`_, the direct projection limitation for
-        :math:`(B, N, 4, 4)` camera storage `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The behaviour
-        described here is documented as it is; the issues above track the repairs.
+        `#4263 <https://github.com/kornia/kornia/issues/4263>`_. The direct projection limitation for
+        :math:`(B, N, 4, 4)` camera storage is `#4266 <https://github.com/kornia/kornia/issues/4266>`_. The
+        behaviour described here is documented as it is; the issues above track the repairs.
 
     Args:
         intrinsics: torch.Tensor with shape :math:`(B, 4, 4)`

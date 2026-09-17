@@ -811,8 +811,8 @@ class TestPinholeCamera(BaseTester):
         self.assert_close(height, height_before, atol=0.0, rtol=0.0)
         self.assert_close(width, width_before, atol=0.0, rtol=0.0)
 
-    def test_wart_scale_inplace_promotes_integer_image_size_4265(self, device, dtype):
-        # Wart pin for kornia#4265: the constructor accepts int64 height/width --
+    def test_scale_inplace_promotes_integer_image_size_4265(self, device, dtype):
+        # Regression for kornia#4265: the constructor accepts int64 height/width --
         # that is what the class docstring's own example builds. A floating factor now
         # promotes int64 to float in both scale() and scale_() after this repair (#4371).
         # Integer factor preserves int64. Pins the repaired contract after #4371.
@@ -835,7 +835,8 @@ class TestPinholeCamera(BaseTester):
             self.assert_close(inplace.intrinsics, scaled.intrinsics)
         assert cam.scale(torch.tensor([0.5], device=device, dtype=dtype)).height.is_floating_point()
         # scale_(0.5) now promotes int64 height/width to float instead of raising (#4371).
-        inplace = cam.scale_(torch.tensor([0.5], device=device, dtype=dtype))
+        # Both the plain Python float (the issue's own call shape) and a tensor factor promote.
+        inplace = cam.scale_(0.5)
         assert inplace is cam
         assert cam.height.is_floating_point()
         self.assert_close(cam.height, torch.tensor([3.0], device=device, dtype=dtype), atol=0.0, rtol=0.0)
