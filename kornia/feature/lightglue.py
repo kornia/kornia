@@ -37,7 +37,8 @@ def math_clamp(x, min_, max_):  # type: ignore
 
 
 if hasattr(torch.amp, "custom_fwd"):
-    AMP_CUSTOM_FWD_F32 = torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
+    _device_type = str(torch.accelerator.current_accelerator()) if hasattr(torch, "accelerator") else "cuda"
+    AMP_CUSTOM_FWD_F32 = torch.amp.custom_fwd(cast_inputs=torch.float32, device_type=_device_type)
 else:
     # ``torch.amp.custom_fwd`` was introduced after Kornia's minimum supported Torch;
     # the CUDA-specific spelling provides the same behavior on older releases.
