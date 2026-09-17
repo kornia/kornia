@@ -1,0 +1,1 @@
+Speed up CPU median blur inference for 3×3 and 5×5 kernels using selection networks, and CPU float32/float64 Laplacian filtering on builds without oneDNN using separable neighborhood sums. Preserve median gradient tie behavior with the original autograd path. Benchmark timing now honors the configured PyTorch thread count.

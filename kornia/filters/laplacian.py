@@ -18,10 +18,25 @@
 from __future__ import annotations
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+
 from .filter import filter2d
-from .kernels import get_laplacian_kernel2d, normalize_kernel2d
+from .kernels import _check_kernel_size, _unpack_2d_ks, get_laplacian_kernel2d, normalize_kernel2d
+
+_HAS_MKLDNN = torch.backends.mkldnn.is_available()
+
+
+def _laplacian_cpu_eligible(input: torch.Tensor) -> bool:
+    """Select the slice implementation when CPU convolution has no accelerated backend."""
+    return (
+        input.device.type == "cpu"
+        and not torch.is_autocast_enabled("cpu")
+        and input.dtype in (torch.float32, torch.float64)
+        and not _HAS_MKLDNN
+    )
 
 
 def laplacian(
@@ -55,12 +70,46 @@ def laplacian(
         torch.Size([2, 4, 5, 5])
 
     """
-    kernel = get_laplacian_kernel2d(kernel_size, device=input.device, dtype=input.dtype)[None, ...]
+    KORNIA_CHECK_IS_TENSOR(input)
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+    KORNIA_CHECK(
+        str(border_type).lower() in {"constant", "reflect", "replicate", "circular"},
+        f"Invalid border, {border_type}. Expected one of {{'constant', 'reflect', 'replicate', 'circular'}}",
+    )
 
+    ky, kx = _unpack_2d_ks(kernel_size)
+    _check_kernel_size((ky, kx))
+
+    if not _laplacian_cpu_eligible(input):
+        kernel = get_laplacian_kernel2d((ky, kx), device=input.device, dtype=input.dtype)[None]
+        if normalized:
+            kernel = normalize_kernel2d(kernel)
+        return filter2d(input, kernel, border_type)
+
+    # The Laplacian kernel contains ones everywhere except at its centre,
+    # which is ``1 - ky * kx``. Compute its response as the sum of each
+    # neighbourhood minus ``ky * kx`` times the centre instead of materializing
+    # and depthwise-convolving the dense kernel. Summing each axis first needs
+    # only ``ky + kx - 2`` elementwise additions and lets torch.compile fuse it.
+    scale = 2 * (ky * kx - 1)
     if normalized:
-        kernel = normalize_kernel2d(kernel)
+        # Scale before summing so large finite inputs cannot overflow on an otherwise
+        # finite normalized response.
+        input = input / scale
 
-    return filter2d(input, kernel, border_type)
+    padded = F.pad(input, (kx // 2, kx // 2, ky // 2, ky // 2), mode=border_type)
+    height, width = input.shape[-2:]
+
+    rows = padded[..., :height, :]
+    for offset in range(1, ky):
+        rows = rows + padded[..., offset : offset + height, :]
+
+    output = rows[..., :, :width]
+    for offset in range(1, kx):
+        output = output + rows[..., :, offset : offset + width]
+
+    output = output - (ky * kx) * input
+    return output
 
 
 class Laplacian(nn.Module):

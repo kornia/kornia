@@ -10,7 +10,7 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 | --- | --- |
 | [`augmentation/`](augmentation/) | Cross-library augmentation benchmarks — [`flagship.py`](augmentation/flagship.py) (class-API, parameter sampling included, vs torchvision v2/albumentations/OpenCV/PIL) plus pipeline/per-op scripts; see its [README](augmentation/README.md). |
 | [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. |
-| [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL. [`gaussian_cpu.py`](filters/gaussian_cpu.py): Gaussian blur and scale-pyramid base/branch timing and numerical comparisons; [report](filters/gaussian_cpu.md). |
+| [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL. [`median_laplacian.py`](filters/median_laplacian.py): CPU median/Laplacian A/B with matched float32 OpenCV references; [report](filters/median_laplacian.md). [`gaussian_cpu.py`](filters/gaussian_cpu.py): Gaussian blur and scale-pyramid base/branch timing and numerical comparisons; [report](filters/gaussian_cpu.md). |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions. |
 | [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`laf_ops.py`](feature/laf_ops.py) microbenchmarks the shared LAF operations and [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) drills into one of them (both base-revision A/B — no cross-library baseline exists). [`local_features.py`](feature/local_features.py) measures Oxford graf speed and homography corner error for SIFT, SIFT-AffNet-HardNet and KeyNet-HardNet on CPU, CUDA or MPS (`--device cpu --timing-pairs 2` times the representative 1–2 pair and still scores all five); results in [`graf_benchmark.md`](feature/graf_benchmark.md). [`sift_runtime.py`](feature/sift_runtime.py) and [`plot_sift_runtime.py`](feature/plot_sift_runtime.py) chart scale-space SIFT runtime across releases and batch sizes; results in [`sift_runtime.md`](feature/sift_runtime.md). |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |
@@ -23,6 +23,10 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
   `torch.utils.benchmark.Timer.blocked_autorange`, which warms up, runs many repeats, and
   reports **median** wall clock; `time_us` additionally returns the **IQR** as the spread.
   Never time a single call.
+- **Thread consistency:** `time_us` uses the current `torch.get_num_threads()` for timing,
+  matching warmup and metadata. Older results collected before this fix timed PyTorch at
+  `Timer`'s default of one thread even when metadata named a larger thread count; do not
+  interpret those historical files as measurements at the advertised count.
 - **Device sync inside the timed region:** `blocked_autorange` syncs CUDA; for MPS pass
   `sync=torch.mps.synchronize` to `time_us`. A hand-rolled `time.time()` around a GPU call
   measures launch latency, not work.

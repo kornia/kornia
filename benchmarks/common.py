@@ -54,7 +54,9 @@ def time_us(
     """
     stmt = "fn(); sync()" if sync is not None else "fn()"
     try:
-        m = bench.Timer(stmt=stmt, globals={"fn": fn, "sync": sync}).blocked_autorange(min_run_time=min_run_time)
+        m = bench.Timer(
+            stmt=stmt, globals={"fn": fn, "sync": sync}, num_threads=torch.get_num_threads()
+        ).blocked_autorange(min_run_time=min_run_time)
         return m.median * 1e6, m.iqr * 1e6
     except Exception:
         return float("nan"), float("nan")

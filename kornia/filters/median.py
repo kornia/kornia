@@ -27,6 +27,63 @@ from kornia.core.utils import is_exporting
 from .kernels import _unpack_2d_ks, get_binary_kernel2d
 
 
+def _median_network(size: int) -> tuple[tuple[int, int, bool, bool], ...]:
+    """Prune Batcher's odd-even mergesort to the middle output wire.
+
+    Batcher, "Sorting networks and their applications", AFIPS 1968,
+    doi:10.1145/1468075.1468121. Missing wires are symbolic positive infinity.
+    """
+    pairs: list[tuple[int, int]] = []
+
+    def merge(start: int, length: int, stride: int) -> None:
+        step = 2 * stride
+        if step < length:
+            merge(start, length, step)
+            merge(start + stride, length, step)
+            pairs.extend((i, i + stride) for i in range(start + stride, start + length - stride, step))
+        else:
+            pairs.append((start, start + stride))
+
+    def sort(start: int, length: int) -> None:
+        if length > 1:
+            sort(start, length // 2)
+            sort(start + length // 2, length // 2)
+            merge(start, length, 1)
+
+    sort(0, 1 << (size - 1).bit_length())
+    needed = {size // 2}
+    result = []
+    for left, right in reversed(pairs):
+        if right >= size:  # Comparing a real wire with positive infinity is a no-op.
+            continue
+        low, high = left in needed, right in needed
+        if low or high:
+            result.append((left, right, low, high))
+            needed.update((left, right))
+    return tuple(reversed(result))
+
+
+_MEDIAN_NETWORKS = {3: _median_network(9), 5: _median_network(25)}
+
+
+def _median_blur_network(input: torch.Tensor, size: int) -> torch.Tensor:
+    """Select a small-window median without materializing patches or sorting them."""
+    radius = size // 2
+    padded = F.pad(input, (radius, radius, radius, radius))
+    height, width = input.shape[-2:]
+    values = [padded[..., y : y + height, x : x + width] for y in range(size) for x in range(size)]
+    for left, right, low, high in _MEDIAN_NETWORKS[size]:
+        a, b = values[left], values[right]
+        if low:
+            values[left] = torch.minimum(a, b)
+        if high:
+            values[right] = torch.maximum(a, b)
+    # The original one-hot convolution propagates any NaN/Inf in a window to
+    # every extracted feature (including 0 * Inf). Preserve that behavior.
+    invalid = F.max_pool2d(input - input, size, stride=1, padding=radius)
+    return (values[size * size // 2] + invalid).contiguous()
+
+
 def _compute_zero_padding(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
     r"""Compute zero padding tuple."""
     ky, kx = _unpack_2d_ks(kernel_size)
@@ -59,6 +116,21 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torc
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     ky, kx = _unpack_2d_ks(kernel_size)
+    # ATen's per-pixel median reduction dominates CPU inference for small
+    # windows. A fixed selection network avoids it. Keep the original path for
+    # autograd (in particular its tie indices) and other devices/sizes.
+    if (
+        input.device.type == "cpu"
+        and not torch.is_autocast_enabled("cpu")
+        and input.shape[1] != 0
+        and input.is_floating_point()
+        and not input.requires_grad
+        and torch.autograd.forward_ad.unpack_dual(input).tangent is None
+        and ky == kx
+        and ky in _MEDIAN_NETWORKS
+    ):
+        return _median_blur_network(input, ky)
+
     padding = _compute_zero_padding(kernel_size)
 
     # prepare kernel

@@ -17,8 +17,8 @@
 
 """Flagship filters benchmark: kornia.filters vs OpenCV, albumentations, torchvision v2, kornia-rs.
 
-Covers the core image filters with fixed, identical parameters across backends (equal footing;
-5x5 kernels, sigma 1.5 where applicable):
+Covers the core image filters with fixed nominal parameters across backends
+(5x5 kernels, sigma 1.5 where applicable; semantic differences are described below):
 
 ================  ===============================================  ===================================
 kornia.filters    OpenCV (uint8 HWC, per-image Python loop)        others
@@ -34,14 +34,20 @@ canny             ``cv2.Canny`` (on grayscale)                     —
 Regimes (see ``benchmarks/README.md``): kornia/torchvision run a batched float BCHW tensor on CPU
 or GPU and kornia is differentiable; OpenCV/albumentations/kornia-rs/PIL run single uint8 HWC
 images on CPU in a Python loop — their native regime. albumentations wraps OpenCV in its
-transform-class API (constructed once, called with fixed parameters). PIL — usually the slowest,
-but the signal-processing-correct reference — matches exactly on ``BoxBlur(2)`` (5x5 box) and
-``MedianFilter(5)``; its ``GaussianBlur(radius=1.5)`` approximates a true Gaussian with repeated
-box passes, so the sigma is matched in spirit only. Canny thresholds are each library's standard
+transform-class API (constructed once, called with fixed parameters). PIL uses ``BoxBlur(2)`` (5x5 box) and
+``MedianFilter(5)``; border handling differs from Kornia. Its ``GaussianBlur(radius=1.5)``
+approximates a true Gaussian with repeated box passes, so the sigma is matched in spirit only.
+Canny thresholds are each library's standard
 defaults — kornia 0.1/0.2 on normalized float gradients, OpenCV 100/200 on uint8 gradients — the
 domains differ, so that row compares regimes, not identical outputs. kornia's canny converts to
 grayscale internally per its definition; the OpenCV canny loop therefore includes ``cv2.cvtColor``
 (sobel runs per-channel in both). Throughput is img/s.
+
+The Laplacian columns are different operators: Kornia uses an L1-normalized all-ones
+window with center ``1 - kernel_area``; OpenCV sums second Sobel derivatives. Median
+uses zero padding in Kornia and replicated borders in OpenCV. These are native-regime
+throughput comparisons, not output-equivalent comparisons. See ``median_laplacian.py``
+for matched float32 OpenCV references, including the same kernel and padding.
 
 Usage:
     python benchmarks/filters/flagship.py --batches 1,8,32 --size 256 --device cpu
@@ -101,7 +107,7 @@ def build_ops(
     pilf: Optional[ModuleType],
     skip_compile: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, dict[str, Backend]], dict[str, str]]:
-    """Build {op: {backend: zero-arg callable}} with identical filter parameters per backend."""
+    """Build {op: {backend: zero-arg callable}} with the documented per-backend regimes."""
     rng = np.random.default_rng(0)
     imgs_u8 = [(rng.random((h, w, 3)) * 255).astype(np.uint8) for _ in range(b)]
     batch_f = (

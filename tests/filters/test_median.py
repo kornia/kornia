@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from kornia.filters import MedianBlur, median_blur
+from kornia.filters.kernels import get_binary_kernel2d
 
 from testing.base import BaseTester
 
@@ -30,11 +31,12 @@ class TestMedianBlur(BaseTester):
         assert isinstance(actual, torch.Tensor)
 
     @pytest.mark.parametrize("batch_size", [0, 1, 2])
+    @pytest.mark.parametrize("channels", [0, 3])
     @pytest.mark.parametrize("kernel_size", [3, (5, 7)])
-    def test_cardinality(self, batch_size, kernel_size, device, dtype):
-        inp = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
+    def test_cardinality(self, batch_size, channels, kernel_size, device, dtype):
+        inp = torch.zeros(batch_size, channels, 4, 4, device=device, dtype=dtype)
         actual = median_blur(inp, kernel_size)
-        assert actual.shape == (batch_size, 3, 4, 4)
+        assert actual.shape == (batch_size, channels, 4, 4)
 
     def test_exception(self, device, dtype):
         from kornia.core.exceptions import ShapeError, TypeCheckError
@@ -101,6 +103,71 @@ class TestMedianBlur(BaseTester):
         actual = median_blur(inp, kernel_size)
         assert actual.is_contiguous()
 
+    @pytest.mark.parametrize("kernel_size", [3, 5])
+    @pytest.mark.parametrize("layout", ["contiguous", "transposed", "channels_last"])
+    def test_selection_matches_convolution(self, kernel_size, layout, device, dtype):
+        # Quantized signed values exercise ties and padding; the extra channel
+        # has random values so both branches also see distinct order statistics.
+        inp = torch.randint(-4, 5, (2, 3, 7, 9), device=device).to(dtype)
+        inp[:, 0] = torch.rand(2, 7, 9, device=device, dtype=dtype) * 2 - 1
+        if layout == "transposed":
+            inp = inp.transpose(-1, -2)
+        elif layout == "channels_last":
+            inp = inp.contiguous(memory_format=torch.channels_last)
+        b, c, h, w = inp.shape
+        weights = get_binary_kernel2d(kernel_size, device=device, dtype=dtype)
+        features = torch.nn.functional.conv2d(inp.reshape(b * c, 1, h, w), weights, padding=kernel_size // 2)
+        expected = features.reshape(b, c, kernel_size**2, h, w).median(2).values
+        actual = median_blur(inp, kernel_size)
+        self.assert_close(actual, expected)
+        assert actual.is_contiguous()
+
+    @pytest.mark.parametrize("kernel_size", [3, 5])
+    @pytest.mark.parametrize("invalid", [float("nan"), float("inf"), -float("inf")])
+    def test_selection_nonfinite(self, kernel_size, invalid, device, dtype):
+        inp = torch.ones(1, 1, 7, 9, device=device, dtype=dtype)
+        inp[..., 3, 4] = invalid
+        weights = get_binary_kernel2d(kernel_size, device=device, dtype=dtype)
+        expected = torch.nn.functional.conv2d(inp, weights, padding=kernel_size // 2).median(1).values[:, None]
+        actual = median_blur(inp, kernel_size)
+        self.assert_close(actual.isnan(), expected.isnan())
+        self.assert_close(actual.nan_to_num(), expected.nan_to_num())
+
+    @pytest.mark.parametrize("kernel_size", [3, 5])
+    def test_tied_gradients_unchanged(self, kernel_size, device, dtype):
+        inp = torch.randint(-2, 3, (1, 1, 7, 9), device=device).to(dtype).requires_grad_()
+        weights = get_binary_kernel2d(kernel_size, device=device, dtype=dtype)
+        expected = torch.nn.functional.conv2d(inp, weights, padding=kernel_size // 2).median(1).values[:, None]
+        expected_grad = torch.autograd.grad(expected.sum(), inp)[0]
+        actual = median_blur(inp, kernel_size)
+        self.assert_close(torch.autograd.grad(actual.sum(), inp)[0], expected_grad, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("kernel_size", [3, 5])
+    def test_tied_forward_gradients_unchanged(self, kernel_size, device, dtype):
+        inp = torch.randint(-2, 3, (1, 1, 7, 9), device=device).to(dtype)
+        tangent = torch.randn_like(inp)
+        weights = get_binary_kernel2d(kernel_size, device=device, dtype=dtype)
+
+        def reference(value):
+            return torch.nn.functional.conv2d(value, weights, padding=kernel_size // 2).median(1).values[:, None]
+
+        expected, expected_jvp = torch.func.jvp(reference, (inp,), (tangent,))
+        actual, actual_jvp = torch.func.jvp(lambda value: median_blur(value, kernel_size), (inp,), (tangent,))
+        self.assert_close(actual, expected)
+        self.assert_close(actual_jvp, expected_jvp)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("autocast_dtype", [torch.float16, torch.bfloat16])
+    def test_cpu_autocast(self, autocast_dtype):
+        # Float32 inputs intentionally exercise CPU autocast's convolution cast.
+        inp = torch.rand(1, 1, 7, 9, dtype=torch.float32)
+        weights = get_binary_kernel2d(3, dtype=torch.float32)
+        with torch.autocast("cpu", dtype=autocast_dtype):
+            expected = torch.nn.functional.conv2d(inp, weights, padding=1).median(1).values[:, None]
+            actual = median_blur(inp, 3)
+        assert actual.dtype == expected.dtype == autocast_dtype
+        self.assert_close(actual, expected)
+
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
@@ -115,11 +182,21 @@ class TestMedianBlur(BaseTester):
         expected = op(img, kernel_size)
         self.assert_close(actual, expected)
 
-    @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
+    @pytest.mark.parametrize("kernel_size", [3, 5, (5, 7)])
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
-        data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.rand(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = MedianBlur(kernel_size)
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
+
+    @pytest.mark.parametrize("kernel_size", [3, 5])
+    def test_dynamo_nonfinite(self, kernel_size, device, dtype, torch_optimizer):
+        data = torch.ones(1, 1, 7, 9, device=device, dtype=dtype)
+        data[..., 3, 4] = float("inf")
+        op = MedianBlur(kernel_size)
+        actual = torch_optimizer(op)(data)
+        expected = op(data)
+        self.assert_close(actual.isnan(), expected.isnan())
+        self.assert_close(actual.nan_to_num(), expected.nan_to_num())
