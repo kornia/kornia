@@ -2645,6 +2645,72 @@ class TestRectangleRandomErasing(BaseTester):
         res = f(input)
         self.assert_close(res[0], res[1])
 
+    @pytest.mark.parametrize("parameter_dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("same_on_batch", [False, True])
+    def test_half_precision_random_erasing_replays_native_params(self, device, parameter_dtype, same_on_batch):
+        if device.type != "cpu":
+            pytest.skip("This regression exercises the CPU sampler with half tensor parameters.")
+        batch_size, height, width = 65536, 16, 16
+        scale = torch.tensor((0.25, 0.25), device=device, dtype=parameter_dtype)
+        ratio = torch.tensor((1.0, 1.0), device=device, dtype=parameter_dtype)
+        input = torch.ones((batch_size, 1, height, width), device=device, dtype=parameter_dtype)
+        augmentation = RandomErasing(
+            scale=scale,
+            ratio=ratio,
+            value=0.25,
+            same_on_batch=same_on_batch,
+            p=1.0,
+        )
+        torch.manual_seed(0)
+        params = augmentation.forward_parameters(input.shape)
+        output = augmentation(input, params=params)
+        replay = augmentation(input, params=params)
+        assert output.shape == input.shape
+        assert output.device == input.device
+        assert output.dtype == input.dtype
+        assert torch.equal(output, replay)
+        if same_on_batch:
+            assert torch.equal(output[0], output[1])
+        assert bool((output != input).any())
+        for name in ("xs", "ys", "widths", "heights"):
+            assert params[name].dtype == parameter_dtype, name
+            assert params[name].device == device, name
+        xs = params["xs"].to(torch.float64)
+        ys = params["ys"].to(torch.float64)
+        widths = params["widths"].to(torch.float64)
+        heights = params["heights"].to(torch.float64)
+        assert bool((xs + widths <= width).all())
+        assert bool((ys + heights <= height).all())
+        observed_area = (output != input).flatten(1).sum(dim=1).to(torch.float64)
+        expected_area = widths * heights
+        assert torch.equal(observed_area, expected_area)
+        for index in (0, batch_size // 2, batch_size - 1):
+            x, y, box_width, box_height = (
+                params[name][index].long().item() for name in ("xs", "ys", "widths", "heights")
+            )
+            expected = input[index].clone()
+            expected[:, y : y + box_height, x : x + box_width] = params["values"][index].to(input)
+            assert torch.equal(output[index], expected)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("parameter_dtype,image_size", [(torch.bfloat16, 299), (torch.float16, 2051)])
+    def test_half_precision_erasing_positions_are_nonnegative_for_rounded_extents(self, parameter_dtype, image_size):
+        scale = torch.tensor([1.0, 1.0], dtype=parameter_dtype)
+        ratio = torch.tensor([1.0, 1.0], dtype=parameter_dtype)
+        augmentation = RandomErasing(scale=scale, ratio=ratio, same_on_batch=True, p=1.0)
+        input = torch.ones((4, 1, image_size, image_size), dtype=parameter_dtype)
+
+        torch.manual_seed(0)
+        params = augmentation.forward_parameters(input.shape)
+        assert bool((params["xs"] >= 0).all())
+        assert bool((params["ys"] >= 0).all())
+        assert torch.equal(params["xs"], params["xs"][0].expand_as(params["xs"]))
+        assert torch.equal(params["ys"], params["ys"][0].expand_as(params["ys"]))
+
+        output = augmentation(input, params=params)
+        assert torch.equal(output[0], output[1])
+        assert torch.equal(output, torch.zeros_like(output))
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         torch.manual_seed(0)
         input = torch.rand(2, 3, 11, 7, device=device, dtype=dtype)
@@ -4754,6 +4820,43 @@ class TestDenormalize(BaseTester):
         self.assert_close(f1(inputs), inputs)
         self.assert_close(f1.transform_matrix, identity)
 
+    @pytest.mark.parametrize(
+        "mean, std",
+        [
+            (0, 255),
+            (2, 0.5),
+            (0.25, 4),
+        ],
+    )
+    @pytest.mark.parametrize("batched", [False, True])
+    def test_integer_statistics_affine_and_normalize_inverse(self, device, dtype, mean, std, batched):
+        values = torch.tensor(
+            [
+                [
+                    [0.125, 0.5],
+                    [0.75, 1.25],
+                ],
+                [
+                    [1.5, 2.25],
+                    [3.0, 4.5],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        inputs = values.unsqueeze(0).repeat(2, 1, 1, 1) if batched else values
+        expected = inputs * std + mean
+
+        output = Denormalize(mean=mean, std=std, p=1.0, keepdim=True)(inputs)
+        assert output.shape == inputs.shape
+        assert output.device == inputs.device
+        assert output.dtype == inputs.dtype
+        self.assert_close(output, expected)
+
+        normalized = Normalize(mean=mean, std=std, p=1.0, keepdim=True)(inputs)
+        recovered = Denormalize(mean=mean, std=std, p=1.0, keepdim=True)(normalized)
+        self.assert_close(recovered, inputs)
+
     def test_batch_random_denormalize(self, device, dtype):
         f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=1.0)
         f1 = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([0.5]), p=0.0)
@@ -5587,6 +5690,14 @@ class TestRandomRain(BaseTester):
         assert (aug._params["drop_height_factor"] == aug._params["drop_height_factor"][0]).all()
         assert (aug._params["drop_width_factor"] == aug._params["drop_width_factor"][0]).all()
         self.assert_close(aug._params["coordinates_factor"][0], aug._params["coordinates_factor"][1])
+
+    def test_construction_ignores_the_ambient_default_device(self):
+        # The sampler bounds are built on the generator's own device.  A bare `torch.tensor` follows
+        # `torch.set_default_device` instead, which puts them on the ambient device and then moves them
+        # straight back -- and under a `meta` context the move raises `Cannot copy out of meta tensor`.
+        with torch.device("meta"):
+            aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
+        assert aug._param_generator.drop_height_sampler.high.device == torch.device("cpu")
 
 
 class TestMultiprocessing:

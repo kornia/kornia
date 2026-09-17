@@ -48,13 +48,14 @@ class ColorJiggle(IntensityAugmentationBase2D):
     Convention:
         - this class and :class:`ColorJitter` draw the same factor values and the same random application
           ``order`` from the same seed when their effective sampling bounds match and both modules stay on
-          the CPU. A scalar ``brightness > 1`` does not match: this class draws from ``[0, 2]`` while
-          :class:`ColorJitter` draws from ``[0, 1 + brightness]``. Off the CPU the ``order`` diverges,
-          because this class draws it on the sampler device where :class:`ColorJitter` always draws it on
-          the CPU; and this class returns its factors in the dtype of its constructor arguments
-          (``float32`` for Python floats) where :class:`ColorJitter` keeps the sampler dtype. Only
-          :class:`ColorJitter` takes an ``order`` constructor argument that replaces its sampled order with a
-          fixed one. The classes use different primitives for three adjustments:
+          the CPU. A scalar ``brightness > 1`` is where they part: this class rejects it, because its
+          bound is ``[0, 2]``, while :class:`ColorJitter` draws from ``[0, 1 + brightness]``. Off the CPU
+          the ``order`` diverges, because this class draws it on the sampler device where
+          :class:`ColorJitter` always draws it on the CPU; and this class returns its factors in the dtype
+          of its constructor arguments (``float32`` for Python floats) where :class:`ColorJitter` keeps
+          the sampler dtype. Only :class:`ColorJitter` takes an ``order`` constructor argument that
+          replaces its sampled order with a fixed one. The classes use different primitives for three
+          adjustments:
           :func:`kornia.enhance.adjust_brightness` against
           :func:`kornia.enhance.adjust_brightness_accumulative`,
           :func:`kornia.enhance.adjust_contrast` against
@@ -71,9 +72,10 @@ class ColorJiggle(IntensityAugmentationBase2D):
           suit the steps that actually run: the saturation and hue steps need three channels, but
           ``ColorJiggle(0, 0, 0, 0)`` and a brightness- or contrast-only configuration accept any channel
           count, including the ``C = 1`` and ``C = 4`` on which :class:`ColorJitter` raises.
-        - the ``[0, 2]`` bound is not only a clamp on a scalar: an explicit ``brightness`` range reaching
-          above ``2``, such as ``(0.0, 3.0)``, is rejected at construction with
-          ``brightness out of bounds. Expected inside (0, 2)``, where :class:`ColorJitter` accepts it.
+        - the ``[0, 2]`` bound applies to both argument forms: an explicit ``brightness`` range reaching
+          above ``2``, such as ``(0.0, 3.0)``, and a scalar whose implied ``[1 - x, 1 + x]`` does, such as
+          ``1.5``, are both rejected at construction with
+          ``brightness out of bounds. Expected inside (0, 2)``, where :class:`ColorJitter` accepts either.
 
     .. warning::
         The brightness and contrast primitives clip into ``[0, 1]`` by default, so an input whose values are
