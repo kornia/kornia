@@ -1,0 +1,157 @@
+{
+  "metadata": {
+    "albumentations": null,
+    "cuda_device": "NVIDIA GeForce RTX 4090",
+    "cuda_version": "13.0",
+    "device": "cuda",
+    "git_commit": "40bcf122-dirty",
+    "kornia": "0.9.0rc1",
+    "kornia_rs": "0.1.14",
+    "load": {
+      "cpu_count": 28,
+      "load_avg_15m": 2.265625,
+      "load_avg_1m": 1.18896484375,
+      "load_avg_5m": 2.96875,
+      "mem_available_bytes": null,
+      "mem_total_bytes": null
+    },
+    "machine": "x86_64",
+    "methodology": "Same public default SIFTFeatureScaleSpace object and Graf1 input; swap only conv_quad_interp3d with actual base/current revision function; 3 shuffled rounds",
+    "numpy": "2.4.0",
+    "opencv": "4.11.0",
+    "pillow": "12.3.0",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python": "3.11.14",
+    "source_sha256": {
+      "base": "1f4d5a487c25a774b9d3baadd05daae3f4670f92b527ad6d07450e9be54266f5",
+      "opt": "ac9162bd9df935d93388e3ea7178b420b6e8f64aa6ceb23c37b6391b3faac577"
+    },
+    "timer_num_threads": 1,
+    "timestamp_utc": "2026-09-17T18:51:27+00:00",
+    "torch": "2.14.0+cu130",
+    "torch_num_threads": 1,
+    "torchvision": null
+  },
+  "results": [
+    {
+      "backend": "opt",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 3786.4099995204015,
+      "max_abs_difference": [
+        2.86102294921875e-05,
+        0.0,
+        1.5832483768463135e-05
+      ],
+      "median_us": 54921.776998526184,
+      "op": "SIFTFeatureScaleSpace",
+      "outputs_close": true,
+      "outputs_exact": false,
+      "peak_extra_bytes": 682142208,
+      "round": 0,
+      "throughput_per_s": 18.207713855049423,
+      "width": 800
+    },
+    {
+      "backend": "base",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 13176.89600000449,
+      "max_abs_difference": [
+        2.86102294921875e-05,
+        0.0,
+        1.5832483768463135e-05
+      ],
+      "median_us": 60209.952000150224,
+      "op": "SIFTFeatureScaleSpace",
+      "outputs_close": true,
+      "outputs_exact": false,
+      "peak_extra_bytes": 681716224,
+      "round": 0,
+      "throughput_per_s": 16.608550028365826,
+      "width": 800
+    },
+    {
+      "backend": "opt",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 10068.621999380412,
+      "max_abs_difference": [
+        2.86102294921875e-05,
+        0.0,
+        1.5832483768463135e-05
+      ],
+      "median_us": 55242.761998670176,
+      "op": "SIFTFeatureScaleSpace",
+      "outputs_close": true,
+      "outputs_exact": false,
+      "peak_extra_bytes": 682142208,
+      "round": 1,
+      "throughput_per_s": 18.10191894503885,
+      "width": 800
+    },
+    {
+      "backend": "base",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 8891.312001651386,
+      "max_abs_difference": [
+        2.86102294921875e-05,
+        0.0,
+        1.5832483768463135e-05
+      ],
+      "median_us": 57359.4689994934,
+      "op": "SIFTFeatureScaleSpace",
+      "outputs_close": true,
+      "outputs_exact": false,
+      "peak_extra_bytes": 681716224,
+      "round": 1,
+      "throughput_per_s": 17.433913134879823,
+      "width": 800
+    },
+    {
+      "backend": "base",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 11735.61199902906,
+      "max_abs_difference": [
+        2.86102294921875e-05,
+        0.0,
+        1.5832483768463135e-05
+      ],
+      "median_us": 57246.05399882421,
+      "op": "SIFTFeatureScaleSpace",
+      "outputs_close": true,
+      "outputs_exact": false,
+      "peak_extra_bytes": 681716224,
+      "round": 2,
+      "throughput_per_s": 17.468452935123516,
+      "width": 800
+    },
+    {
+      "backend": "opt",
+      "batch": 1,
+      "dtype": "float32",
+      "height": 640,
+      "iqr_us": 10095.875997649273,
+      "max_abs_difference": [
+        2.86102294921875e-05,
+        0.0,
+        1.5832483768463135e-05
+      ],
+      "median_us": 57199.9979983957,
+      "op": "SIFTFeatureScaleSpace",
+      "outputs_close": true,
+      "outputs_exact": false,
+      "peak_extra_bytes": 682142208,
+      "round": 2,
+      "throughput_per_s": 17.482518094284675,
+      "width": 800
+    }
+  ]
+}

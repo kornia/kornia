@@ -1,0 +1,117 @@
+{
+  "metadata": {
+    "albumentations": null,
+    "autocast": false,
+    "compile": false,
+    "cuda_device": "NVIDIA GeForce RTX 4090",
+    "cuda_version": "13.0",
+    "device": "cuda",
+    "dtype": "bfloat16",
+    "git_commit": "40bcf122-dirty",
+    "implementation_sha256": {
+      "feature/sift/scale_space.py": "9049ac8b04ab8d7f047902c3de1d4a2d3f64ec9c75b51b047c3ddf6be7ca6fed",
+      "feature/siftdesc.py": "7eee41aa7ea99fe04e8f8b73efddb5dc429fe7b98352a215574ad3ef7de8549b",
+      "geometry/subpix/spatial_soft_argmax.py": "1f4d5a487c25a774b9d3baadd05daae3f4670f92b527ad6d07450e9be54266f5"
+    },
+    "input_sha256": "8d53092ffa5b27f5138ec458302f35e7c72a9f35d1f94078ca35944c4b3626dd",
+    "kornia": "0.9.0rc1",
+    "kornia_rs": "0.1.14",
+    "load": {
+      "cpu_count": 28,
+      "load_avg_15m": 2.6484375,
+      "load_avg_1m": 3.77587890625,
+      "load_avg_5m": 3.6171875,
+      "mem_available_bytes": null,
+      "mem_total_bytes": null
+    },
+    "machine": "x86_64",
+    "memory": "CUDA peak allocated tensor bytes above resident inputs/model; includes returned outputs",
+    "min_run_time": 1.0,
+    "numpy": "2.4.0",
+    "opencv": "4.11.0",
+    "pillow": "12.3.0",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python": "3.11.14",
+    "seed": 0,
+    "timer_num_threads": 1,
+    "timestamp_utc": "2026-09-17T18:54:36+00:00",
+    "timing": "public eager inference forward; no matching or I/O",
+    "torch": "2.14.0+cu130",
+    "torch_num_threads": 1,
+    "torchvision": null
+  },
+  "results": [
+    {
+      "backend": "conv_quad_interp3d",
+      "batch": 1,
+      "dtype": "bfloat16",
+      "finite": true,
+      "height": 128,
+      "iqr_us": 533.7850001524199,
+      "median_us": 5521.224900076049,
+      "op": "conv_quad_interp3d",
+      "output_dtypes": [
+        "torch.bfloat16",
+        "torch.bfloat16"
+      ],
+      "peak_extra_bytes": 13242880,
+      "throughput_per_s": 181.11922953658816,
+      "width": 128
+    },
+    {
+      "backend": "iterative_quad_interp3d",
+      "batch": 1,
+      "dtype": "bfloat16",
+      "finite": true,
+      "height": 128,
+      "iqr_us": 2034.4131999991089,
+      "median_us": 8588.587699887285,
+      "op": "iterative_quad_interp3d",
+      "output_dtypes": [
+        "torch.bfloat16",
+        "torch.bfloat16"
+      ],
+      "peak_extra_bytes": 1555968,
+      "throughput_per_s": 116.43357848149165,
+      "width": 128
+    },
+    {
+      "backend": "sift-patch",
+      "batch": 1,
+      "dtype": "bfloat16",
+      "features": 4096,
+      "finite": true,
+      "height": 640,
+      "iqr_us": 6358.747250487795,
+      "median_us": 53804.44200091006,
+      "op": "SIFTFeatureScaleSpace",
+      "output_dtypes": [
+        "torch.bfloat16",
+        "torch.bfloat16",
+        "torch.bfloat16"
+      ],
+      "peak_extra_bytes": 440401920,
+      "throughput_per_s": 18.585826054716556,
+      "width": 800
+    },
+    {
+      "backend": "sift-pyramid",
+      "batch": 1,
+      "dtype": "bfloat16",
+      "features": 4096,
+      "finite": true,
+      "height": 640,
+      "iqr_us": 9730.724999826634,
+      "median_us": 80134.21799842035,
+      "op": "SIFTFeatureScaleSpace",
+      "output_dtypes": [
+        "torch.bfloat16",
+        "torch.bfloat16",
+        "torch.bfloat16"
+      ],
+      "peak_extra_bytes": 249360896,
+      "throughput_per_s": 12.47906356332962,
+      "width": 800
+    }
+  ]
+}

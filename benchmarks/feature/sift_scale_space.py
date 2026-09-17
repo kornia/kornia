@@ -201,6 +201,7 @@ def main() -> None:
                 Path(kornia.__file__).parent / "feature" / "sift" / "scale_space.py",
                 Path(kornia.__file__).parent / "feature" / "siftdesc.py",
                 Path(kornia.__file__).parent / "geometry" / "transform" / "pyramid.py",
+                Path(kornia.__file__).parent / "geometry" / "subpix" / "spatial_soft_argmax.py",
             )
             if path.is_file()
         },
