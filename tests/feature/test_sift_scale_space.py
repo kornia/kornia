@@ -365,6 +365,27 @@ class TestSIFTScalePyramid(BaseTester):
             self.assert_close(current[:, :, 0], previous[:, :, 3, : 2 * (h // 2) : 2, : 2 * (w // 2) : 2])
             assert current.shape[2] == 6
 
+    def test_reference_kernels_keep_double_precision(self, device):
+        from kornia.feature.sift.scale_space import _SIFTScalePyramid
+
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+        pyramid = _SIFTScalePyramid().to(device)
+        for index in range(6):
+            kernel = getattr(pyramid, f"kernel_{index}")
+            assert kernel.dtype == torch.float64
+            # Rounding the kernel at construction costs normalization at ~1e-8,
+            # which would cap a float64 pyramid at float32 accuracy.
+            assert (kernel.sum() - 1.0).abs() < 1e-15
+
+        # A normalized kernel with reflection padding leaves a constant image
+        # unchanged, so the residual measures kernel accuracy on its own. The
+        # float32-rounded kernels this replaces leave ~2.4e-8 here.
+        value = 0.37
+        image = torch.full((1, 1, 96, 96), value, device=device, dtype=torch.float64)
+        for octave in pyramid(image):
+            assert (octave - value).abs().max() < 1e-14
+
     def test_pyramid_backend_rejects_unknown_compile_component(self):
         with pytest.raises(ValueError, match="compile_modules"):
             SIFTFeatureScaleSpace(descriptor_backend="pyramid", compile_modules=["resp"])

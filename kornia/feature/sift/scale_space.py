@@ -62,7 +62,10 @@ class _SIFTScalePyramid(nn.Module):
         sigmas += [1.6 * step**i * math.sqrt(step**2 - 1.0) for i in range(5)]
         for index, sigma in enumerate(sigmas):
             size = int(8.0 * sigma + 1.0) | 1
-            kernel = get_gaussian_kernel1d(size, sigma, dtype=torch.float64).float().reshape(-1)
+            # Keep the reference kernel in float64. Rounding it at construction
+            # would cap a float64 pyramid at float32 accuracy, unlike
+            # ``ScalePyramid``, which builds its kernels in the input dtype.
+            kernel = get_gaussian_kernel1d(size, sigma, dtype=torch.float64).reshape(-1)
             self.register_buffer(f"kernel_{index}", kernel)
 
     @staticmethod
@@ -163,7 +166,10 @@ class _SIFTScalePyramid(nn.Module):
 
     def forward(self, image: torch.Tensor) -> list[torch.Tensor]:
         """Build doubled-image Gaussian octaves for normalized grayscale images."""
-        first = self._blur(self._double(image), self.kernel_0)
+        doubled = self._double(image)
+        # Cast the float64 reference kernels once instead of on every blur.
+        kernels = [getattr(self, f"kernel_{index}").to(doubled) for index in range(6)]
+        first = self._blur(doubled, kernels[0])
         pyramid = []
         while True:
             if first.device.type == "cpu" and not first.requires_grad and not torch.compiler.is_compiling():
@@ -175,7 +181,7 @@ class _SIFTScalePyramid(nn.Module):
                 gaussian[:, :, 0].copy_(first)
                 for index in range(1, 6):
                     previous = gaussian[:, :, index - 1]
-                    kernel = getattr(self, f"kernel_{index}").to(first)
+                    kernel = kernels[index]
                     if first.dtype not in (torch.float16, torch.bfloat16) and first.numel() >= 256 * 256:
                         self._blur_cpu(previous, kernel, kernel.numel() // 2, out=gaussian[:, :, index])
                     else:
@@ -187,7 +193,7 @@ class _SIFTScalePyramid(nn.Module):
                 continue
             levels = [first]
             for index in range(1, 6):
-                levels.append(self._blur(levels[-1], getattr(self, f"kernel_{index}")))
+                levels.append(self._blur(levels[-1], kernels[index]))
             pyramid.append(torch.stack(levels, dim=2))
             height, width = first.shape[-2:]
             if min(height // 2, width // 2) < 12:
@@ -662,13 +668,10 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         lower = lower.long().bitwise_and(7)
         weighted = mag * weight
         # Only two angular bins have nonzero weight. Avoid broadcasting every
-        # sample against all eight bins and materializing their distances.
-        # MPS matmul benefits from contiguous (bins, samples) matrices; CPU
-        # scatter is faster with each sample's eight bins next to one another.
-        if mag.device.type == "mps" and spatial_weights is None:
-            angular_weights = mag.new_zeros(b, n, 8, mag.shape[-1]).transpose(-1, -2)
-        else:
-            angular_weights = mag.new_zeros(b, n, mag.shape[-1], 8)
+        # sample against all eight bins and materializing their distances. The
+        # scatter and both pooling paths below want each sample's eight bins
+        # next to one another.
+        angular_weights = mag.new_zeros(b, n, mag.shape[-1], 8)
         angular_weights.scatter_(-1, lower.unsqueeze(-1), (weighted * (1.0 - fraction)).unsqueeze(-1))
         angular_weights.scatter_add_(-1, (lower + 1).bitwise_and(7).unsqueeze(-1), (weighted * fraction).unsqueeze(-1))
         if spatial_weights is not None:

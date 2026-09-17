@@ -834,6 +834,22 @@ class TestPackedQuadraticFit(BaseTester):
         grad_ref = torch.autograd.grad(sum((v * weights.cpu()).sum() for v in expected[:3]), cpu)[0]
         self.assert_close(grad.cpu(), grad_ref)
 
+    def test_cramer_keeps_input_shape(self, device, dtype):
+        from kornia.geometry.subpix import spatial_soft_argmax as subpix
+
+        if dtype not in (torch.float32, torch.float64):
+            pytest.skip("Packed quadratic fit is dispatched only for float32/float64")
+        # The packed CUDA solve indexes a single batch dimension. A wider caller
+        # must keep its shape and its values rather than be flattened on CUDA only.
+        torch.manual_seed(0)
+        system = torch.randn(9, 2, 5, device=device, dtype=dtype)
+        system[:3] += 4.0
+        actual = subpix._solve_cramer_sym3x3(*system)
+        expected = subpix._solve_cramer_sym3x3(*system.reshape(9, -1))
+        for got, want in zip(actual, expected):
+            assert got.shape == (2, 5)
+            self.assert_close(got.reshape(-1), want, atol=0, rtol=0)
+
     @pytest.mark.parametrize("count", [0, 19])
     def test_patch_derivatives(self, device, dtype, count):
         from kornia.geometry.subpix import spatial_soft_argmax as subpix

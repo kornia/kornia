@@ -54,6 +54,37 @@ Intel/CUDA uses two reversed-order runs, Apple one run per revision. IQR describ
 not confidence. Apple: M1, macOS 26.5.1, PyTorch 2.14.0. Intel/NVIDIA: i7-14700K / RTX 4090,
 WSL2, PyTorch 2.14.0+cu130, TF32 disabled, CUDA host one thread. Both use Python 3.11.14.
 
+### Review follow-up: descriptor octave selection
+
+`SIFTDescriptorFromPyramid` binned gradients and pooled descriptor histograms at
+**every** octave below the highest one any LAF selected, even when no LAF sampled
+them. Building the maps only for occupied octaves leaves the descriptors bitwise
+unchanged on CPU and costs nothing when every octave is occupied. 640×800 image,
+64 frames, one forward, `torch.utils.benchmark` medians, same process per revision,
+`99e92b78` → review fixes:
+
+| Frame octaves | i7-14700K, 1 thread | i7-14700K, 14 threads | RTX 4090 |
+| --- | ---: | ---: | ---: |
+| all octave 0 (nothing skipped) | 538.5 → 528.5 ms (1.02×) | 114.1 → 115.5 ms (0.99×) | 7.58 → 7.57 ms (1.00×) |
+| all octave 1 | 658.3 → 118.6 ms (5.5×) | 146.6 → 36.8 ms (4.0×) | 12.05 → 6.29 ms (1.9×) |
+| all octave 2 | 693.0 → 33.4 ms (20.7×) | 155.4 → 12.7 ms (12.2×) | 14.77 → 6.51 ms (2.3×) |
+| all octave 3 | 688.5 → 14.9 ms (46×) | 157.8 → 6.5 ms (24×) | 18.58 → 6.83 ms (2.7×) |
+| mixed scales (every octave occupied) | 690.7 → 693.9 ms (1.00×) | 166.9 → 160.4 ms (1.04×) | 22.47 → 22.79 ms (0.99×) |
+
+The octave-2 case also drops its largest CPU allocation from 382 to 18 MiB and CUDA
+peak from 314 to 29 MiB. A full DoG detector spreads its detections over every
+octave, so `SIFTFeature(descriptor_backend="pyramid")` end to end is unchanged
+(RTX 4090 34.3 → 34.4 ms; 14 threads 332 → 320 ms, both within spread). The win
+applies to externally supplied or scale-filtered frames.
+
+The same session re-ran the table above's harness across the review fixes. Graf
+quality is identical for both backends, and no timing moved outside its spread:
+pyramid 69.4 → 70.8 ms CUDA, 487 → 486 ms at one thread, 245.7 → 248.9 ms at 14
+threads; patch 55.15 → 55.16 ms CUDA. Making the pyramid's Gaussian kernels
+float64 references rather than float32 has no measurable cost: interleaved in one
+process, `_SIFTScalePyramid` measures 2576 µs with float64 buffers and 2577 µs with
+float32 buffers on CUDA, 132.9 ms and 134.3 ms at one CPU thread.
+
 CUDA pyramid batch two additionally measured **140.19 → 97.41 ms/batch (1.44×)** in one run
 per revision. Apple memory changes reduced peak live CPU tensor allocations by **20% on
 Graf and 73% on checkerboard**. CUDA pyramid peak extra tensor allocation remained ~238 MiB.

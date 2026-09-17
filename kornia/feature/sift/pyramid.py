@@ -168,6 +168,17 @@ class SIFTDescriptorFromPyramid(nn.Module):
         output.scatter_add_(2, upper.unsqueeze(-1).expand(-1, -1, -1, samples), values * upper_weight.unsqueeze(-1))
         return output.to(output_dtype)
 
+    @staticmethod
+    def _level_occupancy(levels: torch.Tensor, num_levels: int) -> list[bool]:
+        """Report which octaves at least one valid LAF selects.
+
+        ``levels`` holds ``-1`` for invalid frames. A single host transfer
+        answers both which octaves carry work and how high the pyramid reaches.
+        """
+        occupancy = torch.zeros(num_levels, dtype=torch.long, device=levels.device)
+        occupancy.scatter_add_(0, levels.clamp_min(0).reshape(-1), (levels >= 0).long().reshape(-1))
+        return [count > 0 for count in occupancy.tolist()]
+
     def _select_levels(self, lafs: torch.Tensor, num_levels: int) -> torch.Tensor:
         affine = lafs[..., :2, :2]
         det = (affine[..., 0, 0] * affine[..., 1, 1] - affine[..., 0, 1] * affine[..., 1, 0]).abs().sqrt()
@@ -192,11 +203,18 @@ class SIFTDescriptorFromPyramid(nn.Module):
         return output
 
     def _orientation(
-        self, pyramid: list[torch.Tensor], histograms: list[torch.Tensor], lafs: torch.Tensor, levels: torch.Tensor
+        self,
+        pyramid: list[torch.Tensor],
+        histograms: list[torch.Tensor | None],
+        lafs: torch.Tensor,
+        levels: torch.Tensor,
     ) -> torch.Tensor:
         b, n = lafs.shape[:2]
         result = lafs.new_zeros(b, n, self.orientation_bins)
         for level_index, (image, hist) in enumerate(zip(pyramid, histograms)):
+            if hist is None:
+                # No valid LAF selected this octave, so it carries no histogram map.
+                continue
             weighting = self.orientation_weighting.to(dtype=hist.dtype, device=hist.device).reshape(1, 1, 1, -1)
             for batch_index in range(b):
                 selected = (levels[batch_index] == level_index).nonzero().flatten()
@@ -231,11 +249,19 @@ class SIFTDescriptorFromPyramid(nn.Module):
         return 2.0 * pi * (index.to(lafs.dtype).reshape(b, n) + offset.reshape(b, n)) / float(self.orientation_bins)
 
     def _descriptors(
-        self, pyramid: list[torch.Tensor], histograms: list[torch.Tensor], lafs: torch.Tensor, levels: torch.Tensor
+        self,
+        pyramid: list[torch.Tensor],
+        histograms: list[torch.Tensor | None],
+        lafs: torch.Tensor,
+        levels: torch.Tensor,
     ) -> torch.Tensor:
         b, n = lafs.shape[:2]
         result = lafs.new_zeros(b, n, self.num_ang_bins, self.num_spatial_bins * self.num_spatial_bins)
         for level_index, (image, hist) in enumerate(zip(pyramid, histograms)):
+            if hist is None:
+                # Skip before pooling: an unused octave's (B, bins, H, W) map is
+                # both the largest allocation here and the most expensive conv2d.
+                continue
             kernel = self.descriptor_pooling_kernel.to(dtype=hist.dtype, device=hist.device)
             pooled = F.conv2d(
                 hist.reshape(-1, 1, hist.shape[-2], hist.shape[-1]), kernel, padding=self.spatial_bin_size // 2
@@ -331,9 +357,10 @@ class SIFTDescriptorFromPyramid(nn.Module):
         num_levels = self._num_pyramid_levels(image)
         levels = self._select_levels(safe_lafs, num_levels).masked_fill(~valid, -1)
         # Select before pyramid construction.  The octave count depends only on
-        # image shape, so high octaves that no valid LAF can use need neither a
+        # image shape, so octaves that no valid LAF selects need neither a
         # pyrdown result nor a histogram map.
-        max_level = int(levels.max().item())
+        level_used = self._level_occupancy(levels, num_levels)
+        max_level = max((index for index, used in enumerate(level_used) if used), default=-1)
         if max_level < 0:
             # Keep the zero result connected to the inputs: callers can backpropagate
             # through an all-invalid batch and receive finite zero gradients.
@@ -343,8 +370,15 @@ class SIFTDescriptorFromPyramid(nn.Module):
             )
             return lafs.to(laf_dtype), descriptors.to(image_dtype)
         pyramid = self._pyramid(image, max_level + 1)
-        histograms = []
-        for level_image in pyramid:
+        histograms: list[torch.Tensor | None] = []
+        for level_index, level_image in enumerate(pyramid):
+            # An intermediate octave still has to be resampled to reach the ones
+            # above it, but binning its gradients is pure waste when no LAF
+            # samples it: the map is (B, orientation_bins, H, W) at full octave
+            # resolution and is pooled again per descriptor level.
+            if not level_used[level_index]:
+                histograms.append(None)
+                continue
             gradients = spatial_gradient(level_image, "diff")
             histograms.append(
                 _dense_sift_histograms_from_gradients(

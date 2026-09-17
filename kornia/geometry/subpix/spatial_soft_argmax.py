@@ -634,6 +634,9 @@ def _solve_cramer_sym3x3_cuda(
     Used only for CUDA float32/float64. Packing trades extra temporary storage for
     fewer launches; the scalar implementation is faster on CPU and retains the
     float16 solve's promotion behavior.
+
+    All inputs must be 1-D tensors of the same length: the packed layout indexes
+    a single batch dimension and silently reshapes anything wider.
     """
     system = torch.stack((dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2), 1)
     # Row-major H followed by H with successive columns replaced by the RHS.
@@ -705,7 +708,10 @@ def _solve_cramer_sym3x3(
         systems (``|det| > eps``).  Outputs for unsolved entries are numerically
         meaningless and should be discarded by the caller.
     """
-    if dxx.is_cuda and dxx.dtype in (torch.float32, torch.float64):
+    # The packed solve indexes one batch dimension, while the scalar code below
+    # is rank-agnostic. Dispatch only where the two agree, so a wider caller
+    # keeps its shape instead of being silently flattened on CUDA alone.
+    if dxx.is_cuda and dxx.ndim == 1 and dxx.dtype in (torch.float32, torch.float64):
         return _solve_cramer_sym3x3_cuda(dxx, dyy, dss, dxy, dxs, dys, r0, r1, r2, eps)
 
     # float16 cannot carry this solve. The determinant is a product of three

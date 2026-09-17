@@ -117,6 +117,39 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         monkeypatch.setattr(single_level, "_pyramid", lambda image, num_levels=None: [image])
         self.assert_close(actual, single_level(image, lafs))
 
+    def test_unused_lower_octaves_do_not_build_histograms(self, device, dtype, monkeypatch):
+        import kornia.feature.sift.pyramid as implementation
+
+        image = torch.rand(1, 1, 160, 160, device=device, dtype=dtype)
+        # A large frame selects octave 2. Octaves 0 and 1 are still resampled to
+        # reach it, but their histogram maps are the largest allocations here and
+        # nothing ever samples them.
+        lafs = torch.tensor([[[[40.0, 0.0, 80.0], [0.0, 40.0, 80.0]]]], device=device, dtype=dtype)
+        feature = SIFTDescriptorFromPyramid().to(device, dtype)
+        levels = feature._select_levels(lafs, feature._num_pyramid_levels(image))
+        assert levels.flatten().tolist() == [2]
+
+        shapes = []
+        original = implementation.spatial_gradient
+
+        def gradient(level, *args, **kwargs):
+            shapes.append(tuple(level.shape[-2:]))
+            return original(level, *args, **kwargs)
+
+        monkeypatch.setattr(implementation, "spatial_gradient", gradient)
+        oriented, descriptors = feature.orient_and_describe(image, lafs)
+        assert shapes == [(40, 40)]
+
+        # Skipping the unused octaves must not change a single output value.
+        # Only CPU can be held to bitwise equality: the histogram scatter uses
+        # atomics on an accelerator, so it is not run-to-run reproducible there.
+        reference = SIFTDescriptorFromPyramid().to(device, dtype)
+        monkeypatch.setattr(reference, "_level_occupancy", lambda levels, num_levels: [True] * num_levels)
+        expected_lafs, expected_descriptors = reference.orient_and_describe(image, lafs)
+        exact = {"rtol": 0.0, "atol": 0.0} if device.type == "cpu" else {}
+        self.assert_close(oriented, expected_lafs, **exact)
+        self.assert_close(descriptors, expected_descriptors, **exact)
+
     def test_all_invalid_lafs_skip_pyramid_construction(self, device, dtype, monkeypatch):
         image = torch.rand(1, 1, 80, 80, device=device, dtype=dtype)
         lafs = torch.zeros(1, 2, 2, 3, device=device, dtype=dtype)
