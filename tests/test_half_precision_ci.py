@@ -195,17 +195,46 @@ def test_rng_seed_fixture_is_available_without_a_profile(test_rng_seed: int, req
 
 def test_eager_rng_audit_matches_exact_inventory() -> None:
     """Validate audited (path, line, name) triples as a multiset, so a stale line still fails."""
-    from testing.half_precision_eager_rng import AUDITED_EAGER_RNG_CALLS, find_eager_rng_calls
+    from testing.half_precision_eager_rng import (
+        AUDITED_EAGER_RNG_CALLS,
+        describe_audit_drift,
+        find_eager_rng_calls,
+    )
 
     discovered = Counter(
         (call.path, call.line, call.name) for call in find_eager_rng_calls(Path(project_conftest.__file__).parent)
     )
     audited = Counter((entry.call.path, entry.call.line, entry.call.name) for entry in AUDITED_EAGER_RNG_CALLS)
 
-    stale = sorted((audited - discovered).elements())
-    missing = sorted((discovered - audited).elements())
-    assert not stale, f"audited entries with no matching call site (stale line?): {stale}"
-    assert not missing, f"eager RNG call sites missing from the audit: {missing}"
+    drift = describe_audit_drift(audited, discovered)
+    assert not drift, "the eager RNG audit in testing/half_precision_eager_rng.py is out of date:\n" + "\n".join(drift)
+
+
+def test_eager_rng_drift_report_pairs_a_moved_call_with_its_new_line() -> None:
+    from testing.half_precision_eager_rng import describe_audit_drift
+
+    path = "tests/augmentation/test_param_validation.py"
+    # the #4569 shape: an import added above the call moved it one line down
+    assert describe_audit_drift(Counter({(path, 110, "torch.rand"): 1}), Counter({(path, 111, "torch.rand"): 1})) == [
+        f"audited entry {path}:110 torch.rand moved to line 111"
+    ]
+
+    # two audited calls in one file, both shifted: each is paired with the nearest new line
+    assert describe_audit_drift(
+        Counter({(path, 110, "torch.rand"): 1, (path, 140, "torch.rand"): 1}),
+        Counter({(path, 111, "torch.rand"): 1, (path, 141, "torch.rand"): 1}),
+    ) == [
+        f"audited entry {path}:110 torch.rand moved to line 111",
+        f"audited entry {path}:140 torch.rand moved to line 141",
+    ]
+
+    # a deleted call and a new unaudited one are not paired: they differ in name
+    assert describe_audit_drift(Counter({(path, 110, "torch.rand"): 1}), Counter({(path, 110, "torch.randn"): 1})) == [
+        f"audited entry {path}:110 torch.rand has no call site (deleted or renamed?)",
+        f"eager RNG call site {path}:110 torch.randn is missing from the audit",
+    ]
+
+    assert describe_audit_drift(Counter({(path, 110, "torch.rand"): 1}), Counter({(path, 110, "torch.rand"): 1})) == []
 
 
 def test_eager_rng_scanner_skips_lazy_function_and_lambda_bodies(tmp_path: Path) -> None:

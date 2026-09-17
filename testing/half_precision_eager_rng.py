@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import ast
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -217,6 +218,39 @@ AUDITED_EAGER_RNG_CALLS = tuple(
         key=lambda entry: entry.call,
     )
 )
+
+
+def describe_audit_drift(
+    audited: Counter[tuple[str, int, str]], discovered: Counter[tuple[str, int, str]]
+) -> list[str]:
+    """Describe every difference between the audited inventory and the scanned call sites.
+
+    A call site that moved, because an unrelated edit inserted a line above it, is by far the most
+    common drift, and it appears as one stale audited entry plus the same ``(path, name)`` at a new
+    line. Those two halves are reported as one line naming the new line number, so the failure says
+    what to edit. Entries that cannot be paired are reported as deleted or as unaudited.
+    """
+    stale = sorted((audited - discovered).elements())
+    missing = sorted((discovered - audited).elements())
+
+    unpaired: defaultdict[tuple[str, str], list[int]] = defaultdict(list)
+    for path, line, name in missing:
+        unpaired[(path, name)].append(line)
+
+    drift: list[str] = []
+    for path, line, name in stale:
+        candidates = unpaired[(path, name)]
+        if candidates:
+            # nearest new line: an insertion above shifts a call by as little as one line
+            moved = min(candidates, key=lambda candidate: (abs(candidate - line), candidate))
+            candidates.remove(moved)
+            drift.append(f"audited entry {path}:{line} {name} moved to line {moved}")
+        else:
+            drift.append(f"audited entry {path}:{line} {name} has no call site (deleted or renamed?)")
+
+    for (path, name), lines in sorted(unpaired.items()):
+        drift.extend(f"eager RNG call site {path}:{line} {name} is missing from the audit" for line in sorted(lines))
+    return drift
 
 
 def node_matches_prefix(nodeid: str, prefix: str) -> bool:
