@@ -15,10 +15,13 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
 import kornia
+from kornia.geometry.transform.thin_plate_spline import _kernel_distance
 
 from testing.base import BaseTester, supports_2d_border_padding
 
@@ -65,6 +68,19 @@ class TestTransformParameters(BaseTester):
         with pytest.raises(ValueError):
             src = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.get_tps_transform(src, src)
+
+    def test_kernel_distance_values(self, device, dtype):
+        d2 = torch.tensor([0.0, 1.0, math.e**2], device=device, dtype=dtype)
+        expected = torch.tensor([0.0, 0.0, math.e**2], device=device, dtype=dtype)
+        self.assert_close(_kernel_distance(d2), expected)
+
+    @pytest.mark.parametrize("grad_dtype", [torch.float32, torch.float64])
+    def test_kernel_distance_zero_gradient(self, device, grad_dtype):
+        if device.type == "mps" and grad_dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
+        squared_distances = torch.tensor([0.0, 1.0], device=device, dtype=grad_dtype, requires_grad=True)
+        grad = torch.autograd.grad(_kernel_distance(squared_distances).sum(), squared_distances)[0]
+        assert torch.isfinite(grad).all()
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     @pytest.mark.parametrize("requires_grad", [True, False])
