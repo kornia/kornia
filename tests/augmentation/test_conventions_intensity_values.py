@@ -1679,7 +1679,7 @@ class TestIntensityColourConventions(BaseTester):
                 "channel_dropout_fill_value_above_one",
                 "construction",
                 BaseError,
-                r"Invalid value in .fill_value.\. Must be a float between 0 and 1",
+                r"Invalid value in .fill_value.\. Must be a number between 0 and 1",
             ),
             (
                 "color_jiggle_brightness_range_above_two",
@@ -1765,7 +1765,7 @@ class TestIntensityColourConventions(BaseTester):
             "median_blur_even_kernel": lambda: K.RandomMedianBlur((4, 4), p=1.0),
             # An even bound is rounded up to the next odd size, so (0, 2) draws 1 and the kernel rejects it.
             "motion_blur_even_bound_rounds_up": lambda: K.RandomMotionBlur((0, 2), 35.0, 0.5, p=1.0),
-            # `fill_value` is bounded to [0, 1] at construction, unlike RandomErasing's `value` type check.
+            # `fill_value` is bounded to [0, 1] in __init__; RandomErasing bounds `value` alike, in its generator.
             "channel_dropout_fill_value_above_one": lambda: K.RandomChannelDropout(fill_value=2.0, p=1.0),
             # ColorJiggle's brightness bound is (0, 2); ColorJitter accepts the same range.
             "color_jiggle_brightness_range_above_two": lambda: K.ColorJiggle(brightness=(0.0, 3.0), p=1.0),

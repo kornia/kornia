@@ -22651,7 +22651,7 @@
       "export_detail": "a Python branch (if / while) tests tensor values at run time",
       "graph_breaks": 15,
       "name": "image.draw_line",
-      "note": "Bresenham-like Python loop over max(|dx|,|dy|) computed from tensor values",
+      "note": "per-line pixels built on the device with nonzero; int(max) of the longest line reads a tensor value",
       "onnx": "fail",
       "onnx_detail": "a Python branch (if / while) tests tensor values at run time",
       "operator": "draw_line",
