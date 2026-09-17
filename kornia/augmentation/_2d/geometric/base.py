@@ -50,6 +50,14 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
           image dtype guard and therefore reject ``bool`` masks.
         - a subclass supplies its own :meth:`inverse_transform` -- the base raises ``NotImplementedError`` --
           while :meth:`compute_inverse_transformation` defaults to inverting the sampled matrix.
+        - a scalar magnitude ``x`` means ``center ± x``, as it does for the intensity classes: its lower end
+          is floored at the parameter's lower bound, and an upper end past the upper bound raises the same
+          error the explicit range does. The bounds are ``(-360, 360)`` for :class:`RandomRotation`'s and
+          :class:`RandomAffine`'s ``degrees`` and for :class:`RandomShear`'s and :class:`RandomAffine`'s
+          ``shear``, ``(-1, 1)`` for :class:`RandomTranslate`'s ``translate_x`` and ``translate_y``,
+          ``(0, 1)`` for :class:`RandomAffine`'s ``translate``, and ``(-3, 3)`` for
+          :class:`RandomRotation90`'s ``times``. The 3D classes read their scalar through a helper that
+          carries no bound, tracked in `#4617 <https://github.com/kornia/kornia/issues/4617>`_.
 
     Note:
         Masks are resampled with nearest neighbour whatever ``resample`` the augmentation uses for images,

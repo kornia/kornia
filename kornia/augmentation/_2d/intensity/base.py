@@ -98,9 +98,10 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           constant ``3`` (`#4599 <https://github.com/kornia/kornia/issues/4599>`_);
           and :class:`RandomChannelDropout`'s ``num_drop_channels`` against the input's channel count.
           :class:`RandomPlanckianJitter`'s ``select_from`` rejects an index past the table at construction
-          but accepts a negative one, as Python indexing does. A scalar magnitude is a different case: several
-          classes fit it to the bound instead of raising, tracked in
-          `#4563 <https://github.com/kornia/kornia/issues/4563>`_.
+          but accepts a negative one, as Python indexing does. A scalar magnitude ``x`` means ``center ± x``:
+          its lower end is floored at the parameter's lower bound, so a non-negative parameter reads
+          ``contrast=1.5`` as ``[0, 2.5]``, while an upper end past the bound raises the same error the
+          explicit range does.
 
     .. warning::
         Several of these classes return an all-zero image for an input whose values are all negative, with no

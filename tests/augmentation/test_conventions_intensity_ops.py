@@ -377,9 +377,11 @@ class TestBlurConventions(BaseTester):
     # Issue #4599: `kernel_size` is drawn once per SAMPLE and then one entry -- the one at a uniformly
     # drawn `_params["idx"]`, not the first -- is applied to the whole batch; and because the draw is
     # `UniformDistribution(ks[0] // 2, ks[1] // 2)` truncated with `.int()`, the range's upper bound is
-    # practically never reached.  `(3, 5)` is therefore a constant 3 -- "practically": as for RandomRain
-    # below, the float32 draw rounds onto the bound about once in 2**24 (seed 204 draws one 5 in 50000),
-    # so the pin is that the bound is vanishingly rare, not impossible.
+    # practically never reached.  `(3, 5)` is therefore a constant 3 -- "practically": the float32 draw
+    # rounds onto the bound about once in 2**24 (seed 204 draws one 5 in 50000), so the pin is that the
+    # bound is vanishingly rare, not impossible.  RandomRain had the same wart and no longer does
+    # (#4567): it draws over `[lo, hi + 1)`, floors, and clamps that rounding escape back onto the closed
+    # range -- the remedy this one still needs.
     # Snippet used to generate expected:
     #   import collections
     #   for ks in ((3, 5), (3, 7), (5, 11)):
@@ -1023,44 +1025,97 @@ class TestNoiseAndWeatherConventions(BaseTester):
             aug = K.RandomRain(number_of_drops=(1, 1), drop_height=(1, 1), drop_width=(width, width), p=1.0)
             assert int((aug(image) != 0).sum()) == 1
 
-    # Issue #4567: the three integer ranges are float draws truncated to integers, and the generator's
-    # `hi + 1` shift goes through the `bounds` argument that `_range_bound` ignores for a tuple, so the
-    # upper bound is never drawn and a signed `drop_width` truncates both `(-1, 0)` and `(0, 1)` to 0.
+    # The three integer ranges are closed and uniform (the fix for #4567: the sampler covers
+    # ``[lo, hi + 1)``, the draw is floored and then clamped to ``hi``, where a truncating cast of a
+    # ``[lo, hi)`` draw used to skip the upper bound and fold ``(-1, 0)`` and ``(0, 1)`` onto ``0``).
     # Snippet used to generate expected:
     #   torch.manual_seed(0)
     #   p = K.RandomRain(number_of_drops=(2, 4), drop_height=(5, 20), drop_width=(-5, 5), p=1.0)
-    #   p = p.forward_parameters((20000, 1, 64, 64))
+    #   p = p.forward_parameters((22000, 1, 64, 64))
     #   for k in ("number_of_drops_factor", "drop_height_factor", "drop_width_factor"):
-    #       print(k, collections.Counter(p[k].flatten().tolist()))
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> drops `{2: 9939, 3: 10061}`, heights `5..19` (about
-    # 1333 each, no 20), widths `-4..4` with `0: 4075` against about 2000 for every other value.
+    #       print(k, sorted(collections.Counter(p[k].flatten().tolist()).items()))
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> drops 2..4 (7298, 7349, 7353), heights 5..20 (1301 to
+    # 1455) and widths -5..5 (1906 to 2090), every count within 6% of the uniform expectation (7333,
+    # 1375 and 2000).  The pin allows 15%, not 10%: the 16-bin height is the tight one, where 22000
+    # draws put 10% at 3.8 sigma and 1 of seeds 0..99 exceeds it (max deviation 10.7%), against 5.7
+    # sigma and 0 of 100 at 15%.  What the tolerance has to separate is a factor of two, not a few
+    # percent -- truncation gave `0` twice its share -- so the wider band loses no mutation.
     @pytest.mark.device_agnostic
-    def test_wart_random_rain_upper_bound_is_never_drawn_4567(self):
+    def test_convention_random_rain_integer_ranges_are_closed_and_uniform(self):
         torch.manual_seed(_FORWARD_SEED)
         aug = K.RandomRain(number_of_drops=(2, 4), drop_height=(5, 20), drop_width=(-5, 5), p=1.0)
-        params = aug.forward_parameters((20000, 1, 64, 64))
-        drops = params["number_of_drops_factor"].flatten()
-        heights = params["drop_height_factor"].flatten()
-        widths = params["drop_width_factor"].flatten()
-        # "Practically never", not never: `lo + (hi - lo) * u` with u = 1 - 2**-24 rounds onto `hi` in
-        # float32 for the top handful of the 2**24 representable draws, so over 20000 draws the bound
-        # appears with probability about 0.2% per seed -- seed 80 draws a 4 here.  The pin is that the
-        # bound is vanishingly rare, not that it is impossible; the lower bound is always drawn.
-        assert int(drops.min()) == 2 and int(drops.max()) <= 4 and int((drops == 4).sum()) < 5
-        assert int(heights.min()) == 5 and int(heights.max()) <= 20 and int((heights == 20).sum()) < 5
-        assert int(widths.min()) == -4 and int(widths.max()) <= 5 and int((widths == 5).sum()) < 5
-        zeros, ones = int((widths == 0).sum()), int((widths == 1).sum())
-        assert zeros > 1.5 * ones and ones > 1000
-        # Truncation is toward zero, so on a range below zero it is the lower bound that is not drawn and
-        # the upper bound that is: `(-5, -1)` draws -4..-1 (about 5000 each out of 20000) and `(-3, 0)`
-        # draws -2..0, so 0 is not doubled there.
-        for bounds, expected in (((-5, -1), (-4, -1)), ((-3, 0), (-2, 0))):
-            torch.manual_seed(_FORWARD_SEED)
-            aug = K.RandomRain(number_of_drops=(1, 1), drop_height=(1, 1), drop_width=bounds, p=1.0)
-            drawn = aug.forward_parameters((20000, 1, 64, 64))["drop_width_factor"].flatten()
-            assert (int(drawn.min()), int(drawn.max())) == expected
-            counts = torch.stack([(drawn == value).sum() for value in range(expected[0], expected[1] + 1)])
-            assert float(counts.max()) < 1.2 * float(counts.min())
+        params = aug.forward_parameters((22000, 1, 64, 64))
+        for key, low, high in (
+            ("number_of_drops_factor", 2, 4),
+            ("drop_height_factor", 5, 20),
+            ("drop_width_factor", -5, 5),
+        ):
+            drawn = params[key].flatten()
+            assert drawn.dtype == torch.long
+            assert (int(drawn.min()), int(drawn.max())) == (low, high), key
+            counts = torch.bincount(drawn - low, minlength=high - low + 1)
+            expected = drawn.numel() / (high - low + 1)
+            assert bool(((counts > 0.85 * expected) & (counts < 1.15 * expected)).all()), (key, counts.tolist())
+
+    # The excluded end point of the half-open sampler range is clamped back, not drawn: for the largest
+    # value `torch.rand` can return, `lo + u * (hi + 1 - lo)` rounds up onto `hi + 1` in float32
+    # (`5 + (1 - 2 ** -24) * 16` is exactly `21.0`), which `floor` would keep -- about one draw in 2**24,
+    # and a `drop_height` of 21 makes the forward raise on a 21-row image where 20 is legal.
+    # Snippet used to generate expected: the same three ranges, with `torch.rand` patched to return
+    # `1 - 2 ** -24` everywhere.
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `[4, 20, 5]` with the clamp, `[5, 21, 5]` without it.
+    @pytest.mark.device_agnostic
+    def test_convention_random_rain_largest_draw_stays_inside_the_closed_range(self, monkeypatch):
+        largest = 1 - 2**-24
+        real_rand = torch.rand
+        monkeypatch.setattr(torch, "rand", lambda *args, **kwargs: torch.full_like(real_rand(*args, **kwargs), largest))
+        aug = K.RandomRain(number_of_drops=(2, 4), drop_height=(5, 20), drop_width=(-5, 5), p=1.0)
+        params = aug.forward_parameters((4, 1, 64, 64))
+        # The patch has to reach the generator's own draws, or the pin below is vacuous: the coordinate
+        # sampler runs over [0, 1], so under the patch every coordinate is exactly the patched value.
+        assert float(params["coordinates_factor"].min()) == largest
+        assert params["number_of_drops_factor"].tolist() == [4, 4, 4, 4]
+        assert params["drop_height_factor"].tolist() == [20, 20, 20, 20]
+        assert params["drop_width_factor"].tolist() == [5, 5, 5, 5]
+
+    # A reversed range is rejected at construction, where the samplers are built -- on each of the three
+    # parameters, not only the one a single example would name.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("name", ["number_of_drops", "drop_height", "drop_width"])
+    def test_convention_random_rain_rejects_a_reversed_range(self, name):
+        ranges = {"number_of_drops": (1, 1), "drop_height": (1, 1), "drop_width": (1, 1)}
+        ranges[name] = (6, 5)
+        with pytest.raises(ValueError, match=name):
+            K.RandomRain(p=1.0, **ranges)
+
+    # The ranges are integer ranges, so a bound that is not a whole number is rejected at construction
+    # too -- including `nan` and `inf`, which an ordering test alone does not catch (they are neither
+    # greater nor smaller than the other bound, so `drop_height=(nan, 5)` used to reach the sampler and
+    # draw a silent `0`), and a fractional pair, which the clamp draws more unevenly than the truncation
+    # it replaces: `(0.5, 2.5)` gave `{0: 25%, 1: 50%, 2: 25%}` and would give `{0: 17%, 1: 33%, 2: 50%}`.
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("bounds", [(0.5, 2.5), (1, 2.5), (float("nan"), 5), (5, float("nan")), (1, float("inf"))])
+    @pytest.mark.parametrize("name", ["number_of_drops", "drop_height", "drop_width"])
+    def test_convention_random_rain_rejects_a_fractional_or_non_finite_range(self, name, bounds):
+        ranges = {"number_of_drops": (1, 1), "drop_height": (1, 1), "drop_width": (1, 1)}
+        ranges[name] = bounds
+        with pytest.raises(ValueError, match=name):
+            K.RandomRain(p=1.0, **ranges)
+        # Integral floats are the same range written another way, and stay accepted.
+        ranges[name] = (1.0, 2.0)
+        K.RandomRain(p=1.0, **ranges)
+
+    # The pair itself is validated: a range that is not two values, whatever its length, is rejected
+    # rather than silently indexed, and a tensor range is accepted as the old `_range_bound` accepted it.
+    @pytest.mark.device_agnostic
+    def test_convention_random_rain_validates_the_range_pair(self):
+        for bad in ((1, 2, 3), (1,), 5):
+            with pytest.raises(ValueError, match="drop_height"):
+                K.RandomRain(p=1.0, drop_height=bad)
+        torch.manual_seed(_FORWARD_SEED)
+        aug = K.RandomRain(p=1.0, number_of_drops=(1, 1), drop_height=torch.tensor([2, 4]), drop_width=(1, 1))
+        drawn = aug.forward_parameters((2000, 1, 64, 64))["drop_height_factor"]
+        assert sorted(set(drawn.flatten().tolist())) == [2, 3, 4]
 
     # Issue #4604: the start coordinate is scaled by `H - h - 1`, so the last row and column are never
     # painted unless the drop is one short of the image on that axis.  Literal seeds, as for the other
@@ -1093,10 +1148,11 @@ class TestNoiseAndWeatherConventions(BaseTester):
     #       aug = K.RandomRain(number_of_drops=(1, 50), drop_height=(1, 3), drop_width=(1, 3), p=1.0,
     #                          same_on_batch=sob)
     #       aug(torch.zeros(4, 1, 12, 30)); print(sob, aug._params["number_of_drops_factor"].tolist())
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `True [25, 25, 25, 25]` and `False [25, 38, 5, 7]`.
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `True [25, 25, 25, 25]` and `False [25, 39, 5, 7]`.
     def test_convention_random_rain_same_on_batch_draws_one_drop_count(self, device, dtype):
-        # B is 16, not 4: `drop_height=(1, 3)` truncates to {1, 2}, so "the unshared draw differs across
-        # the batch" is a `2 * 2 ** -B` event -- 29 of seeds 0..199 coincide at B=4, 3 at B=8 and none
+        # B is 16, not 4: `drop_height=(1, 3)` and `drop_width=(1, 3)` each draw from {1, 2, 3}, so
+        # "the unshared draw differs across the batch" fails when one of the two factors comes out
+        # constant, a `2 * 3 ** -(B - 1)` event -- 16 of seeds 0..199 coincide at B=4, 1 at B=8 and none
         # at B=16.
         batch_size = 16
         image = torch.zeros(batch_size, 1, 12, 30, device=device, dtype=dtype)
@@ -1316,28 +1372,29 @@ class TestNoiseAndWeatherConventions(BaseTester):
             with pytest.raises(error, match=match):
                 _sync(factories[name]()(image).device)
 
-    # The degenerate signed range: `(-1, 1)` satisfies the block's "draws 0 twice as often as any other
-    # value" but has no other value to be twice as often as -- truncation toward zero maps the whole
-    # interval onto 0, except an exact -1.0 draw (rand returning 0.0, one float32 value in 2**24, which a
-    # 2**20 batch at seed 1 does produce), so the pin is "practically always", as for the upper bounds.
+    # The degenerate signed range `(-1, 1)` is where the old truncation toward zero was total: it mapped
+    # the whole interval onto `0`, except an exact `-1.0` draw (#4567).  A closed uniform draw gives the
+    # three values equal weight, and `0` stops carrying its neighbours' weight one step wider too.
     # Snippet used to generate expected:
-    #   g = RainGenerator(number_of_drops=(5, 6), drop_height=(2, 3), drop_width=(-1, 1))
-    #   torch.manual_seed(0); print(set(g((40000, 3, 64, 64))["drop_width_factor"].flatten().tolist()))
-    # executed 2026-09-16 (torch 2.14.0, cpu) -> `{0}`, against `{-1, 0, 1}` for `(-2, 2)`.
+    #   for bounds in ((-1, 1), (-2, 2)):
+    #       g = RainGenerator(number_of_drops=(5, 6), drop_height=(2, 3), drop_width=bounds)
+    #       torch.manual_seed(0)
+    #       print(bounds, sorted(Counter(g((20000, 3, 64, 64))["drop_width_factor"].flatten().tolist()).items()))
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `{-1: 6688, 0: 6776, 1: 6536}` and, for `(-2, 2)`,
+    # `{-2: 3941, -1: 4083, 0: 4075, 1: 3976, 2: 3925}`.
     @pytest.mark.device_agnostic
-    def test_convention_random_rain_symmetric_unit_width_range_is_constant_zero(self):
-        torch.manual_seed(_FORWARD_SEED)
-        degenerate = K.RandomRain(number_of_drops=(5, 6), drop_height=(2, 3), drop_width=(-1, 1), p=1.0)
-        drawn = degenerate.forward_parameters((20000, 1, 64, 64))["drop_width_factor"].flatten()
-        assert set(drawn.tolist()) <= {-1.0, 0.0}
-        assert float((drawn == 0).float().mean()) > 0.999
-        # One step wider and the doubling the block describes is visible again.
-        torch.manual_seed(_FORWARD_SEED)
-        wider = K.RandomRain(number_of_drops=(5, 6), drop_height=(2, 3), drop_width=(-2, 2), p=1.0)
-        widths = wider.forward_parameters((20000, 1, 64, 64))["drop_width_factor"].flatten()
-        assert set(widths.tolist()) == {-1.0, 0.0, 1.0}
-        zeros, ones = int((widths == 0).sum()), int((widths == 1).sum())
-        assert zeros > 1.5 * ones
+    def test_convention_random_rain_symmetric_signed_width_range_is_uniform(self):
+        # `(-5, -1)` and `(-3, 0)` come from the wart pin this replaces: on a range that never crosses
+        # zero, truncation toward zero drops the LOWER bound instead of the upper, so they are the cases
+        # where `floor` and the old cast differ and a half-fixed draw would still show.
+        for low, high in ((-1, 1), (-2, 2), (-5, -1), (-3, 0)):
+            torch.manual_seed(_FORWARD_SEED)
+            aug = K.RandomRain(number_of_drops=(5, 6), drop_height=(2, 3), drop_width=(low, high), p=1.0)
+            drawn = aug.forward_parameters((20000, 1, 64, 64))["drop_width_factor"].flatten()
+            assert sorted(set(drawn.tolist())) == list(range(low, high + 1))
+            counts = torch.bincount(drawn - low, minlength=high - low + 1)
+            expected = drawn.numel() / (high - low + 1)
+            assert bool(((counts > 0.9 * expected) & (counts < 1.1 * expected)).all()), ((low, high), counts.tolist())
 
 
 class TestIlluminationAndNormalizeConventions(BaseTester):
@@ -1783,20 +1840,20 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         with pytest.raises(ValueError, match="do not match"):
             _sync(cls(mean=mean, std=std, p=1.0)(image).device)
 
-    # Issue #4573: Normalize wraps an `int` mean or std into a tensor, Denormalize wraps only a `float`, so
-    # the pair built with `mean=0, std=255` cannot round-trip: Denormalize reaches kornia.enhance.denormalize
-    # with a bare int and fails there on the forward pass.
+    # Issue #4573: Normalize and Denormalize both accept integer scalar statistics, so the pair
+    # built with ``mean=0, std=255`` round-trips.
     # Snippet used to generate expected:
-    #   x = torch.rand(2, 3, 4, 4); y = K.Normalize(mean=0, std=255, p=1.0)(x); K.Denormalize(mean=0, std=255, p=1.0)(y)
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `AttributeError: 'int' object has no attribute 'shape'`.
+    #   x = torch.rand(2, 3, 4, 4); y = K.Normalize(mean=0, std=255, p=1.0)(x)
+    #   z = K.Denormalize(mean=0, std=255, p=1.0)(y)
+    #   torch.testing.assert_close(z, x)
+    # executed 2026-09-16 (torch 2.5.1, cpu).
     @pytest.mark.device_agnostic
-    def test_wart_denormalize_rejects_the_int_statistics_normalize_accepts_4573(self):
+    def test_convention_denormalize_accepts_the_int_statistics_normalize_accepts_4573(self):
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 4, 4)
         normalized = K.Normalize(mean=0, std=255, p=1.0)(image)
         self.assert_close(normalized, image / 255)
-        with pytest.raises(AttributeError, match="shape"):
-            K.Denormalize(mean=0, std=255, p=1.0)(normalized)
+        self.assert_close(K.Denormalize(mean=0, std=255, p=1.0)(normalized), image)
         self.assert_close(K.Denormalize(mean=0.0, std=255.0, p=1.0)(normalized), image)
 
     # Rows 6c-17 and 6c-18: Normalize and Denormalize hard-code ``same_on_batch=True`` (normalize.py

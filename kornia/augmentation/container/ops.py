@@ -150,8 +150,7 @@ class AugmentationSequentialOps:
             if isinstance(self.data_keys, list):
                 return self.data_keys
             raise ValueError("nn.Sequential ops needs data keys to be able to process.")
-        else:
-            return [DataKey.get(inp) for inp in data_keys]
+        return [DataKey.get(inp) for inp in data_keys]
 
     def _get_op(self, data_key: DataKey) -> Type[SequentialOpsInterface[Any]]:
         """Return the corresponding operation given a data key."""

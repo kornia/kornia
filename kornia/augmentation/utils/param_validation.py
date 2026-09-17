@@ -70,7 +70,14 @@ def _range_bound(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    r"""Check inputs and compute the corresponding factor bounds."""
+    r"""Check inputs and compute the corresponding factor bounds.
+
+    A scalar ``factor`` is a magnitude around ``center``: the range is ``[center - factor, center + factor]``
+    with its lower end floored at ``bounds[0]`` (a non-negative parameter reads ``contrast=1.5`` as
+    ``[0, 2.5]``, the way torchvision does), and an upper end past ``bounds[1]`` raises the same
+    ``ValueError`` the explicit range would. A pair is taken as the range itself and checked against
+    ``bounds`` with ``check``.
+    """
     if device is None:
         device = torch.device("cpu")
     if dtype is None:
@@ -84,11 +91,12 @@ def _range_bound(
             raise ValueError(f"If {name} is a single number, it must be non negative. Got {factor}.")
         if center is None or bounds is None:
             raise ValueError(f"`center` and `bounds` cannot be None for single number. Got {center}, {bounds}.")
-        # Should be something other than clamp
-        # Currently, single value factor will not out of scope as long as the user provided it.
-        # Note: I personally think throw an error will be better than a coarse clamp.
         factor_bound = factor.repeat(2) * torch.tensor([-1.0, 1.0], device=factor.device, dtype=factor.dtype) + center
-        factor_bound = factor_bound.clamp(bounds[0], bounds[1]).to(device=device, dtype=dtype)
+        # The lower end is floored at the domain floor; the upper end is never clamped, because a
+        # magnitude that overshoots the domain is a mistake the explicit range form already rejects.
+        if factor_bound[1] > bounds[1]:
+            raise ValueError(f"{name} out of bounds. Expected inside {bounds}, got {factor_bound}.")
+        factor_bound = factor_bound.clamp(min=bounds[0]).to(device=device, dtype=dtype)
     else:
         factor_bound = torch.as_tensor(factor, device=device, dtype=dtype)
 
