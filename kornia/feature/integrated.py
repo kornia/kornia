@@ -50,6 +50,7 @@ from .scale_space_detector import (
     get_default_detector_config,
 )
 from .sift_pyramid import SIFTDescriptorFromPyramid
+from .sift_scale_space import _SIFTScaleSpaceDescriptor
 from .siftdesc import SIFTDescriptor
 
 
@@ -285,13 +286,15 @@ class SIFTFeature(_SIFTFeature):
         super().__init__(detector, descriptor, upright)
 
 
-class SIFTFeatureScaleSpace(_SIFTFeature):
+class SIFTFeatureScaleSpace(LocalFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
 
     Using `kornia.feature.ScaleSpaceDetector` with blur pyramid. Select
-    ``descriptor_backend="pyramid"`` to use :class:`SIFTDescriptorFromPyramid`
-    for sparse orientation and description. It builds its own extraction pyramid;
-    the detector's scale-space construction and feature budget are unchanged.
+    ``descriptor_backend="pyramid"`` for a specialized SIFT pipeline that reuses
+    the detector's Gaussian images and each detection's octave and layer. Image
+    gradients are computed once per used layer and sampled for sparse orientation
+    and descriptor integration. Detection and the feature budget are unchanged.
+    The default ``"patch"`` backend retains patch-wise orientation and description.
 
     Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
     """
@@ -323,14 +326,30 @@ class SIFTFeatureScaleSpace(_SIFTFeature):
         ).to(device)
         descriptor: nn.Module
         if descriptor_backend == "pyramid":
-            descriptor = SIFTDescriptorFromPyramid(rootsift=rootsift).to(device)
+            descriptor = _SIFTScaleSpaceDescriptor(rootsift=rootsift).to(device)
         else:
             descriptor = LAFDescriptor(
                 SIFTDescriptor(patch_size=patch_size, rootsift=rootsift),
                 patch_size=patch_size,
                 grayscale_descriptor=True,
             ).to(device)
-        super().__init__(detector, descriptor, upright)
+        super().__init__(detector, descriptor)
+        self.upright = upright
+        self.descriptor_backend = descriptor_backend
+
+    def forward(
+        self, img: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Detect and describe sparse SIFT features, sharing scale space when selected."""
+        if self.descriptor_backend == "patch":
+            return super().forward(img, mask)
+        gray = rgb_to_grayscale(img) if img.shape[1] == 3 else img
+        responses, lafs, _, pyramid, octaves, levels = self.detector._detect_with_pyramid(
+            gray, self.detector.num_features, mask
+        )
+        lafs = scale_laf(lafs, self.scaling_coef)
+        lafs, descriptors = self.descriptor(pyramid, lafs, octaves, levels, upright=self.upright)
+        return lafs, responses, descriptors
 
 
 class GFTTAffNetHardNet(LocalFeature):

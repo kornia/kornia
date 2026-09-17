@@ -519,12 +519,19 @@ class TestSIFTPyramidBackend(BaseTester):
     def test_sparse_output_and_real_descriptor(self, device, dtype, preset, upright):
         image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
         feature = preset(num_features=3, upright=upright, descriptor_backend="pyramid").to(device, dtype).eval()
-        assert isinstance(feature.descriptor, kornia.feature.SIFTDescriptorFromPyramid)
+        if preset is kornia.feature.SIFTFeature:
+            assert isinstance(feature.descriptor, kornia.feature.SIFTDescriptorFromPyramid)
+        else:
+            from kornia.feature.sift_scale_space import _SIFTScaleSpaceDescriptor
+
+            assert isinstance(feature.descriptor, _SIFTScaleSpaceDescriptor)
         lafs, responses, descriptors = feature(image)
         assert lafs.shape == (1, 3, 2, 3)
         assert responses.shape == (1, 3)
         assert descriptors.shape == (1, 3, 128)
-        self.assert_close(descriptors, feature.descriptor(image, lafs))
+        assert torch.isfinite(descriptors).all()
+        if preset is kornia.feature.SIFTFeature:
+            self.assert_close(descriptors, feature.descriptor(image, lafs))
 
     @pytest.mark.parametrize("preset", [kornia.feature.SIFTFeature, kornia.feature.SIFTFeatureScaleSpace])
     def test_detector_responses_and_centers_are_unchanged(self, device, dtype, preset):

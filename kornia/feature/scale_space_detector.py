@@ -358,11 +358,12 @@ class ScaleSpaceDetector(nn.Module):
         is_iterative_subpix: bool,
         batchable_subpix: bool,
         px_size: float,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Process one scale-space octave: response → NMS/subpix → top-K → LAF.
 
-        Returns the top-K responses, their LAFs, and a boolean mask of the slots a detection
-        actually filled. The batched top-K below ranks over the whole volume and returns its
+        Returns the top-K responses, their LAFs, a boolean mask of the slots a detection
+        actually filled, and the nearest refined Gaussian layer indices. The batched top-K below ranks
+        over the whole volume and returns its
         ``fill`` sentinel once the octave runs out of candidates, and the border check rejects
         candidates after the ranking; the mask is what tells those slots apart from a detection,
         since the response alone cannot.
@@ -503,6 +504,10 @@ class ScaleSpaceDetector(nn.Module):
 
         B, N = resp_flat_best.size()
 
+        # Refinement may move across scale levels. Retain the nearest Gaussian
+        # layer before converting continuous scale to sigma; the original NMS
+        # index can refer to a different layer after these moves.
+        levels = max_coords_best[..., 0].round().long().clamp(0, L - 1)
         max_coords_best = _scale_index_to_scale(max_coords_best, scale_sigmas, num_levels)
 
         current_lafs = torch.cat(
@@ -556,15 +561,15 @@ class ScaleSpaceDetector(nn.Module):
         filled = is_cand & good_mask
         resp_flat_best = resp_flat_best.masked_fill(~filled, float("-inf"))
         current_lafs.mul_(px_size)
-        return resp_flat_best, current_lafs, filled
+        return resp_flat_best, current_lafs, filled, levels
 
-    def _detect(
+    def _detect_with_pyramid(
         self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Run the detection and also return the boolean mask of the slots a detection filled.
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List[torch.Tensor], torch.Tensor, torch.Tensor]:
+        """Detect while retaining per-call Gaussian images and octave/layer provenance.
 
-        ``forward`` needs the mask after ``aff`` and ``ori`` have run, and it cannot be recovered
-        from the responses, so :meth:`detect` is a two-value view of this.
+        The specialized SIFT path consumes this state immediately. No images or
+        keypoint metadata are cached on the module between calls.
         """
         if mask is not None:
             _check_mask(mask, img)
@@ -597,7 +602,7 @@ class ScaleSpaceDetector(nn.Module):
         # tables per call, and concurrent CUDA allocations contend for the same
         # device memory allocator lock.  Tested: sequential ≈ parallel on GPU.
         n_oct = len(sp)
-        results: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = [
+        results: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = [
             self._process_octave(
                 sp[i],
                 sigmas[i],
@@ -621,17 +626,30 @@ class ScaleSpaceDetector(nn.Module):
         responses = torch.cat([r[0] for r in results], 1)
         lafs = torch.cat([r[1] for r in results], 1)
         filled = torch.cat([r[2] for r in results], 1)
+        levels = torch.cat([r[3] for r in results], 1)
+        octaves = torch.cat([torch.full_like(r[3], i) for i, r in enumerate(results)], 1)
         n_candidates = responses.size(1)
         if n_candidates < num_feats:
             pad = num_feats - n_candidates
             responses = F.pad(responses, (0, pad), value=float("-inf"))
             lafs = F.pad(lafs, (0, 0, 0, 0, 0, pad))
             filled = F.pad(filled, (0, pad))
+            levels = F.pad(levels, (0, pad), value=-1)
+            octaves = F.pad(octaves, (0, pad), value=-1)
         responses, idxs = torch.topk(responses, k=num_feats, dim=1)
         lafs = torch.gather(lafs, 1, idxs.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, 2, 3))
         filled = torch.gather(filled, 1, idxs)
         responses = torch.where(filled, responses, torch.zeros_like(responses))
-        return responses, _zero_unfilled(lafs, filled), filled
+        levels = torch.gather(levels, 1, idxs).masked_fill(~filled, -1)
+        octaves = torch.gather(octaves, 1, idxs).masked_fill(~filled, -1)
+        return responses, _zero_unfilled(lafs, filled), filled, sp, octaves, levels
+
+    def _detect(
+        self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Run detection and return occupancy as well as scores and frames."""
+        responses, lafs, filled, _, _, _ = self._detect_with_pyramid(img, num_feats, mask)
+        return responses, lafs, filled
 
     def detect(
         self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None

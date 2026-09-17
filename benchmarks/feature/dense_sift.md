@@ -1,5 +1,9 @@
 # Shared-pyramid SIFT on Oxford graf
 
+This report covers the generic LAF extraction backend. The dedicated
+`SIFTFeatureScaleSpace` backend now shares the detector Gaussian pyramid; see
+[its end-to-end results](sift_scale_space.md).
+
 `SIFTDescriptorFromPyramid` is an opt-in extraction backend for existing sparse
 similarity or affine LAFs. It shares DenseSIFT angular histograms across keypoints
 at each Gaussian-pyramid octave, samples orientation support from those maps,
@@ -17,12 +21,13 @@ and gradient angular binning is interpolated a second time during affine remappi
 These differences mean descriptor equivalence is not expected.
 
 The public architecture remains sparse detector → orientation → descriptor.
-Both SIFT presets own a real `.descriptor` module and preserve their existing
+Both SIFT presets own a `.descriptor` module and preserve their existing
 feature-count/mask/response contracts. `SIFTDescriptorFromPyramid.forward` returns
 only one descriptor per supplied LAF; `orient_and_describe` shares extraction work
 when orientation assignment is also needed. Dense histogram maps are internal
 intermediates, not detected features or a public dense-output feature pipeline.
-The extraction pyramid is built separately from the detector's scale space.
+For the generic backend measured here, the extraction pyramid is built separately
+from the detector's scale space.
 The raw benchmark series named `dense` records this pyramid extraction backend;
 its old filenames and measurement-time source hashes are retained for provenance.
 
