@@ -4929,6 +4929,21 @@ class TestRandomBoxBlur(BaseTester):
         with pytest.raises(KeyError):
             RandomBoxBlur((3, 3), border_type="bogus")
 
+    @pytest.mark.parametrize("border_type", ["circular", 3, "BorderType.CIRCULAR"])
+    def test_per_call_border_type_override_is_honoured_4590(self, border_type, device, dtype):
+        from kornia.constants import BorderType
+        from kornia.filters import box_blur
+
+        if border_type == "BorderType.CIRCULAR":
+            border_type = BorderType.CIRCULAR
+        torch.manual_seed(0)
+        img = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        # forward(**kwargs) puts the raw override into `flags`, bypassing __init__'s normalization
+        out = RandomBoxBlur((3, 3), p=1.0)(img.clone(), border_type=border_type)
+
+        expected = box_blur(img, (3, 3), border_type="circular", separable=True)
+        torch.testing.assert_close(out, expected, rtol=0.0, atol=0.0)
+
 
 class TestPadTo(BaseTester):
     def test_smoke(self, device, dtype):

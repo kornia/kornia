@@ -33,7 +33,7 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``, given as a
-          case-insensitive string, a :class:`~kornia.constants.BorderType` or its integer value
+          case-insensitive string, a ``BorderType`` member or its integer value
           (CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3).
         normalized: selects the implementation of :func:`kornia.filters.box_blur`: ``True`` computes the blur
           as two 1D passes (``separable=True``), ``False`` as one 2D pass. The kernel is L1-normalized either
@@ -81,6 +81,7 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         return box_blur(
             input,
             flags["kernel_size"],
-            border_type=flags["border_type"].name.lower(),
+            # a per-call `border_type` override reaches `flags` unnormalized, so normalize here too
+            border_type=BorderType.get(flags["border_type"]).name.lower(),
             separable=flags["normalized"],
         )
