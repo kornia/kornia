@@ -70,9 +70,10 @@ class _HausdorffERLossBase(nn.Module):
         for k in range(self.k):
             # compute convolution with kernel
             dilation = self.conv(bound, weight=kernel, padding=padding, groups=1)
-            # apply soft thresholding at 0.5 and F.normalize. clamp_min is one kernel with the
-            # same values and gradient as zeroing the negatives through a boolean index.
-            erosion = (dilation - 0.5).clamp_min(0)
+            # apply soft thresholding at 0.5 and F.normalize. masked_fill zeroes the negatives without
+            # a data-dependent index_put_, and keeps its gradient of 1 at dilation == 0.5 exactly;
+            # clamp_min's derivative at the bound is 0 on torch >= 2.14 and 1 before.
+            erosion = (dilation - 0.5).masked_fill(dilation < 0.5, 0)
 
             # image-wise differences for 2D images
             erosion_max = self.max_pool(erosion)
