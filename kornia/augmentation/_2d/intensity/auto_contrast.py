@@ -52,7 +52,7 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
           (``inf / inf``) and every other element comes back exactly ``0`` (a finite numerator over ``inf``).
           ``[-60000, 60000, 0, 1]`` in ``float16`` returns ``[0, nan, 0, 0]``.
 
-        - non-contiguous input, such as a ``transpose``d or ``permute``d image, produces the same
+        - non-contiguous input, such as a transposed or permuted image, produces the same
           values as its contiguous copy.
 
     .. note::

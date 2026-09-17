@@ -58,7 +58,7 @@ class Normalize(IntensityAugmentationBase2D):
           inverts this class, up to float rounding, when both apply -- each draws its own ``p`` gate.
         - the result is not clamped: moving an image out of ``[0, 1]`` is what this class is for.
 
-        - non-contiguous input, such as a ``transpose``d or ``permute``d image, produces the same
+        - non-contiguous input, such as a transposed or permuted image, produces the same
           values as its contiguous copy.
 
     .. note::
