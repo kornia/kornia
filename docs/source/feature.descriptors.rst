@@ -4,6 +4,11 @@ Descriptors
 .. currentmodule:: kornia.feature
 
 .. autoclass:: DenseSIFTDescriptor
+   :members: get_gradient_histograms
+
+.. autoclass:: DenseSIFTFeature
+   :members: forward
+
 .. autoclass:: SIFTDescriptor
 .. autoclass:: MKDDescriptor
 .. autoclass:: HardNet

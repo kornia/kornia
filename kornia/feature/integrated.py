@@ -29,6 +29,7 @@ from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
 
 from .affine_shape import LAFAffNetShapeEstimator
+from .dense_sift import DenseSIFTFeature
 from .hardnet import HardNet
 from .keynet import KeyNetDetector
 from .laf import (
@@ -215,6 +216,10 @@ class LocalFeature(nn.Module):
 class SIFTFeature(LocalFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
 
+    Set ``dense_sift=True`` to opt into :class:`DenseSIFTFeature`: it assigns
+    orientation and describes the detector's unoriented LAFs from shared pyramid
+    histograms. The default retains the patch-wise descriptor pipeline.
+
     Using `kornia.feature.MultiResolutionDetector` without blur pyramid Still not as good as OpenCV/VLFeat because of
     https://github.com/kornia/kornia/pull/884,
     but we are working on it
@@ -229,6 +234,7 @@ class SIFTFeature(LocalFeature):
         config: Optional[Detector_config] = None,
         compile_model: bool = False,
         score_threshold: float = 0.0,
+        dense_sift: bool = False,
     ) -> None:
         patch_size: int = 41
         if device is None:
@@ -239,15 +245,34 @@ class SIFTFeature(LocalFeature):
             BlobDoGSingle(1.0, 1.6),
             num_features,
             config,
-            ori_module=PassLAF() if upright else LAFOrienter(19),
+            ori_module=PassLAF() if upright or dense_sift else LAFOrienter(19),
             aff_module=PassLAF(),
             compile_model=compile_model,
             score_threshold=score_threshold,
         ).to(device)
-        descriptor = LAFDescriptor(
-            SIFTDescriptor(patch_size=patch_size, rootsift=rootsift), patch_size=patch_size, grayscale_descriptor=True
-        ).to(device)
+        patch_descriptor: nn.Module
+        if dense_sift:
+            patch_descriptor = nn.Identity()
+        else:
+            patch_descriptor = SIFTDescriptor(patch_size=patch_size, rootsift=rootsift)
+        descriptor = LAFDescriptor(patch_descriptor, patch_size=patch_size, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor)
+        self.dense_sift_feature: Optional[DenseSIFTFeature]
+        self.dense_sift_feature = (
+            DenseSIFTFeature(rootsift=rootsift, upright=upright).to(device) if dense_sift else None
+        )
+
+    def forward(
+        self, img: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Detect features and optionally use shared-pyramid DenseSIFT description."""
+        if self.dense_sift_feature is None:
+            return super().forward(img, mask)
+        lafs, responses = self.detector(img, mask)
+        lafs = scale_laf(lafs, self.scaling_coef)
+        gray_image = rgb_to_grayscale(img) if img.shape[1] == 3 else img
+        oriented_lafs, descriptors = self.dense_sift_feature(gray_image, lafs)
+        return oriented_lafs, responses, descriptors
 
 
 class SIFTFeatureScaleSpace(LocalFeature):

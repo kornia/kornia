@@ -282,6 +282,13 @@ class TestSIFTFeature(BaseTester):
         sift = SIFTFeature()
         assert sift is not None
 
+    def test_dense_sift_opt_in(self, device, dtype):
+        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        lafs, responses, descriptors = SIFTFeature(2, dense_sift=True).to(device, dtype)(image)
+        assert lafs.shape == (1, 2, 2, 3)
+        assert responses.shape == (1, 2)
+        assert descriptors.shape == (1, 2, 128)
+
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
