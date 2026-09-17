@@ -124,6 +124,24 @@ class TestImageHistogram2d(BaseTester):
 
         self.assert_close(hist_auto.float(), hist_explicit.float(), atol=1e-3, rtol=1e-3)
 
+    @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+    @pytest.mark.parametrize("return_pdf", [False, True])
+    def test_auto_centers_preserve_input_dtype(self, device, dtype, return_pdf):
+        """The float32-centers fix above (test_large_n_bins_float16_centers_not_collapsed)
+        must not itself change the function's public return dtype: before that fix, a
+        float16/bfloat16 image with centers=None returned float16/bfloat16 hist/pdf. Building
+        centers at float32 promotes u/kernel_values through ordinary PyTorch type promotion,
+        so hist/pdf must be explicitly cast back to image.dtype at the return boundary."""
+        if device.type == "mps" and dtype == torch.bfloat16:
+            pytest.skip("bfloat16 has limited/no MPS support")
+        torch.manual_seed(0)
+        image = torch.rand(1, 16, 16, device=device, dtype=dtype)
+
+        hist, pdf = TestImageHistogram2d.fcn(image, 0.0, 1.0, 64, kernel="gaussian", return_pdf=return_pdf)
+
+        assert hist.dtype == dtype
+        assert pdf.dtype == dtype
+
 
 class TestHistogram2d(BaseTester):
     fcn = kornia.enhance.histogram2d

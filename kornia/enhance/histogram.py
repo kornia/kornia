@@ -240,11 +240,12 @@ def image_histogram2d(
         # once n_bins is large enough: torch.arange(4096, dtype=torch.float16) has only 3073
         # distinct values, not 4096 (confirmed directly), which collapsed centers[i] == centers[j]
         # for i != j and gave those bins numerically identical (redundant) histogram output.
-        # Deliberately NOT cast back to image.dtype: centers is an internal working buffer, not
-        # a returned value, so there is no output-dtype contract to preserve here -- doing so
-        # would re-round every value straight back down to float16 and reproduce the exact same
-        # collapse this fix exists to prevent. `image.unsqueeze(0) - centers` below promotes
-        # normally through ordinary PyTorch type promotion instead.
+        # `centers` stays an internal float32 working buffer for the rest of this function --
+        # `image.unsqueeze(0) - centers` below promotes through ordinary PyTorch type promotion,
+        # so u/kernel_values/hist/pdf all become float32 too unless explicitly cast back down.
+        # That cast happens once, right before `hist` is returned (see below) -- NOT here, which
+        # would re-round centers straight back down to float16 and reproduce the exact collapse
+        # this fix exists to prevent.
         centers = min + bandwidth * (torch.arange(n_bins, device=image.device, dtype=torch.float32) + 0.5)
     centers = centers.reshape(-1, 1, 1, 1, 1)
 
@@ -265,6 +266,12 @@ def image_histogram2d(
         raise ValueError(f"Kernel must be 'triangular', 'gaussian', 'uniform' or 'epanechnikov'. Got {kernel}.")
 
     hist = torch.sum(kernel_values, dim=(-2, -1)).permute(1, 2, 0)
+    # Restore the caller's input dtype here, once, at the public return boundary -- everything
+    # upstream of this point (centers, u, kernel_values) deliberately ran at float32 regardless
+    # of image.dtype (see the `centers is None` branch above); before this cast, a float16/
+    # bfloat16 input silently came back as a float32 hist/pdf, a real behavior change this
+    # dtype-precision fix must not itself introduce.
+    hist = hist.to(image.dtype)
 
     if return_pdf:
         normalization = torch.sum(hist, dim=-1, keepdim=True) + eps
