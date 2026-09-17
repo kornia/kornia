@@ -102,6 +102,15 @@ class TestEqualization(BaseTester):
         with pytest.raises(TypeError):
             enhance.equalize_clahe([1, 2, 3])
 
+    @pytest.mark.parametrize("grid_size", [(1, 1), (1, 2), (2, 1), (2, 2)])
+    def test_single_tile_on_the_differentiable_path(self, grid_size, device, dtype):
+        # A (1, 1) grid is global equalization with the clip limit applied, and the slow path raised an
+        # IndexError on it because one tile lost its tile axis to squeeze().
+        img = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
+        out = enhance.equalize_clahe(img, 40.0, grid_size, slow_and_differentiable=True)
+        assert out.shape == img.shape
+        assert torch.isfinite(out).all()
+
     @pytest.mark.parametrize("grid_size", [(2, 2), (2, 3), (3, 2)])
     def test_gradcheck(self, device, grid_size):
         torch.random.manual_seed(4)

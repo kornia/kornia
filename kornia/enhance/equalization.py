@@ -168,7 +168,8 @@ def _compute_luts(
             histos = torch.stack(list(map(_my_histc, tiles, [num_bins] * len(tiles))))
     else:
         bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
-        histos = histogram(tiles, bins, torch.tensor(0.001)).squeeze()
+        # histogram already returns (T, num_bins); squeeze() dropped the tile axis for a single tile
+        histos = histogram(tiles, bins, torch.tensor(0.001))
         histos *= pixels
 
     if clip > 0.0:
