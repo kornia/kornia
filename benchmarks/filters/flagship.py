@@ -68,6 +68,9 @@ from typing import Callable, Optional
 import numpy as np
 import torch
 
+# Direct script execution puts benchmarks/filters, not the checkout, on sys.path.
+# Prefer this tree to a wheel or an editable installation of another checkout.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common import (
     add_contribute_args,
@@ -263,6 +266,7 @@ def main() -> None:
         print_preflight(meta["load"])
     print(f"# flagship filters benchmark — commit {meta['git_commit']} — {platform.platform()}")
     print(versions_line(meta))
+    print(f"# kornia source: {Path(KF.__file__).resolve()}")
     if device.type == "cuda":
         print(f"# CUDA device: {meta['cuda_device']} (CUDA {meta['cuda_version']})")
     print(f"# device={device}, dtype={args.dtype}, threads={args.threads}, size={args.size} — throughput img/s")

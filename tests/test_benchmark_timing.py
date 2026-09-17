@@ -15,9 +15,11 @@
 # limitations under the License.
 #
 
-"""The timed thread count must agree with warmup and recorded metadata."""
+"""Benchmark measurements must use the intended checkout and thread count."""
 
 import importlib.util
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -40,3 +42,26 @@ def test_timing_preserves_configured_threads():
         assert torch.get_num_threads() == 2
     finally:
         torch.set_num_threads(previous)
+
+
+@pytest.mark.device_agnostic
+def test_filter_benchmark_imports_its_checkout(tmp_path):
+    # A different installation is visible when Python runs a script directly:
+    # the script directory replaces the current directory on sys.path.
+    shadow = tmp_path / "kornia"
+    shadow.mkdir()
+    (shadow / "__init__.py").write_text('raise RuntimeError("imported the installed Kornia instead of the checkout")')
+    root = Path(__file__).resolve().parents[1]
+    script = root / "benchmarks/filters/flagship.py"
+    code = (
+        "import runpy, sys\n"
+        f"sys.path.insert(0, {str(tmp_path)!r})\n"
+        f"runpy.run_path({str(script)!r}, run_name='benchmark_import_test')\n"
+        "import kornia\n"
+        "from pathlib import Path\n"
+        f"assert Path(kornia.__file__).resolve().parent == Path({str(root / 'kornia')!r})\n"
+    )
+    result = subprocess.run(  # noqa: S603 - fixed test code and interpreter; no shell or external input.
+        [sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

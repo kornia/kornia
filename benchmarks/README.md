@@ -27,6 +27,11 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
   matching warmup and metadata. Older results collected before this fix timed PyTorch at
   `Timer`'s default of one thread even when metadata named a larger thread count; do not
   interpret those historical files as measurements at the advertised count.
+  When comparing against a revision with the old timer, use one thread in both runs
+  or apply the timer correction to the baseline as well.
+- **Checkout provenance:** the filters flagship script imports Kornia from its own checkout
+  and prints the source path. Direct script execution must not silently benchmark an
+  installed wheel or another editable checkout while recording the current tree's commit.
 - **Device sync inside the timed region:** `blocked_autorange` syncs CUDA; for MPS pass
   `sync=torch.mps.synchronize` to `time_us`. A hand-rolled `time.time()` around a GPU call
   measures launch latency, not work.
