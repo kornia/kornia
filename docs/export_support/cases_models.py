@@ -1478,7 +1478,7 @@ A(
         "image",
         K.image.draw_line,
         [torch.zeros(3, 16, 24), torch.tensor([2, 3]), torch.tensor([20, 12]), torch.tensor([1.0, 0.5, 0.2])],
-        note="Bresenham-like Python loop over max(|dx|,|dy|) computed from tensor values",
+        note="per-line pixels built on the device with nonzero; int(max) of the longest line reads a tensor value",
     )
 )
 A(
