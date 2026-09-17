@@ -140,29 +140,67 @@ def test_tensor_to_image_contiguous(device, dtype):
 @pytest.mark.parametrize(
     "op, kwargs",
     [
+        (kornia.filters.in_range, {"lower": (0.2, 0.3, 0.4), "upper": (0.8, 0.7, 0.9)}),
         (kornia.enhance.normalize_min_max, {}),
         (kornia.enhance.posterize, {"bits": 4}),
         (kornia.enhance.sharpness, {"factor": 1.0}),
         (kornia.enhance.equalize, {}),
+        (kornia.enhance.equalize_clahe, {"clip_limit": 40.0, "grid_size": (8, 8)}),
+        (kornia.enhance.jpeg_codec_differentiable, {}),
     ],
 )
-def test_perform_keep_shape_image_non_contiguous(op, kwargs):
-    tensor = torch.rand(2, 2, 3, 8, 6).transpose(0, 1)
+def test_perform_keep_shape_image_non_contiguous(device, dtype, op, kwargs):
+    tensor = torch.rand(2, 3, 3, 16, 24, device=device, dtype=dtype).transpose(0, 1)
     assert not tensor.is_contiguous()
 
-    result = op(tensor, **kwargs)
-    expected = op(tensor.contiguous(), **kwargs)
+    if op is kornia.enhance.jpeg_codec_differentiable:
+        batch_size = tensor.shape[0] * tensor.shape[1]
+        jpeg_quality = torch.linspace(30.0, 90.0, batch_size, device=device, dtype=dtype)
+
+        result = op(tensor, jpeg_quality)
+
+        expected = torch.stack(
+            [
+                torch.stack(
+                    [
+                        op(
+                            tensor[i, j],
+                            jpeg_quality[i * tensor.shape[1] + j : i * tensor.shape[1] + j + 1],
+                        )
+                        for j in range(tensor.shape[1])
+                    ]
+                )
+                for i in range(tensor.shape[0])
+            ]
+        )
+    else:
+        result = op(tensor, **kwargs)
+
+        expected = torch.stack(
+            [
+                torch.stack([op(tensor[i, j], **kwargs) for j in range(tensor.shape[1])])
+                for i in range(tensor.shape[0])
+            ]
+        )
 
     assert result.shape == expected.shape
     assert_close(result, expected)
 
 
-def test_perform_keep_shape_video_non_contiguous():
-    tensor = torch.rand(2, 2, 3, 4, 8, 6).transpose(0, 1)
+def test_perform_keep_shape_video_non_contiguous(device, dtype):
+    tensor = torch.rand(2, 2, 3, 4, 32, 32, device=device, dtype=dtype).transpose(0, 1)
     assert not tensor.is_contiguous()
 
     result = kornia.enhance.equalize3d(tensor)
-    expected = kornia.enhance.equalize3d(tensor.contiguous())
+
+    expected = torch.stack(
+        [
+            torch.stack(
+                [kornia.enhance.equalize3d(tensor[i, j]) for j in range(tensor.shape[1])]
+            )
+            for i in range(tensor.shape[0])
+        ]
+    )
 
     assert result.shape == expected.shape
     assert_close(result, expected)
