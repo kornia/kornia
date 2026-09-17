@@ -2192,15 +2192,23 @@ class TestAngleAxisToRotationMatrix(BaseTester):
 
     def test_convention_gradient_is_finite_near_the_identity(self, device, dtype):
         # Small angles take the Taylor branch, but torch.where still backpropagates through the discarded
-        # Rodrigues branch, whose sqrt(theta2) had a `clamp(min=1e-12)` floor. In float16 that floor is 0,
-        # so the gradient was nan at the identity and wherever theta2 underflows (1e-4 below).
-        # At the identity d(sum R)/dv is the sum of the skew matrix [v]x, which is 0.
+        # Rodrigues branch, whose sqrt(theta2) had a `clamp(min=1e-12)` floor. In float16 that floor is 0, so
+        # the gradient was nan wherever theta2 reached 0 there: the identity, and [1e-4, 0, 0] whose theta2 of
+        # 1e-8 underflows. The third row's theta2 of 2.9e-07 is a float16 subnormal, so it was already finite.
+        # At the identity d(sum R)/dv is the sum of the skew matrix [v]x, which is 0; the other two rows are a
+        # float64 torch.matrix_exp reference, and pinning them keeps this from passing on any finite gradient.
         axis_angle = torch.tensor(
             [[0.0, 0.0, 0.0], [1e-4, 0.0, 0.0], [0.0, 5e-4, 2e-4]], device=device, dtype=dtype, requires_grad=True
         )
         kornia.geometry.conversions.axis_angle_to_rotation_matrix(axis_angle).sum().backward()
         assert bool(torch.isfinite(axis_angle.grad).all()), axis_angle.grad
         self.assert_close(axis_angle.grad[0], torch.zeros(3, device=device, dtype=dtype))
+        self.assert_close(
+            axis_angle.grad[1:],
+            torch.tensor([[-2e-4, 1e-4, 1e-4], [7e-4, -8e-4, 1e-4]], device=device, dtype=dtype),
+            rtol=1e-2,
+            atol=1e-6,
+        )
 
     def test_axis_angle_to_rotation_matrix(self, device, dtype, atol, rtol):
         rmat_1 = torch.tensor(
