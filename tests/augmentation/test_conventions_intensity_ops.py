@@ -1705,8 +1705,11 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
             if key not in ("plasma", "forward_input_shape"):
                 assert all(torch.equal(value[0], value[b]) for b in range(4)), f"{key} is not shared"
         assert torch.equal(aug._params["plasma"][0], aug._params["plasma"][1])
-        if name != "RandomPlasmaShadow":
-            assert torch.equal(out[0], out[1])
+        # The map is expanded, not repeated: a batch stride of 0 is the storage promise
+        # `IntensityAugmentationBase2D`'s Convention block makes, and `repeat` would satisfy the
+        # equality above while quietly allocating (and un-aliasing) one map per sample.
+        assert aug._params["plasma"].stride()[0] == 0
+        assert torch.equal(out[0], out[1])
 
     # Row 6c-43 in its new state: the `math domain error` the audit saw on a one-pixel axis is gone,
     # so a 1x1 and a 1x8 image now run and keep their shape.
