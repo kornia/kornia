@@ -533,7 +533,7 @@ class TestSIFTPyramidBackend(BaseTester):
         if preset is kornia.feature.SIFTFeature:
             self.assert_close(descriptors, feature.descriptor(image, lafs))
 
-    @pytest.mark.parametrize("preset", [kornia.feature.SIFTFeature, kornia.feature.SIFTFeatureScaleSpace])
+    @pytest.mark.parametrize("preset", [kornia.feature.SIFTFeature])
     def test_detector_responses_and_centers_are_unchanged(self, device, dtype, preset):
         image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
         patch = preset(num_features=3, upright=True).to(device, dtype).eval()

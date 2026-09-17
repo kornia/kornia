@@ -101,6 +101,6 @@ development, so these are not held-out quality results.
 | 1-5 | 12/101 | 22/149 | 11.88% | 14.77% | 18 / 21 | 472.69 / 472.96 |
 | 1-6 | 1/61 | 3/124 | 1.64% | 2.42% | 12 / 12 | 617.19 / 4605.24 |
 
-Raw results: [base-cpu.json](sift_scale_space_results/base-cpu.json), [shared-cpu.json](sift_scale_space_results/shared-cpu.json), [shared-mps.json](sift_scale_space_results/shared-mps.json).
+Raw JSON measurements are kept outside the repository; use the reproduction command to generate them.
 
 Measured code revision: `8c55c89b6` (CPU) and `8c55c89b6-dirty` (MPS); source SHA-256 records distinguish any documentation-only working-tree changes. CUDA and older supported PyTorch versions were not tested.

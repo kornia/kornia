@@ -49,6 +49,8 @@ from .scale_space_detector import (
     ScaleSpaceDetector,
     get_default_detector_config,
 )
+from .sift_detector import _SIFTScaleSpaceDetector
+from .sift_gaussian import _SIFTScalePyramid
 from .sift_pyramid import SIFTDescriptorFromPyramid
 from .sift_scale_space import _SIFTScaleSpaceDescriptor
 from .siftdesc import SIFTDescriptor
@@ -289,11 +291,13 @@ class SIFTFeature(_SIFTFeature):
 class SIFTFeatureScaleSpace(LocalFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
 
-    Using `kornia.feature.ScaleSpaceDetector` with blur pyramid. Select
+    The default patch backend uses `kornia.feature.ScaleSpaceDetector`. Select
     ``descriptor_backend="pyramid"`` for a specialized SIFT pipeline that reuses
     the detector's Gaussian images and each detection's octave and layer. Image
     gradients are computed once per used layer and sampled for sparse orientation
-    and descriptor integration. Detection and the feature budget are unchanged.
+    and descriptor integration. A dedicated DoG detector refines only sparse
+    extrema and ranks all valid candidates by response, without contrast or edge
+    rejection. The feature budget is unchanged; detections may differ.
     The default ``"patch"`` backend retains patch-wise orientation and description.
 
     Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
@@ -313,17 +317,29 @@ class SIFTFeatureScaleSpace(LocalFeature):
         if device is None:
             device = torch.device("cpu")
         patch_size: int = 41
-        detector = ScaleSpaceDetector(
-            num_features,
-            resp_module=BlobDoG(),
-            subpix_module=ConvQuadInterp3d(strict_maxima_bonus=0.0),
-            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
-            ori_module=PassLAF() if upright or descriptor_backend == "pyramid" else LAFOrienter(19),
-            scale_space_response=True,
-            minima_are_also_good=True,
-            mr_size=6.0,
-            compile_modules=compile_modules,
-        ).to(device)
+        if descriptor_backend == "pyramid":
+            detector = _SIFTScaleSpaceDetector(num_features, _SIFTScalePyramid()).to(device)
+            if compile_modules:
+                selected = {"scale_pyr", "subpix"} if compile_modules is True else set(compile_modules)
+                unknown = selected - {"scale_pyr", "subpix"}
+                if unknown:
+                    raise ValueError("The SIFT pyramid backend supports compile_modules=['scale_pyr', 'subpix'] only")
+                if "scale_pyr" in selected:
+                    detector.scale_pyr = torch.compile(detector.scale_pyr)
+                if "subpix" in selected:
+                    detector._refine = torch.compile(detector._refine)
+        else:
+            detector = ScaleSpaceDetector(
+                num_features,
+                resp_module=BlobDoG(),
+                subpix_module=ConvQuadInterp3d(strict_maxima_bonus=0.0),
+                scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
+                ori_module=PassLAF() if upright or descriptor_backend == "pyramid" else LAFOrienter(19),
+                scale_space_response=True,
+                minima_are_also_good=True,
+                mr_size=6.0,
+                compile_modules=compile_modules,
+            ).to(device)
         descriptor: nn.Module
         if descriptor_backend == "pyramid":
             descriptor = _SIFTScaleSpaceDescriptor(rootsift=rootsift).to(device)
@@ -349,7 +365,7 @@ class SIFTFeatureScaleSpace(LocalFeature):
         )
         lafs = scale_laf(lafs, self.scaling_coef)
         lafs, descriptors = self.descriptor(pyramid, lafs, octaves, levels, upright=self.upright)
-        return lafs, responses, descriptors
+        return lafs, responses, descriptors.to(img.dtype)
 
 
 class GFTTAffNetHardNet(LocalFeature):

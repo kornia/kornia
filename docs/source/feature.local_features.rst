@@ -46,13 +46,18 @@ specialized sparse extraction from the detector's Gaussian pyramid::
     )
     lafs, responses, descriptors = feature(grayscale_image)
 
-This path retains each detection's octave and nearest refined Gaussian layer,
-computes gradients once per used layer, and shares them between orientation and
-description. It returns one descriptor per detection and the same fixed feature
+This path uses a dedicated DoG detector, with strict sparse extrema, iterative
+subpixel refinement, and top-K ranking by absolute response. It applies neither
+contrast nor edge rejection. Precise doubling and integer octave decimation keep
+pixel coordinates aligned. The converged integer Gaussian layer and refined
+continuous scale are retained separately. Gradients are computed once per used
+layer and shared between orientation and description. It returns one descriptor per detection and the same fixed feature
 budget as the default patch backend. Its sampling and Gaussian support differ
 from patch extraction, so descriptors are not numerically interchangeable.
-No pyramid is retained between calls. ``compile_modules`` configures detector
-components; sparse orientation and description run eagerly.
+No pyramid is retained between calls. For this backend, ``compile_modules``
+accepts ``scale_pyr`` and ``subpix`` (or ``True`` for both); sparse orientation
+and description run eagerly. The default ``patch`` backend retains the existing
+generic detector and its compilation options.
 
 .. autoclass:: SIFTFeatureScaleSpace
    :members: forward

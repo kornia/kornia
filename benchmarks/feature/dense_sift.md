@@ -98,14 +98,7 @@ The affine 1–5 pair drops from 136 to 40 correct matches. Keep the patch path 
 the default; this dense option is useful only when that CPU speed/quality tradeoff
 fits the application.
 
-Raw comparison artifacts:
-
-- [base-affine-cpu](dense_sift_results/base-affine-cpu.json)
-- [base-cpu](dense_sift_results/base-cpu.json)
-- [base-mps](dense_sift_results/base-mps.json)
-- [dense-affine-cpu](dense_sift_results/dense-affine-cpu.json)
-- [dense-cpu](dense_sift_results/dense-cpu.json)
-- [dense-mps](dense_sift_results/dense-mps.json)
+Raw JSON measurements are kept outside the repository. The commands below regenerate them when needed.
 
 ## RANSAC homography evaluation
 
@@ -135,7 +128,6 @@ timings, so the CPU speedup above is not a claim about total RANSAC-pipeline spe
 | 1-5 | 18 | 472.688 | 17 | 474.403 |
 | 1-6 | 12 | 617.188 | 9 | 578.960 |
 
-[Raw Similarity frames, CPU results](dense_sift_results/ransac-cpu.json).
 
 ### Affine-adapted frames, CPU
 
@@ -147,7 +139,6 @@ timings, so the CPU speedup above is not a claim about total RANSAC-pipeline spe
 | 1-5 | 121 | 4.212 | 35 | 2.866 |
 | 1-6 | 12 | 4.117 | 7 | 879.414 |
 
-[Raw Affine-adapted frames, CPU results](dense_sift_results/ransac-affine-cpu.json).
 
 ### Similarity frames, MPS extraction + CPU RANSAC
 
@@ -159,7 +150,6 @@ timings, so the CPU speedup above is not a claim about total RANSAC-pipeline spe
 | 1-5 | 18 | 472.688 | 17 | 474.403 |
 | 1-6 | 12 | 617.188 | 9 | 578.960 |
 
-[Raw Similarity frames, MPS extraction + CPU RANSAC results](dense_sift_results/ransac-mps.json).
 
 RANSAC changes the quality interpretation: despite fewer matches, dense affine
 descriptors give lower corner error on 1–3, 1–4, and 1–5 in this fixed-seed run.

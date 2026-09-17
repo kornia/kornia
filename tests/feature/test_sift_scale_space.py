@@ -35,7 +35,7 @@ class TestSharedSIFTScaleSpace(BaseTester):
 
         def build(image):
             result = original(image)
-            built.append(result[0])
+            built.append(result)
             return result
 
         original_descriptor = feature.descriptor.forward
@@ -54,7 +54,7 @@ class TestSharedSIFTScaleSpace(BaseTester):
         assert torch.isfinite(lafs).all()
 
     def test_provenance_survives_topk_and_padding(self, device, dtype):
-        detector = SIFTFeatureScaleSpace(40, upright=True).to(device, dtype).detector
+        detector = SIFTFeatureScaleSpace(40, upright=True, descriptor_backend="pyramid").to(device, dtype).detector
         image = torch.rand(2, 1, 65, 67, device=device, dtype=dtype)
         image[1] = 0
         responses, lafs, filled, pyramid, octaves, levels = detector._detect_with_pyramid(image, 40)
@@ -62,7 +62,7 @@ class TestSharedSIFTScaleSpace(BaseTester):
         assert (octaves[~filled] == -1).all()
         assert (levels[~filled] == -1).all()
         assert not filled[1].any()
-        expected_responses, expected_lafs = detector.detect(image, 40)
+        expected_lafs, expected_responses = detector(image)
         self.assert_close(responses, expected_responses)
         self.assert_close(lafs, expected_lafs)
         for octave, images in enumerate(pyramid):
@@ -155,3 +155,42 @@ class TestSharedSIFTScaleSpace(BaseTester):
         ids = torch.zeros(1, 1, device=device, dtype=torch.long)
         module = _SIFTScaleSpaceDescriptor()
         self.gradcheck(lambda image: module([image], lafs, ids, ids, upright=True)[1], (image,))
+
+    def test_specialized_detector_does_not_use_generic_detection(self, device, dtype, monkeypatch):
+        from kornia.feature import ScaleSpaceDetector
+        from kornia.feature.sift_detector import _SIFTScaleSpaceDetector
+
+        def forbidden(*args, **kwargs):
+            raise AssertionError("optimized SIFT must not call the generic detector")
+
+        monkeypatch.setattr(ScaleSpaceDetector, "forward", forbidden)
+        feature = SIFTFeatureScaleSpace(8, descriptor_backend="pyramid").to(device, dtype)
+        assert isinstance(feature.detector, _SIFTScaleSpaceDetector)
+        lafs, responses, descriptors = feature(torch.rand(1, 1, 33, 35, device=device, dtype=dtype))
+        assert lafs.shape == (1, 8, 2, 3)
+        assert responses.dtype == descriptors.dtype == lafs.dtype == dtype
+
+
+class TestSIFTScalePyramid(BaseTester):
+    def test_precise_double_grid(self, device, dtype):
+        from kornia.feature.sift_gaussian import _SIFTScalePyramid
+
+        image = torch.arange(35, device=device, dtype=dtype).reshape(1, 1, 5, 7)
+        doubled = _SIFTScalePyramid._double(image)
+        self.assert_close(doubled[..., ::2, ::2], image)
+        self.assert_close(doubled[..., 0::2, 1:-1:2], 0.5 * (image[..., :-1] + image[..., 1:]))
+        assert doubled.shape == (1, 1, 10, 14)
+
+    def test_next_octave_is_exact_decimation(self, device, dtype):
+        from kornia.feature.sift_gaussian import _SIFTScalePyramid
+
+        image = torch.rand(1, 1, 65, 67, device=device, dtype=dtype)
+        pyramid = _SIFTScalePyramid().to(device, dtype)(image)
+        for previous, current in zip(pyramid, pyramid[1:]):
+            h, w = previous.shape[-2:]
+            self.assert_close(current[:, :, 0], previous[:, :, 3, : 2 * (h // 2) : 2, : 2 * (w // 2) : 2])
+            assert current.shape[2] == 6
+
+    def test_pyramid_backend_rejects_unknown_compile_component(self):
+        with pytest.raises(ValueError, match="compile_modules"):
+            SIFTFeatureScaleSpace(descriptor_backend="pyramid", compile_modules=["resp"])
