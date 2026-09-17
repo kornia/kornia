@@ -46,8 +46,7 @@ grayscale internally per its definition; the OpenCV canny loop therefore include
 The Laplacian columns are different operators: Kornia uses an L1-normalized all-ones
 window with center ``1 - kernel_area``; OpenCV sums second Sobel derivatives. Median
 uses zero padding in Kornia and replicated borders in OpenCV. These are native-regime
-throughput comparisons, not output-equivalent comparisons. See ``median_laplacian.py``
-for matched float32 OpenCV references, including the same kernel and padding.
+throughput comparisons, not output-equivalent comparisons.
 
 Usage:
     python benchmarks/filters/flagship.py --batches 1,8,32 --size 256 --device cpu
