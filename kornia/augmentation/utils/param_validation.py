@@ -89,6 +89,8 @@ def _range_bound(
     if factor.dim() == 0:
         if factor < 0:
             raise ValueError(f"If {name} is a single number, it must be non negative. Got {factor}.")
+        if not torch.isfinite(factor):
+            raise ValueError(f"If {name} is a single number, it must be finite. Got {factor}.")
         if center is None or bounds is None:
             raise ValueError(f"`center` and `bounds` cannot be None for single number. Got {center}, {bounds}.")
         factor_bound = factor.repeat(2) * torch.tensor([-1.0, 1.0], device=factor.device, dtype=factor.dtype) + center

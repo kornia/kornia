@@ -138,6 +138,9 @@ class TestParamValidation:
             (10.0, 0, (-5, 5), "singular", ValueError, r"param out of bounds\. .*got tensor\(\[-10\.,  10\.\]\)"),
             (0.6, 0, (-0.5, 0.5), "joint", ValueError, r"param out of bounds\. .*got tensor\(\[-0\.6000,  0\.6000\]\)"),
             (3.0, 1.0, (0, 2), "joint", ValueError, r"param out of bounds\. .*got tensor\(\[-2\.,  4\.\]\)"),
+            (float("inf"), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
+            (float("nan"), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
+            (torch.tensor(float("inf")), 0, (0, float("inf")), "joint", ValueError, "must be finite"),
         ],
     )
     def test_range_bound_errors(self, factor, center, bounds, check, expected_exception, match_msg):

@@ -1,0 +1,1 @@
+A scalar augmentation magnitude of `inf` or `nan` now raises `ValueError` at construction instead of building an infinite draw range that produced `NaN` outputs at forward time (for example `RandomSharpness(float("inf"))`).
