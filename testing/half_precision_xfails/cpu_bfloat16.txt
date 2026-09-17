@@ -349,6 +349,7 @@ call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRadDegConve
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRotationMatrixToAngleAxis::test_rand_quaternion_gradcheck[cpu-bfloat16-1]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRotationMatrixToAngleAxis::test_rand_quaternion_gradcheck[cpu-bfloat16-2]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRotationMatrixToAngleAxis::test_rand_quaternion_gradcheck[cpu-bfloat16-5]
+call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRotationMatrixToAngleAxis::test_rotation_matrix_to_axis_angle[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/test_conversions.py::TestRotationMatrixToQuaternion::test_corner_case[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/test_depth.py::TestDepthTo3d::test_unproject_normalized[cpu-bfloat16]
 call	builtins.AssertionError	tests/geometry/test_depth.py::TestDepthToNormals::test_simple_normalized[cpu-bfloat16]

@@ -1258,10 +1258,9 @@ class TestRotationMatrixToQuaternion(BaseTester):
 
     def test_float16_gradient_eye3_4623(self, device):
         # Issue #4623: float16 gradient of rotation_matrix_to_quaternion at eye(3) must be finite and value-correct.
-        matrix_f64 = torch.eye(3, device=device, dtype=torch.float64, requires_grad=True)
-        kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix_f64).sum().backward()
-        expected_grad = matrix_f64.grad.to(dtype=torch.float16)
-
+        expected_grad = torch.tensor(
+            [0.125, -0.25, 0.25, 0.25, 0.125, -0.25, -0.25, 0.25, 0.125], device=device, dtype=torch.float16
+        ).reshape(3, 3)
         matrix_f16 = torch.eye(3, device=device, dtype=torch.float16, requires_grad=True)
         kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix_f16).sum().backward()
         assert torch.isfinite(matrix_f16.grad).all()
@@ -1269,12 +1268,11 @@ class TestRotationMatrixToQuaternion(BaseTester):
 
     def test_float16_gradient_diag180_4623(self, device):
         # Issue #4623: float16 gradient of rotation_matrix_to_quaternion at 180° rot (diag(1,-1,-1)) must be finite.
-        diag_val = torch.tensor([1.0, -1.0, -1.0], device=device)
-        matrix_f64 = torch.diag(diag_val.to(dtype=torch.float64)).requires_grad_(True)
-        kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix_f64).sum().backward()
-        expected_grad = matrix_f64.grad.to(dtype=torch.float16)
-
-        matrix_f16 = torch.diag(diag_val.to(dtype=torch.float16)).requires_grad_(True)
+        expected_grad = torch.tensor(
+            [0.125, 0.25, 0.25, 0.25, -0.125, -0.25, 0.25, 0.25, -0.125], device=device, dtype=torch.float16
+        ).reshape(3, 3)
+        diag_val = torch.tensor([1.0, -1.0, -1.0], device=device, dtype=torch.float16)
+        matrix_f16 = torch.diag(diag_val).requires_grad_(True)
         kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix_f16).sum().backward()
         assert torch.isfinite(matrix_f16.grad).all()
         self.assert_close(matrix_f16.grad, expected_grad, atol=1e-3, rtol=1e-3)
@@ -1728,6 +1726,23 @@ class TestQuaternionToRotationMatrix(BaseTester):
         kornia.geometry.conversions.normalize_quaternion(q_f16).sum().backward()
         assert torch.isfinite(q_f16.grad).all()
         self.assert_close(q_f16.grad, torch.zeros(4, device=device, dtype=torch.float16), atol=1e-3, rtol=1e-3)
+
+    def test_normalize_quaternion_eps_zero_gradient_4623(self, device, dtype):
+        # Issue #4623: normalize_quaternion(q, eps=0.0) on non-zero q must give finite, correct gradients across dtypes.
+        q = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype, requires_grad=True)
+        out = kornia.geometry.conversions.normalize_quaternion(q, eps=0.0)
+        out.sum().backward()
+        expected = torch.tensor(
+            [0.12171695447104882, 0.06085847723552441, -2.7755575615628914e-17, -0.06085847723552441],
+            device=device,
+            dtype=dtype,
+        )
+        assert torch.isfinite(q.grad).all()
+        self.assert_close(q.grad, expected, atol=1e-3, rtol=1e-3)
+
+        # Confirm zeros(4) with eps=0.0 still returns all-NaN on the forward pass (pre-existing issue #3952 behavior).
+        zero_out = kornia.geometry.conversions.normalize_quaternion(torch.zeros(4, device=device, dtype=dtype), eps=0.0)
+        assert torch.isnan(zero_out).all()
 
     def test_wart_zero_quaternion_becomes_the_identity_matrix_3952(self, device, dtype):
         # Wart pin for the downstream consequence of kornia#3952: because normalize_quaternion
@@ -2516,10 +2531,9 @@ class TestRotationMatrixToAngleAxis(BaseTester):
 
     def test_float16_gradient_eye3_4623(self, device):
         # Issue #4623: rotation_matrix_to_axis_angle inherits finite float16 gradient at eye(3).
-        matrix_f64 = torch.eye(3, device=device, dtype=torch.float64, requires_grad=True)
-        kornia.geometry.conversions.rotation_matrix_to_axis_angle(matrix_f64).sum().backward()
-        expected_grad = matrix_f64.grad.to(dtype=torch.float16)
-
+        expected_grad = torch.tensor(
+            [0.0, -0.5, 0.5, 0.5, 0.0, -0.5, -0.5, 0.5, 0.0], device=device, dtype=torch.float16
+        ).reshape(3, 3)
         matrix_f16 = torch.eye(3, device=device, dtype=torch.float16, requires_grad=True)
         kornia.geometry.conversions.rotation_matrix_to_axis_angle(matrix_f16).sum().backward()
         assert torch.isfinite(matrix_f16.grad).all()

@@ -744,7 +744,7 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
     denom = torch.where(mask, torch.clamp(safe_norm, min=safe_eps), torch.ones_like(norm))
     out = quaternion / denom
     if eps == 0.0:
-        return torch.where(mask, out, quaternion / 0.0)
+        return torch.where(mask, out, torch.full_like(quaternion, float("nan")))
     return torch.where(mask, out, torch.zeros_like(quaternion))
 
 
