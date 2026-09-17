@@ -403,6 +403,11 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
           function since 0.7.0; it emits a ``DeprecationWarning`` and forwards
           to this function, returning an equal result — see the alias warning
           below
+        - differentiable at the identity rotation. The ``sqrt`` whose
+          derivative is unbounded there never sees its zero radicand, so the
+          gradient is the analytic limit of the surrounding map rather than
+          ``nan``. The guard is elementwise, and away from the identity it
+          moves no forward bit
 
     .. warning::
         Calling any of this module's four deprecated aliases
