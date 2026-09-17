@@ -27,7 +27,6 @@ call	builtins.RuntimeError	tests/augmentation/container/test_augmentation_sequen
 call	builtins.AssertionError	tests/augmentation/container/test_augmentation_sequential.py::TestAugmentationSequential::test_random_crops[cpu-float16]
 call	builtins.AssertionError	tests/augmentation/container/test_augmentation_sequential.py::TestAugmentationSequential::test_random_erasing[cpu-float16]
 call	builtins.RuntimeError	tests/augmentation/container/test_patch_sequential.py::TestPatchSequential::test_autocast[cpu-float16]
-call	builtins.AssertionError	tests/augmentation/container/test_sequential_aug.py::TestSequential::test_forward[cpu-float16-random_apply3]
 call	builtins.RuntimeError	tests/augmentation/container/test_video_sequential.py::TestVideoSequential::test_autocast[cpu-float16-BCTHW]
 call	builtins.RuntimeError	tests/augmentation/container/test_video_sequential.py::TestVideoSequential::test_autocast[cpu-float16-BTCHW]
 call	builtins.AssertionError	tests/augmentation/test_augmentation.py::TestRandomGaussianIllumination::test_smoke[cpu-float16]
