@@ -1097,8 +1097,10 @@ class TestConventionAugmentationSequential(BaseTester):
         assert keys == []
         assert metadata == list(names)
 
-        keys, metadata = seq._read_datakeys_from_dict(("bbox_xyxy2", "bbox_xywh2", "class", "class_id"))
-        assert keys == [DataKey.BBOX, DataKey.BBOX, DataKey.LABEL, DataKey.LABEL]
+        keys, metadata = seq._read_datakeys_from_dict(
+            ("bbox_xyxy2", "bbox_xywh2", "class", "class_id", "class_weights", "class-names")
+        )
+        assert keys == [DataKey.BBOX, DataKey.BBOX, DataKey.LABEL, DataKey.LABEL, DataKey.LABEL, DataKey.LABEL]
         assert metadata == []
 
     def test_convention_same_on_batch_none_does_not_override_a_child(self, device, dtype):

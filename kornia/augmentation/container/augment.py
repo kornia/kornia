@@ -113,8 +113,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           ``imagenet_id``, ``images``, ``masks``, ``labels``, ``bboxes``, ``inputs`` and ``keypoint``) are
           returned unchanged as metadata, without a warning; unlike positional mode, dict mode does not
           reject these names. Use recognized names such as ``mask_2`` and ``keypoints`` for augmentation.
-          ``class`` and ``class_id`` route to labels, not metadata, and inherit label limitations (including
-          unsupported label-changing mix augmentations). A coordinate-box name must be followed by ``_``
+          ``class`` and any key beginning with ``class_`` or ``class-`` (for example, ``class_id`` or
+          ``class_weights``) route to labels and inherit label limitations, including unsupported
+          label-changing mix augmentations. A coordinate-box name must be followed by ``_``
           or ``-`` to retain its format: ``bbox_xyxy2`` instead matches ``bbox`` and requires vertex boxes.
           The input dictionary is not modified.
         - the layouts are ``(B, C, H, W)`` for images and masks, ``(B, N, 4, 2)`` vertices for ``bbox``,
