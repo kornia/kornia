@@ -206,8 +206,6 @@ call	builtins.AssertionError	tests/augmentation/test_random_generator_3d.py::Tes
 call	builtins.AssertionError	tests/augmentation/test_random_generator_3d.py::TestRandomAffineGen3D::test_same_on_batch[cpu-float16]
 call	builtins.AssertionError	tests/augmentation/test_random_generator_3d.py::TestRandomPerspectiveGen3D::test_random_gen[cpu-float16]
 call	builtins.AssertionError	tests/augmentation/test_random_generator_3d.py::TestRandomPerspectiveGen3D::test_same_on_batch[cpu-float16]
-call	builtins.AssertionError	tests/color/test_hls.py::TestRgbToHls::test_jit[cpu-float16]
-call	builtins.AssertionError	tests/color/test_hls.py::TestRgbToHls::test_module[cpu-float16]
 call	builtins.AssertionError	tests/color/test_rgb.py::TestRgb255Normals::test_back_and_forth[cpu-float16]
 call	builtins.AssertionError	tests/filters/test_canny.py::TestCanny::test_magnitude[cpu-float16]
 call	builtins.AssertionError	tests/filters/test_canny.py::TestCanny::test_magnitude_hyst[cpu-float16]
