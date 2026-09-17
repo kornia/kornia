@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import pytest
 import torch
 
@@ -66,6 +68,11 @@ class TestTransformParameters(BaseTester):
         with pytest.raises(ValueError):
             src = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.get_tps_transform(src, src)
+
+    def test_kernel_distance_values(self, device, dtype):
+        d2 = torch.tensor([0.0, 1.0, math.e**2], device=device, dtype=dtype)
+        expected = torch.tensor([0.0, 0.0, math.e**2], device=device, dtype=dtype)
+        self.assert_close(_kernel_distance(d2), expected)
 
     @pytest.mark.parametrize("grad_dtype", [torch.float32, torch.float64])
     def test_kernel_distance_zero_gradient(self, device, grad_dtype):
