@@ -78,8 +78,8 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           ``mask_salt`` and ``mask_pepper`` -- whose stored shape normally follows the original batched
           ``(B, C, H, W)`` input shape. A ``(C, H, W)`` input remains batched in those parameters even when
           ``keepdim=True``. ``gaussian_noise`` instead stores ``(1, C, H, W)`` with ``same_on_batch=True``,
-          then expands it at application time, while the plasma classes keep one map per sample even then
-          (`#4570 <https://github.com/kornia/kornia/issues/4570>`_); ``RandomPlasmaShadow`` stores
+          then expands it at application time, while the plasma classes with ``same_on_batch=True`` store an
+          expanded ``(B, C, H, W)`` view with shared storage for the batch; ``RandomPlasmaShadow`` stores
           ``(B, 1, H, W)``. :class:`ColorJiggle` and :class:`ColorJitter` both draw an application ``order``;
           it is shared by the whole batch. Only :class:`ColorJitter` takes a fixed ``order`` constructor
           argument. Without one, on either class, an ``order`` tensor passed as a forward keyword, or
@@ -100,9 +100,10 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
           constant ``3`` (`#4599 <https://github.com/kornia/kornia/issues/4599>`_);
           and :class:`RandomChannelDropout`'s ``num_drop_channels`` against the input's channel count.
           :class:`RandomPlanckianJitter`'s ``select_from`` rejects an index past the table at construction
-          but accepts a negative one, as Python indexing does. A scalar magnitude is a different case: several
-          classes fit it to the bound instead of raising, tracked in
-          `#4563 <https://github.com/kornia/kornia/issues/4563>`_.
+          but accepts a negative one, as Python indexing does. A scalar magnitude ``x`` means ``center ± x``:
+          its lower end is floored at the parameter's lower bound, so a non-negative parameter reads
+          ``contrast=1.5`` as ``[0, 2.5]``, while an upper end past the bound raises the same error the
+          explicit range does.
 
     .. warning::
         Several of these classes return an all-zero image for an input whose values are all negative, with no

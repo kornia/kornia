@@ -62,13 +62,13 @@ class ColorJitter(IntensityAugmentationBase2D):
     Convention:
         - this class and :class:`ColorJiggle` draw the same factor values and the same random application
           ``order`` from the same seed when their effective sampling bounds match and both modules stay on
-          the CPU. A scalar ``brightness > 1`` does not match: :class:`ColorJiggle` draws from ``[0, 2]``
-          while this class draws from ``[0, 1 + brightness]``. Off the CPU the ``order`` diverges, because
-          this class always draws it on the CPU where :class:`ColorJiggle` draws it on the sampler device;
-          and this class keeps the sampler dtype for its factors where :class:`ColorJiggle` returns them in
-          the dtype of its constructor arguments (``float32`` for Python floats). Only this class takes an
-          ``order`` constructor argument that replaces the sampled order with a fixed one. The classes use different
-          primitives for three adjustments:
+          the CPU. A scalar ``brightness > 1`` is where they part: :class:`ColorJiggle` rejects it, because
+          its bound is ``[0, 2]``, while this class draws from ``[0, 1 + brightness]``. Off the CPU the
+          ``order`` diverges, because this class always draws it on the CPU where :class:`ColorJiggle`
+          draws it on the sampler device; and this class keeps the sampler dtype for its factors where
+          :class:`ColorJiggle` returns them in the dtype of its constructor arguments (``float32`` for
+          Python floats). Only this class takes an ``order`` constructor argument that replaces the
+          sampled order with a fixed one. The classes use different primitives for three adjustments:
           :func:`kornia.enhance.adjust_brightness_accumulative` against
           :func:`kornia.enhance.adjust_brightness`,
           :func:`kornia.enhance.adjust_contrast_with_mean_subtraction` against

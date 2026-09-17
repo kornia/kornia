@@ -54,18 +54,12 @@ class Normalize(IntensityAugmentationBase2D):
           ``same_on_batch`` argument of its own.
         - the statistics live in ``flags`` rather than in a buffer, so ``state_dict()`` is empty and
           ``Module.to(...)`` leaves their device and dtype alone.
-        - :class:`Denormalize` built with the same float, sequence or tensor ``mean`` and ``std`` inverts this
-          class, up to float rounding, when both apply -- each draws its own ``p`` gate. An ``int`` statistic,
-          which this class accepts, makes :class:`Denormalize` raise on the forward pass
-          (`#4573 <https://github.com/kornia/kornia/issues/4573>`_).
+        - :class:`Denormalize` built with the same float, integer, sequence or tensor ``mean`` and ``std``
+          inverts this class, up to float rounding, when both apply -- each draws its own ``p`` gate.
         - the result is not clamped: moving an image out of ``[0, 1]`` is what this class is for.
 
-    .. warning::
-        A non-contiguous input -- anything :meth:`torch.Tensor.view` cannot reshape, such as a
-        ``transpose``d or ``permute``d view -- raises a raw ``RuntimeError: view size is not compatible
-        with input tensor's size and stride`` from :func:`kornia.enhance.normalize`, naming neither this
-        class nor the fix (``.contiguous()``). Tracked in
-        `#4577 <https://github.com/kornia/kornia/issues/4577>`_.
+        - non-contiguous input, such as a transposed or permuted image, produces the same
+          values as its contiguous copy.
 
     .. note::
         This function internally uses :func:`kornia.enhance.normalize`.

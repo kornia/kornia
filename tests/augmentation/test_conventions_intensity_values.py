@@ -763,21 +763,24 @@ class TestIntensityColourConventions(BaseTester):
 
     @pytest.mark.device_agnostic
     def test_convention_color_jiggle_and_jitter_have_different_brightness_bounds(self):
-        # Scalar brightness=3 is accepted by both, but yields [0, 2] for Jiggle and [0, 4] for Jitter.
-        # `(jitter > 2).any()` is a `1 - 2 ** -B` event, so it needs a batch wide enough to be certain:
-        # at the `B = 4` this pin first used it failed on 13 of seeds 0..199, and this literal seed is
-        # outside the `_FORWARD_SEED` sweep that would have caught it.  At `B = 64` the failure
-        # probability is `2 ** -64`.
+        # A scalar brightness above 1 overshoots ColorJiggle's [0, 2] bound and is rejected there, while
+        # ColorJitter, bounded by (0, inf), reads it as [0, 1 + brightness].
+        with pytest.raises(ValueError, match="brightness out of bounds"):
+            K.ColorJiggle(brightness=1.5)
+        # `(jitter > 2).any()` needs a batch wide enough to be certain: one draw clears 2 with probability
+        # 0.2, so at the `B = 4` an earlier revision of this pin used it failed on 13 of seeds 0..199, and
+        # this literal seed is outside the `_FORWARD_SEED` sweep that would have caught it.  At `B = 256`
+        # the failure probability is `0.8 ** 256`, about `1e-25`.
         torch.manual_seed(7)
-        jiggle_params = K.ColorJiggle(brightness=3.0).forward_parameters((64, 3, 2, 2))
-        torch.manual_seed(7)
-        jitter_params = K.ColorJitter(brightness=3.0).forward_parameters((64, 3, 2, 2))
-        jiggle_brightness = jiggle_params["brightness_factor"]
-        jitter_brightness = jitter_params["brightness_factor"]
-        assert bool(((jiggle_brightness >= 0) & (jiggle_brightness <= 2)).all())
+        jitter_brightness = K.ColorJitter(brightness=1.5).forward_parameters((256, 3, 2, 2))["brightness_factor"]
+        assert bool(((jitter_brightness >= 0) & (jitter_brightness <= 2.5)).all())
         assert bool((jitter_brightness > 2).any())
-        self.assert_close(jitter_brightness, 2 * jiggle_brightness, atol=0, rtol=0)
-        for key in jiggle_params.keys() - {"brightness_factor"}:
+        # At a scalar within both bounds the two draw the same factors from the same seed.
+        torch.manual_seed(7)
+        jiggle_params = K.ColorJiggle(brightness=0.5).forward_parameters((4, 3, 2, 2))
+        torch.manual_seed(7)
+        jitter_params = K.ColorJitter(brightness=0.5).forward_parameters((4, 3, 2, 2))
+        for key in jiggle_params:
             assert torch.equal(jiggle_params[key], jitter_params[key]), key
 
     @pytest.mark.parametrize("hue", [0.0, (0.1, 0.1)])
@@ -1413,32 +1416,55 @@ class TestIntensityColourConventions(BaseTester):
         out = aug(image)
         red_gain, blue_gain = (float(value) for value in aug.pl[0])
         scaled = torch.stack([image[:, 0] * red_gain, image[:, 1], image[:, 2] * blue_gain], dim=1)
-        # Compared in the input's dtype: the output is float32 for a half input (#4574, pinned below).
-        self.assert_close(out.to(dtype), scaled.clamp(max=1.0))
+        # The coefficient table follows the input dtype, so the output is already in it and the
+        # comparison needs no cast.
+        self.assert_close(out, scaled.clamp(max=1.0))
         assert float(out[0, 1, 0, 0]) == 1.0 and float(out[0, 2, 0, 0]) < 0.01
         assert bool((out[..., 1] < 0).all())
 
-    # Issue #4574: the `pl` table is float32 unless the module is cast, and apply_transform multiplies the
-    # red and blue channels by it without casting, so a half-precision input comes back float32; a float64
-    # input keeps its dtype, and so does a half input once the module is cast with `.half()`.
+    # Issue #4574: the coefficient table follows the input dtype, so half-precision inputs are no
+    # longer promoted to float32, and a module cast does not decide the output dtype either.
     # Snippet used to generate expected:
-    #   for dt in (torch.float16, torch.bfloat16, torch.float64):
-    #       torch.manual_seed(0); print(dt, K.RandomPlanckianJitter(p=1.0)(torch.rand(2, 3, 4, 4).to(dt)).dtype)
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `float32`, `float32`, `float64`.
-    def test_wart_random_planckian_jitter_half_input_comes_back_float32_4574(self, device, dtype):
+    #   for dt in (torch.float16, torch.bfloat16):
+    #       other = torch.bfloat16 if dt == torch.float16 else torch.float16
+    #       torch.manual_seed(0); x = torch.rand(2, 3, 4, 4).to(dt)
+    #       torch.manual_seed(0); a = K.RandomPlanckianJitter(p=1.0)(x).dtype
+    #       torch.manual_seed(0); b = K.RandomPlanckianJitter(p=1.0).to(dtype=other)(x).dtype
+    #       print(dt, a, b)
+    # executed 2026-09-17 (torch 2.14.0, cpu) -> `float16 float16 float16` and `bfloat16 bfloat16
+    # bfloat16`; on `30dfbf711`, this PR's base, both columns were `float32` for both inputs.
+    def test_convention_random_planckian_jitter_preserves_dtype_4574(self, device, dtype):
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(2, 3, 4, 4).to(device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         out = K.RandomPlanckianJitter(p=1.0)(image)
-        assert out.dtype == (torch.float32 if dtype in _HALF else dtype)
-        # The output is the promoted dtype of input and table, so casting the module to the input's own
-        # dtype restores it, and a wider cast widens the output.
-        torch.manual_seed(_FORWARD_SEED)
-        assert K.RandomPlanckianJitter(p=1.0).to(device=device, dtype=dtype)(image).dtype == dtype
+
+        assert out.dtype == dtype
+        assert out.device == image.device
+
         if dtype in _HALF:
+            # A module cast to the *other* half dtype returned float32 before the fix, because the
+            # table's dtype decided the promotion; it now follows the input like every other cast.
             other = torch.bfloat16 if dtype == torch.float16 else torch.float16
             torch.manual_seed(_FORWARD_SEED)
-            assert K.RandomPlanckianJitter(p=1.0).to(device=device, dtype=other)(image).dtype == torch.float32
+            assert K.RandomPlanckianJitter(p=1.0).to(device=device, dtype=other)(image).dtype == dtype
+
+    # Issue #4574, the wider direction: a module cast wider than the input does not widen the output.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(0); x = torch.rand(2, 3, 4, 4)
+    #   torch.manual_seed(0); print(K.RandomPlanckianJitter(p=1.0).to(dtype=torch.float64)(x).dtype)
+    # executed 2026-09-17 (torch 2.14.0, cpu) -> `float32`; on `30dfbf711` it was `float64`.
+    def test_convention_random_planckian_jitter_wider_module_dtype_4574(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
+
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float32)
+        torch.manual_seed(_FORWARD_SEED)
+        out = K.RandomPlanckianJitter(p=1.0).to(device=device, dtype=torch.float64)(image)
+
+        assert out.dtype == torch.float32
+        assert out.device == image.device
 
     # Row 6c-32/6c-33: the illuminant table is an RGB ratio, so a non-RGB input is rejected rather
     # than broadcast.  Snippet used to generate expected:
@@ -1654,6 +1680,28 @@ class TestIntensityColourConventions(BaseTester):
                 IndexError,
                 r"index 25 is out of bounds for dimension 0 with size 25",
             ),
+            # The scalar rows name the reported tensor as well as the bound: it is the unclamped
+            # `[center - x, center + x]`, which only `_range_bound`'s own scalar raise produces.  The
+            # trailing `_joint_range_check` rejects the same inputs with the lower end already floored
+            # (`[-0.5000, 0.6000]`, `[0., 4.]`, `[0.0000, 2.5000]`), so a bound-only regex passes either way.
+            (
+                "hue_scalar_above_half",
+                "construction",
+                ValueError,
+                r"hue out of bounds\. Expected inside \(-0\.5, 0\.5\), got tensor\(\[-0\.6000,  0\.6000\]\)",
+            ),
+            (
+                "brightness_scalar_above_two",
+                "construction",
+                ValueError,
+                r"brightness out of bounds\. Expected inside \(0\.0, 2\.0\), got tensor\(\[-2\.,  4\.\]\)",
+            ),
+            (
+                "solarize_scalar_threshold_above_half",
+                "construction",
+                ValueError,
+                r"thresholds out of bounds\. Expected inside \(0\.0, 1\.0\), got tensor\(\[-1\.5000,  2\.5000\]\)",
+            ),
         ],
     )
     def test_convention_intensity_constructors_reject_out_of_bounds(self, device, dtype, case, stage, error, match):
@@ -1673,9 +1721,11 @@ class TestIntensityColourConventions(BaseTester):
             "brightness_above_two": lambda: K.RandomBrightness((3.0, 3.0), p=1.0),
             "contrast_negative": lambda: K.RandomContrast((-1.0, -1.0), p=1.0),
             "saturation_negative": lambda: K.RandomSaturation((-1.0, -1.0), p=1.0),
-            # A scalar `hue` is silently clamped into the bound instead of rejected, so the pin uses
-            # the explicit range the audit executed.
             "hue_above_half": lambda: K.RandomHue((0.6, 0.6), p=1.0),
+            # The scalar forms overshoot the same bounds and raise the same error since #4563.
+            "hue_scalar_above_half": lambda: K.RandomHue(0.6, p=1.0),
+            "brightness_scalar_above_two": lambda: K.RandomBrightness(3.0, p=1.0),
+            "solarize_scalar_threshold_above_half": lambda: K.RandomSolarize(2.0, 0.1, p=1.0),
             # The construction check is the closed [-0.5, 0.5]; kornia.enhance.solarize rejects the
             # ends on the forward pass, so this one constructs and raises like the gamma case.
             "solarize_additions_at_half": lambda: K.RandomSolarize((0.5, 0.5), (0.5, 0.5), p=1.0),
@@ -1732,28 +1782,56 @@ class TestIntensityColourConventions(BaseTester):
             K.RandomPlanckianJitter(select_from=[-1], p=1.0).pl, K.RandomPlanckianJitter(select_from=[24], p=1.0).pl
         )
 
-    # Issue #4563: a scalar magnitude whose implied range leaves the documented bounds is fitted to
-    # them instead of rejected, where the same range written out raises (pinned one test above).
-    # RandomSharpness is the class that depends on the fit: its scalar form is the centred `[-x, x]`
-    # clamped to `(0, inf)`, which is what makes `sharpness=0.5` mean `[0, 0.5]`.
+    # A scalar magnitude is ``center ± x`` floored at the parameter's lower bound and rejected past its
+    # upper bound (the fix for #4563; the upper end used to be clamped silently, so RandomHue(0.7)
+    # sampled from [-0.5, 0.5]).  RandomSharpness is the class that depends on the floor: its scalar
+    # form is the centred `[-x, x]` floored at 0, which is what makes `sharpness=0.5` mean `[0, 0.5]`.
     # Snippet used to generate expected:
-    #   print(K.RandomHue(0.7).hue, K.RandomBrightness(3.0).brightness)
-    #   print(K.ColorJiggle(brightness=3.0).forward_parameters((256, 3, 2, 2))["brightness_factor"].aminmax())
+    #   for ctor in (lambda: K.RandomHue(0.7), lambda: K.RandomBrightness(3.0),
+    #                lambda: K.ColorJiggle(brightness=1.5), lambda: K.RandomSolarize(2.0, 0.1),
+    #                lambda: K.RandomMotionBlur(3, 45.0, 2.0), lambda: K.RandomJPEG(90.0)):
+    #       try: ctor(); print("ok")
+    #       except ValueError as e: print(e)
+    #   print(K.RandomContrast(1.5).contrast, K.RandomBrightness(0.5).brightness)
     #   print(K.RandomSharpness(0.5).forward_parameters((2000, 1, 4, 4))["sharpness"].aminmax())
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `[-0.5, 0.5]`, `[0, 2]`, brightness in
-    # `[0.0072, 1.9945]`, sharpness in `[3.87e-05, 0.5]`.
+    #   print(K.RandomJPEG(50.0)._param_generator.jpeg_quality_sampler.low)
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `hue out of bounds. Expected inside (-0.5, 0.5), got
+    # tensor([-0.7000,  0.7000]).`, `brightness out of bounds ... (0.0, 2.0), got tensor([-2., 4.])`,
+    # `brightness out of bounds ... (0, 2), got tensor([-0.5000,  2.5000])`, `thresholds out of bounds ...
+    # (0.0, 1.0), got tensor([-1.5000,  2.5000])`, `direction out of bounds ... (-1, 1), got
+    # tensor([-2., 2.])`, `jpeg_quality out of bounds ... (1, 100), got tensor([-40., 140.])`;
+    # `[0, 2.5]`, `[0.5, 1.5]`; sharpness in `[3.87e-05, 0.5]`; jpeg low `1`.
     @pytest.mark.device_agnostic
-    def test_wart_scalar_magnitude_is_fitted_to_the_bound_4563(self):
-        assert K.RandomHue(0.7, p=1.0).hue.tolist() == [-0.5, 0.5]
-        assert K.RandomBrightness(3.0, p=1.0).brightness.tolist() == [0.0, 2.0]
-        torch.manual_seed(_FORWARD_SEED)
-        brightness = K.ColorJiggle(brightness=3.0, p=1.0).forward_parameters((256, 3, 2, 2))["brightness_factor"]
-        assert float(brightness.min()) >= 0.0 and float(brightness.max()) <= 2.0
-        assert float(brightness.max()) > 1.5  # the fit is to [0, 2], not to [0, 1 + 3] or to [0, 1]
+    def test_convention_scalar_magnitude_floors_low_and_rejects_high(self):
+        for ctor, message in (
+            (lambda: K.RandomHue(0.7, p=1.0), r"hue out of bounds\. .*got tensor\(\[-0\.7000,  0\.7000\]\)"),
+            (lambda: K.RandomBrightness(3.0, p=1.0), r"brightness out of bounds\. .*got tensor\(\[-2\.,  4\.\]\)"),
+            (
+                lambda: K.ColorJiggle(brightness=1.5, p=1.0),
+                r"brightness out of bounds\. .*got tensor\(\[-0\.5000,  2\.5000\]\)",
+            ),
+            (
+                lambda: K.RandomSolarize(2.0, 0.1, p=1.0),
+                r"thresholds out of bounds\. .*got tensor\(\[-1\.5000,  2\.5000\]\)",
+            ),
+            (
+                lambda: K.RandomMotionBlur(3, 45.0, 2.0, p=1.0),
+                r"direction out of bounds\. .*got tensor\(\[-2\.,  2\.\]\)",
+            ),
+            (lambda: K.RandomJPEG(90.0, p=1.0), r"jpeg_quality out of bounds\. .*got tensor\(\[-40\., 140\.\]\)"),
+        ):
+            # Each regex names the parameter and the unclamped `[center - x, center + x]`, so it can only be
+            # satisfied by `_range_bound`'s scalar raise and not by the trailing range check behind it.
+            with pytest.raises(ValueError, match=message):
+                ctor()
+        assert K.RandomContrast(1.5, p=1.0).contrast.tolist() == [0.0, 2.5]
+        assert K.RandomBrightness(0.5, p=1.0).brightness.tolist() == [0.5, 1.5]
         torch.manual_seed(_FORWARD_SEED)
         sharpness = K.RandomSharpness(0.5, p=1.0).forward_parameters((2000, 1, 4, 4))["sharpness"]
         assert float(sharpness.min()) >= 0.0 and float(sharpness.max()) <= 0.5
-        assert float(sharpness.min()) < 0.1  # the lower end is the clamped -x, not a centred x / 2
+        assert float(sharpness.min()) < 0.1  # the lower end is the floored -x, not a centred x / 2
+        jpeg = K.RandomJPEG(50.0, p=1.0)._param_generator
+        assert (float(jpeg.jpeg_quality_sampler.low), float(jpeg.jpeg_quality_sampler.high)) == (1.0, 100.0)
 
     # Issue #4564: RandomClahe rejects an out-of-[0, 1] input with the raw indexing error of the
     # histogram gather, naming neither the class nor the range RandomEqualize names (#4489).  Not on CUDA,

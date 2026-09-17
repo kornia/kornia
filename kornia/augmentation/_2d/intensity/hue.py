@@ -37,9 +37,8 @@ class RandomHue(IntensityAugmentationBase2D):
 
     Args:
         hue: the hue shift, in turns of the hue circle, restricted to the closed ``[-0.5, 0.5]``. If ``hue``
-          is a single number ``x`` the shift is sampled from ``[-x, x]`` fitted to that bound, so a larger
-          ``x`` widens the range no further (`#4563 <https://github.com/kornia/kornia/issues/4563>`_); a
-          tuple gives the range directly, and one outside the bound raises.
+          is a single number ``x`` the shift is sampled from ``[-x, x]``, and ``x`` above ``0.5`` raises; a
+          tuple gives the range directly, and one outside the bound raises as well.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
