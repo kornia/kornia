@@ -17,11 +17,12 @@
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from kornia.feature import SIFTDescriptorFromPyramid, get_laf_orientation, laf_from_center_scale_ori
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding
 
 
 class TestSIFTDescriptorFromPyramid(BaseTester):
@@ -76,6 +77,34 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         self.assert_close(descriptors[0, 0], torch.zeros(128, device=device, dtype=dtype))
         assert torch.isfinite(descriptors).all()
 
+    def test_all_invalid_lafs_keep_zero_backward(self, device, dtype):
+        image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype, requires_grad=True)
+        lafs = torch.zeros(1, 2, 2, 3, device=device, dtype=dtype, requires_grad=True)
+        descriptors = SIFTDescriptorFromPyramid().to(device, dtype)(image, lafs)
+        descriptors.sum().backward()
+        self.assert_close(descriptors, torch.zeros_like(descriptors))
+        self.assert_close(image.grad, torch.zeros_like(image.grad))
+        self.assert_close(lafs.grad, torch.zeros_like(lafs.grad))
+
+    def test_unused_upper_octaves_do_not_build_histograms(self, device, dtype, monkeypatch):
+        import kornia.feature.sift.pyramid as implementation
+
+        image = torch.rand(1, 1, 80, 80, device=device, dtype=dtype)
+        lafs = torch.tensor([[[[6.0, 0, 40], [0, 6.0, 40]]]], device=device, dtype=dtype)
+        calls = []
+        original = implementation.spatial_gradient
+
+        def gradient(level, *args, **kwargs):
+            calls.append(level.shape)
+            return original(level, *args, **kwargs)
+
+        monkeypatch.setattr(implementation, "spatial_gradient", gradient)
+        actual = SIFTDescriptorFromPyramid().to(device, dtype)(image, lafs)
+        assert calls == [image.shape]
+        single_level = SIFTDescriptorFromPyramid().to(device, dtype)
+        monkeypatch.setattr(single_level, "_pyramid", lambda image: [image])
+        self.assert_close(actual, single_level(image, lafs))
+
     def test_upright_preserves_laf_orientation(self, device, dtype):
         image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
         xy = torch.tensor([[[32.0, 32.0]]], device=device, dtype=dtype)
@@ -103,6 +132,8 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         assert descriptors.reshape(1, 1, 8, 16).sum(-1).argmax(-1).item() == 0
 
     def test_odd_pyramid_coordinates(self, device, dtype):
+        if not supports_reflect_padding(device, dtype):
+            pytest.skip("direct pyramid helper requires native reflect padding; the descriptor promotes half inputs")
         # Linear images remain linear away from borders. Sampling any octave at
         # the transformed frame centre must return the original pixel coordinate.
         h, w = 65, 67

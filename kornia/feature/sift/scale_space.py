@@ -31,7 +31,7 @@ integration; gradients are transformed into LAF coordinates before voting.
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 import torch.nn.functional as F
@@ -44,7 +44,6 @@ from kornia.feature.laf import _grid_sample_patches, laf_from_center_scale_ori, 
 from kornia.feature.scale_space_detector import _check_mask, _resize_mask
 from kornia.feature.siftdesc import _gradient_magnitude_orientation, _rootsift
 from kornia.filters import get_gaussian_kernel1d, spatial_gradient
-from kornia.geometry.subpix import nms2d
 from kornia.geometry.subpix.spatial_soft_argmax import _solve_cramer_sym3x3
 
 
@@ -94,8 +93,48 @@ class _SIFTScalePyramid(nn.Module):
     def _blur(self, image: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         kernel = kernel.to(image)
         radius = kernel.numel() // 2
+        # The detector promotes reduced precision inputs before pyramid construction.
+        # Keep the convolution path for direct half-precision callers: its accumulation
+        # order avoids a larger error across repeated pyramid levels.
+        # Small arrays are faster in one convolution than in many slice additions.
+        if (
+            image.device.type == "cpu"
+            and image.dtype not in (torch.float16, torch.bfloat16)
+            and image.numel() >= 256 * 256
+        ):
+            return self._blur_cpu(image, kernel, radius)
         horizontal = F.conv2d(self._reflect_pad(image, radius, True), kernel.view(1, 1, 1, -1))
         return F.conv2d(self._reflect_pad(horizontal, radius, False), kernel.view(1, 1, -1, 1))
+
+    def _blur_cpu(self, image: torch.Tensor, kernel: torch.Tensor, radius: int) -> torch.Tensor:
+        """Apply a separable kernel without CPU convolution's im2col buffer."""
+
+        def blur_axis(value: torch.Tensor, horizontal: bool) -> torch.Tensor:
+            padded = self._reflect_pad(value, radius, horizontal)
+            size = value.shape[-1 if horizontal else -2]
+            if horizontal:
+                result = padded[..., radius : radius + size] * kernel[radius]
+                for offset in range(1, radius + 1):
+                    left = padded[..., radius - offset : radius + size - offset]
+                    right = padded[..., radius + offset : radius + size + offset]
+                    if torch.compiler.is_compiling():
+                        result = result + left * kernel[radius - offset] + right * kernel[radius + offset]
+                    else:
+                        result.add_(left, alpha=kernel[radius - offset])
+                        result.add_(right, alpha=kernel[radius + offset])
+            else:
+                result = padded[..., radius : radius + size, :] * kernel[radius]
+                for offset in range(1, radius + 1):
+                    left = padded[..., radius - offset : radius + size - offset, :]
+                    right = padded[..., radius + offset : radius + size + offset, :]
+                    if torch.compiler.is_compiling():
+                        result = result + left * kernel[radius - offset] + right * kernel[radius + offset]
+                    else:
+                        result.add_(left, alpha=kernel[radius - offset])
+                        result.add_(right, alpha=kernel[radius + offset])
+            return result
+
+        return blur_axis(blur_axis(image, True), False)
 
     def forward(self, image: torch.Tensor) -> list[torch.Tensor]:
         """Build doubled-image Gaussian octaves for normalized grayscale images."""
@@ -132,9 +171,32 @@ class _SIFTScaleSpaceDetector(nn.Module):
         self.num_features = num_features
         self.scale_pyr = scale_pyr
 
+    def __getstate__(self) -> dict[str, Any]:
+        state = super().__getstate__()
+        # Like nn.Module.compile(), do not serialize a process-local compiled
+        # callable. Unpickling restores the eager class method automatically.
+        state.pop("_refine", None)
+        return state
+
     @staticmethod
     def _values(dog: torch.Tensor, b: torch.Tensor, s: torch.Tensor, y: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         return dog[b, s, y, x]
+
+    @staticmethod
+    def _neighbourhood(
+        dog: torch.Tensor, b: torch.Tensor, s: torch.Tensor, y: torch.Tensor, x: torch.Tensor
+    ) -> torch.Tensor:
+        # Share one gather between all finite differences / scale comparisons.
+        # Index the flattened volume: gathering from an unfolded view would
+        # allocate a dense (B, D-2, H-2, W-2, 3, 3, 3) tensor in backward.
+        depth, height, width = dog.shape[1:]
+        center = ((b * depth + s) * height + y) * width + x
+        offsets = torch.tensor(
+            [ds * height * width + dy * width + dx for ds in (-1, 0, 1) for dy in (-1, 0, 1) for dx in (-1, 0, 1)],
+            device=dog.device,
+            dtype=torch.long,
+        )
+        return dog.reshape(-1)[center[:, None] + offsets].reshape(-1, 3, 3, 3)
 
     def _refine(
         self, dog: torch.Tensor, b: torch.Tensor, s: torch.Tensor, y: torch.Tensor, x: torch.Tensor
@@ -155,30 +217,16 @@ class _SIFTScaleSpaceDetector(nn.Module):
             x = x.clamp(1, w - 2)
             if not alive.any():
                 break
-            c = self._values(dog, b, s, y, x)
-            xp, xm = self._values(dog, b, s, y, x + 1), self._values(dog, b, s, y, x - 1)
-            yp, ym = self._values(dog, b, s, y + 1, x), self._values(dog, b, s, y - 1, x)
-            sp, sm = self._values(dog, b, s + 1, y, x), self._values(dog, b, s - 1, y, x)
+            values = self._neighbourhood(dog, b, s, y, x)
+            c = values[:, 1, 1, 1]
+            xp, xm = values[:, 1, 1, 2], values[:, 1, 1, 0]
+            yp, ym = values[:, 1, 2, 1], values[:, 1, 0, 1]
+            sp, sm = values[:, 2, 1, 1], values[:, 0, 1, 1]
             gx, gy, gs = (xp - xm) * 0.5, (yp - ym) * 0.5, (sp - sm) * 0.5
             dxx, dyy, dss = xp + xm - 2 * c, yp + ym - 2 * c, sp + sm - 2 * c
-            dxy = (
-                self._values(dog, b, s, y + 1, x + 1)
-                - self._values(dog, b, s, y + 1, x - 1)
-                - self._values(dog, b, s, y - 1, x + 1)
-                + self._values(dog, b, s, y - 1, x - 1)
-            ) * 0.25
-            dxs = (
-                self._values(dog, b, s + 1, y, x + 1)
-                - self._values(dog, b, s + 1, y, x - 1)
-                - self._values(dog, b, s - 1, y, x + 1)
-                + self._values(dog, b, s - 1, y, x - 1)
-            ) * 0.25
-            dys = (
-                self._values(dog, b, s + 1, y + 1, x)
-                - self._values(dog, b, s + 1, y - 1, x)
-                - self._values(dog, b, s - 1, y + 1, x)
-                + self._values(dog, b, s - 1, y - 1, x)
-            ) * 0.25
+            dxy = (values[:, 1, 2, 2] - values[:, 1, 2, 0] - values[:, 1, 0, 2] + values[:, 1, 0, 0]) * 0.25
+            dxs = (values[:, 2, 1, 2] - values[:, 2, 1, 0] - values[:, 0, 1, 2] + values[:, 0, 1, 0]) * 0.25
+            dys = (values[:, 2, 2, 1] - values[:, 2, 0, 1] - values[:, 0, 2, 1] + values[:, 0, 0, 1]) * 0.25
             normalizer = (
                 torch.stack([dxx, dyy, dss, dxy, dxs, dys, gx, gy, gs])
                 .abs()
@@ -218,34 +266,36 @@ class _SIFTScaleSpaceDetector(nn.Module):
         if depth < 3 or height < 11 or width < 11:
             empty = torch.empty(0, device=dog.device, dtype=torch.long)
             return empty, empty, empty, empty, dog.new_empty(0), dog.new_empty(0), dog.new_empty(0), dog.new_empty(0)
-        # Restrict the dense pass to the three searchable Gaussian intervals.
-        # Strict 2-D NMS avoids max-pool index buffers and drops plateaus before
-        # sparse cross-scale comparisons or quadratic fitting allocate anything.
-        searchable = dog[:, 1:-1].reshape(-1, 1, height, width)
-        spatial_max = nms2d(searchable, (3, 3), mask_only=True).reshape(_bsz, depth - 2, height, width)
-        spatial_min = nms2d(-searchable, (3, 3), mask_only=True).reshape_as(spatial_max)
+        # Four axial comparisons cheaply reject most pixels before gathering
+        # complete 3-D neighbourhoods. The sparse pass below still requires a
+        # strict extremum against all 26 neighbours, including spatial diagonals.
+        searchable = dog[:, 1:-1]
+        center = searchable[:, :, 5:-5, 5:-5]
+        left, right = searchable[:, :, 5:-5, 4:-6], searchable[:, :, 5:-5, 6:-4]
+        above, below = searchable[:, :, 4:-6, 5:-5], searchable[:, :, 6:-4, 5:-5]
+        spatial_max = (center > left) & (center > right) & (center > above) & (center > below)
+        spatial_min = (center < left) & (center < right) & (center < above) & (center < below)
         candidate_mask = spatial_max | spatial_min
         keep_map = None
         if mask is not None:
             keep_map = _resize_mask(mask, gaussian[:, :, 0]).squeeze(1)
             if keep_map.shape[0] == 1:
                 keep_map = keep_map.expand(gaussian.shape[0], -1, -1)
-            candidate_mask = candidate_mask & (keep_map[:, None] > 0)
-        candidates = candidate_mask[:, :, 5:-5, 5:-5].nonzero()
+            candidate_mask = candidate_mask & (keep_map[:, None, 5:-5, 5:-5] > 0)
+        candidates = candidate_mask.nonzero()
         if candidates.numel() == 0:
             empty = torch.empty(0, device=dog.device, dtype=torch.long)
             return empty, empty, empty, empty, dog.new_empty(0), dog.new_empty(0), dog.new_empty(0), dog.new_empty(0)
         b, s, y, x = candidates.unbind(1)
         s, y, x = s + 1, y + 5, x + 5
         center = self._values(dog, b, s, y, x)
-        strict_max = spatial_max[b, s - 1, y, x]
-        strict_min = spatial_min[b, s - 1, y, x]
-        for ds in (-1, 1):
-            for dy in (-1, 0, 1):
-                for dx in (-1, 0, 1):
-                    neighbour = self._values(dog, b, s + ds, y + dy, x + dx)
-                    strict_max &= center > neighbour
-                    strict_min &= center < neighbour
+        neighbours = self._neighbourhood(dog, b, s, y, x).flatten(1)
+        strict_max = (center[:, None] > neighbours[:, :13]).all(dim=1) & (center[:, None] > neighbours[:, 14:]).all(
+            dim=1
+        )
+        strict_min = (center[:, None] < neighbours[:, :13]).all(dim=1) & (center[:, None] < neighbours[:, 14:]).all(
+            dim=1
+        )
         keep = strict_max | strict_min
         b, s, y, x = b[keep], s[keep], y[keep], x[keep]
         if b.numel() == 0:
@@ -418,24 +468,42 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         self, gradients: torch.Tensor, lafs: torch.Tensor, layer_indices: torch.Tensor, level_height: int
     ) -> torch.Tensor:
         mag, angle, xx, yy = self._sample_gradients(gradients, lafs, layer_indices, level_height, 41)
+        desc = self._descriptor_histograms(mag, angle, xx, yy)
+        desc = _l2_normalize(desc, dim=-1).clamp(0.0, self.clipval)
+        desc = _l2_normalize(desc, dim=-1)
+        return _rootsift(desc.reshape(-1, 128), self.eps).reshape_as(desc) if self.rootsift else desc
+
+    @staticmethod
+    def _descriptor_histograms(
+        mag: torch.Tensor, angle: torch.Tensor, xx: torch.Tensor, yy: torch.Tensor
+    ) -> torch.Tensor:
+        """Accumulate the two angular votes per sample into the 4 x 4 spatial cells."""
         b, n, _ = mag.shape
         weight = torch.exp(-0.78125 * (xx.square() + yy.square())).to(mag.dtype)
         angular = (angle % (2 * pi)) * 8 / (2 * pi)
+        lower = angular.floor()
+        fraction = angular - lower
+        lower = lower.long() % 8
+        weighted = mag * weight
+        # Only two angular bins have nonzero weight. Avoid broadcasting every
+        # sample against all eight bins and materializing their distances.
+        # MPS matmul benefits from contiguous (bins, samples) matrices; CPU
+        # scatter is faster with each sample's eight bins next to one another.
+        if mag.device.type == "mps":
+            angular_weights = mag.new_zeros(b, n, 8, mag.shape[-1]).transpose(-1, -2)
+        else:
+            angular_weights = mag.new_zeros(b, n, mag.shape[-1], 8)
+        angular_weights.scatter_(-1, lower.unsqueeze(-1), (weighted * (1.0 - fraction)).unsqueeze(-1))
+        angular_weights.scatter_add_(-1, ((lower + 1) % 8).unsqueeze(-1), (weighted * fraction).unsqueeze(-1))
         spatial_x = 2.5 * xx + 1.5
         spatial_y = 2.5 * yy + 1.5
-        bins = torch.arange(8, device=mag.device, dtype=mag.dtype)
-        angular_distance = (angular.unsqueeze(-1) - bins).abs()
-        angular_distance = torch.minimum(angular_distance, 8.0 - angular_distance)
-        angular_weights = (1.0 - angular_distance).clamp_min(0.0) * (mag * weight).unsqueeze(-1)
-        cell_y, cell_x = torch.meshgrid(bins[:4], bins[:4], indexing="ij")
+        bins = torch.arange(4, device=mag.device, dtype=mag.dtype)
+        cell_y, cell_x = torch.meshgrid(bins, bins, indexing="ij")
         spatial_weights = (1.0 - (spatial_x.unsqueeze(-1) - cell_x.reshape(-1)).abs()).clamp_min(0.0) * (
             1.0 - (spatial_y.unsqueeze(-1) - cell_y.reshape(-1)).abs()
         ).clamp_min(0.0)
         # (B, N, 8, samples) @ (samples, 16) -> one 8-bin histogram per spatial cell.
-        desc = torch.matmul(angular_weights.transpose(-1, -2), spatial_weights).transpose(-1, -2).reshape(b, n, 128)
-        desc = _l2_normalize(desc, dim=-1).clamp(0.0, self.clipval)
-        desc = _l2_normalize(desc, dim=-1)
-        return _rootsift(desc.reshape(-1, 128), self.eps).reshape_as(desc) if self.rootsift else desc
+        return torch.matmul(angular_weights.transpose(-1, -2), spatial_weights).transpose(-1, -2).reshape(b, n, 128)
 
     def forward(
         self,
@@ -466,7 +534,9 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
             gradients = spatial_gradient(used_images.reshape(-1, 1, level_height, width).to(work_dtype), "diff")
             gradients = gradients[:, 0].reshape(b, used_levels.numel(), 2, level_height, width)
             atlas = gradients.permute(0, 2, 1, 3, 4).reshape(b, 2, used_levels.numel() * level_height, width)
-            chunk_size = 1024
+            # Keep CPU voting temporaries in cache; accelerators benefit from
+            # larger chunks that amortize kernel launches and synchronization.
+            chunk_size = 128 if image.device.type == "cpu" else 1024
             for batch in range(b):
                 indices = octave_selected[batch].nonzero().flatten()
                 for start in range(0, indices.numel(), chunk_size):

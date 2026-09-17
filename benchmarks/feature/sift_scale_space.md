@@ -1,169 +1,82 @@
-# Specialized top-K scale-space SIFT on Oxford graf
+# Specialized top-K SIFT: correctness review and optimization
 
-`SIFTFeatureScaleSpace(descriptor_backend="pyramid")` is a sparse local feature
-pipeline with a dedicated SIFT detector and descriptor. It ranks valid strict DoG
-extrema by absolute refined response and retains the top K: **no contrast
-threshold and no edge rejection**, including during candidate generation. Masks
-and zero padding preserve the requested output budget. The default patch path
-still uses the generic detector and is unchanged.
+This follow-up compares reviewed PR #4638 head `3172b5f1001140f638bfa2c3934633d2be6b9851` with the optimized worktree. The default patch backend is unchanged. All measurements time the entire public `SIFTFeatureScaleSpace(4096, descriptor_backend="pyramid")` forward, including detection, orientation, and RootSIFT.
 
-The implementation lives in `kornia/feature/sift/`: `scale_space.py` owns the
-specialized Gaussian pyramid, detector, and descriptor together; `pyramid.py`
-owns the reusable descriptor for arbitrary LAFs. Public feature presets remain
-in `integrated.py`, and established patch descriptors remain in `siftdesc.py`.
+## Results
 
-The optimized path builds one six-level Gaussian pyramid with three intervals per
-octave, cached separable kernels, precise image doubling, and integer octave
-decimation. Strict spatial NMS on the three searchable layers precedes sparse
-cross-scale comparisons and iterative 3-D quadratic refinement. This avoids
-refining the full response volume. Converged integer layers and continuously
-refined scales survive top-K selection and supply descriptor provenance and
-support sizes respectively. No descriptor-owned pyramid is built.
+Apple M1, macOS 26.5.1, Python 3.11.14, PyTorch 2.14.0; Oxford graf images 1–6, 640×800, float32, batch one, one CPU thread. Values below are the arithmetic mean of six warmed per-image medians. Every Kornia extraction returns **4,096 valid features**. No contrast threshold or edge rejection is introduced, and the Gaussian support and 19×19/41×41 integration grids are unchanged.
 
-Gradients are computed once per used Gaussian layer and shared by orientation and
-description. Used layers form an atlas per octave, with sampling clamped inside
-each layer. A 36-bin orientation histogram and 4×4×8 descriptor use Gaussian
-weights, rotated spatial sampling, trilinear voting, clipping, and RootSIFT.
-Orientation support is 4.5 sigma with a 1.5-sigma Gaussian; descriptor cell width
-is 3 sigma with a 6-sigma Gaussian, following
-[OpenCV SIFT](https://github.com/opencv/opencv/blob/4.x/modules/features2d/src/sift.simd.hpp).
-Fixed 19×19/41×41 sampling grids differ from integer-pixel OpenCV integration.
-One dominant orientation is retained per detection. Magnitude and angle are
-computed after gradient interpolation to avoid angular wraparound artifacts.
-This is separate from the [generic DenseSIFT-histogram backend](dense_sift.md).
-
-## Protocol and reproduction
-
-Oxford graf 640×800 PPM images 1–6, Pillow grayscale float32, batch one, 4,096
-requested detections, RootSIFT, no affine adaptation or compilation. Apple M1,
-macOS 26.5.1, Python 3.11.14, PyTorch 2.14.0. CPU uses one thread; MPS is explicitly
-synchronized. The entire public feature forward is timed, including detection,
-pyramid construction, orientation, and description. Loading, matching, and RANSAC
-are excluded. Each image uses a warmed median and IQR from `time_us`, with at least
-max(1 second, five warm-call durations) of repeated timing.
-
-Every pair uses SNN ratio 0.8; correct matches have forward ground-truth transfer
-Euclidean error at most 3 px. Homography RANSAC uses seed 3407, 2 px threshold,
-10 iterations, batch size 8196, confidence 0.9999, and default local refinement.
-Corner error is mean L1 transfer error against ground truth over four corners.
-MPS extraction/matching uses CPU RANSAC. Consensus count alone does not establish
-a correct homography.
-
-The before/after comparison measures the previous shared-pyramid implementation
-at `deba6b45d` and the specialized detector at `4a8c7472f`, using the same protocol
-and public API. Each run asserts the imported checkout. Raw JSON contains source
-and input hashes, versions, load metadata, per-image timings, feature counts, and
-quality metrics; it is kept outside the repository as requested. The subsequent
-package consolidation only moves these implementations; class ASTs were checked
-to be identical apart from docstrings.
-
-```bash
-.venv/bin/python -m benchmarks.feature.sift_scale_space \
-  --seq /path/to/graf --expected-checkout "$PWD" --methods pyramid \
-  --device cpu --json /tmp/sift-scale-space-cpu.json
-```
-
-Run from each measured checkout with an explicit interpreter. Use `--device mps`
-for MPS, `--methods patch` for the default pipeline, or `--quality-only` to omit
-timing. Both measured revisions already contain the harness.
-
-## Comparison figure
-
-![Graf homography error, RANSAC inliers, and SIFT extraction runtime](sift_scale_space.svg)
-
-The geometry panels use CPU results and a logarithmic error axis to retain failed
-homographies. This evaluates DoG + RootSIFT, not the DoG + AffNet + HardNet pipeline
-in the reference figure. Runtime is the mean of six per-image medians. No CUDA or
-compiled results are inferred from CPU/MPS measurements.
-
-OpenCV 5.0.0 (`opencv-python-headless==5.0.0.93`) uses one CPU thread, the same
-Pillow grayscale pixels as uint8, and `SIFT_create(nfeatures=4096, nOctaveLayers=3,
-contrastThreshold=0.04, edgeThreshold=10, sigma=1.6)`. Its standard contrast/edge
-rejection and multiple orientations differ from the Kornia top-K pipeline.
-Timing includes native `detectAndCompute` and NumPy RootSIFT normalization;
-input conversion and conversion of returned keypoints to Torch tensors are excluded. Matching and RANSAC use the
-same Kornia protocol as the other series. Kornia inputs are float tensors.
-
-OpenCV mean runtime: **149.58 ms/image**. Actual feature
-counts for images 1–6: 2676, 3065, 3508, 3663, 3920, 4096
-(Kornia: 4,096 each). This is a requested-budget comparison, not equal actual
-feature counts. OpenCV per-image median / IQR (ms): 132.74 / 12.41, 136.66 / 7.56, 142.53 / 8.88, 162.35 / 14.76, 156.14 / 14.89, 167.08 / 14.17.
-
-| Pair | OpenCV correct / matches | Precision | RANSAC inliers | Corner L1 (px) |
-| --- | ---: | ---: | ---: | ---: |
-| 1-2 | 1081/1192 | 90.69% | 1049 | 1.21 |
-| 1-3 | 466/703 | 66.29% | 422 | 2.68 |
-| 1-4 | 92/176 | 52.27% | 85 | 1.83 |
-| 1-5 | 8/90 | 8.89% | 7 | 535.39 |
-| 1-6 | 0/45 | 0.00% | 6 | 905.11 |
-
-Regenerate the OpenCV data and figure without committing raw logs:
-
-```bash
-.venv/bin/python -m benchmarks.feature.sift_scale_space \
-  --seq /path/to/graf --expected-checkout "$PWD" --methods opencv \
-  --device cpu --json /tmp/opencv-cpu.json
-.venv/bin/python benchmarks/feature/plot_sift_runtime.py --scale-space \
-  --inputs /tmp/before-cpu.json /tmp/after-cpu.json /tmp/opencv-cpu.json \
-           /tmp/before-mps.json /tmp/after-mps.json \
-  --labels Previous Specialized OpenCV Previous Specialized --cpu-label "Apple M1" \
-  --output /tmp/sift-comparison
-```
-
-## End-to-end speed
-
-Mean of six per-image medians, milliseconds per image (lower is better):
-
-| Device | Previous shared pyramid | Specialized detector | Speedup |
+| Device | Reviewed PR ms/image | Optimized ms/image | Speedup |
 | --- | ---: | ---: | ---: |
-| CPU | 1486.40 | 1119.63 | 1.33× |
-| MPS | 648.26 | 586.31 | 1.11× |
+| CPU | 1201.12 | 794.80 | 1.51× |
+| MPS | 622.61 | 587.22 | 1.06× |
 
-Per-image median / IQR in milliseconds; all runs return 4,096 filled features:
+![Graf quality and extraction runtime](sift_scale_space.svg)
+
+The OpenCV 5.0.0 CPU series is retained from the earlier PR measurement on this machine, using native uint8 SIFT plus NumPy RootSIFT and its default contrast/edge rejection. Its 2,676–4,096 returned features are an equal requested budget, not equal actual work. It is contextual; the speedup table uses only the fresh reviewed/optimized A/B runs. CPU geometry is shown in the figure; failed homographies remain visible.
+
+## What changed
+
+- Large CPU Gaussian images use separable weighted slice accumulation instead of convolution work buffers. Levels below 65,536 elements and direct half-precision calls retain convolution; the production detector already promotes half inputs. This dispatch avoids the small-image regression seen with an unconditional slice path.
+- Four axial comparisons identify possible extrema before one sparse gather checks all 26 neighbours. The same gather supplies refinement finite differences. Flattened indexing avoids a dense 27-fold unfolded gradient buffer in backward.
+- Each descriptor sample writes its two nonzero angular votes directly. CPU chunks of 128 keep temporaries smaller; accelerators retain chunks of 1,024. MPS uses contiguous angular-bin/sample matrices for histogram multiplication.
+- The generic `SIFTDescriptorFromPyramid` skips unused upper-octave histograms and preserves zero gradients for all-invalid frames. Its historical speed/quality report is [separate](dense_sift.md); this benchmark measures the specialized pipeline.
+- In-place pyramid compilation preserves eager checkpoint keys. Full-module serialization discards transient compiled callables and restores eager methods on load.
+
+Separable pooling for the generic backend was rejected after a public CPU A/B regression. Gaussian transpose, conv1d, and channels-last experiments were also rejected. No new runtime dependencies were added.
+
+## Matching and homography quality
+
+SNN ratio 0.8; a correct match has forward ground-truth Euclidean transfer error ≤3 px. Homography RANSAC: seed 3407, 2 px inlier threshold, 10 batches of 8,196 hypotheses, confidence 0.9999, default local refinement. Corner error is the mean L1 ground-truth transfer discrepancy at four image corners. Matching/RANSAC are outside extraction timing; MPS uses CPU RANSAC.
+
+CPU accumulation order changes slightly, so feature ordering and RANSAC samples can change. Correct-match counts stay within one of the reviewed PR, but corner errors improve on some pairs and regress on others. Graf 1–6 still fails. Graf informed development and is not a held-out quality evaluation.
+
+| Pair | Correct matches before / after | Precision before / after | RANSAC inliers before / after | Corner L1 px before / after |
+| --- | ---: | ---: | ---: | ---: |
+| 1-2 | 1655 / 1656 | 89.99% / 90.00% | 1563 / 1570 | 1.265 / 2.035 |
+| 1-3 | 688 / 687 | 66.15% / 66.06% | 616 / 616 | 2.096 / 1.253 |
+| 1-4 | 167 / 166 | 48.83% / 48.68% | 140 / 141 | 1.729 / 1.824 |
+| 1-5 | 33 / 32 | 18.97% / 18.50% | 22 / 23 | 3.457 / 5.637 |
+| 1-6 | 3 / 3 | 2.21% / 2.19% | 9 / 9 | 396.751 / 444.140 |
+
+MPS matching counts, precision, RANSAC inliers, and corner errors are unchanged in these runs. All raw CPU/MPS quality rows are retained.
+
+## Per-image timings
+
+Each cell is median ± IQR in milliseconds. IQR is timing spread, not a confidence interval. Other applications on the machine were left untouched; aggregate load metrics are recorded with every run.
 
 | Image | CPU before | CPU after | MPS before | MPS after |
 | --- | ---: | ---: | ---: | ---: |
-| 1 | 1484.09 / 18.07 | 1106.50 / 3.96 | 649.52 / 14.40 | 597.92 / 13.12 |
-| 2 | 1474.38 / 10.34 | 1109.93 / 8.58 | 661.59 / 10.05 | 579.25 / 22.16 |
-| 3 | 1478.44 / 10.19 | 1120.50 / 6.49 | 651.26 / 8.58 | 594.51 / 11.82 |
-| 4 | 1482.98 / 4.29 | 1123.10 / 13.00 | 648.92 / 18.22 | 573.80 / 15.17 |
-| 5 | 1500.76 / 7.70 | 1124.40 / 3.04 | 633.35 / 12.77 | 585.82 / 15.17 |
-| 6 | 1497.76 / 7.18 | 1133.36 / 1.55 | 644.92 / 3.16 | 586.56 / 8.67 |
+| 1 | 1203.24 ± 111.83 | 783.74 ± 9.31 | 550.85 ± 6.32 | 592.27 ± 19.37 |
+| 2 | 1164.74 ± 33.47 | 786.41 ± 6.71 | 550.64 ± 9.54 | 591.96 ± 10.56 |
+| 3 | 1448.08 ± 159.97 | 790.09 ± 10.25 | 647.21 ± 23.04 | 586.44 ± 11.74 |
+| 4 | 1143.44 ± 119.76 | 800.61 ± 5.84 | 658.54 ± 15.89 | 579.37 ± 8.78 |
+| 5 | 1097.02 ± 44.39 | 801.96 ± 11.49 | 672.21 ± 14.32 | 588.78 ± 12.16 |
+| 6 | 1150.18 ± 27.88 | 806.02 ± 13.67 | 656.19 ± 11.04 | 584.47 ± 10.00 |
 
-## CPU matching and homography recovery
+## Reproduction and provenance
 
-| Pair | Before correct / matches | After correct / matches | Before / after precision | Before / after RANSAC inliers | Before / after corner L1 (px) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 1-2 | 1706/1919 | 1655/1839 | 88.90% / 89.99% | 1554 / 1563 | 0.88 / 1.26 |
-| 1-3 | 690/1005 | 688/1040 | 68.66% / 66.15% | 617 / 616 | 1.20 / 2.10 |
-| 1-4 | 177/365 | 167/342 | 48.49% / 48.83% | 152 / 140 | 2.13 / 1.73 |
-| 1-5 | 21/148 | 33/174 | 14.19% / 18.97% | 22 / 22 | 482.11 / 3.46 |
-| 1-6 | 3/124 | 3/136 | 2.42% / 2.21% | 12 / 9 | 4605.24 / 396.75 |
+Raw files are tracked in [`sift_scale_space_results/`](sift_scale_space_results/). Each includes source and input SHA256 hashes, versions, aggregate load, counts, timings, and matching/RANSAC rows. Before runs are from the exact reviewed head; after runs record its dirty working-tree revision plus the hashes of the measured implementation. Those source hashes are checked against this implementation when assembling the report. Report/plot edits happen after timing.
 
-## MPS matching and homography recovery
+The harness verifies `kornia.__file__` against `--expected-checkout`; run as a module from each checkout with the same explicit interpreter. It uses `benchmarks.common.time_us`, at least max(1 second, five warm-call durations) of repeated timing, and MPS synchronization inside the timed call. CUDA, large batches, held-out datasets, and compiled end-to-end speed have not been benchmarked.
 
-| Pair | Before correct / matches | After correct / matches | Before / after precision | Before / after RANSAC inliers | Before / after corner L1 (px) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 1-2 | 1706/1919 | 1655/1839 | 88.90% / 89.99% | 1555 / 1563 | 0.88 / 1.26 |
-| 1-3 | 690/1005 | 688/1040 | 68.66% / 66.15% | 617 / 616 | 1.20 / 2.10 |
-| 1-4 | 178/366 | 167/342 | 48.63% / 48.83% | 149 / 140 | 3.15 / 1.73 |
-| 1-5 | 22/149 | 33/174 | 14.77% / 18.97% | 21 / 22 | 472.96 / 3.46 |
-| 1-6 | 3/124 | 3/136 | 2.42% / 2.21% | 12 / 9 | 4605.24 / 396.75 |
+```bash
+# In the reviewed checkout, then repeat in the optimized checkout:
+/path/to/the/same/python -m benchmarks.feature.sift_scale_space \
+  --seq /path/to/graf --expected-checkout "$PWD" --methods pyramid \
+  --device cpu --json /tmp/sift-before-cpu.json
+# Repeat with --device mps and distinct output paths.
 
-On CPU, the new detector recovers graf 1–5 at 3.46 px corner error versus
-482.11 px before, while 1–6 still fails. CPU precision improves on 1–2, 1–4,
-and 1–5, but falls on 1–3 and 1–6; correct-match counts decrease on 1–2 through
-1–4. The detector changes keypoints and is not numerically equivalent to the
-previous generic detector. Graf was used during development and
-is not a held-out quality evaluation. Failed homographies remain in the tables.
+.venv/bin/python benchmarks/feature/plot_sift_runtime.py --scale-space \
+  --inputs benchmarks/feature/sift_scale_space_results/before-cpu.json \
+           benchmarks/feature/sift_scale_space_results/after-cpu.json \
+           benchmarks/feature/sift_scale_space_results/opencv-cpu.json \
+           benchmarks/feature/sift_scale_space_results/before-mps.json \
+           benchmarks/feature/sift_scale_space_results/after-mps.json \
+  --labels "Reviewed PR" "Optimized" "OpenCV" "Reviewed PR" "Optimized" \
+  --cpu-label "Apple M1" --output /tmp/sift-optimized
+```
 
-For context, the earlier pre-PR patch baseline (`5be74dc9f`) measured 2155.72 ms on
-CPU; same-revision patch extraction before this detector change measured
-2159.27 ms on CPU and 679.72 ms on MPS. These older measurements are not the fresh
-before/after comparison above. Patch CPU correct-match counts for pairs 1–2
-through 1–6 were 1467, 481, 118, 12, 1, with corner errors 0.98, 1.58, 1.87,
-472.69, 617.19 px respectively. The patch implementation remains unchanged.
+## Correctness validation
 
-CUDA, older supported PyTorch versions, and whole-pipeline compilation were not
-validated. The sparse descriptor head executes eagerly; optional compilation
-covers the specialized pyramid and/or sparse refinement only.
+Regression tests independently pin trilinear bin layout/wraparound, sparse-neighbour values and backward accumulation, strict diagonal/scale ties, Gaussian values/gradients against convolution (including tiny images and asymmetric kernels), masks/padding, and eager/compiled checkpoint roundtrips. CPU float16/bfloat16/float32/float64, MPS float32, and minimum-supported PyTorch 2.5.1 are covered. Native padding capability skips apply only to direct private-helper tests on unsupported dtype/backend combinations; public half inputs retain coverage. Focused compiler tests cover the pyramid, fullgraph CPU slice filter, and sparse refinement. Repository validation is recorded in the PR review.

@@ -308,6 +308,19 @@ class SIFTDescriptorFromPyramid(nn.Module):
         # grid_sample/atan2.  Their public output remains the zero descriptor.
         safe_lafs = torch.where(valid.view(*valid.shape, 1, 1), lafs, identity)
         pyramid = self._pyramid(image)
+        levels = self._select_levels(safe_lafs, len(pyramid)).masked_fill(~valid, -1)
+        # The full pyramid is needed to clamp the selected octave, but histogram
+        # maps are only useful up to the highest selected valid octave.
+        max_level = int(levels.max().item())
+        if max_level < 0:
+            # Keep the zero result connected to the inputs: callers can backpropagate
+            # through an all-invalid batch and receive finite zero gradients.
+            zero = image[..., :0, :0].sum() + safe_lafs[..., :0].sum()
+            descriptors = (
+                image.new_zeros(image.shape[0], lafs.shape[1], self.num_ang_bins * self.num_spatial_bins**2) + zero
+            )
+            return lafs.to(laf_dtype), descriptors.to(image_dtype)
+        pyramid = pyramid[: max_level + 1]
         histograms = []
         for level_image in pyramid:
             gradients = spatial_gradient(level_image, "diff")
@@ -316,7 +329,6 @@ class SIFTDescriptorFromPyramid(nn.Module):
                     gradients[:, :, 0], gradients[:, :, 1], self.orientation_bins, self.eps
                 )
             )
-        levels = self._select_levels(safe_lafs, len(pyramid))
         if upright:
             oriented_lafs = safe_lafs
         else:

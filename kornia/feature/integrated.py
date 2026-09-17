@@ -323,7 +323,9 @@ class SIFTFeatureScaleSpace(LocalFeature):
                 if unknown:
                     raise ValueError("The SIFT pyramid backend supports compile_modules=['scale_pyr', 'subpix'] only")
                 if "scale_pyr" in selected:
-                    detector.scale_pyr = torch.compile(detector.scale_pyr)
+                    # In-place compilation preserves buffer paths and module
+                    # serialization, unlike wrapping or replacing forward.
+                    detector.scale_pyr.compile()
                 if "subpix" in selected:
                     detector._refine = torch.compile(detector._refine)
         else:

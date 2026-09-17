@@ -390,7 +390,7 @@ def plot_scale_space(paths: list[Path], labels: list[str], output: Path, cpu_lab
     axes[2].set_xticks(x, [d.upper() + " BS=1" for d in devices])
     axes[2].grid(axis="y", which="both", alpha=0.3)
     axes[2].legend()
-    fig.suptitle("Sparse SIFT: previous shared pyramid vs specialized pipeline", fontsize=14)
+    fig.suptitle("Sparse SIFT: extraction speed and homography quality", fontsize=14)
     fig.supxlabel(
         f"{environment} · CPU one thread · 4,096 requested features · SNN 0.8 · fixed-seed RANSAC\n"
         "Quality panels: CPU. OpenCV: native uint8 CPU + RootSIFT, standard rejection filters.\n"

@@ -98,7 +98,7 @@ The affine 1–5 pair drops from 136 to 40 correct matches. Keep the patch path 
 the default; this dense option is useful only when that CPU speed/quality tradeoff
 fits the application.
 
-Raw JSON measurements are kept outside the repository. The commands below regenerate them when needed.
+The historical raw measurements are retained in [`dense_sift_results/`](dense_sift_results/), including measurement-time source hashes and per-image IQRs. The commands below regenerate them; the unused-octave optimization in this follow-up has not been retimed for this generic backend.
 
 ## RANSAC homography evaluation
 

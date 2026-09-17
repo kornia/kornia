@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import io
+
 import pytest
 import torch
 from torch import nn
@@ -24,10 +26,52 @@ from torch import nn
 from kornia.feature import SIFTFeatureScaleSpace, get_laf_center, get_laf_orientation, laf_is_filled
 from kornia.feature.sift.scale_space import _SIFTScaleSpaceDescriptor, _SIFTScaleSpaceDetector
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
 
 
 class TestSharedSIFTScaleSpace(BaseTester):
+    def test_trilinear_histogram_bins(self, device, dtype):
+        # Hand-computed votes in (row, column, angle) order. Cancel Gaussian
+        # weighting to isolate spatial interpolation and the angle 7 -> 0 seam.
+        work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        xx = torch.tensor([-0.6, -0.2, 0.2, 0.6, 0.0], device=device, dtype=work_dtype)
+        yy = torch.tensor([0.6, -0.6, 0.2, -0.2, 0.2], device=device, dtype=work_dtype)
+        mass = xx.new_tensor([1.0, 2.0, 3.0, 4.0, 2.0])
+        mag = (mass * torch.exp(0.78125 * (xx.square() + yy.square()))).view(1, 1, -1)
+        angle = xx.new_tensor([0.25, 1.5, 7.75, 4.0, 2.5]).view(1, 1, -1) * (torch.pi / 4)
+        actual = _SIFTScaleSpaceDescriptor._descriptor_histograms(mag, angle, xx, yy).reshape(4, 4, 8)
+        expected = torch.zeros_like(actual)
+        expected[3, 0, 0], expected[3, 0, 1] = 0.75, 0.25
+        expected[0, 1, 1:3] = 1.0
+        expected[2, 2, 7], expected[2, 2, 0] = 0.75, 2.25
+        expected[1, 3, 4] = 4.0
+        expected[2, 1:3, 2:4] = 0.5
+        self.assert_close(actual, expected, atol=2e-6, rtol=2e-6)
+
+    def test_histogram_gradcheck(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64 gradcheck")
+        xx = torch.tensor([-0.8, -0.15, 0.35, 0.9], device=device, dtype=torch.float64)
+        yy = xx.flip(0)
+        mag = xx.new_tensor([0.3, 0.6, 1.0, 0.4]).view(1, 1, -1)
+        angle = xx.new_tensor([0.2, 1.3, 3.1, 5.6]).view(1, 1, -1)
+        self.gradcheck(lambda m, a: _SIFTScaleSpaceDescriptor._descriptor_histograms(m, a, xx, yy), (mag, angle))
+
+    @pytest.mark.parametrize("components", [["scale_pyr"], ["subpix"], ["scale_pyr", "subpix"]])
+    def test_checkpoint_round_trip(self, components):
+        eager = SIFTFeatureScaleSpace(8, descriptor_backend="pyramid")
+        compiled = SIFTFeatureScaleSpace(8, descriptor_backend="pyramid", compile_modules=components)
+        assert eager.state_dict().keys() == compiled.state_dict().keys()
+        compiled.load_state_dict(eager.state_dict(), strict=True)
+        eager.load_state_dict(compiled.state_dict(), strict=True)
+        checkpoint = io.BytesIO()
+        torch.save(compiled, checkpoint)
+        checkpoint.seek(0)
+        restored = torch.load(checkpoint, weights_only=False)
+        image = torch.rand(1, 1, 17, 19)
+        for expected, actual in zip(eager(image), restored(image)):
+            self.assert_close(actual, expected)
+
     def test_single_pyramid_build_and_exact_images(self, device, dtype, monkeypatch):
         feature = SIFTFeatureScaleSpace(8, descriptor_backend="pyramid").to(device, dtype)
         image = torch.rand(1, 1, 65, 67, device=device, dtype=dtype)
@@ -176,6 +220,8 @@ class TestSIFTScalePyramid(BaseTester):
     def test_precise_double_grid(self, device, dtype):
         from kornia.feature.sift.scale_space import _SIFTScalePyramid
 
+        if not supports_replicate_padding(device, dtype):
+            pytest.skip("direct pyramid helper requires native replicate padding; the detector promotes half inputs")
         image = torch.arange(35, device=device, dtype=dtype).reshape(1, 1, 5, 7)
         doubled = _SIFTScalePyramid._double(image)
         self.assert_close(doubled[..., ::2, ::2], image)
@@ -185,6 +231,8 @@ class TestSIFTScalePyramid(BaseTester):
     def test_next_octave_is_exact_decimation(self, device, dtype):
         from kornia.feature.sift.scale_space import _SIFTScalePyramid
 
+        if not supports_replicate_padding(device, dtype) or not supports_reflect_padding(device, dtype):
+            pytest.skip("direct pyramid helper requires native border padding; the detector promotes half inputs")
         image = torch.rand(1, 1, 65, 67, device=device, dtype=dtype)
         pyramid = _SIFTScalePyramid().to(device, dtype)(image)
         for previous, current in zip(pyramid, pyramid[1:]):
@@ -227,6 +275,40 @@ def _quadratic_dog(
 
 
 class TestSIFTScaleSpaceDetector(BaseTester):
+    def test_dynamo_refinement(self, device, dtype, torch_optimizer):
+        dog = _quadratic_dog(device, dtype)
+        detector = _SIFTScaleSpaceDetector(1, _FixedPyramid(dog))
+        b = torch.tensor([0], device=device)
+        s, y, x = b + 2, b + 10, b + 11
+        expected = detector._refine(dog, b, s, y, x)
+        actual = torch_optimizer(detector._refine)(dog, b, s, y, x)
+        for value, reference in zip(actual, expected):
+            self.assert_close(value, reference)
+
+    @pytest.mark.parametrize("neighbour", [(0, 1, 1), (1, 1, 1), (-1, 0, 0)])
+    @pytest.mark.parametrize("sign", [-1.0, 1.0])
+    def test_rejects_equal_diagonal_and_adjacent_scale(self, device, dtype, neighbour, sign):
+        dog = torch.zeros(1, 5, 32, 32, device=device, dtype=dtype)
+        dog[0, 2, 16, 16] = sign
+        ds, dy, dx = neighbour
+        dog[0, 2 + ds, 16 + dy, 16 + dx] = sign
+        detector = _SIFTScaleSpaceDetector(2, _FixedPyramid(dog))
+        lafs, responses = detector(torch.zeros(1, 1, 32, 32, device=device, dtype=dtype))
+        assert not lafs.any() and not responses.any()
+
+    def test_sparse_neighbourhood_values_and_backward(self, device, dtype):
+        dog = torch.rand(2, 5, 13, 15, device=device, dtype=dtype, requires_grad=True)
+        b = torch.tensor([0, 1, 0], device=device)
+        s = torch.tensor([1, 3, 1], device=device)
+        y = torch.tensor([5, 7, 5], device=device)
+        x = torch.tensor([6, 9, 6], device=device)
+        actual = _SIFTScaleSpaceDetector._neighbourhood(dog, b, s, y, x)
+        expected = torch.stack([dog[0, 0:3, 4:7, 5:8], dog[1, 2:5, 6:9, 8:11], dog[0, 0:3, 4:7, 5:8]])
+        self.assert_close(actual, expected)
+        actual_grad = torch.autograd.grad(actual.sum(), dog)[0]
+        expected_grad = torch.autograd.grad(expected.sum(), dog)[0]
+        self.assert_close(actual_grad, expected_grad)
+
     def test_refines_analytic_extremum_and_keeps_tiny_amplitude(self, device, dtype):
         image = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
         dog = _quadratic_dog(device, dtype)
