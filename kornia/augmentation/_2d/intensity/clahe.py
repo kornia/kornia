@@ -67,17 +67,14 @@ class RandomClahe(IntensityAugmentationBase2D):
         Tracked in `#4572 <https://github.com/kornia/kornia/issues/4572>`_.
 
     .. warning::
-        ``grid_size`` is unvalidated past its positivity check in the same way the value range is, and only a
-        **square** grid works. Any ``grid_size`` whose two entries differ raises a raw ``IndexError``
-        (``shape mismatch: indexing tensors could not be broadcast together``) on every image, whether or not
-        the grid tiles it: ``(4, 5)`` fails on a ``20 x 20`` image that both entries divide exactly, and so
-        does ``(1, 2)`` on a ``10 x 10`` one. Reported in
-        `#2531 <https://github.com/kornia/kornia/issues/2531>`_. Divisibility is a separate axis: a square
-        grid that does not tile the image is padded instead, so ``grid_size=(3, 3)`` works on a ``10 x 10``
-        image, and because :func:`kornia.enhance.equalize_clahe` rounds the tile up to an even size an
-        exactly dividing grid can still pad. An image too small for the grid raises a raw ``RuntimeError``
-        from the padding -- at the default ``grid_size=(8, 8)`` the smallest admissible square image is
-        ``9 x 9``, and ``8 x 8`` raises. A grid larger than the image gets the named ``ValueError`` instead.
+        ``grid_size`` is unvalidated past its positivity check in the same way the value range is. Its two
+        entries tile the two axes independently, and a grid that does not tile the image is padded instead, so
+        ``grid_size=(3, 3)`` works on a ``10 x 10`` image. Because :func:`kornia.enhance.equalize_clahe` rounds
+        the tile up to an even size along each axis, an exactly dividing grid can still pad: ``(4, 5)`` pads 4
+        rows and no columns of a ``20 x 20`` image. An image too small for the grid raises a raw
+        ``RuntimeError`` from the padding; at the default ``grid_size=(8, 8)`` the smallest admissible square
+        image is ``9 x 9``, and ``8 x 8`` raises. A grid larger than the image gets the named ``ValueError``
+        instead.
 
     .. note::
         This function internally uses :func:`kornia.enhance.equalize_clahe`.
