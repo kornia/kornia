@@ -242,7 +242,7 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
     luts_x_interp_tiles[:, 0 :: gh - 1, 1:-1, 1] = luts[:, 0 :: max(gh // 2 - 1, 1), i_idxs[:, 1]]
     # internal region
     luts_x_interp_tiles[:, 1:-1, 1:-1, :] = luts[
-        :, j_idxs.repeat(max(gh - 2, 1), 1, 1).permute(1, 0, 2), i_idxs.repeat(max(gw - 2, 1), 1, 1)
+        :, j_idxs.repeat(max(gw - 2, 1), 1, 1).permute(1, 0, 2), i_idxs.repeat(max(gh - 2, 1), 1, 1)
     ]
 
     return luts_x_interp_tiles
@@ -315,14 +315,14 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     # border region (h)
     t, b, _, _ = preinterp_tiles_equalized[:, 1:-1, 0].unbind(2)
     tiles_equalized[:, 1:-1, 0] = torch.addcmul(b, tih.squeeze(1), torch.sub(t, b))
-    t, b, _, _ = preinterp_tiles_equalized[:, 1:-1, gh - 1].unbind(2)
-    tiles_equalized[:, 1:-1, gh - 1] = torch.addcmul(b, tih.squeeze(1), torch.sub(t, b))
+    t, b, _, _ = preinterp_tiles_equalized[:, 1:-1, gw - 1].unbind(2)
+    tiles_equalized[:, 1:-1, gw - 1] = torch.addcmul(b, tih.squeeze(1), torch.sub(t, b))
 
     # border region (w)
     left, right, _, _ = preinterp_tiles_equalized[:, 0, 1:-1].unbind(2)
     tiles_equalized[:, 0, 1:-1] = torch.addcmul(right, tiw, torch.sub(left, right))
-    left, right, _, _ = preinterp_tiles_equalized[:, gw - 1, 1:-1].unbind(2)
-    tiles_equalized[:, gw - 1, 1:-1] = torch.addcmul(right, tiw, torch.sub(left, right))
+    left, right, _, _ = preinterp_tiles_equalized[:, gh - 1, 1:-1].unbind(2)
+    tiles_equalized[:, gh - 1, 1:-1] = torch.addcmul(right, tiw, torch.sub(left, right))
 
     # same type as the input
     return tiles_equalized.div(255.0)

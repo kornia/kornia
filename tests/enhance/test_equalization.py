@@ -46,6 +46,10 @@ class TestEqualization(BaseTester):
             (4, 1, (2, 2)),
             (4, 3, (2, 2)),
             (2, 2, (8, 8)),
+            (None, 1, (2, 4)),
+            (1, 3, (4, 2)),
+            (4, 1, (1, 3)),
+            (2, 2, (3, 1)),
         ],
     )
     def test_cardinality(self, B, C, grid_size, device, dtype):
@@ -98,7 +102,8 @@ class TestEqualization(BaseTester):
         with pytest.raises(TypeError):
             enhance.equalize_clahe([1, 2, 3])
 
-    def test_gradcheck(self, device):
+    @pytest.mark.parametrize("grid_size", [(2, 2), (2, 3), (3, 2)])
+    def test_gradcheck(self, device, grid_size):
         torch.random.manual_seed(4)
         bs, channels, height, width = 1, 1, 11, 11
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -107,7 +112,7 @@ class TestEqualization(BaseTester):
             rot = rotate(data, torch.tensor(30.0, dtype=data.dtype, device=device))
             return enhance.equalize_clahe(rot, a, b, c)
 
-        self.gradcheck(grad_rot, (inputs, 40.0, (2, 2), True), nondet_tol=1e-4)
+        self.gradcheck(grad_rot, (inputs, 40.0, grid_size, True), nondet_tol=1e-4)
 
     @pytest.mark.skip(reason="args and kwargs in decorator")
     def test_jit(self, device, dtype):
@@ -280,3 +285,53 @@ class TestEqualization(BaseTester):
         )
         self.assert_close(res[..., 0, :], expected, low_tolerance=True)
         self.assert_close(res_diff[..., 0, :], exp_diff, low_tolerance=True)
+
+    def test_clahe_non_square_grid(self, device, dtype):
+        # Pixel values are 0 and powers of two, exact in every dtype. With 4 x 4 tiles every interpolation weight
+        # is a multiple of 1/3, so 9 * 255 * output is an integer. The expected integers come from an exact
+        # rational evaluation of CLAHE pixel by pixel, independent of this implementation's tile indexing; the
+        # script is in the pull request that fixed #2531.
+        codes = torch.tensor(
+            [
+                [1, 2, 6, 7, 1, 7, 1, 5, 4, 8, 4, 6],
+                [2, 7, 7, 8, 0, 4, 7, 2, 5, 0, 2, 1],
+                [3, 3, 5, 5, 7, 2, 4, 8, 5, 5, 4, 4],
+                [6, 5, 0, 4, 5, 3, 2, 8, 1, 3, 7, 7],
+                [2, 1, 0, 7, 2, 8, 8, 3, 2, 2, 4, 4],
+                [8, 2, 0, 3, 8, 4, 6, 0, 2, 5, 0, 7],
+                [8, 8, 2, 3, 8, 6, 6, 3, 1, 4, 8, 4],
+                [2, 7, 8, 7, 5, 7, 7, 5, 0, 0, 6, 0],
+            ],
+            device=device,
+        )
+        levels = torch.tensor([0.0] + [2.0**-k for k in range(7, -1, -1)], device=device, dtype=dtype)
+        img = levels[codes][None, None]
+        expected = torch.tensor(
+            [
+                [423, 567, 1575, 1815, 423, 1719, 423, 1431, 1143, 2295, 1143, 1719],
+                [567, 1863, 1863, 2295, 279, 1143, 1719, 759, 1431, 279, 855, 423],
+                [855, 855, 1287, 1335, 1767, 711, 1143, 2295, 1431, 1431, 1143, 1143],
+                [1623, 1431, 327, 1255, 1367, 903, 663, 2295, 455, 1143, 1911, 1911],
+                [855, 519, 375, 1751, 695, 2295, 2295, 967, 839, 951, 1335, 1335],
+                [2295, 999, 423, 1191, 2295, 999, 1431, 327, 855, 1719, 423, 2007],
+                [2295, 2295, 999, 1191, 2295, 1431, 1431, 951, 519, 1431, 2295, 1431],
+                [999, 1719, 2295, 1719, 1335, 1719, 1719, 1335, 375, 423, 1863, 423],
+            ],
+            dtype=torch.float64,
+        )
+        expected = expected.div(9 * 255).to(dtype).to(device)[None, None]
+        # Both orientations: the two border regions are indexed by the grid size of different axes.
+        self.assert_close(enhance.equalize_clahe(img, 40.0, (2, 3)), expected)
+        self.assert_close(enhance.equalize_clahe(img.transpose(-2, -1), 40.0, (3, 2)), expected.transpose(-2, -1))
+
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    @pytest.mark.parametrize("grid_size", [(1, 2), (2, 3), (3, 4), (2, 6), (6, 2)])
+    def test_clahe_non_square_grid_transpose(self, grid_size, slow_and_differentiable, device, dtype):
+        # Transposing the image and the grid transposes the output. Every grid tiles 12 x 24 without padding.
+        # The slow path runs unclipped: below float64 its clip step can turn a rounding residue of the soft
+        # histogram sum into a whole count, which moves the output under transposition on square grids too.
+        clip_limit = 0.0 if slow_and_differentiable else 40.0
+        img = torch.rand(1, 2, 12, 24, device=device, dtype=dtype)
+        out = enhance.equalize_clahe(img, clip_limit, grid_size, slow_and_differentiable)
+        out_t = enhance.equalize_clahe(img.transpose(-2, -1), clip_limit, grid_size[::-1], slow_and_differentiable)
+        self.assert_close(out_t, out.transpose(-2, -1))
