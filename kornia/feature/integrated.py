@@ -49,10 +49,8 @@ from .scale_space_detector import (
     ScaleSpaceDetector,
     get_default_detector_config,
 )
-from .sift_detector import _SIFTScaleSpaceDetector
-from .sift_gaussian import _SIFTScalePyramid
-from .sift_pyramid import SIFTDescriptorFromPyramid
-from .sift_scale_space import _SIFTScaleSpaceDescriptor
+from .sift import SIFTDescriptorFromPyramid
+from .sift.scale_space import _SIFTScalePyramid, _SIFTScaleSpaceDescriptor, _SIFTScaleSpaceDetector
 from .siftdesc import SIFTDescriptor
 
 

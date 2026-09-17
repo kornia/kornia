@@ -161,7 +161,7 @@ def main() -> None:
     )
     meta["implementation_sha256"] = {
         name: hashlib.sha256(path.read_bytes()).hexdigest()
-        for name in ("sift_pyramid.py", "siftdesc.py", "integrated.py", "laf.py", "orientation.py")
+        for name in ("sift/pyramid.py", "siftdesc.py", "integrated.py", "laf.py", "orientation.py")
         if (path := Path(kornia.__file__).parent / "feature" / name).is_file()
     }
     print(versions_line(meta), flush=True)

@@ -522,7 +522,7 @@ class TestSIFTPyramidBackend(BaseTester):
         if preset is kornia.feature.SIFTFeature:
             assert isinstance(feature.descriptor, kornia.feature.SIFTDescriptorFromPyramid)
         else:
-            from kornia.feature.sift_scale_space import _SIFTScaleSpaceDescriptor
+            from kornia.feature.sift.scale_space import _SIFTScaleSpaceDescriptor
 
             assert isinstance(feature.descriptor, _SIFTScaleSpaceDescriptor)
         lafs, responses, descriptors = feature(image)

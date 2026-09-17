@@ -147,9 +147,7 @@ def main() -> None:
                 Path(__file__).with_name("dense_sift.py"),
                 Path(kornia.__file__).parent / "feature" / "integrated.py",
                 Path(kornia.__file__).parent / "feature" / "scale_space_detector.py",
-                Path(kornia.__file__).parent / "feature" / "sift_scale_space.py",
-                Path(kornia.__file__).parent / "feature" / "sift_detector.py",
-                Path(kornia.__file__).parent / "feature" / "sift_gaussian.py",
+                Path(kornia.__file__).parent / "feature" / "sift" / "scale_space.py",
                 Path(kornia.__file__).parent / "feature" / "siftdesc.py",
                 Path(kornia.__file__).parent / "geometry" / "transform" / "pyramid.py",
             )

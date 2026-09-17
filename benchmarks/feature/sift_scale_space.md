@@ -7,6 +7,11 @@ threshold and no edge rejection**, including during candidate generation. Masks
 and zero padding preserve the requested output budget. The default patch path
 still uses the generic detector and is unchanged.
 
+The implementation lives in `kornia/feature/sift/`: `scale_space.py` owns the
+specialized Gaussian pyramid, detector, and descriptor together; `pyramid.py`
+owns the reusable descriptor for arbitrary LAFs. Public feature presets remain
+in `integrated.py`, and established patch descriptors remain in `siftdesc.py`.
+
 The optimized path builds one six-level Gaussian pyramid with three intervals per
 octave, cached separable kernels, precise image doubling, and integer octave
 decimation. Strict spatial NMS on the three searchable layers precedes sparse
@@ -48,7 +53,9 @@ The before/after comparison measures the previous shared-pyramid implementation
 at `deba6b45d` and the specialized detector at `4a8c7472f`, using the same protocol
 and public API. Each run asserts the imported checkout. Raw JSON contains source
 and input hashes, versions, load metadata, per-image timings, feature counts, and
-quality metrics; it is kept outside the repository as requested.
+quality metrics; it is kept outside the repository as requested. The subsequent
+package consolidation only moves these implementations; class ASTs were checked
+to be identical apart from docstrings.
 
 ```bash
 .venv/bin/python -m benchmarks.feature.sift_scale_space \

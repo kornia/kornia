@@ -28,16 +28,15 @@ from torch import nn
 from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _l2_normalize
-from kornia.filters import get_gaussian_kernel2d, spatial_gradient
-from kornia.geometry.transform import pyrdown
-
-from .laf import (
+from kornia.feature.laf import (
     _grid_sample_patches,
     _promoted_grid_dtype,
     laf_is_valid,
     rotate_laf,
 )
-from .siftdesc import _dense_sift_histograms_from_gradients, _rootsift, get_sift_pooling_kernel
+from kornia.feature.siftdesc import _dense_sift_histograms_from_gradients, _rootsift, get_sift_pooling_kernel
+from kornia.filters import get_gaussian_kernel2d, spatial_gradient
+from kornia.geometry.transform import pyrdown
 
 
 class SIFTDescriptorFromPyramid(nn.Module):
