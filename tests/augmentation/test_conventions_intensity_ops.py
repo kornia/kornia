@@ -1687,19 +1687,16 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         assert float((out - image).abs().max()) > 0.03
         assert torch.equal(aug(image, params=aug._params), out)
 
-    # Issue #4570: with same_on_batch=True the three RandomPlasma* classes share their scalar draws, but
-    # diamond_square draws one fractal map per sample, so identical inputs can come back different.  #3624
-    # reported this together with RandomGaussianNoise and RandomChannelShuffle, and #3723 fixed only those two.
-    # The maps differ on every draw; the outputs need not.  RandomPlasmaShadow shades a pixel only where its
-    # map is below the shared `shade_quantity`, so a high quantity shades every pixel alike -- on this 0.3
-    # fixture its outputs are identical for 66 of seeds 0..199 (0 for the other two classes) -- and its
-    # output leg is not asserted.
+    # Issue #4570: with same_on_batch=True the three RandomPlasma* classes share their scalar draws and
+    # expanded fractal map view, so identical inputs receive identical transformations.  #3624 reported this
+    # together with RandomGaussianNoise and RandomChannelShuffle, and #3723 fixed only those two.
     # Snippet used to generate expected:
     #   torch.manual_seed(0); aug = K.RandomPlasmaBrightness(p=1.0, same_on_batch=True)
     #   y = aug(torch.full((4, 3, 8, 8), 0.3)); print(torch.equal(aug._params["plasma"][0], aug._params["plasma"][1]))
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `False` for all three classes, with the outputs differing too.
+    #   print(torch.equal(y[0], y[1]))
+    # executed 2026-09-16 (torch 2.9.1+cpu, cpu) -> `True` for maps and outputs for all three classes.
     @pytest.mark.parametrize("name", ["RandomPlasmaBrightness", "RandomPlasmaContrast", "RandomPlasmaShadow"])
-    def test_wart_plasma_same_on_batch_draws_one_map_per_sample_4570(self, device, dtype, name):
+    def test_convention_plasma_same_on_batch_shares_map_4570(self, device, dtype, name):
         image = torch.full((4, 3, 8, 8), 0.3, device=device, dtype=dtype)
         torch.manual_seed(_FORWARD_SEED)
         aug = getattr(K, name)(p=1.0, same_on_batch=True)
@@ -1707,9 +1704,12 @@ class TestIlluminationAndNormalizeConventions(BaseTester):
         for key, value in aug._params.items():
             if key not in ("plasma", "forward_input_shape"):
                 assert all(torch.equal(value[0], value[b]) for b in range(4)), f"{key} is not shared"
-        assert not torch.equal(aug._params["plasma"][0], aug._params["plasma"][1])
-        if name != "RandomPlasmaShadow":
-            assert not torch.equal(out[0], out[1])
+        assert torch.equal(aug._params["plasma"][0], aug._params["plasma"][1])
+        # The map is expanded, not repeated: a batch stride of 0 is the storage promise
+        # `IntensityAugmentationBase2D`'s Convention block makes, and `repeat` would satisfy the
+        # equality above while quietly allocating (and un-aliasing) one map per sample.
+        assert aug._params["plasma"].stride()[0] == 0
+        assert torch.equal(out[0], out[1])
 
     # Row 6c-43 in its new state: the `math domain error` the audit saw on a one-pixel axis is gone,
     # so a 1x1 and a 1x8 image now run and keep their shape.
