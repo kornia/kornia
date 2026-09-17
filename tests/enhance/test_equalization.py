@@ -290,7 +290,9 @@ class TestEqualization(BaseTester):
         # Pixel values are 0 and powers of two, exact in every dtype. With 4 x 4 tiles every interpolation weight
         # is a multiple of 1/3, so 9 * 255 * output is an integer. The expected integers come from an exact
         # rational evaluation of CLAHE pixel by pixel, independent of this implementation's tile indexing; the
-        # script is in the pull request that fixed #2531.
+        # reference is an exact-Fraction restatement of _compute_tiles/_compute_luts/_compute_equalized_tiles
+        # (tile size ceil(n/g) rounded up to even, trailing reflect pad, floor(v*256) histogram, clip and
+        # redistribute, floor(cumsum*255/P), axis blend weight (T-1-k)/(T-1)); it is posted in full on #4628.
         codes = torch.tensor(
             [
                 [1, 2, 6, 7, 1, 7, 1, 5, 4, 8, 4, 6],
@@ -331,6 +333,7 @@ class TestEqualization(BaseTester):
         # The slow path runs unclipped: below float64 its clip step can turn a rounding residue of the soft
         # histogram sum into a whole count, which moves the output under transposition on square grids too.
         clip_limit = 0.0 if slow_and_differentiable else 40.0
+        torch.manual_seed(2531)
         img = torch.rand(1, 2, 12, 24, device=device, dtype=dtype)
         out = enhance.equalize_clahe(img, clip_limit, grid_size, slow_and_differentiable)
         out_t = enhance.equalize_clahe(img.transpose(-2, -1), clip_limit, grid_size[::-1], slow_and_differentiable)

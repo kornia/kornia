@@ -67,7 +67,7 @@ class RandomClahe(IntensityAugmentationBase2D):
         Tracked in `#4572 <https://github.com/kornia/kornia/issues/4572>`_.
 
     .. warning::
-        ``grid_size`` is unvalidated past its positivity check in the same way the value range is. Its two
+        ``grid_size`` is unvalidated past its positivity check. Its two
         entries tile the two axes independently, and a grid that does not tile the image is padded instead, so
         ``grid_size=(3, 3)`` works on a ``10 x 10`` image. Because :func:`kornia.enhance.equalize_clahe` rounds
         the tile up to an even size along each axis, an exactly dividing grid can still pad: ``(4, 5)`` pads 4
