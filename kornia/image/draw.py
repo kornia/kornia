@@ -73,10 +73,14 @@ def _draw_pixel(image: torch.Tensor, x: int, y: int, color: torch.Tensor) -> Non
 def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: torch.Tensor) -> torch.Tensor:
     r"""Draw a single line into an image.
 
+    Each line is rasterized one pixel per step along its major axis, the one with the larger extent:
+    at step ``t = 0 .. major`` the minor coordinate advances by ``ceil(t * minor / major)``, computed in
+    integers. Both ``p1`` and ``p2`` are therefore always drawn.
+
     Args:
         image: the input image to where to draw the lines with shape :math`(C,H,W)`.
         p1: the start point [x y] of the line with shape (2, ) or (B, 2).
-        p2: the end point [x y] of the line with shape (2, ) or (B, 2).
+        p2: the end point [x y] of the line, with the same shape as ``p1``.
         color: the color of the line with shape :math`(C)` where :math`C` is the number of channels of the image.
 
     Return:
@@ -95,7 +99,8 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
                  [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.]]])
 
     """
-    if (p1.shape[0] != p2.shape[0]) or (p1.shape[-1] != 2 or p2.shape[-1] != 2):
+    # equal shapes, not just equal leading sizes: a (2,) p1 would otherwise broadcast against a (2, 2) p2
+    if (p1.shape != p2.shape) or (p1.shape[-1] != 2):
         raise ValueError(
             "Input points must be 2D points with shape (2, ) or (B, 2) and must have the same batch sizes."
         )
@@ -136,23 +141,25 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     dx, dy = torch.abs(dx), torch.abs(dy)
 
     # Every line steps one pixel at a time along its major axis and places the minor coordinate at
-    # ceil(t * minor / major), so all lines share one (B, L) grid of steps t = 0..L-1 and a mask
-    # trims each line to its own major + 1 pixels. The ceiling is taken in integers: a float step
-    # lands just above an exact integer quotient and rounds it up a pixel. A vertical or horizontal
-    # line has minor = 0, and a single point has major = 0, which the clamp keeps from dividing by 0.
+    # ceil(t * minor / major). The (line, t) pairs with t <= major are taken first, so the work is one
+    # entry per drawn pixel rather than a (B, longest line) grid that pads every short line out. The
+    # ceiling is taken in integers: a float step lands just above an exact integer quotient and rounds
+    # it up a pixel. A vertical or horizontal line has minor = 0, and a single point has major = 0,
+    # which the clamp keeps from dividing by 0. An empty batch draws nothing.
     x_major = dx > dy
     major = torch.where(x_major, dx, dy)
     minor = torch.where(x_major, dy, dx)
-    num_steps = int(major.max()) + 1
-    t = torch.arange(num_steps, device=image.device).unsqueeze(0)
-    divisor = major.clamp_min(1)
-    t_minor = torch.div(t * minor + divisor - 1, divisor, rounding_mode="floor")
-    x_coords = x1 + dx_sign * torch.where(x_major, t, t_minor)
-    y_coords = y1 + dy_sign * torch.where(x_major, t_minor, t)
-    on_line = t <= major
+    num_steps = int(major.max()) + 1 if major.numel() else 1
+    steps = torch.arange(num_steps, device=image.device).unsqueeze(0)
+    line, t = (steps <= major).nonzero(as_tuple=True)
+    divisor = major[line, 0].clamp_min(1)
+    t_minor = torch.div(t * minor[line, 0] + divisor - 1, divisor, rounding_mode="floor")
+    x_maj = x_major[line, 0]
+    x_coords = x1[line, 0] + dx_sign[line, 0] * torch.where(x_maj, t, t_minor)
+    y_coords = y1[line, 0] + dy_sign[line, 0] * torch.where(x_maj, t_minor, t)
 
-    x_coords = torch.clamp(x_coords[on_line], min=0, max=image.shape[-1] - 1)
-    y_coords = torch.clamp(y_coords[on_line], min=0, max=image.shape[-2] - 1)
+    x_coords = torch.clamp(x_coords, min=0, max=image.shape[-1] - 1)
+    y_coords = torch.clamp(y_coords, min=0, max=image.shape[-2] - 1)
     image[:, y_coords, x_coords] = color.view(-1, 1)
     return image
 
