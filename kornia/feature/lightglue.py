@@ -36,20 +36,19 @@ def math_clamp(x, min_, max_):  # type: ignore
     return min(max(x, min_), max_)
 
 
-if hasattr(torch.amp, "custom_fwd"):
-    _device_type = str(torch.accelerator.current_accelerator()) if hasattr(torch, "accelerator") else "cuda"
-    AMP_CUSTOM_FWD_F32 = torch.amp.custom_fwd(cast_inputs=torch.float32, device_type=_device_type)
-else:
-    # ``torch.amp.custom_fwd`` was introduced after Kornia's minimum supported Torch;
-    # the CUDA-specific spelling provides the same behavior on older releases.
-    AMP_CUSTOM_FWD_F32 = torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
-
-
-@AMP_CUSTOM_FWD_F32
 def normalize_keypoints(kpts: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
     """Normalize torch.Tensor of keypoints."""
     if isinstance(size, torch.Size):
         size = torch.tensor(size)[None]
+    # Under an active autocast, cast fp16/bf16 inputs to fp32 so the normalisation
+    # arithmetic runs at full precision regardless of the accelerator.
+    # Deriving the autocast device from the input tensor itself is correct for any
+    # backend (CUDA, NPU, XPU, MPS) and on CPU-only builds where
+    # ``torch.accelerator.current_accelerator()`` would be ``None``.
+    device_type = kpts.device.type
+    if kpts.is_floating_point() and kpts.dtype in (torch.float16, torch.bfloat16):
+        if torch.is_autocast_enabled(device_type):
+            kpts = kpts.to(torch.float32)
     shift = size.float().to(kpts) / 2
     scale = size.max(1).values.float().to(kpts) / 2
     kpts = (kpts - shift[:, None]) / scale[:, None, None]
@@ -691,7 +690,11 @@ class LightGlue(nn.Module):
             matching_scores1: [B x N]
             matches: List[[Si x 2]], scores: List[[Si]]
         """
-        with torch.autocast(enabled=self.conf.mp, device_type="cuda"):
+        device_type = next(
+            (t.device.type for d in data.values() if isinstance(d, dict) for t in d.values() if isinstance(t, torch.Tensor)),
+            "cuda",
+        )
+        with torch.autocast(enabled=self.conf.mp, device_type=device_type):
             return self._forward(data)
 
     def _forward(self, data: dict) -> dict:  # type: ignore
