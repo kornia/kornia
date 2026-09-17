@@ -213,6 +213,7 @@ select = [
   "PIE",  # flake8-pie
   "PL",  # Pylint
   "PYI",  # flake8-pyi
+  "RET506",  # unnecessary branch after raise
   "RSE",  # flake8-raise
   "RUF",  # Ruff-specific rules
   "S",  # flake8-bandit

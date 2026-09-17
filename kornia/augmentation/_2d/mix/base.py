@@ -70,8 +70,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
 
         if shape is None:
             return _transform_input(input)
-        else:
-            return _transform_input_by_shape(input, reference_shape=shape, match_channel=match_channel)
+
+        return _transform_input_by_shape(input, reference_shape=shape, match_channel=match_channel)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
