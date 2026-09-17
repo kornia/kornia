@@ -204,8 +204,21 @@ def test_eager_rng_audit_matches_exact_inventory() -> None:
 
     stale = sorted((audited - discovered).elements())
     missing = sorted((discovered - audited).elements())
-    assert not stale, f"audited entries with no matching call site (stale line?): {stale}"
-    assert not missing, f"eager RNG call sites missing from the audit: {missing}"
+
+    # A stale entry and a missing entry that share (path, name) are almost always one call site
+    # that moved lines; name the new line so the failure is its own fix instruction.
+    problems: list[str] = []
+    for path, line, name in stale:
+        moved = next((m for m in missing if m[0] == path and m[2] == name), None)
+        if moved is not None:
+            missing.remove(moved)
+            problems.append(f"audited entry {path}:{line} {name} moved to line {moved[1]}")
+        else:
+            problems.append(f"audited entry {path}:{line} {name} has no matching call site (stale entry)")
+    problems.extend(
+        f"eager RNG call site {path}:{line} {name} is missing from the audit" for path, line, name in missing
+    )
+    assert not problems, "eager RNG audit drifted:\n" + "\n".join(problems)
 
 
 def test_eager_rng_scanner_skips_lazy_function_and_lambda_bodies(tmp_path: Path) -> None:
