@@ -110,6 +110,18 @@ class TestAugmentationSequential:
         out = aug_list(input)
         assert out.shape == input.shape
 
+    def test_identity_matrix_3d(self, device, dtype):
+        input = torch.rand(2, 1, 3, 4, 5, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomDepthicalFlip3D(p=1.0))
+
+        assert aug.contains_3d_augmentation
+
+        matrix = aug.identity_matrix(input)
+
+        assert matrix.shape == (2, 4, 4)
+        expected = torch.eye(4, device=device, dtype=dtype).expand(2, -1, -1)
+        assert_close(matrix, expected)
+
     @pytest.mark.parametrize("image_dtype", [torch.float16, torch.float32, torch.float64, torch.bfloat16])
     def test_mixed_image_bbox_dtypes(self, device, image_dtype):
         # Regression test for https://github.com/kornia/kornia/issues/3705 and #3706:

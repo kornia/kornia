@@ -25,6 +25,7 @@ from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
 from kornia.constants import DataKey, Resample
+from kornia.core.ops import eye_like
 from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
@@ -390,6 +391,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     def _update_transform_matrix_for_valid_op(self, module: nn.Module) -> None:
         if not is_exporting():
             self._transform_matrices.append(module.transform_matrix)
+
+    def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
+        """Return identity matrix."""
+        if self.contains_3d_augmentation:
+            return eye_like(4, input)
+
+        return eye_like(3, input)
 
     def inverse(  # type: ignore[override]
         self,
