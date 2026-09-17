@@ -39,8 +39,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.util
+import json
 import math
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -84,6 +86,33 @@ def _build(method: str, num_features: int, device: torch.device) -> torch.nn.Mod
     ).eval()
 
 
+def _profile_cpu_allocations(run) -> dict[str, int]:
+    """Measure tensor allocation churn and peak live bytes in a separate forward.
+
+    These are PyTorch CPU allocator events, not RSS or measured DRAM traffic.
+    Native-library workspaces outside the allocator are not included.
+    """
+    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU], profile_memory=True) as profile:
+        run()
+    with tempfile.TemporaryDirectory(prefix="kornia-sift-profile-") as directory:
+        path = Path(directory) / "trace.json"
+        profile.export_chrome_trace(str(path))
+        events = json.loads(path.read_text())["traceEvents"]
+    allocations = sorted(
+        (event for event in events if event.get("name") == "[memory]" and event["args"]["Device Type"] == 0),
+        key=lambda event: event["ts"],
+    )
+    if not allocations:
+        raise RuntimeError("CPU profiler did not record allocation events")
+    live = peak = allocated = 0
+    for event in allocations:
+        size = event["args"]["Bytes"]
+        live += size
+        peak = max(peak, live)
+        allocated += max(0, size)
+    return {"cpu_peak_live_tensor_bytes": peak, "cpu_total_allocated_tensor_bytes": allocated}
+
+
 @torch.inference_mode()
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -94,8 +123,11 @@ def main() -> None:
     parser.add_argument("--methods", nargs="+", choices=("patch", "pyramid", "opencv"), default=["patch", "pyramid"])
     parser.add_argument("--min-run-time", type=float, default=1.0)
     parser.add_argument("--quality-only", action="store_true")
+    parser.add_argument("--profile-memory", action="store_true", help="Profile CPU tensor allocations outside timing")
     parser.add_argument("--json", type=Path, required=True)
     args = parser.parse_args()
+    if args.profile_memory and (args.device != "cpu" or "opencv" in args.methods):
+        parser.error("--profile-memory supports PyTorch CPU methods only")
     if "opencv" in args.methods:
         if args.device != "cpu":
             parser.error("OpenCV SIFT is a CPU baseline; run --methods opencv --device cpu")
@@ -133,6 +165,7 @@ def main() -> None:
         ),
         min_run_time=args.min_run_time,
         quality_only=args.quality_only,
+        profile_memory=args.profile_memory,
         matching_ratio=0.8,
         precision_threshold_px=3.0,
         precision_metric="forward GT transfer Euclidean error",
@@ -237,6 +270,8 @@ def main() -> None:
                 "iqr_us": iqr,
                 "throughput_per_s": 1e6 / median if math.isfinite(median) else float("nan"),
             }
+            if args.profile_memory:
+                row.update(_profile_cpu_allocations(run))
             rows.append(row)
             if not args.quality_only:
                 print(

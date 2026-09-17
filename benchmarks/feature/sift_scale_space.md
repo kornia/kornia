@@ -1,6 +1,6 @@
 # Specialized top-K SIFT: correctness review and optimization
 
-This follow-up compares reviewed PR #4638 head `3172b5f1001140f638bfa2c3934633d2be6b9851` with the optimized worktree. The default patch backend is unchanged. All measurements time the entire public `SIFTFeatureScaleSpace(4096, descriptor_backend="pyramid")` forward, including detection, orientation, and RootSIFT.
+This historical pass compares PR #4638 head `3172b5f1001140f638bfa2c3934633d2be6b9851` with optimized revision `bc7909746f96bf3e9acb61fd368dc95ce0bca37f`. See the [subsequent memory-focused review and optimization](sift_memory.md) for current results. The default patch backend is unchanged. All measurements time the entire public `SIFTFeatureScaleSpace(4096, descriptor_backend="pyramid")` forward, including detection, orientation, and RootSIFT.
 
 ## Results
 
@@ -56,7 +56,7 @@ Each cell is median ± IQR in milliseconds. IQR is timing spread, not a confiden
 
 ## Reproduction and provenance
 
-Raw files are tracked in [`sift_scale_space_results/`](sift_scale_space_results/). Each includes source and input SHA256 hashes, versions, aggregate load, counts, timings, and matching/RANSAC rows. Before runs are from the exact reviewed head; after runs record its dirty working-tree revision plus the hashes of the measured implementation. Those source hashes are checked against this implementation when assembling the report. Report/plot edits happen after timing.
+Raw files are tracked in [`sift_scale_space_results/`](sift_scale_space_results/). Each includes source and input SHA256 hashes, versions, aggregate load, counts, timings, and matching/RANSAC rows. Before runs are from the exact reviewed head; after runs record its dirty working-tree revision plus the hashes of the measured implementation. Those source hashes identify the historical measured implementations; the current follow-up is linked above. Report/plot edits happen after timing.
 
 The harness verifies `kornia.__file__` against `--expected-checkout`; run as a module from each checkout with the same explicit interpreter. It uses `benchmarks.common.time_us`, at least max(1 second, five warm-call durations) of repeated timing, and MPS synchronization inside the timed call. CUDA, large batches, held-out datasets, and compiled end-to-end speed have not been benchmarked.
 

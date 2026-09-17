@@ -43,7 +43,7 @@ from kornia.core.utils import _l2_normalize
 from kornia.feature.laf import _grid_sample_patches, laf_from_center_scale_ori, laf_is_valid, rotate_laf
 from kornia.feature.scale_space_detector import _check_mask, _resize_mask
 from kornia.feature.siftdesc import _gradient_magnitude_orientation, _rootsift
-from kornia.filters import get_gaussian_kernel1d, spatial_gradient
+from kornia.filters import get_gaussian_kernel1d
 from kornia.geometry.subpix.spatial_soft_argmax import _solve_cramer_sym3x3
 
 
@@ -106,12 +106,37 @@ class _SIFTScalePyramid(nn.Module):
         horizontal = F.conv2d(self._reflect_pad(image, radius, True), kernel.view(1, 1, 1, -1))
         return F.conv2d(self._reflect_pad(horizontal, radius, False), kernel.view(1, 1, -1, 1))
 
-    def _blur_cpu(self, image: torch.Tensor, kernel: torch.Tensor, radius: int) -> torch.Tensor:
+    def _blur_cpu(
+        self, image: torch.Tensor, kernel: torch.Tensor, radius: int, out: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """Apply a separable kernel without CPU convolution's im2col buffer."""
 
-        def blur_axis(value: torch.Tensor, horizontal: bool) -> torch.Tensor:
+        def blur_axis(value: torch.Tensor, horizontal: bool, destination: torch.Tensor | None = None) -> torch.Tensor:
             padded = self._reflect_pad(value, radius, horizontal)
             size = value.shape[-1 if horizontal else -2]
+            height, width = value.shape[-2:]
+            tiled = height * width >= 1024 * 1024 and not value.requires_grad and not torch.compiler.is_compiling()
+            if destination is not None or tiled:
+                # The final pass can write straight into its Gaussian-pyramid
+                # slice. Out variants are used only when no gradient is needed.
+                if destination is None:
+                    destination = value * kernel[radius]
+                else:
+                    torch.mul(value, kernel[radius], out=destination)
+                rows = 256 if tiled else height
+                for row in range(0, height, rows):
+                    end = min(row + rows, height)
+                    target = destination[..., row:end, :]
+                    for offset in range(1, radius + 1):
+                        if horizontal:
+                            left = padded[..., row:end, radius - offset : radius + width - offset]
+                            right = padded[..., row:end, radius + offset : radius + width + offset]
+                        else:
+                            left = padded[..., radius + row - offset : radius + end - offset, :]
+                            right = padded[..., radius + row + offset : radius + end + offset, :]
+                        target.add_(left, alpha=kernel[radius - offset])
+                        target.add_(right, alpha=kernel[radius + offset])
+                return destination
             if horizontal:
                 result = padded[..., radius : radius + size] * kernel[radius]
                 for offset in range(1, radius + 1):
@@ -134,13 +159,32 @@ class _SIFTScalePyramid(nn.Module):
                         result.add_(right, alpha=kernel[radius + offset])
             return result
 
-        return blur_axis(blur_axis(image, True), False)
+        return blur_axis(blur_axis(image, True), False, out)
 
     def forward(self, image: torch.Tensor) -> list[torch.Tensor]:
         """Build doubled-image Gaussian octaves for normalized grayscale images."""
         first = self._blur(self._double(image), self.kernel_0)
         pyramid = []
         while True:
+            if first.device.type == "cpu" and not first.requires_grad and not torch.compiler.is_compiling():
+                # Build into the final volume instead of retaining six images
+                # and then copying all six with stack. CPU's final blur pass can
+                # also avoid its temporary image and the following copy.
+                height, width = first.shape[-2:]
+                gaussian = first.new_empty(*first.shape[:2], 6, height, width)
+                gaussian[:, :, 0].copy_(first)
+                for index in range(1, 6):
+                    previous = gaussian[:, :, index - 1]
+                    kernel = getattr(self, f"kernel_{index}").to(first)
+                    if first.dtype not in (torch.float16, torch.bfloat16) and first.numel() >= 256 * 256:
+                        self._blur_cpu(previous, kernel, kernel.numel() // 2, out=gaussian[:, :, index])
+                    else:
+                        gaussian[:, :, index].copy_(self._blur(previous, kernel))
+                pyramid.append(gaussian)
+                if min(height // 2, width // 2) < 12:
+                    break
+                first = gaussian[:, :, 3, : 2 * (height // 2) : 2, : 2 * (width // 2) : 2]
+                continue
             levels = [first]
             for index in range(1, 6):
                 levels.append(self._blur(levels[-1], getattr(self, f"kernel_{index}")))
@@ -266,7 +310,7 @@ class _SIFTScaleSpaceDetector(nn.Module):
         if depth < 3 or height < 11 or width < 11:
             empty = torch.empty(0, device=dog.device, dtype=torch.long)
             return empty, empty, empty, empty, dog.new_empty(0), dog.new_empty(0), dog.new_empty(0), dog.new_empty(0)
-        # Four axial comparisons cheaply reject most pixels before gathering
+        # Spatial comparisons reject candidates before gathering
         # complete 3-D neighbourhoods. The sparse pass below still requires a
         # strict extremum against all 26 neighbours, including spatial diagonals.
         searchable = dog[:, 1:-1]
@@ -275,6 +319,12 @@ class _SIFTScaleSpaceDetector(nn.Module):
         above, below = searchable[:, :, 4:-6, 5:-5], searchable[:, :, 6:-4, 5:-5]
         spatial_max = (center > left) & (center > right) & (center > above) & (center > below)
         spatial_min = (center < left) & (center < right) & (center < above) & (center < below)
+        # Equal diagonals (e.g. a checkerboard) can otherwise send millions of
+        # doomed candidates into the 27-value sparse gather.
+        for dy, dx in ((4, 4), (4, 6), (6, 4), (6, 6)):
+            diagonal = searchable[:, :, dy : height - 10 + dy, dx : width - 10 + dx]
+            spatial_max = spatial_max & (center > diagonal)
+            spatial_min = spatial_min & (center < diagonal)
         candidate_mask = spatial_max | spatial_min
         keep_map = None
         if mask is not None:
@@ -288,20 +338,29 @@ class _SIFTScaleSpaceDetector(nn.Module):
             return empty, empty, empty, empty, dog.new_empty(0), dog.new_empty(0), dog.new_empty(0), dog.new_empty(0)
         b, s, y, x = candidates.unbind(1)
         s, y, x = s + 1, y + 5, x + 5
-        center = self._values(dog, b, s, y, x)
-        neighbours = self._neighbourhood(dog, b, s, y, x).flatten(1)
-        strict_max = (center[:, None] > neighbours[:, :13]).all(dim=1) & (center[:, None] > neighbours[:, 14:]).all(
-            dim=1
-        )
-        strict_min = (center[:, None] < neighbours[:, :13]).all(dim=1) & (center[:, None] < neighbours[:, 14:]).all(
-            dim=1
-        )
-        keep = strict_max | strict_min
+        # Bound temporary neighbour values and int64 gather indices even when
+        # most spatial extrema subsequently fail the scale comparison.
+        chunk_size = 16384 if dog.device.type == "cpu" else 65536
+        keep = torch.empty_like(b, dtype=torch.bool)
+        for start in range(0, b.numel(), chunk_size):
+            part = slice(start, start + chunk_size)
+            neighbours = self._neighbourhood(dog, b[part], s[part], y[part], x[part]).flatten(1)
+            center = neighbours[:, 13:14]
+            strict_max = (center > neighbours[:, :13]).all(dim=1) & (center > neighbours[:, 14:]).all(dim=1)
+            strict_min = (center < neighbours[:, :13]).all(dim=1) & (center < neighbours[:, 14:]).all(dim=1)
+            keep[part] = strict_max | strict_min
         b, s, y, x = b[keep], s[keep], y[keep], x[keep]
         if b.numel() == 0:
             empty = torch.empty(0, device=dog.device, dtype=torch.long)
             return empty, empty, empty, empty, dog.new_empty(0), dog.new_empty(0), dog.new_empty(0), dog.new_empty(0)
-        b, s, y, x, sx, sy, ss, good = self._refine(dog, b, s, y, x)
+        if b.numel() <= chunk_size:
+            b, s, y, x, sx, sy, ss, good = self._refine(dog, b, s, y, x)
+        else:
+            refined = [
+                self._refine(dog, *part)
+                for part in zip(b.split(chunk_size), s.split(chunk_size), y.split(chunk_size), x.split(chunk_size))
+            ]
+            b, s, y, x, sx, sy, ss, good = (torch.cat(values) for values in zip(*refined))
         c = self._values(dog, b, s, y, x)
         gx = (self._values(dog, b, s, y, x + 1) - self._values(dog, b, s, y, x - 1)) * 0.5
         gy = (self._values(dog, b, s, y + 1, x) - self._values(dog, b, s, y - 1, x)) * 0.5
@@ -335,10 +394,15 @@ class _SIFTScaleSpaceDetector(nn.Module):
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         if mask is not None:
             _check_mask(mask, img)
+            # Preserve the public mask-weight range before promoting the image
+            # for the quadratic fit. Integer/bool masks remain binary masks.
+            if mask.is_floating_point():
+                mask = mask.clamp_max(1.0).to(img.dtype)
         bsz, dtype, device = img.shape[0], img.dtype, img.device
+        zero = img[..., :0, :0].sum()
         if bsz == 0 or num_feats == 0:
-            responses = img.new_zeros(bsz, num_feats)
-            lafs = img.new_zeros(bsz, num_feats, 2, 3)
+            responses = img.new_zeros(bsz, num_feats) + zero
+            lafs = img.new_zeros(bsz, num_feats, 2, 3) + zero
             filled = torch.zeros(bsz, num_feats, device=device, dtype=torch.bool)
             ids = torch.full((bsz, num_feats), -1, device=device, dtype=torch.long)
             return responses, lafs, filled, [img.unsqueeze(2)], ids, ids.clone()
@@ -355,8 +419,8 @@ class _SIFTScaleSpaceDetector(nn.Module):
             pixel = 0.5 * float(2**octave)
             xy = torch.stack([(x.to(gaussian.dtype) + sx) * pixel, (y.to(gaussian.dtype) + sy) * pixel], -1)
             entries.append((b, layer, xy, response, sigma, torch.full_like(layer, octave)))
-        responses = torch.zeros(bsz, num_feats, device=device, dtype=dtype)
-        lafs = torch.zeros(bsz, num_feats, 2, 3, device=device, dtype=dtype)
+        responses = torch.zeros(bsz, num_feats, device=device, dtype=dtype) + zero
+        lafs = torch.zeros(bsz, num_feats, 2, 3, device=device, dtype=dtype) + zero
         filled = torch.zeros(bsz, num_feats, device=device, dtype=torch.bool)
         octaves = torch.full((bsz, num_feats), -1, device=device, dtype=torch.long)
         levels = torch.full_like(octaves, -1)
@@ -402,6 +466,26 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         self.eps = 1e-10
 
     @staticmethod
+    def _gradient_atlas(
+        octave_images: torch.Tensor, used_levels: torch.Tensor, work_dtype: torch.dtype
+    ) -> torch.Tensor:
+        """Central differences directly in channel-major atlas storage.
+
+        This is ``spatial_gradient(..., 'diff')`` with replicated borders, but
+        avoids convolution workspaces and the subsequent full gradient transpose.
+        """
+        images = octave_images[:, 0].index_select(1, used_levels).to(work_dtype)
+        padded = F.pad(images, (1, 1, 1, 1), mode="replicate")
+        if padded.requires_grad:
+            gx = (padded[..., 1:-1, 2:] - padded[..., 1:-1, :-2]) * 0.5
+            gy = (padded[..., 2:, 1:-1] - padded[..., :-2, 1:-1]) * 0.5
+            return torch.stack([gx, gy], 1).flatten(2, 3)
+        atlas = images.new_empty(images.shape[0], 2, *images.shape[1:])
+        torch.sub(padded[..., 1:-1, 2:], padded[..., 1:-1, :-2], out=atlas[:, 0])
+        torch.sub(padded[..., 2:, 1:-1], padded[..., :-2, 1:-1], out=atlas[:, 1])
+        return atlas.flatten(2, 3).mul_(0.5)
+
+    @staticmethod
     def _grid(
         lafs: torch.Tensor, layer_indices: torch.Tensor, level_height: int, width: int, atlas_height: int, size: int
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -411,6 +495,16 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         points = torch.einsum("bnij,xyj->bnxyi", lafs[..., :2, :2], local) + lafs[..., :2, 2].view(
             lafs.shape[0], lafs.shape[1], 1, 1, 2
         )
+        if points.device.type == "cpu" and not points.requires_grad:
+            # Reuse the coordinate allocation in CPU inference. MPS is faster
+            # with the functional path than strided in-place component writes.
+            # Each component is clamped within its own layer before shifting
+            # into the atlas.
+            points[..., 0].clamp_(0.0, float(width - 1)).add_(0.5).mul_(2.0).div_(width).sub_(1.0)
+            points[..., 1].clamp_(0.0, float(level_height - 1))
+            points[..., 1].add_(layer_indices[..., None, None].to(points.dtype) * level_height)
+            points[..., 1].add_(0.5).mul_(2.0).div_(atlas_height).sub_(1.0)
+            return points.reshape(lafs.shape[0], lafs.shape[1] * size, size, 2), xx, yy
         # Clamp in the selected layer before shifting it into the vertical atlas:
         # atlas-border padding would otherwise interpolate a neighbouring layer.
         x = points[..., 0].clamp(0.0, float(width - 1))
@@ -428,8 +522,16 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         grid, xx, yy = self._grid(work_lafs, layer_indices, level_height, w, atlas_height, size)
         sampled = _grid_sample_patches(gradients.to(work_dtype), grid, atlas_height, w)
         sampled = sampled.reshape(lafs.shape[0], 2, lafs.shape[1], size * size).permute(0, 2, 1, 3)
-        local_gradient = torch.einsum("bnji,bnjs->bnis", work_lafs[..., :2, :2], sampled)
-        mag, angle = _gradient_magnitude_orientation(local_gradient[:, :, 0], local_gradient[:, :, 1], self.eps)
+        if gradients.device.type == "cpu":
+            # The 2x2 bmm otherwise copies the strided channel planes for each
+            # LAF. Componentwise multiplication reads the sampled planes directly.
+            a = work_lafs[..., None]
+            gx = torch.addcmul(a[:, :, 0, 0] * sampled[:, :, 0], a[:, :, 1, 0], sampled[:, :, 1])
+            gy = torch.addcmul(a[:, :, 0, 1] * sampled[:, :, 0], a[:, :, 1, 1], sampled[:, :, 1])
+        else:
+            local_gradient = torch.einsum("bnji,bnjs->bnis", work_lafs[..., :2, :2], sampled)
+            gx, gy = local_gradient[:, :, 0], local_gradient[:, :, 1]
+        mag, angle = _gradient_magnitude_orientation(gx, gy, self.eps)
         return mag, angle, xx.reshape(-1), yy.reshape(-1)
 
     @staticmethod
@@ -468,14 +570,22 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         self, gradients: torch.Tensor, lafs: torch.Tensor, layer_indices: torch.Tensor, level_height: int
     ) -> torch.Tensor:
         mag, angle, xx, yy = self._sample_gradients(gradients, lafs, layer_indices, level_height, 41)
-        desc = self._descriptor_histograms(mag, angle, xx, yy)
+        spatial_weights = None
+        if mag.device.type == "mps":
+            bins = torch.arange(4, device=mag.device, dtype=mag.dtype)
+            spatial_weights = (1.0 - (2.5 * xx[:41, None] + 1.5 - bins).abs()).clamp_min(0.0)
+        desc = self._descriptor_histograms(mag, angle, xx, yy, spatial_weights)
         desc = _l2_normalize(desc, dim=-1).clamp(0.0, self.clipval)
         desc = _l2_normalize(desc, dim=-1)
         return _rootsift(desc.reshape(-1, 128), self.eps).reshape_as(desc) if self.rootsift else desc
 
     @staticmethod
     def _descriptor_histograms(
-        mag: torch.Tensor, angle: torch.Tensor, xx: torch.Tensor, yy: torch.Tensor
+        mag: torch.Tensor,
+        angle: torch.Tensor,
+        xx: torch.Tensor,
+        yy: torch.Tensor,
+        spatial_weights: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Accumulate the two angular votes per sample into the 4 x 4 spatial cells."""
         b, n, _ = mag.shape
@@ -483,18 +593,25 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         angular = (angle % (2 * pi)) * 8 / (2 * pi)
         lower = angular.floor()
         fraction = angular - lower
-        lower = lower.long() % 8
+        lower = lower.long().bitwise_and(7)
         weighted = mag * weight
         # Only two angular bins have nonzero weight. Avoid broadcasting every
         # sample against all eight bins and materializing their distances.
         # MPS matmul benefits from contiguous (bins, samples) matrices; CPU
         # scatter is faster with each sample's eight bins next to one another.
-        if mag.device.type == "mps":
+        if mag.device.type == "mps" and spatial_weights is None:
             angular_weights = mag.new_zeros(b, n, 8, mag.shape[-1]).transpose(-1, -2)
         else:
             angular_weights = mag.new_zeros(b, n, mag.shape[-1], 8)
         angular_weights.scatter_(-1, lower.unsqueeze(-1), (weighted * (1.0 - fraction)).unsqueeze(-1))
-        angular_weights.scatter_add_(-1, ((lower + 1) % 8).unsqueeze(-1), (weighted * fraction).unsqueeze(-1))
+        angular_weights.scatter_add_(-1, (lower + 1).bitwise_and(7).unsqueeze(-1), (weighted * fraction).unsqueeze(-1))
+        if spatial_weights is not None:
+            # On the square integration grid the triangular spatial weights
+            # separate. Pool rows, then columns; the intermediate is only
+            # (B,N,4,size,8), instead of multiplying each sample into 16 cells.
+            size = spatial_weights.shape[0]
+            rows = spatial_weights.T @ angular_weights.reshape(b, n, size, size * 8)
+            return (spatial_weights.T @ rows.reshape(b, n, 4, size, 8)).reshape(b, n, 128)
         spatial_x = 2.5 * xx + 1.5
         spatial_y = 2.5 * yy + 1.5
         bins = torch.arange(4, device=mag.device, dtype=mag.dtype)
@@ -522,18 +639,16 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         safe = torch.where(
             valid.view(b, n, 1, 1), lafs.to(work_dtype), torch.eye(2, 3, device=image.device, dtype=work_dtype)
         )
-        oriented, descriptors = safe.clone(), torch.zeros(b, n, 128, device=image.device, dtype=work_dtype)
+        zero = image[..., :0, :0].sum() + safe[..., :0].sum()
+        oriented, descriptors = safe.clone(), torch.zeros(b, n, 128, device=image.device, dtype=work_dtype) + zero
         for octave, octave_images in enumerate(pyramid):
             pixel = 0.5 * float(2**octave)
             octave_selected = valid & (octave_indices == octave)
             if not octave_selected.any():
                 continue
             used_levels = torch.unique(level_indices[octave_selected], sorted=True)
-            used_images = octave_images.index_select(2, used_levels).permute(0, 2, 1, 3, 4)
-            level_height, width = used_images.shape[-2:]
-            gradients = spatial_gradient(used_images.reshape(-1, 1, level_height, width).to(work_dtype), "diff")
-            gradients = gradients[:, 0].reshape(b, used_levels.numel(), 2, level_height, width)
-            atlas = gradients.permute(0, 2, 1, 3, 4).reshape(b, 2, used_levels.numel() * level_height, width)
+            level_height = octave_images.shape[-2]
+            atlas = self._gradient_atlas(octave_images, used_levels, work_dtype)
             # Keep CPU voting temporaries in cache; accelerators benefit from
             # larger chunks that amortize kernel launches and synchronization.
             chunk_size = 128 if image.device.type == "cpu" else 1024

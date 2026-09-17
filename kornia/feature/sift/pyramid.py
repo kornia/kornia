@@ -107,9 +107,20 @@ class SIFTDescriptorFromPyramid(nn.Module):
         weighting = get_gaussian_kernel2d((9, 9), (9.0 / 6.0, 9.0 / 6.0), True)
         self.register_buffer("orientation_weighting", weighting.reshape(1, 1, 9, 9), persistent=False)
 
-    def _pyramid(self, image: torch.Tensor) -> list[torch.Tensor]:
+    @staticmethod
+    def _num_pyramid_levels(image: torch.Tensor) -> int:
+        """Return the number of octaves ``_pyramid`` would construct for ``image``."""
+        height, width = image.shape[-2:]
+        levels = 1
+        while min(height, width) >= 38:
+            height, width = height // 2, width // 2
+            levels += 1
+        return levels
+
+    def _pyramid(self, image: torch.Tensor, num_levels: int | None = None) -> list[torch.Tensor]:
+        """Build at most ``num_levels`` octaves of the image pyramid."""
         levels = [image]
-        while min(levels[-1].shape[-2:]) >= 38:
+        while min(levels[-1].shape[-2:]) >= 38 and (num_levels is None or len(levels) < num_levels):
             levels.append(pyrdown(levels[-1]))
         return levels
 
@@ -166,12 +177,16 @@ class SIFTDescriptorFromPyramid(nn.Module):
     @staticmethod
     def _laf_at_level(lafs: torch.Tensor, pyramid: list[torch.Tensor], level: int) -> torch.Tensor:
         """Map pixel-coordinate LAFs through ``pyrdown``'s align-corners-false grid."""
-        output = lafs
+        if level == 0:
+            return lafs
+        # One clone is enough: every subsequent level transforms this private
+        # tensor in place.  The previous form cloned the complete selected LAF
+        # set once per octave.
+        output = lafs.clone()
         for index in range(level):
             source_h, source_w = pyramid[index].shape[-2:]
             target_h, target_w = pyramid[index + 1].shape[-2:]
             scale = output.new_tensor([float(target_w) / source_w, float(target_h) / source_h])
-            output = output.clone()
             output[..., :2, :2] *= scale.view(1, 1, 2, 1)
             output[..., :, 2] = (output[..., :, 2] + 0.5) * scale - 0.5
         return output
@@ -295,7 +310,13 @@ class SIFTDescriptorFromPyramid(nn.Module):
         image_dtype, laf_dtype = image.dtype, lafs.dtype
         lafs = lafs.to(device=image.device)
         if image.shape[0] == 0 or lafs.shape[1] == 0:
-            return lafs, image.new_zeros(image.shape[0], lafs.shape[1], self.num_ang_bins * self.num_spatial_bins**2)
+            # Keep empty outputs differentiably connected to both inputs, just
+            # as the all-invalid path below does.
+            zero = image[..., :0, :0].sum() + lafs[..., :0].sum()
+            descriptors = (
+                image.new_zeros(image.shape[0], lafs.shape[1], self.num_ang_bins * self.num_spatial_bins**2) + zero
+            )
+            return lafs, descriptors.to(image_dtype)
         # Promote before constructing coordinates: upcasting an already rounded
         # half-precision grid cannot recover subpixel geometry on large images.
         working_dtype = _promoted_grid_dtype(image.dtype, lafs.dtype)
@@ -307,10 +328,11 @@ class SIFTDescriptorFromPyramid(nn.Module):
         # Padded detector slots and invalid training frames must never reach
         # grid_sample/atan2.  Their public output remains the zero descriptor.
         safe_lafs = torch.where(valid.view(*valid.shape, 1, 1), lafs, identity)
-        pyramid = self._pyramid(image)
-        levels = self._select_levels(safe_lafs, len(pyramid)).masked_fill(~valid, -1)
-        # The full pyramid is needed to clamp the selected octave, but histogram
-        # maps are only useful up to the highest selected valid octave.
+        num_levels = self._num_pyramid_levels(image)
+        levels = self._select_levels(safe_lafs, num_levels).masked_fill(~valid, -1)
+        # Select before pyramid construction.  The octave count depends only on
+        # image shape, so high octaves that no valid LAF can use need neither a
+        # pyrdown result nor a histogram map.
         max_level = int(levels.max().item())
         if max_level < 0:
             # Keep the zero result connected to the inputs: callers can backpropagate
@@ -320,7 +342,7 @@ class SIFTDescriptorFromPyramid(nn.Module):
                 image.new_zeros(image.shape[0], lafs.shape[1], self.num_ang_bins * self.num_spatial_bins**2) + zero
             )
             return lafs.to(laf_dtype), descriptors.to(image_dtype)
-        pyramid = pyramid[: max_level + 1]
+        pyramid = self._pyramid(image, max_level + 1)
         histograms = []
         for level_image in pyramid:
             gradients = spatial_gradient(level_image, "diff")

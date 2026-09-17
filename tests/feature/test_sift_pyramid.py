@@ -52,7 +52,11 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
     def test_flat_input_has_finite_backward(self, device, dtype):
         image = torch.zeros(1, 1, 64, 64, device=device, dtype=dtype, requires_grad=True)
         xy = torch.tensor([[[32.0, 32.0]]], device=device, dtype=dtype)
-        lafs = laf_from_center_scale_ori(xy, torch.full((1, 1, 1, 1), 8.0, device=device, dtype=dtype))
+        # This scale selects the second octave, exercising the in-place updates
+        # on _laf_at_level's cloned LAF tensor during backward.
+        lafs = laf_from_center_scale_ori(
+            xy, torch.full((1, 1, 1, 1), 20.0, device=device, dtype=dtype, requires_grad=True)
+        )
         _, descriptors = SIFTDescriptorFromPyramid().to(device, dtype).orient_and_describe(image, lafs)
         descriptors.sum().backward()
         assert torch.isfinite(image.grad).all()
@@ -92,18 +96,38 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         image = torch.rand(1, 1, 80, 80, device=device, dtype=dtype)
         lafs = torch.tensor([[[[6.0, 0, 40], [0, 6.0, 40]]]], device=device, dtype=dtype)
         calls = []
+        pyrdown_calls = []
         original = implementation.spatial_gradient
+        original_pyrdown = implementation.pyrdown
 
         def gradient(level, *args, **kwargs):
             calls.append(level.shape)
             return original(level, *args, **kwargs)
 
+        def counted_pyrdown(level, *args, **kwargs):
+            pyrdown_calls.append(level.shape)
+            return original_pyrdown(level, *args, **kwargs)
+
         monkeypatch.setattr(implementation, "spatial_gradient", gradient)
+        monkeypatch.setattr(implementation, "pyrdown", counted_pyrdown)
         actual = SIFTDescriptorFromPyramid().to(device, dtype)(image, lafs)
         assert calls == [image.shape]
+        assert pyrdown_calls == []
         single_level = SIFTDescriptorFromPyramid().to(device, dtype)
-        monkeypatch.setattr(single_level, "_pyramid", lambda image: [image])
+        monkeypatch.setattr(single_level, "_pyramid", lambda image, num_levels=None: [image])
         self.assert_close(actual, single_level(image, lafs))
+
+    def test_all_invalid_lafs_skip_pyramid_construction(self, device, dtype, monkeypatch):
+        image = torch.rand(1, 1, 80, 80, device=device, dtype=dtype)
+        lafs = torch.zeros(1, 2, 2, 3, device=device, dtype=dtype)
+        feature = SIFTDescriptorFromPyramid().to(device, dtype)
+
+        def unexpected_pyramid(*args, **kwargs):
+            raise AssertionError("all-invalid LAFs must not build an image pyramid")
+
+        monkeypatch.setattr(feature, "_pyramid", unexpected_pyramid)
+        descriptors = feature(image, lafs)
+        self.assert_close(descriptors, torch.zeros_like(descriptors))
 
     def test_upright_preserves_laf_orientation(self, device, dtype):
         image = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
@@ -173,6 +197,15 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         assert oriented.shape == (0, 3, 2, 3)
         assert desc.shape == (0, 3, 128)
 
+    @pytest.mark.parametrize("batch_size,num_lafs", [(1, 0), (0, 3)])
+    def test_empty_inputs_keep_zero_backward(self, device, dtype, batch_size, num_lafs):
+        image = torch.empty(batch_size, 1, 40, 40, device=device, dtype=dtype, requires_grad=True)
+        lafs = torch.empty(batch_size, num_lafs, 2, 3, device=device, dtype=dtype, requires_grad=True)
+        descriptors = SIFTDescriptorFromPyramid().to(device, dtype)(image, lafs)
+        descriptors.sum().backward()
+        self.assert_close(image.grad, torch.zeros_like(image.grad))
+        self.assert_close(lafs.grad, torch.zeros_like(lafs.grad))
+
     def test_descriptor_forward_does_not_reorient(self, device, dtype, monkeypatch):
         image = torch.rand(1, 1, 40, 40, device=device, dtype=dtype)
         lafs = torch.tensor([[[[6.0, 2.0, 20.0], [-2.0, 6.0, 20.0]]]], device=device, dtype=dtype)
@@ -194,9 +227,9 @@ class TestSIFTDescriptorFromPyramid(BaseTester):
         original = descriptor._pyramid
         calls = []
 
-        def counted_pyramid(image):
+        def counted_pyramid(image, num_levels=None):
             calls.append(image.shape)
-            return original(image)
+            return original(image, num_levels)
 
         monkeypatch.setattr(descriptor, "_pyramid", counted_pyramid)
         descriptor.orient_and_describe(image, lafs)

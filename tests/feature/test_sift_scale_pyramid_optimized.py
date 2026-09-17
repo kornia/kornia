@@ -89,6 +89,20 @@ class TestSIFTScalePyramidCPUOptimized(BaseTester):
         for actual_octave, expected_octave in zip(actual, expected):
             self.assert_close(actual_octave, expected_octave)
 
+    def test_inference_preallocation_matches_training_and_keeps_levels_distinct(self, device, dtype):
+        self._cpu(device, dtype)
+        pyramid = _SIFTScalePyramid().to(device, dtype)
+        image = torch.rand(2, 1, 129, 131, device=device, dtype=dtype)
+
+        inference = pyramid(image)
+        training = pyramid(image.detach().clone().requires_grad_())
+
+        for inferred_octave, training_octave in zip(inference, training):
+            self.assert_close(inferred_octave, training_octave)
+            # Each Gaussian level occupies its own range of the preallocated
+            # volume, preventing a later blur from overwriting an earlier one.
+            assert len({inferred_octave[:, :, level].data_ptr() for level in range(6)}) == 6
+
     def test_blur_has_finite_gradient(self, device, dtype):
         self._cpu(device, dtype)
         pyramid = _SIFTScalePyramid().to(device, dtype)

@@ -25,6 +25,7 @@ from torch import nn
 
 from kornia.feature import SIFTFeatureScaleSpace, get_laf_center, get_laf_orientation, laf_is_filled
 from kornia.feature.sift.scale_space import _SIFTScaleSpaceDescriptor, _SIFTScaleSpaceDetector
+from kornia.filters import spatial_gradient
 
 from testing.base import BaseTester, supports_reflect_padding, supports_replicate_padding
 
@@ -56,6 +57,62 @@ class TestSharedSIFTScaleSpace(BaseTester):
         mag = xx.new_tensor([0.3, 0.6, 1.0, 0.4]).view(1, 1, -1)
         angle = xx.new_tensor([0.2, 1.3, 3.1, 5.6]).view(1, 1, -1)
         self.gradcheck(lambda m, a: _SIFTScaleSpaceDescriptor._descriptor_histograms(m, a, xx, yy), (mag, angle))
+
+    def test_separable_histogram_matches_dense_values_and_gradients(self, device, dtype):
+        # _sample_gradients promotes reduced precision before this private
+        # histogram helper; keep half leaves to check their returned gradients.
+        work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        coordinate = torch.tensor([-0.6, 0.0, 0.6], device=device, dtype=work_dtype)
+        yy, xx = torch.meshgrid(coordinate, coordinate, indexing="ij")
+        xx, yy = xx.reshape(-1), yy.reshape(-1)
+        actual_mag = torch.linspace(0.1, 1.8, 18, device=device, dtype=dtype).reshape(2, 1, 9).requires_grad_()
+        expected_mag = actual_mag.detach().clone().requires_grad_()
+        # Include both directions across the 7 -> 0 seam without putting a
+        # finite-difference probe exactly on an angular-bin boundary.
+        actual_angle = (
+            torch.tensor(
+                [-0.13, 0.21, 1.07, 2.31, 3.53, 4.89, 5.97, 2 * torch.pi + 0.17, -2 * torch.pi + 1.43],
+                device=device,
+                dtype=dtype,
+            )
+            .repeat(2)
+            .reshape(2, 1, 9)
+            .requires_grad_()
+        )
+        expected_angle = actual_angle.detach().clone().requires_grad_()
+        bins = torch.arange(4, device=device, dtype=work_dtype)
+        separable = (1.0 - (2.5 * coordinate[:, None] + 1.5 - bins).abs()).clamp_min(0.0)
+
+        actual = _SIFTScaleSpaceDescriptor._descriptor_histograms(
+            actual_mag.to(work_dtype), actual_angle.to(work_dtype), xx, yy, separable
+        )
+        expected = _SIFTScaleSpaceDescriptor._descriptor_histograms(
+            expected_mag.to(work_dtype), expected_angle.to(work_dtype), xx, yy
+        )
+        self.assert_close(actual, expected)
+        weights = torch.linspace(0.1, 1.0, actual.numel(), device=device, dtype=work_dtype).reshape_as(actual)
+        (actual * weights).sum().backward()
+        (expected * weights).sum().backward()
+        self.assert_close(actual_mag.grad, expected_mag.grad)
+        self.assert_close(actual_angle.grad, expected_angle.grad)
+
+    def test_separable_histogram_gradcheck_cpu_double(self, device):
+        if device.type != "cpu":
+            pytest.skip("covers the CPU float64 derivative of the separable path")
+        coordinate = torch.tensor([-0.6, 0.0, 0.6], device=device, dtype=torch.float64)
+        yy, xx = torch.meshgrid(coordinate, coordinate, indexing="ij")
+        xx, yy = xx.reshape(-1), yy.reshape(-1)
+        bins = torch.arange(4, device=device, dtype=torch.float64)
+        separable = (1.0 - (2.5 * coordinate[:, None] + 1.5 - bins).abs()).clamp_min(0.0)
+        mag = torch.linspace(0.1, 0.9, 9, device=device, dtype=torch.float64).reshape(1, 1, 9)
+        angle = torch.tensor(
+            [-0.13, 0.21, 1.07, 2.31, 3.53, 4.89, 5.97, 2 * torch.pi + 0.17, -2 * torch.pi + 1.43],
+            device=device,
+            dtype=torch.float64,
+        ).reshape(1, 1, 9)
+        self.gradcheck(
+            lambda m, a: _SIFTScaleSpaceDescriptor._descriptor_histograms(m, a, xx, yy, separable), (mag, angle)
+        )
 
     @pytest.mark.parametrize("components", [["scale_pyr"], ["subpix"], ["scale_pyr", "subpix"]])
     def test_checkpoint_round_trip(self, components):
@@ -147,6 +204,37 @@ class TestSharedSIFTScaleSpace(BaseTester):
         assert lafs.shape == (2, 0, 2, 3)
         assert desc.shape == (2, 0, 128)
 
+    @pytest.mark.parametrize("case", ["flat", "masked", "num_features", "empty_batch"])
+    def test_public_empty_outputs_are_graph_connected(self, device, dtype, case):
+        if case == "empty_batch":
+            image = torch.rand(0, 1, 40, 40, device=device, dtype=dtype, requires_grad=True)
+        elif case == "flat":
+            image = torch.zeros(1, 1, 40, 40, device=device, dtype=dtype, requires_grad=True)
+        else:
+            image = torch.rand(1, 1, 40, 40, device=device, dtype=dtype, requires_grad=True)
+        feature = SIFTFeatureScaleSpace(4, descriptor_backend="pyramid").to(device, dtype)
+        if case == "num_features":
+            feature.detector.num_features = 0
+        mask = torch.zeros_like(image) if case == "masked" else None
+
+        lafs, responses, descriptors = feature(image, mask)
+
+        assert not lafs.any() and not responses.any() and not descriptors.any()
+        assert lafs.requires_grad and responses.requires_grad and descriptors.requires_grad
+        (lafs.sum() + responses.sum() + descriptors.sum()).backward()
+        assert image.grad is not None
+        assert torch.isfinite(image.grad).all() and not image.grad.any()
+
+    def test_float16_tiny_float32_mask_is_suppressed(self, device, dtype):
+        if dtype != torch.float16:
+            pytest.skip("exercises mask preservation across float16 detector promotion")
+        image = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
+        dog = _quadratic_dog(device, dtype)
+        detector = _SIFTScaleSpaceDetector(1, _FixedPyramid(dog)).to(device, dtype)
+        mask = torch.full((1, 1, 32, 32), 1e-10, device=device, dtype=torch.float32)
+        lafs, responses = detector(image, mask)
+        assert not lafs.any() and not responses.any()
+
     def test_flat_gradient_backward(self, device, dtype):
         image = torch.zeros(1, 1, 1, 32, 32, device=device, dtype=dtype, requires_grad=True)
         lafs = torch.tensor([[[[3.0, 0, 8], [0, 3.0, 8]]]], device=device, dtype=dtype)
@@ -169,19 +257,19 @@ class TestSharedSIFTScaleSpace(BaseTester):
         octaves = torch.zeros(2, 3, device=device, dtype=torch.long)
         levels = torch.tensor([[0, 0, 2], [2, 0, 2]], device=device)
         calls = []
-        original = implementation.spatial_gradient
+        original = implementation._SIFTScaleSpaceDescriptor._gradient_atlas
 
-        def gradient(image, *args, **kwargs):
+        def gradient(image, levels, work_dtype):
             calls.append(image)
-            return original(image, *args, **kwargs)
+            return original(image, levels, work_dtype)
 
-        monkeypatch.setattr(implementation, "spatial_gradient", gradient)
+        monkeypatch.setattr(implementation._SIFTScaleSpaceDescriptor, "_gradient_atlas", staticmethod(gradient))
         module = _SIFTScaleSpaceDescriptor()
         _, desc = module(pyramid, lafs, octaves, levels)
         # Used layers are batched into one gradient call per octave, including
         # both images; the unused middle layer is never differentiated.
         assert len(calls) == 1
-        assert calls[0].shape == (4, 1, 32, 32)
+        assert calls[0].shape == (2, 1, 3, 32, 32)
         for batch in range(2):
             for feature in range(3):
                 _, single = module(
@@ -191,6 +279,37 @@ class TestSharedSIFTScaleSpace(BaseTester):
                     levels[batch : batch + 1, feature : feature + 1],
                 )
                 self.assert_close(desc[batch, feature], single[0, 0])
+
+    @pytest.mark.parametrize("height,width", [(5, 7), (1, 7), (7, 1)])
+    def test_gradient_atlas_matches_spatial_gradient_and_backward(self, device, dtype, height, width):
+        levels = torch.tensor([0, 2], device=device)
+        actual_images = torch.rand(2, 1, 3, height, width, device=device, dtype=dtype, requires_grad=True)
+        expected_images = actual_images.detach().clone().requires_grad_()
+        work_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        actual = _SIFTScaleSpaceDescriptor._gradient_atlas(actual_images, levels, work_dtype)
+        selected = expected_images[:, 0].index_select(1, levels).to(work_dtype)
+        expected = spatial_gradient(selected.reshape(-1, 1, height, width), mode="diff")[:, 0]
+        expected = expected.reshape(2, 2, 2, height, width).permute(0, 2, 1, 3, 4).reshape(2, 2, -1, width)
+        self.assert_close(actual, expected)
+        weights = torch.linspace(0.1, 1.0, actual.numel(), device=device, dtype=work_dtype).reshape_as(actual)
+        (actual * weights).sum().backward()
+        (expected * weights).sum().backward()
+        assert actual_images.grad is not None and expected_images.grad is not None
+        self.assert_close(actual_images.grad, expected_images.grad)
+
+    def test_grid_inference_matches_autograd_path(self, device, dtype):
+        lafs = torch.tensor(
+            [
+                [[[2.0, 0.3, 0.0], [-0.2, 1.5, 0.0]], [[1.0, 0.0, 6.0], [0.0, 2.0, 4.0]]],
+                [[[2.0, 0.3, 8.0], [-0.2, 1.5, 5.0]], [[1.0, 0.0, 3.0], [0.0, 2.0, 8.0]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        layers = torch.tensor([[0, 2], [2, 0]], device=device)
+        inference, _, _ = _SIFTScaleSpaceDescriptor._grid(lafs, layers, 9, 11, 27, 19)
+        autograd, _, _ = _SIFTScaleSpaceDescriptor._grid(lafs.detach().clone().requires_grad_(), layers, 9, 11, 27, 19)
+        self.assert_close(inference, autograd)
 
     def test_upright_image_gradcheck(self, device):
         if device.type == "mps":
@@ -295,6 +414,70 @@ class TestSIFTScaleSpaceDetector(BaseTester):
         detector = _SIFTScaleSpaceDetector(2, _FixedPyramid(dog))
         lafs, responses = detector(torch.zeros(1, 1, 32, 32, device=device, dtype=dtype))
         assert not lafs.any() and not responses.any()
+
+    def test_checkerboard_equal_diagonals_reject_before_neighbourhood_gather(self, device, dtype, monkeypatch):
+        y = torch.arange(32, device=device).view(1, 1, 32, 1)
+        x = torch.arange(32, device=device).view(1, 1, 1, 32)
+        dog = (1 - 2 * ((x + y) % 2)).to(torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype)
+        dog = dog.expand(1, 5, -1, -1)
+        gaussian = torch.cat([torch.zeros_like(dog[:, :1]), dog.cumsum(1)], 1).unsqueeze(1)
+        detector = _SIFTScaleSpaceDetector(1, nn.Identity()).to(device, dtype)
+
+        def forbidden(*args, **kwargs):
+            raise AssertionError("checkerboard candidates must be rejected before sparse gathering")
+
+        monkeypatch.setattr(detector, "_neighbourhood", forbidden)
+        result = detector._octave(gaussian, 0, None)
+        assert all(value.numel() == 0 for value in result)
+
+    def test_scale_rejected_spikes_screen_neighbourhoods_in_bounded_chunks(self, device, dtype, monkeypatch):
+        if device.type not in ("cpu", "mps") or dtype != torch.float32:
+            pytest.skip("exercises the CPU/MPS sparse-screening chunk limits")
+        size = 512
+        coordinates = torch.arange(6, size - 5, 3, device=device)
+        dog = torch.zeros(1, 5, size, size, device=device, dtype=dtype)
+        # Every searchable scale sees the same isolated spatial maxima, so all
+        # candidates reach sparse screening but fail strict scale comparison.
+        dog[:, :, coordinates[:, None], coordinates] = 1.0
+        gaussian = torch.cat([torch.zeros_like(dog[:, :1]), dog.cumsum(1)], 1).unsqueeze(1)
+        detector = _SIFTScaleSpaceDetector(1, nn.Identity())
+        original = detector._neighbourhood
+        calls = []
+
+        def record(*args):
+            calls.append(args[1].numel())
+            return original(*args)
+
+        monkeypatch.setattr(detector, "_neighbourhood", record)
+        with torch.inference_mode():
+            result = detector._octave(gaussian, 0, None)
+        limit = 16384 if device.type == "cpu" else 65536
+        assert len(calls) > 1 and sum(calls) > limit and max(calls) <= limit
+        assert all(value.numel() == 0 for value in result)
+
+    def test_many_middle_scale_extrema_refine_in_chunks(self, device, dtype, monkeypatch):
+        if device.type != "cpu" or dtype != torch.float32:
+            pytest.skip("exercises the CPU refinement chunk limit")
+        size = 512
+        coordinates = torch.arange(6, size - 5, 3, device=device)
+        dog = torch.zeros(1, 5, size, size, device=device, dtype=dtype)
+        dog[:, 2, coordinates[:, None], coordinates] = 1.0
+        gaussian = torch.cat([torch.zeros_like(dog[:, :1]), dog.cumsum(1)], 1).unsqueeze(1)
+        detector = _SIFTScaleSpaceDetector(1, nn.Identity())
+        original = detector._refine
+        calls = []
+
+        def record(*args):
+            calls.append(args[1].numel())
+            return original(*args)
+
+        monkeypatch.setattr(detector, "_refine", record)
+        with torch.inference_mode():
+            *_, responses, _, _, _ = detector._octave(gaussian, 0, None)
+        expected_count = coordinates.numel() ** 2
+        assert len(calls) > 1 and sum(calls) == expected_count and max(calls) <= 16384
+        assert responses.numel() == expected_count
+        self.assert_close(responses, torch.ones_like(responses))
 
     def test_sparse_neighbourhood_values_and_backward(self, device, dtype):
         dog = torch.rand(2, 5, 13, 15, device=device, dtype=dtype, requires_grad=True)
