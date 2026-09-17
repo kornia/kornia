@@ -8,7 +8,10 @@ nearest refined Gaussian layer supplies gradients; the continuously refined scal
 sets the integration support. No descriptor-owned pyramid is built.
 
 Gradients are computed once per used Gaussian layer and sampled directly for
-orientation and description. The SIFT-specific implementation uses a 36-bin
+orientation and description. Used layers are batched into a gradient atlas per
+octave, with sampling clamped within each layer to prevent boundary leakage.
+Equivalent dense angular weights and matrix multiplication accumulate descriptor
+votes, reducing GPU scatter overhead. The SIFT-specific implementation uses a 36-bin
 orientation histogram, a 4×4×8 descriptor, Gaussian weighting, trilinear spatial
 and angular voting, clipping, and RootSIFT normalization. Orientation support is
 4.5 sigma with a 1.5-sigma Gaussian; descriptor cell width is 3 sigma with a

@@ -115,6 +115,12 @@ class TestSharedSIFTScaleSpace(BaseTester):
 
         pyramid = [torch.rand(2, 1, 3, 32, 32, device=device, dtype=dtype)]
         lafs = torch.tensor([[[[3.0, 0, 8], [0, 3.0, 8]]] * 3] * 2, device=device, dtype=dtype)
+        # Exercise both ends of an atlas layer: border replication must stay in
+        # that layer instead of interpolating a neighbouring Gaussian image.
+        # Original-image centres 0.5/15.5 become octave-0 centres 1/31 because
+        # its pixel distance is 0.5. Batch 1 uses the upper atlas layer at y=1.
+        lafs[:, 0, :, 2] = 0.5
+        lafs[:, 2, :, 2] = 15.5
         octaves = torch.zeros(2, 3, device=device, dtype=torch.long)
         levels = torch.tensor([[0, 0, 2], [2, 0, 2]], device=device)
         calls = []
@@ -127,7 +133,10 @@ class TestSharedSIFTScaleSpace(BaseTester):
         monkeypatch.setattr(implementation, "spatial_gradient", gradient)
         module = _SIFTScaleSpaceDescriptor()
         _, desc = module(pyramid, lafs, octaves, levels)
-        assert len(calls) == 2
+        # Used layers are batched into one gradient call per octave, including
+        # both images; the unused middle layer is never differentiated.
+        assert len(calls) == 1
+        assert calls[0].shape == (4, 1, 32, 32)
         for batch in range(2):
             for feature in range(3):
                 _, single = module(

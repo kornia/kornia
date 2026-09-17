@@ -43,7 +43,7 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
     """Orient and describe LAFs from their detector-selected Gaussian levels.
 
     ``pyramid[octave]`` is ``(B, 1, L, H, W)`` and ``octave_indices`` and
-    ``level_indices`` identify the level which produced each LAF. Coordinates in
+    ``level_indices`` identify each LAF's nearest refined Gaussian level. Coordinates in
     ``lafs`` are in original-image pixels; the supplied octave index sets the
     pixel distance to ``0.5 * 2**octave`` for the standard doubled SIFT pyramid.
     """
@@ -55,7 +55,7 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
 
     @staticmethod
     def _grid(
-        lafs: torch.Tensor, height: int, width: int, size: int
+        lafs: torch.Tensor, layer_indices: torch.Tensor, level_height: int, width: int, atlas_height: int, size: int
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         q = (2.0 * torch.arange(size, dtype=lafs.dtype, device=lafs.device) + 1.0) / size - 1.0
         yy, xx = torch.meshgrid(q, q, indexing="ij")
@@ -63,17 +63,22 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         points = torch.einsum("bnij,xyj->bnxyi", lafs[..., :2, :2], local) + lafs[..., :2, 2].view(
             lafs.shape[0], lafs.shape[1], 1, 1, 2
         )
-        grid = 2.0 * (points + 0.5) / points.new_tensor([width, height]) - 1.0
+        # Clamp in the selected layer before shifting it into the vertical atlas:
+        # atlas-border padding would otherwise interpolate a neighbouring layer.
+        x = points[..., 0].clamp(0.0, float(width - 1))
+        y = points[..., 1].clamp(0.0, float(level_height - 1))
+        y = y + layer_indices.view(lafs.shape[0], lafs.shape[1], 1, 1).to(y.dtype) * level_height
+        grid = torch.stack([2.0 * (x + 0.5) / width - 1.0, 2.0 * (y + 0.5) / atlas_height - 1.0], -1)
         return grid.reshape(lafs.shape[0], lafs.shape[1] * size, size, 2), xx, yy
 
     def _sample_gradients(
-        self, gradients: torch.Tensor, lafs: torch.Tensor, size: int
+        self, gradients: torch.Tensor, lafs: torch.Tensor, layer_indices: torch.Tensor, level_height: int, size: int
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        h, w = gradients.shape[-2:]
+        atlas_height, w = gradients.shape[-2:]
         work_dtype = torch.float32 if gradients.dtype in (torch.float16, torch.bfloat16) else gradients.dtype
         work_lafs = lafs.to(work_dtype)
-        grid, xx, yy = self._grid(work_lafs, h, w, size)
-        sampled = _grid_sample_patches(gradients.to(work_dtype), grid, h, w)
+        grid, xx, yy = self._grid(work_lafs, layer_indices, level_height, w, atlas_height, size)
+        sampled = _grid_sample_patches(gradients.to(work_dtype), grid, atlas_height, w)
         sampled = sampled.reshape(lafs.shape[0], 2, lafs.shape[1], size * size).permute(0, 2, 1, 3)
         local_gradient = torch.einsum("bnji,bnjs->bnis", work_lafs[..., :2, :2], sampled)
         mag, angle = _gradient_magnitude_orientation(local_gradient[:, :, 0], local_gradient[:, :, 1], self.eps)
@@ -89,8 +94,10 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         output.scatter_add_(-1, (lower + 1) % bins, mag * weight1)
         return output
 
-    def _orientation(self, gradients: torch.Tensor, lafs: torch.Tensor) -> torch.Tensor:
-        mag, angle, xx, yy = self._sample_gradients(gradients, lafs, 19)
+    def _orientation(
+        self, gradients: torch.Tensor, lafs: torch.Tensor, layer_indices: torch.Tensor, level_height: int
+    ) -> torch.Tensor:
+        mag, angle, xx, yy = self._sample_gradients(gradients, lafs, layer_indices, level_height, 19)
         # sigma = LAF scale / (6 * octave pixel size); expressed in local LAF
         # coordinates it is scale-independent, while retaining the stated scale law.
         radius2 = xx.square() + yy.square()
@@ -109,28 +116,25 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         offset = torch.where(denominator != 0, 0.5 * (left - right) / safe, torch.zeros_like(denominator))
         return (-2.0 * pi * (index.to(lafs.dtype) + offset) / 36.0).reshape(lafs.shape[:2])
 
-    def _describe(self, gradients: torch.Tensor, lafs: torch.Tensor) -> torch.Tensor:
-        mag, angle, xx, yy = self._sample_gradients(gradients, lafs, 41)
-        b, n, samples = mag.shape
+    def _describe(
+        self, gradients: torch.Tensor, lafs: torch.Tensor, layer_indices: torch.Tensor, level_height: int
+    ) -> torch.Tensor:
+        mag, angle, xx, yy = self._sample_gradients(gradients, lafs, layer_indices, level_height, 41)
+        b, n, _ = mag.shape
         weight = torch.exp(-0.78125 * (xx.square() + yy.square())).to(mag.dtype)
         angular = (angle % (2 * pi)) * 8 / (2 * pi)
-        a0 = angular.floor().long() % 8
-        aw1 = angular - angular.floor()
         spatial_x = 2.5 * xx + 1.5
         spatial_y = 2.5 * yy + 1.5
-        x0, y0 = spatial_x.floor().long(), spatial_y.floor().long()
-        wx1, wy1 = spatial_x - x0, spatial_y - y0
-        output = mag.new_zeros(b, n, 4, 4, 8)
-        vote = mag * weight
-        for dy, wy in ((0, 1.0 - wy1), (1, wy1)):
-            for dx, wx in ((0, 1.0 - wx1), (1, wx1)):
-                x_index, y_index = x0 + dx, y0 + dy
-                valid = (x_index >= 0) & (x_index < 4) & (y_index >= 0) & (y_index < 4)
-                spatial = (y_index.clamp(0, 3) * 4 + x_index.clamp(0, 3)) * 8
-                for da, wa in ((0, 1.0 - aw1), (1, aw1)):
-                    index = spatial.view(1, 1, samples) + (a0 + da) % 8
-                    output.view(b, n, -1).scatter_add_(2, index, vote * wx * wy * wa * valid.view(1, 1, samples))
-        desc = output.flatten(2)
+        bins = torch.arange(8, device=mag.device, dtype=mag.dtype)
+        angular_distance = (angular.unsqueeze(-1) - bins).abs()
+        angular_distance = torch.minimum(angular_distance, 8.0 - angular_distance)
+        angular_weights = (1.0 - angular_distance).clamp_min(0.0) * (mag * weight).unsqueeze(-1)
+        cell_y, cell_x = torch.meshgrid(bins[:4], bins[:4], indexing="ij")
+        spatial_weights = (1.0 - (spatial_x.unsqueeze(-1) - cell_x.reshape(-1)).abs()).clamp_min(0.0) * (
+            1.0 - (spatial_y.unsqueeze(-1) - cell_y.reshape(-1)).abs()
+        ).clamp_min(0.0)
+        # (B, N, 8, samples) @ (samples, 16) -> one 8-bin histogram per spatial cell.
+        desc = torch.matmul(angular_weights.transpose(-1, -2), spatial_weights).transpose(-1, -2).reshape(b, n, 128)
         desc = _l2_normalize(desc, dim=-1).clamp(0.0, self.clipval)
         desc = _l2_normalize(desc, dim=-1)
         return _rootsift(desc.reshape(-1, 128), self.eps).reshape_as(desc) if self.rootsift else desc
@@ -155,31 +159,38 @@ class _SIFTScaleSpaceDescriptor(nn.Module):
         oriented, descriptors = safe.clone(), torch.zeros(b, n, 128, device=image.device, dtype=work_dtype)
         for octave, octave_images in enumerate(pyramid):
             pixel = 0.5 * float(2**octave)
-            for level in range(octave_images.shape[2]):
-                selected = valid & (octave_indices == octave) & (level_indices == level)
-                if not selected.any():
-                    continue
-                level_image = octave_images[:, :, level].to(work_dtype)
-                gradients = spatial_gradient(level_image, "diff")[:, 0]
-                for batch in range(b):
-                    indices = selected[batch].nonzero().flatten()
-                    for start in range(0, indices.numel(), 256):
-                        current_indices = indices[start : start + 256]
-                        if current_indices.numel() == 0:
-                            continue
-                        current = safe[batch : batch + 1, current_indices].clone()
-                        current[..., :2, :] /= pixel
-                        if not (self.upright if upright is None else upright):
-                            orientation_lafs = current.clone()
-                            orientation_lafs[..., :2, :2] *= 0.75
-                            alpha = self._orientation(gradients[batch : batch + 1], orientation_lafs)
-                            current = rotate_laf(current, torch.rad2deg(alpha).unsqueeze(-1))
-                        descriptor_lafs = current.clone()
-                        descriptor_lafs[..., :2, :2] *= 1.25
-                        oriented[batch, current_indices] = current[0] * pixel
-                        descriptors[batch, current_indices] = self._describe(
-                            gradients[batch : batch + 1], descriptor_lafs
-                        )[0]
+            octave_selected = valid & (octave_indices == octave)
+            if not octave_selected.any():
+                continue
+            used_levels = torch.unique(level_indices[octave_selected], sorted=True)
+            used_images = octave_images.index_select(2, used_levels).permute(0, 2, 1, 3, 4)
+            level_height, width = used_images.shape[-2:]
+            gradients = spatial_gradient(used_images.reshape(-1, 1, level_height, width).to(work_dtype), "diff")
+            gradients = gradients[:, 0].reshape(b, used_levels.numel(), 2, level_height, width)
+            atlas = gradients.permute(0, 2, 1, 3, 4).reshape(b, 2, used_levels.numel() * level_height, width)
+            chunk_size = 1024
+            for batch in range(b):
+                indices = octave_selected[batch].nonzero().flatten()
+                for start in range(0, indices.numel(), chunk_size):
+                    current_indices = indices[start : start + chunk_size]
+                    if current_indices.numel() == 0:
+                        continue
+                    layer_indices = torch.searchsorted(used_levels, level_indices[batch, current_indices]).view(1, -1)
+                    current = safe[batch : batch + 1, current_indices].clone()
+                    current[..., :2, :] /= pixel
+                    if not (self.upright if upright is None else upright):
+                        orientation_lafs = current.clone()
+                        orientation_lafs[..., :2, :2] *= 0.75
+                        alpha = self._orientation(
+                            atlas[batch : batch + 1], orientation_lafs, layer_indices, level_height
+                        )
+                        current = rotate_laf(current, torch.rad2deg(alpha).unsqueeze(-1))
+                    descriptor_lafs = current.clone()
+                    descriptor_lafs[..., :2, :2] *= 1.25
+                    oriented[batch, current_indices] = current[0] * pixel
+                    descriptors[batch, current_indices] = self._describe(
+                        atlas[batch : batch + 1], descriptor_lafs, layer_indices, level_height
+                    )[0]
         return torch.where(valid.view(b, n, 1, 1), oriented, lafs.to(oriented)).to(lafs.dtype), descriptors.masked_fill(
             ~valid.unsqueeze(-1), 0.0
         ).to(output_dtype)
