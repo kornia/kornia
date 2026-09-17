@@ -4092,6 +4092,24 @@ class TestNormalTransformPixel(BaseTester):
         expected = torch.tensor([[[0.5, 0.0, -1.0], [0.0, 2.0 / 3.0, -1.0], [0.0, 0.0, 1.0]]])
         self.assert_close(matrix.cpu().to(torch.complex128), expected.to(torch.complex128), atol=0.05, rtol=0.05)
 
+        # The 3-D function carries its own copy of the guard, so an allowlist planted in that one
+        # alone would leave this test green if it only called the 2-D function.
+        matrix_3d = kornia.geometry.conversions.normal_transform_pixel3d(2, 4, 5, device=device, dtype=accepted_dtype)
+        assert matrix_3d.dtype == accepted_dtype
+        assert matrix_3d.shape == (1, 4, 4)
+        assert matrix_3d.device.type == torch.device(device).type
+        expected_3d = torch.tensor(
+            [
+                [
+                    [0.5, 0.0, 0.0, -1.0],
+                    [0.0, 2.0 / 3.0, 0.0, -1.0],
+                    [0.0, 0.0, 2.0, -1.0],
+                    [0.0, 0.0, 0.0, 1.0],
+                ]
+            ]
+        )
+        self.assert_close(matrix_3d.cpu().to(torch.complex128), expected_3d.to(torch.complex128), atol=0.05, rtol=0.05)
+
     def test_convention_integer_dtype_rejection_is_unconditional_3959(self, device):
         # The guard is deliberately NOT a KORNIA_CHECK. KORNIA_CHECK is gated on
         # _KORNIA_CHECKS_ENABLED, which disable_checks(), python -O and KORNIA_CHECKS=0 all clear,
