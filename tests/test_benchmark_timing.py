@@ -70,14 +70,15 @@ def test_timing_preserves_configured_threads():
 
 
 @pytest.mark.device_agnostic
-def test_filter_benchmark_imports_its_checkout(tmp_path):
+@pytest.mark.parametrize("suite", ["filters", "augmentation"])
+def test_benchmark_imports_its_checkout(tmp_path, suite):
     # A different installation is visible when Python runs a script directly:
     # the script directory replaces the current directory on sys.path.
     shadow = tmp_path / "kornia"
     shadow.mkdir()
     (shadow / "__init__.py").write_text('raise RuntimeError("imported the installed Kornia instead of the checkout")')
     root = Path(__file__).resolve().parents[1]
-    script = root / "benchmarks/filters/flagship.py"
+    script = root / "benchmarks" / suite / "flagship.py"
     code = (
         "import runpy, sys\n"
         f"sys.path.insert(0, {str(tmp_path)!r})\n"
