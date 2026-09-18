@@ -18,7 +18,7 @@
 """In this module several equalization methods are exposed: he, ahe, clahe."""
 
 import math
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -166,7 +166,7 @@ def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
 
 
 def _compute_luts(
-    tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 40.0, diff: bool = False
+    tiles_x_im: torch.Tensor, num_bins: int = 256, clip: Union[float, torch.Tensor] = 40.0, diff: bool = False
 ) -> torch.Tensor:
     r"""Compute luts for a batched set of tiles.
 
@@ -196,10 +196,27 @@ def _compute_luts(
         histos = histogram(tiles, bins, torch.tensor(0.001))
         histos *= pixels
 
-    if clip > 0.0:
+    if isinstance(clip, torch.Tensor):
+        # Match Python scalar arithmetic before rounding each image's threshold, then broadcast
+        # over its tiles and channels. Keeping the limits in tensors avoids compile guards on draws.
+        # MPS cannot store doubles; compute its thresholds on CPU before copying them with the LUTs.
+        limits = clip.to(device="cpu", dtype=torch.float64) if clip.device.type == "mps" else clip.double()
+        max_vals = (limits * pixels).div(num_bins, rounding_mode="floor").clamp(min=1)
+        max_vals = max_vals.to(histos).view(b, 1).expand(b, gh * gw * c).reshape(-1, 1)
+        limited = histos.clamp(max=max_vals)
+        clipped_tensor = torch.relu(histos - max_vals).sum(1) if diff else pixels - limited.sum(1)
+        residual_tensor = torch.remainder(clipped_tensor, num_bins)
+        limited = limited + ((clipped_tensor - residual_tensor) / num_bins).unsqueeze(1)
+        limited = limited + (torch.arange(num_bins, device=histos.device) < residual_tensor.unsqueeze(1))
+        enabled = (clip > 0).to(device=histos.device).view(b, 1).expand(b, gh * gw * c).reshape(-1, 1)
+        histos = torch.where(enabled, limited, histos)
+    elif clip > 0.0:
         max_val: float = max(clip * pixels // num_bins, 1)
+        if diff:
+            clipped: torch.Tensor = torch.relu(histos - max_val).sum(1)
         histos.clamp_(max=max_val)
-        clipped: torch.Tensor = pixels - histos.sum(1)
+        if not diff:
+            clipped = pixels - histos.sum(1)
         residual: torch.Tensor = torch.remainder(clipped, num_bins)
         redist: torch.Tensor = (clipped - residual).div(num_bins)
         histos += redist[None].transpose(0, 1)
@@ -396,6 +413,16 @@ def equalize_clahe(
     if not isinstance(clip_limit, float):
         raise TypeError(f"Input clip_limit type is not float. Got {type(clip_limit)}")
 
+    return _equalize_clahe(input, clip_limit, grid_size, slow_and_differentiable)
+
+
+def _equalize_clahe(
+    input: torch.Tensor,
+    clip_limit: Union[float, torch.Tensor],
+    grid_size: Tuple[int, int],
+    slow_and_differentiable: bool,
+) -> torch.Tensor:
+    """Equalize a BCHW tensor using a scalar or one tensor clip limit per image."""
     if not isinstance(grid_size, tuple):
         raise TypeError(f"Input grid_size type is not Tuple. Got {type(grid_size)}")
 
