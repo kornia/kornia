@@ -131,6 +131,28 @@ class TestMedianBlur(BaseTester):
     def test_selection_nonfinite(self, kernel_size, invalid, device, dtype):
         inp = torch.ones(1, 1, 7, 9, device=device, dtype=dtype)
         inp[..., 3, 4] = invalid
+        # Pin the window-local contract independently of convolution: CPU bf16
+        # convolution on the EPYC CI runner can spread NaNs outside the window.
+        # Finite windows contain only ones and zero padding, so their median is
+        # one exactly when a majority of the window lies inside the image.
+        radius = kernel_size // 2
+        expected = torch.ones_like(inp)
+        for y in range(7):
+            for x in range(9):
+                rows = min(7, y + radius + 1) - max(0, y - radius)
+                cols = min(9, x + radius + 1) - max(0, x - radius)
+                expected[..., y, x] = float(rows * cols > kernel_size**2 // 2)
+        expected[..., 3 - radius : 4 + radius, 4 - radius : 5 + radius] = float("nan")
+        actual = median_blur(inp, kernel_size)
+        self.assert_close(actual.isnan(), expected.isnan())
+        self.assert_close(actual.nan_to_num(), expected.nan_to_num())
+
+    @pytest.mark.parametrize("kernel_size", [3, 5])
+    @pytest.mark.parametrize("invalid", [float("nan"), float("inf"), -float("inf")])
+    def test_nonfinite_autograd_fallback(self, kernel_size, invalid, device, dtype):
+        inp = torch.ones(1, 1, 7, 9, device=device, dtype=dtype)
+        inp[..., 3, 4] = invalid
+        inp.requires_grad_()
         weights = get_binary_kernel2d(kernel_size, device=device, dtype=dtype)
         expected = torch.nn.functional.conv2d(inp, weights, padding=kernel_size // 2).median(1).values[:, None]
         actual = median_blur(inp, kernel_size)
