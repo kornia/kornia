@@ -184,6 +184,8 @@ Durable findings from earlier CUDA runs (2026-08-07, see benchmarks/README.md):
 - filters on apple-m1/mps (2026-08-08): fastest overall opencv box_blur@1 at 20137 items/s; slowest kornia op median_blur@32 at 1 items/s.
 - filters on apple-m4/cpu (2026-08-18): fastest overall opencv box_blur@1 at 31751 items/s; slowest kornia op median_blur@32 at 16 items/s.
 - filters on apple-m4/mps (2026-08-18): fastest overall opencv box_blur@1 at 31758 items/s; slowest kornia op median_blur@1 at 3 items/s.
+- filters on i7-14700k-rtx-4090/cpu (2026-09-18): fastest overall opencv gaussian_blur2d@8 at 55405 items/s; slowest kornia op bilateral_blur@8 at 62 items/s.
+- filters on i7-14700k-rtx-4090/cuda (2026-09-18): fastest overall kornia (compiled) box_blur_separable@32 at 403933 items/s; slowest kornia op canny@1 at 404 items/s.
 - geometry on apple-m1/cpu (2026-08-08): fastest overall opencv get_perspective_transform@32 at 501126 items/s; slowest kornia op warp_perspective@32 at 841 items/s.
 - geometry on apple-m1/mps (2026-08-08): fastest overall opencv get_perspective_transform@8 at 490803 items/s; slowest kornia op rotate@1 at 218 items/s.
 - geometry on apple-m4/cpu (2026-08-18): fastest overall opencv get_perspective_transform@8 at 723108 items/s; slowest kornia op warp_perspective@1 at 1397 items/s.
