@@ -35,7 +35,7 @@ class MosaicGenerator(RandomGeneratorBase):
     See the Convention block on :class:`~kornia.augmentation.RandomMosaic`.
 
     Args:
-        output_size: the output torch.Tensor width and height after mosaicing.
+        output_size: the output ``(height, width)`` after mosaicing.
         mosaic_grid: the number of images and image arrangement. e.g. (2, 2) means
             each output will mix 4 images in a 2x2 grid.
         start_ratio_range: top-left (x, y) position for cropping the mosaic images.

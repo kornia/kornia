@@ -41,7 +41,8 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
           operations do not contribute to that matrix.
         - direct ``forward_parameters`` delegates to each wrapped augmentation rather than to
           :meth:`OperationBase.forward_parameters`. It consequently samples the wrapped operation's native
-          probability and magnitude instead of an ``OperationBase`` learned probability or magnitude. Tracked
+          magnitude instead of the ``OperationBase`` magnitude mapping; the gate comes from the wrapped
+          augmentation's ``p`` on both paths (`#4656 <https://github.com/kornia/kornia/issues/4656>`_). Tracked
           in `#4441 <https://github.com/kornia/kornia/issues/4441>`_. Policy augmentations use their own
           samplers where needed.
 

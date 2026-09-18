@@ -40,16 +40,19 @@ class OperationBase(nn.Module):
             Set to True for most non-shape-persistent operations (e.g. cropping).
 
     Convention:
-        - this wrapper owns a learnable probability and, when configured, one learnable magnitude. The
-          ``probability`` property clamps to ``(1e-7, 1 - 1e-7)`` and ``magnitude`` clamps to the wrapped
-          generator's configured range. ``forward_parameters`` installs a relaxed Bernoulli sampler, then
-          draws the wrapped augmentation's parameters and substitutes the supplied or learned magnitude.
+        - this wrapper owns a probability parameter and, when configured, one learnable magnitude. The
+          ``probability`` property clamps to the closed interval ``[1e-7, 1 - 1e-7]`` and ``magnitude`` clamps to
+          the wrapped generator's configured range. ``forward_parameters`` builds a (relaxed) Bernoulli sampler
+          from that probability, but nothing reads it: the gate is drawn from the wrapped augmentation's own float
+          ``p``, the sampled ``batch_prob`` is a hard ``0`` or ``1``, and the probability parameter receives no
+          gradient (`#4656 <https://github.com/kornia/kornia/issues/4656>`_). It then draws the wrapped augmentation's
+          parameters and substitutes the supplied or learned magnitude.
         - ``forward`` applies the wrapped augmentation to the full batch and linearly blends each output row
           with its input using the returned ``batch_prob``. A symmetric magnitude chooses an independent sign
           for every row; nonzero magnitudes therefore remain nonzero and can have either sign.
         - :class:`PolicySequential` is a lower-level container. Its own parameter sampler calls
-          ``operation.op.forward_parameters`` directly, bypassing this wrapper's probability and magnitude
-          mapping. This is a distinct direct-use behavior, tracked in `#4441
+          ``operation.op.forward_parameters`` directly, bypassing this wrapper's magnitude mapping. This is a
+          distinct direct-use behavior, tracked in `#4441
           <https://github.com/kornia/kornia/issues/4441>`_.
         - The concrete operation classes in :mod:`kornia.augmentation.auto.operations.ops` only configure this
           wrapper around public 2D augmentations; their input, dtype, RNG, replay, and serialization contracts

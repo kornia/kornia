@@ -56,8 +56,12 @@ class RandAugment(PolicyAugmentBase):
         - selects ``n`` distinct one-operation candidate sub-policies uniformly without replacement, then
           applies them in the order drawn. ``n`` must be in ``[1, len(policy)]``.
         - ``m`` must be strictly between ``0`` and ``30``. For every magnitude-bearing selected operation it
-          sets a per-row magnitude to ``m / 30`` of that operation's configured interval. Symmetric operations
-          independently choose a positive or negative sign for each row.
+          sets a per-row magnitude to ``low + (high - low) * m / 30`` over that operation's magnitude range. For a
+          symmetric operation that range is ``(0, max)`` and each row independently gets a positive or negative
+          sign, so ``m=15`` on ``("rotate", -30, 30)`` gives ``+15`` or ``-15``. The value is written into the
+          wrapped parameter as is: ``posterize`` truncates it to integer bits (``0`` for ``m < 7.5`` with the
+          default entry, an all-black image) and ``translate_x`` / ``translate_y`` take it as pixels, not as a
+          fraction of the image size (`#4655 <https://github.com/kornia/kornia/issues/4655>`_).
 
     Args:
         n: the number of augmentations to apply sequentially. Must be at least ``1`` and at

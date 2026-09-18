@@ -13,7 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# limitations under the License.
+#
 
 from __future__ import annotations
 
@@ -83,6 +83,18 @@ class Test3DAugmentationConventions(BaseTester):
         padded = K.RandomCrop3D((2, 3, 4), padding=(1, 2, 3, 4, 5, 6), p=1.0).precrop_padding(volume)
         assert padded.shape[-3:] == (15, 12, 9)
         self.assert_close(padded[..., 5:9, 3:8, 1:7], volume)
+        padded = K.RandomCrop3D((2, 3, 4), padding=(1, 2, 3), p=1.0).precrop_padding(volume)
+        assert padded.shape[-3:] == (10, 9, 8)
+        self.assert_close(padded[..., 3:7, 2:7, 1:7], volume)
+        padded = K.RandomCrop3D((2, 3, 4), padding=1, p=1.0).precrop_padding(volume)
+        assert padded.shape[-3:] == (6, 7, 8)
+        self.assert_close(padded[..., 1:5, 1:6, 1:7], volume)
+        # The gate is call-wide: it never selects a strict subset of the rows.
+        for augmentation in (K.CenterCrop3D((2, 3, 4), p=0.5), K.RandomCrop3D((2, 3, 4), p=0.5)):
+            for _ in range(20):
+                batch_prob = augmentation.forward_parameters(torch.Size([8, 1, 4, 5, 6]))["batch_prob"]
+                assert batch_prob.numel() == 8
+                assert bool((batch_prob == batch_prob[0]).all())
 
     def test_convention_geometric_defaults_and_identity(self, device, dtype):
         if not supports_bilinear_3d_grid_sample(device, dtype):
@@ -133,7 +145,14 @@ class Test3DAugmentationConventions(BaseTester):
 
     def test_convention_equalize_small_volume_roundoff(self, device, dtype):
         small = torch.linspace(0.1, 0.9, 255, device=device, dtype=dtype).reshape(1, 1, 1, 1, 255)
-        self.assert_close(K.RandomEqualize3D(p=1.0)(small), small, rtol=0, atol=torch.finfo(dtype).eps)
+        augmentation = K.RandomEqualize3D(p=1.0)
+        self.assert_close(augmentation(small), small, rtol=0, atol=torch.finfo(dtype).eps)
+        self.assert_close(augmentation.transform_matrix, torch.eye(4, device=device, dtype=dtype)[None])
+        # 256 voxels is the smallest volume the lookup can change: 128 zeros and 128 singly occupied bins.
+        ramp = torch.arange(1, 129, device=device, dtype=dtype)
+        large = torch.cat([torch.zeros_like(ramp), ramp / 255]).reshape(1, 1, 1, 1, 256)
+        expected = torch.cat([torch.zeros_like(ramp), (ramp + 127) / 255]).reshape(1, 1, 1, 1, 256)
+        self.assert_close(augmentation(large), expected)
 
     @pytest.mark.device_agnostic
     def test_convention_equalize_range_check_on_cpu(self):
@@ -162,3 +181,52 @@ class Test3DAugmentationConventions(BaseTester):
             K.RandomMotionBlur3D(3, (0.0, 0.0, 0.0), 0.0),
         )
         assert all(not hasattr(augmentation, "inverse") for augmentation in augmentations)
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize("axis", [0, 1, 2])
+    def test_convention_rotation3d_sign_is_literal_and_affine_is_opposite_4408(self, axis):
+        # The matrix literal anchors RandomRotation3D's own direction; #4408 is RandomAffine3D being its transpose.
+        degrees = [(0.0, 0.0)] * 3
+        degrees[axis] = (30.0, 30.0)
+        volume = torch.zeros(1, 1, 5, 5, 5)
+        rotation = K.RandomRotation3D(tuple(degrees), p=1.0, align_corners=True)
+        affine = K.RandomAffine3D(tuple(degrees), p=1.0, align_corners=True)
+        rotation(volume)
+        affine(volume)
+        first, second = [index for index in range(3) if index != axis]
+        matrix = rotation.transform_matrix[0, :3, :3]
+        self.assert_close(matrix[first, second].abs(), torch.tensor(0.5))
+        self.assert_close(matrix[first, second], -matrix[second, first])
+        expected_sign = {0: -1.0, 1: 1.0, 2: -1.0}[axis]
+        assert torch.sign(matrix[first, second]) == expected_sign
+        self.assert_close(affine.transform_matrix[0, :3, :3], matrix.transpose(-1, -2))
+
+    @pytest.mark.device_agnostic
+    def test_wart_random_crop3d_returns_the_padded_volume_when_gated_off_4654(self):
+        volume = torch.rand(1, 1, 4, 5, 6)
+        assert K.RandomCrop3D((2, 3, 4), padding=2, p=0.0)(volume).shape == (1, 1, 8, 9, 10)
+        assert K.RandomCrop3D((6, 7, 9), pad_if_needed=True, p=0.0)(volume).shape == (1, 1, 8, 9, 12)
+        assert K.RandomCrop3D((2, 3, 4), p=0.0)(volume).shape == volume.shape
+
+    @pytest.mark.device_agnostic
+    def test_wart_motion_blur3d_kernel_range_is_per_sample_4653(self):
+        volume = torch.rand(6, 1, 4, 5, 6)
+        sizes = set()
+        failures = 0
+        for seed in range(20):
+            torch.manual_seed(seed)
+            augmentation = K.RandomMotionBlur3D((3, 7), 35.0, 0.5, p=1.0)
+            raised = False
+            try:
+                augmentation(volume)
+            except RuntimeError as error:
+                assert "cannot be converted to Scalar" in str(error)
+                raised = True
+            drawn = augmentation._params["ksize_factor"]
+            assert raised == (drawn.unique().numel() > 1)
+            failures += raised
+            sizes.update(drawn.tolist())
+        assert failures > 10
+        assert sizes == {3, 5}  # the upper bound 7 is never drawn
+        torch.manual_seed(0)
+        assert K.RandomMotionBlur3D((3, 7), 35.0, 0.5, p=1.0, same_on_batch=True)(volume).shape == volume.shape

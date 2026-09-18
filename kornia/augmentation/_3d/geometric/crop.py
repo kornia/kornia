@@ -68,7 +68,10 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         - ``size`` and the output shape are ordered ``(D, H, W)``. A scalar ``padding`` expands to every side;
           three values expand as ``(left/right, top/bottom, front/back)``, and six are passed to
           :func:`torch.nn.functional.pad` as ``(left, right, top, bottom, front, back)`` before the crop is drawn.
-        - its ``p`` is a call-wide gate. Defaults are bilinear resampling and ``align_corners=True``.
+        - its ``p`` is a call-wide gate. With ``padding`` or ``pad_if_needed`` a gated-off call returns the padded
+          volume rather than the input
+          (`#4654 <https://github.com/kornia/kornia/issues/4654>`_).
+          Defaults are bilinear resampling and ``align_corners=True``.
 
     Examples:
         >>> import torch

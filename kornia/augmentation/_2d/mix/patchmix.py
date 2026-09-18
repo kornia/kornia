@@ -47,11 +47,17 @@ class PatchMix(MixAugmentationBaseV2):
             or broadcast it to the batch form ``False``.
 
     Convention:
-        - ``patch_size`` is the side length in pixels of a square patch. Each output sample copies that rectangle
+        - ``patch_size`` is the side length in pixels of a square patch and must not exceed ``min(H, W)``: a larger
+          value, including the default ``16`` on a smaller image, draws negative coordinates and copies an arbitrary
+          smaller rectangle without raising
+          (`#4650 <https://github.com/kornia/kornia/issues/4650>`_).
+          Each output sample copies that rectangle
           from its paired input at the same sampled top-left coordinate; the output image retains its input shape.
           The sampled ``lam`` is stored in ``_params`` but is not used to blend the image or produce labels.
-        - ``p`` is a batch-wide gate. This class implements image input only; requesting a class, mask, box, or
-          keypoint key reaches the base's unsupported handler.
+        - ``p`` is a batch-wide gate. ``same_on_batch=True`` pairs every image with itself, so the output equals
+          the input (`#4650 <https://github.com/kornia/kornia/issues/4650>`_). This class implements image input only;
+          requesting a class, mask, box, or keypoint key reaches the base's unsupported handler, with the
+          no-selection exception described on the base.
 
     Examples:
         >>> aug = PatchMix(alpha=1.0, patch_size=4)

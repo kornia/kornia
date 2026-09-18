@@ -66,7 +66,8 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         - ``degrees`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. Unlike
           :class:`RandomAffine3D`, a positive angle follows the displayed rotation convention used by the
           other rotation entry points.
-        - the default interpolation is bilinear with ``align_corners=False``; zero angles reproduce the input.
+        - the default interpolation is bilinear with ``align_corners=False``; zero angles reproduce the input
+          up to floating-point roundoff.
 
     Examples:
         >>> import torch

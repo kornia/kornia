@@ -79,7 +79,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
           positive affine angle has the opposite displayed rotation direction from :class:`RandomRotation3D`
           and the other rotation entry points, tracked in `#4408 <https://github.com/kornia/kornia/issues/4408>`_.
         - the default is bilinear resampling with ``align_corners=False``. With zero rotation, zero translation,
-          unit scale, and zero shear, it reproduces the input at that setting.
+          unit scale, and zero shear, it reproduces the input at that setting up to floating-point roundoff.
 
     Examples:
         >>> import torch

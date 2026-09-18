@@ -51,13 +51,16 @@ class RandomJigsaw(MixAugmentationBaseV2):
 
     Convention:
         - ``grid=(rows, columns)`` partitions each image independently. Both image dimensions must be exactly
-          divisible by their corresponding grid entries; otherwise the current reshape raises a ``RuntimeError``.
+          divisible by their corresponding grid entries; otherwise the current reshape raises a ``RuntimeError``
+          whenever the gate selects a sample, and a call that selects none returns the input
+          (`#4651 <https://github.com/kornia/kornia/issues/4651>`_).
           The output has the input's spatial shape when this holds. The sampled permutation is laid into the
           destination grid by columns: for a ``2 x 2`` grid, entries ``[0, 2]`` become the top row and entries
           ``[1, 3]`` the bottom row.
-        - ``p`` is a per-sample gate. With ``same_on_batch=True`` each sample uses the same patch permutation;
-          with it false, each sample receives an independently drawn permutation. This class implements image
-          mixing only; requesting another data key reaches the base's unsupported handler.
+        - ``p`` is a per-sample gate. With ``same_on_batch=True`` the batch shares one gate draw and one patch
+          permutation; with it false, each sample receives an independent gate and permutation. This class
+          implements image mixing only; requesting another data key reaches the base's unsupported handler, with
+          the no-selection exception described on the base.
 
     Examples:
         >>> jigsaw = RandomJigsaw((4, 4))

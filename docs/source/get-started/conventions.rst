@@ -446,7 +446,10 @@ Serializing an augmentation
 - Pickle and deepcopy can retain recorded parameters and transform state,
   but support is configuration-dependent. The ``kornia.augmentation.auto``
   policies cannot currently be pickled
-  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
+  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_), and ``copy.deepcopy``
+  of a policy raises ``RuntimeError`` once it has run a forward pass with
+  gradients enabled
+  (`#4656 <https://github.com/kornia/kornia/issues/4656>`_).
   A normal forward draws fresh parameters; replay requires passing the
   saved parameters and controlling any application-time randomness.
 - Built-in lazy matrices keep only the input's shape, dtype and device

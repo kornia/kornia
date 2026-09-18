@@ -45,6 +45,8 @@ This module contains common data augmentation policies that can improve the accu
 
 .. autoclass:: PolicySequential
 
+.. autoclass:: kornia.augmentation.auto.operations.OperationBase
+
 Augmentation Search Methods
 ---------------------------
 

@@ -51,6 +51,29 @@ class TestAutoAugmentConventions(BaseTester):
         for aug in (AutoAugment(policy=auto_policy), TrivialAugment(policy=trivial_policy)):
             selected = {aug.forward_parameters(torch.Size([2, 1, 8, 6]))[0].name for _ in range(32)}
             assert selected == set(dict(aug.named_children()))
+            self.assert_close(aug.rand_selector.probs, torch.full((2,), 0.5))
+
+    @pytest.mark.device_agnostic
+    def test_convention_recorded_params_select_the_recorded_children(self):
+        policy = [[("rotate", -30.0, 30.0)], [("translate_x", -0.5, 0.5)], [("translate_y", -0.5, 0.5)]]
+        auto_policy = [[("rotate", 1.0, 5)], [("translate_x", 1.0, 5)], [("translate_y", 1.0, 5)]]
+        for aug in (
+            AutoAugment(policy=auto_policy),
+            RandAugment(n=2, m=15, policy=policy),
+            TrivialAugment(policy=policy),
+        ):
+            params = aug.forward_parameters(torch.Size([2, 1, 8, 6]))
+            for _ in range(16):
+                assert [name for name, _ in aug.get_forward_sequence(params)] == [param.name for param in params]
+
+    @pytest.mark.device_agnostic
+    def test_convention_autoaugment_magnitude_bins_are_zero_through_nine(self):
+        degrees = AutoAugment(policy=[[("rotate", 1.0, 9)]]).forward_parameters(torch.Size([64, 1, 8, 6]))
+        degrees = degrees[0].data[0].data["degrees"]
+        assert (degrees >= 24.0).all() and (degrees <= 30.0).all()
+        for magnitude in (-1, 10):
+            with pytest.raises(ValueError, match=r"in \[0, 9\]"):
+                AutoAugment(policy=[[("rotate", 1.0, magnitude)]])
 
     @pytest.mark.device_agnostic
     def test_convention_randaugment_selects_distinct_candidates(self):
@@ -122,6 +145,25 @@ class TestAutoAugmentConventions(BaseTester):
         # Rotation about (2, 2), followed by translation: T @ R, not R @ T.
         expected_matrix = marker.new_tensor([[0, 1, 1], [-1, 0, 4], [0, 0, 1]]).expand(2, -1, -1)
         self.assert_close(ordered.transform_matrix, expected_matrix)
+        recomputed = ordered[0].get_transformation_matrix(marker, params=ordered_params[0].data, recompute=True)
+        self.assert_close(recomputed, expected_matrix)
+
+        chained = RandAugment(n=2, m=15, policy=[[("rotate", -30.0, 30.0)], [("translate_x", -0.5, 0.5)]])
+        chained_params = chained.forward_parameters(marker.shape)
+        rotate_first = "degrees" in chained_params[0].data[0].data
+        for item in chained_params:
+            data = item.data[0].data
+            data["batch_prob"].fill_(1.0)
+            if "degrees" in data:
+                data["degrees"].fill_(90.0)
+            else:
+                data["translate_x"].fill_(1.0)
+        chained(marker, params=chained_params)
+        # Whichever is drawn first is applied first: T @ R, or R @ T when the translation leads.
+        chained_matrix = expected_matrix if rotate_first else marker.new_tensor([[0, 1, 0], [-1, 0, 3], [0, 0, 1]])
+        self.assert_close(chained.transform_matrix, chained_matrix.expand(2, -1, -1))
+        recomputed = chained.get_transformation_matrix(marker, params=chained_params, recompute=True)
+        self.assert_close(recomputed, chained_matrix.expand(2, -1, -1))
 
         intensity = AutoAugment(policy=[[("solarize", 1.0, 5)]])
         intensity(image)
@@ -136,6 +178,8 @@ class TestAutoAugmentConventions(BaseTester):
         operation._magnitude.data.fill_(100.0)
         self.assert_close(operation.probability, torch.full_like(operation.probability, 1.0 - 1e-7), rtol=0, atol=0)
         self.assert_close(operation.magnitude, torch.full_like(operation.magnitude, 30.0))
+        operation._probability.data.fill_(-1.0)
+        self.assert_close(operation.probability, torch.full_like(operation.probability, 1e-7), rtol=0, atol=0)
 
         invert = ops.Invert(initial_probability=1.0)
         image = torch.tensor([[[[0.2]]], [[[0.8]]]])
@@ -164,3 +208,55 @@ class TestAutoAugmentConventions(BaseTester):
         assert not torch.allclose(direct_params["degrees"].abs(), torch.full_like(direct_params["degrees"], 3.0))
         self.assert_close(operation.probability, torch.tensor([1e-7]))
         assert direct_operation.op.p == 0.5
+
+    def test_convention_recorded_params_reproduce_the_sampled_forward(self, device, dtype):
+        image = torch.rand(3, 3, 8, 8, device=device, dtype=dtype)
+        for aug in (AutoAugment(), RandAugment(n=2, m=15), TrivialAugment()):
+            for seed in range(4):
+                torch.manual_seed(seed)
+                output = aug(image)
+                self.assert_close(aug(image, params=aug._params), output, rtol=0, atol=0)
+
+    @pytest.mark.device_agnostic
+    def test_convention_randaugment_magnitude_formula(self):
+        aug = RandAugment(n=1, m=3, policy=[[("rotate", -30.0, 30.0)]])
+        degrees = aug.forward_parameters(torch.Size([64, 1, 8, 6]))[0].data[0].data["degrees"]
+        self.assert_close(degrees.abs(), torch.full_like(degrees, 3.0))
+
+    @pytest.mark.device_agnostic
+    def test_convention_autoaugment_posterize_truncates_its_interval(self):
+        aug = AutoAugment(policy=[[("posterize", 1.0, 1)]])
+        bits = aug.forward_parameters(torch.Size([256, 3, 8, 8]))[0].data[0].data["bits_factor"]
+        assert not bits.is_floating_point()
+        assert set(bits.tolist()) == {4, 5}  # bin 1 is the interval (4.4, 4.8)
+
+    @pytest.mark.device_agnostic
+    def test_wart_randaugment_posterize_and_translate_units_4655(self):
+        image = torch.rand(4, 3, 32, 32)
+        posterize = RandAugment(n=1, m=7, policy=[[("posterize", 0.0, 4)]])
+        output = posterize(image)
+        assert posterize._params[0].data[0].data["bits_factor"].tolist() == [0, 0, 0, 0]
+        self.assert_close(output, torch.zeros_like(image))
+        translate = RandAugment(n=1, m=29, policy=[[("translate_x", -0.5, 0.5)]])
+        pixels = translate.forward_parameters(image.shape)[0].data[0].data["translate_x"]
+        self.assert_close(pixels.abs(), torch.full_like(pixels, 0.5 * 29 / 30))
+
+    @pytest.mark.device_agnostic
+    def test_wart_operation_probability_parameter_is_inert_4656(self):
+        import copy
+
+        for learned in (1e-7, 1.0 - 1e-7):
+            operation = ops.Invert(initial_probability=0.5)
+            operation._probability.data.fill_(learned)
+            batch_prob = operation.forward_parameters(torch.Size([4000, 1, 4, 4]))["batch_prob"]
+            assert set(batch_prob.unique().tolist()) == {0.0, 1.0}
+            assert 1700 < batch_prob.sum() < 2300
+        operation = ops.Brightness(initial_magnitude=0.3, initial_probability=0.5)
+        operation(torch.rand(8, 3, 4, 4)).sum().backward()
+        assert operation._probability.grad is None
+        assert operation._magnitude.grad is not None
+        policy = RandAugment(n=2, m=15)
+        copy.deepcopy(policy)
+        policy(torch.rand(2, 3, 8, 8))
+        with pytest.raises(RuntimeError, match="graph leaves"):
+            copy.deepcopy(policy)

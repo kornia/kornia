@@ -66,8 +66,12 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
 
         - ``angle`` is ordered ``(yaw, pitch, roll)`` about the ``(x, y, z)`` voxel-coordinate axes. Its
           default resampling is nearest-neighbour, unlike the geometric 3D defaults.
-        - the selected ``kernel_size`` is one odd scalar applied to all three spatial axes. This class fixes
-          ``p_batch=1``; its ``p`` remains the per-sample gate.
+        - an integer ``kernel_size`` is one odd scalar applied to all three spatial axes. A ``(low, high)`` range is
+          drawn per sample and never reaches ``high``; a batch whose rows draw different sizes raises
+          ``RuntimeError`` unless ``same_on_batch=True``
+          (`#4653 <https://github.com/kornia/kornia/issues/4653>`_).
+          This class fixes ``p_batch=1``; its ``p`` remains the
+          per-sample gate.
 
     Examples:
         >>> import torch

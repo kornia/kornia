@@ -42,8 +42,10 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
           records that selected path, including every operation parameter dictionary, in ``_params``. Passing
           that list to ``forward(input, params=...)`` selects the recorded children rather than drawing a new
           path and reproduces their output.
-        - the selected operations run in their policy order. When matrix computation is enabled, their geometric
-          transformation matrices compose in that same execution order; a policy containing only intensity
+        - the selected operations run in the order recorded in ``_params``: the listed order inside a sub-policy,
+          and for :class:`RandAugment` the order in which its sub-policies were drawn. When matrix computation is
+          enabled, their geometric transformation matrices
+          compose in that same execution order; a policy containing only intensity
           operations has the identity matrix.
           ``inverse`` reverses a geometry-only selected path and raises ``RuntimeError`` when an applied
           intensity operation cannot be undone.

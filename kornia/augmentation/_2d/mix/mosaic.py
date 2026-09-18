@@ -49,7 +49,7 @@ class RandomMosaic(MixAugmentationBaseV2):
 
     Args:
         output_size: the output ``(height, width)`` after mosaicing.
-        start_ratio_range: top-left (x, y) position for cropping the mosaic images.
+        start_ratio_range: the ``(low, high)`` range from which both top-left crop ratios ``(x / W, y / H)`` are drawn.
         mosaic_grid: the number of images and image arrangement. e.g. (2, 2) means
             each output will mix 4 images in a 2x2 grid.
         min_bbox_size: minimum area of bounding boxes. Default to 0.
@@ -80,13 +80,19 @@ class RandomMosaic(MixAugmentationBaseV2):
 
     Convention:
         - ``output_size`` and the default output shape are ordered ``(height, width)``. With ``output_size=None``
-          the output preserves the input's ``(H, W)`` even when they differ. ``start_ratio_range`` draws a pair
+          and the default ``cropping_mode="slice"`` the output preserves the input's ``(H, W)`` even when they
+          differ; ``cropping_mode="resample"`` needs an explicit ``output_size`` and otherwise raises ``TypeError``
+          (`#4652 <https://github.com/kornia/kornia/issues/4652>`_). ``start_ratio_range`` draws a pair
           used as ``(x / W, y / H)`` for the crop's top-left corner. These are the repaired axis conventions from
           `#4438 <https://github.com/kornia/kornia/issues/4438>`_.
         - ``p`` is per sample and this class fixes ``same_on_batch=False``. It composes ``mosaic_grid[0]`` tiles
           along width and ``mosaic_grid[1]`` tiles along height, then crops each result. It supports
           ``"bbox"``, ``"bbox_xyxy"``, and ``"bbox_xywh"`` in addition to image inputs; it does not support
           masks, keypoints, or class labels.
+        - With an explicit ``output_size`` an unselected sample is zero-padded or cropped to that size rather than
+          returned unchanged. Boxes are not rescaled or clipped to ``output_size``, and whenever any sample is
+          selected an unselected sample's boxes are padded to the grid's box count with ``[0, 0, 1, 1]``
+          placeholders (`#4652 <https://github.com/kornia/kornia/issues/4652>`_).
 
     """
 

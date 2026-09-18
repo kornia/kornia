@@ -60,7 +60,11 @@ class TestMixConventions(BaseTester):
         )
         labels = torch.tensor([4, 9], device=device)
         aug = K.RandomMixUpV2(lambda_val=(0.25, 0.25), p=1.0, data_keys=["input", "class"])
-        output, mixed_labels = aug(image, labels)
+        # A fixed non-identity pairing: a random draw pairs each row with itself half the time at B=2.
+        aug(image, labels)
+        params = dict(aug._params)
+        params["mixup_pairs"] = torch.tensor([1, 0])
+        output, mixed_labels = aug(image, labels, params=params)
 
         pairs = aug._params["mixup_pairs"].to(device)
         expected = image * 0.75 + image.index_select(0, pairs) * 0.25
@@ -121,6 +125,30 @@ class TestMixConventions(BaseTester):
         self.assert_close(mixed_labels[..., 0], expected_labels)
         self.assert_close(mixed_labels[..., 1], expected_labels)
         self.assert_close(mixed_labels[..., 2], torch.zeros(label_shape[:-1], device=device, dtype=dtype))
+
+    @pytest.mark.device_agnostic
+    @pytest.mark.parametrize(
+        "factory",
+        [
+            lambda: K.RandomMixUpV2(p=0.5),
+            lambda: K.RandomCutMixV2(p=0.5, use_correct_lambda=True),
+            lambda: K.PatchMix(p=0.5, patch_size=2),
+        ],
+    )
+    def test_convention_mix_batch_gate_is_all_or_nothing(self, factory):
+        # An invariant, not a statistic: a batch-wide gate never selects a strict subset of the rows.
+        aug = factory()
+        for _ in range(20):
+            batch_prob = aug.forward_parameters(torch.Size([8, 1, 8, 8]))["batch_prob"]
+            assert batch_prob.numel() == 8
+            assert bool((batch_prob == batch_prob[0]).all())
+
+    def test_convention_per_sample_gate_keeps_unselected_rows(self, device, dtype):
+        image = torch.arange(32, device=device, dtype=dtype).reshape(2, 1, 4, 4)
+        params = {"batch_prob": torch.tensor([1.0, 0.0]), "permutation": torch.tensor([[3, 2, 1, 0], [3, 2, 1, 0]])}
+        output = K.RandomJigsaw(grid=(2, 2), p=0.5)(image, params=params)
+        assert not torch.equal(output[0], image[0])
+        self.assert_close(output[1], image[1])
 
     def test_convention_jigsaw_same_on_batch_shares_the_patch_permutation(self, device, dtype):
         image = torch.rand(3, 1, 8, 12, device=device, dtype=dtype)
@@ -217,3 +245,92 @@ class TestMixConventions(BaseTester):
     def test_convention_mix_rejects_integer_images(self, dtype):
         with pytest.raises(TypeError, match="float16"):
             K.RandomMixUpV2(p=1.0)(torch.ones(2, 1, 4, 4, dtype=dtype))
+
+    @pytest.mark.device_agnostic
+    def test_convention_mix_inverse_is_keyword_only(self):
+        with pytest.raises(TypeError, match="positional"):
+            K.RandomMixUpV2().inverse(torch.ones(2, 1, 4, 4))
+
+    @pytest.mark.device_agnostic
+    def test_convention_jigsaw_same_on_batch_shares_the_gate(self):
+        aug = K.RandomJigsaw(grid=(2, 2), p=0.5, same_on_batch=True)
+        for _ in range(20):
+            batch_prob = aug.forward_parameters(torch.Size([8, 1, 4, 4]))["batch_prob"]
+            assert bool((batch_prob == batch_prob[0]).all())
+
+    @pytest.mark.device_agnostic
+    def test_wart_unsupported_key_passes_silently_without_selection_4651(self):
+        # #4651: the unsupported-key handlers and the Jigsaw reshape are only reached when a sample is selected.
+        image = torch.rand(4, 1, 8, 8)
+        boxes = torch.tensor([[[1.0, 1.0, 4.0, 4.0]]] * 4)
+        with pytest.raises(NotImplementedError):
+            K.RandomMixUpV2(p=1.0)(image, boxes, data_keys=["input", "bbox_xyxy"])
+        _, returned = K.RandomMixUpV2(p=0.0)(image, boxes, data_keys=["input", "bbox_xyxy"])
+        self.assert_close(returned, boxes)
+        _, labels = K.RandomJigsaw(p=0.0, grid=(2, 2))(image, torch.arange(4), data_keys=["input", "class"])
+        assert torch.equal(labels, torch.arange(4))
+        with pytest.raises(NotImplementedError):
+            K.RandomMixUpV2(p=0.0)(image, torch.ones_like(image), data_keys=["input", "mask"])
+        indivisible = torch.rand(2, 1, 9, 13)
+        self.assert_close(K.RandomJigsaw(grid=(2, 3), p=0.0)(indivisible), indivisible)
+        with pytest.raises(RuntimeError, match="invalid for input of size"):
+            K.RandomJigsaw(grid=(2, 3), p=1.0)(indivisible)
+
+    @pytest.mark.device_agnostic
+    def test_wart_mixup_and_cutmix_apply_p_to_rows_a_second_time_4649(self):
+        # #4649: inside a selected batch, rows are dropped again with probability 1 - p.
+        mixup = K.RandomMixUpV2(p=0.5, lambda_val=(0.5, 0.5))
+        cutmix = K.RandomCutMixV2(p=0.5, cut_size=(0.5, 0.5), use_correct_lambda=True)
+        image = torch.rand(8, 1, 8, 8)
+        mixup_rows, cutmix_rows = [], []
+        for seed in range(40):
+            torch.manual_seed(seed)
+            params = mixup.forward_parameters(image.shape)
+            if params["batch_prob"].all():
+                mixup_rows.append(params["mixup_lambdas"] > 0)
+            output = cutmix(image)
+            if cutmix._params["batch_prob"].all():
+                cutmix_rows.append((output != image).flatten(1).any(1))
+        for rows in (torch.cat(mixup_rows), torch.cat(cutmix_rows)):
+            assert rows.numel() >= 64
+            assert 0.3 < rows.float().mean() < 0.7
+
+    @pytest.mark.device_agnostic
+    def test_wart_patchmix_oversized_patch_and_same_on_batch_4650(self):
+        image = torch.rand(4, 1, 8, 10)
+        aug = K.PatchMix(p=1.0)  # the default patch_size=16 exceeds both image sides
+        output = aug(image)
+        assert (aug._params["patch_coords"] < 0).all()
+        changed = (output != image)[:, 0]
+        assert changed.any(-1).sum(-1).max() < 8 and changed.any(-2).sum(-1).max() < 10
+        shared = K.PatchMix(patch_size=4, p=1.0, same_on_batch=True)
+        self.assert_close(shared(image), image, rtol=0, atol=0)
+        assert shared._params["mix_pairs"].tolist() == [0, 1, 2, 3]
+
+    @pytest.mark.device_agnostic
+    def test_wart_mosaic_output_size_boxes_and_resample_default_4652(self):
+        image = torch.rand(4, 1, 6, 8)
+        boxes = torch.tensor([[[1.0, 1.0, 4.0, 4.0]]] * 4)
+        assert K.RandomMosaic(output_size=(4, 10), p=0.0)(image).shape == (4, 1, 4, 10)
+        results = []
+        for output_size in (None, (4, 10)):
+            torch.manual_seed(2)
+            aug = K.RandomMosaic(output_size=output_size, p=0.5, data_keys=["input", "bbox_xyxy"])
+            results.append(aug(image, boxes)[1])
+            batch_prob = aug._params["batch_prob"] > 0
+            assert batch_prob.any() and not batch_prob.all()
+        self.assert_close(results[0], results[1])
+        assert results[1][..., 3].max() > 4  # a box bottom below the 4-pixel-high output
+        placeholder = torch.tensor([[1.0, 1.0, 4.0, 4.0]] + [[0.0, 0.0, 1.0, 1.0]] * 3)
+        self.assert_close(results[1][~batch_prob], placeholder.expand(int((~batch_prob).sum()), -1, -1))
+        with pytest.raises(TypeError, match="NoneType"):
+            K.RandomMosaic(p=1.0, cropping_mode="resample")(image)
+
+    @pytest.mark.device_agnostic
+    def test_wart_mix_labels_round_in_bfloat16_4657(self):
+        image = torch.rand(2, 1, 4, 4, dtype=torch.bfloat16)
+        labels = torch.tensor([257, 999])
+        for aug in (K.RandomMixUpV2(p=1.0), K.RandomCutMixV2(p=1.0, use_correct_lambda=True)):
+            _, mixed = aug(image, labels, data_keys=["input", "class"])
+            assert mixed.dtype == torch.bfloat16
+            assert mixed[..., 0].flatten().tolist() == [256.0, 1000.0]
