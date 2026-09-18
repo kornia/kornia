@@ -25,26 +25,24 @@ Each script prints the git commit, platform, and (on CUDA) the device name, per 
 contract in [`benchmarks/README.md`](../README.md). Optional libraries that are not installed are reported as a
 skip line rather than failing the run.
 
-Known defect in the compiled `RandomResizedCrop` row, tracked in
-[#4658](https://github.com/kornia/kornia/issues/4658): that class specializes its graph on the crop
-box it samples, so it recompiles indefinitely — 1.3–5.6 s compiles keep arriving between 1 ms cached
-calls. `kornia_row`'s single warmup call cannot stabilize an op whose guards depend on freshly
-sampled parameters, so the timed region catches compilation and the committed number is a snapshot
-of the storm, not steady-state throughput: at batch 8 and 32 it reads about 2 img/s against roughly
-5800 eager, reproducibly, and at batch 1 it swings between 1 and 4516 img/s between runs. The rows
-are published as measured so the defect stays visible; re-measure them when #4658 is fixed. The same
-issue covers every augmentation sharing one Dynamo cache entry, which bites any pipeline of more
-than about eight classes.
+PR [#4659](https://github.com/kornia/kornia/pull/4659) fixes the crop-parameter recompilation
+and shared augmentation compile-cache defects tracked in
+[#4658](https://github.com/kornia/kornia/issues/4658). The Intel CPU/CUDA snapshots below were
+re-measured after merging that fix. The pre-fix M1 Pro augmentation snapshots have moved to
+[`superseded/`](../results/superseded/README.md) until that hardware can be re-measured; their
+compiled crop rows measured compilation storms rather than steady-state throughput.
 
-## Intel i7-14700K and RTX 4090 snapshot (2026-09-18)
+## Intel i7-14700K and RTX 4090 snapshot after #4659 (2026-09-18)
 
-Kornia 0.9.0rc1 at `d579a572` (CPU) and `43cf6b46` (CUDA), WSL2, Python 3.11.14,
-PyTorch 2.14.0+cu130, four PyTorch threads, float32 RGB 256×256, batches 1/8/32.
-The augmentation implementation is identical at these two revisions. Both runs use the public
-random-transform classes, include parameter sampling and allocation, verify the checkout import,
-and warm the CPU workers before the sweep. CPU and CUDA ran sequentially. Timing uses the shared
-`blocked_autorange` helper with a one-second minimum and CUDA synchronization. All suite baselines
-were installed: torchvision 0.29.0+cu130, albumentations 2.0.8, OpenCV 4.11.0 and Pillow 12.3.0.
+Kornia 0.9.0rc1 at `5f96e3ca` (CPU) and `5f96e3ca-dirty` (CUDA), including merged PR #4659
+(`1eb06974`), WSL2, Python 3.11.14, PyTorch 2.14.0+cu130, four PyTorch threads,
+float32 RGB 256×256, batches 1/8/32. The CUDA dirty marker reflects only pending benchmark
+results, documentation and export-test skips; the runtime and benchmark harness are unchanged
+from `5f96e3ca`. Both runs use the public random-transform classes,
+include parameter sampling and allocation, verify the checkout import, and warm the CPU workers
+before the sweep. CPU and CUDA ran sequentially. Timing uses the shared `blocked_autorange`
+helper with a one-second minimum and CUDA synchronization. All suite baselines were installed:
+torchvision 0.29.0+cu130, albumentations 2.0.8, OpenCV 4.11.0 and Pillow 12.3.0.
 
 Full rows, timing IQRs and metadata:
 [`CPU JSON`](../results/0.9.0rc1/augmentation--i7-14700k-rtx-4090--cpu.json) and
@@ -54,25 +52,35 @@ in input images/s; the JSON also contains every cross-library baseline.
 
 | Operation | CPU eager | CPU compiled | CUDA eager | CUDA compiled |
 | --- | ---: | ---: | ---: | ---: |
-| RandomHorizontalFlip | 35,053 | 27,515 | 416,440 | 458,367 |
-| RandomAffine | 2,842 | 2,764 | 7,805 | 46,690 |
-| RandomPerspective | 1,927 | 2,325 | 16,595 | 57,774 |
-| RandomResizedCrop | 14,466 | 1 | 17,383 | 2 |
-| ColorJiggle | 306 | 1,273 | 11,867 | 37,292 |
-| RandomGaussianBlur | 1,451 | 1,327 | 48,674 | 177,738 |
-| RandomBrightness | 15,338 | 28,208 | 143,210 | 175,711 |
-| RandomGrayscale | 15,196 | 32,851 | 191,763 | 480,502 |
+| RandomHorizontalFlip | 36,897 | 27,724 | 469,309 | 439,993 |
+| RandomAffine | 6,207 | 2,819 | 7,754 | 49,545 |
+| RandomPerspective | 2,423 | 2,424 | 16,484 | 51,682 |
+| RandomResizedCrop | 14,966 | 11,848 | 17,390 | 74,338 |
+| ColorJiggle | 314 | 1,337 | 12,703 | 40,025 |
+| RandomGaussianBlur | 1,544 | 1,439 | 47,015 | 224,664 |
+| RandomBrightness | 16,143 | 30,413 | 149,602 | 188,938 |
+| RandomGrayscale | 21,298 | 32,669 | 177,511 | 464,424 |
 
-Compilation helps CUDA Gaussian blur by 3.65× and ColorJiggle by 3.14× in this batch-32 slice.
-It also loses: CPU Gaussian blur runs at 0.91× eager throughput, and CPU horizontal flip at 0.78×.
-Torchvision remains faster on several CUDA operations, including affine, brightness and grayscale;
-see the JSON for all columns and the regime descriptions below before comparing CPU uint8 loops
-with batched float tensors.
+Compilation helps CUDA Gaussian blur by 4.78× and ColorJiggle by 3.15× in this batch-32 slice.
+It also loses: CPU Gaussian blur runs at 0.93× eager throughput, CPU horizontal flip at
+0.75×, and CPU affine at 0.45×. See the JSON for all baseline columns and the regime descriptions below
+before comparing CPU uint8 loops with batched float tensors.
 
-**Compiled RandomResizedCrop is not steady-state throughput.** The #4658 recompilation problem
-also appears on this Intel/CUDA stack: CPU compiled throughput is approximately 1 image/s at every
-batch, and CUDA batches 8/32 approximately 2 images/s. CUDA batch 1 measured 1,947 images/s in this
-run, which does not establish stability across runs. These values are retained as measured.
+**RandomResizedCrop after the fix**, input images/s:
+
+| Batch | CPU eager | CPU compiled | CUDA eager | CUDA compiled |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 2,693 | 5,340 | 1,001 | 2,261 |
+| 8 | 10,831 | 15,212 | 5,950 | 16,379 |
+| 32 | 14,966 | 11,848 | 17,390 | 74,338 |
+
+All 24 compiled Kornia rows per device completed without compile failures or recompilation-limit
+warnings. The old Kornia 0.9.0rc1 snapshots at `d579a572` (CPU) and `43cf6b46` (CUDA)
+measured roughly 1–2 images/s at batches 8/32 while repeatedly compiling crop parameters. Those
+snapshots have been replaced. The new CPU batch-32 compiled crop is still slower than eager;
+fixing recompilation does not make compilation the fastest choice for every workload. Other
+between-run differences should not be attributed to #4659: these are separate snapshots, not
+an interleaved A/B experiment.
 
 Reproduce with the project interpreter:
 

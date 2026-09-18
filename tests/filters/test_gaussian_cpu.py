@@ -27,7 +27,7 @@ from kornia.filters import GaussianBlur2d, gaussian_blur2d, get_gaussian_kernel1
 from kornia.filters.filter import filter2d_separable
 from kornia.filters.gaussian import _gaussian_blur2d_cpu
 
-from testing.base import BaseTester
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, dynamo_is_available
 
 gaussian_module = importlib.import_module("kornia.filters.gaussian")
 
@@ -273,6 +273,7 @@ class TestGaussianBlurCpu(BaseTester):
         tolerance = _cpu_tolerance(dtype)
         self.assert_close(compiled(image, sigma), reference, rtol=tolerance, atol=tolerance)
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_export_large_input(self, monkeypatch, device, dtype):
         if device.type != "cpu" or dtype != torch.float32:
             pytest.skip("strict export is checked once on CPU float32")

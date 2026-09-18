@@ -23,7 +23,7 @@ import torch
 from kornia.filters import Laplacian, filter2d, get_laplacian_kernel1d, get_laplacian_kernel2d, laplacian
 from kornia.filters.kernels import normalize_kernel2d
 
-from testing.base import BaseTester, assert_close
+from testing.base import DYNAMO_UNAVAILABLE_REASON, BaseTester, assert_close, dynamo_is_available
 
 laplacian_module = importlib.import_module("kornia.filters.laplacian")
 
@@ -164,6 +164,7 @@ class TestLaplacian(BaseTester):
         actual = laplacian(sample, kernel_size)
         assert actual.is_contiguous()
 
+    @pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
     def test_export(self, device, dtype):
         inp = torch.rand(1, 2, 7, 9, device=device, dtype=dtype)
         op = Laplacian((5, 7))
