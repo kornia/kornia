@@ -262,8 +262,11 @@ class TestRandomCropCompile(BaseTester):
 
     @pytest.mark.parametrize("augmentation", [K.RandomCrop, K.RandomResizedCrop])
     @pytest.mark.parametrize("nonfinite", [float("nan"), float("inf")])
-    def test_compile_crop_without_resize_nonfinite(self, device, dtype, torch_optimizer, augmentation, nonfinite):
-        aug = augmentation((3, 3))
+    @pytest.mark.parametrize("resample", ["bilinear", "bicubic"])
+    def test_compile_crop_without_resize_nonfinite(
+        self, device, dtype, torch_optimizer, augmentation, nonfinite, resample
+    ):
+        aug = augmentation((3, 3), resample=resample)
         input = torch.arange(16, device=device, dtype=dtype).reshape(1, 1, 4, 4)
         input[..., 1, 1] = nonfinite
         params = aug.forward_parameters(input.shape)
@@ -273,3 +276,13 @@ class TestRandomCropCompile(BaseTester):
         self.assert_close(actual.isnan(), expected.isnan())
         self.assert_close(actual.isinf(), expected.isinf())
         self.assert_close(actual.nan_to_num(), expected.nan_to_num(), atol=0, rtol=0)
+
+    @pytest.mark.parametrize("size,align_corners", [(41, False), (42, True)])
+    def test_compile_identity_resize_coordinates(self, device, dtype, torch_optimizer, size, align_corners):
+        aug = K.RandomResizedCrop((size, size), align_corners=align_corners)
+        input = torch.rand(1, 1, size, size, device=device, dtype=dtype)
+        params = aug.forward_parameters(input.shape)
+        params["src"] = torch.tensor(
+            [[[0, 0], [size - 1, 0], [size - 1, size - 1], [0, size - 1]]], device=device, dtype=dtype
+        )
+        self.assert_close(torch_optimizer(aug, fullgraph=True)(input, params=params), input, atol=0, rtol=0)

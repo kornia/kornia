@@ -40,8 +40,12 @@ def _resize_coordinates(
         scales = torch.tensor([n / output_size for n in range(input_size + 1)], device=start.device, dtype=start.dtype)
         return (positions * scales[length.long()]).float().floor()
     if align_corners:
-        return positions * ((length - 1) / (output_size - 1) if output_size > 1 else length * 0.0)
-    return (positions + 0.5) * (length / output_size) - 0.5
+        coordinates = positions * ((length - 1) / (output_size - 1) if output_size > 1 else length * 0.0)
+    else:
+        coordinates = (positions + 0.5) * (length / output_size) - 0.5
+    # Reciprocal multiplication can round an identity scale below one (e.g. 41/41).
+    # Keep exact integer indices for unchanged axes, including the no-resize center tap.
+    return torch.where(length == output_size, positions, coordinates)
 
 
 def _cubic_weights(fraction: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -108,29 +112,30 @@ def _compiled_slice_resize(
     if mode == "nearest":
         return gather(x, y)
 
-    def preserve_slice(result: torch.Tensor) -> torch.Tensor:
+    def preserve_slice(result: torch.Tensor, slice_values: torch.Tensor) -> torch.Tensor:
         # crop_by_indices skips interpolate entirely when the slice already has the
         # requested size. Avoid spreading NaNs/Infs through zero-weight neighbors.
         unchanged = ((x1 - x0 == size[1]) & (y1 - y0 == size[0]))[:, :, None, None]
-        columns = torch.arange(size[1], device=input.device).expand(batch, -1)
-        rows = torch.arange(size[0], device=input.device).expand(batch, -1)
-        return torch.where(unchanged, gather(columns, rows), result).to(input.dtype)
+        # The central tap already equals the exact slice when both dimensions match.
+        return torch.where(unchanged, slice_values, result).to(input.dtype)
 
     if mode == "bilinear":
         x, y = x.clamp(min=0), y.clamp(min=0)
     ix, iy = x.floor(), y.floor()
     fx, fy = x - ix, y - iy
+    center = gather(ix, iy)
     if mode == "bilinear":
         wx, wy = fx[:, None, None, :], fy[:, None, :, None]
-        top = gather(ix, iy) * (1 - wx) + gather(ix + 1, iy) * wx
+        top = center * (1 - wx) + gather(ix + 1, iy) * wx
         bottom = gather(ix, iy + 1) * (1 - wx) + gather(ix + 1, iy + 1) * wx
-        return preserve_slice(top * (1 - wy) + bottom * wy)
+        return preserve_slice(top * (1 - wy) + bottom * wy, center)
 
     wxs, wys = _cubic_weights(fx), _cubic_weights(fy)
     result = input.new_zeros((batch, channels, *size), dtype=coordinate_dtype)
     for j in range(4):
         row = input.new_zeros((batch, channels, *size), dtype=coordinate_dtype)
         for i in range(4):
-            row = row + gather(ix + i - 1, iy + j - 1) * wxs[i][:, None, None, :]
+            tap = center if i == 1 and j == 1 else gather(ix + i - 1, iy + j - 1)
+            row = row + tap * wxs[i][:, None, None, :]
         result = result + row * wys[j][:, None, :, None]
-    return preserve_slice(result)
+    return preserve_slice(result, center)
