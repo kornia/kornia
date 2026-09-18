@@ -79,9 +79,11 @@ def _median_blur_network(input: torch.Tensor, size: int) -> torch.Tensor:
         if high:
             values[right] = torch.maximum(a, b)
     # The original one-hot convolution propagates any NaN/Inf in a window to
-    # every extracted feature (including 0 * Inf). Preserve that behavior.
-    invalid = F.max_pool2d(input - input, size, stride=1, padding=radius)
-    return (values[size * size // 2] + invalid).contiguous()
+    # every extracted feature (including 0 * Inf). Pool a finite-value mask:
+    # max-pooling NaNs directly is version- and dtype-dependent on CPU.
+    invalid = F.max_pool2d((~torch.isfinite(input)).to(input.dtype), size, stride=1, padding=radius).bool()
+    selected = values[size * size // 2]
+    return torch.where(invalid, torch.full_like(selected, float("nan")), selected).contiguous()
 
 
 def _compute_zero_padding(kernel_size: tuple[int, int] | int) -> tuple[int, int]:

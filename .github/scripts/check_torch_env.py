@@ -57,6 +57,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections.abc import Iterable, Mapping, Sequence
 from importlib.metadata import PackageNotFoundError, distribution, distributions
@@ -123,15 +124,26 @@ def scan_installed() -> tuple[dict[str, str], dict[str, list[str]]]:
 
     """
     found: dict[str, str] = {}
-    seen: dict[str, set[str]] = {}
+    seen_by_path: dict[tuple[str, str], set[str]] = {}
     for dist in distributions():
         name = dist.metadata["Name"]
         if not name:
             continue
         canonical = canonicalize_name(name)
         found.setdefault(canonical, dist.version)
-        seen.setdefault(canonical, set()).add(dist.version)
-    return found, {name: sorted(versions) for name, versions in seen.items() if len(versions) > 1}
+        # `locate_file("")` is the sys.path entry containing this distribution. A
+        # second version in a later entry is shadowed deterministically, just like a
+        # module of the same name there; only conflicting metadata in one entry is
+        # ambiguous. Normalize without resolving so this remains a metadata scan and
+        # does not touch the filesystem.
+        path = os.path.normcase(os.path.abspath(os.fspath(dist.locate_file(""))))
+        seen_by_path.setdefault((canonical, path), set()).add(dist.version)
+
+    duplicates: dict[str, set[str]] = {}
+    for (name, _), versions in seen_by_path.items():
+        if len(versions) > 1:
+            duplicates.setdefault(name, set()).update(versions)
+    return found, {name: sorted(versions) for name, versions in duplicates.items()}
 
 
 def installed_versions() -> dict[str, str]:
