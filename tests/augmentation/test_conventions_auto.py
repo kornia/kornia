@@ -176,7 +176,7 @@ class TestAutoAugmentConventions(BaseTester):
             intensity.inverse(image)
 
     @pytest.mark.device_agnostic
-    def test_convention_operation_probability_magnitude_and_soft_blend(self):
+    def test_convention_operation_probability_and_magnitude_clamps(self):
         operation = ops.Rotate(initial_magnitude=3.0, initial_probability=0.5)
         operation._probability.data.fill_(2.0)
         operation._magnitude.data.fill_(100.0)
@@ -185,13 +185,18 @@ class TestAutoAugmentConventions(BaseTester):
         operation._probability.data.fill_(-1.0)
         self.assert_close(operation.probability, torch.full_like(operation.probability, 1e-7), rtol=0, atol=0)
 
-        invert = ops.Invert(initial_probability=1.0)
-        image = torch.tensor([[[[0.2]]], [[[0.8]]]])
+    @pytest.mark.parametrize(
+        "probability,expected",
+        [(1.0, [0.375, 0.5, 0.375, 0.25]), (0.5, [0.25, 0.25, 0.375, 0.25])],
+    )
+    def test_convention_operation_soft_blend_respects_the_wrapped_gate(self, probability, expected, device, dtype):
+        # The wrapped p=1 path transforms every row. At p<1 it first keeps gates <=0.5 unchanged,
+        # so the outer blend cannot mix those rows with the transformed image.
+        invert = ops.Invert(initial_probability=probability)
+        image = torch.tensor([0.25, 0.25, 0.75, 0.75], device=device, dtype=dtype).view(4, 1, 1, 1)
         params = invert.op.forward_parameters(image.shape)
-        params["batch_prob"] = torch.tensor([0.25, 0.75])
-        batch_prob = params["batch_prob"][:, None, None, None]
-        expected = batch_prob * (1.0 - image) + (1.0 - batch_prob) * image
-        self.assert_close(invert(image, params=params), expected)
+        params["batch_prob"] = torch.tensor([0.25, 0.5, 0.75, 1.0])
+        self.assert_close(invert(image, params=params).flatten(), image.new_tensor(expected))
 
     @pytest.mark.device_agnostic
     def test_wart_policy_sequential_bypasses_operation_wrapper_sampling_4441(self):
@@ -230,11 +235,16 @@ class TestAutoAugmentConventions(BaseTester):
         self.assert_close(degrees.abs(), torch.full_like(degrees, 3.0))
 
     @pytest.mark.device_agnostic
-    def test_convention_autoaugment_posterize_truncates_its_interval(self):
+    def test_convention_autoaugment_posterize_rounds_its_interval(self):
+        torch.manual_seed(17)
         aug = AutoAugment(policy=[[("posterize", 1.0, 1)]])
         bits = aug.forward_parameters(torch.Size([256, 3, 8, 8]))[0].data[0].data["bits_factor"]
         assert not bits.is_floating_point()
         assert set(bits.tolist()) == {4, 5}  # bin 1 is the interval (4.4, 4.8)
+        # Bin 2 is entirely above 4.5 and below 5.5, so every draw rounds to 5; truncation would return 4 or 5.
+        aug = AutoAugment(policy=[[("posterize", 1.0, 2)]])
+        bits = aug.forward_parameters(torch.Size([256, 3, 8, 8]))[0].data[0].data["bits_factor"]
+        self.assert_close(bits, torch.full_like(bits, 5), rtol=0, atol=0)
 
     @pytest.mark.device_agnostic
     def test_wart_randaugment_posterize_and_translate_units_4655(self):
@@ -251,12 +261,17 @@ class TestAutoAugmentConventions(BaseTester):
     def test_wart_operation_probability_parameter_is_inert_4656(self):
         import copy
 
+        gates = []
         for learned in (1e-7, 1.0 - 1e-7):
             operation = ops.Invert(initial_probability=0.5)
             operation._probability.data.fill_(learned)
+            torch.manual_seed(17)
             batch_prob = operation.forward_parameters(torch.Size([4000, 1, 4, 4]))["batch_prob"]
             assert set(batch_prob.unique().tolist()) == {0.0, 1.0}
             assert 1700 < batch_prob.sum() < 2300
+            assert not batch_prob.requires_grad
+            gates.append(batch_prob)
+        self.assert_close(gates[0], gates[1], rtol=0, atol=0)
         operation = ops.Brightness(initial_magnitude=0.3, initial_probability=0.5)
         operation(torch.rand(8, 3, 4, 4)).sum().backward()
         assert operation._probability.grad is None

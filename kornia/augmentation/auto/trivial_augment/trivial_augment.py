@@ -50,8 +50,8 @@ class TrivialAugment(PolicyAugmentBase):
     See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
 
     Convention:
-        - selects one one-operation candidate sub-policy uniformly for each forward call. The selected wrapped
-          operation samples its native probability and magnitude independently for every batch row.
+        - selects one candidate sub-policy uniformly for each forward call. Each candidate contains one operation,
+          which samples its native probability and magnitude independently for every batch row.
         - sampling bypasses the operation wrapper's magnitude mapping. For example, a ``("rotate", -30, 30)``
           candidate draws angles in ``[0, 30]`` without applying the random sign. This follows the
           :class:`~kornia.augmentation.auto.PolicySequential` limitation tracked in

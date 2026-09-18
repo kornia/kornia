@@ -44,13 +44,17 @@ class OperationBase(nn.Module):
           ``probability`` property clamps to the closed interval ``[1e-7, 1 - 1e-7]`` and ``magnitude`` clamps to
           the wrapped generator's configured range. ``forward_parameters`` builds a (relaxed) Bernoulli sampler
           from that probability, but nothing reads it: the gate is drawn from the wrapped augmentation's own float
-          ``p``, the sampled ``batch_prob`` is a hard ``0`` or ``1``, and the probability parameter receives no
-          gradient (`#4656 <https://github.com/kornia/kornia/issues/4656>`_). It then draws the wrapped augmentation's
-          parameters and substitutes the supplied or learned magnitude.
-        - ``forward`` applies the wrapped augmentation to the full batch and linearly blends each output row
-          with its input using the returned ``batch_prob``. A symmetric magnitude chooses an independent sign
-          for every row; nonzero magnitudes therefore remain nonzero and can have either sign.
-        - :class:`PolicySequential` is a lower-level container. Its own parameter sampler calls
+          ``p`` and ``p_batch``, the sampled ``batch_prob`` is a hard ``0`` or ``1``, and the probability parameter
+          receives no gradient (`#4656 <https://github.com/kornia/kornia/issues/4656>`_). It then draws the wrapped
+          augmentation's parameters and substitutes the supplied or learned magnitude.
+        - ``forward`` linearly blends the wrapped augmentation's output with the input using ``batch_prob``.
+          With supplied fractional gates, the wrapped augmentation first keeps rows whose gate is at most ``0.5``
+          unchanged, unless both its ``p`` and ``p_batch`` equal ``1``. Only that unconditional configuration
+          blends every row with the fully transformed image; otherwise rows at or below the threshold stay
+          unchanged even after the outer blend.
+        - a symmetric magnitude chooses an independent sign for every row; nonzero magnitudes therefore remain
+          nonzero and can have either sign.
+        - :class:`~kornia.augmentation.auto.PolicySequential` is a lower-level container. Its own sampler calls
           ``operation.op.forward_parameters`` directly, bypassing this wrapper's magnitude mapping. This is a
           distinct direct-use behavior, tracked in `#4441
           <https://github.com/kornia/kornia/issues/4441>`_.
@@ -206,8 +210,9 @@ class OperationBase(nn.Module):
                 sampled from ``input.shape``.
 
         Returns:
-            Tensor where each sample is either transformed or left unchanged
-            according to ``batch_prob``.
+            Tensor blended with the wrapped augmentation's output according to
+            ``batch_prob``. The wrapped augmentation's own gate runs before this
+            blend, as described in the class's Convention block.
         """
         if params is None:
             params = self.forward_parameters(input.shape)

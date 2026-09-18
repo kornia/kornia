@@ -22,7 +22,7 @@ import torch
 
 import kornia.augmentation as K
 
-from testing.base import BaseTester, supports_bilinear_3d_grid_sample
+from testing.base import BaseTester, supports_bilinear_3d_grid_sample, supports_nearest_3d_grid_sample
 
 
 class Test3DAugmentationConventions(BaseTester):
@@ -209,6 +209,24 @@ class Test3DAugmentationConventions(BaseTester):
         assert K.RandomCrop3D((2, 3, 4), padding=2, p=0.0)(volume).shape == (1, 1, 8, 9, 10)
         assert K.RandomCrop3D((6, 7, 9), pad_if_needed=True, p=0.0)(volume).shape == (1, 1, 8, 9, 12)
         assert K.RandomCrop3D((2, 3, 4), p=0.0)(volume).shape == volume.shape
+
+    @pytest.mark.parametrize(
+        "padding,size,marker",
+        [(1, (5, 5, 5), (2, 2, 2)), ((1, 2, 3), (9, 7, 5), (4, 3, 2))],
+    )
+    def test_convention_random_crop3d_matrix_uses_the_padded_source_frame(self, padding, size, marker, device, dtype):
+        if not supports_nearest_3d_grid_sample(device, dtype):
+            pytest.skip("nearest 3D grid_sample is unavailable for this device and dtype")
+        volume = torch.zeros(1, 1, 3, 3, 3, device=device, dtype=dtype)
+        volume[..., 1, 1, 1] = 1
+        # Nearest sampling isolates the coordinate frame from half-precision interpolation roundoff.
+        augmentation = K.RandomCrop3D(size, padding=padding, resample="nearest", p=1.0)
+        output = augmentation(volume)
+        expected = torch.zeros_like(output)
+        expected[..., marker[0], marker[1], marker[2]] = 1
+        self.assert_close(output, expected)
+        # Taking the whole padded canvas records identity, despite moving the original marker by the padding.
+        self.assert_close(augmentation.transform_matrix, torch.eye(4, device=device, dtype=dtype)[None])
 
     @pytest.mark.device_agnostic
     def test_wart_motion_blur3d_kernel_range_is_per_sample_4653(self):

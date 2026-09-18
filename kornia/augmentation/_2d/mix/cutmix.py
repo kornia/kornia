@@ -44,8 +44,6 @@ class RandomCutMixV2(MixAugmentationBaseV2):
     See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
 
     Args:
-        height: the width of the input image.
-        width: the width of the input image.
         p: probability for applying an augmentation to a batch. This param controls the augmentation
                    probabilities batch-wisely.
         num_mix: cut mix times.
@@ -80,9 +78,10 @@ class RandomCutMixV2(MixAugmentationBaseV2):
           (`#4657 <https://github.com/kornia/kornia/issues/4657>`_).
           ``use_correct_lambda=True`` returns ``1 - cut_area / image_area``;
           the compatibility default returns ``cut_area / image_area`` and emits a deprecation warning.
-        - ``p`` is a batch-wide gate, and the generator applies it a second time per row: inside a selected batch
-          each row's cut is kept with probability ``p`` and zeroed otherwise, so a row is mixed with probability
-          ``p ** 2``
+        - ``p`` is a batch-wide gate, and the generator applies it a second time per row and mix: inside a selected
+          batch each cut is kept with probability ``p`` and zeroed otherwise. Each cut passes both gates with
+          probability ``p ** 2``; it can still leave the image unchanged through self-pairing or a zero-sized cut.
+          With ``same_on_batch=True`` the inner gate is shared across rows and mixes
           (`#4649 <https://github.com/kornia/kornia/issues/4649>`_).
           At ``p=0`` the image is unchanged and each class row contains the original
           label twice with lambda zero. The current ``cut_size`` interpretation and its rejection of a minimum of

@@ -81,7 +81,10 @@ class TestMixConventions(BaseTester):
         aug = K.RandomCutMixV2(
             num_mix=num_mix, cut_size=(0.5, 0.5), p=1.0, data_keys=["input", "class"], use_correct_lambda=True
         )
-        _, mixed_labels = aug(image, labels)
+        aug(image, labels)
+        params = dict(aug._params)
+        params["mix_pairs"] = torch.tensor([[1, 2, 0], [2, 0, 1]])[:num_mix]
+        _, mixed_labels = aug(image, labels, params=params)
 
         assert mixed_labels.shape == (num_mix, 3, 3)
         self.assert_close(mixed_labels[:, :, 0], labels.to(dtype).expand(num_mix, -1))
@@ -182,26 +185,42 @@ class TestMixConventions(BaseTester):
         self.assert_close(top_left, torch.tensor([4.0, 3.0], device=top_left.device, dtype=top_left.dtype))
 
     def test_convention_mosaic_grid_first_axis_is_width(self, device, dtype):
-        image = torch.arange(6, device=device, dtype=dtype).view(6, 1, 1, 1)
-        aug = K.RandomMosaic(mosaic_grid=(2, 3), p=1.0)
-        composed = aug._compose_images(image, {"permutation": torch.arange(6).view(1, 6)}, aug.flags)
+        image = torch.arange(6, device=device, dtype=dtype).view(6, 1, 1, 1).expand(6, 1, 6, 4)
+        aug = K.RandomMosaic(mosaic_grid=(2, 3), start_ratio_range=(0.5, 0.5), p=1.0)
+        params = aug.forward_parameters(image.shape)
+        params["permutation"] = torch.arange(6).expand(6, -1)
+        output = aug(image, params=params)
 
-        assert composed.shape == (1, 1, 3, 2)
-        self.assert_close(composed[0, 0], torch.tensor([[0, 3], [1, 4], [2, 5]], device=device, dtype=dtype))
+        # Cropping from (x, y)=(2, 3) crosses the four tiles at the top-left of the 3-row, 2-column grid.
+        expected = image.new_tensor([[0, 0, 3, 3]] * 3 + [[1, 1, 4, 4]] * 3)
+        self.assert_close(output, expected.expand(6, 1, 6, 4))
 
     @pytest.mark.parametrize("data_key", ["bbox", "bbox_xyxy", "bbox_xywh"])
     def test_convention_mosaic_supports_each_documented_box_key(self, data_key, device, dtype):
         image = torch.rand(4, 1, 6, 8, device=device, dtype=dtype)
         if data_key == "bbox":
-            boxes = torch.tensor([[[[1.0, 1.0], [4.0, 1.0], [4.0, 4.0], [1.0, 4.0]]]] * 4, device=device, dtype=dtype)
+            boxes = image.new_tensor([[[[1, 1], [7, 1], [7, 5], [1, 5]]]] * 4)
+            expected = image.new_tensor(
+                [
+                    [[0, 0], [3, 0], [3, 2], [0, 2]],
+                    [[0, 4], [3, 4], [3, 6], [0, 6]],
+                    [[5, 0], [8, 0], [8, 2], [5, 2]],
+                    [[5, 4], [8, 4], [8, 6], [5, 6]],
+                ]
+            )
         elif data_key == "bbox_xyxy":
-            boxes = torch.tensor([[[1.0, 1.0, 4.0, 4.0]]] * 4, device=device, dtype=dtype)
+            boxes = image.new_tensor([[[1, 1, 7, 5]]] * 4)
+            expected = image.new_tensor([[0, 0, 3, 2], [0, 4, 3, 6], [5, 0, 8, 2], [5, 4, 8, 6]])
         else:
-            boxes = torch.tensor([[[1.0, 1.0, 3.0, 3.0]]] * 4, device=device, dtype=dtype)
-        output, output_boxes = K.RandomMosaic(p=1.0, data_keys=["input", data_key])(image, boxes)
+            boxes = image.new_tensor([[[1, 1, 6, 4]]] * 4)
+            expected = image.new_tensor([[0, 0, 3, 2], [0, 4, 3, 2], [5, 0, 3, 2], [5, 4, 3, 2]])
+        # The crop starts at (4, 3); translate each tile's box and clip to the 8x6 output.
+        output, output_boxes = K.RandomMosaic(start_ratio_range=(0.5, 0.5), p=1.0, data_keys=["input", data_key])(
+            image, boxes
+        )
 
         assert output.shape == image.shape
-        assert output_boxes.shape[0] == image.shape[0]
+        self.assert_close(output_boxes, expected.unsqueeze(0).expand(4, *expected.shape))
 
     @pytest.mark.parametrize(
         ("factory", "extra", "error"),
@@ -275,6 +294,14 @@ class TestMixConventions(BaseTester):
         self.assert_close(K.RandomJigsaw(grid=(2, 3), p=0.0)(indivisible), indivisible)
         with pytest.raises(RuntimeError, match="invalid for input of size"):
             K.RandomJigsaw(grid=(2, 3), p=1.0)(indivisible)
+
+    def test_wart_jigsaw_nondivisible_input_can_silently_lose_a_channel_4651(self, device, dtype):
+        # The missing divisibility check can also let reshape infer fewer channels, instead of raising.
+        image = torch.arange(36, device=device, dtype=dtype).reshape(1, 3, 3, 4)
+        params = {"batch_prob": torch.ones(1), "permutation": torch.tensor([[0, 1, 2, 3]])}
+        output = K.RandomJigsaw(grid=(2, 2), p=1.0)(image, params=params)
+        assert output.shape == (1, 2, 3, 4)
+        self.assert_close(K.RandomJigsaw(grid=(2, 2), p=0.0)(image), image)
 
     @pytest.mark.device_agnostic
     def test_wart_mixup_and_cutmix_apply_p_to_rows_a_second_time_4649(self):

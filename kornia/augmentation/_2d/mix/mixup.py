@@ -82,8 +82,9 @@ class RandomMixUpV2(MixAugmentationBaseV2):
           image dtype, so integer class labels are returned as floating labels and large ones are rounded in half
           precision (`#4657 <https://github.com/kornia/kornia/issues/4657>`_).
         - ``p`` is a batch-wide gate for this class, and the generator applies it a second time per row: inside a
-          selected batch each row's lambda is kept with probability ``p`` and zeroed otherwise, so a row is mixed
-          with probability ``p ** 2``
+          selected batch each row's lambda is kept with probability ``p`` and zeroed otherwise. A row passes both
+          gates with probability ``p ** 2``; its image can still be unchanged if lambda is zero or it is paired
+          with itself. With ``same_on_batch=True`` the inner gate is also shared across rows
           (`#4649 <https://github.com/kornia/kornia/issues/4649>`_).
           At ``p=0`` the image is unchanged and the class output holds
           the original label twice with a zero lambda. ``same_on_batch=True`` shares lambda draws, but it does not

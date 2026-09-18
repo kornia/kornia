@@ -47,6 +47,10 @@ This module contains common data augmentation policies that can improve the accu
 
 .. autoclass:: kornia.augmentation.auto.operations.OperationBase
 
+   .. automethod:: forward_parameters
+
+   .. automethod:: forward
+
 Augmentation Search Methods
 ---------------------------
 
