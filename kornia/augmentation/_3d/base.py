@@ -37,6 +37,18 @@ class AugmentationBase3D(_AugmentationBase):
           probabilities batch-wise.
         same_on_batch: apply the same transformation across the batch.
 
+    Convention:
+        - the working layout is ``(B, C, D, H, W)`` float. Inputs of rank three and four are promoted by
+          prepending batch and, for rank three, channel dimensions; ``keepdim=True`` restores that original
+          rank. The dtype guard accepts only ``float16``, ``bfloat16``, ``float32``, and ``float64``.
+        - ``p`` gates samples and ``p_batch`` gates a whole call; ``same_on_batch=True`` shares the generated
+          values. Parameters use the common augmentation RNG and ``forward(x, params=...)`` replays a complete
+          generated dictionary. See :class:`~kornia.augmentation.AugmentationBase2D` for the shared sampling,
+          seeding, and serialization contract.
+        - rigid subclasses expose the last sampled ``(B, 4, 4)`` ``transform_matrix``. The 3D bases do not
+          implement ``inverse``: direct calls have no ``inverse`` method, and a geometric 3D child makes an
+          :class:`~kornia.augmentation.container.AugmentationSequential` inverse raise.
+
     """
 
     def validate_tensor(self, input: torch.Tensor) -> None:
@@ -61,10 +73,12 @@ class AugmentationBase3D(_AugmentationBase):
 
 
 class RigidAffineAugmentationBase3D(AugmentationBase3D):
-    r"""AugmentationBase2D base class for rigid/affine augmentation implementations.
+    r"""AugmentationBase3D base class for rigid/affine augmentation implementations.
 
-    RigidAffineAugmentationBase2D enables routined transformation with given transformation matrices
+    RigidAffineAugmentationBase3D enables routined transformation with given transformation matrices
     for different data types like masks, boxes, and keypoints.
+
+    See the Convention block on :class:`~kornia.augmentation.AugmentationBase3D`.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities

@@ -434,10 +434,23 @@ Serializing an augmentation
   does not update the cached sampling distributions; ``repr`` may or may not
   reflect the loaded range. Reconstruct the augmentation to change what it
   samples (`#4428 <https://github.com/kornia/kornia/issues/4428>`_).
+- With numeric constructor ranges, the 3D geometric and intensity
+  augmentations and the five mix classes ``RandomCutMixV2``, ``RandomJigsaw``,
+  ``RandomMixUpV2``, ``RandomMosaic`` and ``PatchMix`` have empty
+  ``state_dict()`` objects. Pickle and deepcopy preserve their configuration
+  and recorded parameters after a forward call; passing the restored
+  ``_params`` replays that transform on the same input. An empty
+  ``state_dict()`` cannot save those parameters or reconstruct the constructor
+  configuration. Tensor or ``nn.Parameter`` arguments can have different
+  registration behavior.
 - Pickle and deepcopy can retain recorded parameters and transform state,
   but support is configuration-dependent. The ``kornia.augmentation.auto``
-  policies cannot currently be pickled
-  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_).
+  policies containing operation wrappers cannot currently be pickled
+  (`#4469 <https://github.com/kornia/kornia/issues/4469>`_). An empty
+  ``AutoAugment(policy=[[]])`` has no wrappers and can be pickled. ``copy.deepcopy``
+  of a used policy can raise ``RuntimeError``, for example ``RandAugment``
+  after a forward pass with gradients enabled
+  (`#4656 <https://github.com/kornia/kornia/issues/4656>`_).
   A normal forward draws fresh parameters; replay requires passing the
   saved parameters and controlling any application-time randomness.
 - Built-in lazy matrices keep only the input's shape, dtype and device

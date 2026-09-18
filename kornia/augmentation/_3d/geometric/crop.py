@@ -62,6 +62,21 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - ``size`` and the output shape are ordered ``(D, H, W)``. A scalar ``padding`` expands to every side;
+          three values expand as ``(left/right, top/bottom, front/back)``, and six are passed to
+          :func:`torch.nn.functional.pad` as ``(left, right, top, bottom, front, back)`` before the crop is drawn.
+        - ``transform_matrix`` maps the padded volume to the crop, not the original input to the crop. Add the
+          left, top, and front padding to an original ``(x, y, z)`` point before applying this matrix. For example,
+          padding a ``3 x 3 x 3`` input by ``1`` and cropping the full ``5 x 5 x 5`` volume records an identity
+          matrix even though the original voxel ``(1, 1, 1)`` moves to ``(2, 2, 2)``.
+        - its ``p`` is a call-wide gate. Size validation uses the padded input even when the call is skipped.
+          With ``padding`` or ``pad_if_needed`` a valid gated-off call returns the padded volume rather than the input
+          (`#4654 <https://github.com/kornia/kornia/issues/4654>`_).
+          Defaults are bilinear resampling and ``align_corners=True``.
+
     Examples:
         >>> import torch
         >>> rng = torch.manual_seed(0)

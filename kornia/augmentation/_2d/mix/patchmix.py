@@ -30,7 +30,9 @@ class PatchMix(MixAugmentationBaseV2):
     .. image:: _static/img/PatchMix.png
 
     Replaces a random patch in each image of a batch with the corresponding
-    region from a randomly chosen different image in the batch.
+    region from a randomly chosen batch image, which can be the same image.
+
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
 
     Implementation for `CutMix: Regularization Strategy to Train Strong
     Classifiers with Localizable Features` :cite:`yun2019cutmix`.
@@ -43,6 +45,22 @@ class PatchMix(MixAugmentationBaseV2):
         same_on_batch: Apply the same transformation across the batch.
         keepdim: Whether to keep the output shape the same as input ``True``
             or broadcast it to the batch form ``False``.
+
+    Convention:
+        - ``patch_size`` is the side length in pixels of a square patch and must not exceed ``min(H, W)``. A larger
+          value is not rejected: the patch is truncated at the image border, and once it exceeds a side by more than
+          one pixel, as the default ``16`` does on a smaller image, negative coordinates are drawn and an arbitrary
+          smaller rectangle is copied
+          (`#4650 <https://github.com/kornia/kornia/issues/4650>`_).
+          Each output sample copies that rectangle
+          from its paired input at the same sampled top-left coordinate; the output image retains its input shape.
+          The sampled ``lam`` is stored in ``_params`` but is not used to blend the image or produce labels.
+        - ``p`` is a batch-wide gate. With ``same_on_batch=True``, the pairing scores are tied before they are
+          sorted, so the resulting pairing order is backend- and input-size-dependent; the output follows the
+          recorded ``_params["mix_pairs"]`` rather than promising self-pairing (`#4650
+          <https://github.com/kornia/kornia/issues/4650>`_). This class implements image input only;
+          requesting a class, mask, box, or keypoint key reaches the base's unsupported handler, with the
+          no-selection exception described on the base.
 
     Examples:
         >>> aug = PatchMix(alpha=1.0, patch_size=4)

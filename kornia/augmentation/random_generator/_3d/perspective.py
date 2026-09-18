@@ -29,6 +29,8 @@ from kornia.core.utils import _extract_device_dtype
 class PerspectiveGenerator3D(RandomGeneratorBase):
     r"""Get parameters for ``perspective`` for a random perspective transform.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomPerspective3D`.
+
     Args:
         distortion_scale: controls the degree of distortion and ranges from 0 to 1.
 

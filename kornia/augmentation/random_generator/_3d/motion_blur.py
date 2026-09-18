@@ -27,6 +27,8 @@ from kornia.core.utils import _extract_device_dtype
 class MotionBlurGenerator3D(RandomGeneratorBase):
     r"""Get parameters for motion blur.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomMotionBlur3D`.
+
     Args:
         kernel_size: motion kernel size (odd and positive).
             If int, the kernel will have a fixed size.

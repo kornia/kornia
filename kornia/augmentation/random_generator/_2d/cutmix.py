@@ -38,6 +38,8 @@ __all__ = ["CutmixGenerator"]
 class CutmixGenerator(RandomGeneratorBase):
     r"""Generate cutmix indexes and lambdas for a batch of inputs.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomCutMixV2`.
+
     Args:
         p (float): probability of applying cutmix.
         num_mix (int): number of images to mix with. Default is 1.

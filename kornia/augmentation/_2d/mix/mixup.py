@@ -39,6 +39,8 @@ class RandomMixUpV2(MixAugmentationBaseV2):
     `https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py
     <https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py>`_.
 
+    See the Convention block on :class:`~kornia.augmentation.MixAugmentationBaseV2`.
+
     The loss and accuracy are computed as:
 
     .. code-block:: python
@@ -72,6 +74,21 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         Tuple[torch.Tensor, torch.Tensor]:
         - Adjusted image, shape of :math:`(B, C, H, W)`.
         - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, 3)`.
+
+    Convention:
+        - With ``data_keys=["input", "class"]``, the class output is ``(B, 3)``: its columns are the original
+          label, the label selected by ``_params["mixup_pairs"]``, and the sampled lambda. The image is
+          ``input * (1 - lambda) + paired_input * lambda``. Labels must be one-dimensional and are cast to the
+          image dtype, so integer class labels are returned as floating labels and large ones are rounded in half
+          precision (`#4657 <https://github.com/kornia/kornia/issues/4657>`_).
+        - ``p`` is a batch-wide gate for this class, and the generator applies it a second time per row: inside a
+          selected batch each row's lambda is kept with probability ``p`` and zeroed otherwise. A row passes both
+          gates with probability ``p ** 2``; its image can still be unchanged if lambda is zero or it is paired
+          with itself. With ``same_on_batch=True`` the inner gate is also shared across rows
+          (`#4649 <https://github.com/kornia/kornia/issues/4649>`_).
+          At ``p=0`` the image is unchanged and the class output holds
+          the original label twice with a zero lambda. ``same_on_batch=True`` shares lambda draws, but it does not
+          constrain the pairing indices: they can differ across rows and can select the original sample.
 
     Note:
         This implementation would randomly mixup images in a batch. Ideally, the larger batch size would be preferred.

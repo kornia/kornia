@@ -33,6 +33,8 @@ from kornia.core.utils import _extract_device_dtype
 class AffineGenerator3D(RandomGeneratorBase):
     r"""Get parameters for ```3d affine``` transformation random affine transform.
 
+    See the Convention block on :class:`~kornia.augmentation.RandomAffine3D`.
+
     Args:
         degrees: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
             If degrees is a number, then yaw, pitch, roll will be generated from the range of (-degrees, +degrees).

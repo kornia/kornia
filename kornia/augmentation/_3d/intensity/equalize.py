@@ -38,11 +38,21 @@ class RandomEqualize3D(IntensityAugmentationBase3D):
 
     Note:
         Input tensor must be float and normalized into [0, 1]: values outside it that the 256-bin lookup
-        cannot index raise a ``RuntimeError`` naming the range. This uses :func:`kornia.enhance.equalize3d`,
-        which equalizes each channel's whole volume from one 256-bin histogram, so a volume with no more
-        than 255 voxels per channel is returned unchanged.
+        cannot index raise a ``RuntimeError`` naming the range on CPU and CUDA. MPS skips that check and can
+        raise a raw indexing error instead. This uses :func:`kornia.enhance.equalize3d`, which equalizes each
+        channel's whole volume from one 256-bin histogram, so a volume with no more than 255 voxels per channel
+        is returned unchanged up to floating-point roundoff.
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+
+    Convention:
+        See :class:`~kornia.augmentation.IntensityAugmentationBase3D` for the shared 3D intensity contract.
+
+        - values in ``[0, 1]`` are the intended input range. CPU and CUDA reject values the 256-bin lookup cannot
+          index (outside roughly that range) with ``RuntimeError``; the asynchronous check is deliberately skipped
+          on MPS, where an out-of-range value can instead reach a raw indexing error. The whole per-channel volume
+          supplies one 256-bin histogram. A volume with at most 255 voxels per channel can change only by
+          floating-point roundoff; larger volumes can be equalized.
 
     Examples:
         >>> import torch

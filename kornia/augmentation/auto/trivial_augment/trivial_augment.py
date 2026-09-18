@@ -47,6 +47,16 @@ default_policy: List[SUBPOLICY_CONFIG] = [
 class TrivialAugment(PolicyAugmentBase):
     """Apply TrivialAugment :cite:`muller2021trivialaugment` augmentation strategies.
 
+    See the Convention block on :class:`~kornia.augmentation.auto.PolicyAugmentBase`.
+
+    Convention:
+        - selects one candidate sub-policy uniformly for each forward call. Each candidate contains one operation,
+          which samples its native probability and magnitude independently for every batch row.
+        - sampling bypasses the operation wrapper's magnitude mapping. For example, a ``("rotate", -30, 30)``
+          candidate draws angles in ``[0, 30]`` without applying the random sign. This follows the
+          :class:`~kornia.augmentation.auto.PolicySequential` limitation tracked in
+          `#4441 <https://github.com/kornia/kornia/issues/4441>`_.
+
     Args:
         policy: candidate transformations. If None, a default candidate list will be used.
         transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`

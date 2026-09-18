@@ -47,6 +47,12 @@ class RandomDepthicalFlip3D(GeometricAugmentationBase3D):
         Additionally, this function accepts another transformation torch.tensor(:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
+    Convention:
+        See :class:`~kornia.augmentation.GeometricAugmentationBase3D` for the shared 3D geometry contract.
+
+        - flips the depth ``D`` axis (tensor axis ``-3``, coordinate ``z``). Its matrix maps ``z`` to
+          ``D - 1 - z`` using inclusive voxel coordinates when the input dtype represents that translation exactly.
+
     Examples:
         >>> import torch
         >>> x = torch.eye(3).repeat(3, 1, 1)

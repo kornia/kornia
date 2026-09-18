@@ -30,6 +30,8 @@ __all__ = ["PatchMixGenerator"]
 class PatchMixGenerator(RandomGeneratorBase):
     r"""Generate patchmix indexes and lambdas for a batch of inputs.
 
+    See the Convention block on :class:`~kornia.augmentation.PatchMix`.
+
     Args:
         alpha (float): hyperparameter for generating cut size from beta distribution.
         patch_size (int): size of the patch to be swapped.
