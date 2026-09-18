@@ -27,10 +27,13 @@ skip line rather than failing the run.
 
 PR [#4659](https://github.com/kornia/kornia/pull/4659) fixes the crop-parameter recompilation
 and shared augmentation compile-cache defects tracked in
-[#4658](https://github.com/kornia/kornia/issues/4658). The Intel CPU/CUDA snapshots below were
-re-measured after merging that fix. The pre-fix M1 Pro augmentation snapshots have moved to
-[`superseded/`](../results/superseded/README.md) until that hardware can be re-measured; their
-compiled crop rows measured compilation storms rather than steady-state throughput.
+[#4658](https://github.com/kornia/kornia/issues/4658). The Intel CPU/CUDA snapshots below and the
+Apple M1 Pro CPU/MPS snapshots were all re-measured after merging that fix; the pre-fix runs of
+both machines are retired in [`superseded/`](../results/superseded/README.md), because their
+compiled crop rows measured compilation storms rather than steady-state throughput. On the M1 Pro
+the compiled `RandomResizedCrop` row goes from 1/2/2 img/s at batches 1/8/32 to 2459/6180/8290 on
+CPU and from 555/3/failed to 645/4864/17620 on MPS, and a 40-call trace at batch 8 that previously
+hit six compiles of 1.3-5.6 s now compiles no new graph at all.
 
 ## Intel i7-14700K and RTX 4090 snapshot after #4659 (2026-09-18)
 
