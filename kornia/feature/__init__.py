@@ -92,6 +92,7 @@ from .responses import (
     hessian_response,
 )
 from .scale_space_detector import MultiResolutionDetector, PassLAF, ScaleSpaceDetector
+from .sift import SIFTDescriptorFromPyramid
 from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
@@ -144,6 +145,7 @@ __all__ = [
     "PatchAffineShapeEstimator",
     "PatchDominantGradientOrientation",
     "SIFTDescriptor",
+    "SIFTDescriptorFromPyramid",
     "SIFTFeature",
     "SIFTFeatureScaleSpace",
     "SOLD2_detector",
