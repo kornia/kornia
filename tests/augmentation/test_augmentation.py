@@ -4236,6 +4236,44 @@ class TestRandomClahe(BaseTester):
         output_data = RandomClahe(p=1.0, grid_size=(2, 2))(input_data)
         assert output_data.shape == batch_shape
 
+    @pytest.mark.parametrize("batch_prob", [(True, True), (False, True), (False, False)])
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    def test_per_sample_clip_limit_replay(self, batch_prob, slow_and_differentiable, device, dtype):
+        torch.manual_seed(0)
+        input_data = torch.rand(2, 1, 32, 32).pow(3).to(device=device, dtype=dtype)
+        clip_limits = torch.tensor([0.5, 40.0])
+        aug = RandomClahe(
+            clip_limit=(0.5, 40.0),
+            grid_size=(2, 2),
+            slow_and_differentiable=slow_and_differentiable,
+            p=0.5,
+        )
+        params = aug.forward_parameters(input_data.shape)
+        params["clip_limit_factor"] = clip_limits
+        params["batch_prob"] = torch.tensor(batch_prob)
+
+        transformed = torch.cat(
+            [
+                kornia.enhance.equalize_clahe(
+                    input_data[index : index + 1], float(clip_limit), (2, 2), slow_and_differentiable
+                )
+                for index, clip_limit in enumerate(clip_limits)
+            ]
+        )
+        expected = torch.where(torch.tensor(batch_prob, device=device).view(-1, 1, 1, 1), transformed, input_data)
+
+        self.assert_close(aug(input_data, params=params), expected)
+
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(0)
+        input_data = torch.rand(1, 1, 32, 32).to(device=device, dtype=dtype).repeat(2, 1, 1, 1)
+        aug = RandomClahe(clip_limit=(0.5, 40.0), grid_size=(2, 2), same_on_batch=True, p=1.0)
+
+        output = aug(input_data)
+
+        self.assert_close(aug._params["clip_limit_factor"][0], aug._params["clip_limit_factor"][1])
+        self.assert_close(output[0], output[1])
+
 
 class TestRandomGaussianNoise(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):

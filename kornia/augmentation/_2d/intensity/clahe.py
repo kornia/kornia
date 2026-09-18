@@ -36,6 +36,7 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     Args:
         clip_limit: the ``(low, high)`` range the per-sample contrast-limiting threshold is drawn from.
+            A value is drawn for each image, or once and shared across the batch when ``same_on_batch=True``.
             Unlike :func:`kornia.enhance.equalize_clahe`'s scalar argument of the same name this must be a
             two-element tuple -- a scalar raises ``ValueError: `center` and `bounds` cannot be None for
             single number`` at construction -- and ``(0.0, 0.0)`` is what disables clipping. The bound is
@@ -61,9 +62,11 @@ class RandomClahe(IntensityAugmentationBase2D):
           ``gather`` error (`#4600 <https://github.com/kornia/kornia/issues/4600>`_), while ``2.5.1``
           leaves the gather unchecked and returns an in-range image as if the input had been valid.
 
-    .. warning::
-        ``clip_limit`` is drawn per sample, but the first sample's value is applied to the whole batch.
-        Tracked in `#4572 <https://github.com/kornia/kornia/issues/4572>`_.
+    Convention:
+        - ``clip_limit`` is drawn per sample and each image is equalized with its own draw. When every
+          draw is equal -- which ``same_on_batch=True`` guarantees, and an unlucky batch can produce on
+          its own -- the batch takes a single :func:`kornia.enhance.equalize_clahe` call instead of one
+          per image; the result is the same either way.
 
     .. warning::
         ``grid_size`` is unvalidated past its positivity check. Its two
@@ -122,5 +125,13 @@ class RandomClahe(IntensityAugmentationBase2D):
         flags: dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        clip_limit = float(params["clip_limit_factor"][0])
-        return equalize_clahe(input, clip_limit, flags["grid_size"], flags["slow_and_differentiable"])
+        clip_limits = params["clip_limit_factor"]
+        if bool(torch.all(clip_limits == clip_limits[0])):
+            return equalize_clahe(input, float(clip_limits[0]), flags["grid_size"], flags["slow_and_differentiable"])
+
+        return torch.stack(
+            [
+                equalize_clahe(image, float(clip_limit), flags["grid_size"], flags["slow_and_differentiable"])
+                for image, clip_limit in zip(input, clip_limits)
+            ]
+        )

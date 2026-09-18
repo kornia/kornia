@@ -1982,31 +1982,58 @@ class TestIntensityColourConventions(BaseTester):
             reference = K.RandomClahe(grid_size=grid_size, p=1.0)(padded)[..., :size, :size]
             assert torch.equal(out, reference)
 
-    # Issue #4572: RandomClahe draws `clip_limit_factor` per sample but equalizes the whole batch with
-    # the first sample's value (`float(params["clip_limit_factor"][0])`).
+    # RandomClahe equalizes each image with its OWN `clip_limit_factor` draw (the fix for #4572; the
+    # whole batch used to take `float(params["clip_limit_factor"][0])`, the first sample's value).
     # Snippet used to generate expected:
-    #   torch.manual_seed(1234); x = torch.rand(2, 1, 32, 32) ** 3
+    #   torch.manual_seed(1234); x = torch.rand(8, 1, 32, 32) ** 3
     #   torch.manual_seed(0); aug = K.RandomClahe(clip_limit=(0.5, 40.0), grid_size=(2, 2), p=1.0); y = aug(x)
-    #   c = aug._params["clip_limit_factor"]; print(c)
-    #   for i in (1, 0):
-    #       print(torch.equal(y[1:], equalize_clahe(x[1:], float(c[i]), (2, 2))))
-    # executed 2026-09-15 (torch 2.14.0, cpu) -> `[20.1021, 30.8448]`, `False True`.
+    #   c = aug._params["clip_limit_factor"]
+    #   print([torch.equal(y[i:i+1], equalize_clahe(x[i:i+1], float(c[i]), (2, 2))) for i in range(8)])
+    #   print([torch.equal(y[i:i+1], equalize_clahe(x[i:i+1], float(c[0]), (2, 2))) for i in range(8)])
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> clips `[20.10, 30.84, 4.00, 5.72, 12.64, 25.55, 19.86,
+    # 35.91]`; own-clip all True; first-clip True only for row 0.
     @pytest.mark.device_agnostic
-    def test_wart_random_clahe_applies_the_first_clip_limit_to_the_batch_4572(self):
+    def test_convention_random_clahe_applies_each_clip_limit_to_its_own_image_4572(self):
         # B is 8, not 2: two draws from (0.5, 40.0) land within 1.0 of each other about 5% of the time,
-        # and at B=2 this node failed on 12 of seeds 0..199.  Over 8 draws the spread was at least 9.4 on
-        # every one of those seeds, and the sample farthest from the first is the one that shows the wart.
+        # and at B=2 the pin this replaces failed on 12 of seeds 0..199.  A wide batch also makes the
+        # "every row got the FIRST clip limit" arm below a real discriminator rather than a coincidence.
         torch.manual_seed(_FIXTURE_SEED)
         image = torch.rand(8, 1, 32, 32) ** 3
         torch.manual_seed(_FORWARD_SEED)
         aug = K.RandomClahe(clip_limit=(0.5, 40.0), grid_size=(2, 2), p=1.0)
         out = aug(image)
         clip = aug._params["clip_limit_factor"]
-        far = int((clip - clip[0]).abs().argmax())
-        assert abs(float(clip[far]) - float(clip[0])) > 1.0
-        # The whole batch is equalized with the first sample's clip limit, not with its own.
-        assert torch.equal(out[far : far + 1], equalize_clahe(image[far : far + 1], float(clip[0]), (2, 2)))
-        assert not torch.equal(out[far : far + 1], equalize_clahe(image[far : far + 1], float(clip[far]), (2, 2)))
+        assert float((clip - clip[0]).abs().max()) > 1.0, clip.tolist()
+        for row in range(image.shape[0]):
+            own = equalize_clahe(image[row : row + 1], float(clip[row]), (2, 2))
+            assert torch.equal(out[row : row + 1], own), row
+        # ... and not with the first sample's, which is what the defect did.  Row 0 is excluded because
+        # its own limit IS the first one, so it agrees under both contracts.
+        first = int((clip - clip[0]).abs().argmax())
+        assert not torch.equal(out[first : first + 1], equalize_clahe(image[first : first + 1], float(clip[0]), (2, 2)))
+
+    # When every draw is equal the class takes a single `equalize_clahe` call for the batch instead of
+    # one per image.  `same_on_batch=True` is the way to reach that branch on purpose; the result must be
+    # indistinguishable from the per-image path, so this pins equivalence and not merely finiteness.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(0)
+    #   aug = K.RandomClahe(clip_limit=(0.5, 40.0), grid_size=(2, 2), p=1.0, same_on_batch=True)
+    #   y = aug(x); c = aug._params["clip_limit_factor"]
+    #   print((c == c[0]).all(), torch.equal(y, equalize_clahe(x, float(c[0]), (2, 2))))
+    # executed 2026-09-16 (torch 2.14.0, cpu) -> `True True`.
+    @pytest.mark.device_agnostic
+    def test_convention_random_clahe_equal_clip_limits_take_the_batched_path_4572(self):
+        torch.manual_seed(_FIXTURE_SEED)
+        image = torch.rand(8, 1, 32, 32) ** 3
+        torch.manual_seed(_FORWARD_SEED)
+        aug = K.RandomClahe(clip_limit=(0.5, 40.0), grid_size=(2, 2), p=1.0, same_on_batch=True)
+        out = aug(image)
+        clip = aug._params["clip_limit_factor"]
+        assert bool((clip == clip[0]).all())
+        assert torch.equal(out, equalize_clahe(image, float(clip[0]), (2, 2)))
+        # The per-image path must agree with it row by row, so the fast path is an optimization only.
+        for row in range(image.shape[0]):
+            assert torch.equal(out[row : row + 1], equalize_clahe(image[row : row + 1], float(clip[0]), (2, 2)))
 
     # Every class whose path goes through rgb_to_hsv is finite for a black pixel in every dtype,
     # float16 included (the fix for #4560: the saturation divisor was `max_rgb + eps` with `eps=1e-8`,
