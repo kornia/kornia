@@ -70,7 +70,16 @@ def _range_bound(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    r"""Check inputs and compute the corresponding factor bounds."""
+    r"""Check inputs and compute the corresponding factor bounds.
+
+    A scalar ``factor`` is a magnitude around ``center``: the range is ``[center - factor, center + factor]``
+    with its lower end floored at ``bounds[0]`` (a non-negative parameter reads ``contrast=1.5`` as
+    ``[0, 2.5]``, the way torchvision does), and an upper end past ``bounds[1]`` raises the same
+    ``ValueError`` the explicit range would. The scalar must be finite: ``inf``, ``nan``, and a finite
+    magnitude too large to represent in ``dtype`` (which converts to ``inf``) all raise ``ValueError``,
+    while a negative value reports "must be non negative" from the earlier check. A pair is taken as the
+    range itself and checked against ``bounds`` with ``check``.
+    """
     if device is None:
         device = torch.device("cpu")
     if dtype is None:
@@ -82,13 +91,16 @@ def _range_bound(
     if factor.dim() == 0:
         if factor < 0:
             raise ValueError(f"If {name} is a single number, it must be non negative. Got {factor}.")
+        if not torch.isfinite(factor):
+            raise ValueError(f"If {name} is a single number, it must be finite. Got {factor}.")
         if center is None or bounds is None:
             raise ValueError(f"`center` and `bounds` cannot be None for single number. Got {center}, {bounds}.")
-        # Should be something other than clamp
-        # Currently, single value factor will not out of scope as long as the user provided it.
-        # Note: I personally think throw an error will be better than a coarse clamp.
         factor_bound = factor.repeat(2) * torch.tensor([-1.0, 1.0], device=factor.device, dtype=factor.dtype) + center
-        factor_bound = factor_bound.clamp(bounds[0], bounds[1]).to(device=device, dtype=dtype)
+        # The lower end is floored at the domain floor; the upper end is never clamped, because a
+        # magnitude that overshoots the domain is a mistake the explicit range form already rejects.
+        if factor_bound[1] > bounds[1]:
+            raise ValueError(f"{name} out of bounds. Expected inside {bounds}, got {factor_bound}.")
+        factor_bound = factor_bound.clamp(min=bounds[0]).to(device=device, dtype=dtype)
     else:
         factor_bound = torch.as_tensor(factor, device=device, dtype=dtype)
 
@@ -177,10 +189,16 @@ def _tuple_range_reader(
     target_size: int,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
+    name: str = "input_range",
+    bounds: Optional[Tuple[float, float]] = None,
 ) -> torch.Tensor:
     """Given target_size, it will generate the corresponding (target_size, 2) range torch.Tensor.
 
     This is for element-wise params.
+
+    Every read range is checked against ``bounds``, when given, the way :func:`_range_bound` checks
+    the 2D scalar and explicit forms, so a 3D angle past one turn raises at construction instead of
+    being sampled (#4617). ``name`` only names the parameter in that error.
 
     Example:
     >>> degree = torch.tensor([0.2, 0.3])
@@ -251,5 +269,9 @@ def _tuple_range_reader(
             "If not pass a torch.tensor, it must be float, (float, float) for isotropic operation or a tuple of "
             f"{target_size} floats or {target_size} (float, float) for independent operation. Got {input_range}."
         )
+
+    if bounds is not None:
+        for row in input_range_tmp:
+            _joint_range_check(row, name, bounds)
 
     return input_range_tmp

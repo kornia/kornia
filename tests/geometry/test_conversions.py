@@ -2190,6 +2190,26 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         # evaluate function gradient
         self.gradcheck(kornia.geometry.conversions.axis_angle_to_rotation_matrix, (axis_angle,))
 
+    def test_convention_gradient_is_finite_near_the_identity(self, device, dtype):
+        # Small angles take the Taylor branch, but torch.where still backpropagates through the discarded
+        # Rodrigues branch, whose sqrt(theta2) had a `clamp(min=1e-12)` floor. In float16 that floor is 0, so
+        # the gradient was nan wherever theta2 reached 0 there: the identity, and [1e-4, 0, 0] whose theta2 of
+        # 1e-8 underflows. The third row's theta2 of 2.9e-07 is a float16 subnormal, so it was already finite.
+        # At the identity d(sum R)/dv is the sum of the skew matrix [v]x, which is 0; the other two rows are a
+        # float64 torch.matrix_exp reference, and pinning them keeps this from passing on any finite gradient.
+        axis_angle = torch.tensor(
+            [[0.0, 0.0, 0.0], [1e-4, 0.0, 0.0], [0.0, 5e-4, 2e-4]], device=device, dtype=dtype, requires_grad=True
+        )
+        kornia.geometry.conversions.axis_angle_to_rotation_matrix(axis_angle).sum().backward()
+        assert bool(torch.isfinite(axis_angle.grad).all()), axis_angle.grad
+        self.assert_close(axis_angle.grad[0], torch.zeros(3, device=device, dtype=dtype))
+        self.assert_close(
+            axis_angle.grad[1:],
+            torch.tensor([[-2e-4, 1e-4, 1e-4], [7e-4, -8e-4, 1e-4]], device=device, dtype=dtype),
+            rtol=1e-2,
+            atol=1e-6,
+        )
+
     def test_axis_angle_to_rotation_matrix(self, device, dtype, atol, rtol):
         rmat_1 = torch.tensor(
             (
@@ -4091,6 +4111,24 @@ class TestNormalTransformPixel(BaseTester):
         assert matrix.device.type == torch.device(device).type
         expected = torch.tensor([[[0.5, 0.0, -1.0], [0.0, 2.0 / 3.0, -1.0], [0.0, 0.0, 1.0]]])
         self.assert_close(matrix.cpu().to(torch.complex128), expected.to(torch.complex128), atol=0.05, rtol=0.05)
+
+        # The 3-D function carries its own copy of the guard, so an allowlist planted in that one
+        # alone would leave this test green if it only called the 2-D function.
+        matrix_3d = kornia.geometry.conversions.normal_transform_pixel3d(2, 4, 5, device=device, dtype=accepted_dtype)
+        assert matrix_3d.dtype == accepted_dtype
+        assert matrix_3d.shape == (1, 4, 4)
+        assert matrix_3d.device.type == torch.device(device).type
+        expected_3d = torch.tensor(
+            [
+                [
+                    [0.5, 0.0, 0.0, -1.0],
+                    [0.0, 2.0 / 3.0, 0.0, -1.0],
+                    [0.0, 0.0, 2.0, -1.0],
+                    [0.0, 0.0, 0.0, 1.0],
+                ]
+            ]
+        )
+        self.assert_close(matrix_3d.cpu().to(torch.complex128), expected_3d.to(torch.complex128), atol=0.05, rtol=0.05)
 
     def test_convention_integer_dtype_rejection_is_unconditional_3959(self, device):
         # The guard is deliberately NOT a KORNIA_CHECK. KORNIA_CHECK is gated on

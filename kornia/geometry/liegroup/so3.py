@@ -94,10 +94,7 @@ class So3(nn.Module):
             w = torch.zeros(*right.shape[:-1], 1, device=right.device, dtype=right.dtype)
             quat = Quaternion(torch.cat((w, _right_data), -1))
             out = (self.q * quat * self.q.conj()).vec
-            if isinstance(right, torch.Tensor):
-                return out
-            elif isinstance(right, Vector3):
-                return Vector3(out)
+            return Vector3(out) if isinstance(right, Vector3) else out
         else:
             raise TypeError(f"Not So3 or torch.Tensor type. Got: {type(right)}")
 
