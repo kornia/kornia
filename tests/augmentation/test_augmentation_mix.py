@@ -128,6 +128,19 @@ class TestRandomMixUpV2(BaseTester):
         self.assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
         self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.parametrize("image_dtype", [torch.bfloat16, torch.float16])
+    def test_class_labels_preserve_precision(self, image_dtype, device):
+        image = torch.rand(4, 1, 8, 8, device=device, dtype=image_dtype)
+        labels = torch.tensor([257, 999, 2049, 4097], device=device)
+
+        aug = RandomMixUpV2(p=1.0, data_keys=["input", "class"])
+        _, output_labels = aug(image, labels)
+
+        self.assert_close(
+            output_labels[:, 0],
+            labels.to(torch.float32),
+        )
+
     @pytest.mark.parametrize("p", [0.0, 0.5])
     def test_partial_batch_passthrough(self, p, device, dtype):
         # See TestRandomJigsaw.test_partial_batch_passthrough: output batch size must
@@ -287,6 +300,19 @@ class TestRandomCutMixV2(BaseTester):
         self.assert_close(out_label[0, :, 1], torch.tensor([0, 1], device=device, dtype=dtype))
         self.assert_close(
             out_label[0, :, 2], torch.tensor([0.5000, 0.5000], device=device, dtype=dtype), rtol=1e-4, atol=1e-4
+        )
+
+    @pytest.mark.parametrize("image_dtype", [torch.bfloat16, torch.float16])
+    def test_class_labels_preserve_precision(self, image_dtype, device):
+        image = torch.rand(4, 1, 8, 8, device=device, dtype=image_dtype)
+        labels = torch.tensor([257, 999, 2049, 4097], device=device)
+
+        aug = RandomCutMixV2(p=1.0, data_keys=["input", "class"], use_correct_lambda=True)
+        _, output_labels = aug(image, labels)
+
+        self.assert_close(
+            output_labels[0, :, 0],
+            labels.to(torch.float32),
         )
 
     @pytest.mark.parametrize("p", [0.0, 0.5])

@@ -21,7 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
-from kornia.constants import DataKey, DType
+from kornia.constants import DataKey
 from kornia.geometry.bbox import bbox_to_mask, infer_bbox_shape
 
 
@@ -132,9 +132,9 @@ class RandomCutMixV2(MixAugmentationBaseV2):
             out_labels.append(
                 torch.stack(
                     [
-                        input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
-                        labels_permute.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
-                        lam.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
+                        input.to(device=input.device, dtype=calc_dtype),
+                        labels_permute.to(device=input.device, dtype=calc_dtype),
+                        lam.to(device=input.device, dtype=calc_dtype),
                     ],
                     1,
                 )
@@ -146,13 +146,14 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         out_labels = []
-        lam = torch.zeros((len(input)), device=input.device, dtype=DType.to_torch(int(params["dtype"].item())))
+        calc_dtype = input.dtype if input.dtype in (torch.float32, torch.float64) else torch.float32
+        lam = torch.zeros((len(input)), device=input.device, dtype=calc_dtype)
         for _ in range(self._param_generator.num_mix):
             out_labels.append(
                 torch.stack(
                     [
-                        input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
-                        input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
+                        input.to(device=input.device, dtype=calc_dtype),
+                        input.to(device=input.device, dtype=calc_dtype),
                         lam,
                     ],
                     1,
