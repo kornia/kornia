@@ -65,6 +65,9 @@ def _gaussian_blur2d_cpu(
     Keep weights as tensors: scalar ``alpha`` values would lose derivatives with
     respect to sigma and break forward-mode automatic differentiation.
     """
+    # vmap has a batching rule for addcmul, but not its in-place variant.
+    # Compilers can fuse the functional accumulation without these allocations.
+    reuse_accumulator = not is_compiling() and not torch._C._are_functorch_transforms_active()
     for axis, kernel in ((-1, kernel_x), (-2, kernel_y)):
         size = input.shape[axis]
         radius = kernel.shape[-1] // 2
@@ -72,8 +75,12 @@ def _gaussian_blur2d_cpu(
         padded = F.pad(input, padding, mode=border_type)
         output = padded.narrow(axis, 0, size) * kernel[:, 0, None, None, None]
         for tap in range(1, kernel.shape[-1]):
-            # The out-of-place operator also has a vmap batching rule.
-            output = output.addcmul(padded.narrow(axis, tap, size), kernel[:, tap, None, None, None])
+            values = padded.narrow(axis, tap, size)
+            weight = kernel[:, tap, None, None, None]
+            if reuse_accumulator:
+                output.addcmul_(values, weight)
+            else:
+                output = output.addcmul(values, weight)
         input = output
     return input
 

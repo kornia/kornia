@@ -46,7 +46,7 @@ class TestBoxBlur(BaseTester):
         self.assert_close(out1, out2)
 
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
-    @pytest.mark.parametrize("kernel_size", [(2, 4), (4, 3), (3, 5)])
+    @pytest.mark.parametrize("kernel_size", [(2, 4), (4, 3), (3, 5), (1, 5), (5, 1), (1, 1)])
     @pytest.mark.parametrize("separable", [False, True])
     def test_pooling_matches_convolution(self, border_type, kernel_size, separable, device, dtype):
         data = torch.randn(2, 3, 8, 9, device=device, dtype=dtype).transpose(-1, -2)
@@ -64,18 +64,49 @@ class TestBoxBlur(BaseTester):
         self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("separable", [False, True])
-    def test_pooling_nonfinite(self, separable, device):
+    @pytest.mark.parametrize("border_type", ["reflect", "constant"])
+    def test_pooling_nonfinite(self, separable, border_type, device):
         data = torch.zeros(1, 1, 7, 8, device=device)
         data[0, 0, 1, 1] = float("inf")
         data[0, 0, 3, 4] = float("nan")
         data[0, 0, 5, 6] = -float("inf")
 
-        actual = box_blur(data, (3, 5), separable=separable)
-        expected = filter2d(data, get_box_kernel2d((3, 5), device=device))
+        actual = box_blur(data, (3, 5), border_type, separable=separable)
+        expected = filter2d(data, get_box_kernel2d((3, 5), device=device), border_type)
 
         assert torch.equal(torch.isnan(actual), torch.isnan(expected))
         assert torch.equal(torch.isposinf(actual), torch.isposinf(expected))
         assert torch.equal(torch.isneginf(actual), torch.isneginf(expected))
+
+    @pytest.mark.parametrize("separable", [False, True])
+    @pytest.mark.parametrize("value", ["large", "inf", "nan"])
+    def test_extreme_cpu_values_match_convolution(self, separable, value, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("The data-dependent fallback is specific to eager CPU execution")
+        fill = torch.finfo(dtype).max / 2 if value == "large" else float(value)
+        data = torch.full((1, 1, 7, 9), fill, device=device, dtype=dtype)
+        if separable:
+            expected = filter2d_separable(
+                data,
+                get_box_kernel1d(5, device=device, dtype=dtype),
+                get_box_kernel1d(3, device=device, dtype=dtype),
+                "replicate",
+            )
+        else:
+            expected = filter2d(data, get_box_kernel2d((3, 5), device=device, dtype=dtype), "replicate")
+        actual = box_blur(data, (3, 5), "replicate", separable=separable)
+        self.assert_close(actual.isnan(), expected.isnan())
+        self.assert_close(actual.isposinf(), expected.isposinf())
+        self.assert_close(actual.isneginf(), expected.isneginf())
+        self.assert_close(actual.nan_to_num(), expected.nan_to_num())
+        if value == "large":
+            assert actual.isfinite().all()
+
+    def test_vmap(self, device, dtype):
+        data = torch.rand(2, 1, 3, 7, 9, device=device, dtype=dtype)
+        expected = torch.stack([box_blur(image, 3) for image in data])
+        actual = torch.vmap(lambda image: box_blur(image, 3))(data)
+        self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("separable", [False, True])
     def test_pooling_cpu_autocast(self, separable):
@@ -254,11 +285,14 @@ class TestBoxBlur(BaseTester):
 
     @pytest.mark.parametrize("kernel_size", [(3, 3), 5, (5, 7)])
     @pytest.mark.parametrize("separable", [False, True])
-    def test_gradcheck(self, kernel_size, separable, device):
+    @pytest.mark.parametrize("border_type", ["reflect", "constant"])
+    def test_gradcheck(self, kernel_size, separable, border_type, device):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         fast_mode = "cpu" in str(device)  # Disable fast mode for GPU
-        self.gradcheck(lambda x: box_blur(x, kernel_size, separable=separable), (img,), fast_mode=fast_mode)
+        self.gradcheck(
+            lambda x: box_blur(x, kernel_size, border_type, separable=separable), (img,), fast_mode=fast_mode
+        )
 
     @pytest.mark.parametrize("kernel_size", [(3, 3), 5, (5, 7)])
     @pytest.mark.parametrize("batch_size", [1, 2])
@@ -273,16 +307,17 @@ class TestBoxBlur(BaseTester):
         self.assert_close(actual, expected)
 
     @pytest.mark.parametrize("separable", [False, True])
-    @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
+    @pytest.mark.parametrize("kernel_size", [5, (5, 7), (1, 5), (5, 1)])
     @pytest.mark.parametrize("batch_size", [1, 2])
-    def test_dynamo(self, batch_size, kernel_size, separable, device, dtype, torch_optimizer):
+    @pytest.mark.parametrize("border_type", ["reflect", "constant"])
+    def test_dynamo(self, batch_size, kernel_size, separable, border_type, device, dtype, torch_optimizer):
         data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
-        op = BoxBlur(kernel_size, separable=separable)
+        op = BoxBlur(kernel_size, border_type, separable=separable)
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
         functional_optimized = torch_optimizer(box_blur)
         self.assert_close(
-            box_blur(data, kernel_size, separable=separable),
-            functional_optimized(data, kernel_size, separable=separable),
+            box_blur(data, kernel_size, border_type, separable=separable),
+            functional_optimized(data, kernel_size, border_type, separable=separable),
         )

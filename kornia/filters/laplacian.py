@@ -24,6 +24,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.core.utils import is_autocast_enabled, is_compiling
 
+from .blur import _needs_convolution_for_extreme_cpu_values
 from .filter import filter2d
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_laplacian_kernel2d, normalize_kernel2d
 
@@ -57,6 +58,10 @@ def laplacian(
           ``'replicate'`` or ``'circular'``.
         normalized: if True, L1 norm of the kernel is set to 1.
 
+    Note:
+        Ordinary eager CPU execution uses convolution for extreme input ranges.
+        Captured graphs and function transforms retain their selected arithmetic.
+
     Return:
         the blurred image with shape :math:`(B, C, H, W)`.
 
@@ -80,7 +85,7 @@ def laplacian(
     ky, kx = _unpack_2d_ks(kernel_size)
     _check_kernel_size((ky, kx))
 
-    if not _laplacian_slices_eligible(input):
+    if not _laplacian_slices_eligible(input) or _needs_convolution_for_extreme_cpu_values(input, ky * kx):
         kernel = get_laplacian_kernel2d((ky, kx), device=input.device, dtype=input.dtype)[None]
         if normalized:
             kernel = normalize_kernel2d(kernel)

@@ -24,7 +24,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.core.utils import is_autocast_enabled
+from kornia.core.utils import is_autocast_enabled, is_compiling
 
 from .filter import filter2d, filter2d_separable
 from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
@@ -46,6 +46,29 @@ def _box_blur_pool_eligible(input: torch.Tensor, kernel_size: tuple[int, int] | 
     return not (input.device.type == "cpu" and _HAS_MKLDNN and max(_unpack_2d_ks(kernel_size)) > 5)
 
 
+def _needs_convolution_for_extreme_cpu_values(input: torch.Tensor, num_terms: int) -> bool:
+    """Keep the eager CPU shortcut for ordinary values, with a rare convolution fallback.
+
+    A single min/max reduction avoids an image-sized finite-value mask. Leave
+    captured graphs and function transforms alone: scalar data-dependent dispatch
+    cannot be traced or vmapped, and must not synchronize GPU execution.
+    """
+    if (
+        input.device.type != "cpu"
+        or num_terms <= 1
+        or input.numel() == 0
+        or torch.jit.is_scripting()
+        or torch.jit.is_tracing()
+        or is_compiling()
+        or torch._C._are_functorch_transforms_active()
+    ):
+        return False
+    # Leave a factor of two for rounding in the unnormalized accumulation.
+    limit = torch.finfo(input.dtype).max / (2 * num_terms)
+    minimum, maximum = torch.aminmax(input.detach())
+    return not (-limit <= minimum.item() and maximum.item() <= limit)
+
+
 def _box_blur_pool(
     input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str, separable: bool
 ) -> torch.Tensor:
@@ -58,12 +81,19 @@ def _box_blur_pool(
         f"Invalid border, {border_type}. Expected one of constant, reflect, replicate, circular",
     )
 
-    pad_x = ((kx - 1) // 2, kx - 1 - (kx - 1) // 2, 0, 0)
-    pad_y = (0, 0, (ky - 1) // 2, ky - 1 - (ky - 1) // 2)
-    if not separable:
-        return F.avg_pool2d(F.pad(input, pad_x[:2] + pad_y[2:], mode=border_type), (ky, kx), stride=1)
-    out = F.avg_pool2d(F.pad(input, pad_x, mode=border_type), (1, kx), stride=1)
-    return F.avg_pool2d(F.pad(out, pad_y, mode=border_type), (ky, 1), stride=1)
+    # A one-dimensional window needs only one pass, even in separable mode.
+    windows = ((1, kx), (ky, 1)) if separable and ky > 1 and kx > 1 else ((ky, kx),)
+    for height, width in windows:
+        if border_type == "constant" and height % 2 == 1 and width % 2 == 1:
+            # Native symmetric zero padding avoids allocating a padded image.
+            input = F.avg_pool2d(
+                input, (height, width), stride=1, padding=(height // 2, width // 2), count_include_pad=True
+            )
+        else:
+            # Even windows need asymmetric padding to retain the input size.
+            padding = ((width - 1) // 2, width // 2, (height - 1) // 2, height // 2)
+            input = F.avg_pool2d(F.pad(input, padding, mode=border_type), (height, width), stride=1)
+    return input
 
 
 def box_blur(
@@ -93,7 +123,9 @@ def box_blur(
           for larger kernels. Floating inputs use average pooling outside autocast,
           except for kernels larger than 5 on CPUs with oneDNN; complex inputs and
           autocast use convolution. The dense implementation
-          may differ by floating-point roundoff.
+          may differ by floating-point roundoff. Ordinary eager CPU execution
+          falls back to convolution for extreme input ranges; captured graphs
+          and function transforms retain native pooling arithmetic.
 
     Returns:
         the blurred torch.Tensor with shape :math:`(B,C,H,W)`.
@@ -111,7 +143,10 @@ def box_blur(
     KORNIA_CHECK_IS_TENSOR(input)
 
     if _box_blur_pool_eligible(input, kernel_size):
-        return _box_blur_pool(input, kernel_size, border_type, separable)
+        ky, kx = _unpack_2d_ks(kernel_size)
+        num_terms = max(ky, kx) if separable else ky * kx
+        if not _needs_convolution_for_extreme_cpu_values(input, num_terms):
+            return _box_blur_pool(input, kernel_size, border_type, separable)
 
     if separable:
         ky, kx = _unpack_2d_ks(kernel_size)
@@ -148,7 +183,9 @@ class BoxBlur(nn.Module):
           for larger kernels. Floating inputs use average pooling outside autocast,
           except for kernels larger than 5 on CPUs with oneDNN; complex inputs and
           autocast use convolution. The dense implementation
-          may differ by floating-point roundoff.
+          may differ by floating-point roundoff. Ordinary eager CPU execution
+          falls back to convolution for extreme input ranges; captured graphs
+          and function transforms retain native pooling arithmetic.
 
     Returns:
         the blurred input torch.Tensor.

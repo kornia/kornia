@@ -99,6 +99,29 @@ class TestLaplacian(BaseTester):
         uses_slices = device.type == "cpu" and dtype in (torch.float32, torch.float64)
         assert calls == int(not uses_slices)
 
+    @pytest.mark.parametrize("value", ["large", "inf", "nan"])
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_extreme_cpu_values_match_convolution(self, monkeypatch, value, normalized, device, dtype):
+        if device.type != "cpu" or dtype not in (torch.float32, torch.float64):
+            pytest.skip("The CPU slice path supports float32/float64")
+        data = torch.zeros(1, 1, 7, 9, device=device, dtype=dtype)
+        data[..., 3, 4] = torch.finfo(dtype).max / 2 if value == "large" else float(value)
+        kernel = get_laplacian_kernel2d(3, device=device, dtype=dtype)[None]
+        if normalized:
+            kernel = normalize_kernel2d(kernel)
+        expected = filter2d(data, kernel, "constant")
+        actual = laplacian(data, 3, "constant", normalized)
+        self.assert_close(actual.isnan(), expected.isnan())
+        self.assert_close(actual.isposinf(), expected.isposinf())
+        self.assert_close(actual.isneginf(), expected.isneginf())
+        self.assert_close(actual.nan_to_num(), expected.nan_to_num())
+
+    def test_vmap(self, device, dtype):
+        data = torch.rand(2, 1, 3, 7, 9, device=device, dtype=dtype)
+        expected = torch.stack([laplacian(image, 3) for image in data])
+        actual = torch.vmap(lambda image: laplacian(image, 3))(data)
+        self.assert_close(actual, expected)
+
     @pytest.mark.parametrize("normalized", [True, False])
     def test_kernel_size_one(self, normalized, device, dtype):
         data = torch.rand(1, 1, 3, 5, device=device, dtype=dtype)
