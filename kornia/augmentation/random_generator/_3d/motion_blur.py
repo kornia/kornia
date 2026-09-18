@@ -30,7 +30,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
     Args:
         kernel_size: motion kernel size (odd and positive).
             If int, the kernel will have a fixed size.
-            If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
+            If Tuple[int, int], it will randomly generate one value from the range for the whole batch.
         angle: angle of the motion blur in degrees (anti-clockwise rotation).
             If float, it will generate the value from (-angle, angle).
         direction: forward/backward direction of the motion blur.
@@ -87,7 +87,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
             if len(self.kernel_size) != 2:
                 raise AssertionError(f"`kernel_size` must be (2,) if it is a tuple. Got {self.kernel_size}.")
             self.ksize_sampler = UniformDistribution(
-                self.kernel_size[0] // 2, self.kernel_size[1] // 2, validate_args=False
+                self.kernel_size[0] // 2, self.kernel_size[1] // 2 + 1, validate_args=False
             )
         else:
             raise TypeError(f"Unsupported type: {type(self.kernel_size)}")
@@ -108,7 +108,13 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         angle_factor = torch.stack([yaw_factor, pitch_factor, roll_factor], 1)
 
         direction_factor = _adapted_rsampling((batch_size,), self.direction_sampler, same_on_batch)
-        ksize_factor = _adapted_rsampling((batch_size,), self.ksize_sampler, same_on_batch).int() * 2 + 1
+
+        if isinstance(self.kernel_size, tuple):
+            # A ranged kernel size is sampled once per call and shared across the batch.
+            ksize_factor = _adapted_rsampling((1,), self.ksize_sampler, same_on_batch).int() * 2 + 1
+            ksize_factor = ksize_factor.expand(batch_size)
+        else:
+            ksize_factor = _adapted_rsampling((batch_size,), self.ksize_sampler, same_on_batch).int() * 2 + 1
 
         return {
             "ksize_factor": ksize_factor.to(device=_device, dtype=torch.int32),

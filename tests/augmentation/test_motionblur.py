@@ -149,6 +149,15 @@ class TestRandomMotionBlur3D(BaseTester):
 
         self.assert_close(output, expected, rtol=1e-4, atol=1e-4)
 
+    def test_ranged_kernel_size_does_not_crash_for_batch(self):
+        input = torch.rand(6, 1, 4, 5, 6)
+
+        for seed in range(20):
+            torch.manual_seed(seed)
+            output = RandomMotionBlur3D((3, 7), 35.0, 0.5, p=1.0)(input)
+
+            assert output.shape == input.shape
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
