@@ -85,12 +85,6 @@ class ColorJiggle(IntensityAugmentationBase2D):
         all-zero default is the identity). Tracked in
         `#4430 <https://github.com/kornia/kornia/issues/4430>`_.
 
-    .. warning::
-        In ``float16`` a black pixel reaching the saturation or hue step comes back as NaN, because both
-        steps go through ``rgb_to_hsv``, whose ``eps`` underflows there. The hue step does the same for any
-        pixel whose largest channel is ``0``. Tracked in
-        `#4560 <https://github.com/kornia/kornia/issues/4560>`_.
-
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness`,
         :func:`kornia.enhance.adjust_contrast`. :func:`kornia.enhance.adjust_saturation`,

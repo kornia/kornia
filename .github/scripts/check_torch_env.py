@@ -57,7 +57,6 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from collections.abc import Iterable, Mapping, Sequence
 from importlib.metadata import PackageNotFoundError, distribution, distributions
@@ -109,41 +108,41 @@ def runtime_requirements(
     return kept
 
 
-def scan_installed() -> tuple[dict[str, str], dict[str, list[str]]]:
+def scan_installed(paths: Iterable[str] | None = None) -> tuple[dict[str, str], dict[str, list[str]]]:
     """Return every installed distribution's version, and the names that resolve ambiguously.
 
     ``distributions()`` walks ``sys.path`` in order and the first match wins, which is what
     ``importlib.metadata.version`` and a plain ``import`` resolve to, so first-wins is the
-    honest answer across path entries. Two ``.dist-info`` directories for one name *inside a
-    single* path entry have no such order -- that is a half-written venv, exactly what an
+    honest answer across path entries. Two ``.dist-info`` directories for one name *inside one*
+    distribution location have no such order -- that is a half-written venv, exactly what an
     interrupted ``uv pip install --reinstall-package torch`` leaves behind -- so those are
     reported rather than settled by whichever the filesystem happened to yield first.
 
     Returns:
-        The canonical-name-to-version map, and the names seen with disagreeing versions.
+        The canonical-name-to-version map, and the names seen with disagreeing versions in
+        one distribution location. ``paths`` is an optional metadata search path, used by
+        self-contained tests; production scans ``sys.path``.
 
     """
     found: dict[str, str] = {}
-    seen_by_path: dict[tuple[str, str], set[str]] = {}
-    for dist in distributions():
+    seen: dict[tuple[str, str], set[str]] = {}
+    available = distributions() if paths is None else distributions(path=list(paths))
+    for dist in available:
         name = dist.metadata["Name"]
         if not name:
             continue
         canonical = canonicalize_name(name)
         found.setdefault(canonical, dist.version)
-        # `locate_file("")` is the sys.path entry containing this distribution. A
-        # second version in a later entry is shadowed deterministically, just like a
-        # module of the same name there; only conflicting metadata in one entry is
-        # ambiguous. Normalize without resolving so this remains a metadata scan and
-        # does not touch the filesystem.
-        path = os.path.normcase(os.path.abspath(os.fspath(dist.locate_file(""))))
-        seen_by_path.setdefault((canonical, path), set()).add(dist.version)
-
-    duplicates: dict[str, set[str]] = {}
-    for (name, _), versions in seen_by_path.items():
+        # setuptools adds its vendored distributions to sys.path. Ordered locations
+        # intentionally shadow one another; this is not a broken virtualenv. Only
+        # conflicting metadata in one location is ambiguous.
+        location = str(dist.locate_file(""))
+        seen.setdefault((location, canonical), set()).add(dist.version)
+    duplicate_versions: dict[str, set[str]] = {}
+    for (_, name), versions in seen.items():
         if len(versions) > 1:
-            duplicates.setdefault(name, set()).update(versions)
-    return found, {name: sorted(versions) for name, versions in duplicates.items()}
+            duplicate_versions.setdefault(name, set()).update(versions)
+    return found, {name: sorted(versions) for name, versions in duplicate_versions.items()}
 
 
 def installed_versions() -> dict[str, str]:

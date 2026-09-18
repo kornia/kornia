@@ -1277,6 +1277,20 @@ class TestRandomVerticalFlip(BaseTester):
         self.gradcheck(RandomVerticalFlip(p=1.0), (input,))
 
 
+class TestHueAugmentationBlackPixels(BaseTester):
+    @pytest.mark.parametrize("augmentation", [ColorJiggle, ColorJitter])
+    def test_black_pixels(self, device, dtype, augmentation):
+        data = torch.tensor([0.75, 0.5, 0.25], device=device, dtype=dtype).view(1, 3, 1, 1).repeat(1, 1, 6, 8)
+        data[..., :2, :3] = 0.0
+        data.requires_grad_()
+
+        result = augmentation(hue=(0.1, 0.1), p=1.0)(data)
+        assert torch.isfinite(result).all()
+        self.assert_close(result[..., :2, :3], torch.zeros_like(result[..., :2, :3]))
+        (gradient,) = torch.autograd.grad(result.sum(), data)
+        assert torch.isfinite(gradient).all()
+
+
 class TestColorJiggle(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
@@ -4222,6 +4236,44 @@ class TestRandomClahe(BaseTester):
         output_data = RandomClahe(p=1.0, grid_size=(2, 2))(input_data)
         assert output_data.shape == batch_shape
 
+    @pytest.mark.parametrize("batch_prob", [(True, True), (False, True), (False, False)])
+    @pytest.mark.parametrize("slow_and_differentiable", [False, True])
+    def test_per_sample_clip_limit_replay(self, batch_prob, slow_and_differentiable, device, dtype):
+        torch.manual_seed(0)
+        input_data = torch.rand(2, 1, 32, 32).pow(3).to(device=device, dtype=dtype)
+        clip_limits = torch.tensor([0.5, 40.0])
+        aug = RandomClahe(
+            clip_limit=(0.5, 40.0),
+            grid_size=(2, 2),
+            slow_and_differentiable=slow_and_differentiable,
+            p=0.5,
+        )
+        params = aug.forward_parameters(input_data.shape)
+        params["clip_limit_factor"] = clip_limits
+        params["batch_prob"] = torch.tensor(batch_prob)
+
+        transformed = torch.cat(
+            [
+                kornia.enhance.equalize_clahe(
+                    input_data[index : index + 1], float(clip_limit), (2, 2), slow_and_differentiable
+                )
+                for index, clip_limit in enumerate(clip_limits)
+            ]
+        )
+        expected = torch.where(torch.tensor(batch_prob, device=device).view(-1, 1, 1, 1), transformed, input_data)
+
+        self.assert_close(aug(input_data, params=params), expected)
+
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(0)
+        input_data = torch.rand(1, 1, 32, 32).to(device=device, dtype=dtype).repeat(2, 1, 1, 1)
+        aug = RandomClahe(clip_limit=(0.5, 40.0), grid_size=(2, 2), same_on_batch=True, p=1.0)
+
+        output = aug(input_data)
+
+        self.assert_close(aug._params["clip_limit_factor"][0], aug._params["clip_limit_factor"][1])
+        self.assert_close(output[0], output[1])
+
 
 class TestRandomGaussianNoise(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):
@@ -5035,6 +5087,39 @@ class TestRandomBoxBlur(BaseTester):
         out = RandomBoxBlur((3, 3), normalized=normalized, p=1.0)(img.clone())
 
         self.assert_close(out[0, 0, 2, 2], img[0, 0, 1:4, 1:4].mean())
+
+    @pytest.mark.parametrize("border_type", ["circular", "CIRCULAR", 3, "BorderType.CIRCULAR"])
+    def test_border_type_accepts_the_spellings_of_the_other_blurs_4590(self, border_type, device, dtype):
+        from kornia.constants import BorderType
+        from kornia.filters import box_blur
+
+        if border_type == "BorderType.CIRCULAR":
+            border_type = BorderType.CIRCULAR
+        torch.manual_seed(0)
+        img = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        out = RandomBoxBlur((3, 3), border_type=border_type, p=1.0)(img.clone())
+
+        expected = box_blur(img, (3, 3), border_type="circular", separable=True)
+        torch.testing.assert_close(out, expected, rtol=0.0, atol=0.0)
+
+    def test_unknown_border_type_is_rejected_at_construction_4590(self):
+        with pytest.raises(KeyError):
+            RandomBoxBlur((3, 3), border_type="bogus")
+
+    @pytest.mark.parametrize("border_type", ["circular", 3, "BorderType.CIRCULAR"])
+    def test_per_call_border_type_override_is_honoured_4590(self, border_type, device, dtype):
+        from kornia.constants import BorderType
+        from kornia.filters import box_blur
+
+        if border_type == "BorderType.CIRCULAR":
+            border_type = BorderType.CIRCULAR
+        torch.manual_seed(0)
+        img = torch.rand(2, 3, 6, 8, device=device, dtype=dtype)
+        # forward(**kwargs) puts the raw override into `flags`, bypassing __init__'s normalization
+        out = RandomBoxBlur((3, 3), p=1.0)(img.clone(), border_type=border_type)
+
+        expected = box_blur(img, (3, 3), border_type="circular", separable=True)
+        torch.testing.assert_close(out, expected, rtol=0.0, atol=0.0)
 
 
 class TestPadTo(BaseTester):

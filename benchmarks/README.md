@@ -15,6 +15,10 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 | [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics; [`laf_ops.py`](feature/laf_ops.py) microbenchmarks the shared LAF operations and [`ellipse_to_laf.py`](feature/ellipse_to_laf.py) drills into one of them (both base-revision A/B — no cross-library baseline exists). [`local_features.py`](feature/local_features.py) measures Oxford graf speed and homography corner error for SIFT, SIFT-AffNet-HardNet and KeyNet-HardNet on CPU, CUDA or MPS (`--device cpu --timing-pairs 2` times the representative 1–2 pair and still scores all five); results in [`graf_benchmark.md`](feature/graf_benchmark.md). [`sift_runtime.py`](feature/sift_runtime.py) and [`plot_sift_runtime.py`](feature/plot_sift_runtime.py) chart scale-space SIFT runtime across releases and batch sizes; results in [`sift_runtime.md`](feature/sift_runtime.md). |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |
 
+[`feature/sift_scale_space.py`](feature/sift_scale_space.py) compares complete SIFT
+extraction, matching and homography quality on CPU, CUDA or MPS;
+[device results and usage](feature/sift_summary.md).
+
 ## Methodology contract
 
 Every benchmark here must follow the same rules (utilities in [`common.py`](common.py)):
@@ -144,6 +148,9 @@ envelope, metadata, privacy and row-type rules as a release snapshot, without th
 version-directory rules; `load` is optional there because a base revision's harness may predate
 it. The report states what was measured, on which commits, with which command, in the style of
 the sample-results sections below.
+
+PR #4638 keeps its historical measurements in an [immutable archive](https://github.com/kornia/kornia/tree/efb04dbf9c85e4cf71625cc2467bd5243b0c803c/benchmarks),
+with figures embedded in the PR description. Local reruns should write JSON outside the checkout.
 
 ## Sample results — geometry flagship ops
 

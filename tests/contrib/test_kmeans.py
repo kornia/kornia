@@ -90,6 +90,58 @@ class TestKMeans(BaseTester):
             kmeans.predict(torch.rand((10, 7), dtype=dtype))
         assert "7 != 5" in str(errinfo)
 
+        # case: num_clusters does not match the number of rows in an explicit cluster_centers
+        with pytest.raises(BaseError) as errinfo:
+            starting_centers = torch.rand((5, 2), device=device, dtype=dtype)
+            kornia.contrib.KMeans(3, starting_centers, 1e-3, 100, 0)
+        assert "cluster_centers has 5 rows but num_clusters=3" in str(errinfo.value)
+
+    def test_empty_cluster_reseeds_to_a_data_point(self, device, dtype):
+        # Both starting centers coincide, so every point ties to cluster 0 (argmin keeps the
+        # first index on a tie) and cluster 1 gets no points assigned to it for the one update.
+        x = torch.tensor([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], device=device, dtype=dtype)
+        starting_centers = torch.tensor([[0.5, 0.5], [0.5, 0.5]], device=device, dtype=dtype)
+
+        kmeans = kornia.contrib.KMeans(2, starting_centers, tolerance=None, max_iterations=1, seed=0)
+        kmeans.fit(x)
+        centers = kmeans.cluster_centers
+
+        self.assert_close(centers[0], x.mean(dim=0))
+        # the empty cluster is reseeded to *some* row of x, not left at the stale starting center
+        assert any(torch.allclose(centers[1], row) for row in x)
+
+    @pytest.mark.parametrize(
+        ("x", "starting_centers", "expected"),
+        [
+            (
+                (50 + torch.arange(3200) % 4).reshape(1600, 2).float(),
+                None,
+                torch.tensor([[51.0, 52.0]]),
+            ),
+            (
+                torch.cat([torch.full((400, 3), 200.0), torch.full((400, 3), 20.0)]),
+                torch.tensor([[190.0, 190.0, 190.0], [30.0, 30.0, 30.0]]),
+                torch.tensor([[200.0, 200.0, 200.0], [20.0, 20.0, 20.0]]),
+            ),
+        ],
+    )
+    def test_large_cluster_sum_stays_finite(self, device, dtype, x, starting_centers, expected):
+        # Regression test for accumulating sums/counts in X.dtype: in float16 a per-cluster sum
+        # over hundreds of points routinely exceeds 65504 and overflows to inf; in bfloat16 the
+        # count and sum both lose precision well before that. One update should still match the
+        # exact float64 mean.
+        x = x.to(device=device, dtype=dtype)
+        centers = starting_centers.to(device=device, dtype=dtype) if starting_centers is not None else None
+        num_clusters = expected.shape[0]
+
+        kmeans = kornia.contrib.KMeans(num_clusters, centers, tolerance=None, max_iterations=1, seed=0)
+        kmeans.fit(x)
+
+        assert torch.isfinite(kmeans.cluster_centers).all()
+        # exact in every dtype on the fixed implementation - a nonzero tolerance would let the
+        # pre-fix bfloat16 error (0.25, well under BaseTester's default bfloat16 tolerance) pass
+        self.assert_close(kmeans.cluster_centers, expected.to(device=device, dtype=dtype), rtol=0.0, atol=0.0)
+
     @staticmethod
     def _create_data(device, dtype):
         # create example dataset

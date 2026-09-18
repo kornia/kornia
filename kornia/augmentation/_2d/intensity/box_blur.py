@@ -15,11 +15,12 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.constants import BorderType
 from kornia.filters import box_blur
 
 
@@ -33,7 +34,9 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
     Args:
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``.
+          The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``, given as a
+          case-insensitive string, a ``BorderType`` member or its integer value
+          (CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3).
         normalized: selects the implementation of :func:`kornia.filters.box_blur`: ``True`` computes the blur
           as two 1D passes (``separable=True``), ``False`` as one 2D pass. The kernel is L1-normalized either
           way, so both return the mean of each window, never its sum, and differ only by float rounding.
@@ -85,16 +88,26 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
     def __init__(
         self,
         kernel_size: Tuple[int, int] = (3, 3),
-        border_type: str = "reflect",
+        border_type: Union[int, str, BorderType] = "reflect",
         normalized: bool = True,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-        self.flags = {"kernel_size": kernel_size, "border_type": border_type, "normalized": normalized}
+        self.flags = {
+            "kernel_size": kernel_size,
+            "border_type": BorderType.get(border_type),
+            "normalized": normalized,
+        }
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return box_blur(input, flags["kernel_size"], border_type=flags["border_type"], separable=flags["normalized"])
+        return box_blur(
+            input,
+            flags["kernel_size"],
+            # a per-call `border_type` override reaches `flags` unnormalized, so normalize here too
+            border_type=BorderType.get(flags["border_type"]).name.lower(),
+            separable=flags["normalized"],
+        )

@@ -74,7 +74,9 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        angle: torch.Tensor = _tuple_range_reader(self.angle, 3, device=device, dtype=dtype)
+        angle: torch.Tensor = _tuple_range_reader(
+            self.angle, 3, device=device, dtype=dtype, name="angle", bounds=(-360, 360)
+        )
         direction = _range_bound(self.direction, "direction", center=0.0, bounds=(-1, 1)).to(device=device, dtype=dtype)
         if isinstance(self.kernel_size, int):
             if not (self.kernel_size >= 3 and self.kernel_size % 2 == 1):

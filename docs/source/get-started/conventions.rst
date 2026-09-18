@@ -333,8 +333,8 @@ Augmentations
   :class:`kornia.augmentation.RandomClahe` and
   :class:`kornia.augmentation.RandomJPEG` are importable and documented but absent
   from ``kornia.augmentation.__all__``, so they are outside the audited set above;
-  ``RandomClahe`` raises out of range with a raw indexing error
-  (`#4564 <https://github.com/kornia/kornia/issues/4564>`_) and ``RandomJPEG``
+  ``RandomClahe`` raises out of range with a message naming the range, except on
+  MPS, where the check is skipped and a raw indexing error survives; and ``RandomJPEG``
   clamps the decoded RGB output into ``[0, 1]``. The decoding can produce intermediate
   values even when every input value is negative or every input value is above ``1``;
   such images need not become solid black or white.
