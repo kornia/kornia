@@ -162,10 +162,9 @@ class Attention(nn.Module):
             args = [x.half().contiguous() for x in [q, k, v]]
             v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)  # type: ignore
             return v if mask is None else v.nan_to_num()
-        else:
-            args = [x.contiguous() for x in [q, k, v]]
-            v = F.scaled_dot_product_attention(*args, attn_mask=mask)  # type: ignore
-            return v if mask is None else v.nan_to_num()
+        args = [x.contiguous() for x in [q, k, v]]
+        v = F.scaled_dot_product_attention(*args, attn_mask=mask)  # type: ignore
+        return v if mask is None else v.nan_to_num()
 
 
 class SelfBlock(nn.Module):
@@ -341,10 +340,9 @@ class TransformerLayer(nn.Module):
         """
         if mask0 is not None and mask1 is not None:
             return self.masked_forward(desc0, desc1, encoding0, encoding1, mask0, mask1)
-        else:
-            desc0 = self.self_attn(desc0, encoding0)
-            desc1 = self.self_attn(desc1, encoding1)
-            return self.cross_attn(desc0, desc1)
+        desc0 = self.self_attn(desc0, encoding0)
+        desc1 = self.self_attn(desc1, encoding1)
+        return self.cross_attn(desc0, desc1)
 
     # This part is compiled and allows padding inputs
     def masked_forward(
@@ -924,5 +922,4 @@ class LightGlue(nn.Module):
         """
         if self.conf.flash and device.type == "cuda":
             return self.pruning_keypoint_thresholds["flash"]
-        else:
-            return self.pruning_keypoint_thresholds[device.type]
+        return self.pruning_keypoint_thresholds[device.type]

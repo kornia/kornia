@@ -89,8 +89,7 @@ def get_cuda_or_mps_device_if_available() -> torch.device:
     """
     if sys.platform == "darwin" and platform.machine() == "arm64":
         return get_mps_device_if_available()
-    else:
-        return get_cuda_device_if_available()
+    return get_cuda_device_if_available()
 
 
 def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:
@@ -396,8 +395,7 @@ def is_autocast_enabled(both: bool = True) -> bool:
     if both:
         if torch_version_ge(2, 4):
             return torch.is_autocast_enabled() or torch.is_autocast_enabled("cpu")
-        else:
-            return torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled()
+        return torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled()
 
     return torch.is_autocast_enabled()
 
@@ -467,12 +465,11 @@ def dataclass_to_dict(obj: Any) -> Any:
     """Recursively convert dataclass instances to dictionaries."""
     if is_dataclass(obj) and not isinstance(obj, type):
         return {key: dataclass_to_dict(value) for key, value in asdict(obj).items()}
-    elif isinstance(obj, list | tuple):
+    if isinstance(obj, list | tuple):
         return type(obj)(dataclass_to_dict(item) for item in obj)
-    elif isinstance(obj, dict):
+    if isinstance(obj, dict):
         return {key: dataclass_to_dict(value) for key, value in obj.items()}
-    else:
-        return obj
+    return obj
 
 
 T = TypeVar("T")

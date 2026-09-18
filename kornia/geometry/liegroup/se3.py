@@ -118,12 +118,11 @@ class Se3(nn.Module):
         if isinstance(right, Se3):
             # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L97
             return self._mul_se3(right)
-        elif isinstance(right, (Vector3, torch.Tensor)):
+        if isinstance(right, (Vector3, torch.Tensor)):
             _right_data = right if isinstance(right, torch.Tensor) else right.data
             KORNIA_CHECK_SHAPE(_right_data, ["*", "N"])
             return so3 * right + _unwrap(t)
-        else:
-            raise TypeError(f"Unsupported type: {type(right)}")
+        raise TypeError(f"Unsupported type: {type(right)}")
 
     @property
     def so3(self) -> So3:

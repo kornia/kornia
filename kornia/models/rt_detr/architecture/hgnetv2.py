@@ -202,7 +202,7 @@ class PPHGNetV2(nn.Module):
                     StageConfig(1024, 384, 2048, 1, True, True, 5, 6),
                 ],
             )
-        elif variant == "X":
+        if variant == "X":
             return PPHGNetV2(
                 stem_channels=[3, 32, 64],
                 stage_configs=[
@@ -212,5 +212,4 @@ class PPHGNetV2(nn.Module):
                     StageConfig(1024, 512, 2048, 2, True, True, 5, 6),
                 ],
             )
-        else:
-            raise ValueError("Only variant L and X are supported")
+        raise ValueError("Only variant L and X are supported")
