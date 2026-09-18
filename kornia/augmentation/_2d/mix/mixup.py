@@ -21,7 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
-from kornia.constants import DataKey
+from kornia.constants import DataKey, DType
 
 
 class RandomMixUpV2(MixAugmentationBaseV2):
@@ -117,7 +117,8 @@ class RandomMixUpV2(MixAugmentationBaseV2):
     def apply_non_transform_class(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
-        calc_dtype = input.dtype if input.dtype in (torch.float32, torch.float64) else torch.float32
+        image_dtype = DType.to_torch(int(params["dtype"].item()))
+        calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
         out_labels = torch.stack(
             [
                 input.to(device=input.device, dtype=calc_dtype),
@@ -133,7 +134,8 @@ class RandomMixUpV2(MixAugmentationBaseV2):
     ) -> torch.Tensor:
         labels_permute = input.index_select(dim=0, index=params["mixup_pairs"].to(input.device))
 
-        calc_dtype = input.dtype if input.dtype in (torch.float32, torch.float64) else torch.float32
+        image_dtype = DType.to_torch(int(params["dtype"].item()))
+        calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
         out_labels = torch.stack(
             [
                 input.to(device=input.device, dtype=calc_dtype),

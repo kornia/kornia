@@ -211,7 +211,7 @@ class TestRandomCutMixV2(BaseTester):
                 [[[1.0, 1.0, 1.0, 0.0], [1.0, 1.0, 1.0, 0.0], [0.0, 0.0, 0.0, 0.0]]],
             ],
             device=device,
-            dtype=torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype,
+            dtype=dtype,
         )
 
         out_image, out_label = f(input, label)
@@ -235,7 +235,8 @@ class TestRandomCutMixV2(BaseTester):
         label = torch.tensor([1, 0], device=device)
 
         expected = input.clone()
-        exp_label = torch.tensor([[[1, 1, 0], [0, 0, 0]]], device=device, dtype=dtype)
+        label_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        exp_label = torch.tensor([[[1, 1, 0], [0, 0, 0]]], device=device, dtype=label_dtype)
 
         out_image, out_label = f(input, label)
 
@@ -259,7 +260,7 @@ class TestRandomCutMixV2(BaseTester):
                 [[[1.0, 1.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]],
             ],
             device=device,
-            dtype=torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype,
+            dtype=dtype,
         )
 
         out_image, out_label = f(input, label)
@@ -294,15 +295,21 @@ class TestRandomCutMixV2(BaseTester):
                 [[[1.0, 1.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]],
             ],
             device=device,
-            dtype=torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype,
+            dtype=dtype,
         )
 
         out_image, out_label = f(input, label)
 
         self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        self.assert_close(out_label[:, :, 0], label.view(1, -1).expand(5, 2))
+        label_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+        self.assert_close(out_label[:, :, 0], label.view(1, -1).expand(5, 2).to(label_dtype))
         self.assert_close(
-            out_label[:, :, 1], torch.tensor([[1, 0], [1, 0], [1, 0], [1, 0], [0, 1]], device=device, dtype=dtype)
+            out_label[:, :, 1],
+            torch.tensor(
+                [[1, 0], [1, 0], [1, 0], [1, 0], [0, 1]],
+                device=device,
+                dtype=label_dtype,
+            ),
         )
         # Updated expected values for use_correct_lambda=True
         self.assert_close(
@@ -331,7 +338,7 @@ class TestRandomCutMixV2(BaseTester):
                 [[[1.0, 1.0, 1.0, 0.0], [1.0, 1.0, 1.0, 0.0], [0.0, 0.0, 0.0, 0.0]]],
             ],
             device=device,
-            dtype=torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype,
+            dtype=dtype,
         )
 
         out_image, out_label = f(input, label)
@@ -344,7 +351,7 @@ class TestRandomCutMixV2(BaseTester):
             torch.tensor([0, 1], device=device, dtype=label_dtype),
         )
         self.assert_close(
-            out_label[0, :, 2], torch.tensor([0.5000, 0.5000], device=device, dtype=dtype), rtol=1e-4, atol=1e-4
+            out_label[0, :, 2], torch.tensor([0.5000, 0.5000], device=device, dtype=label_dtype), rtol=1e-4, atol=1e-4
         )
 
     @pytest.mark.parametrize("image_dtype", [torch.bfloat16, torch.float16])

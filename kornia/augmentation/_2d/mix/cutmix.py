@@ -21,7 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
-from kornia.constants import DataKey
+from kornia.constants import DataKey, DType
 from kornia.geometry.bbox import bbox_to_mask, infer_bbox_shape
 
 
@@ -121,7 +121,8 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         height, width = params["image_shape"]
 
         out_labels = []
-        calc_dtype = input.dtype if input.dtype in (torch.float32, torch.float64) else torch.float32
+        image_dtype = DType.to_torch(int(params["dtype"].item()))
+        calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
         for pair, crop in zip(params["mix_pairs"], params["crop_src"]):
             labels_permute = input.index_select(dim=0, index=pair.to(input.device))
             w, h = infer_bbox_shape(crop)
@@ -146,7 +147,8 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         out_labels = []
-        calc_dtype = input.dtype if input.dtype in (torch.float32, torch.float64) else torch.float32
+        image_dtype = DType.to_torch(int(params["dtype"].item()))
+        calc_dtype = image_dtype if image_dtype in (torch.float32, torch.float64) else torch.float32
         lam = torch.zeros((len(input)), device=input.device, dtype=calc_dtype)
         for _ in range(self._param_generator.num_mix):
             out_labels.append(
