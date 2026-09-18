@@ -49,6 +49,15 @@ Every benchmark here must follow the same rules (utilities in [`common.py`](comm
 - **Recorded metadata:** embed `common.run_metadata(device)` in every result file — date, git
   commit, platform, Python/torch/kornia versions, device (CUDA name + version when
   applicable), thread count, and baseline-library versions.
+- **Version + commit identify a run, not its date:** a `<kornia-version>` directory spans many
+  commits, so a snapshot can carry the current version and a recent timestamp and still measure an
+  implementation that no longer exists. Quote `kornia` and `git_commit` together whenever a number
+  is cited; the performance page and the llms digest both print the commit for this reason.
+- **Supersede stale snapshots:** when a merged change alters the speed of ops a committed snapshot
+  measures, re-measure that machine. When the hardware is not available, move the run to
+  `benchmarks/results/superseded/<version>/` and add a row to that directory's README naming the
+  change that superseded it. Leaving it published turns a kornia change into an apparent hardware
+  difference, because the page invites column-by-column reading within one table.
 - **Machine-readable export:** support `--json PATH` and write via `common.save_json` —
   strict-valid JSON (`NaN` → `null`), shape `{"metadata": {...}, "results": [...]}`.
 - **Equal footing + honest regimes:** identical transform parameters and interpolation across

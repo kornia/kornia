@@ -49,6 +49,12 @@ HERO = {
 
 BEGIN, END = "<!-- BENCH:BEGIN -->", "<!-- BENCH:END -->"
 
+#: Directory under ``benchmarks/results/`` holding snapshots that are kept for history but are no
+#: longer published. A snapshot is identified by its kornia version **and** its ``git_commit``: a
+#: version directory spans many commits, so a run taken before a change that altered an op's speed
+#: is stale even though it sits in the current version's directory and carries a recent date.
+SUPERSEDED_DIR = "superseded"
+
 INTRO = """\
 Performance
 ===========
@@ -76,8 +82,16 @@ Most suites are a ``flagship.py``; ``benchmarks/README.md`` maps each suite to i
 
 
 def load_results(results_root: Path) -> dict[str, dict[str, dict]]:
+    """Committed snapshots by version directory, excluding anything under ``superseded/``.
+
+    Superseded runs keep their version directory name inside ``superseded/`` so the schema rules
+    still apply to them; skipping them by path keeps them out of the page and the digest.
+    """
+    root = Path(results_root)
     out: dict[str, dict[str, dict]] = {}
-    for path in sorted(Path(results_root).rglob("*.json")):
+    for path in sorted(root.rglob("*.json")):
+        if SUPERSEDED_DIR in path.relative_to(root).parts[:-1]:
+            continue
         out.setdefault(path.parent.name, {})[path.name] = json.loads(path.read_text())
     return out
 
@@ -156,6 +170,11 @@ def render_page(results_root: Path) -> str:
     older = sorted(set(data) - {version})
     if older:
         parts.append("\nOlder result sets in git: " + ", ".join(f"``benchmarks/results/{v}/``" for v in older) + "\n")
+    if (Path(results_root) / SUPERSEDED_DIR).is_dir():
+        parts.append(
+            f"\nSnapshots measured before a change that altered the numbers they report are kept, unpublished, in "
+            f"``benchmarks/results/{SUPERSEDED_DIR}/`` — see the README there for what replaced each one.\n"
+        )
     return "\n".join(parts)
 
 
@@ -270,8 +289,11 @@ def _digest(results_root: Path) -> str:
             tail = "".join(f",{k}={row.get(k)}" for k in extra)
             return f"{row['op']}@{row['batch']}{tail}"
 
+        # kornia version + commit, not only the date: one version directory spans many commits, so
+        # the date alone cannot tell a reader which implementation a line describes.
         line = (
-            f"- {suite} on {slug}/{device} ({meta['timestamp_utc'][:10]}): fastest overall "
+            f"- {suite} on {slug}/{device} (kornia {meta['kornia']} @ {meta['git_commit']}, "
+            f"{meta['timestamp_utc'][:10]}): fastest overall "
             f"{best['backend']} {_at(best)} at {best['throughput_per_s']:.0f} {units}"
         )
         if worst is not None:
