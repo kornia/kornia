@@ -6,6 +6,14 @@ kornia.geometry.camera
 
 .. currentmodule:: kornia.geometry.camera
 
+.. note::
+   :mod:`kornia.geometry.camera` is part of Kornia's :doc:`Stable core </get-started/stability>` and is not
+   deprecated. For new code that needs the current stability guarantees, continue to use this API.
+   :mod:`kornia.sensors.camera` is an experimental, ``Vector``-typed future direction for camera models, but it
+   remains a separate API and is not a drop-in replacement. If this module is deprecated in the future, the Stable
+   core policy requires at least one minor release of ``DeprecationWarning`` before an incompatible removal or
+   replacement; no removal release is currently specified.
+
 Projections
 -----------
 
