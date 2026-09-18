@@ -136,3 +136,38 @@ def test_torch_export_container(name: str, factory: Callable[[], torch.nn.Module
     out = exported.module()(x)
     assert out.shape == eager.shape, f"{name}: shape {out.shape} vs {eager.shape}"
     torch.testing.assert_close(out, eager, atol=1e-5, rtol=1e-5)
+
+
+def _mask_export_case(case: str) -> Tuple[torch.nn.Module, tuple, Callable[[object], torch.Tensor], torch.Tensor]:
+    """Build a float64 image/mask pipeline for ``case``: the module, its arguments, a mask getter, the expected mask."""
+    image = torch.zeros(1, 1, 1, 2, dtype=torch.float64)
+    # float32 cannot hold either value, so any conversion through a narrower dtype rounds them
+    mask = torch.tensor([1.0 + 2**-30, 2.0 + 2**-29], dtype=torch.float64).reshape_as(image)
+    if case == "dict_mask_first":
+        seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=None)
+        return seq, ({"mask": mask, "image": image},), lambda out: out["mask"], mask.flip(-1)
+    seq = K.AugmentationSequential(K.RandomHorizontalFlip(p=1.0), data_keys=["input", "mask"])
+    if case == "after_float16_call":
+        # an earlier eager call with a float16 image leaves float16 behind in the container's state
+        seq(torch.zeros(1, 1, 1, 2, dtype=torch.float16), torch.zeros(1, 1, 1, 2))
+    return seq, (image, mask), lambda out: out[1], mask.flip(-1)
+
+
+@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.skipif(not dynamo_is_available(), reason=DYNAMO_UNAVAILABLE_REASON)
+@pytest.mark.skipif(not _HAS_TORCH_EXPORT_TRACKING, reason=_TORCH_EXPORT_TRACKING_REASON)
+@pytest.mark.parametrize("case", ["fresh", "after_float16_call", "dict_mask_first"])
+@pytest.mark.device_agnostic
+def test_torch_export_mask_uses_the_call_image_dtype_4478(case: str) -> None:
+    """A mask is converted with this call's image dtype under ``torch.export``, exactly as in eager (#4478).
+
+    The call's image dtype used to be resolved only outside export, because the attribute that holds it is not
+    written during capture. Mask conversion read that attribute anyway, so an exported pipeline converted a
+    float64 mask through float32 on a fresh container, or through whatever dtype an earlier eager call had left
+    behind, and baked the rounding into the graph. The mask now comes back bit for bit in all three setups.
+    """
+    seq, args, get_mask, expected = _mask_export_case(case)
+    exported = torch.export.export(seq, args)
+    mask = get_mask(exported.module()(*args))
+    assert mask.dtype == torch.float64
+    assert torch.equal(mask, expected), f"{case}: {mask.flatten().tolist()} vs {expected.flatten().tolist()}"

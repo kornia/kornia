@@ -468,17 +468,20 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def _arguments_preproc(self, *args: DataType, data_keys: List[DataKey]) -> List[DataType]:
         # Resolve this call's image dtype before any mask is converted, so a mask that precedes the image in
-        # ``data_keys`` or dictionary insertion order uses it too, rather than the previous call's image dtype
-        # (or ``float32`` on a fresh container). Masks after an image keep using the most recent image, as before.
-        if not is_exporting():
-            for arg, dcate in zip(args, data_keys):
-                if DataKey.get(dcate) in _IMG_OPTIONS:
-                    self.input_dtype = cast(torch.Tensor, arg).dtype
-                    break
+        # dictionary insertion order uses it too, rather than the previous call's image dtype (or ``float32`` on
+        # a fresh container). It is kept in a local rather than read back from ``self.input_dtype``, so the same
+        # conversion happens under ``torch.export``, where that attribute is deliberately left untouched. Masks
+        # after an image use the most recent image, as before; a call with no image falls back to the attribute.
+        working_dtype = self.input_dtype
+        for arg, dcate in zip(args, data_keys):
+            if DataKey.get(dcate) in _IMG_OPTIONS:
+                working_dtype = cast(torch.Tensor, arg).dtype
+                break
         inp: List[DataType] = []
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
                 arg = cast(torch.Tensor, arg)
+                working_dtype = arg.dtype
                 if not is_exporting():
                     self.input_dtype = arg.dtype
                 inp.append(arg)
@@ -492,7 +495,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                         self.mask_dtype = arg[0].dtype
                 else:
                     self.mask_dtype = cast(torch.Tensor, arg).dtype
-                inp.append(self._preproc_mask(arg))
+                inp.append(self._preproc_mask(arg, working_dtype))
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 inp.append(self._preproc_keypoints(arg, dcate))
             elif DataKey.get(dcate) in _BOXES_OPTIONS:
@@ -704,16 +707,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return valid_data_keys, invalid_keys
 
-    def _preproc_mask(self, arg: MaskDataType) -> MaskDataType:
+    def _preproc_mask(self, arg: MaskDataType, dtype: Optional[torch.dtype]) -> MaskDataType:
+        # ``dtype`` is the calling image's working dtype, resolved by ``_arguments_preproc``; ``float32`` when the
+        # call has no image and no earlier call recorded one.
+        working = dtype if dtype is not None else torch.float
         if isinstance(arg, list):
-            new_arg = []
-            for a in arg:
-                a_new = a.to(self.input_dtype) if self.input_dtype else a.to(torch.float)
-                new_arg.append(a_new)
-            return new_arg
-
-        arg = arg.to(self.input_dtype) if self.input_dtype else arg.to(torch.float)
-        return arg
+            return [a.to(working) for a in arg]
+        return arg.to(working)
 
     def _postproc_mask(self, arg: MaskDataType, like: MaskDataType) -> MaskDataType:
         # Each mask output goes back to the dtype of its own argument, per element for a list. A single shared
