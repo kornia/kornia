@@ -34,6 +34,7 @@ import platform
 import re
 import subprocess
 import sys
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -43,22 +44,39 @@ import torch
 import torch.utils.benchmark as bench
 
 
+def warm_up_cpu(seconds: float = 3.0) -> None:
+    """Keep PyTorch's intra-op thread pool under sustained load before any timing.
+
+    Hybrid CPUs schedule lightly loaded threads on efficiency cores and move them to performance
+    cores only after sustained load; under WSL2 the guest cannot pin them. On an i7-14700K a 5x5
+    oneDNN convolution measured 0.56 ms before and 0.22 ms after this warm-up, while a lighter
+    implementation of the same filter was barely affected, so an unwarmed run can reverse A/B
+    conclusions. ``blocked_autorange``'s own short warmup does not reach that state.
+    """
+    a = torch.rand(1024, 1024)
+    end = time.perf_counter() + seconds
+    while time.perf_counter() < end:
+        a @ a
+
+
 def time_us(
     fn: Callable[[], object],
     min_run_time: float = 1.0,
     sync: Optional[Callable[[], None]] = None,
-    num_threads: int = 1,
+    num_threads: Optional[int] = None,
 ) -> tuple[float, float]:
     """Median and interquartile-range wall clock of ``fn`` in microseconds.
 
     ``blocked_autorange`` warms up, runs many repeats, and synchronizes CUDA. Devices it does
     not sync (MPS) pass their sync as ``sync`` so it lands inside the timed region. Returns
     ``(nan, nan)`` if ``fn`` raises, so callers can render a skip cell instead of dying.
-    ``num_threads`` controls the timed calls; Timer otherwise overrides the caller's thread count with one.
+    ``num_threads`` controls the timed calls and defaults to the current ``torch.get_num_threads()``;
+    Timer would otherwise override the caller's thread count with one.
     """
     stmt = "fn(); sync()" if sync is not None else "fn()"
     try:
-        m = bench.Timer(stmt=stmt, globals={"fn": fn, "sync": sync}, num_threads=num_threads).blocked_autorange(
+        threads = torch.get_num_threads() if num_threads is None else num_threads
+        m = bench.Timer(stmt=stmt, globals={"fn": fn, "sync": sync}, num_threads=threads).blocked_autorange(
             min_run_time=min_run_time
         )
         return m.median * 1e6, m.iqr * 1e6
@@ -114,6 +132,7 @@ def run_metadata(device: torch.device) -> dict[str, Any]:
         "albumentations": _optional_version("albumentations"),
         "kornia_rs": _optional_version("kornia_rs"),
         "pillow": _optional_version("PIL"),
+        "skimage": _optional_version("skimage"),
     }
     if device.type == "cuda":
         meta["cuda_device"] = torch.cuda.get_device_name(device)
@@ -145,7 +164,7 @@ def save_json(path: str | Path, metadata: dict[str, Any], results: list[dict[str
 
 def versions_line(meta: dict[str, Any]) -> str:
     """One-line software-stack summary for printed table headers (the JSON carries the same data)."""
-    keys = ("torch", "kornia", "python", "opencv", "torchvision", "albumentations", "pillow", "kornia_rs")
+    keys = ("torch", "kornia", "python", "opencv", "torchvision", "albumentations", "pillow", "kornia_rs", "skimage")
     return "# " + ", ".join(f"{k} {meta.get(k) or '-'}" for k in keys)
 
 

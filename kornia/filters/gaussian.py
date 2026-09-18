@@ -30,18 +30,25 @@ from kornia.core.utils import is_autocast_enabled, is_compiling
 from .filter import filter2d, filter2d_separable
 from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
 
+# This build capability is immutable; querying it inside forward breaks Dynamo
+# full-graph capture. Cache it without changing any backend settings.
+_HAS_MKLDNN = torch.backends.mkldnn.is_available()
+
 
 def _gaussian_blur2d_cpu_eligible(input: torch.Tensor) -> bool:
-    """Select large native-precision images without an accelerated CPU convolution backend."""
-    # Preserve convolution's autocast and export behaviour, and leave oneDNN's
-    # optimized CPU kernels alone. Small images are faster in one convolution;
-    # convolution also avoids a long chain of slice-backward operations.
+    """Select large native-precision images where weighted slices beat convolution."""
+    # Preserve convolution's autocast and legacy tracing behaviour. Small images are faster
+    # in one convolution; convolution also avoids a long chain of slice-backward operations.
+    # Eager slices beat oneDNN too, but Inductor compiles oneDNN's convolution better than
+    # the slices. On CUDA only Inductor's fused slices beat cuDNN; eager slices are slower.
+    if input.device.type == "cpu":
+        device_ok = not (_HAS_MKLDNN and is_compiling())
+    else:
+        device_ok = input.device.type == "cuda" and is_compiling()
     return (
-        not is_compiling()
+        device_ok
         and not torch.jit.is_tracing()
-        and input.device.type == "cpu"
         and input.dtype in (torch.float32, torch.float64)
-        and not torch.backends.mkldnn.is_available()
         and not is_autocast_enabled()
         and not (torch.is_grad_enabled() and input.requires_grad)
         and input.is_contiguous()
@@ -58,6 +65,9 @@ def _gaussian_blur2d_cpu(
     Keep weights as tensors: scalar ``alpha`` values would lose derivatives with
     respect to sigma and break forward-mode automatic differentiation.
     """
+    # vmap has a batching rule for addcmul, but not its in-place variant.
+    # Compilers can fuse the functional accumulation without these allocations.
+    reuse_accumulator = not is_compiling() and not torch._C._are_functorch_transforms_active()
     for axis, kernel in ((-1, kernel_x), (-2, kernel_y)):
         size = input.shape[axis]
         radius = kernel.shape[-1] // 2
@@ -65,8 +75,12 @@ def _gaussian_blur2d_cpu(
         padded = F.pad(input, padding, mode=border_type)
         output = padded.narrow(axis, 0, size) * kernel[:, 0, None, None, None]
         for tap in range(1, kernel.shape[-1]):
-            # The out-of-place operator also has a vmap batching rule.
-            output = output.addcmul(padded.narrow(axis, tap, size), kernel[:, tap, None, None, None])
+            values = padded.narrow(axis, tap, size)
+            weight = kernel[:, tap, None, None, None]
+            if reuse_accumulator:
+                output.addcmul_(values, weight)
+            else:
+                output = output.addcmul(values, weight)
         input = output
     return input
 
