@@ -16,6 +16,7 @@
 #
 import sys
 from pathlib import Path
+from subprocess import run
 
 import pytest
 
@@ -183,10 +184,53 @@ def test_installed_versions_reports_this_environment():
     assert "typing-extensions" in installed
 
 
-def test_scan_installed_finds_no_duplicates_in_a_coherent_venv():
-    installed, duplicates = scan_installed()
+def test_scan_installed_finds_no_duplicates_after_setuptools_adds_its_vendor_path():
+    # setuptools adds vendored dependencies to sys.path. Some have a different version
+    # from the environment's distribution, but normal import and metadata resolution use
+    # the first path entry, so that is coherent rather than a half-written venv.
+    script_dir = Path(__file__).parent.parent.parent / ".github" / "scripts"
+    check = run(  # noqa: S603 -- invokes the current test interpreter with a fixed probe.
+        [
+            sys.executable,
+            "-c",
+            f"import sys; sys.path.insert(0, {str(script_dir)!r}); import setuptools; "
+            "from check_torch_env import scan_installed; assert scan_installed()[1] == {}",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
 
-    assert installed["torch"]
+    assert check.returncode == 0, check.stderr
+
+
+def _write_distribution(root: Path, name: str, version: str) -> None:
+    dist_info = root / f"{name}-{version}.dist-info"
+    dist_info.mkdir()
+    (dist_info / "METADATA").write_text(f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n", encoding="utf-8")
+
+
+def test_scan_installed_detects_conflicting_dist_infos_in_one_location(tmp_path):
+    _write_distribution(tmp_path, "example", "1.0")
+    _write_distribution(tmp_path, "example", "2.0")
+
+    installed, duplicates = scan_installed([str(tmp_path)])
+
+    assert installed["example"] in {"1.0", "2.0"}
+    assert duplicates == {"example": ["1.0", "2.0"]}
+
+
+def test_scan_installed_keeps_first_path_entry_when_locations_disagree(tmp_path):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    _write_distribution(first, "example", "1.0")
+    _write_distribution(second, "example", "2.0")
+
+    installed, duplicates = scan_installed([str(first), str(second)])
+
+    assert installed["example"] == "1.0"
     assert duplicates == {}
 
 

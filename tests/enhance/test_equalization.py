@@ -111,6 +111,40 @@ class TestEqualization(BaseTester):
         assert y.sum().item() == pytest.approx(32.87843322753906)
         assert y.max().item() == pytest.approx(1.0)
 
+    @pytest.mark.parametrize("grid_size", [(1, 1), (1, 2), (2, 1), (2, 2)])
+    def test_single_tile_on_the_differentiable_path(self, grid_size, device, dtype):
+        # A (1, 1) grid is global equalization with the clip limit applied, and the slow path raised an
+        # IndexError on it because one tile lost its tile axis to squeeze().
+        img = torch.rand(1, 1, 16, 16, device=device, dtype=dtype)
+        out = enhance.equalize_clahe(img, 40.0, grid_size, slow_and_differentiable=True)
+        assert out.shape == img.shape
+        assert torch.isfinite(out).all()
+
+    def test_histogram_skips_out_of_range(self, device, dtype):
+        # torch.histc on CPU counts only values inside [min, max] and _tiles_histc must too. 1.0000001 and
+        # -1e-7 are inside the window equalize_clahe admits (see RandomClahe's warning and #4564), and MPS's
+        # torch.histc counts them, so this also pins CPU/MPS parity.
+        from kornia.enhance.equalization import _tiles_histc
+
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("1.0000001 and -1e-7 round to 1 and 0 in half precision")
+        tiles = torch.tensor([[0.5, 1.0000001, -1e-7, 0.25]], device=device, dtype=dtype)
+        expected = torch.tensor([[0.0, 1.0, 1.0, 0.0]], device=device, dtype=dtype)
+        self.assert_close(_tiles_histc(tiles, 4), expected)
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # The tile histograms keep a static shape, so equalize_clahe is one dynamo graph. A data-dependent
+        # op such as bincount splits it into six; torch.compile without fullgraph=True would not notice.
+        img = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+
+        def op(x):
+            return enhance.equalize_clahe(x, 40.0, (2, 2))
+
+        torch._dynamo.reset()
+        explanation = torch._dynamo.explain(op)(img)
+        assert explanation.graph_break_count == 0, explanation.break_reasons
+        self.assert_close(torch_optimizer(op)(img), op(img))
+
     @pytest.mark.parametrize("grid_size", [(2, 2), (2, 3), (3, 2)])
     def test_gradcheck(self, device, grid_size):
         torch.random.manual_seed(4)
@@ -134,6 +168,29 @@ class TestEqualization(BaseTester):
     def test_module(self):
         # equalize_clahe is only a function
         pass
+
+    @pytest.mark.parametrize("scale, shift", [(2.0, 0.0), (1.0, -1.0)])
+    def test_out_of_range_input_names_the_range(self, scale, shift, device, dtype):
+        # kornia#4564: the tile-LUT gather used to fail with a raw
+        # "index ... is out of bounds for dimension 5 with size 256".
+        if device.type != "cpu":
+            pytest.skip("value asserts are synchronous only on CPU (async on CUDA, skipped on MPS)")
+        torch.manual_seed(0)
+        x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * scale + shift
+        with pytest.raises(RuntimeError, match=r"equalize_clahe expects input values in \[0, 1\]"):
+            enhance.equalize_clahe(x)
+
+    def test_input_the_lookup_can_index_is_still_accepted(self, device, dtype):
+        # The check covers exactly the domain the gather can index, so a hair above 1 keeps working.
+        x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype) * 1.0001
+        assert enhance.equalize_clahe(x).shape == x.shape
+
+    def test_dynamo_fullgraph(self, device, dtype):
+        # The range check must not introduce a graph break.
+        x = torch.rand(2, 3, 32, 40, device=device, dtype=dtype)
+        torch._dynamo.reset()
+        compiled = torch.compile(enhance.equalize_clahe, fullgraph=True, backend="eager")
+        self.assert_close(compiled(x), enhance.equalize_clahe(x))
 
     @pytest.fixture()
     def img(self, device, dtype):

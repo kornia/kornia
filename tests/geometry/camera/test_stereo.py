@@ -520,53 +520,47 @@ class TestStereoCamera(BaseTester):
         assert torch.equal(cam.cx_left, cam.cx_right)
         assert cam.Q[0, 3, 3].item() == 0.0
 
-    def test_wart_stereo_accepts_a_batch_with_one_positive_tx_fx_4270(self, device, dtype):
-        # Wart pin for kornia#4270: the sign guard is
-        # ``torch.all(torch.gt(tx * fx, 0))``, which fires only when EVERY element of the batch is positive, so
-        # a batch whose second element has the cameras the wrong way round is accepted and silently reprojects
-        # that element behind the camera (its tx is -0.5). An all-positive batch is rejected, which is what
-        # shows the guard exists and is simply quantified over the wrong side.
-        # Snippet used to generate expected: StereoCamera(left, right) with right[0, 0, 3] = -50 and
-        # right[1, 0, 3] = +50, recorded in original commit 1a96bfd1 (torch 2.14.0) -> accepted, tx =
-        # [0.5, -0.5]; with both elements at +50 -> StereoException("Expected :math:`T_x * f_x` to be
-        # negative."). Both hold on cpu for float32, float64, float16 and bfloat16 and on mps for float32 and
-        # float16.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4270 is repaired.
+    @pytest.mark.parametrize("bad_index", [0, 1])
+    def test_convention_stereo_rejects_a_batch_with_one_positive_tx_fx_4270(self, bad_index, device, dtype):
+        # Convention pin for kornia#4270: the right camera's last column is -tx * fx, and the sign guard rejects a
+        # batch in which ANY rig has it positive, i.e. its two cameras swapped. Until the fix the guard was
+        # ``torch.all(torch.gt(tx * fx, 0))``, which fired only when EVERY element was positive, so a batch with one
+        # swapped rig was accepted and silently reprojected that rig behind the camera (its tx was -0.5). Both
+        # positions of the bad rig are covered, and the all-positive batch that was already rejected still is.
         left = torch.tensor(
             [[[100.0, 0.0, 4.0, 0.0], [0.0, 100.0, 3.0, 0.0], [0.0, 0.0, 1.0, 0.0]]] * 2, device=device, dtype=dtype
         )
-        mixed_right = torch.tensor(
-            [
-                [[100.0, 0.0, 4.0, -50.0], [0.0, 100.0, 3.0, 0.0], [0.0, 0.0, 1.0, 0.0]],
-                [[100.0, 0.0, 4.0, 50.0], [0.0, 100.0, 3.0, 0.0], [0.0, 0.0, 1.0, 0.0]],
-            ],
-            device=device,
-            dtype=dtype,
+        right = torch.tensor(
+            [[[100.0, 0.0, 4.0, -50.0], [0.0, 100.0, 3.0, 0.0], [0.0, 0.0, 1.0, 0.0]]] * 2, device=device, dtype=dtype
         )
-        mixed = StereoCamera(left, mixed_right)
-        self.assert_close(mixed.tx, torch.tensor([0.5, -0.5], device=device, dtype=dtype))
+        mixed_right = right.clone()
+        mixed_right[bad_index, 0, 3] = 50.0
+
+        with pytest.raises(StereoException, match="to be negative"):
+            StereoCamera(left, mixed_right)
         with pytest.raises(StereoException, match="to be negative"):
             self._asymmetric_stereo(device, dtype, tx_fx=50.0)
+        # the all-negative batch is still accepted, with the baseline read back unchanged
+        self.assert_close(StereoCamera(left, right).tx, torch.tensor([0.5, 0.5], device=device, dtype=dtype))
 
-    def test_wart_stereo_tx_zero_collapses_every_point_to_the_origin_4270(self, device, dtype):
-        # Wart pin for kornia#4270: tx * fx == 0 is not "greater than zero",
-        # so a pair of coincident cameras passes the sign guard. The whole Q matrix then collapses to zeros
-        # except Q[3, 2] = -fy, and every disparity -- including a large, perfectly valid one -- reprojects to
-        # exactly the origin, with no warning and no inf to notice. A degenerate rig should be rejected by the
-        # guard that already exists for the reversed one.
-        # Snippet used to generate expected: StereoCamera(left, right) with the right camera's last column 0,
-        # recorded in original commit 1a96bfd1 (torch 2.14.0) -> Q is zeros with Q[3, 2] = -100 (torch.equal
-        # True) and the reprojection of a constant disparity 10 is exactly zeros (torch.equal True), on cpu for
-        # float32, float64, float16 and bfloat16 and on mps for float32 and float16; the tx = 0.5 rig on the
-        # same disparity reaches 5.0.
-        # Pins the CURRENT behavior; NOT a contract; delete when #4270 is repaired.
-        degenerate = self._asymmetric_stereo(device, dtype, tx_fx=0.0)
-        expected_q = torch.zeros(1, 4, 4, device=device, dtype=dtype)
-        expected_q[0, 3, 2] = -100.0
-        self.assert_close(degenerate.Q, expected_q, atol=0.0, rtol=0.0)
+    @pytest.mark.parametrize("zero", [0.0, -0.0])
+    def test_convention_stereo_rejects_a_zero_baseline_4270(self, zero, device, dtype):
+        # Convention pin for kornia#4270: tx * fx == 0 means coincident cameras, a rig with no baseline. It is not
+        # "greater than zero", so until the fix it passed the sign guard: Q collapsed to zeros except
+        # Q[3, 2] = -fy, and every disparity, including a large valid one, reprojected to exactly the origin with
+        # no warning and no inf to notice. It is now rejected with a message naming tx, both for a single rig and
+        # when one rig of a batch is degenerate. -0.0 is covered because it compares equal to 0.
+        with pytest.raises(StereoException, match="non-zero stereo baseline"):
+            self._asymmetric_stereo(device, dtype, tx_fx=zero)
+
+        good = self._asymmetric_stereo(device, dtype, batch=2)
+        right = good.rectified_right_camera.clone()
+        right[1, 0, 3] = zero
+        with pytest.raises(StereoException, match="non-zero stereo baseline"):
+            StereoCamera(good.rectified_left_camera, right)
+
+        # a real baseline on the same fixture still reprojects away from the origin
         disparity = torch.full((1, 3, 5, 1), 10.0, device=device, dtype=dtype)
-        points = degenerate.reproject_disparity_to_3D(disparity)
-        self.assert_close(points, torch.zeros(1, 3, 5, 3, device=device, dtype=dtype), atol=0.0, rtol=0.0)
         assert self._asymmetric_stereo(device, dtype).reproject_disparity_to_3D(disparity).abs().max().item() > 0.1
 
     def test_convention_stereo_rejects_a_four_by_four_pair_4270(self, device, dtype):

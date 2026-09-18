@@ -265,7 +265,7 @@ CASES = [
         T.warp_points_tps,
         [tps_src.clone(), tps_src, tps_kernel_w, tps_affine_w],
         tags=("points",),
-        note="query points == kernel centers (zero distance) -> exercises the eps guard in _kernel_distance",
+        note="query points == kernel centers (zero distance) -> exercises zero-distance handling in _kernel_distance",
     ),
     case("transform.warp_image_tps", G, T.warp_image_tps, [img, tps_src, tps_kernel_w, tps_affine_w]),
     case(
