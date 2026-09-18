@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import copy
 import io
+import itertools
 import pickle
 
 import pytest
@@ -1117,27 +1118,104 @@ class TestNoiseAndWeatherConventions(BaseTester):
         drawn = aug.forward_parameters((2000, 1, 64, 64))["drop_height_factor"]
         assert sorted(set(drawn.flatten().tolist())) == [2, 3, 4]
 
-    # Issue #4604: the start coordinate is scaled by `H - h - 1`, so the last row and column are never
-    # painted unless the drop is one short of the image on that axis.  Literal seeds, as for the other
-    # census pins: the claim is over the union of 300 draws, not one.
-    # Snippet used to generate expected: the reproduction in #4604.
-    # executed 2026-09-16 (torch 2.14.0, cpu) -> rows `[0, 1, 2, 3]`, cols `[0, ..., 8]` on `6 x 10`;
-    # `drop_height=(5, 5)`, `drop_width=(9, 9)` paints rows 0..5 and cols 0..9.
-    def test_wart_random_rain_never_paints_the_last_row_or_column_4604(self, device, dtype):
+    # Issue #4604: a drop starts anywhere that keeps it inside the image, so every row and column is painted,
+    # for a single pixel and for drops slanting either way.  Literal seeds, as for the other census pins: the
+    # claim is over the union of 300 draws, not one.  Before the fix the single-pixel case painted rows
+    # `[0, 1, 2, 3]` and cols `[0, ..., 8]` on `6 x 10`.
+    @pytest.mark.parametrize("drop_height, drop_width", [(1, 0), (2, 2), (2, -2)])
+    def test_convention_random_rain_paints_every_row_and_column_4604(self, device, dtype, drop_height, drop_width):
         image = torch.zeros(1, 3, 6, 10, device=device, dtype=dtype)
+        # `.to` so the coordinate sampler runs in the test's dtype: left at construction defaults it stays
+        # float32 even for a float16 image, and the MPS half `rand` that returns exactly 1.0 (#4553) -- the
+        # draw the clamp exists for -- is never reached.
+        aug = K.RandomRain(
+            number_of_drops=(20, 20), drop_height=(drop_height, drop_height), drop_width=(drop_width, drop_width), p=1.0
+        ).to(device=device, dtype=dtype)
         rows, cols = set(), set()
         for seed in range(300):
             torch.manual_seed(seed)
-            out = K.RandomRain(number_of_drops=(20, 20), drop_height=(1, 1), drop_width=(0, 0), p=1.0)(image)
-            lit = (out[0, 0] != 0).nonzero()
+            lit = (aug(image)[0, 0] != 0).nonzero()
             rows |= set(lit[:, 0].tolist())
             cols |= set(lit[:, 1].tolist())
-        assert sorted(rows) == [0, 1, 2, 3] and sorted(cols) == list(range(9))
-        # One short of the image on both axes is the only case that reaches the far edge.
+        assert sorted(rows) == list(range(6)) and sorted(cols) == list(range(10))
+
+    # Issue #4604, the painted extent: a single drop paints a bounding box of exactly ``(h, |w|)`` -- the
+    # linspace includes both end points once it has two steps, and is the start alone when it has one -- and
+    # that box lands inside the image for every legal start.  The union pin above cannot see this: it only
+    # records which rows and columns are hit somewhere across 300 draws, so a drop split across opposite
+    # edges by a negative-index wrap still covers ``range(10)`` and passes.  Swept rather than pinned to
+    # literals, because the claim is a bound over the whole legal domain, not a census of one shape.
+    # Snippet used to generate expected:
+    #   for H, W in itertools.product(range(2, 8), repeat=2):
+    #       for h in range(1, H):
+    #           for w in range(-(W - 1), W):
+    #               for seed in range(2):
+    #                   ... print(box, expected, in_bounds)
+    # executed 2026-09-18 (torch 2.14.0, cpu) -> 0 violations.  With ``+ max(-last_dx, 0)`` deleted, seed 1
+    # of ``6 x 10, h=2, w=-2`` starts a drop at ``(2, 0)`` and paints ``(2, 0)`` and ``(4, -2)``, the latter
+    # wrapping round to ``(4, 8)``: a box of ``(2, 8)`` against the expected ``(2, 2)``.
+    @pytest.mark.device_agnostic
+    def test_convention_random_rain_single_drop_box_is_its_size_4604(self):
+        for height, width in itertools.product(range(2, 8), repeat=2):
+            image = torch.zeros(1, 1, height, width)
+            for drop_height in range(1, height):
+                for drop_width in range(-(width - 1), width):
+                    aug = K.RandomRain(
+                        number_of_drops=(1, 1),
+                        drop_height=(drop_height, drop_height),
+                        drop_width=(drop_width, drop_width),
+                        p=1.0,
+                    )
+                    expected = (drop_height, abs(drop_width)) if max(drop_height, abs(drop_width)) > 1 else (0, 0)
+                    for seed in range(2):
+                        torch.manual_seed(seed)
+                        lit = (aug(image)[0, 0] != 0).nonzero()
+                        rows, cols = lit[:, 0].tolist(), lit[:, 1].tolist()
+                        case = (height, width, drop_height, drop_width, seed)
+                        assert (max(rows) - min(rows), max(cols) - min(cols)) == expected, case
+                        assert min(rows) >= 0 and max(rows) < height, case
+                        assert min(cols) >= 0 and max(cols) < width, case
+
+    # Issue #4604, the uniformity half of the bullet: every legal start is equally likely, not merely
+    # reachable.  The union pin is blind to the distribution -- folding the row overflow onto the last row
+    # keeps the union at ``range(6)`` while badly skewing where drops land -- so this counts start rows the
+    # way the #4567 pin above counts drawn sizes, with the same 15% band and for the same reason.  Single
+    # pixel drops on a wide image, so each painted cell is one start and collisions are rare (100 drops over
+    # 12000 cells, about 0.4 an image), read off the output rather than recomputed from the parameters.
+    # Snippet used to generate expected:
+    #   torch.manual_seed(0)
+    #   aug = K.RandomRain(number_of_drops=(100, 100), drop_height=(1, 1), drop_width=(0, 0), p=1.0)
+    #   out = aug(torch.zeros(200, 1, 6, 2000))
+    #   print(torch.bincount((out[:, 0] != 0).nonzero()[:, 1], minlength=6).tolist())
+    # executed 2026-09-18 (torch 2.14.0, cpu) -> every bin within 1% of the uniform expectation.  Scaling
+    # the row draw by ``cols`` instead of ``rows`` puts every drop on the last row.
+    @pytest.mark.device_agnostic
+    def test_convention_random_rain_start_row_is_uniform_4604(self):
+        aug = K.RandomRain(number_of_drops=(100, 100), drop_height=(1, 1), drop_width=(0, 0), p=1.0)
         torch.manual_seed(_FORWARD_SEED)
-        out = K.RandomRain(number_of_drops=(1, 1), drop_height=(5, 5), drop_width=(9, 9), p=1.0)(image)
-        lit = (out[0, 0] != 0).nonzero()
-        assert int(lit[:, 0].max()) == 5 and int(lit[:, 1].max()) == 9
+        lit = (aug(torch.zeros(200, 1, 6, 2000))[:, 0] != 0).nonzero()
+        counts = torch.bincount(lit[:, 1], minlength=6)
+        expected = int(counts.sum()) / 6
+        assert bool(((counts > 0.85 * expected) & (counts < 1.15 * expected)).all()), counts.tolist()
+
+    # Issue #4604, the clamp on the start draw: the coordinate sampler runs over ``[0, 1]`` and the MPS half
+    # ``rand`` really does return an exact ``1.0`` (#4553), which would put the start one past the last
+    # admissible one and index out of the image.  Reproduced here by patching the draw rather than left to
+    # the MPS leg, so the pin fires on every device; same idiom as the closed-range pin above.  Main was
+    # safe against this only by accident, its multiplier being one smaller than the true count of starts.
+    # Snippet used to generate expected: the config below with `torch.rand` patched to return `1.0`.
+    # executed 2026-09-18 (torch 2.14.0, cpu) -> the drop paints `(3, 9)` and `(5, 7)`, the last row and the
+    # last column.  Clamping to `rows` instead of `rows - 1` raises `index 6 is out of bounds`, and `cols`
+    # instead of `cols - 1` raises `index 10 is out of bounds`.
+    @pytest.mark.device_agnostic
+    def test_convention_random_rain_start_draw_of_one_stays_inside_4604(self, monkeypatch):
+        real_rand = torch.rand
+        monkeypatch.setattr(torch, "rand", lambda *a, **kw: torch.ones_like(real_rand(*a, **kw)))
+        aug = K.RandomRain(number_of_drops=(1, 1), drop_height=(2, 2), drop_width=(-2, -2), p=1.0)
+        # The patch has to reach the generator's own draws, or the pin is vacuous.
+        assert float(aug.forward_parameters((1, 1, 6, 10))["coordinates_factor"].min()) == 1.0
+        lit = (aug(torch.zeros(1, 1, 6, 10))[0, 0] != 0).nonzero().tolist()
+        assert sorted(lit) == [[3, 9], [5, 7]]
 
     # Row 6c-28 in the state #4453 left it (it closed #4448): with ``same_on_batch=True`` every
     # sample of the batch gets the same number of drops, the same drop size and the same coordinates;
