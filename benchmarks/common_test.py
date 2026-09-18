@@ -52,6 +52,15 @@ def test_time_us_accepts_sync_callable():
     assert calls  # sync ran inside the timed region
 
 
+def test_time_us_uses_requested_threads_and_restores_caller():
+    threads = torch.get_num_threads()
+    observed = set()
+    median, _ = time_us(lambda: observed.add(torch.get_num_threads()), min_run_time=0.01, num_threads=2)
+    assert median > 0
+    assert observed == {2}
+    assert torch.get_num_threads() == threads
+
+
 def test_run_metadata_records_environment():
     meta = run_metadata(torch.device("cpu"))
     assert meta["torch"] == torch.__version__

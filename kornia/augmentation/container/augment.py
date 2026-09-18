@@ -108,10 +108,16 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
           ``image``, ``mask``, ``bbox``, ``bbox_xyxy``, ``bbox_xywh``, ``keypoints``, ``label`` and ``class``
           (``input`` is an alias of ``image``, ``class`` of ``label``). Any other spelling -- ``boxes``,
           ``points``, ``bboxes``, ``keypoint`` -- raises ``KeyError``. With ``data_keys=None`` the call takes a
-          dict instead. Dictionary names are matched by raw prefixes and the container removes entries while
-          processing them. Prefixes can therefore route unrelated names (for example, ``imagenet_id``) as data
-          keys; use positional arguments for reliable key selection. Tracked in
-          `#4483 <https://github.com/kornia/kornia/issues/4483>`_.
+          dict instead. Dictionary names match these same names, optionally followed by an underscore or
+          hyphen suffix, with the longest name taking precedence. Unrecognized names (for example,
+          ``imagenet_id``, ``images``, ``masks``, ``labels``, ``bboxes``, ``inputs`` and ``keypoint``) are
+          returned unchanged as metadata, without a warning; unlike positional mode, dict mode does not
+          reject these names. Use recognized names such as ``mask_2`` and ``keypoints`` for augmentation.
+          ``class`` and any key beginning with ``class_`` or ``class-`` (for example, ``class_id`` or
+          ``class_weights``) route to labels and inherit label limitations, including unsupported
+          label-changing mix augmentations. A coordinate-box name must be followed by ``_``
+          or ``-`` to retain its format: ``bbox_xyxy2`` instead matches ``bbox`` and requires vertex boxes.
+          The input dictionary is not modified.
         - the layouts are ``(B, C, H, W)`` for images and masks, ``(B, N, 4, 2)`` vertices for ``bbox``,
           ``(B, N, 4)`` for ``bbox_xyxy`` and ``bbox_xywh``, and ``(B, N, 2)`` in ``(x, y)`` for ``keypoints``.
           Feeding a coordinate layout under another coordinate key raises ``ValueError`` naming the expected shape.
@@ -289,12 +295,12 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         >>> [value.shape for value in out]
         [torch.Size([2, 3, 32, 32]), torch.Size([2, 3, 32, 32]), torch.Size([2, 2, 32, 32])]
 
-    With ``data_keys=None``, dictionary keys are matched to data-key prefixes. Use the exact keys
-    ``bbox_xyxy`` and ``bbox_xywh`` for coordinate boxes: suffixed versions match ``bbox`` and require
-    vertices instead. Use ``label`` for labels, since ``class`` and its prefixes are treated as unrelated
-    metadata. Unrecognized items are popped from the caller's dictionary and returned without augmentation.
-    Raw prefix matching can also misroute unrelated names such as ``imagenet_id``. Tracked in
-    `#4483 <https://github.com/kornia/kornia/issues/4483>`_.
+    With ``data_keys=None``, dictionary keys match data-key names case-insensitively, optionally followed
+    by an underscore or hyphen suffix (for example, ``image_2`` or ``bbox_xyxy-left``). The longest matching
+    name wins, so coordinate boxes with an underscore/hyphen suffix retain their coordinate format.
+    Without that separator, ``bbox_xyxy2`` matches ``bbox`` and requires vertex boxes. ``input`` and ``class`` are
+    aliases of ``image`` and ``label``. Unrecognized items are returned without augmentation, and the
+    caller's dictionary is left intact.
 
         >>> import kornia.augmentation as K
         >>> img = torch.randn(1, 3, 256, 256)
@@ -663,29 +669,23 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         keys = tuple(data.keys())
         data_keys, invalid_keys = self._read_datakeys_from_dict(keys)
-        invalid_data = {i: data.pop(i) for i in invalid_keys} if invalid_keys else None
+        invalid_data = {i: data[i] for i in invalid_keys} if invalid_keys else None
         keys = tuple(k for k in keys if k not in invalid_keys) if invalid_keys else keys
-        data_unpacked = tuple(data.values())
+        data_unpacked = tuple(data[k] for k in keys)
 
         return keys, data_keys, data_unpacked, invalid_data
 
     def _read_datakeys_from_dict(self, keys: Sequence[str]) -> Tuple[List[DataKey], Optional[List[str]]]:
+        # Include aliases and prefer coordinate box names over their BBOX prefix.
+        names = sorted(DataKey.__members__, key=len, reverse=True)
+
         def retrieve_key(key: str) -> DataKey:
-            """Try to retrieve the datakey value by matching `<datakey>*`."""
-            # Alias cases, like INPUT, will not be get by the enum iterator.
-            if key.upper().startswith("INPUT"):
-                return DataKey.INPUT
-
-            for dk in DataKey:
-                if key.upper() in {"BBOX_XYXY", "BBOX_XYWH"}:
-                    return DataKey.get(key.upper())
-                if key.upper().startswith(dk.name):
-                    return DataKey.get(dk.name)
-
-            allowed_dk = " | ".join(f"`{d.name}`" for d in DataKey)
-            raise ValueError(
-                f"Your input data dictionary keys should start with some of datakey values: {allowed_dk}. Got `{key}`"
-            )
+            """Match a data-key name exactly or before an underscore/hyphen suffix."""
+            upper_key = key.upper()
+            for name in names:
+                if upper_key == name or upper_key.startswith((name + "_", name + "-")):
+                    return DataKey.get(name)
+            raise ValueError(f"Unrecognized data dictionary key: {key}")
 
         valid_data_keys = []
         invalid_keys = []

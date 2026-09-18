@@ -299,10 +299,10 @@ Augmentations
   even with only rigid children. Do not rely on the outer
   ``.transform_matrix`` to describe a nested pipeline
   (`#4476 <https://github.com/kornia/kornia/issues/4476>`_).
-- Dictionary keys use raw prefix matching with exceptions for coordinate box
-  names. Unrecognized metadata is removed from the caller's dictionary before
-  being returned in the output. See the container's dictionary guidance and
-  `#4483 <https://github.com/kornia/kornia/issues/4483>`_.
+- Dictionary keys match a data-key name exactly or before an ``_``/``-`` suffix,
+  with the longest matching name taking precedence. Unrecognized keys are
+  returned unchanged as metadata, and the caller's dictionary is left intact.
+  See the container's dictionary guidance for recognized names and aliases.
 - A positive ``degrees`` turns the displayed image counter-clockwise with
   :class:`kornia.augmentation.RandomRotation`, matching
   :func:`kornia.geometry.transform.rotate`, and clockwise with
@@ -333,8 +333,8 @@ Augmentations
   :class:`kornia.augmentation.RandomClahe` and
   :class:`kornia.augmentation.RandomJPEG` are importable and documented but absent
   from ``kornia.augmentation.__all__``, so they are outside the audited set above;
-  ``RandomClahe`` raises out of range with a raw indexing error
-  (`#4564 <https://github.com/kornia/kornia/issues/4564>`_) and ``RandomJPEG``
+  ``RandomClahe`` raises out of range with a message naming the range, except on
+  MPS, where the check is skipped and a raw indexing error survives; and ``RandomJPEG``
   clamps the decoded RGB output into ``[0, 1]``. The decoding can produce intermediate
   values even when every input value is negative or every input value is above ``1``;
   such images need not become solid black or white.

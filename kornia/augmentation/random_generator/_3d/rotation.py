@@ -69,7 +69,7 @@ class RotationGenerator3D(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        degrees = _tuple_range_reader(self.degrees, 3, device, dtype)
+        degrees = _tuple_range_reader(self.degrees, 3, device, dtype, "degrees", (-360, 360))
         self.yaw_sampler = UniformDistribution(degrees[0][0], degrees[0][1], validate_args=False)
         self.pitch_sampler = UniformDistribution(degrees[1][0], degrees[1][1], validate_args=False)
         self.roll_sampler = UniformDistribution(degrees[2][0], degrees[2][1], validate_args=False)

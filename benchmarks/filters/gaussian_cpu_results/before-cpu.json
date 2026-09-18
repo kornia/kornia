@@ -1,0 +1,509 @@
+{
+  "metadata": {
+    "albumentations": null,
+    "cudnn_allow_tf32": false,
+    "device": "cpu",
+    "git_commit": "607869e2d",
+    "harness_sha256": "528354ef76e02087141be03f1cd3b3f899da72239ee38b42b37fcd7d82fa16a1",
+    "implementation_sha256": {
+      "kornia/filters/filter.py": "dc8cd1a6d1c28bad6e301108d56f92b1a9178b54bd535746677ffafc4411055a",
+      "kornia/filters/gaussian.py": "0c078e8f9951d483be21098adfe8340d7d4f81ff70dfffbc649c375725872aac",
+      "kornia/geometry/transform/pyramid.py": "14b3b90b1b5d9d3c47d74ac8b353a8d667b51eea0e2e7afebbe8f0f52dc23179"
+    },
+    "kornia": "0.9.0rc1",
+    "kornia_rs": "0.1.14",
+    "load": {
+      "cpu_count": 8,
+      "load_avg_15m": 2.248046875,
+      "load_avg_1m": 4.61279296875,
+      "load_avg_5m": 2.94189453125,
+      "mem_available_bytes": null,
+      "mem_total_bytes": null
+    },
+    "machine": "arm64",
+    "min_run_time": 1.0,
+    "mkldnn_available": false,
+    "numpy": "2.4.0",
+    "opencv": null,
+    "pillow": "12.3.0",
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "python": "3.11.14",
+    "seed": 0,
+    "timestamp_utc": "2026-09-17T16:45:33+00:00",
+    "timing": "public forward including allocation/kernel generation; labelled backward; one CPU thread",
+    "torch": "2.14.0",
+    "torch_num_threads": 1,
+    "torchvision": null
+  },
+  "results": [
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-128-c1-k7",
+      "channels": 1,
+      "dtype": "float32",
+      "height": 128,
+      "iqr_us": 1.7749582493706815,
+      "median_us": 131.59287499729544,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 1,
+        "kernel": 7,
+        "name": "blur-128-c1-k7",
+        "size": 128
+      },
+      "throughput_per_s": 7599.195625299261,
+      "width": 128
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-256-c1-k7",
+      "channels": 1,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 5.2072900507482505,
+      "median_us": 418.76625000440987,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 1,
+        "kernel": 7,
+        "name": "blur-256-c1-k7",
+        "size": 256
+      },
+      "throughput_per_s": 2387.9670340899474,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-256-c3-k3",
+      "channels": 3,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 25.970839997171428,
+      "median_us": 408.013749984093,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 3,
+        "kernel": 3,
+        "name": "blur-256-c3-k3",
+        "size": 256
+      },
+      "throughput_per_s": 2450.8977945938987,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-256-c3-k7",
+      "channels": 3,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 125.43754983198588,
+      "median_us": 1270.616649708245,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 3,
+        "kernel": 7,
+        "name": "blur-256-c3-k7",
+        "size": 256
+      },
+      "throughput_per_s": 787.0194367668777,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-256-c3-k15",
+      "channels": 3,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 183.95409933873435,
+      "median_us": 2704.112499486655,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 3,
+        "kernel": 15,
+        "name": "blur-256-c3-k15",
+        "size": 256
+      },
+      "throughput_per_s": 369.80709944199384,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-256-c3-k31",
+      "channels": 3,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 283.1843743479109,
+      "median_us": 6376.362550145131,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 3,
+        "kernel": 31,
+        "name": "blur-256-c3-k31",
+        "size": 256
+      },
+      "throughput_per_s": 156.82922546134697,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-512-c1-k3",
+      "channels": 1,
+      "dtype": "float32",
+      "height": 512,
+      "iqr_us": 16.976679980871232,
+      "median_us": 829.702500050189,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 1,
+        "kernel": 3,
+        "name": "blur-512-c1-k3",
+        "size": 512
+      },
+      "throughput_per_s": 1205.2512797532968,
+      "width": 512
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-512-c1-k7",
+      "channels": 1,
+      "dtype": "float32",
+      "height": 512,
+      "iqr_us": 210.23125045758172,
+      "median_us": 2125.745800003642,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 1,
+        "kernel": 7,
+        "name": "blur-512-c1-k7",
+        "size": 512
+      },
+      "throughput_per_s": 470.42313337666553,
+      "width": 512
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-512-c1-k15",
+      "channels": 1,
+      "dtype": "float32",
+      "height": 512,
+      "iqr_us": 110.0249748560607,
+      "median_us": 5577.247949986486,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 1,
+        "kernel": 15,
+        "name": "blur-512-c1-k15",
+        "size": 512
+      },
+      "throughput_per_s": 179.2999000523947,
+      "width": 512
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-512-c1-k31",
+      "channels": 1,
+      "dtype": "float32",
+      "height": 512,
+      "iqr_us": 998.4587522922084,
+      "median_us": 12478.396001824876,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 1,
+        "kernel": 31,
+        "name": "blur-512-c1-k31",
+        "size": 512
+      },
+      "throughput_per_s": 80.13850496920895,
+      "width": 512
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 4,
+      "case": "blur-batch",
+      "channels": 3,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 1262.167003005743,
+      "median_us": 17680.541997833643,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "batch": 4,
+        "channels": 3,
+        "kernel": 15,
+        "name": "blur-batch",
+        "size": 256
+      },
+      "throughput_per_s": 226.23740836056444,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 2,
+      "case": "blur-batched-sigma",
+      "channels": 3,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 469.887549843406,
+      "median_us": 2650.8417002332862,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "batch": 2,
+        "batched_sigma": true,
+        "channels": 3,
+        "kernel": 7,
+        "name": "blur-batched-sigma",
+        "size": 256
+      },
+      "throughput_per_s": 754.4773419793385,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-float64",
+      "channels": 1,
+      "dtype": "float64",
+      "height": 512,
+      "iqr_us": 866.6454941703705,
+      "median_us": 11678.124996251427,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 1,
+        "dtype": "float64",
+        "kernel": 15,
+        "name": "blur-float64",
+        "size": 512
+      },
+      "throughput_per_s": 85.63018466757215,
+      "width": 512
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-channels-last",
+      "channels": 3,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 246.80410024302546,
+      "median_us": 1460.04170019296,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 3,
+        "kernel": 7,
+        "layout": "channels_last",
+        "name": "blur-channels-last",
+        "size": 256
+      },
+      "throughput_per_s": 684.9119445477752,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-strided",
+      "channels": 3,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 537.6281500502956,
+      "median_us": 1122.9874999116873,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 3,
+        "kernel": 7,
+        "layout": "strided",
+        "name": "blur-strided",
+        "size": 256
+      },
+      "throughput_per_s": 890.4818620676017,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-input-backward",
+      "channels": 3,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 252.93645012425347,
+      "median_us": 4271.908349983278,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "backward": "input",
+        "channels": 3,
+        "kernel": 7,
+        "name": "blur-input-backward",
+        "size": 256
+      },
+      "throughput_per_s": 234.08741903461353,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-sigma-backward",
+      "channels": 3,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 396.30627543374345,
+      "median_us": 5387.025000163703,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "backward": "sigma",
+        "channels": 3,
+        "kernel": 7,
+        "name": "blur-sigma-backward",
+        "size": 256
+      },
+      "throughput_per_s": 185.63121573959867,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-signed",
+      "channels": 3,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 176.22289997234466,
+      "median_us": 3008.077100093942,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 3,
+        "kernel": 15,
+        "name": "blur-signed",
+        "signal": "signed",
+        "size": 256
+      },
+      "throughput_per_s": 332.4382875587763,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-constant",
+      "channels": 3,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 244.4124991598075,
+      "median_us": 2818.7791001982987,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 3,
+        "kernel": 15,
+        "name": "blur-constant",
+        "signal": "constant",
+        "size": 256
+      },
+      "throughput_per_s": 354.76352152946316,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "blur-impulse",
+      "channels": 3,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 145.5999501558834,
+      "median_us": 2793.358349663322,
+      "op": "gaussian_blur2d",
+      "parameters": {
+        "channels": 3,
+        "kernel": 15,
+        "name": "blur-impulse",
+        "signal": "impulse",
+        "size": 256
+      },
+      "throughput_per_s": 357.9920206516031,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "pyramid-gray",
+      "channels": 1,
+      "dtype": "float32",
+      "height": 512,
+      "iqr_us": 2212.656498159049,
+      "median_us": 46209.29150041775,
+      "op": "ScalePyramid",
+      "parameters": {
+        "channels": 1,
+        "name": "pyramid-gray",
+        "op": "ScalePyramid",
+        "size": 512
+      },
+      "throughput_per_s": 21.64066938769143,
+      "width": 512
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "pyramid-rgb",
+      "channels": 3,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 2275.8340055588633,
+      "median_us": 24443.916001473553,
+      "op": "ScalePyramid",
+      "parameters": {
+        "channels": 3,
+        "name": "pyramid-rgb",
+        "op": "ScalePyramid",
+        "size": 256
+      },
+      "throughput_per_s": 40.90997530590913,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "pyramid-double",
+      "channels": 1,
+      "dtype": "float32",
+      "height": 256,
+      "iqr_us": 5562.541999097448,
+      "median_us": 46490.75000634184,
+      "op": "ScalePyramid",
+      "parameters": {
+        "channels": 1,
+        "double": true,
+        "name": "pyramid-double",
+        "op": "ScalePyramid",
+        "size": 256
+      },
+      "throughput_per_s": 21.509655143519716,
+      "width": 256
+    },
+    {
+      "backend": "kornia (eager)",
+      "batch": 1,
+      "case": "pyramid-float64",
+      "channels": 1,
+      "dtype": "float64",
+      "height": 512,
+      "iqr_us": 2381.7500041332096,
+      "median_us": 96687.37500032876,
+      "op": "ScalePyramid",
+      "parameters": {
+        "channels": 1,
+        "dtype": "float64",
+        "name": "pyramid-float64",
+        "op": "ScalePyramid",
+        "size": 512
+      },
+      "throughput_per_s": 10.342611949042983,
+      "width": 512
+    }
+  ]
+}

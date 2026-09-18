@@ -23,9 +23,10 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 
-from kornia.core.utils import _torch_histc_cast
+from kornia.core.utils import _normalize_to_float32_or_float64
 from kornia.image.utils import perform_keep_shape_image
 
+from .adjust import _assert_async_value_check
 from .histogram import histogram
 
 
@@ -134,8 +135,34 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
     return interp_tiles
 
 
-def _my_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
-    return _torch_histc_cast(tiles, bins=bins, min=0, max=1)
+def _tiles_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
+    r"""Histogram every tile over ``[0, 1]`` in one pass, matching a per-tile CPU ``torch.histc``.
+
+    One ``scatter_add_`` counts all tiles, instead of one ``histc`` launch per tile, and keeps a static
+    output shape so the function stays a single dynamo graph. The index is computed as ``histc``
+    computes it, in the same float32/float64 promotion as ``_torch_histc_cast``: ``floor(x * bins)``,
+    with ``x == 1`` in the last bin. Values outside ``[0, 1]`` and NaN are not counted, which the CPU
+    ``histc`` also skips; they go to one extra overflow column per tile that is dropped. (``histc`` on
+    MPS counts values marginally outside ``[0, 1]``, so there this matches CPU rather than MPS.)
+
+    Args:
+        tiles: flattened tiles. (T, P)
+        bins: number of bins.
+
+    Returns:
+        Per-tile counts in the dtype of ``tiles``. (T, bins)
+
+    """
+    num_tiles = tiles.shape[0]
+    x = tiles.to(_normalize_to_float32_or_float64(tiles.dtype))
+    # clamp keeps [0, 1] unchanged and NaN as NaN, so the comparison is False exactly where histc skips.
+    in_range = x.clamp(0, 1) == x
+    idx = (x * bins).to(torch.int64).clamp_(0, bins - 1)
+    # this mask is what drops out-of-range values; without it they land in the first or last bin
+    idx = torch.where(in_range, idx, bins)
+    counts = torch.zeros(num_tiles, bins + 1, dtype=x.dtype, device=x.device)
+    counts.scatter_add_(1, idx, torch.ones_like(x))
+    return counts[:, :bins].to(tiles.dtype)
 
 
 def _compute_luts(
@@ -162,19 +189,20 @@ def _compute_luts(
     pixels: int = th * tw
     tiles: torch.Tensor = tiles_x_im.view(-1, pixels)  # test with view  # T x (THxTW)
     if not diff:
-        if torch.jit.is_scripting():
-            histos = torch.stack([_torch_histc_cast(tile, bins=num_bins, min=0, max=1) for tile in tiles])
-        else:
-            histos = torch.stack(list(map(_my_histc, tiles, [num_bins] * len(tiles))))
+        histos = _tiles_histc(tiles, num_bins)
     else:
         bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
-        histos = histogram(tiles, bins, torch.tensor(0.001)).squeeze()
+        # histogram already returns (T, num_bins); squeeze() dropped the tile axis for a single tile
+        histos = histogram(tiles, bins, torch.tensor(0.001))
         histos *= pixels
 
     if clip > 0.0:
         max_val: float = max(clip * pixels // num_bins, 1)
+        if diff:
+            clipped: torch.Tensor = torch.relu(histos - max_val).sum(1)
         histos.clamp_(max=max_val)
-        clipped: torch.Tensor = pixels - histos.sum(1)
+        if not diff:
+            clipped = pixels - histos.sum(1)
         residual: torch.Tensor = torch.remainder(clipped, num_bins)
         redist: torch.Tensor = (clipped - residual).div(num_bins)
         histos += redist[None].transpose(0, 1)
@@ -242,7 +270,7 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
     luts_x_interp_tiles[:, 0 :: gh - 1, 1:-1, 1] = luts[:, 0 :: max(gh // 2 - 1, 1), i_idxs[:, 1]]
     # internal region
     luts_x_interp_tiles[:, 1:-1, 1:-1, :] = luts[
-        :, j_idxs.repeat(max(gh - 2, 1), 1, 1).permute(1, 0, 2), i_idxs.repeat(max(gw - 2, 1), 1, 1)
+        :, j_idxs.repeat(max(gw - 2, 1), 1, 1).permute(1, 0, 2), i_idxs.repeat(max(gh - 2, 1), 1, 1)
     ]
 
     return luts_x_interp_tiles
@@ -315,14 +343,14 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     # border region (h)
     t, b, _, _ = preinterp_tiles_equalized[:, 1:-1, 0].unbind(2)
     tiles_equalized[:, 1:-1, 0] = torch.addcmul(b, tih.squeeze(1), torch.sub(t, b))
-    t, b, _, _ = preinterp_tiles_equalized[:, 1:-1, gh - 1].unbind(2)
-    tiles_equalized[:, 1:-1, gh - 1] = torch.addcmul(b, tih.squeeze(1), torch.sub(t, b))
+    t, b, _, _ = preinterp_tiles_equalized[:, 1:-1, gw - 1].unbind(2)
+    tiles_equalized[:, 1:-1, gw - 1] = torch.addcmul(b, tih.squeeze(1), torch.sub(t, b))
 
     # border region (w)
     left, right, _, _ = preinterp_tiles_equalized[:, 0, 1:-1].unbind(2)
     tiles_equalized[:, 0, 1:-1] = torch.addcmul(right, tiw, torch.sub(left, right))
-    left, right, _, _ = preinterp_tiles_equalized[:, gw - 1, 1:-1].unbind(2)
-    tiles_equalized[:, gw - 1, 1:-1] = torch.addcmul(right, tiw, torch.sub(left, right))
+    left, right, _, _ = preinterp_tiles_equalized[:, gh - 1, 1:-1].unbind(2)
+    tiles_equalized[:, gh - 1, 1:-1] = torch.addcmul(right, tiw, torch.sub(left, right))
 
     # same type as the input
     return tiles_equalized.div(255.0)
@@ -361,6 +389,12 @@ def equalize_clahe(
         >>> res.shape
         torch.Size([2, 3, 10, 20])
 
+    .. note::
+       The input is expected in :math:`[0, 1]`; each tile is equalized from a 256-bin lookup table.
+       Values the lookup cannot index (outside roughly :math:`[0, 1]`) raise a ``RuntimeError``
+       naming the range. The check runs on CPU and CUDA (via ``torch._assert_async``); on MPS it is
+       skipped, as for :func:`kornia.enhance.equalize`.
+
     """
     if not isinstance(clip_limit, float):
         raise TypeError(f"Input clip_limit type is not float. Got {type(clip_limit)}")
@@ -376,6 +410,15 @@ def equalize_clahe(
 
     if grid_size[0] <= 0 or grid_size[1] <= 0:
         raise ValueError(f"Input grid_size elements must be positive. Got {grid_size}")
+
+    # The tile LUTs are gathered below with ``(interp_tiles * 255).long()``, which is in bounds
+    # only for values in (-1/255, 256/255). Check that domain without ``.item()``, so there is no
+    # device sync and fullgraph still compiles; inputs the lookup can index are unchanged.
+    _assert_async_value_check(
+        ((input * 255.0 > -1.0) & (input * 255.0 < 256.0)).all(),
+        "equalize_clahe expects input values in [0, 1]. Scale the image into that range first, "
+        "for example image / 255.0 for 8-bit data.",
+    )
 
     imgs: torch.Tensor = input  # B x C x H x W
 

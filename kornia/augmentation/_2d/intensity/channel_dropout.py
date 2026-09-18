@@ -45,11 +45,11 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
 
     Convention:
         - the channels named by the drawn ``channel_idx`` are overwritten with the literal ``fill_value``,
-          which has to be a ``float`` in ``[0, 1]``: this class's own ``__init__`` rejects anything outside
-          the bounds, and an ``int`` such as ``0`` on type. ``ChannelDropoutGenerator`` never sees
-          ``fill_value`` -- unlike :class:`RandomErasing`, whose ``value`` guard does live in its generator,
-          and which accepts an ``int`` ``value`` (`#4606 <https://github.com/kornia/kornia/issues/4606>`_).
-          Every other channel is left exactly as it came in, so the
+          which has to be an ``int`` or a ``float`` in ``[0, 1]``: this class's own ``__init__`` rejects
+          anything outside the bounds, and anything that is not a Python ``int`` or ``float`` on type. As with
+          :class:`RandomErasing`'s ``value``, ``0`` and ``1`` are accepted, and so are ``False`` and ``True``.
+          ``ChannelDropoutGenerator`` never sees ``fill_value`` -- unlike :class:`RandomErasing`, whose
+          ``value`` guard does live in its generator. Every other channel is left exactly as it came in, so the
           input's value range is carried through.
         - the dropped channels are drawn independently per sample; ``same_on_batch=True`` collapses the
           draw to one set of channels for the whole batch.
@@ -99,17 +99,18 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
-        KORNIA_CHECK_TYPE(fill_value, float, f"`fill_value` must be a float. Got: {type(fill_value)}")
+        KORNIA_CHECK_TYPE(fill_value, (int, float), f"`fill_value` must be an int or a float. Got: {type(fill_value)}")
         KORNIA_CHECK(
             0.0 <= fill_value <= 1.0,
-            f"Invalid value in `fill_value`. Must be a float between 0 and 1. Got: {fill_value}",
+            f"Invalid value in `fill_value`. Must be a number between 0 and 1. Got: {fill_value}",
         )
         # `fill_value` is fully determined by the constructor arg (derived state, not
         # learned) -- register as a non-persistent buffer so `.to()` / `.cuda()` /
         # `.half()` move it through the normal nn.Module machinery instead of leaving
         # it behind as a plain attribute. persistent=False keeps state_dict() keys
         # unchanged, same rationale/convention as #4079/#4319.
-        self.register_buffer("fill_value", torch.tensor(fill_value), persistent=False)
+        # float() keeps an int fill_value from registering an int64 buffer, which `.half()` would not cast.
+        self.register_buffer("fill_value", torch.tensor(float(fill_value)), persistent=False)
 
         KORNIA_CHECK_TYPE(num_drop_channels, int, f"`num_drop_channels` must be an int. Got: {type(num_drop_channels)}")
         KORNIA_CHECK(
