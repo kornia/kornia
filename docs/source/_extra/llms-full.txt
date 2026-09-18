@@ -182,6 +182,8 @@ Durable findings from earlier CUDA runs (2026-08-07, see benchmarks/README.md):
 - feature-laf-ops on i7-14700k-rtx-4090/cuda (2026-09-03): fastest overall kornia (compiled) ellipse_to_laf@1,n_lafs=20000 at 447807983 LAFs/s; slowest kornia op extract_patches_from_pyramid@1,n_lafs=2000 at 1380403 LAFs/s.
 - filters on apple-m1/cpu (2026-08-08): fastest overall opencv box_blur@1 at 22422 items/s; slowest kornia op median_blur@32 at 11 items/s.
 - filters on apple-m1/mps (2026-08-08): fastest overall opencv box_blur@1 at 20137 items/s; slowest kornia op median_blur@32 at 1 items/s.
+- filters on apple-m1-pro/cpu (2026-09-18): fastest overall opencv box_blur@1 at 23017 items/s; slowest kornia op median_blur@8 at 62 items/s.
+- filters on apple-m1-pro/mps (2026-09-18): fastest overall kornia (compiled) box_blur_separable@32 at 37060 items/s; slowest kornia op bilateral_blur@1 at 14 items/s.
 - filters on apple-m4/cpu (2026-08-18): fastest overall opencv box_blur@1 at 31751 items/s; slowest kornia op median_blur@32 at 16 items/s.
 - filters on apple-m4/mps (2026-08-18): fastest overall opencv box_blur@1 at 31758 items/s; slowest kornia op median_blur@1 at 3 items/s.
 - filters on i7-14700k-rtx-4090/cpu (2026-09-18): fastest overall opencv gaussian_blur2d@8 at 55405 items/s; slowest kornia op bilateral_blur@8 at 62 items/s.
